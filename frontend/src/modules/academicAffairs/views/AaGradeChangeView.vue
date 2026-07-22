@@ -9,8 +9,8 @@
       <!-- 发起更正 -->
       <AppSectionCard title="发起更正申请">
         <div class="aa-grid2">
-          <label class="aa-field"><span class="req">成绩录入任务ID</span><input v-model.trim="reqForm.taskId" class="aa-input" placeholder="从成绩录入/成绩总览页可查" /></label>
-          <label class="aa-field"><span class="req">成绩明细记录ID</span><input v-model.trim="reqForm.recordId" class="aa-input" placeholder="对应学生的成绩明细ID" /></label>
+          <label class="aa-field"><span class="req">成绩录入任务</span><AppGradeTaskPicker v-model="reqForm.taskId" /></label>
+          <label class="aa-field"><span class="req">学生成绩记录</span><AppGradeRecordPicker v-model="reqForm.recordId" :query="{ taskId: reqForm.taskId || undefined }" /></label>
           <label class="aa-field"><span>新平时分</span><input v-model.number="reqForm.newUsualScore" type="number" min="0" max="100" class="aa-input" placeholder="不改则留空" /></label>
           <label class="aa-field"><span>新期末分</span><input v-model.number="reqForm.newFinalScore" type="number" min="0" max="100" class="aa-input" placeholder="不改则留空" /></label>
         </div>
@@ -27,7 +27,8 @@
       <!-- 更正审核 -->
       <AppSectionCard title="更正审核（学院初审 / 教务处终审）">
         <div class="aa-grid2">
-          <label class="aa-field"><span class="req">成绩明细记录ID</span><input v-model.trim="reviewForm.recordId" class="aa-input" /></label>
+          <label class="aa-field"><span class="req">成绩录入任务</span><AppGradeTaskPicker v-model="reviewForm.taskId" /></label>
+          <label class="aa-field"><span class="req">学生成绩记录</span><AppGradeRecordPicker v-model="reviewForm.recordId" :query="{ taskId: reviewForm.taskId || undefined }" /></label>
           <label class="aa-field"><span class="req">审核节点</span>
             <AppSelect v-model="reviewForm.node" :options="reviewNodeOptions" />
           </label>
@@ -58,20 +59,20 @@
 /** 成绩更正（/admin/academic-affairs/grade-change）：发起+两级审核。 */
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect, AppGradeTaskPicker, AppGradeRecordPicker } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGradeChangeView',
-  components: { ModulePageShell, AppButton, AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect, AppGradeTaskPicker, AppGradeRecordPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       reqForm: { taskId: '', recordId: '', newUsualScore: null, newFinalScore: null, reason: '' },
       requesting: false,
-      reviewForm: { recordId: '', node: 'college' },
+      reviewForm: { taskId: '', recordId: '', node: 'college' },
       reviewNodeOptions: [
         { value: 'college', label: '学院初审' },
         { value: 'academic', label: '教务处终审' }

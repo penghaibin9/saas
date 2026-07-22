@@ -52,9 +52,8 @@
     <!-- 生成 -->
     <AppDrawer :visible="genDlg.visible" title="生成三方协议" @update:visible="genDlg.visible = $event">
       <AppFormItem label="实习学生" required>
-        <AppStudentPicker
+        <AppInternshipStudentPicker
           v-model="genForm.internshipId"
-          :remote-search="searchInternStudents"
           placeholder="输入姓名或学号搜索实习学生"
           search-placeholder="按姓名 / 学号搜索"
           data-scope-hint="指导教师仅本人指导学生；管理员全校"
@@ -77,8 +76,7 @@
 import { ModulePageShell, DataTable, ErrorState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppStatusTag, AppExportButton, AppPermissionButton, AppSearchBox, AppSelect, AppFormItem,
-  AppStudentPicker } from '@/components/common'
-import { searchInternStudents } from './components/entityPickerAdapters'
+  AppInternshipStudentPicker } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { agreementApi } from '@/modules/internship/api/agreement.api'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
@@ -113,7 +111,7 @@ export default {
   name: 'AgreementView',
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DataTable, ErrorState, AppButton, AppDrawer, AppStatusTag, AppExportButton,
-    AppPermissionButton, AppSearchBox, AppSelect, AppFormItem, AppStudentPicker, ModuleSummaryStrip },
+    AppPermissionButton, AppSearchBox, AppSelect, AppFormItem, AppInternshipStudentPicker, ModuleSummaryStrip },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -186,7 +184,6 @@ export default {
       this.rows = res.data.list; this.total = res.data.total
     },
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchInternStudents,
     async openGenerate() {
       // 学生候选改为选择器内按关键字远程搜索，不再一次性预载 200 条
       this.genForm = { internshipId: '', templateId: '' }

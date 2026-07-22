@@ -80,9 +80,8 @@
       :submitting="actioning" @confirm="submitOwnerDlg"
     >
       <AppFormItem label="责任人" required>
-        <AppTeacherPicker
+        <AppRiskOwnerPicker
           v-model="ownerDlg.ownerId"
-          :remote-search="searchRiskOwners"
           placeholder="按姓名 / 工号搜索"
           data-scope-hint="仅可选持学工风险处置角色的在职账号"
         />
@@ -111,7 +110,7 @@ import {
   AppRiskTag,
   AppSectionCard,
   AppSensitiveText,
-  AppTeacherPicker
+  AppRiskOwnerPicker
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
@@ -128,7 +127,7 @@ export default {
     AppRiskTag,
     AppSectionCard,
     AppSensitiveText,
-    AppTeacherPicker
+    AppRiskOwnerPicker
   },
   data() {
     return {
@@ -191,9 +190,6 @@ export default {
       } finally {
         this.loading = false
       }
-    },
-    searchRiskOwners(keyword) {
-      return studentAffairsApi.searchRiskOwners(keyword)
     },
     /* ── 分派 / 转办：责任人走候选集选择器 ── */
     assign() {

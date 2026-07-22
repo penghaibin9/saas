@@ -68,8 +68,8 @@
               {{ directionToggle.enabled ? '停用总开关' : '启用总开关' }}
             </AppButton>
             <template v-if="directionToggle.enabled">
-              <AppSelect v-model="directionMajorId" :placeholder="''" @change="reloadDirections"
-                         :options="[{ value: '', label: '请选择专业' }, ...majorOptions]" />
+              <AppMajorPicker v-model="directionMajorId" placeholder="请选择专业" @change="reloadDirections"
+                              :options="majorOptions" />
               <AppButton v-if="directionMajorId && canManage" variant="primary" @click="openDirectionCreate">＋ 新建方向</AppButton>
             </template>
           </div>
@@ -103,8 +103,8 @@
       <section v-else-if="tab === 'students'" class="mp-card">
         <div class="mp-card__body">
           <div class="aa-filter">
-            <AppSelect v-model="studentsFilterClassId" :placeholder="''" @change="reloadStudentsList"
-                       :options="[{ value: '', label: '请选择行政班' }, ...classOptions]" />
+            <AppClassPicker v-model="studentsFilterClassId" placeholder="请选择行政班" @change="reloadStudentsList"
+                            :options="classOptions" />
             <input v-model="studentsKeyword" class="aa-input" placeholder="学号/姓名关键字" @keyup.enter="reloadStudentsList" />
             <AppButton :disabled="!studentsFilterClassId" @click="reloadStudentsList">查询</AppButton>
           </div>
@@ -172,10 +172,10 @@
       <!-- 列表类页签（学院/专业/行政班/年级/教学班/审计/班级学生）-->
       <template v-else>
         <div v-if="tab === 'major' || tab === 'class'" class="aa-filter">
-          <AppSelect v-if="tab === 'major'" v-model="filters.collegeId" :placeholder="''" @change="reload"
-                     :options="[{ value: '', label: '全部学院' }, ...collegeOptions]" />
-          <AppSelect v-if="tab === 'class'" v-model="filters.majorId" :placeholder="''" @change="reload"
-                     :options="[{ value: '', label: '全部专业' }, ...majorOptions]" />
+          <AppCollegePicker v-if="tab === 'major'" v-model="filters.collegeId" placeholder="全部学院" @change="reload"
+                            :options="collegeOptions" clearable />
+          <AppMajorPicker v-if="tab === 'class'" v-model="filters.majorId" placeholder="全部专业" @change="reload"
+                          :options="majorOptions" clearable />
           <input v-model="filters.keyword" class="aa-input" placeholder="关键词" @keyup.enter="reload" />
           <AppButton @click="reload">查询</AppButton>
         </div>
@@ -228,7 +228,9 @@
     <AppDrawer :visible="form.visible" :title="(form.mode === 'create' ? '新建' : '编辑') + tabLabel" @update:visible="form.visible = $event">
       <div class="aa-form">
         <AppFormItem v-for="f in formFields" :key="f.key" :label="f.label" :required="!!f.required">
-          <AppSelect v-if="f.type === 'select'" v-model="form.model[f.key]" :options="f.options || []" />
+          <AppCollegePicker v-if="f.picker === 'college'" v-model="form.model[f.key]" :options="f.options || []" />
+          <AppMajorPicker v-else-if="f.picker === 'major'" v-model="form.model[f.key]" :options="f.options || []" />
+          <AppSelect v-else-if="f.type === 'select'" v-model="form.model[f.key]" :options="f.options || []" />
           <AppNumberInput v-else-if="f.type === 'number'" v-model="form.model[f.key]" />
           <AppTextInput v-else v-model="form.model[f.key]" :placeholder="f.placeholder || ''" />
         </AppFormItem>
@@ -242,8 +244,8 @@
     <!-- 教学秘书绑定 -->
     <AppDrawer :visible="secretary.visible" :title="'教学秘书绑定 · ' + (secretary.row && secretary.row.collegeName)" @update:visible="secretary.visible = $event">
       <div class="aa-form">
-        <AppFormItem label="教学秘书 user_id">
-          <AppTextInput v-model="secretary.secretaryId" placeholder="留空为解绑" />
+        <AppFormItem label="教学秘书">
+          <AppTeacherPicker v-model="secretary.secretaryId" placeholder="选择教师；留空为解绑" />
         </AppFormItem>
       </div>
       <template #footer>
@@ -274,7 +276,7 @@
     <AppDrawer :visible="adjust.visible" :title="'班级调整 · ' + (adjust.student && adjust.student.realName)" @update:visible="adjust.visible = $event">
       <div class="aa-form">
         <AppFormItem label="目标班级" required>
-          <AppSelect v-model="adjust.targetClassId" placeholder="请选择目标班级" :options="classOptions" />
+          <AppClassPicker v-model="adjust.targetClassId" placeholder="请选择目标班级" :options="classOptions" />
         </AppFormItem>
       </div>
       <template #footer>
@@ -318,14 +320,11 @@
             { value: 'MERGE', label: '合班登记' }, { value: 'SPLIT', label: '拆班登记' },
             { value: 'DISBAND', label: '停用撤销' }, { value: 'GRADUATE_CLEAR', label: '毕业清班' }]" />
         </AppFormItem>
-        <AppFormItem label="来源班级" required hint="按住 Ctrl/Cmd 可多选">
-          <!-- 原生多选列表框：AppSelect 只支持单选，多选保留原生控件，不强行套壳 -->
-          <select v-model="adjustCreateForm.model.fromClassIds" multiple size="5" class="aa-native-multiselect">
-            <option v-for="c in classOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-          </select>
+        <AppFormItem label="来源班级" required hint="可搜索并选择多个班级">
+          <AppClassPicker v-model="adjustCreateForm.model.fromClassIds" :options="classOptions" multiple placeholder="请选择来源班级" />
         </AppFormItem>
         <AppFormItem v-if="adjustCreateForm.model.adjustType === 'MERGE'" label="目标班级" required>
-          <AppSelect v-model="adjustCreateForm.model.toClassId" placeholder="请选择目标班级" :options="classOptions" />
+          <AppClassPicker v-model="adjustCreateForm.model.toClassId" placeholder="请选择目标班级" :options="classOptions" />
         </AppFormItem>
         <AppFormItem label="调整理由" required>
           <AppTextInput v-model="adjustCreateForm.model.reason" placeholder="至少5个字符" />
@@ -379,7 +378,7 @@
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppSelect, AppFormItem, AppTextInput, AppNumberInput } from '@/components/common'
+import { AppSelect, AppFormItem, AppTextInput, AppNumberInput, AppTeacherPicker, AppCollegePicker, AppMajorPicker, AppClassPicker } from '@/components/common'
 import { academicAffairsOrgApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
@@ -389,7 +388,7 @@ const MANAGE_ROLES = ['SCHOOL_ADMIN', 'PLATFORM_SUPER_ADMIN', 'ACADEMIC_TEACHER'
 
 export default {
   name: 'AaOrgConsole',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppSelect, AppFormItem, AppTextInput, AppNumberInput },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppSelect, AppFormItem, AppTextInput, AppNumberInput, AppTeacherPicker, AppCollegePicker, AppMajorPicker, AppClassPicker },
   data() {
     return {
       tab: 'college',
@@ -477,7 +476,7 @@ export default {
       }
       if (this.tab === 'major') {
         return [
-          { key: 'collegeId', label: '所属学院', type: 'select', required: true, options: this.collegeOptions },
+          { key: 'collegeId', label: '所属学院', picker: 'college', required: true, options: this.collegeOptions },
           { key: 'majorName', label: '专业名称', required: true },
           { key: 'educationYears', label: '学制（年）', type: 'number' },
           { key: 'trainingLevel', label: '培养层次', type: 'select', options: [
@@ -490,7 +489,7 @@ export default {
       }
       // class
       return [
-        { key: 'majorId', label: '所属专业', type: 'select', required: true, options: this.majorOptions },
+        { key: 'majorId', label: '所属专业', picker: 'major', required: true, options: this.majorOptions },
         { key: 'className', label: '班级名称', required: true },
         { key: 'classCode', label: '班级编号' }, { key: 'grade', label: '年级', placeholder: '如 2026' },
         { key: 'capacity', label: '编制人数', type: 'number' },
@@ -788,6 +787,5 @@ export default {
 .aa-stat__label { color: var(--text-500); font-size: var(--font-size-sm); }
 .aa-tree { list-style: none; padding-left: var(--space-2); }
 .aa-tree ul { list-style: none; padding-left: var(--space-4); }
-.aa-native-multiselect { width: 100%; box-sizing: border-box; padding: var(--space-2); border: 1px solid var(--border-300); border-radius: var(--radius-sm); font-family: inherit; }
 .mp-link + .mp-link { margin-left: var(--space-2); }
 </style>

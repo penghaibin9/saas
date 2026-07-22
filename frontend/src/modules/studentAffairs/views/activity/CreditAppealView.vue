@@ -17,7 +17,7 @@
 
       <AppSectionCard v-if="formVisible" title="提交积分申诉">
         <div class="ca-grid">
-          <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="ca-field"><span>类型</span>
             <AppSelect v-model="form.appealType" :options="APPEAL_TYPE_OPTIONS" placeholder="" /></label>
           <label class="ca-field"><span>学分类型</span>
@@ -126,7 +126,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blankForm() { return { studentId: '', appealType: 'MISSING', claimCreditType: 'SECOND_CLASS', claimValue: null, reason: '', error: '' } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getCreditAppeals({ pageSize: 300 })

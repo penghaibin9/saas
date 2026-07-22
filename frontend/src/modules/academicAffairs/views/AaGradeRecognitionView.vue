@@ -47,13 +47,13 @@
 
     <AppDrawer :visible="createVisible" title="代录成绩认定申请" @close="createVisible = false">
       <div class="aarn-form">
-        <AppFormItem label="学号" required><AppTextInput v-model="form.studentNo" placeholder="学生学号" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学生" required><AppStudentPicker v-model="form.studentId" :disabled="saving" @change="onStudentChange" /></AppFormItem>
         <AppFormItem label="原课程名称" required><AppTextInput v-model="form.sourceCourseName" placeholder="如 高等数学A" :disabled="saving" /></AppFormItem>
         <AppFormItem label="原成绩（≥60）" required><AppNumberInput v-model="form.sourceScore" :min="0" :max="100" :disabled="saving" /></AppFormItem>
         <AppFormItem label="原学分"><AppNumberInput v-model="form.sourceCredit" :min="0" :max="30" :disabled="saving" /></AppFormItem>
         <AppFormItem label="来源说明"><AppTextInput v-model="form.sourceOrigin" placeholder="原专业/原学校/证书折算等" :disabled="saving" /></AppFormItem>
         <AppFormItem label="替代目标课程" required>
-          <AppCoursePicker v-model="form.targetCourseId" :remote-search="searchCourses" placeholder="从课程库选择被替代的校内课程" :disabled="saving" @change="onTargetChange" />
+          <AppCoursePicker v-model="form.targetCourseId" placeholder="从课程库选择被替代的校内课程" :disabled="saving" @change="onTargetChange" />
         </AppFormItem>
         <AppFormItem label="佐证附件">
           <div class="aarn-upload">
@@ -94,7 +94,7 @@
 /** 成绩认定/课程替代（/admin/academic-affairs/grade-recognition）：代录+审核；通过写 RECOGNIZED 成绩并刷新台账。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCoursePicker } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCoursePicker, AppStudentPicker } from '@/components/common'
 import { academicAffairsApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { requestUpload } from '@/services/http/client'
 import { toast } from '@/utils/toast'
@@ -104,7 +104,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem,
-    AppConfirmDialog, AppInlineAlert, AppCoursePicker
+    AppConfirmDialog, AppInlineAlert, AppCoursePicker, AppStudentPicker
   },
   data() {
     return {
@@ -119,7 +119,7 @@ export default {
         { key: 'review', title: '审核信息' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
       ],
       createVisible: false, formError: '', uploading: false,
-      form: { studentNo: '', sourceCourseName: '', sourceScore: 60, sourceCredit: null, sourceOrigin: '', targetCourseId: '', targetCourseName: '', attachments: [], reason: '' },
+      form: { studentId: '', studentNo: '', sourceCourseName: '', sourceScore: 60, sourceCredit: null, sourceOrigin: '', targetCourseId: '', targetCourseName: '', attachments: [], reason: '' },
       rejectVisible: false, rejectRow: null, rejectReason: '', rejectError: '',
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
     }
@@ -138,15 +138,17 @@ export default {
       this.loading = false
     },
     openCreate() {
-      this.form = { studentNo: '', sourceCourseName: '', sourceScore: 60, sourceCredit: null, sourceOrigin: '', targetCourseId: '', targetCourseName: '', attachments: [], reason: '' }
+      this.form = { studentId: '', studentNo: '', sourceCourseName: '', sourceScore: 60, sourceCredit: null, sourceOrigin: '', targetCourseId: '', targetCourseName: '', attachments: [], reason: '' }
       this.formError = ''; this.createVisible = true
     },
-    async searchCourses(keyword) {
-      const res = await api.getCourses({ keyword: keyword || '', status: 'ENABLED', pageSize: 30 })
-      if (res.code !== 0) return []
-      return (res.data.list || []).map((c) => ({ label: `${c.courseName}（${c.courseCode || '—'}）`, value: String(c.courseId), name: c.courseName }))
+    onStudentChange(v, items) {
+      const item = items?.[0]
+      this.form.studentNo = item?.raw?.studentNo || item?.studentNo || ''
     },
-    onTargetChange(v, item) { this.form.targetCourseName = item ? item.name : '' },
+    onTargetChange(v, items) {
+      const item = items?.[0]
+      this.form.targetCourseName = item?.raw?.courseName || item?.name || ''
+    },
     async onPickFile(e) {
       const file = e.target.files && e.target.files[0]
       if (!file) return

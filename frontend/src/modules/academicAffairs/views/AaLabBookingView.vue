@@ -22,9 +22,9 @@
     <AppDrawer :visible="bookVisible" title="申请实训室预约" @close="bookVisible = false">
       <div class="aalb-form">
         <AppFormItem label="实训室" required>
-          <AppSelect v-model="form.labId" :options="labOptions" placeholder="选择可用实训室" :disabled="saving" />
+          <AppLabPicker v-model="form.labId" placeholder="选择可用实训室" :disabled="saving" />
         </AppFormItem>
-        <AppFormItem label="日期" required><AppTextInput v-model="form.bookingDate" placeholder="YYYY-MM-DD" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="日期" required><AppDatePicker v-model="form.bookingDate" :disabled="saving" /></AppFormItem>
         <AppFormItem label="节次" required><AppNumberInput v-model="form.slotNo" :min="1" :max="12" :disabled="saving" /></AppFormItem>
         <AppFormItem label="用途"><AppTextInput v-model="form.purpose" placeholder="如 技能竞赛集训/实训课补课" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
@@ -47,23 +47,22 @@
 /** 教学资源续卡 · 实训室预约（/admin/academic-affairs/resources/lab-bookings）：占用登记+冲突检测+审核，与教室预约同一算法。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
-import { academicAffairsLabBookingApi as api, academicAffairsLabApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog, AppLabPicker, AppDatePicker } from '@/components/common'
+import { academicAffairsLabBookingApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 const _SL = { PENDING: '待审', APPROVED: '已通过', REJECTED: '已驳回', CANCELLED: '已取消' }
 
 export default {
   name: 'AaLabBookingView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog, AppLabPicker, AppDatePicker },
   data() {
     return {
       reasonDialog: { visible: false, submitting: false, action: null },
       loading: true, rows: [], filterStatus: '',
       statusOptions: [{ label: '全部状态', value: '' }, { label: '待审', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }],
       columns: [{ key: 'labText', title: '实训室' }, { key: 'slot', title: '时段' }, { key: 'purpose', title: '用途' }, { key: 'applicantName', title: '申请人' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
-      bookVisible: false, form: { labId: '', bookingDate: '', slotNo: 1, purpose: '' }, formError: '', saving: false,
-      labOptions: []
+      bookVisible: false, form: { labId: '', bookingDate: '', slotNo: 1, purpose: '' }, formError: '', saving: false
     }
   },
   created() { this.load() },
@@ -76,14 +75,10 @@ export default {
       this.rows = res.code === 0 ? res.data.list : []
       this.loading = false
     },
-    async openBook() {
+    openBook() {
       this.form = { labId: '', bookingDate: '', slotNo: 1, purpose: '' }
       this.formError = ''
       this.bookVisible = true
-      if (!this.labOptions.length) {
-        const r = await academicAffairsLabApi.options()
-        if (r.code === 0) this.labOptions = r.data.items.map((x) => ({ label: `${x.label}（${x.capacity}工位）`, value: x.labId }))
-      }
     },
     async submitBook() {
       if (!this.form.labId || !this.form.bookingDate) { this.formError = '实训室与日期必填'; return }

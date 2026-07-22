@@ -20,10 +20,8 @@
         </button>
       </div>
       <div class="tk-tools">
-        <select v-model="typeFilter" class="tk-input" title="按类型筛选">
-          <option value="">全部类型</option>
-          <option v-for="t in talkTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
-        </select>
+        <AppSelect v-model="typeFilter" class="tk-input" title="按类型筛选"
+                   :options="[{ value: '', label: '全部类型' }, ...talkTypes]" />
         <span v-if="stats" class="tk-stat">完成率 {{ Math.round((stats.completionRate || 0) * 100) }}%（{{ stats.completed }}/{{ stats.total }}）</span>
         <AppPermissionButton code="studentAffairs.talk.create" variant="primary" size="sm" @click="openCreate">发起谈话</AppPermissionButton>
       </div>
@@ -137,7 +135,7 @@
         <AppTextInput v-model="createModal.topic" placeholder="如：期中学业情况谈话" />
       </AppFormItem>
       <AppFormItem label="圈定学生（可多选）" required>
-        <AppStudentPicker v-model="createModal.studentIds" multiple :remote-search="searchStudents" placeholder="按姓名 / 学号搜索添加学生" />
+        <AppStudentPicker v-model="createModal.studentIds" multiple placeholder="按姓名 / 学号搜索添加学生" />
       </AppFormItem>
       <AppDateTimePicker v-model="createModal.scheduledAt" label="计划时间" />
       <AppInlineAlert v-if="createModal.error" type="danger" :description="createModal.error" />
@@ -321,9 +319,6 @@ export default {
     },
     openCreate() {
       this.createModal = { visible: true, talkType: 'DAILY', topic: '', studentIds: [], scheduledAt: '', error: '' }
-    },
-    searchStudents(keyword) {
-      return studentAffairsApi.searchStudents(keyword)
     },
     async submitCreate() {
       const m = this.createModal

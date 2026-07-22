@@ -19,11 +19,15 @@
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { internshipPickerAdapters } from '@/modules/internship/pickerAdapters'
 import router from '@/router'
 
 export default {
   name: 'AdminInternshipLayout',
   components: { BasePortalLayout, LoadingState },
+  provide() {
+    return { appPickerAdapters: internshipPickerAdapters }
+  },
   data() {
     return { ctx: null }
   },

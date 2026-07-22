@@ -40,7 +40,9 @@
           <AppSelect v-model="form.resourceKind" :options="kindOptions.slice(1)" :disabled="saving" @change="onKindChange" />
         </AppFormItem>
         <AppFormItem label="资源" required>
-          <AppSelect v-model="form.resourceId" :options="resourceOptions" placeholder="选择资源" :disabled="saving" />
+          <AppClassroomPicker v-if="form.resourceKind === 'CLASSROOM'" v-model="form.resourceId" placeholder="选择教室" :disabled="saving" />
+          <AppLabPicker v-else-if="form.resourceKind === 'LAB'" v-model="form.resourceId" placeholder="选择实训室" :disabled="saving" />
+          <AppEquipmentPicker v-else v-model="form.resourceId" placeholder="选择设备" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="故障描述" required>
           <AppTextarea v-model="form.faultDesc" placeholder="如：空调不制冷/投影仪无法开机" :disabled="saving" />
@@ -70,8 +72,8 @@
 /** 教学资源续卡 · 资源维修（/admin/academic-affairs/resources/repairs）：教室/实训室/设备共用工单台账。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppSelect, AppTextarea, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
-import { academicAffairsResourceApi, academicAffairsApi, academicAffairsLabApi, academicAffairsEquipmentApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { AppSelect, AppTextarea, AppFormItem, AppInlineAlert, AppConfirmDialog, AppClassroomPicker, AppLabPicker, AppEquipmentPicker } from '@/components/common'
+import { academicAffairsResourceApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 const _KIND_LABEL = { CLASSROOM: '教室', LAB: '实训室', EQUIPMENT: '设备' }
@@ -79,7 +81,7 @@ const _STATUS_LABEL = { REPORTED: '已报修', IN_REPAIR: '维修中', DONE: '�
 
 export default {
   name: 'AaResourceRepairView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppSelect, AppTextarea, AppFormItem, AppInlineAlert, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppSelect, AppTextarea, AppFormItem, AppInlineAlert, AppConfirmDialog, AppClassroomPicker, AppLabPicker, AppEquipmentPicker },
   data() {
     return {
       noteDialog: { visible: false, title: '', label: '', placeholder: '', type: 'primary', confirmText: '确认', note: '', submitting: false, action: null },
@@ -111,8 +113,7 @@ export default {
       reportVisible: false,
       form: { resourceKind: 'CLASSROOM', resourceId: '', faultDesc: '' },
       formError: '',
-      saving: false,
-      resourceOptions: []
+      saving: false
     }
   },
   created() { this.load() },
@@ -138,27 +139,13 @@ export default {
       }
       this.loading = false
     },
-    async onKindChange() {
+    onKindChange() {
       this.form.resourceId = ''
-      await this.loadResourceOptions()
     },
-    async loadResourceOptions() {
-      if (this.form.resourceKind === 'CLASSROOM') {
-        const r = await academicAffairsApi.getClassroomOptions()
-        this.resourceOptions = r.code === 0 ? r.data.items.map((x) => ({ label: x.label, value: x.classroomId })) : []
-      } else if (this.form.resourceKind === 'LAB') {
-        const r = await academicAffairsLabApi.options()
-        this.resourceOptions = r.code === 0 ? r.data.items.map((x) => ({ label: x.label, value: x.labId })) : []
-      } else {
-        const r = await academicAffairsEquipmentApi.list({ pageSize: 200 })
-        this.resourceOptions = r.code === 0 ? r.data.items.map((x) => ({ label: `${x.equipmentName}（${x.equipmentCode}）`, value: x.equipmentId })) : []
-      }
-    },
-    async openReport() {
+    openReport() {
       this.form = { resourceKind: 'CLASSROOM', resourceId: '', faultDesc: '' }
       this.formError = ''
       this.reportVisible = true
-      await this.loadResourceOptions()
     },
     async submitReport() {
       if (!this.form.resourceId || !this.form.faultDesc.trim()) {

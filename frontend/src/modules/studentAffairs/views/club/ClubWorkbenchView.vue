@@ -58,7 +58,7 @@
               <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" @click="openMember">增补成员</AppPermissionButton>
             </div>
             <div v-if="memberForm.visible" class="cf-inline">
-              <AppStudentPicker v-model="memberForm.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+              <AppStudentPicker v-model="memberForm.studentId" placeholder="按姓名 / 学号搜索学生" />
               <AppSelect v-model="memberForm.role" :options="ROLE_OPTIONS" placeholder="" />
               <AppPermissionButton code="studentAffairs.club.manage" size="sm" @click="addMember">加入</AppPermissionButton>
             </div>
@@ -186,7 +186,6 @@ export default {
     applyFilter() { this.items = this.activeStatus ? this.all.filter((c) => c.status === this.activeStatus) : this.all },
     setStatus(k) { this.activeStatus = k; this.applyFilter() },
     openForm() { this.form = { clubName: '', clubType: 'INTEREST', advisorName: '', error: '' }; this.formVisible = true },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async save() {
       const m = this.form
       const clubName = (m.clubName || '').trim()

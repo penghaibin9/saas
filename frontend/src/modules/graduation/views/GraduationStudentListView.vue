@@ -304,7 +304,7 @@ export default {
       panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       selectedIds: [],
-      batchOpts: [], groupOpts: [],
+      groupOpts: [],
       importVisible: false,
       gdStudentApi,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, payload: null }
@@ -327,11 +327,10 @@ export default {
       return this.activePanel === 'grouping' || this.activePanel === 'archive'
     },
     filterFields() {
-      const batchOpts = this.batchOpts.map((b) => ({ value: b.id, label: b.batchName }))
       const groupOpts = this.groupOpts.map((g) => ({ value: g, label: g }))
       const base = [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' },
-        { key: 'batchId', label: '批次', type: 'select', options: batchOpts },
+        { key: 'batchId', label: '批次', type: 'graduation-batch' },
         {
           key: 'date', label: '起始日期', type: 'daterange',
           startKey: 'dateStart', endKey: 'dateEnd',
@@ -402,7 +401,6 @@ export default {
     }
   },
   created() {
-    this.loadBatchOpts()
     this.loadGroupOpts()
   },
   methods: {
@@ -429,10 +427,6 @@ export default {
     stageTone(stage) { return STAGE_TONE[stage] || 'default' },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     gradQualTone(s) { return s === 'PASS' ? 'success' : (s === 'FAIL' ? 'danger' : (s === 'PENDING' ? 'warning' : 'default')) },
-    async loadBatchOpts() {
-      const b = await gdStudentApi.getBatchOptions()
-      if (b.code === 0) this.batchOpts = b.data
-    },
     async loadGroupOpts() {
       const g = await gdStudentApi.getStudentGroups()
       if (g.code === 0) this.groupOpts = g.data || []

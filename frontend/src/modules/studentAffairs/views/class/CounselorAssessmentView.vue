@@ -10,7 +10,7 @@
       <div class="mp-stack">
         <div class="bar">
           <label class="bar-lbl">考评周期</label>
-          <AppSelect v-model="periodId" :options="periodOptions" placeholder="选择考评周期" @change="onPeriodChange" />
+          <AppCounselorAssessmentPeriodPicker v-model="periodId" :options="periodOptions" placeholder="选择考评周期" @change="onPeriodChange" />
           <template v-if="curPeriod">
             <AppStatusTag :status="curPeriod.status" :label="curPeriod.statusLabel" />
             <AppButton variant="ghost" size="sm" :loading="collecting" :disabled="curPeriod.status === 'PUBLISHED'" @click="collect">生成/刷新指标</AppButton>
@@ -73,7 +73,7 @@
  * 建周期 → 系统自动抓取工作量指标 → 学院评分 → 综合排名 → 发布。真实对接 /student-affairs/counselor-assessment/*。
  */
 import { ModulePageShell, DataTable } from '@/components/business'
-import { AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton } from '@/components/common'
+import { AppGlobalState, AppStatusTag, AppTextInput, AppNumberInput, AppPermissionButton, AppCounselorAssessmentPeriodPicker } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { assessmentApi } from '@/modules/studentAffairs/api/class.api'
 import { toast } from '@/utils/toast'
@@ -86,7 +86,7 @@ const COLUMNS = [
 
 export default {
   name: 'CounselorAssessmentView',
-  components: { ModulePageShell, DataTable, AppGlobalState, AppStatusTag, AppSelect, AppTextInput, AppNumberInput, AppPermissionButton, AppButton, AppDrawer },
+  components: { ModulePageShell, DataTable, AppGlobalState, AppStatusTag, AppTextInput, AppNumberInput, AppPermissionButton, AppCounselorAssessmentPeriodPicker, AppButton, AppDrawer },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {

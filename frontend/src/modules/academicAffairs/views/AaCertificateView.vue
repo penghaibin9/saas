@@ -41,11 +41,11 @@
 
     <AppDrawer :visible="genVisible" title="批量生成证书" @close="genVisible = false">
       <div class="aacert-form">
-        <AppFormItem label="毕业审核批次 ID" required><AppTextInput v-model="genForm.batchId" placeholder="已终审的审核批次 ID" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="毕业审核批次" required><AppGraduationBatchPicker v-model="genForm.batchId" :query="{ status: 'FINALIZED' }" placeholder="选择已终审批次" :disabled="saving" /></AppFormItem>
         <AppFormItem label="编号前缀（学校代码）" required><AppTextInput v-model="genForm.prefix" placeholder="如 13899" :disabled="saving" /></AppFormItem>
         <AppFormItem label="签发年份" required><AppTextInput v-model="genForm.year" placeholder="如 2025" :disabled="saving" /></AppFormItem>
         <AppFormItem label="电子注册号前缀"><AppTextInput v-model="genForm.eRegPrefix" placeholder="选填；空=不生成电子注册号" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="签发日期"><AppTextInput v-model="genForm.issueDate" placeholder="YYYY-MM-DD" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="签发日期"><AppDatePicker v-model="genForm.issueDate" :disabled="saving" /></AppFormItem>
         <AppInlineAlert type="info" description="按批次终审结论生成：毕业(GRADUATED)→毕业证，结业(COMPLETED)→结业证；已有未作废证书的学生自动跳过；编号连续流水、绝不回收。" />
         <AppInlineAlert v-if="genError" type="danger" :description="genError" />
       </div>
@@ -74,7 +74,7 @@
 /** 毕业证书管理（/admin/academic-affairs/certificates）：批量生成编号+台账+发放+作废。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppTextInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppGraduationBatchPicker, AppDatePicker } from '@/components/common'
 import { academicAffairsApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -82,7 +82,7 @@ export default {
   name: 'AaCertificateView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect
+    AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppGraduationBatchPicker, AppDatePicker
   },
   data() {
     return {

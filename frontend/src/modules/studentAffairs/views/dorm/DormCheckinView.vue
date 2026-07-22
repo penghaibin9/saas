@@ -20,8 +20,8 @@
 
       <AppSectionCard title="选床入住">
         <div class="sa-toolbar">
-          <AppSelect v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
-          <AppSelect v-model="curRoom" :options="roomOptions" placeholder="选择房间" class="sa-pick"
+          <AppDormBuildingPicker v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
+          <AppDormRoomPicker v-model="curRoom" :options="roomOptions" :query="{ buildingId: curBuilding }" placeholder="选择房间" class="sa-pick"
                      :disabled="!curBuilding" @change="loadBeds" />
         </div>
         <template v-if="curRoom">
@@ -48,7 +48,7 @@
       confirm-text="确认入住" :submitting="actioning" @confirm="submitCheckin"
     >
       <AppFormItem label="入住学生" required>
-        <AppStudentPicker v-model="inDlg.studentId" :remote-search="searchStudents"
+        <AppStudentPicker v-model="inDlg.studentId"
                           placeholder="按姓名 / 学号搜索" :disabled="actioning" />
       </AppFormItem>
       <AppInlineAlert v-if="inDlg.error" type="danger" :description="inDlg.error" />
@@ -78,7 +78,7 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker
+  AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
@@ -94,7 +94,7 @@ export default {
   name: 'DormCheckinView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, DataTable
+    AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, DataTable
   },
   data() {
     return {
@@ -141,7 +141,6 @@ export default {
       try { this.beds = (await studentAffairsApi.listDormBeds(this.curRoom)).data.items || [] }
       catch (e) { this.errorMessage = e.message }
     },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     checkin(bd) {
       this.inDlg = { visible: true, bedId: bd.bedId, bedLabel: `${bd.bedNo} 号床`, studentId: '', error: '' }
     },

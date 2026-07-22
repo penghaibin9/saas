@@ -11,14 +11,14 @@
 
     <div class="mp-stack">
       <div class="aa-filter">
-        <label class="aa-filter__item">
-          教师工号
-          <input v-model.trim="teacherKey" class="aa-input" placeholder="输入教师工号/登录名" @keyup.enter="load" />
+        <label class="aa-filter__item aa-filter__item--grow">
+          教师
+          <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" />
         </label>
         <AppButton v-if="selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
         <label class="aa-filter__item">
           学期
-          <AppSelect v-model="termId" :options="termOptions" placeholder="" />
+          <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
         </label>
         <label class="aa-filter__item">
           周次
@@ -52,7 +52,7 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppSelect } from '@/components/common'
+import { AppSectionCard, AppTeacherPicker, AppTermEntityPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
@@ -60,7 +60,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeacherScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppTeacherPicker, AppTermEntityPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}
@@ -68,29 +68,16 @@ export default {
       teacherKey: this.$route.params.teacherKey || '',
       selfKey: String(u.userId || u.loginName || ''),
       termId: '', week: null,
-      terms: [], slots: [], items: [], weeklyHours: 0, note: '', loading: false, error: ''
-    }
-  },
-  computed: {
-    termOptions() {
-      return [
-        { value: '', label: '当前已发布批次' },
-        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
-      ]
+      slots: [], items: [], weeklyHours: 0, note: '', loading: false, error: ''
     }
   },
   created() {
-    this.loadTerms()
     this.loadSlots()
     if (this.teacherKey) this.load()
   },
   methods: {
     onItemClick(it) {
       toast.success(`${it.courseName || ''} · ${it.className || ''} · ${it.classroom || ''} · ${it.startWeek}-${it.endWeek}周`)
-    },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
     },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()

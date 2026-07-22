@@ -121,7 +121,7 @@
           </div>
           <div class="fm-item">
             <label class="fm-label">学生<i>*</i></label>
-            <AppSelect v-model="fm.values.studentId" :options="studentOptions" placeholder="从本班学生选择" />
+            <AppStudentPicker v-model="fm.values.studentId" :options="studentOptions" placeholder="从本班学生选择" />
           </div>
         </template>
         <p v-if="fm.err" class="fm-err">{{ fm.err }}</p>
@@ -140,7 +140,7 @@
  * 聚合指标 + 学生名单(脱敏) + 班级材料(附件走文件中心) + 班干部任免。真实对接 /student-affairs/classes/*。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppConfirmDialog, AppPermissionButton, AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppQuickPhrases } from '@/components/common'
+import { AppMetricCard, AppConfirmDialog, AppPermissionButton, AppSelect, AppStudentPicker, AppTextInput, AppTextarea, AppDatePicker, AppQuickPhrases } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { classApi } from '@/modules/studentAffairs/api/class.api'
 import { requestUpload, requestBlob } from '@/services/http/client'
@@ -172,7 +172,7 @@ export default {
   name: 'ClassProfileView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppConfirmDialog,
-    AppPermissionButton, AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppButton, AppDrawer, AppQuickPhrases
+    AppPermissionButton, AppSelect, AppStudentPicker, AppTextInput, AppTextarea, AppDatePicker, AppButton, AppDrawer, AppQuickPhrases
   },
   props: { ctx: { type: Object, default: null } },
   data() {

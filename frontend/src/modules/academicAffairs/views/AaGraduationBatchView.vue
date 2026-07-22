@@ -10,7 +10,7 @@
         <div class="aa-cal-form">
           <label class="aa-cal-form__item aa-cal-form__item--grow">批次名称<input v-model.trim="draft.batchName" class="aa-input" placeholder="如 2026届毕业资格审核" maxlength="60" /></label>
           <label class="aa-cal-form__item">年级<input v-model.trim="draft.gradeYear" class="aa-input aa-input--sm" placeholder="如 2023" /></label>
-          <label class="aa-cal-form__item">专业ID<input v-model.trim="draft.majorId" class="aa-input aa-input--sm" placeholder="选填" /></label>
+          <label class="aa-cal-form__item">专业<AppMajorPicker v-model="draft.majorId" placeholder="选择专业（选填）" /></label>
           <AppButton variant="primary" :loading="creating" :disabled="!draft.batchName" @click="createBatch">创建</AppButton>
         </div>
       </AppSectionCard>
@@ -48,13 +48,13 @@
 /** 审核批次（/admin/academic-affairs/graduation）：建批次 + 圈定 + 预审 + 历史批次列表（进审核工作台）。 */
 import { ModulePageShell, DataTable, LoadingState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaGraduationBatchView',
-  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -10,10 +10,7 @@
         <input v-model.trim="form.roundName" class="ie-in" placeholder="如 2026届第一轮选题" />
       </label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">毕设批次</span>
-        <select v-model="form.batchId" class="ie-in">
-          <option value="">不关联批次</option>
-          <option v-for="b in batchOpts" :key="b.id" :value="b.id">{{ b.batchName }}</option>
-        </select>
+        <AppGraduationDesignBatchPicker v-model="form.batchId" clearable placeholder="不关联批次" @change="onBatchChange" />
       </label>
       <label class="ie-fld"><span class="ie-lbl">轮次序号</span><input v-model.number="form.roundNo" type="number" min="1" class="ie-in" /></label>
       <label class="ie-fld"><span class="ie-lbl">最多志愿数</span><input v-model.number="form.maxChoices" type="number" min="1" max="10" class="ie-in" /></label>
@@ -32,7 +29,7 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { AppDateTimePicker, AppDeadlinePicker } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
-import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
+import { AppGraduationDesignBatchPicker } from '@/components/common'
 import { toast } from '@/utils/toast'
 import { toDateTimeInputValue, withDeadlineTime, addDays, validateRange } from '@/utils/dateUtils'
 
@@ -44,21 +41,20 @@ const EMPTY_FORM = () => ({
 
 export default {
   name: 'TopicRoundFormView',
-  components: { GraduationFormPageShell, AppDateTimePicker, AppDeadlinePicker },
+  components: { GraduationFormPageShell, AppDateTimePicker, AppDeadlinePicker, AppGraduationDesignBatchPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { form: EMPTY_FORM(), batchOpts: [], formError: '', submitting: false }
+    return { form: EMPTY_FORM(), selectedBatchInfo: null, formError: '', submitting: false }
   },
   computed: {
     selectedBatch() {
-      return this.batchOpts.find((b) => b.id === this.form.batchId) || null
+      return this.selectedBatchInfo
     }
   },
-  async created() {
-    const b = await gdTopicApi.getBatchOptions()
-    if (b.code === 0) this.batchOpts = b.data
-  },
   methods: {
+    onBatchChange(_, items) {
+      this.selectedBatchInfo = items?.[0]?.raw || null
+    },
     async submit() {
       if (!this.form.roundName || this.form.roundName.length < 2) { this.formError = '名称至少2字'; return }
       const range = validateRange(this.form.startAt, this.form.endAt)

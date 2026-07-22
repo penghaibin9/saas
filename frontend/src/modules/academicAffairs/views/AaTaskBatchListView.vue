@@ -14,10 +14,7 @@
         <div class="aa-cal-form">
           <label class="aa-cal-form__item">
             学期
-            <select v-model="gen.termId" class="aa-select">
-              <option value="">选择学期…</option>
-              <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
-            </select>
+            <AppTermEntityPicker v-model="gen.termId" placeholder="选择学期" />
           </label>
           <label class="aa-cal-form__item aa-cal-form__item--grow">
             批次名称
@@ -47,18 +44,18 @@
 /** 教学任务批次列表（/admin/academic-affairs/teaching-tasks）：GET/POST /academic-affairs/teaching-task-batches。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, taskBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTaskBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppTermEntityPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', rows: [], terms: [],
+      loading: true, error: '', rows: [],
       showGen: false, generating: false, gen: { termId: '', batchName: '' },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
@@ -72,16 +69,11 @@ export default {
     // 「教学任务生成」菜单叶子直达本页并自动展开生成面板（?open=generate，Tier1 新增，复用本页不新建重复页面）
     if (this.$route && this.$route.query && this.$route.query.open === 'generate') this.showGen = true
     this.load()
-    this.loadTerms()
   },
   methods: {
     statusColor: taskBatchColor,
     statusLabel(s) { return TASK_BATCH_STATUS[s] || s || '' },
     onPageChange(p) { this.pagination.page = p; this.load() },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
-    },
     async doGenerate() {
       if (this.generating || !this.gen.termId) return
       this.generating = true

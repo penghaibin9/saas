@@ -14,22 +14,13 @@
            无学期/学院维度，见 resource_stats 后端注释，本栏对该 Tab 不适用） -->
       <div v-if="tab !== 'export' && tab !== 'resource'" class="aa-filter">
         <label class="aa-filter__item">学期
-          <select v-model="filters.termId" class="aa-input aa-input--sm">
-            <option value="">全部学期</option>
-            <option v-for="t in opts.terms" :key="t.id" :value="t.id">{{ t.label }}{{ t.isCurrent ? '（当前）' : '' }}</option>
-          </select>
+          <AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" />
         </label>
         <label class="aa-filter__item">学院
-          <select v-model="filters.collegeId" class="aa-input aa-input--sm" @change="filters.majorId = ''">
-            <option value="">全部学院</option>
-            <option v-for="c in opts.colleges" :key="c.id" :value="c.id">{{ c.label }}</option>
-          </select>
+          <AppCollegePicker v-model="filters.collegeId" placeholder="全部学院" @change="filters.majorId = ''" />
         </label>
         <label v-if="tab === 'overview' || tab === 'registration'" class="aa-filter__item">专业
-          <select v-model="filters.majorId" class="aa-input aa-input--sm">
-            <option value="">全部专业</option>
-            <option v-for="m in majorOptions" :key="m.id" :value="m.id">{{ m.label }}</option>
-          </select>
+          <AppMajorPicker v-model="filters.majorId" :query="{ collegeId: filters.collegeId || undefined }" placeholder="全部专业" />
         </label>
         <label v-if="tab === 'course'" class="aa-filter__item">类别
           <input v-model="filters.category" class="aa-input aa-input--sm" placeholder="可空=全部" />
@@ -37,8 +28,8 @@
         <label v-if="tab === 'grade'" class="aa-filter__item">课程名（下钻筛选）
           <input v-model="filters.courseName" class="aa-input aa-input--sm" placeholder="可空=全部" />
         </label>
-        <label v-if="tab === 'graduation'" class="aa-filter__item">预审批次ID
-          <input v-model="filters.batchId" class="aa-input aa-input--sm" placeholder="可空=不按批次" />
+        <label v-if="tab === 'graduation'" class="aa-filter__item">预审批次
+          <AppGraduationBatchPicker v-model="filters.batchId" placeholder="全部批次" />
         </label>
         <AppButton :loading="loading" @click="search">查询</AppButton>
         <AppButton v-if="tab === 'overview'" variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
@@ -288,15 +279,13 @@
         <template v-else-if="tab === 'export'">
           <div class="aa-export-form">
             <label class="aa-filter__item">导出维度
-              <select v-model="exp.domain" class="aa-input">
-                <option v-for="d in exportDomains" :key="d.key" :value="d.key">{{ d.label }}</option>
-              </select>
+              <AppSelect v-model="exp.domain" :options="exportDomainOptions" />
             </label>
             <label class="aa-filter__item">学期
-              <select v-model="exp.termId" class="aa-input"><option value="">全部学期</option><option v-for="t in opts.terms" :key="t.id" :value="t.id">{{ t.label }}</option></select>
+              <AppTermEntityPicker v-model="exp.termId" placeholder="全部学期" />
             </label>
             <label class="aa-filter__item">学院
-              <select v-model="exp.collegeId" class="aa-input"><option value="">全部学院</option><option v-for="c in opts.colleges" :key="c.id" :value="c.id">{{ c.label }}</option></select>
+              <AppCollegePicker v-model="exp.collegeId" placeholder="全部学院" />
             </label>
             <label class="aa-filter__item">导出用途（必填，≥5字，写审计+水印）
               <input v-model="exp.purpose" class="aa-input" placeholder="如：教务处月度汇报" />
@@ -334,7 +323,10 @@
  * /admin/academic-affairs/schedule-change/stats（navPlan 直接指向该页），本页总览 Tab 的
  * 「调停课统计」卡片是学校/学院口径的全局计数，两者互不冲突（见后端 stats_service 模块头注释）。
  */
-import { AppInlineAlert, AppMetricCard, AppG2Chart } from '@/components/common'
+import {
+  AppInlineAlert, AppMetricCard, AppG2Chart, AppSelect,
+  AppTermEntityPicker, AppCollegePicker, AppMajorPicker, AppGraduationBatchPicker
+} from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -505,7 +497,11 @@ const EXPORT_DOMAINS = [
 
 export default {
   name: 'AaStatsOverviewView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppMetricCard, AppG2Chart },
+  components: {
+    ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton,
+    AppInlineAlert, AppMetricCard, AppG2Chart, AppSelect, AppTermEntityPicker,
+    AppCollegePicker, AppMajorPicker, AppGraduationBatchPicker
+  },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -514,7 +510,6 @@ export default {
       loading: true,
       error: '',
       filters: { termId: '', collegeId: '', majorId: '', category: '', courseName: '', batchId: '', itemType: '' },
-      opts: { terms: [], colleges: [], majors: [] },
       // 教务总览（既有）
       indicators: [],
       scopeBlocked: false,
@@ -526,7 +521,6 @@ export default {
       detail: { open: false, loading: false, title: '', rows: [], columns: [], pagination: { page: 1, pageSize: 20, total: 0 } },
       // 导出报表
       exp: { domain: 'overview', termId: '', collegeId: '', purpose: '', downloading: false },
-      exportDomains: EXPORT_DOMAINS,
       workloadTeacherKey: '',
       workloadColumns: [
         { key: 'teacherName', title: '教师' }, { key: 'totalHours', title: '学时合计' },
@@ -535,10 +529,7 @@ export default {
     }
   },
   computed: {
-    majorOptions() {
-      if (!this.filters.collegeId) return this.opts.majors
-      return this.opts.majors.filter((m) => String(m.collegeId) === String(this.filters.collegeId))
-    },
+    exportDomainOptions() { return EXPORT_DOMAINS.map((d) => ({ value: d.key, label: d.label })) },
     drillTitle() {
       return this.activeDrill ? (DRILL_META[this.activeDrill]?.title || '明细') : ''
     },
@@ -549,7 +540,7 @@ export default {
   created() {
     const q = this.$route && this.$route.query && this.$route.query.tab
     if (q && TABS.some((t) => t.key === q)) this.tab = q
-    this.init()
+    this.loadTab()
   },
   methods: {
     drillable(ind) {
@@ -573,11 +564,6 @@ export default {
       this.activeDrill = ''
       this.detail.open = false
       this.loadTab()
-    },
-    async init() {
-      const f = await academicAffairsApi.getStatsFilters()
-      if (f.code === 0) this.opts = f.data
-      await this.loadTab()
     },
     search() {
       this.activeDrill = ''

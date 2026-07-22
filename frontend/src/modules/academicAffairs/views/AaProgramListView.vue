@@ -15,7 +15,7 @@
           <label class="aa-cal-form__item aa-cal-form__item--grow">
             方案名称<input v-model.trim="draft.programName" class="aa-input" placeholder="如 软件技术2026级培养方案" maxlength="60" />
           </label>
-          <label class="aa-cal-form__item">专业ID<input v-model.trim="draft.majorId" class="aa-input aa-input--sm" placeholder="选填" /></label>
+          <label class="aa-cal-form__item">专业<AppMajorPicker v-model="draft.majorId" placeholder="选择专业（选填）" /></label>
           <label class="aa-cal-form__item">年级<input v-model.trim="draft.gradeYear" class="aa-input aa-input--sm" placeholder="如 2026" /></label>
           <label class="aa-cal-form__item">毕业总学分<input v-model.number="draft.totalCredits" type="number" min="0" class="aa-input aa-input--sm" /></label>
           <AppButton variant="primary" :disabled="!draft.programName" :loading="creating" @click="createProgram">创建</AppButton>
@@ -46,14 +46,14 @@
 /** 培养方案列表（/admin/academic-affairs/programs）：GET/POST /academic-affairs/programs。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppMajorPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaProgramListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppMajorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

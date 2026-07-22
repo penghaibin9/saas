@@ -51,7 +51,7 @@
               <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.org.manage" size="sm" @click="openAppoint">任命</AppPermissionButton>
             </div>
             <div v-if="apForm.visible" class="og-inline">
-              <AppStudentPicker v-model="apForm.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+              <AppStudentPicker v-model="apForm.studentId" placeholder="按姓名 / 学号搜索学生" />
               <AppTextInput v-model="apForm.position" placeholder="职务 如 主席/部长" />
               <AppTextInput v-model="apForm.termCode" placeholder="任期 如 2025-2026" />
               <AppPermissionButton code="studentAffairs.org.manage" size="sm" @click="appoint">任命</AppPermissionButton>
@@ -129,7 +129,6 @@ export default {
       this.loading = false
     },
     openForm() { this.form = { orgName: '', orgType: 'STUDENT_UNION', level: 'SCHOOL', advisorName: '', error: '' }; this.formVisible = true },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async save() {
       const m = this.form
       const orgName = (m.orgName || '').trim()

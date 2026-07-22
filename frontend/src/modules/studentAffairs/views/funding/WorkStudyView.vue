@@ -66,7 +66,7 @@
       confirm-text="提交申请" :submitting="!!acting" @confirm="submitApply"
     >
       <AppFormItem label="申请学生" required>
-        <AppStudentPicker v-model="appDlg.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索" />
+        <AppStudentPicker v-model="appDlg.studentId" placeholder="按姓名 / 学号搜索" />
       </AppFormItem>
       <AppInlineAlert v-if="appDlg.error" type="danger" :description="appDlg.error" />
     </AppConfirmDialog>
@@ -143,7 +143,6 @@ export default {
       if (res.code === 0) { toast.success('已发岗'); this.postForm = { deptName: '', postName: '', salary: null }; this.load() } else toast.error(res.message || '发岗失败')
     },
     selectPost(p) { this.selPost = this.selPost === p.postId ? '' : p.postId; this.load() },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     applyTo(p) {
       this.appDlg = { visible: true, postId: p.postId, postName: p.postName || '该岗位', studentId: '', error: '' }
     },

@@ -12,8 +12,7 @@
 
     <div class="mp-stack">
       <div class="aa-filter">
-        <label class="aa-filter__item">班级ID<input v-model.trim="classId" class="aa-input aa-input--sm" placeholder="必填" /></label>
-        <label class="aa-filter__item">班级名称<input v-model.trim="className" class="aa-input" placeholder="用于新排课项显示" /></label>
+        <label class="aa-filter__item">班级<AppClassPicker v-model="classId" placeholder="选择班级" @change="onClassPicked" /></label>
         <AppButton @click="loadClass">载入课表</AppButton>
       </div>
 
@@ -56,10 +55,9 @@
       @confirm="doAdd"
     >
       <div class="aa-assign-form">
-        <label>课程名称<input v-model.trim="add.courseName" class="aa-input" placeholder="必填" /></label>
-        <label>授课教师<input v-model.trim="add.teacherName" class="aa-input" /></label>
-        <label>教师工号<input v-model.trim="add.teacherKey" class="aa-input" placeholder="冲突检测用" /></label>
-        <label>教室<input v-model.trim="add.classroom" class="aa-input" /></label>
+        <label>课程<AppCoursePicker v-model="add.courseId" @change="onCoursePicked" /></label>
+        <label>授课教师<AppTeacherPicker v-model="add.teacherKey" @change="onTeacherPicked" /></label>
+        <label>教室<AppClassroomPicker v-model="add.classroomId" @change="onClassroomPicked" /></label>
         <label>起始周<input v-model.number="add.startWeek" type="number" min="1" class="aa-input" /></label>
         <label>结束周<input v-model.number="add.endWeek" type="number" min="1" class="aa-input" /></label>
         <label>单双周
@@ -78,21 +76,21 @@
 /** 课表维护（/admin/academic-affairs/schedule/:batchId/edit）：AaScheduleGrid 编辑态 + 排课 + 冲突 + 导入。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AppClassPicker, AppCoursePicker, AppTeacherPicker, AppClassroomPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleMaintainView',
-  components: { ModulePageShell, LoadingState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AppClassPicker, AppCoursePicker, AppTeacherPicker, AppClassroomPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: false, slots: [], items: [], classId: '', className: '',
       conflictCell: null, lastConflict: '',
       showImport: false, importText: '', importing: false, importResult: null,
-      add: { visible: false, submitting: false, weekday: 1, slotNo: 1, courseName: '', teacherName: '', teacherKey: '', classroom: '', startWeek: 1, endWeek: 18, weekParity: 'ALL' }
+      add: { visible: false, submitting: false, weekday: 1, slotNo: 1, courseId: '', courseName: '', teacherName: '', teacherKey: '', classroomId: '', classroom: '', startWeek: 1, endWeek: 18, weekParity: 'ALL' }
     }
   },
   computed: {
@@ -107,12 +105,32 @@ export default {
   },
   created() { this.loadSlots() },
   methods: {
+    onClassPicked(value, items) {
+      const item = items?.[0]
+      const row = item?.raw || item || {}
+      this.className = row.className || row.name || item?.label || ''
+    },
+    onCoursePicked(value, items) {
+      const item = items?.[0]
+      const row = item?.raw || item || {}
+      this.add.courseName = row.courseName || row.name || item?.label || ''
+    },
+    onTeacherPicked(value, items) {
+      const item = items?.[0]
+      const row = item?.raw || item || {}
+      this.add.teacherName = row.teacherName || row.realName || row.name || item?.label || ''
+    },
+    onClassroomPicked(value, items) {
+      const item = items?.[0]
+      const row = item?.raw || item || {}
+      this.add.classroom = row.label || row.roomName || `${row.buildingName || ''}${row.roomCode || ''}` || item?.label || ''
+    },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()
       if (res.code === 0) this.slots = res.data
     },
     async loadClass() {
-      if (!this.classId) { toast.error('请先填写班级ID'); return }
+      if (!this.classId) { toast.error('请先选择班级'); return }
       this.loading = true
       const res = await academicAffairsApi.getScheduleClassView(this.batchId, this.classId)
       if (res.code === 0) this.items = (res.data && res.data.items) || []
@@ -121,7 +139,7 @@ export default {
     },
     onCellClick({ weekday, slotNo }) {
       this.conflictCell = null
-      this.add = { visible: true, submitting: false, weekday, slotNo, courseName: '', teacherName: '', teacherKey: '', classroom: '', startWeek: 1, endWeek: 18, weekParity: 'ALL' }
+      this.add = { visible: true, submitting: false, weekday, slotNo, courseId: '', courseName: '', teacherName: '', teacherKey: '', classroomId: '', classroom: '', startWeek: 1, endWeek: 18, weekParity: 'ALL' }
     },
     onItemClick(it) {
       toast.info(`${it.courseName} · ${it.teacherName || ''} · ${it.startWeek}-${it.endWeek}周`)
@@ -158,7 +176,7 @@ export default {
       }
     },
     async doImport() {
-      if (!this.classId) { toast.error('请先填写班级ID'); return }
+      if (!this.classId) { toast.error('请先选择班级'); return }
       const lines = this.importText.split('\n').map((l) => l.trim()).filter(Boolean)
       const items = lines.map((l) => {
         const [weekday, slotNo, courseName, teacherName, classroom, startWeek, endWeek, weekParity] = l.split(/[,，]/).map((s) => s.trim())

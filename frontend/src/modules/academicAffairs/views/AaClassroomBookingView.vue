@@ -21,8 +21,8 @@
 
     <AppDrawer :visible="bookVisible" title="申请教室预约" @close="bookVisible = false">
       <div class="aacb-form">
-        <AppFormItem label="教室 ID" required><AppTextInput v-model="form.classroomId" placeholder="教室字典 ID" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="日期" required><AppTextInput v-model="form.bookingDate" placeholder="YYYY-MM-DD" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="教室" required><AppClassroomPicker v-model="form.classroomId" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="日期" required><AppDatePicker v-model="form.bookingDate" :disabled="saving" /></AppFormItem>
         <AppFormItem label="节次" required><AppNumberInput v-model="form.slotNo" :min="1" :max="12" :disabled="saving" /></AppFormItem>
         <AppFormItem label="用途"><AppTextInput v-model="form.purpose" placeholder="如 社团活动/补课" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
@@ -45,7 +45,7 @@
 /** 教室预约（/admin/academic-affairs/classroom-bookings）：占用登记+冲突检测+审核。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog, AppClassroomPicker, AppDatePicker } from '@/components/common'
 import { academicAffairsClassroomBookingApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -53,7 +53,7 @@ const _SL = { PENDING: '待审', APPROVED: '已通过', REJECTED: '已驳回', C
 
 export default {
   name: 'AaClassroomBookingView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog, AppClassroomPicker, AppDatePicker },
   data() {
     return {
       loading: true, rows: [], filterStatus: '',
@@ -75,7 +75,7 @@ export default {
     },
     openBook() { this.form = { classroomId: '', bookingDate: '', slotNo: 1, purpose: '' }; this.formError = ''; this.bookVisible = true },
     async submitBook() {
-      if (!this.form.classroomId || !this.form.bookingDate) { this.formError = '教室 ID 与日期必填'; return }
+      if (!this.form.classroomId || !this.form.bookingDate) { this.formError = '教室与日期必填'; return }
       this.saving = true
       const res = await api.book(this.form)
       this.saving = false

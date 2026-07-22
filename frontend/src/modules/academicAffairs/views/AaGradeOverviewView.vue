@@ -13,7 +13,7 @@
     <div class="mp-stack">
       <div class="aa-filter">
         <span class="aa-filter__label">学期</span>
-        <AppTextInput v-model="term" placeholder="学期码，如 2026-1（空=全部）" size="compact" style="max-width:210px" />
+        <AppTermCodePicker v-model="term" placeholder="全部学期" style="max-width:220px" />
         <span class="aa-filter__label">分组维度</span>
         <AppSelect v-model="dimension" :options="dimensionOptions" style="min-width:130px" @change="load" />
         <AppButton variant="ghost" @click="load">查询</AppButton>
@@ -65,7 +65,7 @@
 /** 成绩分析（/admin/academic-affairs/grade-overview）：GET /grade-views/analysis（可按课程/班级分组）+ 导出 xlsx。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart } from '@/components/common'
+import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -73,7 +73,7 @@ export default {
   name: 'AaGradeOverviewView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart
+      AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {

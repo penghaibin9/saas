@@ -76,7 +76,7 @@
       <div class="aams-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2024级电子信息大类分流" :disabled="saving" /></AppFormItem>
         <AppFormItem label="分流年级" required><AppTextInput v-model="form.grade" placeholder="如 2024" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="大类源专业 ID"><AppTextInput v-model="form.sourceMajorId" placeholder="选填；限定只有该大类学生可报" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="大类源专业"><AppMajorPicker v-model="form.sourceMajorId" placeholder="选填；限定只有该大类学生可报" :disabled="saving" /></AppFormItem>
         <AppFormItem label="志愿数上限"><AppNumberInput v-model="form.maxChoices" :min="1" :max="10" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
@@ -88,7 +88,7 @@
 
     <AppDrawer :visible="optionVisible" title="添加可选专业" @close="optionVisible = false">
       <div class="aams-form">
-        <AppFormItem label="专业" required><AppSelect v-model="optionForm.majorId" :options="majorOptions" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="专业" required><AppMajorPicker v-model="optionForm.majorId" :options="majorOptions" :disabled="saving" /></AppFormItem>
         <AppFormItem label="容量" required><AppNumberInput v-model="optionForm.capacity" :min="1" :max="2000" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="optionError" type="danger" :description="optionError" />
       </div>
@@ -101,7 +101,7 @@
     <AppDrawer :visible="reassignVisible" :title="'人工调剂 · ' + (reassignRow ? reassignRow.studentName : '')" @close="reassignVisible = false">
       <div class="aams-form">
         <AppFormItem label="目标专业" required>
-          <AppSelect v-model="reassignForm.majorId" :options="options.map(o => ({ label: o.majorName + '（余 ' + o.remain + '）', value: o.majorId }))" :disabled="saving" />
+          <AppMajorPicker v-model="reassignForm.majorId" :options="options.map(o => ({ label: o.majorName + '（余 ' + o.remain + '）', value: o.majorId }))" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="调剂原因（≥5字）" required><AppTextarea v-model="reassignForm.reason" placeholder="如：第一志愿容量满，经与学生沟通同意调剂" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="reassignError" type="danger" :description="reassignError" />
@@ -120,7 +120,7 @@
 /** 专业分流 · 教务处控制台（/admin/academic-affairs/major-split）：批次→可选专业→志愿→分配→调剂→确认。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppMajorPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsOrgApi, academicAffairsMajorSplitApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -132,7 +132,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem,
-    AppConfirmDialog, AppInlineAlert, AppSelect
+    AppConfirmDialog, AppInlineAlert, AppMajorPicker
   },
   data() {
     return {
@@ -152,7 +152,7 @@ export default {
     if (c.code === 0) this.ctx = c.data
     this.load()
     const m = await academicAffairsOrgApi.listMajors({ pageSize: 500 })
-    if (m.code === 0) this.majorOptions = (m.data.list || []).map((x) => ({ label: x.majorName, value: String(x.majorId) }))
+    if (m.code === 0) this.majorOptions = (m.data.list || []).map((x) => ({ label: x.majorName, value: String(x.id || x.majorId) }))
   },
   methods: {
     stLabel(s) { return _L[s] || s },

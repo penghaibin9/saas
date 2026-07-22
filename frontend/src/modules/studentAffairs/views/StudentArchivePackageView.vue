@@ -5,7 +5,7 @@
                     @back="$router.push('/admin/student-affairs/archive')">
       <div class="ap-bar">
         <label class="ap-label">归档批次
-          <AppSelect v-model="selBatch" class="ap-pick" :options="batchOptions" placeholder="（选择批次）" @change="loadBatch" />
+          <AppStudentArchiveBatchPicker v-model="selBatch" class="ap-pick" :options="batchOptions" placeholder="（选择批次）" @change="loadBatch" />
         </label>
       </div>
       <!-- 档案包清单：后端 getArchiveBatch 一次性返回该批次全部档案包，无 page/total 字段，暂不加分页控件 -->
@@ -25,7 +25,7 @@
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppSectionCard, AppSelect, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppPageShell, AppSectionCard, AppStudentArchiveBatchPicker, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
@@ -38,7 +38,7 @@ const PACKAGE_COLUMNS = [
 
 export default {
   name: 'StudentArchivePackageView',
-  components: { AppGlobalState, AppPageShell, AppSectionCard, AppSelect, StatusTag: AppStatusTag, DataTable },
+  components: { AppGlobalState, AppPageShell, AppSectionCard, AppStudentArchiveBatchPicker, StatusTag: AppStatusTag, DataTable },
   data() { return { packageColumns: PACKAGE_COLUMNS, loading: true, errorMessage: '', batches: [], selBatch: '', packages: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },

@@ -54,7 +54,7 @@
     <AppDrawer :visible="refDlg.visible" title="登记心理转介" @close="refDlg.visible = false">
       <div class="dr-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="refDlg.studentId" :remote-search="searchStudents"
+          <AppStudentPicker v-model="refDlg.studentId"
                             placeholder="按姓名 / 学号搜索" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="转介去向">
@@ -183,7 +183,6 @@ export default {
         this.loading = false
       }
     },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     createReferral() {
       this.refDlg = { visible: true, studentId: '', channel: '校内咨询', reasonSummary: '', error: '' }
     },

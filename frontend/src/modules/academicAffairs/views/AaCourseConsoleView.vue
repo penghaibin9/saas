@@ -121,7 +121,7 @@
       <div class="aacc-form" v-if="ownerForm.row">
         <AppFormItem :label="ownerForm.row.courseName"><span class="mp-note">{{ ownerForm.row.courseCode }}</span></AppFormItem>
         <AppFormItem label="课程负责人" required hint="须为本校在职教师">
-          <AppTeacherPicker v-model="ownerForm.ownerTeacherId" :remote-search="searchTeachers" clearable />
+          <AppTeacherPicker v-model="ownerForm.ownerTeacherId" clearable />
         </AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
@@ -341,10 +341,6 @@ export default {
       this.tab = k
       this.dimFilter = ''; this.ownerFilter = ''; this.statusFilter = ''; this.archiveFilter = ''
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
-    },
-    async searchTeachers(keyword) {
-      const res = await academicAffairsApi.searchCourseTeachers(keyword)
-      return res.code === 0 ? (res.data.items || []) : []
     },
     async load() {
       // 全量拉取（非单页截断）：本控制台 9 个 tab 全部从 this.rows 前端派生，其中「历史课程」tab 的

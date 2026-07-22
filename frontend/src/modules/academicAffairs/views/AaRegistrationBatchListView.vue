@@ -18,11 +18,7 @@
           </label>
           <label class="aa-cal-form__item">
             类型
-            <select v-model="draft.registerType" class="aa-select" :disabled="!!fixedType">
-              <option value="ENROLL">入学注册</option>
-              <option value="ANNUAL">学年注册</option>
-              <option value="SEMESTER">学期注册</option>
-            </select>
+            <AppSelect v-model="draft.registerType" :options="registerTypeOptions" :disabled="!!fixedType" />
           </label>
           <label class="aa-cal-form__item">
             注册窗口
@@ -76,7 +72,7 @@
 /** 注册批次列表（/admin/academic-affairs/registration）：GET/POST /academic-affairs/registration-batches。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -85,7 +81,7 @@ const TYPE_LABEL = { ENROLL: '入学注册', ANNUAL: '学年注册', SEMESTER: '
 
 export default {
   name: 'AaRegistrationBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -108,6 +104,9 @@ export default {
     }
   },
   computed: {
+    registerTypeOptions() {
+      return Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))
+    },
     /** ?type=ENROLL/ANNUAL/SEMESTER 收窄为对应三级叶子视图；无 type 为原「注册批次」通栏视图。 */
     fixedType() {
       const t = this.$route && this.$route.query && this.$route.query.type

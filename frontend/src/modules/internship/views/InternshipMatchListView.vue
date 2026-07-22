@@ -84,9 +84,8 @@
       <form class="ie-form" @submit.prevent="submitIntentionForm">
         <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
-          <AppStudentPicker
+          <AppUnassignedInternshipStudentPicker
             v-model="intentionForm.recordId"
-            :remote-search="searchUnassignedInternStudents"
             placeholder="输入姓名或学号搜索学生"
             search-placeholder="按姓名 / 学号搜索"
             data-scope-hint="仅显示你数据范围内未落实岗位的实习学生"
@@ -95,9 +94,8 @@
         <label class="ie-fld"><span class="ie-lbl">意向城市</span><input v-model.trim="intentionForm.preferredCity" class="ie-in" /></label>
         <label class="ie-fld"><span class="ie-lbl">意向行业</span><input v-model.trim="intentionForm.preferredIndustry" class="ie-in" /></label>
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">意向企业</span>
-          <AppCompanyPicker
+          <AppInternshipEnterprisePicker
             v-model="intentionForm.preferredCompanyId"
-            :remote-search="searchEnterprises"
             placeholder="输入企业名称搜索（可不指定）"
             search-placeholder="按企业名称搜索"
           />
@@ -114,18 +112,16 @@
     <AppDrawer v-model:visible="manualVisible" title="手动匹配">
       <form class="ie-form" @submit.prevent="submitManual">
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
-          <AppStudentPicker
+          <AppUnassignedInternshipStudentPicker
             v-model="manualForm.recordId"
-            :remote-search="searchUnassignedInternStudents"
             placeholder="输入姓名或学号搜索学生"
             search-placeholder="按姓名 / 学号搜索"
             data-scope-hint="仅显示你数据范围内未落实岗位的实习学生"
           />
         </div>
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">上架岗位 <i>*</i></span>
-          <AppPositionPicker
+          <AppInternshipPositionPicker
             v-model="manualForm.positionId"
-            :remote-search="searchPublishedPositions"
             placeholder="输入岗位或企业名称搜索"
             search-placeholder="按岗位名称 / 企业搜索"
             data-scope-hint="仅已上架岗位可选 · 满员（余 0）岗位不可选"
@@ -182,13 +178,12 @@
 
 <script>
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag, AppStudentPicker, AppPositionPicker, AppCompanyPicker } from '@/components/common'
+import { AppExportButton, AppStatusTag, AppUnassignedInternshipStudentPicker, AppInternshipPositionPicker, AppInternshipEnterprisePicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { TableActionColumn } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
-import { searchUnassignedInternStudents, searchPublishedPositions, searchEnterprises } from './components/entityPickerAdapters'
 import { matchApi } from '@/modules/internship/api/match.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
@@ -210,7 +205,7 @@ const PANEL_HINTS = {
 
 export default {
   name: 'InternshipMatchListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, TableActionColumn, ModuleSummaryStrip, AppStudentPicker, AppPositionPicker, AppCompanyPicker },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, TableActionColumn, ModuleSummaryStrip, AppUnassignedInternshipStudentPicker, AppInternshipPositionPicker, AppInternshipEnterprisePicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -357,10 +352,6 @@ export default {
     if (st.code === 0 && !this.matchStats) this.matchStats = st.data
   },
   methods: {
-    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
-    searchUnassignedInternStudents,
-    searchPublishedPositions,
-    searchEnterprises,
     applyPanel(panel) {
       const known = Object.keys(PANEL_HINTS)
       this.activePanel = known.includes(panel) ? panel : 'intention'

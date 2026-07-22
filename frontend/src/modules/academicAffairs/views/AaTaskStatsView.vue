@@ -8,10 +8,7 @@
     <div class="mp-stack">
       <div class="aa-filter">
         <label class="aa-filter__item">学期
-          <select v-model="termId" class="aa-select" @change="load">
-            <option value="">全部学期</option>
-            <option v-for="t in terms" :key="t.termId" :value="t.termId">{{ t.yearCode }} 第 {{ t.termNo }} 学期</option>
-          </select>
+          <AppTermEntityPicker v-model="termId" placeholder="全部学期" @change="load" />
         </label>
         <AppButton :loading="loading" @click="load">刷新</AppButton>
       </div>
@@ -54,17 +51,17 @@
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppMetricCard, AppG2Chart } from '@/components/common'
+import { AppSectionCard, AppMetricCard, AppG2Chart, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, TASK_STATUS } from '@/modules/academicAffairs/constants/teaching'
 
 export default {
   name: 'AaTaskStatsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppMetricCard, AppG2Chart },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppMetricCard, AppG2Chart, AppTermEntityPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', stats: null, terms: [], termId: '',
+      loading: true, error: '', stats: null, termId: '',
       statusCols: [{ key: 'label', title: '状态' }, { key: 'count', title: '数量' }],
       termCols: [
         { key: 'termLabel', title: '学期' }, { key: 'batchCount', title: '批次数' },
@@ -112,14 +109,9 @@ export default {
     }
   },
   created() {
-    this.loadTerms()
     this.load()
   },
   methods: {
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
-    },
     async load() {
       this.loading = true
       this.error = ''

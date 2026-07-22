@@ -10,7 +10,7 @@
     <form v-else class="ie-form" @submit.prevent="submit">
       <p class="ie-hint">答辩组来自「答辩安排」模块真实数据；分配后自动更新组内人数。</p>
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">答辩组 <i>*</i></span>
-        <AppRemoteSelect v-model="defenseGroupId" :options="groupOptions" placeholder="按组名 / 日期 / 地点搜索答辩组" />
+        <AppDefenseGroupPicker v-model="defenseGroupId" placeholder="按组名 / 日期 / 地点搜索答辩组" />
       </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -24,24 +24,21 @@
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
-import { AppRemoteSelect } from '@/components/common'
+import { AppDefenseGroupPicker } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationStudentDefenseView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, AppRemoteSelect },
+  components: { GraduationFormPageShell, LoadingState, ErrorState, AppDefenseGroupPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', student: null,
-      defenseGroupId: '', defenseOpts: [], formError: '', submitting: false
+      defenseGroupId: '', formError: '', submitting: false
     }
   },
   computed: {
-    groupOptions() {
-      return this.defenseOpts.map((g) => ({ label: `${g.groupName} · ${g.defenseDate || '日期待定'} · ${g.location || '地点待定'}（${g.studentCount}人）`, value: g.id }))
-    },
     backTo() {
       const panel = this.$route.query.returnPanel || 'defense'
       return `/admin/graduation/students?panel=${panel}`
@@ -57,9 +54,6 @@ export default {
       if (s.code !== 0) { this.error = s.message; this.loading = false; return }
       this.student = s.data
       this.defenseGroupId = s.data.defenseGroupId || ''
-      const d = await gdStudentApi.getDefenseGroups()
-      if (d.code === 0) this.defenseOpts = d.data
-      else this.defenseOpts = []
       this.loading = false
     },
     async submit() {

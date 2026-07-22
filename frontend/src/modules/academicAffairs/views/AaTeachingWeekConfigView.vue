@@ -9,11 +9,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <select v-model="termId" class="aa-select" @change="onTermChange">
-            <option v-for="t in terms" :key="t.termId" :value="t.termId">
-              {{ t.yearCode }} 第 {{ t.termNo }} 学期（{{ statusLabel(t.status) }}）
-            </option>
-          </select>
+          <AppTermEntityPicker v-model="termId" :options="termOptions" placeholder="选择学期" @change="onTermChange" />
         </label>
       </div>
 
@@ -53,16 +49,17 @@
 <script>
 /** 教学周配置（/admin/academic-affairs/terms/teaching-weeks）：PUT /terms/{id}/teaching-weeks（仅 DRAFT 可写，SM-01）。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert, AppTermEntityPicker } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapters'
 import { toast } from '@/utils/toast'
 
 const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中', FROZEN: '已冻结', ARCHIVED: '已归档' }
 
 export default {
   name: 'AaTeachingWeekConfigView',
-  components: { ModulePageShell, EmptyState, AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert, AppButton },
+  components: { ModulePageShell, EmptyState, AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert, AppTermEntityPicker, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -75,6 +72,9 @@ export default {
     }
   },
   computed: {
+    termOptions() {
+      return this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期（${this.statusLabel(t.status)}）`, raw: t }))
+    },
     current() {
       return this.terms.find((t) => t.termId === this.termId) || null
     },
@@ -83,20 +83,21 @@ export default {
     }
   },
   created() {
-    this.loadTerms()
+    this.refreshTermCatalog()
   },
   methods: {
     statusLabel(s) { return STATUS_LABEL[s] || s || '' },
-    async loadTerms() {
+    async refreshTermCatalog() {
       this.termsLoading = true
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) {
-        this.terms = res.data.list
+      try {
+        this.terms = await loadAcademicTermCatalog()
         const cur = this.terms.find((t) => t.isCurrent) || this.terms[0]
         if (cur) {
           this.termId = cur.termId
           this.onTermChange()
         }
+      } catch (error) {
+        this.formError = error.message || '学期数据加载失败'
       }
       this.termsLoading = false
     },
@@ -127,7 +128,7 @@ export default {
       this.saving = false
       if (res.code === 0) {
         toast.success('教学周配置已保存')
-        this.loadTerms()
+        this.refreshTermCatalog()
       } else {
         this.formError = res.message || '保存失败'
       }

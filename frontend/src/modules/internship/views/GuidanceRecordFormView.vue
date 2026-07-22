@@ -15,9 +15,8 @@
       <AppForm ref="formRef" :model="form" :rules="rules" layout="horizontal" label-width="110px" @submit="doSubmit">
         <AppFormSection title="实习学生与方式" description="仅可对本人指导学生新增，越权将被后端拒绝并写审计">
           <AppFormItem label="实习学生" prop="internshipId" required>
-            <AppStudentPicker
+            <AppInternshipStudentPicker
               v-model="form.internshipId"
-              :remote-search="searchInternStudents"
               placeholder="输入姓名或学号搜索实习学生"
               search-placeholder="按姓名 / 学号搜索"
               data-scope-hint="指导教师仅本人指导学生；管理员全校"
@@ -97,8 +96,7 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppForm, AppFormSection, AppFormItem, AppSubmitBar, AppSelect, AppTextInput, AppTextarea,
-  AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips } from '@/components/common'
-import { searchInternStudents } from './components/entityPickerAdapters'
+  AppDatePicker, AppInternshipStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips } from '@/components/common'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { toast } from '@/utils/toast'
 import { VISIT_STATUS, VISIT_GUIDANCE, VISIT_ISSUE } from '@/modules/internship/constants/presetPrompts'
@@ -122,7 +120,7 @@ function emptyForm() {
 export default {
   name: 'GuidanceRecordFormView',
   components: { ModulePageShell, AppButton, AppForm, AppFormSection, AppFormItem, AppSubmitBar,
-    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips },
+    AppSelect, AppTextInput, AppTextarea, AppDatePicker, AppInternshipStudentPicker, AppCheckboxGroup, AppQuickFilterChips, AppTemplateChips },
   data() {
     return {
       VISIT_STATUS, VISIT_GUIDANCE, VISIT_ISSUE,
@@ -156,7 +154,6 @@ export default {
   },
   methods: {
     // 选择器远程搜索（岗位实习模块适配层，关键字与数据范围由后端裁定）
-    searchInternStudents,
     pickInto(field, text) {
       if (!text) return
       const cur = (this.form[field] || '').trim()

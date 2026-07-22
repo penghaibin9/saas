@@ -5,13 +5,12 @@
     subtitle="指定互查学生与被评学生（同批次学生互相检查成果）"
     back-to="/admin/graduation/more?panel=peer"
   >
-    <ErrorState v-if="optsError" :description="optsError" @retry="loadStudents" />
-    <form v-else class="ie-form" @submit.prevent="submit">
+    <form class="ie-form" @submit.prevent="submit">
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">被评学生 <i>*</i></span>
-        <AppStudentPicker v-model="form.gdStudentId" :options="studentOptions" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索被评学生" />
+        <AppGraduationStudentPicker v-model="form.gdStudentId" placeholder="按姓名 / 学号搜索被评学生" />
       </div>
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">互查学生 <i>*</i></span>
-        <AppStudentPicker v-model="form.reviewerGdStudentId" :options="reviewerOptions" :remote-search="searchReviewers" placeholder="按姓名 / 学号搜索互查学生" />
+        <AppGraduationStudentPicker v-model="form.reviewerGdStudentId" :query="{ excludeStudentId: form.gdStudentId }" placeholder="按姓名 / 学号搜索互查学生" />
       </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -24,58 +23,20 @@
 
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
-import { ErrorState } from '@/components/business'
-import { AppStudentPicker } from '@/components/common'
+import { AppGraduationStudentPicker } from '@/components/common'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
-import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMorePeerView',
-  components: { GraduationFormPageShell, ErrorState, AppStudentPicker },
+  components: { GraduationFormPageShell, AppGraduationStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      form: { gdStudentId: '', reviewerGdStudentId: '' },
-      studentOpts: [], optsError: '', kw: '',
-      formError: '', submitting: false
+      form: { gdStudentId: '', reviewerGdStudentId: '' }, formError: '', submitting: false
     }
-  },
-  computed: {
-    studentOptions() {
-      return this.studentOpts.map(this.mapStu)
-    },
-    reviewerOptions() {
-      return this.studentOpts.map((s) => ({ ...this.mapStu(s), disabled: s.id === this.form.gdStudentId }))
-    }
-  },
-  created() {
-    this.loadStudents()
   },
   methods: {
-    mapStu(s) {
-      return { label: `${s.name}（${s.studentNo}）${s.topicTitle ? ' · ' + s.topicTitle : ''}`, value: s.id }
-    },
-    async searchStudents(keyword) {
-      const res = await gdStudentApi.getStudents({ keyword, pageSize: 20 })
-      if (res.code !== 0) throw new Error(res.message || '搜索失败')
-      return res.data.list.map(this.mapStu)
-    },
-    async searchReviewers(keyword) {
-      const res = await gdStudentApi.getStudents({ keyword, pageSize: 20 })
-      if (res.code !== 0) throw new Error(res.message || '搜索失败')
-      return res.data.list.map((s) => ({ ...this.mapStu(s), disabled: s.id === this.form.gdStudentId }))
-    },
-    async loadStudents() {
-      this.optsError = ''
-      const res = await gdStudentApi.getStudents({ keyword: this.kw, pageSize: 100 })
-      if (res.code === 0) {
-        this.studentOpts = res.data.list
-      } else {
-        this.studentOpts = []
-        this.optsError = res.message || '学生列表加载失败'
-      }
-    },
     async submit() {
       this.formError = ''
       if (!this.form.gdStudentId || !this.form.reviewerGdStudentId) { this.formError = '请选择被评学生和互查学生'; return }

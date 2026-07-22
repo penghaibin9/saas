@@ -13,7 +13,7 @@
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
         <div class="fd-gen">
-          <AppSelect v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" />
+          <AppFundingBatchPicker v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" />
           <AppPermissionButton code="studentAffairs.funding.disburse.manage" :loading="acting==='gen'" :disabled="!genBatchId" @click="generate">生成发放台账</AppPermissionButton>
         </div>
       </div>
@@ -75,7 +75,7 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextInput
+  AppPermissionButton, AppSectionCard, AppStatusTag, AppFundingBatchPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -98,7 +98,7 @@ export default {
   name: 'FundingDisbursementView',
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable
+    AppPermissionButton, AppSectionCard, AppFundingBatchPicker, AppTextInput, StatusTag: AppStatusTag, DataTable
   },
   data() {
     return {

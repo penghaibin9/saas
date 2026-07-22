@@ -65,13 +65,24 @@
           <AppSelect v-model="form.ownerKind" :options="ownerOptions.slice(1)" :disabled="saving" @change="onOwnerKindChange" />
         </AppFormItem>
         <AppFormItem v-if="form.ownerKind !== 'NONE'" label="所在位置">
-          <AppSelect v-model="form.ownerId" :options="ownerLocationOptions" placeholder="选择教室/实训室" :disabled="saving" />
+          <AppClassroomPicker
+            v-if="form.ownerKind === 'CLASSROOM'"
+            v-model="form.ownerId"
+            placeholder="选择教室"
+            :disabled="saving"
+          />
+          <AppLabPicker
+            v-else
+            v-model="form.ownerId"
+            placeholder="选择实训室"
+            :disabled="saving"
+          />
         </AppFormItem>
         <AppFormItem label="责任人">
           <AppTextInput v-model="form.responsibleName" placeholder="选填" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="购置日期">
-          <AppTextInput v-model="form.purchaseDate" placeholder="选填，YYYY-MM-DD" :disabled="saving" />
+          <AppDatePicker v-model="form.purchaseDate" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="备注">
           <AppTextarea v-model="form.remark" placeholder="选填" :disabled="saving" />
@@ -98,8 +109,8 @@
 /** 教学资源续卡 · 设备资源（/admin/academic-affairs/resources/equipment）：教学/实训设备台账。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem, AppConfirmDialog, AppInlineAlert } from '@/components/common'
-import { academicAffairsApi, academicAffairsEquipmentApi, academicAffairsLabApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem, AppConfirmDialog, AppInlineAlert, AppDatePicker, AppClassroomPicker, AppLabPicker } from '@/components/common'
+import { academicAffairsApi, academicAffairsEquipmentApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', ownerKind: '', status: '' })
@@ -110,7 +121,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem,
-    AppConfirmDialog, AppInlineAlert
+    AppConfirmDialog, AppInlineAlert, AppDatePicker, AppClassroomPicker, AppLabPicker
   },
   data() {
     return {
@@ -140,8 +151,6 @@ export default {
         { label: '维修中', value: 'MAINTENANCE' },
         { label: '已报废', value: 'SCRAPPED' }
       ],
-      classroomOptions: [],
-      labOptions: [],
       formVisible: false,
       editingId: '',
       form: EMPTY_FORM(),
@@ -152,12 +161,6 @@ export default {
       confirmMessage: '',
       confirmType: 'primary',
       pendingAction: null
-    }
-  },
-  computed: {
-    ownerLocationOptions() {
-      const list = this.form.ownerKind === 'LAB' ? this.labOptions : this.classroomOptions
-      return list.map((x) => ({ label: x.label, value: x.classroomId || x.labId }))
     }
   },
   async created() {
@@ -172,15 +175,8 @@ export default {
       if (s === 'SCRAPPED') return 'danger'
       return 'default'
     },
-    async onOwnerKindChange() {
+    onOwnerKindChange() {
       this.form.ownerId = ''
-      if (this.form.ownerKind === 'CLASSROOM' && !this.classroomOptions.length) {
-        const r = await academicAffairsApi.getClassroomOptions()
-        if (r.code === 0) this.classroomOptions = r.data.items
-      } else if (this.form.ownerKind === 'LAB' && !this.labOptions.length) {
-        const r = await academicAffairsLabApi.options()
-        if (r.code === 0) this.labOptions = r.data.items
-      }
     },
     onPageChange(page) {
       this.pagination.page = page
@@ -222,8 +218,6 @@ export default {
       }
       this.formError = ''
       this.formVisible = true
-      if (row.ownerKind === 'CLASSROOM' && !this.classroomOptions.length) this.onOwnerKindChange()
-      if (row.ownerKind === 'LAB' && !this.labOptions.length) this.onOwnerKindChange()
     },
     async submitForm() {
       if (!this.form.equipmentCode || !this.form.equipmentName) {

@@ -13,7 +13,7 @@
       <AppSectionCard title="当前批次">
         <div class="agc-batch-bar">
           <div class="agc-batch-select">
-            <AppSelect
+            <AppGraduationBatchPicker
               v-model="batchId"
               :options="batchOptions"
               :disabled="loadingBatches"
@@ -222,7 +222,7 @@
  * 「审核批次」（建批次/圈定/预审）仍在既有 AaGraduationBatchView.vue（/graduation），本页不重复。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppGraduationBatchPicker } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import AppStatusTag from '@/components/common/AppStatusTag.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -259,7 +259,7 @@ const LINK_ITEM = {
 
 export default {
   name: 'AaGraduationAuditConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppGraduationBatchPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

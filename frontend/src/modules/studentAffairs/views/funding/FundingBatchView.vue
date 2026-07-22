@@ -46,7 +46,7 @@
     <AppDrawer v-model:visible="drawer.visible" title="新建资助批次">
       <div class="sa-form">
         <AppFormItem label="所属项目" required>
-          <AppSelect v-model="drawer.form.projectId" :options="projectOptions" placeholder="（选择项目）" :disabled="saving" />
+          <AppFundingProjectPicker v-model="drawer.form.projectId" :options="projectOptions" placeholder="（选择项目）" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="学年" required>
           <AppTextInput v-model="drawer.form.schoolYear" placeholder="如：2025-2026" :disabled="saving" />
@@ -75,8 +75,8 @@
 
 <script>
 import { AppDateDisplay, AppDateRangePicker, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-        AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
-        AppStatusTag, AppTextInput } from '@/components/common'
+        AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+        AppStatusTag, AppFundingProjectPicker, AppTextInput } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -101,7 +101,7 @@ export default {
   name: 'FundingBatchView',
   components: { AppDateDisplay, AppDateRangePicker, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
                AppMetricCard, AppNumberInput, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
-               AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable },
+               AppFundingProjectPicker, AppTextInput, StatusTag: AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {

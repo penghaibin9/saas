@@ -8,7 +8,7 @@
     <div class="mp-stack">
       <div class="sc-filter">
         <label class="sc-filter__item">学期ID
-          <input v-model.trim="termId" class="sc-in sc-in--sm" placeholder="可空=全部学期" @keyup.enter="load" />
+          <AppTermEntityPicker v-model="termId" placeholder="全部学期" />
         </label>
         <AppButton :loading="loading" @click="load">查询</AppButton>
       </div>
@@ -57,12 +57,12 @@
 /** 调停课统计（/admin/academic-affairs/schedule-change/stats）：只读聚合看板，范围收敛复用 build_affairs_context。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppMetricCard, AppRankingChart } from '@/components/common'
+import { AppMetricCard, AppRankingChart, AppTermEntityPicker } from '@/components/common'
 import { scheduleChangeApi } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 
 export default {
   name: 'AaScheduleChangeStatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppMetricCard, AppRankingChart },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppMetricCard, AppRankingChart, AppTermEntityPicker },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return { loading: true, error: '', termId: '', stat: null }

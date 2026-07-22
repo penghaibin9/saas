@@ -12,7 +12,7 @@
     <AppSectionCard v-if="tab !== 'archive'" class="aarw-batch-bar">
       <div class="aarw-batch-row">
         <label class="aarw-batch-label">批次</label>
-        <AppSelect v-model="batchId" :options="batchOptions" placeholder="选择注册批次" style="max-width:280px" @change="onBatchChange" />
+        <AppRegistrationBatchPicker v-model="batchId" :options="batchOptions" placeholder="选择注册批次" style="max-width:280px" @change="onBatchChange" />
         <span class="mp-note aarw-batch-hint">{{ batchHint }}</span>
       </div>
     </AppSectionCard>
@@ -163,7 +163,7 @@
     <AppDrawer :visible="deferDrawer.visible" title="申请暂缓注册" @close="deferDrawer.visible = false">
       <div class="aarw-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="deferDrawer.studentId" :remote-search="searchStudents" :disabled="deferDrawer.saving" />
+          <AppStudentPicker v-model="deferDrawer.studentId" :disabled="deferDrawer.saving" />
         </AppFormItem>
         <AppFormItem label="暂缓原因" required>
           <AppTextarea ref="deferReasonInput" v-model="deferDrawer.reason" placeholder="如材料未齐 / 特殊原因说明" :disabled="deferDrawer.saving" />
@@ -184,7 +184,7 @@
     <AppDrawer :visible="excDrawer.visible" title="标记注册异常" @close="excDrawer.visible = false">
       <div class="aarw-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="excDrawer.studentId" :remote-search="searchStudents" :disabled="excDrawer.saving" />
+          <AppStudentPicker v-model="excDrawer.studentId" :disabled="excDrawer.saving" />
         </AppFormItem>
         <AppFormItem label="异常类型" required>
           <AppSelect v-model="excDrawer.exceptionType" :options="excTypeOptions" :disabled="excDrawer.saving" />
@@ -240,7 +240,7 @@ import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyS
 import { AppButton, AppDrawer } from '@/components/ui'
 import {
   AppTextInput, AppTextarea, AppSelect, AppFormItem, AppInlineAlert, AppConfirmDialog,
-  AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases
+  AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases, AppRegistrationBatchPicker
 } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -261,7 +261,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppTextarea, AppSelect, AppFormItem, AppInlineAlert,
-    AppConfirmDialog, AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases
+    AppConfirmDialog, AppSectionCard, AppStudentPicker, AppDatePicker, AppQuickPhrases, AppRegistrationBatchPicker
   },
   data() {
     return {
@@ -347,9 +347,9 @@ export default {
   },
   computed: {
     batchOptions() {
-      return [{ label: '全部批次', value: '' }, ...this.batches.map((b) => ({
+      return this.batches.map((b) => ({
         label: `${b.batchName}（${REG_TYPE_SHORT[b.registerType] || b.registerType}·${this.batchStatusCn(b.status)}）`, value: b.batchId
-      }))]
+      }))
     },
     batchHint() {
       if (this.tab === 'eligibility') return '资格核验、暂缓注册、标记异常均需先选择具体批次'
@@ -427,12 +427,6 @@ export default {
         if (open) this.batchId = open.batchId
       }
     },
-    async searchStudents(keyword) {
-      const res = await academicAffairsApi.getRoster({ keyword, page: 1, pageSize: 20 })
-      if (res.code !== 0) return []
-      return (res.data.list || []).map((s) => ({ value: s.studentId, label: `${s.realName} · ${s.studentNo}`, desc: s.className || '' }))
-    },
-
     /* ── 资格核验 ── */
     eligStatusLabel(s) { return ELIG_STATUS_LABEL[s] || s },
     eligStatusType(s) { return s === 'ELIGIBLE' ? 'success' : s === 'INELIGIBLE' ? 'danger' : 'default' },

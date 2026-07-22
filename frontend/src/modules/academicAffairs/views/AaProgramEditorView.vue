@@ -21,6 +21,22 @@
         <button v-if="editable && !showEdit" class="mp-link aa-edit-entry" @click="openEdit">编辑方案信息</button>
       </div>
 
+      <AppSectionCard title="国家标准依据">
+        <div v-if="program.nationalStandards?.length" class="aa-standard-list">
+          <div v-for="standard in program.nationalStandards" :key="standard.bindingId" class="aa-standard-row">
+            <div class="aa-standard-main"><b>{{ standard.standardCode }} · {{ standard.title }}</b><small>{{ standard.versionLabel }} · {{ standard.documentType }}<span v-if="standard.isPrimary"> · 主依据</span></small>
+              <details v-for="section in standard.relevantSections" :key="section.code" class="aa-standard-section">
+                <summary>{{ section.no }}. {{ section.title }}</summary>
+                <pre>{{ section.contentExcerpt }}</pre>
+              </details>
+            </div>
+            <a v-if="standard.sourceUrl" :href="standard.sourceUrl" target="_blank" rel="noopener noreferrer">官方来源</a>
+          </div>
+        </div>
+        <p v-else class="aa-hint">本专业尚未绑定国家教学标准。请先在“系统管理 → 实施与预设中心 → 职业教育国家标准库”绑定；绑定后会自动显示在这里，不会自动生成课程或成绩。</p>
+        <div class="aa-standard-actions"><AppButton size="small" @click="$router.push('/admin/system/implementation/standards')">打开国家标准库</AppButton></div>
+      </AppSectionCard>
+
       <!-- 方案基本信息编辑（草稿/退回态可改：名称、毕业总学分） -->
       <AppSectionCard v-if="editable && showEdit" title="编辑方案信息">
         <div class="aa-add-panel">
@@ -38,14 +54,10 @@
         </template>
 
         <div v-if="showAdd && editable" class="aa-add-panel">
-          <select v-model="addForm.courseId" class="aa-input" @change="onPickCourse">
-            <option value="">选择已启用课程…</option>
-            <option v-for="c in enabledCourses" :key="c.courseId" :value="c.courseId">{{ c.courseName }}（{{ c.courseCode }} · {{ c.credit }}学分）</option>
-          </select>
+          <AppCoursePicker v-model="addForm.courseId" placeholder="选择已启用课程" @change="onPickCourse" />
           <input v-model.number="addForm.openTermNo" type="number" min="1" max="12" class="aa-input aa-input--sm" placeholder="开课学期" />
           <input v-model.trim="addForm.module" class="aa-input aa-input--sm" placeholder="课程模块" />
           <AppButton variant="primary" :disabled="!addForm.courseId" :loading="adding" @click="addCourse">添加</AppButton>
-          <span v-if="!enabledCourses.length" class="aa-hint">课程库暂无已启用课程，请先在「课程库」启用课程</span>
         </div>
 
         <EmptyState v-if="!program.courses.length" title="方案内暂无课程" description="从课程库添加已启用课程，构建方案课程结构" />
@@ -97,19 +109,19 @@
 /** 培养方案编制器（/admin/academic-affairs/programs/:id）：学分汇总 + 课程明细 + 两级审 + 绑定年级。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppCoursePicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { REVIEW_STATUS, reviewStatusColor, inReview, canSubmit } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaProgramEditorView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppCoursePicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', program: null, acting: false,
-      showAdd: false, adding: false, enabledCourses: [],
+      showAdd: false, adding: false,
       addForm: { courseId: '', courseName: '', credit: null, openTermNo: null, module: '' },
       bindForm: { gradeYear: '' },
       showEdit: false, savingEdit: false, editForm: { programName: '', totalCredits: null },
@@ -134,15 +146,12 @@ export default {
   methods: {
     reviewStatusColor, inReview, canSubmit,
     statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
-    async toggleAdd() {
+    toggleAdd() {
       this.showAdd = !this.showAdd
-      if (this.showAdd && !this.enabledCourses.length) {
-        const res = await academicAffairsApi.getCourses({ status: 'ENABLED', page: 1, pageSize: 200 })
-        if (res.code === 0) this.enabledCourses = res.data.list
-      }
     },
-    onPickCourse() {
-      const c = this.enabledCourses.find((x) => x.courseId === this.addForm.courseId)
+    onPickCourse(value, items) {
+      const item = items?.[0]
+      const c = item?.raw || item
       if (c) { this.addForm.courseName = c.courseName; this.addForm.credit = c.credit }
     },
     async addCourse() {
@@ -235,6 +244,15 @@ export default {
 .aa-credit-cell.is-ok b { color: var(--success-600, #16a34a); }
 .aa-credit-cell.is-warn b { color: var(--warning-600, #d97706); }
 .aa-credit-cell.is-over b { color: var(--danger-600, #f53f3f); }
+.aa-standard-list { display: grid; gap: 8px; }
+.aa-standard-row { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 10px 12px; border: 1px solid var(--border-100, #f0f1f2); border-radius: 6px; }
+.aa-standard-main { flex: 1; min-width: 0; }
+.aa-standard-row small { display: block; margin-top: 4px; color: var(--text-400, #8a9099); }
+.aa-standard-row a { white-space: nowrap; color: var(--primary-600, #165dff); }
+.aa-standard-section { margin-top: 8px; border-top: 1px dashed var(--border-100, #f0f1f2); padding-top: 8px; }
+.aa-standard-section summary { cursor: pointer; color: var(--primary-700, #0e42d2); font-weight: 600; }
+.aa-standard-section pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; max-height: 260px; overflow: auto; font: inherit; line-height: 1.7; color: var(--text-700, #3c4149); }
+.aa-standard-actions { margin-top: 12px; }
 .aa-add-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .aa-input { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
 .aa-input--sm { width: 120px; }

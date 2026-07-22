@@ -11,7 +11,7 @@
       </div>
       <AppSectionCard v-if="formVisible" title="登记助学贷款">
         <div class="ln-grid">
-          <div class="ln-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="ln-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="ln-field"><span>类型</span><AppSelect v-model="form.loanType" :options="LOAN_TYPE_OPTIONS" placeholder="" /></label>
           <label class="ln-field"><span>银行</span><AppTextInput v-model="form.bankName" /></label>
           <label class="ln-field"><span>银行卡号（仅存后4位）</span><AppTextInput v-model="form.bankLast4" :maxlength="4" /></label>
@@ -83,7 +83,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blank() { return { studentId: '', loanType: 'ORIGIN', bankName: '', bankLast4: '', yearCode: '', amount: null } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getLoans()

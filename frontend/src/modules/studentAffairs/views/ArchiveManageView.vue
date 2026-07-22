@@ -103,7 +103,7 @@
     <AppDrawer v-model:visible="collectModal.visible" title="圈定学生生成档案包">
       <div class="av-form">
         <AppFormItem label="学生（可多选）" required>
-          <AppStudentPicker v-model="collectModal.studentIds" multiple :remote-search="searchStudents" placeholder="按姓名 / 学号搜索添加学生" />
+          <AppStudentPicker v-model="collectModal.studentIds" multiple placeholder="按姓名 / 学号搜索添加学生" />
         </AppFormItem>
         <AppInlineAlert v-if="collectModal.error" type="danger" :description="collectModal.error" />
       </div>
@@ -201,9 +201,6 @@ export default {
     },
     pkgStatusLabel(s) {
       return PKG_STATUS[s] || s
-    },
-    searchStudents(keyword) {
-      return studentAffairsApi.searchStudents(keyword)
     },
     selectBatch(b) {
       this.current = b

@@ -8,10 +8,10 @@
   >
     <div class="fd-ctxbar">
       <label class="fd-ctxsel"><span>资助项目</span>
-        <AppSelect v-model="projectId" :options="projectSelectOptions" placeholder="（选择项目）" @change="onProjectChange" />
+        <AppFundingProjectPicker v-model="projectId" :options="projectSelectOptions" placeholder="（选择项目）" @change="onProjectChange" />
       </label>
       <label class="fd-ctxsel"><span>批次</span>
-        <AppSelect v-model="batchId" :options="batchSelectOptions" placeholder="（选择批次）" :disabled="!projectId" @change="onBatchChange" />
+        <AppFundingBatchPicker v-model="batchId" :options="batchSelectOptions" :query="{ projectId }" placeholder="（选择批次）" :disabled="!projectId" @change="onBatchChange" />
       </label>
       <div class="fd-ctxtools">
         <AppPermissionButton code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
@@ -151,7 +151,7 @@
     <AppDrawer v-model:visible="applyModal.visible" title="受理资助申请">
       <div class="sa-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="applyModal.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" />
+          <AppStudentPicker v-model="applyModal.studentId" placeholder="按姓名 / 学号搜索学生" />
         </AppFormItem>
         <AppFormItem label="申请来源">
           <AppSelect v-model="applyModal.applySource" :options="applySourceOptions" />
@@ -181,7 +181,7 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppPermissionButton, AppSelect, AppStatusTag,
-        AppStudentPicker, AppTextInput, AppTextarea } from '@/components/common'
+        AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -198,7 +198,7 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 export default {
   name: 'FundingWorkbenchView',
   components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDrawer, AppFormItem,
-               AppInlineAlert, AppNumberInput, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea },
+               AppInlineAlert, AppNumberInput, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -408,9 +408,6 @@ export default {
     },
     openApply() {
       this.applyModal = { visible: true, studentId: '', applySource: 'SELF', amount: null, statement: '', error: '' }
-    },
-    searchStudents(keyword) {
-      return studentAffairsApi.searchStudents(keyword)
     },
     async submitApply() {
       const m = this.applyModal

@@ -11,21 +11,14 @@
 
     <div class="mp-stack">
       <div class="aa-reg-search">
-        <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-        <AppButton :loading="searching" @click="searchStudents">检索</AppButton>
+        <AppStudentPicker v-model="studentId" class="aa-input--grow" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
       </div>
-      <ul v-if="candidates.length" class="aa-cand-list">
-        <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
-          <span>{{ s.realName }} · 学号 {{ s.studentNo }}</span>
-          <button class="mp-link" @click="pick(s)">查看课表</button>
-        </li>
-      </ul>
 
       <template v-if="studentId">
         <div class="aa-filter">
           <label class="aa-filter__item">
             学期
-            <AppSelect v-model="termId" :options="termOptions" placeholder="" @change="load" />
+            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" @change="load" />
           </label>
           <label class="aa-filter__item">
             周次
@@ -43,7 +36,7 @@
           </AppSectionCard>
         </template>
       </template>
-      <EmptyState v-else-if="!candidates.length" title="选择学生查看课表" description="用上方检索找到学生" />
+      <EmptyState v-else title="选择学生查看课表" description="用上方选择器搜索学生" />
     </div>
   </ModulePageShell>
 </template>
@@ -57,59 +50,39 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppSelect } from '@/components/common'
+import { AppSectionCard, AppStudentPicker, AppTermEntityPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaStudentScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStudentPicker, AppTermEntityPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      kw: '', searching: false, candidates: [],
       studentId: this.$route.params.studentId || '',
       studentName: this.$route.query.name || '', studentNo: '',
       termId: '', week: null,
-      terms: [], slots: [], items: [], note: '', loading: false, error: ''
-    }
-  },
-  computed: {
-    termOptions() {
-      return [
-        { value: '', label: '当前已发布批次' },
-        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
-      ]
+      slots: [], items: [], note: '', loading: false, error: ''
     }
   },
   created() {
-    this.loadTerms()
     this.loadSlots()
     if (this.studentId) this.load()
   },
   methods: {
-    async searchStudents() {
-      if (this.searching) return
-      this.searching = true
-      const res = await academicAffairsApi.getRoster({ keyword: this.kw || undefined, page: 1, pageSize: 20 })
-      this.candidates = res.code === 0 ? res.data.list : []
-      this.searching = false
-    },
-    pick(s) {
-      this.studentId = s.studentId
-      this.studentName = s.realName
-      this.studentNo = s.studentNo
-      this.candidates = []
+    onStudentChange(value, items) {
+      const item = items?.[0]
+      const student = item?.raw || item || {}
+      this.studentName = student.realName || student.studentName || item?.label || ''
+      this.studentNo = student.studentNo || ''
+      if (!value) return
       this.$router.replace(`/admin/academic-affairs/schedule/student/${this.studentId}`).catch(() => {})
       this.load()
     },
     onItemClick(it) {
       toast.success(`${it.courseName || ''} · ${it.teacherName || ''} · ${it.classroom || ''} · ${it.startWeek}-${it.endWeek}周`)
-    },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
     },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()

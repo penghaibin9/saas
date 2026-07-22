@@ -68,7 +68,7 @@
     <AppDrawer :visible="createVisible" title="新建评教批次" @close="createVisible = false">
       <div class="aaev-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2024秋学生评教" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="学期 ID"><AppTextInput v-model="form.termId" placeholder="可空" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学期"><AppTermEntityPicker v-model="form.termId" placeholder="选择学期（可空）" :disabled="saving" /></AppFormItem>
         <AppInlineAlert type="info" description="问卷模板本期用默认客观5级量表；匿名默认开启（学生评教架构级不留身份）。" />
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
@@ -83,7 +83,7 @@
         <AppFormItem label="评价来源">
           <AppSelect v-model="genType" :options="genTypeOptions" :disabled="saving" />
         </AppFormItem>
-        <AppFormItem label="教学任务 ID（逗号分隔）" required><AppTextInput v-model="genRaw" placeholder="如 1,2,3" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="genTaskIds" multiple :query="{ termId: current && current.termId || undefined }" :disabled="saving" /></AppFormItem>
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="genVisible = false">取消</AppButton>
@@ -100,7 +100,7 @@
 /** 教学评价 · 教务处控制台（/admin/academic-affairs/evaluation）：批次生命周期 + 结果分级 + 申诉。 */
 import { ModulePageShell, DataTable, StatusTag, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppFormItem, AppSelect, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppFormItem, AppSelect, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AppTeachingTaskPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsEvaluationApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -109,7 +109,7 @@ const _LV = { EXCELLENT: '优秀', GOOD: '良好', PASS: '合格', NEED_IMPROVE:
 
 export default {
   name: 'AaEvaluationConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppSelect, AppConfirmDialog, AppInlineAlert },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, AppButton, AppDrawer, AppTextInput, AppFormItem, AppSelect, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AppTeachingTaskPicker },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -128,7 +128,7 @@ export default {
       resultColumns: [{ key: 'teacherName', title: '教师' }, { key: 'courseName', title: '课程' }, { key: 'studentAvg', title: '学生均分' }, { key: 'supervisorAvg', title: '督导' }, { key: 'peerAvg', title: '同行' }, { key: 'selfScore', title: '自评' }, { key: 'compositeScore', title: '综合分' }, { key: 'level', title: '等级' }],
       appealColumns: [{ key: 'teacherKey', title: '教师' }, { key: 'reason', title: '申诉理由' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
       createVisible: false, form: { batchName: '', termId: '' }, formError: '',
-      genVisible: false, genRaw: '', genType: 'STUDENT',
+      genVisible: false, genTaskIds: [], genType: 'STUDENT',
       genTypeOptions: [
         { label: '学生评教', value: 'STUDENT' }, { label: '教师自评', value: 'SELF' },
         { label: '同行评价', value: 'PEER' }, { label: '督导评价', value: 'SUPERVISOR' }
@@ -178,10 +178,10 @@ export default {
       this.saving = false
       if (res.code === 0) { toast.success('已创建'); this.createVisible = false; this.loadBatches() } else this.formError = res.message
     },
-    openGenTasks() { this.genRaw = ''; this.genType = 'STUDENT'; this.genVisible = true },
+    openGenTasks() { this.genTaskIds = []; this.genType = 'STUDENT'; this.genVisible = true },
     async submitGen() {
-      const ids = this.genRaw.split(',').map(s => s.trim()).filter(Boolean)
-      if (!ids.length) { toast.error('请填教学任务 ID'); return }
+      const ids = this.genTaskIds
+      if (!ids.length) { toast.error('请选择教学任务'); return }
       this.saving = true
       const res = await api.genTasks(this.current.batchId, ids, this.genType)
       this.saving = false

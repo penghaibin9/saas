@@ -11,7 +11,7 @@
       </div>
       <AppSectionCard v-if="formVisible" title="申请减免/临补">
         <div class="fr-grid">
-          <div class="fr-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="fr-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="fr-field"><span>类型</span><AppSelect v-model="form.itemType" :options="ITEM_TYPE_OPTIONS" placeholder="" /></label>
           <label class="fr-field"><span>金额</span><AppNumberInput v-model="form.amount" :min="0" /></label>
           <label class="fr-field fr-wide"><span>理由 *（≥5字）</span><AppTextInput v-model="form.reason" /></label>
@@ -104,7 +104,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blank() { return { studentId: '', itemType: 'REDUCTION', amount: null, reason: '', error: '' } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFeeReductions({ itemType: this.activeType })

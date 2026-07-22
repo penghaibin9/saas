@@ -46,20 +46,7 @@
     <AppDrawer :visible="createVisible" title="发起学籍信息更正" @close="createVisible = false">
       <div class="aa-form">
         <AppFormItem label="学生" required>
-          <div v-if="form.studentId" class="aa-picked">
-            {{ form.studentName || '学生' }} · ID {{ form.studentId }}
-            <button class="mp-link" @click="clearStudent">重选</button>
-          </div>
-          <div v-else class="aa-reg-search">
-            <AppTextInput v-model="kw" placeholder="按姓名/学号检索学生" @keyup.enter="searchStudents" />
-            <AppButton variant="ghost" :loading="searching" @click="searchStudents">检索</AppButton>
-          </div>
-          <ul v-if="!form.studentId && candidates.length" class="aa-cand-list">
-            <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
-              <span>{{ s.realName }} · 学号 {{ s.studentNo }} · {{ statusText(s.studentStatus) }}</span>
-              <button class="mp-link" @click="pickStudent(s)">选择</button>
-            </li>
-          </ul>
+          <AppStudentPicker v-model="form.studentId" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
         </AppFormItem>
 
         <AppFormItem label="更正字段" required>
@@ -115,7 +102,7 @@
  * 故仍需正规弹窗把新旧值摆出来核对（原为 window.confirm，与学工中心同类动作不一致）。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
-import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppConfirmDialog, AppDescriptionList } from '@/components/common'
+import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppConfirmDialog, AppDescriptionList, AppStudentPicker } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -133,7 +120,7 @@ export default {
   name: 'AaRosterCorrectionListView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppStatusTag,
                AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer,
-               AppConfirmDialog, AppDescriptionList },
+               AppConfirmDialog, AppDescriptionList, AppStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -156,9 +143,6 @@ export default {
       createVisible: false,
       submitting: false,
       formError: '',
-      kw: '',
-      searching: false,
-      candidates: [],
       form: emptyForm()
     }
   },
@@ -234,23 +218,13 @@ export default {
     onFieldChange() { this.form.newValue = '' },
     openCreate() {
       this.form = emptyForm()
-      this.kw = ''
-      this.candidates = []
       this.formError = ''
       this.createVisible = true
     },
-    clearStudent() { this.form.studentId = ''; this.form.studentName = '' },
-    pickStudent(s) {
-      this.form.studentId = s.studentId
-      this.form.studentName = s.realName
-      this.candidates = []
-    },
-    async searchStudents() {
-      if (this.searching || !this.kw.trim()) return
-      this.searching = true
-      const res = await academicAffairsApi.getRoster({ keyword: this.kw.trim(), page: 1, pageSize: 20 })
-      this.candidates = res.code === 0 ? res.data.list : []
-      this.searching = false
+    onStudentChange(value, items) {
+      const item = items?.[0]
+      const student = item?.raw || item || {}
+      this.form.studentName = student.realName || student.studentName || item?.label || ''
     },
     async submitCreate() {
       this.formError = ''

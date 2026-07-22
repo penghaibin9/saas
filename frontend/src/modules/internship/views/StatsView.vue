@@ -6,18 +6,9 @@
     </template>
 
     <div class="bar">
-      <select v-model="dim.college" class="bar__sel" @change="onDimChange('college')">
-        <option value="">全部学院</option>
-        <option v-for="c in dims.colleges" :key="c" :value="c">{{ c }}</option>
-      </select>
-      <select v-model="dim.major" class="bar__sel" @change="load">
-        <option value="">全部专业</option>
-        <option v-for="m in dims.majors" :key="m" :value="m">{{ m }}</option>
-      </select>
-      <select v-model="dim.className" class="bar__sel" @change="load">
-        <option value="">全部班级</option>
-        <option v-for="c in dims.classes" :key="c" :value="c">{{ c }}</option>
-      </select>
+      <AppSelect v-model="dim.college" class="bar__sel" :options="collegeOptions" placeholder="全部学院" @change="onDimChange('college')" />
+      <AppSelect v-model="dim.major" class="bar__sel" :options="majorOptions" placeholder="全部专业" @change="load" />
+      <AppSelect v-model="dim.className" class="bar__sel" :options="classOptions" placeholder="全部班级" @change="load" />
       <button class="bar__go" @click="load">查询</button>
       <button v-if="dim.college || dim.major || dim.className" class="bar__clr" @click="clearDim">清除筛选</button>
       <span class="bar__hint">数据范围内可见 · 生成于 {{ generatedAt || '—' }}</span>
@@ -78,13 +69,13 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
-import { AppChartCard, AppG2Chart, AppMetricCard, AppExportButton, buildBarChartSpec } from '@/components/common'
+import { AppChartCard, AppG2Chart, AppMetricCard, AppExportButton, AppSelect, buildBarChartSpec } from '@/components/common'
 import { statsApi } from '@/modules/internship/api/stats.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'StatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppExportButton, AppMetricCard, AppChartCard, AppG2Chart },
+  components: { ModulePageShell, LoadingState, ErrorState, AppExportButton, AppMetricCard, AppChartCard, AppG2Chart, AppSelect },
   data() {
     return {
       loading: false, error: '',
@@ -95,6 +86,9 @@ export default {
     }
   },
   computed: {
+    collegeOptions() { return (this.dims.colleges || []).map((value) => ({ value, label: value })) },
+    majorOptions() { return (this.dims.majors || []).map((value) => ({ value, label: value })) },
+    classOptions() { return (this.dims.classes || []).map((value) => ({ value, label: value })) },
     scoreTotal() { return this.scoreDistribution.reduce((a, d) => a + d.count, 0) },
     scoreChartSpec() {
       return buildBarChartSpec({

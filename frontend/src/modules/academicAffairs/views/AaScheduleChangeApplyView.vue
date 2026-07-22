@@ -31,9 +31,7 @@
         <template v-if="form.changeType !== 'STOP'">
           <div class="sc-fld">
             <label class="sc-lbl">目标星期 <i>*</i></label>
-            <select class="sc-in" v-model.number="form.targetWeekday">
-              <option v-for="d in 7" :key="d" :value="d">周{{ d }}</option>
-            </select>
+            <AppSelect v-model="form.targetWeekday" :options="weekdayOptions" />
           </div>
           <div class="sc-fld">
             <label class="sc-lbl">目标节次 <i>*</i></label>
@@ -49,12 +47,7 @@
           </div>
           <div class="sc-fld">
             <label class="sc-lbl">单双周</label>
-            <select class="sc-in" v-model="form.targetWeekParity">
-              <option value="">沿用原课位</option>
-              <option value="ALL">全周</option>
-              <option value="ODD">单周</option>
-              <option value="EVEN">双周</option>
-            </select>
+            <AppSelect v-model="form.targetWeekParity" :options="weekParityOptions" placeholder="沿用原课位" />
           </div>
           <div class="sc-fld">
             <label class="sc-lbl">目标教室</label>
@@ -96,7 +89,7 @@
 /** 发起调停课（/admin/academic-affairs/schedule-change/apply）：提交即冲突预检，冲突后端 409 → 单据不落库。 */
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppQuickPhrases } from '@/components/common'
+import { AppQuickPhrases, AppSelect } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { scheduleChangeApi, CHANGE_TYPES } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { toast } from '@/utils/toast'
@@ -109,7 +102,7 @@ const EMPTY = () => ({
 
 export default {
   name: 'AaScheduleChangeApplyView',
-  components: { ModulePageShell, AppButton, AppQuickPhrases },
+  components: { ModulePageShell, AppButton, AppQuickPhrases, AppSelect },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
@@ -120,6 +113,14 @@ export default {
     }
   },
   computed: {
+    weekdayOptions() { return Array.from({ length: 7 }, (_, i) => ({ value: i + 1, label: `周${i + 1}` })) },
+    weekParityOptions() {
+      return [
+        { value: 'ALL', label: '全周' },
+        { value: 'ODD', label: '单周' },
+        { value: 'EVEN', label: '双周' }
+      ]
+    },
     roleName() { return this.ctx?.currentRole?.roleName || '任课教师' },
     scopeName() { return this.ctx?.dataScope?.scopeName || '本人课位' },
     canCheckConflict() {

@@ -150,7 +150,6 @@ import { AppExportButton } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDateDisplay } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
-import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { GD_ROUND_STATUS } from '@/modules/graduation/constants/graduation-topic-round.constants'
 import { toast } from '@/utils/toast'
 
@@ -184,7 +183,7 @@ export default {
     return {
       loading: true, error: '', submitting: false, activePanel: 'rounds',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      batchOpts: [], selectedRoundId: '', selectedRoundName: '',
+      selectedRoundId: '', selectedRoundName: '',
       importVisible: false, conflicts: [], stats: null,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', action: null, row: null }
     }
@@ -210,9 +209,8 @@ export default {
       return cols
     },
     filterFields() {
-      const batchOpts = this.batchOpts.map((b) => ({ value: b.id, label: b.batchName }))
       return [
-        { key: 'batchId', label: '批次', type: 'select', options: batchOpts },
+        { key: 'batchId', label: '批次', type: 'graduation-batch' },
         { key: 'status', label: '状态', type: 'select', options: GD_ROUND_STATUS },
         {
           key: 'date', label: '选题时间', type: 'daterange',
@@ -258,9 +256,6 @@ export default {
         this.load()
       }
     }
-  },
-  created() {
-    gdTopicApi.getBatchOptions().then((r) => { if (r.code === 0) this.batchOpts = r.data })
   },
   methods: {
     choiceTone(s) {

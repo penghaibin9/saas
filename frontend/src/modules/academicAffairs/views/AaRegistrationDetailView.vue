@@ -12,19 +12,7 @@
     <div class="mp-stack">
       <AppSectionCard title="注册学生">
         <div class="aa-reg-search">
-          <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按姓名/学号检索在籍学生" @keyup.enter="searchStudents" />
-          <AppButton :loading="searching" @click="searchStudents">检索</AppButton>
-        </div>
-        <div v-if="searched" class="aa-reg-cands">
-          <EmptyState v-if="!candidates.length" title="无匹配学生" description="换个关键字，或确认学生在当前数据范围内" />
-          <ul v-else class="aa-cand-list">
-            <li v-for="s in candidates" :key="s.studentId" class="aa-cand-item">
-              <span>{{ s.realName }} · 学号 {{ s.studentNo }}</span>
-              <button class="mp-link" :disabled="registeringId === s.studentId" @click="doRegister(s)">
-                {{ registeringId === s.studentId ? '注册中…' : '注册' }}
-              </button>
-            </li>
-          </ul>
+          <AppStudentPicker v-model="selectedStudentId" class="aa-input--grow" placeholder="按姓名/学号检索在籍学生" :disabled="!!registeringId" @change="onStudentChange" />
         </div>
       </AppSectionCard>
 
@@ -53,13 +41,13 @@
 /** 注册名单（/admin/academic-affairs/registration/:batchId）：注册记录 + roster 检索注册。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppStudentPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaRegistrationDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -67,10 +55,7 @@ export default {
       error: '',
       rows: [],
       pagination: { page: 1, pageSize: 50, total: 0 },
-      kw: '',
-      searching: false,
-      searched: false,
-      candidates: [],
+      selectedStudentId: '',
       registeringId: '',
       columns: [
         { key: 'realName', title: '学生' },
@@ -92,19 +77,10 @@ export default {
       this.pagination.page = page
       this.load()
     },
-    async searchStudents() {
-      if (this.searching) return
-      this.searching = true
-      const res = await academicAffairsApi.getRoster({ keyword: this.kw || undefined, status: 'PENDING_REGISTER', page: 1, pageSize: 20 })
-      // 若按待注册筛选无结果，退回不限状态，方便学年注册（已在籍学生）
-      let list = res.code === 0 ? res.data.list : []
-      if (res.code === 0 && !list.length) {
-        const r2 = await academicAffairsApi.getRoster({ keyword: this.kw || undefined, page: 1, pageSize: 20 })
-        if (r2.code === 0) list = r2.data.list
-      }
-      this.candidates = list
-      this.searched = true
-      this.searching = false
+    onStudentChange(value, items) {
+      const item = items?.[0]
+      if (!value || !item) return
+      this.doRegister(item.raw || { studentId: value, realName: item.label })
     },
     async doRegister(s) {
       if (this.registeringId) return
@@ -113,7 +89,7 @@ export default {
       this.registeringId = ''
       if (res.code === 0) {
         toast.success(`${s.realName} 注册成功`)
-        this.candidates = this.candidates.filter((c) => c.studentId !== s.studentId)
+        this.selectedStudentId = ''
         this.load()
       } else {
         toast.error(res.message || '注册失败')

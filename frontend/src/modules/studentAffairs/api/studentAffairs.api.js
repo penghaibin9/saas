@@ -121,6 +121,14 @@ export const studentAffairsApi = {
     }))
   },
 
+  /** 学工风险责任人候选；后端按可处置权限和数据范围收敛。 */
+  async searchRiskOwners(keyword) {
+    const data = await request('/student-affairs/risk/owner-candidates', { params: { keyword } })
+    return (data.items || []).map((user) => ({
+      value: String(user.id), label: user.name || user.loginName, desc: user.loginName || ''
+    }))
+  },
+
   // ─────────────── 请假闭环（P3 · /student-affairs/leave/*） ───────────────
 
   /** 待审批请假队列（按数据范围；仅返回三个审批节点态）。 */

@@ -20,6 +20,7 @@
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
+import { graduationPickerAdapters } from '@/modules/graduation/pickerAdapters'
 
 const MENUS = [
   { key: 'gd-dashboard', label: '管理看板', icon: '◫', path: '/admin/graduation' },
@@ -33,6 +34,9 @@ const MENUS = [
 export default {
   name: 'AdminGraduationLayout',
   components: { BasePortalLayout, LoadingState },
+  provide() {
+    return { appPickerAdapters: graduationPickerAdapters }
+  },
   data() {
     return { menus: MENUS, ctx: null }
   },

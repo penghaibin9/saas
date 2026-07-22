@@ -11,28 +11,15 @@
 
     <div class="mp-stack">
       <div class="aa-reg-search">
-        <input v-model.trim="kw" class="aa-input aa-input--grow" placeholder="按教学班名称/课程名筛选（本页已加载列表内筛选）" />
-        <AppButton :loading="listLoading" @click="loadTeachingClasses">刷新列表</AppButton>
+        <AppTeachingClassPicker v-model="teachingClassCode" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
       </div>
-      <ErrorState v-if="listError" :description="listError" @retry="loadTeachingClasses" />
-      <LoadingState v-else-if="listLoading" />
-      <ul v-else-if="!teachingClassCode && filteredClasses.length" class="aa-cand-list">
-        <li v-for="c in filteredClasses" :key="c.teachingClassCode" class="aa-cand-item">
-          <span>{{ c.teachingClassName || c.teachingClassCode }}
-            <span class="mp-note">· {{ c.courseCount }} 门课程<template v-if="c.isMerged"> · 合班</template></span>
-          </span>
-          <button class="mp-link" @click="pick(c)">查看课表</button>
-        </li>
-      </ul>
-      <EmptyState v-else-if="!teachingClassCode && !filteredClasses.length" title="暂无匹配的教学班"
-                 description="教学班派生自「教学任务」，请先在教学任务模块生成任务" />
 
       <template v-if="teachingClassCode">
         <div class="aa-filter">
           <button class="mp-link" @click="teachingClassCode = ''">‹ 重新选择教学班</button>
           <label class="aa-filter__item">
             学期
-            <AppSelect v-model="termId" :options="termOptions" placeholder="" @change="load" />
+            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" @change="load" />
           </label>
           <label class="aa-filter__item">
             周次
@@ -62,68 +49,39 @@
  * GET /academic-affairs/schedule/teaching-class/{code}?termId=&week=；数据范围校验同班级课表口径，
  * 越范围 → 403002；未知教学班代码 → 404。
  */
-import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppSelect } from '@/components/common'
+import { AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
-import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeachingClassScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppSelect, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      kw: '', teachingClasses: [], listLoading: false, listError: '',
       teachingClassCode: this.$route.params.code || '', teachingClassName: '',
       termId: '', week: null,
-      terms: [], slots: [], items: [], note: '', loading: false, error: ''
-    }
-  },
-  computed: {
-    filteredClasses() {
-      const kw = this.kw.trim().toLowerCase()
-      if (!kw) return this.teachingClasses
-      return this.teachingClasses.filter((c) =>
-        (c.teachingClassName || '').toLowerCase().includes(kw) ||
-        (c.teachingClassCode || '').toLowerCase().includes(kw) ||
-        (c.courses || []).some((n) => (n || '').toLowerCase().includes(kw)))
-    },
-    termOptions() {
-      return [
-        { value: '', label: '当前已发布批次' },
-        ...this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期` }))
-      ]
+      slots: [], items: [], note: '', loading: false, error: ''
     }
   },
   created() {
-    this.loadTerms()
     this.loadSlots()
-    this.loadTeachingClasses()
     if (this.teachingClassCode) this.load()
   },
   methods: {
-    async loadTeachingClasses() {
-      this.listLoading = true
-      this.listError = ''
-      const res = await academicAffairsOrgApi.listTeachingClasses({ page: 1, pageSize: 200 })
-      this.listLoading = false
-      if (res.code === 0) this.teachingClasses = res.data.list || []
-      else this.listError = res.message
-    },
-    pick(c) {
-      this.teachingClassCode = c.teachingClassCode
-      this.teachingClassName = c.teachingClassName
+    onTeachingClassChange(value, items) {
+      const item = items?.[0]
+      const row = item?.raw || item || {}
+      this.teachingClassName = row.teachingClassName || row.className || item?.label || ''
+      if (!value) return
       this.$router.replace(`/admin/academic-affairs/schedule/teaching-class/${encodeURIComponent(this.teachingClassCode)}`).catch(() => {})
       this.load()
     },
     onItemClick(it) {
       toast.success(`${it.courseName || ''} · ${it.teacherName || ''} · ${it.classroom || ''} · ${it.startWeek}-${it.endWeek}周`)
-    },
-    async loadTerms() {
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) this.terms = res.data.list
     },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()

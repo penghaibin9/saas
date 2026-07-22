@@ -43,19 +43,19 @@
     <AppDrawer :visible="dlg.visible" title="发起调宿" @close="dlg.visible = false">
       <div class="dr-form">
         <AppFormItem label="调宿学生" required>
-          <AppStudentPicker v-model="dlg.studentId" :remote-search="searchStudents"
+          <AppStudentPicker v-model="dlg.studentId"
                             placeholder="按姓名 / 学号搜索" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="目标楼栋" required>
-          <AppSelect v-model="dlg.buildingId" :options="buildingOptions" placeholder="选择楼栋"
+          <AppDormBuildingPicker v-model="dlg.buildingId" :options="buildingOptions" placeholder="选择楼栋"
                      :disabled="actioning" @change="onBuildingChange" />
         </AppFormItem>
         <AppFormItem label="目标房间" required>
-          <AppSelect v-model="dlg.roomId" :options="roomOptions" :disabled="actioning || !dlg.buildingId"
+          <AppDormRoomPicker v-model="dlg.roomId" :options="roomOptions" :query="{ buildingId: dlg.buildingId }" :disabled="actioning || !dlg.buildingId"
                      :placeholder="dlg.buildingId ? '选择房间' : '请先选楼栋'" @change="onRoomChange" />
         </AppFormItem>
         <AppFormItem label="目标床位（仅列空床）" required>
-          <AppSelect v-model="dlg.toBedId" :options="bedOptions" :disabled="actioning || !dlg.roomId"
+          <AppDormBedPicker v-model="dlg.toBedId" :options="bedOptions" :query="{ roomId: dlg.roomId, vacantOnly: true }" :disabled="actioning || !dlg.roomId"
                      :placeholder="bedPlaceholder" />
         </AppFormItem>
         <AppFormItem label="调宿事由">
@@ -83,7 +83,7 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-  AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea
+  AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker, AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
@@ -102,7 +102,7 @@ export default {
   name: 'DormTransferView',
   components: {
     AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-    AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea, DataTable
+    AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker, AppTextarea, DataTable
   },
   data() {
     return {
@@ -156,7 +156,6 @@ export default {
       try { this.buildings = (await studentAffairsApi.listDormBuildings({ pageSize: 200 })).data.items || [] }
       catch { this.buildings = [] }
     },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     /* ── 发起调宿：学生选择器 + 楼栋/房间/床位三级联动 ── */
     submitTransfer() {
       this.dlg = { visible: true, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' }

@@ -1,3 +1,12 @@
+export const STUDENT_AFFAIRS_OVERVIEW_DOC = {
+  id: 'doc-sa-overview',
+  title: '学工中心操作总览（老师一眼通）',
+  module: '学工中心 · 老师一眼通',
+  keywords: ['学工中心', '学工流程', '辅导员', '老师一眼通', '操作总览', '业务流程导图', '三级模块', '沙箱示例'],
+  summary: '按学工处、学院学工、辅导员、宿管、心理老师和学生六类角色，串起7段业务主线、14个二级模块与88个三级入口；点击模块即可查看准确流程、有效示例数据、状态变化和每个三级入口的使用方法。',
+  embed: '/help/student-affairs-flow-guide.html'
+}
+
 /**
  * 学工中心 · 模块页面级功能帮助（PC-HELP-CENTER）。
  *

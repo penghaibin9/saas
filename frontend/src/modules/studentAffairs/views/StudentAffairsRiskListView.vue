@@ -78,7 +78,7 @@
     <AppDrawer :visible="createDlg.visible" title="新建风险记录" @close="createDlg.visible = false">
       <div class="sa-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="createDlg.studentId" :remote-search="searchStudents"
+          <AppStudentPicker v-model="createDlg.studentId"
                             placeholder="按姓名 / 学号搜索" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="风险等级" required>
@@ -104,7 +104,7 @@
       :submitting="actioning" @confirm="submitAssign"
     >
       <AppFormItem label="责任人" required>
-        <AppTeacherPicker v-model="assignDlg.ownerId" :remote-search="searchRiskOwners"
+        <AppRiskOwnerPicker v-model="assignDlg.ownerId"
                           placeholder="按姓名 / 工号搜索"
                           data-scope-hint="仅可选持学工风险处置角色的在职账号" />
       </AppFormItem>
@@ -133,7 +133,7 @@ import {
   AppSelect,
   AppStatusTag,
   AppStudentPicker,
-  AppTeacherPicker,
+  AppRiskOwnerPicker,
   AppTextInput,
   AppTextarea
 } from '@/components/common'
@@ -197,7 +197,7 @@ export default {
     AppRiskTag,
     AppSelect,
     AppStudentPicker,
-    AppTeacherPicker,
+    AppRiskOwnerPicker,
     AppTextInput,
     AppTextarea,
     AppSectionCard,
@@ -281,12 +281,6 @@ export default {
     reload() {
       this.scanResult = ''
       this.load()
-    },
-    searchStudents(keyword) {
-      return studentAffairsApi.searchStudents(keyword)
-    },
-    searchRiskOwners(keyword) {
-      return studentAffairsApi.searchRiskOwners(keyword)
     },
     createRisk() {
       this.createDlg = { visible: true, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' }

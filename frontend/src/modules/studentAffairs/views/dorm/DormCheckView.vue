@@ -61,7 +61,7 @@
           <AppSelect v-model="taskDlg.checkType" :options="CHECK_TYPES" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="检查楼栋">
-          <AppSelect v-model="taskDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋（全校）" clearable :disabled="actioning" />
+          <AppDormBuildingPicker v-model="taskDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋（全校）" clearable :disabled="actioning" />
         </AppFormItem>
         <p class="dr-hint">绑定楼栋后，录结果时可直接下拉选房间；不绑则录结果时再选楼栋。</p>
         <AppInlineAlert v-if="taskDlg.error" type="danger" :description="taskDlg.error" />
@@ -76,12 +76,12 @@
     <AppDrawer :visible="recDlg.visible" :title="`录检查结果 · ${recDlg.taskName}`" @close="recDlg.visible = false">
       <div class="dr-form">
         <AppFormItem label="楼栋">
-          <AppSelect v-model="recDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋"
+          <AppDormBuildingPicker v-model="recDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋"
                      clearable :disabled="actioning || recDlg.buildingLocked" @change="onRecBuildingChange" />
           <p v-if="recDlg.buildingLocked" class="dr-hint">本任务已绑定该楼栋，不可更改。</p>
         </AppFormItem>
         <AppFormItem label="房间">
-          <AppSelect v-model="recDlg.roomId" :options="roomOptions" clearable :disabled="actioning || !recDlg.buildingId"
+          <AppDormRoomPicker v-model="recDlg.roomId" :options="roomOptions" :query="{ buildingId: recDlg.buildingId }" clearable :disabled="actioning || !recDlg.buildingId"
                      :placeholder="recDlg.buildingId ? '选择房间（可空）' : '请先选楼栋'" />
         </AppFormItem>
         <AppFormItem label="检查结果" required>
@@ -94,7 +94,7 @@
             <AppQuickPhrases scene-key="sa.dorm.exception" :group="recDlg.checkType" @pick="onPickDetail" />
           </AppFormItem>
           <AppFormItem :label="needStudent ? '涉事学生（夜不归宿必填）' : '涉事学生（可空；填则自动建风险单）'" :required="needStudent">
-            <AppStudentPicker v-model="recDlg.studentId" :remote-search="searchStudents"
+            <AppStudentPicker v-model="recDlg.studentId"
                               placeholder="按姓名 / 学号搜索" :disabled="actioning" />
           </AppFormItem>
         </template>
@@ -111,7 +111,7 @@
 <script>
 import {
   AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea
+  AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
@@ -149,7 +149,7 @@ export default {
   name: 'DormCheckView',
   components: {
     AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput, AppTextarea, DataTable
+    AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea, DataTable
   },
   data() {
     return {
@@ -199,7 +199,6 @@ export default {
       try { this.records = (await studentAffairsApi.listDormCheckRecords(t.taskId)).data.items || [] }
       catch (e) { this.errorMessage = e.message }
     },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     /* ── 新建任务 ── */
     createTask() {
       this.taskDlg = { visible: true, taskName: '', checkType: 'HYGIENE', buildingId: '', error: '' }

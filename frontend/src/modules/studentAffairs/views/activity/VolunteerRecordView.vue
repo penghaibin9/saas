@@ -17,7 +17,7 @@
 
       <AppSectionCard v-if="formVisible" title="补录志愿时长">
         <div class="vf-grid">
-          <div class="vf-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" :remote-search="searchStudents" placeholder="按姓名 / 学号搜索学生" /></div>
+          <div class="vf-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="vf-field"><span>服务名称 *</span><AppTextInput v-model="form.serviceName" placeholder="如：社区图书整理" /></label>
           <label class="vf-field"><span>时长(小时) *</span><AppNumberInput v-model="form.hours" :min="0" :step="0.5" /></label>
           <label class="vf-field"><span>服务单位</span><AppTextInput v-model="form.orgName" placeholder="如：社区服务中心" /></label>
@@ -119,7 +119,6 @@ export default {
   mounted() { this.load() },
   methods: {
     blankForm() { return { studentId: '', serviceName: '', hours: null, orgName: '', serviceDate: '', error: '' } },
-    searchStudents(keyword) { return studentAffairsApi.searchStudents(keyword) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getVolunteerRecords({ pageSize: 300 })

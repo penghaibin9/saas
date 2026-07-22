@@ -56,14 +56,8 @@
         <AppInlineAlert v-if="scanResult" type="success" :message="scanResultText" />
       </div>
       <div class="aa-filter">
-        <select v-model="catFilters.level" class="aa-select" @change="loadList">
-          <option value="">全部级别</option>
-          <option v-for="(l, v) in WARNING_LEVEL" :key="v" :value="v">{{ l }}</option>
-        </select>
-        <select v-model="catFilters.status" class="aa-select" @change="loadList">
-          <option value="">全部状态</option>
-          <option v-for="(l, v) in WARNING_STATUS" :key="v" :value="v">{{ l }}</option>
-        </select>
+        <AppSelect v-model="catFilters.level" :options="warningLevelOptions" placeholder="全部级别" @change="loadList" />
+        <AppSelect v-model="catFilters.status" :options="warningStatusOptions" placeholder="全部状态" @change="loadList" />
       </div>
       <ErrorState v-if="listError" :description="listError" @retry="loadList" />
       <LoadingState v-else-if="listLoading" />
@@ -97,14 +91,8 @@
     <!-- 预警跟进 -->
     <div v-else-if="tab === 'followup'" class="mp-stack">
       <div class="aa-filter">
-        <select v-model="followFilters.status" class="aa-select" @change="loadFollowList">
-          <option value="">全部状态</option>
-          <option v-for="(l, v) in WARNING_STATUS" :key="v" :value="v">{{ l }}</option>
-        </select>
-        <select v-model="followFilters.sourceCode" class="aa-select" @change="loadFollowList">
-          <option value="">全部来源</option>
-          <option v-for="(l, v) in WARNING_SOURCE" :key="v" :value="v">{{ l }}</option>
-        </select>
+        <AppSelect v-model="followFilters.status" :options="warningStatusOptions" placeholder="全部状态" @change="loadFollowList" />
+        <AppSelect v-model="followFilters.sourceCode" :options="warningSourceOptions" placeholder="全部来源" @change="loadFollowList" />
       </div>
       <ErrorState v-if="listError" :description="listError" @retry="loadFollowList" />
       <LoadingState v-else-if="listLoading" />
@@ -155,8 +143,7 @@
       </AppDrawer>
 
       <AppDrawer :visible="assignVisible" title="指派跟进人" @close="assignVisible = false">
-        <AppFormItem label="跟进人姓名" required><AppTextInput v-model="assignForm.ownerName" placeholder="如 王老师" :disabled="acting" /></AppFormItem>
-        <AppFormItem label="跟进人用户ID（可选）"><AppTextInput v-model="assignForm.ownerId" placeholder="用于生成对方工作台待办" :disabled="acting" /></AppFormItem>
+        <AppFormItem label="跟进人" required><AppTeacherPicker v-model="assignForm.ownerId" placeholder="选择跟进教师" :disabled="acting" @change="onOwnerPicked" /></AppFormItem>
         <template #footer>
           <AppButton variant="ghost" :disabled="acting" @click="assignVisible = false">取消</AppButton>
           <AppButton variant="primary" :loading="acting" @click="submitAssign">确认指派</AppButton>
@@ -243,7 +230,7 @@
  * 「预警扫描与列表」单页（AaWarningView.vue，/admin/academic-affairs/warnings）保持不变，两页并存、数据同源（t_acad_warning）。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases, AppDescriptionList } from '@/components/common'
+import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases, AppDescriptionList, AppTeacherPicker } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi, academicAffairsWarningApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -266,7 +253,7 @@ export default {
   name: 'AaWarningConsoleView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag, RiskTag, AppInlineAlert,
-    AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases,
+    AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases, AppTeacherPicker,
     AppDescriptionList, AppButton, AppDrawer
   },
   data() {
@@ -321,6 +308,9 @@ export default {
     }
   },
   computed: {
+    warningLevelOptions() { return Object.entries(WARNING_LEVEL).map(([value, label]) => ({ value, label })) },
+    warningStatusOptions() { return Object.entries(WARNING_STATUS).map(([value, label]) => ({ value, label })) },
+    warningSourceOptions() { return Object.entries(WARNING_SOURCE).map(([value, label]) => ({ value, label })) },
     category() { return CATEGORY_BY_TAB[this.tab] || null },
     dashboardSources() { return this.summary.bySource },
     scanResultText() {
@@ -357,6 +347,10 @@ export default {
     this.enter()
   },
   methods: {
+    onOwnerPicked(value, items) {
+      this.assignForm.ownerId = value || ''
+      this.assignForm.ownerName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
+    },
     warningStatusColor,
     onPickFollow(text) {
       const el = this.$refs.followInput && this.$refs.followInput.$refs.el

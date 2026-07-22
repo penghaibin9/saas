@@ -297,11 +297,11 @@
 
       <!-- ========== 第六组：高校业务选择器 ========== -->
       <details class="g-group" open>
-        <summary class="g-group__sum">第六组 · 高校业务选择器（15，全部 partial · 未接后端）</summary>
+        <summary class="g-group__sum">第六组 · 高校业务选择器（42，统一适配器已接入教务与学工中心）</summary>
         <div class="cmp cmp--full">
           <p class="cmp__ctx">
-            <span class="g-tag g-tag--partial">partial</span>
-            统一 UI 与调用规范：本地 options / 远程搜索预留 / 单选多选 / 数据范围提示。
+            <span class="g-tag g-tag--ok">implemented</span>
+            统一 UI、搜索、编辑回显与数据适配：业务页只声明实体类型和上下文 query，不再各写搜索函数。
             <strong>可见的师生 / 组织 / 批次必须由后端按数据范围返回，前端不放大范围。</strong>
           </p>
           <AppResponsiveGrid class="cmp__demo" :min-col-width="230">
@@ -317,6 +317,33 @@
             <div><label class="fld">企业 AppCompanyPicker</label><AppCompanyPicker v-model="pk.company" :options="companyOptions" /></div>
             <div><label class="fld">岗位 AppPositionPicker</label><AppPositionPicker v-model="pk.position" :options="positionOptions" /></div>
             <div><label class="fld">批次 AppBatchPicker</label><AppBatchPicker v-model="pk.batch" :options="batchOptions" /></div>
+            <div><label class="fld">业务学期 AppTermEntityPicker</label><AppTermEntityPicker v-model="pk.termEntity" :options="termEntityOptions" /></div>
+            <div><label class="fld">学期码 AppTermCodePicker</label><AppTermCodePicker v-model="pk.termCode" :options="termCodeOptions" /></div>
+            <div><label class="fld">教学任务 AppTeachingTaskPicker</label><AppTeachingTaskPicker v-model="pk.teachingTask" :options="taskOptions" /></div>
+            <div><label class="fld">教学班 AppTeachingClassPicker</label><AppTeachingClassPicker v-model="pk.teachingClass" :options="classOptions" /></div>
+            <div><label class="fld">教室 AppClassroomPicker</label><AppClassroomPicker v-model="pk.classroom" :options="roomOptions" /></div>
+            <div><label class="fld">实训室 AppLabPicker</label><AppLabPicker v-model="pk.lab" :options="labOptions" /></div>
+            <div><label class="fld">设备 AppEquipmentPicker</label><AppEquipmentPicker v-model="pk.equipment" :options="equipmentOptions" /></div>
+            <div><label class="fld">节次 AppTimeSlotPicker</label><AppTimeSlotPicker v-model="pk.timeSlot" :options="timeSlotOptions" /></div>
+            <div><label class="fld">课表批次 AppScheduleBatchPicker</label><AppScheduleBatchPicker v-model="pk.scheduleBatch" :options="batchOptions" /></div>
+            <div><label class="fld">成绩任务 AppGradeTaskPicker</label><AppGradeTaskPicker v-model="pk.gradeTask" :options="taskOptions" /></div>
+            <div><label class="fld">成绩记录 AppGradeRecordPicker</label><AppGradeRecordPicker v-model="pk.gradeRecord" :options="studentGradeOptions" /></div>
+            <div><label class="fld">毕业批次 AppGraduationBatchPicker</label><AppGraduationBatchPicker v-model="pk.graduationBatch" :options="batchOptions" /></div>
+            <div><label class="fld">注册批次 AppRegistrationBatchPicker</label><AppRegistrationBatchPicker v-model="pk.registrationBatch" :options="batchOptions" /></div>
+            <div><label class="fld">考试批次 AppExamBatchPicker</label><AppExamBatchPicker v-model="pk.examBatch" :options="batchOptions" /></div>
+            <div><label class="fld">培养方案 AppProgramPicker</label><AppProgramPicker v-model="pk.program" :options="programOptions" /></div>
+            <div><label class="fld">选课批次 AppSelectionBatchPicker</label><AppSelectionBatchPicker v-model="pk.selectionBatch" :options="batchOptions" /></div>
+            <div><label class="fld">补考批次 AppMakeupBatchPicker</label><AppMakeupBatchPicker v-model="pk.makeupBatch" :options="batchOptions" /></div>
+            <div><label class="fld">归档批次 AppArchiveBatchPicker</label><AppArchiveBatchPicker v-model="pk.archiveBatch" :options="batchOptions" /></div>
+            <div><label class="fld">风险责任人 AppRiskOwnerPicker</label><AppRiskOwnerPicker v-model="pk.riskOwner" :options="riskOwnerOptions" /></div>
+            <div><label class="fld">困难认定批次 AppAidBatchPicker</label><AppAidBatchPicker v-model="pk.aidBatch" :options="aidBatchOptions" /></div>
+            <div><label class="fld">资助项目 AppFundingProjectPicker</label><AppFundingProjectPicker v-model="pk.fundingProject" :options="fundingProjectOptions" /></div>
+            <div><label class="fld">资助批次 AppFundingBatchPicker</label><AppFundingBatchPicker v-model="pk.fundingBatch" :options="fundingBatchOptions" /></div>
+            <div><label class="fld">学生归档批次 AppStudentArchiveBatchPicker</label><AppStudentArchiveBatchPicker v-model="pk.studentArchiveBatch" :options="studentArchiveBatchOptions" /></div>
+            <div><label class="fld">辅导员考评周期 AppCounselorAssessmentPeriodPicker</label><AppCounselorAssessmentPeriodPicker v-model="pk.assessmentPeriod" :options="assessmentPeriodOptions" /></div>
+            <div><label class="fld">宿舍楼栋 AppDormBuildingPicker</label><AppDormBuildingPicker v-model="pk.dormBuilding" :options="dormBuildingOptions" /></div>
+            <div><label class="fld">宿舍房间 AppDormRoomPicker</label><AppDormRoomPicker v-model="pk.dormRoom" :options="dormRoomOptions" /></div>
+            <div><label class="fld">宿舍床位 AppDormBedPicker</label><AppDormBedPicker v-model="pk.dormBed" :options="dormBedOptions" /></div>
             <div><label class="fld">学年 AppAcademicYearPicker</label><AppAcademicYearPicker v-model="pk.year" /></div>
             <div><label class="fld">学期 AppTermPicker</label><AppTermPicker v-model="pk.term" /></div>
             <div class="span2"><label class="fld">组织级联 AppOrgCascader（学院→专业→班级）</label><AppOrgCascader v-model="pk.org" :data="orgTree" /></div>
@@ -511,10 +538,11 @@
           </div>
 
           <div class="cmp cmp--wide">
-            <div class="cmp__head"><span class="cmp__name">日期组件族（AppDatePicker / RangePicker / DeadlinePicker）</span></div>
+            <div class="cmp__head"><span class="cmp__name">日期时间组件族（AppDatePicker / AppTimePicker / RangePicker / DeadlinePicker）</span></div>
             <p class="cmp__ctx">公共日期底座。</p>
             <AppResponsiveGrid class="cmp__demo" :min-col-width="200">
               <div><label class="fld">日期</label><AppDatePicker v-model="date1" /></div>
+              <div><label class="fld">时间</label><AppTimePicker v-model="time1" /></div>
               <div><label class="fld">日期范围</label><AppDateRangePicker v-model="dateRange" /></div>
               <div><label class="fld">截止时间</label><AppDeadlinePicker v-model="deadline" /></div>
             </AppResponsiveGrid>
@@ -546,10 +574,16 @@ import {
   AppStudentPicker, AppTeacherPicker, AppMentorPicker, AppClassPicker, AppMajorPicker,
   AppCollegePicker, AppCoursePicker, AppRolePicker, AppTenantPicker, AppCompanyPicker,
   AppPositionPicker, AppBatchPicker, AppOrgCascader, AppAcademicYearPicker, AppTermPicker,
+  AppTermEntityPicker, AppTermCodePicker, AppTeachingTaskPicker, AppTeachingClassPicker,
+  AppClassroomPicker, AppLabPicker, AppEquipmentPicker, AppTimeSlotPicker, AppScheduleBatchPicker, AppGradeTaskPicker, AppGradeRecordPicker,
+  AppGraduationBatchPicker, AppRegistrationBatchPicker, AppExamBatchPicker, AppProgramPicker,
+  AppSelectionBatchPicker, AppMakeupBatchPicker, AppArchiveBatchPicker,
+  AppRiskOwnerPicker, AppAidBatchPicker, AppFundingProjectPicker, AppFundingBatchPicker,
+  AppStudentArchiveBatchPicker, AppCounselorAssessmentPeriodPicker, AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker,
   AppPagination, AppSearchBox, AppQuickFilterChips, AppProgressBar, AppDescriptionList,
   AppOperationResult, AppColumnConfig, AppChartCard, AppWatermark, AppPrintButton,
   AppAvatarGroup, AppStepGuide, AppKeyboardShortcut, AppQRCode,
-  AppDatePicker, AppDateRangePicker, AppDeadlinePicker
+  AppDatePicker, AppTimePicker, AppDateRangePicker, AppDeadlinePicker
 } from '@/components/common'
 import { AppBadge, AppButton } from '@/components/ui'
 import { toast } from '@/utils/toast'
@@ -570,10 +604,16 @@ export default {
     AppStudentPicker, AppTeacherPicker, AppMentorPicker, AppClassPicker, AppMajorPicker,
     AppCollegePicker, AppCoursePicker, AppRolePicker, AppTenantPicker, AppCompanyPicker,
     AppPositionPicker, AppBatchPicker, AppOrgCascader, AppAcademicYearPicker, AppTermPicker,
+    AppTermEntityPicker, AppTermCodePicker, AppTeachingTaskPicker, AppTeachingClassPicker,
+    AppClassroomPicker, AppLabPicker, AppEquipmentPicker, AppTimeSlotPicker, AppScheduleBatchPicker, AppGradeTaskPicker, AppGradeRecordPicker,
+    AppGraduationBatchPicker, AppRegistrationBatchPicker, AppExamBatchPicker, AppProgramPicker,
+    AppSelectionBatchPicker, AppMakeupBatchPicker, AppArchiveBatchPicker,
+    AppRiskOwnerPicker, AppAidBatchPicker, AppFundingProjectPicker, AppFundingBatchPicker,
+    AppStudentArchiveBatchPicker, AppCounselorAssessmentPeriodPicker, AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker,
     AppPagination, AppSearchBox, AppQuickFilterChips, AppProgressBar, AppDescriptionList,
     AppOperationResult, AppColumnConfig, AppChartCard, AppWatermark, AppPrintButton,
     AppAvatarGroup, AppStepGuide, AppKeyboardShortcut, AppQRCode,
-    AppDatePicker, AppDateRangePicker, AppDeadlinePicker
+    AppDatePicker, AppTimePicker, AppDateRangePicker, AppDeadlinePicker
   },
   data() {
     return {
@@ -582,13 +622,31 @@ export default {
       batchCount: 0,
       formBusy: false,
       page: 1, quick: '', search: '',
-      date1: '', dateRange: [], deadline: '',
+      date1: '', time1: '', dateRange: [], deadline: '',
       formModel: { title: '', credit: 2, type: '', level: '2', tags: [], majors: [], result: '', comment: '', rich: '' },
       formRules: {
         title: [{ required: true, message: '请输入题目名称', min: 4 }],
         result: [{ required: true, message: '请选择审核结论' }]
       },
-      pk: { stu: '', tea: [], mentor: '', klass: '', major: '', college: '', course: '', role: '', tenant: '', company: '', position: '', batch: '', org: [], year: '', term: '' },
+      pk: { stu: '', tea: [], mentor: '', klass: '', major: '', college: '', course: '', role: '', tenant: '', company: '', position: '', batch: '', org: [], year: '', term: '', termEntity: '', termCode: '', teachingTask: '', teachingClass: '', classroom: '', lab: '', equipment: '', timeSlot: '', scheduleBatch: '', gradeTask: '', gradeRecord: '', graduationBatch: '', registrationBatch: '', examBatch: '', program: '', selectionBatch: '', makeupBatch: '', archiveBatch: '', riskOwner: '', aidBatch: '', fundingProject: '', fundingBatch: '', studentArchiveBatch: '', assessmentPeriod: '', dormBuilding: '', dormRoom: '', dormBed: '' },
+      termEntityOptions: [{ label: '2026—2027 第1学期', value: 'term-1' }, { label: '2026—2027 第2学期', value: 'term-2' }],
+      termCodeOptions: [{ label: '2026—2027 第1学期', value: '2026-1' }, { label: '2026—2027 第2学期', value: '2026-2' }],
+      taskOptions: [{ label: '数据结构 · 软件2301 · 陈静', value: 'task-1' }, { label: '操作系统 · 计算机2302 · 赵磊', value: 'task-2' }],
+      roomOptions: [{ label: '实训楼 A301', value: 'room-1' }, { label: '教学楼 B205', value: 'room-2' }],
+      labOptions: [{ label: '网络实训室（48工位）', value: 'lab-1' }, { label: '智能制造实训室（36工位）', value: 'lab-2' }],
+      equipmentOptions: [{ label: '数控车床 · SB-2026-001', value: 'equipment-1' }, { label: '教学投影仪 · SB-2026-002', value: 'equipment-2' }],
+      timeSlotOptions: [{ label: '第 1 节 · 08:00-08:45', value: 'slot-1' }, { label: '第 2 节 · 08:55-09:40', value: 'slot-2' }],
+      riskOwnerOptions: [{ label: '张老师', value: 'owner-1', desc: '心理中心' }, { label: '李老师', value: 'owner-2', desc: '学工处' }],
+      aidBatchOptions: [{ label: '2026 年困难认定批次', value: 'aid-1', desc: '2026-2027 · OPEN' }],
+      fundingProjectOptions: [{ label: '国家励志奖学金', value: 'fund-project-1', desc: 'SCHOLARSHIP · ACTIVE' }],
+      fundingBatchOptions: [{ label: '2026-2027 · 国家励志奖学金', value: 'fund-batch-1', desc: 'OPEN' }],
+      studentArchiveBatchOptions: [{ label: '2026 届学生归档', value: 'archive-1', desc: '2026 · COLLECTING' }],
+      assessmentPeriodOptions: [{ label: '2026 年春季学期考评', value: 'period-1', desc: 'DRAFT' }],
+      dormBuildingOptions: [{ label: '1 号学生公寓', value: 'building-1', desc: '空床 12' }],
+      dormRoomOptions: [{ label: '302 宿舍', value: 'dorm-room-1', desc: '3 层 · 空床 1' }],
+      dormBedOptions: [{ label: '3 号床', value: 'bed-3', desc: '空床' }],
+      studentGradeOptions: [{ label: '李明 · S2026-0001 · 82分', value: 'grade-1' }, { label: '王芳 · S2026-0002 · 91分', value: 'grade-2' }],
+      programOptions: [{ label: '软件技术2026级培养方案', value: 'program-1' }, { label: '大数据技术2026级培养方案', value: 'program-2' }],
       columns: [
         { key: 'no', label: '学号', visible: true, required: true },
         { key: 'name', label: '姓名', visible: true },
@@ -740,6 +798,7 @@ export default {
   border-radius: var(--radius-full); font-size: 11px; font-weight: var(--font-weight-medium); white-space: nowrap;
 }
 .g-tag--partial { background: var(--warning-50); color: var(--warning-700); border: 1px solid var(--warning-100); }
+.g-tag--ok { background: var(--success-50); color: var(--success-700); border: 1px solid var(--success-100); }
 .g-tag--backend { background: var(--info-50); color: var(--info-700); border: 1px solid var(--info-100); }
 .g-tag--alias { background: var(--gray-100); color: var(--text-secondary); border: 1px solid var(--border-light); }
 /* 分组 */

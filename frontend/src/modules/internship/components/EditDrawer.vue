@@ -5,10 +5,13 @@
         <span class="ed__label">
           {{ f.label }}<span v-if="f.required" class="ed__required">*</span>
         </span>
-        <select v-if="f.type === 'select'" v-model="form[f.key]" class="ed__control" :disabled="f.disabled">
-          <option value="">请选择</option>
-          <option v-for="o in f.options || []" :key="o.value" :value="o.value">{{ o.label }}</option>
-        </select>
+        <AppSelect v-if="f.type === 'select'" v-model="form[f.key]" :options="f.options || []" :disabled="f.disabled" />
+        <AppDatePicker
+          v-else-if="f.type === 'date'"
+          v-model="form[f.key]"
+          :disabled="f.disabled"
+          :placeholder="f.placeholder || '请选择日期'"
+        />
         <textarea
           v-else-if="f.type === 'textarea'"
           v-model="form[f.key]"
@@ -21,7 +24,7 @@
           v-else
           v-model="form[f.key]"
           class="ed__control"
-          :type="f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'"
+          :type="f.type === 'number' ? 'number' : 'text'"
           :placeholder="f.placeholder || '请输入'"
           :disabled="f.disabled"
         />
@@ -48,10 +51,11 @@
  * Emits: submit(formData)
  */
 import { AppDrawer, AppButton } from '@/components/ui'
+import { AppDatePicker, AppSelect } from '@/components/common'
 
 export default {
   name: 'EditDrawer',
-  components: { AppDrawer, AppButton },
+  components: { AppDrawer, AppButton, AppDatePicker, AppSelect },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },

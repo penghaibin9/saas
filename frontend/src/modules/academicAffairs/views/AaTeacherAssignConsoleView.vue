@@ -47,8 +47,7 @@
       @confirm="doAssign"
     >
       <div class="aa-assign-form">
-        <label>教师姓名<input v-model.trim="assign.teacherName" class="aa-input" placeholder="必填" /></label>
-        <label>教师工号/账号<input v-model.trim="assign.teacherKey" class="aa-input" placeholder="选填，用于教师本人在移动端确认" /></label>
+        <label>任课教师<AppTeacherPicker v-model="assign.teacherKey" placeholder="选择任课教师" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="assign.weeklyHours" type="number" min="0" class="aa-input" /></label>
         <label>预计人数<input v-model.number="assign.expectedStudents" type="number" min="0" class="aa-input" /></label>
       </div>
@@ -63,14 +62,14 @@
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog, AppSelect } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppSelect, AppTeacherPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeacherAssignConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppSelect, AppTeacherPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -96,6 +95,10 @@ export default {
   },
   created() { this.load() },
   methods: {
+    onTeacherPicked(value, items) {
+      this.assign.teacherKey = value || ''
+      this.assign.teacherName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
+    },
     taskColor,
     statusLabel(s) { return TASK_STATUS[s] || s || '' },
     onPageChange(p) { this.pagination.page = p; this.load() },

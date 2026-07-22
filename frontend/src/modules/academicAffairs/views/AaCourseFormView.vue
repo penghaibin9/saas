@@ -44,7 +44,7 @@
           <AppCollegePicker v-model="form.ownerCollegeId" :options="collegeOptions" clearable />
         </AppFormItem>
         <AppFormItem label="课程负责人" hint="须为本校在职教师">
-          <AppTeacherPicker v-model="form.ownerTeacherId" :remote-search="searchTeachers" clearable />
+          <AppTeacherPicker v-model="form.ownerTeacherId" clearable />
         </AppFormItem>
         <AppFormItem label="先修课程编码">
           <AppTextInput v-model="prereqText" placeholder="多个用逗号分隔" />
@@ -74,7 +74,7 @@
 <script>
 /** 课程新建/编辑（/admin/academic-affairs/courses/new | /:id/edit）：POST/PUT /academic-affairs/courses。
  * Tier1「新增课程/课程负责人」续工：补齐开课单位/课程负责人/课程简介/适用专业(全校通用)字段，
- * 复用 AppTeacherPicker（远程搜索真实在职教师）/ AppCollegePicker/AppMajorPicker（本校启用学院专业，静态选项）。 */
+ * 复用接入统一适配器的 AppTeacherPicker / AppCollegePicker / AppMajorPicker。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
@@ -119,10 +119,6 @@ export default {
   methods: {
     goBack() {
       this.$router.push(this.isEdit ? `/admin/academic-affairs/courses/${this.courseId}` : '/admin/academic-affairs/courses')
-    },
-    async searchTeachers(keyword) {
-      const res = await academicAffairsApi.searchCourseTeachers(keyword)
-      return res.code === 0 ? (res.data.items || []) : []
     },
     async loadOrgOptions() {
       const [colRes, majRes] = await Promise.all([

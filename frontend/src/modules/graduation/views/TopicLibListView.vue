@@ -350,7 +350,7 @@ export default {
       loading: true, error: '', submitting: false, activePanel: 'list',
       panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      batchOpts: [], categoryStats: [], libStats: null,
+      categoryStats: [], libStats: null,
       importVisible: false,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, payload: null }
     }
@@ -410,11 +410,10 @@ export default {
           { key: 'action', label: '操作类型', type: 'select', options: HISTORY_ACTIONS }
         ]
       }
-      const batchOpts = this.batchOpts.map((b) => ({ value: b.id, label: b.batchName }))
       const catOpts = [{ value: '', label: '全部' }, ...GD_TOPIC_CATEGORY.map((c) => ({ value: c, label: c })), { value: '__uncat__', label: '未分类' }]
       const base = [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '题目 / 教师 / 企业' },
-        { key: 'batchId', label: '批次', type: 'select', options: batchOpts }
+        { key: 'batchId', label: '批次', type: 'graduation-batch' }
       ]
       if (this.activePanel === 'category') {
         return [...base, { key: 'category', label: '分类', type: 'select', options: catOpts }]
@@ -524,9 +523,6 @@ export default {
       }
     }
   },
-  created() {
-    this.loadBatchOpts()
-  },
   methods: {
     truncate(s, n) {
       if (!s) return ''
@@ -571,10 +567,6 @@ export default {
       }
       this.page = 1
       this.load()
-    },
-    async loadBatchOpts() {
-      const b = await gdTopicApi.getBatchOptions()
-      if (b.code === 0) this.batchOpts = b.data
     },
     buildParams() {
       if (this.isHistoryPanel) {

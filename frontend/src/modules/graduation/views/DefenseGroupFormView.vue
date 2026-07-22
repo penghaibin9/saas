@@ -12,10 +12,10 @@
       </label>
       <AppDateTimePicker v-model="form.defenseDate" class="ie-fld" label="答辩时间" hint="建议提前一周排期" />
       <label class="ie-fld"><span class="ie-lbl">答辩地点</span><input v-model.trim="form.location" class="ie-in" placeholder="如 实训楼 A301" /></label>
-      <div class="ie-fld"><span class="ie-lbl">答辩组长（副高+）</span><AppMentorPicker v-model="form.chair" :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索组长" /></div>
-      <div class="ie-fld"><span class="ie-lbl">答辩秘书</span><AppMentorPicker v-model="form.secretary" :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索秘书" /></div>
+      <div class="ie-fld"><span class="ie-lbl">答辩组长（副高+）</span><AppGraduationMentorPicker v-model="form.chair" placeholder="按姓名 / 工号搜索组长" /></div>
+      <div class="ie-fld"><span class="ie-lbl">答辩秘书</span><AppGraduationMentorPicker v-model="form.secretary" placeholder="按姓名 / 工号搜索秘书" /></div>
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">评委名单（建议≥5人，可搜索添加）</span>
-        <AppMentorPicker v-model="memberList" multiple :remote-search="searchTeachers" placeholder="按姓名 / 工号搜索并添加评委" />
+        <AppGraduationMentorPicker v-model="memberList" multiple placeholder="按姓名 / 工号搜索并添加评委" />
       </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -63,8 +63,7 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { EmptyState } from '@/components/business'
 import { AppDateTimePicker } from '@/components/common/date'
-import { AppMentorPicker, AppTemplateChips } from '@/components/common'
-import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
+import { AppGraduationMentorPicker, AppTemplateChips } from '@/components/common'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { toast } from '@/utils/toast'
 import { toDateTimeInputValue, addDays } from '@/utils/dateUtils'
@@ -73,7 +72,7 @@ const GROUP_NAME_CHIPS = ['答辩第1组', '答辩第2组', '答辩第3组', '�
 
 export default {
   name: 'DefenseGroupFormView',
-  components: { GraduationFormPageShell, AppDateTimePicker, EmptyState, AppMentorPicker, AppTemplateChips },
+  components: { GraduationFormPageShell, AppDateTimePicker, EmptyState, AppGraduationMentorPicker, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -121,12 +120,6 @@ export default {
     }
   },
   methods: {
-    /** 教师远程搜索（导师库真实接口，按姓名/工号；回避与资格由后端发布校验兜底） */
-    async searchTeachers(keyword) {
-      const res = await graduationMentorApi.getMentors({ keyword, pageSize: 20 })
-      if (res.code !== 0) throw new Error(res.message || "搜索失败")
-      return res.data.list.map((m) => ({ label: m.teacherName + "（" + (m.capacityText || m.collegeName || "教师") + "）", value: m.teacherName }))
-    },
     _members() {
       return (this.form.membersText || '').split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
     },

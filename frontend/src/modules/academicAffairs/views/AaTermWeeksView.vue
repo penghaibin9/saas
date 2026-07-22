@@ -9,7 +9,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <AppSelect v-model="termId" :options="termOptions" @change="loadWeeks" />
+          <AppTermEntityPicker v-model="termId" :options="termOptions" @change="loadWeeks" />
         </label>
       </div>
 
@@ -50,15 +50,16 @@
 /** 学期周次（/admin/academic-affairs/terms/weeks）：GET /terms/{id}/weeks（只读计算，来自学期开学日+教学周数+校历）。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppSelect } from '@/components/common'
+import { AppStatusTag, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapters'
 
 const TYPE_LABEL = { TEACHING: '教学周', EXAM: '考试周', HOLIDAY: '假期', INTERNSHIP: '实习周' }
 const TYPE_COLOR = { TEACHING: 'default', EXAM: 'danger', HOLIDAY: 'success', INTERNSHIP: 'warning' }
 
 export default {
   name: 'AaTermWeeksView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppSelect },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppTermEntityPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -86,22 +87,21 @@ export default {
     }
   },
   created() {
-    this.loadTerms()
+    this.refreshTermCatalog()
   },
   methods: {
     typeColor(t) { return TYPE_COLOR[t] || 'default' },
-    async loadTerms() {
+    async refreshTermCatalog() {
       this.termsLoading = true
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) {
-        this.terms = res.data.list
+      try {
+        this.terms = await loadAcademicTermCatalog()
         const cur = this.terms.find((t) => t.isCurrent) || this.terms[0]
         if (cur) {
           this.termId = cur.termId
           this.loadWeeks()
         }
-      } else {
-        this.error = res.message
+      } catch (error) {
+        this.error = error.message || '学期数据加载失败'
       }
       this.termsLoading = false
     },
