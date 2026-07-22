@@ -1,3 +1,66 @@
+export const ACADEMIC_AFFAIRS_RELATIONSHIP_OVERVIEW_DOC = {
+  id: 'doc-aa-relationship-overview',
+  title: '教务中心业务关系全景图（29个模块）',
+  module: '教务中心 · 教师一眼通',
+  keywords: ['教务中心关系图', '教务流程图', '29个模块', '业务全景', '模块关系', '一图看懂'],
+  summary: '按时间底座、学生组织、教学标准、开课运行、考试成绩、风险毕业、支撑质量、归档统计八个阶段，看懂29个二级模块之间的数据来源和业务去向。',
+  embed: '/help/academic-affairs-relationship-overview.html'
+}
+
+export const ACADEMIC_AFFAIRS_TEACHING_PREPARATION_MAP_DOC = {
+  id: 'doc-aa-teaching-preparation-map',
+  title: '学期校历、培养方案与教学任务关系图',
+  module: '教务中心 · 教师一眼通',
+  keywords: ['学期校历流程图', '培养方案流程图', '课程库流程图', '教学计划', '教学任务流程图', '开课准备'],
+  summary: '说明学年学期、校历节次、学院专业班级、课程库、培养方案、教学计划和教学任务如何按顺序形成排课前底账。',
+  embed: '/help/academic-affairs-teaching-preparation-map.html'
+}
+
+export const ACADEMIC_AFFAIRS_SCHEDULE_SELECTION_MAP_DOC = {
+  id: 'doc-aa-schedule-selection-map',
+  title: '排课、选课与调停课关系图',
+  module: '教务中心 · 教师一眼通',
+  keywords: ['排课流程图', '选课流程图', '课表流程图', '调停课流程图', '课堂考勤', '教学资源'],
+  summary: '说明教学任务如何通过人工排课或结果导入生成正式课表，选课结果如何进入学生课表，以及发布后调停课、考勤和资源占用如何联动。',
+  embed: '/help/academic-affairs-schedule-selection-map.html'
+}
+
+export const ACADEMIC_AFFAIRS_EXAM_MAP_DOC = {
+  id: 'doc-aa-exam-map',
+  title: '考务组织与考试异常关系图',
+  module: '教务中心 · 教师一眼通',
+  keywords: ['考务流程图', '排考流程图', '考场座位', '监考', '缓考', '缺考', '考试违纪'],
+  summary: '说明考试批次、课程、考场、座位、监考的人工编排和发布校验，以及缺考、违纪、缓考分别进入成绩、处分或补考流程。',
+  embed: '/help/academic-affairs-exam-map.html'
+}
+
+export const ACADEMIC_AFFAIRS_GRADE_WARNING_MAP_DOC = {
+  id: 'doc-aa-grade-warning-map',
+  title: '成绩发布、补考与学业预警关系图',
+  module: '教务中心 · 教师一眼通',
+  keywords: ['成绩流程图', '成绩审核发布', '成绩更正', '补考重修', '学业预警流程图', '挂科'],
+  summary: '说明教师录入、学院审核、教务发布的成绩主线，以及发布后补考重修、成绩复查更正、挂科与学业预警如何分流闭环。',
+  embed: '/help/academic-affairs-grade-warning-map.html'
+}
+
+export const ACADEMIC_AFFAIRS_STUDENT_GRADUATION_MAP_DOC = {
+  id: 'doc-aa-student-graduation-map',
+  title: '学籍注册、异动与毕业资格关系图',
+  module: '教务中心 · 教师一眼通',
+  keywords: ['学籍流程图', '注册流程图', '学籍异动流程图', '专业分流', '毕业资格流程图', '毕业审核'],
+  summary: '说明学生从学籍建档、学期注册、专业分流和正式异动到毕业资格预审、异常修正、学院初审和教务终审的完整关系。',
+  embed: '/help/academic-affairs-student-graduation-map.html'
+}
+
+export const ACADEMIC_AFFAIRS_QUALITY_ARCHIVE_MAP_DOC = {
+  id: 'doc-aa-quality-archive-map',
+  title: '教学保障、质量整改与教务归档关系图',
+  module: '教务中心 · 教师一眼通',
+  keywords: ['教材流程图', '教学资源流程图', '评教流程图', '教学质量整改', '教务归档流程图', '教务统计'],
+  summary: '说明教材和教学资源如何保障开课，评价和教学检查如何形成整改闭环，以及九类教务数据如何完成学期封存、统计下钻与导出。',
+  embed: '/help/academic-affairs-quality-archive-map.html'
+}
+
 /**
  * 教务中心 · 模块页面级功能帮助（PC-HELP-CENTER）。
  *
