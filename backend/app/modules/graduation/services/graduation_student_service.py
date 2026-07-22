@@ -380,6 +380,12 @@ def assign_topic_in_session(db, sid, topic_id, *, relationship_authorized: bool 
         assert_student_access(db, s, "student.assign_topic")
     if s.stage == "ARCHIVED":
         raise AppException("DATA_CONFLICT", "已归档记录不可分配选题")
+    elig = getattr(s, "eligibility_status", None) or "PENDING"
+    if elig == "UNQUALIFIED":
+        raise AppException(
+            "DATA_CONFLICT",
+            f"资格不合格学生不能确认选题（当前：{ELIG_LABEL.get(elig, elig)}）",
+        )
     if s.topic_id == t.id:
         raise AppException("DATA_CONFLICT", "该学生已分配到此选题")
     if t.status == "DISABLED":

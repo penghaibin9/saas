@@ -47,7 +47,11 @@ def _approved_topic(client, h, title, advisor="王老师", capacity=1):
 
 def _gd_student(client, h, no, name):
     sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
-    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+        "status": "QUALIFIED", "reason": "E2E测试认定合格",
+    })
+    return gid
 
 
 def _round_open(client, h, batch_id, name):
@@ -228,6 +232,9 @@ def test_mobile_student_browse_submit_and_request_change(client, auth_headers, d
     t2 = _approved_topic(client, auth_headers, "学生浏览题2", advisor="张导师")
     sid = client.post(STU, headers=auth_headers, json={"studentNo": "S-CHG-M1", "realName": "移动测学生"}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=auth_headers, json={"studentId": sid}).json()["data"]["id"]
+    client.post(f"{GD_STU}/{gid}/eligibility", headers=auth_headers, json={
+        "status": "QUALIFIED", "reason": "E2E测试认定合格",
+    })
     rid = _round_open(client, auth_headers, bid, "移动端轮次")
 
     tok = _stu_token("移动测学生")

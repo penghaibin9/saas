@@ -11,7 +11,11 @@ RD = "/api/v1/graduation/gd-topic-rounds"
 
 def _student(client, h, no, name):
     sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
-    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+        "status": "QUALIFIED", "reason": "E2E测试认定合格",
+    })
+    return gid
 
 
 def _pool_topic(client, h, title, capacity):

@@ -53,7 +53,11 @@ def _role_row(role, member_count: int) -> dict:
 def _user_row(account, roles: list) -> dict:
     status = str(account.status or "").upper()
     return {
-        "id": str(account.id), "userNo": account.login_name, "name": account.real_name,
+        "id": str(account.id),
+        "userNo": account.login_name,
+        "loginName": account.login_name,
+        "name": account.real_name,
+        "realName": account.real_name,
         "orgId": "", "orgName": "未设置", "roles": [r.role_code for r in roles],
         "roleNames": [r.role_name for r in roles], "phone": "", "email": "",
         "status": "ACTIVE" if status == "ACTIVE" else status,

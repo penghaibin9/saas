@@ -25,7 +25,11 @@ def _approved_topic(client, h, title="轮次测试题", capacity=2):
 
 def _gd_student(client, h, no="S-GD-RND-01"):
     sid = client.post(STU, headers=h, json={"studentNo": no, "realName": "轮次测"}).json()["data"]["id"]
-    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+        "status": "QUALIFIED", "reason": "E2E测试认定合格",
+    })
+    return gid
 
 
 def test_round_create_open_submit_match(client, auth_headers, db_mode):
