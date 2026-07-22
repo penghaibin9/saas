@@ -147,8 +147,8 @@ def create_batch(body: dict) -> dict:
             college_scope=body.get("collegeScope"),
             start_date=_parse_dt(body.get("startDate")), end_date=_parse_dt(body.get("endDate")),
             planned_count=int(body.get("plannedCount") or 0),
-            stage_config=body.get("stages") or DEFAULT_STAGES,
-            rules_config=body.get("rules") or DEFAULT_RULES,
+            stage_config=_validate_stages(body.get("stages") or DEFAULT_STAGES),
+            rules_config=_validate_and_merge_rules(None, body.get("rules") or DEFAULT_RULES),
             remark=body.get("remark"), status="DRAFT", archive_status="NOT_ARCHIVED")
         db.add(b)
         db.flush()

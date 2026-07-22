@@ -33,11 +33,40 @@ MP_CANDIDATES = [
 ]
 
 TENANT = "sandbox-school"
-PWD = "E2eTest@2026"
-ADMIN = ("admin2", "123456")
-ACADEMIC = ("e2e_academic_admin", PWD)
-ADVISOR = ("e2e_advisor_a", PWD)
-STUDENT = ("E2E20260001", PWD)
+_CRED_PATH = ROOT / "tmp" / "e2e_graduation_credentials.local.json"
+
+
+def _load_creds():
+    """优先读本地凭证文件；缺失时回退沙箱默认值。"""
+    pwd = "E2eTest@2026"
+    admin = ("admin2", "123456")
+    academic = ("e2e_academic_admin", pwd)
+    advisor = ("e2e_advisor_a", pwd)
+    student = ("E2E20260001", pwd)
+    if _CRED_PATH.exists():
+        try:
+            data = json.loads(_CRED_PATH.read_text(encoding="utf-8"))
+            pwd = str(data.get("password") or pwd)
+            accounts = data.get("accounts") or data
+            if isinstance(accounts, dict):
+                if accounts.get("admin2"):
+                    a = accounts["admin2"]
+                    admin = (a.get("username") or "admin2", a.get("password") or admin[1])
+                if accounts.get("e2e_academic_admin"):
+                    a = accounts["e2e_academic_admin"]
+                    academic = (a.get("username") or academic[0], a.get("password") or pwd)
+                if accounts.get("e2e_advisor_a"):
+                    a = accounts["e2e_advisor_a"]
+                    advisor = (a.get("username") or advisor[0], a.get("password") or pwd)
+                if accounts.get("E2E20260001") or accounts.get("student_a"):
+                    a = accounts.get("E2E20260001") or accounts.get("student_a")
+                    student = (a.get("username") or a.get("studentNo") or student[0], a.get("password") or pwd)
+        except Exception:
+            pass
+    return pwd, admin, academic, advisor, student
+
+
+PWD, ADMIN, ACADEMIC, ADVISOR, STUDENT = _load_creds()
 
 STEPS: list[dict] = []
 

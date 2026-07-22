@@ -203,13 +203,17 @@ def generate_archive(gd_student_id) -> dict:
         return _row(a, stu)
 
 
-def _assert_no_open_risks(db, stu: GraduationStudent) -> None:
-    open_n = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
+def _count_open_risks(db, stu: GraduationStudent) -> int:
+    return int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
         GraduationRiskCase.tenant_id == _tid(),
         GraduationRiskCase.is_deleted.is_(False),
         GraduationRiskCase.gd_student_id == stu.id,
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
     )) or 0)
+
+
+def _assert_no_open_risks(db, stu: GraduationStudent) -> None:
+    open_n = _count_open_risks(db, stu)
     if open_n > 0:
         raise AppException(
             "DATA_CONFLICT",
@@ -310,6 +314,9 @@ def batch_file(archive_batch_no: str = None) -> dict:
             if not stu or not can_access_student(db, stu):
                 skipped += 1
                 continue
+            if _count_open_risks(db, stu) > 0:
+                skipped += 1
+                continue
             checklist, missing = _check_completeness(db, stu)
             a.checklist_json, a.missing_items = checklist, missing
             if missing:
@@ -324,6 +331,8 @@ def batch_file(archive_batch_no: str = None) -> dict:
             if stu.stage != "ARCHIVED":
                 stu.stage = "ARCHIVED"
                 stu.version += 1
+            if getattr(stu, "grad_qual_status", None) not in ("FAIL", "PASS"):
+                stu.grad_qual_status = "PASS"
             _audit(db, a.id, "批量核验归档", detail=batch_no)
             filed += 1
         db.commit()
@@ -342,11 +351,12 @@ def batch_generate_submit() -> dict:
             a = _get_or_create(db, stu, for_update=True)
             if a.status in ("FILED", "SUBMITTED"):
                 continue
+            open_n = _count_open_risks(db, stu)
             checklist, missing = _check_completeness(db, stu)
             a.checklist_json = checklist
             a.missing_items = missing
             a.generated_at = datetime.utcnow()
-            if missing:
+            if missing or open_n > 0:
                 a.status = "PENDING_SUBMIT"
                 skipped += 1
             else:
