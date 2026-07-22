@@ -1,4 +1,4 @@
-﻿"""学生 PC 门户 · 路由聚合（/api/v1/portal/*）。
+"""学生 PC 门户 · 路由聚合（/api/v1/portal/*）。
 
 学生端专用：不挂 require_staff 门禁（与 /mobile 一致），由服务层 _require_student 收口——
 非学生令牌一律 NO_PERMISSION(403001)。家长侧只读入口在后续增量单独挂载。
@@ -187,18 +187,8 @@ def affairs_leave(user=Depends(get_current_user)):
 @router.post("/affairs/leave/{leave_id}/resubmit", summary="退回后本人重新提交请假")
 def affairs_leave_resubmit(leave_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.resubmit(leave_id, user, self_only=True)
-    reason = str((body or {}).get("reason") or "").strip()
-    if reason and len(reason) >= 5:
-        from app.models import CsLeave
-        from app.services.db_service import session as _session
-        with _session() as db:
-            row = db.get(CsLeave, int(leave_id))
-            if row and not row.is_deleted:
-                row.reason = reason
-                row.version = int(row.version or 0) + 1
-                db.commit()
-                result["reason"] = reason
+    reason = str((body or {}).get("reason") or "").strip() or None
+    result = leave_svc.resubmit(leave_id, user, self_only=True, reason=reason)
     return success(result, message="已重新提交，等待辅导员审批")
 
 
@@ -297,7 +287,6 @@ def internship_my(user=Depends(get_current_user)):
 @router.post("/internship/weekly/submit", summary="提交实习周报（本人）")
 def internship_weekly_submit(user=Depends(get_current_user), body: dict = Body(...)):
     return success(internship.weekly_submit(user, body))
-
 
 
 @router.post("/internship/report/submit", summary="提交实习月报/总结长文档（本人）")

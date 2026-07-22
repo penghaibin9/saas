@@ -201,9 +201,14 @@ def create_student(body: dict) -> dict:
         raw_sid = body.get("studentId")
         if raw_sid not in (None, ""):
             try:
-                s.student_id = int(raw_sid)
+                sid_int = int(raw_sid)
             except (TypeError, ValueError):
                 raise AppException("VALIDATION_ERROR", "studentId 须为数字")
+            from app.models import StudentProfile
+            prof = db.get(StudentProfile, sid_int)
+            if not prof or prof.is_deleted or int(prof.tenant_id) != int(_tid()):
+                raise AppException("VALIDATION_ERROR", "studentId 对应学籍不存在或不属于本校")
+            s.student_id = sid_int
         db.add(s)
         db.flush()
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
