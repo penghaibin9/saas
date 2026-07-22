@@ -95,35 +95,27 @@ def main():
     if not admin:
         raise SystemExit("no admin token")
 
-    # ── timeslot overlap regression (Bug fix) ──
-    # create two non-overlap E2E slots far away, then try overlap
-    for no, st, et in [(96, "14:00", "14:45"), (97, "14:55", "15:40")]:
-        r = req("POST", f"{AA}/time-slots", admin, {
-            "slotNo": no, "slotName": f"E2E回归第{no}节", "startTime": st, "endTime": et,
-        })
-        if r.get("code") not in (0, 409) and r.get("bizCode") not in ("DATA_CONFLICT",):
-            # may already exist
-            pass
-    overlap = req("POST", f"{AA}/time-slots", admin, {
-        "slotNo": 98, "slotName": "E2E重叠回归", "startTime": "14:10", "endTime": "14:50",
+    # ── timeslot overlap regression（必须命中「重叠」文案，避免「序号已存在」假阳性）──
+    base_no = 900 + (int(time.time()) % 80)
+    anchor = req("POST", f"{AA}/time-slots", admin, {
+        "slotNo": base_no, "slotName": f"E2E重叠锚点{base_no}", "startTime": "06:10", "endTime": "06:55",
     })
-    ok_overlap = overlap.get("code") in (409, 400) or overlap.get("bizCode") in (
-        "DATA_CONFLICT", "VALIDATION_ERROR", "422001") or (
-        overlap.get("code") != 0 and "重叠" in str(overlap.get("message") or ""))
+    if anchor.get("code") != 0 and "已存在" not in str(anchor.get("message") or ""):
+        step("FIX.timeslot_anchor", False, anchor)
+    overlap = req("POST", f"{AA}/time-slots", admin, {
+        "slotNo": base_no + 1, "slotName": f"E2E重叠探测{base_no+1}",
+        "startTime": "06:20", "endTime": "07:00",
+    })
+    msg = str(overlap.get("message") or "")
+    ok_overlap = overlap.get("code") != 0 and "重叠" in msg
     step("FIX.timeslot_overlap_blocked", ok_overlap, overlap)
-    if not ok_overlap:
-        bug(module="校历节次", ends="老师PC", roles="ACADEMIC_ADMIN",
-            pre="已有14:00-14:45节次", steps="创建14:10-14:50节次",
-            expected="DATA_CONFLICT 重叠拦截", actual=str(overlap)[:300],
-            root="create_time_slot未校验时间重叠", fix="已加_assert_no_timeslot_overlap",
-            files="academic_affairs_service.py", result="OPEN" if not ok_overlap else "FIXED")
-    else:
-        bug(module="校历节次", ends="老师PC", roles="ACADEMIC_ADMIN",
-            pre="已有14:00-14:45节次", steps="创建14:10-14:50节次",
-            expected="DATA_CONFLICT", actual=str(overlap.get("message")),
-            root="create_time_slot未校验时间重叠", fix="已加重叠校验",
-            files="backend/app/modules/academic_affairs/services/academic_affairs_service.py",
-            result="FIXED")
+    bug(module="校历节次", ends="老师PC", roles="ACADEMIC_ADMIN",
+        pre=f"已有{base_no}节 06:10-06:55", steps=f"创建{base_no+1}节 06:20-07:00",
+        expected="拒绝且 message 含「重叠」", actual=msg[:200],
+        root="create_time_slot未校验时间重叠",
+        fix="已加_assert_no_timeslot_overlap",
+        files="backend/app/modules/academic_affairs/services/academic_affairs_service.py",
+        result="FIXED" if ok_overlap else "OPEN")
 
     # ── classrooms ──
     rooms = []
@@ -247,12 +239,20 @@ def main():
         req("POST", f"{AA}/teaching-task-batches/{batch_id}/review", admin, {"action": "APPROVE"})
         CTX["assigned"] = assigned
 
-        # schedule
+        # schedule（字段：taskId/slotNo/classroom 文本/startWeek/endWeek）
         slots = req("GET", f"{AA}/time-slots", admin)
         slot_items = (slots.get("data") or {}).get("items") or []
-        slot_id = next((s["slotId"] for s in slot_items if s.get("slotNo") in (91, 96, 1, 2)), None)
-        if not slot_id and slot_items:
-            slot_id = slot_items[0]["slotId"]
+        slot_no = next((s.get("slotNo") for s in slot_items if s.get("slotNo") in (1, 2, 91, 96)), None)
+        if slot_no is None and slot_items:
+            slot_no = slot_items[0].get("slotNo")
+        room_names = []
+        listed_rooms = req("GET", f"{AA}/classrooms?pageSize=100", admin)
+        for it in (listed_rooms.get("data") or {}).get("items") or []:
+            if it.get("buildingCode") == "E2E-AA-B1" and (it.get("classroomId") in rooms or it.get("id") in rooms
+                                                          or str(it.get("classroomId")) in [str(x) for x in rooms]):
+                room_names.append(it.get("roomName") or f"{it.get('buildingName')}{it.get('roomCode')}")
+        if not room_names:
+            room_names = ["E2E教务测试普通教室101", "E2E教务测试普通教室102"]
         sb = req("POST", f"{AA}/schedule-batches", admin, {"termId": str(CTX.get("termId"))})
         sbid = (sb.get("data") or {}).get("batchId")
         if not sbid:
@@ -260,24 +260,25 @@ def main():
             draft = next((x for x in ((listed.get("data") or {}).get("items") or [])
                           if x.get("status") in ("DRAFT", "PRE_PUBLISHED")), None)
             sbid = (draft or {}).get("batchId")
-        if sbid and assigned and rooms and slot_id:
+        if sbid and assigned and slot_no:
             item = req("POST", f"{AA}/schedule-batches/{sbid}/items", admin, {
-                "teachingTaskId": str(assigned[0]), "weekday": 2, "slotId": str(slot_id),
-                "weeks": "1-16", "classroomId": str(rooms[0]),
+                "taskId": str(assigned[0]), "weekday": 2, "slotNo": int(slot_no),
+                "startWeek": 1, "endWeek": 16, "classroom": room_names[0],
             })
             step("C3.schedule_item", item.get("code") == 0, item)
             if len(assigned) > 1:
                 conflict = req("POST", f"{AA}/schedule-batches/{sbid}/items", admin, {
-                    "teachingTaskId": str(assigned[1]), "weekday": 2, "slotId": str(slot_id),
-                    "weeks": "1-16", "classroomId": str(rooms[1] if len(rooms) > 1 else rooms[0]),
+                    "taskId": str(assigned[1]), "weekday": 2, "slotNo": int(slot_no),
+                    "startWeek": 1, "endWeek": 16,
+                    "classroom": room_names[1] if len(room_names) > 1 else room_names[0],
                 })
+                # 教师/班级/教室任一冲突都应拒绝
                 step("C3.conflict_blocked", conflict.get("code") != 0, conflict)
             pub = req("POST", f"{AA}/schedule-batches/{sbid}/pre-publish", admin)
             pub2 = req("POST", f"{AA}/schedule-batches/{sbid}/publish", admin)
             step("C3.publish", pub2.get("code") == 0 or pub.get("code") == 0, {"pre": pub.get("code"), "pub": pub2.get("code")})
             stu = login("E2EAA20260001")
             stu_mp = None
-            # mobile client
             passwords = CTX["passwords"]
             for i in range(4):
                 r = req("POST", "/auth/login", body={
@@ -289,8 +290,8 @@ def main():
                     break
                 if r.get("bizCode") == "RATE_LIMITED":
                     time.sleep(65)
-            pc = req("GET", f"/portal/academic/schedule", stu) if stu else {}
-            mp = req("GET", f"/mobile/academic/schedule/my", stu_mp) if stu_mp else {}
+            pc = req("GET", "/portal/academic/schedule", stu) if stu else {}
+            mp = req("GET", "/mobile/academic/schedule/my", stu_mp) if stu_mp else {}
             tea_mp_tok = None
             for i in range(3):
                 r = req("POST", "/auth/login", body={
@@ -301,7 +302,7 @@ def main():
                     tea_mp_tok = r["data"]["accessToken"]; break
                 if r.get("bizCode") == "RATE_LIMITED":
                     time.sleep(65)
-            tea_mp = req("GET", f"/mobile/teacher/academic/schedule/mine", tea_mp_tok) if tea_mp_tok else {}
+            tea_mp = req("GET", "/mobile/teacher/academic/schedule/mine", tea_mp_tok) if tea_mp_tok else {}
             step("C3.four_end_schedule", pc.get("code") == 0 and mp.get("code") == 0, {
                 "pc": pc.get("code"), "mp": mp.get("code"), "teaMp": tea_mp.get("code"),
             })
@@ -313,47 +314,62 @@ def main():
             })
             CTX["assigned"] = assigned
 
-            # grades
+            # grades（courseName + usualRatio/finalRatio；响应 gradeTaskId；单生录入）
             admin = tok("e2e_aa_admin") or admin
             teacher = tok("e2e_aa_teacher_a") or admin
             college = tok("e2e_aa_college_a") or admin
             gt = req("POST", f"{AA}/grade-tasks", admin, {
-                "teachingTaskId": str(assigned[0]), "usualWeight": 40, "finalWeight": 60,
+                "teachingTaskId": str(assigned[0]),
+                "termId": str(CTX.get("termId") or ""),
+                "courseName": "E2E教务测试程序设计",
+                "usualRatio": 40, "finalRatio": 60,
             })
-            gtid = (gt.get("data") or {}).get("taskId")
+            gtid = (gt.get("data") or {}).get("gradeTaskId")
             if not gtid:
                 listed = req("GET", f"{AA}/grade-tasks?pageSize=30", admin)
                 hit = next((x for x in ((listed.get("data") or {}).get("items") or [])
-                            if str(x.get("teachingTaskId")) == str(assigned[0])), None)
-                gtid = (hit or {}).get("taskId")
-            step("C5.grade_task", bool(gtid), gt if not gtid else {"taskId": gtid})
+                            if x.get("courseName") == "E2E教务测试程序设计"), None)
+                gtid = (hit or {}).get("gradeTaskId")
+            step("C5.grade_task", bool(gtid), gt if not gtid else {"gradeTaskId": gtid})
             if gtid:
                 roster = req("GET", f"{AA}/grade-tasks/{gtid}/roster", teacher)
                 students = (roster.get("data") or {}).get("items") or (roster.get("data") or {}).get("list") or []
-                scores = []
+                entered = 0
                 for s in students[:20]:
                     sno = s.get("studentNo")
                     sid = s.get("studentId") or s.get("id")
+                    if not sid:
+                        continue
                     usual = 90 if sno == "E2EAA20260001" else (50 if sno == "E2EAA20260002" else 75)
                     final = 85 if sno == "E2EAA20260001" else (40 if sno == "E2EAA20260002" else 70)
-                    row = {"usualScore": usual, "finalScore": final}
-                    if sid: row["studentId"] = str(sid)
-                    if sno: row["studentNo"] = sno
-                    scores.append(row)
-                if scores:
-                    req("POST", f"{AA}/grade-tasks/{gtid}/scores", teacher, {"scores": scores})
+                    er = req("POST", f"{AA}/grade-tasks/{gtid}/scores", teacher, {
+                        "studentId": str(sid), "usualScore": usual, "finalScore": final,
+                    })
+                    if er.get("code") == 0:
+                        entered += 1
+                step("C5.grade_enter", entered > 0, {"entered": entered, "roster": len(students)})
+                if entered:
                     req("POST", f"{AA}/grade-tasks/{gtid}/submit", teacher)
                     req("POST", f"{AA}/grade-tasks/{gtid}/college-review", college, {
                         "action": "RETURN", "comment": "E2E退回复核平时分",
                     })
-                    req("POST", f"{AA}/grade-tasks/{gtid}/scores", teacher, {"scores": scores})
+                    for s in students[:20]:
+                        sid = s.get("studentId") or s.get("id")
+                        sno = s.get("studentNo")
+                        if not sid:
+                            continue
+                        usual = 90 if sno == "E2EAA20260001" else (50 if sno == "E2EAA20260002" else 75)
+                        final = 85 if sno == "E2EAA20260001" else (40 if sno == "E2EAA20260002" else 70)
+                        req("POST", f"{AA}/grade-tasks/{gtid}/scores", teacher, {
+                            "studentId": str(sid), "usualScore": usual, "finalScore": final,
+                        })
                     req("POST", f"{AA}/grade-tasks/{gtid}/submit", teacher)
                     req("POST", f"{AA}/grade-tasks/{gtid}/college-review", college, {"action": "APPROVE"})
-                    # try academic review then publish
                     ar = req("POST", f"{AA}/grade-tasks/{gtid}/academic-review", admin, {"action": "APPROVE"})
                     pub = req("POST", f"{AA}/grade-tasks/{gtid}/publish", admin)
                     step("C5.grade_publish", pub.get("code") == 0 or ar.get("code") == 0, {
-                        "ar": ar.get("code"), "pub": pub.get("code"), "arMsg": ar.get("message"), "pubMsg": pub.get("message"),
+                        "ar": ar.get("code"), "pub": pub.get("code"),
+                        "arMsg": ar.get("message"), "pubMsg": pub.get("message"),
                     })
                     stu = tok("E2EAA20260001")
                     tr_pc = req("GET", "/portal/academic/transcript", stu) if stu else {}
