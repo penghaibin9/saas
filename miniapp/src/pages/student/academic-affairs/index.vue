@@ -48,7 +48,8 @@ const ENTRIES = [
   { key: 'recheck', label: '成绩复查', icon: '🔍', route: '/pages/student/academic-affairs/recheck' },
   { key: 'textbook', label: '我的教材', icon: '📚', route: '/pages/student/academic-affairs/textbook' },
   { key: 'levelExam', label: '等级考试', icon: '🏅', route: '/pages/student/academic-affairs/level-exam' },
-  { key: 'majorSplit', label: '专业分流', icon: '🧭', route: '/pages/student/academic-affairs/major-split' }
+  { key: 'majorSplit', label: '专业分流', icon: '🧭', route: '/pages/student/academic-affairs/major-split' },
+  { key: 'evaluation', label: '学生评教', icon: '⭐', route: '/pages/student/academic-affairs/evaluation' }
 ]
 
 export default {

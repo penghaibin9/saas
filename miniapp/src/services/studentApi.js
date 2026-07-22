@@ -150,6 +150,9 @@ export const studentApi = {
   // 专业分流志愿（学生自助）
   getMyMajorSplit: () => real.acadMajorSplitMy(),
   submitMajorSplit: (batchId, choices) => real.acadMajorSplitSubmit(batchId, choices),
+  // 学生评教（匿名）
+  getMyEvaluationTasks: () => real.acadEvaluationTasks(),
+  submitEvaluation: (body) => real.acadEvaluationSubmit(body),
   exportMyData: () => realRequest('/mobile/me/export-data')
 }
 export default studentApi

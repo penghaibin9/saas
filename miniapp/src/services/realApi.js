@@ -958,6 +958,9 @@ export const acadLevelCancel = (examId) =>
 export const acadMajorSplitMy = () => realRequest('/mobile/academic/major-split/my')
 export const acadMajorSplitSubmit = (batchId, choices) =>
   realRequest('/mobile/academic/major-split/submit', { method: 'POST', data: { batchId, choices } })
+export const acadEvaluationTasks = () => realRequest('/mobile/academic/evaluation/tasks')
+export const acadEvaluationSubmit = (body) =>
+  realRequest('/mobile/academic/evaluation/submit', { method: 'POST', data: body })
 
 /** 缓考申请（考务管理·SM-10 8态四级审批，学生自助，真实接口，无 mock 兜底） */
 export const acadExamDeferOptions = () => realRequest('/mobile/academic/exam/defer-options')

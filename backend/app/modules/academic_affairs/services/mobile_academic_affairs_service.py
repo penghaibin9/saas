@@ -421,3 +421,76 @@ def teacher_schedule_my(user) -> dict:
         return {"batchId": "", "items": [], "note": "暂无已发布课表"}
     data = sched.teacher_view(b.id, user, _teacher_key(user))
     return {"batchId": str(b.id), **data}
+
+
+# ═══════════ 学生评教（匿名提交，复用 PC evaluation_service）═══════════
+
+def evaluation_tasks_my(user) -> dict:
+    """开放窗口内、与本人行政班匹配的学生评教任务（匿名槽位，不回传他人身份）。"""
+    from app.models import AaEvaluationBatch, AaEvaluationTask
+    with session() as db:
+        stu = _me(db, user)
+        class_id = getattr(stu, "class_id", None)
+        if not class_id:
+            return {"list": [], "total": 0, "note": "学籍未绑定行政班"}
+        open_batches = db.scalars(select(AaEvaluationBatch).where(
+            AaEvaluationBatch.tenant_id == _tid(),
+            AaEvaluationBatch.status == "OPEN",
+            AaEvaluationBatch.is_deleted.is_(False),
+        )).all()
+        if not open_batches:
+            return {"list": [], "total": 0}
+        batch_ids = [b.id for b in open_batches]
+        batch_name = {b.id: (b.batch_name or "") for b in open_batches}
+        rows = db.scalars(select(AaEvaluationTask).where(
+            AaEvaluationTask.tenant_id == _tid(),
+            AaEvaluationTask.batch_id.in_(batch_ids),
+            AaEvaluationTask.evaluator_type == "STUDENT",
+            AaEvaluationTask.class_id == int(class_id),
+            AaEvaluationTask.is_deleted.is_(False),
+        ).order_by(AaEvaluationTask.id)).all()
+        items = [{
+            "taskId": str(t.id),
+            "batchId": str(t.batch_id),
+            "batchName": batch_name.get(t.batch_id, ""),
+            "courseName": t.course_name or "",
+            "teacherName": t.teacher_name or "",
+            "submittedCount": int(t.submitted_count or 0),
+            "anonymous": True,
+        } for t in rows]
+        return {"list": items, "total": len(items)}
+
+
+def evaluation_submit_my(user, body) -> dict:
+    """学生匿名提交评教。窗口/任务类型校验在 evaluation_service.submit_evaluation。"""
+    from app.models import AaEvaluationTask
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
+    task_id = (body or {}).get("taskId")
+    if not task_id or not str(task_id).isdigit():
+        raise AppException("VALIDATION_ERROR", "taskId 必填")
+    score = (body or {}).get("objectiveScore")
+    if score is None:
+        raise AppException("VALIDATION_ERROR", "objectiveScore 必填")
+    try:
+        score_f = float(score)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "objectiveScore 须为数字") from exc
+    if score_f < 0 or score_f > 100:
+        raise AppException("VALIDATION_ERROR", "objectiveScore 须在 0-100")
+    # 确认学生身份+本班任务，再交给域服务（匿名不落学生身份）
+    with session() as db:
+        stu = _me(db, user)
+        class_id = getattr(stu, "class_id", None)
+        if not class_id:
+            raise AppException("VALIDATION_ERROR", "学籍未绑定行政班，无法评教")
+        t = db.get(AaEvaluationTask, int(task_id))
+        if (not t or t.is_deleted or t.tenant_id != _tid()
+                or t.evaluator_type != "STUDENT"
+                or int(t.class_id or 0) != int(class_id)):
+            raise AppException("NO_PERMISSION", "仅可评本班开放中的评教任务")
+    return eval_svc.submit_evaluation(
+        user, int(task_id),
+        (body or {}).get("answers") or {},
+        score_f,
+        (body or {}).get("comment"),
+    )

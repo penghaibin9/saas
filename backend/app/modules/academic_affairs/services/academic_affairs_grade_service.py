@@ -142,6 +142,9 @@ def create_grade_task(body, user) -> dict:
         guard_term_writable(db, getattr(body, "termId", None))  # 归档11卡§6.2：已归档学期不应新建成绩任务
         teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
         teacher_key = None
+        inherit_class_id = None
+        inherit_course_name = None
+        inherit_credit = None
         if teaching_task_id:
             # 租户隔离收口：教学任务必须属本租户，否则拒绝——此前 db.get 不校验 tenant_id，
             # 传他租户 teachingTaskId 会把他租户 teacher_key 带进本租户新成绩任务。
@@ -149,23 +152,32 @@ def create_grade_task(body, user) -> dict:
             if not tt or tt.is_deleted or tt.tenant_id != _tid():
                 raise not_found("教学任务不存在或不在当前数据范围内")
             teacher_key = tt.teacher_key
+            inherit_class_id = tt.class_id
+            inherit_course_name = tt.course_name
+            inherit_credit = getattr(tt, "credit", None)
         if not teacher_key:
             teacher_key = next(iter(_user_keys(user)), None)
+        class_id = int(body.classId) if getattr(body, "classId", None) else inherit_class_id
+        course_name = getattr(body, "courseName", None) or inherit_course_name
+        credit = getattr(body, "credit", None)
+        if credit is None:
+            credit = inherit_credit
         t = AaGradeTask(tenant_id=_tid(), teaching_task_id=teaching_task_id,
                         term_id=(int(body.termId) if getattr(body, "termId", None) else None),
-                        term_code=getattr(body, "termCode", None), course_name=getattr(body, "courseName", None),
-                        class_id=(int(body.classId) if getattr(body, "classId", None) else None),
+                        term_code=getattr(body, "termCode", None), course_name=course_name,
+                        class_id=class_id,
                         teacher_key=teacher_key,
-                        credit=getattr(body, "credit", None), usual_ratio=usual, midterm_ratio=midterm,
+                        credit=credit, usual_ratio=usual, midterm_ratio=midterm,
                         final_ratio=final,
                         pass_line=int(getattr(body, "passLine", 60) or 60), status="NOT_STARTED")
         db.add(t)
         db.flush()
-        _audit(db, "AA_GRADE_TASK", t.id, "CREATE", getattr(body, "courseName", "") or "")
+        _audit(db, "AA_GRADE_TASK", t.id, "CREATE", course_name or "")
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "usualRatio": t.usual_ratio,
-                "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio, "status": t.status}
+                "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio, "status": t.status,
+                "classId": str(t.class_id or "")}
 
 
 def _task_row(t) -> dict:
