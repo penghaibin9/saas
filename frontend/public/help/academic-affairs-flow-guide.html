@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>academic-affairs-flow-guide</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:.5rem;background:inherit}iframe{display:block;width:100%;max-width:none;height:calc(100vh - 1rem);margin:0;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="academic-affairs-flow-guide" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;academic-affairs-flow-guide&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;academic-flow-guide&quot;&gt;
+  &lt;style&gt;
+    :root { --font-size-base: 18px; }
+    #academic-flow-guide { color: var(--foreground); }
+    #academic-flow-guide .intro { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px; }
+    #academic-flow-guide .summary { display:flex; gap:18px; flex-wrap:wrap; color:var(--muted-foreground); }
+    #academic-flow-guide .summary strong { font-size:1.35em; }
+    #academic-flow-guide .role-bar { display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+    #academic-flow-guide .role-label { color:var(--muted-foreground); }
+    #academic-flow-guide .quick-path { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:0 0 14px; }
+    #academic-flow-guide .quick-path-label { color:var(--muted-foreground); margin-right:2px; }
+    #academic-flow-guide .quick-step { display:flex; gap:6px; align-items:center; }
+    #academic-flow-guide .quick-step:not(:last-child)::after { content:&#x27;→&#x27;; color:var(--muted-foreground); }
+    #academic-flow-guide .flow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px 22px; margin:0 0 18px; }
+    #academic-flow-guide .phase { padding:10px 0; border-top:2px solid color-mix(in srgb,var(--viz-series-1) 38%,var(--border)); }
+    #academic-flow-guide .phase-head { display:flex; gap:8px; align-items:baseline; justify-content:space-between; margin-bottom:8px; }
+    #academic-flow-guide .phase-title { display:flex; gap:8px; align-items:baseline; }
+    #academic-flow-guide .phase-no { color:var(--muted-foreground); }
+    #academic-flow-guide .phase strong { font-weight:500; }
+    #academic-flow-guide .phase-desc { color:var(--muted-foreground); margin-bottom:8px; font-size:.94em; }
+    #academic-flow-guide .phase-modules { display:flex; flex-wrap:wrap; gap:6px; }
+    #academic-flow-guide .phase-module { white-space:normal; text-align:left; }
+    #academic-flow-guide .phase-module.is-dimmed { opacity:.45; }
+    #academic-flow-guide .detail-head { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:18px; }
+    #academic-flow-guide .detail-title { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    #academic-flow-guide .detail-title h2 { margin:0; }
+    #academic-flow-guide .meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; }
+    #academic-flow-guide .meta dt { color:var(--muted-foreground); margin-bottom:3px; }
+    #academic-flow-guide .meta dd { margin:0; }
+    #academic-flow-guide .steps { margin:10px 0 0; padding:0; list-style:none; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    #academic-flow-guide .steps li { display:flex; gap:6px; align-items:center; }
+    #academic-flow-guide .steps li:not(:last-child)::after { content:&#x27;→&#x27;; color:var(--muted-foreground); }
+    #academic-flow-guide .step-label { padding:5px 8px; background:color-mix(in srgb,var(--viz-series-2) 12%,transparent); }
+    #academic-flow-guide .leaf-section { margin-top:16px; }
+    #academic-flow-guide .leaf-section h3 { margin-bottom:4px; }
+    #academic-flow-guide .leaf-count { color:var(--muted-foreground); }
+    #academic-flow-guide .leaf-list { list-style:none; padding:0; margin:10px 0 0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 18px; }
+    #academic-flow-guide .leaf { padding:10px 0; border-bottom:1px solid var(--border); }
+    #academic-flow-guide .leaf-name { display:flex; gap:8px; align-items:flex-start; font-weight:500; font-size:1.03em; }
+    #academic-flow-guide .leaf-index { color:var(--muted-foreground); min-width:2.2em; }
+    #academic-flow-guide .leaf-use { color:var(--muted-foreground); margin:5px 0 0 2.2em; }
+    #academic-flow-guide .legend { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; color:var(--muted-foreground); }
+    @media (max-width: 1200px) {
+      #academic-flow-guide .flow { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width: 600px) {
+      :root { --font-size-base:16px; }
+      #academic-flow-guide .flow { grid-template-columns:1fr; }
+      #academic-flow-guide .detail-head, #academic-flow-guide .meta, #academic-flow-guide .leaf-list { grid-template-columns:1fr; }
+    }
+  &lt;/style&gt;
+
+  &lt;div class=&quot;intro&quot; aria-label=&quot;教务中心业务全景摘要&quot;&gt;
+    &lt;div class=&quot;summary&quot;&gt;
+      &lt;span&gt;&lt;strong&gt;29&lt;/strong&gt; 个二级模块&lt;/span&gt;
+      &lt;span&gt;&lt;strong&gt;263&lt;/strong&gt; 个三级入口&lt;/span&gt;
+      &lt;span&gt;主线：定规则 → 排教学 → 执行 → 评价 → 毕业归档&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;span class=&quot;viz-badge&quot;&gt;8 阶段 · 29 模块全部显示&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;role-bar&quot; id=&quot;role-bar&quot; aria-label=&quot;按角色突出相关模块&quot;&gt;
+    &lt;span class=&quot;role-label&quot;&gt;我是：&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;quick-path&quot; id=&quot;quick-path&quot; aria-label=&quot;当前角色常用操作路径&quot;&gt;&lt;/div&gt;
+  &lt;div class=&quot;flow&quot; id=&quot;phase-flow&quot; aria-label=&quot;教务业务八阶段与全部二级模块&quot;&gt;&lt;/div&gt;
+
+  &lt;section class=&quot;card&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;div class=&quot;detail-head&quot;&gt;
+      &lt;div&gt;
+        &lt;div class=&quot;detail-title&quot;&gt;
+          &lt;h2 id=&quot;module-title&quot;&gt;&lt;/h2&gt;
+          &lt;span class=&quot;viz-badge&quot; id=&quot;module-phase&quot;&gt;&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;p id=&quot;module-purpose&quot;&gt;&lt;/p&gt;
+        &lt;ol class=&quot;steps&quot; id=&quot;module-steps&quot; aria-label=&quot;推荐操作顺序&quot;&gt;&lt;/ol&gt;
+      &lt;/div&gt;
+      &lt;dl class=&quot;meta&quot;&gt;
+        &lt;div&gt;&lt;dt&gt;谁来用&lt;/dt&gt;&lt;dd id=&quot;module-roles&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;什么时候用&lt;/dt&gt;&lt;dd id=&quot;module-when&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;从哪里进&lt;/dt&gt;&lt;dd id=&quot;module-entry&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;做完流向&lt;/dt&gt;&lt;dd id=&quot;module-next&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+      &lt;/dl&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;leaf-section&quot;&gt;
+      &lt;h3&gt;三级模块怎么用 &lt;span class=&quot;leaf-count&quot; id=&quot;leaf-count&quot;&gt;&lt;/span&gt;&lt;/h3&gt;
+      &lt;div class=&quot;text-muted&quot;&gt;每一项都按“先看什么 → 再做什么 → 做完去哪”理解；没有权限时按钮会隐藏或只读。&lt;/div&gt;
+      &lt;ol class=&quot;leaf-list&quot; id=&quot;leaf-list&quot;&gt;&lt;/ol&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;div class=&quot;legend&quot; aria-label=&quot;使用原则&quot;&gt;
+    &lt;span&gt;审批类：从待办进入，核材料后通过或退回&lt;/span&gt;
+    &lt;span&gt;发布类：发布后才对师生生效&lt;/span&gt;
+    &lt;span&gt;归档类：先检查缺项，再封存导出&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;academic-flow-guide&#x27;);
+      const phaseData = [
+        { id:&#x27;base&#x27;, no:&#x27;01&#x27;, name:&#x27;时间底座&#x27;, short:&#x27;学期、校历、节次&#x27;, desc:&#x27;先把“哪学期、哪几周、每天几节课”定下来&#x27;, ids:[&#x27;aa-dashboard&#x27;,&#x27;aa-terms&#x27;,&#x27;aa-calendar&#x27;] },
+        { id:&#x27;people&#x27;, no:&#x27;02&#x27;, name:&#x27;学生与组织&#x27;, short:&#x27;学籍、注册、异动&#x27;, desc:&#x27;确定“谁在读、属于哪个专业班级”&#x27;, ids:[&#x27;aa-student-status&#x27;,&#x27;aa-registration&#x27;,&#x27;aa-major-split&#x27;,&#x27;aa-status-change&#x27;,&#x27;aa-orgs&#x27;] },
+        { id:&#x27;standard&#x27;, no:&#x27;03&#x27;, name:&#x27;教学标准&#x27;, short:&#x27;课程、方案、计划&#x27;, desc:&#x27;确定“学生要学什么、学多少、何时开课”&#x27;, ids:[&#x27;aa-training&#x27;,&#x27;aa-courses&#x27;,&#x27;aa-teaching-plan&#x27;] },
+        { id:&#x27;delivery&#x27;, no:&#x27;04&#x27;, name:&#x27;开课与运行&#x27;, short:&#x27;任务、排课、选课&#x27;, desc:&#x27;把课程落实到教师、班级、教室和时间&#x27;, ids:[&#x27;aa-teaching-tasks&#x27;,&#x27;aa-scheduling&#x27;,&#x27;aa-schedule&#x27;,&#x27;aa-schedule-change&#x27;,&#x27;aa-attendance&#x27;,&#x27;aa-course-selection&#x27;] },
+        { id:&#x27;exam&#x27;, no:&#x27;05&#x27;, name:&#x27;考试与成绩&#x27;, short:&#x27;考务、成绩、补救&#x27;, desc:&#x27;安排考试、录入审核成绩、处理补考重修&#x27;, ids:[&#x27;aa-exam&#x27;,&#x27;aa-makeup&#x27;,&#x27;aa-grades&#x27;,&#x27;aa-grade-review&#x27;] },
+        { id:&#x27;risk&#x27;, no:&#x27;06&#x27;, name:&#x27;风险与毕业&#x27;, short:&#x27;预警、毕业审核&#x27;, desc:&#x27;发现掉队学生，完成毕业资格逐项核验&#x27;, ids:[&#x27;aa-warning&#x27;,&#x27;aa-graduation-qual&#x27;] },
+        { id:&#x27;quality&#x27;, no:&#x27;07&#x27;, name:&#x27;支撑与质量&#x27;, short:&#x27;教材、资源、评教&#x27;, desc:&#x27;保障教材教室，检查教学质量并闭环整改&#x27;, ids:[&#x27;aa-textbooks&#x27;,&#x27;aa-resources&#x27;,&#x27;aa-evaluation&#x27;,&#x27;aa-quality&#x27;] },
+        { id:&#x27;close&#x27;, no:&#x27;08&#x27;, name:&#x27;收口与分析&#x27;, short:&#x27;归档、统计&#x27;, desc:&#x27;学期结束后封存材料、汇总指标、复盘改进&#x27;, ids:[&#x27;aa-archive&#x27;,&#x27;aa-stats&#x27;] }
+      ];
+
+      const rawModules = [
+        [&#x27;aa-dashboard&#x27;,&#x27;教务看板&#x27;,&#x27;教务看板（教务中心）|学业过程总览（现有）|成绩提交进度|考试安排提醒|学籍异动提醒|学业预警提醒|毕业资格预警|教务待办|今日教学运行|今日课程|调停课提醒|教学资源占用|教务数据趋势&#x27;],
+        [&#x27;aa-terms&#x27;,&#x27;学年学期&#x27;,&#x27;学期管理|学年管理|当前学期设置|学期周次|教学周配置|学期状态|学期切换记录|学期归档&#x27;],
+        [&#x27;aa-calendar&#x27;,&#x27;校历节次&#x27;,&#x27;校历管理|作息时间|节假日配置|补课日配置|节次管理|上课时间段|教学周日历|校历发布|校历归档&#x27;],
+        [&#x27;aa-student-status&#x27;,&#x27;学籍管理&#x27;,&#x27;学籍名册|学籍档案|学籍状态|学籍异动记录|学籍导入导出|休学学生|复学学生|退学学生|转专业学生|保留学籍|学籍信息更正|学籍统计|学籍归档&#x27;],
+        [&#x27;aa-registration&#x27;,&#x27;注册管理&#x27;,&#x27;注册批次|入学注册|学年注册|学期注册|注册资格核验|未注册学生|暂缓注册|注册异常|注册统计|注册归档&#x27;],
+        [&#x27;aa-major-split&#x27;,&#x27;专业分流&#x27;,&#x27;分流批次与分配|学生志愿填报（移动端·规划中）|分流统计（规划中）&#x27;],
+        [&#x27;aa-status-change&#x27;,&#x27;学籍异动&#x27;,&#x27;异动台账|发起异动|休学申请|复学申请|退学申请|转专业申请|异动审批|异动生效|异动统计|转班申请|保留学籍申请|异动归档&#x27;],
+        [&#x27;aa-orgs&#x27;,&#x27;学院专业班级&#x27;,&#x27;学院管理|专业管理|年级管理|行政班管理|教学班管理|组织结构同步|组织统计|专业方向|班级学生|班级调整&#x27;],
+        [&#x27;aa-training&#x27;,&#x27;培养方案&#x27;,&#x27;方案列表|方案制定|方案版本|课程模块|学分要求|实践环节|毕业要求|方案审核|方案发布|方案变更|方案归档&#x27;],
+        [&#x27;aa-courses&#x27;,&#x27;课程库&#x27;,&#x27;课程列表|新增课程|课程分类|课程性质|学分学时|课程大纲|考核方式|课程负责人|课程材料|课程停用|历史课程（已停用/旧版本）&#x27;],
+        [&#x27;aa-teaching-plan&#x27;,&#x27;教学计划&#x27;,&#x27;年级/专业教学计划（培养方案）|学期教学计划/课程开设计划（教学任务）|计划归档（教务归档）|实践教学计划|计划审核|计划发布|计划变更|计划执行进度&#x27;],
+        [&#x27;aa-teaching-tasks&#x27;,&#x27;教学任务&#x27;,&#x27;教学任务批次|教学任务生成|任课教师分配|教学班生成|合班拆班|教学任务确认|教师任务确认|教学任务调整|教学任务统计|教学任务归档&#x27;],
+        [&#x27;aa-scheduling&#x27;,&#x27;排课管理&#x27;,&#x27;排课规则|教师可用时间|自动排课|冲突报告|人工排课工作台（课表维护）|排课约束|教室可用时间|自动排课预留|排课结果|排课调整|排课归档&#x27;],
+        [&#x27;aa-schedule&#x27;,&#x27;课表管理&#x27;,&#x27;课表批次 / 排课|班级课表|教师课表|学生课表|教室课表|教学班课表|周课表|学期课表|课表发布|课表调整记录|课表导出&#x27;],
+        [&#x27;aa-schedule-change&#x27;,&#x27;调停课&#x27;,&#x27;调停课台账|发起调停课（调课/停课/补课）|调停课审批|调停课通知|调停课冲突检测|调停课统计|调停课归档&#x27;],
+        [&#x27;aa-attendance&#x27;,&#x27;课堂考勤&#x27;,&#x27;课堂考勤统计（出勤/迟到/旷课/请假汇总）|考勤场次查询（规划中）|按点名类别统计（规划中）|旷课预警联动（规划中）&#x27;],
+        [&#x27;aa-course-selection&#x27;,&#x27;选课管理&#x27;,&#x27;选课批次控制台（批次/课程/名单/统计）|我的选课（学生自助）|选课规则|补选管理|冲突检测|选课结果（并入学生课表，见课表三视图）|选课归档&#x27;],
+        [&#x27;aa-exam&#x27;,&#x27;考务管理&#x27;,&#x27;考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）|座位表/准考证/门贴打印|缓考审批（并入控制台/学生小程序申请）|考务归档|等级考务（四六级/普通话/技能证书）&#x27;],
+        [&#x27;aa-makeup&#x27;,&#x27;补考重修缓考免修&#x27;,&#x27;补考批次|重修审批|免修审批|毕业清考|缓考合流|重修免修申请（学生自助）|统计分析|材料归档&#x27;],
+        [&#x27;aa-grades&#x27;,&#x27;成绩管理&#x27;,&#x27;成绩总览|成绩录入（含暂存/提交）|挂科清单|学生成绩单|成绩导入|成绩导出|成绩统计|成绩异常|成绩认定/课程替代&#x27;],
+        [&#x27;aa-grade-review&#x27;,&#x27;成绩审核发布更正&#x27;,&#x27;学院审核（待审核/通过/退回）|教务发布（发布/退回/归档）|成绩更正申请与审核|成绩复查复审（学生发起）|成绩操作审计&#x27;],
+        [&#x27;aa-warning&#x27;,&#x27;学业预警&#x27;,&#x27;预警扫描与列表|预警看板|学分预警|挂科预警|绩点预警|补考重修预警|毕业风险预警|预警规则|预警跟进|预警统计|预警通知&#x27;],
+        [&#x27;aa-graduation-qual&#x27;,&#x27;毕业资格审核&#x27;,&#x27;毕业资格预审|审核批次|毕业学生名单|学分达成审核|课程达成审核|实践环节审核|毕设状态联动|实习状态联动|费用结清（待接入财务系统）|处分状态联动|毕业资格终审|不通过原因|审核结果|毕业证书管理|审核归档&#x27;],
+        [&#x27;aa-textbooks&#x27;,&#x27;教材管理&#x27;,&#x27;教材目录|教材选用|审核备案|征订到货|费用台账|教材库存|教材统计&#x27;],
+        [&#x27;aa-resources&#x27;,&#x27;教学资源&#x27;,&#x27;教室资源|教室预约|实训室资源|设备资源|实训室预约|资源占用|资源冲突|资源维修|资源统计&#x27;],
+        [&#x27;aa-evaluation&#x27;,&#x27;教学评价&#x27;,&#x27;评教批次（结果分级）|申诉审核|学生评教(小程序)|教师自评|同行评价|督导评价|评价统计|评价归档&#x27;],
+        [&#x27;aa-quality&#x27;,&#x27;教学质量&#x27;,&#x27;运行质量看板 + 质量报告导出|督导听课|巡课记录|教学检查|教学事故|质量整改|整改跟进|质量归档&#x27;],
+        [&#x27;aa-archive&#x27;,&#x27;教务归档&#x27;,&#x27;归档批次 + 9数据域完整性检查 + 学期封存|归档缺失提醒|批量归档|归档导出&#x27;],
+        [&#x27;aa-stats&#x27;,&#x27;教务统计&#x27;,&#x27;教务总览（15 项指标 · 多维筛选 · 下钻 · 导出）|学籍统计|注册统计|课程统计|教学任务统计|课表统计|调停课统计|选课统计|考务统计|成绩统计|学业预警统计|毕业资格统计|教师工作量统计|教学资源统计|工作量申报审核（教师申报）|导出报表&#x27;]
+      ];
+
+      const profiles = {
+        &#x27;aa-dashboard&#x27;:[&#x27;把最急的待办、异常和进度集中到一个入口，先决定今天做什么。&#x27;,&#x27;教务处、学院教务、教师&#x27;,&#x27;每天上班或处理待办前&#x27;,&#x27;看提醒&#x27;,&#x27;点开待办&#x27;,&#x27;进入对应业务处理&#x27;,&#x27;各业务模块&#x27;],
+        &#x27;aa-terms&#x27;:[&#x27;建立全系统使用的学年、学期和当前学期口径。&#x27;,&#x27;教务处管理员&#x27;,&#x27;新学年开始前；学期切换时&#x27;,&#x27;建学年学期&#x27;,&#x27;配周次&#x27;,&#x27;设当前学期&#x27;,&#x27;校历节次&#x27;],
+        &#x27;aa-calendar&#x27;:[&#x27;设置教学周、节假日、补课日和每日上下课时间。&#x27;,&#x27;教务处管理员&#x27;,&#x27;排课前；法定节假日调整时&#x27;,&#x27;配作息节次&#x27;,&#x27;编校历&#x27;,&#x27;检查冲突&#x27;,&#x27;发布校历&#x27;],
+        &#x27;aa-student-status&#x27;:[&#x27;查看学生正式学籍、状态及历史，不在这里直接随意改主档。&#x27;,&#x27;教务处、学院教务&#x27;,&#x27;注册、异动、统计或审计时&#x27;,&#x27;筛学生&#x27;,&#x27;看档案与状态&#x27;,&#x27;发现问题发起更正/异动&#x27;,&#x27;注册或异动&#x27;],
+        &#x27;aa-registration&#x27;:[&#x27;按批次确认学生是否完成入学、学年或学期注册。&#x27;,&#x27;教务处、学院教务&#x27;,&#x27;开学前后&#x27;,&#x27;建批次&#x27;,&#x27;资格核验&#x27;,&#x27;处理未注册/异常&#x27;,&#x27;归档统计&#x27;],
+        &#x27;aa-major-split&#x27;:[&#x27;收集学生志愿并把学生正式分到专业方向。&#x27;,&#x27;学院教务、专业负责人、学生&#x27;,&#x27;大类培养结束、专业分流期&#x27;,&#x27;建分流批次&#x27;,&#x27;学生填志愿&#x27;,&#x27;按规则分配&#x27;,&#x27;写入专业班级&#x27;],
+        &#x27;aa-status-change&#x27;:[&#x27;办理休学、复学、退学、转专业、转班、保留学籍等正式变更。&#x27;,&#x27;学生、辅导员、学院教务、教务处&#x27;,&#x27;学生学籍情况发生变化时&#x27;,&#x27;学生/教务发起&#x27;,&#x27;逐级审批&#x27;,&#x27;教务生效&#x27;,&#x27;同步学籍与360&#x27;],
+        &#x27;aa-orgs&#x27;:[&#x27;维护学院、专业、年级、行政班、教学班的教务组织关系。&#x27;,&#x27;教务处、学院教务&#x27;,&#x27;组织调整、开学编班、开课前&#x27;,&#x27;同步组织&#x27;,&#x27;维护专业班级&#x27;,&#x27;检查学生归属&#x27;,&#x27;供方案任务使用&#x27;],
+        &#x27;aa-training&#x27;:[&#x27;定义某专业某年级学生毕业前要完成的课程、学分和实践要求。&#x27;,&#x27;专业负责人、学院教务、教务处&#x27;,&#x27;招生培养前；培养标准调整时&#x27;,&#x27;制定方案&#x27;,&#x27;配置课程学分&#x27;,&#x27;学院/教务审核&#x27;,&#x27;发布绑定&#x27;],
+        &#x27;aa-courses&#x27;:[&#x27;维护学校可开设课程的标准资料，是培养方案和教学任务的词典。&#x27;,&#x27;课程负责人、学院教务、教务处&#x27;,&#x27;新增课程、课程信息变更或停用时&#x27;,&#x27;建课程&#x27;,&#x27;补大纲考核材料&#x27;,&#x27;审核启用&#x27;,&#x27;供方案选用&#x27;],
+        &#x27;aa-teaching-plan&#x27;:[&#x27;把培养方案转换成某年级、某学期实际要开的课程计划。&#x27;,&#x27;专业负责人、学院教务、教务处&#x27;,&#x27;每学期开课准备期&#x27;,&#x27;引用培养方案&#x27;,&#x27;确定本学期开课&#x27;,&#x27;审核发布&#x27;,&#x27;生成教学任务&#x27;],
+        &#x27;aa-teaching-tasks&#x27;:[&#x27;把“要开的课”落实为课程、班级、人数、教师和学时任务。&#x27;,&#x27;教务处、学院教务、专业负责人、教师&#x27;,&#x27;排课前&#x27;,&#x27;建任务批次&#x27;,&#x27;自动生成&#x27;,&#x27;分配教师并确认&#x27;,&#x27;交给排课&#x27;],
+        &#x27;aa-scheduling&#x27;:[&#x27;在教师、班级、教室和时间约束下生成不冲突的排课结果。&#x27;,&#x27;教务处排课员、学院教务&#x27;,&#x27;教学任务确认后&#x27;,&#x27;设约束与可用时间&#x27;,&#x27;自动/人工排课&#x27;,&#x27;清理冲突&#x27;,&#x27;形成课表&#x27;],
+        &#x27;aa-schedule&#x27;:[&#x27;按班级、教师、学生、教室等视角查看并发布最终课表。&#x27;,&#x27;教务处、学院教务、教师、学生&#x27;,&#x27;排课完成后；日常查课&#x27;,&#x27;核对多视角课表&#x27;,&#x27;发布&#x27;,&#x27;通知师生&#x27;,&#x27;变更走调停课&#x27;],
+        &#x27;aa-schedule-change&#x27;:[&#x27;已发布课表发生调课、停课、补课时走审批并通知相关师生。&#x27;,&#x27;教师、学院教务、教务处&#x27;,&#x27;临时改课时&#x27;,&#x27;教师发起&#x27;,&#x27;系统查冲突&#x27;,&#x27;学院/教务审批&#x27;,&#x27;改课表并通知&#x27;],
+        &#x27;aa-attendance&#x27;:[&#x27;汇总课堂点名结果，识别迟到、旷课和请假风险。&#x27;,&#x27;教师、辅导员、学院教务&#x27;,&#x27;每次上课后；周/月复盘&#x27;,&#x27;查考勤场次&#x27;,&#x27;核对异常&#x27;,&#x27;联动旷课预警&#x27;,&#x27;跟进学生&#x27;],
+        &#x27;aa-course-selection&#x27;:[&#x27;开放选课时间窗、容量和规则，学生自助选课并形成名单。&#x27;,&#x27;教务处、学院教务、学生&#x27;,&#x27;选修课开放期&#x27;,&#x27;建选课批次&#x27;,&#x27;配课程容量规则&#x27;,&#x27;学生选/补选&#x27;,&#x27;结果进课表&#x27;],
+        &#x27;aa-exam&#x27;:[&#x27;把考试课程安排到时间、考场、座位和监考教师，并处理异常缓考。&#x27;,&#x27;教务处、学院教务、教师、学生&#x27;,&#x27;期中、期末及等级考试前后&#x27;,&#x27;建考试批次&#x27;,&#x27;排考场监考座位&#x27;,&#x27;发布打印&#x27;,&#x27;记录异常归档&#x27;],
+        &#x27;aa-makeup&#x27;:[&#x27;把挂科、缓考等学生分流到补考/重修，把符合条件者送免修审批。&#x27;,&#x27;学生、教师、学院教务、教务处&#x27;,&#x27;成绩发布后或毕业清考期&#x27;,&#x27;生成/申请&#x27;,&#x27;资格核验&#x27;,&#x27;审批安排&#x27;,&#x27;结果回写成绩&#x27;],
+        &#x27;aa-grades&#x27;:[&#x27;教师录入或导入成绩，查看成绩单、挂科和异常。&#x27;,&#x27;任课教师、学院教务、教务处&#x27;,&#x27;课程考核结束后&#x27;,&#x27;录入暂存&#x27;,&#x27;校验并提交&#x27;,&#x27;查看异常/成绩单&#x27;,&#x27;进入审核发布&#x27;],
+        &#x27;aa-grade-review&#x27;:[&#x27;对已提交成绩完成学院审核、教务发布，并受理更正和复查。&#x27;,&#x27;学院教务、教务处、学生&#x27;,&#x27;教师提交成绩后；发布后有异议时&#x27;,&#x27;学院审核&#x27;,&#x27;教务发布&#x27;,&#x27;学生查看/申请复查&#x27;,&#x27;更正留审计&#x27;],
+        &#x27;aa-warning&#x27;:[&#x27;按规则扫描学分、挂科、绩点、重修和毕业风险并跟进处置。&#x27;,&#x27;教务处、学院教务、辅导员&#x27;,&#x27;成绩、注册、考勤等数据变化后&#x27;,&#x27;配置规则&#x27;,&#x27;扫描生成预警&#x27;,&#x27;通知与跟进&#x27;,&#x27;关闭或升级&#x27;],
+        &#x27;aa-graduation-qual&#x27;:[&#x27;逐项核验学籍、学分、课程、实习、毕设、处分等毕业条件。&#x27;,&#x27;教务处、学院教务、相关责任老师&#x27;,&#x27;毕业季&#x27;,&#x27;建审核批次&#x27;,&#x27;系统预审&#x27;,&#x27;分项处理异常&#x27;,&#x27;学院初审/教务终审&#x27;],
+        &#x27;aa-textbooks&#x27;:[&#x27;从教材选用、审核、征订、到货、库存到费用形成台账。&#x27;,&#x27;课程负责人、学院教务、教材管理员&#x27;,&#x27;开课前及教材发放期&#x27;,&#x27;维护目录&#x27;,&#x27;教师/课程选用&#x27;,&#x27;审核征订&#x27;,&#x27;到货库存统计&#x27;],
+        &#x27;aa-resources&#x27;:[&#x27;维护教室、实训室和设备，处理预约、冲突、占用和维修。&#x27;,&#x27;资源管理员、教务处、教师&#x27;,&#x27;排课、临时预约、设备故障时&#x27;,&#x27;维护资源&#x27;,&#x27;预约&#x27;,&#x27;查占用冲突&#x27;,&#x27;维修与统计&#x27;],
+        &#x27;aa-evaluation&#x27;:[&#x27;组织学生、教师、同行、督导多方评价，并分级发布结果。&#x27;,&#x27;教务处、督导、教师、学生&#x27;,&#x27;期中/期末评教期&#x27;,&#x27;建批次&#x27;,&#x27;多方评价&#x27;,&#x27;汇总分级&#x27;,&#x27;申诉与归档&#x27;],
+        &#x27;aa-quality&#x27;:[&#x27;通过听课、巡课、检查和事故记录发现问题并追踪整改。&#x27;,&#x27;教务处、督导、学院教务&#x27;,&#x27;日常教学检查及专项检查&#x27;,&#x27;记录检查&#x27;,&#x27;认定问题&#x27;,&#x27;下发整改&#x27;,&#x27;跟进闭环归档&#x27;],
+        &#x27;aa-archive&#x27;:[&#x27;学期结束前检查九类教务数据是否齐全，再封存并导出。&#x27;,&#x27;教务处档案管理员&#x27;,&#x27;学期结束、年度归档时&#x27;,&#x27;建归档批次&#x27;,&#x27;检查缺项&#x27;,&#x27;补齐后批量封存&#x27;,&#x27;导出移交&#x27;],
+        &#x27;aa-stats&#x27;:[&#x27;按学校、学院、专业、学期查看关键指标并下钻导出。&#x27;,&#x27;校领导、教务处、学院负责人&#x27;,&#x27;日常监控、月报年报、决策分析时&#x27;,&#x27;选统计口径&#x27;,&#x27;看指标&#x27;,&#x27;下钻明细&#x27;,&#x27;导出报表&#x27;]
+      };
+
+      const modules = rawModules.map(([id,name,items]) =&gt; ({ id, name, items:items.split(&#x27;|&#x27;) }));
+      const byId = Object.fromEntries(modules.map(m =&gt; [m.id,m]));
+      let activeModule = &#x27;aa-dashboard&#x27;;
+      let activeRole = &#x27;教师&#x27;;
+      const roles = [&#x27;全部&#x27;,&#x27;教务处&#x27;,&#x27;学院教务&#x27;,&#x27;教师&#x27;,&#x27;学生&#x27;];
+      const rolePaths = {
+        &#x27;全部&#x27;: [[&#x27;aa-terms&#x27;,&#x27;定学期&#x27;],[&#x27;aa-training&#x27;,&#x27;定培养标准&#x27;],[&#x27;aa-teaching-tasks&#x27;,&#x27;下教学任务&#x27;],[&#x27;aa-scheduling&#x27;,&#x27;排课&#x27;],[&#x27;aa-exam&#x27;,&#x27;考试&#x27;],[&#x27;aa-grades&#x27;,&#x27;成绩&#x27;],[&#x27;aa-graduation-qual&#x27;,&#x27;毕业审核&#x27;],[&#x27;aa-archive&#x27;,&#x27;归档&#x27;]],
+        &#x27;教务处&#x27;: [[&#x27;aa-dashboard&#x27;,&#x27;看待办&#x27;],[&#x27;aa-terms&#x27;,&#x27;开学期&#x27;],[&#x27;aa-calendar&#x27;,&#x27;发校历&#x27;],[&#x27;aa-teaching-tasks&#x27;,&#x27;审任务&#x27;],[&#x27;aa-scheduling&#x27;,&#x27;排课&#x27;],[&#x27;aa-grade-review&#x27;,&#x27;发成绩&#x27;],[&#x27;aa-graduation-qual&#x27;,&#x27;毕业终审&#x27;],[&#x27;aa-archive&#x27;,&#x27;封存&#x27;]],
+        &#x27;学院教务&#x27;: [[&#x27;aa-dashboard&#x27;,&#x27;看待办&#x27;],[&#x27;aa-registration&#x27;,&#x27;核注册&#x27;],[&#x27;aa-status-change&#x27;,&#x27;办异动&#x27;],[&#x27;aa-training&#x27;,&#x27;审方案&#x27;],[&#x27;aa-teaching-tasks&#x27;,&#x27;配教师&#x27;],[&#x27;aa-grade-review&#x27;,&#x27;审成绩&#x27;],[&#x27;aa-warning&#x27;,&#x27;跟预警&#x27;]],
+        &#x27;教师&#x27;: [[&#x27;aa-dashboard&#x27;,&#x27;看今日课程&#x27;],[&#x27;aa-teaching-tasks&#x27;,&#x27;确认教学任务&#x27;],[&#x27;aa-schedule&#x27;,&#x27;查课表&#x27;],[&#x27;aa-schedule-change&#x27;,&#x27;申请调停课&#x27;],[&#x27;aa-grades&#x27;,&#x27;录入成绩&#x27;],[&#x27;aa-warning&#x27;,&#x27;跟进预警&#x27;],[&#x27;aa-evaluation&#x27;,&#x27;教师自评&#x27;]],
+        &#x27;学生&#x27;: [[&#x27;aa-registration&#x27;,&#x27;查注册&#x27;],[&#x27;aa-course-selection&#x27;,&#x27;选课&#x27;],[&#x27;aa-schedule&#x27;,&#x27;看课表&#x27;],[&#x27;aa-exam&#x27;,&#x27;看考试&#x27;],[&#x27;aa-grades&#x27;,&#x27;查成绩&#x27;],[&#x27;aa-status-change&#x27;,&#x27;申请异动&#x27;],[&#x27;aa-graduation-qual&#x27;,&#x27;看毕业进度&#x27;]]
+      };
+
+      function usageFor(item, moduleName) {
+        const s = item.replace(/\uFF08.*?\uFF09|\(.*?\)/g,&#x27;&#x27;).trim();
+        if (/待接入|预留|规划占位|规划中/.test(item)) return &#x27;当前只用于说明未来能力；没有真实数据源或入口时不要拿它办正式业务。&#x27;;
+        if (/学生自助|学生评教|志愿填报/.test(item)) return &#x27;学生从个人端进入，先核对本人信息，再填写并提交；提交后回到进度页等审批或结果。&#x27;;
+        if (/审核|审批|终审|确认|备案/.test(s)) return &#x27;从“教务待办”进入，核对材料、范围和前序意见；选择通过或退回，意见必填，完成后流向下一审批人。&#x27;;
+        if (/发布|生效|当前学期设置|学期状态/.test(s)) return &#x27;先核对影响范围和异常清单，再执行发布/生效；完成后才对师生端或下游模块正式可见。&#x27;;
+        if (/发起|申请|新增|制定|录入|填报|预约|更正/.test(s)) return &#x27;打开后先选对象或批次，填写必填项并上传依据；先保存草稿，核对无误后提交审批。&#x27;;
+        if (/导入/.test(s)) return &#x27;下载模板并按要求填表，先做预校验；修完错误后再确认导入，保留导入结果和失败清单。&#x27;;
+        if (/导出|打印/.test(s)) return &#x27;先筛选正确范围，确认包含字段和用途，再生成带水印文件；导出记录会留痕。&#x27;;
+        if (/归档|封存/.test(s)) return &#x27;先运行完整性检查并处理缺项，再按批次封存；归档后以查看、导出为主，不能随意修改。&#x27;;
+        if (/统计|趋势|分析|看板|总览|进度|工作量/.test(s)) return &#x27;先选学期、学院或专业口径，再看指标；点击异常数字下钻到明细，必要时导出跟进。&#x27;;
+        if (/预警|异常|冲突|提醒|缺失|挂科|未注册|暂缓/.test(s)) return &#x27;先筛“待处理/高风险”，打开明细核对原因；能修的回原业务修正，不能修的分派责任人并记录处理结果。&#x27;;
+        if (/规则|配置|要求|分类|性质|学分学时|考核方式|大纲|材料|可用时间|约束|作息|时间段|周次/.test(s)) return &#x27;先查看现行值和生效范围，再维护规则；保存后做冲突校验，确认后供后续业务引用。&#x27;;
+        if (/分配|生成|合班|拆班|调整|变更|切换|补选|维修|停用/.test(s)) return &#x27;先选目标记录并查看当前状态，填写调整内容和原因；通过校验/审批后生效，并检查下游是否同步。&#x27;;
+        if (/通知/.test(s)) return &#x27;查看发送对象和送达状态；失败的重试或改由责任人联系，不能只发通知不处理业务。&#x27;;
+        if (/名单|名册|档案|列表|台账|记录|结果|课表|资源|学生|课程|学籍|教室|班级/.test(s)) return `进入“教务中心 → ${moduleName} → ${item}”，先按学期/学院等条件筛选，再点记录看详情；需要变更时转到对应申请或审批入口。`;
+        return `进入“教务中心 → ${moduleName} → ${item}”，先确认当前学期和数据范围，按页面主按钮完成处理，再返回列表核对状态是否更新。`;
+      }
+
+      function renderRoles() {
+        const host = root.querySelector(&#x27;#role-bar&#x27;);
+        host.querySelectorAll(&#x27;button&#x27;).forEach(button =&gt; button.remove());
+        roles.forEach(role =&gt; {
+          const b = document.createElement(&#x27;button&#x27;);
+          b.type = &#x27;button&#x27;;
+          b.className = `btn${role === activeRole ? &#x27; btn-primary&#x27; : &#x27;&#x27;}`;
+          b.setAttribute(&#x27;aria-pressed&#x27;, String(role === activeRole));
+          b.textContent = role;
+          b.addEventListener(&#x27;click&#x27;, () =&gt; { activeRole = role; renderRoles(); renderQuickPath(); renderPhases(); });
+          host.appendChild(b);
+        });
+      }
+
+      function renderQuickPath() {
+        const host = root.querySelector(&#x27;#quick-path&#x27;);
+        host.innerHTML = &#x27;&lt;span class=&quot;quick-path-label&quot;&gt;常用路径：&lt;/span&gt;&#x27;;
+        rolePaths[activeRole].forEach(([id,label]) =&gt; {
+          const span = document.createElement(&#x27;span&#x27;);
+          span.className = &#x27;quick-step&#x27;;
+          const b = document.createElement(&#x27;button&#x27;);
+          b.type = &#x27;button&#x27;;
+          b.className = &#x27;btn btn-ghost&#x27;;
+          b.textContent = label;
+          b.addEventListener(&#x27;click&#x27;, () =&gt; {
+            activeModule = id;
+            renderPhases();
+            renderDetail();
+            root.querySelector(&#x27;.card&#x27;).scrollIntoView({ behavior:&#x27;smooth&#x27;, block:&#x27;start&#x27; });
+          });
+          span.appendChild(b);
+          host.appendChild(span);
+        });
+      }
+
+      function renderPhases() {
+        const host = root.querySelector(&#x27;#phase-flow&#x27;);
+        host.innerHTML = &#x27;&#x27;;
+        phaseData.forEach(p =&gt; {
+          const section = document.createElement(&#x27;section&#x27;);
+          section.className = &#x27;phase&#x27;;
+          section.innerHTML = `&lt;div class=&quot;phase-head&quot;&gt;&lt;div class=&quot;phase-title&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;${p.no}&lt;/span&gt;&lt;strong&gt;${p.name}&lt;/strong&gt;&lt;/div&gt;&lt;span class=&quot;text-muted&quot;&gt;${p.ids.length} 个模块&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;phase-desc&quot;&gt;${p.desc}&lt;/div&gt;&lt;div class=&quot;phase-modules&quot;&gt;&lt;/div&gt;`;
+          const moduleHost = section.querySelector(&#x27;.phase-modules&#x27;);
+          p.ids.forEach(id =&gt; {
+            const m = byId[id];
+            const relevant = activeRole === &#x27;全部&#x27; || profiles[id][1].includes(activeRole);
+            const b = document.createElement(&#x27;button&#x27;);
+            b.type = &#x27;button&#x27;;
+            b.className = `btn phase-module${id === activeModule ? &#x27; btn-primary&#x27; : &#x27;&#x27;}${relevant ? &#x27;&#x27; : &#x27; is-dimmed&#x27;}`;
+            b.setAttribute(&#x27;aria-pressed&#x27;, String(id === activeModule));
+            b.textContent = `${m.name} · ${m.items.length}`;
+            b.addEventListener(&#x27;click&#x27;, () =&gt; {
+              activeModule = id;
+              renderPhases();
+              renderDetail();
+              root.querySelector(&#x27;.card&#x27;).scrollIntoView({ behavior:&#x27;smooth&#x27;, block:&#x27;start&#x27; });
+            });
+            moduleHost.appendChild(b);
+          });
+          host.appendChild(section);
+        });
+      }
+
+      function renderDetail() {
+        const m = byId[activeModule];
+        const p = phaseData.find(x =&gt; x.ids.includes(activeModule));
+        const q = profiles[activeModule];
+        root.querySelector(&#x27;#module-title&#x27;).textContent = m.name;
+        root.querySelector(&#x27;#module-phase&#x27;).textContent = `${p.no} ${p.name}`;
+        root.querySelector(&#x27;#module-purpose&#x27;).textContent = q[0];
+        root.querySelector(&#x27;#module-roles&#x27;).textContent = q[1];
+        root.querySelector(&#x27;#module-when&#x27;).textContent = q[2];
+        root.querySelector(&#x27;#module-entry&#x27;).textContent = `教务中心 → ${m.name}`;
+        root.querySelector(&#x27;#module-next&#x27;).textContent = q[7];
+        root.querySelector(&#x27;#leaf-count&#x27;).textContent = `（${m.items.length}项）`;
+        const steps = root.querySelector(&#x27;#module-steps&#x27;);
+        steps.innerHTML = &#x27;&#x27;;
+        q.slice(3,7).forEach((s,i) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          li.innerHTML = `&lt;span class=&quot;step-label&quot;&gt;${i+1}. ${s}&lt;/span&gt;`;
+          steps.appendChild(li);
+        });
+        const list = root.querySelector(&#x27;#leaf-list&#x27;);
+        list.innerHTML = &#x27;&#x27;;
+        m.items.forEach((item,i) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          li.className = &#x27;leaf&#x27;;
+          li.innerHTML = `&lt;div class=&quot;leaf-name&quot;&gt;&lt;span class=&quot;leaf-index&quot;&gt;${String(i+1).padStart(2,&#x27;0&#x27;)}&lt;/span&gt;&lt;span&gt;${item}&lt;/span&gt;&lt;/div&gt;&lt;p class=&quot;leaf-use&quot;&gt;${usageFor(item,m.name)}&lt;/p&gt;`;
+          list.appendChild(li);
+        });
+      }
+
+      function renderAll() { renderRoles(); renderQuickPath(); renderPhases(); renderDetail(); }
+      renderAll();
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>
