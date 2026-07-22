@@ -57,7 +57,7 @@ ALL_LOGINS = ["admin2"] + [t[0] for t in TEACHERS] + [s[0] for s in STUDENTS]
 
 
 def _req(method: str, path: str, token: str | None = None, body: dict | None = None,
-         raw: bytes | None = None, headers: dict | None = None):
+         raw: bytes | None = None, headers: dict | None = None, params: dict | None = None):
     data = raw
     hdrs = dict(headers or {})
     if token:
@@ -65,7 +65,13 @@ def _req(method: str, path: str, token: str | None = None, body: dict | None = N
     if body is not None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         hdrs.setdefault("Content-Type", "application/json")
-    req = urllib.request.Request(f"{BASE}{path}", data=data, headers=hdrs, method=method)
+    url = f"{BASE}{path}"
+    if params:
+        from urllib.parse import urlencode
+        qs = urlencode({k: v for k, v in params.items() if v is not None and v != ""})
+        if qs:
+            url = f"{url}?{qs}"
+    req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             raw_body = resp.read()

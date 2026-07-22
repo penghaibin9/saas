@@ -197,6 +197,13 @@ def create_student(body: dict) -> dict:
             origin=body.get("origin"), counselor=body.get("counselor"),
             stage="ADMITTED", report_status="NOT_REPORTED",
             steps_json=_default_steps_json())
+        # 可选绑定学籍档案，便于学生端「我的迎新」按 student_id 命中（不绑则仅按姓名唯一匹配）
+        raw_sid = body.get("studentId")
+        if raw_sid not in (None, ""):
+            try:
+                s.student_id = int(raw_sid)
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "studentId 须为数字")
         db.add(s)
         db.flush()
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
