@@ -576,8 +576,11 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         if mid is not None:
             mid_status = str(getattr(mid, "status", "") or "")
             mid_conclusion = str(getattr(mid, "conclusion", "") or "")
-            blocked = mid_status in ("RECTIFYING", "CHECKED_FAIL") or mid_conclusion in ("RECTIFY", "FAIL")
-            passed = mid_status == "CHECKED_PASS" or mid_conclusion == "PASS"
+            # RECTIFIED_PASS 表示限期整改复核已通过（conclusion 可能仍为 RECTIFY）
+            passed = mid_status in ("CHECKED_PASS", "RECTIFIED_PASS") or mid_conclusion == "PASS"
+            blocked = mid_status in ("RECTIFYING", "RECTIFY_SUBMITTED", "CHECKED_FAIL") or mid_conclusion in (
+                "RECTIFY", "FAIL",
+            )
             if blocked and not passed:
                 raise AppException(
                     "DATA_CONFLICT",
