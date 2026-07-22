@@ -331,11 +331,21 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                 StudentProfile.is_deleted.is_(False))).first()
             if profile:
                 report["entities"]["students"]["skipped"] += 1
+                # IX-E2E：历史导入可能缺 college_id，按班级→专业回填
+                if not profile.college_id and profile.major_id:
+                    maj = db.get(Major, profile.major_id)
+                    if maj and maj.college_id:
+                        profile.college_id = maj.college_id
             else:
+                major_id = k.major_id if k else None
+                college_id = None
+                if major_id:
+                    maj = db.get(Major, major_id)
+                    college_id = maj.college_id if maj else None
                 db.add(StudentProfile(
                     tenant_id=tenant_id, student_no=no, real_name=str(s.get("name")).strip(),
                     gender=s.get("gender"), grade=s.get("grade"),
-                    class_id=k.id if k else None, major_id=k.major_id if k else None,
+                    class_id=k.id if k else None, major_id=major_id, college_id=college_id,
                     current_stage=normalize_student_stage(s.get("stage") or ENROLLED),
                     student_status="NORMAL", status="ACTIVE"))
                 report["entities"]["students"]["created"] += 1

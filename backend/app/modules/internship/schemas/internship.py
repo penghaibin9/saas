@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ═══════════ 实习批次 ═══════════
@@ -38,6 +38,13 @@ class EvaluationRuleCfg(BaseModel):
     teacherWeight: float = Field(0.4, ge=0, le=1)
     selfWeight: float = Field(0.2, ge=0, le=1)
 
+    @model_validator(mode="after")
+    def _weights_sum_to_one(self):
+        total = float(self.enterpriseWeight) + float(self.teacherWeight) + float(self.selfWeight)
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError(f"评价权重之和须为 1.0，当前为 {total:.4f}")
+        return self
+
 
 class ScoreComponent(BaseModel):
     name: str = Field(..., min_length=1)
@@ -49,6 +56,16 @@ class ScoreRuleCfg(BaseModel):
     components: List[ScoreComponent] = Field(default_factory=lambda: [
         ScoreComponent(name="企业评价", weight=0.4), ScoreComponent(name="教师评价", weight=0.4),
         ScoreComponent(name="考核成绩", weight=0.2)])
+
+    @model_validator(mode="after")
+    def _components_sum_to_one(self):
+        comps = self.components or []
+        if not comps:
+            return self
+        total = sum(float(c.weight) for c in comps)
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError(f"成绩规则分项权重之和须为 1.0，当前为 {total:.4f}")
+        return self
 
 
 class OnboardRuleCfg(BaseModel):
@@ -189,3 +206,4 @@ class EnterpriseImport(BaseModel):
 class ImportErrorsExport(BaseModel):
     rows: list[dict] = Field(default_factory=list)
     errors: list[dict] = Field(default_factory=list)
+

@@ -108,6 +108,22 @@ def test_exceptions_and_reports_list(client, auth_headers, db_mode):
     assert rep["code"] == 0 and rep["data"]["total"] == 1
 
 
+def test_batch_rejects_evaluation_weights_not_summing_to_one(client, auth_headers, db_mode):
+    """评价三项权重之和必须为 1.0（IX-E2E-001）。"""
+    bad = client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": "权重错误批次", "batchNo": "INT-BAD-W",
+        "startDate": "2026-03-02", "endDate": "2026-08-28",
+        "rules": {"evaluation": {"enterpriseWeight": 0.5, "teacherWeight": 0.5, "selfWeight": 0.5}},
+    }).json()
+    assert bad["code"] != 0
+    ok = client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": "权重正确批次", "batchNo": "INT-OK-W",
+        "startDate": "2026-03-02", "endDate": "2026-08-28",
+        "rules": {"evaluation": {"enterpriseWeight": 0.4, "teacherWeight": 0.4, "selfWeight": 0.2}},
+    }).json()
+    assert ok["code"] == 0
+
+
 def test_batch_closed_loop(client, auth_headers, db_mode):
     # 新建（草稿），服务端应自动补默认阶段/规则
     c = client.post("/api/v1/internship/batches", headers=auth_headers,
@@ -120,50 +136,45 @@ def test_batch_closed_loop(client, auth_headers, db_mode):
     det0 = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()
     assert det0["code"] == 0 and len(det0["data"]["stages"]) == 3
     assert det0["data"]["rules"]["checkin"]["geofenceRadiusM"] == 500
-    # 批次编号租户内唯一
     dup = client.post("/api/v1/internship/batches", headers=auth_headers,
                       json={"batchName": "重复批次", "batchNo": "INT-2026S"}).json()
     assert dup["code"] != 0
-    # 列表：草稿态、计划人数正确
     lst = client.get("/api/v1/internship/batches", headers=auth_headers).json()
     assert lst["code"] == 0 and lst["data"]["total"] == 1
     row = lst["data"]["items"][0]
     assert row["statusLabel"] == "草稿" and row["plannedCount"] == 120 and row["actualCount"] == 0
-    # 非法流转：草稿不能直接结束/归档
     assert client.post(f"/api/v1/internship/batches/{bid}/close", headers=auth_headers).json()["code"] != 0
     assert client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers).json()["code"] != 0
-    # 启用 草稿→进行中
+    # 草稿态改规则（局部合并）
+    upd0 = client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
+                      json={"rules": {"checkin": {"geofenceRadiusM": 800}}}).json()
+    assert upd0["code"] == 0
+    det_r = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()["data"]
+    assert det_r["rules"]["checkin"]["geofenceRadiusM"] == 800
+    assert det_r["rules"]["weeklyReport"]["minWordCount"] == 800
     act = client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()
     assert act["code"] == 0 and act["data"]["status"] == "RUNNING"
-    # 重复启用被拒
     assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] != 0
-    # 进行中不可作废
     assert client.post(f"/api/v1/internship/batches/{bid}/void", headers=auth_headers,
                        json={"reason": "误建批次需要作废"}).json()["code"] != 0
-    # 编辑（含规则局部调整——只改打卡围栏半径，其余规则分组应保持默认不变）
+    # 启用后不可改规则，可改计划人数
+    assert client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
+                      json={"rules": {"checkin": {"geofenceRadiusM": 900}}}).json()["code"] != 0
     upd = client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
-                     json={"plannedCount": 150,
-                           "rules": {"checkin": {"geofenceRadiusM": 800}}}).json()
+                     json={"plannedCount": 150}).json()
     assert upd["code"] == 0
     det1 = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()["data"]
     assert det1["plannedCount"] == 150
     assert det1["rules"]["checkin"]["geofenceRadiusM"] == 800
-    assert det1["rules"]["weeklyReport"]["minWordCount"] == 800  # 未提交的规则分组保持默认值，未被冲掉
-    # 结束 进行中→已结束
     cl = client.post(f"/api/v1/internship/batches/{bid}/close", headers=auth_headers).json()
     assert cl["code"] == 0 and cl["data"]["status"] == "CLOSED"
-    # 已结束不可编辑
     assert client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
                       json={"remark": "x"}).json()["code"] != 0
-    # 归档 已结束→已归档
     ar = client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers).json()
     assert ar["code"] == 0 and ar["data"]["status"] == "ARCHIVED"
-    # 已归档不可重复归档
     assert client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers).json()["code"] != 0
-    # 审计留痕（BATCH 类型，详情自带 auditTrail）
     det2 = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()["data"]
     assert len(det2["auditTrail"]) >= 4
-    # 导出台账（Excel/xlsx）
     import base64
     exp = client.post("/api/v1/internship/batches/export", headers=auth_headers).json()
     assert exp["code"] == 0 and exp["data"]["rowCount"] >= 1
@@ -175,14 +186,12 @@ def test_batch_void_only_draft(client, auth_headers, db_mode):
     c = client.post("/api/v1/internship/batches", headers=auth_headers,
                     json={"batchName": "待作废批次", "batchNo": "INT-VOID-1"}).json()
     bid = c["data"]["id"]
-    # 作废原因不足 5 字被拒
     bad = client.post(f"/api/v1/internship/batches/{bid}/void", headers=auth_headers,
                       json={"reason": "x"}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/internship/batches/{bid}/void", headers=auth_headers,
                      json={"reason": "批次信息录入有误，作废重建"}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "VOIDED"
-    # 已作废不可再编辑
     assert client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
                       json={"remark": "x"}).json()["code"] != 0
 

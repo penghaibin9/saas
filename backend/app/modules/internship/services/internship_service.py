@@ -108,8 +108,11 @@ def _current_scope(user: dict | None = None) -> dict:
 
 
 def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
-    """实习记录是否在教师数据范围内。非 SCOPED（管理员全校 / 无范围兜底）一律放行；
-    SCOPED 按 指导教师账号 / 学号 / 班级 / 学院 收敛。记录缺失（脏数据）时 SCOPED 下不放行。"""
+    """实习记录是否在教师数据范围内。非 SCOPED（管理员全校 / 无范围豁免）一律放行；
+    SCOPED 按 指导教师账号 / 学号 / 班级 / 学院 收敛（记录缺失关键上下文时 SCOPED 下不放行）。
+
+    IX-E2E：学生可能仅有 class_id/major_id，沿 班级→专业→学院 推导学院名。
+    """
     if scope.get("mode") != "SCOPED":
         return True
     if r is None:
@@ -117,12 +120,19 @@ def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
     from app.services.mobile_teacher_service import scope_match_row
     class_name = college_name = None
     if stu is not None:
-        from app.models import College, SchoolClass
-        if getattr(stu, "class_id", None):
-            c = db.get(SchoolClass, stu.class_id)
-            class_name = c.class_name if c else None
-        if getattr(stu, "college_id", None):
-            col = db.get(College, stu.college_id)
+        from app.models import College, Major, SchoolClass
+        cls = db.get(SchoolClass, stu.class_id) if getattr(stu, "class_id", None) else None
+        if cls:
+            class_name = cls.class_name
+        college_id = getattr(stu, "college_id", None)
+        if not college_id and getattr(stu, "major_id", None):
+            maj = db.get(Major, stu.major_id)
+            college_id = maj.college_id if maj else None
+        if not college_id and cls is not None:
+            maj = db.get(Major, cls.major_id)
+            college_id = maj.college_id if maj else None
+        if college_id:
+            col = db.get(College, college_id)
             college_name = col.college_name if col else None
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=r.advisor_name,
@@ -683,7 +693,8 @@ def export_weekly_reports(status=None, keyword=None, user=None) -> dict:
 
 # ═══ 风险学生 ═══
 
-def list_risk_students(page, page_size, level=None, status=None, user=None):
+def list_risk_students(page, page_size, level=None, status=None, keyword=None,
+                       risk_code=None, user=None):
     with session() as db:
         q = select(RiskRecord).where(RiskRecord.tenant_id == _tid(),
                                      RiskRecord.is_deleted.is_(False))
@@ -691,21 +702,32 @@ def list_risk_students(page, page_size, level=None, status=None, user=None):
             q = q.where(RiskRecord.risk_level == level)
         if status:
             q = q.where(RiskRecord.status == status)
+        if risk_code:
+            q = q.where(RiskRecord.risk_code == risk_code)
         rows = db.scalars(q.order_by(RiskRecord.id.desc())).all()
         scope = _current_scope(user)
+        kw = (keyword or "").strip()
         items = []
         for k in rows:
             rec = db.get(InternshipRecord, k.internship_id)
             stu = db.get(StudentProfile, rec.student_id) if rec else None
             if not _rec_in_scope(scope, db, rec, stu):  # P0-D
                 continue
+            if kw and kw not in (stu.real_name or "") and kw not in (stu.student_no or ""):
+                continue
             items.append({
                 "id": str(k.id), "internId": str(k.internship_id),
                 "studentName": stu.real_name if stu else "-",
+                "studentNo": stu.student_no if stu else "-",
                 "className": (stu.grade + "级") if stu and stu.grade else "-",
-                "source": f"{k.risk_code} {k.risk_title}", "level": k.risk_level,
-                "owner": k.owner_name or "", "deadline": _iso(k.deadline_at)[:10] if k.deadline_at else "",
+                "source": f"{k.risk_code} {k.risk_title}",
+                "sourceDetail": k.source_module or "",
+                "level": k.risk_level, "riskLevel": k.risk_level,
+                "owner": k.owner_name or "", "ownerName": k.owner_name or "",
+                "deadline": _iso(k.deadline_at)[:10] if k.deadline_at else "",
+                "deadlineAt": _iso(k.deadline_at) or "",
                 "lastFollow": k.last_follow_note or "—",
+                "lastFollowNote": k.last_follow_note or "",
                 "status": k.status, "statusLabel": RISK_STATUS_LABEL.get(k.status, k.status),
             })
         total = len(items)
