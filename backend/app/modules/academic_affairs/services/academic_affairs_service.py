@@ -565,6 +565,31 @@ def _time_slot_row(x) -> dict:
             "version": x.version}
 
 
+def _times_overlap(a_start: str | None, a_end: str | None, b_start: str | None, b_end: str | None) -> bool:
+    """HH:MM 闭开区间重叠判定；缺任一时不参与冲突（兼容仅配序号的草稿节次）。"""
+    if not (a_start and a_end and b_start and b_end):
+        return False
+    return a_start < b_end and b_start < a_end
+
+
+def _assert_no_timeslot_overlap(db, start_time, end_time, exclude_id=None) -> None:
+    """同租户已启用/未删除节次之间禁止时间重叠（校历节次异常门禁）。"""
+    from app.models import AaTimeSlot
+    if not start_time or not end_time:
+        return
+    rows = db.scalars(select(AaTimeSlot).where(
+        AaTimeSlot.tenant_id == _tid(), AaTimeSlot.is_deleted.is_(False),
+        AaTimeSlot.enabled.is_(True))).all()
+    for other in rows:
+        if exclude_id is not None and other.id == int(exclude_id):
+            continue
+        if _times_overlap(start_time, end_time, other.start_time, other.end_time):
+            raise AppException(
+                "DATA_CONFLICT",
+                f"节次时间与第{other.slot_no}节（{other.start_time}-{other.end_time}）重叠",
+            )
+
+
 def create_time_slot(body, user) -> dict:
     with session() as db:
         from app.models import AaTimeSlot
@@ -574,8 +599,13 @@ def create_time_slot(body, user) -> dict:
             AaTimeSlot.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", "该节次序号已存在")
+        start_time = getattr(body, "startTime", None)
+        end_time = getattr(body, "endTime", None)
+        if start_time and end_time and start_time >= end_time:
+            raise AppException("VALIDATION_ERROR", "节次开始时间必须早于结束时间")
+        _assert_no_timeslot_overlap(db, start_time, end_time)
         sl = AaTimeSlot(tenant_id=_tid(), slot_no=slot_no, slot_name=getattr(body, "slotName", None),
-                        start_time=getattr(body, "startTime", None), end_time=getattr(body, "endTime", None),
+                        start_time=start_time, end_time=end_time,
                         status="ENABLED", enabled=True)
         db.add(sl)
         db.flush()
@@ -606,6 +636,12 @@ def update_time_slot(slot_id, user, body) -> dict:
             s.start_time = body.startTime or None
         if getattr(body, "endTime", None) is not None:
             s.end_time = body.endTime or None
+        if s.start_time and s.end_time and s.start_time >= s.end_time:
+            raise AppException("VALIDATION_ERROR", "节次开始时间必须早于结束时间")
+        # 仅在仍启用时校验重叠（停用节次不占用时段）
+        will_enabled = s.enabled if getattr(body, "enabled", None) is None else bool(body.enabled)
+        if will_enabled:
+            _assert_no_timeslot_overlap(db, s.start_time, s.end_time, exclude_id=s.id)
         if getattr(body, "enabled", None) is not None:
             s.enabled = bool(body.enabled)
             s.status = "ENABLED" if s.enabled else "DISABLED"
