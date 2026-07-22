@@ -175,8 +175,19 @@ def can_teacher_view_student(user: dict, student, scope: dict | None = None, db=
                 cls = db.get(SchoolClass, student.class_id)
                 if cls and _class_match(scope, cls.class_name):
                     return True
-            if getattr(student, "college_id", None) and scope["collegeNames"]:
-                col = db.get(College, student.college_id)
+            college_id = getattr(student, "college_id", None)
+            if not college_id and getattr(student, "major_id", None):
+                from app.models import Major
+                maj = db.get(Major, student.major_id)
+                college_id = maj.college_id if maj else None
+            if not college_id and getattr(student, "class_id", None):
+                from app.models import Major
+                cls = db.get(SchoolClass, student.class_id)
+                if cls:
+                    maj = db.get(Major, cls.major_id)
+                    college_id = maj.college_id if maj else None
+            if college_id and scope["collegeNames"]:
+                col = db.get(College, college_id)
                 if col and (col.college_name or "").strip() in scope["collegeNames"]:
                     return True
             # 各域冗余班级名（迎新/在校/学业/毕设/就业按姓名+学号冗余存班级）
