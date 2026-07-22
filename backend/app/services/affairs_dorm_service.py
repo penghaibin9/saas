@@ -68,7 +68,8 @@ def _cs_student_id(db, student_id):
 def _dorm_scope_building_ids(db, user):
     """宿管数据范围(DORM_BUILDING)：返回其负责的 building_id 集合。
     None=全部可见（学工处/学院/超管等非宿管角色）；set()=宿管未分配楼栋（看不到任何楼）。
-    键派生与 resolve_teacher_scope 一致（mock u_dorm01→dorm01 / ctx_<login> / 姓名兜底），匹配 DormBuilding.manager_teacher_key。"""
+    键派生与 resolve_teacher_scope 一致（mock u_dorm01→dorm01 / ctx_<login> / 姓名兜底），匹配 DormBuilding.manager_teacher_key。
+    另兼容 loginName / 工号（师生导入后常见把楼栋绑到工号）。"""
     from app.core.permissions import is_super_admin
     from app.models import DormBuilding
     u = user or {}
@@ -78,8 +79,10 @@ def _dorm_scope_building_ids(db, user):
     uid = str(u.get("userId") or "")
     ctx = str(u.get("activeContextId") or "")
     name = u.get("realName") or ""
+    login = str(u.get("loginName") or u.get("username") or "")
     keys = {k for k in (uid, uid[2:] if uid.startswith("u_") else "",
-                        ctx[4:] if ctx.startswith("ctx_") else "", name) if k}
+                        uid[3:] if uid.startswith("db-") else "",
+                        ctx[4:] if ctx.startswith("ctx_") else "", name, login) if k}
     rows = db.scalars(select(DormBuilding).where(
         DormBuilding.tenant_id == _tid(), DormBuilding.is_deleted.is_(False),
         DormBuilding.manager_teacher_key.in_(keys))).all()

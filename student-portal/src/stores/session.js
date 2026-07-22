@@ -18,9 +18,9 @@ export const useSessionStore = defineStore('sp-session', {
     isStudent: (s) => (s.user?.userType || '').toUpperCase() === 'STUDENT'
   },
   actions: {
-    /** 账号密码登录。非 STUDENT 一律拒绝并清理 token。 */
-    async login(loginName, password) {
-      const data = await portalApi.login(loginName, password)
+    /** 账号密码登录。非 STUDENT 一律拒绝并清理 token。tenantCode 多校同账号时必填。 */
+    async login(loginName, password, tenantCode) {
+      const data = await portalApi.login(loginName, password, tenantCode)
       const u = data.user || {}
       const roleCode = data.currentRole?.roleCode || u.roleCode || ''
       const userType = (u.userType || '').toUpperCase()

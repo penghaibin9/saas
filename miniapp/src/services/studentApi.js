@@ -96,6 +96,7 @@ export const studentApi = {
   // 13A 学工中心（P7 多端收口，真实优先无 mock 兜底，业务错误透出）
   getAffairsOverview: () => real.affairsOverview(),
   getMyLeaves: () => real.affairsLeaveMy(),
+  resubmitLeave: (leaveId, body) => real.affairsLeaveResubmit(leaveId, body),
   getMyAid: () => real.affairsAidMy(),
   getMyFunding: () => real.affairsFundingMy(),
   getMyDiscipline: () => real.affairsDisciplineMy(),

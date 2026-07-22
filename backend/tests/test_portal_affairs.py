@@ -170,3 +170,53 @@ def test_non_student_rejected(client, db_mode):
     assert client.post(f"{PORTAL}/aid/apply", headers=admin,
                        json={"batchId": "1", "applyLevel": "一般困难", "confirm": True,
                              "statement": "x" * 20}).json()["code"] == 403001
+
+
+def test_portal_leave_resubmit_self_only(client, db_mode):
+    """SA-BUG-001 回归：学生 PC 门户可重交本人被退回请假；他人/非 RETURNED 拒绝。"""
+    from datetime import datetime
+
+    from app.db.session import get_sessionmaker
+    from app.models import CsLeave, StudentProfile
+    from app.services import affairs_leave_service as leave_svc
+
+    db = get_sessionmaker()()
+    stu = StudentProfile(tenant_id=TID, student_no="SA-RESUB-01", real_name="重交生",
+                         gender="M", grade="2024", current_stage="ENROLLED",
+                         student_status="NORMAL", status="ACTIVE")
+    other = StudentProfile(tenant_id=TID, student_no="SA-RESUB-02", real_name="他人",
+                           gender="F", grade="2024", current_stage="ENROLLED",
+                           student_status="NORMAL", status="ACTIVE")
+    db.add(stu); db.add(other); db.flush()
+    leave = CsLeave(
+        tenant_id=TID, cs_student_id=0, student_id=stu.id, leave_type="PERSONAL",
+        start_time=datetime(2026, 8, 1), end_time=datetime(2026, 8, 2),
+        days=1, reason="门户重交回归初始事由足够字数",
+        affairs_status="RETURNED", status="RETURNED",
+        return_reason="材料不齐请补充说明",
+    )
+    db.add(leave); db.commit()
+    leave_id = leave.id
+    db.close()
+
+    h = _stu_token("重交生", "SA-RESUB-01")
+    ok = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=h,
+                     json={"reason": "已按退回意见补充行程说明材料"}).json()
+    assert ok["code"] == 0
+    assert ok["data"]["affairsStatus"] == "COUNSELOR_REVIEW"
+
+    # 再次重交应失败（已不在 RETURNED）
+    again = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=h, json={"reason": "再次重交不应成功"}).json()
+    assert again["code"] != 0
+
+    # 他人不可重交
+    leave_svc.return_leave  # keep import used for clarity of domain
+    db = get_sessionmaker()()
+    row = db.get(CsLeave, leave_id)
+    row.affairs_status = "RETURNED"
+    row.status = "RETURNED"
+    db.commit(); db.close()
+    other_h = _stu_token("他人", "SA-RESUB-02")
+    deny = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=other_h,
+                       json={"reason": "他人冒充重交应当失败"}).json()
+    assert deny["code"] in (403001, 403002) or deny.get("bizCode") in ("NO_PERMISSION", "NO_DATA_SCOPE")
