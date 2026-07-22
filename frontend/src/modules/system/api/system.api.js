@@ -528,11 +528,16 @@ export const systemApi = {
     }
   },
 
-  exportRoleConfig(id) {
-    const row = roleList.find((r) => r.id === id)
-    if (!row) return fail('角色不存在')
-    audit({ module: 'EXPORT', action: 'EXPORT', actionLabel: '导出', target: `角色配置「${row.name}」`, summary: '导出角色权限配置（JSON，不含成员个人信息），文件含水印' })
-    return ok({ fileName: `角色配置_${row.code}.json` })
+  /** 导出角色权限配置（真实 JSON：后端查真库权限点，不含成员，浏览器直接下载） */
+  async exportRoleConfig(id) {
+    try {
+      const blob = await requestBlob(`/system/export/role-config/${encodeURIComponent(id)}`)
+      const fileName = `角色配置_${id}.json`
+      saveBlob(blob, fileName)
+      return ok({ fileName })
+    } catch (error) {
+      return apiError(error)
+    }
   },
 
   /* ==================== 菜单权限 ==================== */
@@ -603,9 +608,16 @@ export const systemApi = {
     return ok(clone(scopeAffectedUsersMap[id] || []))
   },
 
-  exportScopeRules() {
-    audit({ module: 'EXPORT', action: 'EXPORT', actionLabel: '导出', target: '数据范围规则清单', summary: '导出规则清单（含引用角色与影响人数），文件含水印' })
-    return ok({ fileName: '数据范围规则_' + now().slice(0, 10) + '.xlsx' })
+  /** 导出数据范围规则清单（真实 xlsx：含引用角色/影响人数+水印，浏览器直接下载） */
+  async exportScopeRules() {
+    try {
+      const blob = await requestBlob('/system/export/scope-rules')
+      const fileName = '数据范围规则_' + now().slice(0, 10) + '.xlsx'
+      saveBlob(blob, fileName)
+      return ok({ fileName })
+    } catch (error) {
+      return apiError(error)
+    }
   },
 
   /* ==================== 组织结构 ==================== */
@@ -698,9 +710,16 @@ export const systemApi = {
     }
   },
 
-  exportConfigs() {
-    audit({ module: 'EXPORT', action: 'EXPORT', actionLabel: '导出', target: '系统与品牌配置', summary: '导出配置快照（敏感项仅导出策略描述，不含密钥），文件含水印' })
-    return ok({ fileName: '系统配置快照_' + now().slice(0, 10) + '.json' })
+  /** 导出系统与品牌配置快照（真实 JSON：后端查真库,不含密钥,浏览器直接下载） */
+  async exportConfigs() {
+    try {
+      const blob = await requestBlob('/system/export/configs')
+      const fileName = '系统配置快照_' + now().slice(0, 10) + '.json'
+      saveBlob(blob, fileName)
+      return ok({ fileName })
+    } catch (error) {
+      return apiError(error)
+    }
   },
 
   /* ==================== 日志（只读 + 导出，禁止删除） ==================== */

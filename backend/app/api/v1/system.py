@@ -944,6 +944,79 @@ def export_system_org(user=Depends(require_permission("systemAdmin.org.view"))):
         db.close()
 
 
+def _json_response(payload: dict, filename: str, user: dict, audit_target: str):
+    import json
+    from app.services import audit_log
+    content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    audit_log.record("EXPORT", audit_target, detail={"summary": "导出配置快照（JSON，不含密钥/敏感明文）"})
+    return StreamingResponse(
+        io.BytesIO(content), media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
+
+
+@router.get("/system/export/scope-rules", summary="导出数据范围规则清单（真实 xlsx）")
+def export_scope_rules(user=Depends(require_permission("systemAdmin.scope.view"))):
+    from app.models import DataScopeRule
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        rules = db.scalars(select(DataScopeRule).where(DataScopeRule.tenant_id == tenant_id,
+                DataScopeRule.is_deleted.is_(False)).order_by(DataScopeRule.id.desc())).all()
+        headers = ["规则名称", "范围类型", "引用角色", "影响用户数", "状态", "备注"]
+        rows = []
+        for r in rules:
+            row = _scope_rule_row(db, r)
+            rows.append([row["name"], row["scopeLabel"], "、".join(row["appliedRoles"]) or "未引用",
+                         row["affectedUsers"], row["statusLabel"], row["remark"]])
+        return _xlsx_response("数据范围规则", headers, rows, f"数据范围规则_{datetime.now():%Y%m%d}.xlsx",
+                              user, "数据范围规则")
+    finally:
+        db.close()
+
+
+@router.get("/system/export/role-config/{role_id}", summary="导出角色权限配置（真实 JSON，不含成员）")
+def export_role_config(role_id: int, user=Depends(require_permission("systemAdmin.role.view"))):
+    from app.core.exceptions import AppException
+    from app.models import Permission, Role, RolePermission
+    from app.core.permissions import ROLE_PERMISSIONS
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        role = db.scalars(select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id,
+                                             Role.is_deleted.is_(False))).first()
+        if role is None:
+            raise AppException("DATA_NOT_FOUND", "角色不存在")
+        if str(role.role_type or "").upper() == "SYSTEM":
+            codes = sorted(ROLE_PERMISSIONS.get(role.role_code, set()))
+        else:
+            codes = sorted(db.scalars(select(Permission.permission_code).join(RolePermission,
+                RolePermission.permission_id == Permission.id).where(
+                RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id,
+                RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False))).all())
+        payload = {"roleName": role.role_name, "roleCode": role.role_code,
+                   "roleType": "BUILTIN" if str(role.role_type or "").upper() == "SYSTEM" else "CUSTOM",
+                   "scopeCode": _role_scope(role), "permissionCount": len(codes),
+                   "permissions": codes, "exportedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        return _json_response(payload, f"角色配置_{role.role_code}.json", user, f"角色配置「{role.role_name}」")
+    finally:
+        db.close()
+
+
+@router.get("/system/export/configs", summary="导出系统与品牌配置快照（真实 JSON，不含密钥）")
+def export_configs(user=Depends(require_permission("systemAdmin.config.view"))):
+    from app.services import system_config_service
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        brand = _brand_form(db, tenant_id)
+    finally:
+        db.close()
+    payload = {"systemConfigs": system_config_service.list_configs(),
+               "brand": {k: v for k, v in brand.items() if k != "schoolName"},
+               "exportedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    return _json_response(payload, f"系统配置快照_{datetime.now():%Y%m%d}.json", user, "系统与品牌配置")
+
+
 # ═══════════ 数据范围规则（真实可编辑目录，t_data_scope_rule；角色经 scopeCode 引用生效） ═══════════
 _SCOPE_LABELS = {"SELF": "本人", "CLASS": "本班", "COUNSELOR_CLASSES": "本人所带班级",
                  "GD_STUDENTS": "本人指导毕设学生", "INTERN_STUDENTS": "本人指导实习学生",

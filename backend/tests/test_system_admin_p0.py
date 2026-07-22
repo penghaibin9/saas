@@ -201,6 +201,31 @@ def test_export_users_real_xlsx(seeded):
     assert any("admin01" in s or "t2020019" in s for s in flat)  # 真实账号数据行
 
 
+def test_export_role_config_and_configs(seeded):
+    """导出角色配置(JSON,真实权限点)+系统配置快照(JSON)+范围规则清单(xlsx)。"""
+    import asyncio, io, json
+    from openpyxl import load_workbook
+    from app.api.v1 import system
+
+    async def _body(resp):
+        chunks = []
+        async for c in resp.body_iterator:
+            chunks.append(c if isinstance(c, bytes) else c.encode())
+        return b"".join(chunks)
+
+    # 角色配置 JSON（种子自定义角色 id=90）
+    rc = json.loads(asyncio.run(_body(system.export_role_config(90, user=ADMIN))))
+    assert rc["roleCode"] == "CUSTOM_AAA" and "permissions" in rc
+    # 系统配置快照 JSON
+    cfg = json.loads(asyncio.run(_body(system.export_configs(user=ADMIN))))
+    assert "systemConfigs" in cfg and "brand" in cfg
+    # 范围规则清单 xlsx（先建一条规则确保有数据行）
+    system.save_scope_rule({"name": "本学院范围", "scopeCode": "COLLEGE", "remark": "x"}, user=ADMIN)
+    ws = load_workbook(io.BytesIO(asyncio.run(_body(system.export_scope_rules(user=ADMIN))))).active
+    flat = [str(c.value) for row in ws.iter_rows() for c in row if c.value]
+    assert "规则名称" in flat and any("本学院范围" in s for s in flat)
+
+
 def test_scope_rule_catalog(seeded):
     """数据范围规则真实可编辑目录：引用角色/影响用户由后端按角色 scopeCode 真实计算；被引用不可作废。"""
     from app.api.v1 import system
