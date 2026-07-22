@@ -417,14 +417,16 @@ export const systemApi = {
   },
 
   /** 导出：受数据范围限制，敏感字段按选择脱敏，文件带水印，动作留痕 */
-  exportUsers({ scope, fields, count }) {
-    const sensitive = (fields || []).filter((f) => f.sensitive)
-    audit({
-      module: 'EXPORT', action: 'EXPORT', actionLabel: '导出',
-      target: `用户账号（${scope === 'SELECTED' ? '所选 ' + count + ' 条' : scope === 'ALL' ? '数据范围内全部' : '当前筛选结果'}）`,
-      summary: `导出字段 ${(fields || []).length} 个（敏感字段 ${sensitive.length} 个已脱敏）· 文件含水印`
-    })
-    return ok({ fileName: '用户账号导出_' + now().slice(0, 10) + '.xlsx', watermark: `${tenantBrandConfig.watermarkText} · ${currentRole.userName} · ${now()}` })
+  /** 导出账号台账（真实 xlsx：后端查真库+水印+导出留痕，浏览器直接下载） */
+  async exportUsers() {
+    try {
+      const blob = await requestBlob('/system/export/users')
+      const fileName = '账号台账_' + now().slice(0, 10) + '.xlsx'
+      saveBlob(blob, fileName)
+      return ok({ fileName })
+    } catch (error) {
+      return apiError(error)
+    }
   },
 
   /* ==================== 角色权限 ==================== */
@@ -644,9 +646,16 @@ export const systemApi = {
     return ok({ ...preview, receipt: '已导入 8 行组织节点' })
   },
 
-  exportOrg() {
-    audit({ module: 'EXPORT', action: 'EXPORT', actionLabel: '导出', target: '组织结构', summary: '导出院系/专业/班级结构（不含成员个人信息），文件含水印' })
-    return ok({ fileName: '组织结构_' + now().slice(0, 10) + '.xlsx' })
+  /** 导出组织结构（真实 xlsx：院系/专业/班级+在籍人数+水印，浏览器直接下载） */
+  async exportOrg() {
+    try {
+      const blob = await requestBlob('/system/export/org')
+      const fileName = '组织结构_' + now().slice(0, 10) + '.xlsx'
+      saveBlob(blob, fileName)
+      return ok({ fileName })
+    } catch (error) {
+      return apiError(error)
+    }
   },
 
   /* ==================== 系统 / 品牌配置 ==================== */
@@ -725,13 +734,17 @@ export const systemApi = {
     return withFallback('audit.logs', () => realApi.getAuditLogs(), () => ok(clone(auditLogs)))
   },
 
-  exportLogs({ tab, scope, fields }) {
-    audit({
-      module: 'EXPORT', action: 'EXPORT', actionLabel: '导出',
-      target: tab === 'login' ? '登录日志' : '操作日志',
-      summary: `导出（${scope === 'RANGE_30D' ? '近 30 天' : '当前筛选结果'} · ${(fields || []).length} 个字段），IP/账号固定脱敏，文件含水印`
-    })
-    return ok({ fileName: (tab === 'login' ? '登录日志_' : '操作日志_') + now().slice(0, 10) + '.xlsx' })
+  /** 导出登录/操作审计（真实 xlsx：后端查真库 t_security_audit_log+水印，浏览器直接下载） */
+  async exportLogs({ tab } = {}) {
+    try {
+      const t = tab === 'login' ? 'login' : 'operation'
+      const blob = await requestBlob(`/system/export/logs?tab=${t}`)
+      const fileName = (t === 'login' ? '登录审计_' : '操作审计_') + now().slice(0, 10) + '.xlsx'
+      saveBlob(blob, fileName)
+      return ok({ fileName })
+    } catch (error) {
+      return apiError(error)
+    }
   }
 }
 

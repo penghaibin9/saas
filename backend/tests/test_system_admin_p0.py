@@ -181,6 +181,26 @@ def test_brand_edit_takes_effect(seeded):
         system.save_system_brand({"brandColor": "红色"}, user=ADMIN)
 
 
+def test_export_users_real_xlsx(seeded):
+    """导出账号台账：真实 xlsx（可被 openpyxl 打开），含种子里的2个账号数据行。"""
+    import asyncio, io
+    from openpyxl import load_workbook
+    from app.api.v1 import system
+
+    async def _body(resp):
+        chunks = []
+        async for c in resp.body_iterator:
+            chunks.append(c if isinstance(c, bytes) else c.encode())
+        return b"".join(chunks)
+
+    resp = system.export_system_users(user=ADMIN)
+    data = asyncio.run(_body(resp))
+    ws = load_workbook(io.BytesIO(data)).active
+    flat = [str(c.value) for row in ws.iter_rows() for c in row if c.value]
+    assert "工号/学号" in flat  # 表头
+    assert any("admin01" in s or "t2020019" in s for s in flat)  # 真实账号数据行
+
+
 def test_scope_rule_catalog(seeded):
     """数据范围规则真实可编辑目录：引用角色/影响用户由后端按角色 scopeCode 真实计算；被引用不可作废。"""
     from app.api.v1 import system

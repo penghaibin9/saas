@@ -850,6 +850,100 @@ def list_operation_logs(keyword: str = "", result: str = "", action: str = "", m
     return success(_audit_page(False, keyword, result, action, module, page, page_size))
 
 
+# ═══════════ 导出（真实 xlsx：查真库 → build_ledger_xlsx → 流式下载 + 导出留痕审计） ═══════════
+def _xlsx_response(title: str, headers: list, rows: list, filename: str, user: dict, audit_target: str):
+    from app.services import xlsx_util
+    op_name = (user or {}).get("realName") or "系统"
+    wm = f"系统管理·{title} · 导出人：{op_name} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    content = xlsx_util.build_ledger_xlsx(title, headers, rows, watermark=wm)
+    from app.services import audit_log
+    audit_log.record("EXPORT", audit_target, detail={"rowCount": len(rows), "summary": f"导出 {len(rows)} 行（含水印）"})
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
+
+
+@router.get("/system/export/users", summary="导出账号台账（真实 xlsx）")
+def export_system_users(keyword: str = "", role: str = "", status: str = "",
+                        user=Depends(require_any_permission("systemAdmin.user.export", "systemAdmin.user.view"))):
+    from app.models import Role, User, UserRole
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        stmt = select(User).where(User.tenant_id == tenant_id, User.is_deleted.is_(False))
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(User.login_name.like(like) | User.real_name.like(like))
+        if status.strip():
+            stmt = stmt.where(User.status == status.upper())
+        users = db.scalars(stmt.order_by(User.created_at.desc())).all()
+        uids = [u.id for u in users]
+        by_user: dict[int, list] = {uid: [] for uid in uids}
+        if uids:
+            for uid, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
+                UserRole.tenant_id == tenant_id, UserRole.user_id.in_(uids), UserRole.status == "ACTIVE",
+                UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).all():
+                by_user[uid].append(r)
+        if role.strip():
+            want = role.strip().upper()
+            users = [u for u in users if any(rr.role_code == want for rr in by_user.get(u.id, []))]
+        headers = ["工号/学号", "姓名", "角色", "状态", "最后登录", "创建时间"]
+        status_label = {"ACTIVE": "启用中", "DISABLED": "已停用", "LOCKED": "已锁定"}
+        rows = [[u.login_name, u.real_name, "、".join(r.role_name for r in by_user.get(u.id, [])) or "—",
+                 status_label.get(str(u.status or "").upper(), u.status or ""),
+                 str(u.last_login_at or "")[:19] or "—", str(u.created_at or "")[:10]] for u in users]
+        return _xlsx_response("账号台账", headers, rows, f"账号台账_{datetime.now():%Y%m%d}.xlsx", user, "账号台账")
+    finally:
+        db.close()
+
+
+@router.get("/system/export/logs", summary="导出登录/操作审计（真实 xlsx）")
+def export_system_logs(tab: str = "operation", keyword: str = "", result: str = "",
+                       user=Depends(require_permission("systemAdmin.audit.view"))):
+    login_only = tab == "login"
+    data = _audit_page(login_only, keyword, result, "", "", 1, 100000)
+    if login_only:
+        headers = ["时间", "用户", "工号", "角色", "结果", "原因", "IP", "设备"]
+        rows = [[r["time"], r["userName"], r["userNo"], r["roleName"], r["resultLabel"],
+                 r["reason"], r["ip"], r["device"]] for r in data["list"]]
+        title, fn, target = "登录审计", f"登录审计_{datetime.now():%Y%m%d}.xlsx", "登录审计"
+    else:
+        headers = ["时间", "操作人", "角色", "动作", "对象", "结果", "IP", "摘要"]
+        rows = [[r["time"], r["who"], r["roleName"], r["actionLabel"], r["target"], r["resultLabel"],
+                 r["ip"], r["detail"].get("summary", "")] for r in data["list"]]
+        title, fn, target = "操作审计", f"操作审计_{datetime.now():%Y%m%d}.xlsx", "操作审计"
+    return _xlsx_response(title, headers, rows, fn, user, target)
+
+
+@router.get("/system/export/org", summary="导出组织结构（真实 xlsx）")
+def export_system_org(user=Depends(require_permission("systemAdmin.org.view"))):
+    from app.models import College, Major, SchoolClass, StudentProfile
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        colleges = {c.id: c for c in db.scalars(select(College).where(College.tenant_id == tenant_id,
+                    College.is_deleted.is_(False))).all()}
+        majors = {m.id: m for m in db.scalars(select(Major).where(Major.tenant_id == tenant_id,
+                  Major.is_deleted.is_(False))).all()}
+        classes = db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == tenant_id,
+                  SchoolClass.is_deleted.is_(False))).all()
+        counts = dict(db.execute(select(StudentProfile.class_id, func.count(StudentProfile.id)).where(
+            StudentProfile.tenant_id == tenant_id, StudentProfile.is_deleted.is_(False)).group_by(
+            StudentProfile.class_id)).all())
+        headers = ["学院", "专业", "班级", "在籍人数", "状态"]
+        st = {"ACTIVE": "启用中", "DISABLED": "已停用"}
+        rows = []
+        for c in classes:
+            major = majors.get(c.major_id)
+            college = colleges.get(major.college_id) if major else None
+            rows.append([college.college_name if college else "—", major.major_name if major else "—",
+                         c.class_name, int(counts.get(c.id, 0)), st.get(str(c.status or "").upper(), c.status or "")])
+        return _xlsx_response("组织结构", headers, rows, f"组织结构_{datetime.now():%Y%m%d}.xlsx", user, "组织结构")
+    finally:
+        db.close()
+
+
 # ═══════════ 数据范围规则（真实可编辑目录，t_data_scope_rule；角色经 scopeCode 引用生效） ═══════════
 _SCOPE_LABELS = {"SELF": "本人", "CLASS": "本班", "COUNSELOR_CLASSES": "本人所带班级",
                  "GD_STUDENTS": "本人指导毕设学生", "INTERN_STUDENTS": "本人指导实习学生",
