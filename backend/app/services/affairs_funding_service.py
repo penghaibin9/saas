@@ -230,14 +230,34 @@ def _batch_row(b) -> dict:
             "quota": b.quota, "status": b.status}
 
 
-def _app_row(x, user, s=None) -> dict:
+def _app_row(x, user, s=None, *, has_pending_appeal: bool = False) -> dict:
     return {"applicationId": str(x.id), "batchId": str(x.batch_id), "studentId": str(x.student_id),
             "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
             "projectType": x.project_type, "applySource": x.apply_source,
             "amount": _amount_view(x.amount, user), "status": x.status,
             "statusLabel": L_FUND.get(x.status, x.status),
             "returnReason": getattr(x, "return_reason", None) or "",
+            "hasPendingAppeal": bool(has_pending_appeal),
             "currentNode": x.status if x.status in FUND_NODES else "", "version": x.version}
+
+
+def _pending_appeal_ids(db, app_ids) -> set[int]:
+    from app.models import FundingAppeal
+    ids = {int(i) for i in app_ids if i}
+    if not ids:
+        return set()
+    return set(db.scalars(select(FundingAppeal.application_id).where(
+        FundingAppeal.tenant_id == _tid(), FundingAppeal.application_id.in_(ids),
+        FundingAppeal.status == "SUBMITTED", FundingAppeal.is_deleted.is_(False))).all())
+
+
+def _assert_no_open_appeal(db, app_id):
+    from app.models import FundingAppeal
+    if db.scalars(select(FundingAppeal.id).where(
+            FundingAppeal.tenant_id == _tid(), FundingAppeal.application_id == int(app_id),
+            FundingAppeal.status == "SUBMITTED", FundingAppeal.is_deleted.is_(False)).limit(1)).first():
+        raise AppException("DATA_CONFLICT", "该申请有进行中的公示申诉，须复核完成后方可确认获资助")
+
 
 
 # ═══════════ 项目 / 批次 ═══════════
@@ -454,15 +474,23 @@ def scan_publicity() -> dict:
             FundingApplication.tenant_id == _tid(), FundingApplication.status == "PUBLICITY",
             FundingApplication.publicity_at.is_not(None),
             FundingApplication.is_deleted.is_(False))).all()
-        cnt = 0
+        pending = _pending_appeal_ids(db, [x.id for x in rows])
+        cnt = skipped = 0
         for x in rows:
+            if int(x.id) in pending:
+                skipped += 1
+                continue
             b = db.get(FundingBatch, int(x.batch_id))
             days = (b.publicity_days if b and b.publicity_days is not None else 5)
             if x.publicity_at + timedelta(days=days) <= now:
+                # 再断言一次，避免扫描窗口内新提交申诉
+                if int(x.id) in _pending_appeal_ids(db, [x.id]):
+                    skipped += 1
+                    continue
                 _grant_one(db, x)
                 cnt += 1
         db.commit()
-        return {"count": cnt}
+        return {"count": cnt, "skippedAppeal": skipped}
 
 
 def confirm_publicity(app_id, user) -> dict:
@@ -471,10 +499,12 @@ def confirm_publicity(app_id, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在公示状态")
+        _assert_no_open_appeal(db, x.id)
         _grant_one(db, x)
         db.commit()
         db.refresh(x)
-        return _app_row(x, user, s)
+        return _app_row(x, user, s, has_pending_appeal=False)
+
 
 
 # ═══════════ 查询 ═══════════
@@ -497,12 +527,13 @@ def list_applications(user, batch_id=None, project_type=None, status=None, page=
         sids = {int(x.student_id) for x in rows if x.student_id}
         students = {s.id: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_(sids))).all()} if sids else {}
+        pending = _pending_appeal_ids(db, [x.id for x in rows])
         out = []
         for x in rows:
             s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
-            out.append(_app_row(x, user, s))
+            out.append(_app_row(x, user, s, has_pending_appeal=int(x.id) in pending))
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total
@@ -540,7 +571,7 @@ def get_application(app_id, user) -> dict:
     with session() as db:
         x, s = _load(db, app_id)
         _scope_or_403(db, x.student_id, user)
-        d = _app_row(x, user, s)
+        d = _app_row(x, user, s, has_pending_appeal=int(x.id) in _pending_appeal_ids(db, [x.id]))
         d["checkSnapshot"] = json.loads(x.check_snapshot_json) if x.check_snapshot_json else {}
         return d
 
@@ -711,17 +742,14 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
     with session() as db:
-        x = db.get(FundingApplication, int(app_id))
+        x = db.scalars(select(FundingApplication).where(
+            FundingApplication.id == int(app_id)).with_for_update()).first()
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("资助申请不存在")
         if x.status != "PUBLICITY":
             raise AppException("DATA_CONFLICT", "仅公示中的资助申请可申诉")
         if not skip_scope_check:
-            from app.services.affairs_dashboard_service import _allowed_class_ids
-            allowed, _ = _allowed_class_ids(db, user)
-            s0 = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s0 or s0.class_id not in allowed):
-                raise AppException("NO_DATA_SCOPE", "不在您的数据范围内")
+            _scope_or_403(db, x.student_id, user)
         dup = db.scalars(select(FundingAppeal).where(
             FundingAppeal.tenant_id == _tid(), FundingAppeal.application_id == int(app_id),
             FundingAppeal.status == "SUBMITTED", FundingAppeal.is_deleted.is_(False))).first()
@@ -729,9 +757,17 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
             raise AppException("DATA_CONFLICT", "该申请已有进行中的申诉")
         o = FundingAppeal(
             tenant_id=_tid(), application_id=int(app_id), student_id=x.student_id,
-            appellant_name=appellant, reason=reason, status="SUBMITTED")
+            appellant_name=appellant, reason=reason, status="SUBMITTED",
+            open_key=int(app_id))
         db.add(o)
-        db.flush()
+        try:
+            db.flush()
+        except Exception as e:
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(e, IntegrityError):
+                db.rollback()
+                raise AppException("DATA_CONFLICT", "该申请已有进行中的申诉")
+            raise
         _audit(db, x.id, "FUNDING_APPEAL_SUBMIT", reason[:200])
         db.commit()
         db.refresh(o)
@@ -761,7 +797,7 @@ def list_appeals(user, status=None, page=1, page_size=50):
 
 def review_appeal(appeal_id, body, user) -> dict:
     """申诉复核：SUSTAINED→申请 REJECTED；OVERRULED→维持 PUBLICITY。意见≥5字。"""
-    from app.models import FundingAppeal, FundingApplication, StudentProfile
+    from app.models import FundingAppeal, FundingApplication, StudentProfile, WorkflowInstance
     if isinstance(body, dict):
         result = str(body.get("result") or "").strip()
         opinion = str(body.get("opinion") or "").strip()
@@ -773,20 +809,31 @@ def review_appeal(appeal_id, body, user) -> dict:
     if len(opinion) < 5:
         raise AppException("VALIDATION_ERROR", "复核意见至少 5 字")
     with session() as db:
-        o = db.get(FundingAppeal, int(appeal_id))
+        o = db.scalars(select(FundingAppeal).where(
+            FundingAppeal.id == int(appeal_id)).with_for_update()).first()
         if not o or o.is_deleted or o.tenant_id != _tid():
             raise not_found("申诉不存在")
+        _scope_or_403(db, o.student_id, user)
         if o.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该申诉已复核")
         o.status, o.result = "CLOSED", result
+        o.open_key = None
         o.review_opinion, o.reviewer = opinion, _op()[0]
         o.reviewed_at, o.version = datetime.utcnow(), o.version + 1
         if result == "SUSTAINED":
             x = db.get(FundingApplication, int(o.application_id))
-            if x and x.status == "PUBLICITY":
+            # 正常应仍为 PUBLICITY（授予前已拦截进行中申诉）；若竞态已 GRANTED 亦撤回为驳回
+            if x and x.status in ("PUBLICITY", "GRANTED"):
                 x.status, x.result_at = "REJECTED", datetime.utcnow()
-                x.return_reason = "公示申诉成立"
+                x.return_reason = (opinion[:200] if opinion else "公示申诉成立")
                 x.version += 1
+                if x.workflow_instance_id:
+                    inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+                    if inst:
+                        inst.status = "REJECTED"
+                _todo_done(db, x.id)
+                _msg(db, x.student_id, "资助申请未通过",
+                     x.return_reason or "公示申诉成立，资助资格已取消", "WORKFLOW_RESULT", x.id)
         _audit(db, o.application_id, "FUNDING_APPEAL_REVIEW", result)
         db.commit()
         db.refresh(o)

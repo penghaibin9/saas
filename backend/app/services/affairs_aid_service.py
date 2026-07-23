@@ -224,7 +224,7 @@ def _batch_row(b) -> dict:
     }
 
 
-def _apply_row(x, s=None, fe=None) -> dict:
+def _apply_row(x, s=None, fe=None, *, has_pending_objection: bool = False) -> dict:
     return {
         "applyId": str(x.id), "batchId": str(x.batch_id), "studentId": str(x.student_id),
         "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
@@ -232,8 +232,28 @@ def _apply_row(x, s=None, fe=None) -> dict:
         "status": x.status, "statusLabel": L_AID.get(x.status, x.status),
         "currentNode": x.status if x.status in AID_NODES else "",
         "familyEconomy": _mask_family(fe),  # 强敏感：默认脱敏
+        "returnReason": getattr(x, "return_reason", None) or "",
+        "hasPendingObjection": bool(has_pending_objection),
         "version": x.version,
     }
+
+
+def _pending_objection_ids(db, apply_ids) -> set[int]:
+    from app.models import AidObjection
+    ids = {int(i) for i in apply_ids if i}
+    if not ids:
+        return set()
+    return set(db.scalars(select(AidObjection.apply_id).where(
+        AidObjection.tenant_id == _tid(), AidObjection.apply_id.in_(ids),
+        AidObjection.status == "SUBMITTED", AidObjection.is_deleted.is_(False))).all())
+
+
+def _assert_no_open_objection(db, apply_id):
+    from app.models import AidObjection
+    if db.scalars(select(AidObjection.id).where(
+            AidObjection.tenant_id == _tid(), AidObjection.apply_id == int(apply_id),
+            AidObjection.status == "SUBMITTED", AidObjection.is_deleted.is_(False)).limit(1)).first():
+        raise AppException("DATA_CONFLICT", "该申请有进行中的公示异议，须复核完成后方可确认通过")
 
 
 # ═══════════ 批次 ═══════════
@@ -466,22 +486,29 @@ def _confirm_one(db, x):
 
 
 def scan_publicity() -> dict:
-    """公示期满自动转 APPROVED（幂等：仅 PUBLICITY 且已过 publicity_days）。"""
+    """公示期满自动转 APPROVED（幂等：仅 PUBLICITY 且已过 publicity_days；跳过有进行中异议的申请）。"""
     from app.models import AidApply, AidBatch
     now = datetime.utcnow()
     with session() as db:
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.status == "PUBLICITY",
             AidApply.publicity_at.is_not(None), AidApply.is_deleted.is_(False))).all()
-        cnt = 0
+        pending = _pending_objection_ids(db, [x.id for x in rows])
+        cnt = skipped = 0
         for x in rows:
+            if int(x.id) in pending:
+                skipped += 1
+                continue
             b = db.get(AidBatch, int(x.batch_id))
             days = (b.publicity_days if b and b.publicity_days is not None else 5)
             if x.publicity_at + timedelta(days=days) <= now:
+                if int(x.id) in _pending_objection_ids(db, [x.id]):
+                    skipped += 1
+                    continue
                 _confirm_one(db, x)
                 cnt += 1
         db.commit()
-        return {"count": cnt}
+        return {"count": cnt, "skippedObjection": skipped}
 
 
 def confirm_publicity(apply_id, user) -> dict:
@@ -491,10 +518,11 @@ def confirm_publicity(apply_id, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在公示状态")
+        _assert_no_open_objection(db, x.id)
         _confirm_one(db, x)
         db.commit()
         db.refresh(x)
-        return _apply_row(x, s, _family_of(db, x.id))
+        return _apply_row(x, s, _family_of(db, x.id), has_pending_objection=False)
 
 
 # ═══════════ 动态调整 ═══════════
@@ -559,6 +587,7 @@ def list_applications(user, batch_id=None, status=None, level=None, page=1, page
             conds.append(AidApply.final_level == level)
         rows = db.scalars(select(AidApply).where(*conds).order_by(AidApply.id.desc())).all()
         students = _students_by_ids(db, rows)
+        pending = _pending_objection_ids(db, [x.id for x in rows])
         out = []
         for x in rows:
             s = students.get(int(x.student_id)) if x.student_id else None
@@ -567,7 +596,7 @@ def list_applications(user, batch_id=None, status=None, level=None, page=1, page
             fe = db.scalars(select(AidFamilyEconomy).where(
                 AidFamilyEconomy.tenant_id == _tid(), AidFamilyEconomy.apply_id == x.id,
                 AidFamilyEconomy.is_deleted.is_(False))).first()
-            out.append(_apply_row(x, s, fe))
+            out.append(_apply_row(x, s, fe, has_pending_objection=int(x.id) in pending))
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total
@@ -577,7 +606,8 @@ def get_application(apply_id, user) -> dict:
     with session() as db:
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
-        return _apply_row(x, s, _family_of(db, x.id))
+        return _apply_row(x, s, _family_of(db, x.id),
+                          has_pending_objection=int(x.id) in _pending_objection_ids(db, [x.id]))
 
 
 def reveal_family_economy(apply_id, user, reason="") -> dict:
@@ -682,21 +712,39 @@ def _obj_row(o, s=None) -> dict:
 
 
 def submit_objection(apply_id, body, user) -> dict:
-    """对公示中申请提异议（仅 PUBLICITY 状态；理由≥5字）。"""
+    """对公示中申请提异议（仅 PUBLICITY 状态；理由≥5字；进行中唯一）。"""
     from app.models import AidApply, AidObjection, StudentProfile
-    reason = (getattr(body, "reason", "") or "").strip()
+    if isinstance(body, dict):
+        reason = str(body.get("reason") or "").strip()
+        objector = body.get("objectorName")
+    else:
+        reason = str(getattr(body, "reason", None) or "").strip()
+        objector = getattr(body, "objectorName", None)
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "异议理由至少 5 字")
     with session() as db:
-        x = db.get(AidApply, int(apply_id))
+        x = db.scalars(select(AidApply).where(AidApply.id == int(apply_id)).with_for_update()).first()
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("认定申请不存在")
         if x.status != "PUBLICITY":
             raise AppException("DATA_CONFLICT", "仅公示中的申请可提异议")
+        dup = db.scalars(select(AidObjection).where(
+            AidObjection.tenant_id == _tid(), AidObjection.apply_id == int(apply_id),
+            AidObjection.status == "SUBMITTED", AidObjection.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "该申请已有进行中的异议")
         o = AidObjection(tenant_id=_tid(), apply_id=int(apply_id), student_id=x.student_id,
-                         objector_name=getattr(body, "objectorName", None), reason=reason,
-                         status="SUBMITTED")
-        db.add(o); db.flush()
+                         objector_name=objector, reason=reason, status="SUBMITTED",
+                         open_key=int(apply_id))
+        db.add(o)
+        try:
+            db.flush()
+        except Exception as e:
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(e, IntegrityError):
+                db.rollback()
+                raise AppException("DATA_CONFLICT", "该申请已有进行中的异议")
+            raise
         _audit(db, x.id, "AID_OBJECTION_SUBMIT", "")
         db.commit(); db.refresh(o)
         s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
@@ -727,26 +775,36 @@ def review_objection(objection_id, body, user) -> dict:
     """异议复核：SUSTAINED 成立→申请置 REJECTED；OVERRULED 不成立→维持(申请不变)。意见≥5字。"""
     from datetime import datetime
     from app.models import AidApply, AidObjection, StudentProfile
-    result = (getattr(body, "result", "") or "").strip()
+    if isinstance(body, dict):
+        result = str(body.get("result") or "").strip()
+        opinion = str(body.get("opinion") or "").strip()
+    else:
+        result = str(getattr(body, "result", None) or "").strip()
+        opinion = str(getattr(body, "opinion", None) or "").strip()
     if result not in ("SUSTAINED", "OVERRULED"):
         raise AppException("VALIDATION_ERROR", "复核结论非法")
-    opinion = (getattr(body, "opinion", "") or "").strip()
     if len(opinion) < 5:
         raise AppException("VALIDATION_ERROR", "复核意见至少 5 字")
     with session() as db:
-        o = db.get(AidObjection, int(objection_id))
+        o = db.scalars(select(AidObjection).where(
+            AidObjection.id == int(objection_id)).with_for_update()).first()
         if not o or o.is_deleted or o.tenant_id != _tid():
             raise not_found("异议不存在")
+        _scope_or_403(db, o.student_id, user)
         if o.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该异议已复核")
         o.status, o.result = "CLOSED", result
+        o.open_key = None
         o.review_opinion, o.reviewer = opinion, _op()[0]
         o.reviewed_at, o.version = datetime.utcnow(), o.version + 1
         if result == "SUSTAINED":
             x = db.get(AidApply, int(o.apply_id))
-            if x and x.status == "PUBLICITY":
-                x.status, x.result_at, x.return_reason = "REJECTED", datetime.utcnow(), "公示异议成立"
+            if x and x.status in ("PUBLICITY", "APPROVED"):
+                x.status, x.result_at, x.return_reason = "REJECTED", datetime.utcnow(), (opinion[:200] or "公示异议成立")
                 x.version += 1
+                _todo_done(db, x.id)
+                _msg(db, x.student_id, "困难认定未通过",
+                     x.return_reason or "公示异议成立，认定结果已取消", "WORKFLOW_RESULT", x.id)
         _audit(db, o.apply_id, "AID_OBJECTION_REVIEW", result)
         db.commit(); db.refresh(o)
         s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None

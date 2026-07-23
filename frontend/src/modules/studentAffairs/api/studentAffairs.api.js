@@ -653,6 +653,23 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/funding/scan-publicity', { method: 'POST', body: {} }))
   },
 
+  /** 对公示中资助申请提申诉。 */
+  submitFundingAppeal(applicationId, body) {
+    return callStrict(() => request(`/student-affairs/funding/applications/${applicationId}/appeal`, { method: 'POST', body }))
+  },
+
+  /** 资助公示申诉列表。 */
+  getFundingAppeals({ status = '', page = 1, pageSize = 100 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/funding/appeals', { params }))
+  },
+
+  /** 复核资助申诉。result: SUSTAINED / OVERRULED。 */
+  reviewFundingAppeal(appealId, result, opinion) {
+    return callStrict(() => request(`/student-affairs/funding/appeals/${appealId}/review`, { method: 'POST', body: { result, opinion } }))
+  },
+
   // ─────────────── 家校联系（P6 · /student-affairs/students/{id}/family-contacts） ───────────────
 
   /** 家校联系记录列表（append-only）。 */

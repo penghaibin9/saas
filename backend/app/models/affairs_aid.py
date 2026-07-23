@@ -55,7 +55,8 @@ class AidApply(PKMixin, TenantMixin, CommonMixin, Base):
 
 class AidObjection(PKMixin, TenantMixin, CommonMixin, Base):
     """困难认定异议（C 包·公示与异议）。公示期内对某申请提异议→复核 成立(驳回申请)/不成立(维持)。
-    status SUBMITTED/CLOSED；result SUSTAINED异议成立/OVERRULED异议不成立。"""
+    status SUBMITTED/CLOSED；result SUSTAINED异议成立/OVERRULED异议不成立。
+    open_key：进行中异议=apply_id，结案后清空；与 tenant_id 组成唯一约束防并发重复。"""
     __tablename__ = "t_affairs_aid_objection"
 
     apply_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -67,6 +68,9 @@ class AidObjection(PKMixin, TenantMixin, CommonMixin, Base):
     review_opinion: Mapped[str | None] = mapped_column(String(1000))
     reviewer: Mapped[str | None] = mapped_column(String(100))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    open_key: Mapped[int | None] = mapped_column(BigInteger, comment="SUBMITTED时=apply_id，CLOSED=NULL")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "open_key", name="uk_aid_objection_open"),)
 
 
 class AidFamilyEconomy(PKMixin, TenantMixin, CommonMixin, Base):
@@ -170,7 +174,8 @@ class FundingDisbursement(PKMixin, TenantMixin, CommonMixin, Base):
 
 class FundingAppeal(PKMixin, TenantMixin, CommonMixin, Base):
     """奖助公示申诉/异议（对齐困难认定异议）。仅 PUBLICITY 可提；
-    复核 SUSTAINED→申请 REJECTED；OVERRULED→维持公示。status SUBMITTED/CLOSED。"""
+    复核 SUSTAINED→申请 REJECTED；OVERRULED→维持公示。status SUBMITTED/CLOSED。
+    open_key：进行中申诉=application_id，结案后清空；与 tenant_id 组成唯一约束防并发重复。"""
     __tablename__ = "t_affairs_funding_appeal"
 
     application_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -182,3 +187,6 @@ class FundingAppeal(PKMixin, TenantMixin, CommonMixin, Base):
     review_opinion: Mapped[str | None] = mapped_column(String(1000))
     reviewer: Mapped[str | None] = mapped_column(String(100))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    open_key: Mapped[int | None] = mapped_column(BigInteger, comment="SUBMITTED时=application_id，CLOSED=NULL")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "open_key", name="uk_funding_appeal_open"),)

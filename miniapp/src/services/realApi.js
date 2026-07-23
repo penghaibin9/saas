@@ -428,7 +428,9 @@ export async function enrichGraduation(mock) {
 
 /* ══════════ 选题管理：浏览题目库 / 提交志愿 / 课题变更申请（学生自服务，真实接口，不 mock 冒充） ══════════ */
 
-export const gdTopics = () => realRequest('/mobile/graduation/topics')
+export const gdTopics = (batchId) => realRequest(
+  '/mobile/graduation/topics' + (batchId ? `?batchId=${encodeURIComponent(batchId)}` : '')
+)
 export const gdActiveRound = () => realRequest('/mobile/graduation/active-round')
 export const gdSubmitChoices = (roundId, choices) =>
   realRequest('/mobile/graduation/choices', { method: 'POST', data: { roundId, choices } })
@@ -877,6 +879,7 @@ export const affairsLeaveResubmit = (leaveId, body) =>
   realRequest(`/mobile/affairs/leave/${leaveId}/resubmit`, { method: 'POST', data: body || {} })
 export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
+export const affairsFundingAppeal = (body) => realRequest('/mobile/affairs/funding/appeal', { method: 'POST', body })
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')
 export const affairsDormMy = () => realRequest('/mobile/affairs/dorm/my')
 export const affairsDormOptions = () => realRequest('/mobile/affairs/dorm/select-options')

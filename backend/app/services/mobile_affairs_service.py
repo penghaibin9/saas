@@ -55,18 +55,35 @@ def aid_my(user) -> dict:
         approved = next((x for x in rows if x.status == "APPROVED"), None)
         return {"currentLevel": (approved.final_level if approved else None),
                 "items": [{"applyId": str(x.id), "applyLevel": x.apply_level,
-                           "finalLevel": x.final_level, "status": x.status} for x in rows]}
+                           "finalLevel": x.final_level, "status": x.status,
+                           "returnReason": getattr(x, "return_reason", None) or ""} for x in rows]}
 
 
 def funding_my(user) -> dict:
-    from app.models import FundingApplication
+    from app.models import FundingAppeal, FundingApplication
+    L = {"DRAFT": "草稿", "SUBMITTED": "已提交", "COUNSELOR_REVIEW": "辅导员初审",
+         "COLLEGE_REVIEW": "学院评审", "SCHOOL_REVIEW": "学校审批", "PUBLICITY": "公示中",
+         "GRANTED": "已获资助", "REJECTED": "已驳回", "RETURNED": "已退回",
+         "CANCELLED": "已取消", "ARCHIVED": "已归档"}
     with session() as db:
         stu = _me(db, user)
         rows = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.student_id == stu.id,
             FundingApplication.is_deleted.is_(False)).order_by(FundingApplication.id.desc())).all()
-        return {"items": [{"applicationId": str(x.id), "projectType": x.project_type,
-                           "status": x.status} for x in rows]}
+        open_ids = set(db.scalars(select(FundingAppeal.application_id).where(
+            FundingAppeal.tenant_id == _tid(), FundingAppeal.student_id == stu.id,
+            FundingAppeal.status == "SUBMITTED", FundingAppeal.is_deleted.is_(False))).all())
+        items = []
+        for x in rows:
+            pending = int(x.id) in open_ids
+            items.append({
+                "applicationId": str(x.id), "projectType": x.project_type,
+                "status": x.status, "statusLabel": L.get(x.status, x.status),
+                "returnReason": x.return_reason or "",
+                "canAppeal": x.status == "PUBLICITY" and not pending,
+                "hasPendingAppeal": pending,
+            })
+        return {"items": items}
 
 
 def discipline_my(user) -> dict:

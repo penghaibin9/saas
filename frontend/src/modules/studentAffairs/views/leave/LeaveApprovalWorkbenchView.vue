@@ -132,7 +132,8 @@ export default {
         { label: '开始时间', value: this.fmt(d.startTime) },
         { label: '结束时间', value: this.fmt(d.endTime) },
         { label: '应返校时间', value: this.fmt(d.expectedReturnAt) },
-        { label: '请假事由', value: d.reason || '—' }
+        { label: '请假事由', value: d.reason || '—' },
+        ...(d.returnReason ? [{ label: '退回意见', value: d.returnReason }] : [])
       ]
     },
     auditRecords() {

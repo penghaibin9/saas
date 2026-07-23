@@ -28,7 +28,17 @@
         </section>
         <section class="sp-card">
           <div class="sp-panel__head">请假 / 销假记录</div>
-          <AutoTable :rows="leave.items" empty="暂无请假记录" />
+          <StateBlock v-if="!(leave.items||[]).length" type="empty" text="暂无请假记录" />
+          <div v-for="(lv, i) in (leave.items || [])" :key="lv.leaveId || lv.id || i" style="padding:12px 0;border-bottom:1px solid #F4F5F7">
+            <div style="display:flex;justify-content:space-between;gap:8px">
+              <div>
+                <div style="font-size:14px;font-weight:600">{{ lv.leaveTypeLabel || lv.leaveType || '请假' }}</div>
+                <div class="sp-muted" style="margin-top:4px">{{ lv.affairsStatusLabel || lv.statusLabel || lv.status || '' }}</div>
+                <div v-if="lv.returnReason" class="sp-muted" style="margin-top:4px;color:#b45309">退回意见：{{ lv.returnReason }}</div>
+              </div>
+              <StatusTag :text="lv.affairsStatusLabel || lv.statusLabel || lv.status || '—'" tone="default" />
+            </div>
+          </div>
         </section>
       </div>
 
@@ -83,8 +93,23 @@
             </template>
           </section>
           <section class="sp-card">
-            <div class="sp-panel__head">发放台账</div>
-            <AutoTable :rows="funding.items" empty="暂无奖助记录" />
+            <div class="sp-panel__head">我的奖助记录</div>
+            <StateBlock v-if="!(funding.items||[]).length" type="empty" text="暂无奖助记录" />
+            <div v-for="it in (funding.items || [])" :key="it.applicationId" style="padding:12px 0;border-bottom:1px solid #F4F5F7">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                <div>
+                  <div style="font-size:14px;font-weight:600">{{ fundTypeLabel(it.projectType) }}</div>
+                  <div class="sp-muted" style="margin-top:4px">{{ it.statusLabel || it.status }}</div>
+                  <div v-if="it.returnReason" class="sp-muted" style="margin-top:4px;color:#b45309">退回/驳回意见：{{ it.returnReason }}</div>
+                </div>
+                <StatusTag :text="it.hasPendingAppeal ? '申诉待复核' : (it.statusLabel || it.status)" :tone="it.hasPendingAppeal ? 'warn' : 'default'" />
+              </div>
+              <template v-if="it.canAppeal">
+                <textarea v-model.trim="fundAppealForms[it.applicationId]" class="sp-inp" style="margin-top:10px" placeholder="对公示结果有异议，请填写申诉理由（至少5字）" />
+                <button class="sp-btn sp-btn--sm" style="margin-top:8px" :disabled="busy || !(fundAppealForms[it.applicationId] || '').trim()" @click="submitFundingAppeal(it.applicationId)">提交公示申诉</button>
+              </template>
+              <div v-else-if="it.hasPendingAppeal" class="sp-muted" style="margin-top:8px">申诉处理中，请耐心等待复核结果</div>
+            </div>
           </section>
         </div>
       </section>
@@ -200,6 +225,7 @@ const leaveForm = reactive({ leaveType: 'PERSONAL', startDate: '', endDate: '', 
 const aidStep = ref(1)
 const aidForm = reactive({ batchId: '', level: 'GENERAL', income: null, reason: '', commit: false })
 const fundForm = reactive({ type: 'SCHOLARSHIP', batchId: '', reason: '', commit: false })
+const fundAppealForms = reactive({})
 const appealForms = reactive({})
 const psyAnswers = reactive({})
 const APPEAL_L = { SUBMITTED: '申诉已提交，等待复核', REVIEWING: '复核中',
@@ -255,6 +281,16 @@ async function applyFunding() {
     await portalApi.affairsFundingApply({ batchId: fundForm.batchId, statement: fundForm.reason, confirm: true })
     ui.notify('奖助申请已提交，等待审核'); fundForm.reason = ''; fundForm.commit = false; reload()
   } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+}
+async function submitFundingAppeal(applicationId) {
+  busy.value = true
+  try {
+    await portalApi.affairsFundingAppeal({ applicationId, reason: fundAppealForms[applicationId] })
+    ui.notify('公示申诉已提交，等待复核'); fundAppealForms[applicationId] = ''; reload()
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+}
+function fundTypeLabel(t) {
+  return (fundTypes.find((f) => f.k === t) || {}).t || t || '奖助'
 }
 async function submitAppeal(caseId) {
   busy.value = true
