@@ -1476,6 +1476,11 @@ def academic_makeup_retake_apply(body: dict = Body(...), user=Depends(get_curren
     return success(aa.retake_apply_my(user, body), message="重修报名已提交")
 
 
+@router.post("/academic/makeup/exemption-apply", summary="教务·本人发起免修申请")
+def academic_makeup_exemption_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.exemption_apply_my(user, body), message="免修申请已提交")
+
+
 @router.get("/academic/selection/courses", summary="教务·网上选课·可选课程（OPEN 批次+实时余量）")
 def academic_selection_courses(batch_id: str = None, user=Depends(get_current_user)):
     return success(aa.selection_courses_my(user, batch_id))

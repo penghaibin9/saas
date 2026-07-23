@@ -44,7 +44,7 @@ export default {
       data: null, state: 'loading', submitting: false, _lock: createSubmitLock(),
       form: { changeType: '', reason: '' },
       TYPES: [{ v: 'SUSPEND', l: '休学' }, { v: 'RESUME', l: '复学' }, { v: 'WITHDRAW', l: '退学' },
-        { v: 'TRANSFER_MAJOR', l: '转专业' }]
+        { v: 'RETAIN', l: '留级' }, { v: 'TRANSFER_MAJOR', l: '转专业' }]
     }
   },
   onLoad() { this.load() },

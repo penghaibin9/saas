@@ -11,7 +11,7 @@
       <section v-if="tab === 'schedule'" class="sp-card">
         <div class="sp-panel__head">
           <span>我的课表 <span class="sp-muted">{{ schedule.note || '' }}</span></span>
-          <button class="sp-btn sp-btn--ghost sp-btn--sm" :disabled="busy" @click="printTranscript('课表')">打印课表</button>
+          <button class="sp-btn sp-btn--ghost sp-btn--sm" :disabled="busy" @click="printSchedule">打印课表</button>
         </div>
         <StateBlock v-if="!(schedule.items||[]).length" type="empty" text="暂无已发布课表" />
         <div v-else class="sched-grid">
@@ -211,7 +211,7 @@
           <div class="preview">异动类型：<b>{{ changeLabel(statusForm.changeType) }}</b><br />申请人：{{ studentName }}（{{ info.studentNo }}）<br />事由：{{ statusForm.reason }}</div>
           <div style="display:flex;gap:10px;margin-top:16px">
             <button class="sp-btn sp-btn--ghost" @click="wizStep = 2">上一步</button>
-            <button class="sp-btn" :disabled="busy" @click="submitStatusChange">打印申请表并提交</button>
+            <button class="sp-btn" :disabled="busy" @click="submitStatusChange">提交并下载申请表</button>
           </div>
         </template>
         <AutoTable :rows="status.changes" empty="暂无异动记录" title="历史异动记录" style="margin-top:16px" />
@@ -655,9 +655,64 @@ async function loadAll() {
   } catch (e) { error.value = e?.message || '学业数据加载失败' } finally { loading.value = false }
 }
 async function printTranscript(reason) {
+  if (!reason || busy.value) return
   busy.value = true
-  try { await portalApi.academicTranscriptPrint({ reason }); ui.notify('已生成打印留痕') }
-  catch (e) { ui.notify(e?.message || '打印失败') } finally { busy.value = false }
+  try {
+    const res = await portalApi.academicTranscriptPrint({ reason })
+    downloadAcademicHtml('成绩单', res, buildTranscriptHtml(res))
+    ui.notify('已下载成绩单（含水印留痕）')
+  } catch (e) { ui.notify(e?.message || '打印失败') } finally { busy.value = false }
+}
+async function printSchedule() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const res = await portalApi.academicSchedulePrint({ reason: '个人课表' })
+    downloadAcademicHtml('个人课表', res, buildScheduleHtml(res))
+    ui.notify('已下载课表（含水印留痕）')
+  } catch (e) { ui.notify(e?.message || '打印失败') } finally { busy.value = false }
+}
+function downloadAcademicHtml(title, res, bodyHtml) {
+  const wm = res?.watermark || studentName.value || ''
+  const at = res?.loggedAt || ''
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title>
+<style>body{font-family:Segoe UI,Microsoft YaHei,sans-serif;padding:24px;color:#111}
+.wm{position:fixed;inset:20% 10%;font-size:42px;color:rgba(0,0,0,.08);transform:rotate(-24deg);pointer-events:none;text-align:center}
+h1{font-size:20px;margin:0 0 8px} .meta{color:#666;font-size:12px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:13px} th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}
+th{background:#f5f7fa}</style></head><body>
+<div class="wm">${wm}</div><h1>${title}</h1>
+<div class="meta">水印：${wm} · 留痕时间：${at}${res?.printReason ? ' · 事由：' + res.printReason : ''}</div>
+${bodyHtml}</body></html>`
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title}-${Date.now()}.html`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+function buildTranscriptHtml(res) {
+  const doc = res?.document || transcript.value || {}
+  const items = doc.items || []
+  const rows = items.map((g) => `<tr><td>${g.courseName || '—'}</td><td>${g.term || '—'}</td><td>${g.score ?? '—'}</td><td>${g.credit ?? '—'}</td><td>${g.gpa ?? '—'}</td></tr>`).join('')
+  return `<p>学号 ${info.value.studentNo || '—'} · 已获学分 ${doc.earnedCredits ?? 0} · GPA ${doc.gpa ?? '—'}</p>
+<table><thead><tr><th>课程</th><th>学期</th><th>成绩</th><th>学分</th><th>绩点</th></tr></thead><tbody>${rows || '<tr><td colspan="5">暂无成绩</td></tr>'}</tbody></table>`
+}
+function buildScheduleHtml(res) {
+  const doc = res?.document || schedule.value || {}
+  const items = doc.items || doc.courses || []
+  const rows = items.map((c) => `<tr><td>${c.courseName || c.name || '—'}</td><td>${c.weekday || c.weekDay || '—'}</td><td>${c.period || c.sections || '—'}</td><td>${c.classroom || c.room || '—'}</td><td>${c.teacherName || c.teacher || '—'}</td></tr>`).join('')
+  return `<table><thead><tr><th>课程</th><th>星期</th><th>节次</th><th>教室</th><th>教师</th></tr></thead><tbody>${rows || '<tr><td colspan="5">暂无课表</td></tr>'}</tbody></table>`
+}
+function buildStatusChangeHtml(res, form) {
+  const doc = res?.document || {}
+  return `<p>申请人：${doc.realName || studentName.value}（${doc.studentNo || info.value.studentNo || '—'}）</p>
+<p>当前学籍：${doc.studentStatus || status.value.studentStatus || '—'}</p>
+<p>异动类型：${changeLabel(form.changeType)}</p>
+<p>申请事由：${form.reason || '—'}</p>`
 }
 async function enroll(c) {
   busy.value = true
@@ -774,8 +829,14 @@ async function submitRecognition() {
 }
 async function submitStatusChange() {
   busy.value = true
-  try { await portalApi.academicStatusChange({ ...statusForm }); ui.notify('异动申请已提交'); wizStep.value = 1; statusForm.reason = ''; loadAll() }
-  catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+  try {
+    const payload = { ...statusForm }
+    await portalApi.academicStatusChange(payload)
+    const printed = await portalApi.academicStatusChangePrint(payload)
+    downloadAcademicHtml('学籍异动申请审批表', printed, buildStatusChangeHtml(printed, payload))
+    ui.notify('异动申请已提交，申请表已下载')
+    wizStep.value = 1; statusForm.reason = ''; loadAll()
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitExam() {
   busy.value = true

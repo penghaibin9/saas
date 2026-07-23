@@ -103,6 +103,11 @@ def academic_schedule(user=Depends(get_current_user)):
     return success(academic.schedule(user))
 
 
+@router.post("/academic/schedule/print", summary="课表打印留痕（本人）")
+def academic_schedule_print(user=Depends(get_current_user), body: dict = Body(None)):
+    return success(academic.schedule_print(user, body or {}))
+
+
 @router.get("/academic/course-selection", summary="可选课程（本人·OPEN批次）")
 def academic_course_selection(user=Depends(get_current_user), batchId: str | None = Query(None)):
     return success(academic.selection_courses(user, batchId))

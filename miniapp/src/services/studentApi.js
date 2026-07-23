@@ -134,6 +134,7 @@ export const studentApi = {
   getMyWarnings: () => real.acadWarningMy(),
   getMyMakeup: () => real.acadMakeupMy(),
   applyRetake: (courseName, termCode, reason) => real.acadRetakeApply(courseName, termCode, reason),
+  applyExemption: (courseName, termCode, reason) => real.acadExemptionApply(courseName, termCode, reason),
   getSelectionCourses: (batchId) => real.acadSelectionCourses(batchId),
   enrollSelection: (selectionCourseId) => real.acadSelectionEnroll(selectionCourseId),
   dropSelection: (selectionCourseId) => real.acadSelectionDrop(selectionCourseId),
