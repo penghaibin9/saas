@@ -183,23 +183,9 @@ def _current_scope(user: dict | None = None) -> dict:
 
 
 def _rec_in_scope(scope: dict, db, rec, stu) -> bool:
-    if scope.get("mode") != "SCOPED":
-        return True
-    if rec is None:
-        return False
-    from app.services.mobile_teacher_service import scope_match_row
-    class_name = college_name = None
-    if stu is not None:
-        from app.models import College, SchoolClass
-        if getattr(stu, "class_id", None):
-            c = db.get(SchoolClass, stu.class_id)
-            class_name = c.class_name if c else None
-        if getattr(stu, "college_id", None):
-            col = db.get(College, stu.college_id)
-            college_name = col.college_name if col else None
-    return scope_match_row(scope, student_no=(stu.student_no if stu else None),
-                           class_name=class_name, advisor_name=rec.advisor_name,
-                           college_name=college_name, advisor_user_id=rec.advisor_user_id)
+    """与 internship_service._rec_in_scope 同口径（含缺 college_id 时学院推导）。"""
+    from app.modules.internship.services.internship_service import _rec_in_scope as _base
+    return _base(scope, db, rec, stu)
 
 
 def _filter_scope(db, rows, scope):
