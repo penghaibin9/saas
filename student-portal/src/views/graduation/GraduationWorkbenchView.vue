@@ -14,8 +14,9 @@
     <template v-else>
       <section v-if="!my.hasData" class="gd-empty-notice">
         <strong>毕业设计流程尚未启用</strong>
-        <p>{{ my.message || '管理员尚未将你加入毕业设计批次。你可以先查看完整办理流程，建档后各步骤会自动显示真实状态和待办。' }}</p>
+        <p>{{ my.note || my.message || '管理员尚未将你加入毕业设计批次。建档后各步骤会显示真实状态和待办。' }}</p>
       </section>
+      <template v-else>
       <section class="gd-summary sp-panel">
         <div><span>我的课题</span><strong>{{ my.topicTitle || '待选题' }}</strong></div>
         <div><span>指导教师</span><strong>{{ my.advisorName || '待分配' }}</strong></div>
@@ -92,6 +93,7 @@
           </article>
         </li>
       </ol>
+      </template>
     </template>
   </div>
 </template>
@@ -127,7 +129,13 @@ const approvedMidterm = computed(() => ['CHECKED_PASS', 'RECTIFIED_PASS'].includ
 const midtermTone = computed(() => {
   if (approvedMidterm.value) return 'success'
   if (midterm.value.status === 'CHECKED_FAIL') return 'danger'
-  if (midterm.value.status === 'RECTIFYING') return 'danger'
+  if (midterm.value.status === 'RECTIFYING' || midterm.value.status === 'RECTIFY_SUBMITTED') return 'warn'
+  return 'warn'
+})
+const finalTone = computed(() => {
+  if (final.value.finalApproved) return 'success'
+  const items = final.value.items || []
+  if (items.some((i) => i.status === 'REJECTED')) return 'danger'
   return 'warn'
 })
 const hasTopic = computed(() => Boolean(my.value.topicTitle && my.value.topicTitle !== '（未选题）'))
@@ -165,7 +173,7 @@ const steps = computed(() => [
   },
   {
     key: 'final', order: '06', title: '成果检查', description: '按初稿、定稿顺序提交论文材料，等待评阅和查重。',
-    status: final.value.finalApproved ? '定稿已通过' : final.value.hint || '等待提交', tone: final.value.finalApproved ? 'success' : 'warn',
+    status: final.value.finalApproved ? '定稿已通过' : final.value.hint || '等待提交', tone: finalTone.value,
     detail: final.value.items?.[0] ? `${final.value.items[0].type} ${final.value.items[0].version} · ${final.value.items[0].statusLabel}` : '提交前请确认开题、中期等前置环节已按学校要求完成。', reviewComment: final.value.items?.[0]?.reviewComment,
     files: (final.value.items || []).filter((item) => item.type === '定稿').flatMap((item) => item.attachmentsList || []),
     action: final.value.canSubmitDraft || final.value.canSubmitFinal ? '上传并提交论文' : ''

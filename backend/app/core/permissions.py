@@ -167,7 +167,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "graduationDesign.proposal.review", "graduationDesign.final.review",
     },
     "GD_REVIEWER": {"graduationDesign.view", "graduationDesign.final.review"},
-    "GD_DEFENSE_SECRETARY": {"graduationDesign.view", "graduationDesign.defense.manage"},
+    "GD_DEFENSE_SECRETARY": {
+        "graduationDesign.view", "graduationDesign.defense.manage",
+        "graduationDesign.defense.publish", "graduationDesign.defense.score",
+    },
     "GD_DEFENSE_EXPERT": {"graduationDesign.view", "graduationDesign.defense.score"},
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {

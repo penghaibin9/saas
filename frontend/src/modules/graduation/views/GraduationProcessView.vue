@@ -53,7 +53,7 @@
               <div class="gp-kv"><span>下达时间</span><AppDateDisplay :value="taskbook.issuedAt || taskbook.createdAt" mode="datetime" /></div>
               <div class="gp-kv"><span>截止时间</span><AppDateDisplay :value="taskbook.deadline" mode="deadline" /></div>
               <div class="ie-actions">
-                <button v-if="taskbook.status !== 'CONFIRMED'" class="mp-btn mp-btn--primary" @click="doConfirmTaskbook">学生确认</button>
+                <button v-if="taskbook.status !== 'CONFIRMED'" class="mp-btn mp-btn--primary" @click="doConfirmTaskbook">代学生确认</button>
                 <button v-if="taskbook.status === 'CONFIRMED'" class="mp-btn" @click="openChangeTaskbook">发起变更</button>
               </div>
               <div v-if="taskbook.history && taskbook.history.length" class="gp-history">
@@ -228,8 +228,11 @@ export default {
       })
     },
     async doConfirmTaskbook() {
-      const res = await graduationTaskbookApi.confirmTaskbook(this.current.id)
-      if (res.code === 0) { toast.success('已确认'); this.loadTaskbook() } else toast.error(res.message)
+      const reason = window.prompt('管理员代确认须填写原因（不少于5字）', '学生线下已确认，代为录入')
+      if (reason == null) return
+      if (String(reason).trim().length < 5) { toast.error('代确认原因不少于5字'); return }
+      const res = await graduationTaskbookApi.confirmTaskbook(this.current.id, { proxyReason: String(reason).trim() })
+      if (res.code === 0) { toast.success('已代确认'); this.loadTaskbook() } else toast.error(res.message)
     },
     openGuidanceCreate() {
       if (!this.current) return

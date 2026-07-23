@@ -115,7 +115,13 @@ export default {
         this.activeRound = r || null
         this.loaded = true
         this.state = 'ready'
-        if (r) studentApi.getGraduationTopics().then((t) => { this.topics = t || [] }).catch(() => {})
+        if (r) {
+          const batchId = r.batchId || ''
+          studentApi.getGraduationTopics(batchId).then((t) => { this.topics = t || [] }).catch(() => {
+            this.topics = []
+            toast('题目列表加载失败，请下拉重试')
+          })
+        }
         if (this.hasTopic) studentApi.getMyGraduationChangeRequests().then((r2) => { this.changeRequests = r2 || [] }).catch(() => {})
       }).catch(() => { this.state = 'error' })
     },

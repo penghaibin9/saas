@@ -486,7 +486,7 @@ def assign_advisor(sid, advisor_name: str) -> dict:
 # ═══════════ 状态机 / 风险 ═══════════
 
 def set_stage(sid, action: str, reason: str = "") -> dict:
-    """ADVANCE 推进节点；ARCHIVE 归档（需成果已通过或管理员强制）。"""
+    """ADVANCE 推进节点；ARCHIVE 归档（须材料归档已备案，禁止跳过业务门禁）。"""
     with session() as db:
         s = _get(db, sid)
         assert_student_access(db, s, "student.stage")
@@ -498,6 +498,32 @@ def set_stage(sid, action: str, reason: str = "") -> dict:
                 raise AppException("DATA_CONFLICT", "未分配选题，不能推进（请先分配选题）")
             if s.stage == "TASKBOOK_CONFIRM" and not s.advisor_name:
                 raise AppException("DATA_CONFLICT", "未分配指导教师，不能进入指导阶段")
+            if s.stage == "GUIDING":
+                # 进入中期前须开题书面通过
+                from app.models import GraduationProposal
+                prop_ok = db.scalars(select(GraduationProposal).where(
+                    GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == s.id,
+                    GraduationProposal.is_deleted.is_(False), GraduationProposal.status == "APPROVED",
+                ).limit(1)).first()
+                if not prop_ok:
+                    raise AppException("DATA_CONFLICT", "开题报告通过后方可进入中期检查")
+            if s.stage == "MIDTERM":
+                from app.models import GraduationMidterm
+                from app.modules.graduation.services.graduation_service import midterm_allows_final_submit
+                mid = db.scalars(select(GraduationMidterm).where(
+                    GraduationMidterm.tenant_id == _tid(), GraduationMidterm.gd_student_id == s.id,
+                    GraduationMidterm.is_deleted.is_(False),
+                ).order_by(GraduationMidterm.id.desc())).first()
+                if not midterm_allows_final_submit(mid):
+                    raise AppException("DATA_CONFLICT", "中期检查通过后方可进入成果检查")
+            if s.stage == "FINAL_CHECK":
+                final_ok = db.scalars(select(GraduationFinal).where(
+                    GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == s.id,
+                    GraduationFinal.is_deleted.is_(False), GraduationFinal.final_type == "定稿",
+                    GraduationFinal.status == "APPROVED",
+                ).limit(1)).first()
+                if not final_ok:
+                    raise AppException("DATA_CONFLICT", "定稿通过后方可进入答辩阶段")
             if s.stage == "DEFENSE":
                 raise AppException("DATA_CONFLICT", "已在答辩阶段，请通过发布成绩推进为「已完成」")
             if s.stage == "COMPLETED":
@@ -508,6 +534,26 @@ def set_stage(sid, action: str, reason: str = "") -> dict:
         elif action == "ARCHIVE":
             if s.stage == "ARCHIVED":
                 raise AppException("DATA_CONFLICT", "已归档")
+            from app.models import GraduationArchiveRecord, GraduationRiskCase
+            filed = db.scalars(select(GraduationArchiveRecord).where(
+                GraduationArchiveRecord.tenant_id == _tid(),
+                GraduationArchiveRecord.gd_student_id == s.id,
+                GraduationArchiveRecord.is_deleted.is_(False),
+                GraduationArchiveRecord.status == "FILED",
+            ).limit(1)).first()
+            if not filed:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "请先完成材料归档核验备案后，再归档学生阶段",
+                )
+            open_n = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
+                GraduationRiskCase.tenant_id == _tid(),
+                GraduationRiskCase.is_deleted.is_(False),
+                GraduationRiskCase.gd_student_id == s.id,
+                GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+            )) or 0)
+            if open_n > 0:
+                raise AppException("DATA_CONFLICT", f"仍有 {open_n} 条未关闭风险，不能归档")
             before = s.stage
             s.stage = "ARCHIVED"
             _audit(db, s.id, "ARCHIVE", reason or "归档", before, "ARCHIVED")
@@ -607,6 +653,11 @@ def assign_defense_group(sid, group_id: str, reason: str = "") -> dict:
         assert_student_access(db, s, "student.defense_group")
         if s.stage == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档不可分配答辩组")
+        if s.stage not in ("FINAL_CHECK", "DEFENSE", "COMPLETED"):
+            raise AppException(
+                "DATA_CONFLICT",
+                "须进入成果检查（定稿）阶段后方可分配答辩组",
+            )
         g = db.get(GraduationDefenseGroup, int(group_id))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
@@ -614,8 +665,15 @@ def assign_defense_group(sid, group_id: str, reason: str = "") -> dict:
         before = s.defense_group or ""
         s.defense_group_id = g.id
         s.defense_group = g.group_name
-        if s.stage in ("FINAL_CHECK", "GUIDING", "MIDTERM"):
-            s.stage = "DEFENSE"
+        # 仅成果检查且定稿已通过时推进到答辩；指导/中期不可跳阶段
+        if s.stage == "FINAL_CHECK":
+            final_ok = db.scalars(select(GraduationFinal).where(
+                GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == s.id,
+                GraduationFinal.is_deleted.is_(False), GraduationFinal.final_type == "定稿",
+                GraduationFinal.status == "APPROVED",
+            ).limit(1)).first()
+            if final_ok:
+                s.stage = "DEFENSE"
         _audit(db, s.id, "ASSIGN_DEFENSE_GROUP", reason or g.group_name, before, g.group_name)
         _sync_defense_group_count(db, old_gid)
         _sync_defense_group_count(db, g.id)
@@ -639,19 +697,40 @@ def set_grad_qual(sid, status: str, note: str = "", reason: str = "") -> dict:
 
 
 def batch_archive(record_ids: list[str], reason: str = "") -> dict:
+    """批量推进学生阶段为 ARCHIVED：须材料归档已备案且无未关闭风险（与单条 set_stage 一致）。"""
     archived = 0
+    skipped = 0
     with session() as db:
+        from app.models import GraduationArchiveRecord, GraduationRiskCase
         for rid in record_ids or []:
             s = _get(db, rid)
             assert_student_access(db, s, "student.batch_archive")
             if s.stage == "ARCHIVED":
+                continue
+            filed = db.scalars(select(GraduationArchiveRecord).where(
+                GraduationArchiveRecord.tenant_id == _tid(),
+                GraduationArchiveRecord.gd_student_id == s.id,
+                GraduationArchiveRecord.is_deleted.is_(False),
+                GraduationArchiveRecord.status == "FILED",
+            ).limit(1)).first()
+            if not filed:
+                skipped += 1
+                continue
+            open_n = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
+                GraduationRiskCase.tenant_id == _tid(),
+                GraduationRiskCase.is_deleted.is_(False),
+                GraduationRiskCase.gd_student_id == s.id,
+                GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+            )) or 0)
+            if open_n > 0:
+                skipped += 1
                 continue
             before = s.stage
             s.stage = "ARCHIVED"
             _audit(db, s.id, "ARCHIVE", reason or "批量归档", before, "ARCHIVED")
             archived += 1
         db.commit()
-    return {"archived": archived}
+    return {"archived": archived, "skipped": skipped}
 
 
 # ═══════════ 统计 ═══════════

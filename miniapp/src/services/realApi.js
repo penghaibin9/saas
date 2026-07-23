@@ -377,22 +377,35 @@ export async function enrichInternship(mock) {
       submitted = ['PENDING_REVIEW', 'APPROVED'].includes(st)
     }
   }
-  const out = { ...mock, hasBatch: true, company: r.enterpriseName || mock.company,
-    post: r.positionName || mock.post, schoolMentor: r.advisorName || mock.schoolMentor,
-    statusText: r.status, riskLevel: r.riskLevel,
-    weeklyList: reports, checkinExceptions: r.attendanceExceptions || [], _real: true,
+  // 有真实档案时不再铺 mock 状态骨架，避免假协议/保险/到岗态串味
+  const out = {
+    hasBatch: true,
+    company: r.enterpriseName || '',
+    post: r.positionName || '',
+    schoolMentor: r.advisorName || '',
+    statusText: r.status || '',
+    riskLevel: r.riskLevel || 'NONE',
+    weeklyList: reports,
+    checkinExceptions: r.attendanceExceptions || [],
+    _real: true,
     weekly: {
-      ...(mock.weekly || {}),
       week: `第 ${weekNo} 周`,
       submitted,
-      lastFeedback: lastFeedback || (mock.weekly && mock.weekly.lastFeedback) || ''
-    } }
-  // 真实打卡状态覆盖 mock 骨架
-  if (r.todayCheckin) {
-    out.checkin = { ...(mock.checkin || {}), done: !!r.todayCheckin.done,
-      time: r.todayCheckin.time || '', totalDays: r.todayCheckin.totalDays || 0 }
-    out.status = { ...(mock.status || {}), todayCheckin: r.todayCheckin.done ? 'COMPLETED' : 'PENDING',
-      weekly: submitted ? 'COMPLETED' : (mock.status && mock.status.weekly) || 'PENDING_SUBMIT' }
+      lastFeedback: lastFeedback || ''
+    },
+    checkin: {
+      done: !!(r.todayCheckin && r.todayCheckin.done),
+      time: (r.todayCheckin && r.todayCheckin.time) || '',
+      totalDays: (r.todayCheckin && r.todayCheckin.totalDays) || 0
+    },
+    status: {
+      todayCheckin: (r.todayCheckin && r.todayCheckin.done) ? 'COMPLETED' : 'PENDING',
+      weekly: submitted ? 'COMPLETED' : 'PENDING_SUBMIT',
+      agreement: r.agreementStatus || 'PENDING',
+      insurance: r.insuranceStatus || 'PENDING',
+      onboard: r.onboardStatus || r.status || 'PENDING',
+      leave: r.leaveStatus || 'NONE'
+    }
   }
   return out
 }
@@ -590,6 +603,12 @@ export const applyInternshipLeave = (body) =>
   realRequest('/mobile/internship/leave', { method: 'POST', data: body })
 export const withdrawInternshipLeave = (id) =>
   realRequest(`/mobile/internship/leave/${id}/withdraw`, { method: 'POST' })
+
+export const internshipMakeups = () => realRequest('/mobile/internship/makeup')
+export const applyInternshipMakeup = (body) =>
+  realRequest('/mobile/internship/makeup', { method: 'POST', data: body })
+export const withdrawInternshipMakeup = (id) =>
+  realRequest(`/mobile/internship/makeup/${id}/withdraw`, { method: 'POST' })
 
 export const internshipSelfEval = () => realRequest('/mobile/internship/self-eval')
 export const submitInternshipSelfEval = (body) =>

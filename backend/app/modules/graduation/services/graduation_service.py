@@ -360,7 +360,9 @@ def review_proposal(pid, action, comment=None) -> dict:
 def proposal_stats() -> dict:
     """开题统计：按状态分布 + 未提交数（供开题统计报表）。"""
     with session() as db:
-        base = [GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
+                GraduationProposal.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationProposal).where(*base)) or 0)
         by_status = [{"status": s, "label": L_MAT.get(s, s),
                      "count": int(db.scalar(select(func.count()).select_from(GraduationProposal).where(
@@ -373,7 +375,9 @@ def proposal_stats() -> dict:
 def final_stats() -> dict:
     """成果统计：按状态分布 + 查重超标数。"""
     with session() as db:
-        base = [GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False)]
+        scope_ids = accessible_student_ids(db, _tid())
+        base = [GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False),
+                GraduationFinal.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationFinal).where(*base)) or 0)
         by_status = [{"status": s, "label": L_MAT.get(s, s),
                      "count": int(db.scalar(select(func.count()).select_from(GraduationFinal).where(
@@ -394,6 +398,11 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        if not stu.topic_id:
+            raise AppException("DATA_CONFLICT", "请先完成选题确认后再提交开题报告")
+        elig = getattr(stu, "eligibility_status", None) or "PENDING"
+        if elig == "UNQUALIFIED":
+            raise AppException("DATA_CONFLICT", "资格不合格，不能提交开题报告")
         _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == stu.id,
@@ -427,6 +436,8 @@ def hold_proposal_defense(pid, result, comment=None) -> dict:
         p = db.get(GraduationProposal, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
+        stu = _stu_of(db, p.gd_student_id)
+        assert_student_access(db, stu, "proposal.defense")
         if p.status != "APPROVED":
             raise AppException("DATA_CONFLICT", "仅书面开题审核通过后方可进行开题答辩")
         p.defense_result = result
@@ -575,6 +586,11 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        if not stu.topic_id:
+            raise AppException("DATA_CONFLICT", "请先完成选题确认后再提交成果")
+        elig = getattr(stu, "eligibility_status", None) or "PENDING"
+        if elig == "UNQUALIFIED":
+            raise AppException("DATA_CONFLICT", "资格不合格，不能提交成果")
         # 中期必须已通过（与归档完整性口径一致）；缺记录/待检查/整改中/不通过均拦截
         from app.models import GraduationMidterm
         mid = db.scalars(select(GraduationMidterm).where(
@@ -893,11 +909,25 @@ def assign_defense_students(gid, student_ids) -> dict:
                 raise not_found(f"学生 {sid} 不存在")
             if s.defense_group_id == g.id:
                 continue
+            if s.stage not in ("FINAL_CHECK", "DEFENSE", "COMPLETED"):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"学生 {s.name or sid} 须进入成果检查阶段后方可分配答辩组",
+                )
+            assert_student_access(db, s, "defense.assign")
             current += 1
             if current > MAX_DEFENSE_STUDENTS:
                 raise AppException("DATA_CONFLICT", f"单个答辩组学生数不得超过 {MAX_DEFENSE_STUDENTS} 人")
             s.defense_group_id = g.id
             s.defense_group = g.group_name
+            if s.stage == "FINAL_CHECK":
+                final_ok = db.scalars(select(GraduationFinal).where(
+                    GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == s.id,
+                    GraduationFinal.is_deleted.is_(False), GraduationFinal.final_type == "定稿",
+                    GraduationFinal.status == "APPROVED",
+                ).limit(1)).first()
+                if final_ok:
+                    s.stage = "DEFENSE"
         db.flush()
         _recompute_defense(db, g)
         g.published = False
