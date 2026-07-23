@@ -1,0 +1,127 @@
+{
+  "capturedAt": "2026-07-23T13:20:33.948Z",
+  "base": "http://127.0.0.1:5173",
+  "user": "teacher",
+  "shots": [
+    {
+      "file": "mc-inbox-1440x900.png",
+      "page": "inbox",
+      "viewport": "1440x900",
+      "url": "http://127.0.0.1:5173/admin/messages/inbox",
+      "title": "我的消息",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-compose-1440x900.png",
+      "page": "compose",
+      "viewport": "1440x900",
+      "url": "http://127.0.0.1:5173/admin/messages/compose",
+      "title": "通知发布",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-settings-1440x900.png",
+      "page": "settings",
+      "viewport": "1440x900",
+      "url": "http://127.0.0.1:5173/admin/messages/settings",
+      "title": "消息设置",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-inbox-1366x768.png",
+      "page": "inbox",
+      "viewport": "1366x768",
+      "url": "http://127.0.0.1:5173/admin/messages/inbox",
+      "title": "我的消息",
+      "scrollWidth": 1366,
+      "clientWidth": 1366,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-compose-1366x768.png",
+      "page": "compose",
+      "viewport": "1366x768",
+      "url": "http://127.0.0.1:5173/admin/messages/compose",
+      "title": "通知发布",
+      "scrollWidth": 1366,
+      "clientWidth": 1366,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-settings-1366x768.png",
+      "page": "settings",
+      "viewport": "1366x768",
+      "url": "http://127.0.0.1:5173/admin/messages/settings",
+      "title": "消息设置",
+      "scrollWidth": 1366,
+      "clientWidth": 1366,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-inbox-1280x800.png",
+      "page": "inbox",
+      "viewport": "1280x800",
+      "url": "http://127.0.0.1:5173/admin/messages/inbox",
+      "title": "我的消息",
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-compose-1280x800.png",
+      "page": "compose",
+      "viewport": "1280x800",
+      "url": "http://127.0.0.1:5173/admin/messages/compose",
+      "title": "通知发布",
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-settings-1280x800.png",
+      "page": "settings",
+      "viewport": "1280x800",
+      "url": "http://127.0.0.1:5173/admin/messages/settings",
+      "title": "消息设置",
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-inbox-1024x768.png",
+      "page": "inbox",
+      "viewport": "1024x768",
+      "url": "http://127.0.0.1:5173/admin/messages/inbox",
+      "title": "我的消息",
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-compose-1024x768.png",
+      "page": "compose",
+      "viewport": "1024x768",
+      "url": "http://127.0.0.1:5173/admin/messages/compose",
+      "title": "通知发布",
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "mc-settings-1024x768.png",
+      "page": "settings",
+      "viewport": "1024x768",
+      "url": "http://127.0.0.1:5173/admin/messages/settings",
+      "title": "消息设置",
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "horizontalOverflow": false
+    }
+  ]
+}
