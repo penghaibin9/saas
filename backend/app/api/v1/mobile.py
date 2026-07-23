@@ -1331,6 +1331,12 @@ def affairs_funding_my(user=Depends(get_current_user)):
     return success(aff.funding_my(user))
 
 
+@router.post("/affairs/funding/appeal", summary="学工·公示期本人对资助结果申诉")
+def affairs_funding_appeal(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.funding_appeal(user, body or {}), message="申诉已提交")
+
+
 @router.get("/affairs/discipline/my", summary="学工·我的处分（仅数量）")
 def affairs_discipline_my(user=Depends(get_current_user)):
     return success(aff.discipline_my(user))

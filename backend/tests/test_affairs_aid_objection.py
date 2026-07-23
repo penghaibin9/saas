@@ -53,6 +53,26 @@ def test_objection_sustained_rejects_apply(client, db_mode):
                        json={"result": "OVERRULED", "opinion": "再次复核维持原状"}).json()["code"] != 0
 
 
+def test_objection_blocks_publicity_confirm(client, db_mode):
+    hdr = _hdr(client, "school_admin01")
+    apply_id = _seed_apply(db_mode["student"], "PUBLICITY")
+    from app.db.session import get_sessionmaker
+    from app.models import AidApply
+    from datetime import datetime, timedelta
+    db = get_sessionmaker()()
+    x = db.get(AidApply, apply_id)
+    x.publicity_at = datetime.utcnow() - timedelta(days=1)
+    db.commit(); db.close()
+    o = client.post(f"{BASE}/aid/applications/{apply_id}/objection", headers=hdr,
+                    json={"reason": "该生家庭经济情况与申报不符"}).json()
+    assert o["code"] == 0
+    blocked = client.post(f"{BASE}/aid/applications/{apply_id}/publicity-confirm", headers=hdr, json={}).json()
+    assert blocked["code"] != 0
+    detail = client.get(f"{BASE}/aid/applications/{apply_id}", headers=hdr).json()["data"]
+    assert detail["status"] == "PUBLICITY"
+    assert detail.get("hasPendingObjection") is True
+
+
 def test_objection_overruled_and_non_publicity(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     apply_id = _seed_apply(db_mode["student"], "PUBLICITY")
@@ -61,10 +81,8 @@ def test_objection_overruled_and_non_publicity(client, db_mode):
     rv = client.post(f"{BASE}/aid/objections/{o}/review", headers=hdr,
                      json={"result": "OVERRULED", "opinion": "经复核认定无误，异议不成立维持"}).json()
     assert rv["code"] == 0 and rv["data"]["result"] == "OVERRULED"
-    # 维持：申请仍公示中
     detail = client.get(f"{BASE}/aid/applications/{apply_id}", headers=hdr).json()["data"]
     assert detail["status"] == "PUBLICITY"
-    # 非公示态不可提异议
     ap2 = _seed_apply(db_mode["student"], "CLASS_REVIEW")
     assert client.post(f"{BASE}/aid/applications/{ap2}/objection", headers=hdr,
                        json={"reason": "评议阶段不应可提异议"}).json()["code"] != 0

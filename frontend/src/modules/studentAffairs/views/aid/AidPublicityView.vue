@@ -23,11 +23,16 @@
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
           <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
           <template #cell-level="{ row }"><StatusTag type="processing" :label="levelLabel(row.finalLevel || row.applyLevel)" dot /></template>
+          <template #cell-objection="{ row }">
+            <StatusTag v-if="row.hasPendingObjection" type="warning" label="异议待复核" dot />
+            <span v-else>—</span>
+          </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton code="studentAffairs.aid.approve" size="sm" variant="secondary"
+            <AppPermissionButton v-if="!row.hasPendingObjection" code="studentAffairs.aid.approve" size="sm" variant="secondary"
                                  :loading="actingId === row.applyId" @click="confirm(row)">
               确认公示期满 → 通过
             </AppPermissionButton>
+            <span v-else class="ap-blocked">请先完成异议复核</span>
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前无公示中的认定申请</p>
@@ -49,6 +54,7 @@ const PUBLICITY_COLUMNS = [
   { key: 'student', title: '学生' },
   { key: 'studentNo', title: '学号' },
   { key: 'level', title: '拟认定等级' },
+  { key: 'objection', title: '异议' },
   { key: 'actions', title: '操作', align: 'right', width: '200px' }
 ]
 
@@ -125,6 +131,7 @@ export default {
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
 .ap-note { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
+.ap-blocked { color: var(--color-warning, #b45309); font-size: var(--font-size-sm); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
 @import '@/styles/module-page.css';

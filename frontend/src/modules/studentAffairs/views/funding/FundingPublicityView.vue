@@ -24,11 +24,16 @@
           <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
           <template #cell-projectType="{ row }">{{ typeLabel(row.projectType) }}</template>
           <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
+          <template #cell-appeal="{ row }">
+            <StatusTag v-if="row.hasPendingAppeal" type="warning" label="申诉待复核" dot />
+            <span v-else>—</span>
+          </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton code="studentAffairs.funding.publicity.manage" size="sm" variant="secondary"
+            <AppPermissionButton v-if="!row.hasPendingAppeal" code="studentAffairs.funding.publicity.manage" size="sm" variant="secondary"
                                  :loading="actingId === row.applicationId" @click="confirm(row)">
               确认公示期满 → 获资助
             </AppPermissionButton>
+            <span v-else class="fp-blocked">请先完成申诉复核</span>
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前无公示中的资助申请</p>
@@ -40,7 +45,7 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard } from '@/components/common'
+import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -50,12 +55,13 @@ const PUBLICITY_COLUMNS = [
   { key: 'studentNo', title: '学号' },
   { key: 'projectType', title: '项目类型' },
   { key: 'amount', title: '金额' },
+  { key: 'appeal', title: '申诉' },
   { key: 'actions', title: '操作', align: 'right', width: '220px' }
 ]
 
 export default {
   name: 'FundingPublicityView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, DataTable },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, DataTable, StatusTag: AppStatusTag },
   data() { return { publicityColumns: PUBLICITY_COLUMNS, loading: true, scanning: false, actingId: '', errorMessage: '', items: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -114,6 +120,7 @@ export default {
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
 .fp-note { color: var(--text-tertiary); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
+.fp-blocked { color: var(--color-warning, #b45309); font-size: var(--font-size-sm); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
 @import '@/styles/module-page.css';

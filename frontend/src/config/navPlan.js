@@ -172,6 +172,7 @@ export const NAV_PLAN = [
       I('资助批次', '/admin/student-affairs/funding/batches'),
       I('申请评审（工作台）', '/admin/student-affairs/funding'),
       I('公示待办', '/admin/student-affairs/funding/publicity'),
+      I('公示申诉', '/admin/student-affairs/funding/appeals'),
       I('发放台账', '/admin/student-affairs/funding/disbursements'),
       I('资助统计', '/admin/student-affairs/funding/stats'),
       I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants'),
@@ -315,7 +316,8 @@ export const NAV_PLAN = [
     ]),
     mod('aa-major-split', '专业分流', '/admin/academic-affairs/major-split', [
       I('分流批次与分配', '/admin/academic-affairs/major-split', 'academicAffairs.majorSplit.view'),
-      ...P('学生志愿填报（移动端）', '分流统计')
+      I('学生志愿与录取结果', '/admin/academic-affairs/major-split', 'academicAffairs.majorSplit.view'),
+      I('分流统计（同页志愿名单）', '/admin/academic-affairs/major-split', 'academicAffairs.majorSplit.view')
     ]),
     mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
       I('异动台账', '/admin/academic-affairs/status-changes'),
@@ -465,7 +467,9 @@ export const NAV_PLAN = [
     ]),
     mod('aa-attendance', '课堂考勤', '/admin/academic-affairs/attendance-stats', [
       I('课堂考勤统计（出勤/迟到/旷课/请假汇总）', '/admin/academic-affairs/attendance-stats', 'academicAffairs.warning.view'),
-      ...P('考勤场次查询', '按点名类别统计', '旷课预警联动')
+      I('考勤场次查询', '/admin/academic-affairs/attendance-stats?panel=sessions', 'academicAffairs.warning.view'),
+      I('按点名类别统计', '/admin/academic-affairs/attendance-stats', 'academicAffairs.warning.view'),
+      I('旷课预警联动', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.warning.rule.manage')
     ]),
     mod('aa-course-selection', '选课管理', '/admin/academic-affairs/selection', [
       I('选课批次控制台（批次/课程/名单/统计）', '/admin/academic-affairs/selection', 'academicAffairs.selection.view'),

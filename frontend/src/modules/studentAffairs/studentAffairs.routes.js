@@ -152,6 +152,12 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '资助公示待办', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
       },
       {
+        path: 'funding/appeals',
+        name: 'student-affairs-funding-appeals',
+        component: () => import('@/modules/studentAffairs/views/funding/FundingAppealView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '资助公示申诉', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+      },
+      {
         path: 'funding/ledger',
         name: 'student-affairs-funding-ledger',
         component: () => import('@/modules/studentAffairs/views/funding/FundingLedgerView.vue'),

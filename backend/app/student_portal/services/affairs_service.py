@@ -161,10 +161,11 @@ def funding_appeal(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
     sid = _resolve_self_id(user)
     from app.models import FundingApplication
+    from app.services.db_service import _tid
     from app.services.db_service import session as _session
     with _session() as db:
         x = db.get(FundingApplication, int(app_id))
-        if not x or x.is_deleted or int(x.student_id or 0) != sid:
+        if not x or x.is_deleted or x.tenant_id != _tid() or int(x.student_id or 0) != sid:
             raise AppException("DATA_NOT_FOUND", "资助申请不存在或不属于本人")
     from types import SimpleNamespace
     from app.services import affairs_funding_service as funding
