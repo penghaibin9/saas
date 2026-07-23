@@ -383,27 +383,148 @@ def get_drilldown(college_id=None, major_id=None, class_id=None, stage=None,
         return {"list": items, "total": total, "page": page, "pageSize": page_size, "masked": True}
 
 
-def get_workbench_summary() -> dict:
-    """工作台首页真实汇总卡片。"""
-    from app.models import (AcademicWarning, EmpStudent, OrientationStudent, StudentProfile,
-                            UnifiedMessage, UnifiedTodo, WorkflowTask)
+def _uid(user: dict | None) -> int:
+    """令牌 userId → 数字 ID；不可解析返回 0（调用方按 fail-closed / 本人空集处理）。"""
+    raw = str((user or {}).get("userId") or "")
+    for prefix in ("db-", "u_"):
+        if raw.startswith(prefix):
+            raw = raw[len(prefix):]
+            break
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _workbench_profile_ids(db, ctx) -> set[int] | None:
+    """工作台学生口径可见主档 ID：None=本租户全量；空集=fail-closed（未配范围绝不回退全校）。"""
+    from app.models import StudentProfile
+    if ctx.scope_type == "TENANT_ALL":
+        return None
+    if ctx.scope_type == "SELF":
+        return {int(ctx.self_student_id)} if ctx.self_student_id else set()
+    if ctx.scope_type == "STUDENT":
+        return {int(i) for i in (ctx.psychology_student_ids | ctx.student_ids)}
+    allowed = ctx.allowed_class_ids(db)  # None=全量 / set=受限（可空）
+    if allowed is None:
+        return None
+    if not allowed:
+        return set()
+    return set(db.scalars(select(StudentProfile.id).where(
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.class_id.in_(list(allowed)),
+        StudentProfile.is_deleted.is_(False))).all())
+
+
+def require_tenant_all_stats(user: dict) -> None:
+    """数据中心全校 BI：仅 TENANT_ALL 角色可看；一线角色 fail-closed，禁止把全校数当本院/本班。"""
+    from app.core.affairs_security import build_affairs_context, no_data_scope
     with session() as db:
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type != "TENANT_ALL":
+            raise no_data_scope("全校统计仅对校级授权角色开放，请使用本职工作台或本域统计")
+
+
+# 兼容旧私有名（API 层曾引用）
+_require_tenant_all_stats = require_tenant_all_stats
+
+
+def get_workbench_summary(user: dict | None = None) -> dict:
+    """工作台首页真实汇总卡片（按当前登录人数据范围收敛）。
+
+    口径（P3）：
+    - 学生类指标（在册/预警/未就业/迎新待报）：build_affairs_context → 班级/学院/学生集合；
+      未配范围 → 全 0（fail-closed），绝不回退全校。
+    - 待办：复用 workbench_todo_service（本人指派 + 范围内池待办），与 /todos/summary 同口径。
+    - 未读消息：始终按 receiver_id=本人。
+    - 待审批：校级 TENANT_ALL 看本租户在办；一线只看 assignee_id=本人，不泄漏他人审批池。
+    """
+    from app.core.affairs_security import build_affairs_context
+    from app.models import (AcademicStudent, AcademicWarning, EmpStudent, OrientationStudent,
+                            StudentProfile, WorkflowTask)
+    from app.services import workbench_todo_service as wb_todo
+
+    user = user or {}
+    uid = _uid(user)
+    pending_todo = int(wb_todo.count_todos(user).get("total") or 0)
+    unread_message = int(wb_todo.count_messages(user).get("unread") or 0)
+
+    with session() as db:
+        ctx = build_affairs_context(user, db)
+        profile_ids = _workbench_profile_ids(db, ctx)
+        tenant_all = profile_ids is None
+
+        if tenant_all:
+            student_total = _count(db, StudentProfile, StudentProfile.is_deleted.is_(False))
+            academic_warning = _count(
+                db, AcademicWarning, AcademicWarning.is_deleted.is_(False),
+                AcademicWarning.record_status == "ACTIVE",
+                AcademicWarning.status.in_(["PENDING_HANDLE", "PROCESSING", "ESCALATED"]))
+            unemployed = _count(
+                db, EmpStudent, EmpStudent.is_deleted.is_(False),
+                EmpStudent.record_status == "ACTIVE",
+                EmpStudent.destination_type == "UNEMPLOYED")
+            orientation_pending = _count(
+                db, OrientationStudent, OrientationStudent.is_deleted.is_(False),
+                OrientationStudent.record_status == "ACTIVE",
+                OrientationStudent.report_status == "NOT_REPORTED")
+            pending_approval = _count(
+                db, WorkflowTask, WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status == "PENDING")
+        elif not profile_ids:
+            student_total = academic_warning = unemployed = orientation_pending = 0
+            pending_approval = _count(
+                db, WorkflowTask, WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status == "PENDING",
+                WorkflowTask.assignee_id == uid) if uid else 0
+        else:
+            ids = list(profile_ids)
+            student_total = _count(
+                db, StudentProfile, StudentProfile.is_deleted.is_(False),
+                StudentProfile.id.in_(ids))
+            acad_ids = list(db.scalars(select(AcademicStudent.id).where(
+                AcademicStudent.tenant_id == _tid(),
+                AcademicStudent.is_deleted.is_(False),
+                AcademicStudent.student_id.in_(ids))).all())
+            academic_warning = _count(
+                db, AcademicWarning, AcademicWarning.is_deleted.is_(False),
+                AcademicWarning.record_status == "ACTIVE",
+                AcademicWarning.status.in_(["PENDING_HANDLE", "PROCESSING", "ESCALATED"]),
+                AcademicWarning.acad_student_id.in_(acad_ids)) if acad_ids else 0
+            unemployed = _count(
+                db, EmpStudent, EmpStudent.is_deleted.is_(False),
+                EmpStudent.record_status == "ACTIVE",
+                EmpStudent.destination_type == "UNEMPLOYED",
+                EmpStudent.student_id.in_(ids))
+            orientation_pending = _count(
+                db, OrientationStudent, OrientationStudent.is_deleted.is_(False),
+                OrientationStudent.record_status == "ACTIVE",
+                OrientationStudent.report_status == "NOT_REPORTED",
+                OrientationStudent.student_id.in_(ids))
+            pending_approval = _count(
+                db, WorkflowTask, WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status == "PENDING",
+                WorkflowTask.assignee_id == uid) if uid else 0
+
+        scope_label = {
+            "TENANT_ALL": "本校全量",
+            "COLLEGE": "本学院",
+            "CLASS": "本人班级",
+            "STUDENT": "授权学生",
+            "SELF": "本人",
+            "DORM_BUILDING": "负责楼栋",
+            "NONE": "未配置数据范围（已收敛为空）",
+        }.get(ctx.scope_type, ctx.scope_type)
+
         return {
-            "studentTotal": _count(db, StudentProfile, StudentProfile.is_deleted.is_(False)),
-            "pendingTodo": _count(db, UnifiedTodo, UnifiedTodo.is_deleted.is_(False),
-                                  UnifiedTodo.status == "PENDING"),
-            "pendingApproval": _count(db, WorkflowTask, WorkflowTask.is_deleted.is_(False),
-                                      WorkflowTask.status == "PENDING"),
-            "unreadMessage": _count(db, UnifiedMessage, UnifiedMessage.is_deleted.is_(False),
-                                    UnifiedMessage.status == "UNREAD"),
-            "academicWarning": _count(db, AcademicWarning, AcademicWarning.is_deleted.is_(False),
-                                      AcademicWarning.record_status == "ACTIVE",
-                                      AcademicWarning.status.in_(["PENDING_HANDLE", "PROCESSING", "ESCALATED"])),
-            "unemployed": _count(db, EmpStudent, EmpStudent.is_deleted.is_(False),
-                                 EmpStudent.record_status == "ACTIVE",
-                                 EmpStudent.destination_type == "UNEMPLOYED"),
-            "orientationPending": _count(db, OrientationStudent, OrientationStudent.is_deleted.is_(False),
-                                         OrientationStudent.record_status == "ACTIVE",
-                                         OrientationStudent.report_status == "NOT_REPORTED"),
+            "studentTotal": int(student_total),
+            "pendingTodo": pending_todo,
+            "pendingApproval": int(pending_approval),
+            "unreadMessage": unread_message,
+            "academicWarning": int(academic_warning),
+            "unemployed": int(unemployed),
+            "orientationPending": int(orientation_pending),
+            "scopeType": ctx.scope_type,
+            "scopeLabel": scope_label,
             "updatedAt": _iso(datetime.now()),
         }
