@@ -954,6 +954,9 @@ export const acadWarningMy = () => realRequest('/mobile/academic/warning/my')
 export const acadMakeupMy = () => realRequest('/mobile/academic/makeup/my')
 export const acadRetakeApply = (courseName, termCode, reason) =>
   realRequest('/mobile/academic/makeup/retake-apply', { method: 'POST', data: { courseName, termCode, reason } })
+
+export const acadExemptionApply = (courseName, termCode, reason) =>
+  realRequest('/mobile/academic/makeup/exemption-apply', { method: 'POST', data: { courseName, termCode, reason } })
 export const acadSelectionCourses = (batchId) =>
   realRequest('/mobile/academic/selection/courses' + (batchId ? `?batch_id=${batchId}` : ''))
 export const acadSelectionEnroll = (selectionCourseId) =>

@@ -407,8 +407,9 @@ def reassign(user, volunteer_id, major_id, reason) -> dict:
 
 
 def confirm(user, batch_id) -> dict:
-    """确认分流：写 StudentProfile.major_id + 逐生审计。UNALLOCATED 未清零禁止确认。"""
-    from app.models import AaMajorSplitVolunteer, StudentProfile
+    """确认分流：写 StudentProfile.major_id + 按目标专业年级编入行政班 + 逐生审计。
+    UNALLOCATED 未清零禁止确认。无合适班级时按「专业名+年级+分流N班」自动建班。"""
+    from app.models import AaMajorSplitVolunteer, Major, SchoolClass, StudentProfile
     with session() as db:
         _require_school(user, db)
         b = _get_batch(db, batch_id)
@@ -425,16 +426,56 @@ def confirm(user, batch_id) -> dict:
             AaMajorSplitVolunteer.status == "ALLOCATED",
             AaMajorSplitVolunteer.is_deleted.is_(False)).all()
         n = 0
+        class_created = 0
         for v in vols:
             p = db.get(StudentProfile, int(v.student_id))
             if p and not p.is_deleted:
-                old = p.major_id
-                p.major_id = int(v.result_major_id)
+                old_major, old_class = p.major_id, p.class_id
+                major_id = int(v.result_major_id)
+                p.major_id = major_id
+                major = db.get(Major, major_id)
+                if major and not major.is_deleted and major.tenant_id == _tid() and major.college_id:
+                    p.college_id = major.college_id
+                new_class_id, created = _resolve_split_class(db, major_id, b.grade or p.grade, major)
+                p.class_id = new_class_id
+                if created:
+                    class_created += 1
                 v.status = "CONFIRMED"
                 n += 1
                 _audit(db, b.id, "SPLIT_APPLY_STUDENT",
-                       f"{v.student_no} 专业 {old}→{v.result_major_id}（第{v.result_choice_rank or '调剂'}志愿，绩点{v.gpa_snapshot}）")
+                       f"{v.student_no} 专业 {old_major}→{major_id} 班级 {old_class}→{new_class_id}"
+                       f"（第{v.result_choice_rank or '调剂'}志愿，绩点{v.gpa_snapshot}）")
         b.status = "CONFIRMED"
-        _audit(db, b.id, "SPLIT_CONFIRM", f"分流生效 {n} 人")
+        _audit(db, b.id, "SPLIT_CONFIRM", f"分流生效 {n} 人，新建班级 {class_created}")
         db.commit()
-        return {"batchId": str(b.id), "confirmed": n, "status": b.status}
+        return {"batchId": str(b.id), "confirmed": n, "classesCreated": class_created, "status": b.status}
+
+
+def _resolve_split_class(db, major_id, grade, major) -> tuple:
+    """为分流学生选定行政班：同专业同年级有空额则入班，否则新建分流班。返回 (class_id, created)。"""
+    from app.models import SchoolClass, StudentProfile
+    grade = (grade or "").strip() or None
+    q = db.query(SchoolClass).filter(
+        SchoolClass.tenant_id == _tid(), SchoolClass.major_id == int(major_id),
+        SchoolClass.is_deleted.is_(False), SchoolClass.status == "ACTIVE",
+        SchoolClass.class_status == "NORMAL")
+    if grade:
+        q = q.filter(SchoolClass.grade == grade)
+    classes = q.order_by(SchoolClass.id.asc()).all()
+    for c in classes:
+        cnt = db.query(StudentProfile).filter(
+            StudentProfile.tenant_id == _tid(), StudentProfile.class_id == c.id,
+            StudentProfile.is_deleted.is_(False)).count()
+        if c.capacity is None or cnt < int(c.capacity):
+            return int(c.id), False
+    major_name = (major.major_name if major else "专业")[:16]
+    seq = len(classes) + 1
+    name = f"{major_name}{grade or ''}分流{seq}班"
+    code = f"SPLIT-{major_id}-{grade or 'X'}-{seq}"
+    nc = SchoolClass(
+        tenant_id=_tid(), major_id=int(major_id), class_name=name, grade=grade,
+        class_code=code, status="ACTIVE", class_status="NORMAL",
+        remark="专业分流确认自动建班")
+    db.add(nc)
+    db.flush()
+    return int(nc.id), True

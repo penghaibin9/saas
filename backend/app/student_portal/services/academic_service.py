@@ -69,11 +69,25 @@ def submit_status_change(user: dict, body: dict) -> dict:
 
 
 def status_change_print(user: dict, body: dict) -> dict:
-    """打印学籍异动申请审批表（PORTAL_PRINT + 水印）。"""
+    """打印学籍异动申请审批表（PORTAL_PRINT + 水印 + 可下载正文）。"""
     _require_student(user)
-    return common.print_log(user, {"bizType": "STATUS_CHANGE",
-                                   "bizId": str((body or {}).get("bizId") or ""),
-                                   "docName": "学籍异动申请审批表"})
+    body = body or {}
+    st = status(user)
+    log = common.print_log(user, {"bizType": "STATUS_CHANGE",
+                                  "bizId": str(body.get("bizId") or body.get("changeType") or ""),
+                                  "docName": "学籍异动申请审批表"})
+    return {
+        **log,
+        "docName": "学籍异动申请审批表",
+        "document": {
+            "studentNo": st.get("studentNo"),
+            "realName": st.get("realName") or user.get("realName"),
+            "studentStatus": st.get("studentStatus"),
+            "changeType": body.get("changeType"),
+            "reason": body.get("reason"),
+            "changes": st.get("changes") or [],
+        },
+    }
 
 
 # ── 免修 / 缓考 / 补重修 + 毕业资格自查（复用教务学生自视图） ──
@@ -229,8 +243,23 @@ def recognition_submit(user: dict, body: dict) -> dict:
 
 
 def transcript_print(user: dict, body: dict) -> dict:
-    """成绩单打印留痕（PORTAL_PRINT + 水印）。"""
+    """成绩单打印留痕（PORTAL_PRINT + 水印 + 可下载正文）。"""
     body = body or {}
-    return common.print_log(user, {"bizType": "TRANSCRIPT",
-                                   "bizId": str(body.get("bizId") or ""),
-                                   "docName": "成绩单"})
+    data = transcript(user)
+    reason = str(body.get("reason") or body.get("bizId") or "").strip()
+    log = common.print_log(user, {"bizType": "TRANSCRIPT",
+                                  "bizId": reason,
+                                  "docName": "成绩单"})
+    return {**log, "docName": "成绩单", "printReason": reason, "document": data}
+
+
+def schedule_print(user: dict, body: dict) -> dict:
+    """课表打印留痕（PORTAL_PRINT + 水印 + 可下载正文）。"""
+    _require_student(user)
+    body = body or {}
+    data = schedule(user)
+    reason = str(body.get("reason") or body.get("bizId") or "个人课表").strip()
+    log = common.print_log(user, {"bizType": "SCHEDULE",
+                                  "bizId": reason,
+                                  "docName": "个人课表"})
+    return {**log, "docName": "个人课表", "printReason": reason, "document": data}

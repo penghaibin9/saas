@@ -1897,6 +1897,10 @@ class GradFinalBody(BaseModel):
     confirm: bool = Field(False, description="二次确认(涉学籍终态)")
 
 
+class GradFeeClearanceBody(BaseModel):
+    rows: list[dict] = Field(..., description="[{studentNo,status:CLEARED|OWED,evidence?}]")
+
+
 @router.get("/graduation-audit-batches", summary="审核批次列表（附应审/通过/异常/已终审/已归档统计）")
 def grad_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
                  user=Depends(require_any_permission(_GRAD_VIEW, _GRAD_MANAGE))):
@@ -1918,6 +1922,12 @@ def grad_generate(body: GenerateStudentsBody = GenerateStudentsBody(), batchId: 
 @router.post("/graduation-audit-batches/{batchId}/precheck", summary="十项供数三态预审（幂等，覆盖）")
 def grad_precheck(batchId: int = Path(...), user=Depends(require_permission(_GRAD_MANAGE))):
     return success(grad_svc.precheck(batchId, user), message="预审完成")
+
+
+@router.post("/graduation-audit-batches/{batchId}/fee-clearance", summary="财务回填费用结清（CLEARED/OWED）")
+def grad_fee_clearance(body: GradFeeClearanceBody, batchId: int = Path(...),
+                       user=Depends(require_permission(_GRAD_MANAGE))):
+    return success(grad_svc.import_fee_clearance(batchId, user, body.rows), message="费用结清已回填")
 
 
 @router.post("/graduation-audit-batches/{batchId}/archive", summary="审核归档（收敛已终审毕业/结业结果）")

@@ -9,12 +9,77 @@
       <button v-for="t in tabs" :key="t.key" :class="['aaev-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
-    <div v-if="unbuiltLabel" class="mp-stack">
-      <EmptyState
-        :title="'「' + unbuiltLabel + '」暂未独立建设'"
-        description="当前可在「评教批次」的「生成应评任务」里按来源（学生/教师自评/同行/督导）生成任务，并在同一批次页查看提交与结果；独立的分类视图/统计/归档页面尚未建设，敬请期待。"
-      />
+    <div v-if="viewMode === 'byType'" class="mp-stack">
+      <AppInlineAlert type="info" :description="'当前视图：' + typeViewLabel + '。按评价类型过滤应评任务；可在「评教批次」生成对应来源任务。'" />
+      <div class="aaev-layout">
+        <ul class="aaev-list">
+          <li v-for="b in rows" :key="b.batchId" :class="['aaev-item', { 'is-active': current && current.batchId === b.batchId }]" @click="selectTyped(b)">
+            <span>{{ b.batchName }}</span>
+            <StatusTag :type="bType(b.status)" :label="bLabel(b.status)" dot />
+          </li>
+        </ul>
+        <div class="aaev-detail">
+          <EmptyState v-if="!current" title="选择批次" :description="'查看' + typeViewLabel + '应评任务'" />
+          <template v-else>
+            <div class="aaev-head">
+              <div><div class="aaev-title">{{ current.batchName }} · {{ typeViewLabel }}</div>
+                <StatusTag :type="bType(current.status)" :label="bLabel(current.status)" dot /></div>
+            </div>
+            <EmptyState v-if="!tasks.length" :title="'暂无' + typeViewLabel + '任务'" description="请在「评教批次」生成对应来源的应评任务" />
+            <DataTable v-else :columns="taskColumns" :rows="tasks" row-key="taskId">
+              <template #cell-status="{ row }"><StatusTag :type="row.status === 'SUBMITTED' ? 'success' : 'primary'" :label="row.status" dot /></template>
+            </DataTable>
+          </template>
+        </div>
+      </div>
     </div>
+
+    <div v-else-if="viewMode === 'stats'" class="mp-stack">
+      <AppInlineAlert type="info" description="评价统计：选择批次查看等级分布与各来源参评率。" />
+      <div class="aaev-layout">
+        <ul class="aaev-list">
+          <li v-for="b in rows" :key="b.batchId" :class="['aaev-item', { 'is-active': current && current.batchId === b.batchId }]" @click="selectStats(b)">
+            <span>{{ b.batchName }}</span>
+            <StatusTag :type="bType(b.status)" :label="bLabel(b.status)" dot />
+          </li>
+        </ul>
+        <div class="aaev-detail">
+          <EmptyState v-if="!current" title="选择批次" description="查看评价统计" />
+          <template v-else-if="stats">
+            <div class="aaev-section-title">{{ current.batchName }} · 统计</div>
+            <p>结果数 {{ stats.resultCount ?? 0 }} · 学生均分均值 {{ stats.overallAvg ?? '—' }}</p>
+            <div class="aaev-section-title">等级分布</div>
+            <DataTable :columns="statsLevelColumns" :rows="statsLevelRows" row-key="level" />
+            <div class="aaev-section-title">参评率</div>
+            <DataTable :columns="statsPartColumns" :rows="statsPartRows" row-key="type" />
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <div v-else-if="viewMode === 'archive'" class="mp-stack">
+      <AppInlineAlert type="info" description="评价归档：仅展示已归档批次及其结果，只读。" />
+      <EmptyState v-if="!archivedRows.length" title="暂无已归档批次" description="在「评教批次」对结果就绪批次执行归档后会出现在此" />
+      <div v-else class="aaev-layout">
+        <ul class="aaev-list">
+          <li v-for="b in archivedRows" :key="b.batchId" :class="['aaev-item', { 'is-active': current && current.batchId === b.batchId }]" @click="select(b)">
+            <span>{{ b.batchName }}</span>
+            <StatusTag type="default" label="已归档" dot />
+          </li>
+        </ul>
+        <div class="aaev-detail">
+          <EmptyState v-if="!current" title="选择归档批次" description="查看归档结果" />
+          <template v-else>
+            <div class="aaev-title">{{ current.batchName }}</div>
+            <EmptyState v-if="!results.length" title="无结果" description="该归档批次暂无评价结果" />
+            <DataTable v-else :columns="resultColumns" :rows="results" row-key="resultId">
+              <template #cell-level="{ row }"><StatusTag :type="lvType(row.level)" :label="lvLabel(row.level)" dot /></template>
+            </DataTable>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <div v-else-if="tab === 'batches'" class="mp-stack">
       <div class="aaev-bar"><AppButton variant="primary" size="small" @click="openCreate">新建评教批次</AppButton></div>
       <div class="aaev-layout">
@@ -114,19 +179,18 @@ export default {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       tab: 'batches', tabs: [{ key: 'batches', label: '评教批次' }, { key: 'appeals', label: '申诉审核' }],
-      // navPlan.js 菜单里还登记了 studentEval/selfEval/peerEval/supervisorEval/evalStats/archive
-      // 六个"已实现"叶子，但本页从未真正做过对应的独立分类视图——此前 created() 对不认识的
-      // tab query 直接忽略、静默落回默认的"评教批次"内容，等于点这六个菜单看到的是另一个
-      // 功能的数据，误导用户以为已完成（CLAUDE.md §6.1 禁止假页面冒充完成）。这里改为如实显示
-      // "暂未独立建设"，不悄悄展示不相关内容；哪天真的建了对应分类页，删掉这个 key 即可。
-      unbuiltEvalTabs: {
-        studentEval: '学生评教(小程序)', selfEval: '教师自评', peerEval: '同行评价',
-        supervisorEval: '督导评价', evalStats: '评价统计', archive: '评价归档'
+      typeViewMap: {
+        studentEval: { type: 'STUDENT', label: '学生评教' },
+        selfEval: { type: 'SELF', label: '教师自评' },
+        peerEval: { type: 'PEER', label: '同行评价' },
+        supervisorEval: { type: 'SUPERVISOR', label: '督导评价' }
       },
-      rows: [], current: null, tasks: [], results: [], appeals: [],
+      rows: [], archivedRows: [], current: null, tasks: [], results: [], appeals: [], stats: null,
       taskColumns: [{ key: 'courseName', title: '课程' }, { key: 'teacherName', title: '教师' }, { key: 'submittedCount', title: '已评' }, { key: 'status', title: '状态' }],
       resultColumns: [{ key: 'teacherName', title: '教师' }, { key: 'courseName', title: '课程' }, { key: 'studentAvg', title: '学生均分' }, { key: 'supervisorAvg', title: '督导' }, { key: 'peerAvg', title: '同行' }, { key: 'selfScore', title: '自评' }, { key: 'compositeScore', title: '综合分' }, { key: 'level', title: '等级' }],
       appealColumns: [{ key: 'teacherKey', title: '教师' }, { key: 'reason', title: '申诉理由' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
+      statsLevelColumns: [{ key: 'level', title: '等级' }, { key: 'count', title: '人数' }],
+      statsPartColumns: [{ key: 'type', title: '来源' }, { key: 'total', title: '应评' }, { key: 'submitted', title: '已评' }, { key: 'rate', title: '参评率%' }],
       createVisible: false, form: { batchName: '', termId: '' }, formError: '',
       genVisible: false, genTaskIds: [], genType: 'STUDENT',
       genTypeOptions: [
@@ -138,7 +202,22 @@ export default {
     }
   },
   computed: {
-    unbuiltLabel() { return this.unbuiltEvalTabs[this.queryTab] || '' }
+    viewMode() {
+      if (this.typeViewMap[this.queryTab]) return 'byType'
+      if (this.queryTab === 'evalStats') return 'stats'
+      if (this.queryTab === 'archive') return 'archive'
+      return 'main'
+    },
+    typeViewLabel() { return (this.typeViewMap[this.queryTab] || {}).label || '' },
+    typeFilter() { return (this.typeViewMap[this.queryTab] || {}).type || '' },
+    statsLevelRows() {
+      const by = (this.stats && this.stats.byLevel) || {}
+      return Object.keys(by).map((k) => ({ level: this.lvLabel(k), count: by[k] }))
+    },
+    statsPartRows() {
+      const p = (this.stats && this.stats.participation) || {}
+      return Object.keys(p).map((k) => ({ type: k, total: p[k].total, submitted: p[k].submitted, rate: p[k].rate }))
+    }
   },
   async created() {
     const c = await academicAffairsApi.getContext()
@@ -146,7 +225,8 @@ export default {
     const q = this.$route && this.$route.query && this.$route.query.tab
     this.queryTab = q || ''
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
-    this.loadBatches()
+    if (this.viewMode === 'archive') await this.loadArchived()
+    else await this.loadBatches()
     if (this.tab === 'appeals') this.loadAppeals()
   },
   methods: {
@@ -154,16 +234,31 @@ export default {
     bType(s) { return s === 'OPEN' ? 'success' : ['ARCHIVED', 'CLOSED'].includes(s) ? 'default' : s === 'RESULT_READY' ? 'warning' : 'primary' },
     lvLabel(l) { return _LV[l] || l || '—' },
     lvType(l) { return l === 'EXCELLENT' ? 'success' : l === 'NEED_IMPROVE' ? 'danger' : 'primary' },
-    switchTab(k) { this.tab = k; if (k === 'appeals') this.loadAppeals() },
+    switchTab(k) { this.tab = k; this.queryTab = ''; if (k === 'appeals') this.loadAppeals() },
     async loadBatches() {
       const res = await api.listBatches({ pageSize: 100 })
       this.rows = res.code === 0 ? res.data.list : []
+    },
+    async loadArchived() {
+      const res = await api.archivedBatches({ pageSize: 100 })
+      this.archivedRows = res.code === 0 ? res.data.list : []
     },
     async select(b) {
       this.current = b
       const [t, r] = await Promise.all([api.listTasks(b.batchId), api.results(b.batchId, { pageSize: 200 })])
       this.tasks = t.code === 0 ? (t.data.items || []) : []
       this.results = r.code === 0 ? r.data.list : []
+    },
+    async selectTyped(b) {
+      this.current = b
+      const t = await api.listTasks(b.batchId, { evaluatorType: this.typeFilter })
+      this.tasks = t.code === 0 ? (t.data.items || t.data.list || []) : []
+      this.results = []
+    },
+    async selectStats(b) {
+      this.current = b
+      const res = await api.stats(b.batchId)
+      this.stats = res.code === 0 ? res.data : null
     },
     async loadAppeals() {
       const res = await api.listAppeals({ pageSize: 100 })
@@ -178,14 +273,18 @@ export default {
       this.saving = false
       if (res.code === 0) { toast.success('已创建'); this.createVisible = false; this.loadBatches() } else this.formError = res.message
     },
-    openGenTasks() { this.genTaskIds = []; this.genType = 'STUDENT'; this.genVisible = true },
+    openGenTasks() { this.genTaskIds = []; this.genType = this.typeFilter || 'STUDENT'; this.genVisible = true },
     async submitGen() {
       const ids = this.genTaskIds
       if (!ids.length) { toast.error('请选择教学任务'); return }
       this.saving = true
       const res = await api.genTasks(this.current.batchId, ids, this.genType)
       this.saving = false
-      if (res.code === 0) { toast.success(`已生成 ${res.data.taskCount} 条`); this.genVisible = false; this.select(this.current) } else toast.error(res.message)
+      if (res.code === 0) {
+        toast.success(`已生成 ${res.data.taskCount} 条`); this.genVisible = false
+        if (this.viewMode === 'byType') this.selectTyped(this.current)
+        else this.select(this.current)
+      } else toast.error(res.message)
     },
     lc(fn, label) {
       this.confirmRequireReason = false
