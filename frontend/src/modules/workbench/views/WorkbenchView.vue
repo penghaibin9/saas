@@ -108,11 +108,35 @@
         </div>
       </section>
 
+      <section v-if="!loading && recipe.showSchedule" class="wb__block">
+        <h2 class="wb__block-title">
+          今日课表
+          <button class="wb__more" type="button" @click="go(scheduleLink)">完整课表 →</button>
+        </h2>
+        <p v-if="scheduleLoading" class="wb__muted">课表加载中…</p>
+        <p v-else-if="!scheduleItems.length" class="wb__empty">今日暂无课程，可打开完整课表查看本周安排</p>
+        <ul v-else class="wb__items">
+          <li
+            v-for="(s, i) in scheduleItems"
+            :key="s.id || (s.courseName + '-' + i)"
+            class="wb__item"
+            role="button"
+            tabindex="0"
+            @click="go(scheduleLink)"
+            @keydown.enter="go(scheduleLink)"
+          >
+            <span class="wb__dot is-medium" />
+            <span class="wb__item-title">{{ scheduleTitle(s) }}</span>
+            <span class="wb__due">{{ scheduleSlot(s) }}</span>
+          </li>
+        </ul>
+      </section>
+
       <section class="wb__block wb__split">
         <div class="wb__list">
           <h2 class="wb__block-title">
             最近待办
-            <button class="wb__more" type="button" @click="go('/admin/approval/todos')">全部 →</button>
+            <button class="wb__more" type="button" @click="go('/admin/approval/todos?status=PENDING')">全部 →</button>
           </h2>
 
           <p v-if="loading" class="wb__muted">加载中…</p>
@@ -149,14 +173,16 @@
             type="button"
             @click="go(l.to)"
           >{{ l.label }}</button>
+          <p v-if="recipe.capabilityNote" class="wb__edit-hint">{{ recipe.capabilityNote }}</p>
           <button
-            v-if="!loading && unread > 0"
             type="button"
             class="wb__msg"
+            :class="{ 'is-quiet': !unread }"
             title="进入我的消息"
-            @click="go('/admin/messages/inbox')"
+            @click="goMessages"
           >
-            未读消息 <strong>{{ unread }}</strong>
+            <template v-if="unread > 0">未读消息 <strong>{{ unread }}</strong></template>
+            <template v-else>消息中心</template>
           </button>
         </div>
       </section>
@@ -173,16 +199,16 @@ import AppMetricCard from '@/components/common/AppMetricCard.vue'
 import AppPageGuide from '@/components/common/experience/AppPageGuide.vue'
 import {
   fetchMessageCount,
+  fetchMyScheduleToday,
   fetchSchoolStats,
   fetchTodoCount,
   fetchTodoList,
-  fetchTodoSummary
+  fetchTodoSummary,
+  trackWorkbenchEvent
 } from '../api/workbench.api'
 import {
   applyFavoriteLinks,
   applyTilePrefs,
-  bumpClickCount,
-  clicksPrefKey,
   favoritesPrefKey,
   loadPrefs,
   parseJsonPref,
@@ -190,6 +216,7 @@ import {
   tilesPrefKey
 } from '../api/workbenchPrefs'
 import { resolveRecipe, TODO_TYPE_ROUTES } from '../config/workbenchRecipes'
+import { currentUserFromToken } from '@/services/http/client'
 
 const EMPTY_SUMMARY = Object.freeze({
   pending: 0,
@@ -226,12 +253,20 @@ export default {
       editing: false,
       tilePref: { order: [], hidden: [] },
       favPaths: [],
-      clickCounts: {}
+      scheduleItems: [],
+      scheduleLoading: false
     }
   },
   computed: {
     recipe() {
       return resolveRecipe(this.role)
+    },
+    scheduleLink() {
+      const u = currentUserFromToken() || {}
+      const key = String(u.loginName || u.userId || '').trim()
+      return key
+        ? `/admin/academic-affairs/schedule/teacher/${encodeURIComponent(key)}`
+        : '/admin/academic-affairs/schedule/teacher'
     },
     headline() {
       try {
@@ -314,6 +349,7 @@ export default {
           this.stats = { ...EMPTY_STATS }
         }
         await this.loadPrefsQuiet()
+        if (this.recipe.showSchedule) await this.loadScheduleQuiet()
       } catch (e) {
         this.role = ''
         this.summary = { ...EMPTY_SUMMARY }
@@ -321,24 +357,35 @@ export default {
         this.byType = {}
         this.todos = []
         this.unread = 0
+        this.scheduleItems = []
         this.error = (e && e.message) || '请求失败'
       } finally {
         this.loading = false
+      }
+    },
+    async loadScheduleQuiet() {
+      this.scheduleLoading = true
+      try {
+        const u = currentUserFromToken() || {}
+        const key = String(u.loginName || u.userId || '').trim()
+        const res = await fetchMyScheduleToday(key)
+        this.scheduleItems = Array.isArray(res.items) ? res.items : []
+      } catch {
+        this.scheduleItems = []
+      } finally {
+        this.scheduleLoading = false
       }
     },
     async loadPrefsQuiet() {
       try {
         const tk = tilesPrefKey(this.role)
         const fk = favoritesPrefKey(this.role)
-        const ck = clicksPrefKey(this.role)
-        const items = await loadPrefs([tk, fk, ck])
+        const items = await loadPrefs([tk, fk])
         this.tilePref = parseJsonPref(items[tk], { order: [], hidden: [] })
         this.favPaths = parseJsonPref(items[fk], [])
-        this.clickCounts = parseJsonPref(items[ck], {})
         if (!Array.isArray(this.favPaths)) this.favPaths = []
         if (!Array.isArray(this.tilePref.hidden)) this.tilePref.hidden = []
         if (!Array.isArray(this.tilePref.order)) this.tilePref.order = []
-        if (!this.clickCounts || typeof this.clickCounts !== 'object') this.clickCounts = {}
       } catch {
         // 偏好失败不影响待办数字
       }
@@ -351,11 +398,6 @@ export default {
     async persistFavs() {
       try {
         await savePref(favoritesPrefKey(this.role), this.favPaths)
-      } catch { /* 忽略 */ }
-    },
-    async persistClicks() {
-      try {
-        await savePref(clicksPrefKey(this.role), this.clickCounts)
       } catch { /* 忽略 */ }
     },
     toggleTile(key, visible) {
@@ -399,18 +441,39 @@ export default {
       return 0
     },
     onDrill(c) {
-      if (c && c.key) {
-        this.clickCounts = bumpClickCount(this.clickCounts, c.key)
-        this.persistClicks()
-      }
+      this.trackClick(c && c.key, c && c.to)
       this.go(c && c.to)
+    },
+    goMessages() {
+      this.trackClick('messages', '/admin/messages/inbox')
+      this.go('/admin/messages/inbox')
+    },
+    trackClick(key, path) {
+      trackWorkbenchEvent('WORKBENCH_CLICK', {
+        cueKey: key || '',
+        path: path || '',
+        role: this.role || ''
+      }).catch(() => { /* 埋点失败不阻断导航 */ })
     },
     go(path) {
       if (!path) return
-      if (this.$route.path !== path) this.$router.push(path).catch(() => {})
+      const full = String(path)
+      if (this.$route.fullPath !== full) this.$router.push(full).catch(() => {})
     },
     openTodo(t) {
-      this.go(TODO_TYPE_ROUTES[t && t.todoType] || '/admin/approval/todos')
+      const type = t && t.todoType
+      const path = (type && TODO_TYPE_ROUTES[type])
+        || (type ? `/admin/approval/todos?todoType=${encodeURIComponent(type)}&status=PENDING` : '/admin/approval/todos?status=PENDING')
+      this.trackClick(type || 'todo', path)
+      this.go(path)
+    },
+    scheduleTitle(s) {
+      return [s.courseName || s.course || '课程', s.className || s.teachingClassName || ''].filter(Boolean).join(' · ')
+    },
+    scheduleSlot(s) {
+      const slot = s.slotName || s.slotLabel || (s.startSlot && s.endSlot ? `${s.startSlot}-${s.endSlot}节` : '')
+      const room = s.classroom || s.roomName || ''
+      return [slot, room].filter(Boolean).join(' · ')
     },
     priorityClass(priority) {
       const p = String(priority || 'NORMAL').toLowerCase()
@@ -540,7 +603,11 @@ export default {
   font-size: 14px; color: #8a5a00; background: #fff8e8; border: 1px solid #f0e0bb;
   cursor: pointer; text-align: left; font-family: inherit; width: 100%;
 }
+.wb__msg.is-quiet {
+  color: #2f6ab5; background: #f5f9ff; border-color: #d7e6f7;
+}
 .wb__msg:hover { border-color: #e0c88a; background: #fff3d6; }
+.wb__msg.is-quiet:hover { border-color: #b7d0ea; background: #eef5ff; }
 .wb__empty { margin: 0; padding: 22px 0; text-align: center; color: #5a9367; font-size: 14px; }
 .wb__muted { margin: 0; padding: 18px 0; text-align: center; color: #8a97a5; font-size: 13px; }
 </style>

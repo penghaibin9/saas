@@ -4,10 +4,17 @@ import * as real from './realApi'
 import * as M from '@/mock'
 
 export const teacherApi = {
+  /** 与 PC 同源：/todos/summary + teacher-mobile todos；生产不得回落 mock 假工作台 */
   getWorkbench: (roleKey) =>
     realFirstStrict('teacher.workbench',
       () => real.enrichTeacherWorkbench(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor),
-      () => mockRequest(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor)),
+      () => {
+        // 仅非生产、且真实接口不可达时才允许骨架；PROD 下 ENV.useMock 已强制 false
+        if (import.meta.env && import.meta.env.PROD) {
+          return Promise.reject(new Error('生产环境教师工作台不可回落演示数据'))
+        }
+        return mockRequest(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor)
+      }),
   // 待办：mobile 范围接口（替代 PC /todos）
   getTodos: () =>
     realFirst('teacher.todos',

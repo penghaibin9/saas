@@ -216,6 +216,8 @@ def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent
             dup.absent = absent
             dup.absent_reason = absent_reason
             dup.status = "SCORED"
+            from app.modules.graduation.services import graduation_todo_helper as gd_todo
+            gd_todo.todo_done(db, biz_id=dup.id, todo_type=gd_todo.TODO_DEFENSE_SCORE)
             _audit(db, dup.id, "更新答辩评分")
             db.commit()
             return _row(dup, stu)
@@ -225,6 +227,8 @@ def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent
                                    absent_reason=absent_reason, round_no=latest_round, status="SCORED")
         db.add(d)
         db.flush()
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        gd_todo.todo_done(db, biz_id=d.id, todo_type=gd_todo.TODO_DEFENSE_SCORE)
         _audit(db, d.id, "录入答辩评分", detail=f"{stu.name}/{judge_name}/{score}")
         db.commit()
         return _row(d, stu)
@@ -296,13 +300,20 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
                     judges.append(d.judge_name)
         if not judges:
             raise AppException("DATA_CONFLICT", "无法创建二次答辩：缺少答辩组评委名单")
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        pending_rows = []
         for name in judges:
-            db.add(GraduationDefenseScore(
+            row = GraduationDefenseScore(
                 tenant_id=_tid(), gd_student_id=stu.id,
                 defense_group_id=stu.defense_group_id,
                 judge_name=name, round_no=new_round, status="PENDING",
                 score=None, absent=False,
-            ))
+            )
+            db.add(row)
+            pending_rows.append(row)
+        db.flush()
+        for row in pending_rows:
+            gd_todo.push_defense_score_todo(db, row, stu)
         _audit(db, stu.id, "创建二次答辩", reason.strip(), after=str(new_round))
         db.commit()
         return {"gdStudentId": str(stu.id), "newRound": new_round, "pendingJudges": judges}

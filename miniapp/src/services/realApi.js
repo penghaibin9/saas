@@ -615,30 +615,62 @@ export const mobileTeacherOverview = () => realRequest('/mobile/teacher/overview
 export const mobileTeacherTodos = () => realRequest('/mobile/teacher/todos')
 export const mobileTeacherDomain = (domain) => realRequest('/mobile/teacher/' + domain)
 
-/* 教师工作台：真实待办计数 + 即将超时 + 风险学生覆盖到 mock 骨架，不再展示假名单。
- * 「最近学生动态」暂无对应真实数据源，保留 mock 骨架（P13 夜间补强已知欠账，见施工记录）。 */
+/* 教师端·工作台：与 PC 同源 /todos/summary + /teacher-mobile/todos/count + 列表。
+ * 不再用 /mobile/teacher/overview 另一套口径；生产禁止回落 mock 假指标。 */
 export async function enrichTeacherWorkbench(mock) {
-  // 三个只读接口互不依赖，并发拉取（校园弱网下由 3 次串行往返降为 1 次并发）。
-  // overview 决定主体，失败则由外层 realFirst 兜底；todos/风险学生为增量展示，静默降级。
-  const [r, td, rs] = await Promise.all([
-    realRequest('/mobile/teacher/overview'),
-    realRequest('/mobile/teacher/todos').catch(() => null),
+  const [summary, count, list, risk] = await Promise.all([
+    realRequest('/todos/summary').catch(() => null),
+    realRequest('/teacher-mobile/todos/count').catch(() => null),
+    realRequest('/teacher-mobile/todos', { data: { status: 'PENDING', pageSize: 8 } }).catch(() => null),
     realRequest('/mobile/teacher/risk-students').catch(() => null)
   ])
-  if (!r || !r.hasData) return { ...mock, _real: false }
-  const realMetrics = (r.metrics || []).slice(0, 4).map((m) => ({ key: m.key, label: m.label, value: m.value }))
-  const out = { ...mock, metrics: realMetrics.length ? realMetrics : mock.metrics,
-    pendingTotal: r.pendingTotal, _real: true }
-  if (td && Array.isArray(td.list)) {
-    out.dueSoon = td.list.slice(0, 5).map((t) => ({
-      id: t.id, title: t.title, module: t.module, student: t.student,
-      deadline: t.deadline, status: t.status
-    }))
+  if (!summary || typeof summary !== 'object') {
+    return { ...mock, _real: false }
   }
-  if (rs && Array.isArray(rs.list)) {
-    out.riskStudents = rs.list.slice(0, 5).map((s) => ({
-      id: s.studentId || s.studentNo || s.id, name: s.name, className: s.className || '—',
-      type: s.riskType + (s.reason ? '·' + s.reason : ''), level: s.riskLevel
+  const byType = (count && count.byType) || {}
+  const pending = Number(summary.pending) || 0
+  const overdue = Number(summary.overdue) || 0
+  const near = Number(summary.nearDeadline) || 0
+  const doneToday = Number(summary.doneToday) || 0
+  const role = summary.role || ''
+  const metrics = [
+    { key: 'pending', label: '待我处理', value: pending },
+    { key: 'overdue', label: '已逾期', value: overdue },
+    { key: 'near', label: '24h到期', value: near },
+    { key: 'done', label: '今日完成', value: doneToday }
+  ]
+  // 有分类时把前两个真实类型数字补进条带（不臆造未写入类型）
+  const typeEntries = Object.entries(byType).filter(([, n]) => Number(n) > 0).slice(0, 2)
+  if (typeEntries.length) {
+    metrics.splice(2, 2, ...typeEntries.map(([k, n]) => ({ key: k, label: k, value: Number(n) || 0 })))
+  }
+  const items = (list && (list.items || list.list)) || []
+  const dueSoon = (Array.isArray(items) ? items : []).slice(0, 5).map((t) => ({
+    id: t.todoId || t.id,
+    title: t.title,
+    module: t.sourceModule || t.todoType || '',
+    student: t.studentName || '',
+    deadline: t.dueAt || t.deadline || '',
+    status: t.status || 'PENDING',
+    todoType: t.todoType
+  }))
+  const out = {
+    ...mock,
+    contextTitle: role || mock.contextTitle,
+    metrics,
+    pendingTotal: pending,
+    dueSoon,
+    _real: true,
+    _role: role,
+    _byType: byType
+  }
+  if (risk && Array.isArray(risk.list)) {
+    out.riskStudents = risk.list.slice(0, 5).map((s) => ({
+      id: s.studentId || s.studentNo || s.id,
+      name: s.name,
+      className: s.className || '—',
+      type: s.riskType + (s.reason ? '·' + s.reason : ''),
+      level: s.riskLevel
     }))
   }
   return out

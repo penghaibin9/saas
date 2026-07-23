@@ -14,6 +14,7 @@ SRC_MODULE = "graduation"
 TODO_PROPOSAL = "GD_PROPOSAL_REVIEW"
 TODO_FINAL = "GD_FINAL_REVIEW"
 TODO_TOPIC_CHANGE = "GD_TOPIC_CHANGE_REVIEW"
+TODO_DEFENSE_SCORE = "GD_DEFENSE_SCORE"
 
 
 def resolve_mentor_assignee_id(db, stu) -> int:
@@ -33,6 +34,24 @@ def resolve_mentor_assignee_id(db, stu) -> int:
         return 0
     rows = db.scalars(select(User).where(
         User.tenant_id == _tid(), User.real_name == name,
+        User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
+        User.is_deleted.is_(False), User.status == "ACTIVE")).all()
+    return int(rows[0].id) if len(rows) == 1 else 0
+
+
+def resolve_judge_assignee_id(db, judge_name: str) -> int:
+    """答辩评委姓名/工号 → User.id；login_name 优先，其次唯一 real_name。"""
+    from app.models import User
+    key = (judge_name or "").strip()
+    if not key:
+        return 0
+    row = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.login_name == key,
+        User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+    if row:
+        return int(row.id)
+    rows = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.real_name == key,
         User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
         User.is_deleted.is_(False), User.status == "ACTIVE")).all()
     return int(rows[0].id) if len(rows) == 1 else 0
@@ -106,3 +125,13 @@ def push_topic_change_todo(db, change_req, stu) -> bool:
         db, biz_type="GD_TOPIC_CHANGE", biz_id=change_req.id, todo_type=TODO_TOPIC_CHANGE,
         assignee_id=aid, student_id=getattr(stu, "student_id", None),
         title=f"选题变更待审：{name}")
+
+
+def push_defense_score_todo(db, score_row, stu) -> bool:
+    """评委 PENDING 评分行 → GD_DEFENSE_SCORE；biz_id=score.id。"""
+    aid = resolve_judge_assignee_id(db, getattr(score_row, "judge_name", None) or "")
+    name = (getattr(stu, "name", None) or getattr(stu, "real_name", None) or "学生")
+    return todo_upsert(
+        db, biz_type="GD_DEFENSE_SCORE", biz_id=score_row.id, todo_type=TODO_DEFENSE_SCORE,
+        assignee_id=aid, student_id=getattr(stu, "student_id", None),
+        title=f"答辩待打分：{name}")

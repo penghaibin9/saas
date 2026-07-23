@@ -341,15 +341,16 @@ def teacher_affairs(user) -> dict:
                  "DISCIPLINE_REMOVE": "处分解除待审", "RISK_HANDLE": "风险待处置",
                  "DORM_TRANSFER": "调宿待审", "DORM_EXCEPTION": "宿舍异常待处置"}
         cards = [{"todoType": k, "label": label.get(k, k), "count": v} for k, v in sorted(by_type.items())]
-        # 宿舍调宿/异常不走 UnifiedTodo，按业务表实时计数补卡
+        # 宿舍调宿/异常：UnifiedTodo 已有分类写入时不再按业务表补卡，避免双计
+        existing_types = {c["todoType"] for c in cards}
         try:
             from app.services import mobile_teacher_service as tea
             dorm = tea.affairs_dorm_pending(user)
             tr_n = len((dorm or {}).get("transfers") or [])
             ex_n = len((dorm or {}).get("exceptions") or [])
-            if tr_n:
+            if tr_n and "DORM_TRANSFER" not in existing_types:
                 cards.append({"todoType": "DORM_TRANSFER", "label": label["DORM_TRANSFER"], "count": tr_n})
-            if ex_n:
+            if ex_n and "DORM_EXCEPTION" not in existing_types:
                 cards.append({"todoType": "DORM_EXCEPTION", "label": label["DORM_EXCEPTION"], "count": ex_n})
         except Exception:
             pass

@@ -128,3 +128,34 @@ export async function fetchLayoutContext() {
 export function fetchSchoolStats() {
   return request('/stats/workbench')
 }
+
+/**
+ * 工作台埋点（独立通道，不写偏好计数冒充分析）。
+ * POST /me/telemetry → 审计队列 WORKBENCH_CLICK。
+ */
+export function trackWorkbenchEvent(event, detail = {}) {
+  return request('/me/telemetry', {
+    method: 'POST',
+    body: { event: event || 'WORKBENCH_CLICK', detail }
+  })
+}
+
+/**
+ * B8：本人今日课表摘要（失败返回空，不阻断工作台主链）。
+ * teacherKey 优先用工号/登录名；与课表页本人口径一致。
+ */
+export async function fetchMyScheduleToday(teacherKey) {
+  const key = String(teacherKey || '').trim()
+  if (!key) return { items: [], teacherKey: '' }
+  try {
+    const data = await request(`/academic-affairs/schedule/teacher/${encodeURIComponent(key)}`)
+    const items = Array.isArray(data && data.items) ? data.items : []
+    // 无周次参数时后端回整学期；前端取 weekday=今日（1=周一）摘要最多 6 条
+    const jsDay = new Date().getDay() // 0=日
+    const weekday = jsDay === 0 ? 7 : jsDay
+    const today = items.filter((it) => Number(it.weekday || it.dayOfWeek || 0) === weekday)
+    return { items: (today.length ? today : items).slice(0, 6), teacherKey: key, weekday }
+  } catch {
+    return { items: [], teacherKey: key }
+  }
+}

@@ -21,28 +21,33 @@
  * 硬规则：无真实写入的待办类型不得做分类假磁贴；无权限可达的下钻路径不得挂快捷入口。
  */
 
-/** 待办类型 → 业务落点（已筛选列表，禁止空壳首页） */
+/** 待办类型 → 业务落点（带已筛选参数，禁止空壳根路径） */
 export const TODO_TYPE_ROUTES = {
-  LEAVE_APPROVAL: '/admin/campus-service/leave',
-  LEAVE_OVERDUE: '/admin/campus-service/leave-ledger',
-  LEAVE_CANCEL: '/admin/campus-service/leave',
-  LEAVE_EXTENSION: '/admin/campus-service/leave',
-  DISCIPLINE_APPROVAL: '/admin/student-affairs/discipline',
-  DISCIPLINE_REMOVE: '/admin/student-affairs/discipline',
-  AID_APPROVAL: '/admin/student-affairs/aid',
-  AID_ADJUST: '/admin/student-affairs/aid',
-  FUNDING_APPROVAL: '/admin/student-affairs/funding',
-  RISK_HANDLE: '/admin/student-affairs/risk',
-  AA_STATUS_APPROVAL: '/admin/academic-affairs/status-changes/approval',
-  AA_SCHEDULE_CHANGE_APPROVAL: '/admin/academic-affairs/schedule-change/approval',
-  ACAD_WARNING_HANDLE: '/admin/academic-affairs/warnings',
-  GD_PROPOSAL_REVIEW: '/admin/graduation/proposals',
-  GD_FINAL_REVIEW: '/admin/graduation/finals',
-  GD_TOPIC_CHANGE_REVIEW: '/admin/graduation/topic-changes',
-  INTERN_WEEKLY_REVIEW: '/admin/internship/reports',
-  INTERN_LEAVE_APPROVAL: '/admin/internship/leaves',
-  INTERN_EXCEPTION_HANDLE: '/admin/internship/exceptions',
-  INTERN_VISIT_RECTIFY: '/admin/internship/guidance'
+  LEAVE_APPROVAL: '/admin/campus-service/leave?status=PENDING',
+  LEAVE_OVERDUE: '/admin/campus-service/leave-ledger?status=OVERDUE',
+  LEAVE_CANCEL: '/admin/campus-service/leave?status=CANCEL_PENDING',
+  LEAVE_EXTENSION: '/admin/campus-service/leave-extensions?status=PENDING',
+  DISCIPLINE_APPROVAL: '/admin/student-affairs/discipline?status=PENDING',
+  DISCIPLINE_REMOVE: '/admin/student-affairs/discipline?status=REMOVE_PENDING',
+  AID_APPROVAL: '/admin/student-affairs/aid?status=PENDING',
+  AID_ADJUST: '/admin/student-affairs/aid?status=ADJUST_PENDING',
+  FUNDING_APPROVAL: '/admin/student-affairs/funding?status=PENDING',
+  RISK_HANDLE: '/admin/student-affairs/risk?status=NEW',
+  AA_STATUS_APPROVAL: '/admin/academic-affairs/status-changes/approval?status=PENDING',
+  AA_SCHEDULE_CHANGE_APPROVAL: '/admin/academic-affairs/schedule-change/approval?status=PENDING',
+  ACAD_WARNING_HANDLE: '/admin/academic-affairs/warnings?status=OPEN',
+  AA_GRADE_ENTRY: '/admin/academic-affairs/grade-entry?filter=pending',
+  GD_PROPOSAL_REVIEW: '/admin/graduation/proposals?status=PENDING',
+  GD_FINAL_REVIEW: '/admin/graduation/finals?status=PENDING',
+  GD_TOPIC_CHANGE_REVIEW: '/admin/graduation/topic-changes?status=PENDING',
+  GD_DEFENSE_SCORE: '/admin/graduation/defense-grade?panel=defense&status=PENDING',
+  INTERN_WEEKLY_REVIEW: '/admin/internship/reports?status=PENDING',
+  INTERN_LEAVE_APPROVAL: '/admin/internship/leaves?status=PENDING',
+  INTERN_EXCEPTION_HANDLE: '/admin/internship/exceptions?status=PENDING',
+  INTERN_VISIT_RECTIFY: '/admin/internship/guidance?status=RECTIFY',
+  DORM_TRANSFER: '/admin/student-affairs/dorm/transfer?status=PENDING',
+  DORM_EXCEPTION: '/admin/student-affairs/dorm/exception?status=PENDING_HANDLE',
+  EMPLOYMENT_FOLLOWUP: '/admin/employment/followups?status=OPEN'
 }
 
 const TODO_ALL = '/admin/approval/todos'
@@ -51,16 +56,28 @@ const COCKPIT = '/admin/data-center'
 const AUDIT_LOGS = '/admin/system/logs'
 const SYSTEM_HOME = '/admin/system'
 
-/** 通用汇总磁贴（含 B5 临近截止） */
+/** 通用汇总磁贴（含 B5 临近截止；下钻带 urgency 筛选） */
 const SUMMARY_CUES = [
-  { key: 'pending', title: '待我处理', source: 'summary.pending', accent: 'primary', to: TODO_ALL },
-  { key: 'overdue', title: '已逾期', source: 'summary.overdue', accent: 'risk', to: TODO_ALL },
-  { key: 'nearDeadline', title: '24小时内到期', source: 'summary.nearDeadline', accent: 'warning', to: TODO_ALL },
-  { key: 'doneToday', title: '今日已完成', source: 'summary.doneToday', accent: 'success', to: TODO_ALL }
+  { key: 'pending', title: '待我处理', source: 'summary.pending', accent: 'primary', to: `${TODO_ALL}?status=PENDING` },
+  { key: 'overdue', title: '已逾期', source: 'summary.overdue', accent: 'risk', to: `${TODO_ALL}?urgency=OVERDUE` },
+  { key: 'nearDeadline', title: '24小时内到期', source: 'summary.nearDeadline', accent: 'warning', to: `${TODO_ALL}?urgency=NEAR` },
+  { key: 'doneToday', title: '今日已完成', source: 'summary.doneToday', accent: 'success', to: `${TODO_ALL}?status=DONE` }
 ]
 
+function withTodoType(path, todoType) {
+  const base = path || TODO_ALL
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}todoType=${encodeURIComponent(todoType)}`
+}
+
 function typeCue(key, title, accent) {
-  return { key, title, source: `todoType.${key}`, accent, to: TODO_TYPE_ROUTES[key] || TODO_ALL }
+  return {
+    key,
+    title,
+    source: `todoType.${key}`,
+    accent,
+    to: withTodoType(TODO_TYPE_ROUTES[key] || TODO_ALL, key)
+  }
 }
 
 function statsCue(key, title, accent, to) {
@@ -109,18 +126,18 @@ const GD_MENTOR_TYPE_CUES = [
 ]
 
 const SCOPE_STUDENT_STATS = [
-  statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+  statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`),
   statsCue('studentTotal', '范围内学生', 'primary', '/admin/campus-service/classes'),
-  statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
-  statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students')
+  statsCue('academicWarning', '学业预警在办', 'warning', TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE),
+  statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students?status=PENDING')
 ]
 
 const SCHOOL_STATS = [
-  statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+  statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`),
   statsCue('studentTotal', '在册学生', 'primary', '/admin/campus-service/students'),
-  statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
-  statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed'),
-  statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students')
+  statsCue('academicWarning', '学业预警在办', 'warning', TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE),
+  statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed?status=UNEMPLOYED'),
+  statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students?status=PENDING')
 ]
 
 export const RECIPES = {
@@ -144,16 +161,17 @@ export const RECIPES = {
     ]
   },
 
-  // ── T1 任课教师：成绩待办尚未写 UnifiedTodo，故无分类假磁贴 ──
+  // ── T1 任课教师：待录成绩写 UnifiedTodo(AA_GRADE_ENTRY) + B8 课表积木 ──
   ACADEMIC_TEACHER: {
     template: 'T1',
     label: '任课教师工作台',
     headline: pendingHeadline('今日无待办，可去录入成绩或查看课表'),
     summaryCues: SUMMARY_CUES,
     statsCues: [],
-    typeCues: [],
+    typeCues: [typeCue('AA_GRADE_ENTRY', '待录成绩', 'primary')],
+    showSchedule: true,
     quickLinks: [
-      { label: '成绩录入', to: '/admin/academic-affairs/grade-entry' },
+      { label: '成绩录入', to: TODO_TYPE_ROUTES.AA_GRADE_ENTRY },
       { label: '我的课表', to: MY_SCHEDULE },
       { label: '教学任务', to: '/admin/academic-affairs/teaching-tasks' },
       { label: '发起调停课', to: '/admin/academic-affairs/schedule-change/apply' }
@@ -167,11 +185,12 @@ export const RECIPES = {
     headline: pendingHeadline('今日无待办，一切正常'),
     summaryCues: SUMMARY_CUES,
     statsCues: [
-      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
-      statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
+      statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`),
+      statsCue('academicWarning', '学业预警在办', 'warning', TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE),
       statsCue('studentTotal', '范围内学生', 'primary', '/admin/academic-affairs/roster')
     ],
     typeCues: AA_TYPE_CUES,
+    showSchedule: true,
     quickLinks: [
       { label: '异动审批', to: TODO_TYPE_ROUTES.AA_STATUS_APPROVAL },
       { label: '调停课审批', to: TODO_TYPE_ROUTES.AA_SCHEDULE_CHANGE_APPROVAL },
@@ -257,14 +276,15 @@ export const RECIPES = {
     ]
   },
 
-  // ── T6c 团委：活动/社团无 UnifiedTodo 分类写入，只用汇总+真实入口 ──
+  // ── T6c 团委：活动域无审批节点 UnifiedTodo 写入点，诚实能力=汇总+真实入口（不造假磁贴）──
   YOUTH_LEAGUE: {
     template: 'T6',
     label: '团学工作台',
     headline: pendingHeadline('本条线今日无待办，可去发布活动或管理社团'),
     summaryCues: SUMMARY_CUES,
-    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`)],
     typeCues: [],
+    capabilityNote: '团学活动以发布与管理为主，暂无分类待办写入；数字来自通用待办汇总。',
     quickLinks: [
       { label: '学生活动', to: '/admin/student-affairs/activity' },
       { label: '社团管理', to: '/admin/student-affairs/activity/clubs' },
@@ -274,19 +294,22 @@ export const RECIPES = {
     ]
   },
 
-  // ── T6d 宿管：宿舍域入口真实；宿舍待办未统一写 UnifiedTodo，无分类假磁贴 ──
+  // ── T6d 宿管：调宿/异常写 UnifiedTodo ──
   DORM_MANAGER: {
     template: 'T6',
     label: '宿舍管理工作台',
     headline: pendingHeadline('负责楼栋今日无待办，可去检查或处理异常'),
     summaryCues: SUMMARY_CUES,
-    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
-    typeCues: [],
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`)],
+    typeCues: [
+      typeCue('DORM_TRANSFER', '调宿待审', 'primary'),
+      typeCue('DORM_EXCEPTION', '宿舍异常待处置', 'risk')
+    ],
     quickLinks: [
-      { label: '宿舍异常', to: '/admin/student-affairs/dorm/exception' },
+      { label: '宿舍异常', to: TODO_TYPE_ROUTES.DORM_EXCEPTION },
       { label: '宿舍检查', to: '/admin/student-affairs/dorm/check' },
       { label: '入住管理', to: '/admin/student-affairs/dorm/checkin' },
-      { label: '调宿退宿', to: '/admin/student-affairs/dorm/transfer' },
+      { label: '调宿退宿', to: TODO_TYPE_ROUTES.DORM_TRANSFER },
       { label: '房源管理', to: '/admin/student-affairs/dorm/resource' }
     ]
   },
@@ -358,16 +381,16 @@ export const RECIPES = {
     ]
   },
 
-  // ── T9c 答辩专家：打分入口真实 ──
+  // ── T9c 答辩专家：待打分写 UnifiedTodo(GD_DEFENSE_SCORE) ──
   GD_DEFENSE_EXPERT: {
     template: 'T9',
     label: '答辩专家工作台',
     headline: pendingHeadline('今日无待打分任务'),
     summaryCues: SUMMARY_CUES,
     statsCues: [],
-    typeCues: [],
+    typeCues: [typeCue('GD_DEFENSE_SCORE', '答辩待打分', 'warning')],
     quickLinks: [
-      { label: '答辩评分', to: '/admin/graduation/defense-grade?panel=defense' },
+      { label: '答辩评分', to: TODO_TYPE_ROUTES.GD_DEFENSE_SCORE },
       { label: '答辩安排', to: '/admin/graduation/defense' }
     ]
   },
@@ -393,7 +416,7 @@ export const RECIPES = {
     ]
   },
 
-  // ── T11 就业老师：未就业用范围内统计，禁止假分类磁贴 ──
+  // ── T11 就业老师：未就业统计 + 分配后的跟进待办 ──
   EMPLOYMENT_TEACHER: {
     template: 'T11',
     label: '就业工作台',
@@ -404,15 +427,15 @@ export const RECIPES = {
     ),
     summaryCues: SUMMARY_CUES,
     statsCues: [
-      statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed'),
+      statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed?status=UNEMPLOYED'),
       statsCue('studentTotal', '范围内学生', 'primary', '/admin/employment/students'),
-      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)
+      statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`)
     ],
-    typeCues: [],
+    typeCues: [typeCue('EMPLOYMENT_FOLLOWUP', '就业跟进待办', 'warning')],
     quickLinks: [
-      { label: '未就业帮扶', to: '/admin/employment/unemployed' },
-      { label: '就业跟进', to: '/admin/employment/followups' },
-      { label: '材料审核', to: '/admin/employment/materials' },
+      { label: '未就业帮扶', to: '/admin/employment/unemployed?status=UNEMPLOYED' },
+      { label: '就业跟进', to: TODO_TYPE_ROUTES.EMPLOYMENT_FOLLOWUP },
+      { label: '材料审核', to: '/admin/employment/materials?status=PENDING' },
       { label: '就业学生', to: '/admin/employment/students' },
       { label: '就业看板', to: '/admin/employment' }
     ]

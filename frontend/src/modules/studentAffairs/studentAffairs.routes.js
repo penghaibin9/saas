@@ -18,9 +18,10 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工看板', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
       },
       {
+        /* 旧「辅导员工作台」双首页 → 统一角色化工作台 /（WorkbenchView） */
         path: 'workbench',
         name: 'student-affairs-counselor-workbench',
-        component: () => import('@/modules/studentAffairs/views/CounselorWorkbenchView.vue'),
+        redirect: '/',
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '辅导员工作台', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
       },
       {

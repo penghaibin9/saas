@@ -22,6 +22,8 @@ _DORM_CFG_TYPE = "AFFAIRS_DORM_RULE"
 _SELF_SELECT_KEY = "self_select"
 TRANSFER_NODES = ["COUNSELOR_REVIEW", "DORM_MANAGER_REVIEW"]
 CHECK_TYPES = ("HYGIENE", "SAFETY", "CONTRABAND", "NIGHT_ABSENCE")
+TODO_TRANSFER = "DORM_TRANSFER"
+TODO_EXCEPTION = "DORM_EXCEPTION"
 
 
 def _op():
@@ -35,6 +37,108 @@ def _audit(db, biz_type, biz_id, action, detail=""):
     db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,
                              action=action, operator=n or uid, role_name=r, detail=detail,
                              occurred_at=datetime.utcnow()))
+
+
+def _counselor_assignee_id(db, student_id) -> int:
+    """COUNSELOR_REVIEW：班级 counselor_id（= User.id）；无法解析返回 0。"""
+    from app.models import SchoolClass, StudentProfile
+    if not student_id:
+        return 0
+    s = db.get(StudentProfile, int(student_id))
+    if s and s.class_id:
+        c = db.get(SchoolClass, int(s.class_id))
+        if c and c.counselor_id:
+            return int(c.counselor_id)
+    return 0
+
+
+def _resolve_user_by_manager_key(db, key: str) -> int:
+    """DormBuilding.manager_teacher_key → User.id（工号/login/数字 id/唯一姓名）。"""
+    from app.models import User
+    k = (key or "").strip()
+    if not k:
+        return 0
+    if k.isdigit():
+        u = db.get(User, int(k))
+        if u and not u.is_deleted and u.tenant_id == _tid() and u.status == "ACTIVE":
+            return int(u.id)
+    row = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.login_name == k,
+        User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+    if row:
+        return int(row.id)
+    rows = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.real_name == k,
+        User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
+        User.is_deleted.is_(False), User.status == "ACTIVE")).all()
+    return int(rows[0].id) if len(rows) == 1 else 0
+
+
+def _dorm_manager_assignee_ids(db, building_id) -> list[int]:
+    """目标楼栋宿管 User.id 列表；优先 manager_teacher_key。"""
+    from app.models import DormBuilding
+    if not building_id:
+        return []
+    b = db.get(DormBuilding, int(building_id))
+    if not b or b.is_deleted or b.tenant_id != _tid():
+        return []
+    aid = _resolve_user_by_manager_key(db, b.manager_teacher_key or "")
+    return [aid] if aid else []
+
+
+def _todo_upsert(db, biz_id, assignee_id, student_id, title, todo_type, *,
+                 biz_type="DORM", allow_pool: bool = False) -> bool:
+    """幂等写待办。assignee_id<=0 时默认跳过；宿管节点无法解析时 allow_pool=True 写池待办。"""
+    from app.models import UnifiedTodo
+    aid = int(assignee_id or 0)
+    if aid <= 0 and not allow_pool:
+        return False
+    if not biz_id:
+        return False
+    bid = int(biz_id)
+    row = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_id == bid, UnifiedTodo.todo_type == todo_type,
+        UnifiedTodo.assignee_id == aid, UnifiedTodo.is_deleted.is_(False))).first()
+    if row:
+        row.title = title
+        row.status = "PENDING"
+        row.student_id = student_id
+        row.source_biz_type = biz_type
+        row.version = int(row.version or 0) + 1
+        return True
+    db.add(UnifiedTodo(
+        tenant_id=_tid(), source_module="student-affairs", source_biz_type=biz_type,
+        source_biz_id=bid, todo_type=todo_type, assignee_id=aid,
+        student_id=student_id, title=title, status="PENDING"))
+    return True
+
+
+def _todo_done(db, biz_id, todo_type) -> int:
+    from app.models import UnifiedTodo
+    if not biz_id:
+        return 0
+    n = 0
+    for r in db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+            UnifiedTodo.source_biz_id == int(biz_id), UnifiedTodo.todo_type == todo_type,
+            UnifiedTodo.is_deleted.is_(False), UnifiedTodo.status == "PENDING")).all():
+        r.status = "DONE"
+        r.version = int(r.version or 0) + 1
+        n += 1
+    return n
+
+
+def _push_dorm_manager_todos(db, *, biz_id, building_id, student_id, title, todo_type,
+                             biz_type="DORM_TRANSFER") -> None:
+    """为楼栋宿管写待办；解析不到 User 时写 assignee_id=0 池待办（student_id 供范围过滤）。"""
+    aids = _dorm_manager_assignee_ids(db, building_id)
+    if aids:
+        for aid in aids:
+            _todo_upsert(db, biz_id, aid, student_id, title, todo_type, biz_type=biz_type)
+    else:
+        _todo_upsert(db, biz_id, 0, student_id, title, todo_type, biz_type=biz_type,
+                     allow_pool=True)
 
 
 def _require_dorm_scope(db, building_id, user):
@@ -375,6 +479,9 @@ def submit_transfer(user, student_id, to_bed_id, reason="") -> dict:
                          reason=reason, status=first, current_node=first)
         db.add(t)
         db.flush()
+        counselor = _counselor_assignee_id(db, s.id)
+        _todo_upsert(db, t.id, counselor, s.id,
+                     f"调宿待审：{s.real_name or ''}", TODO_TRANSFER, biz_type="DORM_TRANSFER")
         _audit(db, "DORM_TRANSFER", t.id, "SUBMIT")
         db.commit()
         db.refresh(t)
@@ -402,16 +509,27 @@ def review_transfer(transfer_id, user, action, reason="") -> dict:
                 _require_dorm_scope(db, to_bed_for_scope.building_id, user)
         if t.status not in TRANSFER_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该调宿当前状态不可审批")
+        from app.models import StudentProfile
+        stu = db.get(StudentProfile, int(t.student_id)) if t.student_id else None
+        stu_name = (stu.real_name if stu else "") or ""
         if action == "REJECT":
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
             t.status, t.return_reason, t.version = "REJECTED", reason.strip(), t.version + 1
+            _todo_done(db, t.id, TODO_TRANSFER)
             _audit(db, "DORM_TRANSFER", t.id, "REJECTED", reason.strip())
         elif action == "APPROVE":
             i = TRANSFER_NODES.index(t.current_node) if t.current_node in TRANSFER_NODES else 0
             if i + 1 < len(TRANSFER_NODES):
                 nxt = TRANSFER_NODES[i + 1]
                 t.current_node, t.status, t.version = nxt, nxt, t.version + 1
+                _todo_done(db, t.id, TODO_TRANSFER)
+                to_bed = db.get(DormBed, int(t.to_bed_id)) if t.to_bed_id else None
+                building_id = to_bed.building_id if to_bed else None
+                _push_dorm_manager_todos(
+                    db, biz_id=t.id, building_id=building_id, student_id=t.student_id,
+                    title=f"调宿待审（宿管）：{stu_name}", todo_type=TODO_TRANSFER,
+                    biz_type="DORM_TRANSFER")
                 _audit(db, "DORM_TRANSFER", t.id, "STEP", f"->{nxt}")
             else:
                 # 终审通过 → 执行调宿
@@ -426,6 +544,7 @@ def review_transfer(transfer_id, user, action, reason="") -> dict:
                 to_bed.student_id, to_bed.status, to_bed.occupied_at = t.student_id, "OCCUPIED", datetime.utcnow()
                 to_bed.cs_dorm_record_id, to_bed.version = rec_id, to_bed.version + 1
                 t.status, t.version = "EXECUTED", t.version + 1
+                _todo_done(db, t.id, TODO_TRANSFER)
                 _audit(db, "DORM_TRANSFER", t.id, "EXECUTED")
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
@@ -504,6 +623,15 @@ def submit_check_record(task_id, user, body) -> dict:
                 db.add(risk)
                 db.flush()
                 rec.related_risk_id = risk.id
+            building_id = task.building_id or (room.building_id if room else None)
+            stu_name = ""
+            if sid_int:
+                sp = db.get(StudentProfile, sid_int)
+                stu_name = (sp.real_name if sp else "") or ""
+            _push_dorm_manager_todos(
+                db, biz_id=exc.id, building_id=building_id, student_id=sid_int,
+                title=f"宿舍异常待处置：{stu_name or (room.room_no if room else '')}",
+                todo_type=TODO_EXCEPTION, biz_type="DORM_EXCEPTION")
             _audit(db, "DORM_CHECK", rec.id, "ABNORMAL",
                    f"exc={exc.id},risk={rec.related_risk_id or '-'},student={sid_int or '-'}")
         else:
@@ -686,6 +814,7 @@ def handle_exception(exception_id, user, note=""):
         if x.status == "HANDLED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异常已处置")
         x.status = "HANDLED"
+        _todo_done(db, x.id, TODO_EXCEPTION)
         _audit(db, "DORM_EXCEPTION", x.id, "HANDLE", note.strip()[:100])
         db.commit()
         return {"exceptionId": str(x.id), "status": x.status}

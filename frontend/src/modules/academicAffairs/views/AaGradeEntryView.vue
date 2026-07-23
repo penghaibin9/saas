@@ -171,7 +171,22 @@ export default {
     },
     async loadTasks() {
       const res = await academicAffairsApi.getGradeTasks({ page: 1, pageSize: 50 })
-      if (res.code === 0) this.myTasks = res.data.list
+      if (res.code !== 0) return
+      let list = res.data?.list || res.data?.items || []
+      const filter = String(this.$route.query.filter || '').toLowerCase()
+      const todoType = String(this.$route.query.todoType || '')
+      if (filter === 'pending' || todoType === 'AA_GRADE_ENTRY') {
+        const editable = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
+        list = list.filter((t) => editable.has(t.status))
+      }
+      this.myTasks = list
+      const taskId = this.$route.query.taskId
+      if (taskId) {
+        const hit = list.find((t) => String(t.gradeTaskId) === String(taskId))
+        if (hit) await this.openTask(hit)
+      } else if ((filter === 'pending' || todoType === 'AA_GRADE_ENTRY') && list.length === 1) {
+        await this.openTask(list[0])
+      }
     },
     async openTask(t) {
       this.task = { ...t }

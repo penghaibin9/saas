@@ -66,6 +66,71 @@ def _salary_mask(v):
     return v or "—"
 
 
+TODO_FOLLOWUP = "EMPLOYMENT_FOLLOWUP"
+
+
+def _resolve_teacher_user_id(db, teacher: str) -> int:
+    """就业老师字符串 → User.id：优先 login_name，其次唯一 real_name。"""
+    from app.models import User
+    t = (teacher or "").strip()
+    if not t:
+        return 0
+    row = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.login_name == t,
+        User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+    if row:
+        return int(row.id)
+    rows = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.real_name == t,
+        User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
+        User.is_deleted.is_(False), User.status == "ACTIVE")).all()
+    return int(rows[0].id) if len(rows) == 1 else 0
+
+
+def _needs_followup(s: EmpStudent) -> bool:
+    return (s.destination_type or "") == "UNEMPLOYED" or (s.help_level or "") == "KEY_HELP"
+
+
+def _todo_upsert_followup(db, emp: EmpStudent, assignee_id: int) -> bool:
+    from app.models import UnifiedTodo
+    aid = int(assignee_id or 0)
+    if aid <= 0 or not emp or not emp.id:
+        return False
+    bid = int(emp.id)
+    title = f"就业跟进：{emp.name or ''}"
+    row = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "employment",
+        UnifiedTodo.source_biz_id == bid, UnifiedTodo.todo_type == TODO_FOLLOWUP,
+        UnifiedTodo.assignee_id == aid, UnifiedTodo.is_deleted.is_(False))).first()
+    if row:
+        row.title = title
+        row.status = "PENDING"
+        row.student_id = emp.student_id
+        row.source_biz_type = "EMP_FOLLOWUP"
+        row.version = int(row.version or 0) + 1
+        return True
+    db.add(UnifiedTodo(
+        tenant_id=_tid(), source_module="employment", source_biz_type="EMP_FOLLOWUP",
+        source_biz_id=bid, todo_type=TODO_FOLLOWUP, assignee_id=aid,
+        student_id=emp.student_id, title=title, status="PENDING"))
+    return True
+
+
+def _todo_done_followup(db, emp_student_id) -> int:
+    from app.models import UnifiedTodo
+    if not emp_student_id:
+        return 0
+    n = 0
+    for r in db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "employment",
+            UnifiedTodo.source_biz_id == int(emp_student_id), UnifiedTodo.todo_type == TODO_FOLLOWUP,
+            UnifiedTodo.is_deleted.is_(False), UnifiedTodo.status == "PENDING")).all():
+        r.status = "DONE"
+        r.version = int(r.version or 0) + 1
+        n += 1
+    return n
+
+
 def _stu_row(s: EmpStudent) -> dict:
     return {"id": str(s.id), "studentId": str(s.student_id or s.id), "name": s.name,
             "studentNo": s.student_no or "", "gender": s.gender or "", "grade": s.grade or "",
@@ -181,6 +246,8 @@ def batch_mark_destination(ids, destination_type) -> dict:
             s.destination_type = destination_type
             s.verify_status = "PENDING_VERIFY"
             s.version += 1
+            if destination_type != "UNEMPLOYED":
+                _todo_done_followup(db, s.id)
             _audit(db, "RECORD", s.id, "批量标记去向", L_DEST[destination_type])
             cnt += 1
         db.commit()
@@ -298,7 +365,20 @@ def mark_employed(ids):
     def f(s):
         s.destination_type = "SIGNED"
         s.verify_status = "PENDING_VERIFY"
-    return _batch_stu(ids, f, "标记已就业")
+
+    cnt = 0
+    with session() as db:
+        for sid in ids:
+            s = db.get(EmpStudent, int(sid))
+            if not s or s.is_deleted or s.tenant_id != _tid():
+                continue
+            f(s)
+            s.version += 1
+            _todo_done_followup(db, s.id)
+            _audit(db, "RECORD", s.id, "标记已就业")
+            cnt += 1
+        db.commit()
+        return {"count": cnt}
 
 
 def mark_key_help(ids):
@@ -311,7 +391,21 @@ def mark_key_help(ids):
 def assign_teacher(ids, teacher):
     if not teacher:
         raise AppException("VALIDATION_ERROR", "就业老师必填")
-    return _batch_stu(ids, lambda s: setattr(s, "employment_teacher", teacher), "分配就业老师")
+    cnt = 0
+    with session() as db:
+        aid = _resolve_teacher_user_id(db, teacher)
+        for sid in ids:
+            s = db.get(EmpStudent, int(sid))
+            if not s or s.is_deleted or s.tenant_id != _tid():
+                continue
+            s.employment_teacher = teacher
+            s.version += 1
+            if aid and _needs_followup(s):
+                _todo_upsert_followup(db, s, aid)
+            _audit(db, "RECORD", s.id, "分配就业老师")
+            cnt += 1
+        db.commit()
+        return {"count": cnt}
 
 
 # ═══ 跟进 ═══
