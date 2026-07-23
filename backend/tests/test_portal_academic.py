@@ -88,6 +88,18 @@ def test_exam_makeup_audit_views(client, db_mode):
     assert "progress" in d and "credits" in d and "warnings" in d
 
 
+def test_evaluation_tasks_and_submit_guards(client, db_mode):
+    _seed("AC-040", "教务评")
+    h = _stu_token("教务评", "AC-040")
+    r = client.get(f"{PORTAL}/evaluation/tasks", headers=h).json()
+    assert r["code"] == 0
+    assert "list" in r["data"] and "total" in r["data"]
+    # 缺 taskId / objectiveScore → 校验失败
+    assert client.post(f"{PORTAL}/evaluation/submit", headers=h, json={}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/evaluation/submit", headers=h,
+                       json={"taskId": "1"}).json()["code"] != 0
+
+
 def test_retake_requires_course(client, db_mode):
     _seed("AC-031", "教务卅一")
     h = _stu_token("教务卅一", "AC-031")
@@ -107,3 +119,6 @@ def test_non_student_rejected(client, db_mode):
                        json={"changeType": "TRANSFER_MAJOR", "reason": "家庭原因需转专业"}).json()["code"] == 403001
     assert client.get(f"{PORTAL}/makeup", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/graduation-audit", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/evaluation/tasks", headers=admin).json()["code"] == 403001
+    assert client.post(f"{PORTAL}/evaluation/submit", headers=admin,
+                       json={"taskId": "1", "objectiveScore": 90}).json()["code"] == 403001

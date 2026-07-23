@@ -1,7 +1,7 @@
 """学生 PC 门户 · 教务学业（第3期）。
 
 教务学生自视图已很完整（mobile_academic_affairs_service：成绩单/课表/学籍/异动/选课/学分/预警/
-补重修/毕业进度）。PC 门户在其上接出并叠加 PC 重活（成绩单打印、学籍异动材料+签署等）。
+补重修/毕业进度/学生评教）。PC 门户在其上接出并叠加 PC 重活（成绩单打印、学籍异动材料+签署等）。
 首刀：我的成绩 / 成绩单查看 + 打印。严格本人由 aa._me（_require_student+resolve_student）收口。
 """
 from __future__ import annotations
@@ -125,6 +125,18 @@ def graduation_audit(user: dict) -> dict:
         "credits": aa.credits_my(user),
         "warnings": aa.warning_my(user),
     }
+
+
+def evaluation_tasks(user: dict) -> dict:
+    """开放窗口内本班学生评教任务（匿名槽位，与小程序同口径）。"""
+    _require_student(user)
+    return aa.evaluation_tasks_my(user)
+
+
+def evaluation_submit(user: dict, body: dict) -> dict:
+    """学生匿名提交评教（本班校验在 mobile 服务）。"""
+    _require_student(user)
+    return aa.evaluation_submit_my(user, body or {})
 
 
 def transcript_print(user: dict, body: dict) -> dict:
