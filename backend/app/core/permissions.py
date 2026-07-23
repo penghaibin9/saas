@@ -50,7 +50,7 @@ _WORKBENCH_SELF = {"workbench.home.view", "approval.todo.view", *_WORKBENCH_MESS
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PLATFORM_SUPER_ADMIN": {"*"},
     "SCHOOL_ADMIN": {"*"},                       # 学校管理员：本校全权（接库后再按需收敛）
-    "SYS_ADMIN": {"systemAdmin.*", "audit.*"},
+    "SYS_ADMIN": {"systemAdmin.*", "audit.*", *_WORKBENCH_SELF},
     "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view",
                          # 实习督导/审计：只读监督（看板/学生/风险/统计/分配日志/审核台账），不授予任何写操作
                          "internship.dashboard.view", "internship.student.view", "internship.risk.view",
@@ -58,14 +58,15 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                          "internship.stats.score.view", "internship.match.log.view", "internship.application.view",
                          "internship.archive.view", "internship.complaint.view",
                          *_WORKBENCH_SELF, "dataCenter.*"},
-    "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
+    "LEADER": {"audit.view", "*.view", "*.stat", *_WORKBENCH_SELF},  # 校/院领导：只读驾驶舱；显式补工作台自助权限
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       "internship.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
                       # 消息中心：本院发布 + 本院发送统计（跨学院由 service 数据范围收敛）
                       "workbench.message.publish",
                       "workbench.message.college.publish", "workbench.message.schedule",
                       "workbench.message.withdraw", "workbench.message.statistics.view",
-                      "workbench.message.recipient.view"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
+                      "workbench.message.recipient.view",
+                      "workbench.message.emergency.approve"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
     # 任课教师：2026-07-19 起从 academicAffairs.* 通配收窄为显式清单（教务中心测试报告
     # Bug#3 越权整改的完整版）。原则：教学职责所需的查看/录入/发起/流程节点动作显式授予，
     # 数据范围仍由 service 层收敛（本人课程/COURSE/仅本人课表等）；一切管理/审批/发布/
@@ -120,6 +121,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                               "workbench.message.schoolStudent.publish",
                               "workbench.message.schoolAll.publish",
                               "workbench.message.emergency.submit",
+                              "workbench.message.emergency.approve",
                               "workbench.message.schedule", "workbench.message.withdraw",
                               "workbench.message.retry", "workbench.message.statistics.view",
                               "workbench.message.recipient.view",
@@ -144,6 +146,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     # 团委（社团/学生组织/党团发展 + 二课活动组织）：全校团学口径。边界（是否含全部二课/志愿）待学校确认。
     "YOUTH_LEAGUE": {
+        *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view", "studentAffairs.student.view", "studentAffairs.stats.view",
         "studentAffairs.club.view", "studentAffairs.club.manage",
         "studentAffairs.org.view", "studentAffairs.org.manage",
@@ -153,10 +156,12 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     # 组织人事：辅导员考评的组织与复核（指标/评分/发布/申诉复核）；不介入学生业务。角色归属待学校确认。
     "ORG_PERSONNEL": {
+        *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view", "studentAffairs.stats.view",
         "studentAffairs.counselorEval.view", "studentAffairs.counselorEval.manage",
     },
-    "DORM_MANAGER": {"studentAffairs.dorm.*", "campusService.dorm.*"},  # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分
+    # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分；可进本人工作台与待办
+    "DORM_MANAGER": {*_WORKBENCH_SELF, "studentAffairs.dorm.*", "campusService.dorm.*"},
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
     # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
     "COUNSELOR": {
@@ -201,6 +206,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "GRADUATION_ADMIN": {"graduationDesign.*", *_WORKBENCH_SELF, "approval.dashboard.view"},
     "GD_COLLEGE_ADMIN": {"graduationDesign.*", *_WORKBENCH_SELF, "approval.dashboard.view"},
     "GD_MAJOR_ADMIN": {
+        *_WORKBENCH_SELF,
         "graduationDesign.view", "graduationDesign.topic.*", "graduationDesign.mentor.assign",
         "graduationDesign.proposal.review", "graduationDesign.stats.view",
     },
@@ -209,12 +215,16 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "graduationDesign.view", "graduationDesign.guide.*",
         "graduationDesign.proposal.review", "graduationDesign.final.review",
     },
-    "GD_REVIEWER": {"graduationDesign.view", "graduationDesign.final.review"},
+    "GD_REVIEWER": {*_WORKBENCH_SELF, "graduationDesign.view", "graduationDesign.final.review"},
     "GD_DEFENSE_SECRETARY": {
+        *_WORKBENCH_SELF,
         "graduationDesign.view", "graduationDesign.defense.manage",
         "graduationDesign.defense.publish", "graduationDesign.defense.score",
     },
-    "GD_DEFENSE_EXPERT": {"graduationDesign.view", "graduationDesign.defense.score"},
+    "GD_DEFENSE_EXPERT": {
+        *_WORKBENCH_SELF,
+        "graduationDesign.view", "graduationDesign.defense.score",
+    },
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {
         *_WORKBENCH_SELF,

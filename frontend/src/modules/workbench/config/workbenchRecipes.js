@@ -6,34 +6,33 @@
  *   - 内容顺序固定 Headline（先给结论）→ Cues（可点击的数字磁贴）→ 明细；
  *   - 数字磁贴必须能下钻到「已筛选好的业务列表」，点不动的数字等于没做。
  *
- * 后端 27 个角色（app/core/permissions.py ROLE_PERMISSIONS）收敛为若干模板；
- * 未登记的角色回落 DEFAULT（只给通用待办，不臆造该角色的业务卡片）。
+ * 后端角色（app/core/permissions.py）→ 十二模板（T1–T12）：
+ *   T1 ACADEMIC_TEACHER | T2 ACADEMIC_ADMIN | T3 COLLEGE_ADMIN
+ *   T4 COUNSELOR | T5 STUDENT_AFFAIRS(_ADMIN) | T6 专项（心理/资助/团委/宿管）
+ *   T7 GD_MENTOR | T8 毕设管理 | T9 毕设评审 | T10 INTERN_MENTOR
+ *   T11 EMPLOYMENT_TEACHER | T12 管理监督（领导/校管/系统/审计/组织人事）
+ * PLATFORM_SUPER_ADMIN 走独立平台入口，不进本配方。
  *
- * cue.source 取数来源：
- *   'summary.<字段>'  → GET /todos/summary（本人可见范围）
- *   'todoType.<类型>' → GET /admin/todos/count 的 byType（本人可见范围）
- *   'stats.<字段>'    → GET /stats/workbench（按数据范围收敛的关键指标 B2/B4）
- *   'message.unread'  → GET /admin/messages/count
+ * cue.source：
+ *   'summary.<字段>'  → GET /todos/summary
+ *   'todoType.<类型>' → GET /admin/todos/count.byType（仅登记已有 UnifiedTodo 写入的类型）
+ *   'stats.<字段>'    → GET /stats/workbench（按数据范围收敛）
  *
- * 积木：
- *   B2 待我审批 → stats.pendingApproval
- *   B4 关键指标 → stats.studentTotal / academicWarning / orientationPending 等
- *   B5 临近截止 → SUMMARY_CUES.nearDeadline（24h 内到期，下钻全部待办）
- *   B8 我的课表 → quickLinks「我的课表」→ /admin/academic-affairs/schedule/teacher
- *
- * 已落地：T4 辅导员、T1 任课教师、T2 教务老师、T7 毕设导师、T10 实习导师 + DEFAULT。
- * T7/T10 业务待办由 P5 写入 UnifiedTodo（开题/成果/选题变更；周报/请假/异常/巡访整改）。
+ * 硬规则：无真实写入的待办类型不得做分类假磁贴；无权限可达的下钻路径不得挂快捷入口。
  */
 
-/** 待办类型 → 该类型的业务落点（点磁贴要能到已筛选的列表，不能落到空白模块首页） */
+/** 待办类型 → 业务落点（已筛选列表，禁止空壳首页） */
 export const TODO_TYPE_ROUTES = {
   LEAVE_APPROVAL: '/admin/campus-service/leave',
   LEAVE_OVERDUE: '/admin/campus-service/leave-ledger',
+  LEAVE_CANCEL: '/admin/campus-service/leave',
+  LEAVE_EXTENSION: '/admin/campus-service/leave',
   DISCIPLINE_APPROVAL: '/admin/student-affairs/discipline',
+  DISCIPLINE_REMOVE: '/admin/student-affairs/discipline',
   AID_APPROVAL: '/admin/student-affairs/aid',
+  AID_ADJUST: '/admin/student-affairs/aid',
   FUNDING_APPROVAL: '/admin/student-affairs/funding',
   RISK_HANDLE: '/admin/student-affairs/risk',
-  // 异动/调停课审批落审批工作台，不是台账首页（避免「点待审却进列表」）
   AA_STATUS_APPROVAL: '/admin/academic-affairs/status-changes/approval',
   AA_SCHEDULE_CHANGE_APPROVAL: '/admin/academic-affairs/schedule-change/approval',
   ACAD_WARNING_HANDLE: '/admin/academic-affairs/warnings',
@@ -47,10 +46,12 @@ export const TODO_TYPE_ROUTES = {
 }
 
 const TODO_ALL = '/admin/approval/todos'
-/** B8：教师课表页（本人可用「查看本人课表」；不深链工号，避免前端猜身份键） */
 const MY_SCHEDULE = '/admin/academic-affairs/schedule/teacher'
+const COCKPIT = '/admin/data-center'
+const AUDIT_LOGS = '/admin/system/logs'
+const SYSTEM_HOME = '/admin/system'
 
-/** 通用汇总磁贴：任何角色都适用（含 B5 临近截止；数据均为本人可见范围） */
+/** 通用汇总磁贴（含 B5 临近截止） */
 const SUMMARY_CUES = [
   { key: 'pending', title: '待我处理', source: 'summary.pending', accent: 'primary', to: TODO_ALL },
   { key: 'overdue', title: '已逾期', source: 'summary.overdue', accent: 'risk', to: TODO_ALL },
@@ -62,43 +63,80 @@ function typeCue(key, title, accent) {
   return { key, title, source: `todoType.${key}`, accent, to: TODO_TYPE_ROUTES[key] || TODO_ALL }
 }
 
-/** B2/B4：来自 /stats/workbench，数字按当前身份数据范围收敛 */
 function statsCue(key, title, accent, to) {
   return { key, title, source: `stats.${key}`, accent, to }
 }
 
 function pendingHeadline(labelWhenEmpty) {
   return (d) => {
-    if (d.summary.overdue > 0) return `有 ${d.summary.overdue} 项已逾期，建议先处理`
-    if (d.summary.nearDeadline > 0) return `有 ${d.summary.nearDeadline} 项将在 24 小时内到期`
-    if (d.summary.pending > 0) return `今天有 ${d.summary.pending} 项待你处理`
+    const s = (d && d.summary) || {}
+    if (s.overdue > 0) return `有 ${s.overdue} 项已逾期，建议先处理`
+    if (s.nearDeadline > 0) return `有 ${s.nearDeadline} 项将在 24 小时内到期`
+    if (s.pending > 0) return `今天有 ${s.pending} 项待你处理`
     return labelWhenEmpty
   }
 }
 
-/** 辅导员范围关键指标（B2 待我审批 + B4 学生/预警/迎新） */
-const COUNSELOR_STATS_CUES = [
+/** 优先用范围内统计说人话，再回落待办汇总 */
+function statsFirstHeadline(statsKey, whenPositive, whenEmpty) {
+  const base = pendingHeadline(whenEmpty)
+  return (d) => {
+    const n = Number((d && d.stats && d.stats[statsKey]) || 0)
+    if (n > 0) return whenPositive(n)
+    return base(d)
+  }
+}
+
+const SA_TYPE_CUES = [
+  typeCue('LEAVE_APPROVAL', '待批请假', 'primary'),
+  typeCue('RISK_HANDLE', '风险待处置', 'risk'),
+  typeCue('DISCIPLINE_APPROVAL', '违纪待处理', 'warning'),
+  typeCue('AID_APPROVAL', '困难认定待审', 'primary'),
+  typeCue('FUNDING_APPROVAL', '资助待审', 'primary'),
+  typeCue('LEAVE_OVERDUE', '逾期未销假', 'risk')
+]
+
+const AA_TYPE_CUES = [
+  typeCue('AA_STATUS_APPROVAL', '学籍异动待审', 'warning'),
+  typeCue('AA_SCHEDULE_CHANGE_APPROVAL', '调停课待审', 'primary'),
+  typeCue('ACAD_WARNING_HANDLE', '学业预警待处置', 'risk')
+]
+
+const GD_MENTOR_TYPE_CUES = [
+  typeCue('GD_PROPOSAL_REVIEW', '开题待批阅', 'primary'),
+  typeCue('GD_FINAL_REVIEW', '成果待批阅', 'warning'),
+  typeCue('GD_TOPIC_CHANGE_REVIEW', '选题变更待审', 'primary')
+]
+
+const SCOPE_STUDENT_STATS = [
   statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
-  statsCue('studentTotal', '我的学生', 'primary', '/admin/campus-service/classes'),
+  statsCue('studentTotal', '范围内学生', 'primary', '/admin/campus-service/classes'),
   statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
   statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students')
 ]
 
+const SCHOOL_STATS = [
+  statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+  statsCue('studentTotal', '在册学生', 'primary', '/admin/campus-service/students'),
+  statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
+  statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed'),
+  statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students')
+]
+
 export const RECIPES = {
-  // ── T4 辅导员：待办数据在本系统中最完整（请假/违纪/资助/困难认定/风险五类真实写入）──
+  // ── T4 辅导员 ──
   COUNSELOR: {
+    template: 'T4',
     label: '辅导员工作台',
     headline: pendingHeadline('今日无待办，一切正常'),
     summaryCues: SUMMARY_CUES,
-    statsCues: COUNSELOR_STATS_CUES,
-    typeCues: [
-      typeCue('LEAVE_APPROVAL', '待批请假', 'primary'),
-      typeCue('RISK_HANDLE', '风险待处置', 'risk'),
-      typeCue('DISCIPLINE_APPROVAL', '违纪待处理', 'warning'),
-      typeCue('AID_APPROVAL', '困难认定待审', 'primary'),
-      typeCue('FUNDING_APPROVAL', '资助待审', 'primary'),
-      typeCue('LEAVE_OVERDUE', '逾期未销假', 'risk')
+    statsCues: [
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+      statsCue('studentTotal', '我的学生', 'primary', '/admin/campus-service/classes'),
+      statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
+      statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students')
     ],
+    typeCues: SA_TYPE_CUES,
     quickLinks: [
       { label: '我的班级', to: '/admin/campus-service/classes' },
       { label: '谈心谈话', to: '/admin/student-affairs/talk' },
@@ -106,8 +144,9 @@ export const RECIPES = {
     ]
   },
 
-  // ── T1 任课教师：成绩/课表/调停课入口真实；成绩待办尚未写 UnifiedTodo，故无分类假磁贴 ──
+  // ── T1 任课教师：成绩待办尚未写 UnifiedTodo，故无分类假磁贴 ──
   ACADEMIC_TEACHER: {
+    template: 'T1',
     label: '任课教师工作台',
     headline: pendingHeadline('今日无待办，可去录入成绩或查看课表'),
     summaryCues: SUMMARY_CUES,
@@ -116,12 +155,14 @@ export const RECIPES = {
     quickLinks: [
       { label: '成绩录入', to: '/admin/academic-affairs/grade-entry' },
       { label: '我的课表', to: MY_SCHEDULE },
+      { label: '教学任务', to: '/admin/academic-affairs/teaching-tasks' },
       { label: '发起调停课', to: '/admin/academic-affairs/schedule-change/apply' }
     ]
   },
 
-  // ── T2 教务老师：异动/调停课/学业预警待办真实写入；课表为查询入口（B8）──
+  // ── T2 教务老师（全校）──
   ACADEMIC_ADMIN: {
+    template: 'T2',
     label: '教务工作台',
     headline: pendingHeadline('今日无待办，一切正常'),
     summaryCues: SUMMARY_CUES,
@@ -130,39 +171,210 @@ export const RECIPES = {
       statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
       statsCue('studentTotal', '范围内学生', 'primary', '/admin/academic-affairs/roster')
     ],
-    typeCues: [
-      typeCue('AA_STATUS_APPROVAL', '学籍异动待审', 'warning'),
-      typeCue('AA_SCHEDULE_CHANGE_APPROVAL', '调停课待审', 'primary'),
-      typeCue('ACAD_WARNING_HANDLE', '学业预警待处置', 'risk')
-    ],
+    typeCues: AA_TYPE_CUES,
     quickLinks: [
       { label: '异动审批', to: TODO_TYPE_ROUTES.AA_STATUS_APPROVAL },
       { label: '调停课审批', to: TODO_TYPE_ROUTES.AA_SCHEDULE_CHANGE_APPROVAL },
       { label: '我的课表', to: MY_SCHEDULE },
-      { label: '学业预警', to: TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE }
+      { label: '学业预警', to: TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE },
+      { label: '成绩管理', to: '/admin/academic-affairs/grade-overview' }
     ]
   },
 
-  // ── T7 毕设导师：开题/成果/选题变更写入 UnifiedTodo（P5）──
+  // ── T3 院级教学秘书 / 学院管理员：本院口径（数据范围由后端 COLLEGE 收敛）──
+  COLLEGE_ADMIN: {
+    template: 'T3',
+    label: '学院管理工作台',
+    headline: pendingHeadline('本院今日无待办，一切正常'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: SCOPE_STUDENT_STATS,
+    typeCues: [...AA_TYPE_CUES, ...SA_TYPE_CUES, ...GD_MENTOR_TYPE_CUES],
+    quickLinks: [
+      { label: '本院异动审批', to: TODO_TYPE_ROUTES.AA_STATUS_APPROVAL },
+      { label: '本院调停课', to: TODO_TYPE_ROUTES.AA_SCHEDULE_CHANGE_APPROVAL },
+      { label: '本院风险台账', to: '/admin/student-affairs/risk' },
+      { label: '本院毕设学生', to: '/admin/graduation/students?panel=progress' },
+      { label: '本院实习学生', to: '/admin/internship/students' }
+    ]
+  },
+
+  // ── T5 学工处管理员（全校学工口径）──
+  STUDENT_AFFAIRS_ADMIN: {
+    template: 'T5',
+    label: '学工管理工作台',
+    headline: pendingHeadline('全校学工今日无待处置事项'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: SCHOOL_STATS,
+    typeCues: SA_TYPE_CUES,
+    quickLinks: [
+      { label: '风险台账', to: '/admin/student-affairs/risk' },
+      { label: '违纪处分', to: '/admin/student-affairs/discipline' },
+      { label: '困难认定', to: '/admin/student-affairs/aid' },
+      { label: '资助评审', to: '/admin/student-affairs/funding' },
+      { label: '学工看板', to: '/admin/student-affairs' }
+    ]
+  },
+
+  // ── T6a 心理老师 ──
+  PSYCHOLOGY_TEACHER: {
+    template: 'T6',
+    label: '心理工作台',
+    headline: pendingHeadline('本条线今日无待办'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+      statsCue('studentTotal', '授权学生', 'primary', '/admin/student-affairs/mental')
+    ],
+    typeCues: [typeCue('RISK_HANDLE', '风险待处置', 'risk')],
+    quickLinks: [
+      { label: '心理关注名单', to: '/admin/student-affairs/mental' },
+      { label: '危机升级', to: '/admin/student-affairs/mental/crisis' },
+      { label: '谈心谈话', to: '/admin/student-affairs/talk' },
+      { label: '风险台账', to: '/admin/student-affairs/risk' }
+    ]
+  },
+
+  // ── T6b 资助老师 ──
+  FUNDING_TEACHER: {
+    template: 'T6',
+    label: '资助工作台',
+    headline: pendingHeadline('本条线今日无待审'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+      statsCue('studentTotal', '范围内学生', 'primary', '/admin/student-affairs/aid')
+    ],
+    typeCues: [
+      typeCue('AID_APPROVAL', '困难认定待审', 'primary'),
+      typeCue('FUNDING_APPROVAL', '资助待审', 'primary'),
+      typeCue('AID_ADJUST', '认定调整待审', 'warning')
+    ],
+    quickLinks: [
+      { label: '困难认定', to: '/admin/student-affairs/aid' },
+      { label: '资助评审', to: '/admin/student-affairs/funding' },
+      { label: '公示待办', to: '/admin/student-affairs/funding/publicity' },
+      { label: '发放台账', to: '/admin/student-affairs/funding/disbursements' }
+    ]
+  },
+
+  // ── T6c 团委：活动/社团无 UnifiedTodo 分类写入，只用汇总+真实入口 ──
+  YOUTH_LEAGUE: {
+    template: 'T6',
+    label: '团学工作台',
+    headline: pendingHeadline('本条线今日无待办，可去发布活动或管理社团'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    typeCues: [],
+    quickLinks: [
+      { label: '学生活动', to: '/admin/student-affairs/activity' },
+      { label: '社团管理', to: '/admin/student-affairs/activity/clubs' },
+      { label: '学生组织', to: '/admin/student-affairs/activity/organizations' },
+      { label: '党团建设', to: '/admin/student-affairs/activity/party-league' },
+      { label: '志愿服务', to: '/admin/student-affairs/activity/volunteer' }
+    ]
+  },
+
+  // ── T6d 宿管：宿舍域入口真实；宿舍待办未统一写 UnifiedTodo，无分类假磁贴 ──
+  DORM_MANAGER: {
+    template: 'T6',
+    label: '宿舍管理工作台',
+    headline: pendingHeadline('负责楼栋今日无待办，可去检查或处理异常'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    typeCues: [],
+    quickLinks: [
+      { label: '宿舍异常', to: '/admin/student-affairs/dorm/exception' },
+      { label: '宿舍检查', to: '/admin/student-affairs/dorm/check' },
+      { label: '入住管理', to: '/admin/student-affairs/dorm/checkin' },
+      { label: '调宿退宿', to: '/admin/student-affairs/dorm/transfer' },
+      { label: '房源管理', to: '/admin/student-affairs/dorm/resource' }
+    ]
+  },
+
+  // ── T7 毕设导师 ──
   GD_MENTOR: {
+    template: 'T7',
     label: '毕设导师工作台',
     headline: pendingHeadline('今日无待办，可查看指导学生进度'),
     summaryCues: SUMMARY_CUES,
     statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
-    typeCues: [
-      typeCue('GD_PROPOSAL_REVIEW', '开题待批阅', 'primary'),
-      typeCue('GD_FINAL_REVIEW', '成果待批阅', 'warning'),
-      typeCue('GD_TOPIC_CHANGE_REVIEW', '选题变更待审', 'primary')
-    ],
+    typeCues: GD_MENTOR_TYPE_CUES,
     quickLinks: [
       { label: '我指导的学生', to: '/admin/graduation/students' },
       { label: '开题材料', to: '/admin/graduation/proposals' },
-      { label: '成果提交', to: '/admin/graduation/finals' }
+      { label: '成果提交', to: '/admin/graduation/finals' },
+      { label: '过程指导', to: '/admin/graduation/process?panel=guidance' }
     ]
   },
 
-  // ── T10 实习导师：周报/请假/异常/巡访整改写入 UnifiedTodo（P5）──
+  // ── T8 毕设管理（校/院/专业管理员）：进度与卡壳学生入口真实 ──
+  GRADUATION_ADMIN: {
+    template: 'T8',
+    label: '毕设管理工作台',
+    headline: pendingHeadline('毕设管理今日无待办'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+      statsCue('studentTotal', '范围内学生', 'primary', '/admin/graduation/students?panel=roster')
+    ],
+    typeCues: GD_MENTOR_TYPE_CUES,
+    quickLinks: [
+      { label: '学生进度', to: '/admin/graduation/students?panel=progress' },
+      { label: '未选题学生', to: '/admin/graduation/students?panel=topic' },
+      { label: '问题预警', to: '/admin/graduation/risk-archive?panel=risk' },
+      { label: '开题批阅', to: '/admin/graduation/proposals' },
+      { label: '毕设统计', to: '/admin/graduation/stats-report' }
+    ]
+  },
+
+  // ── T9a 评阅人：成果评阅真实待办类型 ──
+  GD_REVIEWER: {
+    template: 'T9',
+    label: '毕设评阅工作台',
+    headline: pendingHeadline('今日无待评阅'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    typeCues: [typeCue('GD_FINAL_REVIEW', '成果待评阅', 'warning')],
+    quickLinks: [
+      { label: '成果批阅', to: '/admin/graduation/finals' },
+      { label: '教师评阅', to: '/admin/graduation/defense-grade?panel=review' },
+      { label: '查重记录', to: '/admin/graduation/defense-grade?panel=plagiarism' }
+    ]
+  },
+
+  // ── T9b 答辩秘书：答辩安排/发布真实入口；无假评阅数 ──
+  GD_DEFENSE_SECRETARY: {
+    template: 'T9',
+    label: '答辩秘书工作台',
+    headline: pendingHeadline('今日无答辩待办，可去安排或发布'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    typeCues: [],
+    quickLinks: [
+      { label: '答辩安排', to: '/admin/graduation/defense' },
+      { label: '答辩评分', to: '/admin/graduation/defense-grade?panel=defense' },
+      { label: '成绩评定', to: '/admin/graduation/defense-grade?panel=grade' },
+      { label: '专家库', to: '/admin/graduation/more?panel=experts' }
+    ]
+  },
+
+  // ── T9c 答辩专家：打分入口真实 ──
+  GD_DEFENSE_EXPERT: {
+    template: 'T9',
+    label: '答辩专家工作台',
+    headline: pendingHeadline('今日无待打分任务'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [],
+    typeCues: [],
+    quickLinks: [
+      { label: '答辩评分', to: '/admin/graduation/defense-grade?panel=defense' },
+      { label: '答辩安排', to: '/admin/graduation/defense' }
+    ]
+  },
+
+  // ── T10 实习导师 ──
   INTERN_MENTOR: {
+    template: 'T10',
     label: '实习指导工作台',
     headline: pendingHeadline('今日无待办，可查看实习生与周报'),
     summaryCues: SUMMARY_CUES,
@@ -181,8 +393,120 @@ export const RECIPES = {
     ]
   },
 
-  // ── 兜底：不臆造角色专属卡片，只给通用待办与全部待办入口 ──
+  // ── T11 就业老师：未就业用范围内统计，禁止假分类磁贴 ──
+  EMPLOYMENT_TEACHER: {
+    template: 'T11',
+    label: '就业工作台',
+    headline: statsFirstHeadline(
+      'unemployed',
+      (n) => `范围内有 ${n} 名学生未落实去向，建议跟进`,
+      '今日无就业待办，可查看去向落实情况'
+    ),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [
+      statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed'),
+      statsCue('studentTotal', '范围内学生', 'primary', '/admin/employment/students'),
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)
+    ],
+    typeCues: [],
+    quickLinks: [
+      { label: '未就业帮扶', to: '/admin/employment/unemployed' },
+      { label: '就业跟进', to: '/admin/employment/followups' },
+      { label: '材料审核', to: '/admin/employment/materials' },
+      { label: '就业学生', to: '/admin/employment/students' },
+      { label: '就业看板', to: '/admin/employment' }
+    ]
+  },
+
+  // ── T12a 校/院领导：只读驾驶舱 + 范围内指标 ──
+  LEADER: {
+    template: 'T12',
+    label: '领导驾驶工作台',
+    headline: statsFirstHeadline(
+      'studentTotal',
+      (n) => `当前范围内在册学生 ${n} 人，可查看驾驶舱`,
+      '今日无告警待办，可查看领导驾驶舱'
+    ),
+    summaryCues: SUMMARY_CUES,
+    statsCues: SCHOOL_STATS,
+    typeCues: [],
+    quickLinks: [
+      { label: '领导驾驶舱', to: COCKPIT },
+      { label: '生命周期总览', to: '/admin/data-center/lifecycle' },
+      { label: '风险预警', to: '/admin/data-center/risk' },
+      { label: '排行分析', to: '/admin/data-center/rankings' }
+    ]
+  },
+
+  // ── T12b 学校管理员 ──
+  SCHOOL_ADMIN: {
+    template: 'T12',
+    label: '学校管理工作台',
+    headline: pendingHeadline('今日无待办，可查看全校运行与驾驶舱'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: SCHOOL_STATS,
+    typeCues: [],
+    quickLinks: [
+      { label: '领导驾驶舱', to: COCKPIT },
+      { label: '系统管理', to: SYSTEM_HOME },
+      { label: '安全审计', to: AUDIT_LOGS },
+      { label: '全部待办', to: TODO_ALL },
+      { label: '学工看板', to: '/admin/student-affairs' }
+    ]
+  },
+
+  // ── T12c 系统管理员 ──
+  SYS_ADMIN: {
+    template: 'T12',
+    label: '系统管理工作台',
+    headline: pendingHeadline('今日无系统待办，可去查看审计与配置'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    typeCues: [],
+    quickLinks: [
+      { label: '系统管理', to: SYSTEM_HOME },
+      { label: '安全审计', to: AUDIT_LOGS },
+      { label: '全部待办', to: TODO_ALL }
+    ]
+  },
+
+  // ── T12d 安全审计 ──
+  SECURITY_AUDITOR: {
+    template: 'T12',
+    label: '安全审计工作台',
+    headline: pendingHeadline('今日无审计待办，可去审查日志与驾驶舱'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
+      statsCue('studentTotal', '在册学生', 'primary', COCKPIT)
+    ],
+    typeCues: [],
+    quickLinks: [
+      { label: '安全审计', to: AUDIT_LOGS },
+      { label: '领导驾驶舱', to: COCKPIT },
+      { label: '风险预警', to: '/admin/data-center/risk' },
+      { label: '实习风险', to: '/admin/internship/risks' }
+    ]
+  },
+
+  // ── T12e 组织人事：辅导员考评 ──
+  ORG_PERSONNEL: {
+    template: 'T12',
+    label: '组织人事工作台',
+    headline: pendingHeadline('今日无考评待办，可去组织辅导员考评'),
+    summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    typeCues: [],
+    quickLinks: [
+      { label: '辅导员考评', to: '/admin/student-affairs/counselor-eval' },
+      { label: '学工看板', to: '/admin/student-affairs' },
+      { label: '全部待办', to: TODO_ALL }
+    ]
+  },
+
+  // ── 兜底 ──
   DEFAULT: {
+    template: 'DEFAULT',
     label: '我的工作台',
     headline: pendingHeadline('今日无待办，一切正常'),
     summaryCues: SUMMARY_CUES,
@@ -192,7 +516,33 @@ export const RECIPES = {
   }
 }
 
-/** 以后端 /todos/summary.role 为准；未登记角色一律 DEFAULT，不前端猜测业务配方。 */
+/** 同模板多角色别名（不复制页面，只复用配方对象） */
+const RECIPE_ALIASES = {
+  STUDENT_AFFAIRS: 'STUDENT_AFFAIRS_ADMIN',
+  GD_COLLEGE_ADMIN: 'GRADUATION_ADMIN',
+  GD_MAJOR_ADMIN: 'GRADUATION_ADMIN'
+}
+
+/** 以后端 /todos/summary.role 为准；未登记角色一律 DEFAULT。 */
 export function resolveRecipe(roleCode) {
-  return RECIPES[(roleCode || '').toUpperCase()] || RECIPES.DEFAULT
+  const code = String(roleCode || '').toUpperCase()
+  if (!code || code === 'PLATFORM_SUPER_ADMIN') return RECIPES.DEFAULT
+  const aliased = RECIPE_ALIASES[code] || code
+  return RECIPES[aliased] || RECIPES.DEFAULT
+}
+
+/** 测试/审计用：十二模板是否都有至少一个真实角色落点 */
+export const TEMPLATE_ROLE_COVERAGE = {
+  T1: ['ACADEMIC_TEACHER'],
+  T2: ['ACADEMIC_ADMIN'],
+  T3: ['COLLEGE_ADMIN'],
+  T4: ['COUNSELOR'],
+  T5: ['STUDENT_AFFAIRS_ADMIN', 'STUDENT_AFFAIRS'],
+  T6: ['PSYCHOLOGY_TEACHER', 'FUNDING_TEACHER', 'YOUTH_LEAGUE', 'DORM_MANAGER'],
+  T7: ['GD_MENTOR'],
+  T8: ['GRADUATION_ADMIN', 'GD_COLLEGE_ADMIN', 'GD_MAJOR_ADMIN'],
+  T9: ['GD_REVIEWER', 'GD_DEFENSE_SECRETARY', 'GD_DEFENSE_EXPERT'],
+  T10: ['INTERN_MENTOR'],
+  T11: ['EMPLOYMENT_TEACHER'],
+  T12: ['LEADER', 'SCHOOL_ADMIN', 'SYS_ADMIN', 'SECURITY_AUDITOR', 'ORG_PERSONNEL']
 }

@@ -229,7 +229,11 @@ export default {
     },
     headline() {
       try {
-        return this.recipe.headline({ summary: this.summary, byType: this.byType })
+        return this.recipe.headline({
+          summary: this.summary,
+          byType: this.byType,
+          stats: this.stats
+        })
       } catch {
         return ''
       }
