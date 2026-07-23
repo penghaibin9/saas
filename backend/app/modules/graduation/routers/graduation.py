@@ -12,7 +12,7 @@ from app.modules.graduation.schemas.graduation import (AssignStudentsBody, Defen
                                     ProposalSubmitBody, RemindBody, ReviewBody)
 from app.services import audit_log
 from app.modules.graduation.services import graduation_service as svc
-from app.modules.graduation.services.graduation_scope_service import has_full_scope
+from app.modules.graduation.services.graduation_scope_service import has_full_scope, org_scope_status
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计"])
 
@@ -29,7 +29,9 @@ _ACTION_PERMISSION_MAP = {
     "reviewProposal": "graduationDesign.proposal.review", "reviewFinal": "graduationDesign.final.review",
     "exportProposals": "graduationDesign.export", "manageDefense": "graduationDesign.defense.manage",
     "publishDefense": "graduationDesign.defense.publish", "exportDefense": "graduationDesign.export",
+    "exportTaskbookPdf": "graduationDesign.export",
     "guideMidterm": "graduationDesign.guide.manage", "guideTaskbook": "graduationDesign.guide.manage",
+    "guideStudentEval": "graduationDesign.guide.manage", "guidePlanCheckin": "graduationDesign.guide.manage",
     "enterDefenseScore": "graduationDesign.defense.score",
     "confirmDefenseScores": "graduationDesign.defense.manage",
     "createSecondDefense": "graduationDesign.defense.manage",
@@ -42,11 +44,13 @@ _ACTION_PERMISSION_MAP = {
 @router.get("/context", summary="毕设中心真实权限/范围上下文（供前端按钮门禁，替代静态假数据）")
 def get_context(user=Depends(get_current_user)):
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
+    org = org_scope_status(user)
     return success({
         "roleCode": role,
         "fullScope": has_full_scope(),
         "permissionActions": {key: has_permission(user, code)
                               for key, code in _ACTION_PERMISSION_MAP.items()},
+        **org,
     })
 
 

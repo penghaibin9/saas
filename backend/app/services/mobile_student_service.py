@@ -705,11 +705,24 @@ def graduation_my(user: dict) -> dict:
                             "plagiarismRate": f.plagiarism_rate or "—"} for f in finals]}
 
 
-def _resolve_gd_student(db, u: dict):
-    """解析当前登录学生对应的毕设学生档案 t_gd_student（学号优先，其次姓名）。找不到返回 None。
+def _pick_latest_non_archived_gd(rows):
+    """多批次边界：同一学生可有多条 t_gd_student。
 
-    同一学生可能有多条毕设档案（多批次）。优先返回未归档、id 最大（最近）的一条，
-    避免学生端误命中历史批次导致门禁/提交落在旧档案上。
+    优先返回 id 最大的未归档档案；若全部已归档则退回最新一条。
+    纯函数，便于无 DB 单测。
+    """
+    if not rows:
+        return None
+    ordered = sorted(rows, key=lambda r: int(getattr(r, "id", 0) or 0), reverse=True)
+    active = [r for r in ordered if str(getattr(r, "stage", "") or "") != "ARCHIVED"]
+    return (active or ordered)[0]
+
+
+def _resolve_gd_student(db, u: dict):
+    """解析当前登录学生对应的毕设学生档案 t_gd_student（student_id → 学号 → 姓名唯一）。
+
+    多批次时经 `_pick_latest_non_archived_gd` 取最近未归档档，避免门禁/提交落在旧档。
+    student_id 未回填时仍按学号有序挑选，不走无序 `.first()`。
     """
     from app.models import GraduationStudent
     stu = resolve_student(db, u)
@@ -720,20 +733,23 @@ def _resolve_gd_student(db, u: dict):
         GraduationStudent.tenant_id == tid,
         GraduationStudent.is_deleted.is_(False),
     ]
-    q = None
+    rows = []
     if getattr(stu, "id", None) is not None:
-        q = select(GraduationStudent).where(*base, GraduationStudent.student_id == stu.id)
-    if q is None:
+        rows = list(db.scalars(
+            select(GraduationStudent).where(*base, GraduationStudent.student_id == stu.id)
+            .order_by(GraduationStudent.id.desc())
+        ).all())
+    if not rows:
         sn = getattr(stu, "student_no", None)
         if sn:
-            q = select(GraduationStudent).where(*base, GraduationStudent.student_no == sn)
-    if q is None:
-        return _resolve_domain_student(db, GraduationStudent, stu)
-    rows = list(db.scalars(q.order_by(GraduationStudent.id.desc())).all())
+            rows = list(db.scalars(
+                select(GraduationStudent).where(*base, GraduationStudent.student_no == sn)
+                .order_by(GraduationStudent.id.desc())
+            ).all())
     if not rows:
+        # 仅剩姓名唯一回退（防同名串号）；多批次主路径已在上方按 id/学号收口
         return _resolve_domain_student(db, GraduationStudent, stu)
-    active = [r for r in rows if str(getattr(r, "stage", "") or "") != "ARCHIVED"]
-    return (active or rows)[0]
+    return _pick_latest_non_archived_gd(rows)
 
 
 
@@ -1008,6 +1024,52 @@ def graduation_midterm_rectify(user: dict, content: str) -> dict:
             raise AppException("NOT_FOUND", "你暂无毕设记录")
     from app.modules.graduation.services import graduation_midterm_service as mt_svc
     return mt_svc.submit_rectification(g.id, content)
+
+
+def graduation_guidance_plans(user: dict) -> dict:
+    """本人指导计划列表（含签到状态）。"""
+    u = _require_student(user)
+    if not db_enabled():
+        return {"hasData": False, "list": [], "message": "演示模式"}
+    with _session() as db:
+        g = _resolve_gd_student(db, u)
+        if not g:
+            return {"hasData": False, "list": [], "message": "你暂无毕设记录"}
+        gid = g.id
+    from app.modules.graduation.services import graduation_guidance_service as guide_svc
+    items, total = guide_svc.list_plans(1, 50, gd_student_id=gid)
+    return {"hasData": True, "list": items, "total": total}
+
+
+def graduation_guidance_plan_checkin(user: dict, plan_id: str, body: dict | None = None) -> dict:
+    """本人对指导计划条目签到。"""
+    u = _require_student(user)
+    with _session() as db:
+        g = _resolve_gd_student(db, u)
+        if not g:
+            raise AppException("NOT_FOUND", "你暂无毕设记录")
+        from app.models import GraduationGuidancePlan
+        p = db.get(GraduationGuidancePlan, int(plan_id))
+        if not p or p.is_deleted or p.tenant_id != _tid() or int(p.gd_student_id) != int(g.id):
+            raise AppException("NO_PERMISSION", "无权对该计划签到")
+    from app.modules.graduation.services import graduation_guidance_service as guide_svc
+    return guide_svc.checkin_plan(plan_id, body or {})
+
+
+def graduation_my_student_evals(user: dict) -> dict:
+    """本人收到的导师过程评价（只读已提交）。"""
+    u = _require_student(user)
+    if not db_enabled():
+        return {"hasData": False, "list": [], "message": "演示模式"}
+    with _session() as db:
+        g = _resolve_gd_student(db, u)
+        if not g:
+            return {"hasData": False, "list": [], "message": "你暂无毕设记录"}
+        gid = g.id
+    from app.modules.graduation.services import graduation_student_eval_service as eval_svc
+    items, _total = eval_svc.list_evals(1, 50, gd_student_id=gid)
+    submitted = [x for x in items if x.get("status") == "SUBMITTED"]
+    return {"hasData": True, "list": submitted, "total": len(submitted)}
 
 
 def graduation_peer_tasks(user: dict) -> dict:

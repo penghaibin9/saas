@@ -16,3 +16,18 @@ class GuidanceCreate(BaseModel):
 
 class GuidanceVoidRequest(BaseModel):
     reason: str = Field(..., min_length=5, description="撤销原因，至少 5 字")
+
+
+class GuidancePlanCreate(BaseModel):
+    title: str = Field(..., min_length=2, max_length=200)
+    planDate: Optional[str] = None
+    content: Optional[str] = Field(default=None, max_length=2000)
+
+
+class GuidancePlanCheckin(BaseModel):
+    method: Optional[str] = Field(default="MANUAL", description="ONLINE/OFFLINE/MANUAL")
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class GuidancePlanCancel(BaseModel):
+    reason: str = Field(..., min_length=5, description="取消原因，至少 5 字")

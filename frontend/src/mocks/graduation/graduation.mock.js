@@ -45,6 +45,7 @@ export const permissionActions = {
   reviewProposal: { visible: true, allowed: false, reason: '开题批阅需「指导教师」角色，管理员仅可查看' },
   reviewFinal: { visible: true, allowed: false, reason: '成果批阅需「指导教师」角色，管理员仅可查看' },
   exportProposals: { visible: true, allowed: true, reason: '' },
+  exportTaskbookPdf: { visible: true, allowed: true, reason: '' },
   manageDefense: { visible: true, allowed: true, reason: '' },
   publishDefense: { visible: true, allowed: true, reason: '' },
   exportDefense: { visible: true, allowed: true, reason: '' },

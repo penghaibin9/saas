@@ -78,7 +78,8 @@ export const roleConfigs = {
       { key: 'review-open', label: '批阅开题', icon: '▤' },
       { key: 'review-mid', label: '批阅中期', icon: '▥' },
       { key: 'review-result', label: '批阅成果', icon: '▦' },
-      { key: 'guide-log', label: '指导记录', icon: '✎' }
+      { key: 'guide-log', label: '指导记录', icon: '✎' },
+      { key: 'defenseScore', label: '答辩评分', icon: '🏅' }
     ],
     permissionActions: ['gd.review', 'gd.return', 'gd.guidelog', 'student360.view']
   },

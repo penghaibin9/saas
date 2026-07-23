@@ -130,9 +130,9 @@ export default {
     quick(q) {
       const map = {
         weekly: '/pages/teacher/internship-review/index',
-        'review-open': '/pages/teacher/graduation-guide/index',
-        'review-mid': '/pages/teacher/graduation-guide/index',
-        'review-result': '/pages/teacher/graduation-guide/index',
+        'review-open': '/pages/teacher/graduation-guide/index?tab=review&kind=proposal',
+        'review-mid': '/pages/teacher/graduation-guide/index?tab=midterm',
+        'review-result': '/pages/teacher/graduation-guide/index?tab=review&kind=final',
         checkin: '/pages/teacher/internship-review/index',
         makeup: '/pages/teacher/internship-approval/index',
         leave: '/pages/teacher/internship-approval/index?tab=leave',

@@ -677,6 +677,8 @@ export const NAV_PLAN = [
       I('规范流程', '/admin/graduation/process?panel=workflow'),
       I('任务书', '/admin/graduation/process?panel=taskbook'),
       I('指导记录', '/admin/graduation/process?panel=guidance'),
+      I('指导计划', '/admin/graduation/process?panel=plan'),
+      I('导师评价', '/admin/graduation/process?panel=eval'),
       I('中期检查', '/admin/graduation/process?panel=midterm'),
       I('任务书模板', '/admin/graduation/templates?type=TASKBOOK')
     ]),

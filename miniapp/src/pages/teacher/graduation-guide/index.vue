@@ -11,6 +11,13 @@
         <view class="page-pad" v-if="data">
           <!-- 批阅：开题 + 成果 队列 + 指导学生 -->
           <template v-if="tab === 'review'">
+            <view class="gg__hub">
+              <text class="gg__hub-link" @click="goPage('/pages/teacher/graduation-topics/index')">选题审核</text>
+              <text class="gg__hub-sep">·</text>
+              <text class="gg__hub-link" @click="goPage('/pages/teacher/graduation-taskbook/index')">任务书</text>
+              <text class="gg__hub-sep">·</text>
+              <text class="gg__hub-link" @click="goPage('/pages/teacher/defense-score/index')">答辩评分</text>
+            </view>
             <view v-if="reviewQueue.length" class="gg__queue card" @click="enterReview('proposal', reviewQueue, 0)">
               <view class="row-between"><text class="t-md t-bold">开题待批阅</text><text class="gg__qc">{{ reviewQueue.length }} 条</text></view>
               <text class="gg__qh">逐条看背景/方案/成果，处理后自动下一条</text>
@@ -23,7 +30,7 @@
             </view>
             <view class="gg__filters">
               <text class="gg__filter" :class="{ 'is-active': f === 'all' }" @click="f = 'all'">全部 {{ data.list.length }}</text>
-              <text class="gg__filter" :class="{ 'is-active': f === 'review' }" @click="f = 'review'">待批阅 {{ reviewQueue.length }}</text>
+              <text class="gg__filter" :class="{ 'is-active': f === 'review' }" @click="f = 'review'">待批阅 {{ pendingReviewCount }}</text>
               <text class="gg__filter" :class="{ 'is-active': f === 'overdue' }" @click="f = 'overdue'">已逾期 {{ overdueCount }}</text>
             </view>
             <view v-if="!filtered.length" class="gg__empty"><text>暂无指导学生</text></view>
@@ -34,6 +41,7 @@
                 <view class="gg__meta"><text class="gg__node">当前节点 · {{ g.node }}</text><text class="gg__dl" :class="{ 'is-overdue': g.status === 'OVERDUE' }">截止 {{ g.deadline || '未设置' }}</text></view>
                 <view class="gg__actions">
                   <button v-if="pIndexOf(g) >= 0" class="gg__go sm" @click.stop="enterReview('proposal', reviewQueue, pIndexOf(g))">去批阅开题</button>
+                  <button v-if="fIndexOf(g) >= 0" class="gg__go sm" @click.stop="enterReview('final', finalQueue, fIndexOf(g))">去批阅成果</button>
                   <button class="btn btn-ghost" @click.stop="addGuidance(g)">记录指导</button>
                 </view>
               </view>
@@ -66,9 +74,15 @@
             </view>
           </template>
 
-          <!-- 答辩安排（只读） -->
+          <!-- 答辩安排（只读）+ 评分入口 -->
           <template v-else-if="tab === 'defense'">
-            <view v-if="!defense.length" class="gg__empty"><text>暂无答辩安排</text></view>
+            <view v-if="defenseScorePending > 0" class="gg__queue card" @click="goPage('/pages/teacher/defense-score/index')">
+              <view class="row-between"><text class="t-md t-bold">待录入答辩评分</text><text class="gg__qc">{{ defenseScorePending }} 条</text></view>
+              <text class="gg__qh">本人担任评委的已发布答辩组学生，点此录入/更新评分</text>
+              <button class="gg__go" @click.stop="goPage('/pages/teacher/defense-score/index')">去答辩评分</button>
+            </view>
+            <view v-if="defenseError" class="gg__empty"><text>{{ defenseError }}</text></view>
+            <view v-else-if="!defense.length" class="gg__empty"><text>暂无答辩安排</text></view>
             <view class="stack">
               <view v-for="a in defense" :key="a.gdStudentId" class="gg card">
                 <view class="row-between"><text class="t-md t-bold">{{ a.studentName }}</text><MobileStatusTag :status="a.published ? 'PUBLISHED' : 'PROCESSING'" /></view>
@@ -204,11 +218,12 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { go, toast } from '@/utils/nav'
 import { ENV } from '@/config/env'
 import { getToken } from '@/services/request'
 
 const KIND_LABEL = { proposal: '开题批阅', final: '成果批阅', midterm: '中期检查', peer: '评阅', grade: '成绩复核' }
+const TAB_KEYS = ['review', 'midterm', 'peer', 'defense', 'grade']
 const PEER_OPINION_CHIPS = ['格式不符合毕业设计课程标准', '内容深度不足，需修改', '疑似抄袭，建议复核查重']
 
 export default {
@@ -219,12 +234,21 @@ export default {
       reviewQueue: [], finalQueue: [],
       tab: 'review', midtermQueue: [], reviews: [], defense: [], gradeQueue: [],
       midtermError: '', reviewsError: '', defenseError: '', gradeError: '',
+      defenseScorePending: 0,
       loaded: { midterm: false, peer: false, defense: false, grade: false },
       mode: 'list', reviewKind: '', queue: [], queueIndex: 0, detail: null, detailState: 'loading',
-      peerScore: '', peerOpinion: ''
+      peerScore: '', peerOpinion: '',
+      _bootKind: '' // onLoad ?kind=proposal|final → 数据就绪后自动进入对应批阅队列
     }
   },
-  onLoad() { this.load() },
+  onLoad(options) {
+    const tab = String((options && options.tab) || '').toLowerCase()
+    if (TAB_KEYS.includes(tab)) this.tab = tab
+    const kind = String((options && options.kind) || '').toLowerCase()
+    if (kind === 'proposal' || kind === 'final') this._bootKind = kind
+    this.load()
+    if (this.tab !== 'review') this.switchTab(this.tab)
+  },
   onShow() { if (this._entered) { if (this.mode === 'list') this.reloadTab() } this._entered = true },
   onPullDownRefresh() {
     if (this.state === 'loading' || this.mode !== 'list') { uni.stopPullDownRefresh(); return }
@@ -233,16 +257,23 @@ export default {
   computed: {
     tabs() {
       return [
-        { key: 'review', label: '批阅', count: this.reviewQueue.length + this.finalQueue.length },
+        { key: 'review', label: '批阅', count: this.pendingReviewCount },
         { key: 'midterm', label: '中期', count: this.midtermQueue.length },
         { key: 'peer', label: '评阅', count: this.reviews.length },
-        { key: 'defense', label: '答辩', count: 0 },
+        { key: 'defense', label: '答辩', count: this.defenseScorePending },
         { key: 'grade', label: '成绩', count: this.gradeQueue.length }
       ]
     },
+    pendingReviewCount() { return this.reviewQueue.length + this.finalQueue.length },
     filtered() {
       if (!this.data) return []
-      if (this.f === 'review') { const ids = new Set(this.reviewQueue.map((q) => q.gdStudentId)); return this.data.list.filter((g) => ids.has(g.id)) }
+      if (this.f === 'review') {
+        const ids = new Set([
+          ...this.reviewQueue.map((q) => q.gdStudentId),
+          ...this.finalQueue.map((q) => q.gdStudentId)
+        ])
+        return this.data.list.filter((g) => ids.has(g.id))
+      }
       if (this.f === 'overdue') return this.data.list.filter((g) => g.status === 'OVERDUE')
       return this.data.list
     },
@@ -253,6 +284,7 @@ export default {
   },
   methods: {
     toast,
+    goPage(url) { go(url) },
     load(done) {
       if (!this.data) this.state = 'loading'
       teacherApi.getGdStudents().then((d) => {
@@ -261,8 +293,16 @@ export default {
         this.finalQueue = (d && d.finalQueue) || []
         this.state = 'ready'
         // 预取各分区待办计数，让 tab 徽标准确（静默失败，不阻塞主界面）
-        this.loadMidterm(); this.loadReviews(); this.loadGrade()
+        this.loadMidterm(); this.loadReviews(); this.loadGrade(); this.loadDefenseScorePending()
+        this._maybeBootReview()
       }).catch(() => { if (!this.data) this.state = 'error' }).finally(() => { if (done) done() })
+    },
+    _maybeBootReview() {
+      const kind = this._bootKind
+      if (!kind || this.mode !== 'list') return
+      this._bootKind = ''
+      const q = kind === 'final' ? this.finalQueue : this.reviewQueue
+      if (q && q.length) this.enterReview(kind, q, 0)
     },
     switchTab(k) {
       this.tab = k
@@ -291,7 +331,15 @@ export default {
     loadDefense(done) {
       teacherApi.getGraduationDefenseArrangements().then((r) => {
         this.defense = r || []; this.loaded.defense = true; this.defenseError = ''
-      }).catch(() => { this.defenseError = '答辩安排加载失败' }).finally(() => done && done())
+      }).catch(() => { this.defenseError = '答辩安排加载失败' }).finally(() => {
+        this.loadDefenseScorePending(done)
+      })
+    },
+    loadDefenseScorePending(done) {
+      teacherApi.getGraduationDefenseScorePending().then((r) => {
+        const list = r || []
+        this.defenseScorePending = list.filter((x) => x.myStatus === 'PENDING').length
+      }).catch(() => { /* 非评委身份常见，不挡主流程 */ }).finally(() => done && done())
     },
     loadGrade(done) {
       teacherApi.getGraduationGradeQueue().then((r) => {
@@ -299,6 +347,7 @@ export default {
       }).catch(() => { this.gradeError = '成绩队列加载失败' }).finally(() => done && done())
     },
     pIndexOf(g) { return this.reviewQueue.findIndex((q) => q.gdStudentId === g.id) },
+    fIndexOf(g) { return this.finalQueue.findIndex((q) => q.gdStudentId === g.id) },
     enterReview(kind, queueArr, index) {
       if (!queueArr || !queueArr.length) { toast('暂无待处理项'); return }
       this.reviewKind = kind
@@ -455,6 +504,9 @@ export default {
 .gg__tab { flex-shrink: 0; padding: 6px 12px; border-radius: var(--radius-full); font-size: var(--font-size-sm); color: var(--text-secondary); }
 .gg__tab.is-active { background: var(--teacher-600); color: #fff; }
 .gg__tab-badge { margin-left: 4px; font-size: var(--font-size-xs); }
+.gg__hub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: var(--space-3); font-size: var(--font-size-sm); color: var(--text-tertiary); }
+.gg__hub-link { color: var(--teacher-700); }
+.gg__hub-sep { color: var(--text-tertiary); }
 .gg__queue { background: var(--teacher-50, var(--primary-50)); border: 1px solid var(--teacher-200, var(--primary-100)); }
 .gg__qc { font-size: var(--font-size-sm); color: var(--teacher-700); font-weight: var(--font-weight-semibold); }
 .gg__qh { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin: var(--space-2) 0 var(--space-3); }

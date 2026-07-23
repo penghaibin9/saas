@@ -66,6 +66,8 @@ class GraduationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     class_id: Mapped[str | None] = mapped_column(String(50))
     class_name: Mapped[str | None] = mapped_column(String(100))
+    college_id: Mapped[str | None] = mapped_column(String(50), index=True, comment="学院ID（组织范围 claim 对齐）")
+    major_id: Mapped[str | None] = mapped_column(String(50), index=True, comment="专业ID（组织范围 claim 对齐）")
     topic_title: Mapped[str | None] = mapped_column(String(300))
     topic_source: Mapped[str | None] = mapped_column(String(100))
     advisor_name: Mapped[str | None] = mapped_column(String(100))
@@ -543,3 +545,38 @@ class GraduationGradeAppeal(PKMixin, TenantMixin, CommonMixin, Base):
     review_comment: Mapped[str | None] = mapped_column(String(1000))
     reviewed_by: Mapped[str | None] = mapped_column(String(100))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class GraduationStudentEval(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_gd_student_eval 导师对学生过程评价（区别于 t_gd_mentor_eval 学院评导师）。"""
+    __tablename__ = "t_gd_student_eval"
+
+    gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    mentor_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    period: Mapped[str | None] = mapped_column(String(50), comment="评价周期，如 中期/终期/2026春")
+    score: Mapped[int] = mapped_column(Integer, nullable=False, comment="评分 0-100")
+    level: Mapped[str] = mapped_column(String(20), nullable=False, comment="优秀/良好/合格/不合格")
+    content: Mapped[str | None] = mapped_column(String(2000), comment="评价意见")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="SUBMITTED",
+                                        comment="DRAFT草稿/SUBMITTED已提交")
+    submitted_by: Mapped[str | None] = mapped_column(String(100))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class GraduationGuidancePlan(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_gd_guidance_plan 指导计划条目；签到写回本行（MVP 一计划一次签到）。"""
+    __tablename__ = "t_gd_guidance_plan"
+
+    gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    mentor_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    plan_date: Mapped[datetime | None] = mapped_column(DateTime, comment="计划指导日期")
+    content: Mapped[str | None] = mapped_column(String(2000), comment="计划内容/要求")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PLANNED",
+                                        comment="PLANNED待签到/CHECKED_IN已签到/CANCELLED已取消")
+    checked_in_at: Mapped[datetime | None] = mapped_column(DateTime)
+    checked_in_by: Mapped[str | None] = mapped_column(String(100))
+    checkin_role: Mapped[str | None] = mapped_column(String(20), comment="STUDENT/MENTOR/STAFF")
+    checkin_note: Mapped[str | None] = mapped_column(String(500))
+    checkin_method: Mapped[str | None] = mapped_column(String(30), comment="ONLINE/OFFLINE/MANUAL")
+    void_reason: Mapped[str | None] = mapped_column(String(500))

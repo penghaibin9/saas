@@ -1,73 +1,32 @@
 /**
- * 毕业设计中心 API（P7：真实优先 + mock 兜底）。
+ * 毕业设计中心 API（生产路径：callStrict / listStrict，仅真实后端）。
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；方法签名冻结不变。
- * 真实接口 /api/v1/graduation/*；后端不可达时自动回退 mock，页面不白屏；业务错误透出。
+ * 真实接口 /api/v1/graduation/*；失败透出业务码或 503001，不回退 mock 业务数据。
+ * getContext 在后端不可达时保留静态壳字段，避免布局白屏（非 mock 冒充业务成功）。
  */
-import { request, shouldTryReal, canUseMockFallback, currentUserFromToken } from '@/services/http/client'
+import { request, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import {
   tenantBrandConfig,
   currentRole,
   dataScope,
   permissionActions,
-  statusOptions,
-  graduationStudents,
-  studentDetailMap,
-  topicList
+  statusOptions
 } from '@/mocks/graduation/graduation.mock'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
 }
 
-function fail(message) {
-  return Promise.resolve({ code: 1, data: null, message })
-}
-
-function paginate(list, { page = 1, pageSize = 10 } = {}) {
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return { list: list.slice(start, start + pageSize), total, page, pageSize }
-}
-
-async function real(realFn, mockFn) {
-  if (!shouldTryReal()) {
-    if (canUseMockFallback()) return mockFn()
-    return toErr({ code: 503001, message: '真实接口不可用，生产环境已禁用 mock fallback' })
-  }
-  try {
-    return { code: 0, data: await realFn(), message: 'ok' }
-  } catch (e) {
-    if (e.biz) return { code: e.code || 1, data: null, message: e.message }
-    if (canUseMockFallback()) return mockFn()
-    return toErr(e)
-  }
-}
-
-async function realList(path, params, mockFn) {
-  if (!shouldTryReal()) {
-    if (canUseMockFallback()) return mockFn()
-    return toErr({ code: 503001, message: '真实接口不可用，生产环境已禁用 mock fallback' })
-  }
-  try {
-    const d = await request(path, { params })
-    return { code: 0, message: 'ok',
-      data: { list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 } }
-  } catch (e) {
-    if (e.biz) return { code: e.code || 1, data: null, message: e.message }
-    if (canUseMockFallback()) return mockFn()
-    return toErr(e)
-  }
-}
-
-// 生产级 realStrict：仅走真实后端，不回退 mock（开题材料模块已收口）
 function toErr(e) {
   if (e?.biz) return { code: e.code || 1, data: null, message: e.message }
   return { code: 503001, data: null, message: e?.message || '真实接口不可用' }
 }
+
 async function callStrict(fn) {
   try { return { code: 0, data: await fn(), message: 'ok' } } catch (e) { return toErr(e) }
 }
+
 async function listStrict(path, params = {}) {
   try {
     const d = await request(path, { params })
@@ -80,7 +39,7 @@ export const graduationApi = {
   /**
    * 上下文：权限动作以后端 GET /graduation/context 的真实 permissionCode 判定为准
    * （每个按钮键映射到后端 graduation_permissions.py 同款 permissionCode，逐项 has_permission 计算）。
-   * 下面的 isTeacher 粗粒度推断仅作真实接口不可达时（离线/mock）的静态兜底，不再是生产口径。
+   * 下面的 isTeacher 粗粒度推断仅作真实接口不可达时的静态壳兜底，不再是生产口径。
    */
   async getContext() {
     const u = currentUserFromToken()
@@ -94,6 +53,13 @@ export const graduationApi = {
       })
     }
     let scopeName = isTeacher ? '本人指导学生' : '本校毕设数据（按后端数据范围）'
+    let scopeHint = ''
+    let orgScope = {
+      roleNeedsOrgScope: false,
+      scopeConfigured: true,
+      collegeId: null,
+      majorId: null
+    }
     // 品牌与姓名优先取真实 /auth/me（含 tenantName），后端不可达时回退 token/静态兜底，不阻塞页面
     const brand = { ...tenantBrandConfig }
     let roleName = isTeacher ? '指导教师' : currentRole.roleName
@@ -123,6 +89,20 @@ export const graduationApi = {
         if (typeof ctx?.fullScope === 'boolean') {
           scopeName = ctx.fullScope ? '本校毕设数据（按后端数据范围）' : '本人业务范围内数据（按角色收敛）'
         }
+        if (ctx?.roleNeedsOrgScope && ctx.scopeConfigured === false) {
+          scopeName = '未配置学院/专业数据范围（fail-closed）'
+        } else if (ctx?.collegeId && !ctx.fullScope) {
+          scopeName = `学院范围 collegeId=${ctx.collegeId}` + (ctx.majorId ? ` / majorId=${ctx.majorId}` : '')
+        } else if (ctx?.majorId && !ctx.fullScope) {
+          scopeName = `专业范围 majorId=${ctx.majorId}`
+        }
+        scopeHint = ctx?.scopeHint || ''
+        orgScope = {
+          roleNeedsOrgScope: !!ctx?.roleNeedsOrgScope,
+          scopeConfigured: ctx?.scopeConfigured !== false,
+          collegeId: ctx?.collegeId || null,
+          majorId: ctx?.majorId || null
+        }
       }
     } catch {
       /* 后端不可达时静默保留上面的粗粒度静态兜底，不阻塞页面 */
@@ -132,7 +112,9 @@ export const graduationApi = {
       currentRole: { ...currentRole, roleName },
       dataScope: { ...dataScope, scopeName },
       permissionActions: pa,
-      statusOptions: JSON.parse(JSON.stringify(statusOptions))
+      statusOptions: JSON.parse(JSON.stringify(statusOptions)),
+      scopeHint,
+      ...orgScope
     })
   },
 
@@ -143,18 +125,6 @@ export const graduationApi = {
   getStudents(params = {}) {
     return listStrict('/graduation/students', params)
   },
-  _mockStudents(params = {}) {
-    let list = [...graduationStudents]
-    if (params.keyword) {
-      const kw = params.keyword.trim()
-      list = list.filter((s) => s.name.includes(kw) || s.studentNo.includes(kw) || s.topicTitle.includes(kw))
-    }
-    if (params.classId) list = list.filter((s) => s.classId === params.classId)
-    if (params.advisorId) list = list.filter((s) => s.advisorId === params.advisorId)
-    if (params.stage) list = list.filter((s) => s.stage === params.stage)
-    if (params.riskLevel) list = list.filter((s) => s.riskLevel === params.riskLevel)
-    return ok(paginate(list, params))
-  },
 
   getStudentDetail(id) {
     return callStrict(() => request(`/graduation/students/${id}`))
@@ -164,7 +134,7 @@ export const graduationApi = {
     return listStrict('/graduation/gd-topics', { ...params, archiveView: params.archiveView || 'active' })
   },
 
-  // ── 开题材料（realStrict：仅真实后端，不 mock 冒充）──
+  // ── 开题材料（仅真实后端）──
   getProposals(params = {}) {
     return listStrict('/graduation/proposals', params)
   },
@@ -191,7 +161,7 @@ export const graduationApi = {
     return res
   },
 
-  // ── 成果提交（realStrict：仅真实后端，不 mock 冒充）──
+  // ── 成果提交（仅真实后端）──
   getFinalSubmissions(params = {}) {
     return listStrict('/graduation/finals', params)
   },
@@ -214,7 +184,7 @@ export const graduationApi = {
     return res
   },
 
-  // ── 答辩安排（realStrict：仅真实后端，不 mock 冒充）──
+  // ── 答辩安排（仅真实后端）──
   getDefenseSchedules(params = {}) {
     return listStrict('/graduation/defense-groups', params)
   },

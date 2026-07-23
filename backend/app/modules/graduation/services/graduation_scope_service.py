@@ -14,6 +14,8 @@ from app.models import GraduationDefenseGroup, GraduationReview, GraduationStude
 
 
 FULL_SCOPE_ROLES = {"PLATFORM_SUPER_ADMIN", "SCHOOL_ADMIN", "GRADUATION_ADMIN"}
+COLLEGE_SCOPE_ROLES = {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN"}
+MAJOR_SCOPE_ROLES = {"GD_MAJOR_ADMIN"}
 
 
 def _ctx() -> tuple[str, str]:
@@ -21,6 +23,37 @@ def _ctx() -> tuple[str, str]:
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
     real_name = (user.get("realName") or "").strip()
     return role, real_name
+
+
+def _claim_id_set(user: dict, singular: str, plural: str) -> set[str]:
+    ids: set[str] = set()
+    multi = user.get(plural)
+    if isinstance(multi, (list, tuple, set)):
+        ids.update(str(x).strip() for x in multi if str(x).strip())
+    single = str(user.get(singular) or "").strip()
+    if single:
+        ids.add(single)
+    return ids
+
+
+def _student_org_keys(db, student: GraduationStudent) -> tuple[str, str]:
+    """返回学生学院/专业 ID 字符串；台账缺省时回落学籍主档。"""
+    college_key = str(student.college_id or "").strip()
+    major_key = str(getattr(student, "major_id", None) or "").strip()
+    if (college_key and major_key) or not student.student_id:
+        return college_key, major_key
+    try:
+        from app.models import StudentProfile
+        profile = db.get(StudentProfile, student.student_id)
+    except Exception:  # noqa: BLE001 — FakeDb / 无 ORM 场景
+        profile = None
+    if profile is None:
+        return college_key, major_key
+    if not college_key and getattr(profile, "college_id", None) is not None:
+        college_key = str(profile.college_id).strip()
+    if not major_key and getattr(profile, "major_id", None) is not None:
+        major_key = str(profile.major_id).strip()
+    return college_key, major_key
 
 
 def _has_review_relation(db, student: GraduationStudent, real_name: str) -> bool:
@@ -56,6 +89,52 @@ def _student_self_identity(db, tenant_id: int) -> tuple[str, int | None]:
 def has_full_scope() -> bool:
     role, _ = _ctx()
     return role in FULL_SCOPE_ROLES
+
+
+def org_scope_status(user: dict | None = None) -> dict:
+    """学院/专业管理员开箱诊断：是否已有可验证 claim（供 /context 与前端提示）。"""
+    u = user if user is not None else (get_current_user_ctx() or {})
+    role = (u.get("currentRoleCode") or u.get("userType") or "").strip().upper()
+    college_ids = sorted(_claim_id_set(u, "collegeId", "collegeIds"))
+    major_ids = sorted(_claim_id_set(u, "majorId", "majorIds"))
+    if role in COLLEGE_SCOPE_ROLES:
+        configured = bool(college_ids)
+        hint = ("" if configured else
+                "当前学院管理员身份未绑定学院数据范围。请在师生导入或教师范围中配置 COLLEGE 授权后重新登录。")
+        return {
+            "roleNeedsOrgScope": True,
+            "scopeConfigured": configured,
+            "requiredClaim": "collegeId",
+            "collegeId": college_ids[0] if college_ids else None,
+            "collegeIds": college_ids,
+            "majorId": major_ids[0] if major_ids else None,
+            "majorIds": major_ids,
+            "scopeHint": hint,
+        }
+    if role in MAJOR_SCOPE_ROLES:
+        configured = bool(major_ids)
+        hint = ("" if configured else
+                "当前专业管理员身份未绑定专业数据范围。请在师生导入或教师范围中配置 MAJOR 授权后重新登录。")
+        return {
+            "roleNeedsOrgScope": True,
+            "scopeConfigured": configured,
+            "requiredClaim": "majorId",
+            "collegeId": college_ids[0] if college_ids else None,
+            "collegeIds": college_ids,
+            "majorId": major_ids[0] if major_ids else None,
+            "majorIds": major_ids,
+            "scopeHint": hint,
+        }
+    return {
+        "roleNeedsOrgScope": False,
+        "scopeConfigured": True,
+        "requiredClaim": None,
+        "collegeId": college_ids[0] if college_ids else None,
+        "collegeIds": college_ids,
+        "majorId": major_ids[0] if major_ids else None,
+        "majorIds": major_ids,
+        "scopeHint": "",
+    }
 
 
 def can_access_student(db, student: GraduationStudent | None) -> bool:
@@ -96,7 +175,16 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         panel = {(group.chair or "").strip(), *((x or "").strip() for x in (group.members_json or []))}
         return real_name in panel
 
-    # 学院/专业负责人需要可验证的 collegeId/majorId 上下文；当前缺失时 fail-closed。
+    user = get_current_user_ctx() or {}
+    college_key, major_key = _student_org_keys(db, student)
+    if role in COLLEGE_SCOPE_ROLES:
+        allowed = _claim_id_set(user, "collegeId", "collegeIds")
+        return bool(allowed and college_key and college_key in allowed)
+    if role in MAJOR_SCOPE_ROLES:
+        allowed = _claim_id_set(user, "majorId", "majorIds")
+        return bool(allowed and major_key and major_key in allowed)
+
+    # 其他角色未建模业务关系时 fail-closed。
     return False
 
 

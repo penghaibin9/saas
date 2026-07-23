@@ -28,6 +28,8 @@ _ACTION_RULES: tuple[tuple[str, str, str], ...] = (
     ("/gd-grades/", "/publish", "graduationDesign.grade.publish"),
     ("/gd-archives/", "/submit", "graduationDesign.archive.submit"),
     ("/gd-guidances", "", "graduationDesign.guide.manage"),
+    ("/gd-guidance-plans", "", "graduationDesign.guide.manage"),
+    ("/gd-student-evals", "", "graduationDesign.guide.manage"),
     ("/gd-midterms", "", "graduationDesign.guide.manage"),
     ("/gd-taskbooks", "", "graduationDesign.guide.manage"),
     ("/gd-mentors/", "/assign", "graduationDesign.mentor.assign"),
@@ -73,11 +75,18 @@ def require_graduation_request_permission(
     user: dict = Depends(get_current_user),
 ) -> dict:
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
-    if role in {"GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN"}:
-        required_claim = "collegeId" if role == "GD_COLLEGE_ADMIN" else "majorId"
-        if not user.get(required_claim):
+    path = request.url.path or ""
+    # /context 需可返回缺 claim 提示，本身只校验 view；其余接口仍 fail-closed。
+    is_context = path.rstrip("/").endswith("/graduation/context")
+    if role in {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN"} and not is_context:
+        if not (user.get("collegeId") or user.get("collegeIds")):
             raise no_permission(
-                f"Graduation organizational scope is missing the required {required_claim} claim"
+                "缺少学院数据范围（collegeId）。请在师生导入/教师范围中配置 COLLEGE 授权后重新登录。"
+            )
+    if role == "GD_MAJOR_ADMIN" and not is_context:
+        if not (user.get("majorId") or user.get("majorIds")):
+            raise no_permission(
+                "缺少专业数据范围（majorId）。请在师生导入/教师范围中配置 MAJOR 授权后重新登录。"
             )
     code = graduation_permission_for(request.method, request.url.path)
     return enforce_permission(user, code)
