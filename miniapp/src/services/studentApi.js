@@ -53,6 +53,9 @@ export const studentApi = {
   getGraduationDefense: () => real.gdDefense(),
   getGraduationGrade: () => real.gdGrade(),
   appealGraduationGrade: (reason) => real.gdGradeAppeal(reason),
+  getGraduationPeerTasks: () => real.gdPeerTasks(),
+  submitGraduationPeer: (pid, opinion) => real.gdPeerSubmit(pid, opinion),
+  rectifyGraduationPeer: (pid, note) => real.gdPeerRectify(pid, note),
   // 就业去向：真实接口，无 mock 兜底（旧 intention/recommendedJobs/steps 字段无真实数据源，页面已不再展示）
   getEmployment: () => real.employmentMy(),
   getApplications: () =>
@@ -103,6 +106,7 @@ export const studentApi = {
   getMyAid: () => real.affairsAidMy(),
   getMyFunding: () => real.affairsFundingMy(),
   getMyDiscipline: () => real.affairsDisciplineMy(),
+  appealDiscipline: (body) => real.affairsDisciplineAppeal(body),
   getMyDorm: () => real.affairsDormMy(),
   getDormOptions: () => real.affairsDormOptions(),
   getDormRooms: (buildingId, floor) => real.affairsDormRooms(buildingId, floor),

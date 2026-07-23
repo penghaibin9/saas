@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -39,7 +39,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="ARCHIVE", biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
-                                occurred_at=datetime.utcnow()))
+                                occurred_at=datetime.now(timezone.utc)))
 
 
 def _stu(db, sid) -> GraduationStudent:
@@ -196,7 +196,7 @@ def generate_archive(gd_student_id) -> dict:
         a.checklist_json = checklist
         a.missing_items = missing
         a.status = "PENDING_SUBMIT"
-        a.generated_at = datetime.utcnow()
+        a.generated_at = datetime.now(timezone.utc)
         a.version += 1
         _audit(db, a.id, "生成归档清单", detail=f"缺失 {len(missing)} 项")
         db.commit()
@@ -235,7 +235,7 @@ def submit_archive(gd_student_id) -> dict:
         if missing:
             raise AppException("DATA_CONFLICT", f"仍缺 {len(missing)} 项材料，不能提交")
         a.status = "SUBMITTED"
-        a.submitted_at = datetime.utcnow()
+        a.submitted_at = datetime.now(timezone.utc)
         a.version += 1
         _audit(db, a.id, "提交归档")
         db.commit()
@@ -261,7 +261,7 @@ def verify_and_file(gd_student_id, archive_batch_no: str = None) -> dict:
         n, _ = _op()
         a.status = "FILED"
         a.verified_by = n
-        a.filed_at = datetime.utcnow()
+        a.filed_at = datetime.now(timezone.utc)
         a.archive_batch_no = requested_batch
         a.manifest_hash = _manifest_hash(db, stu, requested_batch)
         a.version += 1
@@ -324,7 +324,7 @@ def batch_file(archive_batch_no: str = None) -> dict:
                 continue
             a.status = "FILED"
             a.verified_by = n
-            a.filed_at = datetime.utcnow()
+            a.filed_at = datetime.now(timezone.utc)
             a.archive_batch_no = batch_no
             a.manifest_hash = _manifest_hash(db, stu, batch_no)
             a.version += 1
@@ -355,13 +355,13 @@ def batch_generate_submit() -> dict:
             checklist, missing = _check_completeness(db, stu)
             a.checklist_json = checklist
             a.missing_items = missing
-            a.generated_at = datetime.utcnow()
+            a.generated_at = datetime.now(timezone.utc)
             if missing or open_n > 0:
                 a.status = "PENDING_SUBMIT"
                 skipped += 1
             else:
                 a.status = "SUBMITTED"
-                a.submitted_at = datetime.utcnow()
+                a.submitted_at = datetime.now(timezone.utc)
                 submitted += 1
             a.version += 1
         _audit(db, "batch", "批量生成并提交归档", detail=f"提交{submitted}/跳过{skipped}")

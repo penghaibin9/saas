@@ -211,12 +211,7 @@ export default {
     filterFields() {
       return [
         { key: 'batchId', label: '批次', type: 'graduation-batch' },
-        { key: 'status', label: '状态', type: 'select', options: GD_ROUND_STATUS },
-        {
-          key: 'date', label: '选题时间', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.topicRounds.dateRange', emptyLabel: '全部时间'
-        }
+        { key: 'status', label: '状态', type: 'select', options: GD_ROUND_STATUS }
       ]
     },
     toolbarActions() {

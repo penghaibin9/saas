@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -33,7 +33,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="MIDTERM", biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
-                                occurred_at=datetime.utcnow()))
+                                occurred_at=datetime.now(timezone.utc)))
 
 
 def _stu(db, sid) -> GraduationStudent:
@@ -108,7 +108,7 @@ def conduct_check(gd_student_id, conclusion: str, comment: str = None, rectify_d
         m.conclusion = conclusion
         m.check_comment = (comment or "").strip()
         m.check_by = n
-        m.checked_at = datetime.utcnow()
+        m.checked_at = datetime.now(timezone.utc)
         stu.midterm_conclusion = CONCLUSION_LABEL[conclusion]
         if conclusion == "PASS":
             m.status = "CHECKED_PASS"
@@ -136,7 +136,7 @@ def submit_rectification(gd_student_id, content: str) -> dict:
         if m.status != "RECTIFYING":
             raise AppException("DATA_CONFLICT", "当前无需提交整改")
         m.rectify_content = content
-        m.rectify_submitted_at = datetime.utcnow()
+        m.rectify_submitted_at = datetime.now(timezone.utc)
         m.status = "RECTIFY_SUBMITTED"
         _audit(db, m.id, "提交整改")
         db.commit()
@@ -154,7 +154,7 @@ def review_rectification(gd_student_id, action: str, comment: str = None) -> dic
         n, _ = _op()
         m.review_comment = (comment or "").strip()
         m.reviewed_by = n
-        m.reviewed_at = datetime.utcnow()
+        m.reviewed_at = datetime.now(timezone.utc)
         if action == "PASS":
             m.status = "RECTIFIED_PASS"
             m.conclusion = "PASS"

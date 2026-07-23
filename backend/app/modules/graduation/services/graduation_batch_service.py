@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import base64
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 
@@ -51,7 +51,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="BATCH", biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before,
-                                after_val=after, occurred_at=datetime.utcnow()))
+                                after_val=after, occurred_at=datetime.now(timezone.utc)))
 
 
 def _parse_dt(v):
@@ -273,7 +273,7 @@ def set_rules(bid, rules: dict) -> dict:
 def _transition(db, b: GraduationBatch, to_status: str, reason: str = ""):
     b.previous_status = b.status
     b.status = to_status
-    b.last_transition_at = datetime.utcnow()
+    b.last_transition_at = datetime.now(timezone.utc)
     b.last_transition_by, _ = _op()
     b.transition_reason = reason
 
@@ -307,7 +307,7 @@ def archive_batch(bid) -> dict:
             raise AppException("DATA_CONFLICT", "仅「已结束」批次可归档")
         _transition(db, b, "ARCHIVED")
         b.archive_status = "ARCHIVED"
-        b.archived_at = datetime.utcnow()
+        b.archived_at = datetime.now(timezone.utc)
         b.archived_by, _ = _op()
         _audit(db, b.id, "ARCHIVE")
         db.commit()

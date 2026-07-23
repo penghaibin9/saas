@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 
@@ -23,7 +23,7 @@ def _op():
 def _audit(db, bt, bid, action, detail=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type=bt, biz_id=str(bid), action=action,
-                                operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
+                                operator=n, role_name=r, detail=detail, occurred_at=datetime.now(timezone.utc)))
 
 
 def _stu(db, sid) -> GraduationStudent:
@@ -82,7 +82,7 @@ def submit_peer(pid, opinion) -> dict:
             raise AppException("DATA_CONFLICT", "该互查已提交")
         p.opinion = opinion.strip()
         p.status = "REVIEWED"
-        p.reviewed_at = datetime.utcnow()
+        p.reviewed_at = datetime.now(timezone.utc)
         _audit(db, "PEER_REVIEW", p.id, "提交互查意见")
         db.commit()
         return _peer_row(db, p)
@@ -247,7 +247,7 @@ def review_appeal(aid, action, comment=None) -> dict:
         a.status = "APPROVED" if action == "APPROVE" else "REJECTED"
         a.review_comment = (comment or "").strip() or None
         a.reviewed_by = n
-        a.reviewed_at = datetime.utcnow()
+        a.reviewed_at = datetime.now(timezone.utc)
         if action == "APPROVE":
             grade = db.scalars(select(GraduationGrade).where(
                 GraduationGrade.tenant_id == _tid(), GraduationGrade.gd_student_id == a.gd_student_id,

@@ -1,7 +1,7 @@
 """毕业设计域真实数据服务。租户过滤 + 脱敏 + 审计留痕 + 开题批阅/答辩发布闭环。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -73,7 +73,7 @@ def _audit(db, bt, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type=bt, biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before,
-                                after_val=after, occurred_at=datetime.utcnow()))
+                                after_val=after, occurred_at=datetime.now(timezone.utc)))
 
 
 def _page(items, page, ps):
@@ -345,7 +345,7 @@ def review_proposal(pid, action, comment=None) -> dict:
         p.status = target
         p.reviewer = n
         p.review_comment = (comment or "").strip()
-        p.review_time = datetime.utcnow()
+        p.review_time = datetime.now(timezone.utc)
         p.version = p.version or "v1"
         _audit(db, "PROPOSAL", p.id, "批阅开题-" + ("通过" if action == "APPROVE" else "驳回"),
                (comment or "").strip(), before, target)
@@ -416,7 +416,7 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         version = f"v{len(existing) + 1}"
         p = GraduationProposal(
             tenant_id=_tid(), gd_student_id=stu.id, version=version, is_resubmit=is_resubmit,
-            submit_at=datetime.utcnow(), background=background.strip(), plan=plan.strip(),
+            submit_at=datetime.now(timezone.utc), background=background.strip(), plan=plan.strip(),
             outcome=(outcome or "").strip(), attachments_json=attachment_ids, status="PENDING_REVIEW")
         db.add(p)
         db.flush()
@@ -442,7 +442,7 @@ def hold_proposal_defense(pid, result, comment=None) -> dict:
             raise AppException("DATA_CONFLICT", "仅书面开题审核通过后方可进行开题答辩")
         p.defense_result = result
         p.defense_comment = (comment or "").strip() or None
-        p.defense_at = datetime.utcnow()
+        p.defense_at = datetime.now(timezone.utc)
         _audit(db, "PROPOSAL", p.id, "开题答辩-" + ("通过" if result == "PASS" else "不通过"),
                (comment or "").strip())
         db.commit()
@@ -618,7 +618,7 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         same_type = [f for f in existing if f.final_type == final_type]
         version = f"v{len(same_type) + 1}"
         f = GraduationFinal(tenant_id=_tid(), gd_student_id=stu.id, final_type=final_type,
-                            version=version, submit_at=datetime.utcnow(),
+                            version=version, submit_at=datetime.now(timezone.utc),
                             plagiarism_rate=None,
                             plagiarism_status="未检测",
                             attachments_json=attachment_ids,
@@ -669,7 +669,7 @@ def review_final(fid, action, comment=None) -> dict:
         f.status = target
         f.reviewer = n
         f.review_comment = (comment or "").strip()
-        f.review_time = datetime.utcnow()
+        f.review_time = datetime.now(timezone.utc)
         _audit(db, "FINAL", f.id, "批阅成果-" + ("通过" if action == "APPROVE" else "退回修改"),
                (comment or "").strip(), before, target)
         db.commit()

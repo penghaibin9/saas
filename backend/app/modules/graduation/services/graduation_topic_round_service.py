@@ -1,7 +1,7 @@
 """毕业设计中心 · 选题轮次/志愿服务（轮次制互选 + 贪心匹配）。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -43,7 +43,7 @@ def plan_topic_matches(choices: list[dict], remaining_by_topic: dict[int, int]) 
 
 def _audit(db, biz_id, action, detail=""):
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="TOPIC_ROUND", biz_id=str(biz_id),
-                                action=action, operator="系统", detail=detail, occurred_at=datetime.utcnow()))
+                                action=action, operator="系统", detail=detail, occurred_at=datetime.now(timezone.utc)))
 
 
 def _get_round(db, rid) -> GraduationTopicRound:

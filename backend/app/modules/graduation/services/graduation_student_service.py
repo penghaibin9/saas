@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import and_, func, or_, select
 
@@ -73,7 +73,7 @@ def _audit(db, sid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="STUDENT", biz_id=str(sid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before,
-                                after_val=after, occurred_at=datetime.utcnow()))
+                                after_val=after, occurred_at=datetime.now(timezone.utc)))
 
 
 def _get(db, sid) -> GraduationStudent:

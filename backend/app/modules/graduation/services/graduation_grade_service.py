@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -34,7 +34,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="GRADE", biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
-                                occurred_at=datetime.utcnow()))
+                                occurred_at=datetime.now(timezone.utc)))
 
 
 def _stu(db, sid) -> GraduationStudent:
@@ -216,7 +216,7 @@ def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defe
         g.total_score = total
         g.grade_level = _grade_level(total)
         g.status = "CALCULATED"
-        g.calculated_at = datetime.utcnow()
+        g.calculated_at = datetime.now(timezone.utc)
         g.reviewed_by = None
         g.reviewed_at = None
         g.source_snapshot_hash = sources["sourceSnapshotHash"]
@@ -242,7 +242,7 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
         n, _ = _op()
         if action == "APPROVE":
             g.reviewed_by = n
-            g.reviewed_at = datetime.utcnow()
+            g.reviewed_at = datetime.now(timezone.utc)
             g.remark = comment
             _audit(db, g.id, "复核通过", comment or "")
         else:
@@ -270,7 +270,7 @@ def publish_grade(gd_student_id) -> dict:
         n, _ = _op()
         g.status = "PUBLISHED"
         g.published_by = n
-        g.published_at = datetime.utcnow()
+        g.published_at = datetime.now(timezone.utc)
         g.version += 1
         if stu.stage == "DEFENSE":
             stu.stage = "COMPLETED"

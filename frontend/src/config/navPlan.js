@@ -639,7 +639,8 @@ export const NAV_PLAN = [
   grp('graduation', '毕业设计中心', 'graduationDesign', [
     mod('gd-dashboard', '毕设工作台', '/admin/graduation', [
       I('毕设总览', '/admin/graduation'),
-      I('毕设统计报表', '/admin/graduation/stats-report')
+      I('毕设统计报表', '/admin/graduation/stats-report'),
+      I('毕设操作日志', '/admin/graduation/audit-logs', 'graduationDesign.manage')
     ]),
     // 毕设批次：新建/导出为页面按钮，进行中/已归档为状态筛选，不再挂菜单（?panel=create/export/running/archived 深链仍可用）
     mod('gd-batches', '毕设批次', '/admin/graduation/batches?panel=list', [

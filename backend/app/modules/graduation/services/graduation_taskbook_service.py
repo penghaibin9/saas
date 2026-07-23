@@ -8,7 +8,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -31,7 +31,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="TASKBOOK", biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before,
-                                after_val=after, occurred_at=datetime.utcnow()))
+                                after_val=after, occurred_at=datetime.now(timezone.utc)))
 
 
 def _stu(db, sid) -> GraduationStudent:
@@ -103,7 +103,7 @@ def issue_taskbook(gd_student_id, body: dict) -> dict:
             tenant_id=_tid(), gd_student_id=stu.id, mentor_id=stu.mentor_id,
             objective=body.get("objective"), content=body.get("content"),
             progress_plan=body.get("progressPlan"), outcome_requirement=body.get("outcomeRequirement"),
-            taskbook_version=1, status="PENDING_CONFIRM", issued_by=n, issued_at=datetime.utcnow(),
+            taskbook_version=1, status="PENDING_CONFIRM", issued_by=n, issued_at=datetime.now(timezone.utc),
             history_json=[])
         db.add(t)
         db.flush()
@@ -129,7 +129,7 @@ def confirm_taskbook(gd_student_id, proxy_reason: str | None = None) -> dict:
         is_student = user_type == "STUDENT" or role == "STUDENT"
         before = t.status
         t.status = "CONFIRMED"
-        t.confirmed_at = datetime.utcnow()
+        t.confirmed_at = datetime.now(timezone.utc)
         if stu.stage == "TASKBOOK_CONFIRM":
             stu.stage = "GUIDING"
         if is_student:
