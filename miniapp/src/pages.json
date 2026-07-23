@@ -100,6 +100,10 @@
       "style": { "navigationBarTitleText": "三方协议" }
     },
     {
+      "path": "pages/student/internship/application/index",
+      "style": { "navigationBarTitleText": "正式实习申请" }
+    },
+    {
       "path": "pages/student/internship/change/index",
       "style": { "navigationBarTitleText": "调岗退岗" }
     },
@@ -182,6 +186,10 @@
     {
       "path": "pages/student/affairs/discipline",
       "style": { "navigationBarTitleText": "违纪申诉", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/affairs/talk",
+      "style": { "navigationBarTitleText": "谈心谈话", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/affairs/activity",

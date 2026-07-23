@@ -28,6 +28,10 @@ def leave_my(user) -> dict:
     只按 student_id 查会漏掉老记录（学生自己在「我的申请」能看到、在本页却看不到），
     这里同 my_applications 一样再按 CsServiceStudent 解析补上 cs_student_id 分支。"""
     from app.models import CsLeave, CsServiceStudent
+    L = {"DRAFT": "草稿", "COUNSELOR_REVIEW": "辅导员审批", "COLLEGE_REVIEW": "学院审批",
+         "STUDENT_AFFAIRS_REVIEW": "学工处审批", "APPROVED": "已通过", "REJECTED": "已驳回",
+         "RETURNED": "已退回", "WAIT_CANCEL_LEAVE": "待销假", "CLOSED": "已销假",
+         "OVERDUE": "逾期未销假", "CANCELLED": "已取消"}
     with session() as db:
         stu = _me(db, user)
         cs = db.scalars(select(CsServiceStudent).where(
@@ -39,24 +43,48 @@ def leave_my(user) -> dict:
         rows = db.scalars(select(CsLeave).where(
             CsLeave.tenant_id == _tid(), or_(*conds), CsLeave.is_deleted.is_(False))
             .order_by(CsLeave.id.desc())).all()
-        return {"items": [{"leaveId": str(x.id), "leaveType": x.leave_type, "days": float(x.days or 0),
-                           "startTime": _iso(x.start_time), "endTime": _iso(x.end_time),
-                           "status": x.affairs_status or x.status, "reason": x.reason or "",
-                           "returnReason": getattr(x, "return_reason", None) or ""} for x in rows]}
+        items = []
+        for x in rows:
+            st = x.affairs_status or x.status
+            items.append({
+                "leaveId": str(x.id), "leaveType": x.leave_type, "days": float(x.days or 0),
+                "startTime": _iso(x.start_time), "endTime": _iso(x.end_time),
+                "status": st, "statusLabel": L.get(st, st or ""),
+                "affairsStatusLabel": L.get(x.affairs_status, x.affairs_status or ""),
+                "reason": x.reason or "",
+                "returnReason": getattr(x, "return_reason", None) or "",
+                "canResubmit": (x.affairs_status or "") == "RETURNED",
+                "canCancel": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),
+            })
+        return {"items": items}
 
 
 def aid_my(user) -> dict:
-    from app.models import AidApply
+    from app.models import AidApply, AidObjection
+    L = {"DRAFT": "草稿", "COUNSELOR_REVIEW": "辅导员初审", "COLLEGE_REVIEW": "学院复审",
+         "SCHOOL_REVIEW": "学校终审", "PUBLICITY": "公示中", "APPROVED": "已认定",
+         "REJECTED": "已驳回", "RETURNED": "已退回", "CANCELLED": "已取消"}
     with session() as db:
         stu = _me(db, user)
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.student_id == stu.id,
             AidApply.is_deleted.is_(False)).order_by(AidApply.id.desc())).all()
+        open_ids = set(db.scalars(select(AidObjection.apply_id).where(
+            AidObjection.tenant_id == _tid(), AidObjection.student_id == stu.id,
+            AidObjection.status == "SUBMITTED", AidObjection.is_deleted.is_(False))).all())
         approved = next((x for x in rows if x.status == "APPROVED"), None)
-        return {"currentLevel": (approved.final_level if approved else None),
-                "items": [{"applyId": str(x.id), "applyLevel": x.apply_level,
-                           "finalLevel": x.final_level, "status": x.status,
-                           "returnReason": getattr(x, "return_reason", None) or ""} for x in rows]}
+        items = []
+        for x in rows:
+            pending = int(x.id) in open_ids
+            items.append({
+                "applyId": str(x.id), "applyLevel": x.apply_level,
+                "finalLevel": x.final_level, "status": x.status,
+                "statusLabel": L.get(x.status, x.status),
+                "returnReason": getattr(x, "return_reason", None) or "",
+                "canObject": x.status == "PUBLICITY" and not pending,
+                "hasPendingObjection": pending,
+            })
+        return {"currentLevel": (approved.final_level if approved else None), "items": items}
 
 
 def funding_my(user) -> dict:
@@ -114,7 +142,8 @@ def discipline_my(user) -> dict:
                 "appealStatus": ap.status if ap else None,
                 "appealResult": ap.result if ap else None,
                 "appealReviewOpinion": ap.review_opinion if ap else "",
-                "canAppeal": not (ap and ap.status in ("SUBMITTED", "REVIEWING")),
+                # 一案一诉：只要曾提交过申诉（含已结案）即不可再申
+                "canAppeal": ap is None,
             })
         return {"activeCount": len(rows), "detailNote": "处分明细不在移动端展示，如有疑问请联系辅导员",
                "items": items}
@@ -213,17 +242,77 @@ def dorm_self_select(user, bed_id) -> dict:
     return dorm.self_select_checkin(bed_id, user, sid)
 
 
+def talk_my(user) -> dict:
+    """本人谈心谈话摘要（成熟学工产品惯例：学生可见时间/主题/状态/是否需回访，
+    不回传辅导员谈话原文；心理类主题仅见「心理谈话」标签）。"""
+    from app.models import TalkRecord
+    L = {"PLANNED": "已计划", "SCHEDULED": "已预约", "COMPLETED": "已谈话",
+         "FOLLOW_UP": "待回访", "CLOSED": "已办结", "CANCELLED": "已取消"}
+    L_TYPE = {"ROUTINE": "日常谈心", "ACADEMIC": "学业辅导", "DISCIPLINE": "违纪教育",
+              "AID": "资助谈话", "PSYCHOLOGY": "心理谈话", "CAREER": "就业指导",
+              "FAMILY": "家校沟通", "OTHER": "其他"}
+    with session() as db:
+        stu = _me(db, user)
+        rows = db.scalars(select(TalkRecord).where(
+            TalkRecord.tenant_id == _tid(), TalkRecord.student_id == stu.id,
+            TalkRecord.is_deleted.is_(False)).order_by(TalkRecord.id.desc()).limit(50)).all()
+        items = []
+        for x in rows:
+            ttype = x.topic_type or "OTHER"
+            items.append({
+                "talkId": str(x.id),
+                "talkType": ttype,
+                "talkTypeLabel": L_TYPE.get(ttype, ttype),
+                "topic": (x.topic or "") if ttype != "PSYCHOLOGY" else "心理谈话（详情仅心理中心可见）",
+                "talkAt": _iso(x.talk_at),
+                "status": x.status,
+                "statusLabel": L.get(x.status, x.status or ""),
+                "needFollow": bool(x.need_follow),
+                "resultSummary": "已谈话" if x.status in ("COMPLETED", "FOLLOW_UP", "CLOSED") else "",
+            })
+        return {"items": items, "detailNote": "谈话明细由辅导员登记；如需回执确认请按学院通知配合"}
+
+
 # ═══════════ 教师端学工待办卡 ═══════════
 
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
 def teacher_affairs(user) -> dict:
-    """教师工作台学工卡：本校待处理学工待办按类型聚合。"""
+    """教师工作台学工卡：按本人 assignee 聚合；学院/全域可见池化(assignee=0)待办。"""
+    from app.core.affairs_security import build_affairs_context
     from app.models import UnifiedTodo
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
     with session() as db:
-        rows = db.scalars(select(UnifiedTodo).where(
-            UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
-            UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False))).all()
+        ctx = build_affairs_context(user, db)
+        uid = _uid_int(user)
+        conds = [
+            UnifiedTodo.tenant_id == _tid(),
+            UnifiedTodo.source_module == "student-affairs",
+            UnifiedTodo.status == "PENDING",
+            UnifiedTodo.is_deleted.is_(False),
+        ]
+        if ctx.scope_type == "TENANT_ALL":
+            rows = db.scalars(select(UnifiedTodo).where(*conds)).all()
+        elif ctx.scope_type == "COLLEGE":
+            # 成熟产品惯例：学院节点池(assignee=0)对学院角色可见；个人指派仍按 assignee
+            rows = db.scalars(select(UnifiedTodo).where(
+                *conds, or_(UnifiedTodo.assignee_id == uid, UnifiedTodo.assignee_id == 0)
+                if uid else UnifiedTodo.assignee_id == 0)).all()
+        else:
+            if not uid:
+                rows = []
+            else:
+                rows = db.scalars(select(UnifiedTodo).where(
+                    *conds, UnifiedTodo.assignee_id == uid)).all()
         by_type = {}
         for r in rows:
             by_type[r.todo_type] = by_type.get(r.todo_type, 0) + 1

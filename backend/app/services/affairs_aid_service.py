@@ -70,6 +70,7 @@ def _audit(db, biz_id, action, detail="", before="", after=""):
 # ── workflow / 待办 / 消息 helper（复用请假范式）──
 
 def _assignee_for(db, node, student_id):
+    """班级评议/辅导员初审→辅导员；学院/学校节点无单人映射返回 0（角色池，见处分同口径）。"""
     if node in ("CLASS_REVIEW", "COUNSELOR_REVIEW") and student_id:
         from app.models import SchoolClass, StudentProfile
         s = db.get(StudentProfile, int(student_id))
@@ -130,7 +131,10 @@ def _todo_done(db, apply_id, todo_type="AID_APPROVAL"):
 
 def _msg(db, receiver_id, title, content, mtype, apply_id):
     from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
+    rid = int(receiver_id or 0)
+    if rid <= 0:
+        return
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
                           source_module="student-affairs", source_biz_id=int(apply_id),
                           title=title, content=content, message_type=mtype, status="UNREAD"))
 
@@ -152,24 +156,64 @@ def _can_sensitive_view(user, x=None) -> bool:
     role = (user or {}).get("currentRoleCode")
     if role in _SENSITIVE_ROLES:
         return True
-    # 辅导员（2026-07-18 甲方拍板扩权）：仅在申请处于「辅导员初审」节点时可查看完整家庭经济，
-    # 用于本班学生初审带出建议等级；范围已由调用方 _scope_or_403 收敛到本班，节点一旦流转到
-    # 学院复审/学校终审即恢复脱敏，不给辅导员长期持有明文查看权。
-    if role == "COUNSELOR" and x is not None and getattr(x, "status", None) == "COUNSELOR_REVIEW":
+    # 辅导员：班级评议/辅导员初审节点可查看完整家庭经济（高校惯例：辅导员主持班级评议并初审）
+    if role == "COUNSELOR" and x is not None and getattr(x, "status", None) in (
+            "CLASS_REVIEW", "COUNSELOR_REVIEW"):
         return True
     return False
 
 
 def _check_node_authority(user, x) -> None:
-    """审批节点授权（对齐 academic_affairs_change_service._NODE_PERM 范式）：
-    .approve 持有者（学工处/资助老师/校管等）可操作全部 4 个节点；辅导员仅凭
-    .counselorReview 可操作 COUNSELOR_REVIEW 节点（本班范围已由调用方 _scope_or_403 收敛）。"""
+    """审批节点授权：
+    .approve → 全部节点；.counselorReview → 班级评议 + 辅导员初审（对齐高校「辅导员主持班级评议」惯例）。
+    学院复审/学校终审必须持 approve。"""
     from app.core.permissions import has_permission
     if has_permission(user, "studentAffairs.aid.approve"):
         return
-    if x.status == "COUNSELOR_REVIEW" and has_permission(user, "studentAffairs.aid.counselorReview"):
+    if x.status in ("CLASS_REVIEW", "COUNSELOR_REVIEW") and has_permission(
+            user, "studentAffairs.aid.counselorReview"):
         return
     raise no_permission(f"无权审批当前节点（{L_AID.get(x.status, x.status)}）")
+
+
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _check_aid_assignee(db, x, user, *, todo_type: str = "AID_APPROVAL"):
+    """有明确审批人时：非全域须为当前 PENDING 任务指派人（池化 assignee=0 时仅靠节点权限）。"""
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type == "TENANT_ALL" or not x.workflow_instance_id:
+        return
+    from app.models import WorkflowTask
+    task = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
+        WorkflowTask.node_code == x.status, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
+    if task and task.assignee_id:
+        uid = _uid_int(user)
+        if uid and int(task.assignee_id) != uid:
+            raise AppException("NO_PERMISSION", "当前审批任务未指派给您")
+        return
+    # 无 WorkflowTask 时回退查待办指派人（动态调整等）
+    from app.models import UnifiedTodo
+    todo = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_id == int(x.id), UnifiedTodo.todo_type == todo_type,
+        UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False)
+    ).order_by(UnifiedTodo.id.desc())).first()
+    if not todo or not todo.assignee_id:
+        return
+    uid = _uid_int(user)
+    if uid and int(todo.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "当前待办未指派给您")
 
 
 # ── 序列化 ──
@@ -389,6 +433,7 @@ def review(apply_id, user, action, level=None, reason="") -> dict:
         if x.status not in AID_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
         _check_node_authority(user, x)
+        _check_aid_assignee(db, x, user)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
             # 辅导员初审带出建议等级
@@ -548,12 +593,17 @@ def adjust(apply_id, user, target_level, reason="") -> dict:
 
 
 def approve_adjust(apply_id, user, action="APPROVE") -> dict:
+    """动态调整终审：仅持 aid.approve 的角色可批；并校验 AID_ADJUST 待办指派人。"""
+    from app.core.permissions import has_permission
+    if not has_permission(user, "studentAffairs.aid.approve"):
+        raise no_permission("无权审批困难等级动态调整")
     with session() as db:
         from app.models import AidLevelHistory
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
         if x.status != "ADJUST_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在调整审批状态")
+        _check_aid_assignee(db, x, user, todo_type="AID_ADJUST")
         if (action or "").upper() == "APPROVE":
             old = x.final_level
             db.add(AidLevelHistory(tenant_id=_tid(), student_id=int(x.student_id), from_level=old,
@@ -711,8 +761,9 @@ def _obj_row(o, s=None) -> dict:
             "reviewedAt": _iso(o.reviewed_at)}
 
 
-def submit_objection(apply_id, body, user) -> dict:
-    """对公示中申请提异议（仅 PUBLICITY 状态；理由≥5字；进行中唯一）。"""
+def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) -> dict:
+    """对公示中申请提异议（仅 PUBLICITY 状态；理由≥5字；进行中唯一）。
+    skip_scope_check=True：学生本人对自有公示结果异议（门户/小程序）。"""
     from app.models import AidApply, AidObjection, StudentProfile
     if isinstance(body, dict):
         reason = str(body.get("reason") or "").strip()
@@ -726,6 +777,8 @@ def submit_objection(apply_id, body, user) -> dict:
         x = db.scalars(select(AidApply).where(AidApply.id == int(apply_id)).with_for_update()).first()
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("认定申请不存在")
+        if not skip_scope_check:
+            _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("DATA_CONFLICT", "仅公示中的申请可提异议")
         dup = db.scalars(select(AidObjection).where(
@@ -800,8 +853,21 @@ def review_objection(objection_id, body, user) -> dict:
         if result == "SUSTAINED":
             x = db.get(AidApply, int(o.apply_id))
             if x and x.status in ("PUBLICITY", "APPROVED"):
+                was_approved = x.status == "APPROVED"
+                old_level = x.final_level
                 x.status, x.result_at, x.return_reason = "REJECTED", datetime.utcnow(), (opinion[:200] or "公示异议成立")
                 x.version += 1
+                if was_approved:
+                    from app.models import AidLevelHistory, StudentStageEvent
+                    db.add(AidLevelHistory(
+                        tenant_id=_tid(), student_id=int(x.student_id), from_level=old_level,
+                        to_level="", change_type="ADJUST", apply_id=x.id, batch_id=x.batch_id,
+                        effective_at=datetime.utcnow()))
+                    db.add(StudentStageEvent(
+                        tenant_id=_tid(), student_id=int(x.student_id), from_stage="AID_APPROVED",
+                        to_stage="AID_REVOKED", reason="公示异议成立，撤回困难认定结果",
+                        source_module="student-affairs"))
+                    x.final_level = None
                 _todo_done(db, x.id)
                 _msg(db, x.student_id, "困难认定未通过",
                      x.return_reason or "公示异议成立，认定结果已取消", "WORKFLOW_RESULT", x.id)

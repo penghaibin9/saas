@@ -121,11 +121,11 @@ def advance(batch_id, user, action="APPROVE") -> dict:
             pkgs = db.scalars(select(ArchivePackage).where(
                 ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == b.id,
                 ArchivePackage.is_deleted.is_(False))).all()
-            # 水印包登记 t_export_task（file_hash 占位；真实导出走 export 管线）
+            # 水印包登记 t_export_task：仅占位登记，真实文件尚未生成，不得标 SUCCESS。
             task = ExportTask(tenant_id=_tid(), export_mode="ENCRYPTED_ARCHIVE",
                               module_code="affairs_archive", row_count=len(pkgs),
-                              file_hash=f"placeholder-sha256-{b.id}", status="SUCCESS",
-                              purpose="学工归档水印包导出")
+                              file_hash=f"placeholder-sha256-{b.id}", status="PENDING",
+                              purpose="学工归档水印包导出（待真实导出管线回填）")
             db.add(task)
             db.flush()
             for p in pkgs:

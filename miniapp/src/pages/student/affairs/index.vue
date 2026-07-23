@@ -24,8 +24,9 @@
         </view>
 
         <view class="section-head"><text class="section-head__title">我的处分</text></view>
-        <view class="card">
+        <view class="card" @click="go('/pages/student/affairs/discipline')">
           <text class="t-sm t-secondary">{{ discNote }}</text>
+          <text class="t-sm link">进入申诉 ›</text>
         </view>
       </view>
     </MobileGlobalState>
@@ -43,6 +44,8 @@ const ENTRIES = [
   { key: 'dorm', label: '我的宿舍', icon: '🏠', route: '/pages/student/affairs/dorm' },
   { key: 'aid', label: '困难认定', icon: '🤝', route: '/pages/student/affairs/aid' },
   { key: 'funding', label: '奖助申请', icon: '💰', route: '/pages/student/affairs/funding' },
+  { key: 'discipline', label: '违纪申诉', icon: '⚖️', route: '/pages/student/affairs/discipline' },
+  { key: 'talk', label: '谈心谈话', icon: '💬', route: '/pages/student/affairs/talk' },
   { key: 'activity', label: '活动与二课', icon: '🎉', route: '/pages/student/affairs/activity' },
   { key: 'service', label: '在校服务', icon: '🏫', route: '/pages/student/campus-service/index' }
 ]
@@ -78,4 +81,5 @@ export default {
 .af__navbar { position: relative; height: 40px; display: flex; align-items: center; justify-content: center; }
 .af__navbar-back { position: absolute; left: 0; color: #fff; font-size: 22px; padding: 4px 8px; }
 .af__navbar-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #fff; }
+.link { display: block; margin-top: 8px; color: #2563eb; }
 </style>

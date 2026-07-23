@@ -18,6 +18,11 @@
               class="btn btn-ghost lv__resubmit"
               @click="resubmit(x)"
             >重新提交</button>
+            <button
+              v-if="x.canCancel || x.status === 'APPROVED' || x.status === 'OVERDUE'"
+              class="btn btn-ghost lv__resubmit"
+              @click="cancelLeave(x)"
+            >申请销假</button>
           </view>
         </view>
       </view>
@@ -153,6 +158,20 @@ export default {
       }).catch((e) => {
         const n = normalizeError(e)
         toast(n.text || (e && e.message) || '重新提交失败')
+      }).finally(() => {
+        this.submitting = false
+        submitLock.release()
+      })
+    },
+    cancelLeave(item) {
+      if (this.submitting || !submitLock.acquire()) return
+      this.submitting = true
+      studentApi.cancelLeave(item.leaveId, { proofNote: '学生本人申请销假' }).then(() => {
+        toast('销假已提交，等待辅导员确认')
+        this.load()
+      }).catch((e) => {
+        const n = normalizeError(e)
+        toast(n.text || (e && e.message) || '销假失败')
       }).finally(() => {
         this.submitting = false
         submitLock.release()

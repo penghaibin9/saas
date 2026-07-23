@@ -61,6 +61,9 @@ def _audit(db, biz_id, action, detail=""):
 
 
 def _assignee_for(db, node, student_id):
+    """解析审批人：班级/辅导员节点→班级辅导员；学院/学工节点无单人映射时返回 0（技能池/角色池）。
+    assignee=0 时审批校验仅靠节点权限+数据范围（成熟产品如 Xurrent skill pool / Nintex first-response）。
+    后续可演进为「首人认领后改写 assignee」以杜绝池内互批，当前按池化设计保留。"""
     if node in ("COLLEGE_REVIEW", "COUNSELOR_REVIEW") and student_id:
         from app.models import SchoolClass, StudentProfile
         s = db.get(StudentProfile, int(student_id))
@@ -113,7 +116,10 @@ def _todo_done(db, biz_id, todo_type="DISCIPLINE_APPROVAL"):
 
 def _msg(db, receiver_id, title, content, mtype, biz_id):
     from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
+    rid = int(receiver_id or 0)
+    if rid <= 0:
+        return
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
                           source_module="student-affairs", source_biz_id=int(biz_id),
                           title=title, content=content, message_type=mtype, status="UNREAD"))
 
@@ -127,6 +133,48 @@ def _scope_or_403(db, student_id, user):
     s = db.get(StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该处分不在您的数据范围内")
+
+
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _disc_node_visible(ctx, node: str) -> bool:
+    """处分/解除节点可见性：学工处复核、校级审批、解除处终审仅 TENANT_ALL；
+    学院仅 COLLEGE_REVIEW；辅导员仅 COUNSELOR_REVIEW（解除初审）。"""
+    if ctx.scope_type == "TENANT_ALL":
+        return True
+    if node in ("STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "SA_OFFICE_FINAL"):
+        return False
+    if ctx.scope_type == "COLLEGE":
+        return node == "COLLEGE_REVIEW"
+    return node == "COUNSELOR_REVIEW"
+
+
+def _check_disc_node(db, node, user, *, workflow_instance_id=None, label_map=None):
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    labels = label_map or L_DISC
+    if not _disc_node_visible(ctx, node):
+        raise AppException("NO_PERMISSION", f"无权审批当前节点（{labels.get(node, node)}）")
+    if ctx.scope_type == "TENANT_ALL" or not workflow_instance_id:
+        return
+    from app.models import WorkflowTask
+    task = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(workflow_instance_id),
+        WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
+    if not task or not task.assignee_id:
+        return
+    uid = _uid_int(user)
+    if uid and int(task.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "当前审批任务未指派给您")
 
 
 def _cs_student_id(db, student_id):
@@ -268,6 +316,7 @@ def review(case_id, user, action, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该处分当前状态不可审批，请刷新")
+        _check_disc_node(db, x.status, user, workflow_instance_id=x.workflow_instance_id)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
             if x.status == "COLLEGE_REVIEW":
@@ -361,9 +410,31 @@ def review_remove(case_id, user, action, reason="") -> dict:
             DisciplineRemoveApply.id.desc())).first()
         if not ra:
             raise AppException("APPROVAL_VERSION_CONFLICT", "解除申请不存在")
+        _check_disc_node(db, ra.current_node or REMOVE_NODES[0], user,
+                         workflow_instance_id=ra.workflow_instance_id,
+                         label_map={"COUNSELOR_REVIEW": "辅导员初审", "COLLEGE_REVIEW": "学院复核",
+                                    "SA_OFFICE_FINAL": "学工处终审"})
+        from app.models import WorkflowInstance, WorkflowTask
+        inst = db.get(WorkflowInstance, int(ra.workflow_instance_id)) if ra.workflow_instance_id else None
+
+        def _complete_remove_task(result: str, why: str = ""):
+            if not inst:
+                return
+            task = db.scalars(select(WorkflowTask).where(
+                WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == inst.id,
+                WorkflowTask.node_code == (ra.current_node or REMOVE_NODES[0]),
+                WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False)
+            ).order_by(WorkflowTask.id.desc())).first()
+            if task:
+                task.status, task.acted_at, task.action_reason = result, datetime.utcnow(), why
+                task.version += 1
+
         if action == "REJECT":
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+            _complete_remove_task("REJECTED", reason.strip())
+            if inst:
+                inst.status = "REJECTED"
             ra.status, ra.return_reason = "REJECTED", reason.strip()
             x.status, x.version = "EFFECTIVE", x.version + 1  # 回生效，可再申请
             _todo_done(db, x.id, todo_type="DISCIPLINE_REMOVE")
@@ -371,16 +442,23 @@ def review_remove(case_id, user, action, reason="") -> dict:
             _audit(db, x.id, "REMOVE_REJECTED", reason.strip())
         elif action == "APPROVE":
             i = REMOVE_NODES.index(ra.current_node) if ra.current_node in REMOVE_NODES else 0
+            _complete_remove_task("APPROVED", reason or "")
             if i + 1 < len(REMOVE_NODES):
                 nxt = REMOVE_NODES[i + 1]
                 ra.current_node, ra.status = nxt, nxt
                 assignee = _assignee_for(db, nxt, x.student_id)
+                if inst:
+                    inst.current_node = nxt
+                    db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
+                                        assignee_id=assignee, status="PENDING"))
                 _todo_upsert(db, x.id, assignee, x.student_id,
                              f"处分解除待审（{nxt}）：{s.real_name if s else ''}", todo_type="DISCIPLINE_REMOVE")
                 _audit(db, x.id, "REMOVE_STEP", f"->{nxt}")
             else:
                 # 学工处终审通过 → REMOVED + 更新投影行
                 ra.status = "APPROVED"
+                if inst:
+                    inst.status = "APPROVED"
                 x.status, x.removed_at, x.version = "REMOVED", datetime.utcnow(), x.version + 1
                 if x.cs_discipline_id:
                     proj = db.get(CsDiscipline, int(x.cs_discipline_id))
@@ -517,12 +595,12 @@ def submit_appeal(case_id, body, user, *, skip_scope_check: bool = False) -> dic
             _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效处分可申诉")
-        dup = db.scalars(select(DisciplineAppeal).where(
+        # 一案一诉：已有任何申诉（含已结案）不得再提，避免结案后反复申诉绕过复核结论。
+        prior = db.scalars(select(DisciplineAppeal).where(
             DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.case_id == int(case_id),
-            DisciplineAppeal.status.in_(("SUBMITTED", "REVIEWING")),
             DisciplineAppeal.is_deleted.is_(False))).first()
-        if dup:
-            raise AppException("DATA_CONFLICT", "已有进行中的申诉")
+        if prior:
+            raise AppException("DATA_CONFLICT", "该处分已提交过申诉，不可再次提起")
         a = DisciplineAppeal(tenant_id=_tid(), case_id=int(case_id), student_id=x.student_id,
                              reason=reason, status="SUBMITTED")
         db.add(a); db.flush()

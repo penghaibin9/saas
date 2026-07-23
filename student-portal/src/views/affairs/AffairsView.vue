@@ -27,7 +27,7 @@
           </div>
         </section>
         <section class="sp-card">
-          <div class="sp-panel__head">请假 / 销假记录</div>
+          <div class="sp-panel__head">请假记录</div>
           <StateBlock v-if="!(leave.items||[]).length" type="empty" text="暂无请假记录" />
           <div v-for="(lv, i) in (leave.items || [])" :key="lv.leaveId || lv.id || i" style="padding:12px 0;border-bottom:1px solid #F4F5F7">
             <div style="display:flex;justify-content:space-between;gap:8px">
@@ -35,6 +35,20 @@
                 <div style="font-size:14px;font-weight:600">{{ lv.leaveTypeLabel || lv.leaveType || '请假' }}</div>
                 <div class="sp-muted" style="margin-top:4px">{{ lv.affairsStatusLabel || lv.statusLabel || lv.status || '' }}</div>
                 <div v-if="lv.returnReason" class="sp-muted" style="margin-top:4px;color:#b45309">退回意见：{{ lv.returnReason }}</div>
+                <button
+                  v-if="lv.canResubmit || lv.status === 'RETURNED'"
+                  class="sp-btn sp-btn--ghost"
+                  style="margin-top:8px"
+                  :disabled="busy"
+                  @click="resubmitLeave(lv)"
+                >按退回意见修改后重新提交</button>
+                <button
+                  v-if="lv.canCancel || lv.status === 'APPROVED' || lv.status === 'OVERDUE'"
+                  class="sp-btn"
+                  style="margin-top:8px;margin-left:8px"
+                  :disabled="busy"
+                  @click="cancelLeave(lv)"
+                >申请销假</button>
               </div>
               <StatusTag :text="lv.affairsStatusLabel || lv.statusLabel || lv.status || '—'" tone="default" />
             </div>
@@ -70,6 +84,15 @@
           <div style="display:flex;gap:10px;margin-top:12px"><button class="sp-btn sp-btn--ghost" @click="aidStep = 2">上一步</button><button class="sp-btn" :disabled="busy || !aidForm.commit" @click="submitAid">提交认定申请</button></div>
         </template>
         <AutoTable :rows="aid.items" empty="暂无认定记录" title="认定记录" style="margin-top:16px" />
+        <div v-for="it in (aid.items || [])" :key="'obj-' + it.applyId" style="margin-top:12px;padding:12px 0;border-bottom:1px solid #F4F5F7">
+          <div class="sp-muted">{{ it.statusLabel || it.status }} · 申请等级 {{ it.applyLevel || '—' }}</div>
+          <div v-if="it.returnReason" class="sp-muted" style="color:#b45309;margin-top:4px">意见：{{ it.returnReason }}</div>
+          <template v-if="it.canObject">
+            <textarea v-model.trim="aidObjectForms[it.applyId]" class="sp-inp" style="margin-top:8px" placeholder="对公示认定结果有异议，请填写理由（≥5字）" />
+            <button class="sp-btn sp-btn--sm" style="margin-top:8px" :disabled="busy || !(aidObjectForms[it.applyId] || '').trim()" @click="submitAidObjection(it.applyId)">提交公示异议</button>
+          </template>
+          <div v-else-if="it.hasPendingObjection" class="sp-muted" style="margin-top:8px">异议处理中，请等待复核</div>
+        </div>
       </section>
 
       <!-- 奖助勤贷补 -->
@@ -132,7 +155,8 @@
               <textarea v-model.trim="appealForms[c.caseId]" class="sp-inp" style="margin-top:12px;text-align:left" placeholder="申辩 / 申诉理由（至少5字）" />
               <button class="sp-btn" style="margin-top:10px" :disabled="busy || !(appealForms[c.caseId] || '').trim()" @click="submitAppeal(c.caseId)">提交申辩</button>
             </template>
-            <div v-else class="sp-muted" style="margin-top:8px">申诉处理中，请耐心等待复核结果</div>
+            <div v-else-if="c.appealStatus === 'SUBMITTED' || c.appealStatus === 'REVIEWING'" class="sp-muted" style="margin-top:8px">申诉处理中，请耐心等待复核结果</div>
+            <div v-else-if="c.appealStatus" class="sp-muted" style="margin-top:8px">该处分申诉已结案（一案一诉）</div>
           </section>
         </template>
       </section>
@@ -179,9 +203,20 @@
       <!-- 谈心谈话 -->
       <section v-else-if="tab === 'talk'" class="sp-card" style="max-width:720px">
         <div style="font-size:15px;font-weight:600">我的谈话记录</div>
-        <div class="sp-muted" style="margin:4px 0 16px">仅展示辅导员 / 导师与你的谈话摘要，只读</div>
-        <StateBlock type="empty" text="暂无谈话记录" />
-        <div class="notebox">谈心谈话记录由辅导员在学工系统登记后同步至此；如需回执确认将在此显示按钮。</div>
+        <div class="sp-muted" style="margin:4px 0 16px">仅展示时间、主题与状态摘要；谈话原文由辅导员侧保管</div>
+        <StateBlock v-if="!(talk.items||[]).length" type="empty" text="暂无谈话记录" />
+        <div v-for="t in (talk.items || [])" :key="t.talkId" style="padding:12px 0;border-bottom:1px solid #F4F5F7">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <div>
+              <div style="font-size:14px;font-weight:600">{{ t.talkTypeLabel || t.talkType || '谈心谈话' }}</div>
+              <div class="sp-muted" style="margin-top:4px">{{ t.topic || '' }}</div>
+              <div class="sp-muted" style="margin-top:4px">{{ (t.talkAt || '').slice(0, 16) || '时间待定' }}</div>
+              <div v-if="t.needFollow" class="sp-muted" style="margin-top:4px;color:#b45309">需回访跟进</div>
+            </div>
+            <StatusTag :text="t.statusLabel || t.status || '—'" tone="default" />
+          </div>
+        </div>
+        <div class="notebox" style="margin-top:12px">{{ talk.detailNote || '谈心谈话由辅导员登记后同步至此。' }}</div>
       </section>
     </template>
   </div>
@@ -198,7 +233,7 @@ import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const tabs = [
-  { key: 'leave', label: '请假销假' }, { key: 'aid', label: '困难认定' }, { key: 'funding', label: '奖助勤贷补' },
+  { key: 'leave', label: '请假申请' }, { key: 'aid', label: '困难认定' }, { key: 'funding', label: '奖助勤贷补' },
   { key: 'discipline', label: '违纪申诉' }, { key: 'psy', label: '心理自评' }, { key: 'activity', label: '活动二课' }, { key: 'talk', label: '谈心谈话' }
 ]
 const tab = ref('leave')
@@ -215,6 +250,8 @@ const discipline = ref({})
 const psy = ref({})
 const psyHistory = ref({})
 const activities = ref({})
+const talk = ref({})
+const aidObjectForms = reactive({})
 
 const leaveTypes = [{ k: 'PERSONAL', t: '事假' }, { k: 'SICK', t: '病假' }, { k: 'OTHER', t: '其他' }]
 const fundTypes = [
@@ -244,15 +281,16 @@ watch(aidBatches, (list) => { if (!list.some((b) => b.batchId === aidForm.batchI
 async function reload() {
   loading.value = true; error.value = ''
   try {
-    const [lv, ad, fd, dc, pq, ph, ac, ab, fb] = await Promise.allSettled([
+    const [lv, ad, fd, dc, pq, ph, ac, ab, fb, tk] = await Promise.allSettled([
       portalApi.affairsLeave(), portalApi.affairsAid(), portalApi.affairsFunding(), portalApi.affairsDiscipline(),
       portalApi.affairsPsyQuestions(), portalApi.affairsPsyHistory(), portalApi.affairsActivitiesMy(),
-      portalApi.affairsAidBatches(), portalApi.affairsFundingBatches()
+      portalApi.affairsAidBatches(), portalApi.affairsFundingBatches(), portalApi.affairsTalk()
     ])
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     leave.value = val(lv, {}); aid.value = val(ad, {}); funding.value = val(fd, {}); discipline.value = val(dc, {})
     psy.value = val(pq, {}); psyHistory.value = val(ph, {}); activities.value = val(ac, {})
     aidBatches.value = val(ab, {}).items || []; fundBatches.value = val(fb, {}).items || []
+    talk.value = val(tk, {})
   } catch (e) { error.value = e?.message || '学工数据加载失败' } finally { loading.value = false }
 }
 async function applyLeave() {
@@ -264,6 +302,35 @@ async function applyLeave() {
     })
     ui.notify('请假申请已提交，等待辅导员审批'); leaveForm.reason = ''; leaveForm.startDate = ''; leaveForm.endDate = ''; reload()
   } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+}
+async function resubmitLeave(lv) {
+  const leaveId = lv.leaveId || lv.id
+  if (!leaveId) return
+  busy.value = true
+  try {
+    await portalApi.affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '' })
+    ui.notify('已重新提交，等待审批')
+    reload()
+  } catch (e) { ui.notify(e?.message || '重新提交失败') } finally { busy.value = false }
+}
+async function cancelLeave(lv) {
+  const leaveId = lv.leaveId || lv.id
+  if (!leaveId) return
+  busy.value = true
+  try {
+    await portalApi.affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假' })
+    ui.notify('销假已提交，等待辅导员确认')
+    reload()
+  } catch (e) { ui.notify(e?.message || '销假提交失败') } finally { busy.value = false }
+}
+async function submitAidObjection(applyId) {
+  busy.value = true
+  try {
+    await portalApi.affairsAidObjection({ applyId, reason: aidObjectForms[applyId] })
+    ui.notify('公示异议已提交')
+    aidObjectForms[applyId] = ''
+    reload()
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitAid() {
   busy.value = true

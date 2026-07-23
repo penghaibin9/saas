@@ -97,9 +97,35 @@ def _handle(db, risk_id, action, content, frm, to):
 
 def _msg(db, receiver_id, title, content, mtype, risk_id):
     from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
+    rid = int(receiver_id or 0)
+    if rid <= 0:
+        # 禁止 receiver_id=0 广播：学生首页会把 0 当公共消息拉取，造成风险隐私泄露
+        return
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
                           source_module="student-affairs", source_biz_id=int(risk_id),
                           title=title, content=content, message_type=mtype, status="UNREAD"))
+
+
+def _sa_admin_user_ids(db) -> set[int]:
+    """学工处管理员账号（升级/超时通知收件人）。"""
+    from app.models import Role, UserRole
+    role_ids = db.scalars(select(Role.id).where(
+        Role.tenant_id == _tid(), Role.role_code == "STUDENT_AFFAIRS_ADMIN",
+        Role.is_deleted.is_(False), Role.status == "ACTIVE")).all()
+    if not role_ids:
+        return set()
+    return set(int(v) for v in db.scalars(select(UserRole.user_id).where(
+        UserRole.tenant_id == _tid(), UserRole.role_id.in_(role_ids),
+        UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE")).all())
+
+
+def _notify_risk_handlers(db, x, title, content):
+    """风险处置通知：责任人 + 学工处管理员；绝不写 receiver_id=0。"""
+    targets = set(_sa_admin_user_ids(db))
+    if x.owner_id:
+        targets.add(int(x.owner_id))
+    for uid in targets:
+        _msg(db, uid, title, content, "RISK_ALERT", x.id)
 
 
 def _todo_upsert(db, risk_id, assignee_id, student_id, title):
@@ -136,6 +162,40 @@ def _scope_or_403(db, student_id, user):
     s = db.get(StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该风险不在您的数据范围内")
+
+
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _require_owner_or_admin(db, x, user, *, label: str = "处置") -> None:
+    """处置类动作：租户全域可代办；否则必须是当前责任人。防同班辅导员互动他人的单。"""
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return
+    uid = _uid_int(user)
+    if x.owner_id and uid and int(x.owner_id) == uid:
+        return
+    raise AppException("NO_PERMISSION", f"仅风险责任人或学工管理员可{label}")
+
+
+def _require_takeover_authority(db, user) -> None:
+    """升级后接管：仅租户全域或学院/学工管理角色（同班辅导员不可互抢）。"""
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return
+    role = (user or {}).get("currentRoleCode") or ""
+    if role in ("COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"):
+        return
+    raise AppException("NO_PERMISSION", "仅上级/学工管理员可接管已升级风险")
 
 
 def _can_view_mental(user) -> bool:
@@ -256,6 +316,7 @@ def process(risk_id, user, content="") -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
+        _require_owner_or_admin(db, x, user, label="填写处置")
         if x.status not in ("ASSIGNED", "PROCESSING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可处置")
         frm = x.status
@@ -271,6 +332,7 @@ def follow(risk_id, user, content="") -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
+        _require_owner_or_admin(db, x, user, label="转跟进")
         if x.status not in ("PROCESSING", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可转跟进")
         frm = x.status
@@ -286,6 +348,7 @@ def transfer(risk_id, user, new_owner_id, reason="") -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
+        _require_owner_or_admin(db, x, user, label="转办")
         if x.status not in ("PROCESSING", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可转办")
         valid_owner_id = _validate_owner(db, new_owner_id)
@@ -308,13 +371,15 @@ def escalate(risk_id, user, reason="") -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
+        _require_owner_or_admin(db, x, user, label="升级")
         if x.status not in ("PROCESSING", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可升级")
         frm = x.status
         x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
         x.status, x.escalated_at, x.version = "ESCALATED", datetime.utcnow(), x.version + 1
         _handle(db, x.id, "ESCALATE", f"升级：{reason}", frm, "ESCALATED")
-        _msg(db, 0, "风险升级", f"{s.real_name if s else ''} 风险升级至 {x.risk_level}", "RISK_ALERT", x.id)
+        _notify_risk_handlers(db, x, "风险升级",
+                              f"风险#{x.id} 已升级至 {x.risk_level}" + (f"：{reason}" if reason else ""))
         _audit(db, x.id, "ESCALATE", x.risk_level)
         db.commit()
         db.refresh(x)
@@ -325,9 +390,14 @@ def takeover(risk_id, user, content="") -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
+        _require_takeover_authority(db, user)
         if x.status != "ESCALATED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已升级的风险可接管")
+        uid = _uid_int(user)
         x.status, x.version = "PROCESSING", x.version + 1
+        if uid:
+            x.owner_id = uid  # 接管后责任人改为接管人
+            _todo_upsert(db, x.id, uid, x.student_id, f"风险已接管待处置：{s.real_name if s else ''}")
         _handle(db, x.id, "TAKEOVER", (content or "上级接管").strip(), "ESCALATED", "PROCESSING")
         _audit(db, x.id, "TAKEOVER")
         db.commit()
@@ -342,6 +412,7 @@ def close(risk_id, user, conclusion="") -> dict:
         from app.models import StudentStageEvent
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
+        _require_owner_or_admin(db, x, user, label="关闭")
         if x.status not in ("PROCESSING", "FOLLOWING", "ESCALATED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可关闭")
         if _handle_count(db, x.id) == 0:
@@ -364,6 +435,7 @@ def reopen(risk_id, user, reason="") -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
+        _require_takeover_authority(db, user)  # 重开属上级动作，防同班互改
         if x.status != "CLOSED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已关闭的风险可重开")
         x.status, x.version = "REOPENED", x.version + 1
@@ -378,11 +450,37 @@ def reopen(risk_id, user, reason="") -> dict:
 # ═══════════ 超时扫描（幂等） ═══════════
 
 def scan_timeout() -> dict:
-    """分派超时(NEW≥4h 自动分派占位) + 处置超时(ASSIGNED≥72h 自动升级)。幂等：escalated_at 标记。"""
-    from app.models import AffairsRiskRecord
+    """NEW≥4h 自动分派给班级辅导员（有则分）；ASSIGNED≥72h 无处置自动升级。幂等：escalated_at 标记。"""
+    from app.models import AffairsRiskRecord, SchoolClass, StudentProfile
     now = datetime.utcnow()
     with session() as db:
         assigned = 0
+        # NEW ≥4h 未分派 → 尝试分给班级辅导员
+        new_rows = db.scalars(select(AffairsRiskRecord).where(
+            AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.status == "NEW",
+            AffairsRiskRecord.created_at.is_not(None),
+            AffairsRiskRecord.is_deleted.is_(False))).all()
+        eligible_owners = _owner_role_user_ids(db)
+        for x in new_rows:
+            if not x.created_at or x.created_at + timedelta(hours=4) > now:
+                continue
+            counselor_id = None
+            if x.student_id:
+                s = db.get(StudentProfile, int(x.student_id))
+                if s and s.class_id:
+                    c = db.get(SchoolClass, int(s.class_id))
+                    if c and c.counselor_id and int(c.counselor_id) in eligible_owners:
+                        counselor_id = int(c.counselor_id)
+            if not counselor_id:
+                continue
+            x.owner_id, x.status, x.assigned_at, x.version = \
+                counselor_id, "ASSIGNED", now, x.version + 1
+            _handle(db, x.id, "ASSIGN", f"超时自动分派辅导员 {counselor_id}", "NEW", "ASSIGNED")
+            _todo_upsert(db, x.id, counselor_id, x.student_id, "风险待处置（超时自动分派）")
+            _msg(db, counselor_id, "风险待处置", f"风险#{x.id} 已超时自动分派给你", "RISK_ALERT", x.id)
+            _audit(db, x.id, "AUTO_ASSIGN", str(counselor_id))
+            assigned += 1
+
         # 处置超时：ASSIGNED ≥72h 无处置且未升级过 → ESCALATED
         rows = db.scalars(select(AffairsRiskRecord).where(
             AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.status == "ASSIGNED",
@@ -394,7 +492,8 @@ def scan_timeout() -> dict:
                 x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
                 x.status, x.escalated_at, x.version = "ESCALATED", now, x.version + 1
                 _handle(db, x.id, "ESCALATE", "处置超时自动升级", "ASSIGNED", "ESCALATED")
-                _msg(db, 0, "风险处置超时升级", f"风险 {x.id} 处置超时自动升级", "RISK_ALERT", x.id)
+                _notify_risk_handlers(db, x, "风险处置超时升级",
+                                      f"风险#{x.id} 处置超时已自动升级至 {x.risk_level}")
                 _audit(db, x.id, "AUTO_ESCALATE")
                 escalated += 1
         db.commit()

@@ -171,6 +171,18 @@ def _sync_count(db, club_id):
         c.member_count = int(n)
 
 
+def _member_scope_or_403(db, student_id, user):
+    """加人写范围：非全域角色只能给本数据范围内学生办入社。"""
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    allowed, _ = _allowed_class_ids(db, user)
+    if allowed is None:
+        return
+    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    if not s or s.class_id not in allowed:
+        raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
+
+
 def add_member(club_id, body, user) -> dict:
     from app.models import AffairsClubMember, StudentProfile
     sid = int(getattr(body, "studentId", 0) or 0)
@@ -186,6 +198,7 @@ def add_member(club_id, body, user) -> dict:
             StudentProfile.is_deleted.is_(False))).first() if sid else None
         if not s:
             raise not_found("学生不存在")
+        _member_scope_or_403(db, sid, user)
         dup = db.scalars(select(AffairsClubMember).where(
             AffairsClubMember.tenant_id == _tid(), AffairsClubMember.club_id == int(club_id),
             AffairsClubMember.student_id == sid, AffairsClubMember.status == "ACTIVE",

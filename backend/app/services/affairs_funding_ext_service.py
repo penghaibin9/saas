@@ -48,6 +48,17 @@ def _scoped_out(db, rows, user, sid_getter, row_fn):
     return out
 
 
+def _scope_or_403(db, student_id, user):
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    allowed, _ = _allowed_class_ids(db, user)
+    if allowed is None:
+        return
+    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    if not s or s.class_id not in allowed:
+        raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
+
+
 def _require_student(db, sid):
     from app.models import StudentProfile
     s = db.get(StudentProfile, int(sid)) if sid else None
@@ -123,6 +134,7 @@ def apply_work_study(post_id, body, user) -> dict:
         if p.status != "ENABLED":
             raise AppException("DATA_CONFLICT", "岗位未开放")
         s = _require_student(db, sid)
+        _scope_or_403(db, sid, user)
         dup = db.scalars(select(WorkStudyRecord).where(
             WorkStudyRecord.tenant_id == _tid(), WorkStudyRecord.post_id == int(post_id),
             WorkStudyRecord.student_id == sid,
@@ -153,6 +165,7 @@ def act_work_study(record_id, action, user, reason="") -> dict:
     action = (action or "").upper()
     with session() as db:
         r = _load_ws(db, record_id)
+        _scope_or_403(db, r.student_id, user)
         if action == "APPROVE":
             if r.status != "APPLIED":
                 raise AppException("DATA_CONFLICT", "仅待审核可录用")
@@ -213,6 +226,7 @@ def register_loan(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "贷款类型非法")
     with session() as db:
         s = _require_student(db, sid)
+        _scope_or_403(db, sid, user)
         last4 = getattr(body, "bankLast4", None)
         x = StudentLoan(tenant_id=_tid(), student_id=sid, loan_type=ltype,
                         bank_name=getattr(body, "bankName", None),
@@ -232,6 +246,7 @@ def advance_loan(loan_id, user) -> dict:
         x = db.get(StudentLoan, int(loan_id))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("贷款记录不存在")
+        _scope_or_403(db, x.student_id, user)
         nxt = _LOAN_NEXT.get(x.status)
         if not nxt:
             raise AppException("DATA_CONFLICT", "已确认，无需再推进")
@@ -279,6 +294,7 @@ def submit_reduction(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "申请理由至少 5 字")
     with session() as db:
         s = _require_student(db, sid)
+        _scope_or_403(db, sid, user)
         x = FeeReduction(tenant_id=_tid(), student_id=sid, item_type=itype,
                          amount=getattr(body, "amount", None), reason=reason, status="SUBMITTED",
                          created_by=_uid(user))
@@ -297,6 +313,7 @@ def review_reduction(fee_id, body, user) -> dict:
         x = db.get(FeeReduction, int(fee_id))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("记录不存在")
+        _scope_or_403(db, x.student_id, user)
         if x.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅待审核可处理")
         if action == "APPROVE":
@@ -320,6 +337,7 @@ def issue_reduction(fee_id, user) -> dict:
         x = db.get(FeeReduction, int(fee_id))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("记录不存在")
+        _scope_or_403(db, x.student_id, user)
         if x.status != "APPROVED":
             raise AppException("DATA_CONFLICT", "仅已批准可发放")
         x.status, x.issued_at, x.version = "ISSUED", datetime.utcnow(), x.version + 1

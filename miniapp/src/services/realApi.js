@@ -355,9 +355,24 @@ export async function enrichAcademic(mock) {
     warnings: r.warnings || [], _real: true }
 }
 
-export async function enrichInternship(mock) {
+export async function enrichInternship(_unused) {
+  // 禁止网络失败回落 mock 假企业；无档案时仅返回中性空态
   const r = await realRequest('/mobile/internship/my')
-  if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
+  if (!r || !r.hasData) {
+    return {
+      hasBatch: false,
+      _real: false,
+      message: (r && r.message) || '暂无实习记录',
+      company: '', post: '', schoolMentor: '', companyMentor: '',
+      batch: '', timeline: [],
+      weekly: { week: '第 1 周', submitted: false, lastFeedback: '' },
+      checkin: { done: false, time: '', totalDays: 0, place: '', note: '仅在点击时采集定位，不后台定位' },
+      status: {
+        todayCheckin: 'PENDING', weekly: 'PENDING_SUBMIT',
+        agreement: 'PENDING', insurance: 'PENDING', onboard: 'PENDING', leave: 'NONE'
+      }
+    }
+  }
   const reports = r.weeklyReports || []
   const latest = reports[0]
   let weekNo = 1
@@ -377,16 +392,19 @@ export async function enrichInternship(mock) {
       submitted = ['PENDING_REVIEW', 'APPROVED'].includes(st)
     }
   }
-  // 有真实档案时不再铺 mock 状态骨架，避免假协议/保险/到岗态串味
-  const out = {
+  const place = r.checkinPlace || r.workLocation || r.enterpriseName || '实习地点待定'
+  return {
     hasBatch: true,
+    batch: r.batchName || '实习批次',
     company: r.enterpriseName || '',
     post: r.positionName || '',
-    schoolMentor: r.advisorName || '',
+    schoolMentor: r.advisorName || '待分配',
+    companyMentor: r.enterpriseMentor || '待分配',
     statusText: r.status || '',
     riskLevel: r.riskLevel || 'NONE',
     weeklyList: reports,
     checkinExceptions: r.attendanceExceptions || [],
+    timeline: Array.isArray(r.timeline) ? r.timeline : [],
     _real: true,
     weekly: {
       week: `第 ${weekNo} 周`,
@@ -396,7 +414,9 @@ export async function enrichInternship(mock) {
     checkin: {
       done: !!(r.todayCheckin && r.todayCheckin.done),
       time: (r.todayCheckin && r.todayCheckin.time) || '',
-      totalDays: (r.todayCheckin && r.todayCheckin.totalDays) || 0
+      totalDays: (r.todayCheckin && r.todayCheckin.totalDays) || 0,
+      place,
+      note: '仅在点击时采集定位，不后台定位'
     },
     status: {
       todayCheckin: (r.todayCheckin && r.todayCheckin.done) ? 'COMPLETED' : 'PENDING',
@@ -407,7 +427,6 @@ export async function enrichInternship(mock) {
       leave: r.leaveStatus || 'NONE'
     }
   }
-  return out
 }
 
 /* 毕设阶段 → 当前主任务（真实派生，按钮定位到本页对应真实功能区，不再 toast「请去 PC 端」）。 */
@@ -603,6 +622,8 @@ export const applyInternshipLeave = (body) =>
   realRequest('/mobile/internship/leave', { method: 'POST', data: body })
 export const withdrawInternshipLeave = (id) =>
   realRequest(`/mobile/internship/leave/${id}/withdraw`, { method: 'POST' })
+export const returnInternshipLeave = (id, body) =>
+  realRequest(`/mobile/internship/leave/${id}/return`, { method: 'POST', data: body || {} })
 
 export const internshipMakeups = () => realRequest('/mobile/internship/makeup')
 export const applyInternshipMakeup = (body) =>
@@ -633,6 +654,14 @@ export const applyInternshipChange = (body) =>
 
 export const withdrawInternshipChange = (id) =>
   realRequest(`/mobile/internship/change-request/${id}/withdraw`, { method: 'POST' })
+
+export const internshipApplications = () => realRequest('/mobile/internship/applications')
+export const saveInternshipApplication = (body) =>
+  realRequest('/mobile/internship/applications', { method: 'PUT', data: body || {} })
+export const submitInternshipApplication = (id) =>
+  realRequest(`/mobile/internship/applications/${id}/submit`, { method: 'POST' })
+export const withdrawInternshipApplication = (id) =>
+  realRequest(`/mobile/internship/applications/${id}/withdraw`, { method: 'POST' })
 
 export const submitInternshipInsurance = (body) =>
   realRequest('/mobile/internship/insurance', { method: 'POST', data: body })
@@ -896,7 +925,12 @@ export const affairsOverview = () => realRequest('/mobile/affairs/overview')
 export const affairsLeaveMy = () => realRequest('/mobile/affairs/leave/my')
 export const affairsLeaveResubmit = (leaveId, body) =>
   realRequest(`/mobile/affairs/leave/${leaveId}/resubmit`, { method: 'POST', data: body || {} })
+export const affairsLeaveCancel = (leaveId, body) =>
+  realRequest(`/mobile/affairs/leave/${leaveId}/cancel`, { method: 'POST', data: body || {} })
 export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
+export const affairsAidObjection = (body) =>
+  realRequest('/mobile/affairs/aid/objection', { method: 'POST', body })
+export const affairsTalkMy = () => realRequest('/mobile/affairs/talk/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
 export const affairsFundingAppeal = (body) => realRequest('/mobile/affairs/funding/appeal', { method: 'POST', body })
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')

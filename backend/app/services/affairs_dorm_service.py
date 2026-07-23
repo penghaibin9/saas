@@ -366,6 +366,9 @@ def submit_transfer(user, student_id, to_bed_id, reason="") -> dict:
         from_bed = db.scalars(select(DormBed).where(
             DormBed.tenant_id == _tid(), DormBed.student_id == int(student_id),
             DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).first()
+        # 调宿须同时在源楼栋与目标楼栋数据范围内（此前只校验目标楼，宿管可对他人楼栋学生发起调出）
+        if from_bed:
+            _require_dorm_scope(db, from_bed.building_id, user)
         first = TRANSFER_NODES[0]
         t = DormTransfer(tenant_id=_tid(), student_id=s.id,
                          from_bed_id=(from_bed.id if from_bed else None), to_bed_id=to_bed.id,
@@ -578,8 +581,12 @@ def list_check_tasks(user, status=None, page=1, page_size=50):
 
 def list_check_records(task_id, user, page=1, page_size=100):
     import json
-    from app.models import DormCheckRecord, DormRoom, StudentProfile
+    from app.models import DormCheckRecord, DormCheckTask, DormRoom, StudentProfile
     with session() as db:
+        task = db.get(DormCheckTask, int(task_id))
+        if not task or task.is_deleted or task.tenant_id != _tid():
+            raise not_found("查寝任务不存在")
+        _require_dorm_scope(db, task.building_id, user)
         rows = db.scalars(select(DormCheckRecord).where(
             DormCheckRecord.tenant_id == _tid(), DormCheckRecord.task_id == int(task_id),
             DormCheckRecord.is_deleted.is_(False)).order_by(DormCheckRecord.id.desc())).all()

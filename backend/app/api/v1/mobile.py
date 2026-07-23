@@ -1326,9 +1326,26 @@ def affairs_leave_resubmit(leave_id: str, body: dict = Body(default={}), user=De
     return success(result, message="已重新提交，等待辅导员审批")
 
 
+@router.post("/affairs/leave/{leave_id}/cancel", summary="学工·本人发起销假")
+def affairs_leave_cancel(leave_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.leave_cancel(user, leave_id, body or {}), message="销假已提交")
+
+
+@router.get("/affairs/talk/my", summary="学工·我的谈心谈话摘要")
+def affairs_talk_my(user=Depends(get_current_user)):
+    return success(aff.talk_my(user))
+
+
 @router.get("/affairs/aid/my", summary="学工·我的困难认定")
 def affairs_aid_my(user=Depends(get_current_user)):
     return success(aff.aid_my(user))
+
+
+@router.post("/affairs/aid/objection", summary="学工·公示期本人对困难认定提异议")
+def affairs_aid_objection(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.aid_objection(user, body or {}), message="异议已提交")
 
 
 @router.get("/affairs/funding/my", summary="学工·我的奖助")

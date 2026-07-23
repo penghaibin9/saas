@@ -131,7 +131,10 @@ def _todo_done(db, app_id):
 
 def _msg(db, receiver_id, title, content, mtype, app_id):
     from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
+    rid = int(receiver_id or 0)
+    if rid <= 0:
+        return
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
                           source_module="student-affairs", source_biz_id=int(app_id),
                           title=title, content=content, message_type=mtype, status="UNREAD"))
 
@@ -145,6 +148,47 @@ def _scope_or_403(db, student_id, user):
     s = db.get(StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
+
+
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _fund_node_visible(ctx, node: str) -> bool:
+    """奖助节点：学校审批仅 TENANT_ALL；学院可审学院/辅导员节点；其余仅辅导员初审。"""
+    if ctx.scope_type == "TENANT_ALL":
+        return True
+    if node == "SCHOOL_REVIEW":
+        return False
+    if ctx.scope_type == "COLLEGE":
+        return node in ("COUNSELOR_REVIEW", "COLLEGE_REVIEW")
+    return node == "COUNSELOR_REVIEW"
+
+
+def _check_fund_review_node(db, x, user):
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    if not _fund_node_visible(ctx, x.status):
+        raise AppException("NO_PERMISSION",
+                           f"无权审批当前节点（{L_FUND.get(x.status, x.status)}）")
+    if ctx.scope_type == "TENANT_ALL" or not x.workflow_instance_id:
+        return
+    from app.models import WorkflowTask
+    task = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
+        WorkflowTask.node_code == x.status, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
+    if not task or not task.assignee_id:
+        return
+    uid = _uid_int(user)
+    if uid and int(task.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "当前审批任务未指派给您")
 
 
 # ── 资格硬校验链（跨域只读，快照入 check_snapshot_json）──
@@ -405,6 +449,7 @@ def review(app_id, user, action, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in FUND_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
+        _check_fund_review_node(db, x, user)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
             i = FUND_NODES.index(x.status)
@@ -660,6 +705,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
     from app.models import StudentProfile
     with session() as db:
         d = _load_disb(db, disbursement_id)
+        _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放，不可重复")
         d.bank_status, d.issued_at, d.fail_reason = "ISSUED", datetime.utcnow(), None
@@ -681,6 +727,7 @@ def fail_disbursement(disbursement_id, user, reason="") -> dict:
         raise AppException("VALIDATION_ERROR", "失败原因至少 5 字")
     with session() as db:
         d = _load_disb(db, disbursement_id)
+        _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放不可置失败")
         d.bank_status, d.fail_reason, d.version = "FAILED", reason.strip(), d.version + 1
@@ -824,6 +871,7 @@ def review_appeal(appeal_id, body, user) -> dict:
             x = db.get(FundingApplication, int(o.application_id))
             # 正常应仍为 PUBLICITY（授予前已拦截进行中申诉）；若竞态已 GRANTED 亦撤回为驳回
             if x and x.status in ("PUBLICITY", "GRANTED"):
+                was_granted = x.status == "GRANTED"
                 x.status, x.result_at = "REJECTED", datetime.utcnow()
                 x.return_reason = (opinion[:200] if opinion else "公示申诉成立")
                 x.version += 1
@@ -831,6 +879,12 @@ def review_appeal(appeal_id, body, user) -> dict:
                     inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
                     if inst:
                         inst.status = "REJECTED"
+                if was_granted and x.student_id:
+                    from app.models import StudentStageEvent
+                    db.add(StudentStageEvent(
+                        tenant_id=_tid(), student_id=int(x.student_id), from_stage="FUNDING_GRANTED",
+                        to_stage="FUNDING_REVOKED", reason="公示申诉成立，撤回已获资助资格",
+                        source_module="student-affairs"))
                 _todo_done(db, x.id)
                 _msg(db, x.student_id, "资助申请未通过",
                      x.return_reason or "公示申诉成立，资助资格已取消", "WORKFLOW_RESULT", x.id)

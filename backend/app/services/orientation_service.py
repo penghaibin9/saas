@@ -92,7 +92,11 @@ def _amt(v) -> float:
 
 def _stu_row(s: OrientationStudent, *, detail: bool = False) -> dict:
     row = {
-        "id": str(s.id), "studentId": str(s.student_id or s.id), "name": s.name,
+        # studentId 固定为迎新台账主键，避免绑定学籍后与 StudentProfile.id 混用导致详情/操作串号。
+        # profileStudentId 才是绑定的学籍档案 id（未绑定为空）。
+        "id": str(s.id), "studentId": str(s.id),
+        "profileStudentId": str(s.student_id) if s.student_id else "",
+        "name": s.name,
         "admissionNo": s.admission_no, "gender": s.gender or "", "collegeName": s.college_name or "",
         "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
         "grade": s.grade or "", "phone": _mask_phone(s.phone_encrypted),
@@ -197,23 +201,27 @@ def create_student(body: dict) -> dict:
             origin=body.get("origin"), counselor=body.get("counselor"),
             stage="ADMITTED", report_status="NOT_REPORTED",
             steps_json=_default_steps_json())
-        # 可选绑定学籍档案，便于学生端「我的迎新」按 student_id 命中（不绑则仅按姓名唯一匹配）
-        raw_sid = body.get("studentId")
+        # 可选绑定学籍档案：优先 profileStudentId（与列表 studentId=迎新台账PK 区分）；
+        # 兼容旧入参 studentId（仅当其指向真实学籍档案时才绑定，避免把迎新 PK 误当档案 id）。
+        raw_sid = body.get("profileStudentId")
+        if raw_sid in (None, ""):
+            raw_sid = body.get("studentId")
         if raw_sid not in (None, ""):
             try:
                 sid_int = int(raw_sid)
             except (TypeError, ValueError):
-                raise AppException("VALIDATION_ERROR", "studentId 须为数字")
+                raise AppException("VALIDATION_ERROR", "profileStudentId 须为数字")
             from app.models import StudentProfile
             prof = db.get(StudentProfile, sid_int)
             if not prof or prof.is_deleted or int(prof.tenant_id) != int(_tid()):
-                raise AppException("VALIDATION_ERROR", "studentId 对应学籍不存在或不属于本校")
+                raise AppException("VALIDATION_ERROR", "profileStudentId 对应学籍不存在或不属于本校")
             s.student_id = sid_int
         db.add(s)
         db.flush()
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
         db.commit()
-        return {"id": str(s.id)}
+        return {"id": str(s.id), "studentId": str(s.id),
+                "profileStudentId": str(s.student_id) if s.student_id else ""}
 
 
 def update_student(sid, body: dict) -> dict:

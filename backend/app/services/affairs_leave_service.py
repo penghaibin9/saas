@@ -170,9 +170,40 @@ def _todo_done(db, leave_id, todo_type="LEAVE_APPROVAL"):
 
 def _msg(db, receiver_id, title, content, mtype, leave_id):
     from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
+    rid = int(receiver_id or 0)
+    if rid <= 0:
+        return
+    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
                           source_module="student-affairs", source_biz_id=int(leave_id),
                           title=title, content=content, message_type=mtype, status="UNREAD"))
+
+
+def _check_leave_action_assignee(db, x, user, *, todo_type: str, node: str = "COUNSELOR_REVIEW"):
+    """销假确认/续假审批：按辅导员节点可见性 + 待办指派人收敛（与审批链一致）。"""
+    from app.core.affairs_security import build_affairs_context
+    from app.models import UnifiedTodo
+    ctx = build_affairs_context(user, db)
+    if not _node_visible(ctx, node):
+        raise AppException("NO_PERMISSION",
+                           f"无权操作当前环节（{L_AFF.get(node, node)}）")
+    if ctx.scope_type == "TENANT_ALL":
+        return
+    todo = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_id == int(x.id), UnifiedTodo.todo_type == todo_type,
+        UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False)
+    ).order_by(UnifiedTodo.id.desc())).first()
+    if not todo or not todo.assignee_id:
+        return
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        uid = int(raw)
+    except (TypeError, ValueError):
+        uid = 0
+    if uid and int(todo.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "当前待办未指派给您")
 
 
 def _row(x, s=None) -> dict:
@@ -250,6 +281,25 @@ def _check_review_node(db, x, user):
     if not _node_visible(ctx, x.affairs_status):
         raise AppException("NO_PERMISSION",
                            f"无权审批当前节点（{L_AFF.get(x.affairs_status, x.affairs_status)}）")
+    # 有明确审批人时：非全域角色必须是当前 PENDING 任务的 assignee（避免同节点多人互批）。
+    if ctx.scope_type == "TENANT_ALL" or not x.workflow_instance_id:
+        return
+    from app.models import WorkflowTask
+    task = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
+        WorkflowTask.node_code == x.affairs_status, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
+    if not task or not task.assignee_id:
+        return
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        uid = int(raw)
+    except (TypeError, ValueError):
+        uid = 0
+    if uid and int(task.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "当前审批任务未指派给您")
 
 
 # ═══════════ 申请 ═══════════
@@ -443,11 +493,17 @@ def resubmit(leave_id, user, *, self_only: bool = False, reason: str | None = No
 
 # ═══════════ 销假 ═══════════
 
-def submit_cancel(leave_id, user, proof_note="") -> dict:
+def submit_cancel(leave_id, user, proof_note="", *, self_only: bool = False) -> dict:
     with session() as db:
         from app.models import AffairsLeaveCancelRecord
         x, s = _load(db, leave_id)
-        _scope_or_403(db, x, user)
+        if self_only:
+            from app.services.mobile_student_service import resolve_student
+            me = resolve_student(db, user or {})
+            if not me or int(me.id) != int(x.student_id or 0):
+                raise AppException("NO_DATA_SCOPE", "只能对本人数假发起销假")
+        else:
+            _scope_or_403(db, x, user)
         if x.affairs_status not in ("APPROVED", "OVERDUE"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过/逾期的请假可发起销假")
         now = datetime.utcnow()
@@ -479,6 +535,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
         _scope_or_403(db, x, user)
         if x.affairs_status != "WAIT_CANCEL_LEAVE":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假不在待销假确认状态")
+        _check_leave_action_assignee(db, x, user, todo_type="LEAVE_CANCEL")
         rec = db.scalars(select(AffairsLeaveCancelRecord).where(
             AffairsLeaveCancelRecord.tenant_id == _tid(), AffairsLeaveCancelRecord.leave_id == x.id,
             AffairsLeaveCancelRecord.status == "SUBMITTED",
@@ -572,6 +629,7 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
         _scope_or_403(db, x, user)
         if x.affairs_status != "EXTENSION_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该请假不在续假审批状态")
+        _check_leave_action_assignee(db, x, user, todo_type="LEAVE_EXTENSION")
         ext = db.scalars(select(AffairsLeaveExtension).where(
             AffairsLeaveExtension.tenant_id == _tid(), AffairsLeaveExtension.leave_id == x.id,
             AffairsLeaveExtension.status == "SUBMITTED",
