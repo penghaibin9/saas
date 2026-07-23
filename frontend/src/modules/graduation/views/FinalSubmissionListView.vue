@@ -222,11 +222,7 @@ export default {
       return pa && !pa.allowed ? pa.reason : ''
     },
     filterFields() {
-      return [{
-        key: 'date', label: '提交时间', type: 'daterange',
-        startKey: 'dateStart', endKey: 'dateEnd',
-        memoryKey: 'graduation.finals.dateRange', emptyLabel: '全部时间'
-      }]
+      return []
     },
     pageStartIndex() { return (this.page - 1) * this.pageSize },
     selectedRow() { return this.rows.find((r) => this.rowKey(r) === this.selKey) || null },

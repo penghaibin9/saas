@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -30,7 +30,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="DEFENSE_SCORE", biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
-                                occurred_at=datetime.utcnow()))
+                                occurred_at=datetime.now(timezone.utc)))
 
 
 def _stu(db, sid) -> GraduationStudent:
@@ -252,7 +252,7 @@ def confirm_scores(gd_student_id) -> dict:
                     "DATA_CONFLICT",
                     f"答辩组评委尚未全部评分：{('、'.join(missing))}",
                 )
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for d in rows:
             d.status = "CONFIRMED"
             d.confirmed_at = now

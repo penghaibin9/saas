@@ -330,6 +330,12 @@ const graduationRoutes = {
       meta: { moduleCode: 'GRADUATION', title: '答辩与成绩（查重/评阅/答辩评分/成绩评定）', requiresAuth: true, permissionKey: 'graduationDesign.defenseGrade.manage' }
     },
     {
+      path: 'audit-logs',
+      name: 'graduation-audit-logs',
+      component: () => import('@/modules/graduation/views/GraduationAuditLogView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '毕设操作日志', requiresAuth: true, permissionKey: 'graduationDesign.manage' }
+    },
+    {
       path: 'risk-archive',
       name: 'graduation-risk-archive',
       component: () => import('@/modules/graduation/views/GraduationRiskArchiveView.vue'),

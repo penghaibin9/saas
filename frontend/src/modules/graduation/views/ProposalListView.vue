@@ -166,11 +166,7 @@ export default {
       return { visible: !!pa.visible, allowed: !!pa.allowed }
     },
     filterFields() {
-      return [{
-        key: 'date', label: '提交时间', type: 'daterange',
-        startKey: 'dateStart', endKey: 'dateEnd',
-        memoryKey: 'graduation.proposals.dateRange', emptyLabel: '全部时间'
-      }]
+      return []
     },
     pageStartIndex() {
       return (this.page - 1) * this.pageSize

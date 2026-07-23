@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -33,7 +33,7 @@ def _audit(db, biz_type, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
-                                occurred_at=datetime.utcnow()))
+                                occurred_at=datetime.now(timezone.utc)))
 
 
 def _stu(db, sid) -> GraduationStudent:
@@ -98,7 +98,7 @@ def submit_plagiarism(gd_student_id, gd_final_id=None, threshold: int = 30) -> d
             return _plag_row(active, stu)
         p = GraduationPlagiarismCheck(tenant_id=_tid(), gd_student_id=stu.id,
                                       gd_final_id=final.id,
-                                      submit_at=datetime.utcnow(), status="CHECKING", threshold=threshold)
+                                      submit_at=datetime.now(timezone.utc), status="CHECKING", threshold=threshold)
         db.add(p)
         db.flush()
         _audit(db, "PLAGIARISM", p.id, "发起查重")
@@ -278,7 +278,7 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
         r = GraduationReview(tenant_id=_tid(), gd_student_id=stu.id,
                              gd_final_id=final_id,
                              reviewer_name=reviewer, status="ASSIGNED",
-                             assigned_by=n, assigned_at=datetime.utcnow())
+                             assigned_by=n, assigned_at=datetime.now(timezone.utc))
         db.add(r)
         db.flush()
         _audit(db, "REVIEW", r.id, "分配评阅任务", detail=f"{stu.name}→{reviewer}")
@@ -307,7 +307,7 @@ def submit_review(rid, score: int, opinion: str) -> dict:
         r.score = score
         r.opinion = opinion
         r.status = "COMPLETED"
-        r.reviewed_at = datetime.utcnow()
+        r.reviewed_at = datetime.now(timezone.utc)
         r.version += 1
         _audit(db, "REVIEW", r.id, "提交评阅", detail=f"score={score}")
         db.commit()

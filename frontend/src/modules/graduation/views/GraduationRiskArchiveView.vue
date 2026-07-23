@@ -151,14 +151,7 @@
     </div>
     <!-- 毕设统计 -->
     <div v-if="tab === 'stats'" class="mp-stack">
-      <AppDateRangePicker
-        v-model="statsRange"
-        label="统计时间范围"
-        mode="filter"
-        empty-label="全部时间"
-        memory-key="graduation.riskArchive.statsRange"
-        @change="onStatsRangeChange"
-      />
+      <p class="mp-note">以下为当前数据范围内的全量汇总（时间筛选待后端统一接入后开放）。</p>
       <ErrorState v-if="statsError" :description="statsError" @retry="loadStats" />
       <LoadingState v-else-if="statsLoading" />
       <template v-else-if="overview">
@@ -206,7 +199,6 @@ import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, Er
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPagination, AppStackedBarChart, AppPageGuide } from '@/components/common'
-import { AppDateRangePicker } from '@/components/common/date'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
@@ -221,17 +213,16 @@ const ARCHIVE_REJECT_REASON_CHIPS = [
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateRangePicker, AppExportButton, AppPagination, AppStackedBarChart },
+  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExportButton, AppPagination, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       tab: 'risk',
       riskSelKey: '', riskAutoNext: true,
       archiveSelKey: '',
-      riskFilters: { status: '', level: '', dateStart: '', dateEnd: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
-      archiveFilters: { keyword: '', status: '', dateStart: '', dateEnd: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true, archiveError: '',
+      riskFilters: { status: '', level: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
+      archiveFilters: { keyword: '', status: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true, archiveError: '',
       statsError: '',
-      statsRange: { start: '', end: '' },
       overview: null, collegeRows: [], statsLoading: true,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       riskColumns: [{ key: 'risk', title: '风险 / 学生' }, { key: 'level', title: '等级' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '160px' }],
@@ -258,23 +249,13 @@ export default {
     riskFilterFields() {
       return [
         { key: 'status', label: '状态', type: 'select', options: [{ value: 'OPEN', label: '待受理' }, { value: 'PROCESSING', label: '处理中' }, { value: 'CLOSED', label: '已关闭' }] },
-        { key: 'level', label: '等级', type: 'select', options: [{ value: 'LOW', label: '低' }, { value: 'MEDIUM', label: '中' }, { value: 'HIGH', label: '高' }, { value: 'CRITICAL', label: '紧急' }] },
-        {
-          key: 'date', label: '预警时间', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.risk.dateRange', emptyLabel: '全部时间'
-        }
+        { key: 'level', label: '等级', type: 'select', options: [{ value: 'LOW', label: '低' }, { value: 'MEDIUM', label: '中' }, { value: 'HIGH', label: '高' }, { value: 'CRITICAL', label: '紧急' }] }
       ]
     },
     archiveFilterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '学生姓名' },
-        { key: 'status', label: '状态', type: 'select', options: [{ value: 'NOT_GENERATED', label: '待生成' }, { value: 'PENDING_SUBMIT', label: '待提交' }, { value: 'SUBMITTED', label: '已提交' }, { value: 'FILED', label: '已备案' }, { value: 'REJECTED', label: '已驳回' }] },
-        {
-          key: 'date', label: '归档时间', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.archive.dateRange', emptyLabel: '全部时间'
-        }
+        { key: 'status', label: '状态', type: 'select', options: [{ value: 'NOT_GENERATED', label: '待生成' }, { value: 'PENDING_SUBMIT', label: '待提交' }, { value: 'SUBMITTED', label: '已提交' }, { value: 'FILED', label: '已备案' }, { value: 'REJECTED', label: '已驳回' }] }
       ]
     }
   },
@@ -337,7 +318,7 @@ export default {
       if (res.code === 0) { this.riskRows = res.data.list; this.riskTotal = res.data.total; this.ensureRiskSelection() } else { this.riskRows = []; this.riskError = res.message || '加载失败' }
       this.riskLoading = false
     },
-    resetRiskFilters() { this.riskFilters = { status: '', level: '', dateStart: '', dateEnd: '' }; this.riskPage = 1; this.loadRisks() },
+    resetRiskFilters() { this.riskFilters = { status: '', level: '' }; this.riskPage = 1; this.loadRisks() },
     doAccept(row) {
       this.confirm = { visible: true, title: '受理风险', message: `确认受理「${row.riskName}」（${row.studentName}）？`, type: 'primary', confirmText: '受理', requireReason: false, action: 'accept', row }
     },
@@ -398,8 +379,7 @@ export default {
       if (res.code === 0) { this.archiveRows = res.data.list; this.archiveTotal = res.data.total; this.ensureArchiveSelection() } else { this.archiveRows = []; this.archiveError = res.message || '加载失败' }
       this.archiveLoading = false
     },
-    resetArchiveFilters() { this.archiveFilters = { keyword: '', status: '', dateStart: '', dateEnd: '' }; this.archivePage = 1; this.loadArchives() },
-    onStatsRangeChange() { this.loadStats() },
+    resetArchiveFilters() { this.archiveFilters = { keyword: '', status: '' }; this.archivePage = 1; this.loadArchives() },
     async doGenerate(row) {
       const res = await graduationRiskArchiveApi.generateArchive(row.gdStudentId)
       if (res.code === 0) { toast.success('已生成'); this.loadArchives() } else toast.error(res.message)

@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 
@@ -38,7 +38,7 @@ def _audit(db, biz_type, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before,
-                                after_val=after, occurred_at=datetime.utcnow()))
+                                after_val=after, occurred_at=datetime.now(timezone.utc)))
 
 
 def _get_mentor(db, mid) -> GraduationMentor:
@@ -179,7 +179,7 @@ def review_mentor(mid, action: str, comment: str = None) -> dict:
         m.qualification_status = target
         m.reviewer_name = n
         m.review_comment = (comment or "").strip()
-        m.reviewed_at = datetime.utcnow()
+        m.reviewed_at = datetime.now(timezone.utc)
         _audit(db, "MENTOR", m.id, "审核导师资格-" + ("通过" if action == "APPROVE" else "驳回"),
                (comment or "").strip())
         db.commit()
@@ -220,7 +220,7 @@ def archive_mentor(mid) -> dict:
         if m.current_count > 0:
             raise AppException("DATA_CONFLICT", "该导师仍有在指导学生，不可归档")
         m.qualification_status = "ARCHIVED"
-        m.archived_at = datetime.utcnow()
+        m.archived_at = datetime.now(timezone.utc)
         _audit(db, "MENTOR", m.id, "归档导师")
         db.commit()
         return _mentor_row(m)
@@ -255,7 +255,7 @@ def create_eval(mentor_id, score, level, note=None, period=None) -> dict:
         n, _ = _op()
         e = GraduationMentorEval(tenant_id=_tid(), mentor_id=m.id, period=(period or "").strip() or None,
                                 score=score, level=level, note=(note or "").strip() or None,
-                                evaluated_by=n, evaluated_at=datetime.utcnow())
+                                evaluated_by=n, evaluated_at=datetime.now(timezone.utc))
         db.add(e)
         db.flush()
         _audit(db, "MENTOR", m.id, "导师评价", f"{m.teacher_name} {level} {score}分")
@@ -391,7 +391,7 @@ def assign_mentor(gd_student_id, mentor_id, reason: str = None) -> dict:
         a = GraduationMentorAssignment(
             tenant_id=_tid(), gd_student_id=stu.id, mentor_id=mentor.id, assign_source="MANUAL",
             assign_reason=(reason or "").strip(), status="ACTIVE", assigned_by=n,
-            assigned_at=datetime.utcnow())
+            assigned_at=datetime.now(timezone.utc))
         db.add(a)
         stu.mentor_id = mentor.id
         stu.advisor_name = mentor.teacher_name
@@ -423,7 +423,7 @@ def change_mentor(gd_student_id, new_mentor_id, reason: str) -> dict:
             GraduationMentorAssignment.gd_student_id == stu.id,
             GraduationMentorAssignment.status == "ACTIVE")).first()
         n, _ = _op()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if old_active:
             old_active.status = "CHANGED"
             old_active.ended_at = now
@@ -458,7 +458,7 @@ def cancel_assignment(assignment_id, reason: str) -> dict:
         assert_student_access(db, stu, "mentor.assignment.cancel")
         mentor = db.get(GraduationMentor, a.mentor_id)
         a.status = "CANCELLED"
-        a.ended_at = datetime.utcnow()
+        a.ended_at = datetime.now(timezone.utc)
         if stu and stu.mentor_id == a.mentor_id:
             stu.mentor_id = None
             stu.advisor_name = None

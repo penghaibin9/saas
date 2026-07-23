@@ -54,6 +54,20 @@
               <span v-if="step.actionHint" class="sp-muted">{{ step.actionHint }}</span>
             </div>
 
+            <div v-if="step.key === 'archive' && grade.published" class="gd-grade-box">
+              <p class="gd-grade-score">综合成绩 <strong>{{ grade.totalScore ?? '—' }}</strong> 分（{{ grade.gradeLevel || '—' }}）</p>
+              <p v-if="grade.advisorScore != null || grade.reviewerScore != null || grade.defenseScore != null" class="sp-muted">
+                指导 {{ grade.advisorScore ?? '—' }} · 评阅 {{ grade.reviewerScore ?? '—' }} · 答辩 {{ grade.defenseScore ?? '—' }}
+              </p>
+              <template v-if="!showAppeal">
+                <button class="sp-btn sp-btn--ghost" :disabled="busy" @click="showAppeal = true">对成绩有异议？发起更正申诉</button>
+              </template>
+              <template v-else>
+                <label>申诉理由<textarea v-model.trim="appealReason" placeholder="说明异议点与依据（至少 5 字）" maxlength="500" /></label>
+                <button class="sp-btn" :disabled="busy || appealReason.trim().length < 5" @click="submitAppeal">提交成绩申诉</button>
+              </template>
+            </div>
+
             <div v-if="expanded === step.key" class="gd-form">
               <template v-if="step.key === 'topic'">
                 <p v-if="!round" class="sp-muted">当前没有开放的选题轮次，请等待管理员发布。</p>
@@ -122,6 +136,8 @@ const round = ref(null)
 const topics = ref([])
 const selectedTopicIds = ref([])
 const rectifyContent = ref('')
+const showAppeal = ref(false)
+const appealReason = ref('')
 const attachments = reactive({ proposal: [], final: [] })
 const proposalForm = reactive({ background: '', plan: '', outcome: '' })
 
@@ -184,9 +200,12 @@ const steps = computed(() => [
     detail: defense.value.published ? `${defense.value.date || '待定'} · ${defense.value.location || '待定'} · ${defense.value.groupName || ''}` : (defense.value.message || '完成资格审核后由学校统一安排。')
   },
   {
-    key: 'archive', order: '08', title: '成绩归档与总结', description: '学校发布后可查看最终成绩；材料齐套后由学校归档。',
-    status: archive.value.statusLabel || (grade.value.published ? '等待学校归档' : '等待发布'), tone: archive.value.status === 'FILED' ? 'success' : archive.value.status === 'REJECTED' ? 'danger' : 'warn',
-    detail: archive.value.status === 'FILED' ? `已由 ${archive.value.verifiedBy || '学校'} 核验归档${archive.value.filedAt ? ` · ${archive.value.filedAt}` : ''}` : (archive.value.rejectReason || (grade.value.published ? '成绩已发布，学校正在核验归档材料。' : '成绩发布前不展示分数明细。')),
+    key: 'archive', order: '08', title: '成绩归档与总结', description: '学校发布后可查看最终成绩并发起申诉；材料齐套后由学校归档。',
+    status: archive.value.statusLabel || (grade.value.published ? '成绩已发布' : '等待发布'),
+    tone: archive.value.status === 'FILED' ? 'success' : archive.value.status === 'REJECTED' ? 'danger' : (grade.value.published ? 'success' : 'warn'),
+    detail: archive.value.status === 'FILED'
+      ? `已由 ${archive.value.verifiedBy || '学校'} 核验归档${archive.value.filedAt ? ` · ${archive.value.filedAt}` : ''}`
+      : (archive.value.rejectReason || (grade.value.published ? '成绩已发布，可核对分数并在有异议时发起申诉；学校同步核验归档材料。' : '成绩发布前不展示分数明细。')),
     checklist: archive.value.checklist || []
   }
 ])
@@ -302,6 +321,19 @@ async function downloadMaterial(file) {
   try { await portalApi.downloadGraduationMaterial(file.fileId, file.fileName); ui.notify('材料已开始下载，可用本机阅读器打开并打印') } catch (e) { ui.notify(e?.message || '材料下载失败') } finally { busy.value = false }
 }
 
+async function submitAppeal() {
+  const reason = appealReason.value.trim()
+  if (reason.length < 5) return
+  busy.value = true
+  try {
+    await portalApi.graduationGradeAppeal(reason)
+    ui.notify('成绩申诉已提交，等待学校复核')
+    showAppeal.value = false
+    appealReason.value = ''
+    await afterAction(['grade'])
+  } catch (e) { ui.notify(e?.message || '申诉提交失败') } finally { busy.value = false }
+}
+
 onMounted(load)
 </script>
 
@@ -316,5 +348,6 @@ onMounted(load)
 .gd-step article { margin:0 0 14px 18px; padding:16px 18px; background:#fff; border:1px solid #edf0f3; border-radius:10px; }.gd-step__head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }.gd-step h2 { font-size:16px; margin:0; }.gd-step__head p,.gd-step__detail { margin:6px 0 0; color:#86909c; font-size:13px; line-height:1.6; }.gd-step__comment { margin:10px 0 0; padding:8px 10px; border-radius:6px; background:#fff7e8; color:#8b5c00; font-size:13px; white-space:pre-wrap; }.gd-step__actions { display:flex; align-items:center; gap:10px; margin-top:13px; }.gd-form { margin-top:14px; padding:14px; background:#fafbfc; border-radius:8px; }.gd-form label { display:block; margin:10px 0; color:#4e5969; font-size:13px; }.gd-form textarea { display:block; width:100%; min-height:76px; resize:vertical; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; }.gd-form input[type=file] { display:block; margin-top:7px; font-size:12px; }
 .gd-files { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; color:#4e5969; font-size:13px; }.gd-file { border:0; padding:5px 8px; border-radius:5px; color:var(--sp-primary); background:rgba(22,119,255,.08); cursor:pointer; font-size:12px; }.gd-file:disabled { cursor:not-allowed; opacity:.6; }.gd-checklist { display:flex; flex-wrap:wrap; gap:7px 14px; margin:12px 0 0; padding:0; list-style:none; color:#4e5969; font-size:12px; }.gd-checklist li { color:#00a33a; }.gd-checklist li.is-missing { color:#f53f3f; }
 .gd-topic-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; margin:12px 0; }.gd-topic { position:relative; min-height:72px; padding:10px; text-align:left; cursor:pointer; background:#fff; border:1px solid #e5e6eb; border-radius:7px; }.gd-topic.is-picked { border-color:var(--sp-primary); background:rgba(22,119,255,.05); }.gd-topic b { position:absolute; right:8px; top:8px; color:var(--sp-primary); font-size:11px; }.gd-topic strong,.gd-topic span { display:block; padding-right:44px; }.gd-topic strong { font-size:13px; }.gd-topic span { color:#86909c; font-size:12px; margin-top:5px; }
+.gd-grade-box { margin-top:12px; padding:12px 14px; border-radius:8px; background:#f7fafc; border:1px solid #edf0f3; }.gd-grade-score { margin:0 0 6px; font-size:14px; color:#1d2129; }.gd-grade-score strong { font-size:20px; color:var(--sp-primary); }.gd-grade-box .sp-btn { margin-top:10px; }.gd-grade-box label { display:block; margin-top:10px; color:#4e5969; font-size:13px; }.gd-grade-box textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
 @media (max-width: 760px) { .gd-hero { display:block; }.gd-hero .sp-btn { margin-top:12px; }.gd-summary { grid-template-columns:repeat(2, 1fr); }.gd-step { grid-template-columns:40px minmax(0, 1fr); }.gd-step article { margin-left:12px; }.gd-step__head { display:block; }.gd-step__head .sp-tag { margin-top:8px; } }
 </style>

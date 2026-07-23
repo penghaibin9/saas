@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
@@ -49,7 +49,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="RISK", biz_id=str(bid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
-                                occurred_at=datetime.utcnow()))
+                                occurred_at=datetime.now(timezone.utc)))
 
 
 def _upsert(db, code, sid) -> None:
@@ -60,7 +60,7 @@ def _upsert(db, code, sid) -> None:
         return
     name, level = RISK_DEFS[code]
     db.add(GraduationRiskCase(tenant_id=_tid(), risk_code=code, risk_name=name, gd_student_id=sid,
-                              level=level, status="OPEN", detected_at=datetime.utcnow()))
+                              level=level, status="OPEN", detected_at=datetime.now(timezone.utc)))
 
 
 def scan_risks() -> dict:
@@ -226,7 +226,7 @@ def close_risk(rid, reason: str) -> dict:
             raise AppException("DATA_CONFLICT", "仅「处理中」风险可关闭")
         r.status = "CLOSED"
         r.close_reason = reason.strip()
-        r.closed_at = datetime.utcnow()
+        r.closed_at = datetime.now(timezone.utc)
         _audit(db, r.id, "关闭风险", reason.strip())
         db.commit()
         return _row(r, db.get(GraduationStudent, r.gd_student_id))

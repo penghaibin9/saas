@@ -107,12 +107,7 @@ export default {
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '批次名称 / 编号 / 届' },
-        { key: 'status', label: '状态', type: 'select', options: BATCH_STATUS },
-        {
-          key: 'date', label: '起止时间', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.batches.dateRange', emptyLabel: '全部时间'
-        }
+        { key: 'status', label: '状态', type: 'select', options: BATCH_STATUS }
       ]
     },
     toolbarActions() { return [{ key: 'create', label: '＋ 新建批次', variant: 'primary' }] }

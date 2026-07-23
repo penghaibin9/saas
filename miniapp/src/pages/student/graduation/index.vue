@@ -147,6 +147,32 @@
           </template>
         </view>
 
+        <!-- 互查任务：待我互查 / 我需整改 -->
+        <view v-if="hasPeerWork" id="gd-peer" class="section-head"><text class="section-head__title">成果互查</text></view>
+        <view v-if="hasPeerWork" class="card stack-sm">
+          <view v-for="p in (peer.toReview || [])" :key="'r-' + p.id" class="gd__final-item">
+            <view class="gd__choice-row">
+              <text class="gd__choice-title">待互查 · {{ p.studentName || '同学' }}</text>
+              <MobileStatusTag :label="p.statusLabel || '待互查'" type="warning" />
+            </view>
+            <textarea class="gd__reason" v-model="peerOpinions[p.id]" :maxlength="500" placeholder="互查意见（至少5字）" placeholder-class="wr__ph" />
+            <button class="btn btn-primary" :disabled="peerBusyId === p.id || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">
+              {{ peerBusyId === p.id ? '提交中…' : '提交互查意见' }}
+            </button>
+          </view>
+          <view v-for="p in (peer.myRectify || [])" :key="'x-' + p.id" class="gd__final-item">
+            <view class="gd__choice-row">
+              <text class="gd__choice-title">需整改 · 互查人 {{ p.reviewerName || '—' }}</text>
+              <MobileStatusTag :label="p.statusLabel || '待整改'" type="danger" />
+            </view>
+            <text v-if="p.opinion" class="gd__hint">互查意见：{{ p.opinion }}</text>
+            <textarea class="gd__reason" v-model="peerNotes[p.id]" :maxlength="500" placeholder="整改说明（至少5字）" placeholder-class="wr__ph" />
+            <button class="btn btn-primary" :disabled="peerBusyId === p.id || (peerNotes[p.id] || '').trim().length < 5" @click="submitPeerRectify(p.id)">
+              {{ peerBusyId === p.id ? '提交中…' : '提交整改说明' }}
+            </button>
+          </view>
+        </view>
+
         <!-- 指导记录（真实，最新在前；无记录空态） -->
         <view id="gd-guidance" class="section-head"><text class="section-head__title">指导记录</text></view>
         <view class="card stack-sm">
@@ -183,10 +209,14 @@ export default {
       final: null, finalSubmitting: false,
       midterm: null, rectifyContent: '', rectifySubmitting: false,
       defense: null, grade: null,
-      showAppeal: false, appealReason: '', appealSubmitting: false
+      showAppeal: false, appealReason: '', appealSubmitting: false,
+      peer: { toReview: [], myRectify: [] }, peerOpinions: {}, peerNotes: {}, peerBusyId: ''
     }
   },
   computed: {
+    hasPeerWork() {
+      return ((this.peer && this.peer.toReview) || []).length > 0 || ((this.peer && this.peer.myRectify) || []).length > 0
+    },
     finalRejected() {
       const items = (this.final && this.final.items) || []
       const r = items.find((i) => i.status === 'REJECTED')
@@ -207,6 +237,7 @@ export default {
       if (this.final && this.final.hasData) nav.push({ label: '成果', anchor: 'final' })
       if (this.defense && this.defense.assigned) nav.push({ label: '答辩', anchor: 'defense' })
       if (this.grade && this.grade.published) nav.push({ label: '成绩', anchor: 'grade' })
+      if (this.hasPeerWork) nav.push({ label: '互查', anchor: 'peer' })
       nav.push({ label: '指导记录', anchor: 'guidance' })
       return nav
     }
@@ -238,6 +269,29 @@ export default {
       studentApi.getGraduationMidterm().then((d) => { this.midterm = d }).catch(() => {})
       studentApi.getGraduationDefense().then((d) => { this.defense = d }).catch(() => {})
       studentApi.getGraduationGrade().then((d) => { this.grade = d }).catch(() => {})
+      studentApi.getGraduationPeerTasks().then((d) => { this.peer = d || { toReview: [], myRectify: [] } }).catch(() => {})
+    },
+    submitPeer(pid) {
+      const opinion = (this.peerOpinions[pid] || '').trim()
+      if (opinion.length < 5 || this.peerBusyId) return
+      this.peerBusyId = pid
+      studentApi.submitGraduationPeer(pid, opinion).then(() => {
+        uni.showToast({ title: '互查意见已提交', icon: 'success' })
+        this.peerOpinions[pid] = ''
+        this.loadProcess()
+      }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
+        .finally(() => { this.peerBusyId = '' })
+    },
+    submitPeerRectify(pid) {
+      const note = (this.peerNotes[pid] || '').trim()
+      if (note.length < 5 || this.peerBusyId) return
+      this.peerBusyId = pid
+      studentApi.rectifyGraduationPeer(pid, note).then(() => {
+        uni.showToast({ title: '整改说明已提交', icon: 'success' })
+        this.peerNotes[pid] = ''
+        this.loadProcess()
+      }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
+        .finally(() => { this.peerBusyId = '' })
     },
     startProposal() {
       this.showProposalForm = true

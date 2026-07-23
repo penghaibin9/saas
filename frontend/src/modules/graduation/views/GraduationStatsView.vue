@@ -6,13 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <AppDateRangePicker
-        v-model="statsRange"
-        label="统计时间范围（当前汇总为全部时间，日期筛选后续接入）"
-        mode="filter"
-        empty-label="全部时间"
-        memory-key="graduation.statsReport.dateRange"
-      />
+      <p class="mp-note">以下为当前数据范围内的全量汇总（时间筛选待后端统一接入后开放）。</p>
       <LoadingState v-if="loading" />
       <div v-else class="mp-stack">
         <section v-for="b in blocks" :key="b.key" class="mp-card">
@@ -51,17 +45,15 @@
 /** 毕设统计报表中心（/admin/graduation/stats-report）。接各域真实 /stats，只读聚合。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
 import { AppStackedBarChart } from '@/components/common'
-import { AppDateRangePicker } from '@/components/common/date'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 
 export default {
   name: 'GraduationStatsView',
-  components: { ModulePageShell, LoadingState, AppDateRangePicker, AppStackedBarChart },
+  components: { ModulePageShell, LoadingState, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
-      statsRange: { start: '', end: '' },
       blocks: [
         { key: 'proposal', title: '开题统计', fn: 'getProposalStats', data: null },
         { key: 'guidance', title: '指导频次统计', fn: 'getGuidanceStats', data: null },
@@ -104,7 +96,6 @@ export default {
     },
     async loadAll() {
       this.loading = true
-      // 时间范围默认空=全部时间；后端暂未统一接 dateStart/dateEnd 时前端仍保留筛选 UI 与记忆
       await Promise.all(this.blocks.map((b) => this.loadOne(b)))
       this.loading = false
     }

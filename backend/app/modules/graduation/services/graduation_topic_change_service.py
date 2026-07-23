@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -25,7 +25,7 @@ STATUS_TONE = {"PENDING": "warning", "APPROVED": "success", "REJECTED": "danger"
 
 def _audit(db, biz_id, action, detail=""):
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="TOPIC_CHANGE", biz_id=str(biz_id),
-                                action=action, operator="系统", detail=detail, occurred_at=datetime.utcnow()))
+                                action=action, operator="系统", detail=detail, occurred_at=datetime.now(timezone.utc)))
 
 
 def _row(r: GraduationTopicChangeRequest, stu: GraduationStudent | None = None,
@@ -136,7 +136,7 @@ def request_change(gd_student_id, new_topic_id, reason: str, requested_by: str =
             GraduationTopicChangeRequest.status == "PENDING")).first()
         if existing_pending:
             raise AppException("DATA_CONFLICT", "已有变更申请正在审核中，请等待处理后再提交")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         r = GraduationTopicChangeRequest(
             tenant_id=_tid(), gd_student_id=int(gd_student_id), old_topic_id=stu.topic_id,
             new_topic_id=new_tid, reason=reason, status="PENDING",
@@ -167,7 +167,7 @@ def review_change(request_id, action: str, comment: str = "", reviewer_name: str
             r.status = "REJECTED"
             r.review_comment = comment
             r.reviewer_name = reviewer_name or "教师"
-            r.reviewed_at = datetime.utcnow()
+            r.reviewed_at = datetime.now(timezone.utc)
             _audit(db, r.id, "REJECT", f"{r.reviewer_name}：{comment}")
             db.commit()
             return _row_of(db, r)
@@ -190,7 +190,7 @@ def review_change(request_id, action: str, comment: str = "", reviewer_name: str
         r.status = "APPROVED"
         r.review_comment = comment
         r.reviewer_name = reviewer_name or "教师"
-        r.reviewed_at = datetime.utcnow()
+        r.reviewed_at = datetime.now(timezone.utc)
         _audit(db, r.id, "APPROVE",
               f"{r.reviewer_name}：由「{old_t.title if old_t else r.old_topic_id}」变更至「{new_t.title}」")
         db.commit()

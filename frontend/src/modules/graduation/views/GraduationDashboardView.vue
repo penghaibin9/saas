@@ -129,7 +129,7 @@ export default {
         { key: 'createBatch', label: '＋ 新增毕设批次', variant: 'primary' },
         { key: 'importStudents', label: '导入学生名单' },
         { key: 'exportStats', label: '导出进度统计' },
-        { key: 'viewAuditLog', label: '预警与统计', variant: 'ghost' }
+        { key: 'viewAuditLog', label: '操作日志', variant: 'ghost' }
       ]
         .filter((a) => pa[a.key] && pa[a.key].visible)
         .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
@@ -156,7 +156,7 @@ export default {
         createBatch: '/admin/graduation/batches?panel=create',
         importStudents: '/admin/graduation/students?panel=roster',
         exportStats: '/admin/graduation/risk-archive?panel=stats',
-        viewAuditLog: '/admin/graduation/risk-archive?panel=risk'
+        viewAuditLog: '/admin/graduation/audit-logs'
       }
       if (map[key]) this.$router.push(map[key])
     }

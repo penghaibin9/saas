@@ -161,12 +161,7 @@ export default {
     filterFields() {
       return [
         { key: 'keyword', label: '课题名称', type: 'text', placeholder: '关键词' },
-        { key: 'status', label: '课题状态', type: 'select', options: GD_TOPIC_STATUS.filter((s) => s.value !== 'ARCHIVED') },
-        {
-          key: 'date', label: '选题时间', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.topics.dateRange', emptyLabel: '全部时间'
-        }
+        { key: 'status', label: '课题状态', type: 'select', options: GD_TOPIC_STATUS.filter((s) => s.value !== 'ARCHIVED') }
       ]
     },
     toolbarActions() {

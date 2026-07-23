@@ -153,22 +153,12 @@ export default {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 工号 / 方向' },
         { key: 'qualificationStatus', label: '资格状态', type: 'select', options: MENTOR_QUALIFICATION_STATUS },
-        { key: 'mentorType', label: '导师类型', type: 'select', options: MENTOR_TYPE },
-        {
-          key: 'date', label: '申报/变更时间', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.mentors.dateRange', emptyLabel: '全部时间'
-        }
+        { key: 'mentorType', label: '导师类型', type: 'select', options: MENTOR_TYPE }
       ]
     },
     uFilterFields() {
       return [
-        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号' },
-        {
-          key: 'date', label: '分配时间', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.mentors.assignDateRange', emptyLabel: '全部时间'
-        }
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号' }
       ]
     },
     toolbarActions() {

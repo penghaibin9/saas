@@ -264,6 +264,10 @@ export const graduationApi = {
     const res = await this.exportDefenseGroups()
     if (res.code === 0) downloadXlsxFromApi(res.data, '答辩安排台账.xlsx')
     return res
+  },
+
+  getAuditLogs(params = {}) {
+    return listStrict('/graduation/audit-logs', params)
   }
 }
 

@@ -330,12 +330,7 @@ export default {
       const groupOpts = this.groupOpts.map((g) => ({ value: g, label: g }))
       const base = [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' },
-        { key: 'batchId', label: '批次', type: 'graduation-batch' },
-        {
-          key: 'date', label: '起始日期', type: 'daterange',
-          startKey: 'dateStart', endKey: 'dateEnd',
-          memoryKey: 'graduation.students.dateRange', emptyLabel: '全部时间'
-        }
+        { key: 'batchId', label: '批次', type: 'graduation-batch' }
       ]
       const panelFields = {
         roster: [
@@ -520,7 +515,8 @@ export default {
     },
     askBatchArchive() {
       this.confirm = {
-        visible: true, title: '批量归档', message: `确认归档已选 ${this.selectedIds.length} 名学生？`,
+        visible: true, title: '批量归档',
+        message: `确认归档已选 ${this.selectedIds.length} 名学生？仅材料已备案且无未关闭风险的学生会归档，其余将跳过。`,
         type: 'warning', confirmText: '批量归档', requireReason: true, reasonLabel: '归档说明',
         action: 'ARCHIVE_BATCH', row: null
       }
@@ -543,7 +539,9 @@ export default {
           res = await gdStudentApi.batchArchive({ recordIds: this.selectedIds, reason: reason || '' })
         }
         if (res && res.code === 0) {
-          toast.success(action === 'ARCHIVE_BATCH' ? `已归档 ${res.data.archived} 人` : '已更新')
+          toast.success(action === 'ARCHIVE_BATCH'
+            ? `已归档 ${res.data.archived ?? 0} 人，跳过 ${res.data.skipped ?? 0} 人（缺备案或未关闭风险）`
+            : '已更新')
           this.confirm.visible = false
           this.selectedIds = []
           this.load()

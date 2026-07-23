@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 
@@ -39,7 +39,7 @@ def _audit(db, tid, action, detail="", before="", after=""):
     n, r = _op()
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="TOPIC", biz_id=str(tid), action=action,
                                 operator=n, role_name=r, detail=detail, before_val=before,
-                                after_val=after, occurred_at=datetime.utcnow()))
+                                after_val=after, occurred_at=datetime.now(timezone.utc)))
 
 
 def _get(db, tid) -> GraduationTopic:
@@ -345,7 +345,7 @@ def archive_topic(tid, reason: str = "") -> dict:
         before = t.status
         t.status = "ARCHIVED"
         t.archive_reason = (reason or "").strip() or None
-        t.archived_at = datetime.utcnow()
+        t.archived_at = datetime.now(timezone.utc)
         _audit(db, t.id, "ARCHIVE", reason or "归档", before, "ARCHIVED")
         db.commit()
         return _row_of(db, t)
