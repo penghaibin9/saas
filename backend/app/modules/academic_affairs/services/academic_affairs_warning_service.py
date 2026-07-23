@@ -62,6 +62,8 @@ RULES_META = [
      "sourceCode": "LOW_GPA", "type": "float", "min": 0.5, "max": 4.0, "default": 2.0},
     {"key": "warning_retake_threshold", "label": "补考重修预警：重修门数达到该值触发",
      "sourceCode": "RETAKE_EXCESS", "type": "int", "min": 1, "max": 10, "default": 2},
+    {"key": "warning_absent_threshold", "label": "旷课预警：已提交场次旷课次数达到该值触发",
+     "sourceCode": "ATTENDANCE_ABSENT", "type": "int", "min": 1, "max": 30, "default": 3},
 ]
 _RULES_BY_KEY = {m["key"]: m for m in RULES_META}
 
@@ -395,14 +397,67 @@ def scan_graduation_warnings(user) -> dict:
 
 
 def scan_all(user) -> dict:
-    """预警看板「一键扫描」：依次跑 5 类规则，返回按来源拆分的结果供看板展示。"""
+    """预警看板「一键扫描」：依次跑挂科/学分/绩点/重修/毕业/旷课规则。"""
     return {
         "EXAM_FAIL": scan_warnings(user),
         "CREDIT_SHORT": scan_credit_warnings(user),
         "LOW_GPA": scan_gpa_warnings(user),
         "RETAKE_EXCESS": scan_retake_warnings(user),
         "GRAD_ABNORMAL": scan_graduation_warnings(user),
+        "ATTENDANCE_ABSENT": scan_attendance_warnings(user),
     }
+
+
+def scan_attendance_warnings(user) -> dict:
+    """旷课预警：汇总已提交课堂考勤场次中 ABSENT 次数，达阈值生成/更新预警（幂等）。"""
+    thr = int(_rule_value("warning_absent_threshold"))
+    now = datetime.utcnow()
+    with session() as db:
+        from app.models import AaAttendanceSession, AcademicStudent, StudentProfile
+        import json as _json
+        sessions = db.scalars(select(AaAttendanceSession).where(
+            AaAttendanceSession.tenant_id == _tid(),
+            AaAttendanceSession.status == "SUBMITTED",
+            AaAttendanceSession.is_deleted.is_(False),
+        )).all()
+        absent_counts: dict[int, int] = {}
+        for t in sessions:
+            try:
+                items = _json.loads(t.roster_json) if t.roster_json else []
+            except Exception:
+                items = []
+            for it in items:
+                if str(it.get("status") or "").upper() != "ABSENT":
+                    continue
+                sid = it.get("studentId")
+                if not sid:
+                    continue
+                try:
+                    sid_i = int(sid)
+                except (TypeError, ValueError):
+                    continue
+                absent_counts[sid_i] = absent_counts.get(sid_i, 0) + 1
+        created = updated = 0
+        rule_code = f"ABSENT_GE_{thr}"
+        for profile_id, n in absent_counts.items():
+            if n < thr:
+                continue
+            acad = db.scalars(select(AcademicStudent).where(
+                AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == profile_id,
+                AcademicStudent.is_deleted.is_(False))).first()
+            if not acad:
+                # 无学业台账则跳过（与挂科扫描依赖 AcademicGrade 同口径）
+                continue
+            level = "HIGH" if n >= thr * 2 else ("MEDIUM" if n >= thr else "LOW")
+            c, u = _upsert_warning(
+                db, acad.id, "ATTENDANCE_ABSENT", "ABSENT_EXCESS", level,
+                f"旷课 {n} 次（阈值 {thr}）", rule_code, now)
+            created += int(c)
+            updated += int(u)
+        _audit(db, "ACAD_WARNING_SCAN", 0, "SCAN_ATTENDANCE_ABSENT",
+               f"created={created} updated={updated} thr={thr}")
+        db.commit()
+        return {"threshold": thr, "created": created, "updated": updated}
 
 
 # ═══════════ 列表 / 看板 / 统计 ═══════════

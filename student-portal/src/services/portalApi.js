@@ -65,6 +65,21 @@ export const portalApi = {
   academicGraduationAudit: () => request('/portal/academic/graduation-audit'),
   academicEvaluationTasks: () => request('/portal/academic/evaluation/tasks'),
   academicEvaluationSubmit: (body) => request('/portal/academic/evaluation/submit', { method: 'POST', body }),
+  academicExamDeferOptions: () => request('/portal/academic/exam/defer/options'),
+  academicGradeRecheck: () => request('/portal/academic/grade-recheck'),
+  academicGradeRecheckSubmit: (body) => request('/portal/academic/grade-recheck', { method: 'POST', body }),
+  academicTextbook: () => request('/portal/academic/textbook'),
+  academicTextbookSign: (recordId) =>
+    request(`/portal/academic/textbook/${encodeURIComponent(recordId)}/sign`, { method: 'POST' }),
+  academicLevelExam: () => request('/portal/academic/level-exam'),
+  academicLevelRegister: (examId) =>
+    request(`/portal/academic/level-exam/${encodeURIComponent(examId)}/register`, { method: 'POST' }),
+  academicLevelCancel: (examId) =>
+    request(`/portal/academic/level-exam/${encodeURIComponent(examId)}/cancel`, { method: 'POST' }),
+  academicMajorSplit: () => request('/portal/academic/major-split'),
+  academicMajorSplitSubmit: (body) => request('/portal/academic/major-split/submit', { method: 'POST', body }),
+  academicCredits: () => request('/portal/academic/credits'),
+  academicWarning: () => request('/portal/academic/warning'),
 
   // ── 学工事务（在校服务）──
   affairsOverview: () => request('/portal/affairs/overview'),
@@ -97,6 +112,20 @@ export const portalApi = {
   internshipReportSubmit: (body) => request('/portal/internship/report/submit', { method: 'POST', body }),
   internshipAgreementPrint: (body) => request('/portal/internship/agreement/print', { method: 'POST', body }),
   internshipScoreAppeal: (body) => request('/portal/internship/score/appeal', { method: 'POST', body }),
+  internshipLeaves: () => request('/portal/internship/leaves'),
+  internshipLeaveApply: (body) => request('/portal/internship/leaves/apply', { method: 'POST', body }),
+  internshipLeaveReturn: (leaveId, body) =>
+    request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/return`, { method: 'POST', body }),
+  internshipCheckin: (body) => request('/portal/internship/checkin', { method: 'POST', body }),
+  internshipSelfEval: (body) => request('/portal/internship/self-eval', { method: 'POST', body }),
+  internshipMakeupApply: (body) => request('/portal/internship/makeup', { method: 'POST', body }),
+  internshipMakeups: () => request('/portal/internship/makeup'),
+  internshipIntentionMy: () => request('/portal/internship/intention'),
+  internshipIntentionSave: (body) => request('/portal/internship/intention', { method: 'POST', body }),
+  internshipApplications: () => request('/portal/internship/applications'),
+  internshipApplicationSubmit: (body) => request('/portal/internship/applications', { method: 'POST', body }),
+  internshipChangeApply: (body) => request('/portal/internship/change', { method: 'POST', body }),
+  internshipChanges: () => request('/portal/internship/change'),
 
   // ── 就业服务 ──
   employmentMy: () => request('/portal/employment/my'),

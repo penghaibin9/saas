@@ -137,13 +137,29 @@
         </section>
       </section>
 
-      <!-- 成绩申诉 -->
-      <section v-else-if="tab === 'appeal'" class="sp-card" style="max-width:640px">
-        <div class="sp-panel__head">发起成绩申诉</div>
-        <div class="sp-fieldlabel">申诉事由</div>
-        <textarea v-model.trim="appealForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明对成绩有异议的具体原因，如核分错误、漏登等" />
-        <button class="sp-btn" :disabled="busy || !appealForm.reason" @click="ui.notify('成绩申诉请通过教务成绩更正流程，已记录你的诉求')">提交申诉</button>
-        <p class="sp-muted" style="margin-top:10px">成绩申诉进入教务审核；结果将在「消息通知」告知。</p>
+      <!-- 成绩复查（真实落库，与小程序同口径） -->
+      <section v-else-if="tab === 'appeal'">
+        <div class="two">
+          <section class="sp-card" style="max-width:640px">
+            <div class="sp-panel__head">发起成绩复查</div>
+            <div class="sp-fieldlabel">选择已发布成绩</div>
+            <select v-model="appealForm.gradeId" class="sp-inp" style="margin-bottom:12px">
+              <option value="">请选择</option>
+              <option v-for="g in recheckableGrades" :key="g.gradeId" :value="String(g.gradeId)">
+                {{ g.courseName }}{{ g.term ? ' · ' + g.term : '' }}（{{ g.score ?? '—' }} 分）
+              </option>
+            </select>
+            <div class="sp-fieldlabel">复查事由（≥5 字）</div>
+            <textarea v-model.trim="appealForm.reason" class="sp-inp" style="margin-bottom:12px"
+                      placeholder="如：核对卷面分 / 漏统计平时分" />
+            <button class="sp-btn" :disabled="busy || !canSubmitRecheck" @click="submitRecheck">提交复查申请</button>
+            <p class="sp-muted" style="margin-top:10px">仅可复查本人已发布成绩；同一门成绩在途复查仅限一条。结果将在消息通知告知。</p>
+          </section>
+          <section class="sp-card">
+            <div class="sp-panel__head">我的复查申请</div>
+            <AutoTable :rows="recheck.items" empty="暂无复查申请" />
+          </section>
+        </div>
       </section>
 
       <!-- 学籍异动申请 -->
@@ -183,15 +199,48 @@
         <AutoTable :rows="status.changes" empty="暂无异动记录" title="历史异动记录" style="margin-top:16px" />
       </section>
 
-      <!-- 免修/缓考/补考重修 -->
+      <!-- 免修/缓考/补考重修 + 我的考试安排 -->
       <section v-else-if="tab === 'exam'">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
           <button v-for="e in examTabs" :key="e" class="sp-tab" :class="{ 'is-active': examTab === e }" @click="examTab = e">{{ e }}</button>
         </div>
-        <div class="two">
+        <section v-if="examTab === '我的考试'" class="sp-card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--line2);font-weight:600">我的考试安排</div>
+          <StateBlock v-if="!(examSchedule.items||[]).length" type="empty" :text="examSchedule.note || '暂无已发布的个人考试安排'" />
+          <table v-else class="sp-table">
+            <thead><tr><th>课程</th><th>日期</th><th>时间</th><th>考场</th><th>座位</th><th>准考证</th></tr></thead>
+            <tbody>
+              <tr v-for="it in examSchedule.items" :key="it.examCourseId">
+                <td style="font-weight:500">{{ it.courseName }}</td>
+                <td>{{ it.examDate || '—' }}</td>
+                <td>{{ it.startTime || '' }}{{ it.endTime ? ' - ' + it.endTime : '' }}</td>
+                <td>{{ it.classroom || '—' }}</td>
+                <td>{{ it.seatNo ?? '—' }}</td>
+                <td>{{ it.admissionNo || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <div v-else class="two">
           <section class="sp-card">
             <div class="sp-panel__head">{{ examTab }}</div>
-            <StateBlock v-if="examTab === '缓考申请'" type="empty" text="考试安排即将上线，缓考申请开通后可在此办理" />
+            <template v-if="examTab === '缓考申请'">
+              <div class="sp-fieldlabel">选择未开考课程</div>
+              <select v-model="deferForm.examCourseId" class="sp-inp" style="margin-bottom:12px">
+                <option value="">请选择</option>
+                <option v-for="c in deferOptions" :key="c.examCourseId" :value="String(c.examCourseId)"
+                        :disabled="c.hasActiveDefer">
+                  {{ c.courseName }} · {{ c.examDate || '未排定' }} {{ c.startTime || '' }}{{ c.hasActiveDefer ? '（申请中）' : '' }}
+                </option>
+              </select>
+              <div class="sp-fieldlabel">缓考事由类型</div>
+              <select v-model="deferForm.reasonType" class="sp-inp" style="margin-bottom:12px">
+                <option v-for="r in deferReasons" :key="r.v" :value="r.v">{{ r.t }}</option>
+              </select>
+              <div class="sp-fieldlabel">原因说明</div>
+              <textarea v-model.trim="deferForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="如病假需附材料请线下提交辅导员" />
+              <button class="sp-btn" :disabled="busy || !deferForm.examCourseId" @click="submitDefer">提交缓考申请</button>
+            </template>
             <template v-else>
               <div class="sp-fieldlabel">课程名称</div>
               <input v-model.trim="examForm.courseName" class="sp-inp" style="margin-bottom:12px" placeholder="如：高等数学(下)" />
@@ -207,6 +256,93 @@
             <AutoTable v-else :rows="retakeRows" :columns="RETAKE_COLS" empty="暂无申请记录" />
           </section>
         </div>
+      </section>
+
+      <!-- 学分修读 -->
+      <section v-else-if="tab === 'credits'">
+        <section class="sp-card">
+          <div class="sp-panel__head">学分修读</div>
+          <div class="sp-muted">已获 <b style="color:var(--pri)">{{ credits.obtainedCredits ?? 0 }}</b> / 应修 {{ credits.requiredCredits ?? '—' }} · GPA {{ credits.gpa ?? '—' }} · 不及格 {{ credits.failCount ?? 0 }} 门</div>
+          <div class="bar" style="margin-top:12px"><span :style="{ width: creditPct + '%' }" /></div>
+        </section>
+        <AutoTable :rows="credits.passedCourses" empty="暂无已通过课程" title="已通过课程" />
+      </section>
+
+      <!-- 学业预警 -->
+      <section v-else-if="tab === 'warning'" class="sp-card">
+        <div class="sp-panel__head">我的学业预警</div>
+        <AutoTable :rows="warning.items" empty="暂无学业预警" />
+      </section>
+
+      <!-- 教材领用 -->
+      <section v-else-if="tab === 'textbook'">
+        <section class="sp-card">
+          <div class="sp-panel__head">教材费用汇总</div>
+          <pre class="sp-muted" style="white-space:pre-wrap;margin:0;font-family:inherit">{{ textbookFeeText }}</pre>
+        </section>
+        <section class="sp-card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--line2);font-weight:600">领用记录</div>
+          <StateBlock v-if="!(textbook.distributions||[]).length" type="empty" text="暂无教材发放记录" />
+          <table v-else class="sp-table">
+            <thead><tr><th>教材</th><th>状态</th><th style="text-align:right">操作</th></tr></thead>
+            <tbody>
+              <tr v-for="d in textbook.distributions" :key="d.recordId || d.id">
+                <td>{{ d.bookName || d.textbookName || d.courseName || '—' }}</td>
+                <td>{{ d.status || d.signStatus || '—' }}</td>
+                <td style="text-align:right">
+                  <button v-if="canSignTextbook(d)" class="mini" :disabled="busy" @click="signTextbook(d)">签收</button>
+                  <span v-else class="sp-muted">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- 等级考试 -->
+      <section v-else-if="tab === 'level'">
+        <div class="two">
+          <section class="sp-card" style="padding:0;overflow:hidden">
+            <div style="padding:14px 18px;border-bottom:1px solid var(--line2);font-weight:600">开放报名</div>
+            <StateBlock v-if="!(levelExam.openExams||[]).length" type="empty" text="暂无开放中的等级考试" />
+            <table v-else class="sp-table">
+              <thead><tr><th>考试</th><th>报名截止</th><th style="text-align:right">操作</th></tr></thead>
+              <tbody>
+                <tr v-for="e in levelExam.openExams" :key="e.examId">
+                  <td style="font-weight:500">{{ e.examName || e.name || '—' }}</td>
+                  <td>{{ e.regEndAt || e.endAt || '—' }}</td>
+                  <td style="text-align:right"><button class="mini" :disabled="busy" @click="registerLevel(e)">报名</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+          <section class="sp-card">
+            <div class="sp-panel__head">我的报名</div>
+            <AutoTable :rows="levelExam.myRegs" empty="暂无报名记录" />
+          </section>
+        </div>
+      </section>
+
+      <!-- 专业分流 -->
+      <section v-else-if="tab === 'split'">
+        <StateBlock v-if="!(majorSplit.openBatches||[]).length && !(majorSplit.myVolunteers||[]).length"
+                    type="empty" text="暂无开放中的分流批次" />
+        <section v-for="b in (majorSplit.openBatches || [])" :key="b.batchId" class="sp-card" style="margin-bottom:16px">
+          <div class="sp-panel__head">{{ b.batchName }} · {{ b.grade }} 级（至多 {{ b.maxChoices }} 志愿）</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <button v-for="o in (b.options || [])" :key="o.majorId" type="button" class="typecard"
+                    :class="{ on: splitRank(b.batchId, o.majorId) > 0 }"
+                    style="width:auto;min-width:140px"
+                    @click="toggleSplit(b, o)">
+              <div style="font-size:14px;font-weight:600">{{ o.majorName }}</div>
+              <div class="sp-muted" style="margin-top:4px">余 {{ o.remain }}/{{ o.capacity }}
+                <span v-if="splitRank(b.batchId, o.majorId)"> · 第{{ splitRank(b.batchId, o.majorId) }}志愿</span>
+              </div>
+            </button>
+          </div>
+          <button class="sp-btn" :disabled="busy || !(splitPicks[b.batchId]||[]).length" @click="submitSplit(b)">提交志愿</button>
+        </section>
+        <AutoTable :rows="majorSplit.myVolunteers" empty="暂无已提交志愿" title="我的志愿与结果" />
       </section>
 
       <!-- 毕业资格自查 -->
@@ -248,12 +384,15 @@ const cfg = usePortalConfigStore()
 const session = useSessionStore()
 const tabs = [
   { key: 'schedule', label: '我的课表' }, { key: 'select', label: '选课中心' }, { key: 'grades', label: '我的成绩' },
-  { key: 'transcript', label: '成绩单打印' }, { key: 'evaluation', label: '学生评教' }, { key: 'appeal', label: '成绩申诉' },
-  { key: 'status', label: '学籍异动' }, { key: 'exam', label: '免修/缓考/补重修' }, { key: 'audit', label: '毕业自查' }
+  { key: 'transcript', label: '成绩单打印' }, { key: 'evaluation', label: '学生评教' }, { key: 'appeal', label: '成绩复查' },
+  { key: 'status', label: '学籍异动' }, { key: 'exam', label: '考试/缓考/免修' },
+  { key: 'credits', label: '学分修读' }, { key: 'warning', label: '学业预警' },
+  { key: 'textbook', label: '教材领用' }, { key: 'level', label: '等级考试' },
+  { key: 'split', label: '专业分流' }, { key: 'audit', label: '毕业自查' }
 ]
 const tab = ref('schedule')
-const examTab = ref('免修申请')
-const examTabs = ['免修申请', '缓考申请', '补考重修申请']
+const examTab = ref('我的考试')
+const examTabs = ['我的考试', '免修申请', '缓考申请', '补考重修申请']
 const wizStep = ref(1)
 const loading = ref(true)
 const busy = ref(false)
@@ -267,14 +406,27 @@ const evaluation = ref({ list: [], total: 0 })
 const evalScores = reactive({})
 const status = ref({})
 const examDefer = ref({})
+const examSchedule = ref({ items: [] })
+const deferOptions = ref([])
 const makeup = ref({})
 const audit = ref({})
 const info = ref({})
+const recheck = ref({ items: [] })
+const credits = ref({})
+const warning = ref({ items: [] })
+const textbook = ref({ distributions: [], fees: {} })
+const levelExam = ref({ openExams: [], myRegs: [] })
+const majorSplit = ref({ openBatches: [], myVolunteers: [] })
+const splitPicks = reactive({})
 
 const printReason = ref('')
-const appealForm = reactive({ reason: '' })
+const appealForm = reactive({ gradeId: '', reason: '' })
 const statusForm = reactive({ changeType: 'SUSPEND', reason: '' })
 const examForm = reactive({ reason: '', courseName: '' })
+const deferForm = reactive({ examCourseId: '', reasonType: 'SICK', reason: '' })
+const deferReasons = [
+  { v: 'SICK', t: '因病' }, { v: 'CONFLICT', t: '考试冲突' }, { v: 'FAMILY', t: '家事' }, { v: 'OTHER', t: '其他' }
+]
 
 const days = ['周一', '周二', '周三', '周四', '周五']
 const wizSteps = [{ n: 1, t: '选择类型' }, { n: 2, t: '填写事由' }, { n: 3, t: '预览提交' }]
@@ -330,20 +482,44 @@ const auditPct = computed(() => {
   if (!c.requiredCredits) return 0
   return Math.min(100, Math.round((c.obtainedCredits || 0) / c.requiredCredits * 100))
 })
+const recheckableGrades = computed(() => (transcript.value.items || []).filter((g) => g.gradeId != null))
+const canSubmitRecheck = computed(() => !!appealForm.gradeId && String(appealForm.reason || '').trim().length >= 5)
+const creditPct = computed(() => {
+  const req = Number(credits.value.requiredCredits || 0)
+  if (!req) return 0
+  return Math.min(100, Math.round((Number(credits.value.obtainedCredits || 0) / req) * 100))
+})
+const textbookFeeText = computed(() => {
+  const f = textbook.value.fees
+  if (!f || typeof f !== 'object') return '暂无费用汇总'
+  if (Array.isArray(f)) return f.length ? JSON.stringify(f) : '暂无费用汇总'
+  const keys = Object.keys(f)
+  if (!keys.length) return '暂无费用汇总'
+  return keys.map((k) => `${k}：${f[k]}`).join(' · ')
+})
 const STATUS_MAP = { NORMAL: '正常', SUSPENDED: '休学', TRANSFERRED: '转学', WITHDRAWN: '退学', GRADUATED: '毕业' }
 function statusText(s) { return STATUS_MAP[s] || s || '正常' }
 function changeLabel(k) { return (changeTypes.find((c) => c.k === k) || {}).t || k }
 function scoreColor(s) { const n = Number(s); return n >= 90 ? 'var(--ok-fg)' : n >= 60 ? 'var(--t1)' : 'var(--warn-fg)' }
 function wizClass(n) { return wizStep.value > n ? 'done' : wizStep.value === n ? 'cur' : 'todo' }
+function canSignTextbook(d) {
+  return String(d.status || '').toUpperCase() === 'PENDING'
+}
+function splitRank(batchId, majorId) {
+  const arr = splitPicks[batchId] || []
+  return arr.indexOf(String(majorId)) + 1
+}
 
 async function loadAll() {
   loading.value = true; error.value = ''
   try {
-    const [sc, tr, st, ex, mk, au, cs, rec, en, ev] = await Promise.allSettled([
+    const [sc, tr, st, ex, mk, au, cs, rec, en, ev, exam, opts, rc, cr, wn, tb, lv, sp] = await Promise.allSettled([
       portalApi.academicSchedule(), portalApi.academicTranscript(), portalApi.academicStatus(),
       portalApi.academicExamDefer(), portalApi.academicMakeup(), portalApi.academicGraduationAudit(),
       portalApi.academicCourseSelection(), portalApi.academicSelectionRecords(), portalApi.profileEnrollment(),
-      portalApi.academicEvaluationTasks()
+      portalApi.academicEvaluationTasks(), portalApi.academicExam(), portalApi.academicExamDeferOptions(),
+      portalApi.academicGradeRecheck(), portalApi.academicCredits(), portalApi.academicWarning(),
+      portalApi.academicTextbook(), portalApi.academicLevelExam(), portalApi.academicMajorSplit()
     ])
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     schedule.value = val(sc, {}); transcript.value = val(tr, {}); status.value = val(st, {})
@@ -354,7 +530,22 @@ async function loadAll() {
     evaluation.value = val(ev, { list: [], total: 0 })
     for (const t of (evaluation.value.list || [])) {
       if (evalScores[t.taskId] == null) evalScores[t.taskId] = 90
-    }  } catch (e) { error.value = e?.message || '学业数据加载失败' } finally { loading.value = false }
+    }
+    examSchedule.value = val(exam, { items: [] })
+    deferOptions.value = val(opts, { items: [] }).items || []
+    recheck.value = val(rc, { items: [] })
+    credits.value = val(cr, {})
+    warning.value = val(wn, { items: [] })
+    textbook.value = val(tb, { distributions: [], fees: {} })
+    levelExam.value = val(lv, { openExams: [], myRegs: [] })
+    majorSplit.value = val(sp, { openBatches: [], myVolunteers: [] })
+    for (const b of (majorSplit.value.openBatches || [])) {
+      if (!splitPicks[b.batchId]) {
+        const mine = (majorSplit.value.myVolunteers || []).find((v) => String(v.batchId) === String(b.batchId))
+        splitPicks[b.batchId] = mine && mine.choices ? mine.choices.map(String) : []
+      }
+    }
+  } catch (e) { error.value = e?.message || '学业数据加载失败' } finally { loading.value = false }
 }
 async function printTranscript(reason) {
   busy.value = true
@@ -379,6 +570,61 @@ async function submitEvaluation(t) {
       taskId: t.taskId, objectiveScore: score, answers: { overall: score },
     })
     ui.notify('已匿名提交'); loadAll()
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+}
+async function submitRecheck() {
+  if (!canSubmitRecheck.value || busy.value) return
+  busy.value = true
+  try {
+    await portalApi.academicGradeRecheckSubmit({ acadGradeId: appealForm.gradeId, reason: appealForm.reason.trim() })
+    ui.notify('复查申请已提交'); appealForm.gradeId = ''; appealForm.reason = ''; loadAll()
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+}
+async function submitDefer() {
+  if (!deferForm.examCourseId || busy.value) return
+  busy.value = true
+  try {
+    await portalApi.academicExamDeferApply({
+      examCourseId: deferForm.examCourseId,
+      reasonType: deferForm.reasonType,
+      reason: deferForm.reason || undefined,
+    })
+    ui.notify('缓考申请已提交'); deferForm.examCourseId = ''; deferForm.reason = ''; loadAll()
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+}
+async function signTextbook(d) {
+  const id = d.recordId || d.id
+  if (!id || busy.value) return
+  busy.value = true
+  try { await portalApi.academicTextbookSign(id); ui.notify('已签收'); loadAll() }
+  catch (e) { ui.notify(e?.message || '签收失败') } finally { busy.value = false }
+}
+async function registerLevel(e) {
+  const id = e.examId || e.id
+  if (!id || busy.value) return
+  busy.value = true
+  try { await portalApi.academicLevelRegister(id); ui.notify('已报名'); loadAll() }
+  catch (err) { ui.notify(err?.message || '报名失败') } finally { busy.value = false }
+}
+function toggleSplit(b, o) {
+  const key = b.batchId
+  const arr = (splitPicks[key] || []).slice()
+  const mid = String(o.majorId)
+  const i = arr.indexOf(mid)
+  if (i >= 0) arr.splice(i, 1)
+  else {
+    if (arr.length >= (b.maxChoices || 3)) { ui.notify(`最多填 ${b.maxChoices} 个志愿`); return }
+    arr.push(mid)
+  }
+  splitPicks[key] = arr
+}
+async function submitSplit(b) {
+  const choices = splitPicks[b.batchId] || []
+  if (!choices.length || busy.value) return
+  busy.value = true
+  try {
+    await portalApi.academicMajorSplitSubmit({ batchId: b.batchId, choices })
+    ui.notify('志愿已提交'); loadAll()
   } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitStatusChange() {

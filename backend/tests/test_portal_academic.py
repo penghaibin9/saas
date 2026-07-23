@@ -122,3 +122,30 @@ def test_non_student_rejected(client, db_mode):
     assert client.get(f"{PORTAL}/evaluation/tasks", headers=admin).json()["code"] == 403001
     assert client.post(f"{PORTAL}/evaluation/submit", headers=admin,
                        json={"taskId": "1", "objectiveScore": 90}).json()["code"] == 403001
+
+
+def test_portal_recheck_and_extra_views(client, db_mode):
+    _seed("AC-050", "教务复查")
+    h = _stu_token("教务复查", "AC-050")
+    assert client.get(f"{PORTAL}/grade-recheck", headers=h).json()["code"] == 0
+    # 缺 acadGradeId / 事由过短 → 校验失败
+    assert client.post(f"{PORTAL}/grade-recheck", headers=h, json={}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/grade-recheck", headers=h,
+                       json={"acadGradeId": "1", "reason": "短"}).json()["code"] != 0
+    assert client.get(f"{PORTAL}/exam/defer/options", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/credits", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/warning", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/textbook", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/level-exam", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/major-split", headers=h).json()["code"] == 0
+
+
+def test_non_student_rejected_extra(client, db_mode):
+    admin = _admin(client)
+    assert client.get(f"{PORTAL}/grade-recheck", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/credits", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/warning", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/textbook", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/level-exam", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/major-split", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/exam/defer/options", headers=admin).json()["code"] == 403001

@@ -121,10 +121,12 @@ def graduation_progress_my(user) -> dict:
 
 
 def exam_my(user) -> dict:
-    """我的考试（V1 占位空态，考务未上线）。"""
+    """我的考试安排（已发布课程中本人座位/准考证；无数据时返回空列表而非永久占位）。"""
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
     with session() as db:
-        _me(db, user)
-    return {"hasData": False, "note": "考试安排功能即将上线"}
+        stu = _me(db, user)
+        sid = stu.id
+    return exam_svc.my_exam_schedule(user, sid)
 
 
 # ═══════════ 缓考申请（考务管理二级模块·SM-10 8态四级审批，学生自助，本人只读+申请） ═══════════

@@ -159,6 +159,8 @@ def create_grade_task(body, user) -> dict:
             teacher_key = next(iter(_user_keys(user)), None)
         class_id = int(body.classId) if getattr(body, "classId", None) else inherit_class_id
         course_name = getattr(body, "courseName", None) or inherit_course_name
+        if not (course_name or "").strip():
+            raise AppException("VALIDATION_ERROR", "courseName 与 teachingTaskId 至少填一项（且教学任务须有课程名）")
         credit = getattr(body, "credit", None)
         if credit is None:
             credit = inherit_credit
@@ -647,7 +649,8 @@ def publish_grades(task_id, user) -> dict:
         from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_warnings
         scan_warnings(user)
     except Exception:
-        pass  # 预警扫描失败不阻塞发布主流程
+        import logging
+        logging.getLogger(__name__).exception("grade publish → scan_warnings failed")
     return {"gradeTaskId": str(task_id), "status": "PUBLISHED", "projected": projected, "failCount": fail_count}
 
 
@@ -843,7 +846,8 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
             from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_warnings
             scan_warnings(user)
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).exception("grade change approve → scan_warnings failed")
     return result
 
 
