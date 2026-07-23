@@ -88,7 +88,7 @@
         <!-- 中期检查 -->
         <view v-if="midterm && midterm.hasData && midterm.status !== 'PENDING'" id="gd-midterm" class="section-head"><text class="section-head__title">中期检查</text></view>
         <view v-if="midterm && midterm.hasData && midterm.status !== 'PENDING'" class="card stack-sm">
-          <view class="gd__choice-row"><text class="gd__choice-title">{{ midterm.conclusionLabel || midterm.statusLabel }}</text><MobileStatusTag :label="midterm.statusLabel" :type="midterm.status === 'RECTIFYING' ? 'danger' : 'success'" /></view>
+          <view class="gd__choice-row"><text class="gd__choice-title">{{ midterm.conclusionLabel || midterm.statusLabel }}</text><MobileStatusTag :label="midterm.statusLabel" :type="midtermTagType" /></view>
           <template v-if="midterm.status === 'RECTIFYING'">
             <textarea class="gd__reason" v-model="rectifyContent" :maxlength="500" placeholder="填写整改内容后提交" placeholder-class="wr__ph" />
             <button class="btn btn-primary" :disabled="!rectifyContent.trim() || rectifySubmitting" @click="submitRectify">
@@ -191,6 +191,13 @@ export default {
       const items = (this.final && this.final.items) || []
       const r = items.find((i) => i.status === 'REJECTED')
       return r && r.reviewComment ? r.reviewComment : ''
+    },
+    midtermTagType() {
+      const s = (this.midterm && this.midterm.status) || ''
+      if (s === 'CHECKED_FAIL') return 'danger'
+      if (s === 'RECTIFYING' || s === 'RECTIFY_SUBMITTED') return 'warning'
+      if (s === 'CHECKED_PASS' || s === 'RECTIFIED_PASS') return 'success'
+      return 'default'
     },
     // 快速导航：仅显示本页已有真实内容的功能区；选题/任务书为独立页固定入口
     quickNav() {

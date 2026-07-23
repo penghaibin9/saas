@@ -424,7 +424,7 @@ export default {
     },
     async doBatchGenerate() {
       const res = await graduationRiskArchiveApi.batchGenerateArchive()
-      if (res.code === 0) { toast.success(`已提交 ${res.data.submitted}，缺材料跳过 ${res.data.skipped}`); this.loadArchives() }
+      if (res.code === 0) { toast.success(`已提交 ${res.data.submitted}，跳过 ${res.data.skipped}（缺材料或未关闭风险）`); this.loadArchives() }
       else toast.error(res.message)
     },
     doBatchFile() {
