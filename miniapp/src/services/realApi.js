@@ -449,6 +449,7 @@ export async function enrichGraduation(mock) {
   return { ...mock, hasBatch: true, topic: r.topicTitle || '（未选题）', mentor: r.advisorName || '（未分配导师）',
     stage: r.stage, stageLabel: r.stageLabel || '', defenseGroup: r.defenseGroup, plagiarismRate: r.plagiarismRate,
     hasTopic: !!r.topicTitle && r.topicTitle !== '（未选题）',
+    batchId: r.batchId || '',
     // 真实覆盖 mock 骨架：批次名 / 节点进度 / 指导记录 / 当前主任务
     batch: r.batchName || r.stageLabel || '',
     nodes: (r.nodes && r.nodes.length) ? r.nodes : [],
@@ -493,6 +494,7 @@ export const gdPeerSubmit = (pid, opinion) =>
   realRequest(`/mobile/graduation/peer/${pid}/submit`, { method: 'POST', data: { opinion } })
 export const gdPeerRectify = (pid, note) =>
   realRequest(`/mobile/graduation/peer/${pid}/rectify`, { method: 'POST', data: { note } })
+export const gdArchive = () => realRequest('/mobile/graduation/archive')
 export const gdGrade = () => realRequest('/mobile/graduation/grade')
 
 /* ══════════ 过程指导：教师端本人指导学生 + 快速新增指导记录 ══════════ */

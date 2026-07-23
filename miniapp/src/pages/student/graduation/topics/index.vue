@@ -3,27 +3,28 @@
     <MobileNavBar variant="brand" title="毕设选题" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="loaded">
-        <MobileGlobalState v-if="!activeRound" state="empty" title="当前无进行中的选题轮次" description="学院/教务开放选题时会在这里提示。" />
+        <!-- 无课题：依赖选题轮次 -->
+        <template v-if="!hasTopic">
+          <MobileGlobalState v-if="!activeRound" state="empty" title="当前无进行中的选题轮次" description="学院/教务开放选题时会在这里提示。" />
 
-        <template v-else>
-          <view class="card">
-            <view class="row-between"><text class="card-title">{{ activeRound.roundName }}</text><text class="t-xs t-tertiary">最多{{ activeRound.maxChoices }}志愿</text></view>
-          </view>
-
-          <template v-if="myChoices.length">
-            <view class="section-head"><text class="section-head__title">我的志愿</text></view>
-            <view class="card stack-sm">
-              <view v-for="c in myChoices" :key="c.id" class="tp__row">
-                <text class="flex-1 t-md">{{ c.topicTitle }}</text>
-                <MobileStatusTag :label="choiceLabel(c.status)" :type="choiceTag(c.status)" />
-              </view>
-              <button v-if="canWithdraw" class="btn btn-ghost" :disabled="withdrawing" @click="withdrawChoices">
-                {{ withdrawing ? '退选中…' : '退选（撤回志愿后可重填）' }}
-              </button>
+          <template v-else>
+            <view class="card">
+              <view class="row-between"><text class="card-title">{{ activeRound.roundName }}</text><text class="t-xs t-tertiary">最多{{ activeRound.maxChoices }}志愿</text></view>
             </view>
-          </template>
 
-          <template v-if="!hasTopic">
+            <template v-if="myChoices.length">
+              <view class="section-head"><text class="section-head__title">我的志愿</text></view>
+              <view class="card stack-sm">
+                <view v-for="c in myChoices" :key="c.id" class="tp__row">
+                  <text class="flex-1 t-md">{{ c.topicTitle }}</text>
+                  <MobileStatusTag :label="choiceLabel(c.status)" :type="choiceTag(c.status)" />
+                </view>
+                <button v-if="canWithdraw" class="btn btn-ghost" :disabled="withdrawing" @click="withdrawChoices">
+                  {{ withdrawing ? '退选中…' : '退选（撤回志愿后可重填）' }}
+                </button>
+              </view>
+            </template>
+
             <view class="section-head"><text class="section-head__title">题目库</text></view>
             <text class="tp__hint">从题目库选择 1~{{ activeRound.maxChoices }} 个志愿，按点选顺序确定志愿序：</text>
             <view class="card stack-sm">
@@ -36,40 +37,41 @@
               </view>
             </view>
           </template>
+        </template>
 
-          <template v-else>
-            <view class="section-head"><text class="section-head__title">申请更换课题</text></view>
-            <view class="card stack-sm">
-              <button class="btn btn-ghost" @click="showChangeForm = !showChangeForm">
-                {{ showChangeForm ? '收起' : '申请更换课题' }}
+        <!-- 有课题：始终展示换题区（不依赖 activeRound） -->
+        <template v-else>
+          <view class="section-head"><text class="section-head__title">申请更换课题</text></view>
+          <view class="card stack-sm">
+            <button class="btn btn-ghost" @click="showChangeForm = !showChangeForm">
+              {{ showChangeForm ? '收起' : '申请更换课题' }}
+            </button>
+            <template v-if="showChangeForm">
+              <text class="tp__hint">获批课题已锁定，更换须重新审核，请选择目标课题并说明理由：</text>
+              <view v-for="t in topics" :key="t.id" class="tp__topic" @click="changeTargetTopicId = t.id">
+                <view class="flex-1">
+                  <text class="tp__topic-title">{{ t.title }}</text>
+                  <text class="tp__topic-sub">{{ t.advisorName || '—' }} · 余量 {{ t.remaining }}/{{ t.capacity }}</text>
+                </view>
+                <text v-if="changeTargetTopicId === t.id" class="tp__badge">已选</text>
+              </view>
+              <textarea class="tp__reason" v-model="changeReason" :maxlength="200" placeholder="变更理由（至少5个字）" placeholder-class="tp__ph" />
+              <button class="btn btn-primary" :disabled="!changeTargetTopicId || changeSubmitting" @click="submitChangeRequest">
+                {{ changeSubmitting ? '提交中…' : '提交变更申请' }}
               </button>
-              <template v-if="showChangeForm">
-                <text class="tp__hint">获批课题已锁定，更换须重新审核，请选择目标课题并说明理由：</text>
-                <view v-for="t in topics" :key="t.id" class="tp__topic" @click="changeTargetTopicId = t.id">
-                  <view class="flex-1">
-                    <text class="tp__topic-title">{{ t.title }}</text>
-                    <text class="tp__topic-sub">{{ t.advisorName || '—' }} · 余量 {{ t.remaining }}/{{ t.capacity }}</text>
-                  </view>
-                  <text v-if="changeTargetTopicId === t.id" class="tp__badge">已选</text>
-                </view>
-                <textarea class="tp__reason" v-model="changeReason" :maxlength="200" placeholder="变更理由（至少5个字）" placeholder-class="tp__ph" />
-                <button class="btn btn-primary" :disabled="!changeTargetTopicId || changeSubmitting" @click="submitChangeRequest">
-                  {{ changeSubmitting ? '提交中…' : '提交变更申请' }}
-                </button>
-              </template>
-              <view v-if="changeRequests.length" class="stack-sm">
-                <view v-for="r in changeRequests" :key="r.id" class="tp__row">
-                  <text class="flex-1 t-md">{{ r.oldTopicTitle }} → {{ r.newTopicTitle }}</text>
-                  <MobileStatusTag :label="r.statusLabel" :type="changeTag(r.status)" />
-                </view>
+            </template>
+            <view v-if="changeRequests.length" class="stack-sm">
+              <view v-for="r in changeRequests" :key="r.id" class="tp__row">
+                <text class="flex-1 t-md">{{ r.oldTopicTitle }} → {{ r.newTopicTitle }}</text>
+                <MobileStatusTag :label="r.statusLabel" :type="changeTag(r.status)" />
               </view>
             </view>
-          </template>
+          </view>
         </template>
       </view>
     </MobileGlobalState>
 
-    <MobileSafeAreaBar v-if="loaded && activeRound && !hasTopic">
+    <MobileSafeAreaBar v-if="loaded && !hasTopic && activeRound">
       <button class="btn btn-primary flex-1" :disabled="!selectedChoices.length || choiceSubmitting" @click="submitChoices">
         {{ choiceSubmitting ? '提交中…' : `提交志愿（已选${selectedChoices.length}）` }}
       </button>
@@ -91,7 +93,7 @@ const CHANGE_TAG = { PENDING: 'warning', APPROVED: 'success', REJECTED: 'danger'
 export default {
   data() {
     return {
-      state: 'loading', loaded: false, hasTopic: false,
+      state: 'loading', loaded: false, hasTopic: false, batchId: '',
       topics: [], activeRound: null, changeRequests: [],
       selectedChoices: [], choiceSubmitting: false, withdrawing: false,
       showChangeForm: false, changeTargetTopicId: '', changeReason: '', changeSubmitting: false
@@ -110,19 +112,23 @@ export default {
       this.state = 'loading'
       studentApi.getGraduation().then((g) => {
         this.hasTopic = !!(g && g.hasTopic)
+        this.batchId = (g && g.batchId) || ''
         return studentApi.getGraduationActiveRound()
       }).then((r) => {
         this.activeRound = r || null
         this.loaded = true
         this.state = 'ready'
-        if (r) {
-          const batchId = r.batchId || ''
-          studentApi.getGraduationTopics(batchId).then((t) => { this.topics = t || [] }).catch(() => {
+        // 选题：有轮次时拉题目；换题：有课题时用 batchId 拉题目（即使无 round）
+        const topicBatchId = (r && r.batchId) || this.batchId || ''
+        if (r || this.hasTopic) {
+          studentApi.getGraduationTopics(topicBatchId).then((t) => { this.topics = t || [] }).catch(() => {
             this.topics = []
             toast('题目列表加载失败，请下拉重试')
           })
         }
-        if (this.hasTopic) studentApi.getMyGraduationChangeRequests().then((r2) => { this.changeRequests = r2 || [] }).catch(() => {})
+        if (this.hasTopic) {
+          studentApi.getMyGraduationChangeRequests().then((r2) => { this.changeRequests = r2 || [] }).catch(() => {})
+        }
       }).catch(() => { this.state = 'error' })
     },
     choiceRank(topicId) {

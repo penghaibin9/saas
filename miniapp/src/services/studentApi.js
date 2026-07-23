@@ -53,6 +53,7 @@ export const studentApi = {
   getGraduationPeerTasks: () => real.gdPeerTasks(),
   submitGraduationPeer: (pid, opinion) => real.gdPeerSubmit(pid, opinion),
   rectifyGraduationPeer: (pid, note) => real.gdPeerRectify(pid, note),
+  getGraduationArchive: () => real.gdArchive(),
   // 就业去向：真实接口，无 mock 兜底（旧 intention/recommendedJobs/steps 字段无真实数据源，页面已不再展示）
   getEmployment: () => real.employmentMy(),
   getApplications: () =>

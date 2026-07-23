@@ -85,11 +85,13 @@
           <text class="gd__arrow">›</text>
         </view>
 
-        <!-- 中期检查 -->
-        <view v-if="midterm && midterm.hasData && midterm.status !== 'PENDING'" id="gd-midterm" class="section-head"><text class="section-head__title">中期检查</text></view>
-        <view v-if="midterm && midterm.hasData && midterm.status !== 'PENDING'" class="card stack-sm">
+        <!-- 中期检查（含 PENDING「待导师检查」） -->
+        <view v-if="midterm && midterm.hasData" id="gd-midterm" class="section-head"><text class="section-head__title">中期检查</text></view>
+        <view v-if="midterm && midterm.hasData" class="card stack-sm">
           <view class="gd__choice-row"><text class="gd__choice-title">{{ midterm.conclusionLabel || midterm.statusLabel }}</text><MobileStatusTag :label="midterm.statusLabel" :type="midtermTagType" /></view>
           <template v-if="midterm.status === 'RECTIFYING'">
+            <text v-if="midterm.checkComment" class="gd__hint">检查意见：{{ midterm.checkComment }}</text>
+            <text v-if="midterm.rectifyDeadline" class="gd__hint">整改截止：{{ midterm.rectifyDeadline }}</text>
             <textarea class="gd__reason" v-model="rectifyContent" :maxlength="500" placeholder="填写整改内容后提交" placeholder-class="wr__ph" />
             <button class="btn btn-primary" :disabled="!rectifyContent.trim() || rectifySubmitting" @click="submitRectify">
               {{ rectifySubmitting ? '提交中…' : '提交整改' }}
@@ -116,10 +118,10 @@
             <text v-for="(a, i) in finalAtts" :key="a.fileId" class="gd__att gd__att--pending">📎 {{ a.fileName }}<text class="gd__att-x" @click.stop="removeAtt('final', i)"> ×</text></text>
             <button class="btn btn-ghost gd__att-add" :disabled="uploading" @click="pickUpload('final')">{{ uploading ? '上传中…' : '+ 添加论文附件' }}</button>
           </view>
-          <button v-if="final.canSubmitDraft" class="btn btn-primary" :disabled="finalSubmitting" @click="submitFinal('初稿')">
+          <button v-if="final.canSubmitDraft" class="btn btn-primary" :disabled="finalSubmitting || !finalAtts.length" @click="submitFinal('初稿')">
             {{ finalSubmitting ? '提交中…' : '提交论文初稿' }}
           </button>
-          <button v-if="final.canSubmitFinal" class="btn btn-primary" :disabled="finalSubmitting" @click="submitFinal('定稿')">
+          <button v-if="final.canSubmitFinal" class="btn btn-primary" :disabled="finalSubmitting || !finalAtts.length" @click="submitFinal('定稿')">
             {{ finalSubmitting ? '提交中…' : '提交论文定稿' }}
           </button>
         </view>
@@ -138,13 +140,33 @@
         <view v-if="grade && grade.published" id="gd-grade" class="section-head"><text class="section-head__title">毕设成绩</text></view>
         <view v-if="grade && grade.published" class="card stack-sm">
           <view class="gd__choice-row"><text class="gd__choice-title">综合成绩 {{ grade.totalScore }} 分（{{ grade.gradeLevel }}）</text></view>
-          <button v-if="!showAppeal" class="btn btn-ghost" @click="showAppeal = true">对成绩有异议？发起更正申诉</button>
-          <template v-else>
-            <textarea class="gd__reason" v-model="appealReason" :maxlength="500" placeholder="申诉理由（至少5字）" placeholder-class="wr__ph" />
-            <button class="btn btn-primary" :disabled="appealReason.trim().length < 5 || appealSubmitting" @click="submitAppeal">
-              {{ appealSubmitting ? '提交中…' : '提交申诉' }}
-            </button>
+          <text class="gd__hint">指导 {{ grade.advisorScore != null ? grade.advisorScore : '—' }} · 评阅 {{ grade.reviewerScore != null ? grade.reviewerScore : '—' }} · 答辩 {{ grade.defenseScore != null ? grade.defenseScore : '—' }}</text>
+          <MobileInlineAlert v-if="grade.latestAppeal && grade.latestAppeal.status === 'PENDING'"
+                             type="warning" title="成绩申诉待复核"
+                             :description="grade.latestAppeal.reason || '已提交申诉，请等待复核结果'" />
+          <template v-else-if="grade.canAppeal !== false">
+            <button v-if="!showAppeal" class="btn btn-ghost" @click="showAppeal = true">对成绩有异议？发起更正申诉</button>
+            <template v-else>
+              <textarea class="gd__reason" v-model="appealReason" :maxlength="500" placeholder="申诉理由（至少5字）" placeholder-class="wr__ph" />
+              <button class="btn btn-primary" :disabled="appealReason.trim().length < 5 || appealSubmitting" @click="submitAppeal">
+                {{ appealSubmitting ? '提交中…' : '提交申诉' }}
+              </button>
+            </template>
           </template>
+        </view>
+
+        <!-- 归档 -->
+        <view v-if="archive && archive.hasData" id="gd-archive" class="section-head"><text class="section-head__title">材料归档</text></view>
+        <view v-if="archive && archive.hasData" class="card stack-sm">
+          <view class="gd__choice-row">
+            <text class="gd__choice-title">归档状态</text>
+            <MobileStatusTag :label="archive.statusLabel || archive.status || '—'" type="default" />
+          </view>
+          <view v-if="archive.checklist && archive.checklist.length" class="stack-sm">
+            <text v-for="(c, i) in archive.checklist" :key="c.item || i" class="gd__hint">
+              {{ c.present ? '✓' : '○' }} {{ c.label || c.item }}
+            </text>
+          </view>
         </view>
 
         <!-- 互查任务：待我互查 / 我需整改 -->
@@ -208,9 +230,10 @@ export default {
       propAtts: [], finalAtts: [], uploading: false,
       final: null, finalSubmitting: false,
       midterm: null, rectifyContent: '', rectifySubmitting: false,
-      defense: null, grade: null,
+      defense: null, grade: null, archive: null,
       showAppeal: false, appealReason: '', appealSubmitting: false,
-      peer: { toReview: [], myRectify: [] }, peerOpinions: {}, peerNotes: {}, peerBusyId: ''
+      peer: { toReview: [], myRectify: [] }, peerOpinions: {}, peerNotes: {}, peerBusyId: '',
+      processErrors: []
     }
   },
   computed: {
@@ -225,7 +248,7 @@ export default {
     midtermTagType() {
       const s = (this.midterm && this.midterm.status) || ''
       if (s === 'CHECKED_FAIL') return 'danger'
-      if (s === 'RECTIFYING' || s === 'RECTIFY_SUBMITTED') return 'warning'
+      if (s === 'RECTIFYING' || s === 'RECTIFY_SUBMITTED' || s === 'PENDING') return 'warning'
       if (s === 'CHECKED_PASS' || s === 'RECTIFIED_PASS') return 'success'
       return 'default'
     },
@@ -233,10 +256,11 @@ export default {
     quickNav() {
       const nav = [{ label: '节点', anchor: 'nodes' }, { label: '选题', anchor: 'topic' }, { label: '任务书', anchor: 'taskbook' }]
       if (this.proposal && this.proposal.hasData) nav.push({ label: '开题', anchor: 'proposal' })
-      if (this.midterm && this.midterm.hasData && this.midterm.status !== 'PENDING') nav.push({ label: '中期', anchor: 'midterm' })
+      if (this.midterm && this.midterm.hasData) nav.push({ label: '中期', anchor: 'midterm' })
       if (this.final && this.final.hasData) nav.push({ label: '成果', anchor: 'final' })
       if (this.defense && this.defense.assigned) nav.push({ label: '答辩', anchor: 'defense' })
       if (this.grade && this.grade.published) nav.push({ label: '成绩', anchor: 'grade' })
+      if (this.archive && this.archive.hasData) nav.push({ label: '归档', anchor: 'archive' })
       if (this.hasPeerWork) nav.push({ label: '互查', anchor: 'peer' })
       nav.push({ label: '指导记录', anchor: 'guidance' })
       return nav
@@ -264,12 +288,22 @@ export default {
         .finally(() => { if (done) done() })
     },
     loadProcess() {
-      studentApi.getGraduationProposal().then((d) => { this.proposal = d }).catch(() => {})
-      studentApi.getGraduationFinal().then((d) => { this.final = d }).catch(() => {})
-      studentApi.getGraduationMidterm().then((d) => { this.midterm = d }).catch(() => {})
-      studentApi.getGraduationDefense().then((d) => { this.defense = d }).catch(() => {})
-      studentApi.getGraduationGrade().then((d) => { this.grade = d }).catch(() => {})
-      studentApi.getGraduationPeerTasks().then((d) => { this.peer = d || { toReview: [], myRectify: [] } }).catch(() => {})
+      this.processErrors = []
+      const track = (label, p) => p.catch(() => {
+        this.processErrors.push(label)
+        return null
+      })
+      Promise.all([
+        track('开题', studentApi.getGraduationProposal().then((d) => { this.proposal = d })),
+        track('成果', studentApi.getGraduationFinal().then((d) => { this.final = d })),
+        track('中期', studentApi.getGraduationMidterm().then((d) => { this.midterm = d })),
+        track('答辩', studentApi.getGraduationDefense().then((d) => { this.defense = d })),
+        track('成绩', studentApi.getGraduationGrade().then((d) => { this.grade = d })),
+        track('互查', studentApi.getGraduationPeerTasks().then((d) => { this.peer = d || { toReview: [], myRectify: [] } })),
+        track('归档', studentApi.getGraduationArchive().then((d) => { this.archive = d }))
+      ]).then(() => {
+        if (this.processErrors.length) toast('部分环节加载失败')
+      })
     },
     submitPeer(pid) {
       const opinion = (this.peerOpinions[pid] || '').trim()
@@ -323,11 +357,13 @@ export default {
         uni.showToast({ title: '申诉已提交', icon: 'success' })
         this.showAppeal = false
         this.appealReason = ''
+        this.loadProcess()
       }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
         .finally(() => { this.appealSubmitting = false })
     },
     submitFinal(finalType) {
       if (this.finalSubmitting) return
+      if (!this.finalAtts.length) { toast('请先上传论文附件（PDF/Word/ZIP）'); return }
       this.finalSubmitting = true
       studentApi.submitGraduationFinal({ finalType, attachments: this.finalAtts.map((a) => a.fileId) }).then(() => {
         uni.showToast({ title: finalType + '已提交', icon: 'success' })
@@ -340,18 +376,16 @@ export default {
     pickUpload(target) {
       if (this.uploading) return
       const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
-      const MAX_IMAGE = 5 * 1024 * 1024
       const MAX_DOC = 10 * 1024 * 1024
-      const ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']
+      const ALLOWED_EXT = ['pdf', 'doc', 'docx', 'zip']
       const extOf = (name) => (name || '').split('.').pop().toLowerCase()
-      const checkFile = (name, size, isImage) => {
+      const checkFile = (name, size) => {
         const ext = extOf(name)
-        if (!isImage && ext && ALLOWED_EXT.indexOf(ext) < 0) {
-          toast('不支持的文件类型：.' + ext); return false
+        if (!ext || ALLOWED_EXT.indexOf(ext) < 0) {
+          toast('请选择 PDF/Word/ZIP'); return false
         }
-        const limit = isImage ? MAX_IMAGE : MAX_DOC
-        if (typeof size === 'number' && size > limit) {
-          toast('文件过大，请控制在 ' + (limit / 1024 / 1024) + 'MB 以内'); return false
+        if (typeof size === 'number' && size > MAX_DOC) {
+          toast('文件过大，请控制在 ' + (MAX_DOC / 1024 / 1024) + 'MB 以内'); return false
         }
         return true
       }
@@ -359,7 +393,8 @@ export default {
         this.uploading = true
         const token = getToken()
         uni.uploadFile({
-          url: ENV.apiBaseUrl + ENV.apiPrefix + '/files/upload', filePath: path, name: 'file',
+          url: ENV.apiBaseUrl + ENV.apiPrefix + '/files/upload?bizType=GRADUATION_MATERIAL',
+          filePath: path, name: 'file',
           header: token ? { Authorization: 'Bearer ' + token } : {},
           success: (res) => {
             try {
@@ -374,21 +409,20 @@ export default {
         })
       }
       // #ifdef H5 || APP-PLUS
-      uni.chooseFile ? uni.chooseFile({ count: 1, success: (r) => {
-        const f = r.tempFiles && r.tempFiles[0]
-        if (!f || !checkFile(f.name, f.size, false)) return
-        doUpload(r.tempFilePaths[0], f.name, f.size)
-      } })
-        : uni.chooseImage({ count: 1, sizeType: ['compressed'], success: (r) => {
+      if (uni.chooseFile) {
+        uni.chooseFile({ count: 1, success: (r) => {
           const f = r.tempFiles && r.tempFiles[0]
-          if (f && !checkFile('image.jpg', f.size, true)) return
-          doUpload(r.tempFilePaths[0], 'image.jpg', f && f.size)
+          if (!f || !checkFile(f.name, f.size)) return
+          doUpload(r.tempFilePaths[0], f.name, f.size)
         } })
+      } else {
+        toast('请选择 PDF/Word/ZIP')
+      }
       // #endif
       // #ifdef MP-WEIXIN
       uni.chooseMessageFile({ count: 1, type: 'file', success: (r) => {
         const f = r.tempFiles[0]
-        if (!f || !checkFile(f.name, f.size, false)) return
+        if (!f || !checkFile(f.name, f.size)) return
         doUpload(f.path, f.name, f.size)
       } })
       // #endif
@@ -399,9 +433,13 @@ export default {
     },
     downloadAtt(a) {
       const token = getToken()
+      const fileId = a && a.fileId
+      if (!fileId) { toast('附件无效'); return }
+      // 始终走学生端 materials 下载通道（带 student_channel 权限）
+      const url = ENV.apiBaseUrl + ENV.apiPrefix + '/mobile/graduation/materials/' + fileId + '/download'
       uni.showLoading({ title: '下载中' })
       uni.downloadFile({
-        url: ENV.apiBaseUrl + ENV.apiPrefix + '/files/download/' + a.fileId,
+        url,
         header: token ? { Authorization: 'Bearer ' + token } : {},
         success: (res) => {
           uni.hideLoading()
@@ -441,9 +479,9 @@ export default {
     },
     goPrimary() {
       const a = (this.g && this.g.primaryAction && this.g.primaryAction.anchor) || 'nodes'
-      // 中期未出结论 / 成绩未发布时，主按钮勿滚到隐藏区
-      if (a === 'midterm' && !(this.midterm && this.midterm.hasData && this.midterm.status !== 'PENDING')) {
-        toast('中期检查尚未出结论')
+      // 中期无数据 / 成绩未发布时，主按钮勿滚到隐藏区
+      if (a === 'midterm' && !(this.midterm && this.midterm.hasData)) {
+        toast('中期检查尚未开始')
         this.scrollTo('nodes')
         return
       }

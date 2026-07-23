@@ -163,16 +163,16 @@ export const portalApi = {
   commonPrintLog: (body) => request('/portal/common/print-log', { method: 'POST', body }),
   commonExportLog: (body) => request('/portal/common/export-log', { method: 'POST', body }),
 
-  // ── 毕业设计学生工作台（沿用 /mobile/graduation 本人接口）──
-  graduationTaskbook: () => request('/mobile/graduation/taskbook'),
-  confirmGraduationTaskbook: () => request('/mobile/graduation/taskbook/confirm', { method: 'POST' }),
-  graduationProposal: () => request('/mobile/graduation/proposal'),
-  submitGraduationProposal: (body) => request('/mobile/graduation/proposal', { method: 'POST', body }),
-  graduationMidterm: () => request('/mobile/graduation/midterm'),
-  rectifyGraduationMidterm: (content) => request('/mobile/graduation/midterm/rectify', { method: 'POST', body: { content } }),
-  graduationFinal: () => request('/mobile/graduation/final'),
-  submitGraduationFinal: (body) => request('/mobile/graduation/final', { method: 'POST', body }),
-  graduationDefense: () => request('/mobile/graduation/defense'),
+  // ── 毕业设计学生工作台（PC 签署/成绩走 portal；过程读写走 mobile 本人接口）──
+  graduationTaskbook: () => request('/portal/graduation/taskbook'),
+  signGraduationTaskbook: () => request('/portal/graduation/taskbook/sign', { method: 'POST', body: { confirm: true } }),
+  graduationProposal: () => request('/portal/graduation/proposal'),
+  submitGraduationProposal: (body) => request('/portal/graduation/proposal/submit', { method: 'POST', body }),
+  graduationMidterm: () => request('/portal/graduation/midterm'),
+  rectifyGraduationMidterm: (content) => request('/portal/graduation/midterm/rectify', { method: 'POST', body: { content } }),
+  graduationFinal: () => request('/portal/graduation/final'),
+  submitGraduationFinal: (body) => request('/portal/graduation/final/submit', { method: 'POST', body }),
+  graduationDefense: () => request('/portal/graduation/defense'),
   graduationGrade: () => request('/portal/graduation/grade'),
   graduationGradeAppeal: (reason) => request('/portal/graduation/grade/appeal', { method: 'POST', body: { reason } }),
   graduationPeerTasks: () => request('/mobile/graduation/peer-tasks'),
@@ -182,6 +182,9 @@ export const portalApi = {
   graduationActiveRound: () => request('/mobile/graduation/active-round'),
   graduationTopics: (batchId) => request(`/mobile/graduation/topics${batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''}`),
   submitGraduationChoices: (roundId, choices) => request('/mobile/graduation/choices', { method: 'POST', body: { roundId, choices } }),
+  withdrawGraduationChoices: (roundId) => request('/mobile/graduation/withdraw-choices', { method: 'POST', body: { roundId } }),
+  requestGraduationTopicChange: (newTopicId, reason) => request('/mobile/graduation/change-request', { method: 'POST', body: { newTopicId, reason } }),
+  graduationChangeRequests: () => request('/mobile/graduation/change-requests/my'),
   uploadGraduationMaterial: (file) => uploadFile('/files/upload?bizType=GRADUATION_MATERIAL', file),
   downloadGraduationMaterial: (fileId, fileName) => downloadFile(`/mobile/graduation/materials/${encodeURIComponent(fileId)}/download`, fileName)
 }

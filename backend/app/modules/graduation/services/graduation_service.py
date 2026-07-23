@@ -89,14 +89,16 @@ def _att_id(x) -> str:
     return str(x or "")
 
 
-def _resolve_attachments(ids) -> list:
+def _resolve_attachments(ids, *, student_channel: bool = False) -> list:
     """把附件 file_id 列表解析为可下载展示项（文件中心 t_file_object，租户内可见）。
-    解析不到（跨租户/已删/非法 id）的一律跳过，绝不返回伪造链接；下载走真实鉴权+审计接口
-    GET /api/v1/files/download/{id}（file_service.resolve_download 校验租户并写 FILE_DOWNLOAD 审计）。"""
+    student_channel=True → /mobile/graduation/materials（学生本人）；
+    默认 → /graduation/materials（管理端业务关系鉴权）。"""
     out = []
     if not ids:
         return out
     from app.services import file_service
+    base = ("/api/v1/mobile/graduation/materials" if student_channel
+            else "/api/v1/graduation/materials")
     for raw in ids:
         fid = _att_id(raw)
         if not fid:
@@ -107,12 +109,13 @@ def _resolve_attachments(ids) -> list:
             v = None
         if not v:
             continue
-        out.append({**v, "downloadUrl": f"/api/v1/graduation/materials/{v['fileId']}/download"})
+        out.append({**v, "downloadUrl": f"{base}/{v['fileId']}/download"})
     return out
 
 
-def _validate_final_attachments(attachments) -> list[str]:
-    """Reject forged cross-tenant IDs and unsafe thesis material types before binding."""
+def _validate_final_attachments(attachments, *, require_nonempty: bool = True) -> list[str]:
+    """Reject forged cross-tenant IDs and unsafe thesis material types before binding.
+    require_nonempty=True（成果）必须至少 1 个附件；开题可传空列表。"""
     from app.services import file_service
     normalized: list[str] = []
     for raw in attachments or []:
@@ -125,6 +128,8 @@ def _validate_final_attachments(attachments) -> list[str]:
         if (meta.get("ext") or "").lower() not in {"pdf", "doc", "docx", "zip"}:
             raise AppException("FILE_TYPE_NOT_ALLOWED", "Only PDF, Word, or ZIP thesis files are allowed")
         normalized.append(fid)
+    if require_nonempty and not normalized:
+        raise AppException("VALIDATION_ERROR", "请先上传论文/成果附件再提交")
     if len(normalized) > 10:
         raise AppException("VALIDATION_ERROR", "A thesis submission may contain at most 10 attachments")
     return normalized
@@ -397,7 +402,7 @@ def final_stats() -> dict:
 
 def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) -> dict:
     """学生提交/重交开题报告。已有待审/已通过时不可重复提交；被驳回后可重交（版本自增 + is_resubmit）。"""
-    attachment_ids = _validate_final_attachments(attachments)
+    attachment_ids = _validate_final_attachments(attachments, require_nonempty=False)
     if not (background and background.strip()):
         raise AppException("VALIDATION_ERROR", "选题背景不能为空")
     if not (plan and plan.strip()):
