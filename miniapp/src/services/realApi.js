@@ -456,23 +456,37 @@ const GD_PRIMARY = {
   ARCHIVED: { title: '查看毕设成绩', desc: '成绩发布后可查看构成，如有异议可申诉', actionText: '看成绩', anchor: 'grade' }
 }
 
-export async function enrichGraduation(mock) {
+export async function enrichGraduation(_unused) {
+  // 禁止网络失败回落 mock 假课题；无档案时仅返回中性空态
   const r = await realRequest('/mobile/graduation/my')
-  if (!r || !r.hasData) return { ...mock, hasBatch: false, _real: false }
+  if (!r || !r.hasData) {
+    return {
+      hasBatch: false, _real: false,
+      message: (r && r.message) || '暂无毕设记录',
+      topic: '', mentor: '', stage: '', stageLabel: '', batch: '', batchId: '',
+      topicId: '', hasTopic: false, nodes: [], guideLogs: [], proposals: [], finals: [],
+      primaryAction: { title: '暂无毕设任务', desc: '进入毕设阶段后这里会显示当前待办', actionText: '查看', anchor: 'nodes' },
+      returnedNote: ''
+    }
+  }
   const primary = GD_PRIMARY[r.stage] || { title: '毕业设计进行中', desc: '按导师指导推进各节点', actionText: '查看', anchor: 'nodes' }
-  // 已确有真实毕设档案（hasData=true）：字段一律以真实值为准，缺失只给中性占位，
-  // 绝不回落 mock 演示值，避免真实学生看到假课题/假导师/假节点。
-  return { ...mock, hasBatch: true, topic: r.topicTitle || '（未选题）', mentor: r.advisorName || '（未分配导师）',
-    stage: r.stage, stageLabel: r.stageLabel || '', defenseGroup: r.defenseGroup, plagiarismRate: r.plagiarismRate,
-    hasTopic: !!r.topicTitle && r.topicTitle !== '（未选题）',
+  const hasTopic = r.hasTopic != null ? !!r.hasTopic : !!r.topicId
+  return {
+    hasBatch: true, _real: true,
+    topic: r.topicTitle || '（未选题）',
+    mentor: r.advisorName || '（未分配导师）',
+    stage: r.stage, stageLabel: r.stageLabel || '',
+    defenseGroup: r.defenseGroup, plagiarismRate: r.plagiarismRate,
+    topicId: r.topicId || '',
+    hasTopic,
     batchId: r.batchId || '',
-    // 真实覆盖 mock 骨架：批次名 / 节点进度 / 指导记录 / 当前主任务
     batch: r.batchName || r.stageLabel || '',
     nodes: (r.nodes && r.nodes.length) ? r.nodes : [],
     guideLogs: r.guideLogs || [],
     primaryAction: primary,
     returnedNote: '',
-    proposals: r.proposals || [], finals: r.finals || [], _real: true }
+    proposals: r.proposals || [], finals: r.finals || []
+  }
 }
 
 /* ══════════ 选题管理：浏览题目库 / 提交志愿 / 课题变更申请（学生自服务，真实接口，不 mock 冒充） ══════════ */

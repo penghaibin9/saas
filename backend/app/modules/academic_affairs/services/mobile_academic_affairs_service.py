@@ -92,14 +92,144 @@ def submit_status_change_my(user, body) -> dict:
         stu = _me(db, user)
         sid = stu.id
 
+    def _g(key):
+        return getattr(body, key, None) or (body.get(key) if isinstance(body, dict) else None)
+
+    change_type = str(_g("changeType") or "").strip()
+    reason = str(_g("reason") or "").strip()
+    if not change_type:
+        raise AppException("VALIDATION_ERROR", "异动类型（changeType）必填")
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "异动事由至少 5 个字")
+    if change_type == "TRANSFER_MAJOR" and not _g("toMajorId"):
+        raise AppException("VALIDATION_ERROR", "转专业需指定目标专业")
+    if change_type == "TRANSFER_CLASS" and not _g("toClassId"):
+        raise AppException("VALIDATION_ERROR", "转班需指定目标班级")
+
     class _B:
         studentId = str(sid)
-        changeType = getattr(body, "changeType", None) or (body.get("changeType") if isinstance(body, dict) else None)
-        reason = getattr(body, "reason", None) or (body.get("reason") if isinstance(body, dict) else None)
-        toMajorId = getattr(body, "toMajorId", None) or (body.get("toMajorId") if isinstance(body, dict) else None)
-        toClassId = getattr(body, "toClassId", None) or (body.get("toClassId") if isinstance(body, dict) else None)
-        toCollegeId = getattr(body, "toCollegeId", None) or (body.get("toCollegeId") if isinstance(body, dict) else None)
+        changeType = change_type
+        reason = reason
+        toMajorId = _g("toMajorId")
+        toClassId = _g("toClassId")
+        toCollegeId = _g("toCollegeId")
     return change.submit(_B(), user)
+
+
+def transfer_options_my(user) -> dict:
+    """学生异动可选目标：可转专业清单 + 同专业可转班清单 + 各目标专业下可选班（本人当前专业/班级自动排除）。"""
+    from app.models import College, Major, SchoolClass
+    with session() as db:
+        stu = _me(db, user)
+        majors = db.scalars(select(Major).where(
+            Major.tenant_id == _tid(), Major.is_deleted.is_(False)).order_by(Major.id)).all()
+        colleges = {c.id: c for c in db.scalars(select(College).where(
+            College.tenant_id == _tid(), College.is_deleted.is_(False))).all()}
+        major_items = []
+        target_major_ids = []
+        for m in majors:
+            if stu.major_id and int(m.id) == int(stu.major_id):
+                continue
+            col = colleges.get(m.college_id)
+            major_items.append({
+                "majorId": str(m.id), "majorName": m.major_name,
+                "collegeId": str(m.college_id or ""), "collegeName": col.college_name if col else "",
+            })
+            target_major_ids.append(int(m.id))
+        class_items = []
+        if stu.major_id:
+            classes = db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == _tid(), SchoolClass.major_id == int(stu.major_id),
+                SchoolClass.is_deleted.is_(False), SchoolClass.class_status == "NORMAL",
+                SchoolClass.status == "ACTIVE").order_by(SchoolClass.id)).all()
+            for c in classes:
+                if stu.class_id and int(c.id) == int(stu.class_id):
+                    continue
+                class_items.append({
+                    "classId": str(c.id), "className": c.class_name, "grade": c.grade or "",
+                    "majorId": str(c.major_id),
+                })
+        # 转专业可选目标班：按目标专业分组（可不选班，由教务编班）
+        major_classes = {str(mid): [] for mid in target_major_ids}
+        if target_major_ids:
+            t_classes = db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == _tid(), SchoolClass.major_id.in_(target_major_ids),
+                SchoolClass.is_deleted.is_(False), SchoolClass.class_status == "NORMAL",
+                SchoolClass.status == "ACTIVE").order_by(SchoolClass.id)).all()
+            for c in t_classes:
+                major_classes.setdefault(str(c.major_id), []).append({
+                    "classId": str(c.id), "className": c.class_name, "grade": c.grade or "",
+                    "majorId": str(c.major_id),
+                })
+        return {
+            "currentMajorId": str(stu.major_id or ""),
+            "currentClassId": str(stu.class_id or ""),
+            "majors": major_items,
+            "classes": class_items,
+            "majorClasses": major_classes,
+        }
+
+
+def transcript_print_my(user, body=None) -> dict:
+    """成绩单打印留痕（移动端；与门户同一审计口径）。"""
+    from app.student_portal.services import common_service as common
+    body = body or {}
+    doc = transcript_my(user)
+    log = common.print_log(user, {
+        "bizType": "TRANSCRIPT",
+        "bizId": str(body.get("bizId") or "self"),
+        "docName": "成绩单",
+        "reason": str(body.get("reason") or "个人成绩单"),
+    })
+    return {**log, "docName": "成绩单", "printReason": body.get("reason") or "个人成绩单", "document": doc}
+
+
+def schedule_print_my(user, body=None) -> dict:
+    """课表打印留痕（移动端；与门户同一审计口径）。"""
+    from app.student_portal.services import common_service as common
+    body = body or {}
+    doc = schedule_my(user)
+    log = common.print_log(user, {
+        "bizType": "SCHEDULE",
+        "bizId": str(body.get("bizId") or "self"),
+        "docName": "个人课表",
+        "reason": str(body.get("reason") or "个人课表"),
+    })
+    return {**log, "docName": "个人课表", "printReason": body.get("reason") or "个人课表", "document": doc}
+
+
+def teacher_attendance_class_options(user) -> dict:
+    """考勤可选行政班：辅导员/班主任班 + 本人教学任务绑定班（去重）。"""
+    from app.models import AaTeachingTask, SchoolClass
+    if (user or {}).get("userType") == "STUDENT":
+        raise no_permission("该接口仅教职工可用")
+    keys = {_teacher_key(user)}
+    uid = str((user or {}).get("userId") or "")
+    login = (user or {}).get("loginName") or ""
+    name = (user or {}).get("realName") or ""
+    keys |= {k for k in (uid, login, name, uid[2:] if uid.startswith("u_") else "") if k}
+    with session() as db:
+        by_id = {}
+        # 教学任务班
+        tasks = db.scalars(select(AaTeachingTask).where(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.teacher_key.in_(list(keys) or ["__none__"]),
+            AaTeachingTask.class_id.is_not(None))).all()
+        for t in tasks:
+            c = db.get(SchoolClass, int(t.class_id))
+            if c and not c.is_deleted and c.tenant_id == _tid():
+                by_id[c.id] = {"classId": str(c.id), "className": c.class_name,
+                               "grade": c.grade or "", "source": "TEACHING_TASK"}
+        # 辅导员/班主任班
+        from app.services.mobile_teacher_service import my_classes as _mc
+        mine = _mc(user) or {}
+        for it in (mine.get("items") or []):
+            cid = int(it.get("classId") or 0)
+            if cid and cid not in by_id:
+                by_id[cid] = {"classId": str(cid), "className": it.get("className") or "",
+                              "grade": it.get("grade") or "", "source": "MY_CLASS"}
+        items = sorted(by_id.values(), key=lambda x: x["classId"])
+        return {"items": items, "hasData": bool(items)}
 
 
 def graduation_progress_my(user) -> dict:
@@ -365,8 +495,34 @@ def teacher_grade_tasks(user, status=None):
 
 
 def teacher_grade_roster(task_id, user) -> dict:
+    """名单 + 已录分数回显（合并 roster 与 records，供移动端重进不丢分）。"""
     from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
-    return grade.roster(task_id, user)
+    base = grade.roster(task_id, user)
+    rec = grade.list_records(task_id, user)
+    by = {str(r.get("studentId")): r for r in (rec.get("items") or [])}
+    items = []
+    for s in (base.get("items") or []):
+        row = dict(s)
+        r = by.get(str(s.get("studentId")))
+        if r:
+            row["usualScore"] = r.get("usualScore")
+            row["midtermScore"] = r.get("midtermScore")
+            row["finalScore"] = r.get("finalScore")
+            row["totalScore"] = r.get("totalScore")
+            row["exceptionFlag"] = r.get("exceptionFlag") or "NORMAL"
+        items.append(row)
+    return {
+        "items": items,
+        "usualRatio": rec.get("usualRatio"),
+        "midtermRatio": rec.get("midtermRatio"),
+        "finalRatio": rec.get("finalRatio"),
+        "status": rec.get("status") or base.get("status"),
+    }
+
+
+def teacher_grade_records(task_id, user) -> dict:
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+    return grade.list_records(task_id, user)
 
 
 def teacher_grade_enter_score(task_id, user, body) -> dict:

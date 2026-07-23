@@ -154,7 +154,7 @@ export default {
         employmentCompany: '/pages/teacher/employment-company/index',
         warning: '/pages/teacher/academic-warning/index',
         progress: '/pages/teacher/academic-affairs/index',
-        status: '/pages/teacher/academic-affairs/index',
+        status: '/pages/teacher/exam-defer/index',
         'topic-review': '/pages/teacher/graduation-topics/index',
         taskbook: '/pages/teacher/graduation-taskbook/index',
         'guide-log': '/pages/teacher/graduation-guide/index',

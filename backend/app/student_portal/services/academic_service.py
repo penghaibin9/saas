@@ -65,7 +65,16 @@ def submit_status_change(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "异动类型（changeType）必填")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "异动事由至少 5 个字")
+    if change_type == "TRANSFER_MAJOR" and not body.get("toMajorId"):
+        raise AppException("VALIDATION_ERROR", "转专业需指定目标专业")
+    if change_type == "TRANSFER_CLASS" and not body.get("toClassId"):
+        raise AppException("VALIDATION_ERROR", "转班需指定目标班级")
     return aa.submit_status_change_my(user, body)
+
+
+def transfer_options(user: dict) -> dict:
+    _require_student(user)
+    return aa.transfer_options_my(user)
 
 
 def status_change_print(user: dict, body: dict) -> dict:

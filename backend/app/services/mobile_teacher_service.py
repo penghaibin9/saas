@@ -643,6 +643,62 @@ def affairs_leave_extension_approve(user: dict, leave_id: str, action: str = "AP
 
 # ══════════ 学工待办处置（困难/奖助/处分/风险）——复用 PC 服务层权限+范围+指派人校验 ══════════
 
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _filter_by_assignee_todos(user, items, *, id_keys: tuple[str, ...], todo_types: tuple[str, ...]) -> list:
+    """与 teacher_affairs 待办卡同一口径：按 UnifiedTodo assignee（学院可见池 assignee=0）。"""
+    from app.core.affairs_security import build_affairs_context
+    from app.models import UnifiedTodo
+    from app.services.db_service import session as _db_session
+
+    if not items:
+        return []
+    with _db_session() as db:
+        ctx = build_affairs_context(user, db)
+        uid = _uid_int(user)
+        conds = [
+            UnifiedTodo.tenant_id == _tid(),
+            UnifiedTodo.source_module == "student-affairs",
+            UnifiedTodo.todo_type.in_(list(todo_types)),
+            UnifiedTodo.status == "PENDING",
+            UnifiedTodo.is_deleted.is_(False),
+        ]
+        if ctx.scope_type == "TENANT_ALL":
+            rows = db.scalars(select(UnifiedTodo).where(*conds)).all()
+        elif ctx.scope_type == "COLLEGE":
+            rows = db.scalars(select(UnifiedTodo).where(
+                *conds,
+                or_(UnifiedTodo.assignee_id == uid, UnifiedTodo.assignee_id == 0) if uid
+                else UnifiedTodo.assignee_id == 0)).all()
+        else:
+            if not uid:
+                return []
+            rows = db.scalars(select(UnifiedTodo).where(
+                *conds, UnifiedTodo.assignee_id == uid)).all()
+        allowed = {int(r.source_biz_id) for r in rows if r.source_biz_id}
+
+    def _biz_id(row: dict) -> int:
+        for k in id_keys:
+            v = row.get(k)
+            if v is None or v == "":
+                continue
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                continue
+        return 0
+
+    return [x for x in items if _biz_id(x) in allowed]
+
+
 def affairs_aid_pending(user: dict) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
@@ -651,7 +707,17 @@ def affairs_aid_pending(user: dict) -> dict:
     items, _ = svc.list_applications(u, page=1, page_size=100)
     nodes = {"CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW", "ADJUST_REVIEW"}
     out = [x for x in items if (x.get("status") or "") in nodes]
+    out = _filter_by_assignee_todos(
+        u, out, id_keys=("applyId", "id"), todo_types=("AID_APPROVAL", "AID_ADJUST"))
     return {"list": out, "total": len(out)}
+
+
+def affairs_aid_detail(user: dict, apply_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_aid_service as svc
+    return svc.get_application(apply_id, u)
 
 
 def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
@@ -680,7 +746,17 @@ def affairs_funding_pending(user: dict) -> dict:
     items, _ = svc.list_applications(u, page=1, page_size=100)
     nodes = {"COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"}
     out = [x for x in items if (x.get("status") or "") in nodes]
+    out = _filter_by_assignee_todos(
+        u, out, id_keys=("applicationId", "appId", "id"), todo_types=("FUNDING_APPROVAL",))
     return {"list": out, "total": len(out)}
+
+
+def affairs_funding_detail(user: dict, app_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_funding_service as svc
+    return svc.get_application(app_id, u)
 
 
 def affairs_funding_review(user: dict, app_id: str, action: str, reason: str = "") -> dict:
@@ -702,7 +778,18 @@ def affairs_discipline_pending(user: dict) -> dict:
     items, _ = svc.list_cases(u, page=1, page_size=100)
     nodes = {"COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "REMOVE_REVIEW"}
     out = [x for x in items if (x.get("status") or "") in nodes]
+    out = _filter_by_assignee_todos(
+        u, out, id_keys=("caseId", "id"),
+        todo_types=("DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE"))
     return {"list": out, "total": len(out)}
+
+
+def affairs_discipline_detail(user: dict, case_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_discipline_service as svc
+    return svc.get_case(case_id, u)
 
 
 def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str = "") -> dict:
@@ -725,25 +812,32 @@ def affairs_risk_pending(user: dict) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
-    from app.core.affairs_security import build_affairs_context
     from app.services import affairs_risk_service as svc
-    from app.services.db_service import session as _db_session
     items = []
     for st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED"):
         chunk, _ = svc.list_risks(u, status=st, page=1, page_size=50)
         items.extend(chunk)
+    # 与待办卡 RISK_HANDLE 对齐：先按 UnifiedTodo 指派人收敛；无待办时回退本人 owner
+    filtered = _filter_by_assignee_todos(
+        u, items, id_keys=("riskId", "id"), todo_types=("RISK_HANDLE",))
+    if filtered:
+        return {"list": filtered, "total": len(filtered)}
+    from app.core.affairs_security import build_affairs_context
+    from app.services.db_service import session as _db_session
     with _db_session() as db:
         ctx = build_affairs_context(u, db)
-    raw = str((u or {}).get("userId") or "")
-    if raw.startswith("db-"):
-        raw = raw[3:]
-    try:
-        uid = int(raw)
-    except (TypeError, ValueError):
-        uid = 0
+    uid = _uid_int(u)
     if ctx.scope_type != "TENANT_ALL" and uid:
         items = [x for x in items if int(x.get("ownerId") or 0) == uid]
     return {"list": items, "total": len(items)}
+
+
+def affairs_risk_detail(user: dict, risk_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_risk_service as svc
+    return svc.get_risk(risk_id, u)
 
 
 def affairs_risk_process(user: dict, risk_id: str, content: str) -> dict:
@@ -919,18 +1013,17 @@ def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str
 # get_change PC 端本身无归属校验，移动端补一道校验，不改 PC） ══════════
 
 def affairs_academic_my_schedule(user: dict, term_id: str | None = None, week: int | None = None) -> dict:
-    """我的课表（供选择「原课位」发起调停课）。self_key 推导与 `_user_keys`/`_derive_keys`
-    同口径（登录名优先；mock 登录 JWT claims 里并不携带 loginName，退化为 userId 去掉 'u_' 前缀）。
-    实测过：PC 端「查看本人课表」按字面 `userId||loginName` 取值，在 mock 演示账号下会直接拿到
-    'u_academic01' 前缀，与课表项 teacher_key='academic01' 对不上，查询结果恒为空——此处不是照抄
-    PC，而是按真正决定数据可见性的口径重新推导，确保选课位口径与 submit()/list_changes() 内部
-    的归属校验（_derive_keys）命中同一批数据。"""
+    """我的课表（供选择「原课位」发起调停课）。self_key 与 `_teacher_key`/`_user_keys` 同口径
+    （优先去 u_ 前缀的 userId，再 loginName），避免「教师我的课表」与「调停课选课位」两套 key。"""
     u = _require_teacher(user)
     if not db_enabled():
         return {"items": [], "batchId": None, "weeklyHours": 0, "note": ""}
     from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
     uid = str(u.get("userId") or "")
-    self_key = u.get("loginName") or (uid[2:] if uid.startswith("u_") else uid)
+    # 与 mobile_academic_affairs_service._teacher_key / grade._user_keys 对齐：优先去 u_ 前缀的 userId，
+    # 再尝试 loginName，避免「我的课表」与「调停课原课位」各用一套 key 导致一边有课一边空白。
+    from app.modules.academic_affairs.services.mobile_academic_affairs_service import _teacher_key
+    self_key = _teacher_key(u) or u.get("loginName") or (uid[2:] if uid.startswith("u_") else uid)
     return sched_svc.teacher_schedule(u, self_key, term_id, week)
 
 

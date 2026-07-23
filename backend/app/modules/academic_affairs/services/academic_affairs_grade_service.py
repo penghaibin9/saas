@@ -85,7 +85,8 @@ def _check_course_scope(task, user):
     if role in _REVIEW_ROLES or role == "COLLEGE_ADMIN":
         return
     if not task.teacher_key:
-        return  # 未建立归属（历史数据/未接入教学任务）时不做收敛，已知欠账，见施工记录
+        # 无归属键时 fail-closed：避免任意教师越权改他人任务（历史未回填请教务处代录）
+        raise AppException("NO_DATA_SCOPE", "该录入任务未绑定任课教师，请联系教务处处理")
     if task.teacher_key not in _user_keys(user):
         raise AppException("NO_DATA_SCOPE", "该录入任务不在您的授课范围内")
 
@@ -245,13 +246,15 @@ def list_records(task_id, user) -> dict:
             s = stus.get(r.student_id)
             items.append({"recordId": str(r.id), "studentId": str(r.student_id),
                          "realName": (s.real_name if s else ""), "studentNo": (s.student_no if s else ""),
-                         "usualScore": r.usual_score, "finalScore": r.final_score, "totalScore": r.total_score,
+                         "usualScore": r.usual_score, "midtermScore": r.midterm_score,
+                         "finalScore": r.final_score, "totalScore": r.total_score,
                          "passStatus": r.pass_status, "exceptionFlag": r.exception_flag or "NORMAL",
                          "source": r.source or "LEGACY", "prevUsualScore": r.prev_usual_score,
                          "prevFinalScore": r.prev_final_score, "prevTotalScore": r.prev_total_score,
                          "changeReason": r.change_reason or "", "changeAt": _iso(r.change_at),
                          "versionNo": r.version_no})
-        return {"items": items}
+        return {"items": items, "usualRatio": t.usual_ratio, "midtermRatio": t.midterm_ratio,
+                "finalRatio": t.final_ratio, "status": t.status}
 
 
 def _write_score_row(db, t, sid, usual, final, exception_flag, mid=None):

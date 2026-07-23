@@ -1487,9 +1487,24 @@ def academic_transcript_my(user=Depends(get_current_user)):
     return success(aa.transcript_my(user))
 
 
+@router.post("/academic/transcript/print", summary="教务·成绩单打印留痕（本人）")
+def academic_transcript_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(aa.transcript_print_my(user, body or {}))
+
+
+@router.post("/academic/schedule/print", summary="教务·课表打印留痕（本人）")
+def academic_schedule_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(aa.schedule_print_my(user, body or {}))
+
+
 @router.get("/academic/status/my", summary="教务·我的学籍与异动")
 def academic_status_my(user=Depends(get_current_user)):
     return success(aa.status_my(user))
+
+
+@router.get("/academic/transfer-options", summary="教务·异动可选目标专业/同专业班级")
+def academic_transfer_options(user=Depends(get_current_user)):
+    return success(aa.transfer_options_my(user))
 
 
 @router.post("/academic/status-change", summary="教务·学生本人发起学籍异动申请（唯一学生写入口）")
@@ -1646,23 +1661,34 @@ def academic_evaluation_submit(body: dict = Body(...), user=Depends(get_current_
 
 
 @router.get("/teacher/academic/grade-tasks", summary="教师·我的成绩录入任务")
-def teacher_grade_tasks(status: str = None, user=Depends(get_current_user)):
+def teacher_grade_tasks(status: str = None, user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_tasks(user, status))
 
 
-@router.get("/teacher/academic/grade-tasks/{task_id}/roster", summary="教师·成绩录入·教学班名单")
-def teacher_grade_roster(task_id: str, user=Depends(get_current_user)):
+@router.get("/teacher/academic/grade-tasks/{task_id}/roster", summary="教师·成绩录入·教学班名单（含已录回显）")
+def teacher_grade_roster(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_roster(task_id, user))
 
 
+@router.get("/teacher/academic/grade-tasks/{task_id}/records", summary="教师·成绩录入·已录记录")
+def teacher_grade_records(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
+    return success(aa.teacher_grade_records(task_id, user))
+
+
 @router.post("/teacher/academic/grade-tasks/{task_id}/enter-score", summary="教师·成绩录入·录入单生分数")
-def teacher_grade_enter_score(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_grade_enter_score(task_id: str, body: dict = Body(...),
+                              user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_enter_score(task_id, user, body))
 
 
 @router.post("/teacher/academic/grade-tasks/{task_id}/submit", summary="教师·成绩录入·提交学院审核")
-def teacher_grade_submit_task(task_id: str, user=Depends(get_current_user)):
+def teacher_grade_submit_task(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_submit_task(task_id, user), message="已提交学院审核")
+
+
+@router.get("/teacher/academic/attendance/class-options", summary="教师·课堂考勤·可选行政班")
+def teacher_attendance_class_options(user=Depends(get_current_user)):
+    return success(aa.teacher_attendance_class_options(user))
 
 
 @router.get("/teacher/academic/attendance/sessions", summary="教师·课堂考勤·我的场次列表")

@@ -49,8 +49,11 @@
           </div>
           <div class="sp-card" style="position:sticky;top:0">
             <div class="sp-panel__head">选课统计</div>
-            <div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:30px;font-weight:700;color:var(--pri);font-variant-numeric:tabular-nums">{{ selectedCredit }}</span><span class="sp-muted">/ 建议 26 学分</span></div>
-            <div class="bar"><span :style="{ width: Math.min(100, selectedCredit / 26 * 100) + '%' }" /></div>
+            <div style="display:flex;align-items:baseline;gap:4px">
+              <span style="font-size:30px;font-weight:700;color:var(--pri);font-variant-numeric:tabular-nums">{{ selectedCredit }}</span>
+              <span class="sp-muted">学分{{ suggestedCredit ? ' / 建议 ' + suggestedCredit : '' }}</span>
+            </div>
+            <div class="bar"><span :style="{ width: creditBarPct + '%' }" /></div>
             <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--t2)">
               <div style="display:flex;justify-content:space-between"><span>已选门数</span><span>{{ selectedCourses.length }} 门</span></div>
             </div>
@@ -200,15 +203,42 @@
           <button class="sp-btn" style="margin-top:20px" @click="wizStep = 2">下一步</button>
         </template>
         <template v-else-if="wizStep === 2">
+          <div v-if="statusForm.changeType === 'TRANSFER_MAJOR'" style="margin-bottom:12px">
+            <div class="sp-fieldlabel">目标专业（必选）</div>
+            <select v-model="statusForm.toMajorId" class="sp-inp" style="margin-bottom:8px">
+              <option value="">请选择目标专业</option>
+              <option v-for="m in transferOptions.majors" :key="m.majorId" :value="String(m.majorId)">
+                {{ m.collegeName ? m.collegeName + ' · ' : '' }}{{ m.majorName }}
+              </option>
+            </select>
+            <div class="sp-fieldlabel">目标班级（可选）</div>
+            <select v-model="statusForm.toClassId" class="sp-inp" style="margin-bottom:8px" :disabled="!statusForm.toMajorId">
+              <option value="">暂不指定班级</option>
+              <option v-for="c in majorTargetClasses" :key="c.classId" :value="String(c.classId)">{{ c.className }}{{ c.grade ? ' · ' + c.grade : '' }}</option>
+            </select>
+          </div>
+          <div v-if="statusForm.changeType === 'TRANSFER_CLASS'" style="margin-bottom:12px">
+            <div class="sp-fieldlabel">目标班级（必选，同专业）</div>
+            <select v-model="statusForm.toClassId" class="sp-inp" style="margin-bottom:8px">
+              <option value="">请选择目标班级</option>
+              <option v-for="c in transferOptions.classes" :key="c.classId" :value="String(c.classId)">{{ c.className }}{{ c.grade ? ' · ' + c.grade : '' }}</option>
+            </select>
+          </div>
           <div class="sp-fieldlabel">申请事由</div>
           <textarea v-model.trim="statusForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请详细说明申请原因" />
           <div style="display:flex;gap:10px">
             <button class="sp-btn sp-btn--ghost" @click="wizStep = 1">上一步</button>
-            <button class="sp-btn" :disabled="!statusForm.reason" @click="wizStep = 3">下一步：预览</button>
+            <button class="sp-btn" :disabled="!canNextStatusStep" @click="wizStep = 3">下一步：预览</button>
           </div>
         </template>
         <template v-else>
-          <div class="preview">异动类型：<b>{{ changeLabel(statusForm.changeType) }}</b><br />申请人：{{ studentName }}（{{ info.studentNo }}）<br />事由：{{ statusForm.reason }}</div>
+          <div class="preview">
+            异动类型：<b>{{ changeLabel(statusForm.changeType) }}</b><br />
+            申请人：{{ studentName }}（{{ info.studentNo }}）<br />
+            <template v-if="statusForm.changeType === 'TRANSFER_MAJOR'">目标专业：{{ majorLabel(statusForm.toMajorId) }}<br /></template>
+            <template v-if="statusForm.toClassId">目标班级：{{ classLabel(statusForm.toClassId) }}<br /></template>
+            事由：{{ statusForm.reason }}
+          </div>
           <div style="display:flex;gap:10px;margin-top:16px">
             <button class="sp-btn sp-btn--ghost" @click="wizStep = 2">上一步</button>
             <button class="sp-btn" :disabled="busy" @click="submitStatusChange">提交并下载申请表</button>
@@ -442,7 +472,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
@@ -495,7 +525,8 @@ const splitPicks = reactive({})
 
 const printReason = ref('')
 const appealForm = reactive({ gradeId: '', reason: '' })
-const statusForm = reactive({ changeType: 'SUSPEND', reason: '' })
+const statusForm = reactive({ changeType: 'SUSPEND', reason: '', toMajorId: '', toClassId: '' })
+const transferOptions = ref({ majors: [], classes: [], majorClasses: {} })
 const examForm = reactive({ reason: '', courseName: '' })
 const deferForm = reactive({ examCourseId: '', reasonType: 'SICK', reason: '' })
 const recogForm = reactive({
@@ -508,8 +539,11 @@ const deferReasons = [
 const days = ['周一', '周二', '周三', '周四', '周五']
 const wizSteps = [{ n: 1, t: '选择类型' }, { n: 2, t: '填写事由' }, { n: 3, t: '预览提交' }]
 const changeTypes = [
-  { k: 'SUSPEND', t: '休学', desc: '保留学籍暂停学业' }, { k: 'RESUME', t: '复学', desc: '休学期满恢复学习' },
-  { k: 'TRANSFER_MAJOR', t: '转专业', desc: '跨专业调整培养方案' },
+  { k: 'SUSPEND', t: '休学', desc: '暂停学业，学籍状态变为休学' },
+  { k: 'PRESERVE', t: '保留学籍', desc: '应征入伍/联合培养等离校保留学籍' },
+  { k: 'RESUME', t: '复学', desc: '休学或保留学籍期满恢复学习' },
+  { k: 'TRANSFER_MAJOR', t: '转专业', desc: '跨专业调整，须选目标专业' },
+  { k: 'TRANSFER_CLASS', t: '转班', desc: '同专业换班，须选目标班级' },
   { k: 'RETAIN', t: '留级', desc: '降级继续修读' },
   { k: 'WITHDRAW', t: '退学', desc: '终止学业注销学籍' }
 ]
@@ -581,12 +615,51 @@ const creditPct = computed(() => {
 const textbookFeeText = computed(() => {
   const f = textbook.value.fees
   if (!f || typeof f !== 'object') return '暂无费用汇总'
-  if (Array.isArray(f)) return f.length ? JSON.stringify(f) : '暂无费用汇总'
-  const keys = Object.keys(f)
-  if (!keys.length) return '暂无费用汇总'
-  return keys.map((k) => `${k}：${f[k]}`).join(' · ')
+  const items = Array.isArray(f.items) ? f.items : []
+  const head = `应缴 ${f.totalDue ?? 0} · 已缴 ${f.totalPaid ?? 0} · 欠费 ${f.unpaid ?? Math.max(0, Number(f.totalDue || 0) - Number(f.totalPaid || 0))}`
+  if (!items.length) return head + '（无明细）'
+  const lines = items.map((it) => `${it.textbookName || '教材'}：应缴 ${it.amount ?? 0} / 已缴 ${it.paidAmount ?? 0}（${it.status || '—'}）`)
+  return head + '\n' + lines.join('\n')
 })
-const STATUS_MAP = { NORMAL: '正常', SUSPENDED: '休学', TRANSFERRED: '转学', WITHDRAWN: '退学', GRADUATED: '毕业' }
+const STATUS_MAP = {
+  NORMAL: '正常', REGISTERED: '在籍注册', SUSPENDED: '休学', PRESERVED: '保留学籍',
+  RETAINED: '留级', TRANSFERRED: '转学', WITHDRAWN: '退学', GRADUATED: '毕业'
+}
+const suggestedCredit = computed(() => Number(credits.value.requiredCredits || credits.value.planCredits || 0))
+const creditBarPct = computed(() => {
+  if (!suggestedCredit.value) return selectedCredit.value ? 100 : 0
+  return Math.min(100, Math.round((selectedCredit.value / suggestedCredit.value) * 100))
+})
+const canNextStatusStep = computed(() => {
+  if (String(statusForm.reason || '').trim().length < 5) return false
+  if (statusForm.changeType === 'TRANSFER_MAJOR' && !statusForm.toMajorId) return false
+  if (statusForm.changeType === 'TRANSFER_CLASS' && !statusForm.toClassId) return false
+  return true
+})
+const majorTargetClasses = computed(() => {
+  const mid = String(statusForm.toMajorId || '')
+  if (!mid) return []
+  return (transferOptions.value.majorClasses && transferOptions.value.majorClasses[mid]) || []
+})
+function majorLabel(id) {
+  const m = (transferOptions.value.majors || []).find((x) => String(x.majorId) === String(id))
+  return m ? `${m.collegeName ? m.collegeName + ' · ' : ''}${m.majorName}` : (id || '—')
+}
+function classLabel(id) {
+  const mid = String(statusForm.toMajorId || '')
+  const fromMajor = ((transferOptions.value.majorClasses && transferOptions.value.majorClasses[mid]) || [])
+    .find((x) => String(x.classId) === String(id))
+  if (fromMajor) return fromMajor.className
+  const c = (transferOptions.value.classes || []).find((x) => String(x.classId) === String(id))
+  return c ? c.className : (id || '—')
+}
+watch(() => statusForm.changeType, () => {
+  statusForm.toMajorId = ''
+  statusForm.toClassId = ''
+})
+watch(() => statusForm.toMajorId, () => {
+  if (statusForm.changeType === 'TRANSFER_MAJOR') statusForm.toClassId = ''
+})
 function statusText(s) { return STATUS_MAP[s] || s || '正常' }
 function changeLabel(k) { return (changeTypes.find((c) => c.k === k) || {}).t || k }
 function scoreColor(s) { const n = Number(s); return n >= 90 ? 'var(--ok-fg)' : n >= 60 ? 'var(--t1)' : 'var(--warn-fg)' }
@@ -618,14 +691,14 @@ function canCancelLevel(r) {
 async function loadAll() {
   loading.value = true; error.value = ''
   try {
-    const [sc, tr, st, ex, mk, au, cs, rec, en, ev, exam, opts, rc, cr, wn, tb, lv, sp, rg] = await Promise.allSettled([
+    const [sc, tr, st, ex, mk, au, cs, rec, en, ev, exam, opts, rc, cr, wn, tb, lv, sp, rg, to] = await Promise.allSettled([
       portalApi.academicSchedule(), portalApi.academicTranscript(), portalApi.academicStatus(),
       portalApi.academicExamDefer(), portalApi.academicMakeup(), portalApi.academicGraduationAudit(),
       portalApi.academicCourseSelection(), portalApi.academicSelectionRecords(), portalApi.profileEnrollment(),
       portalApi.academicEvaluationTasks(), portalApi.academicExam(), portalApi.academicExamDeferOptions(),
       portalApi.academicGradeRecheck(), portalApi.academicCredits(), portalApi.academicWarning(),
       portalApi.academicTextbook(), portalApi.academicLevelExam(), portalApi.academicMajorSplit(),
-      portalApi.academicRecognition()
+      portalApi.academicRecognition(), portalApi.academicTransferOptions()
     ])
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     schedule.value = val(sc, {}); transcript.value = val(tr, {}); status.value = val(st, {})
@@ -646,6 +719,7 @@ async function loadAll() {
     levelExam.value = val(lv, { openExams: [], myRegs: [] })
     majorSplit.value = val(sp, { openBatches: [], myVolunteers: [] })
     recognition.value = val(rg, { items: [] })
+    transferOptions.value = val(to, { majors: [], classes: [], majorClasses: {} })
     for (const b of (majorSplit.value.openBatches || [])) {
       if (!splitPicks[b.batchId]) {
         const mine = (majorSplit.value.myVolunteers || []).find((v) => String(v.batchId) === String(b.batchId))
@@ -709,9 +783,12 @@ function buildScheduleHtml(res) {
 }
 function buildStatusChangeHtml(res, form) {
   const doc = res?.document || {}
+  const major = form.changeType === 'TRANSFER_MAJOR' ? `<p>目标专业：${majorLabel(form.toMajorId)}</p>` : ''
+  const cls = form.toClassId ? `<p>目标班级：${classLabel(form.toClassId)}</p>` : ''
   return `<p>申请人：${doc.realName || studentName.value}（${doc.studentNo || info.value.studentNo || '—'}）</p>
 <p>当前学籍：${doc.studentStatus || status.value.studentStatus || '—'}</p>
 <p>异动类型：${changeLabel(form.changeType)}</p>
+${major}${cls}
 <p>申请事由：${form.reason || '—'}</p>`
 }
 async function enroll(c) {
@@ -828,14 +905,25 @@ async function submitRecognition() {
   } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitStatusChange() {
+  if (!canNextStatusStep.value || busy.value) return
   busy.value = true
   try {
-    const payload = { ...statusForm }
+    const payload = {
+      changeType: statusForm.changeType,
+      reason: statusForm.reason.trim(),
+      toMajorId: statusForm.changeType === 'TRANSFER_MAJOR' ? (statusForm.toMajorId || undefined) : undefined,
+      toClassId: (statusForm.changeType === 'TRANSFER_MAJOR' || statusForm.changeType === 'TRANSFER_CLASS')
+        ? (statusForm.toClassId || undefined) : undefined,
+    }
     await portalApi.academicStatusChange(payload)
     const printed = await portalApi.academicStatusChangePrint(payload)
     downloadAcademicHtml('学籍异动申请审批表', printed, buildStatusChangeHtml(printed, payload))
     ui.notify('异动申请已提交，申请表已下载')
-    wizStep.value = 1; statusForm.reason = ''; loadAll()
+    wizStep.value = 1
+    statusForm.reason = ''
+    statusForm.toMajorId = ''
+    statusForm.toClassId = ''
+    loadAll()
   } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitExam() {

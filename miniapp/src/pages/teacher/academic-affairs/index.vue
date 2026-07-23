@@ -28,7 +28,12 @@ const ENTRIES = [
   { key: 'schedule', label: '我的课表', icon: '📅', route: '/pages/teacher/my-schedule/index' },
   { key: 'grade-entry', label: '成绩录入', icon: '📊', route: '/pages/teacher/academic-affairs/grade-entry' },
   { key: 'attendance', label: '课堂考勤', icon: '✅', route: '/pages/teacher/academic-affairs/attendance' },
-  { key: 'workload', label: '工作量申报', icon: '🧾', route: '/pages/teacher/academic-affairs/workload' }
+  { key: 'schedule-change', label: '调停课', icon: '🔀', route: '/pages/teacher/schedule-change/index' },
+  { key: 'exam-defer', label: '缓考审批', icon: '📝', route: '/pages/teacher/exam-defer/index' },
+  { key: 'academic-task', label: '教学任务', icon: '📚', route: '/pages/teacher/academic-task/index' },
+  { key: 'evaluation', label: '教学评价', icon: '⭐', route: '/pages/teacher/evaluation/index' },
+  { key: 'workload', label: '工作量申报', icon: '🧾', route: '/pages/teacher/academic-affairs/workload' },
+  { key: 'warning', label: '学业预警', icon: '⚠', route: '/pages/teacher/academic-warning/index' }
 ]
 
 export default {

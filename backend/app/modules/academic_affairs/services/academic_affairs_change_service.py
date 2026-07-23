@@ -5,7 +5,8 @@
 转专业/复学终审同步迁移主档院系班。在途异动重复 409；终态学生禁发起 422。
 
 TRANSFER_CLASS（转班，学籍异动三级模块续工·第三轮补缺）：同专业换班，区别于跨专业的
-TRANSFER_MAJOR——学院/专业不变，仅 to_class_id 变更；审批节点复用 SUSPEND/WITHDRAW 的三节点
+TRANSFER_MAJOR——须指定 to_major_id，终审生效后迁移主档院系/专业（可选 to_class_id）；
+TRANSFER_CLASS 审批节点复用 SUSPEND/WITHDRAW 的三节点
 序列（无需 OUT/IN 学院拆分，因专业不跨院）；目标班须同专业+在读(class_status=NORMAL)+非当前班，
 校验失败 422/409；目标学院/专业由服务端按学生当前专业强制推导，不采信客户端传参，防止越权篡改。
 
@@ -273,6 +274,31 @@ def submit(body, user) -> dict:
         if (ct in ("SUSPEND", "PRESERVE", "WITHDRAW", "RETAIN", "TRANSFER_MAJOR", "TRANSFER_CLASS")
                 and not is_enrolled(cur)):
             raise AppException("DATA_CONFLICT", "仅在籍学生可发起该异动")
+        # 转专业：目标专业必填，且须存在、未软删、与当前专业不同；目标学院以专业归属为准（防客户端篡改）。
+        tm_college_id = tm_major_id = tm_class_id = None
+        if ct == "TRANSFER_MAJOR":
+            from app.models import Major, SchoolClass
+            mid = getattr(body, "toMajorId", None)
+            if not mid:
+                raise AppException("VALIDATION_ERROR", "转专业需指定目标专业")
+            major = db.get(Major, int(mid))
+            if not major or major.is_deleted or major.tenant_id != _tid():
+                raise not_found("目标专业不存在")
+            if s.major_id and int(major.id) == int(s.major_id):
+                raise AppException("DATA_CONFLICT", "目标专业与当前专业相同")
+            tm_major_id = major.id
+            tm_college_id = major.college_id
+            # 可选目标班：须属于目标专业且在读
+            cid = getattr(body, "toClassId", None)
+            if cid:
+                cls = db.get(SchoolClass, int(cid))
+                if not cls or cls.is_deleted or cls.tenant_id != _tid():
+                    raise not_found("目标班级不存在")
+                if int(cls.major_id or 0) != int(major.id):
+                    raise AppException("VALIDATION_ERROR", "目标班级不属于所选专业")
+                if cls.class_status != "NORMAL":
+                    raise AppException("DATA_CONFLICT", "目标班级非在读状态，不可转入")
+                tm_class_id = cls.id
         # 转班（TRANSFER_CLASS）真实业务校验：目标班须存在、在读、且与学生当前专业一致（跨专业请走
         # 「转专业申请」）；目标班不得与当前班相同。目标学院/专业由服务端按学生当前值强制推导，
         # 不采信客户端传参，防止越权篡改到无关学院/专业。
@@ -304,11 +330,11 @@ def submit(body, user) -> dict:
                            from_status=cur, to_status=to_status, reason=getattr(body, "reason", None),
                            from_college_id=s.college_id, from_major_id=s.major_id, from_class_id=s.class_id,
                            to_college_id=(tc_college_id if ct == "TRANSFER_CLASS" else
-                                          (int(body.toCollegeId) if getattr(body, "toCollegeId", None) else None)),
+                                          (tm_college_id if ct == "TRANSFER_MAJOR" else None)),
                            to_major_id=(tc_major_id if ct == "TRANSFER_CLASS" else
-                                        (int(body.toMajorId) if getattr(body, "toMajorId", None) else None)),
+                                        (tm_major_id if ct == "TRANSFER_MAJOR" else None)),
                            to_class_id=(tc_class_id if ct == "TRANSFER_CLASS" else
-                                        (int(body.toClassId) if getattr(body, "toClassId", None) else None)),
+                                        (tm_class_id if ct == "TRANSFER_MAJOR" else None)),
                            status="SUBMITTED", current_node=first)
         # 休学到期日（真实补充：最长年限）
         if ct == "SUSPEND":

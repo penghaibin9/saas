@@ -133,6 +133,11 @@ def academic_status(user=Depends(get_current_user)):
     return success(academic.status(user))
 
 
+@router.get("/academic/transfer-options", summary="异动可选目标专业/同专业班级（本人）")
+def academic_transfer_options(user=Depends(get_current_user)):
+    return success(academic.transfer_options(user))
+
+
 @router.post("/academic/status-change", summary="发起学籍异动申请（本人）")
 def academic_status_change(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.submit_status_change(user, body))

@@ -28,10 +28,7 @@ export const studentApi = {
       () => real.enrichAcademic(M.studentAcademic),
       () => mockRequest(M.studentAcademic)),
   getInternship: () => real.enrichInternship(),
-  getGraduation: () =>
-    realFirstStrict('student.graduation',
-      () => real.enrichGraduation(M.studentGraduation),
-      () => mockRequest(M.studentGraduation)),
+  getGraduation: () => real.enrichGraduation(),
   // 毕业设计·选题/任务书/开题/中期/成果/答辩/成绩（真实接口，无 mock 兜底，业务错误透出）
   getGraduationActiveRound: () => real.gdActiveRound(),
   getGraduationTopics: (batchId) => real.gdTopics(batchId),

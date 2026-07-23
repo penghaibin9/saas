@@ -134,7 +134,7 @@ export async function getExportOptions(listKey) {
 export async function getAcademicDashboard() {
   if (shouldTryReal()) {
     try { return envelope(await request('/academic/dashboard')) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const students = scopeFilterStudents(db.academicStudents).filter((s) => s.recordStatus === 'ACTIVE')
@@ -164,7 +164,7 @@ function maskStudent(s) {
 export async function getAcademicStudents(params = {}) {
   if (shouldTryReal()) {
     try { const d = await request('/academic/students', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const { keyword = '', classId = '', warningLevel = '', academicStatus = '', recordStatus = '', page = 1, pageSize = 10 } = params
@@ -185,7 +185,7 @@ export async function getAcademicStudents(params = {}) {
 export async function getStudentAcademicDetail(id) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/students/${id}`)) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const s = db.academicStudents.find((x) => x.id === id)
@@ -217,7 +217,7 @@ export async function getStudentAcademicDetail(id) {
 export async function createAcademicRecord(payload) {
   if (shouldTryReal()) {
     try { return envelope(await request('/academic/students', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   if (!payload?.name || !payload?.studentNo) return fail('姓名与学号为必填项')
@@ -259,7 +259,7 @@ export async function createAcademicRecord(payload) {
 export async function updateAcademicRecord(id, payload) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/students/${id}`, { method: 'PUT', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const s = db.academicStudents.find((x) => x.id === id)
@@ -273,7 +273,7 @@ export async function updateAcademicRecord(id, payload) {
 export async function voidAcademicRecord(id, { reason }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/students/${id}/void`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const s = db.academicStudents.find((x) => x.id === id)
@@ -311,7 +311,7 @@ export async function getCourseRecords(params = {}) {
 export async function getGradeRecords(params = {}) {
   if (shouldTryReal()) {
     try { const d = await request('/academic/grades', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const { keyword = '', courseId = '', term = '', passStatus = '', examType = '', recordStatus = '', page = 1, pageSize = 10 } = params
@@ -335,7 +335,7 @@ export async function getGradeRecords(params = {}) {
 export async function createGradeRecord(payload) {
   if (shouldTryReal()) {
     try { return envelope(await request('/academic/grades', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   if (!payload?.studentId || !payload?.courseId || payload.score === undefined || payload.score === '') {
@@ -373,7 +373,7 @@ export async function createGradeRecord(payload) {
 export async function updateGradeRecord(id, payload) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/grades/${id}`, { method: 'PUT', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const g = db.gradeRecords.find((x) => x.id === id)
@@ -392,7 +392,7 @@ export async function updateGradeRecord(id, payload) {
 export async function voidGradeRecord(id, { reason }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/grades/${id}/void`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const g = db.gradeRecords.find((x) => x.id === id)
@@ -409,7 +409,7 @@ export async function voidGradeRecord(id, { reason }) {
 export async function getCreditRecords(params = {}) {
   if (shouldTryReal()) {
     try { const d = await request('/academic/credits', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const { keyword = '', classId = '', status = '', page = 1, pageSize = 10 } = params
@@ -424,7 +424,7 @@ export async function getCreditRecords(params = {}) {
 export async function getMakeupExamRecords(params = {}) {
   if (shouldTryReal()) {
     try { const d = await request('/academic/makeups', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const { keyword = '', status = '', recordStatus = '', page = 1, pageSize = 10 } = params
@@ -443,7 +443,7 @@ export async function getMakeupExamRecords(params = {}) {
 export async function getRetakeRecords(params = {}) {
   if (shouldTryReal()) {
     try { const d = await request('/academic/retakes', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const { keyword = '', status = '', recordStatus = '', page = 1, pageSize = 10 } = params
@@ -462,7 +462,7 @@ export async function getRetakeRecords(params = {}) {
 export async function createMakeupRecord(payload) {
   if (shouldTryReal()) {
     try { return envelope(await request('/academic/makeups', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   if (!payload?.studentId || !payload?.courseId) return fail('学生与课程为必填项')
@@ -496,7 +496,7 @@ export async function createMakeupRecord(payload) {
 export async function updateMakeupStatus(id, { status }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/makeups/${id}/status`, { method: 'PUT', body: { status } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const m = db.makeupExamRecords.find((x) => x.id === id)
@@ -513,7 +513,7 @@ export async function updateMakeupStatus(id, { status }) {
 export async function updateRetakeStatus(id, { status }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/retakes/${id}/status`, { method: 'PUT', body: { status } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const r = db.retakeRecords.find((x) => x.id === id)
@@ -554,7 +554,7 @@ export async function batchRemindMakeup(ids = []) {
 export async function getAcademicWarnings(params = {}) {
   if (shouldTryReal()) {
     try { const d = await request('/academic/warnings', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const { keyword = '', type = '', level = '', status = '', classId = '', recordStatus = '', page = 1, pageSize = 10 } = params
@@ -576,7 +576,7 @@ export async function getAcademicWarnings(params = {}) {
 export async function getWarningDetail(id) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/warnings/${id}`)) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const w = db.academicWarnings.find((x) => x.id === id)
@@ -596,7 +596,7 @@ export async function getWarningDetail(id) {
 export async function createWarning(payload) {
   if (shouldTryReal()) {
     try { return envelope(await request('/academic/warnings', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   if (!payload?.studentId || !payload?.type || !payload?.reason) return fail('学生、预警类型与触发原因为必填项')
@@ -636,7 +636,7 @@ export async function createWarning(payload) {
 export async function updateWarningLevel(id, { level, reason }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/warnings/${id}/level`, { method: 'PUT', body: { level, reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const w = db.academicWarnings.find((x) => x.id === id)
@@ -653,7 +653,7 @@ export async function updateWarningLevel(id, { level, reason }) {
 export async function voidWarning(id, { reason }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/warnings/${id}/void`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const w = db.academicWarnings.find((x) => x.id === id)
@@ -668,7 +668,7 @@ export async function voidWarning(id, { reason }) {
 export async function assignWarnings(ids = [], { ownerId, ownerName }) {
   if (shouldTryReal()) {
     try { return envelope(await request('/academic/warnings/assign', { method: 'POST', body: { ids, ownerId, ownerName } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   if (!ids.length) return fail('请先选择预警')
@@ -688,7 +688,7 @@ export async function assignWarnings(ids = [], { ownerId, ownerName }) {
 export async function remindWarnings(ids = []) {
   if (shouldTryReal()) {
     try { return envelope(await request('/academic/warnings/remind', { method: 'POST', body: { ids } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   if (!ids.length) return fail('请先选择预警')
@@ -703,7 +703,7 @@ export async function remindWarnings(ids = []) {
 export async function createIntervention(warningId, payload) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/warnings/${warningId}/interventions`, { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const w = db.academicWarnings.find((x) => x.id === warningId)
@@ -733,7 +733,7 @@ export async function createIntervention(warningId, payload) {
 export async function closeWarning(id, { result }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/warnings/${id}/close`, { method: 'POST', body: { result } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const w = db.academicWarnings.find((x) => x.id === id)
@@ -754,7 +754,7 @@ export async function closeWarning(id, { result }) {
 export async function escalateWarning(id, { reason }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/academic/warnings/${id}/escalate`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const w = db.academicWarnings.find((x) => x.id === id)
@@ -816,7 +816,7 @@ export async function createExport(listKey, payload = {}) {
 export async function getAuditLogs(params = {}) {
   if (shouldTryReal()) {
     try { const d = await request('/academic/audit-logs', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { return fail((e && e.message) || '请求失败', (e && e.code) || 1) }
   }
   await delay()
   const { bizType = '', keyword = '', page = 1, pageSize = 20 } = params

@@ -8,6 +8,7 @@
           <view class="tr__stat"><text class="tr__num">{{ data.items.length }}</text><text class="tr__lbl">课程数</text></view>
           <view class="tr__stat"><text class="tr__num" :class="{ 'is-bad': data.failCount }">{{ data.failCount || 0 }}</text><text class="tr__lbl">挂科</text></view>
         </view>
+        <button class="tr__print" :disabled="printing" @click="printDoc">{{ printing ? '留痕中…' : '打印成绩单（留痕）' }}</button>
         <view class="tr__empty" v-if="!data.items.length"><text>暂无成绩</text></view>
         <view class="stack">
           <view v-for="(g, i) in data.items" :key="i" class="tr__row">
@@ -25,25 +26,40 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import { safeToast, toastError } from '@/services/request'
 export default {
-  data() { return { data: null, state: 'loading' } },
+  data() { return { data: null, state: 'loading', printing: false } },
   onLoad() { this.load() },
   methods: {
     load() {
       this.state = 'loading'
       studentApi.getMyTranscript().then((d) => { this.data = d; this.state = 'ready' })
         .catch(() => { this.state = 'error' })
+    },
+    printDoc() {
+      if (this.printing) return
+      this.printing = true
+      studentApi.printMyTranscript('个人成绩单').then((res) => {
+        const lines = (this.data.items || []).map((g) => `${g.courseName} ${g.score ?? '—'}`).join('\n')
+        const text = `成绩单\n水印：${(res && res.watermark) || ''}\n留痕：${(res && res.loggedAt) || ''}\n已获学分：${this.data.earnedCredits || 0}\n\n${lines || '暂无成绩'}`
+        uni.setClipboardData({
+          data: text,
+          success: () => safeToast('已留痕并复制成绩摘要', 'success'),
+          fail: () => safeToast('已打印留痕', 'success')
+        })
+      }).catch((e) => toastError(e)).finally(() => { this.printing = false })
     }
   }
 }
 </script>
 
 <style scoped>
-.tr__sum { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
+.tr__sum { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
 .tr__stat { flex: 1; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3) 0; text-align: center; box-shadow: var(--shadow-card); }
 .tr__num { display: block; font-size: 22px; font-weight: 700; color: var(--brand-primary); }
 .tr__num.is-bad { color: #dc2626; }
 .tr__lbl { font-size: var(--font-size-sm); color: var(--text-secondary); }
+.tr__print { margin-bottom: var(--space-3); background: var(--brand-primary); color: #fff; border-radius: var(--radius-full); font-size: var(--font-size-sm); }
 .tr__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-5); }
 .tr__row { display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2); box-shadow: var(--shadow-card); }
 .tr__course { display: block; font-weight: 600; }

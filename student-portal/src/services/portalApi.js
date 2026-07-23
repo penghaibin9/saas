@@ -55,6 +55,7 @@ export const portalApi = {
   academicDrop: (body) => request('/portal/academic/course-selection/drop', { method: 'POST', body }),
   academicSelectionRecords: (batchId) => request(`/portal/academic/course-selection/records${q({ batchId })}`),
   academicStatus: () => request('/portal/academic/status'),
+  academicTransferOptions: () => request('/portal/academic/transfer-options'),
   academicStatusChange: (body) => request('/portal/academic/status-change', { method: 'POST', body }),
   academicStatusChangePrint: (body) => request('/portal/academic/status-change/print', { method: 'POST', body }),
   academicExam: () => request('/portal/academic/exam'),

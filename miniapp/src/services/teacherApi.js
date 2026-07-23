@@ -245,6 +245,7 @@ export const teacherApi = {
   submitGradeTask: (taskId) => real.teacherGradeSubmitTask(taskId),
   // 教务·课堂考勤（真实接口，移动端首创）
   getAttendanceSessions: () => real.teacherAttendanceSessions(),
+  getAttendanceClassOptions: () => real.teacherAttendanceClassOptions(),
   createAttendanceSession: (body) => real.teacherAttendanceCreate(body),
   getAttendanceDetail: (sessionId) => real.teacherAttendanceDetail(sessionId),
   markAttendance: (sessionId, studentId, status) => real.teacherAttendanceMark(sessionId, studentId, status),

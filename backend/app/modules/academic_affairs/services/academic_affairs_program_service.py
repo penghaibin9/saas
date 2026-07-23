@@ -94,7 +94,8 @@ def add_course(program_id, user, body) -> dict:
 
 def get_program(program_id, user) -> dict:
     with session() as db:
-        from app.models import AaProgram, AaProgramCourse
+        from app.models import (AaProgram, AaProgramCourse, NationalStandardDocument,
+                                NationalStandardSection, SchoolMajorStandardBinding)
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
@@ -110,6 +111,39 @@ def get_program(program_id, user) -> dict:
         course_sum = sum(float(c.credit_snapshot or 0) for c in courses)
         d["creditSum"] = course_sum
         d["creditGap"] = (float(p.total_credits) - course_sum) if p.total_credits else None
+        standards = []
+        if p.major_id:
+            rows = db.execute(select(SchoolMajorStandardBinding, NationalStandardDocument).join(
+                NationalStandardDocument, NationalStandardDocument.id == SchoolMajorStandardBinding.document_id
+            ).where(
+                SchoolMajorStandardBinding.tenant_id == _tid(),
+                SchoolMajorStandardBinding.school_major_id == p.major_id,
+                SchoolMajorStandardBinding.binding_status == "ACTIVE",
+                SchoolMajorStandardBinding.is_deleted.is_(False),
+                NationalStandardDocument.is_deleted.is_(False),
+            ).order_by(SchoolMajorStandardBinding.is_primary.desc(), NationalStandardDocument.id.desc())).all()
+            document_ids = [document.id for _binding, document in rows]
+            relevant = db.scalars(select(NationalStandardSection).where(
+                NationalStandardSection.document_id.in_(document_ids),
+                NationalStandardSection.section_no.in_((6, 7, 8, 11)),
+                NationalStandardSection.is_deleted.is_(False),
+            ).order_by(NationalStandardSection.document_id, NationalStandardSection.section_no)).all() if document_ids else []
+            section_map = {}
+            for section in relevant:
+                section_map.setdefault(section.document_id, []).append({
+                    "code": section.section_code, "no": section.section_no,
+                    "title": section.section_title,
+                    "contentExcerpt": (section.content_text or "")[:3000],
+                })
+            standards = [{"bindingId": str(binding.id), "documentId": str(document.id),
+                          "standardCode": document.standard_code, "title": document.title,
+                          "majorCode": document.major_code, "versionLabel": document.version_label,
+                          "documentType": document.document_type, "isPrimary": binding.is_primary,
+                          "sourceUrl": document.source_url, "bindingNote": binding.note or "",
+                          "relevantSections": section_map.get(document.id, [])}
+                         for binding, document in rows]
+        d["nationalStandards"] = standards
+        d["nationalStandardBound"] = bool(standards)
         return d
 
 

@@ -137,8 +137,8 @@ export const roleConfigs = {
     workbench: ['academic', 'warning', 'status'],
     quickActions: [
       { key: 'warning', label: '异常预警', icon: '⚠' },
-      { key: 'progress', label: '学业进度', icon: '▤' },
-      { key: 'status', label: '学籍异动', icon: '⇄' },
+      { key: 'progress', label: '教务工作台', icon: '▤' },
+      { key: 'status', label: '缓考审批', icon: '⇄' },
       { key: 'approval', label: '待审批', icon: '✓' },
       { key: 'academicTask', label: '教学任务确认', icon: '📚' },
       { key: 'scheduleChange', label: '调停课管理', icon: '🔀' },
