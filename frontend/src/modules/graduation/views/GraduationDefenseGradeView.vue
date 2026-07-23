@@ -223,9 +223,7 @@ export default {
     secondDefenseReason() {
       const pa = this.ctx.permissionActions.createSecondDefense || this.ctx.permissionActions.manageDefense
       return pa && !pa.allowed ? (pa.reason || '仅答辩秘书/管理员可发起二次答辩') : ''
-    }
-,
-
+    },
     canManageGrade() {
       const pa = this.ctx.permissionActions.manageGrade
       return !!(pa && pa.allowed)
