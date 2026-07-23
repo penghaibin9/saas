@@ -49,12 +49,14 @@ def self_eval_submit(user: dict, body: dict) -> dict:
     """实习自评提交（本人）。"""
     from app.modules.internship.services import internship_student_eval_service as se
     payload = body or {}
-    # 门户表单字段映射到学生自评服务口径
-    if payload.get("performance") or payload.get("reflection"):
+    # 门户表单字段映射到学生自评服务口径（selfProblem，不是 problems）
+    if payload.get("performance") or payload.get("reflection") or payload.get("problems"):
         payload = {
             "selfSummary": (payload.get("performance") or payload.get("selfSummary") or "").strip(),
             "selfHarvest": (payload.get("reflection") or payload.get("selfHarvest") or "").strip(),
-            "problems": payload.get("problems") or "",
+            "selfProblem": (payload.get("problems") or payload.get("selfProblem") or "").strip(),
+            "enterpriseRating": payload.get("enterpriseRating"),
+            "positionRating": payload.get("positionRating"),
         }
     return se.student_submit(user, payload)
 
@@ -114,6 +116,19 @@ def intention_save(user: dict, body: dict) -> dict:
     return stu.internship_intention_save(user, body or {})
 
 
+def intention_submit(user: dict) -> dict:
+    return stu.internship_intention_submit(user)
+
+
+def intention_withdraw(user: dict) -> dict:
+    return stu.internship_intention_withdraw(user)
+
+
+def leave_withdraw(user: dict, leave_id) -> dict:
+    from app.modules.internship.services import internship_leave_service as lv
+    return lv.withdraw_my(user, leave_id)
+
+
 def applications_my(user: dict) -> dict:
     return {"items": stu.internship_application_list(user)}
 
@@ -136,3 +151,44 @@ def change_list(user: dict) -> dict:
 
 def change_apply(user: dict, body: dict) -> dict:
     return stu.internship_change_apply(user, body or {})
+
+
+def agreements_my(user: dict) -> dict:
+    from app.modules.internship.services import internship_agreement_service as agr
+    return {"items": agr.my_agreements(user)}
+
+
+def agreement_detail(user: dict, agreement_id: str) -> dict:
+    from app.modules.internship.services import internship_agreement_service as agr
+    return agr.get_student_agreement(user, agreement_id)
+
+
+def agreement_confirm(user: dict, agreement_id: str, body: dict) -> dict:
+    from app.modules.internship.services import internship_agreement_service as agr
+    b = body or {}
+    return agr.student_confirm(user, agreement_id, (b.get("action") or "").upper(),
+                               b.get("reason") or "")
+
+
+def insurance_my(user: dict) -> dict:
+    from app.modules.internship.services import internship_insurance_service as ins
+    return ins.student_my_insurance(user)
+
+
+def insurance_save(user: dict, body: dict) -> dict:
+    from app.modules.internship.services import internship_insurance_service as ins
+    return ins.student_submit(user, body or {})
+
+
+def plan_my(user: dict) -> dict:
+    from app.modules.internship.services import internship_plan_service as plan
+    return plan.student_my_plan(user)
+
+
+def plan_ack(user: dict) -> dict:
+    from app.modules.internship.services import internship_plan_service as plan
+    return plan.student_acknowledge(user)
+
+
+def enterprises(user: dict, city: str = "") -> dict:
+    return stu.internship_enterprises(user, city or "")

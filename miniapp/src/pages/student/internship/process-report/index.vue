@@ -2,9 +2,18 @@
   <view class="page-wrap pr">
     <MobileGlobalState :state="pageState" @retry="load">
       <view class="page-pad stack" v-if="loaded">
-        <view class="card">
+                <view class="card">
           <text class="card-title">{{ typeLabel }}</text>
           <text class="pr__hint">提交后由指导教师在 PC 端批阅，退回后可修改重交。</text>
+          <view v-if="showTypePick" class="pr__types">
+            <text
+              v-for="t in typeOptions"
+              :key="t.v"
+              class="pr__type"
+              :class="{ 'is-on': reportType === t.v }"
+              @click="pickType(t.v)"
+            >{{ t.l }}</text>
+          </view>
         </view>
         <view class="card stack">
           <view v-if="reportType !== 'SUMMARY'" class="pr__field">
@@ -39,8 +48,11 @@ const DEFAULT_TPL = {
 export default {
   data() {
     return {
-      pageState: 'loading', loaded: false, submitting: false,
+      pageState: 'loading', loaded: false, submitting: false, showTypePick: false,
       reportType: 'DAILY',
+      typeOptions: [
+        { v: 'DAILY', l: '日报' }, { v: 'MONTHLY', l: '月报' }, { v: 'SUMMARY', l: '实习总结' }
+      ],
       form: { periodKey: '', content: '' }
     }
   },
@@ -56,8 +68,13 @@ export default {
     }
   },
   onLoad(q) {
-    const t = (q.type || 'daily').toUpperCase()
-    this.reportType = t === 'MONTHLY' ? 'MONTHLY' : t === 'SUMMARY' ? 'SUMMARY' : 'DAILY'
+    const raw = String((q && q.type) || '').toLowerCase()
+    if (raw === 'monthly') this.reportType = 'MONTHLY'
+    else if (raw === 'summary') this.reportType = 'SUMMARY'
+    else if (raw === 'daily') this.reportType = 'DAILY'
+    else this.reportType = 'DAILY'
+    // 无 type 参数时提供类型切换，避免永远默认日报
+    this.showTypePick = !raw
     uni.setNavigationBarTitle({ title: '填写' + this.typeLabel })
     if (this.reportType === 'DAILY') {
       const d = new Date()
@@ -66,13 +83,28 @@ export default {
       const d = new Date()
       this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     }
-    // 新建报告预填结构骨架，方便学生分节填写；日报无对应预设结构，维持空白 + placeholder 提示
     if (DEFAULT_TPL[this.reportType]) this.form.content = DEFAULT_TPL[this.reportType]
     this.loaded = true
     this.pageState = 'ready'
   },
   methods: {
     load() { this.pageState = 'ready' },
+    pickType(v) {
+      this.reportType = v
+      uni.setNavigationBarTitle({ title: '填写' + this.typeLabel })
+      if (v === 'DAILY') {
+        const d = new Date()
+        this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        this.form.content = ''
+      } else if (v === 'MONTHLY') {
+        const d = new Date()
+        this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        this.form.content = DEFAULT_TPL.MONTHLY
+      } else {
+        this.form.periodKey = 'FINAL'
+        this.form.content = DEFAULT_TPL.SUMMARY
+      }
+    },
     submit() {
       if (this.submitting) return
       this.submitting = true
@@ -93,6 +125,9 @@ export default {
 
 <style scoped>
 .pr__hint { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: var(--space-2); }
+.pr__types { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.pr__type { padding: 6px 12px; border-radius: var(--radius-md); background: var(--gray-100); font-size: var(--font-size-sm); color: var(--text-secondary); }
+.pr__type.is-on { background: var(--brand-primary); color: #fff; }
 .pr__field { display: flex; flex-direction: column; gap: 6px; }
 .pr__label { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .pr__req { color: var(--danger-500); }
