@@ -64,8 +64,20 @@
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'APPROVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'warning'" :label="row.statusLabel" dot /></template>
         <template #cell-actions="{ row }">
           <template v-if="row.status === 'PENDING'">
-            <button class="mp-link" @click="askAppeal(row, 'APPROVE')">受理</button>
-            <button class="mp-link mp-link--danger" style="margin-left:var(--space-2)" @click="askAppeal(row, 'REJECT')">驳回</button>
+            <AppPermissionButton
+              :allowed="canReviewAppeal"
+              :reason="reviewAppealReason"
+              variant="ghost"
+              @click="askAppeal(row, 'APPROVE')"
+            >受理</AppPermissionButton>
+            <AppPermissionButton
+              :allowed="canReviewAppeal"
+              :reason="reviewAppealReason"
+              variant="ghost"
+              danger
+              style="margin-left:var(--space-2)"
+              @click="askAppeal(row, 'REJECT')"
+            >驳回</AppPermissionButton>
           </template>
           <span v-else class="mp-cell-sub">{{ row.reviewComment || '—' }}</span>
         </template>
@@ -80,6 +92,7 @@
 /** 互查整改 / 答辩专家库 / 成绩更正申诉（/admin/graduation/more?panel=peer|experts|appeals）。 */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppPermissionButton } from '@/components/common'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { toast } from '@/utils/toast'
 
@@ -91,7 +104,7 @@ const APPEAL_REJECT_REASON_CHIPS = [
 
 export default {
   name: 'GraduationMoreView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppPermissionButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -103,7 +116,7 @@ export default {
       appealTabs: [{ value: '', label: '全部' }, { value: 'PENDING', label: '待复核' }, { value: 'APPROVED', label: '已受理' }, { value: 'REJECTED', label: '已驳回' }],
       peerCols: [{ key: 'pair', title: '互查关系 / 意见' }, { key: 'status', title: '状态' }],
       expertCols: [{ key: 'expert', title: '专家' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '100px' }],
-      appealCols: [{ key: 'student', title: '学生 / 申诉理由' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '160px' }]
+      appealCols: [{ key: 'student', title: '学生 / 申诉理由' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '200px' }]
     }
   },
   computed: {
@@ -111,6 +124,14 @@ export default {
       if (this.tab === 'peer') return [{ key: 'assignPeer', label: '＋ 分配互查', variant: 'primary' }]
       if (this.tab === 'experts') return [{ key: 'addExpert', label: '＋ 新增专家', variant: 'primary' }]
       return []
+    },
+    canReviewAppeal() {
+      const pa = this.ctx.permissionActions.reviewGradeAppeal || this.ctx.permissionActions.manageGrade || {}
+      return pa.allowed !== false && pa.visible !== false
+    },
+    reviewAppealReason() {
+      const pa = this.ctx.permissionActions.reviewGradeAppeal || this.ctx.permissionActions.manageGrade || {}
+      return pa.reason || '无成绩申诉复核权限'
     }
   },
   watch: { '$route.query.panel': { immediate: true, handler(p) { this.tab = ['peer', 'experts', 'appeals'].includes(p) ? p : 'peer'; this.load() } } },
@@ -139,7 +160,8 @@ export default {
       const res = await graduationMoreApi.setExpertStatus(row.id, row.status === 'ACTIVE' ? 'DISABLE' : 'ENABLE')
       if (res.code === 0) this.load(); else toast.error(res.message)
     },
-    askAppeal(row, action) {
+    async askAppeal(row, action) {
+      if (!this.canReviewAppeal) return toast.error(this.reviewAppealReason)
       this.confirm = action === 'APPROVE'
         ? { visible: true, title: '受理申诉', message: `受理「${row.studentName}」的成绩申诉？受理后将撤回其成绩，走重新核算。`, type: 'primary', confirmText: '受理', requireReason: false, action: 'APPROVE', row }
         : {

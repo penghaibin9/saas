@@ -227,7 +227,7 @@ const finalTone = computed(() => {
   if (items.some((i) => i.status === 'REJECTED')) return 'danger'
   return 'warn'
 })
-const hasTopic = computed(() => Boolean(my.value.topicTitle && my.value.topicTitle !== '（未选题）'))
+const hasTopic = computed(() => Boolean(my.value.topicId || my.value.hasTopic))
 const hasGuidance = computed(() => (my.value.guideLogs || []).length > 0)
 const hasPeerWork = computed(() => ((peer.value.toReview || []).length + (peer.value.myRectify || []).length) > 0)
 const canWithdrawChoices = computed(() => {

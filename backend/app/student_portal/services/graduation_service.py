@@ -62,8 +62,10 @@ def submit_proposal(user: dict, body: dict) -> dict:
     plan = str(body.get("plan") or "").strip()
     outcome = str(body.get("outcome") or "").strip()
     attachments = body.get("attachments") or []
-    if not (background or plan or outcome):
-        raise AppException("VALIDATION_ERROR", "开题报告内容不能为空（研究背景/研究方案/预期成果至少填一项）")
+    if not background:
+        raise AppException("VALIDATION_ERROR", "选题背景不能为空")
+    if not plan:
+        raise AppException("VALIDATION_ERROR", "研究方案与进度不能为空")
     if not isinstance(attachments, list):
         raise AppException("VALIDATION_ERROR", "附件格式不正确")
     return stu.graduation_submit_proposal(user, {
