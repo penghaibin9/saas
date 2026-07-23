@@ -660,6 +660,11 @@ def teacher_affairs_aid_pending(user=Depends(get_current_user)):
     return success(tea.affairs_aid_pending(user))
 
 
+@router.get("/teacher/affairs/aid/{apply_id}", summary="辅导员·困难认定详情")
+def teacher_affairs_aid_detail(apply_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_aid_detail(user, apply_id))
+
+
 @router.post("/teacher/affairs/aid/{apply_id}/review", summary="辅导员·困难认定审批")
 def teacher_affairs_aid_review(apply_id: str, body: dict = Body(default={}),
                                user=Depends(get_current_user)):
@@ -672,6 +677,11 @@ def teacher_affairs_aid_review(apply_id: str, body: dict = Body(default={}),
 @router.get("/teacher/affairs/funding/pending", summary="辅导员·奖助待审")
 def teacher_affairs_funding_pending(user=Depends(get_current_user)):
     return success(tea.affairs_funding_pending(user))
+
+
+@router.get("/teacher/affairs/funding/{app_id}", summary="辅导员·奖助详情")
+def teacher_affairs_funding_detail(app_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_funding_detail(user, app_id))
 
 
 @router.post("/teacher/affairs/funding/{app_id}/review", summary="辅导员·奖助审批")
@@ -687,6 +697,11 @@ def teacher_affairs_discipline_pending(user=Depends(get_current_user)):
     return success(tea.affairs_discipline_pending(user))
 
 
+@router.get("/teacher/affairs/discipline/{case_id}", summary="辅导员·处分详情")
+def teacher_affairs_discipline_detail(case_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_discipline_detail(user, case_id))
+
+
 @router.post("/teacher/affairs/discipline/{case_id}/review", summary="辅导员·处分/解除审批")
 def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}),
                                       user=Depends(get_current_user)):
@@ -698,6 +713,11 @@ def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}
 @router.get("/teacher/affairs/risk/pending", summary="辅导员·学工风险待处置（本人责任单）")
 def teacher_affairs_risk_pending(user=Depends(get_current_user)):
     return success(tea.affairs_risk_pending(user))
+
+
+@router.get("/teacher/affairs/risk/{risk_id}", summary="辅导员·学工风险详情")
+def teacher_affairs_risk_detail(risk_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_risk_detail(user, risk_id))
 
 
 @router.post("/teacher/affairs/risk/{risk_id}/process", summary="辅导员·风险处置记录")

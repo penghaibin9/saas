@@ -19,8 +19,8 @@
           <template #cell-delivered="{ row }">{{ row.deliveredAt ? (deliveryLabel(row.deliveryMethod) + ' · ' + row.deliveredAt.slice(0,10)) : '未送达' }}</template>
           <template #cell-actions="{ row }">
             <div class="ap-ops">
-              <AppPermissionButton v-if="!row.deliveredAt" code="studentAffairs.discipline.deliver" size="sm" :loading="acting===row.caseId" @click="deliver(row)">登记送达</AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.discipline.appeal.create" size="sm" variant="secondary" :loading="acting===row.caseId" @click="appeal(row)">发起申诉</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.discipline.deliver')" v-if="!row.deliveredAt" code="studentAffairs.discipline.deliver" size="sm" :loading="acting===row.caseId" @click="deliver(row)">登记送达</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.discipline.appeal.create')" code="studentAffairs.discipline.appeal.create" size="sm" variant="secondary" :loading="acting===row.caseId" @click="appeal(row)">发起申诉</AppPermissionButton>
             </div>
           </template>
         </DataTable>
@@ -38,7 +38,7 @@
           <template #cell-status="{ row }"><StatusTag :type="appealType(row.status)" :label="row.statusLabel || row.status" dot /></template>
           <template #cell-opinion="{ row }"><span class="ap-opinion">{{ row.reviewOpinion || '—' }}</span></template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="['SUBMITTED','REVIEWING'].includes(row.status)" code="studentAffairs.discipline.appeal.review" size="sm" :loading="acting===row.appealId" @click="review(row)">复核</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.discipline.appeal.review')" v-if="['SUBMITTED','REVIEWING'].includes(row.status)" code="studentAffairs.discipline.appeal.review" size="sm" :loading="acting===row.appealId" @click="review(row)">复核</AppPermissionButton>
             <span v-else class="ap-dash">—</span>
           </template>
         </DataTable>
@@ -87,6 +87,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const DISC = { WARNING: '警告', SERIOUS_WARNING: '严重警告', DEMERIT: '记过', PROBATION: '留校察看', EXPEL: '开除' }
 const DELIVERY = { DIRECT: '直接送达', MAIL: '邮寄', PUBLIC: '公告', LEAVE: '留置' }
@@ -114,6 +116,7 @@ const APPEAL_COLUMNS = [
 
 export default {
   name: 'DisciplineAppealView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
     AppSectionCard, AppSelect, StatusTag: AppStatusTag, DataTable
@@ -144,6 +147,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [cs, ap] = await Promise.all([

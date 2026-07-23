@@ -10,7 +10,7 @@
       <span class="sa-updated-hint">
         数据更新于 <AppDateDisplay :value="dashboard.updatedAt" mode="datetime" empty-text="—" />
       </span>
-      <AppPermissionButton code="studentAffairs.dashboard.refresh" variant="secondary" @click="load">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dashboard.refresh')" code="studentAffairs.dashboard.refresh" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
       <AppExportButton :export-fn="exportLedger" :has-permission="true" />
@@ -55,7 +55,7 @@
             <AppRiskTag :level="riskLevel" />
             <span>{{ riskSummary }}</span>
           </div>
-          <AppPermissionButton code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk')">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk')">
             进入风险预警
           </AppPermissionButton>
         </AppSectionCard>
@@ -64,7 +64,7 @@
           <div class="sa-bridge">
             <AppStatusTag type="info" label="外部系统承接" />
             <p>本轮只提供入口和摘要，不修数字迎新主链路、日期底座或导出台账。</p>
-            <AppPermissionButton code="orientation.dashboard.view" variant="secondary" @click="go('/admin/orientation')">
+            <AppPermissionButton :allowed="canBtn('orientation.dashboard.view')" code="orientation.dashboard.view" variant="secondary" @click="go('/admin/orientation')">
               打开数字迎新
             </AppPermissionButton>
           </div>
@@ -74,7 +74,7 @@
           <div class="sa-bridge">
             <AppStatusTag type="info" label="过渡入口" />
             <p>请假、宿舍、风险等高频入口逐步收口到学工中心，旧在校服务保留兼容跳转。</p>
-            <AppPermissionButton code="campusService.dashboard.view" variant="secondary" @click="go('/admin/campus-service')">
+            <AppPermissionButton :allowed="canBtn('campusService.dashboard.view')" code="campusService.dashboard.view" variant="secondary" @click="go('/admin/campus-service')">
               打开在校服务
             </AppPermissionButton>
           </div>
@@ -82,10 +82,10 @@
 
         <AppSectionCard title="跨中心风险入口">
           <div class="sa-actions">
-            <AppPermissionButton code="internship.risk.view" variant="secondary" @click="go('/admin/internship/risks')">
+            <AppPermissionButton :allowed="canBtn('internship.risk.view')" code="internship.risk.view" variant="secondary" @click="go('/admin/internship/risks')">
               岗位实习风险
             </AppPermissionButton>
-            <AppPermissionButton code="graduation.risk.view" variant="secondary" @click="go('/admin/graduation/risk-archive?panel=risk')">
+            <AppPermissionButton :allowed="canBtn('graduation.risk.view')" code="graduation.risk.view" variant="secondary" @click="go('/admin/graduation/risk-archive?panel=risk')">
               毕业设计风险
             </AppPermissionButton>
           </div>
@@ -113,9 +113,12 @@ import {
   AppStatusTag
 } from '@/components/common'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 export default {
   name: 'StudentAffairsDashboardView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppAuditTrail,
     AppDateDisplay,
@@ -173,6 +176,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

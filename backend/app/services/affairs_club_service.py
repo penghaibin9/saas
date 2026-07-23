@@ -224,6 +224,8 @@ def remove_member(member_id, user) -> dict:
             raise not_found("成员记录不存在")
         if m.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "该成员已退社")
+        # 与加人对称：非全域只能退本数据范围内学生
+        _member_scope_or_403(db, m.student_id, user)
         m.status, m.quit_at, m.version = "QUIT", datetime.utcnow(), m.version + 1
         db.flush()  # 确保 QUIT 落定后再统计（本会话 autoflush 关闭）
         _sync_count(db, m.club_id)

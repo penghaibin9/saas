@@ -20,7 +20,7 @@
             <em v-if="row.receiptNote" class="fr-note">{{ row.receiptNote }}</em>
           </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="row.receiptStatus!=='RECEIVED'" code="studentAffairs.homeSchool.record.create" size="sm" :loading="acting===row.contactId" @click="markReceipt(row)">登记回执</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.homeSchool.record.create')" v-if="row.receiptStatus!=='RECEIVED'" code="studentAffairs.homeSchool.record.create" size="sm" :loading="acting===row.contactId" @click="markReceipt(row)">登记回执</AppPermissionButton>
             <span v-else class="fr-muted">—</span>
           </template>
         </DataTable>
@@ -52,6 +52,8 @@ import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const TYPE = { PHONE: '电话', WECHAT: '微信', VISIT: '家访', MESSAGE: '短信' }
 const STATUS_FILTERS = [{ key: '', label: '全部' }, { key: 'PENDING', label: '待回执' }, { key: 'RECEIVED', label: '已回执' }]
@@ -66,6 +68,7 @@ const CONTACT_COLUMNS = [
 
 export default {
   name: 'FamilyReceiptView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
     AppQuickPhrases, AppSectionCard, AppTextarea, StatusTag: AppStatusTag, DataTable
@@ -90,6 +93,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFamilyContactsAll({ receiptStatus: this.activeStatus })

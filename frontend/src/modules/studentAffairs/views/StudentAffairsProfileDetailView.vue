@@ -6,10 +6,10 @@
     watermark-purpose="学生画像详情查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.profile.back" variant="secondary" @click="$router.push('/admin/student-affairs/profile')">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.profile.back')" code="studentAffairs.profile.back" variant="secondary" @click="$router.push('/admin/student-affairs/profile')">
         返回列表
       </AppPermissionButton>
-      <AppPermissionButton code="student.audit.view" variant="secondary" @click="showAudit = !showAudit">
+      <AppPermissionButton :allowed="canBtn('student.audit.view')" code="student.audit.view" variant="secondary" @click="showAudit = !showAudit">
         数据变更日志
       </AppPermissionButton>
     </template>
@@ -30,7 +30,7 @@
           <div class="sa-inline">
             <AppRiskTag :level="profile.riskSummary?.topLevel || 'LOW'" />
             <span>未关闭风险 {{ profile.riskSummary?.openCount || 0 }} 条</span>
-            <AppPermissionButton code="studentAffairs.risk.view" variant="secondary" size="sm" @click="goRisk">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" size="sm" @click="goRisk">
               查看风险
             </AppPermissionButton>
           </div>
@@ -90,9 +90,12 @@ import {
   AppStatusTag
 } from '@/components/common'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 export default {
   name: 'StudentAffairsProfileDetailView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppAuditTrail,
     AppDescriptionList,
@@ -152,6 +155,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

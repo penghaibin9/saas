@@ -21,7 +21,7 @@
             <span v-else class="ob-dash">—</span>
           </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="!row.hasPendingAppeal" code="studentAffairs.funding.view" size="sm" variant="secondary"
+            <AppPermissionButton :allowed="canBtn('studentAffairs.funding.view')" v-if="!row.hasPendingAppeal" code="studentAffairs.funding.view" size="sm" variant="secondary"
                                  :loading="acting===row.applicationId" @click="openAppeal(row)">提申诉</AppPermissionButton>
             <span v-else class="ob-dash">待复核</span>
           </template>
@@ -43,7 +43,7 @@
             <em v-if="row.reviewOpinion" class="ob-opinion">{{ row.reviewOpinion }}</em>
           </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="row.status === 'SUBMITTED'" code="studentAffairs.funding.publicity.manage" size="sm"
+            <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" v-if="row.status === 'SUBMITTED'" code="studentAffairs.funding.publicity.manage" size="sm"
                                  :loading="acting===row.appealId" @click="openReview(row)">复核</AppPermissionButton>
             <span v-else class="ob-dash">—</span>
           </template>
@@ -83,6 +83,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const APPEAL_RESULTS = [
   { value: 'OVERRULED', label: '不成立 —— 维持公示获资助资格' },
@@ -107,6 +109,7 @@ const APPEAL_COLUMNS = [
 
 export default {
   name: 'FundingAppealView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
     AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable
@@ -135,6 +138,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [pu, ap] = await Promise.all([

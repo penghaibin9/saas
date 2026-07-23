@@ -91,7 +91,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 
     "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*"},
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
-    "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",
+    # mental.manage 独立于 risk.*：避免辅导员通配拿到转介/升级/关闭写权；仅心理老师+学工处(studentAffairs.*)可写。
+    "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.mental.manage",
+                           "studentAffairs.talk.*", "studentAffairs.stats.view",
                            "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
     # 资助老师（§12「资」列 / §13 FUNDING_BIZ）：困难认定 + 奖助勤贷全域经办，数据范围限资助业务学生。
     # 只授资助能力，不授违纪明细办理/心理/风险/宿舍（§12 资列：discipline 仅「资格校验只读结论」，risk/talk/dorm=✗）。

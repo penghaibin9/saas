@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton>
       </div>
 
       <AppSectionCard v-if="formVisible" title="提交积分申诉">
@@ -28,7 +28,7 @@
         <p v-if="form.error" class="ca-error">{{ form.error }}</p>
         <div class="ca-actions">
           <button type="button" class="ca-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.activity.create" :loading="saving" @click="save">提交</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="save">提交</AppPermissionButton>
         </div>
       </AppSectionCard>
 
@@ -49,8 +49,8 @@
           <template #cell-actions="{ row }">
             <div class="ca-ops">
               <template v-if="row.status === 'SUBMITTED'">
-                <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" :loading="acting===row.appealId" @click="review(row,'APPROVE')">通过</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.activity.confirm" size="sm" variant="secondary" danger :loading="acting===row.appealId" @click="review(row,'REJECT')">驳回</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.activity.confirm')" code="studentAffairs.activity.confirm" size="sm" :loading="acting===row.appealId" @click="review(row,'APPROVE')">通过</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.activity.confirm')" code="studentAffairs.activity.confirm" size="sm" variant="secondary" danger :loading="acting===row.appealId" @click="review(row,'REJECT')">驳回</AppPermissionButton>
               </template>
               <span v-else class="ca-dash">—</span>
             </div>
@@ -78,6 +78,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const APPEAL_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -97,6 +99,7 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'CreditAppealView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
     AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
@@ -125,6 +128,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     blankForm() { return { studentId: '', appealType: 'MISSING', claimCreditType: 'SECOND_CLASS', claimValue: null, reason: '', error: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''

@@ -63,9 +63,9 @@ export const teacherApi = {
   setNotifyPreference: (key, enabled) => real.teacherNotifySetPreference(key, enabled),
   publishNotice: (body) => real.teacherNotifyPublish(body),
   getDashboard: () => real.teacherDashboard(),
-  // 实习批阅：mobile 范围真实数据
+  // 实习批阅：仅真实接口，禁止网络失败回落 mock 假周报
   getWeeklyReports: () =>
-    realFirst('teacher.internship',
+    realFirstStrict('teacher.internship',
       () => real.teacherInternshipReal({ reports: M.weeklyReports, abnormal: M.abnormalCheckins }),
       () => mockRequest({ reports: M.weeklyReports, abnormal: M.abnormalCheckins })),
   // 单份周报正文（列表只回摘要，正文按需拉取，范围安全）；业务错误透出，不 mock 兜底
@@ -201,12 +201,16 @@ export const teacherApi = {
   overdueHandleAffairsLeave: (leaveId, handleType, note) => real.teacherAffairsLeaveOverdueHandle(leaveId, handleType, note),
   extensionApproveAffairsLeave: (leaveId, action, reason) => real.teacherAffairsLeaveExtensionApprove(leaveId, action, reason),
   getAffairsAidPending: () => real.teacherAffairsAidPending(),
+  getAffairsAidDetail: (applyId) => real.teacherAffairsAidDetail(applyId),
   reviewAffairsAid: (applyId, body) => real.teacherAffairsAidReview(applyId, body),
   getAffairsFundingPending: () => real.teacherAffairsFundingPending(),
+  getAffairsFundingDetail: (appId) => real.teacherAffairsFundingDetail(appId),
   reviewAffairsFunding: (appId, body) => real.teacherAffairsFundingReview(appId, body),
   getAffairsDisciplinePending: () => real.teacherAffairsDisciplinePending(),
+  getAffairsDisciplineDetail: (caseId) => real.teacherAffairsDisciplineDetail(caseId),
   reviewAffairsDiscipline: (caseId, body) => real.teacherAffairsDisciplineReview(caseId, body),
   getAffairsRiskPending: () => real.teacherAffairsRiskPending(),
+  getAffairsRiskDetail: (riskId) => real.teacherAffairsRiskDetail(riskId),
   processAffairsRisk: (riskId, content) => real.teacherAffairsRiskProcess(riskId, content),
   closeAffairsRisk: (riskId, conclusion) => real.teacherAffairsRiskClose(riskId, conclusion),
   // 班干部任命/免去：我的班级 + 班级学生名单 + 班干部名单 + 任命 + 免去（owner+范围校验，真实接口，无 mock 兜底）

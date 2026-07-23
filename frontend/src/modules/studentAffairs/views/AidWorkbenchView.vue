@@ -13,9 +13,9 @@
         <AppAidBatchPicker v-model="batchId" class="ad-batchpick" :options="batchOptions" placeholder="（请选择批次）" @change="onBatchChange" />
       </label>
       <div class="ad-batchtools">
-        <AppPermissionButton code="studentAffairs.aid.batch.manage" variant="secondary" size="sm" @click="openBatch">建批次</AppPermissionButton>
-        <AppPermissionButton code="studentAffairs.aid.approve" variant="secondary" size="sm" :loading="scanning" @click="onScanPublicity">公示扫描</AppPermissionButton>
-        <AppPermissionButton code="studentAffairs.aid.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" variant="secondary" size="sm" @click="openBatch">建批次</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.aid.approve')" code="studentAffairs.aid.approve" variant="secondary" size="sm" :loading="scanning" @click="onScanPublicity">公示扫描</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.aid.create')" code="studentAffairs.aid.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
       </div>
     </div>
 

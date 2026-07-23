@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
@@ -654,9 +654,10 @@ def _uid_int(user) -> int:
 
 
 def _filter_by_assignee_todos(user, items, *, id_keys: tuple[str, ...], todo_types: tuple[str, ...]) -> list:
-    """与 teacher_affairs 待办卡同一口径：按 UnifiedTodo assignee（学院可见池 assignee=0）。"""
+    """与 teacher_affairs 待办卡同一口径：指派人 + 学院池0；班级范围另含本班学生池化待办。"""
     from app.core.affairs_security import build_affairs_context
-    from app.models import UnifiedTodo
+    from app.models import StudentProfile, UnifiedTodo
+    from app.services.affairs_dashboard_service import _allowed_class_ids
     from app.services.db_service import session as _db_session
 
     if not items:
@@ -679,11 +680,26 @@ def _filter_by_assignee_todos(user, items, *, id_keys: tuple[str, ...], todo_typ
                 or_(UnifiedTodo.assignee_id == uid, UnifiedTodo.assignee_id == 0) if uid
                 else UnifiedTodo.assignee_id == 0)).all()
         else:
-            if not uid:
-                return []
-            rows = db.scalars(select(UnifiedTodo).where(
-                *conds, UnifiedTodo.assignee_id == uid)).all()
-        allowed = {int(r.source_biz_id) for r in rows if r.source_biz_id}
+            allowed, _ = _allowed_class_ids(db, user)
+            if allowed is None:
+                rows = db.scalars(select(UnifiedTodo).where(*conds)).all()
+            elif not allowed:
+                rows = []
+            else:
+                stu_ids = list(db.scalars(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.class_id.in_(list(allowed)),
+                    StudentProfile.is_deleted.is_(False))).all())
+                pool = and_(UnifiedTodo.assignee_id == 0,
+                            UnifiedTodo.student_id.in_(stu_ids)) if stu_ids else False
+                if uid:
+                    rows = db.scalars(select(UnifiedTodo).where(
+                        *conds, or_(UnifiedTodo.assignee_id == uid, pool))).all()
+                elif stu_ids:
+                    rows = db.scalars(select(UnifiedTodo).where(*conds, pool)).all()
+                else:
+                    rows = []
+        allowed_ids = {int(r.source_biz_id) for r in rows if r.source_biz_id}
 
     def _biz_id(row: dict) -> int:
         for k in id_keys:
@@ -696,7 +712,7 @@ def _filter_by_assignee_todos(user, items, *, id_keys: tuple[str, ...], todo_typ
                 continue
         return 0
 
-    return [x for x in items if _biz_id(x) in allowed]
+    return [x for x in items if _biz_id(x) in allowed_ids]
 
 
 def affairs_aid_pending(user: dict) -> dict:
@@ -729,6 +745,8 @@ def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
     act = (action or "APPROVE").upper()
     detail = svc.get_application(apply_id, u)
     if (detail or {}).get("status") == "ADJUST_REVIEW":
+        if act == "RETURN":
+            raise AppException("VALIDATION_ERROR", "困难等级调整不支持退回，请选择通过或驳回")
         mapped = "APPROVE" if act in ("APPROVE", "ADJUST_APPROVE") else "REJECT"
         result = svc.approve_adjust(apply_id, u, action=mapped)
     else:

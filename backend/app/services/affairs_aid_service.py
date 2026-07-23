@@ -531,7 +531,8 @@ def _confirm_one(db, x):
 
 
 def scan_publicity() -> dict:
-    """公示期满自动转 APPROVED（幂等：仅 PUBLICITY 且已过 publicity_days；跳过有进行中异议的申请）。"""
+    """公示期满自动转 APPROVED（幂等：仅 PUBLICITY 且已过 publicity_days；跳过有进行中异议的申请）。
+    publicity_days=0：进入公示后即可扫描确认（允许与 publicity_at 同秒，避免时钟抖动漏扫）。"""
     from app.models import AidApply, AidBatch
     now = datetime.utcnow()
     with session() as db:
@@ -546,7 +547,9 @@ def scan_publicity() -> dict:
                 continue
             b = db.get(AidBatch, int(x.batch_id))
             days = (b.publicity_days if b and b.publicity_days is not None else 5)
-            if x.publicity_at + timedelta(days=days) <= now:
+            due = x.publicity_at + timedelta(days=days)
+            # 0 天公示：允许 now 与 publicity_at 同秒；多天：到期时刻起可确认
+            if due <= now + timedelta(seconds=2):
                 if int(x.id) in _pending_objection_ids(db, [x.id]):
                     skipped += 1
                     continue

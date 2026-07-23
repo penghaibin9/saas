@@ -279,15 +279,19 @@ export const teacherAffairsLeaveExtensionApprove = (leaveId, action, reason) =>
 
 /** 学工待办处置：困难/奖助/处分/风险（复用 PC 服务层校验，真实接口） */
 export const teacherAffairsAidPending = () => realRequest('/mobile/teacher/affairs/aid/pending')
+export const teacherAffairsAidDetail = (applyId) => realRequest(`/mobile/teacher/affairs/aid/${applyId}`)
 export const teacherAffairsAidReview = (applyId, body) =>
   realRequest(`/mobile/teacher/affairs/aid/${applyId}/review`, { method: 'POST', data: body || {} })
 export const teacherAffairsFundingPending = () => realRequest('/mobile/teacher/affairs/funding/pending')
+export const teacherAffairsFundingDetail = (appId) => realRequest(`/mobile/teacher/affairs/funding/${appId}`)
 export const teacherAffairsFundingReview = (appId, body) =>
   realRequest(`/mobile/teacher/affairs/funding/${appId}/review`, { method: 'POST', data: body || {} })
 export const teacherAffairsDisciplinePending = () => realRequest('/mobile/teacher/affairs/discipline/pending')
+export const teacherAffairsDisciplineDetail = (caseId) => realRequest(`/mobile/teacher/affairs/discipline/${caseId}`)
 export const teacherAffairsDisciplineReview = (caseId, body) =>
   realRequest(`/mobile/teacher/affairs/discipline/${caseId}/review`, { method: 'POST', data: body || {} })
 export const teacherAffairsRiskPending = () => realRequest('/mobile/teacher/affairs/risk/pending')
+export const teacherAffairsRiskDetail = (riskId) => realRequest(`/mobile/teacher/affairs/risk/${riskId}`)
 export const teacherAffairsRiskProcess = (riskId, content) =>
   realRequest(`/mobile/teacher/affairs/risk/${riskId}/process`, { method: 'POST', data: { content } })
 export const teacherAffairsRiskClose = (riskId, conclusion) =>

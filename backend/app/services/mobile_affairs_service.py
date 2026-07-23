@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException, no_permission
 from app.services.db_service import _iso, _tid, session
@@ -286,9 +286,11 @@ def _uid_int(user) -> int:
 
 
 def teacher_affairs(user) -> dict:
-    """教师工作台学工卡：按本人 assignee 聚合；学院/全域可见池化(assignee=0)待办。"""
+    """教师工作台学工卡：按本人 assignee 聚合；学院/全域可见池化(assignee=0)待办。
+    辅导员/班级范围：本人指派 + 本班学生池化(assignee=0)待办（mock 无数字 userId 时仍可对齐）。"""
     from app.core.affairs_security import build_affairs_context
-    from app.models import UnifiedTodo
+    from app.models import StudentProfile, UnifiedTodo
+    from app.services.affairs_dashboard_service import _allowed_class_ids
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
     with session() as db:
@@ -308,11 +310,26 @@ def teacher_affairs(user) -> dict:
                 *conds, or_(UnifiedTodo.assignee_id == uid, UnifiedTodo.assignee_id == 0)
                 if uid else UnifiedTodo.assignee_id == 0)).all()
         else:
-            if not uid:
+            # 班级/辅导员：本人指派 ∪ 本范围内学生的池化待办
+            allowed, _ = _allowed_class_ids(db, user)
+            if allowed is None:
+                rows = db.scalars(select(UnifiedTodo).where(*conds)).all()
+            elif not allowed:
                 rows = []
             else:
-                rows = db.scalars(select(UnifiedTodo).where(
-                    *conds, UnifiedTodo.assignee_id == uid)).all()
+                stu_ids = list(db.scalars(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.class_id.in_(list(allowed)),
+                    StudentProfile.is_deleted.is_(False))).all())
+                pool = and_(UnifiedTodo.assignee_id == 0,
+                            UnifiedTodo.student_id.in_(stu_ids)) if stu_ids else False
+                if uid:
+                    rows = db.scalars(select(UnifiedTodo).where(
+                        *conds, or_(UnifiedTodo.assignee_id == uid, pool))).all()
+                elif stu_ids:
+                    rows = db.scalars(select(UnifiedTodo).where(*conds, pool)).all()
+                else:
+                    rows = []
         by_type = {}
         for r in rows:
             by_type[r.todo_type] = by_type.get(r.todo_type, 0) + 1

@@ -26,7 +26,7 @@ def _stu_token(real_name, student_no):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import SchoolClass, StudentProfile, TeacherStudentScope
     db = get_sessionmaker()()
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
     db.add(a); db.flush()
@@ -35,6 +35,9 @@ def _seed(db_mode):
     li = StudentProfile(tenant_id=TID, student_no="MB13A02", real_name="李四", class_id=a.id, gender="M",
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
     db.add(zhang); db.add(li); db.flush()
+    db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+                               role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101",
+                               status="ACTIVE"))
     ids = {"A": a.id, "zhang": zhang.id, "li": li.id}
     db.commit()
     db.close()

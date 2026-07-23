@@ -95,11 +95,12 @@
         </div>
       </section>
 
-      <!-- 奖助勤贷补 -->
+      <!-- 奖助（门户 V1：仅奖学金/助学金；勤工/贷款/减免请走 PC 学工工作台） -->
       <section v-else-if="tab === 'funding'">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <button v-for="f in fundTypes" :key="f.k" class="sp-tab" :class="{ 'is-active': fundForm.type === f.k }" @click="fundForm.type = f.k">{{ f.t }}</button>
         </div>
+        <p class="sp-muted" style="margin-bottom:16px">门户当前开放奖学金、助学金申请。勤工助学、助学贷款、临时补助、学费减免请使用学校 PC 端学工中心办理。</p>
         <div class="two">
           <section class="sp-card">
             <div class="sp-panel__head">{{ fundLabel }}申请</div>
@@ -255,8 +256,7 @@ const aidObjectForms = reactive({})
 
 const leaveTypes = [{ k: 'PERSONAL', t: '事假' }, { k: 'SICK', t: '病假' }, { k: 'OTHER', t: '其他' }]
 const fundTypes = [
-  { k: 'SCHOLARSHIP', t: '奖学金' }, { k: 'GRANT', t: '助学金' }, { k: 'WORK_STUDY', t: '勤工助学' },
-  { k: 'LOAN', t: '助学贷款' }, { k: 'TEMPORARY_AID', t: '临时补助' }, { k: 'TUITION_REDUCTION', t: '学费减免' }
+  { k: 'SCHOLARSHIP', t: '奖学金' }, { k: 'GRANT', t: '助学金' }
 ]
 const leaveForm = reactive({ leaveType: 'PERSONAL', startDate: '', endDate: '', reason: '' })
 const aidStep = ref(1)

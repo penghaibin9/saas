@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.league.manage" :loading="saving" @click="openForm">建发展档案</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="openForm">建发展档案</AppPermissionButton>
       </div>
 
       <AppSectionCard v-if="formVisible" title="建党团发展台账">
@@ -25,7 +25,7 @@
         <p v-if="form.error" class="lg-error">{{ form.error }}</p>
         <div class="lg-actions">
           <button type="button" class="lg-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.league.manage" :loading="saving" @click="save">建档</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="save">建档</AppPermissionButton>
         </div>
       </AppSectionCard>
 
@@ -52,8 +52,8 @@
               <div>当前阶段：<b>{{ sel.currentStageLabel }}</b> · <StatusTag :type="statusType(sel.status)" :label="sel.statusLabel" dot /></div>
               <div v-if="sel.status==='ONGOING'" class="lg-adv">
                 <AppSelect v-model="advStage" class="lg-advpick" :options="nextStageOptions" placeholder="推进到…" />
-                <AppPermissionButton code="studentAffairs.league.manage" size="sm" :disabled="!advStage" @click="advance">推进</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.league.manage" size="sm" variant="secondary" danger @click="terminate">终止</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" size="sm" :disabled="!advStage" @click="advance">推进</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" size="sm" variant="secondary" danger @click="terminate">终止</AppPermissionButton>
               </div>
             </div>
             <ol class="lg-timeline">
@@ -78,7 +78,7 @@
                 <li v-for="a in attachments" :key="a.attachmentId">
                   <span class="lg-att__name">📎 {{ a.fileName || ('附件#' + a.attachmentId) }}</span>
                   <span class="lg-att__meta">{{ (a.uploadedAt || '').slice(0, 10) }}</span>
-                  <AppPermissionButton code="studentAffairs.league.view" size="sm" variant="secondary"
+                  <AppPermissionButton :allowed="canBtn('studentAffairs.league.view')" code="studentAffairs.league.view" size="sm" variant="secondary"
                                        @click="downloadMaterial(a)">下载</AppPermissionButton>
                 </li>
                 <li v-if="!attachments.length" class="lg-empty">暂无材料附件</li>
@@ -106,6 +106,8 @@ import {
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const STAGES = [
   { key: 'APPLICANT', label: '入党申请人' }, { key: 'ACTIVIST', label: '入党积极分子' },
@@ -117,6 +119,7 @@ const DEV_TYPE_OPTIONS = [{ value: 'PARTY', label: '党员发展' }, { value: 'L
 
 export default {
   name: 'PartyLeagueView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
@@ -152,6 +155,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getLeagueDev({ stage: this.activeStage, pageSize: 300 })

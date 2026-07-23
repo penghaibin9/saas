@@ -1017,25 +1017,25 @@ def mental_summary(studentId: int = Path(...),
 
 @router.post("/mental/referrals", summary="登记心理转介（人工，无自动诊断）")
 def mental_refer(body: PsyReferralCreate,
-                 user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+                 user=Depends(require_permission("studentAffairs.mental.manage"))):
     return success(mental_svc.create_referral(user, body), message="已转介")
 
 
 @router.post("/mental/referrals/{refId}/follow", summary="回访（→FOLLOWING）")
 def mental_follow(body: PsyContentBody, refId: int = Path(...),
-                  user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+                  user=Depends(require_permission("studentAffairs.mental.manage"))):
     return success(mental_svc.follow_referral(user, refId, body.content or ""), message="已回访")
 
 
 @router.post("/mental/referrals/{refId}/escalate", summary="危机升级（接风险中枢，幂等）")
 def mental_escalate(body: PsyContentBody = PsyContentBody(), refId: int = Path(...),
-                    user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+                    user=Depends(require_permission("studentAffairs.mental.manage"))):
     return success(mental_svc.escalate_crisis(user, refId, body.content or ""), message="已升级危机")
 
 
 @router.post("/mental/referrals/{refId}/close", summary="关闭转介（结论≥5字）")
 def mental_close(body: PsyCloseBody, refId: int = Path(...),
-                 user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+                 user=Depends(require_permission("studentAffairs.mental.manage"))):
     return success(mental_svc.close_referral(user, refId, body.conclusion), message="已关闭")
 
 

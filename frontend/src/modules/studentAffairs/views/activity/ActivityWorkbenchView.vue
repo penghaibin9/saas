@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.activity.create" :loading="saving" @click="openForm">建活动</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">建活动</AppPermissionButton>
       </div>
 
       <AppSectionCard v-if="formVisible" title="新建活动">
@@ -33,7 +33,7 @@
         <p v-if="form.error" class="af-error">{{ form.error }}</p>
         <div class="af-actions">
           <button type="button" class="af-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.activity.create" :loading="saving" @click="save">保存草稿</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="save">保存草稿</AppPermissionButton>
         </div>
       </AppSectionCard>
 
@@ -53,12 +53,12 @@
           <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
           <template #cell-actions="{ row }">
             <div class="af-ops">
-              <AppPermissionButton v-if="row.status==='DRAFT'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'publish','PUBLISH')">发布</AppPermissionButton>
-              <AppPermissionButton v-if="row.status==='PUBLISHED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','ENROLL_CLOSE')">报名截止</AppPermissionButton>
-              <AppPermissionButton v-if="row.status==='ENROLL_CLOSED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','START')">开始</AppPermissionButton>
-              <AppPermissionButton v-if="row.status==='ONGOING'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','FINISH')">结束</AppPermissionButton>
-              <AppPermissionButton v-if="row.status==='FINISHED'" code="studentAffairs.activity.confirm" size="sm" :loading="acting===row.activityId" @click="act(row,'confirm')">确认名单</AppPermissionButton>
-              <AppPermissionButton v-if="row.status==='CONFIRMED'" code="studentAffairs.activity.confirm" size="sm" variant="secondary" @click="act(row,'archive')">归档</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.activity.publish')" v-if="row.status==='DRAFT'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'publish','PUBLISH')">发布</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.activity.publish')" v-if="row.status==='PUBLISHED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','ENROLL_CLOSE')">报名截止</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.activity.publish')" v-if="row.status==='ENROLL_CLOSED'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','START')">开始</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.activity.publish')" v-if="row.status==='ONGOING'" code="studentAffairs.activity.publish" size="sm" variant="secondary" :loading="acting===row.activityId" @click="act(row,'transition','FINISH')">结束</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.activity.confirm')" v-if="row.status==='FINISHED'" code="studentAffairs.activity.confirm" size="sm" :loading="acting===row.activityId" @click="act(row,'confirm')">确认名单</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.activity.confirm')" v-if="row.status==='CONFIRMED'" code="studentAffairs.activity.confirm" size="sm" variant="secondary" @click="act(row,'archive')">归档</AppPermissionButton>
               <button type="button" class="af-link" @click="openParticipants(row)">名单</button>
             </div>
           </template>
@@ -91,6 +91,8 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const ACTIVITY_COLUMNS = [
   { key: 'name', title: '活动' },
@@ -118,6 +120,7 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'ActivityWorkbenchView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
     AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable, AppButton, AppDrawer
@@ -153,6 +156,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     blankForm() { return { activityName: '', activityType: 'ACTIVITY', creditType: 'SECOND_CLASS', creditValue: null, categoryCode: '', quota: null, startAt: '', endAt: '', location: '', error: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''

@@ -19,7 +19,7 @@
           <div class="ce-indadd">
             <AppTextInput v-model="indForm.name" placeholder="指标名称" />
             <AppNumberInput v-model="indForm.weight" class="ce-input--sm" :min="0" placeholder="权重%" />
-            <AppPermissionButton code="studentAffairs.counselorEval.manage" size="sm" :loading="acting==='ind'" @click="addIndicator">加指标</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting==='ind'" @click="addIndicator">加指标</AppPermissionButton>
           </div>
         </div>
       </AppSectionCard>
@@ -38,7 +38,7 @@
         </div>
         <div class="ce-actions">
           <span class="ce-total">合计：<b>{{ liveTotal }}</b></span>
-          <AppPermissionButton code="studentAffairs.counselorEval.manage" :loading="acting==='save'" :disabled="!indicators.length" @click="saveScore">保存评分</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" :loading="acting==='save'" :disabled="!indicators.length" @click="saveScore">保存评分</AppPermissionButton>
         </div>
       </AppSectionCard>
 
@@ -59,8 +59,8 @@
           </template>
           <template #cell-actions="{ row }">
             <div class="ce-ops">
-              <AppPermissionButton v-if="row.status === 'DRAFT'" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting===row.evalId" @click="publish(row)">发布</AppPermissionButton>
-              <AppPermissionButton v-if="row.appealStatus === 'SUBMITTED'" code="studentAffairs.counselorEval.manage" size="sm" variant="secondary" :loading="acting===row.evalId" @click="reviewAppeal(row)">申诉复核</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" v-if="row.status === 'DRAFT'" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting===row.evalId" @click="publish(row)">发布</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" v-if="row.appealStatus === 'SUBMITTED'" code="studentAffairs.counselorEval.manage" size="sm" variant="secondary" :loading="acting===row.evalId" @click="reviewAppeal(row)">申诉复核</AppPermissionButton>
             </div>
           </template>
         </DataTable>
@@ -86,6 +86,8 @@ import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppS
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 /** 复核结论枚举：原为 window.prompt 让用户手打 UPHELD/ADJUSTED，打错即失败 */
 const APPEAL_RESULTS = [
@@ -106,6 +108,7 @@ const EVAL_COLUMNS = [
 export default {
   name: 'CounselorEvalView',
   components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag,
+  props: { ctx: { type: Object, default: null } },
     AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput, DataTable },
   data() {
     return {
@@ -128,6 +131,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [ind, ev] = await Promise.all([

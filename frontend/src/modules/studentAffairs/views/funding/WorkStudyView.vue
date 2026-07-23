@@ -9,12 +9,12 @@
             <AppTextInput v-model="postForm.deptName" placeholder="用人部门" />
             <AppTextInput v-model="postForm.postName" placeholder="岗位名称" />
             <AppNumberInput v-model="postForm.salary" class="ws-sm" :min="0" placeholder="月薪" />
-            <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='post'" @click="addPost">发岗</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='post'" @click="addPost">发岗</AppPermissionButton>
           </div>
           <ul class="ws-postlist">
             <li v-for="p in posts" :key="p.postId" class="ws-post" :class="{ 'is-on': selPost===p.postId }" @click="selectPost(p)">
               <strong>{{ p.postName }}</strong><span>{{ p.deptName }} · {{ p.salary != null ? ('¥'+p.salary) : '—' }} · {{ p.headcount || '—' }}人</span>
-              <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click.stop="applyTo(p)">代录申请</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click.stop="applyTo(p)">代录申请</AppPermissionButton>
             </li>
             <li v-if="!posts.length" class="ws-empty">暂无岗位</li>
           </ul>
@@ -27,11 +27,11 @@
             <template #cell-subsidyTotal="{ row }">{{ amountText(row.subsidyTotal) }}</template>
             <template #cell-actions="{ row }">
               <div class="ws-ops">
-                <AppPermissionButton v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting===row.recordId" @click="act(row,'APPROVE')">录用</AppPermissionButton>
-                <AppPermissionButton v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'REJECT')">拒绝</AppPermissionButton>
-                <AppPermissionButton v-if="row.status==='APPROVED'" code="studentAffairs.funding.workstudy.manage" size="sm" @click="act(row,'ONBOARD')">上岗</AppPermissionButton>
-                <AppPermissionButton v-if="row.status==='ONBOARD'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(row)">月度考核</AppPermissionButton>
-                <AppPermissionButton v-if="['APPROVED','ONBOARD'].includes(row.status)" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'TERMINATE')">终止</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting===row.recordId" @click="act(row,'APPROVE')">录用</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'REJECT')">拒绝</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='APPROVED'" code="studentAffairs.funding.workstudy.manage" size="sm" @click="act(row,'ONBOARD')">上岗</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='ONBOARD'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(row)">月度考核</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="['APPROVED','ONBOARD'].includes(row.status)" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'TERMINATE')">终止</AppPermissionButton>
               </div>
             </template>
           </DataTable>
@@ -45,7 +45,7 @@
           <AppSelect v-model="mm.form.rating" :options="RATING_OPTIONS" placeholder="" />
           <AppNumberInput v-model="mm.form.workHours" class="ws-sm" :min="0" placeholder="工时" />
           <AppNumberInput v-model="mm.form.subsidyAmount" class="ws-sm" :min="0" placeholder="补贴" />
-          <AppPermissionButton code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
         </div>
         <DataTable v-if="mm.list.length" :columns="monthlyColumns" :rows="mm.list" row-key="monthlyId">
           <template #cell-month="{ row }">{{ row.monthCode }}</template>
@@ -90,6 +90,8 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const RATING_OPTIONS = [{ value: 'GOOD', label: '优' }, { value: 'PASS', label: '合格' }, { value: 'FAIL', label: '不合格' }]
 const RECORD_COLUMNS = [
@@ -107,6 +109,7 @@ const MONTHLY_COLUMNS = [
 
 export default {
   name: 'WorkStudyView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
     AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, StatusTag: AppStatusTag, AppTextInput, DataTable,
@@ -124,6 +127,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [ps, rs] = await Promise.all([studentAffairsApi.getWorkStudyPosts(), studentAffairsApi.getWorkStudyRecords({ postId: this.selPost })])

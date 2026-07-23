@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.club.manage" :loading="saving" @click="openForm">建社团</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" :loading="saving" @click="openForm">建社团</AppPermissionButton>
       </div>
 
       <AppSectionCard v-if="formVisible" title="新建社团">
@@ -25,7 +25,7 @@
         <p v-if="form.error" class="cf-error">{{ form.error }}</p>
         <div class="cf-actions">
           <button type="button" class="cf-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.club.manage" :loading="saving" @click="save">提交</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" :loading="saving" @click="save">提交</AppPermissionButton>
         </div>
       </AppSectionCard>
 
@@ -41,9 +41,9 @@
                 <StatusTag :type="statusType(c.status)" :label="c.statusLabel" dot /></div>
               <div class="cf-club__meta">{{ TYPES[c.clubType] || c.clubType }} · 成员 {{ c.memberCount }} · {{ c.advisorName || '无指导老师' }}</div>
               <div class="cf-club__ops" @click.stop>
-                <AppPermissionButton v-if="c.status==='PENDING'" code="studentAffairs.club.manage" size="sm" :loading="acting===c.clubId" @click="review(c,'APPROVE')">通过</AppPermissionButton>
-                <AppPermissionButton v-if="c.status==='PENDING'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger :loading="acting===c.clubId" @click="review(c,'REJECT')">驳回</AppPermissionButton>
-                <AppPermissionButton v-if="c.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="disband(c)">注销</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" v-if="c.status==='PENDING'" code="studentAffairs.club.manage" size="sm" :loading="acting===c.clubId" @click="review(c,'APPROVE')">通过</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" v-if="c.status==='PENDING'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger :loading="acting===c.clubId" @click="review(c,'REJECT')">驳回</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" v-if="c.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="disband(c)">注销</AppPermissionButton>
               </div>
             </li>
             <li v-if="!items.length" class="cf-empty">暂无社团，点右上「建社团」</li>
@@ -55,30 +55,30 @@
           <template v-else>
             <div class="cf-subhead">
               <h4>成员（{{ members.length }}）</h4>
-              <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" @click="openMember">增补成员</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" @click="openMember">增补成员</AppPermissionButton>
             </div>
             <div v-if="memberForm.visible" class="cf-inline">
               <AppStudentPicker v-model="memberForm.studentId" placeholder="按姓名 / 学号搜索学生" />
               <AppSelect v-model="memberForm.role" :options="ROLE_OPTIONS" placeholder="" />
-              <AppPermissionButton code="studentAffairs.club.manage" size="sm" @click="addMember">加入</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" size="sm" @click="addMember">加入</AppPermissionButton>
             </div>
             <DataTable v-if="members.length" :columns="memberColumns" :rows="members" row-key="memberId">
               <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
               <template #cell-role="{ row }">{{ ROLES[row.role] || row.role }}</template>
               <template #cell-actions="{ row }">
-                <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="removeMember(row)">退社</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" variant="secondary" danger @click="removeMember(row)">退社</AppPermissionButton>
               </template>
             </DataTable>
             <p v-else class="sa-empty">暂无成员</p>
 
             <div class="cf-subhead">
               <h4>年审记录</h4>
-              <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" @click="openReview">登记年审</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" v-if="sel.status==='ACTIVE'" code="studentAffairs.club.manage" size="sm" @click="openReview">登记年审</AppPermissionButton>
             </div>
             <div v-if="reviewForm.visible" class="cf-inline">
               <AppTextInput v-model="reviewForm.reviewYear" placeholder="学年 如 2025-2026" />
               <AppSelect v-model="reviewForm.result" :options="REVIEW_RESULT_OPTIONS" placeholder="" />
-              <AppPermissionButton code="studentAffairs.club.manage" size="sm" @click="addReview">提交</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" size="sm" @click="addReview">提交</AppPermissionButton>
             </div>
             <DataTable v-if="reviews.length" :columns="reviewColumns" :rows="reviews" row-key="reviewId">
               <template #cell-year="{ row }">{{ row.reviewYear }}</template>
@@ -115,6 +115,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const MEMBER_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -142,6 +144,7 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'ClubWorkbenchView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
@@ -176,6 +179,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getClubs({ pageSize: 300 })

@@ -86,7 +86,7 @@
             </div>
 
             <div v-if="actions.length" class="lv-foot">
-              <AppPermissionButton v-for="a in actions" :key="a.key" :code="a.code" :variant="a.variant"
+              <AppPermissionButton :allowed="canBtn(a.code)" v-for="a in actions" :key="a.key" :code="a.code" :variant="a.variant"
                 :danger="a.danger" @click="openAction(a)">{{ a.label }}</AppPermissionButton>
             </div>
           </AppGlobalState>
@@ -138,6 +138,8 @@ import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const STATUS_OPTIONS = [
   { label: '待续假审批', value: 'EXTENSION_REVIEW' },
@@ -242,6 +244,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     fmt(v) { return v ? formatDateTime(v) : '' },
     extLabel(v) { return EXT_LABEL[v] || v },
     cancelLabel(v) { return CANCEL_LABEL[v] || v },

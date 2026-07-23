@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.funding.publicity.manage" :loading="scanning" @click="scan">
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" :loading="scanning" @click="scan">
           公示期满扫描
         </AppPermissionButton>
       </div>
@@ -29,7 +29,7 @@
             <span v-else>—</span>
           </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="!row.hasPendingAppeal" code="studentAffairs.funding.publicity.manage" size="sm" variant="secondary"
+            <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" v-if="!row.hasPendingAppeal" code="studentAffairs.funding.publicity.manage" size="sm" variant="secondary"
                                  :loading="actingId === row.applicationId" @click="confirm(row)">
               确认公示期满 → 获资助
             </AppPermissionButton>
@@ -49,6 +49,8 @@ import { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSe
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const PUBLICITY_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -62,6 +64,7 @@ const PUBLICITY_COLUMNS = [
 export default {
   name: 'FundingPublicityView',
   components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, DataTable, StatusTag: AppStatusTag },
+  props: { ctx: { type: Object, default: null } },
   data() { return { publicityColumns: PUBLICITY_COLUMNS, loading: true, scanning: false, actingId: '', errorMessage: '', items: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -77,6 +80,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFundingApplications({ status: 'PUBLICITY', pageSize: 200 })

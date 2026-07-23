@@ -38,9 +38,9 @@
           </template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
-              <AppPermissionButton
+              <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')"
                 v-if="row.status !== 'CLOSED' && !row.riskId"
-                code="studentAffairs.risk.psyDetail.view"
+                code="studentAffairs.mental.manage"
                 size="sm"
                 danger
                 :loading="actioning"
@@ -48,7 +48,7 @@
               >
                 升级危机
               </AppPermissionButton>
-              <AppPermissionButton
+              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')"
                 v-if="row.riskId"
                 code="studentAffairs.risk.view"
                 size="sm"
@@ -97,6 +97,8 @@ import {
 import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const CRISIS_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -109,6 +111,7 @@ const CRISIS_COLUMNS = [
 
 export default {
   name: 'MentalCrisisView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog,
     AppFormItem,
@@ -151,6 +154,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

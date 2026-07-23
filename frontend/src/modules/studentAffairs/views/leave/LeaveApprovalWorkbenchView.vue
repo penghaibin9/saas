@@ -47,9 +47,9 @@
             </div>
 
             <div v-if="canAct" class="lv-foot">
-              <AppPermissionButton code="studentAffairs.leave.approve" variant="ghost" danger @click="openReturn">退回重提</AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.leave.approve" variant="ghost" danger @click="openReject">驳回</AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.leave.approve" variant="primary" @click="openApprove">通过</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.leave.approve')" code="studentAffairs.leave.approve" variant="ghost" danger @click="openReturn">退回重提</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.leave.approve')" code="studentAffairs.leave.approve" variant="ghost" danger @click="openReject">驳回</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.leave.approve')" code="studentAffairs.leave.approve" variant="primary" @click="openApprove">通过</AppPermissionButton>
             </div>
           </AppGlobalState>
         </section>
@@ -80,6 +80,8 @@ import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 export default {
   name: 'LeaveApprovalWorkbenchView',
@@ -144,6 +146,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     fmt(v) { return v ? formatDateTime(v) : '' },
     reload() { this.load() },
     async load() {

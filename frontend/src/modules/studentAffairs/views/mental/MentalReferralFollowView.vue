@@ -7,7 +7,7 @@
     watermark-purpose="心理转介回访处理"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.risk.psyDetail.view" :loading="actioning" @click="createReferral">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" :loading="actioning" @click="createReferral">
         登记转介
       </AppPermissionButton>
     </template>
@@ -36,10 +36,10 @@
           <template #cell-lastFollow="{ row }">{{ (row.lastFollowTime || '').slice(0, 16) || '尚未回访' }}</template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
-              <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" @click="follow(row)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" size="sm" @click="follow(row)">
                 回访
               </AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" @click="close(row)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" size="sm" variant="secondary" @click="close(row)">
                 关闭
               </AppPermissionButton>
             </div>
@@ -104,6 +104,8 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const FOLLOW_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -119,6 +121,7 @@ const CHANNELS = ['校内咨询', '校医院', '专业机构', '家长'].map((v)
 
 export default {
   name: 'MentalReferralFollowView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppButton,
     AppConfirmDialog,
@@ -171,6 +174,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

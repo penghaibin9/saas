@@ -60,7 +60,7 @@
             <span v-else class="mp-note">无附件</span>
           </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton code="studentAffairs.class.create" variant="danger" size="sm" @click="voidMaterial(row)">作废</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.class.create')" code="studentAffairs.class.create" variant="danger" size="sm" @click="voidMaterial(row)">作废</AppPermissionButton>
           </template>
         </DataTable>
       </template>
@@ -76,7 +76,7 @@
           <li v-for="c in cadre.rows" :key="c.cadreId">
             <span class="cadre-pos">{{ positionLabel(c.position) }}</span>
             <span>{{ cadreName(c) }}</span>
-            <AppPermissionButton code="studentAffairs.class.cadre.manage" variant="danger" size="sm" @click="removeCadre(c)">免去</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.class.cadre.manage')" code="studentAffairs.class.cadre.manage" variant="danger" size="sm" @click="removeCadre(c)">免去</AppPermissionButton>
           </li>
         </ul>
       </template>
@@ -146,6 +146,8 @@ import { classApi } from '@/modules/studentAffairs/api/class.api'
 import { requestUpload, requestBlob } from '@/services/http/client'
 import { toast } from '@/utils/toast'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const MATERIAL_TYPES = [
   { label: '班会记录', value: 'CLASS_MEETING' }, { label: '主题活动', value: 'THEME_ACTIVITY' },
@@ -198,6 +200,7 @@ export default {
   },
   created() { this.loadProfile(); this.loadStudents() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     goBack() { this.$router.push('/admin/campus-service/classes') },
     metricAccent(m) {
       if ((m.key === 'riskOpen' || m.key === 'overdueLeave' || m.key === 'discipline') && m.value) return 'risk'

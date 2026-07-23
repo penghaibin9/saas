@@ -7,7 +7,7 @@
     watermark-purpose="心理关注名单查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.risk.psyDetail.view" :loading="actioning" @click="createReferral">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" :loading="actioning" @click="createReferral">
         登记转介
       </AppPermissionButton>
     </template>
@@ -42,13 +42,13 @@
           <template #cell-note="{ row }"><span :class="{ 'sa-mask': row.noteMasked }">{{ row.note }}</span></template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
-              <AppPermissionButton code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="reveal(row)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.psyDetail.view')" code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="reveal(row)">
                 查看明细
               </AppPermissionButton>
-              <AppPermissionButton v-if="row.status !== 'CLOSED'" code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="follow(row)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" v-if="row.status !== 'CLOSED'" code="studentAffairs.mental.manage" size="sm" variant="secondary" :loading="actioning" @click="follow(row)">
                 回访
               </AppPermissionButton>
-              <AppPermissionButton v-if="row.status !== 'CLOSED'" code="studentAffairs.risk.psyDetail.view" size="sm" :loading="actioning" @click="close(row)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" v-if="row.status !== 'CLOSED'" code="studentAffairs.mental.manage" size="sm" :loading="actioning" @click="close(row)">
                 关闭
               </AppPermissionButton>
             </div>
@@ -129,6 +129,8 @@ import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const ATTENTION_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -152,6 +154,7 @@ const CHANNELS = ['校内咨询', '校医院', '专业机构', '家长'].map((v)
 
 export default {
   name: 'MentalAttentionListView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppButton,
     AppConfirmDialog,
@@ -204,6 +207,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

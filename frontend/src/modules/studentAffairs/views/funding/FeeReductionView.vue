@@ -7,7 +7,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.funding.reduction.manage" @click="formVisible=true">代录申请</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" @click="formVisible=true">代录申请</AppPermissionButton>
       </div>
       <AppSectionCard v-if="formVisible" title="申请减免/临补">
         <div class="fr-grid">
@@ -18,7 +18,7 @@
         </div>
         <p v-if="form.error" class="fr-error">{{ form.error }}</p>
         <div class="fr-actions"><button type="button" class="fr-btn" @click="formVisible=false">取消</button>
-          <AppPermissionButton code="studentAffairs.funding.reduction.manage" :loading="acting==='sub'" @click="submit">提交</AppPermissionButton></div>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" :loading="acting==='sub'" @click="submit">提交</AppPermissionButton></div>
       </AppSectionCard>
       <AppSectionCard title="减免/临补台账">
         <div class="fr-filters">
@@ -33,10 +33,10 @@
           <template #cell-actions="{ row }">
             <div class="fr-ops">
               <template v-if="row.status==='SUBMITTED'">
-                <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="review(row,'APPROVE')">批准</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="review(row,'REJECT')">驳回</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="review(row,'APPROVE')">批准</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="review(row,'REJECT')">驳回</AppPermissionButton>
               </template>
-              <AppPermissionButton v-else-if="row.status==='APPROVED'" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="issue(row)">发放</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" v-else-if="row.status==='APPROVED'" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="issue(row)">发放</AppPermissionButton>
               <span v-else class="fr-muted">—</span>
             </div>
           </template>
@@ -64,6 +64,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const TYPE_FILTERS = [{ key: '', label: '全部' }, { key: 'REDUCTION', label: '学费减免' }, { key: 'TEMP_AID', label: '临时补助' }]
 const ITEM_TYPE_OPTIONS = [{ value: 'REDUCTION', label: '学费减免' }, { value: 'TEMP_AID', label: '临时补助' }]
@@ -78,6 +80,7 @@ const FEE_COLUMNS = [
 
 export default {
   name: 'FeeReductionView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
     AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
@@ -103,6 +106,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     blank() { return { studentId: '', itemType: 'REDUCTION', amount: null, reason: '', error: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''

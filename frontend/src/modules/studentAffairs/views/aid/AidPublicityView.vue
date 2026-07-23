@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.aid.approve" :loading="scanning" @click="scan">
+        <AppPermissionButton :allowed="canBtn('studentAffairs.aid.approve')" code="studentAffairs.aid.approve" :loading="scanning" @click="scan">
           公示期满扫描
         </AppPermissionButton>
       </div>
@@ -28,7 +28,7 @@
             <span v-else>—</span>
           </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="!row.hasPendingObjection" code="studentAffairs.aid.approve" size="sm" variant="secondary"
+            <AppPermissionButton :allowed="canBtn('studentAffairs.aid.approve')" v-if="!row.hasPendingObjection" code="studentAffairs.aid.approve" size="sm" variant="secondary"
                                  :loading="actingId === row.applyId" @click="confirm(row)">
               确认公示期满 → 通过
             </AppPermissionButton>
@@ -48,6 +48,8 @@ import { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissi
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const LEVELS = { SPECIAL: '特别困难', DIFFICULT: '困难', GENERAL: '一般困难' }
 const PUBLICITY_COLUMNS = [
@@ -61,6 +63,7 @@ const PUBLICITY_COLUMNS = [
 export default {
   name: 'AidPublicityView',
   components: { AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return {
       publicityColumns: PUBLICITY_COLUMNS,
@@ -81,6 +84,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [pageRes, statsRes] = await Promise.all([

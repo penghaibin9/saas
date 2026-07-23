@@ -7,7 +7,7 @@
     watermark-purpose="宿舍调宿审批"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.dorm.transfer.create" :loading="actioning" @click="submitTransfer">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.transfer.create')" code="studentAffairs.dorm.transfer.create" :loading="actioning" @click="submitTransfer">
         发起调宿
       </AppPermissionButton>
     </template>
@@ -27,8 +27,8 @@
           <template #cell-actions="{ row }">
             <div class="sa-actions">
               <template v-if="isPending(row.status)">
-                <AppPermissionButton code="studentAffairs.dorm.transfer.approve" size="sm" :loading="actioning" @click="review(row, 'APPROVE')">通过</AppPermissionButton>
-                <AppPermissionButton code="studentAffairs.dorm.transfer.approve" size="sm" variant="secondary" :loading="actioning" @click="review(row, 'REJECT')">驳回</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.transfer.approve')" code="studentAffairs.dorm.transfer.approve" size="sm" :loading="actioning" @click="review(row, 'APPROVE')">通过</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.transfer.approve')" code="studentAffairs.dorm.transfer.approve" size="sm" variant="secondary" :loading="actioning" @click="review(row, 'REJECT')">驳回</AppPermissionButton>
               </template>
               <span v-else class="sa-muted">—</span>
             </div>
@@ -88,6 +88,8 @@ import {
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const TRANSFER_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -100,6 +102,7 @@ const TRANSFER_COLUMNS = [
 
 export default {
   name: 'DormTransferView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
     AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker, AppTextarea, DataTable
@@ -147,6 +150,7 @@ export default {
   },
   mounted() { this.load(); this.loadBuildings() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       try { this.items = (await studentAffairsApi.listDormTransfers({ pageSize: 100 })).data.items || [] }
