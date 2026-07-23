@@ -1,8 +1,21 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="缓考申请" back />
+    <MobileNavBar variant="brand" title="我的考试 / 缓考" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="d">
+        <view class="section-head"><text class="section-head__title">我的考试安排</text></view>
+        <MobileGlobalState v-if="!(d.schedule && d.schedule.length)" state="empty" title="暂无已发布考试安排"
+          description="教务发布考场座位后，准考证与考场信息会出现在此。" />
+        <view class="list-group" v-else>
+          <view v-for="it in d.schedule" :key="it.examCourseId" class="list-row">
+            <view class="flex-1">
+              <text class="t-md">{{ it.courseName }}</text>
+              <text class="ed__sub">{{ it.examDate || '未排定' }} {{ it.startTime || '' }}{{ it.endTime ? ' - ' + it.endTime : '' }}</text>
+              <text class="ed__sub">考场 {{ it.classroom || '—' }} · 座位 {{ it.seatNo ?? '—' }} · 准考证 {{ it.admissionNo || '—' }}</text>
+            </view>
+          </view>
+        </view>
+
         <view class="section-head">
           <text class="section-head__title">可申请缓考的考试</text>
         </view>
@@ -78,12 +91,18 @@ export default {
   methods: {
     load() {
       this.state = 'loading'
-      Promise.all([studentApi.getMyDeferOptions(), studentApi.getMyDeferrals()])
-        .then(([opts, defers]) => {
-          this.d = { options: (opts && opts.items) || [], deferrals: (defers && defers.items) || [] }
-          this.state = 'ready'
-        })
-        .catch(() => { this.state = 'error' })
+      Promise.all([
+        studentApi.getMyExamSchedule(),
+        studentApi.getMyDeferOptions(),
+        studentApi.getMyDeferrals()
+      ]).then(([sched, opts, defers]) => {
+        this.d = {
+          schedule: (sched && sched.items) || [],
+          options: (opts && opts.items) || [],
+          deferrals: (defers && defers.items) || []
+        }
+        this.state = 'ready'
+      }).catch(() => { this.state = 'error' })
     },
     reasonLabel(v) { return REASON_MAP[v] || v || '未说明' },
     onReasonPick(e) { this.form.reasonType = this.reasonOptions[e.detail.value].value },

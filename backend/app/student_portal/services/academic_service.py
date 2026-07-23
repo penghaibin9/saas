@@ -93,6 +93,11 @@ def exam_defer_apply(user: dict, body: dict) -> dict:
     return aa.exam_defer_apply_my(user, body or {})
 
 
+def exam_defer_resubmit(user: dict, defer_id) -> dict:
+    _require_student(user)
+    return aa.exam_defer_resubmit_my(user, defer_id)
+
+
 def makeup(user: dict) -> dict:
     """我的补考重修 + 免修申请列表。"""
     _require_student(user)
@@ -202,6 +207,25 @@ def credits(user: dict) -> dict:
 def warning(user: dict) -> dict:
     _require_student(user)
     return aa.warning_my(user)
+
+
+def recognition(user: dict) -> dict:
+    _require_student(user)
+    return aa.recognition_my(user)
+
+
+def recognition_submit(user: dict, body: dict) -> dict:
+    _require_student(user)
+    body = body or {}
+    if not str(body.get("sourceCourseName") or "").strip() or not str(body.get("targetCourseName") or "").strip():
+        raise AppException("VALIDATION_ERROR", "原课程与目标课程必填")
+    try:
+        score = float(body.get("sourceScore"))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "原成绩须为数字")
+    if score < 60 or score > 100:
+        raise AppException("VALIDATION_ERROR", "原成绩须在 60–100")
+    return aa.recognition_submit_my(user, body)
 
 
 def transcript_print(user: dict, body: dict) -> dict:

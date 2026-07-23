@@ -59,6 +59,8 @@ export const portalApi = {
   academicExam: () => request('/portal/academic/exam'),
   academicExamDefer: (status) => request(`/portal/academic/exam/defer${q({ status })}`),
   academicExamDeferApply: (body) => request('/portal/academic/exam/defer/apply', { method: 'POST', body }),
+  academicExamDeferResubmit: (deferId) =>
+    request(`/portal/academic/exam/defer/${encodeURIComponent(deferId)}/resubmit`, { method: 'POST' }),
   academicMakeup: () => request('/portal/academic/makeup'),
   academicRetakeApply: (body) => request('/portal/academic/retake/apply', { method: 'POST', body }),
   academicExemptionApply: (body) => request('/portal/academic/exemption/apply', { method: 'POST', body }),
@@ -80,6 +82,8 @@ export const portalApi = {
   academicMajorSplitSubmit: (body) => request('/portal/academic/major-split/submit', { method: 'POST', body }),
   academicCredits: () => request('/portal/academic/credits'),
   academicWarning: () => request('/portal/academic/warning'),
+  academicRecognition: () => request('/portal/academic/recognition'),
+  academicRecognitionSubmit: (body) => request('/portal/academic/recognition', { method: 'POST', body }),
 
   // ── 学工事务（在校服务）──
   affairsOverview: () => request('/portal/affairs/overview'),

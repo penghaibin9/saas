@@ -900,6 +900,8 @@ export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
 export const affairsFundingAppeal = (body) => realRequest('/mobile/affairs/funding/appeal', { method: 'POST', body })
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')
+export const affairsDisciplineAppeal = (body) =>
+  realRequest('/mobile/affairs/discipline/appeal', { method: 'POST', body })
 export const affairsDormMy = () => realRequest('/mobile/affairs/dorm/my')
 export const affairsDormOptions = () => realRequest('/mobile/affairs/dorm/select-options')
 export const affairsDormSelfSelect = (bedId) =>
@@ -984,7 +986,8 @@ export const acadEvaluationTasks = () => realRequest('/mobile/academic/evaluatio
 export const acadEvaluationSubmit = (body) =>
   realRequest('/mobile/academic/evaluation/submit', { method: 'POST', data: body })
 
-/** 缓考申请（考务管理·SM-10 8态四级审批，学生自助，真实接口，无 mock 兜底） */
+/** 我的考试安排 + 缓考申请（考务管理·SM-10） */
+export const acadExamMy = () => realRequest('/mobile/academic/exam/my')
 export const acadExamDeferOptions = () => realRequest('/mobile/academic/exam/defer-options')
 export const acadExamDeferMy = (status) =>
   realRequest('/mobile/academic/exam/defer/my' + (status ? `?status=${status}` : ''))
