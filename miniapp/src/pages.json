@@ -124,6 +124,13 @@
       "style": { "navigationBarTitleText": "实习自评" }
     },
     {
+      "path": "pages/student/internship/help/index",
+      "style": {
+        "navigationBarTitleText": "实习求助",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/student/weekly-report/index",
       "style": { "navigationBarTitleText": "填写周报", "navigationStyle": "custom" }
     },
@@ -358,6 +365,13 @@
     {
       "path": "pages/teacher/internship-approval/index",
       "style": { "navigationBarTitleText": "实习审批", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/teacher/internship-risk/index",
+      "style": {
+        "navigationBarTitleText": "实习风险处置",
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/teacher/internship-guidance/index",

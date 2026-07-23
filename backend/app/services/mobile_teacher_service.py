@@ -1792,6 +1792,80 @@ def leave_review(user: dict, leave_id: str, action: str, comment: str | None = N
     return result
 
 
+def leave_overdue(user: dict) -> dict:
+    """实习请假·超期未销假 + 已销假待办结确认队列。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_leave_service as lv_svc
+    overdue, _ = lv_svc.list_leaves(1, 50, status="OVERDUE", user=u)
+    returned, _ = lv_svc.list_leaves(1, 50, status="RETURNED", user=u)
+    # 已销假也展示近期项，便于教师关闭 INT-R06
+    items = list(overdue) + [x for x in returned if x.get("returnNote")]
+    return {"list": items, "total": len(items)}
+
+
+def leave_ack_overdue_return(user: dict, leave_id: str, note: str | None = None) -> dict:
+    """教师确认超期销假办结（关闭 INT-R06）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实办结")
+    from app.modules.internship.services import internship_leave_service as lv_svc
+    result = lv_svc.ack_overdue_return(u, leave_id, note or "")
+    _audit_write("MOBILE_LEAVE_ACK_RETURN", f"internship-leave:{leave_id}",
+                 {"operator": u.get("realName"), "note": (note or "")[:200]})
+    return result
+
+
+def internship_risks_pending(user: dict) -> dict:
+    """教师·实习风险待办（本人指导范围，含学生求助 INT-R-HELP）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.modules.internship.services import internship_risk_service as risk_svc
+    pending, _ = risk_svc.list_risks(1, 50, status="PENDING_HANDLE", user=u)
+    processing, _ = risk_svc.list_risks(1, 50, status="PROCESSING", user=u)
+    items = list(pending) + list(processing)
+    return {"list": items, "total": len(items)}
+
+
+def internship_risk_handle(user: dict, risk_id: str, body: dict | None = None) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实处置")
+    from app.modules.internship.services import internship_risk_service as risk_svc
+    b = body or {}
+    result = risk_svc.handle(u, risk_id, owner_name=b.get("ownerName"), deadline=b.get("deadline"),
+                             comment=b.get("comment") or b.get("note") or "")
+    _audit_write("MOBILE_INTERNSHIP_RISK_HANDLE", f"internship-risk:{risk_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def internship_risk_follow(user: dict, risk_id: str, note: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实跟进")
+    from app.modules.internship.services import internship_risk_service as risk_svc
+    result = risk_svc.follow(u, risk_id, note or "")
+    _audit_write("MOBILE_INTERNSHIP_RISK_FOLLOW", f"internship-risk:{risk_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
+def internship_risk_close(user: dict, risk_id: str, body: dict | None = None) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实关闭")
+    from app.modules.internship.services import internship_risk_service as risk_svc
+    b = body or {}
+    result = risk_svc.close(u, risk_id, result=(b.get("result") or "RESOLVED"),
+                            comment=b.get("comment") or b.get("note") or "")
+    _audit_write("MOBILE_INTERNSHIP_RISK_CLOSE", f"internship-risk:{risk_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 def internship_my_students(user: dict) -> dict:
     """指导教师·本人指导实习学生名单（复用 PC 实习学生列表的 owner+数据范围收敛，供移动端选择记指导记录用）。"""
     u = _require_teacher(user)

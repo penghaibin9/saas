@@ -1,10 +1,10 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="三方协议学校确认" subtitle="企业已签署，待学校确认生效" show-back />
+    <MobileNavBar variant="teacher" title="三方协议学校确认" subtitle="企业签署由学校代录纸质件 · 确认后生效" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="list">
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待确认协议"
-          description="企业记录签署后的三方协议会出现在这里，确认后即生效。" />
+          description="学校代录企业纸质签署并上传扫描件后，待学校确认的协议会出现在这里。" />
         <view class="stack" v-else>
           <view v-for="a in list" :key="a.id" class="card ac">
             <view class="row-between">

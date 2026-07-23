@@ -268,6 +268,54 @@ def _write_leave_checkins(db, lv) -> int:
     return written
 
 
+def ack_overdue_return(user, leave_id, note: str = "") -> dict:
+    """教师确认超期销假办结：仅 RETURNED 且曾超期（或仍 OVERDUE 但学生已销假）可确认，并关闭 INT-R06 风险。
+
+    学生销假后状态为 RETURNED；教师在小程序/PC 确认办结，避免「学生已销假、风险单仍挂」。
+    """
+    note = (note or "").strip()
+    if len(note) < 2:
+        raise AppException("VALIDATION_ERROR", "办结说明不少于 2 字")
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    with session() as db:
+        lv = _get(db, leave_id)
+        rec = db.get(InternshipRecord, lv.internship_id)
+        stu = db.get(StudentProfile, lv.student_id)
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):
+            raise no_permission("只能办结本人指导学生的请假")
+        if lv.status not in ("RETURNED", "OVERDUE"):
+            raise AppException("DATA_CONFLICT", "仅超期未归或已销假记录可办结确认")
+        # 若仍 OVERDUE：允许教师代确认已返岗（学生无法操作时）
+        if lv.status == "OVERDUE":
+            lv.status = "RETURNED"
+            lv.returned_at = datetime.utcnow()
+            lv.return_note = note[:500]
+            lv.version = int(lv.version or 0) + 1
+            _trail(db, lv.id, "TEACHER_PROXY_RETURN", {"note": note}, operator=_op_name(user))
+        closed = 0
+        risks = db.scalars(select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == lv.internship_id,
+            RiskRecord.risk_code == "INT-R06",
+            RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
+            RiskRecord.is_deleted.is_(False))).all()
+        for r in risks:
+            r.status = "CLOSED"
+            r.last_follow_at = datetime.utcnow()
+            r.last_follow_note = f"销假办结：{note}"[:500]
+            r.version = int(r.version or 0) + 1
+            closed += 1
+            db.add(InternshipAuditTrail(
+                tenant_id=_tid(), target_id=r.id, target_type="RISK", action="CLOSE",
+                operator_name=_op_name(user),
+                detail_json={"result": "RESOLVED", "from": "leave_ack", "leaveId": str(lv.id)},
+                occurred_at=datetime.utcnow()))
+        _trail(db, lv.id, "ACK_OVERDUE_RETURN", {"note": note, "risksClosed": closed},
+               operator=_op_name(user))
+        db.commit()
+        return {"id": str(lv.id), "status": lv.status, "statusLabel": STATUS_LABEL.get(lv.status, lv.status),
+                "risksClosed": closed, "message": "已确认销假办结"}
+
+
 def refresh_overdue(reference_date: date | None = None, user=None, system: bool = False) -> dict:
     """Mark expired approved leave as overdue and create one unresolved risk per leave period.
 

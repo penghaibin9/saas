@@ -150,6 +150,7 @@ export const portalApi = {
   internshipPlan: () => request('/portal/internship/plan'),
   internshipPlanAck: () => request('/portal/internship/plan/acknowledge', { method: 'POST' }),
   internshipEnterprises: (city = '') =>
+  internshipHelp: (body) => request('/portal/internship/help', { method: 'POST', body }),
     request(`/portal/internship/enterprises${city ? `?city=${encodeURIComponent(city)}` : ''}`),
 
   // ── 就业服务 ──

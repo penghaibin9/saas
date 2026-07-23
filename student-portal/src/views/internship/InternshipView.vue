@@ -42,7 +42,7 @@
               <button v-if="activeAgreement?.status==='PENDING_STUDENT'" class="sp-btn" :disabled="busy" @click="confirmAgreement('CONFIRM')">确认协议</button>
               <button v-if="activeAgreement?.status==='PENDING_STUDENT'" class="sp-btn sp-btn--ghost" :disabled="busy" @click="confirmAgreement('REJECT')">驳回协议</button>
             </div>
-            <p class="sp-muted" style="margin-top:10px">盖章件上传请在学生小程序完成；确认/驳回两端同一数据。</p>
+            <p class="sp-muted" style="margin-top:10px">盖章件由学校代录企业纸质签署；学生确认/驳回两端同一数据。来源口径为「学校录入」，不是企业端登录签署。</p>
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">协议列表</div>
@@ -280,6 +280,25 @@
         </section>
       </template>
 
+      <!-- 实习求助 -->
+      <template v-else-if="tab === 'help'">
+        <section class="sp-card">
+          <div class="sp-panel__head">向指导教师求助</div>
+          <p class="sp-muted" style="margin-bottom:12px">用于岗位不适、安全隐患等。进入实习风险台由导师跟进；不登记就业去向，也不伪造监管上报。</p>
+          <div class="sp-fieldlabel">紧急程度</div>
+          <select v-model="helpForm.riskLevel" class="sp-inp" style="margin-bottom:12px">
+            <option value="LOW">一般</option>
+            <option value="MEDIUM">较急</option>
+            <option value="HIGH">紧急</option>
+          </select>
+          <div class="sp-fieldlabel">标题（可选）</div>
+          <input v-model.trim="helpForm.title" class="sp-inp" style="margin-bottom:12px" placeholder="默认：学生实习求助" />
+          <div class="sp-fieldlabel">情况说明</div>
+          <textarea v-model.trim="helpForm.content" class="sp-inp" style="margin-bottom:12px" placeholder="不少于 5 字" />
+          <button class="sp-btn" :disabled="busy || (helpForm.content || '').length < 5" @click="submitHelp">提交求助</button>
+        </section>
+      </template>
+
       <!-- 周报/月报/总结 -->
       <template v-else-if="tab === 'report'">
         <div style="display:flex;gap:8px;margin-bottom:16px">
@@ -346,8 +365,10 @@
             <template v-if="my.score">
               <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
                 <div style="font-size:32px;font-weight:700;color:var(--pri)">{{ my.score.totalScore ?? '—' }}</div>
+                <StatusTag v-if="my.score.gradeLevel" :text="my.score.gradeLevel" tone="warn" />
                 <StatusTag :text="my.score.isPass ? '合格' : '不合格'" :tone="my.score.isPass ? 'success' : 'danger'" />
               </div>
+              <p class="sp-muted" style="margin-bottom:8px">企业评价分来自「学校录入」企业纸质评价（非企业端登录）。等次为百分制派生展示。</p>
               <dl class="score-grid">
                 <div><dt>打卡</dt><dd>{{ my.score.checkinScore ?? '—' }}</dd></div>
                 <div><dt>周报</dt><dd>{{ my.score.weeklyScore ?? '—' }}</dd></div>
@@ -388,7 +409,7 @@ const tabs = [
   { key: 'makeup', label: '补卡申请' }, { key: 'intention', label: '岗位意向' },
   { key: 'application', label: '正式申请' }, { key: 'change', label: '调岗退岗' },
   { key: 'enterprises', label: '企业岗位库' }, { key: 'insurance', label: '实习保险' },
-  { key: 'plan', label: '实习计划' },
+  { key: 'plan', label: '实习计划' }, { key: 'help', label: '实习求助' },
   { key: 'report', label: '周报/月报/总结' }, { key: 'eval', label: '实习成绩/自评' }
 ]
 const tab = ref('overview')
@@ -427,6 +448,7 @@ const insForm = reactive({
 })
 const insuranceMeta = ref(null)
 const planMeta = ref(null)
+const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
 const appealReason = ref('')
 
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
@@ -674,6 +696,15 @@ async function ackPlan() {
     await portalApi.internshipPlanAck()
     ui.notify('已确认实习计划'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
+}
+async function submitHelp() {
+  if ((helpForm.content || '').trim().length < 5) return ui.notify('情况说明不少于 5 字')
+  busy.value = true
+  try {
+    const d = await portalApi.internshipHelp({ ...helpForm })
+    ui.notify(d?.message || '求助已提交')
+    helpForm.content = ''; helpForm.title = ''
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitWeekly() {
   if (!weeklyForm.week) return ui.notify('请填写周次')

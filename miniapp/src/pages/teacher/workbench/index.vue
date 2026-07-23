@@ -128,6 +128,7 @@ export default {
       }).catch(() => { this.state = 'error'; done && done() })
     },
     quick(q) {
+      const session = useSessionStore()
       const map = {
         weekly: '/pages/teacher/internship-review/index',
         'review-open': '/pages/teacher/graduation-guide/index?tab=review&kind=proposal',
@@ -146,6 +147,7 @@ export default {
         'process-report': '/pages/teacher/process-report-review/index',
         'plan-task': '/pages/teacher/plan-task-review/index',
         'internship-application': '/pages/teacher/internship-application/index',
+        'internship-risk': '/pages/teacher/internship-risk/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         follow: '/pages/teacher/employment-follow/index',
@@ -179,11 +181,18 @@ export default {
         orientationVerify: '/pages/teacher/orientation/verify/index',
         orientationDashboard: '/pages/teacher/orientation/dashboard/index'
       }
+      if (q.key === 'risk' && session.currentRole === 'intern_mentor') {
+        return go('/pages/teacher/internship-risk/index')
+      }
       if (map[q.key]) return go(map[q.key])
       toast(q.label + '：即将开放')
     },
     handleTodo(t) { go('/pages/teacher/todos/index') },
-    handleRisk(r) { go('/pages/teacher/risk-students/index') },
+    handleRisk(r) {
+      const session = useSessionStore()
+      if (session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
+      go('/pages/teacher/risk-students/index')
+    },
     openStudent(r) { go('/pages/teacher/student-detail/index?id=' + r.id) }
   }
 }

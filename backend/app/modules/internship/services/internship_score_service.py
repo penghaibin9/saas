@@ -297,6 +297,26 @@ def archive(user, sid) -> dict:
         return {"id": str(s.id), "status": s.status}
 
 
+def _grade_level(total, pass_line=60.0) -> str:
+    """百分制派生等次（展示用，权威仍以 totalScore/isPass 为准；政策阈值学校可后续配置）。"""
+    if total is None:
+        return ""
+    try:
+        t = float(total)
+    except (TypeError, ValueError):
+        return ""
+    pl = float(pass_line or 60)
+    if t < pl:
+        return "不及格"
+    if t >= 90:
+        return "优秀"
+    if t >= 80:
+        return "良好"
+    if t >= 70:
+        return "中等"
+    return "及格"
+
+
 def _row(s, rec, stu):
     return {
         "id": str(s.id), "internId": str(s.internship_id),
@@ -305,6 +325,7 @@ def _row(s, rec, stu):
         "checkinScore": s.checkin_score, "weeklyScore": s.weekly_score, "monthlyScore": s.monthly_score,
         "enterpriseScore": s.enterprise_score, "schoolScore": s.school_score,
         "totalScore": s.total_score, "passLine": s.pass_line, "isPass": bool(s.is_pass),
+        "gradeLevel": _grade_level(s.total_score, s.pass_line),
         "scoreConfigId": str(s.score_config_id) if s.score_config_id else "",
         "scoreConfigVersion": int(s.score_config_version or 0),
         "incomplete": bool(s.incomplete), "incompleteReason": s.incomplete_reason or "",
