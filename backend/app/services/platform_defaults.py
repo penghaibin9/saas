@@ -127,7 +127,8 @@ DEFAULT_DICTIONARIES = {
 
 DEFAULT_SECURITY = {
     "loginFailMaxTimes": 5, "loginFailLockMinutes": 15, "accessTokenExpireMinutes": 120,
-    "refreshTokenExpireDays": 7, "corsAllowedOrigins": "http://localhost:5173,http://localhost:5188",
+    "refreshTokenExpireDays": 7,
+    "corsAllowedOrigins": "http://localhost:5173,http://localhost:5188,http://localhost:5199,http://127.0.0.1:5173,http://127.0.0.1:5199",
     "uploadMaxSizeMb": 50, "exportRateLimitPerMinute": 5, "uploadRateLimitPerMinute": 20,
     "normalApiRateLimitPerMinute": 300, "docsEnabledInProduction": False,
 }

@@ -89,12 +89,17 @@ def _op():
 
 
 def _user_keys(user) -> set[str]:
-    """派生当前用户可能的教师标识键（userId/登录名/姓名），用于「教师课表」按本人授课范围收敛。"""
+    """派生当前用户的教师标识键（userId/登录名），用于「教师课表」按本人授课范围收敛。
+
+    与 affairs_security._derive_keys 同口径：只认工号族标识，**不含 realName**。
+    teacher_schedule() 用本函数做归属校验（`teacher_key not in _user_keys(user)` → 403002），
+    姓名一旦入键，同名教师即可传对方工号越权查看其课表。t_aa_schedule_item.teacher_key
+    实测存的是工号（如 t_chen_xiaoli），姓名从不作为 teacher_key，故移除姓名不影响本人课表查询。
+    """
     u = user or {}
     uid = str(u.get("userId") or "")
     login = u.get("loginName") or ""
-    name = u.get("realName") or ""
-    return {k for k in (uid, login, name, uid[2:] if uid.startswith("u_") else "") if k}
+    return {k for k in (uid, login, uid[2:] if uid.startswith("u_") else "") if k}
 
 
 def _audit(db, biz_type, biz_id, action, detail=""):
