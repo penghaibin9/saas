@@ -349,10 +349,18 @@ def review_proposal(pid, action, comment=None) -> dict:
         p.version = p.version or "v1"
         _audit(db, "PROPOSAL", p.id, "批阅开题-" + ("通过" if action == "APPROVE" else "驳回"),
                (comment or "").strip(), before, target)
-        # 开题通过推进学生阶段
+        # 开题通过仅在任务书已确认时推进到指导中，禁止跳过任务书确认
         stu = _stu_of(db, p.gd_student_id)
         if stu and action == "APPROVE" and stu.stage in ("TOPIC_SELECTING", "TASKBOOK_CONFIRM"):
-            stu.stage = "GUIDING"
+            from app.models import GraduationTaskBook
+            tb = db.scalars(select(GraduationTaskBook).where(
+                GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == stu.id,
+                GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
+            ).limit(1)).first()
+            if tb:
+                stu.stage = "GUIDING"
+            elif stu.stage == "TOPIC_SELECTING":
+                stu.stage = "TASKBOOK_CONFIRM"
         db.commit()
         return {"id": str(p.id), "status": target, "statusLabel": L_MAT.get(target, target)}
 
@@ -403,6 +411,13 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         elig = getattr(stu, "eligibility_status", None) or "PENDING"
         if elig == "UNQUALIFIED":
             raise AppException("DATA_CONFLICT", "资格不合格，不能提交开题报告")
+        from app.models import GraduationTaskBook
+        tb = db.scalars(select(GraduationTaskBook).where(
+            GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == stu.id,
+            GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
+        ).limit(1)).first()
+        if not tb:
+            raise AppException("DATA_CONFLICT", "请先确认任务书后再提交开题报告")
         _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == stu.id,
@@ -568,12 +583,11 @@ def _not_submitted_finals(db, keyword=None) -> list:
 
 
 def midterm_allows_final_submit(mid) -> bool:
-    """中期检查已通过（含整改复核通过）才允许提交成果。无记录或待检查/整改中/不通过均禁止。"""
+    """中期检查已通过（含整改复核通过）才允许提交成果。仅认状态，不单靠 conclusion。"""
     if mid is None:
         return False
     status = str(getattr(mid, "status", "") or "")
-    conclusion = str(getattr(mid, "conclusion", "") or "")
-    return status in ("CHECKED_PASS", "RECTIFIED_PASS") or conclusion == "PASS"
+    return status in ("CHECKED_PASS", "RECTIFIED_PASS")
 
 
 def submit_final(gd_student_id, final_type, attachments=None) -> dict:
@@ -586,6 +600,8 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
+        if stu.stage not in ("FINAL_CHECK", "DEFENSE"):
+            raise AppException("DATA_CONFLICT", "当前阶段不可提交成果（须进入成果检查阶段）")
         if not stu.topic_id:
             raise AppException("DATA_CONFLICT", "请先完成选题确认后再提交成果")
         elig = getattr(stu, "eligibility_status", None) or "PENDING"
@@ -874,7 +890,7 @@ def get_defense_group_detail(gid) -> dict:
 
 
 def list_defense_eligible_students(gid=None, keyword=None) -> list:
-    """可分配到答辩组的学生：已确认选题且在册；含"未分组"与"已在本组"。"""
+    """可分配到答辩组的学生：须已进入成果检查及以后阶段（与 assign 门禁一致）。"""
     with session() as db:
         if not has_full_scope():
             raise no_permission("Only graduation managers can list defense assignment candidates")
@@ -884,6 +900,8 @@ def list_defense_eligible_students(gid=None, keyword=None) -> list:
         gid_int = int(gid) if gid else None
         out = []
         for s in stus:
+            if s.stage not in ("FINAL_CHECK", "DEFENSE", "COMPLETED"):
+                continue
             if not (s.topic_id or s.stage not in ("TOPIC_SELECTING", None, "")):
                 continue
             if keyword and keyword.strip() not in (s.name or ""):

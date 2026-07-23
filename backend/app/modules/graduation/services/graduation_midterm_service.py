@@ -101,6 +101,8 @@ def conduct_check(gd_student_id, conclusion: str, comment: str = None, rectify_d
         raise AppException("VALIDATION_ERROR", "conclusion 必须是 PASS/RECTIFY/FAIL")
     with session() as db:
         stu = _stu(db, gd_student_id)
+        if stu.stage not in ("MIDTERM", "FINAL_CHECK"):
+            raise AppException("DATA_CONFLICT", "当前阶段不可发起中期检查（须先进入中期检查阶段）")
         m = _get_or_create(db, stu)
         if m.status not in ("PENDING", "RECTIFIED_PASS", "CHECKED_FAIL"):
             raise AppException("DATA_CONFLICT", "当前状态不可重新发起中期检查")

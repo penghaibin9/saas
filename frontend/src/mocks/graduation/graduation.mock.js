@@ -47,7 +47,14 @@ export const permissionActions = {
   exportProposals: { visible: true, allowed: true, reason: '' },
   manageDefense: { visible: true, allowed: true, reason: '' },
   publishDefense: { visible: true, allowed: true, reason: '' },
-  exportDefense: { visible: true, allowed: true, reason: '' }
+  exportDefense: { visible: true, allowed: true, reason: '' },
+  enterDefenseScore: { visible: true, allowed: true, reason: '' },
+  confirmDefenseScores: { visible: true, allowed: true, reason: '' },
+  createSecondDefense: { visible: true, allowed: true, reason: '' },
+  manageGrade: { visible: true, allowed: true, reason: '' },
+  publishGrade: { visible: true, allowed: true, reason: '' },
+  guideMidterm: { visible: true, allowed: true, reason: '' },
+  guideTaskbook: { visible: true, allowed: true, reason: '' }
 }
 
 export const statusOptions = {

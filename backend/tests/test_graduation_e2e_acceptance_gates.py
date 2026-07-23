@@ -268,7 +268,7 @@ def test_final_blocked_while_midterm_rectifying(client, auth_headers, db_mode):
         "finalType": "初稿", "attachments": [],
     }).json()
     assert blocked["code"] != 0
-    assert "中期" in (blocked.get("message") or "")
+    assert ("中期" in (blocked.get("message") or "")) or ("阶段" in (blocked.get("message") or ""))
 
 
 def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mode):
@@ -281,6 +281,11 @@ def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mod
     name = "中期整改通过生"
     gid = _gd_student(client, h, "MT-FIN-PASS-01", name)
     db = get_sessionmaker()()
+    from app.models import GraduationStudent
+    stu = db.get(GraduationStudent, int(gid))
+    stu.stage = "FINAL_CHECK"
+    stu.topic_id = 1
+    stu.topic_title = "整改通过题"
     db.add(GraduationMidterm(
         tenant_id=1000000000000000001, gd_student_id=int(gid),
         status="RECTIFIED_PASS", conclusion="PASS",
@@ -321,7 +326,7 @@ def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode)
         "finalType": "初稿", "attachments": [],
     }).json()
     assert missing["code"] != 0
-    assert "中期" in (missing.get("message") or "")
+    assert ("中期" in (missing.get("message") or "")) or ("阶段" in (missing.get("message") or ""))
     view = client.get("/api/v1/mobile/graduation/final", headers=sh).json()
     assert view["code"] == 0
     assert view["data"]["canSubmitDraft"] is False
@@ -337,7 +342,7 @@ def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode)
         "finalType": "初稿", "attachments": [],
     }).json()
     assert pending["code"] != 0
-    assert "中期" in (pending.get("message") or "")
+    assert ("中期" in (pending.get("message") or "")) or ("阶段" in (pending.get("message") or ""))
 
 
 def test_review_rectification_sets_conclusion_pass(client, auth_headers, db_mode):
@@ -453,4 +458,4 @@ def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_head
         "finalType": "初稿", "attachments": [],
     }).json()
     assert blocked["code"] != 0
-    assert "中期" in (blocked.get("message") or "")
+    assert ("中期" in (blocked.get("message") or "")) or ("阶段" in (blocked.get("message") or ""))

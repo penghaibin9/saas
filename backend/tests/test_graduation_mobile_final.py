@@ -36,6 +36,23 @@ def _gd_student_with_topic(client, h, no, name, advisor="成果张老师"):
         "capacity": 1, "submitReview": True}).json()["data"]["id"]
     client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
     client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent, GraduationTaskBook
+    db = get_sessionmaker()()
+    stu = db.get(GraduationStudent, int(gid))
+    stu.stage = "FINAL_CHECK"
+    db.add(GraduationTaskBook(
+        tenant_id=stu.tenant_id, gd_student_id=stu.id, taskbook_version=1,
+        status="CONFIRMED", objective="目标", content="内容", history_json=[],
+    ))
+    db.add(GraduationMidterm(
+        tenant_id=stu.tenant_id, gd_student_id=stu.id,
+        status="CHECKED_PASS", conclusion="PASS",
+        check_comment="中期通过", checked_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
     return gid
 
 

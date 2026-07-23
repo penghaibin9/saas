@@ -22,6 +22,8 @@ _ACTION_RULES: tuple[tuple[str, str, str], ...] = (
     ("/finals/", "/review", "graduationDesign.final.review"),
     ("/defense-groups/", "/publish", "graduationDesign.defense.publish"),
     ("/defense-groups", "", "graduationDesign.defense.manage"),
+    ("/gd-defense-scores/", "/confirm", "graduationDesign.defense.manage"),
+    ("/gd-defense-scores/", "/second-defense", "graduationDesign.defense.manage"),
     ("/gd-defense-scores", "", "graduationDesign.defense.score"),
     ("/gd-grades/", "/publish", "graduationDesign.grade.publish"),
     ("/gd-archives/", "/submit", "graduationDesign.archive.submit"),

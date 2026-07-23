@@ -496,8 +496,16 @@ def set_stage(sid, action: str, reason: str = "") -> dict:
             idx = STAGE_ORDER.index(s.stage)
             if s.stage == "TOPIC_SELECTING":
                 raise AppException("DATA_CONFLICT", "未分配选题，不能推进（请先分配选题）")
-            if s.stage == "TASKBOOK_CONFIRM" and not s.advisor_name:
-                raise AppException("DATA_CONFLICT", "未分配指导教师，不能进入指导阶段")
+            if s.stage == "TASKBOOK_CONFIRM":
+                if not s.advisor_name:
+                    raise AppException("DATA_CONFLICT", "未分配指导教师，不能进入指导阶段")
+                from app.models import GraduationTaskBook
+                tb = db.scalars(select(GraduationTaskBook).where(
+                    GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == s.id,
+                    GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
+                ).limit(1)).first()
+                if not tb:
+                    raise AppException("DATA_CONFLICT", "学生确认任务书后方可进入指导阶段")
             if s.stage == "GUIDING":
                 # 进入中期前须开题书面通过
                 from app.models import GraduationProposal
@@ -687,6 +695,8 @@ def set_grad_qual(sid, status: str, note: str = "", reason: str = "") -> dict:
     with session() as db:
         s = _get(db, sid)
         assert_student_access(db, s, "student.grad_qualification")
+        if s.stage == "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "已归档记录不可再改毕业资格联动")
         before = s.grad_qual_status
         s.grad_qual_status = status
         if note is not None:

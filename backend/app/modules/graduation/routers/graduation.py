@@ -30,6 +30,11 @@ _ACTION_PERMISSION_MAP = {
     "exportProposals": "graduationDesign.export", "manageDefense": "graduationDesign.defense.manage",
     "publishDefense": "graduationDesign.defense.publish", "exportDefense": "graduationDesign.export",
     "guideMidterm": "graduationDesign.guide.manage", "guideTaskbook": "graduationDesign.guide.manage",
+    "enterDefenseScore": "graduationDesign.defense.score",
+    "confirmDefenseScores": "graduationDesign.defense.manage",
+    "createSecondDefense": "graduationDesign.defense.manage",
+    "manageGrade": "graduationDesign.manage",
+    "publishGrade": "graduationDesign.grade.publish",
 }
 
 

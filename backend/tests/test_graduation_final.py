@@ -32,12 +32,25 @@ def _gd_student_with_topic(client, h, no, name):
 
 
 def _to_guiding(client, h, sh, gid, name):
-    """通过开题审核把学生推进到 GUIDING（成果提交的前置阶段）。"""
-    client.post(f"{MOBILE}/graduation/proposal", headers=sh,
-                json={"background": "选题背景说明足够长度", "plan": "研究方案与进度足够长度", "outcome": ""})
-    lst = client.get(PROP, headers=h, params={"status": "PENDING_REVIEW"}).json()["data"]
-    pid = next(r for r in lst["items"] if r["studentName"] == name)["id"]
-    client.post(f"{PROP}/{pid}/review", headers=h, json={"action": "APPROVE", "comment": "选题合理"})
+    """准备到可交成果：任务书确认 + 中期通过 + 阶段 FINAL_CHECK。"""
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent, GraduationTaskBook
+    from datetime import datetime
+
+    db = get_sessionmaker()()
+    stu = db.get(GraduationStudent, int(gid))
+    stu.stage = "FINAL_CHECK"
+    db.add(GraduationTaskBook(
+        tenant_id=stu.tenant_id, gd_student_id=stu.id, taskbook_version=1,
+        status="CONFIRMED", objective="目标", content="内容", history_json=[],
+    ))
+    db.add(GraduationMidterm(
+        tenant_id=stu.tenant_id, gd_student_id=stu.id,
+        status="CHECKED_PASS", conclusion="PASS",
+        check_comment="中期通过", checked_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
 
 
 def _pending_final_id(client, h, name):

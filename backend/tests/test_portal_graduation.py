@@ -99,14 +99,20 @@ def test_print_log(client, db_mode):
 
 
 def _seed_gd_ready_for_proposal(no, name):
-    """建毕设学生（已过选题阶段，可提交开题）。"""
+    """建毕设学生（选题+任务书已确认，可提交开题）。"""
     from app.db.session import get_sessionmaker
-    from app.models import GraduationStudent
+    from app.models import GraduationStudent, GraduationTaskBook
     db = get_sessionmaker()()
-    db.add(GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
-                             topic_id=1, topic_title="XX系统的设计与实现", stage="PROPOSAL",
+    g = GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+                             topic_id=1, topic_title="XX系统的设计与实现", stage="GUIDING",
                              risk_level="LOW", eligibility_status="PENDING",
-                             grad_qual_status="PENDING", record_status="ACTIVE"))
+                             grad_qual_status="PENDING", record_status="ACTIVE")
+    db.add(g)
+    db.flush()
+    db.add(GraduationTaskBook(tenant_id=TID, gd_student_id=g.id, taskbook_version=1,
+                              status="CONFIRMED", objective="研究XX系统设计与实现",
+                              content="完成需求分析、设计、编码、测试与论文撰写。",
+                              history_json=[]))
     db.commit()
     db.close()
 

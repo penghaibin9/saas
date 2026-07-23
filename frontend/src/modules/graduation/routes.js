@@ -308,26 +308,26 @@ const graduationRoutes = {
       path: 'process/:studentId/:action',
       name: 'graduation-process-action',
       component: () => import('@/modules/graduation/views/GraduationProcessActionView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '过程指导操作', requiresAuth: true, permissionKey: 'graduationDesign.process.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '过程指导操作', requiresAuth: true, permissionKey: 'graduationDesign.guide.manage' }
     },
     {
       path: 'process',
       name: 'graduation-process',
       component: () => import('@/modules/graduation/views/GraduationProcessView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '过程指导（任务书/指导记录/中期检查）', requiresAuth: true, permissionKey: 'graduationDesign.process.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '过程指导（任务书/指导记录/中期检查）', requiresAuth: true, permissionKey: 'graduationDesign.guide.manage' }
     },
     // ── 答辩与成绩 ──
     {
       path: 'defense-grade/form',
       name: 'graduation-defense-grade-form',
       component: () => import('@/modules/graduation/views/GraduationDefenseGradeFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.defenseGrade.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.defense.score' }
     },
     {
       path: 'defense-grade',
       name: 'graduation-defense-grade',
       component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩（查重/评阅/答辩评分/成绩评定）', requiresAuth: true, permissionKey: 'graduationDesign.defenseGrade.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩（查重/评阅/答辩评分/成绩评定）', requiresAuth: true, permissionKey: 'graduationDesign.defense.score' }
     },
     {
       path: 'audit-logs',

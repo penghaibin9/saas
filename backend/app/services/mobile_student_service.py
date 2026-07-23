@@ -124,9 +124,11 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         # （比"未过滤"更隐蔽：不报错、不泄露，只是安静地什么都不显示）。改为 sid/uid 双兼容。
         uid = _resolve_uid(u)
         personal_ids = [x for x in (sid, uid) if x is not None]
+        # 不再并入 receiver_id=0：历史风险升级曾对 0 广播，会让全体学生看到他人风险告警。
+        # 真公共公告应使用独立消息类型/频道，不得冒充学生个人收件箱。
         notices = db.scalars(select(UnifiedMessage).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-            UnifiedMessage.receiver_id.in_(personal_ids + [0])
+            UnifiedMessage.receiver_id.in_(personal_ids)
         ).order_by(UnifiedMessage.id.desc()).limit(5)).all()
         # 各域是否有我的记录 + 关键状态
         intern = db.scalars(select(InternshipRecord).where(
@@ -766,13 +768,23 @@ def graduation_proposal(user: dict) -> dict:
             GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == g.id,
             GraduationProposal.is_deleted.is_(False)).order_by(GraduationProposal.id.desc())).all()
         latest = props[0] if props else None
-        # 已确认选题（有题）才允许提交开题
+        # 已确认选题 + 任务书已确认才允许提交开题
         can_submit_topic = bool(g.topic_id) or g.stage not in ("TOPIC_SELECTING", None, "")
+        from app.models import GraduationTaskBook
+        tb_ok = db.scalars(select(GraduationTaskBook).where(
+            GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == g.id,
+            GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
+        ).limit(1)).first() is not None
         # 无记录 → 可首次提交；最新被驳回 → 可重交；待审/已通过 → 不可提交
-        can_submit = can_submit_topic and (latest is None or latest.status == "REJECTED")
+        can_submit = can_submit_topic and tb_ok and (latest is None or latest.status == "REJECTED")
+        reason = ""
+        if not can_submit_topic:
+            reason = "请先完成选题确认后再提交开题报告"
+        elif not tb_ok:
+            reason = "请先确认任务书后再提交开题报告"
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
                 "canSubmit": can_submit,
-                "reason": "" if can_submit_topic else "请先完成选题确认后再提交开题报告",
+                "reason": reason,
                 "latest": None if not latest else {
                     "id": str(latest.id), "version": latest.version or "", "status": latest.status,
                     "statusLabel": {"PENDING_REVIEW": "待指导教师审阅", "APPROVED": "已通过",
@@ -820,12 +832,15 @@ def graduation_final(user: dict) -> dict:
             GraduationMidterm.tenant_id == _tid(), GraduationMidterm.gd_student_id == g.id,
             GraduationMidterm.is_deleted.is_(False)).order_by(GraduationMidterm.id.desc())).first()
         mid_ok = gd_svc.midterm_allows_final_submit(mid)
+        stage_ok = g.stage in ("FINAL_CHECK", "DEFENSE")
         has_pending = any(f.status == "PENDING_REVIEW" for f in finals)
         draft_approved = any(f.final_type == "初稿" and f.status == "APPROVED" for f in finals)
         final_approved = any(f.final_type == "定稿" and f.status == "APPROVED" for f in finals)
-        can_draft = mid_ok and not has_pending and not draft_approved
-        can_final = mid_ok and not has_pending and draft_approved and not final_approved
-        if not mid_ok:
+        can_draft = stage_ok and mid_ok and not has_pending and not draft_approved
+        can_final = stage_ok and mid_ok and not has_pending and draft_approved and not final_approved
+        if not stage_ok:
+            hint = "当前阶段不可提交成果（须进入成果检查）"
+        elif not mid_ok:
             hint = "中期检查通过后方可提交成果"
         elif final_approved:
             hint = "论文已定稿通过"
