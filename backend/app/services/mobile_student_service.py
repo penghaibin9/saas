@@ -594,8 +594,9 @@ def graduation_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import (GraduationBatch, GraduationFinal, GraduationGuidance,
-                                GraduationProposal, GraduationStudent)
-        g = _resolve_domain_student(db, GraduationStudent, stu)
+                                GraduationProposal)
+        # 与提交/门禁路径统一：多批次时取最近未归档档案，避免摘要与动作页分裂
+        g = _resolve_gd_student(db, u)
         if not g:
             return _empty("你暂无毕设记录")
         props = db.scalars(select(GraduationProposal).where(GraduationProposal.tenant_id == _tid(),
@@ -806,7 +807,7 @@ def graduation_final(user: dict) -> dict:
     u = _require_student(user)
     if not db_enabled():
         return _empty("演示模式")
-    from app.models import GraduationFinal
+    from app.models import GraduationFinal, GraduationMidterm
     from app.modules.graduation.services import graduation_service as gd_svc
     with _session() as db:
         g = _resolve_gd_student(db, u)
@@ -815,16 +816,31 @@ def graduation_final(user: dict) -> dict:
         finals = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == g.id,
             GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id.desc())).all()
+        mid = db.scalars(select(GraduationMidterm).where(
+            GraduationMidterm.tenant_id == _tid(), GraduationMidterm.gd_student_id == g.id,
+            GraduationMidterm.is_deleted.is_(False)).order_by(GraduationMidterm.id.desc())).first()
+        mid_ok = gd_svc.midterm_allows_final_submit(mid)
         has_pending = any(f.status == "PENDING_REVIEW" for f in finals)
         draft_approved = any(f.final_type == "初稿" and f.status == "APPROVED" for f in finals)
         final_approved = any(f.final_type == "定稿" and f.status == "APPROVED" for f in finals)
-        can_draft = not has_pending and not draft_approved
-        can_final = not has_pending and draft_approved and not final_approved
+        can_draft = mid_ok and not has_pending and not draft_approved
+        can_final = mid_ok and not has_pending and draft_approved and not final_approved
+        if not mid_ok:
+            hint = "中期检查通过后方可提交成果"
+        elif final_approved:
+            hint = "论文已定稿通过"
+        elif has_pending:
+            hint = "待指导教师批阅"
+        elif can_final:
+            hint = "可提交定稿"
+        elif can_draft:
+            hint = "可提交初稿"
+        else:
+            hint = "初稿待通过"
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
                 "canSubmitDraft": can_draft, "canSubmitFinal": can_final, "finalApproved": final_approved,
-                "hint": ("论文已定稿通过" if final_approved else
-                         "待指导教师批阅" if has_pending else
-                         "可提交定稿" if can_final else "可提交初稿" if can_draft else "初稿待通过"),
+                "midtermPassed": mid_ok,
+                "hint": hint,
                 "items": [{"id": str(f.id), "type": f.final_type, "version": f.version or "",
                            "status": f.status, "statusLabel": {"PENDING_REVIEW": "待审阅",
                            "APPROVED": "已通过", "REJECTED": "已退回修改"}.get(f.status, f.status),

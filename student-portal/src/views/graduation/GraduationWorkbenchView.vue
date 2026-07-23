@@ -124,6 +124,12 @@ const attachments = reactive({ proposal: [], final: [] })
 const proposalForm = reactive({ background: '', plan: '', outcome: '' })
 
 const approvedMidterm = computed(() => ['CHECKED_PASS', 'RECTIFIED_PASS'].includes(midterm.value.status))
+const midtermTone = computed(() => {
+  if (approvedMidterm.value) return 'success'
+  if (midterm.value.status === 'CHECKED_FAIL') return 'danger'
+  if (midterm.value.status === 'RECTIFYING') return 'danger'
+  return 'warn'
+})
 const hasTopic = computed(() => Boolean(my.value.topicTitle && my.value.topicTitle !== '（未选题）'))
 const hasGuidance = computed(() => (my.value.guideLogs || []).length > 0)
 
@@ -153,7 +159,7 @@ const steps = computed(() => [
   },
   {
     key: 'midterm', order: '05', title: '中期检查', description: '查看检查结论；被要求整改时提交整改说明，等待复核。',
-    status: midterm.value.statusLabel || '待检查', tone: approvedMidterm.value ? 'success' : midterm.value.status === 'RECTIFYING' ? 'danger' : 'warn',
+    status: midterm.value.statusLabel || '待检查', tone: midtermTone.value,
     detail: midterm.value.checkComment || midterm.value.rectifyDeadline || '学校完成中期检查后会在此展示结论。', reviewComment: midterm.value.reviewComment,
     action: midterm.value.status === 'RECTIFYING' ? '提交整改说明' : ''
   },

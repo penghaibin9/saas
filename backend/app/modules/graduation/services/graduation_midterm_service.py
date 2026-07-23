@@ -109,6 +109,7 @@ def conduct_check(gd_student_id, conclusion: str, comment: str = None, rectify_d
         m.check_comment = (comment or "").strip()
         m.check_by = n
         m.checked_at = datetime.utcnow()
+        stu.midterm_conclusion = CONCLUSION_LABEL[conclusion]
         if conclusion == "PASS":
             m.status = "CHECKED_PASS"
             if stu.stage == "MIDTERM":
@@ -156,11 +157,14 @@ def review_rectification(gd_student_id, action: str, comment: str = None) -> dic
         m.reviewed_at = datetime.utcnow()
         if action == "PASS":
             m.status = "RECTIFIED_PASS"
+            m.conclusion = "PASS"
+            stu.midterm_conclusion = CONCLUSION_LABEL["PASS"]
             if stu.stage == "MIDTERM":
                 stu.stage = "FINAL_CHECK"
         else:
             m.status = "RECTIFYING"
             m.rectify_attempts += 1
+            stu.midterm_conclusion = CONCLUSION_LABEL["RECTIFY"]
         _audit(db, m.id, "复核整改-" + ("通过" if action == "PASS" else "退回再整改"), (comment or "").strip())
         db.commit()
         return _row(m, stu)

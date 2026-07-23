@@ -556,6 +556,15 @@ def _not_submitted_finals(db, keyword=None) -> list:
     return rows
 
 
+def midterm_allows_final_submit(mid) -> bool:
+    """中期检查已通过（含整改复核通过）才允许提交成果。无记录或待检查/整改中/不通过均禁止。"""
+    if mid is None:
+        return False
+    status = str(getattr(mid, "status", "") or "")
+    conclusion = str(getattr(mid, "conclusion", "") or "")
+    return status in ("CHECKED_PASS", "RECTIFIED_PASS") or conclusion == "PASS"
+
+
 def submit_final(gd_student_id, final_type, attachments=None) -> dict:
     """学生提交/重交论文成果。初稿→定稿有序（定稿须初稿已通过）；有待审时不可重复提交。
     attachments：论文/材料附件 file_id 列表（文件中心 t_file_object.id），存 attachments_json。"""
@@ -566,26 +575,18 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         stu = _stu_of(db, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
-        # 中期整改未通过不得进入成果提交
+        # 中期必须已通过（与归档完整性口径一致）；缺记录/待检查/整改中/不通过均拦截
         from app.models import GraduationMidterm
         mid = db.scalars(select(GraduationMidterm).where(
             GraduationMidterm.tenant_id == _tid(),
             GraduationMidterm.gd_student_id == stu.id,
             GraduationMidterm.is_deleted.is_(False),
         ).order_by(GraduationMidterm.id.desc())).first()
-        if mid is not None:
-            mid_status = str(getattr(mid, "status", "") or "")
-            mid_conclusion = str(getattr(mid, "conclusion", "") or "")
-            # RECTIFIED_PASS 表示限期整改复核已通过（conclusion 可能仍为 RECTIFY）
-            passed = mid_status in ("CHECKED_PASS", "RECTIFIED_PASS") or mid_conclusion == "PASS"
-            blocked = mid_status in ("RECTIFYING", "RECTIFY_SUBMITTED", "CHECKED_FAIL") or mid_conclusion in (
-                "RECTIFY", "FAIL",
+        if not midterm_allows_final_submit(mid):
+            raise AppException(
+                "DATA_CONFLICT",
+                "中期检查未通过或尚未完成，不能提交成果",
             )
-            if blocked and not passed:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "中期检查未通过或仍在整改中，不能提交成果",
-                )
         _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,

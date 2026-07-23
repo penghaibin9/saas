@@ -272,7 +272,7 @@ def test_final_blocked_while_midterm_rectifying(client, auth_headers, db_mode):
 
 
 def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mode):
-    """整改复核通过后 status=RECTIFIED_PASS、conclusion 仍可能为 RECTIFY，须允许提交成果。"""
+    """整改复核通过后 status=RECTIFIED_PASS（conclusion 应写为 PASS）须允许提交成果。"""
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
     from app.models import GraduationMidterm
@@ -283,7 +283,7 @@ def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mod
     db = get_sessionmaker()()
     db.add(GraduationMidterm(
         tenant_id=1000000000000000001, gd_student_id=int(gid),
-        status="RECTIFIED_PASS", conclusion="RECTIFY",
+        status="RECTIFIED_PASS", conclusion="PASS",
         check_comment="限期整改", rectify_content="已补材料",
         checked_at=datetime.utcnow(), reviewed_at=datetime.utcnow(),
     ))
@@ -294,10 +294,126 @@ def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mod
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP",
     })}
+    view = client.get("/api/v1/mobile/graduation/final", headers=sh).json()
+    assert view["code"] == 0
+    assert view["data"]["canSubmitDraft"] is True
+    assert view["data"]["midtermPassed"] is True
     ok = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
         "finalType": "初稿", "attachments": [],
     }).json()
     assert ok["code"] == 0, ok
+
+
+def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode):
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm
+
+    h = auth_headers
+    name = "无中期生"
+    gid = _gd_student(client, h, "MT-FIN-NONE-01", name)
+    sh = {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
+        "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "MP",
+    })}
+    missing = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
+        "finalType": "初稿", "attachments": [],
+    }).json()
+    assert missing["code"] != 0
+    assert "中期" in (missing.get("message") or "")
+    view = client.get("/api/v1/mobile/graduation/final", headers=sh).json()
+    assert view["code"] == 0
+    assert view["data"]["canSubmitDraft"] is False
+    assert view["data"]["midtermPassed"] is False
+
+    db = get_sessionmaker()()
+    db.add(GraduationMidterm(
+        tenant_id=1000000000000000001, gd_student_id=int(gid), status="PENDING",
+    ))
+    db.commit()
+    db.close()
+    pending = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
+        "finalType": "初稿", "attachments": [],
+    }).json()
+    assert pending["code"] != 0
+    assert "中期" in (pending.get("message") or "")
+
+
+def test_review_rectification_sets_conclusion_pass(client, auth_headers, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent
+
+    h = auth_headers
+    gid = _gd_student(client, h, "MT-CONCL-01", "整改结论生")
+    db = get_sessionmaker()()
+    db.add(GraduationMidterm(
+        tenant_id=1000000000000000001, gd_student_id=int(gid),
+        status="RECTIFY_SUBMITTED", conclusion="RECTIFY",
+        rectify_content="已补齐实验数据", checked_at=datetime.utcnow(),
+        rectify_submitted_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+    ok = client.post(f"/api/v1/graduation/gd-midterms/{gid}/rectify/review", headers=h, json={
+        "action": "PASS", "comment": "整改材料齐全，予以通过",
+    }).json()
+    assert ok["code"] == 0, ok
+    assert ok["data"]["status"] == "RECTIFIED_PASS"
+    assert ok["data"]["conclusion"] == "PASS"
+    assert ok["data"]["conclusionLabel"] == "通过"
+    db = get_sessionmaker()()
+    stu = db.get(GraduationStudent, int(gid))
+    assert stu.midterm_conclusion == "通过"
+    db.close()
+
+
+def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(client, auth_headers, db_mode):
+    """摘要接口与提交门禁同一解析；学生详情中期读真实行。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent
+
+    h = auth_headers
+    name = "摘要一致生"
+    sno = "MT-MY-01"
+    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name}).json()["data"]["id"]
+    old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    db = get_sessionmaker()()
+    old_row = db.get(GraduationStudent, int(old))
+    old_row.topic_title = "旧批次题目"
+    old_row.stage = "TOPIC_SELECTING"
+    row = GraduationStudent(
+        tenant_id=1000000000000000001, student_id=int(sid), student_no=sno, name=name,
+        stage="FINAL_CHECK", topic_title="新批次题目",
+    )
+    db.add(row)
+    db.flush()
+    new = str(row.id)
+    assert int(new) > int(old)
+    db.add(GraduationMidterm(
+        tenant_id=1000000000000000001, gd_student_id=int(new),
+        status="CHECKED_PASS", conclusion="PASS",
+        check_comment="进度正常", checked_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+
+    sh = {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
+        "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": sno,
+    })}
+    my = client.get("/api/v1/mobile/graduation/my", headers=sh).json()
+    assert my["code"] == 0
+    assert my["data"]["topicTitle"] == "新批次题目"
+    assert my["data"]["stage"] == "FINAL_CHECK"
+
+    detail = client.get(f"{GD_STU}/{new}", headers=h).json()
+    assert detail["code"] == 0
+    assert detail["data"]["midterm"]["conclusion"] == "通过"
+    assert detail["data"]["midterm"]["status"] == "CHECKED_PASS"
+    assert detail["data"]["midterm"]["statusLabel"] == "已通过"
 
 
 def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_headers, db_mode):

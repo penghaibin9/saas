@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 
 PORTAL = "/api/v1/portal/graduation"
 TID = 1000000000000000001
@@ -173,12 +174,18 @@ def test_midterm_rectify_empty_rejected(client, db_mode):
 
 def _seed_gd_for_final(no, name):
     from app.db.session import get_sessionmaker
-    from app.models import GraduationStudent
+    from app.models import GraduationMidterm, GraduationStudent
     db = get_sessionmaker()()
-    db.add(GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
-                             topic_id=1, topic_title="XX系统的设计与实现", stage="FINAL",
+    g = GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+                             topic_id=1, topic_title="XX系统的设计与实现", stage="FINAL_CHECK",
                              risk_level="LOW", eligibility_status="PENDING",
-                             grad_qual_status="PENDING", record_status="ACTIVE"))
+                             grad_qual_status="PENDING", record_status="ACTIVE")
+    db.add(g)
+    db.flush()
+    db.add(GraduationMidterm(
+        tenant_id=TID, gd_student_id=g.id, status="CHECKED_PASS", conclusion="PASS",
+        check_comment="中期通过", checked_at=datetime.utcnow(),
+    ))
     db.commit()
     db.close()
 

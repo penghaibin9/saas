@@ -14,8 +14,8 @@ from sqlalchemy import and_, func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
-                        GraduationPlagiarismCheck, GraduationProposal, GraduationReview, GraduationStudent,
-                        GraduationTopic, StudentContact, StudentProfile)
+                        GraduationMidterm, GraduationPlagiarismCheck, GraduationProposal, GraduationReview,
+                        GraduationStudent, GraduationTopic, StudentContact, StudentProfile)
 from app.services import excel
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 from app.services.db_service import _iso, _mask_phone, _tid, session
@@ -42,6 +42,26 @@ GRAD_QUAL_LABEL = {"UNKNOWN": "未联动", "NONE": "未预审", "PENDING": "预�
 GRAD_QUAL_TONE = {"UNKNOWN": "default", "NONE": "default", "PENDING": "warning",
                   "PASS": "success", "FAIL": "danger"}
 MAT_LABEL = {"PENDING_REVIEW": "待审阅", "APPROVED": "已通过", "REJECTED": "已驳回", "NOT_SUBMITTED": "未提交"}
+
+
+def _midterm_summary(db, s: GraduationStudent) -> dict:
+    """学生详情中期摘要：读真实中期行，不用从未写入的 denormalized 字段冒充。"""
+    from app.modules.graduation.services.graduation_midterm_service import CONCLUSION_LABEL, STATUS_LABEL
+    mid = db.scalars(select(GraduationMidterm).where(
+        GraduationMidterm.tenant_id == _tid(),
+        GraduationMidterm.gd_student_id == s.id,
+        GraduationMidterm.is_deleted.is_(False),
+    ).order_by(GraduationMidterm.id.desc())).first()
+    if not mid:
+        return {"conclusion": "—", "status": "", "statusLabel": "未开始", "time": "—", "note": ""}
+    conclusion = CONCLUSION_LABEL.get(mid.conclusion or "", "") or mid.conclusion or "—"
+    return {
+        "conclusion": conclusion,
+        "status": mid.status or "",
+        "statusLabel": STATUS_LABEL.get(mid.status or "", mid.status or ""),
+        "time": _iso(mid.reviewed_at) or _iso(mid.checked_at) or "—",
+        "note": (mid.review_comment or mid.check_comment or "").strip(),
+    }
 
 
 def _op() -> tuple[str, str]:
@@ -288,7 +308,7 @@ def get_student(sid) -> dict:
                            "submitAt": _iso(p.submit_at) or "", "status": p.status,
                            "statusLabel": MAT_LABEL.get(p.status, p.status), "reviewer": p.reviewer or ""}
                           for p in props],
-            "midterm": {"conclusion": s.midterm_conclusion or "—", "time": "—", "note": ""},
+            "midterm": _midterm_summary(db, s),
             "finals": [{"id": str(f.id), "type": f.final_type, "version": f.version or "",
                         "submitAt": _iso(f.submit_at) or "", "status": f.status,
                         "statusLabel": MAT_LABEL.get(f.status, f.status),
