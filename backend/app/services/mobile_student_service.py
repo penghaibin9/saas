@@ -692,6 +692,8 @@ def graduation_my(user: dict) -> dict:
                        "from": g.advisor_name or "指导教师", "text": x.content or "",
                        "issues": x.issues or ""} for x in logs]
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
+                "topicId": str(g.topic_id) if g.topic_id else "",
+                "hasTopic": bool(g.topic_id),
                 "advisorName": g.advisor_name or "", "stage": g.stage,
                 "stageLabel": dict(_GD_STAGE_FLOW).get(g.stage, g.stage),
                 "batchId": str(g.batch_id) if g.batch_id else "",

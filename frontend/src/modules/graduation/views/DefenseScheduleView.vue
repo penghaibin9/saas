@@ -182,8 +182,12 @@ export default {
     },
     async notify(row) {
       const res = await graduationMoreApi.notifyDefense(row.id)
-      if (res.code === 0) toast.success(res.data.notified ? `已向 ${res.data.notified} 名学生发送答辩通知` : (res.message || '暂无可通知学生'))
-      else toast.error(res.message || '通知失败')
+      if (res.code === 0) {
+        const n = res.data?.notified || 0
+        const msg = res.data?.message || res.message
+        if (n > 0) toast.success(msg || `已向 ${n} 名学生发送答辩通知`)
+        else toast.info(msg || '暂无可投递学生')
+      } else toast.error(res.message || '通知失败')
     },
     askPublish(row) {
       if (!this.canPublish || row.conflict) return

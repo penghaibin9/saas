@@ -73,15 +73,11 @@ def appeal_review(aid: str, body: dict = Body(...), user=Depends(get_current_use
     return success(result, message="已复核")
 
 
-# ── 答辩通知（对已发布答辩组批量通知，留痕） ──
-@router.post("/gd-defense-notify", summary="答辩通知（对已发布答辩组学生发送通知，留痕）")
+# ── 答辩通知（对已发布答辩组批量投递站内信，并审计留痕） ──
+@router.post("/gd-defense-notify", summary="答辩通知（对已发布答辩组学生发送站内信）")
 def defense_notify(body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.graduation.services import graduation_service as gd_svc
-    gid = body.get("defenseGroupId")
-    detail = gd_svc.get_defense_group_detail(gid)
-    if not detail.get("published"):
-        return success({"notified": 0}, message="该答辩组未发布，暂不能通知")
-    count = len(detail.get("students") or [])
-    audit_log.record("发送答辩通知", f"graduation-defense-notify:{gid}", detail={"count": count})
-    return success({"notified": count, "groupName": detail.get("groupName")},
-                   message=f"已向 {count} 名学生发送答辩通知")
+    result = gd_svc.notify_defense_group(body.get("defenseGroupId"), user=user)
+    audit_log.record("发送答辩通知", f"graduation-defense-notify:{body.get('defenseGroupId')}",
+                     detail={"notified": result.get("notified"), "skipped": result.get("skipped")})
+    return success(result, message=result.get("message") or "已发送答辩通知")

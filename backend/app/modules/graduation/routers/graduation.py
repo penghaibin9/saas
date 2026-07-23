@@ -34,6 +34,7 @@ _ACTION_PERMISSION_MAP = {
     "confirmDefenseScores": "graduationDesign.defense.manage",
     "createSecondDefense": "graduationDesign.defense.manage",
     "manageGrade": "graduationDesign.manage",
+    "reviewGradeAppeal": "graduationDesign.manage",
     "publishGrade": "graduationDesign.grade.publish",
 }
 

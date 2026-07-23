@@ -141,7 +141,7 @@ export const graduationApi = {
   },
 
   getStudents(params = {}) {
-    return realList('/graduation/students', params, () => this._mockStudents(params))
+    return listStrict('/graduation/students', params)
   },
   _mockStudents(params = {}) {
     let list = [...graduationStudents]
@@ -157,20 +157,11 @@ export const graduationApi = {
   },
 
   getStudentDetail(id) {
-    return real(() => request(`/graduation/students/${id}`), () => {
-      const detail = studentDetailMap[id]
-      if (!detail) return fail('未找到该学生的毕设档案，或不在当前数据范围内')
-      return ok(JSON.parse(JSON.stringify(detail)))
-    })
+    return callStrict(() => request(`/graduation/students/${id}`))
   },
 
   getTopics(params = {}) {
-    return realList('/graduation/gd-topics', { ...params, archiveView: params.archiveView || 'active' }, () => {
-      let list = [...topicList]
-      if (params.keyword) list = list.filter((t) => t.title.includes(params.keyword.trim()))
-      if (params.status) list = list.filter((t) => t.status === params.status)
-      return ok(paginate(list, params))
-    })
+    return listStrict('/graduation/gd-topics', { ...params, archiveView: params.archiveView || 'active' })
   },
 
   // ── 开题材料（realStrict：仅真实后端，不 mock 冒充）──

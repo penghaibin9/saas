@@ -996,6 +996,55 @@ def publish_defense(gid) -> dict:
         return {"id": str(g.id), "published": True}
 
 
+def notify_defense_group(gid, user=None) -> dict:
+    """向已发布答辩组学生投递站内信（receiver_id=StudentProfile.id）。"""
+    from app.models import UnifiedMessage
+
+    if not gid:
+        raise AppException("VALIDATION_ERROR", "defenseGroupId 必填")
+    with session() as db:
+        g = db.get(GraduationDefenseGroup, int(gid))
+        if not g or g.is_deleted or g.tenant_id != _tid():
+            raise not_found("答辩组不存在")
+        if not _can_access_defense_group(db, g):
+            raise no_permission("Defense group is outside the current graduation-design scope")
+        if not g.published:
+            return {"notified": 0, "skipped": 0, "groupName": g.group_name or "",
+                    "message": "该答辩组未发布，暂不能通知"}
+        students = [s for s in _assigned_students(db, g.id) if can_access_student(db, s)]
+        when = (g.defense_date or "").strip() or "待通知"
+        where = (g.location or "").strip() or "待定"
+        title = f"答辩安排通知：{g.group_name or '答辩组'}"
+        notified = 0
+        skipped = 0
+        for s in students:
+            rid = int(s.student_id or 0)
+            if rid <= 0:
+                skipped += 1
+                continue
+            content = (
+                f"同学你好，你的毕业设计答辩组「{g.group_name or ''}」已发布。"
+                f"时间：{when}；地点：{where}；主席：{g.chair or '待指定'}。"
+                f"请按时参加，如有冲突请尽快联系指导教师。"
+            )
+            db.add(UnifiedMessage(
+                tenant_id=_tid(), receiver_id=rid, source_module="graduation",
+                source_biz_id=g.id, title=title, content=content,
+                message_type="GRADUATION_DEFENSE_NOTIFY", status="UNREAD"))
+            notified += 1
+        _audit(db, "DEFENSE", g.id, "发送答辩通知",
+               f"{g.group_name} notified={notified} skipped={skipped}")
+        db.commit()
+        if notified <= 0:
+            msg = "暂无可投递学生（缺学籍关联或组内无学生）"
+        else:
+            msg = f"已向 {notified} 名学生发送答辩通知"
+            if skipped:
+                msg += f"（{skipped} 人缺学籍关联已跳过）"
+        return {"notified": notified, "skipped": skipped, "groupName": g.group_name or "",
+                "message": msg}
+
+
 def export_defense_xlsx() -> dict:
     """答辩安排台账 Excel 导出（一组一行 + 学生名单，含导出人/时间抬头 + 审计）。"""
     from openpyxl import Workbook
