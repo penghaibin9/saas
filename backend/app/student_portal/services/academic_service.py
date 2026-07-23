@@ -139,6 +139,71 @@ def evaluation_submit(user: dict, body: dict) -> dict:
     return aa.evaluation_submit_my(user, body or {})
 
 
+def grade_recheck(user: dict) -> dict:
+    _require_student(user)
+    return aa.grade_recheck_my(user)
+
+
+def grade_recheck_submit(user: dict, body: dict) -> dict:
+    _require_student(user)
+    body = body or {}
+    if not body.get("acadGradeId"):
+        raise AppException("VALIDATION_ERROR", "acadGradeId 必填")
+    if len(str(body.get("reason") or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "复查事由至少 5 个字")
+    return aa.grade_recheck_submit_my(user, body)
+
+
+def exam_defer_options(user: dict) -> dict:
+    _require_student(user)
+    return aa.exam_defer_options_my(user)
+
+
+def textbook(user: dict) -> dict:
+    _require_student(user)
+    return aa.textbook_my(user)
+
+
+def textbook_sign(user: dict, record_id) -> dict:
+    _require_student(user)
+    return aa.textbook_sign_my(user, record_id)
+
+
+def level_exam(user: dict) -> dict:
+    _require_student(user)
+    return aa.level_exam_my(user)
+
+
+def level_register(user: dict, exam_id) -> dict:
+    _require_student(user)
+    return aa.level_register_my(user, exam_id)
+
+
+def level_cancel(user: dict, exam_id) -> dict:
+    _require_student(user)
+    return aa.level_cancel_my(user, exam_id)
+
+
+def major_split(user: dict) -> dict:
+    _require_student(user)
+    return aa.major_split_my(user)
+
+
+def major_split_submit(user: dict, body: dict) -> dict:
+    _require_student(user)
+    return aa.major_split_submit_my(user, body or {})
+
+
+def credits(user: dict) -> dict:
+    _require_student(user)
+    return aa.credits_my(user)
+
+
+def warning(user: dict) -> dict:
+    _require_student(user)
+    return aa.warning_my(user)
+
+
 def transcript_print(user: dict, body: dict) -> dict:
     """成绩单打印留痕（PORTAL_PRINT + 水印）。"""
     body = body or {}

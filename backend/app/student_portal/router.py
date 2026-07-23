@@ -183,6 +183,66 @@ def academic_evaluation_submit(user=Depends(get_current_user), body: dict = Body
     return success(academic.evaluation_submit(user, body), message="已提交")
 
 
+@router.get("/academic/exam/defer/options", summary="可申请缓考的考试课程（本人·未开考）")
+def academic_exam_defer_options(user=Depends(get_current_user)):
+    return success(academic.exam_defer_options(user))
+
+
+@router.get("/academic/grade-recheck", summary="我的成绩复查申请（本人）")
+def academic_grade_recheck(user=Depends(get_current_user)):
+    return success(academic.grade_recheck(user))
+
+
+@router.post("/academic/grade-recheck", summary="发起成绩复查（本人·已发布成绩）")
+def academic_grade_recheck_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.grade_recheck_submit(user, body), message="复查申请已提交")
+
+
+@router.get("/academic/textbook", summary="我的教材领用与费用（本人）")
+def academic_textbook(user=Depends(get_current_user)):
+    return success(academic.textbook(user))
+
+
+@router.post("/academic/textbook/{record_id}/sign", summary="签收教材（本人）")
+def academic_textbook_sign(record_id: str, user=Depends(get_current_user)):
+    return success(academic.textbook_sign(user, record_id), message="已签收")
+
+
+@router.get("/academic/level-exam", summary="等级考试·可报名与我的报名（本人）")
+def academic_level_exam(user=Depends(get_current_user)):
+    return success(academic.level_exam(user))
+
+
+@router.post("/academic/level-exam/{exam_id}/register", summary="等级考试报名（本人）")
+def academic_level_register(exam_id: str, user=Depends(get_current_user)):
+    return success(academic.level_register(user, exam_id), message="已报名")
+
+
+@router.post("/academic/level-exam/{exam_id}/cancel", summary="取消等级考试报名（本人）")
+def academic_level_cancel(exam_id: str, user=Depends(get_current_user)):
+    return success(academic.level_cancel(user, exam_id), message="已取消")
+
+
+@router.get("/academic/major-split", summary="专业分流·开放批次与我的志愿（本人）")
+def academic_major_split(user=Depends(get_current_user)):
+    return success(academic.major_split(user))
+
+
+@router.post("/academic/major-split/submit", summary="提交/修改专业分流志愿（本人）")
+def academic_major_split_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.major_split_submit(user, body), message="志愿已提交")
+
+
+@router.get("/academic/credits", summary="我的学分修读（本人）")
+def academic_credits(user=Depends(get_current_user)):
+    return success(academic.credits(user))
+
+
+@router.get("/academic/warning", summary="我的学业预警（本人·只读）")
+def academic_warning(user=Depends(get_current_user)):
+    return success(academic.warning(user))
+
+
 # ── 学工事务（第4期）：自视图聚合 + 通用事务申请 + 打印 ──
 @router.get("/affairs/overview", summary="学工总览（本人）")
 def affairs_overview(user=Depends(get_current_user)):
@@ -293,10 +353,75 @@ def affairs_activity_enroll(activity_id: str, user=Depends(get_current_user)):
     return success(affairs.activity_enroll(user, activity_id))
 
 
-# ── 岗位实习（第5期）：我的实习 + 周报/月报长文档 + 协议打印 + 成绩申诉 ──
+# ── 岗位实习（第5期）：我的实习 + 打卡/请假/自评/补卡 + 周报/协议/申诉 ──
 @router.get("/internship/my", summary="我的实习（本人）")
 def internship_my(user=Depends(get_current_user)):
     return success(internship.my(user))
+
+
+@router.get("/internship/leaves", summary="本人实习请假列表")
+def internship_leaves(user=Depends(get_current_user)):
+    return success(internship.leave_list(user))
+
+
+@router.post("/internship/leaves/apply", summary="实习请假申请（本人）")
+def internship_leave_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.leave_apply(user, body))
+
+
+@router.post("/internship/leaves/{leave_id}/return", summary="实习销假（本人）")
+def internship_leave_return(leave_id: str, user=Depends(get_current_user), body: dict = Body(default={})):
+    return success(internship.leave_return(user, leave_id, body or {}))
+
+
+@router.post("/internship/checkin", summary="实习打卡（本人）")
+def internship_checkin(user=Depends(get_current_user), body: dict = Body(default={})):
+    return success(internship.checkin(user, body or {}))
+
+
+@router.post("/internship/self-eval", summary="实习自评提交（本人）")
+def internship_self_eval(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.self_eval_submit(user, body))
+
+
+@router.get("/internship/makeup", summary="本人补卡申请列表")
+def internship_makeup_list(user=Depends(get_current_user)):
+    return success(internship.makeup_list(user))
+
+
+@router.post("/internship/makeup", summary="补卡申请（本人）")
+def internship_makeup_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.makeup_apply(user, body))
+
+
+@router.get("/internship/intention", summary="本人岗位意向")
+def internship_intention_my(user=Depends(get_current_user)):
+    return success(internship.intention_my(user))
+
+
+@router.post("/internship/intention", summary="提交/更新岗位意向（本人）")
+def internship_intention_save(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.intention_save(user, body))
+
+
+@router.get("/internship/applications", summary="本人岗位/自主实习申请列表")
+def internship_applications(user=Depends(get_current_user)):
+    return success(internship.applications_my(user))
+
+
+@router.post("/internship/applications", summary="提交岗位/自主实习申请（本人）")
+def internship_application_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.application_submit(user, body))
+
+
+@router.get("/internship/change", summary="本人调岗/退岗申请列表")
+def internship_change_list(user=Depends(get_current_user)):
+    return success(internship.change_list(user))
+
+
+@router.post("/internship/change", summary="调岗/退岗申请（本人）")
+def internship_change_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.change_apply(user, body))
 
 
 @router.post("/internship/weekly/submit", summary="提交实习周报（本人）")

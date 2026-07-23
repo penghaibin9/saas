@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Path, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.exceptions import AppException
 from app.core.permissions import enforce_permission, require_any_permission, require_permission
@@ -1377,13 +1377,19 @@ class GradeTaskCreate(BaseModel):
     teachingTaskId: Optional[str] = None
     termId: Optional[str] = None
     termCode: Optional[str] = None
-    courseName: str = Field(..., min_length=1)
+    courseName: Optional[str] = Field(None, min_length=1, description="可省略：传入 teachingTaskId 时从教学任务继承")
     classId: Optional[str] = None
     credit: Optional[float] = None
     usualRatio: int = Field(30, ge=0, le=100, description="平时占比%")
     midtermRatio: int = Field(0, ge=0, le=100, description="期中占比%(0=不启用期中)")
     finalRatio: int = Field(70, ge=0, le=100, description="期末占比%")
     passLine: int = Field(60, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _require_course_or_task(self):
+        if not self.teachingTaskId and not (self.courseName or "").strip():
+            raise ValueError("courseName 与 teachingTaskId 至少填一项")
+        return self
 
 
 class ScoreBody(BaseModel):
@@ -1773,7 +1779,12 @@ def warning_scan_graduation(user=Depends(require_permission(_WARN_RULE))):
     return success(warn_svc.scan_graduation_warnings(user))
 
 
-@router.post("/warnings/scan/all", summary="预警看板一键扫描（5 类规则，幂等）")
+@router.post("/warnings/scan/attendance", summary="旷课预警扫描（课堂考勤已提交场次，幂等）")
+def warning_scan_attendance(user=Depends(require_permission(_WARN_RULE))):
+    return success(warn_svc.scan_attendance_warnings(user))
+
+
+@router.post("/warnings/scan/all", summary="预警看板一键扫描（挂科/学分/绩点/重修/毕业/旷课，幂等）")
 def warning_scan_all(user=Depends(require_permission(_WARN_RULE))):
     return success(warn_svc.scan_all(user))
 

@@ -1384,7 +1384,7 @@ export const academicAffairsArchiveApi = {
 /* ═══════════ 学业预警二级模块（Tier1：看板/多维分类/规则/跟进/统计，/academic-affairs/warnings/*） ═══════════
  * 权限：view=看板/列表/统计只读；handle=指派/干预/升级/关闭/作废/提醒；rule.manage=规则配置+扫描触发（教务处）。 */
 export const academicAffairsWarningApi = {
-  /** sourceKey: all | fail(挂科·历史挂 /warnings/scan) | credit | gpa | retake | graduation。 */
+  /** sourceKey: all | fail(挂科·历史挂 /warnings/scan) | credit | gpa | retake | graduation | attendance。 */
   scan(sourceKey = 'all') {
     const path = sourceKey === 'fail' ? `${BASE}/warnings/scan` : `${BASE}/warnings/scan/${sourceKey}`
     return call(() => request(path, { method: 'POST' }))

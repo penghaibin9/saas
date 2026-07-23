@@ -672,6 +672,45 @@ def list_incidents(user, batch_id=None, page=1, page_size=50):
 
 # ══════════ 缓考（8 态四级审批） ══════════
 
+def my_exam_schedule(user, student_id) -> dict:
+    """学生本人考试安排：已发布考试课程 + 本人考场座位/准考证。"""
+    from app.models import AaExamBatch, AaExamCourse, AaExamRoom, AaExamRoomStudent
+    with session() as db:
+        _ctx(user, db)
+        seats = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _tid(),
+            AaExamRoomStudent.student_id == int(student_id),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).order_by(AaExamRoomStudent.id.desc()).all()
+        if not seats:
+            return {"hasData": False, "items": [], "note": "暂无已发布的个人考试安排"}
+        items = []
+        for s in seats:
+            c = db.get(AaExamCourse, s.exam_course_id)
+            if not c or c.is_deleted or c.tenant_id != _tid():
+                continue
+            b = db.get(AaExamBatch, c.batch_id) if c.batch_id else None
+            # 仅已发布批次对学生可见（DRAFT/排考中不露）
+            if b and (b.status or "") not in ("PUBLISHED", "CLOSED", "ARCHIVED"):
+                continue
+            room = db.get(AaExamRoom, s.exam_room_id)
+            items.append({
+                "examCourseId": str(c.id),
+                "courseName": c.course_name or "",
+                "className": c.class_name or "",
+                "examDate": c.exam_date or "",
+                "startTime": c.start_time or "",
+                "endTime": c.end_time or "",
+                "classroom": (room.classroom_text if room else "") or "",
+                "seatNo": s.seat_no,
+                "admissionNo": s.admission_no or "",
+                "batchName": (b.batch_name if b else "") or "",
+                "status": c.status or "",
+            })
+        return {"hasData": bool(items), "items": items, "total": len(items),
+                "note": "" if items else "暂无已发布的个人考试安排"}
+
+
 def _defer_dto(d):
     return {"deferId": str(d.id), "studentId": str(d.student_id), "studentName": d.student_name,
             "examCourseId": str(d.exam_course_id), "courseName": d.course_name,

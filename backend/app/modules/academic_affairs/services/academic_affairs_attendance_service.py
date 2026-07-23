@@ -222,4 +222,12 @@ def submit_session(session_id, user) -> dict:
         _audit(db, t.id, "SUBMIT", f"present={t.present_count}/{t.total_count}")
         db.commit()
         db.refresh(t)
-        return _row(t)
+        row = _row(t)
+    # 提交后触发旷课预警扫描（失败不阻断主流程，但必须落日志）
+    try:
+        from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_attendance_warnings
+        scan_attendance_warnings(user)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("attendance submit → scan_attendance_warnings failed")
+    return row
