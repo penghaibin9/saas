@@ -122,6 +122,16 @@ const DETAIL = {
     { key: 'methodLabel', label: '方式' }, { key: 'enterpriseFeedback', label: '企业反馈' }, { key: 'studentFeedback', label: '学生反馈' },
     { key: 'safetyIssue', label: '安全隐患' }, { key: 'rectifyRequire', label: '整改要求' }, { key: 'rectifyDeadline', label: '整改截止' },
     { key: 'rectifyStatusLabel', label: '整改状态' }, { key: 'monthlyReport', label: '月度小结' }
+  ],
+  communication: [
+    { key: 'enterpriseName', label: '企业' }, { key: 'studentName', label: '关联学生' }, { key: 'channel', label: '渠道' },
+    { key: 'topic', label: '主题' }, { key: 'content', label: '沟通内容' }, { key: 'statusLabel', label: '状态' },
+    { key: 'advisorName', label: '记录人' }, { key: 'createdAt', label: '时间' }
+  ],
+  'visit-plan': [
+    { key: 'enterpriseName', label: '企业' }, { key: 'ownerName', label: '责任人' }, { key: 'planDate', label: '计划日期' },
+    { key: 'method', label: '方式' }, { key: 'objective', label: '目标' }, { key: 'statusLabel', label: '状态' },
+    { key: 'location', label: '地点' }, { key: 'studentScope', label: '学生范围' }
   ]
 }
 const RECTIFY_OPTIONS = [{ label: '整改中', value: 'PENDING' }, { label: '已整改', value: 'DONE' }, { label: '无需整改', value: 'NONE' }]
@@ -129,13 +139,14 @@ const PANEL_PRESETS = {
   plan: () => ({ redirect: '/admin/internship/guidance-plan' }),
   'insufficient-warning': () => ({ redirect: '/admin/internship/guidance-plan?insufficient=1' }),
   guidance: () => ({ tab: 'guidance', rectifyFilter: '' }),
-  communication: () => ({ tab: 'guidance', rectifyFilter: '' }),
+  communication: () => ({ tab: 'communication', rectifyFilter: '' }),
   visit: () => ({ tab: 'visit', rectifyFilter: '' }),
-  'visit-plan': () => ({ tab: 'visit', rectifyFilter: '' }),
+  'visit-plan': () => ({ tab: 'visit-plan', rectifyFilter: '' }),
   'visit-issue': () => ({ tab: 'visit', rectifyFilter: '' }),
   rectify: () => ({ tab: 'visit', rectifyFilter: 'PENDING' })
 }
-const TAB_PANEL = { guidance: 'guidance', visit: 'visit' }
+const VIEW_TAB = { plan: 'visit-plan', record: 'visit', issue: 'visit', communication: 'communication' }
+const TAB_PANEL = { guidance: 'guidance', visit: 'visit', communication: 'communication', 'visit-plan': 'visit-plan' }
 
 export default {
   name: 'GuidanceVisitView',
@@ -146,7 +157,12 @@ export default {
   data() {
     return {
       tab: 'guidance',
-      tabs: [{ key: 'guidance', label: '指导记录' }, { key: 'visit', label: '教师巡访' }],
+      tabs: [
+        { key: 'guidance', label: '指导记录' },
+        { key: 'communication', label: '企业沟通' },
+        { key: 'visit', label: '教师巡访' },
+        { key: 'visit-plan', label: '巡访计划' }
+      ],
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', rectifyFilter: '', rectifyOptions: RECTIFY_OPTIONS,
       selectedId: '',
@@ -181,7 +197,7 @@ export default {
     summaryMetrics() {
       return this.statsCards.slice(0, 5).map((c) => ({ label: c.label, value: c.value }))
     },
-    detailFields() { return DETAIL[this.tab] },
+    detailFields() { return DETAIL[this.tab] || DETAIL.guidance },
     detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
     attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
     auditRecords() {
@@ -193,9 +209,11 @@ export default {
   watch: {
     '$route.query.panel': {
       immediate: true,
-      handler(panel) {
-        this.applyPanel((panel || 'guidance').toString())
-      }
+      handler() { this.syncPanelFromRoute() }
+    },
+    '$route.query.view': {
+      immediate: true,
+      handler() { this.syncPanelFromRoute() }
     },
     '$route.query.keyword': {
       immediate: true,
@@ -220,6 +238,16 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    syncPanelFromRoute() {
+      const panel = (this.$route.query.panel || 'guidance').toString()
+      const view = (this.$route.query.view || '').toString()
+      // navPlan：panel=visit&view=plan|record|issue
+      if (panel === 'visit' && VIEW_TAB[view]) {
+        this.applyPanel(view === 'plan' ? 'visit-plan' : (view === 'issue' ? 'visit-issue' : 'visit'))
+        return
+      }
+      this.applyPanel(panel)
+    },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.guidance
       const cfg = preset()
@@ -239,22 +267,24 @@ export default {
       if (this.tab === 'guidance') {
         const res = await guidanceVisitApi.getGuidanceStats(2)
         if (res.code === 0) this.guidanceStats = res.data
-      } else {
+      } else if (this.tab === 'visit') {
         const res = await guidanceVisitApi.getVisitStats()
         if (res.code === 0) this.visitStats = res.data
+      } else {
+        this.guidanceStats = null
+        this.visitStats = null
       }
     },
     rectifyTone(s) { return s === 'PENDING' ? 'warning' : s === 'DONE' ? 'success' : 'default' },
     exportFn() {
-      return this.tab === 'guidance'
-        ? guidanceVisitApi.exportGuidances({ keyword: this.keyword })
-        : guidanceVisitApi.exportVisits({ keyword: this.keyword })
+      if (this.tab === 'guidance') return guidanceVisitApi.exportGuidances({ keyword: this.keyword })
+      if (this.tab === 'visit') return guidanceVisitApi.exportVisits({ keyword: this.keyword })
+      return Promise.resolve({ code: 0, data: { rowCount: 0 } })
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     goCreate() { this.$router.push('/admin/internship/guidance/new?type=' + this.tab) },
     switchTab(k) {
       const panel = TAB_PANEL[k] || k
-      // 切换 tab 时清掉选中：指导 / 巡访详情走不同接口，选中不跨 tab 复用
       const query = { ...this.$route.query, panel }
       delete query.id
       if (this.$route.query.panel !== panel) {
@@ -271,11 +301,12 @@ export default {
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
       let res
       if (this.tab === 'guidance') res = await guidanceVisitApi.getGuidances(params)
+      else if (this.tab === 'communication') res = await guidanceVisitApi.getCommunications(params)
+      else if (this.tab === 'visit-plan') res = await guidanceVisitApi.getVisitPlans(params)
       else { if (this.rectifyFilter) params.rectify = this.rectifyFilter; res = await guidanceVisitApi.getVisits(params) }
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
-      // 撤销 / 筛选后翻页越界：自动回到最后一个有效页
       const pc = Math.max(1, Math.ceil(this.total / this.pageSize))
       if (!this.rows.length && this.total > 0 && this.page > pc) { this.page = pc; return this.load() }
     },
@@ -294,9 +325,11 @@ export default {
     },
     async loadDetail(id) {
       this.detail = { loading: true, error: '', data: null }
-      const res = this.tab === 'guidance'
-        ? await guidanceVisitApi.getGuidanceDetail(id)
-        : await guidanceVisitApi.getVisitDetail(id)
+      let res
+      if (this.tab === 'guidance') res = await guidanceVisitApi.getGuidanceDetail(id)
+      else if (this.tab === 'communication') res = await guidanceVisitApi.getCommunicationDetail(id)
+      else if (this.tab === 'visit-plan') res = await guidanceVisitApi.getVisitPlanDetail(id)
+      else res = await guidanceVisitApi.getVisitDetail(id)
       if (String(this.selectedId) !== String(id)) return
       this.detail.loading = false
       if (res.code !== 0) { this.detail.error = res.message || '详情加载失败'; return }

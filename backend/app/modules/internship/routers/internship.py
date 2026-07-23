@@ -279,8 +279,11 @@ def review_report(report_id: str, body: ReportReviewRequest, user=Depends(requir
 @router.get("/risks", summary="实习风险学生列表")
 def risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
           level: Optional[str] = None, status: Optional[str] = None,
+          keyword: Optional[str] = None, riskCode: Optional[str] = None,
           user=Depends(require_permission("internship.risk.view"))):
-    items, total = svc.list_risk_students(page, pageSize, level=level, status=status, user=user)
+    items, total = svc.list_risk_students(
+        page, pageSize, level=level, status=status,
+        keyword=keyword, risk_code=riskCode, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -313,6 +316,14 @@ def risk_follow(risk_id: str, body: dict = Body(...), user=Depends(require_permi
     result = risk.follow(user, risk_id, (body or {}).get("note") or "")
     audit_log.record("跟进实习风险", f"internship-risk:{risk_id}", detail=result)
     return success(result, message="已跟进")
+
+
+@router.post("/risks/{risk_id}/remind", summary="风险催办（站内提醒责任人，5分钟防重复）")
+def risk_remind(risk_id: str, body: dict = Body(default={}),
+                user=Depends(require_permission("internship.risk.handle"))):
+    result = risk.remind(user, risk_id, (body or {}).get("channel") or "站内消息")
+    audit_log.record("催办实习风险", f"internship-risk:{risk_id}", detail=result)
+    return success(result, message="已催办")
 
 
 @router.post("/risks/{risk_id}/escalate", summary="风险升级（提升等级，owner）")
@@ -621,7 +632,7 @@ def batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 
 @router.post("/batches", summary="新建实习批次（草稿态，批次编号租户内唯一）")
 def batch_create(body: BatchCreate, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.create_batch(body.model_dump())
+    result = svc.create_batch(body.model_dump(), user=user)
     audit_log.record("新建实习批次", f"internship-batch:{result['id']}", detail={"batchName": body.batchName})
     return success(result, message="已新建")
 
@@ -633,35 +644,35 @@ def batch_detail(bid: str, user=Depends(require_permission("internship.batch.vie
 
 @router.put("/batches/{bid}", summary="编辑批次（已结束/已归档/已作废不可编辑）")
 def batch_update(bid: str, body: BatchUpdate, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.update_batch(bid, body.model_dump(exclude_unset=True))
+    result = svc.update_batch(bid, body.model_dump(exclude_unset=True), user=user)
     audit_log.record("编辑实习批次", f"internship-batch:{bid}")
     return success(result, message="已保存")
 
 
 @router.post("/batches/{bid}/activate", summary="启用批次（草稿→进行中）")
 def batch_activate(bid: str, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.activate_batch(bid)
+    result = svc.activate_batch(bid, user=user)
     audit_log.record("启用实习批次", f"internship-batch:{bid}")
     return success(result, message="已启用")
 
 
 @router.post("/batches/{bid}/close", summary="结束批次（进行中→已结束）")
 def batch_close(bid: str, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.close_batch(bid)
+    result = svc.close_batch(bid, user=user)
     audit_log.record("结束实习批次", f"internship-batch:{bid}")
     return success(result, message="已结束")
 
 
 @router.post("/batches/{bid}/archive", summary="归档批次（已结束→已归档）")
 def batch_archive(bid: str, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.archive_batch(bid)
+    result = svc.archive_batch(bid, user=user)
     audit_log.record("归档实习批次", f"internship-batch:{bid}")
     return success(result, message="已归档")
 
 
-@router.post("/batches/{bid}/void", summary="作废批次（仅草稿可作废，原因≥5字）")
+@router.post("/batches/{bid}/void", summary="作废批次（仅草稿，原因≥5字）")
 def batch_void(bid: str, body: VoidBatchRequest, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.void_batch(bid, body.reason)
+    result = svc.void_batch(bid, body.reason, user=user)
     audit_log.record("作废实习批次", f"internship-batch:{bid}", detail={"reason": body.reason})
     return success(result, message="已作废")
 

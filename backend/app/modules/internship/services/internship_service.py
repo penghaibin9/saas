@@ -163,18 +163,29 @@ def assert_record_in_scope(db, rec, stu, user, msg: str = "该实习学生不在
 
 
 def assert_student_in_scope(db, student_id, user, msg: str = "该学生不在你的数据范围内") -> None:
-    """按学生的写操作数据范围守卫（用于可能没有实习记录、但绑定学生的实体，如投诉）：
-    ADMIN_TENANT 恒放行；SCOPED 按 学号/班级/学院 收敛（复用 can_teacher_view_student）。
-    student_id 为空（纯企业/无学生实体）时不在本守卫收敛范围，由调用方决定是否放行。"""
+    """按学生的写操作数据范围守卫。ADMIN_TENANT 恒放行；SCOPED 与 _rec_in_scope 对齐：
+    指导角色必须存在本人指导的实习记录（排他），不得仅凭班级/学院扩大写权限。"""
     scope = _current_scope(user)
     if scope.get("mode") != "SCOPED":
         return
     if not student_id:
         return
     from app.models import StudentProfile
-    from app.services.mobile_teacher_service import can_teacher_view_student
+    from app.services.mobile_teacher_service import _ADVISOR_ROLES, can_teacher_view_student
     stu = db.get(StudentProfile, _as_id(student_id))
-    if stu is None or not can_teacher_view_student(user, stu, scope=scope, db=db):
+    if stu is None:
+        from app.core.exceptions import no_permission
+        raise no_permission(msg)
+    role = (scope.get("roleCode") or "").upper()
+    if role in _ADVISOR_ROLES:
+        recs = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
+            InternshipRecord.is_deleted.is_(False))).all()
+        if not any(_rec_in_scope(scope, db, r, stu) for r in recs):
+            from app.core.exceptions import no_permission
+            raise no_permission(msg)
+        return
+    if not can_teacher_view_student(user, stu, scope=scope, db=db):
         from app.core.exceptions import no_permission
         raise no_permission(msg)
 
@@ -897,7 +908,8 @@ def _assert_batch_dates(start, end, signup_start, signup_end) -> None:
         raise AppException("VALIDATION_ERROR", "报名截止日期不能晚于实习结束日期")
 
 
-def create_batch(body: dict) -> dict:
+def create_batch(body: dict, user=None) -> dict:
+    assert_admin_tenant(user or get_current_user_ctx() or {}, "创建实习批次")
     name = str(body.get("batchName") or "").strip()
     no = str(body.get("batchNo") or "").strip()
     if not name or not no:
@@ -927,7 +939,8 @@ def create_batch(body: dict) -> dict:
         return {"id": str(b.id)}
 
 
-def update_batch(bid, body: dict) -> dict:
+def update_batch(bid, body: dict, user=None) -> dict:
+    assert_admin_tenant(user or get_current_user_ctx() or {}, "编辑实习批次")
     with session() as db:
         b = _get_batch(db, bid)
         if b.status in ("CLOSED", "ARCHIVED", "VOIDED"):
@@ -958,7 +971,8 @@ def update_batch(bid, body: dict) -> dict:
         return {"id": str(b.id)}
 
 
-def activate_batch(bid) -> dict:
+def activate_batch(bid, user=None) -> dict:
+    assert_admin_tenant(user or get_current_user_ctx() or {}, "启用实习批次")
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "DRAFT":
@@ -972,7 +986,8 @@ def activate_batch(bid) -> dict:
         return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
 
 
-def close_batch(bid) -> dict:
+def close_batch(bid, user=None) -> dict:
+    assert_admin_tenant(user or get_current_user_ctx() or {}, "结束实习批次")
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "RUNNING":
@@ -986,7 +1001,8 @@ def close_batch(bid) -> dict:
         return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
 
 
-def archive_batch(bid) -> dict:
+def archive_batch(bid, user=None) -> dict:
+    assert_admin_tenant(user or get_current_user_ctx() or {}, "归档实习批次")
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "CLOSED":
@@ -1004,7 +1020,8 @@ def archive_batch(bid) -> dict:
         return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
 
 
-def void_batch(bid, reason: str) -> dict:
+def void_batch(bid, reason: str, user=None) -> dict:
+    assert_admin_tenant(user or get_current_user_ctx() or {}, "作废实习批次")
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
     with session() as db:

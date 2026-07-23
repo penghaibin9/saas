@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出风险名单</AppExportButton>
+      <AppExportButton :export-fn="exportFn" :has-permission="canExport" @exported="onExported">⬇ 导出风险名单</AppExportButton>
     </template>
 
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
@@ -75,7 +75,9 @@ const PANEL_PRESETS = {
   'no-position': () => ({ level: '', status: '', riskCode: 'INT-R02' }),
   'no-checkin': () => ({ level: '', status: '', riskCode: 'INT-R07' }),
   'report-overdue': () => ({ level: '', status: '', riskCode: 'INT-R10' }),
-  'leave-post': () => ({ level: '', status: '', riskCode: 'INT-R06' })
+  'leave-post': () => ({ level: '', status: '', riskCode: 'INT-R06' }),
+  'leave-overdue': () => ({ level: '', status: '', riskCode: 'INT-R06' }),
+  'off-post': () => ({ level: 'HIGH', status: 'PROCESSING', riskCode: '' })
 }
 
 export default {
@@ -109,7 +111,9 @@ export default {
         { key: 'no-position', label: '未落岗' },
         { key: 'no-checkin', label: '打卡异常' },
         { key: 'report-overdue', label: '报告逾期' },
-        { key: 'leave-post', label: '请假未返岗' }
+        { key: 'leave-post', label: '请假未返岗' },
+        { key: 'leave-overdue', label: '超期未归' },
+        { key: 'off-post', label: '离岗异常' }
       ]
     },
     filterFields() {
@@ -127,6 +131,11 @@ export default {
     summaryMetrics() {
       if (this.loading || this.error) return []
       return [{ label: '风险学生', value: this.pagination.total, tone: this.pagination.total ? 'warn' : undefined }]
+    },
+    canExport() {
+      const pa = this.ctx.permissionActions?.exportRiskList
+      if (pa && typeof pa.allowed === 'boolean') return pa.allowed
+      return true
     }
   },
   watch: {
@@ -152,7 +161,12 @@ export default {
       this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
     },
     isUrgent(d) {
-      return d && d <= '07-05'
+      const day = (d || '').toString().slice(0, 10)
+      if (!day) return false
+      const due = new Date(day.replace(/-/g, '/'))
+      if (Number.isNaN(due.getTime())) return false
+      const diff = (due.getTime() - Date.now()) / (24 * 3600 * 1000)
+      return diff <= 3
     },
     onPageChange(page) {
       this.pagination.page = page

@@ -85,6 +85,7 @@ export default {
       { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️' },
       { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️' },
       { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️' },
+      { label: '补卡申请', path: '/pages/student/internship/makeup/index', icon: '📍' },
       { label: '过程报告', path: '/pages/student/internship/process-report/index', icon: '📝' },
       { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄' },
       { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐' }

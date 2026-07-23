@@ -51,3 +51,15 @@ export const riskApi = {
   },
   exportRisks(params = {}) { return call(() => request(`${B}/risks/export`, { method: 'POST', params })) }
 }
+
+export const complaintApi = {
+  getComplaints(params = {}) { return callList(`${B}/complaints`, params) },
+  getComplaintDetail(id) { return call(() => request(`${B}/complaints/${id}`)) },
+  create(body) { return call(() => request(`${B}/complaints`, { method: 'POST', body })) },
+  transition(id, action, body = {}) {
+    return call(() => request(`${B}/complaints/${id}/transition`, {
+      method: 'POST', body: { ...(body || {}), action }
+    }))
+  },
+  toRisk(id) { return call(() => request(`${B}/complaints/${id}/to-risk`, { method: 'POST' })) }
+}

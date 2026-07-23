@@ -92,6 +92,10 @@
       "style": { "navigationBarTitleText": "实习请假" }
     },
     {
+      "path": "pages/student/internship/makeup/index",
+      "style": { "navigationBarTitleText": "补卡申请" }
+    },
+    {
       "path": "pages/student/internship/agreement/index",
       "style": { "navigationBarTitleText": "三方协议" }
     },
@@ -174,6 +178,10 @@
     {
       "path": "pages/student/affairs/funding",
       "style": { "navigationBarTitleText": "奖助申请", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/student/affairs/discipline",
+      "style": { "navigationBarTitleText": "违纪申诉", "navigationStyle": "custom" }
     },
     {
       "path": "pages/student/affairs/activity",

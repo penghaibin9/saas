@@ -91,6 +91,8 @@ def get_plan_by_batch(batch_id, user=None):
 
 
 def save_plan(batch_id, body, user=None) -> dict:
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, "保存实习计划书")
     b = body or {}
     title = (b.get("title") or "").strip()
     if len(title) < 2:
@@ -121,6 +123,8 @@ def save_plan(batch_id, body, user=None) -> dict:
 
 
 def publish_plan(batch_id, user=None) -> dict:
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, "发布实习计划书")
     with session() as db:
         batch = db.get(InternshipBatch, _as_id(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():

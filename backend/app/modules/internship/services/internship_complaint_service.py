@@ -75,6 +75,35 @@ def _row(c, user=None):
     }
 
 
+def _complaint_in_scope(db, c, user) -> bool:
+    """投诉数据范围：有关联学生时按学生/实习记录收敛；纯企业投诉仅 ADMIN_TENANT 可见。"""
+    from app.modules.internship.services.internship_service import (
+        _current_scope, _rec_in_scope, assert_student_in_scope)
+    from app.models import StudentProfile
+    scope = _current_scope(user)
+    if scope.get("mode") != "SCOPED":
+        return True
+    if not c.student_id:
+        return False
+    stu = db.get(StudentProfile, c.student_id)
+    rec = None
+    if c.batch_id:
+        rec = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == c.student_id,
+            InternshipRecord.batch_id == c.batch_id, InternshipRecord.is_deleted.is_(False))).first()
+    if rec is None:
+        rec = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == c.student_id,
+            InternshipRecord.is_deleted.is_(False)).order_by(InternshipRecord.id.desc())).first()
+    if rec is not None:
+        return _rec_in_scope(scope, db, rec, stu)
+    try:
+        assert_student_in_scope(db, c.student_id, user)
+        return True
+    except Exception:  # noqa: BLE001 — no_permission → 不在范围
+        return False
+
+
 def list_complaints(page, page_size, status=None, enterprise_id=None, severity=None, user=None):
     with session() as db:
         q = select(InternshipComplaint).where(
@@ -86,7 +115,7 @@ def list_complaints(page, page_size, status=None, enterprise_id=None, severity=N
         if severity:
             q = q.where(InternshipComplaint.severity == severity)
         rows = db.scalars(q.order_by(InternshipComplaint.id.desc())).all()
-        items = [_row(c, user) for c in rows]
+        items = [_row(c, user) for c in rows if _complaint_in_scope(db, c, user)]
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -95,6 +124,8 @@ def list_complaints(page, page_size, status=None, enterprise_id=None, severity=N
 def get_complaint(cid, user=None):
     with session() as db:
         c = _get(db, cid)
+        if not _complaint_in_scope(db, c, user):
+            raise no_permission("该投诉不在你的数据范围内")
         item = _row(c, user)
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "COMPLAINT",
@@ -115,17 +146,24 @@ def create_complaint(body, user=None):
     if severity not in ("LOW", "MEDIUM", "HIGH"):
         raise AppException("VALIDATION_ERROR", "严重级别不合法")
     with session() as db:
+        student_id = int(body["studentId"]) if body.get("studentId") else None
+        if student_id:
+            from app.modules.internship.services.internship_service import assert_student_in_scope
+            assert_student_in_scope(db, student_id, user, "该学生不在你的数据范围内，无法登记投诉")
+        else:
+            from app.modules.internship.services.internship_service import assert_admin_tenant
+            assert_admin_tenant(user, "登记无关联学生的企业投诉")
         c = InternshipComplaint(
             tenant_id=_tid(), source=source, target_type=(body.get("targetType") or "").upper() or None,
             enterprise_id=int(body["enterpriseId"]) if body.get("enterpriseId") else None,
             position_id=int(body["positionId"]) if body.get("positionId") else None,
-            student_id=int(body["studentId"]) if body.get("studentId") else None,
+            student_id=student_id,
             batch_id=int(body["batchId"]) if body.get("batchId") else None,
             category=(body.get("category") or "").strip() or None, severity=severity,
             content=content, evidence_file_id=(body.get("evidenceFileId") or "").strip() or None,
             complainant_contact_encrypted=(body.get("complainantContact") or "").strip() or None,
             confidential_level=(body.get("confidentialLevel") or "NORMAL").upper(),
-            status="RECEIVED", created_by=(user or {}).get("userId"))
+            status="RECEIVED", created_by=None)
         db.add(c)
         db.flush()
         c.complaint_no = f"CPL-{datetime.utcnow():%Y%m}-{c.id:05d}"

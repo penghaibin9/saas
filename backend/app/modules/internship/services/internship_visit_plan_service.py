@@ -49,14 +49,23 @@ def _scope(user):
     return _current_scope(user)
 
 
-def _scope_ok(scope, p):
+def _scope_ok(scope, p, db=None):
     if scope.get("mode") != "SCOPED":
         return True
     names = scope.get("advisorNames") or set()
     if (p.owner_name or "") in names:
         return True
     collaborators = {n.strip() for n in (p.collaborators or "").split(",") if n.strip()}
-    return bool(collaborators & names)
+    if collaborators & names:
+        return True
+    # 学院负责人：按计划上的 college_id 匹配学院名范围
+    college_names = scope.get("collegeNames") or set()
+    if college_names and p.college_id and db is not None:
+        from app.models import College
+        col = db.get(College, p.college_id)
+        if col and (col.college_name or "").strip() in college_names:
+            return True
+    return False
 
 
 def _row(p):
@@ -85,7 +94,7 @@ def list_visit_plans(page, page_size, status=None, batch_id=None, user=None):
         if batch_id:
             q = q.where(InternshipVisitPlan.batch_id == int(batch_id))
         rows = db.scalars(q.order_by(InternshipVisitPlan.id.desc())).all()
-        items = [_row(p) for p in rows if _scope_ok(scope, p)]
+        items = [_row(p) for p in rows if _scope_ok(scope, p, db)]
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -94,7 +103,7 @@ def list_visit_plans(page, page_size, status=None, batch_id=None, user=None):
 def get_visit_plan(pid, user=None):
     with session() as db:
         p = _get(db, pid)
-        if not _scope_ok(_scope(user), p):
+        if not _scope_ok(_scope(user), p, db):
             raise no_permission("不在当前数据范围内")
         item = _row(p)
         trail = db.scalars(select(InternshipAuditTrail).where(
@@ -128,7 +137,7 @@ def create_visit_plan(body, user=None):
     with session() as db:
         p = InternshipVisitPlan(tenant_id=_tid(), owner_name=_op_name(user),
                                 status="DRAFT", plan_type=plan_type,
-                                created_by=(user or {}).get("userId"))
+                                created_by=None)
         _apply(p, body)
         db.add(p)
         db.flush()
@@ -140,7 +149,7 @@ def create_visit_plan(body, user=None):
 def update_visit_plan(pid, body, user=None):
     with session() as db:
         p = _get(db, pid)
-        if not _scope_ok(_scope(user), p):
+        if not _scope_ok(_scope(user), p, db):
             raise no_permission("不在当前数据范围内")
         if p.status not in ("DRAFT", "PUBLISHED"):
             raise AppException("DATA_CONFLICT", "进行中/已完成/已取消的计划不可编辑")
@@ -159,7 +168,7 @@ def transition(pid, action, body=None, user=None):
     body = body or {}
     with session() as db:
         p = _get(db, pid)
-        if not _scope_ok(_scope(user), p):
+        if not _scope_ok(_scope(user), p, db):
             raise no_permission("不在当前数据范围内")
         if p.status not in allowed_from:
             raise AppException("DATA_CONFLICT", f"当前状态 {p.status} 不可执行 {action}")

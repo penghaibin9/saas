@@ -362,14 +362,14 @@ def esign_sign(user, aid, party: str) -> dict:
         else:
             _owner_or_403(db, a, user, "只能签署本人指导学生的协议")
             if party == "ENTERPRISE":
-                a.esign_enterprise_at = datetime.utcnow()
-                a.enterprise_confirm_status = "CONFIRMED"
-                a.enterprise_confirm_at = a.enterprise_confirm_at or datetime.utcnow()
-            else:
-                a.esign_school_at = datetime.utcnow()
-                a.school_confirm_status = "CONFIRMED"
-                a.school_confirm_at = a.school_confirm_at or datetime.utcnow()
-                a.school_confirm_by = _op_name(user)
+                # 企业方电子签不可由学校教师代签；正式路径为纸质扫描件确认
+                raise AppException(
+                    "VALIDATION_ERROR",
+                    "企业方请走纸质三方协议扫描件确认，不可由教师代签企业电子签")
+            a.esign_school_at = datetime.utcnow()
+            a.school_confirm_status = "CONFIRMED"
+            a.school_confirm_at = a.school_confirm_at or datetime.utcnow()
+            a.school_confirm_by = _op_name(user)
         all_signed = bool(a.esign_student_at and a.esign_enterprise_at and a.esign_school_at)
         if all_signed:
             a.esign_status = "SIGNED"

@@ -152,9 +152,9 @@ def create_communication(body, user=None):
             advisor_name=_op_name(user), occurred_at=datetime.utcnow(), summary=summary,
             result=(body.get("result") or "").strip() or None,
             follow_up_required=bool(body.get("followUpRequired")),
-            follow_up_owner_id=(user or {}).get("userId"),
+            follow_up_owner_id=None,
             file_id=(body.get("fileId") or "").strip() or None,
-            created_by=(user or {}).get("userId"))
+            created_by=None)
         db.add(c)
         db.flush()
         _trail(db, c.id, "CREATE", {"enterpriseId": str(enterprise_id), "type": ctype}, user)
