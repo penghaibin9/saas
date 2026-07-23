@@ -107,6 +107,22 @@
           </article>
         </li>
       </ol>
+
+      <section v-if="hasPeerWork" class="gd-peer sp-panel">
+        <h2>成果互查</h2>
+        <p class="sp-muted">完成学校分配的互查或整改任务后，进度会同步到管理端。</p>
+        <div v-for="p in (peer.toReview || [])" :key="'r-' + p.id" class="gd-peer__item">
+          <header><strong>待互查 · {{ p.studentName || '同学' }}</strong><StatusTag :text="p.statusLabel || '待互查'" tone="warn" /></header>
+          <label>互查意见<textarea v-model.trim="peerOpinions[p.id]" placeholder="互查意见（至少 5 字）" maxlength="500" /></label>
+          <button class="sp-btn" :disabled="busy || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">提交互查意见</button>
+        </div>
+        <div v-for="p in (peer.myRectify || [])" :key="'x-' + p.id" class="gd-peer__item">
+          <header><strong>需整改 · 互查人 {{ p.reviewerName || '—' }}</strong><StatusTag :text="p.statusLabel || '待整改'" tone="danger" /></header>
+          <p v-if="p.opinion" class="gd-step__comment">互查意见：{{ p.opinion }}</p>
+          <label>整改说明<textarea v-model.trim="peerNotes[p.id]" placeholder="整改说明（至少 5 字）" maxlength="500" /></label>
+          <button class="sp-btn" :disabled="busy || (peerNotes[p.id] || '').trim().length < 5" @click="submitPeerRectify(p.id)">提交整改说明</button>
+        </div>
+      </section>
       </template>
     </template>
   </div>
@@ -132,6 +148,9 @@ const final = ref({})
 const defense = ref({})
 const grade = ref({})
 const archive = ref({})
+const peer = ref({ toReview: [], myRectify: [] })
+const peerOpinions = reactive({})
+const peerNotes = reactive({})
 const round = ref(null)
 const topics = ref([])
 const selectedTopicIds = ref([])
@@ -156,6 +175,7 @@ const finalTone = computed(() => {
 })
 const hasTopic = computed(() => Boolean(my.value.topicTitle && my.value.topicTitle !== '（未选题）'))
 const hasGuidance = computed(() => (my.value.guideLogs || []).length > 0)
+const hasPeerWork = computed(() => ((peer.value.toReview || []).length + (peer.value.myRectify || []).length) > 0)
 
 const steps = computed(() => [
   {
@@ -225,6 +245,7 @@ const sections = {
   defense: async () => { defense.value = await portalApi.graduationDefense() },
   grade: async () => { grade.value = await portalApi.graduationGrade() },
   archive: async () => { archive.value = await portalApi.graduationArchive() },
+  peer: async () => { peer.value = await portalApi.graduationPeerTasks() || { toReview: [], myRectify: [] } },
   round: async () => {
     round.value = await portalApi.graduationActiveRound()
     selectedTopicIds.value = (round.value?.myChoices || []).sort((a, b) => a.choiceOrder - b.choiceOrder).map((item) => String(item.topicId))
@@ -334,6 +355,30 @@ async function submitAppeal() {
   } catch (e) { ui.notify(e?.message || '申诉提交失败') } finally { busy.value = false }
 }
 
+async function submitPeer(pid) {
+  const opinion = (peerOpinions[pid] || '').trim()
+  if (opinion.length < 5) return
+  busy.value = true
+  try {
+    await portalApi.submitGraduationPeer(pid, opinion)
+    ui.notify('互查意见已提交')
+    peerOpinions[pid] = ''
+    await afterAction(['peer'])
+  } catch (e) { ui.notify(e?.message || '互查提交失败') } finally { busy.value = false }
+}
+
+async function submitPeerRectify(pid) {
+  const note = (peerNotes[pid] || '').trim()
+  if (note.length < 5) return
+  busy.value = true
+  try {
+    await portalApi.rectifyGraduationPeer(pid, note)
+    ui.notify('整改说明已提交')
+    peerNotes[pid] = ''
+    await afterAction(['peer'])
+  } catch (e) { ui.notify(e?.message || '整改提交失败') } finally { busy.value = false }
+}
+
 onMounted(load)
 </script>
 
@@ -349,5 +394,6 @@ onMounted(load)
 .gd-files { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; color:#4e5969; font-size:13px; }.gd-file { border:0; padding:5px 8px; border-radius:5px; color:var(--sp-primary); background:rgba(22,119,255,.08); cursor:pointer; font-size:12px; }.gd-file:disabled { cursor:not-allowed; opacity:.6; }.gd-checklist { display:flex; flex-wrap:wrap; gap:7px 14px; margin:12px 0 0; padding:0; list-style:none; color:#4e5969; font-size:12px; }.gd-checklist li { color:#00a33a; }.gd-checklist li.is-missing { color:#f53f3f; }
 .gd-topic-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; margin:12px 0; }.gd-topic { position:relative; min-height:72px; padding:10px; text-align:left; cursor:pointer; background:#fff; border:1px solid #e5e6eb; border-radius:7px; }.gd-topic.is-picked { border-color:var(--sp-primary); background:rgba(22,119,255,.05); }.gd-topic b { position:absolute; right:8px; top:8px; color:var(--sp-primary); font-size:11px; }.gd-topic strong,.gd-topic span { display:block; padding-right:44px; }.gd-topic strong { font-size:13px; }.gd-topic span { color:#86909c; font-size:12px; margin-top:5px; }
 .gd-grade-box { margin-top:12px; padding:12px 14px; border-radius:8px; background:#f7fafc; border:1px solid #edf0f3; }.gd-grade-score { margin:0 0 6px; font-size:14px; color:#1d2129; }.gd-grade-score strong { font-size:20px; color:var(--sp-primary); }.gd-grade-box .sp-btn { margin-top:10px; }.gd-grade-box label { display:block; margin-top:10px; color:#4e5969; font-size:13px; }.gd-grade-box textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
+.gd-peer { margin-top:16px; padding:16px 18px; }.gd-peer h2 { margin:0 0 6px; font-size:16px; }.gd-peer__item { margin-top:14px; padding-top:14px; border-top:1px solid #edf0f3; }.gd-peer__item header { display:flex; justify-content:space-between; gap:12px; align-items:center; }.gd-peer__item label { display:block; margin:10px 0; color:#4e5969; font-size:13px; }.gd-peer__item textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
 @media (max-width: 760px) { .gd-hero { display:block; }.gd-hero .sp-btn { margin-top:12px; }.gd-summary { grid-template-columns:repeat(2, 1fr); }.gd-step { grid-template-columns:40px minmax(0, 1fr); }.gd-step article { margin-left:12px; }.gd-step__head { display:block; }.gd-step__head .sp-tag { margin-top:8px; } }
 </style>

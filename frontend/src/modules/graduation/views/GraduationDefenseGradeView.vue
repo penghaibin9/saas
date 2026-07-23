@@ -113,7 +113,9 @@
 
           <!-- 答辩评分 -->
           <div v-if="tab === 'defense'" class="gp-panel">
-            <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" @click="openScoreEntry">录入评委评分</button></div>
+            <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)">
+              <button class="mp-btn mp-btn--primary" :disabled="!canEnterScore" :title="enterScoreReason" @click="openScoreEntry">录入评委评分</button>
+            </div>
             <ul class="gp-timeline">
               <li v-for="d in scoreList" :key="d.id" class="gp-timeline-item">
                 <div class="mp-cell-main">{{ d.judgeName }}（第{{ d.roundNo }}轮）· {{ d.absent ? '缺席' : d.score }} · <StatusTag :type="d.status === 'CONFIRMED' ? 'success' : 'warning'" :label="d.statusLabel" dot /></div>
@@ -121,8 +123,8 @@
             </ul>
             <EmptyState v-if="!scoreList.length" title="暂无评分记录" />
             <div class="ie-actions">
-              <button class="mp-btn" @click="doConfirmScores">确认本轮成绩</button>
-              <button class="mp-btn" @click="openSecondDefense">创建二次答辩</button>
+              <button class="mp-btn" :disabled="!canConfirmScores" :title="confirmScoresReason" @click="doConfirmScores">确认本轮成绩</button>
+              <button class="mp-btn" :disabled="!canCreateSecondDefense" :title="secondDefenseReason" @click="openSecondDefense">发起二次答辩</button>
             </div>
           </div>
 
@@ -137,11 +139,11 @@
               <div class="gp-kv"><span>综合分</span><span>{{ grade.totalScore ?? '—' }}（{{ grade.gradeLevel }}）</span></div>
               <div class="gp-kv"><span>发布时间</span><AppDateDisplay :value="grade.publishedAt" mode="datetime" /></div>
               <div class="ie-actions">
-                <button v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" class="mp-btn mp-btn--primary" @click="openCalculate">核算成绩</button>
-                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" @click="doReview('APPROVE')">复核通过</button>
-                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" @click="openReturnGrade">复核退回</button>
-                <button v-if="grade.status === 'CALCULATED' && grade.reviewedAt" class="mp-btn mp-btn--primary" @click="doPublish">发布成绩</button>
-                <button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" @click="openWithdraw">撤回</button>
+                <button v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" class="mp-btn mp-btn--primary" :disabled="!canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</button>
+                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canManageGrade" :title="manageGradeReason" @click="doReview('APPROVE')">复核通过</button>
+                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canManageGrade" :title="manageGradeReason" @click="openReturnGrade">复核退回</button>
+                <button v-if="grade.status === 'CALCULATED' && grade.reviewedAt" class="mp-btn mp-btn--primary" :disabled="!canPublishGrade" :title="publishGradeReason" @click="doPublish">发布成绩</button>
+                <button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" :disabled="!canManageGrade" :title="manageGradeReason" @click="openWithdraw">撤回</button>
               </div>
             </template>
           </div>
@@ -198,8 +200,48 @@ export default {
       if (!this.batch.missingOnly) return this.batch.rows
       return this.batch.rows.filter((r) => r.advisorScore == null || r.reviewerScore == null || r.defenseScore == null || r.totalScore == null)
     },
-    ...({}
-    )
+    canEnterScore() {
+      const pa = this.ctx.permissionActions.enterDefenseScore || this.ctx.permissionActions.manageDefense
+      return !!(pa && pa.allowed)
+    },
+    enterScoreReason() {
+      const pa = this.ctx.permissionActions.enterDefenseScore || this.ctx.permissionActions.manageDefense
+      return pa && !pa.allowed ? (pa.reason || '无答辩评分权限') : ''
+    },
+    canConfirmScores() {
+      const pa = this.ctx.permissionActions.confirmDefenseScores || this.ctx.permissionActions.manageDefense
+      return !!(pa && pa.allowed)
+    },
+    confirmScoresReason() {
+      const pa = this.ctx.permissionActions.confirmDefenseScores || this.ctx.permissionActions.manageDefense
+      return pa && !pa.allowed ? (pa.reason || '仅答辩秘书/管理员可确认成绩') : ''
+    },
+    canCreateSecondDefense() {
+      const pa = this.ctx.permissionActions.createSecondDefense || this.ctx.permissionActions.manageDefense
+      return !!(pa && pa.allowed)
+    },
+    secondDefenseReason() {
+      const pa = this.ctx.permissionActions.createSecondDefense || this.ctx.permissionActions.manageDefense
+      return pa && !pa.allowed ? (pa.reason || '仅答辩秘书/管理员可发起二次答辩') : ''
+    }
+,
+
+    canManageGrade() {
+      const pa = this.ctx.permissionActions.manageGrade
+      return !!(pa && pa.allowed)
+    },
+    manageGradeReason() {
+      const pa = this.ctx.permissionActions.manageGrade
+      return pa && !pa.allowed ? (pa.reason || '无成绩管理权限') : ''
+    },
+    canPublishGrade() {
+      const pa = this.ctx.permissionActions.publishGrade || this.ctx.permissionActions.manageGrade
+      return !!(pa && pa.allowed)
+    },
+    publishGradeReason() {
+      const pa = this.ctx.permissionActions.publishGrade || this.ctx.permissionActions.manageGrade
+      return pa && !pa.allowed ? (pa.reason || '无成绩发布权限') : ''
+    }
   },
   created() {
     const p = this.$route.query.panel
