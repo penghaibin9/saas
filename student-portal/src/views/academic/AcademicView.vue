@@ -103,6 +103,40 @@
         </div>
       </section>
 
+      <!-- 学生评教（匿名，与小程序同口径） -->
+      <section v-else-if="tab === 'evaluation'">
+        <div class="sp-card" style="margin-bottom:16px">
+          <div class="sp-panel__head">学生评教</div>
+          <p class="sp-muted" style="margin:0">匿名提交，仅对本班开放窗口内课程打分；提交后教务按班级合计统计，不回传个人身份。</p>
+        </div>
+        <StateBlock v-if="!(evaluation.list||[]).length" type="empty" :text="evaluation.note || '暂无开放中的评教任务'" />
+        <section v-else class="sp-card" style="padding:0;overflow:hidden">
+          <table class="sp-table">
+            <thead>
+              <tr>
+                <th>课程</th><th>教师</th><th>批次</th><th>班级已交</th><th style="width:280px">综合分（0-100）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in evaluation.list" :key="t.taskId">
+                <td style="font-weight:500;color:var(--t1)">{{ t.courseName || '—' }}</td>
+                <td>{{ t.teacherName || '—' }}</td>
+                <td>{{ t.batchName || '—' }}</td>
+                <td>{{ t.submittedCount ?? 0 }}</td>
+                <td>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <input class="sp-inp" style="width:88px;margin:0" type="number" min="0" max="100"
+                           v-model.number="evalScores[t.taskId]" placeholder="如 90" />
+                    <button class="mini" :disabled="busy || !canSubmitEval(t.taskId)"
+                            @click="submitEvaluation(t)">匿名提交</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </section>
+
       <!-- 成绩申诉 -->
       <section v-else-if="tab === 'appeal'" class="sp-card" style="max-width:640px">
         <div class="sp-panel__head">发起成绩申诉</div>
@@ -214,8 +248,8 @@ const cfg = usePortalConfigStore()
 const session = useSessionStore()
 const tabs = [
   { key: 'schedule', label: '我的课表' }, { key: 'select', label: '选课中心' }, { key: 'grades', label: '我的成绩' },
-  { key: 'transcript', label: '成绩单打印' }, { key: 'appeal', label: '成绩申诉' }, { key: 'status', label: '学籍异动' },
-  { key: 'exam', label: '免修/缓考/补重修' }, { key: 'audit', label: '毕业自查' }
+  { key: 'transcript', label: '成绩单打印' }, { key: 'evaluation', label: '学生评教' }, { key: 'appeal', label: '成绩申诉' },
+  { key: 'status', label: '学籍异动' }, { key: 'exam', label: '免修/缓考/补重修' }, { key: 'audit', label: '毕业自查' }
 ]
 const tab = ref('schedule')
 const examTab = ref('免修申请')
@@ -229,6 +263,8 @@ const schedule = ref({})
 const courses = ref([])
 const selectionRecords = ref([])
 const transcript = ref({})
+const evaluation = ref({ list: [], total: 0 })
+const evalScores = reactive({})
 const status = ref({})
 const examDefer = ref({})
 const makeup = ref({})
@@ -303,10 +339,11 @@ function wizClass(n) { return wizStep.value > n ? 'done' : wizStep.value === n ?
 async function loadAll() {
   loading.value = true; error.value = ''
   try {
-    const [sc, tr, st, ex, mk, au, cs, rec, en] = await Promise.allSettled([
+    const [sc, tr, st, ex, mk, au, cs, rec, en, ev] = await Promise.allSettled([
       portalApi.academicSchedule(), portalApi.academicTranscript(), portalApi.academicStatus(),
       portalApi.academicExamDefer(), portalApi.academicMakeup(), portalApi.academicGraduationAudit(),
-      portalApi.academicCourseSelection(), portalApi.academicSelectionRecords(), portalApi.profileEnrollment()
+      portalApi.academicCourseSelection(), portalApi.academicSelectionRecords(), portalApi.profileEnrollment(),
+      portalApi.academicEvaluationTasks()
     ])
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     schedule.value = val(sc, {}); transcript.value = val(tr, {}); status.value = val(st, {})
@@ -314,7 +351,10 @@ async function loadAll() {
     const c = val(cs, []); courses.value = Array.isArray(c) ? c.flatMap((x) => x.courses || []) : (c.courses || c.items || [])
     const r = val(rec, []); selectionRecords.value = Array.isArray(r) ? r : (r.items || [])
     info.value = val(en, {})
-  } catch (e) { error.value = e?.message || '学业数据加载失败' } finally { loading.value = false }
+    evaluation.value = val(ev, { list: [], total: 0 })
+    for (const t of (evaluation.value.list || [])) {
+      if (evalScores[t.taskId] == null) evalScores[t.taskId] = 90
+    }  } catch (e) { error.value = e?.message || '学业数据加载失败' } finally { loading.value = false }
 }
 async function printTranscript(reason) {
   busy.value = true
@@ -325,6 +365,21 @@ async function enroll(c) {
   busy.value = true
   try { await portalApi.academicEnroll({ selectionCourseId: c.selectionCourseId }); ui.notify('选课成功'); loadAll() }
   catch (e) { ui.notify(e?.message || '选课失败（演示租户为只读）') } finally { busy.value = false }
+}
+function canSubmitEval(taskId) {
+  const n = Number(evalScores[taskId])
+  return !Number.isNaN(n) && n >= 0 && n <= 100
+}
+async function submitEvaluation(t) {
+  if (!canSubmitEval(t.taskId) || busy.value) return
+  busy.value = true
+  try {
+    const score = Number(evalScores[t.taskId])
+    await portalApi.academicEvaluationSubmit({
+      taskId: t.taskId, objectiveScore: score, answers: { overall: score },
+    })
+    ui.notify('已匿名提交'); loadAll()
+  } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitStatusChange() {
   busy.value = true

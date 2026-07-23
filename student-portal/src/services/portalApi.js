@@ -63,6 +63,8 @@ export const portalApi = {
   academicRetakeApply: (body) => request('/portal/academic/retake/apply', { method: 'POST', body }),
   academicExemptionApply: (body) => request('/portal/academic/exemption/apply', { method: 'POST', body }),
   academicGraduationAudit: () => request('/portal/academic/graduation-audit'),
+  academicEvaluationTasks: () => request('/portal/academic/evaluation/tasks'),
+  academicEvaluationSubmit: (body) => request('/portal/academic/evaluation/submit', { method: 'POST', body }),
 
   // ── 学工事务（在校服务）──
   affairsOverview: () => request('/portal/affairs/overview'),

@@ -173,6 +173,16 @@ def academic_graduation_audit(user=Depends(get_current_user)):
     return success(academic.graduation_audit(user))
 
 
+@router.get("/academic/evaluation/tasks", summary="学生评教·开放窗口内本班任务（匿名）")
+def academic_evaluation_tasks(user=Depends(get_current_user)):
+    return success(academic.evaluation_tasks(user))
+
+
+@router.post("/academic/evaluation/submit", summary="学生评教·匿名提交")
+def academic_evaluation_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.evaluation_submit(user, body), message="已提交")
+
+
 # ── 学工事务（第4期）：自视图聚合 + 通用事务申请 + 打印 ──
 @router.get("/affairs/overview", summary="学工总览（本人）")
 def affairs_overview(user=Depends(get_current_user)):
