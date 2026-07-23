@@ -446,8 +446,10 @@ def scan_attendance_warnings(user) -> dict:
                 AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == profile_id,
                 AcademicStudent.is_deleted.is_(False))).first()
             if not acad:
-                # 无学业台账则跳过（与挂科扫描依赖 AcademicGrade 同口径）
-                continue
+                # 旷课预警不依赖成绩行：无台账时按成绩服务同口径建一行投影，再生成预警
+                from app.modules.academic_affairs.services.academic_affairs_grade_service import _acad_student_id
+                sp = db.get(StudentProfile, profile_id)
+                acad = _acad_student_id(db, profile_id, name=(sp.real_name if sp else ""))
             level = "HIGH" if n >= thr * 2 else ("MEDIUM" if n >= thr else "LOW")
             c, u = _upsert_warning(
                 db, acad.id, "ATTENDANCE_ABSENT", "ABSENT_EXCESS", level,

@@ -41,7 +41,7 @@ const ENTRIES = [
   { key: 'warning', label: '学业预警', icon: '⚠', route: '/pages/student/academic-affairs/warning' },
   { key: 'makeup', label: '补考重修', icon: '📝', route: '/pages/student/academic-affairs/makeup' },
   { key: 'selection', label: '网上选课', icon: '✅', route: '/pages/student/academic-affairs/selection' },
-  { key: 'exam', label: '缓考申请', icon: '🗓', route: '/pages/student/academic-affairs/exam' },
+  { key: 'exam', label: '考试/缓考', icon: '🗓', route: '/pages/student/academic-affairs/exam' },
   { key: 'status', label: '学籍与异动', icon: '📋', route: '/pages/student/academic-affairs/status' },
   { key: 'graduation', label: '毕业进度', icon: '🎓', route: '/pages/student/academic-affairs/graduation' },
   { key: 'recognition', label: '成绩认定', icon: '🔄', route: '/pages/student/academic-affairs/recognition' },

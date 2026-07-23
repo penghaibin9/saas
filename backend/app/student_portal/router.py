@@ -153,6 +153,11 @@ def academic_exam_defer_apply(user=Depends(get_current_user), body: dict = Body(
     return success(academic.exam_defer_apply(user, body))
 
 
+@router.post("/academic/exam/defer/{defer_id}/resubmit", summary="缓考退回后补材料重提（本人）")
+def academic_exam_defer_resubmit(defer_id: str, user=Depends(get_current_user)):
+    return success(academic.exam_defer_resubmit(user, defer_id), message="已重提")
+
+
 @router.get("/academic/makeup", summary="我的补考重修与免修（本人）")
 def academic_makeup(user=Depends(get_current_user)):
     return success(academic.makeup(user))
@@ -241,6 +246,16 @@ def academic_credits(user=Depends(get_current_user)):
 @router.get("/academic/warning", summary="我的学业预警（本人·只读）")
 def academic_warning(user=Depends(get_current_user)):
     return success(academic.warning(user))
+
+
+@router.get("/academic/recognition", summary="我的成绩认定/课程替代（本人）")
+def academic_recognition(user=Depends(get_current_user)):
+    return success(academic.recognition(user))
+
+
+@router.post("/academic/recognition", summary="提交成绩认定申请（本人）")
+def academic_recognition_submit(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.recognition_submit(user, body), message="认定申请已提交")
 
 
 # ── 学工事务（第4期）：自视图聚合 + 通用事务申请 + 打印 ──

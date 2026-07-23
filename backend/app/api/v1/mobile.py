@@ -1415,7 +1415,7 @@ def academic_graduation_my(user=Depends(get_current_user)):
     return success(aa.graduation_progress_my(user))
 
 
-@router.get("/academic/exam/my", summary="教务·我的考试（占位）")
+@router.get("/academic/exam/my", summary="教务·我的考试安排（已发布座位/准考证）")
 def academic_exam_my(user=Depends(get_current_user)):
     return success(aa.exam_my(user))
 

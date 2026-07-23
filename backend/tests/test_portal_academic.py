@@ -138,6 +138,11 @@ def test_portal_recheck_and_extra_views(client, db_mode):
     assert client.get(f"{PORTAL}/textbook", headers=h).json()["code"] == 0
     assert client.get(f"{PORTAL}/level-exam", headers=h).json()["code"] == 0
     assert client.get(f"{PORTAL}/major-split", headers=h).json()["code"] == 0
+    assert client.get(f"{PORTAL}/recognition", headers=h).json()["code"] == 0
+    assert client.post(f"{PORTAL}/recognition", headers=h, json={}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/recognition", headers=h, json={
+        "sourceCourseName": "外校数学", "targetCourseName": "高等数学", "sourceScore": 50,
+    }).json()["code"] != 0
 
 
 def test_non_student_rejected_extra(client, db_mode):
@@ -149,3 +154,4 @@ def test_non_student_rejected_extra(client, db_mode):
     assert client.get(f"{PORTAL}/level-exam", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/major-split", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/exam/defer/options", headers=admin).json()["code"] == 403001
+    assert client.get(f"{PORTAL}/recognition", headers=admin).json()["code"] == 403001
