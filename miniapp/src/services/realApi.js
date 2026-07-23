@@ -176,6 +176,7 @@ export const teacherInternshipRiskHandle = (riskId, body) =>
 export const teacherInternshipRiskFollow = (riskId, note) =>
   realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: { note } })
 export const teacherInternshipRiskClose = (riskId, body) =>
+  realRequest(`/mobile/teacher/internship/risks/${riskId}/close`, { method: 'POST', data: body || {} })
 
 /** 指导教师·本人指导实习学生名单（供新增指导记录选学生用） / 新增指导记录（owner 校验，真实接口，无 mock 兜底） */
 export const teacherInternshipMyStudents = () => realRequest('/mobile/teacher/internship/my-students')
