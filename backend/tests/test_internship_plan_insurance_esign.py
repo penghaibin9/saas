@@ -128,9 +128,11 @@ def test_agreement_esign_flow(client, db_mode):
     stu = _student("ES-STU-01")
     s1 = client.post(f"{MOB}/internship/agreements/{aid}/esign/sign", headers=stu)
     assert s1.status_code == 200
+    # 教师不可代签企业方电子签（须纸质扫描件确认或企业账号签署）
     s2 = client.post(f"{INT}/agreements/{aid}/esign/sign",
                      json={"party": "ENTERPRISE"}, headers=_mentor("刘强"))
-    assert s2.status_code == 200
+    assert s2.status_code == 400
     s3 = client.post(f"{INT}/agreements/{aid}/esign/sign",
                      json={"party": "SCHOOL"}, headers=_mentor("刘强"))
-    assert s3.status_code == 200 and s3.json()["data"]["esignStatus"] == "SIGNED"
+    assert s3.status_code == 200
+    assert s3.json()["data"]["esignStatus"] == "PENDING"  # 缺企业方，未齐签

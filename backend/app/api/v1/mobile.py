@@ -126,6 +126,11 @@ def internship_exception_appeal(exception_id: str, body: dict = Body(...), user=
     return success(stu.internship_exception_appeal(user, exception_id, body), message="申诉已提交")
 
 
+@router.get("/internship/makeup", summary="本人补卡申请列表")
+def internship_makeup_list(user=Depends(get_current_user)):
+    return success(mk.my_makeups(user))
+
+
 @router.post("/internship/makeup", summary="补卡申请（本人某日缺卡，待指导教师审批）")
 def internship_makeup_apply(body: dict = Body(...), user=Depends(get_current_user)):
     b = body or {}
@@ -1340,6 +1345,12 @@ def affairs_funding_appeal(user=Depends(get_current_user), body: dict = Body(...
 @router.get("/affairs/discipline/my", summary="学工·我的处分（仅数量）")
 def affairs_discipline_my(user=Depends(get_current_user)):
     return success(aff.discipline_my(user))
+
+
+@router.post("/affairs/discipline/appeal", summary="学工·违纪处分本人申辩/申诉")
+def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.discipline_appeal(user, body or {}), message="申辩已提交")
 
 
 @router.get("/affairs/dorm/my", summary="学工·我的宿舍（含自选开关）")

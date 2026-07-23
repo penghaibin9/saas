@@ -61,7 +61,12 @@ export const guidanceVisitApi = {
     return call(() => request(`${B}/visits/${id}/rectify`, { method: 'POST', body: { status, note } }))
   },
   exportVisits(params = {}) { return call(() => request(`${B}/visits/export`, { method: 'POST', params })) },
-  getVisitStats() { return call(() => request(`${B}/visits/stats`)) }
+  getVisitStats() { return call(() => request(`${B}/visits/stats`)) },
+  // 企业沟通 / 巡访计划（深链真实接线）
+  getCommunications(params = {}) { return callList(`${B}/communications`, params) },
+  getCommunicationDetail(id) { return call(() => request(`${B}/communications/${id}`)) },
+  getVisitPlans(params = {}) { return callList(`${B}/visit-plans`, params) },
+  getVisitPlanDetail(id) { return call(() => request(`${B}/visit-plans/${id}`)) }
 }
 
 export default guidanceVisitApi

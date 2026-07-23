@@ -2,7 +2,7 @@
   <ModulePageShell title="风险处置" subtitle="实习风险受理 · 跟进 · 升级 · 关闭闭环"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
+      <AppExportButton :export-fn="exportFn" :has-permission="canBtn('internship.risk.export')" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
     <div class="bar">
@@ -113,7 +113,7 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/compone
 import { AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermissionButton,
   AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
-import { riskApi } from '@/modules/internship/api/leave-risk.api'
+import { riskApi, complaintApi } from '@/modules/internship/api/leave-risk.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
@@ -138,6 +138,7 @@ export default {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', levelFilter: '', statusFilter: '', riskCode: '',
+      complaintMode: false,
       levelOptions: LEVEL_OPTIONS, statusOptions: STATUS_OPTIONS,
       selectedId: '', detail: null, detailLoading: false, detailError: '', queueDone: false,
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', requireReason: true, submitting: false },
@@ -181,9 +182,15 @@ export default {
   watch: {
     '$route.query.panel': {
       immediate: true,
-      handler(panel) {
-        this.applyPanel((panel || 'pending').toString())
-      }
+      handler() { this.syncRouteFilters() }
+    },
+    '$route.query.caseType': {
+      immediate: false,
+      handler() { this.syncRouteFilters() }
+    },
+    '$route.query.stage': {
+      immediate: false,
+      handler() { this.syncRouteFilters() }
     },
     /** 选中项写在 query.id，刷新 / 分享链接可恢复 */
     '$route.query.id': {
@@ -204,6 +211,20 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    /** navPlan 使用 stage=pending|processing|closed；部分入口仍用 panel= */
+    syncRouteFilters() {
+      const q = this.$route.query || {}
+      if (String(q.caseType || '') === 'complaint') {
+        this.complaintMode = true
+        this.keyword = ''
+        this.page = 1
+        this.loadComplaints()
+        return
+      }
+      this.complaintMode = false
+      const key = (q.panel || q.stage || 'pending').toString()
+      this.applyPanel(key)
+    },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.pending
       const { levelFilter, statusFilter, riskCode } = preset()
@@ -220,6 +241,7 @@ export default {
     reload() { this.page = 1; this.queueDone = false; this.load() },
     onPageChange({ page }) { this.page = page; this.load() },
     async load() {
+      if (this.complaintMode) return this.loadComplaints()
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
       if (this.levelFilter) params.level = this.levelFilter
@@ -230,27 +252,59 @@ export default {
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
     },
+    async loadComplaints() {
+      this.loading = true; this.error = ''
+      const res = await complaintApi.getComplaints({ page: this.page, pageSize: this.pageSize })
+      this.loading = false
+      if (res.code !== 0) { this.error = res.message || '投诉加载失败'; this.rows = []; this.total = 0; return }
+      this.rows = (res.data.list || []).map((c) => ({
+        ...c,
+        studentName: c.studentId || '企业投诉',
+        studentNo: c.complaintNo || '',
+        riskCode: c.category || 'COMPLAINT',
+        riskTitle: (c.content || '').slice(0, 40),
+        riskLevel: c.severity,
+        ownerName: c.ownerName || c.acceptedByName || '',
+        statusLabel: c.statusLabel,
+        deadlineAt: c.resolveDeadline || c.acceptDeadline || ''
+      }))
+      this.total = res.data.total || 0
+    },
+    async loadDetail(id) {
+      const rid = String(id || '')
+      if (!rid) return
+      this.detailLoading = true; this.detailError = ''; this.detail = null
+      const res = this.complaintMode
+        ? await complaintApi.getComplaintDetail(rid)
+        : await riskApi.getRiskDetail(rid)
+      if (String(this.selectedId) !== rid) return
+      this.detailLoading = false
+      if (res.code !== 0) { this.detailError = res.message || '加载失败'; return }
+      this.detail = res.data
+    },
     select(row) {
-      if (!row || row.id === this.selectedId) return
-      this.$router.replace({ query: { ...this.$route.query, id: row.id } })
+      if (!row || row.id == null || row.id === '') return
+      const id = String(row.id)
+      if (id === String(this.selectedId || '')) return
+      // 先本地选中再同步路由：避免仅依赖 query 时，右侧仍停在「未选择」
+      this.selectedId = id
+      this.queueDone = false
+      this.detailError = ''
+      this.loadDetail(id)
+      if (String(this.$route.query.id || '') !== id) {
+        this.$router.replace({ query: { ...this.$route.query, id } })
+      }
     },
     clearSelection() {
       const query = { ...this.$route.query }
       delete query.id
       this.$router.replace({ query })
     },
-    async loadDetail(id) {
-      this.detailLoading = true; this.detailError = ''; this.detail = null
-      const res = await riskApi.getRiskDetail(id)
-      if (String(this.selectedId) !== String(id)) return
-      this.detailLoading = false
-      if (res.code !== 0) { this.detailError = res.message || '加载失败'; return }
-      this.detail = res.data
-    },
     goStudent() {
       if (this.detail?.internId) this.$router.push(`/admin/internship/students/${this.detail.internId}`)
     },
     openAction(kind) {
+      if (this.complaintMode) return toast.error('投诉处置请使用状态迁移，不支持风险催办动作')
       const d = this.detail
       if (!d) return
       const map = {

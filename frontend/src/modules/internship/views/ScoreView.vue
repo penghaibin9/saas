@@ -210,9 +210,23 @@ export default {
       }))
     }
   },
-  created() { this.loadConfig(); this.load() },
+  created() {
+    this.applyStageFromRoute()
+    this.loadConfig()
+    this.load()
+  },
+  watch: {
+    '$route.query.stage'() { this.applyStageFromRoute(); this.reload() }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyStageFromRoute() {
+      const stage = String(this.$route.query.stage || '').toLowerCase()
+      if (stage === 'review') this.statusFilter = 'DRAFT'
+      else if (stage === 'publish') this.statusFilter = 'CONFIRMED'
+      else if (stage === 'recheck') this.missingOnly = '1'
+      else if (stage === 'overview') { this.statusFilter = ''; this.missingOnly = '' }
+    },
     exportFn() { return scoreApi.exportScores({ keyword: this.keyword, status: this.statusFilter }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     async loadConfig() { const res = await scoreApi.getConfig(); if (res.code === 0) this.cfg = { ...this.cfg, ...res.data } },

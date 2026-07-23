@@ -68,6 +68,18 @@ def _row(m: InternshipMakeup, rec, stu) -> dict:
 
 # ═══════════ 学生本人（移动端） ═══════════
 
+def my_makeups(user) -> dict:
+    """本人补卡申请列表。"""
+    with session() as db:
+        rec, stu = _student_record(db, user)
+        if not rec:
+            return {"items": [], "total": 0}
+        rows = db.scalars(select(InternshipMakeup).where(
+            InternshipMakeup.tenant_id == _tid(), InternshipMakeup.is_deleted.is_(False),
+            InternshipMakeup.internship_id == rec.id).order_by(InternshipMakeup.id.desc())).all()
+        return {"items": [_row(m, rec, stu) for m in rows], "total": len(rows)}
+
+
 def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MISSING",
           internship_id=None) -> dict:
     if not (checkin_date or "").strip() or not (reason or "").strip() or len(reason.strip()) < 2:

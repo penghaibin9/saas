@@ -22,6 +22,43 @@ def weekly_submit(user: dict, body: dict) -> dict:
     return stu.internship_weekly_submit(user, body or {})
 
 
+def leave_list(user: dict) -> dict:
+    """本人实习请假列表。"""
+    from app.modules.internship.services import internship_leave_service as lv
+    return lv.my_leaves(user)
+
+
+def leave_apply(user: dict, body: dict) -> dict:
+    """实习请假申请（本人）。"""
+    from app.modules.internship.services import internship_leave_service as lv
+    return lv.apply(user, body or {})
+
+
+def leave_return(user: dict, leave_id: str, body: dict) -> dict:
+    """本人销假。"""
+    from app.modules.internship.services import internship_leave_service as lv
+    return lv.return_my(user, leave_id, body or {})
+
+
+def checkin(user: dict, body: dict) -> dict:
+    """PC 门户打卡（复用移动端落库；无定位时记为已记录，不自动定罪）。"""
+    return stu.internship_checkin(user, body or {})
+
+
+def self_eval_submit(user: dict, body: dict) -> dict:
+    """实习自评提交（本人）。"""
+    from app.modules.internship.services import internship_student_eval_service as se
+    payload = body or {}
+    # 门户表单字段映射到学生自评服务口径
+    if payload.get("performance") or payload.get("reflection"):
+        payload = {
+            "selfSummary": (payload.get("performance") or payload.get("selfSummary") or "").strip(),
+            "selfHarvest": (payload.get("reflection") or payload.get("selfHarvest") or "").strip(),
+            "problems": payload.get("problems") or "",
+        }
+    return se.student_submit(user, payload)
+
+
 def report_submit(user: dict, body: dict) -> dict:
     """实习月报/总结长文档提交（复用过程报告：reportType + periodKey + content 长文本）。"""
     body = body or {}
@@ -47,3 +84,50 @@ def score_appeal(user: dict, body: dict) -> dict:
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 个字")
     return stu.campus_service_apply(user, {"serviceKey": "INTERNSHIP_SCORE_APPEAL", "reason": reason})
+
+
+def makeup_list(user: dict) -> dict:
+    """本人补卡申请列表。"""
+    from app.modules.internship.services import internship_makeup_service as mk
+    return mk.my_makeups(user)
+
+
+def makeup_apply(user: dict, body: dict) -> dict:
+    """补卡申请（本人）。"""
+    from app.modules.internship.services import internship_makeup_service as mk
+    b = body or {}
+    return mk.apply(user, checkin_date=b.get("checkinDate") or b.get("date") or "",
+                    reason=b.get("reason") or "", makeup_type=b.get("makeupType") or "MISSING",
+                    internship_id=b.get("internshipId"))
+
+
+def intention_my(user: dict) -> dict:
+    return stu.internship_intention_my(user)
+
+
+def intention_save(user: dict, body: dict) -> dict:
+    return stu.internship_intention_save(user, body or {})
+
+
+def applications_my(user: dict) -> dict:
+    return {"items": stu.internship_application_list(user)}
+
+
+def application_submit(user: dict, body: dict) -> dict:
+    """保存草稿并提交（门户一键）。"""
+    b = body or {}
+    saved = stu.internship_application_save(user, b)
+    app_id = str((saved or {}).get("id") or b.get("id") or "")
+    if not app_id:
+        raise AppException("VALIDATION_ERROR", "申请保存失败，无法提交")
+    if (saved or {}).get("status") in ("SUBMITTED", "APPROVED"):
+        return saved
+    return stu.internship_application_submit(user, app_id)
+
+
+def change_list(user: dict) -> dict:
+    return {"items": stu.internship_change_list(user)}
+
+
+def change_apply(user: dict, body: dict) -> dict:
+    return stu.internship_change_apply(user, body or {})

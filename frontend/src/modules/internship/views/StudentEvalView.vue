@@ -187,9 +187,19 @@ export default {
       }
     }
   },
-  created() { this.load() },
+  created() {
+    this.applyViewFromRoute()
+    this.load()
+  },
+  watch: {
+    '$route.query.view'() { this.applyViewFromRoute(); this.reload() }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyViewFromRoute() {
+      const view = String(this.$route.query.view || '').toLowerCase()
+      if (['self', 'enterprise', 'position', 'advisor'].includes(view)) this.statusFilter = 'PENDING'
+    },
     onPickMentorChip(text) {
       if (!text) return
       const cur = (this.cmtForm.mentorOpinion || '').trim()

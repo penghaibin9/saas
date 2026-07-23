@@ -200,6 +200,48 @@ def get_risk(rid, user=None) -> dict:
                                for t in trail]}
 
 
+def remind(user, risk_id, channel="站内消息") -> dict:
+    """向风险责任人发送站内催办；无账号映射时明确失败，不伪造成功。"""
+    from datetime import timedelta
+
+    from app.models import UnifiedMessage, User
+    with session() as db:
+        r = _get(db, risk_id)
+        rec, stu = _owner_or_403(db, r, user, "只能催办本人数据范围内的风险")
+        if r.status in ("RESOLVED", "CLOSED"):
+            raise AppException("DATA_CONFLICT", "风险已结案，无需催办")
+        recent = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_id == r.id,
+            InternshipAuditTrail.target_type == "RISK", InternshipAuditTrail.action == "REMIND",
+            InternshipAuditTrail.occurred_at >= datetime.utcnow() - timedelta(minutes=5))).first()
+        if recent:
+            raise AppException("DATA_CONFLICT", "5 分钟内已催办，请勿重复操作")
+        owner_name = (r.owner_name or "").strip() or (rec.advisor_name if rec else "") or ""
+        account = None
+        if owner_name:
+            account = db.scalars(select(User).where(
+                User.tenant_id == _tid(), User.real_name == owner_name,
+                User.user_type == "TEACHER", User.is_deleted.is_(False),
+                User.status == "ACTIVE")).first()
+        if not account and rec and getattr(rec, "advisor_user_id", None):
+            account = db.get(User, rec.advisor_user_id)
+        if not account:
+            raise AppException("DATA_NOT_FOUND", "责任人账号未建立，无法发送催办")
+        title = f"实习风险催办：{(r.risk_title or r.risk_code or '')[:40]}"
+        content = (f"请及时跟进风险单 {r.risk_code or r.id}（学生 "
+                   f"{stu.real_name if stu else '-'}）。催办渠道：{channel or '站内消息'}。")
+        db.add(UnifiedMessage(
+            tenant_id=_tid(), receiver_id=account.id, source_module="internship",
+            source_biz_id=r.id, title=title, content=content,
+            message_type="INTERNSHIP_RISK_REMIND", status="UNREAD"))
+        _trail(db, r.id, "REMIND", {"channel": channel or "站内消息",
+                                    "receiverId": str(account.id), "ownerName": owner_name},
+               operator=_op_name(user))
+        db.commit()
+        return {"id": str(r.id), "reminded": True, "channel": channel or "站内消息",
+                "receiverName": account.real_name or owner_name}
+
+
 def export_risks(keyword=None, user=None) -> dict:
     from app.services import xlsx_util
     items, _ = list_risks(1, 100000, keyword=keyword, user=user)
