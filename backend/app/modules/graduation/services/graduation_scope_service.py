@@ -65,6 +65,59 @@ def _has_review_relation(db, student: GraduationStudent, real_name: str) -> bool
     ).limit(1)) is not None
 
 
+def _login_name() -> str:
+    """当前登录者工号（t_user.login_name，租户内唯一 uk_tenant_login）。"""
+    return str((get_current_user_ctx() or {}).get("loginName") or "").strip()
+
+
+def _mentor_teacher_no(db, student: GraduationStudent) -> str:
+    """学生所挂导师台账的工号（t_gd_mentor.teacher_no，租户内唯一 uk_gd_mentor_teacher_no）。
+
+    这是毕设域判定「本人指导关系」最可靠的依据：与 t_user.login_name 同为工号口径，
+    两侧都有租户内唯一约束，重名/改名都不会串号。
+    """
+    mentor_id = getattr(student, "mentor_id", None)
+    if not mentor_id:
+        return ""
+    try:
+        from app.models import GraduationMentor
+        m = db.get(GraduationMentor, int(mentor_id))
+    except Exception:  # noqa: BLE001 — FakeDb / 无 ORM 场景
+        return ""
+    if not m or getattr(m, "is_deleted", False) or m.tenant_id != student.tenant_id:
+        return ""
+    return str(getattr(m, "teacher_no", "") or "").strip()
+
+
+def _name_is_ambiguous(db, tenant_id: int, real_name: str) -> bool:
+    """租户内是否存在 ≥2 个同名用户——若是，姓名不足以证明身份，一律 fail-closed。
+
+    毕设域历史上对 GD_MENTOR/GD_REVIEWER/答辩秘书/答辩专家 全部用 `姓名字符串 == realName`
+    判定归属（advisor_name / reviewer_name / group.secretary / members_json）。学校里姓名会重复
+    （开发库已存在同名账号），两名同名教师会互相访问对方学生，属真实越权。
+
+    判定采取「只在能证明重名时才拒绝」：命中 0 个（演示/外聘导师无系统账号）或 1 个时不拒绝，
+    保持既有数据可用；≥2 个才拒绝。这样只堵漏洞，不误伤未建账号的存量指导关系。
+    """
+    if not real_name:
+        return True
+    # 仅在真实 ORM 会话上判定：单元测试的 FakeDb 会忽略查询语句恒返回同一批行，
+    # 据此判重名会把所有姓名都误判为重复，进而拒绝全部访问。
+    from sqlalchemy.orm import Session as _OrmSession
+    if not isinstance(db, _OrmSession):
+        return False
+    try:
+        from app.models import User
+        rows = db.scalars(select(User.id).where(
+            User.tenant_id == tenant_id,
+            User.real_name == real_name,
+            User.is_deleted.is_(False),
+        ).limit(2)).all()
+    except Exception:  # noqa: BLE001 — 旧库无表/连接异常时不阻断既有链路
+        return False
+    return len(rows) >= 2
+
+
 def _student_self_identity(db, tenant_id: int) -> tuple[str, int | None]:
     """学生登录者的稳定本人身份：令牌 studentNo 优先；缺失时在租户内按姓名唯一匹配
     学籍主档（与登录签发 studentNo 同源的映射）。重名或找不到一律 fail-closed。"""
@@ -152,6 +205,19 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
             return True
         return (profile_id is not None and student.student_id is not None
                 and int(student.student_id) == profile_id)
+
+    # 以下 4 类角色的归属判定依赖「姓名字符串」。工号优先；姓名兜底仅在租户内不重名时可用，
+    # 重名一律 fail-closed，否则两名同名教师会互相访问对方学生（真实越权）。
+    # 学院/专业管理员走 claim（collegeId/majorId）判定，与姓名无关，不受本门禁影响。
+    if role in {"GD_MENTOR", "COUNSELOR", "GD_REVIEWER",
+                "GD_DEFENSE_SECRETARY", "GD_DEFENSE_EXPERT"}:
+        login_name = _login_name()
+        if role in {"GD_MENTOR", "COUNSELOR"} and login_name:
+            # 工号精确匹配：与 t_user.login_name 同口径，重名/改名都不串号
+            if _mentor_teacher_no(db, student) == login_name:
+                return True
+        if _name_is_ambiguous(db, student.tenant_id, real_name):
+            return False
 
     if role in {"GD_MENTOR", "COUNSELOR"}:
         # 移动教师端沿用辅导员主身份；仅凭学生台账中与本人姓名完全一致的真实指导关系放行，

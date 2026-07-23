@@ -56,6 +56,29 @@ _RELATION_SCOPED_ROLES = {
 }
 
 
+def _real_name_is_ambiguous(real_name: str) -> bool:
+    """本租户内是否存在 ≥2 个同名账号——若是，姓名不足以证明身份，不得用于范围匹配。
+
+    仅在「能证明重名」时返回 True：命中 0 个（无账号的历史/外聘导师）或 1 个都返回 False，
+    保持既有数据可用，只堵同名越权。查不到库（旧库无表/连接异常）时保守返回 False，
+    维持原有可见性，不因基础设施问题把老师锁在门外。
+    """
+    name = (real_name or "").strip()
+    if not name:
+        return True
+    try:
+        with _session() as db:
+            from app.models import User
+            rows = db.scalars(select(User.id).where(
+                User.tenant_id == _tid(),
+                User.real_name == name,
+                User.is_deleted.is_(False),
+            ).limit(2)).all()
+        return len(rows) >= 2
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def resolve_teacher_scope(user: dict) -> dict:
     """解析教师数据范围（t_teacher_student_scope 最小可用版）：
     - 范围表行：CLASS(班级名) / COLLEGE(学院名) / STUDENT(学号) / ADVISOR(历史导师姓名，
@@ -81,10 +104,14 @@ def resolve_teacher_scope(user: dict) -> dict:
         # 键派生：mock 用户 u_counselor01→counselor01；db 用户 activeContextId=ctx_<login_name>；
         # 姓名兜底（teacher_key 或 teacher_name 任一命中即生效）
         ctx = str(u.get("activeContextId") or "")
+        # 只派生工号族标识（login_name 租户内唯一 uk_tenant_login），不含 realName：
+        # 姓名会重复，一旦作为范围表命中键，同名教师会互相拿到对方的班级/学院/学生范围。
+        # 与 core.affairs_security._derive_keys 同口径。实测开发库 t_teacher_student_scope
+        # 全部行都有 teacher_key（工号），无「仅登记姓名」的行，移除姓名不会使既有范围查空。
         keys = {k for k in (uid,
+                            str(u.get("loginName") or ""),
                             uid[2:] if uid.startswith("u_") else "",
-                            ctx[4:] if ctx.startswith("ctx_") else "",
-                            name) if k}
+                            ctx[4:] if ctx.startswith("ctx_") else "") if k}
         try:
             with _session() as db:
                 from app.models import TeacherStudentScope
@@ -108,7 +135,10 @@ def resolve_teacher_scope(user: dict) -> dict:
                 scope["collegeNames"].add(r.ref_value.strip())
             elif st == "ADVISOR":
                 scope["advisorNames"].add((r.ref_value or name).strip())
-    if role in _ADVISOR_ROLES and name:
+    if role in _ADVISOR_ROLES and name and not _real_name_is_ambiguous(name):
+        # 姓名只用于兼容「尚未回填 advisor_user_id」的历史记录（scope_match_row 中 ID 优先、姓名兜底）。
+        # 租户内存在同名账号时不得加入：否则两名同名指导教师会互相看到对方带教的实习生。
+        # 此类记录改由 advisor_user_id 精确匹配；未回填的历史记录宁可看不到，也不放行越权。
         scope["advisorNames"].add(name)
     if (scope["classNames"] or scope["studentNos"] or scope["collegeNames"]
             or scope["advisorNames"] or (role in _ADVISOR_ROLES and scope["advisorUserIds"])):
