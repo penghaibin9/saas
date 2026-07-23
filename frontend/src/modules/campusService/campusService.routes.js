@@ -36,25 +36,25 @@ export const campusServiceRoutes = {
       // （DATA_CONFLICT "该请假已接入新版多级审批流程"），导致老师在此页面无法处理任何新提交的
       // 请假。新版初审工作台见 LeaveApprovalWorkbenchView，真实对接 /student-affairs/leave/*。
       component: () => import('@/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假审批' }
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假审批' }
     },
     {
       path: 'leave-extensions',
       name: 'campus-service-leave-extensions',
       component: () => import('@/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '延期销假' }
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '延期销假' }
     },
     {
       path: 'leave-ledger',
       name: 'campus-service-leave-ledger',
       component: () => import('@/modules/studentAffairs/views/leave/LeaveLedgerView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假台账' }
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假台账' }
     },
     {
       path: 'leave-stats',
       name: 'campus-service-leave-stats',
       component: () => import('@/modules/studentAffairs/views/leave/LeaveStatsView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.leave.view', title: '请假统计' }
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假统计' }
     },
     {
       path: 'classes',

@@ -428,6 +428,13 @@
       "style": { "navigationBarTitleText": "学工待办处置", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/dorm-review/index",
+      "style": {
+        "navigationBarTitleText": "宿舍待办",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/teacher/class-cadre/index",
       "style": { "navigationBarTitleText": "班干部管理", "navigationStyle": "custom" }
     },

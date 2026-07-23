@@ -213,6 +213,9 @@ export const teacherApi = {
   getAffairsRiskDetail: (riskId) => real.teacherAffairsRiskDetail(riskId),
   processAffairsRisk: (riskId, content) => real.teacherAffairsRiskProcess(riskId, content),
   closeAffairsRisk: (riskId, conclusion) => real.teacherAffairsRiskClose(riskId, conclusion),
+  getAffairsDormPending: () => real.teacherAffairsDormPending(),
+  reviewAffairsDormTransfer: (transferId, body) => real.teacherAffairsDormTransferReview(transferId, body),
+  handleAffairsDormException: (exceptionId, note) => real.teacherAffairsDormExceptionHandle(exceptionId, note),
   // 班干部任命/免去：我的班级 + 班级学生名单 + 班干部名单 + 任命 + 免去（owner+范围校验，真实接口，无 mock 兜底）
   getAffairsMyClasses: () => real.teacherAffairsMyClasses(),
   getAffairsClassStudents: (classId) => real.teacherAffairsClassStudents(classId),

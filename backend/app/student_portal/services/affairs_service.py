@@ -181,6 +181,20 @@ def leave_cancel(user: dict, leave_id: str, body: dict | None = None) -> dict:
     return leave_svc.submit_cancel(leave_id, user, proof_note=note, self_only=True)
 
 
+def leave_extend(user: dict, leave_id: str, body: dict | None = None) -> dict:
+    """本人对已通过/逾期请假发起续假（须晚于原结束时间；辅导员审批）。"""
+    body = body or {}
+    from app.services import affairs_leave_service as leave_svc
+    new_end = body.get("newEndTime") or body.get("newEnd") or body.get("endTime") or ""
+    reason = str(body.get("reason") or "").strip()
+    return leave_svc.apply_extension(leave_id, user, new_end, reason=reason, self_only=True)
+
+
+def dorm(user: dict) -> dict:
+    """本人宿舍只读卡（床位/楼栋/房间；选床入口仍走小程序）。"""
+    return aff.dorm_my(user)
+
+
 def talk(user: dict) -> dict:
     """本人谈心谈话摘要。"""
     return aff.talk_my(user)

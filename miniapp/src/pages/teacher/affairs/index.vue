@@ -41,7 +41,9 @@ const ROUTES = {
   FUNDING_APPROVAL: '/pages/teacher/affairs-review/index?type=FUNDING_APPROVAL',
   DISCIPLINE_APPROVAL: '/pages/teacher/affairs-review/index?type=DISCIPLINE_APPROVAL',
   DISCIPLINE_REMOVE: '/pages/teacher/affairs-review/index?type=DISCIPLINE_REMOVE',
-  RISK_HANDLE: '/pages/teacher/affairs-review/index?type=RISK_HANDLE'
+  RISK_HANDLE: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
+  DORM_TRANSFER: '/pages/teacher/dorm-review/index?tab=transfer',
+  DORM_EXCEPTION: '/pages/teacher/dorm-review/index?tab=exception'
 }
 
 export default {

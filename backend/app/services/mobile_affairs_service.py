@@ -55,6 +55,7 @@ def leave_my(user) -> dict:
                 "returnReason": getattr(x, "return_reason", None) or "",
                 "canResubmit": (x.affairs_status or "") == "RETURNED",
                 "canCancel": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),
+                "canExtend": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),
             })
         return {"items": items}
 
@@ -337,6 +338,19 @@ def teacher_affairs(user) -> dict:
                  "LEAVE_OVERDUE": "逾期未销假", "LEAVE_EXTENSION": "续假待审",
                  "AID_APPROVAL": "困难认定待审", "AID_ADJUST": "困难等级调整待审",
                  "FUNDING_APPROVAL": "奖助待审", "DISCIPLINE_APPROVAL": "处分待审",
-                 "DISCIPLINE_REMOVE": "处分解除待审", "RISK_HANDLE": "风险待处置"}
+                 "DISCIPLINE_REMOVE": "处分解除待审", "RISK_HANDLE": "风险待处置",
+                 "DORM_TRANSFER": "调宿待审", "DORM_EXCEPTION": "宿舍异常待处置"}
         cards = [{"todoType": k, "label": label.get(k, k), "count": v} for k, v in sorted(by_type.items())]
-        return {"total": sum(by_type.values()), "cards": cards}
+        # 宿舍调宿/异常不走 UnifiedTodo，按业务表实时计数补卡
+        try:
+            from app.services import mobile_teacher_service as tea
+            dorm = tea.affairs_dorm_pending(user)
+            tr_n = len((dorm or {}).get("transfers") or [])
+            ex_n = len((dorm or {}).get("exceptions") or [])
+            if tr_n:
+                cards.append({"todoType": "DORM_TRANSFER", "label": label["DORM_TRANSFER"], "count": tr_n})
+            if ex_n:
+                cards.append({"todoType": "DORM_EXCEPTION", "label": label["DORM_EXCEPTION"], "count": ex_n})
+        except Exception:
+            pass
+        return {"total": sum(c["count"] for c in cards), "cards": cards}

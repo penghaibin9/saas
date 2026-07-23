@@ -190,9 +190,9 @@ export const NAV_PLAN = [
       I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
       I('谈话台账', '/admin/student-affairs/talk/ledger', 'studentAffairs.talk.view'),
       I('谈话统计', '/admin/student-affairs/talk/stats', 'studentAffairs.talk.view'),
-      I('家校联系', '/admin/student-affairs/family', 'studentAffairs.talk.view'),
+      I('家校联系', '/admin/student-affairs/family', 'studentAffairs.homeSchool.view'),
       I('重点学生跟进', '/admin/student-affairs/talk/key-follow', 'studentAffairs.talk.view'),
-      I('家校回执', '/admin/student-affairs/family/receipts', 'studentAffairs.talk.view')
+      I('家校回执', '/admin/student-affairs/family/receipts', 'studentAffairs.homeSchool.view')
     ]),
     // 施工图卡·心理关注
     mod('sa-mental', '心理关注', null, [
@@ -209,9 +209,9 @@ export const NAV_PLAN = [
       I('第二课堂积分', '/admin/student-affairs/activity/second-class', 'studentAffairs.activity.view'),
       I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals', 'studentAffairs.activity.view'),
       I('活动统计', '/admin/student-affairs/activity/stats', 'studentAffairs.activity.view'),
-      I('社团管理', '/admin/student-affairs/activity/clubs', 'studentAffairs.activity.view'),
-      I('学生干部与组织', '/admin/student-affairs/activity/organizations', 'studentAffairs.activity.view'),
-      I('党团建设', '/admin/student-affairs/activity/party-league', 'studentAffairs.activity.view')
+      I('社团管理', '/admin/student-affairs/activity/clubs', 'studentAffairs.club.view'),
+      I('学生干部与组织', '/admin/student-affairs/activity/organizations', 'studentAffairs.org.view'),
+      I('党团建设', '/admin/student-affairs/activity/party-league', 'studentAffairs.league.view')
     ]),
     // 施工图卡·统计与档案
     mod('sa-archive-stats', '统计与档案', null, [

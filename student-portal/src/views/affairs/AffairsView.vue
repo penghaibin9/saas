@@ -49,8 +49,23 @@
                   :disabled="busy"
                   @click="cancelLeave(lv)"
                 >申请销假</button>
+                <button
+                  v-if="lv.canExtend"
+                  class="sp-btn sp-btn--ghost"
+                  style="margin-top:8px;margin-left:8px"
+                  :disabled="busy"
+                  @click="openExtend(lv)"
+                >申请续假</button>
               </div>
               <StatusTag :text="lv.affairsStatusLabel || lv.statusLabel || lv.status || '—'" tone="default" />
+            </div>
+            <div v-if="extendId === (lv.leaveId || lv.id)" style="margin-top:10px;padding:12px;background:#F8FAFC;border-radius:8px">
+              <div class="sp-fieldlabel">新结束日期</div>
+              <input v-model="extendForm.newEndTime" type="date" class="sp-inp" style="margin-bottom:8px" />
+              <div class="sp-fieldlabel">续假事由（≥5字）</div>
+              <textarea v-model.trim="extendForm.reason" class="sp-inp" style="margin-bottom:8px" placeholder="说明续假原因" />
+              <button class="sp-btn" :disabled="busy || !extendForm.newEndTime || !(extendForm.reason || '').trim()" @click="submitExtend(lv)">提交续假</button>
+              <button class="sp-btn sp-btn--ghost" style="margin-left:8px" :disabled="busy" @click="extendId = ''">取消</button>
             </div>
           </div>
         </section>
@@ -136,6 +151,21 @@
             </div>
           </section>
         </div>
+      </section>
+
+      <!-- 宿舍只读 -->
+      <section v-else-if="tab === 'dorm'" class="sp-card" style="max-width:640px">
+        <div class="sp-panel__head">我的宿舍</div>
+        <StateBlock v-if="!dorm.hasBed" type="empty" :text="dorm.studentNotice || '暂无入住床位信息，如需自选床位请使用学生小程序。'" />
+        <template v-else>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><div class="sp-muted">楼栋</div><div style="font-weight:600;margin-top:4px">{{ dorm.myBed?.building || '—' }}</div></div>
+            <div><div class="sp-muted">房间</div><div style="font-weight:600;margin-top:4px">{{ dorm.myBed?.room || '—' }}</div></div>
+            <div><div class="sp-muted">床位</div><div style="font-weight:600;margin-top:4px">{{ dorm.myBed?.bedNo || '—' }}</div></div>
+            <div><div class="sp-muted">入住时间</div><div style="font-weight:600;margin-top:4px">{{ (dorm.myBed?.occupiedAt || '').slice(0, 10) || '—' }}</div></div>
+          </div>
+          <p class="sp-muted" style="margin-top:14px">调宿、退宿、自选床位请按学院通知办理；自选床位入口在学生小程序。</p>
+        </template>
       </section>
 
       <!-- 违纪申诉 -->
@@ -235,6 +265,7 @@ import { useUiStore } from '../../stores/ui'
 const ui = useUiStore()
 const tabs = [
   { key: 'leave', label: '请假申请' }, { key: 'aid', label: '困难认定' }, { key: 'funding', label: '奖助勤贷补' },
+  { key: 'dorm', label: '我的宿舍' },
   { key: 'discipline', label: '违纪申诉' }, { key: 'psy', label: '心理自评' }, { key: 'activity', label: '活动二课' }, { key: 'talk', label: '谈心谈话' }
 ]
 const tab = ref('leave')
@@ -245,6 +276,7 @@ const error = ref('')
 const leave = ref({})
 const aid = ref({})
 const funding = ref({})
+const dorm = ref({})
 const aidBatches = ref([])
 const fundBatches = ref([])
 const discipline = ref({})
@@ -253,6 +285,8 @@ const psyHistory = ref({})
 const activities = ref({})
 const talk = ref({})
 const aidObjectForms = reactive({})
+const extendId = ref('')
+const extendForm = reactive({ newEndTime: '', reason: '' })
 
 const leaveTypes = [{ k: 'PERSONAL', t: '事假' }, { k: 'SICK', t: '病假' }, { k: 'OTHER', t: '其他' }]
 const fundTypes = [
@@ -281,18 +315,19 @@ watch(aidBatches, (list) => { if (!list.some((b) => b.batchId === aidForm.batchI
 async function reload() {
   loading.value = true; error.value = ''
   try {
-    const [lv, ad, fd, dc, pq, ph, ac, ab, fb, tk] = await Promise.allSettled([
+    const [lv, ad, fd, dc, pq, ph, ac, ab, fb, tk, dm] = await Promise.allSettled([
       portalApi.affairsLeave(), portalApi.affairsAid(), portalApi.affairsFunding(), portalApi.affairsDiscipline(),
       portalApi.affairsPsyQuestions(), portalApi.affairsPsyHistory(), portalApi.affairsActivitiesMy(),
-      portalApi.affairsAidBatches(), portalApi.affairsFundingBatches(), portalApi.affairsTalk()
+      portalApi.affairsAidBatches(), portalApi.affairsFundingBatches(), portalApi.affairsTalk(),
+      portalApi.affairsDorm()
     ])
-    const failed = [lv, ad, fd, dc, pq, ph, ac, ab, fb, tk].filter((r) => r.status === 'rejected')
+    const failed = [lv, ad, fd, dc, pq, ph, ac, ab, fb, tk, dm].filter((r) => r.status === 'rejected')
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     leave.value = val(lv, {}); aid.value = val(ad, {}); funding.value = val(fd, {}); discipline.value = val(dc, {})
     psy.value = val(pq, {}); psyHistory.value = val(ph, {}); activities.value = val(ac, {})
     aidBatches.value = val(ab, {}).items || []; fundBatches.value = val(fb, {}).items || []
-    talk.value = val(tk, {})
-    if (failed.length === 10) {
+    talk.value = val(tk, {}); dorm.value = val(dm, {})
+    if (failed.length === 11) {
       error.value = failed[0].reason?.message || '学工数据加载失败'
     } else if (failed.length) {
       ui.notify(`${failed.length} 个学工接口加载失败，已显示其余可用数据`)
@@ -328,6 +363,28 @@ async function cancelLeave(lv) {
     ui.notify('销假已提交，等待辅导员确认')
     reload()
   } catch (e) { ui.notify(e?.message || '销假提交失败') } finally { busy.value = false }
+}
+function openExtend(lv) {
+  extendId.value = lv.leaveId || lv.id || ''
+  extendForm.newEndTime = (lv.endTime || '').slice(0, 10)
+  extendForm.reason = ''
+}
+async function submitExtend(lv) {
+  const leaveId = lv.leaveId || lv.id
+  if (!leaveId) return
+  if ((extendForm.reason || '').trim().length < 5) {
+    ui.notify('续假事由至少5字'); return
+  }
+  busy.value = true
+  try {
+    await portalApi.affairsLeaveExtend(leaveId, {
+      newEndTime: extendForm.newEndTime,
+      reason: extendForm.reason.trim()
+    })
+    ui.notify('续假已提交，等待辅导员审批')
+    extendId.value = ''
+    reload()
+  } catch (e) { ui.notify(e?.message || '续假提交失败') } finally { busy.value = false }
 }
 async function submitAidObjection(applyId) {
   busy.value = true

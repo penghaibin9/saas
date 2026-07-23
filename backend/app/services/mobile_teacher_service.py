@@ -878,6 +878,116 @@ def affairs_risk_close(user: dict, risk_id: str, conclusion: str) -> dict:
     return result
 
 
+def _dorm_filter_by_class(user: dict, items: list, student_id_key: str = "studentId") -> list:
+    """辅导员按班级范围收敛宿舍待办；宿管/全域由 dorm list_* 自身楼栋范围已处理。"""
+    if not db_enabled():
+        return items
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.db_service import _tid, session as _session
+    with _session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        if allowed is None:
+            return items
+        if not allowed:
+            return []
+        out = []
+        for x in items:
+            sid = x.get(student_id_key)
+            if not sid:
+                continue
+            try:
+                sid_i = int(sid)
+            except (TypeError, ValueError):
+                continue
+            s = db.get(StudentProfile, sid_i)
+            if s and not s.is_deleted and s.tenant_id == _tid() and s.class_id in allowed:
+                out.append(x)
+        return out
+
+
+def affairs_dorm_pending(user: dict) -> dict:
+    """调宿待审 + 宿舍异常待处置（辅导员看本班 COUNSELOR_REVIEW；宿管看楼栋内全部节点/异常）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"transfers": [], "exceptions": [], "total": 0}
+    from app.core.affairs_security import build_affairs_context
+    from app.services import affairs_dorm_service as dorm
+    from app.services.db_service import session as _session
+    role = str((u or {}).get("currentRoleCode") or "").upper()
+    with _session() as db:
+        ctx = build_affairs_context(u, db)
+    transfers = []
+    if role == "DORM_MANAGER" or ctx.scope_type == "TENANT_ALL":
+        for st in ("COUNSELOR_REVIEW", "DORM_MANAGER_REVIEW"):
+            rows, _ = dorm.list_transfers(u, status=st, page=1, page_size=100)
+            transfers.extend(rows)
+    else:
+        rows, _ = dorm.list_transfers(u, status="COUNSELOR_REVIEW", page=1, page_size=100)
+        transfers = _dorm_filter_by_class(u, rows, "studentId")
+    exceptions, _ = dorm.list_exceptions(u, status="PENDING_HANDLE", page=1, page_size=100)
+    # 异常列表无 studentId 时用空；有 realName 的尽量按 cs 解析后的范围已在 list_exceptions 楼栋收敛
+    if role != "DORM_MANAGER" and ctx.scope_type not in ("TENANT_ALL",):
+        # 仅保留能解析到本班学生的异常（csStudentId 可能为 CsServiceStudent.id）
+        from app.models import CsServiceStudent, StudentProfile
+        from app.services.affairs_dashboard_service import _allowed_class_ids
+        from app.services.db_service import _tid, session as _session
+        with _session() as db:
+            allowed, _ = _allowed_class_ids(db, u)
+            if allowed is None:
+                pass
+            elif not allowed:
+                exceptions = []
+            else:
+                kept = []
+                for x in exceptions:
+                    csid = x.get("csStudentId")
+                    if not csid or str(csid) in ("", "0"):
+                        continue
+                    try:
+                        csid_i = int(csid)
+                    except (TypeError, ValueError):
+                        continue
+                    class_id = None
+                    cs = db.get(CsServiceStudent, csid_i)
+                    if cs and not cs.is_deleted and cs.student_id:
+                        s = db.get(StudentProfile, int(cs.student_id))
+                        class_id = s.class_id if s else None
+                    if class_id is None:
+                        s2 = db.get(StudentProfile, csid_i)
+                        class_id = s2.class_id if s2 and not s2.is_deleted else None
+                    if class_id in allowed:
+                        kept.append(x)
+                exceptions = kept
+    return {
+        "transfers": transfers,
+        "exceptions": exceptions,
+        "total": len(transfers) + len(exceptions),
+    }
+
+
+def affairs_dorm_transfer_review(user: dict, transfer_id: str, action: str, reason: str = "") -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_dorm_service as dorm
+    result = dorm.review_transfer(transfer_id, u, action, reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_DORM_TRANSFER_REVIEW", f"transfer:{transfer_id}",
+                 {"action": action, "operator": u.get("realName")})
+    return result
+
+
+def affairs_dorm_exception_handle(user: dict, exception_id: str, note: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_dorm_service as dorm
+    result = dorm.handle_exception(exception_id, u, note=note or "")
+    _audit_write("MOBILE_AFFAIRS_DORM_EXCEPTION_HANDLE", f"exception:{exception_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 # ══════════ 班干部任命/免去（移动端包装：复用 affairs_dashboard_service 全套，owner+范围校验
 # 在服务层 _class_in_scope_or_403 完成。学生选择器刻意"先选班级再查该班学生"而不是借用
 # /teacher/my-students —— 后者走 resolve_teacher_scope+counselor_id 数字外键，与本模块

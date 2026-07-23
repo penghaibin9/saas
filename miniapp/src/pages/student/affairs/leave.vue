@@ -23,6 +23,11 @@
               class="btn btn-ghost lv__resubmit"
               @click="cancelLeave(x)"
             >申请销假</button>
+            <button
+              v-if="x.canExtend"
+              class="btn btn-ghost lv__resubmit"
+              @click="openExtend(x)"
+            >申请续假</button>
           </view>
         </view>
       </view>
@@ -63,6 +68,27 @@
         </view>
       </view>
     </view>
+
+    <view v-if="extendVisible" class="lv__mask" @click.self="extendVisible = false">
+      <view class="lv__sheet card">
+        <text class="card-title">续假申请</text>
+        <text class="lv__time">原结束：{{ (extendTarget.endTime || '').slice(0, 10) || '—' }}</text>
+        <view class="lv__field">
+          <text class="lv__label">新结束日期 <text class="lv__req">*</text></text>
+          <picker mode="date" :value="extendForm.newEndTime" @change="onExtendEnd">
+            <view class="lv__picker">{{ extendForm.newEndTime || '请选择' }}</view>
+          </picker>
+        </view>
+        <view class="lv__field">
+          <text class="lv__label">续假事由 <text class="lv__req">*</text></text>
+          <textarea v-model="extendForm.reason" class="lv__textarea" maxlength="300" placeholder="说明续假原因（不少于5字）" />
+        </view>
+        <view class="lv__actions">
+          <button class="btn btn-ghost flex-1" :disabled="submitting" @click="extendVisible = false">取消</button>
+          <button class="btn btn-primary flex-1" :disabled="submitting" @click="submitExtend">{{ submitting ? '提交中…' : '提交续假' }}</button>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -85,6 +111,9 @@ export default {
       items: null,
       state: 'loading',
       formVisible: false,
+      extendVisible: false,
+      extendTarget: {},
+      extendForm: { newEndTime: '', reason: '' },
       submitting: false,
       typeIndex: 0,
       typeOptions: [
@@ -112,9 +141,16 @@ export default {
       this.form = { startTime: today, endTime: today, reason: '' }
       this.formVisible = true
     },
+    openExtend(item) {
+      const end = (item.endTime || '').slice(0, 10)
+      this.extendTarget = item
+      this.extendForm = { newEndTime: end, reason: '' }
+      this.extendVisible = true
+    },
     onType(e) { this.typeIndex = Number(e.detail.value) },
     onStart(e) { this.form.startTime = e.detail.value },
     onEnd(e) { this.form.endTime = e.detail.value },
+    onExtendEnd(e) { this.extendForm.newEndTime = e.detail.value },
     submit() {
       if (this.submitting || !submitLock.acquire()) return
       if (!this.form.startTime || !this.form.endTime || this.form.reason.trim().length < 5) {
@@ -135,6 +171,28 @@ export default {
       }).catch((e) => {
         const n = normalizeError(e)
         toast(n.text || (e && e.message) || '提交失败')
+      }).finally(() => {
+        this.submitting = false
+        submitLock.release()
+      })
+    },
+    submitExtend() {
+      if (this.submitting || !submitLock.acquire()) return
+      if (!this.extendForm.newEndTime || this.extendForm.reason.trim().length < 5) {
+        submitLock.release()
+        return toast('请填写新结束日期与续假事由（不少于5字）')
+      }
+      this.submitting = true
+      studentApi.extendLeave(this.extendTarget.leaveId, {
+        newEndTime: this.extendForm.newEndTime,
+        reason: this.extendForm.reason.trim()
+      }).then(() => {
+        toast('续假已提交，等待辅导员审批')
+        this.extendVisible = false
+        this.load()
+      }).catch((e) => {
+        const n = normalizeError(e)
+        toast(n.text || (e && e.message) || '续假失败')
       }).finally(() => {
         this.submitting = false
         submitLock.release()

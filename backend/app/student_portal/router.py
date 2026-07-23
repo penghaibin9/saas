@@ -292,6 +292,16 @@ def affairs_leave_cancel(leave_id: str, body: dict = Body(default={}), user=Depe
     return success(affairs.leave_cancel(user, leave_id, body or {}), message="销假已提交，等待辅导员确认")
 
 
+
+@router.post("/affairs/leave/{leave_id}/extension", summary="本人发起续假")
+def affairs_leave_extension(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.leave_extend(user, leave_id, body or {}), message="续假已提交，等待辅导员审批")
+
+
+@router.get("/affairs/dorm", summary="我的宿舍（本人只读）")
+def affairs_dorm(user=Depends(get_current_user)):
+    return success(affairs.dorm(user))
+
 @router.get("/affairs/talk", summary="我的谈心谈话（本人摘要）")
 def affairs_talk(user=Depends(get_current_user)):
     return success(affairs.talk(user))

@@ -299,6 +299,12 @@ export const teacherAffairsRiskClose = (riskId, conclusion) =>
 
 /** 班干部任命/免去：我的班级 / 班级学生名单 / 班干部名单 / 任命 / 免去
  * （owner+范围校验，真实接口，无 mock 兜底） */
+export const teacherAffairsDormPending = () => realRequest('/mobile/teacher/affairs/dorm/pending')
+export const teacherAffairsDormTransferReview = (transferId, body) =>
+  realRequest(`/mobile/teacher/affairs/dorm/transfers/${transferId}/review`, { method: 'POST', data: body || {} })
+export const teacherAffairsDormExceptionHandle = (exceptionId, note) =>
+  realRequest(`/mobile/teacher/affairs/dorm/exceptions/${exceptionId}/handle`, { method: 'POST', data: { note } })
+
 export const teacherAffairsMyClasses = () => realRequest('/mobile/teacher/affairs/classes')
 export const teacherAffairsClassStudents = (classId) => realRequest(`/mobile/teacher/affairs/classes/${classId}/students`)
 export const teacherAffairsCadreList = (classId) => realRequest(`/mobile/teacher/affairs/classes/${classId}/cadres`)
@@ -963,11 +969,22 @@ export const affairsLeaveResubmit = (leaveId, body) =>
   realRequest(`/mobile/affairs/leave/${leaveId}/resubmit`, { method: 'POST', data: body || {} })
 export const affairsLeaveCancel = (leaveId, body) =>
   realRequest(`/mobile/affairs/leave/${leaveId}/cancel`, { method: 'POST', data: body || {} })
+export const affairsLeaveExtend = (leaveId, body) =>
+  realRequest(`/mobile/affairs/leave/${leaveId}/extension`, { method: 'POST', data: body || {} })
+
 export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
+export const affairsAidBatches = () => realRequest('/mobile/affairs/aid/batches')
+export const affairsAidApply = (body) =>
+  realRequest('/mobile/affairs/aid/apply', { method: 'POST', data: body || {} })
+
 export const affairsAidObjection = (body) =>
   realRequest('/mobile/affairs/aid/objection', { method: 'POST', data: body || {} })
 export const affairsTalkMy = () => realRequest('/mobile/affairs/talk/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
+export const affairsFundingBatches = () => realRequest('/mobile/affairs/funding/batches')
+export const affairsFundingApply = (body) =>
+  realRequest('/mobile/affairs/funding/apply', { method: 'POST', data: body || {} })
+
 export const affairsFundingAppeal = (body) =>
   realRequest('/mobile/affairs/funding/appeal', { method: 'POST', data: body || {} })
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')

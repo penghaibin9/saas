@@ -94,6 +94,9 @@ export const portalApi = {
     request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/resubmit`, { method: 'POST', body }),
   affairsLeaveCancel: (leaveId, body = {}) =>
     request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/cancel`, { method: 'POST', body }),
+  affairsLeaveExtend: (leaveId, body = {}) =>
+    request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/extension`, { method: 'POST', body }),
+  affairsDorm: () => request('/portal/affairs/dorm'),
   affairsTalk: () => request('/portal/affairs/talk'),
   affairsFunding: () => request('/portal/affairs/funding'),
   affairsAid: () => request('/portal/affairs/aid'),

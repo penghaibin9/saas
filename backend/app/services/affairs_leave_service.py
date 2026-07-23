@@ -590,16 +590,24 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
 
 # ═══════════ 续假 ═══════════
 
-def apply_extension(leave_id, user, new_end, reason="") -> dict:
+def apply_extension(leave_id, user, new_end, reason="", *, self_only: bool = False) -> dict:
     with session() as db:
         from app.models import AffairsLeaveExtension
         x, s = _load(db, leave_id)
-        _scope_or_403(db, x, user)
+        if self_only:
+            from app.services.mobile_student_service import resolve_student
+            stu = resolve_student(db, user)
+            if not stu or int(x.student_id or 0) != int(stu.id):
+                raise AppException("NO_PERMISSION", "只能为自己的请假申请续假")
+        else:
+            _scope_or_403(db, x, user)
         if x.affairs_status not in ("APPROVED", "OVERDUE"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过的请假可续假")
         ne = _parse_dt(new_end)
         if not ne or (x.end_time and ne <= x.end_time):
             raise AppException("VALIDATION_ERROR", "续假结束时间必须晚于原结束时间")
+        if not reason or len(str(reason).strip()) < 5:
+            raise AppException("VALIDATION_ERROR", "续假事由必填且不少于 5 字")
         ext_days = _days(x.end_time, ne)
         db.add(AffairsLeaveExtension(tenant_id=_tid(), leave_id=x.id, student_id=x.student_id,
                                      old_end_time=x.end_time, new_end_time=ne, extend_days=ext_days,

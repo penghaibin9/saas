@@ -1426,6 +1426,12 @@ def affairs_leave_cancel(leave_id: str, body: dict = Body(default={}), user=Depe
     return success(portal_aff.leave_cancel(user, leave_id, body or {}), message="销假已提交")
 
 
+
+@router.post("/affairs/leave/{leave_id}/extension", summary="学工·本人发起续假")
+def affairs_leave_extension(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.leave_extend(user, leave_id, body or {}), message="续假已提交")
+
 @router.get("/affairs/talk/my", summary="学工·我的谈心谈话摘要")
 def affairs_talk_my(user=Depends(get_current_user)):
     return success(aff.talk_my(user))
@@ -1434,6 +1440,18 @@ def affairs_talk_my(user=Depends(get_current_user)):
 @router.get("/affairs/aid/my", summary="学工·我的困难认定")
 def affairs_aid_my(user=Depends(get_current_user)):
     return success(aff.aid_my(user))
+
+
+@router.get("/affairs/aid/batches", summary="学工·当前开放困难认定批次")
+def affairs_aid_batches(user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.aid_batches_open(user))
+
+
+@router.post("/affairs/aid/apply", summary="学工·困难认定申请（本人·承诺书）")
+def affairs_aid_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.aid_apply(user, body or {}), message="认定申请已提交")
 
 
 @router.post("/affairs/aid/objection", summary="学工·公示期本人对困难认定提异议")
@@ -1445,6 +1463,21 @@ def affairs_aid_objection(user=Depends(get_current_user), body: dict = Body(...)
 @router.get("/affairs/funding/my", summary="学工·我的奖助")
 def affairs_funding_my(user=Depends(get_current_user)):
     return success(aff.funding_my(user))
+
+
+@router.get("/affairs/funding/batches", summary="学工·当前开放奖助批次（奖学金/助学金）")
+def affairs_funding_batches(user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    data = portal_aff.funding_batches_open(user)
+    items = [x for x in (data.get("items") or [])
+             if (x.get("projectType") or "") in ("SCHOLARSHIP", "GRANT")]
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/affairs/funding/apply", summary="学工·奖学金/助学金申请（本人·承诺书）")
+def affairs_funding_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.funding_apply(user, body or {}), message="奖助申请已提交")
 
 
 @router.post("/affairs/funding/appeal", summary="学工·公示期本人对资助结果申诉")
@@ -1506,6 +1539,27 @@ def affairs_activity_checkin(activity_id: int, body: dict = Body(default={}), us
 
 
 # ── 教师端·学工待办卡（P7）──
+@router.get("/teacher/affairs/dorm/pending", summary="辅导员/宿管·调宿与宿舍异常待办")
+def teacher_affairs_dorm_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_dorm_pending(user))
+
+
+@router.post("/teacher/affairs/dorm/transfers/{transfer_id}/review",
+             summary="辅导员/宿管·调宿审批")
+def teacher_affairs_dorm_transfer_review(transfer_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.affairs_dorm_transfer_review(
+        user, transfer_id, str(body.get("action") or "").upper(), body.get("reason") or ""),
+        message="已处理")
+
+
+@router.post("/teacher/affairs/dorm/exceptions/{exception_id}/handle",
+             summary="辅导员/宿管·宿舍异常处置")
+def teacher_affairs_dorm_exception_handle(exception_id: str, body: dict = Body(...),
+                                          user=Depends(get_current_user)):
+    return success(tea.affairs_dorm_exception_handle(
+        user, exception_id, body.get("note") or ""), message="已处置")
+
 @router.get("/teacher/affairs", summary="教师·学工待办卡（本校按类型聚合）")
 def teacher_affairs(user=Depends(get_current_user)):
     return success(aff.teacher_affairs(user))
