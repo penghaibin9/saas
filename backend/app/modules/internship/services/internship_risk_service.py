@@ -161,6 +161,49 @@ def close(user, risk_id, result="RESOLVED", comment="") -> dict:
         return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status]}
 
 
+def student_help_report(user, body=None) -> dict:
+    """学生轻量求助/风险上报：写入实习风险单（INT-R-HELP），由指导教师受理。
+
+    不替代企业投诉台（complaint）；就业/监管政策不在此伪造闭环。
+    """
+    from app.modules.internship.services.internship_leave_service import _student_record
+
+    b = body or {}
+    title = (b.get("title") or b.get("riskTitle") or "").strip() or "学生实习求助"
+    content = (b.get("content") or b.get("note") or b.get("reason") or "").strip()
+    level = (b.get("riskLevel") or "MEDIUM").upper()
+    if len(content) < 5:
+        raise AppException("VALIDATION_ERROR", "求助说明不少于 5 字")
+    if level not in ("LOW", "MEDIUM", "HIGH"):
+        raise AppException("VALIDATION_ERROR", "riskLevel 须为 LOW/MEDIUM/HIGH")
+    with session() as db:
+        rec, stu = _student_record(db, user)
+        if not rec:
+            raise AppException("DATA_NOT_FOUND", "你当前没有实习记录，无法上报")
+        open_help = db.scalars(select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == rec.id,
+            RiskRecord.risk_code == "INT-R-HELP",
+            RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
+            RiskRecord.is_deleted.is_(False))).first()
+        if open_help:
+            raise AppException("DATA_CONFLICT", "你已有未办结的求助单，请等待指导教师处理后再提交")
+        r = RiskRecord(
+            tenant_id=_tid(), internship_id=rec.id, risk_code="INT-R-HELP",
+            risk_title=title[:200], risk_level=level, source_module="student_help",
+            status="PENDING_HANDLE", last_follow_note=content[:500],
+            owner_name=rec.advisor_name or None)
+        db.add(r)
+        db.flush()
+        _trail(db, r.id, "STUDENT_HELP", {"title": title, "content": content[:200]},
+               operator=(stu.real_name if stu else "学生"))
+        if (rec.risk_level or "NONE") in ("NONE", "", "LOW") and level in ("MEDIUM", "HIGH"):
+            rec.risk_level = level
+        db.commit()
+        return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status],
+                "riskTitle": r.risk_title, "riskLevel": r.risk_level,
+                "message": "求助已提交，指导教师将跟进"}
+
+
 def list_risks(page, page_size, level=None, status=None, keyword=None, user=None):
     scope, in_scope = _scope_ctx(user)
     with session() as db:

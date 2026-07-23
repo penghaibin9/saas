@@ -571,6 +571,11 @@ def internship_plan_ack(user=Depends(get_current_user)):
 def internship_enterprises(city: str = "", user=Depends(get_current_user)):
     return success(internship.enterprises(user, city or ""))
 
+@router.post("/internship/help", summary="实习求助/风险上报（本人，轻量）")
+def internship_help(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.help_report(user, body or {}), message="求助已提交")
+
+
 
 @router.post("/internship/weekly/submit", summary="提交实习周报（本人）")
 def internship_weekly_submit(user=Depends(get_current_user), body: dict = Body(...)):

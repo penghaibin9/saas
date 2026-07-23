@@ -7,7 +7,7 @@
           <view class="ci__map-bg">
             <view class="ci__map-pin" />
           </view>
-          <text class="ci__map-loc">{{ i.checkin.place || '公司位置未设置' }} · {{ i.checkin.range }}</text>
+          <text class="ci__map-loc">{{ i.checkin.place || '公司位置未设置' }} · {{ i.checkin.range || '围栏以岗位配置为准' }}</text>
         </view>
 
         <view class="ci__circle" :class="i.checkin.done ? 'is-done' : 'is-todo'" @click="checkin">
@@ -15,7 +15,7 @@
           <text v-else class="ci__circle-num">{{ checkingIn ? '…' : '打卡' }}</text>
           <text class="ci__circle-lb">{{ i.checkin.done ? '今日已打卡' : (checkingIn ? '定位中' : '点击打卡') }}</text>
         </view>
-        <text class="ci__note t-xs t-tertiary">{{ i.checkin.note }}</text>
+        <text class="ci__note t-xs t-tertiary">{{ lastResultNote || i.checkin.note || '仅采集一次定位留痕；超范围记异常待核验，不自动认定作弊。生产包禁用演示数据。' }}</text>
 
         <view class="section-head"><text class="section-head__title">本周打卡记录</text></view>
         <view class="card stack-sm" v-if="days.length">
@@ -41,7 +41,7 @@ const STATUS_TYPE = { NORMAL: 'success', RECORDED: 'success', OUT_OF_RANGE: 'war
   PENDING: 'default', ABSENT: 'danger' }
 
 export default {
-  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '', days: [] } },
+  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '', days: [], lastResultNote: '' } },
   onLoad() { this.load() },
   methods: {
     dayLabel(dateStr) {
@@ -72,6 +72,9 @@ export default {
             studentApi.submitCheckin({ ...(loc || {}), idempotencyKey: this.checkinKey,
               deviceRiskFlag: 'normal' }).then((res) => {
               this.checkinKey = ''
+              const dist = res && res.distanceM != null ? `（距围栏中心约 ${Math.round(res.distanceM)} 米）` : ''
+              const fence = res && res.geofenceConfigured ? '已启用围栏核验' : '岗位未配置围栏，仅留痕'
+              this.lastResultNote = `${res.message || '打卡已提交'}${dist} · ${fence}`
               toast(res.message || '打卡成功')
               this.load()
             }).catch((e) => {

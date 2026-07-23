@@ -17,7 +17,8 @@ from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, Internsh
 from app.services.db_service import _as_id, _iso, _tid, session
 
 REVIEW_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "RETURNED": "已退回"}
-SOURCE_LABEL = {"ENTERPRISE": "企业导师提交", "SCHOOL_RECORDED": "学校录入企业评价"}
+# 四端统一口径：「学校录入」= 教师代录企业纸质评价，不得展示为「企业已评」
+SOURCE_LABEL = {"ENTERPRISE": "企业导师提交", "SCHOOL_RECORDED": "学校录入"}
 SCORE_FIELDS = [("attendanceScore", "attendance_score", "出勤"), ("skillScore", "skill_score", "技能"),
                 ("attitudeScore", "attitude_score", "态度"), ("collaborationScore", "collaboration_score", "协作"),
                 ("safetyScore", "safety_score", "安全纪律")]

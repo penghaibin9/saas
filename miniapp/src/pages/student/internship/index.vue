@@ -90,6 +90,7 @@ export default {
       { label: '月报', path: '/pages/student/internship/process-report/index?type=monthly', icon: '📑' },
       { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒' },
       { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄' },
+      { label: '实习求助', path: '/pages/student/internship/help/index', icon: '🆘' },
       { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐' }
     ] } },
   onLoad() { this.load() },

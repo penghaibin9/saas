@@ -77,6 +77,7 @@ export const studentApi = {
   applyInternshipLeave: (body) => real.applyInternshipLeave(body),
   withdrawInternshipLeave: (id) => real.withdrawInternshipLeave(id),
   returnInternshipLeave: (id, body) => real.returnInternshipLeave(id, body),
+  reportInternshipHelp: (body) => real.internshipHelpReport(body),
   getInternshipMakeups: () => real.internshipMakeups(),
   applyInternshipMakeup: (body) => real.applyInternshipMakeup(body),
   withdrawInternshipMakeup: (id) => real.withdrawInternshipMakeup(id),

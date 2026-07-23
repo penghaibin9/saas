@@ -168,6 +168,11 @@ def internship_leave_return(leave_id: str, body: dict = Body(...), user=Depends(
     return success(lv.return_my(user, leave_id, body or {}), message="销假已登记")
 
 
+@router.post("/internship/help", summary="本人实习求助/风险上报（轻量，进指导教师风险台）")
+def internship_help_report(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.internship_help_report(user, body or {}), message="求助已提交")
+
+
 @router.get("/internship/agreements", summary="本人三方协议列表")
 def internship_my_agreements(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
@@ -1043,6 +1048,43 @@ def teacher_leave_review(leave_id: str, body: dict = Body(...),
                          user=Depends(get_current_user)):
     return success(tea.leave_review(user, leave_id, str(body.get("action") or "").upper(),
                                     body.get("comment") or ""), message="处理完成")
+
+
+@router.get("/teacher/internship/leaves/overdue", summary="教师·超期未销假/已销假待办结队列")
+def teacher_leave_overdue(user=Depends(get_current_user)):
+    return success(tea.leave_overdue(user))
+
+
+@router.post("/teacher/internship/leaves/{leave_id}/ack-return",
+             summary="教师·确认销假办结（关闭 INT-R06 超期风险）")
+def teacher_leave_ack_return(leave_id: str, body: dict = Body(default={}),
+                             user=Depends(get_current_user)):
+    return success(tea.leave_ack_overdue_return(user, leave_id, (body or {}).get("note") or ""),
+                   message="已办结")
+
+
+@router.get("/teacher/internship/risks", summary="教师·实习风险待办（含学生求助，范围校验）")
+def teacher_internship_risks(user=Depends(get_current_user)):
+    return success(tea.internship_risks_pending(user))
+
+
+@router.post("/teacher/internship/risks/{risk_id}/handle", summary="教师·受理实习风险")
+def teacher_internship_risk_handle(risk_id: str, body: dict = Body(...),
+                                   user=Depends(get_current_user)):
+    return success(tea.internship_risk_handle(user, risk_id, body or {}), message="已受理")
+
+
+@router.post("/teacher/internship/risks/{risk_id}/follow", summary="教师·跟进实习风险")
+def teacher_internship_risk_follow(risk_id: str, body: dict = Body(...),
+                                   user=Depends(get_current_user)):
+    return success(tea.internship_risk_follow(user, risk_id, (body or {}).get("note") or ""),
+                   message="已跟进")
+
+
+@router.post("/teacher/internship/risks/{risk_id}/close", summary="教师·关闭实习风险")
+def teacher_internship_risk_close(risk_id: str, body: dict = Body(...),
+                                  user=Depends(get_current_user)):
+    return success(tea.internship_risk_close(user, risk_id, body or {}), message="已关闭")
 
 
 @router.get("/teacher/internship/my-students", summary="指导教师·本人指导实习学生名单（范围校验，供选择记指导记录）")

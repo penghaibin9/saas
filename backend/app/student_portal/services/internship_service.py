@@ -192,3 +192,8 @@ def plan_ack(user: dict) -> dict:
 
 def enterprises(user: dict, city: str = "") -> dict:
     return stu.internship_enterprises(user, city or "")
+
+
+def help_report(user: dict, body: dict) -> dict:
+    """学生轻量求助（进实习风险台，非就业/监管报送）。"""
+    return stu.internship_help_report(user, body or {})

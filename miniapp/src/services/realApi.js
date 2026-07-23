@@ -166,6 +166,16 @@ export const teacherLeavePending = () => realRequest('/mobile/teacher/internship
 export const teacherLeaveReview = (leaveId, action, comment) =>
   realRequest(`/mobile/teacher/internship/leaves/${leaveId}/review`,
     { method: 'POST', data: { action, comment: comment || '' } })
+export const teacherLeaveOverdue = () => realRequest('/mobile/teacher/internship/leaves/overdue')
+export const teacherLeaveAckReturn = (leaveId, note) =>
+  realRequest(`/mobile/teacher/internship/leaves/${leaveId}/ack-return`,
+    { method: 'POST', data: { note: note || '' } })
+export const teacherInternshipRisks = () => realRequest('/mobile/teacher/internship/risks')
+export const teacherInternshipRiskHandle = (riskId, body) =>
+  realRequest(`/mobile/teacher/internship/risks/${riskId}/handle`, { method: 'POST', data: body || {} })
+export const teacherInternshipRiskFollow = (riskId, note) =>
+  realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: { note } })
+export const teacherInternshipRiskClose = (riskId, body) =>
 
 /** 指导教师·本人指导实习学生名单（供新增指导记录选学生用） / 新增指导记录（owner 校验，真实接口，无 mock 兜底） */
 export const teacherInternshipMyStudents = () => realRequest('/mobile/teacher/internship/my-students')
@@ -666,6 +676,8 @@ export const withdrawInternshipLeave = (id) =>
   realRequest(`/mobile/internship/leave/${id}/withdraw`, { method: 'POST' })
 export const returnInternshipLeave = (id, body) =>
   realRequest(`/mobile/internship/leave/${id}/return`, { method: 'POST', data: body || {} })
+export const internshipHelpReport = (body) =>
+  realRequest('/mobile/internship/help', { method: 'POST', data: body || {} })
 
 export const internshipMakeups = () => realRequest('/mobile/internship/makeup')
 export const applyInternshipMakeup = (body) =>

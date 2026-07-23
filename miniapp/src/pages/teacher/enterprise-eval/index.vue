@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="企业评价" subtitle="录入企业纸质评价 · 审核" show-back />
+    <MobileNavBar variant="teacher" title="企业评价" subtitle="学校录入纸质评价 · 来源标记「学校录入」" show-back />
 
     <view class="ee__tabs">
       <view class="ee__tab" :class="{ 'is-on': tab === 'list' }" @click="tab = 'list'">
@@ -16,7 +16,7 @@
       <!-- 列表 -->
       <view class="page-pad" v-if="tab === 'list'">
         <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无企业评价"
-          description="录入或收到的企业评价会出现在这里。" />
+          description="学校录入的企业纸质评价会出现在这里（来源「学校录入」，非企业端登录提交）。" />
         <view class="stack" v-else>
           <view v-for="e in list" :key="e.id" class="card ee">
             <view class="row-between">
@@ -58,7 +58,7 @@
           </view>
           <view class="ee__row">
             <text class="ee__label">企业导师姓名</text>
-            <input class="ee__input" v-model="mentorName" placeholder="必填，评价来源可追溯" maxlength="20" />
+            <input class="ee__input" v-model="mentorName" placeholder="必填，学校录入须可追溯" maxlength="20" />
           </view>
           <view class="ee__row" v-for="f in SCORE_FIELDS" :key="f.key">
             <text class="ee__label">{{ f.label }}评分</text>

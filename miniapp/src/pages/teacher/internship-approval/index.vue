@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="实习审批" subtitle="本人指导学生的补卡与请假申请" show-back />
+    <MobileNavBar variant="teacher" title="实习审批" subtitle="补卡 · 请假 · 超期销假办结" show-back />
 
     <view class="ia__tabs">
       <view class="ia__tab" :class="{ 'is-on': tab === 'makeup' }" @click="switchTab('makeup')">
@@ -10,6 +10,10 @@
       <view class="ia__tab" :class="{ 'is-on': tab === 'leave' }" @click="switchTab('leave')">
         请假审批<text v-if="leaves && leaves.length" class="ia__tab-badge">{{ leaves.length }}</text>
         <text v-if="tab === 'leave'" class="ia__tab-u" />
+      </view>
+      <view class="ia__tab" :class="{ 'is-on': tab === 'overdue' }" @click="switchTab('overdue')">
+        销假办结<text v-if="overdues && overdues.length" class="ia__tab-badge">{{ overdues.length }}</text>
+        <text v-if="tab === 'overdue'" class="ia__tab-u" />
       </view>
     </view>
 
@@ -59,6 +63,28 @@
           </view>
         </view>
       </view>
+
+      <!-- 超期销假办结 -->
+      <view class="page-pad" v-if="tab === 'overdue'">
+        <MobileGlobalState v-if="!overdues || !overdues.length" state="empty" title="暂无待办结销假"
+          description="超期未销假或学生已销假的记录会出现在这里，确认后关闭 INT-R06 风险。" />
+        <view class="stack" v-else>
+          <view v-for="l in overdues" :key="l.id" class="card ia">
+            <view class="row-between">
+              <view class="flex-1">
+                <text class="t-md t-bold">{{ l.studentName || '—' }}</text>
+                <text class="ia__sub">{{ l.studentNo || '' }} · {{ l.leaveTypeLabel || l.leaveType }} · {{ l.statusLabel }}</text>
+              </view>
+              <MobileStatusTag :label="l.statusLabel || l.status" :type="l.status === 'OVERDUE' ? 'danger' : 'success'" />
+            </view>
+            <view class="ia__row"><text class="ia__row-k">起止</text><text class="flex-1 t-sm">{{ l.startDate || '—' }} ~ {{ l.endDate || '—' }}</text></view>
+            <view class="ia__row" v-if="l.returnNote"><text class="ia__row-k">销假说明</text><text class="flex-1 t-sm">{{ l.returnNote }}</text></view>
+            <view class="ia__actions">
+              <button class="ia__approve flex-1" @click="ackReturn(l)">确认办结</button>
+            </view>
+          </view>
+        </view>
+      </view>
     </MobileGlobalState>
   </view>
 </template>
@@ -68,9 +94,10 @@ import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 
 export default {
-  data() { return { tab: 'makeup', makeups: null, leaves: null, state: 'loading', acting: false } },
+  data() { return { tab: 'makeup', makeups: null, leaves: null, overdues: null, state: 'loading', acting: false } },
   onLoad(options) {
     if (options && options.tab === 'leave') this.tab = 'leave'
+    if (options && options.tab === 'overdue') this.tab = 'overdue'
     this.load()
   },
   onPullDownRefresh() {
@@ -78,17 +105,41 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
-    switchTab(t) { if (this.tab !== t) { this.tab = t; if ((t === 'makeup' && !this.makeups) || (t === 'leave' && !this.leaves)) this.load() } },
+    switchTab(t) {
+      if (this.tab === t) return
+      this.tab = t
+      if ((t === 'makeup' && !this.makeups) || (t === 'leave' && !this.leaves) || (t === 'overdue' && !this.overdues)) this.load()
+    },
     load(done) {
       this.state = 'loading'
       Promise.all([
         teacherApi.getMakeupPending().catch(() => ({ list: [] })),
-        teacherApi.getLeavePending().catch(() => ({ list: [] }))
-      ]).then(([mk, lv]) => {
+        teacherApi.getLeavePending().catch(() => ({ list: [] })),
+        teacherApi.getLeaveOverdue().catch(() => ({ list: [] }))
+      ]).then(([mk, lv, od]) => {
         this.makeups = (mk && mk.list) || []
         this.leaves = (lv && lv.list) || []
+        this.overdues = (od && od.list) || []
         this.state = 'ready'
       }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
+    },
+    ackReturn(item) {
+      if (this.acting) return
+      uni.showModal({
+        title: '确认销假办结',
+        editable: true,
+        placeholderText: '办结说明（不少于 2 字）',
+        success: (r) => {
+          if (!r.confirm) return
+          const note = String(r.content || '').trim()
+          if (note.length < 2) return toast('办结说明不少于 2 字')
+          this.acting = true
+          teacherApi.ackLeaveReturn(item.id, note).then(() => {
+            toast('已办结'); this.load()
+          }).catch((e) => toast((e && e.message) || '办结失败'))
+            .finally(() => { this.acting = false })
+        }
+      })
     },
     review(kind, item, action) {
       if (this.acting) return

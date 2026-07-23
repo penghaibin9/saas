@@ -628,10 +628,26 @@ def internship_my(user: dict) -> dict:
                                           "appealStatus": e.appeal_status,
                                           "appealNote": e.appeal_note or ""} for e in excs],
                 "score": ({"totalScore": score.total_score, "isPass": score.is_pass,
+                          "passLine": score.pass_line,
+                          "gradeLevel": (
+                              "不及格" if score.total_score is not None and float(score.total_score) < float(score.pass_line or 60)
+                              else "优秀" if score.total_score is not None and float(score.total_score) >= 90
+                              else "良好" if score.total_score is not None and float(score.total_score) >= 80
+                              else "中等" if score.total_score is not None and float(score.total_score) >= 70
+                              else "及格" if score.total_score is not None else ""
+                          ),
                           "checkinScore": score.checkin_score, "weeklyScore": score.weekly_score,
                           "monthlyScore": score.monthly_score, "enterpriseScore": score.enterprise_score,
-                          "schoolScore": score.school_score, "publishedAt": _iso(score.published_at)}
-                         if score else None)}
+                          "schoolScore": score.school_score, "publishedAt": _iso(score.published_at),
+                          "enterpriseScoreSourceNote": "企业评价分来自学校录入纸质评价（SCHOOL_RECORDED）"}
+                         if score else None),
+                "policyNotes": {
+                    "safetyEducation": "岗前安全教育按学校批次政策启用（未拍板前不强制）",
+                    "weeklySimilarity": "周报查重提示按学校政策启用（未启用时不展示命中）",
+                    "exemptInternship": "免实习仅学校认定去向 EXEMPTED 后生效",
+                    "regulatory": "跨省备案/夜班等监管报送须学校拍板，系统不伪造「已上报」",
+                    "employmentFollow": "就业跟进入口在就业中心，不在实习中心再建企业库"
+                }}
 
 
 # 毕设阶段流水线（选题→任务书→开题指导→中期→成果→答辩→归档），用于移动端真实节点进度条。
@@ -1556,7 +1572,19 @@ def internship_checkin(user: dict, body: dict) -> dict:
                       "fenceRadiusM": radius_m, "deviceRiskFlag": risk_flag})
     return {"id": str(rid), "date": today, "result": result, "distanceM": distance_m,
             "geofenceRadiusM": radius_m, "geofenceConfigured": radius_m is not None,
-            "message": "打卡成功"}
+            "message": {
+                "NORMAL": "打卡成功（围栏内）",
+                "OUT_OF_RANGE": "已打卡，但超出企业围栏，已记异常待核验",
+                "NO_LOCATION": "已记录打卡时间（无定位，不作作弊认定）",
+                "RECORDED": "已打卡留痕（岗位未配置围栏）",
+                "MOCK_LOCATION": "已打卡，设备风险标记异常，已转异常台",
+            }.get(result, "打卡已提交")}
+
+
+def internship_help_report(user: dict, body: dict) -> dict:
+    """学生轻量实习求助 → 指导教师风险台。"""
+    from app.modules.internship.services import internship_risk_service as risk_svc
+    return risk_svc.student_help_report(user, body or {})
 
 
 def internship_exception_appeal(user: dict, exception_id: str, body: dict) -> dict:

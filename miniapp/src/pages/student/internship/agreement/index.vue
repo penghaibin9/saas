@@ -51,7 +51,7 @@ import { toast } from '@/utils/nav'
 
 const HINT = {
   PENDING_STUDENT: '待您阅读正文并确认',
-  PENDING_ENTERPRISE: '待企业签署',
+  PENDING_ENTERPRISE: '待企业签署（由学校代录纸质件，非企业端登录）',
   PENDING_SCHOOL: '待学校确认',
   EFFECTIVE: '协议已生效',
   REJECTED: '已驳回',

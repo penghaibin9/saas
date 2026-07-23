@@ -53,9 +53,13 @@ export const ENV = {
   // true=纯 mock 演示（无需后端，秒开，用于独立演示）；false=优先真实后端，失败回退 mock。
   // 可被构建期环境变量 VITE_USE_MOCK 覆盖（见 resolveUseMock）；默认保持纯 mock 演示。
   useMock: resolveUseMock(),
-  // Mock 回退仅是本地开发便利能力，不是离线产品能力。
+  // Mock 回退仅是本地开发便利能力，不是离线产品能力。生产构建硬禁用。
   allowMockFallback: (() => {
-    try { return !!(import.meta && import.meta.env && import.meta.env.DEV) } catch (e) { return false }
+    try {
+      const env = import.meta && import.meta.env
+      if (env && env.PROD) return false
+      return !!(env && env.DEV)
+    } catch (e) { return false }
   })(),
   // 演示账号仅允许显式的开发构建；生产包不展示、不填充、也不自动登录。
   apiBaseUrl: resolveApiBaseUrl(), // 后端地址（可被 VITE_API_BASE_URL 覆盖）
