@@ -535,10 +535,81 @@ def internship_my(user: dict) -> dict:
         ck_total = db.scalar(select(func.count()).select_from(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
             InternshipCheckin.is_deleted.is_(False))) or 0
+
+        # 批次名 / 打卡地点 / 协议·保险·请假态：供小程序首页骨架，缺失用中性占位，不回落 mock
+        batch_name = ""
+        if rec.batch_id:
+            from app.models import InternshipBatch
+            bat = db.get(InternshipBatch, rec.batch_id)
+            if bat and bat.tenant_id == _tid() and not getattr(bat, "is_deleted", False):
+                batch_name = bat.batch_name or ""
+        work_location = ""
+        if rec.position_id:
+            from app.models import InternshipPosition
+            pos = db.get(InternshipPosition, rec.position_id)
+            if pos and pos.tenant_id == _tid():
+                work_location = pos.work_location or ""
+        agreement_status = (rec.agreement_info or "").strip() or "PENDING"
+        insurance_status = "PENDING"
+        leave_status = "NONE"
+        try:
+            from app.models import InternshipAgreement, InternshipInsurance, InternshipLeave
+            agr = db.scalars(select(InternshipAgreement).where(
+                InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == rec.id,
+                InternshipAgreement.is_deleted.is_(False)).order_by(InternshipAgreement.id.desc())).first()
+            if agr:
+                agreement_status = agr.status or agreement_status
+            ins = db.scalars(select(InternshipInsurance).where(
+                InternshipInsurance.tenant_id == _tid(), InternshipInsurance.internship_id == rec.id,
+                InternshipInsurance.is_deleted.is_(False)).order_by(InternshipInsurance.id.desc())).first()
+            if ins:
+                insurance_status = ins.status or "PENDING"
+            lv = db.scalars(select(InternshipLeave).where(
+                InternshipLeave.tenant_id == _tid(), InternshipLeave.internship_id == rec.id,
+                InternshipLeave.is_deleted.is_(False),
+                InternshipLeave.status.in_(("PENDING", "APPROVED"))
+            ).order_by(InternshipLeave.id.desc())).first()
+            if lv:
+                leave_status = lv.status or "NONE"
+        except Exception:
+            pass
+
+        # 流程时间线：按真实状态派生，避免 UI 空骨架
+        st = (rec.status or "").upper()
+        def _node(nid, title, done, current=False):
+            return {"id": nid, "title": title,
+                    "status": "COMPLETED" if done else ("PROCESSING" if current else "NOT_STARTED"),
+                    "time": "进行中" if current else ("—" if not done else "")}
+        has_pos = bool(rec.position_id or rec.enterprise_name)
+        agr_ok = agreement_status in ("EFFECTIVE", "APPROVED", "ARCHIVED")
+        ins_ok = insurance_status in ("VERIFIED", "APPROVED", "EFFECTIVE", "VALID")
+        onboard_ok = st in ("ONBOARD", "ASSESSING", "ENDED", "ARCHIVED")
+        assessing = st in ("ASSESSING", "ENDED", "ARCHIVED")
+        timeline = [
+            _node("i1", "岗位分配", has_pos, current=not has_pos),
+            _node("i2", "签署三方协议", agr_ok, current=has_pos and not agr_ok),
+            _node("i3", "购买实习保险", ins_ok, current=agr_ok and not ins_ok),
+            _node("i4", "到岗确认", onboard_ok, current=ins_ok and not onboard_ok),
+            _node("i5", "实习进行中（每日打卡/周报）", onboard_ok and not assessing,
+                  current=onboard_ok and not assessing),
+            _node("i6", "实习总结与成绩", assessing or st == "ARCHIVED",
+                  current=assessing and st != "ARCHIVED"),
+        ]
+
         return {"hasData": True,
                 "enterpriseName": rec.enterprise_name or "", "positionName": rec.position_name or "",
-                "advisorName": rec.advisor_name or "", "status": rec.status,
+                "advisorName": rec.advisor_name or "",
+                "enterpriseMentor": rec.enterprise_mentor_name or "",
+                "batchName": batch_name,
+                "workLocation": work_location,
+                "checkinPlace": work_location or (rec.enterprise_name or ""),
+                "agreementStatus": agreement_status,
+                "insuranceStatus": insurance_status,
+                "leaveStatus": leave_status,
+                "onboardStatus": rec.status or "PENDING",
+                "status": rec.status,
                 "riskLevel": rec.risk_level,
+                "timeline": timeline,
                 "todayCheckin": {"done": bool(today_ck),
                                  "time": _iso(today_ck.checkin_at) if today_ck else None,
                                  "totalDays": int(ck_total)},
@@ -623,9 +694,8 @@ def graduation_my(user: dict) -> dict:
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
                 "advisorName": g.advisor_name or "", "stage": g.stage,
                 "stageLabel": dict(_GD_STAGE_FLOW).get(g.stage, g.stage),
-                "batchName": batch_name,
                 "batchId": str(g.batch_id) if g.batch_id else "",
-                "nodes": _gd_timeline(g.stage), "guideLogs": guide_logs,
+                "batchName": batch_name, "nodes": _gd_timeline(g.stage), "guideLogs": guide_logs,
                 "defenseGroup": g.defense_group or "待分组", "plagiarismRate": g.plagiarism_rate or "—",
                 "proposals": [{"version": p.version or "", "status": p.status,
                                "reviewComment": p.review_comment or ""} for p in props],
@@ -770,8 +840,8 @@ def graduation_proposal(user: dict) -> dict:
             GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == g.id,
             GraduationProposal.is_deleted.is_(False)).order_by(GraduationProposal.id.desc())).all()
         latest = props[0] if props else None
-        # 已确认选题 + 任务书已确认才允许提交开题
-        can_submit_topic = bool(g.topic_id) or g.stage not in ("TOPIC_SELECTING", None, "")
+        # 与 submit_proposal 一致：必须有 topic_id + 任务书已确认
+        can_submit_topic = bool(g.topic_id)
         from app.models import GraduationTaskBook
         tb_ok = db.scalars(select(GraduationTaskBook).where(
             GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == g.id,

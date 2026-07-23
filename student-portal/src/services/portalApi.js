@@ -125,6 +125,8 @@ export const portalApi = {
   internshipLeaveApply: (body) => request('/portal/internship/leaves/apply', { method: 'POST', body }),
   internshipLeaveReturn: (leaveId, body) =>
     request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/return`, { method: 'POST', body }),
+  internshipLeaveWithdraw: (leaveId) =>
+    request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/withdraw`, { method: 'POST' }),
   internshipCheckin: (body) => request('/portal/internship/checkin', { method: 'POST', body }),
   internshipSelfEval: (body) => request('/portal/internship/self-eval', { method: 'POST', body }),
   internshipMakeupApply: (body) => request('/portal/internship/makeup', { method: 'POST', body }),
@@ -133,10 +135,22 @@ export const portalApi = {
     request(`/portal/internship/makeup/${encodeURIComponent(id)}/withdraw`, { method: 'POST' }),
   internshipIntentionMy: () => request('/portal/internship/intention'),
   internshipIntentionSave: (body) => request('/portal/internship/intention', { method: 'POST', body }),
+  internshipIntentionSubmit: () => request('/portal/internship/intention/submit', { method: 'POST' }),
+  internshipIntentionWithdraw: () => request('/portal/internship/intention/withdraw', { method: 'POST' }),
   internshipApplications: () => request('/portal/internship/applications'),
   internshipApplicationSubmit: (body) => request('/portal/internship/applications', { method: 'POST', body }),
   internshipChangeApply: (body) => request('/portal/internship/change', { method: 'POST', body }),
   internshipChanges: () => request('/portal/internship/change'),
+  internshipAgreements: () => request('/portal/internship/agreements'),
+  internshipAgreementDetail: (id) => request(`/portal/internship/agreements/${encodeURIComponent(id)}`),
+  internshipAgreementConfirm: (id, body) =>
+    request(`/portal/internship/agreements/${encodeURIComponent(id)}/confirm`, { method: 'POST', body }),
+  internshipInsurance: () => request('/portal/internship/insurance'),
+  internshipInsuranceSave: (body) => request('/portal/internship/insurance', { method: 'POST', body }),
+  internshipPlan: () => request('/portal/internship/plan'),
+  internshipPlanAck: () => request('/portal/internship/plan/acknowledge', { method: 'POST' }),
+  internshipEnterprises: (city = '') =>
+    request(`/portal/internship/enterprises${city ? `?city=${encodeURIComponent(city)}` : ''}`),
 
   // ── 就业服务 ──
   employmentMy: () => request('/portal/employment/my'),
