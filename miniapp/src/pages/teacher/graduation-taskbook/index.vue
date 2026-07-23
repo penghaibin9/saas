@@ -143,7 +143,7 @@ export default {
       const draft = this.drafts[t.id] || {}
       if ((draft.reason || '').trim().length < 5) { toast('变更原因至少 5 个字'); return }
       this.acting = true
-      teacherApi.changeGraduationTaskbook(t.id, {
+      teacherApi.changeGraduationTaskbook(t.gdStudentId, {
         content: draft.content, progressPlan: draft.progressPlan,
         outcomeRequirement: draft.outcomeRequirement, reason: draft.reason.trim()
       }).then(() => { toast('已提交变更'); this.expanded = null; this.load() })

@@ -623,7 +623,9 @@ def graduation_my(user: dict) -> dict:
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
                 "advisorName": g.advisor_name or "", "stage": g.stage,
                 "stageLabel": dict(_GD_STAGE_FLOW).get(g.stage, g.stage),
-                "batchName": batch_name, "nodes": _gd_timeline(g.stage), "guideLogs": guide_logs,
+                "batchName": batch_name,
+                "batchId": str(g.batch_id) if g.batch_id else "",
+                "nodes": _gd_timeline(g.stage), "guideLogs": guide_logs,
                 "defenseGroup": g.defense_group or "待分组", "plagiarismRate": g.plagiarism_rate or "—",
                 "proposals": [{"version": p.version or "", "status": p.status,
                                "reviewComment": p.review_comment or ""} for p in props],
@@ -792,7 +794,8 @@ def graduation_proposal(user: dict) -> dict:
                     "reviewComment": latest.review_comment or "", "isResubmit": latest.is_resubmit,
                     "background": latest.background or "", "plan": latest.plan or "",
                     "outcome": latest.outcome or "",
-                    "attachmentsList": gd_svc._resolve_attachments(latest.attachments_json or [])},
+                    "attachmentsList": gd_svc._resolve_attachments(
+                        latest.attachments_json or [], student_channel=True)},
                 "history": [{"version": p.version or "", "status": p.status,
                              "reviewComment": p.review_comment or ""} for p in props]}
 
@@ -860,7 +863,8 @@ def graduation_final(user: dict) -> dict:
                            "status": f.status, "statusLabel": {"PENDING_REVIEW": "待审阅",
                            "APPROVED": "已通过", "REJECTED": "已退回修改"}.get(f.status, f.status),
                            "reviewComment": f.review_comment or "", "plagiarismRate": f.plagiarism_rate or "—",
-                           "attachmentsList": gd_svc._resolve_attachments(f.attachments_json or [])}
+                           "attachmentsList": gd_svc._resolve_attachments(
+                               f.attachments_json or [], student_channel=True)}
                           for f in finals]}
 
 
@@ -1006,15 +1010,33 @@ def graduation_grade(user: dict) -> dict:
     u = _require_student(user)
     if not db_enabled():
         return _empty("演示模式")
+    from app.models import GraduationGradeAppeal
+    from app.modules.graduation.services import graduation_grade_service as grade_svc
+    from app.modules.graduation.services.graduation_more_service import APPEAL_LABEL
     with _session() as db:
         g = _resolve_gd_student(db, u)
         if not g:
             return _empty("你暂无毕设记录")
-    from app.modules.graduation.services import graduation_grade_service as grade_svc
-    detail = grade_svc.get_grade(g.id)
+        gid = g.id
+        appeal = db.scalars(select(GraduationGradeAppeal).where(
+            GraduationGradeAppeal.tenant_id == _tid(),
+            GraduationGradeAppeal.gd_student_id == gid,
+            GraduationGradeAppeal.is_deleted.is_(False),
+        ).order_by(GraduationGradeAppeal.id.desc()).limit(1)).first()
+        latest_appeal = None
+        if appeal:
+            latest_appeal = {
+                "id": str(appeal.id), "status": appeal.status,
+                "statusLabel": APPEAL_LABEL.get(appeal.status, appeal.status),
+                "reason": appeal.reason or "",
+            }
+    detail = grade_svc.get_grade(gid)
     if detail.get("status") != "PUBLISHED":
-        return {"hasData": True, "published": False, "statusLabel": detail.get("statusLabel")}
-    return {"hasData": True, "published": True, **detail}
+        return {"hasData": True, "published": False, "statusLabel": detail.get("statusLabel"),
+                "latestAppeal": latest_appeal, "canAppeal": False}
+    can_appeal = not (latest_appeal and latest_appeal.get("status") == "PENDING")
+    return {"hasData": True, "published": True, **detail,
+            "latestAppeal": latest_appeal, "canAppeal": can_appeal}
 
 
 def graduation_archive(user: dict) -> dict:

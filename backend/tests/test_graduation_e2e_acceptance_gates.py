@@ -13,6 +13,15 @@
 """
 from __future__ import annotations
 
+
+def _upload_pdf(client, headers, name="thesis.pdf"):
+    files = {"file": (name, b"%PDF-1.4 test", "application/pdf")}
+    r = client.post("/api/v1/files/upload", headers=headers, files=files,
+                    params={"bizType": "GRADUATION_MATERIAL"})
+    assert r.json()["code"] == 0, r.json()
+    return r.json()["data"]["fileId"]
+
+
 from datetime import datetime
 
 from sqlalchemy import select
@@ -264,9 +273,7 @@ def test_final_blocked_while_midterm_rectifying(client, auth_headers, db_mode):
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP",
     })}
-    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
-        "finalType": "初稿", "attachments": [],
-    }).json()
+    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
     assert blocked["code"] != 0
     assert ("中期" in (blocked.get("message") or "")) or ("阶段" in (blocked.get("message") or ""))
 
@@ -303,8 +310,9 @@ def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mod
     assert view["code"] == 0
     assert view["data"]["canSubmitDraft"] is True
     assert view["data"]["midtermPassed"] is True
+    fid = _upload_pdf(client, sh)
     ok = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
-        "finalType": "初稿", "attachments": [],
+        "finalType": "初稿", "attachments": [fid],
     }).json()
     assert ok["code"] == 0, ok
 
@@ -322,9 +330,7 @@ def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode)
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP",
     })}
-    missing = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
-        "finalType": "初稿", "attachments": [],
-    }).json()
+    missing = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
     assert missing["code"] != 0
     assert ("中期" in (missing.get("message") or "")) or ("阶段" in (missing.get("message") or ""))
     view = client.get("/api/v1/mobile/graduation/final", headers=sh).json()
@@ -338,9 +344,7 @@ def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode)
     ))
     db.commit()
     db.close()
-    pending = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
-        "finalType": "初稿", "attachments": [],
-    }).json()
+    pending = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
     assert pending["code"] != 0
     assert ("中期" in (pending.get("message") or "")) or ("阶段" in (pending.get("message") or ""))
 
@@ -454,8 +458,6 @@ def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_head
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": sno,
     })}
-    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
-        "finalType": "初稿", "attachments": [],
-    }).json()
+    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
     assert blocked["code"] != 0
     assert ("中期" in (blocked.get("message") or "")) or ("阶段" in (blocked.get("message") or ""))

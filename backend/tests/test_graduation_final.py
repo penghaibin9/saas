@@ -11,6 +11,13 @@ FINAL = "/api/v1/graduation/finals"
 MOBILE = "/api/v1/mobile"
 MAIN = 1000000000000000001
 
+def _upload_pdf(client, headers, name="thesis.pdf"):
+    files = {"file": (name, b"%PDF-1.4 test", "application/pdf")}
+    r = client.post("/api/v1/files/upload", headers=headers, files=files,
+                    params={"bizType": "GRADUATION_MATERIAL"})
+    assert r.json()["code"] == 0, r.json()
+    return r.json()["data"]["fileId"]
+
 
 def _stu_token(real_name):
     from app.core.security import create_access_token
@@ -66,22 +73,22 @@ def test_submit_order_draft_then_final(client, auth_headers, db_mode):
     _to_guiding(client, h, sh, gid, name)
 
     # 定稿须先有通过的初稿
-    early = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "定稿"})
+    early = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "定稿", "attachments": [_upload_pdf(client, sh)]})
     assert early.json()["code"] != 0
 
-    draft = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    draft = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]})
     assert draft.json()["code"] == 0
     assert draft.json()["data"]["version"] == "v1"
 
     # 待审不可重复提交
-    dup = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    dup = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]})
     assert dup.json()["code"] != 0
 
     fid = _pending_final_id(client, h, name)
     client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "APPROVE"})
 
     # 初稿通过后可交定稿
-    fin = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "定稿"})
+    fin = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "定稿", "attachments": [_upload_pdf(client, sh)]})
     assert fin.json()["code"] == 0
     assert fin.json()["data"]["finalType"] == "定稿"
 
@@ -94,7 +101,7 @@ def test_student_supplied_plagiarism_rate_is_ignored(client, auth_headers, db_mo
     _to_guiding(client, h, sh, gid, name)
 
     # A student cannot forge an authoritative plagiarism result in the request body.
-    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "plagiarismRate": "35%"})
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "plagiarismRate": "35%", "attachments": [_upload_pdf(client, sh)]})
     fid = _pending_final_id(client, h, name)
     row = next(
         item for item in client.get(FINAL, headers=h).json()["data"]["items"] if item["id"] == fid
@@ -109,11 +116,11 @@ def test_reject_then_resubmit_new_version(client, auth_headers, db_mode):
     sh = _stu_token(name)
     _to_guiding(client, h, sh, gid, name)
 
-    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]})
     fid = _pending_final_id(client, h, name)
     client.post(f"{FINAL}/{fid}/review", headers=h, json={"action": "REJECT", "comment": "格式需按模板调整"})
 
-    resub = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    resub = client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]})
     assert resub.json()["code"] == 0
     assert resub.json()["data"]["version"] == "v2"
 
@@ -132,7 +139,7 @@ def test_not_submitted_derivation_and_remind(client, auth_headers, db_mode):
     remind = client.post(f"{FINAL}/remind", headers=h, json={"gdStudentId": target["gdStudentId"]})
     assert remind.json()["code"] == 0
 
-    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]})
     remind2 = client.post(f"{FINAL}/remind", headers=h, json={"gdStudentId": target["gdStudentId"]})
     assert remind2.json()["code"] != 0  # 已提交不可催
 
@@ -143,7 +150,7 @@ def test_export_finals_ledger(client, auth_headers, db_mode):
     gid = _gd_student_with_topic(client, h, "FN401", name)
     sh = _stu_token(name)
     _to_guiding(client, h, sh, gid, name)
-    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]})
 
     exp = client.post(f"{FINAL}/export", headers=h)
     body = exp.json()

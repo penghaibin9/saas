@@ -49,8 +49,8 @@
                 {{ item.present ? '✓' : '○' }} {{ item.label || item.item }}
               </li>
             </ul>
-            <div v-if="step.action" class="gd-step__actions">
-              <button class="sp-btn" :disabled="busy" @click="handleAction(step.key)">{{ step.action }}</button>
+            <div v-if="step.action || step.actionHint" class="gd-step__actions">
+              <button v-if="step.action" class="sp-btn" :disabled="busy" @click="handleAction(step.key)">{{ step.action }}</button>
               <span v-if="step.actionHint" class="sp-muted">{{ step.actionHint }}</span>
             </div>
 
@@ -59,27 +59,75 @@
               <p v-if="grade.advisorScore != null || grade.reviewerScore != null || grade.defenseScore != null" class="sp-muted">
                 指导 {{ grade.advisorScore ?? '—' }} · 评阅 {{ grade.reviewerScore ?? '—' }} · 答辩 {{ grade.defenseScore ?? '—' }}
               </p>
-              <template v-if="!showAppeal">
-                <button class="sp-btn sp-btn--ghost" :disabled="busy" @click="showAppeal = true">对成绩有异议？发起更正申诉</button>
-              </template>
-              <template v-else>
-                <label>申诉理由<textarea v-model.trim="appealReason" placeholder="说明异议点与依据（至少 5 字）" maxlength="500" /></label>
-                <button class="sp-btn" :disabled="busy || appealReason.trim().length < 5" @click="submitAppeal">提交成绩申诉</button>
+              <p v-if="grade.latestAppeal?.status === 'PENDING'" class="sp-muted">
+                成绩申诉待复核（{{ grade.latestAppeal.statusLabel || '待复核' }}）
+              </p>
+              <template v-else-if="grade.canAppeal !== false">
+                <template v-if="!showAppeal">
+                  <button class="sp-btn sp-btn--ghost" :disabled="busy" @click="showAppeal = true">对成绩有异议？发起更正申诉</button>
+                </template>
+                <template v-else>
+                  <label>申诉理由<textarea v-model.trim="appealReason" placeholder="说明异议点与依据（至少 5 字）" maxlength="500" /></label>
+                  <button class="sp-btn" :disabled="busy || appealReason.trim().length < 5" @click="submitAppeal">提交成绩申诉</button>
+                </template>
               </template>
             </div>
 
             <div v-if="expanded === step.key" class="gd-form">
-              <template v-if="step.key === 'topic'">
-                <p v-if="!round" class="sp-muted">当前没有开放的选题轮次，请等待管理员发布。</p>
+              <template v-if="step.key === 'taskbook'">
+                <div class="gd-readonly">
+                  <div><span>研究目标</span><p>{{ taskbook.objective || '—' }}</p></div>
+                  <div><span>研究内容</span><p>{{ taskbook.content || '—' }}</p></div>
+                  <div><span>进度安排</span><p>{{ taskbook.progressPlan || '—' }}</p></div>
+                  <div><span>成果要求</span><p>{{ taskbook.outcomeRequirement || '—' }}</p></div>
+                </div>
+                <label class="gd-check">
+                  <input v-model="taskbookAck" type="checkbox" />
+                  我已阅读并确认任务书
+                </label>
+                <button class="sp-btn" :disabled="busy || !taskbookAck" @click="signTaskbook">签署确认</button>
+              </template>
+
+              <template v-else-if="step.key === 'topic'">
+                <template v-if="!hasTopic">
+                  <p v-if="!round" class="sp-muted">当前没有开放的选题轮次，请等待管理员发布。</p>
+                  <template v-else>
+                    <p class="sp-muted">{{ round.roundName }} · 最多提交 {{ round.maxChoices }} 个志愿。点击题目按顺序选择，可再次点击取消。</p>
+                    <div v-if="(round.myChoices || []).length" class="gd-change-list">
+                      <div v-for="c in round.myChoices" :key="c.id || c.topicId" class="gd-change-item">
+                        <span>{{ c.topicTitle || c.title || '志愿课题' }}</span>
+                        <em>{{ choiceStatusLabel(c.status) }}</em>
+                      </div>
+                    </div>
+                    <div class="gd-topic-list">
+                      <button v-for="topic in topics" :key="topic.id" class="gd-topic" :class="{ 'is-picked': selectedTopicIds.includes(String(topic.id)) }" @click="toggleTopic(topic.id)">
+                        <b v-if="selectedTopicIds.includes(String(topic.id))">志愿 {{ selectedTopicIds.indexOf(String(topic.id)) + 1 }}</b>
+                        <strong>{{ topic.title }}</strong><span>{{ topic.advisorName || '导师待定' }}</span>
+                      </button>
+                    </div>
+                    <div class="gd-step__actions">
+                      <button class="sp-btn" :disabled="busy || !selectedTopicIds.length" @click="submitChoices">提交志愿</button>
+                      <button v-if="canWithdrawChoices" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawChoices">退选志愿</button>
+                    </div>
+                  </template>
+                </template>
                 <template v-else>
-                  <p class="sp-muted">{{ round.roundName }} · 最多提交 {{ round.maxChoices }} 个志愿。点击题目按顺序选择，可再次点击取消。</p>
+                  <p class="sp-muted">获批课题已锁定，更换须重新审核。请选择目标课题并说明理由（至少 5 字）。</p>
                   <div class="gd-topic-list">
-                    <button v-for="topic in topics" :key="topic.id" class="gd-topic" :class="{ 'is-picked': selectedTopicIds.includes(String(topic.id)) }" @click="toggleTopic(topic.id)">
-                      <b v-if="selectedTopicIds.includes(String(topic.id))">志愿 {{ selectedTopicIds.indexOf(String(topic.id)) + 1 }}</b>
+                    <button v-for="topic in topics" :key="topic.id" class="gd-topic" :class="{ 'is-picked': String(changeTopicId) === String(topic.id) }" @click="changeTopicId = topic.id">
+                      <b v-if="String(changeTopicId) === String(topic.id)">已选</b>
                       <strong>{{ topic.title }}</strong><span>{{ topic.advisorName || '导师待定' }}</span>
                     </button>
                   </div>
-                  <button class="sp-btn" :disabled="busy || !selectedTopicIds.length" @click="submitChoices">提交志愿</button>
+                  <label>变更理由<textarea v-model.trim="changeReason" placeholder="变更理由（至少 5 字）" maxlength="200" /></label>
+                  <button class="sp-btn" :disabled="busy || !changeTopicId || changeReason.trim().length < 5" @click="submitTopicChange">提交更换申请</button>
+                  <div v-if="changeRequests.length" class="gd-change-list">
+                    <p class="sp-muted">我的更换申请</p>
+                    <div v-for="r in changeRequests" :key="r.id" class="gd-change-item">
+                      <span>{{ r.oldTopicTitle || '原课题' }} → {{ r.newTopicTitle || '新课题' }}</span>
+                      <em>{{ r.statusLabel || r.status }}</em>
+                    </div>
+                  </div>
                 </template>
               </template>
 
@@ -89,7 +137,7 @@
                 <label>预期成果<textarea v-model.trim="proposalForm.outcome" placeholder="可填写预期成果、交付形式等" /></label>
                 <label>附件（PDF / Word / ZIP，最多 10 个）<input type="file" accept=".pdf,.doc,.docx,.zip" multiple @change="pickFiles('proposal', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('proposal') }}</p>
-                <button class="sp-btn" :disabled="busy" @click="submitProposal">提交开题报告</button>
+                <button class="sp-btn" :disabled="busy || !proposalForm.background || !proposalForm.plan" @click="submitProposal">提交开题报告</button>
               </template>
 
               <template v-else-if="step.key === 'midterm'">
@@ -99,7 +147,7 @@
 
               <template v-else-if="step.key === 'final'">
                 <p class="sp-muted">本次将提交：{{ final.canSubmitFinal ? '定稿' : '初稿' }}。文件上传后由系统生成材料记录，查重结果不能由学生自行填写。</p>
-                <label>论文附件（PDF / Word / ZIP）<input type="file" accept=".pdf,.doc,.docx,.zip" multiple @change="pickFiles('final', $event)" /></label>
+                <label>论文附件（PDF / Word / ZIP，最多 10 个）<input type="file" accept=".pdf,.doc,.docx,.zip" multiple @change="pickFiles('final', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('final') }}</p>
                 <button class="sp-btn" :disabled="busy || !attachments.final.length" @click="submitFinal">提交论文成果</button>
               </template>
@@ -154,11 +202,17 @@ const peerNotes = reactive({})
 const round = ref(null)
 const topics = ref([])
 const selectedTopicIds = ref([])
+const changeRequests = ref([])
+const changeTopicId = ref('')
+const changeReason = ref('')
+const taskbookAck = ref(false)
 const rectifyContent = ref('')
 const showAppeal = ref(false)
 const appealReason = ref('')
 const attachments = reactive({ proposal: [], final: [] })
 const proposalForm = reactive({ background: '', plan: '', outcome: '' })
+
+const CHOICE_STATUS = { PENDING: '待处理', MATCHED: '已匹配', UNMATCHED: '未录取', CONFIRMED: '已确认', REJECTED: '已驳回' }
 
 const approvedMidterm = computed(() => ['CHECKED_PASS', 'RECTIFIED_PASS'].includes(midterm.value.status))
 const midtermTone = computed(() => {
@@ -176,13 +230,42 @@ const finalTone = computed(() => {
 const hasTopic = computed(() => Boolean(my.value.topicTitle && my.value.topicTitle !== '（未选题）'))
 const hasGuidance = computed(() => (my.value.guideLogs || []).length > 0)
 const hasPeerWork = computed(() => ((peer.value.toReview || []).length + (peer.value.myRectify || []).length) > 0)
+const canWithdrawChoices = computed(() => {
+  const choices = round.value?.myChoices || []
+  return !hasTopic.value && choices.some((c) => c.status === 'PENDING')
+    && !choices.some((c) => c.status === 'CONFIRMED' || c.status === 'MATCHED')
+})
+
+const proposalFiles = computed(() => proposal.value.latest?.attachmentsList || [])
+const finalFiles = computed(() => [
+  ...proposalFiles.value,
+  ...(final.value.items || []).flatMap((item) => item.attachmentsList || [])
+])
+
+const defenseDetail = computed(() => {
+  if (!defense.value.published) return defense.value.message || '完成资格审核后由学校统一安排。'
+  const parts = [
+    `${defense.value.date || '待定'} · ${defense.value.location || '待定'} · ${defense.value.groupName || ''}`.trim(),
+  ]
+  if (defense.value.chair) parts.push(`组长：${defense.value.chair}`)
+  if ((defense.value.members || []).length) parts.push(`评委：${(defense.value.members || []).join('、')}`)
+  if (defense.value.secretary) parts.push(`秘书：${defense.value.secretary}`)
+  return parts.filter(Boolean).join(' · ')
+})
+
+const finalDetail = computed(() => {
+  const item = final.value.items?.[0]
+  if (!item) return '提交前请确认开题、中期等前置环节已按学校要求完成。'
+  const rate = item.plagiarismRate != null && item.plagiarismRate !== '' ? ` · 查重 ${item.plagiarismRate}` : ''
+  return `${item.type} ${item.version} · ${item.statusLabel}${rate}`
+})
 
 const steps = computed(() => [
   {
     key: 'topic', order: '01', title: '组织与选题', description: '在学校开放的轮次中提交志愿，等待导师或管理员确认。',
     status: hasTopic.value ? '课题已确认' : (round.value ? '待提交志愿' : '等待开放'), tone: hasTopic.value ? 'success' : 'warn',
     detail: hasTopic.value ? `${my.value.topicTitle}${my.value.advisorName ? ` · 指导教师：${my.value.advisorName}` : ''}` : (round.value?.remark || '学校尚未开放选题轮次。'),
-    action: !hasTopic.value && round.value ? '选择并提交志愿' : ''
+    action: hasTopic.value ? '申请更换课题' : (round.value ? '选择并提交志愿' : '')
   },
   {
     key: 'taskbook', order: '02', title: '任务书确认', description: '阅读导师下达的任务目标、研究内容、进度计划和成果要求。',
@@ -193,8 +276,11 @@ const steps = computed(() => [
   {
     key: 'proposal', order: '03', title: '开题论证', description: '提交研究依据、技术路线、进度计划与预期成果，等待审核。',
     status: proposal.value.latest?.statusLabel || (proposal.value.canSubmit ? '待提交' : '等待前置环节'), tone: proposal.value.latest?.status === 'APPROVED' ? 'success' : proposal.value.latest?.status === 'REJECTED' ? 'danger' : 'warn',
-    detail: proposal.value.latest ? `当前版本 ${proposal.value.latest.version || '—'}` : (proposal.value.reason || '请在课题确认后提交开题报告。'), reviewComment: proposal.value.latest?.reviewComment,
-    action: proposal.value.canSubmit ? (proposal.value.latest ? '修改后重交开题报告' : '填写开题报告') : ''
+    detail: proposal.value.latest ? `当前版本 ${proposal.value.latest.version || '—'}` : (proposal.value.reason || '请在课题确认后提交开题报告。'),
+    reviewComment: proposal.value.latest?.reviewComment,
+    files: proposalFiles.value,
+    action: proposal.value.canSubmit ? (proposal.value.latest ? '修改后重交开题报告' : '填写开题报告') : '',
+    actionHint: proposal.value.reason || ''
   },
   {
     key: 'guidance', order: '04', title: '过程指导', description: '导师指导记录会沉淀为可追溯的过程证据。',
@@ -210,14 +296,14 @@ const steps = computed(() => [
   {
     key: 'final', order: '06', title: '成果检查', description: '按初稿、定稿顺序提交论文材料，等待评阅和查重。',
     status: final.value.finalApproved ? '定稿已通过' : final.value.hint || '等待提交', tone: finalTone.value,
-    detail: final.value.items?.[0] ? `${final.value.items[0].type} ${final.value.items[0].version} · ${final.value.items[0].statusLabel}` : '提交前请确认开题、中期等前置环节已按学校要求完成。', reviewComment: final.value.items?.[0]?.reviewComment,
-    files: (final.value.items || []).filter((item) => item.type === '定稿').flatMap((item) => item.attachmentsList || []),
+    detail: finalDetail.value, reviewComment: final.value.items?.[0]?.reviewComment,
+    files: finalFiles.value,
     action: final.value.canSubmitDraft || final.value.canSubmitFinal ? '上传并提交论文' : ''
   },
   {
     key: 'defense', order: '07', title: '答辩与评分', description: '答辩安排发布后可查看时间、地点和答辩组信息。',
     status: defense.value.published ? '安排已发布' : defense.value.assigned ? '安排编制中' : '等待分组', tone: defense.value.published ? 'success' : 'warn',
-    detail: defense.value.published ? `${defense.value.date || '待定'} · ${defense.value.location || '待定'} · ${defense.value.groupName || ''}` : (defense.value.message || '完成资格审核后由学校统一安排。')
+    detail: defenseDetail.value
   },
   {
     key: 'archive', order: '08', title: '成绩归档与总结', description: '学校发布后可查看最终成绩并发起申诉；材料齐套后由学校归档。',
@@ -233,6 +319,14 @@ const steps = computed(() => [
 function attachmentText(kind) {
   const list = attachments[kind]
   return list.length ? `已上传 ${list.length} 个附件：${list.map((item) => item.fileName || item.name).join('、')}` : '尚未上传附件'
+}
+
+function choiceStatusLabel(status) {
+  return CHOICE_STATUS[status] || status || '—'
+}
+
+function topicBatchId() {
+  return my.value.batchId || round.value?.batchId || ''
 }
 
 // 每个板块一个命名加载器：动作后只刷新受影响板块，也避免长数组位置解构错位。
@@ -276,11 +370,30 @@ async function afterAction(keys) {
 }
 
 async function handleAction(key) {
-  if (key === 'taskbook') return confirmTaskbook()
   expanded.value = expanded.value === key ? '' : key
-  // 题目库最多数百条且选定课题后用不到，展开选题面板时才拉取。
-  if (key === 'topic' && expanded.value === 'topic' && round.value && !topics.value.length) {
-    try { topics.value = await portalApi.graduationTopics(round.value.batchId) } catch (e) { ui.notify(e?.message || '题目库加载失败') }
+  if (key === 'taskbook' && expanded.value === 'taskbook') {
+    taskbookAck.value = false
+  }
+  if (key === 'proposal' && expanded.value === 'proposal') {
+    const latest = proposal.value.latest
+    if (latest) {
+      proposalForm.background = latest.background || ''
+      proposalForm.plan = latest.plan || ''
+      proposalForm.outcome = latest.outcome || ''
+    }
+  }
+  if (key === 'topic' && expanded.value === 'topic') {
+    const batchId = topicBatchId()
+    if (batchId) {
+      try { topics.value = await portalApi.graduationTopics(batchId) } catch (e) { ui.notify(e?.message || '题目库加载失败') }
+    } else if (!hasTopic.value && !round.value) {
+      topics.value = []
+    }
+    if (hasTopic.value) {
+      changeTopicId.value = ''
+      changeReason.value = ''
+      try { changeRequests.value = await portalApi.graduationChangeRequests() || [] } catch (e) { ui.notify(e?.message || '更换申请列表加载失败') }
+    }
   }
 }
 
@@ -292,9 +405,16 @@ function toggleTopic(id) {
   selectedTopicIds.value.push(value)
 }
 
-async function confirmTaskbook() {
+async function signTaskbook() {
+  if (!taskbookAck.value) return
   busy.value = true
-  try { await portalApi.confirmGraduationTaskbook(); ui.notify('任务书已确认'); await afterAction(['taskbook', 'my']) } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
+  try {
+    await portalApi.signGraduationTaskbook()
+    ui.notify('任务书已签署确认')
+    expanded.value = ''
+    taskbookAck.value = false
+    await afterAction(['taskbook', 'my', 'proposal'])
+  } catch (e) { ui.notify(e?.message || '签署失败') } finally { busy.value = false }
 }
 
 async function submitChoices() {
@@ -305,18 +425,51 @@ async function submitChoices() {
   } catch (e) { ui.notify(e?.message || '提交志愿失败') } finally { busy.value = false }
 }
 
+async function withdrawChoices() {
+  if (!round.value?.id) return
+  busy.value = true
+  try {
+    await portalApi.withdrawGraduationChoices(round.value.id)
+    ui.notify('志愿已退选，可重新填写')
+    await afterAction(['round', 'my'])
+  } catch (e) { ui.notify(e?.message || '退选失败') } finally { busy.value = false }
+}
+
+async function submitTopicChange() {
+  const reason = changeReason.value.trim()
+  if (!changeTopicId.value || reason.length < 5) return
+  busy.value = true
+  try {
+    await portalApi.requestGraduationTopicChange(changeTopicId.value, reason)
+    ui.notify('课题更换申请已提交')
+    changeTopicId.value = ''
+    changeReason.value = ''
+    try { changeRequests.value = await portalApi.graduationChangeRequests() || [] } catch { /* keep previous list */ }
+    await afterAction(['my', 'round'])
+  } catch (e) { ui.notify(e?.message || '更换申请提交失败') } finally { busy.value = false }
+}
+
 async function pickFiles(kind, event) {
   const files = Array.from(event.target.files || [])
   if (!files.length) return
+  const remaining = 10 - attachments[kind].length
+  if (remaining <= 0) {
+    ui.notify('每个种类最多上传 10 个附件')
+    event.target.value = ''
+    return
+  }
+  const toUpload = files.slice(0, remaining)
+  if (files.length > remaining) ui.notify(`最多 10 个附件，已截取前 ${remaining} 个`)
   busy.value = true
   try {
-    const uploaded = await Promise.all(files.map((file) => portalApi.uploadGraduationMaterial(file)))
+    const uploaded = await Promise.all(toUpload.map((file) => portalApi.uploadGraduationMaterial(file)))
     attachments[kind].push(...uploaded)
     ui.notify(`已上传 ${uploaded.length} 个附件`)
   } catch (e) { ui.notify(e?.message || '附件上传失败') } finally { busy.value = false; event.target.value = '' }
 }
 
 async function submitProposal() {
+  if (!proposalForm.background || !proposalForm.plan) return
   busy.value = true
   try {
     await portalApi.submitGraduationProposal({ ...proposalForm, attachments: attachments.proposal.map((item) => item.fileId) })
@@ -390,7 +543,10 @@ onMounted(load)
 .gd-tip { margin:16px 0; padding:11px 14px; border-radius:8px; background:#f2f7ff; color:#4e5969; font-size:13px; line-height:1.6; }
 .gd-empty-notice { margin-bottom:16px; padding:14px 16px; border:1px solid #ffd591; border-radius:10px; background:#fffbe6; color:#613400; }.gd-empty-notice strong { font-size:14px; }.gd-empty-notice p { margin:6px 0 0; color:#8b5c00; font-size:13px; line-height:1.6; }
 .gd-steps { margin:0; padding:0; list-style:none; }.gd-step { display:grid; grid-template-columns:58px minmax(0, 1fr); }.gd-step__rail { border-right:1px solid #e5e6eb; position:relative; display:flex; justify-content:center; }.gd-step__rail span { width:30px; height:30px; line-height:30px; border-radius:50%; text-align:center; color:#86909c; background:#f2f3f5; font-size:12px; font-weight:600; z-index:1; }.gd-step.is-success .gd-step__rail span { background:rgba(0,180,42,.12); color:#00a33a; }.gd-step.is-danger .gd-step__rail span { background:#ffece8; color:#f53f3f; }
-.gd-step article { margin:0 0 14px 18px; padding:16px 18px; background:#fff; border:1px solid #edf0f3; border-radius:10px; }.gd-step__head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }.gd-step h2 { font-size:16px; margin:0; }.gd-step__head p,.gd-step__detail { margin:6px 0 0; color:#86909c; font-size:13px; line-height:1.6; }.gd-step__comment { margin:10px 0 0; padding:8px 10px; border-radius:6px; background:#fff7e8; color:#8b5c00; font-size:13px; white-space:pre-wrap; }.gd-step__actions { display:flex; align-items:center; gap:10px; margin-top:13px; }.gd-form { margin-top:14px; padding:14px; background:#fafbfc; border-radius:8px; }.gd-form label { display:block; margin:10px 0; color:#4e5969; font-size:13px; }.gd-form textarea { display:block; width:100%; min-height:76px; resize:vertical; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; }.gd-form input[type=file] { display:block; margin-top:7px; font-size:12px; }
+.gd-step article { margin:0 0 14px 18px; padding:16px 18px; background:#fff; border:1px solid #edf0f3; border-radius:10px; }.gd-step__head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }.gd-step h2 { font-size:16px; margin:0; }.gd-step__head p,.gd-step__detail { margin:6px 0 0; color:#86909c; font-size:13px; line-height:1.6; }.gd-step__comment { margin:10px 0 0; padding:8px 10px; border-radius:6px; background:#fff7e8; color:#8b5c00; font-size:13px; white-space:pre-wrap; }.gd-step__actions { display:flex; align-items:center; gap:10px; margin-top:13px; flex-wrap:wrap; }.gd-form { margin-top:14px; padding:14px; background:#fafbfc; border-radius:8px; }.gd-form label { display:block; margin:10px 0; color:#4e5969; font-size:13px; }.gd-form textarea { display:block; width:100%; min-height:76px; resize:vertical; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; }.gd-form input[type=file] { display:block; margin-top:7px; font-size:12px; }
+.gd-readonly { display:grid; gap:10px; margin-bottom:8px; }.gd-readonly > div { padding:10px 12px; background:#fff; border:1px solid #edf0f3; border-radius:6px; }.gd-readonly span { display:block; color:#86909c; font-size:12px; margin-bottom:6px; }.gd-readonly p { margin:0; color:#1d2129; font-size:13px; line-height:1.65; white-space:pre-wrap; }
+.gd-check { display:flex !important; align-items:center; gap:8px; cursor:pointer; }.gd-check input { margin:0; }
+.gd-change-list { margin:12px 0; display:grid; gap:8px; }.gd-change-item { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:8px 10px; background:#fff; border:1px solid #edf0f3; border-radius:6px; font-size:13px; color:#4e5969; }.gd-change-item em { font-style:normal; color:var(--sp-primary); flex-shrink:0; }
 .gd-files { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; color:#4e5969; font-size:13px; }.gd-file { border:0; padding:5px 8px; border-radius:5px; color:var(--sp-primary); background:rgba(22,119,255,.08); cursor:pointer; font-size:12px; }.gd-file:disabled { cursor:not-allowed; opacity:.6; }.gd-checklist { display:flex; flex-wrap:wrap; gap:7px 14px; margin:12px 0 0; padding:0; list-style:none; color:#4e5969; font-size:12px; }.gd-checklist li { color:#00a33a; }.gd-checklist li.is-missing { color:#f53f3f; }
 .gd-topic-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; margin:12px 0; }.gd-topic { position:relative; min-height:72px; padding:10px; text-align:left; cursor:pointer; background:#fff; border:1px solid #e5e6eb; border-radius:7px; }.gd-topic.is-picked { border-color:var(--sp-primary); background:rgba(22,119,255,.05); }.gd-topic b { position:absolute; right:8px; top:8px; color:var(--sp-primary); font-size:11px; }.gd-topic strong,.gd-topic span { display:block; padding-right:44px; }.gd-topic strong { font-size:13px; }.gd-topic span { color:#86909c; font-size:12px; margin-top:5px; }
 .gd-grade-box { margin-top:12px; padding:12px 14px; border-radius:8px; background:#f7fafc; border:1px solid #edf0f3; }.gd-grade-score { margin:0 0 6px; font-size:14px; color:#1d2129; }.gd-grade-score strong { font-size:20px; color:var(--sp-primary); }.gd-grade-box .sp-btn { margin-top:10px; }.gd-grade-box label { display:block; margin-top:10px; color:#4e5969; font-size:13px; }.gd-grade-box textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
