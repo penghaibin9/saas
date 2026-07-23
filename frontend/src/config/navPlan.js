@@ -47,12 +47,16 @@ function H(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'implemented', disabled: false, badge: '', hidden: true,
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
-/** 二级模块：有 path=已实现入口，无 path=待施工入口 */
-function mod(key, label, path, children) {
+/** 二级模块：有 path=已实现入口，无 path=待施工入口。
+ *  第 5 参 permissionKey：无子叶时用于整块过滤（如「我的待办」「领导驾驶舱」二级入口）。 */
+function mod(key, label, path, children, permissionKey) {
   const s = path
     ? { path, status: 'implemented', disabled: false, badge: '' }
     : { status: 'planned', disabled: true, badge: '待施工' }
-  return { key, label, ...s, children: children || [] }
+  return {
+    key, label, ...s, children: children || [],
+    ...(permissionKey ? { permissionKey } : {})
+  }
 }
 /** 一级模块 */
 function grp(key, label, moduleKey, children, extra) {
@@ -62,23 +66,31 @@ function grp(key, label, moduleKey, children, extra) {
 export const NAV_PLAN = [
   /* ═══════════ 一级①：工作台 ═══════════ */
   grp('workbench', '工作台', 'workbench', [
+    // 工作台首页：教职工人人可进（无 permissionKey，与「登录即见工作台」一致）
     mod('wb-home', '我的工作台', '/', []),
-    mod('wb-todo', '我的待办', '/admin/approval/todos', []),
+    mod('wb-todo', '我的待办', '/admin/approval/todos', [], 'approval.todo.view'),
     mod('wb-approval', '审批中心', '/admin/approval', [
-      I('待办看板', '/admin/approval'),
-      I('我的待办', '/admin/approval/todos'),
-      I('已办 · 抄送', '/admin/approval/done'),
-      I('退回记录', '/admin/approval/returned'),
-      I('审批模板', '/admin/approval/templates')
-    ]),
-    mod('wb-messages', '消息通知', null, P('通知中心', '公告', '待办提醒', '消息设置')),
+      I('待办看板', '/admin/approval', 'approval.todo.view'),
+      I('我的待办', '/admin/approval/todos', 'approval.todo.view'),
+      I('已办 · 抄送', '/admin/approval/done', 'approval.done.view'),
+      I('退回记录', '/admin/approval/returned', 'approval.returned.view'),
+      I('审批模板', '/admin/approval/templates', 'approval.template.view')
+    ], 'approval.dashboard.view'),
+    mod('wb-messages', '消息中心', '/admin/messages/inbox', [
+      I('我的消息', '/admin/messages/inbox', 'workbench.message.view'),
+      I('通知发布', '/admin/messages/compose', 'workbench.message.publish'),
+      I('发布记录', '/admin/messages/outbox', 'workbench.message.publish'),
+      I('发送统计', '/admin/messages/statistics', 'workbench.message.statistics.view'),
+      I('消息模板', '/admin/messages/templates', 'workbench.message.template.manage'),
+      I('消息设置', '/admin/messages/settings', 'workbench.message.view')
+    ], 'workbench.message.view'),
     mod('wb-dashboard', '领导驾驶舱', '/admin/data-center', [
-      I('数据驾驶舱', '/admin/data-center'),
-      I('生命周期总览', '/admin/data-center/lifecycle'),
-      I('排行分析', '/admin/data-center/rankings'),
-      I('风险预警', '/admin/data-center/risk'),
-      I('专题报表', '/admin/data-center/reports')
-    ]),
+      I('数据驾驶舱', '/admin/data-center', 'dataCenter.dashboard.view'),
+      I('生命周期总览', '/admin/data-center/lifecycle', 'dataCenter.lifecycle.view'),
+      I('排行分析', '/admin/data-center/rankings', 'dataCenter.ranking.view'),
+      I('风险预警', '/admin/data-center/risk', 'dataCenter.risk.view'),
+      I('专题报表', '/admin/data-center/reports', 'dataCenter.report.view')
+    ], 'dataCenter.dashboard.view'),
     mod('wb-recent', '最近访问', null, P('最近访问')),
     // 帮助中心：此前只能靠顶栏搜索进入，等于藏起来了。三级目录由帮助中心页自带左侧栏承载，
     // 这里不重复列举条目（AdminHelpView 仅支持 ?topic=<id> 深链，无分段路由，列了就是假入口）。
@@ -931,6 +943,10 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     return true
   }
   const keepMod = (mod2) => {
+    // 二级入口自身带 permissionKey 时，无权限整块隐藏（避免「领导驾驶舱」无子叶权限码却仍露入口）
+    if (applyPerm && mod2.permissionKey && !matchPermission(permissionPatterns, mod2.permissionKey)) {
+      return false
+    }
     if (mod2.children.length === 0) return includePlanned || mod2.status === 'implemented' || mod2.status === 'partial'
     if (mod2.children.some(keepLeaf)) return true
     return includePlanned && (mod2.status === 'implemented' || mod2.status === 'partial')

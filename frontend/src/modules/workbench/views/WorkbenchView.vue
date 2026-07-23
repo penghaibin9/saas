@@ -1,6 +1,7 @@
 <template>
   <div class="wb">
-    <!-- 第 1 行：先给结论（对标 Role Center 的 Headline） -->
+    <AppPageGuide guide-key="workbench.first-login" />
+
     <section class="wb__hero">
       <div class="wb__hero-main">
         <h1 class="wb__hi">你好，{{ displayName }}</h1>
@@ -9,14 +10,17 @@
           <span v-else-if="error">待办读取失败</span>
           <span v-else>{{ headline }}</span>
         </p>
+        <p v-if="!loading && !error && scopeLabel" class="wb__scope">数据范围：{{ scopeLabel }}</p>
       </div>
       <div class="wb__hero-side">
         <span class="wb__role">{{ recipe.label }}</span>
+        <button class="wb__refresh" type="button" :disabled="loading" @click="editing = !editing">
+          {{ editing ? '完成' : '编辑布局' }}
+        </button>
         <button class="wb__refresh" type="button" :disabled="loading" @click="load">刷新</button>
       </div>
     </section>
 
-    <!-- 读取失败：如实报错，不用占位数字冒充 -->
     <div v-if="error" class="wb__error" role="alert">
       <strong>无法加载工作台数据。</strong>
       <span>{{ error }}</span>
@@ -24,12 +28,42 @@
     </div>
 
     <template v-else>
-      <!-- 第 2 行：汇总磁贴（可点击下钻） -->
+      <section v-if="editing" class="wb__edit">
+        <div class="wb__edit-head">
+          <strong>编辑布局</strong>
+          <span>只影响你本人看到的磁贴与常用入口，不改变权限。</span>
+          <button type="button" class="wb__edit-reset" @click="restoreDefaults">恢复默认</button>
+        </div>
+        <div class="wb__edit-grid">
+          <div>
+            <h3 class="wb__edit-title">汇总磁贴（显隐 / 排序）</h3>
+            <div v-for="(c, idx) in editSummaryList" :key="c.key" class="wb__edit-row wb__edit-row--sort">
+              <label class="wb__edit-check">
+                <input type="checkbox" :checked="!tileHidden.has(c.key)" @change="toggleTile(c.key, $event.target.checked)">
+                <span>{{ c.title }}</span>
+              </label>
+              <span class="wb__edit-sort">
+                <button type="button" :disabled="idx === 0" @click="moveTile(c.key, -1)">上移</button>
+                <button type="button" :disabled="idx === editSummaryList.length - 1" @click="moveTile(c.key, 1)">下移</button>
+              </span>
+            </div>
+          </div>
+          <div>
+            <h3 class="wb__edit-title">我的常用（收藏）</h3>
+            <label v-for="l in recipe.quickLinks" :key="l.to" class="wb__edit-row">
+              <input type="checkbox" :checked="favSet.has(l.to)" @change="toggleFav(l.to, $event.target.checked)">
+              <span>{{ l.label }}</span>
+            </label>
+            <p class="wb__edit-hint">不勾选任何项时，显示角色默认入口。</p>
+          </div>
+        </div>
+      </section>
+
       <section class="wb__block">
         <h2 class="wb__block-title">我的待办</h2>
         <div class="wb__cues">
           <AppMetricCard
-            v-for="c in recipe.summaryCues"
+            v-for="c in visibleSummaryCues"
             :key="c.key"
             :title="c.title"
             :value="loading ? 0 : valueOf(c.source)"
@@ -37,12 +71,27 @@
             :loading="loading"
             drillable
             :drill-target="c.to"
-            @drill="go"
+            @drill="onDrill(c)"
           />
         </div>
       </section>
 
-      <!-- 第 3 行：分类磁贴（该角色的业务队列；为 0 的类型不占版面） -->
+      <section v-if="!loading && visibleStatsCues.length" class="wb__block">
+        <h2 class="wb__block-title">范围内指标</h2>
+        <div class="wb__cues">
+          <AppMetricCard
+            v-for="c in visibleStatsCues"
+            :key="c.key"
+            :title="c.title"
+            :value="valueOf(c.source)"
+            :accent="c.accent"
+            drillable
+            :drill-target="c.to"
+            @drill="onDrill(c)"
+          />
+        </div>
+      </section>
+
       <section v-if="!loading && visibleTypeCues.length" class="wb__block">
         <h2 class="wb__block-title">按类型</h2>
         <div class="wb__cues">
@@ -54,12 +103,11 @@
             :accent="c.accent"
             drillable
             :drill-target="c.to"
-            @drill="go"
+            @drill="onDrill(c)"
           />
         </div>
       </section>
 
-      <!-- 第 4 行：明细 + 快捷入口 -->
       <section class="wb__block wb__split">
         <div class="wb__list">
           <h2 class="wb__block-title">
@@ -81,23 +129,26 @@
             >
               <span class="wb__dot" :class="priorityClass(t.priority)" />
               <span class="wb__item-title">{{ t.title }}</span>
-              <span v-if="t.dueAt" class="wb__due" :class="{ 'is-over': isOverdue(t) }">
-                {{ isOverdue(t) ? '已逾期' : '截止 ' + fmtDate(t.dueAt) }}
+              <span
+                v-if="t.dueAt"
+                class="wb__due"
+                :class="{ 'is-over': isOverdue(t), 'is-near': isNearDeadline(t) }"
+              >
+                {{ dueLabel(t) }}
               </span>
             </li>
           </ul>
         </div>
 
         <div class="wb__side">
-          <h2 class="wb__block-title">常用入口</h2>
+          <h2 class="wb__block-title">我的常用</h2>
           <button
-            v-for="l in recipe.quickLinks"
+            v-for="l in displayLinks"
             :key="l.to"
             class="wb__link"
             type="button"
             @click="go(l.to)"
           >{{ l.label }}</button>
-          <!-- 消息中心路由尚为 planned；只展示计数，不下钻到无关的待办页冒充 -->
           <div v-if="!loading && unread > 0" class="wb__msg" title="消息中心页面待建设，此处仅展示未读数">
             未读消息 <strong>{{ unread }}</strong>
           </div>
@@ -110,19 +161,28 @@
 <script>
 /**
  * WorkbenchView —— 角色化工作台（对标 Dynamics 365 Role Center）。
- *
- * 与旧 AdminWorkbenchView 菜单桥接页的区别：本页消费真实待办数据，回答「我今天要处理什么」。
- *
- * 角色以后端 /todos/summary 返回的 role 为准，前端不自行推断，
- * 也不提供「视角切换」——切身份必须走真实的 /auth/switch-role。
+ * 角色以后端 /todos/summary.role 为准；P7 偏好只改布局，不改权限。
  */
 import AppMetricCard from '@/components/common/AppMetricCard.vue'
+import AppPageGuide from '@/components/common/experience/AppPageGuide.vue'
 import {
   fetchMessageCount,
+  fetchSchoolStats,
   fetchTodoCount,
   fetchTodoList,
   fetchTodoSummary
 } from '../api/workbench.api'
+import {
+  applyFavoriteLinks,
+  applyTilePrefs,
+  bumpClickCount,
+  clicksPrefKey,
+  favoritesPrefKey,
+  loadPrefs,
+  parseJsonPref,
+  savePref,
+  tilesPrefKey
+} from '../api/workbenchPrefs'
 import { resolveRecipe, TODO_TYPE_ROUTES } from '../config/workbenchRecipes'
 
 const EMPTY_SUMMARY = Object.freeze({
@@ -132,9 +192,18 @@ const EMPTY_SUMMARY = Object.freeze({
   doneToday: 0
 })
 
+const EMPTY_STATS = Object.freeze({
+  studentTotal: 0,
+  pendingApproval: 0,
+  academicWarning: 0,
+  unemployed: 0,
+  orientationPending: 0,
+  scopeLabel: ''
+})
+
 export default {
   name: 'WorkbenchView',
-  components: { AppMetricCard },
+  components: { AppMetricCard, AppPageGuide },
   props: {
     displayName: { type: String, default: '老师' }
   },
@@ -144,9 +213,14 @@ export default {
       error: '',
       role: '',
       summary: { ...EMPTY_SUMMARY },
+      stats: { ...EMPTY_STATS },
       byType: {},
       todos: [],
-      unread: 0
+      unread: 0,
+      editing: false,
+      tilePref: { order: [], hidden: [] },
+      favPaths: [],
+      clickCounts: {}
     }
   },
   computed: {
@@ -163,9 +237,31 @@ export default {
     hasOverdue() {
       return (this.summary.overdue || 0) > 0
     },
-    /** 该角色配方里、当前确实有数据的分类磁贴（为 0 的类型不占版面） */
+    scopeLabel() {
+      return this.stats.scopeLabel || ''
+    },
+    tileHidden() {
+      return new Set(this.tilePref.hidden || [])
+    },
+    favSet() {
+      return new Set(this.favPaths || [])
+    },
+    editSummaryList() {
+      return applyTilePrefs(this.recipe.summaryCues, { order: this.tilePref.order || [], hidden: [] })
+    },
+    visibleSummaryCues() {
+      return applyTilePrefs(this.recipe.summaryCues, this.tilePref)
+    },
+    visibleStatsCues() {
+      return (this.recipe.statsCues || []).filter((c) => !this.tileHidden.has(c.key))
+    },
     visibleTypeCues() {
       return (this.recipe.typeCues || []).filter((c) => this.valueOf(c.source) > 0)
+    },
+    displayLinks() {
+      const links = applyFavoriteLinks(this.recipe.quickLinks, this.favPaths)
+      if (!this.favPaths.length) return links
+      return links.filter((l) => l.favorited)
     }
   },
   created() {
@@ -176,13 +272,15 @@ export default {
       this.loading = true
       this.error = ''
       try {
-        // 并发拉取；任一失败即整体报错，不用默认值掩盖（工作台数字必须可信）
-        const [summary, count, list, msg] = await Promise.all([
+        const needStats = true
+        const reqs = [
           fetchTodoSummary(),
           fetchTodoCount(),
           fetchTodoList(),
           fetchMessageCount()
-        ])
+        ]
+        if (needStats) reqs.push(fetchSchoolStats())
+        const [summary, count, list, msg, schoolStats] = await Promise.all(reqs)
         this.role = summary.role || ''
         this.summary = {
           pending: Number(summary.pending) || 0,
@@ -193,10 +291,23 @@ export default {
         this.byType = count.byType && typeof count.byType === 'object' ? { ...count.byType } : {}
         this.todos = Array.isArray(list.items) ? list.items : []
         this.unread = Number(msg.unread) || 0
+        if (schoolStats && typeof schoolStats === 'object') {
+          this.stats = {
+            studentTotal: Number(schoolStats.studentTotal) || 0,
+            pendingApproval: Number(schoolStats.pendingApproval) || 0,
+            academicWarning: Number(schoolStats.academicWarning) || 0,
+            unemployed: Number(schoolStats.unemployed) || 0,
+            orientationPending: Number(schoolStats.orientationPending) || 0,
+            scopeLabel: schoolStats.scopeLabel || ''
+          }
+        } else {
+          this.stats = { ...EMPTY_STATS }
+        }
+        await this.loadPrefsQuiet()
       } catch (e) {
-        // 失败后清空业务态，避免重试失败时仍展示上一轮成功数字
         this.role = ''
         this.summary = { ...EMPTY_SUMMARY }
+        this.stats = { ...EMPTY_STATS }
         this.byType = {}
         this.todos = []
         this.unread = 0
@@ -205,19 +316,89 @@ export default {
         this.loading = false
       }
     },
-    /** 'summary.pending' / 'todoType.LEAVE_APPROVAL' / 'message.unread' → 数值 */
+    async loadPrefsQuiet() {
+      try {
+        const tk = tilesPrefKey(this.role)
+        const fk = favoritesPrefKey(this.role)
+        const ck = clicksPrefKey(this.role)
+        const items = await loadPrefs([tk, fk, ck])
+        this.tilePref = parseJsonPref(items[tk], { order: [], hidden: [] })
+        this.favPaths = parseJsonPref(items[fk], [])
+        this.clickCounts = parseJsonPref(items[ck], {})
+        if (!Array.isArray(this.favPaths)) this.favPaths = []
+        if (!Array.isArray(this.tilePref.hidden)) this.tilePref.hidden = []
+        if (!Array.isArray(this.tilePref.order)) this.tilePref.order = []
+        if (!this.clickCounts || typeof this.clickCounts !== 'object') this.clickCounts = {}
+      } catch {
+        // 偏好失败不影响待办数字
+      }
+    },
+    async persistTiles() {
+      try {
+        await savePref(tilesPrefKey(this.role), this.tilePref)
+      } catch { /* 忽略 */ }
+    },
+    async persistFavs() {
+      try {
+        await savePref(favoritesPrefKey(this.role), this.favPaths)
+      } catch { /* 忽略 */ }
+    },
+    async persistClicks() {
+      try {
+        await savePref(clicksPrefKey(this.role), this.clickCounts)
+      } catch { /* 忽略 */ }
+    },
+    toggleTile(key, visible) {
+      const hidden = new Set(this.tilePref.hidden || [])
+      if (visible) hidden.delete(key)
+      else hidden.add(key)
+      this.tilePref = { ...this.tilePref, hidden: [...hidden] }
+      this.persistTiles()
+    },
+    moveTile(key, delta) {
+      const list = this.editSummaryList.map((c) => c.key)
+      const i = list.indexOf(key)
+      const j = i + delta
+      if (i < 0 || j < 0 || j >= list.length) return
+      const next = [...list]
+      const tmp = next[i]
+      next[i] = next[j]
+      next[j] = tmp
+      this.tilePref = { ...this.tilePref, order: next }
+      this.persistTiles()
+    },
+    toggleFav(to, on) {
+      const set = new Set(this.favPaths || [])
+      if (on) set.add(to)
+      else set.delete(to)
+      this.favPaths = [...set]
+      this.persistFavs()
+    },
+    async restoreDefaults() {
+      this.tilePref = { order: [], hidden: [] }
+      this.favPaths = []
+      await Promise.all([this.persistTiles(), this.persistFavs()])
+      this.editing = false
+    },
     valueOf(source) {
       const [ns, key] = String(source || '').split('.')
       if (ns === 'summary') return this.summary[key] || 0
       if (ns === 'todoType') return this.byType[key] || 0
+      if (ns === 'stats') return this.stats[key] || 0
       if (ns === 'message') return this.unread || 0
       return 0
+    },
+    onDrill(c) {
+      if (c && c.key) {
+        this.clickCounts = bumpClickCount(this.clickCounts, c.key)
+        this.persistClicks()
+      }
+      this.go(c && c.to)
     },
     go(path) {
       if (!path) return
       if (this.$route.path !== path) this.$router.push(path).catch(() => {})
     },
-    /** 点单条待办：跳到该业务类型对应的列表页（暂不做详情弹层，避免半成品交互） */
     openTodo(t) {
       this.go(TODO_TYPE_ROUTES[t && t.todoType] || '/admin/approval/todos')
     },
@@ -227,6 +408,16 @@ export default {
     },
     isOverdue(t) {
       return !!t.dueAt && new Date(t.dueAt).getTime() < Date.now()
+    },
+    isNearDeadline(t) {
+      if (!t.dueAt || this.isOverdue(t)) return false
+      const due = new Date(t.dueAt).getTime()
+      return due <= Date.now() + 24 * 60 * 60 * 1000
+    },
+    dueLabel(t) {
+      if (this.isOverdue(t)) return '已逾期'
+      if (this.isNearDeadline(t)) return '即将到期 ' + this.fmtDate(t.dueAt)
+      return '截止 ' + this.fmtDate(t.dueAt)
     },
     fmtDate(v) {
       const d = new Date(v)
@@ -248,7 +439,8 @@ export default {
 .wb__hi { margin: 0 0 6px; font-size: 20px; font-weight: 700; }
 .wb__headline { margin: 0; font-size: 15px; opacity: .92; }
 .wb__headline.is-risk { font-weight: 700; opacity: 1; }
-.wb__hero-side { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.wb__scope { margin: 8px 0 0; font-size: 12px; opacity: .78; }
+.wb__hero-side { display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
 .wb__role {
   font-size: 13px; padding: 4px 10px; border-radius: 999px;
   background: rgba(255,255,255,.18);
@@ -268,6 +460,34 @@ export default {
   margin-left: auto; padding: 4px 12px; border-radius: 8px; cursor: pointer;
   border: 1px solid #d99; background: #fff; color: #a33;
 }
+
+.wb__edit {
+  padding: 14px 16px; border-radius: 12px; background: #f7fafc; border: 1px solid #e3ebf3;
+}
+.wb__edit-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px;
+  font-size: 13px; color: #5a6b7d;
+}
+.wb__edit-head strong { color: #1f2d3d; font-size: 14px; }
+.wb__edit-reset {
+  margin-left: auto; font-size: 13px; cursor: pointer; color: #2f6ab5;
+  background: none; border: none; font-family: inherit;
+}
+.wb__edit-grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 700px) { .wb__edit-grid { grid-template-columns: 1fr; } }
+.wb__edit-title { margin: 0 0 8px; font-size: 13px; color: #1f2d3d; }
+.wb__edit-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; color: #22303f;
+}
+.wb__edit-row--sort { justify-content: space-between; }
+.wb__edit-check { display: flex; align-items: center; gap: 8px; }
+.wb__edit-sort { display: flex; gap: 6px; }
+.wb__edit-sort button {
+  font-size: 12px; padding: 2px 8px; cursor: pointer; border-radius: 6px;
+  border: 1px solid #c9d6e4; background: #fff; color: #2f6ab5; font-family: inherit;
+}
+.wb__edit-sort button:disabled { opacity: .4; cursor: default; }
+.wb__edit-hint { margin: 8px 0 0; font-size: 12px; color: #8a97a5; }
 
 .wb__block { display: flex; flex-direction: column; gap: 10px; }
 .wb__block-title {
@@ -296,6 +516,7 @@ export default {
 .wb__item-title { flex: 1; font-size: 14px; color: #22303f; min-width: 0; }
 .wb__due { font-size: 12px; color: #7a8a9a; flex-shrink: 0; }
 .wb__due.is-over { color: #e05b5b; font-weight: 600; }
+.wb__due.is-near { color: #c47a12; font-weight: 600; }
 
 .wb__side { display: flex; flex-direction: column; gap: 8px; }
 .wb__link {

@@ -72,11 +72,14 @@ def _acad_student_id(db, student_id, name=""):
 # ═══════════ 数据范围（COURSE/COLLEGE/TENANT_ALL） ═══════════
 
 def _user_keys(user) -> set[str]:
-    """派生当前用户可能的教师标识键（userId/登录名/姓名），用于 COURSE 归属比对。"""
+    """派生当前用户教师标识键（userId/登录名），用于 COURSE 归属比对。
+
+    与 schedule_service._user_keys / affairs_security._derive_keys 同口径：**不含 realName**。
+    姓名入键会使同名教师越权操作对方录入任务。
+    """
     uid = str(user.get("userId") or "")
     login = user.get("loginName") or ""
-    name = user.get("realName") or ""
-    return {k for k in (uid, login, name, uid[2:] if uid.startswith("u_") else "") if k}
+    return {k for k in (uid, login, uid[2:] if uid.startswith("u_") else "") if k}
 
 
 def _check_course_scope(task, user):

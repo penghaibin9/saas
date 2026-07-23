@@ -34,13 +34,15 @@ export const ROLE_TYPE = {
  */
 export const ADMIN_MENU = [
   {
-    /* 一级①工作台：我的工作台 + 待办/审批中心（原审批中心）+ 领导驾驶舱（原数据中心驾驶舱） */
+    /* 一级①工作台：我的工作台 + 待办/审批中心 + 领导驾驶舱。
+     * P6：permissionKey 须与 navPlan 工作台叶子对齐；侧栏日常树以 navPlan 为准，本轨只做一级入口。 */
     key: 'workbench',
     label: '工作台',
     icon: '◫',
     children: [
       { key: 'wb-home', label: '我的工作台', path: '/', moduleCode: 'WORKBENCH', permissionKey: 'workbench.home.view' },
       { key: 'wb-todo', label: '我的待办', path: '/admin/approval/todos', moduleCode: 'APPROVAL', permissionKey: 'approval.todo.view' },
+      { key: 'wb-messages', label: '消息中心', path: '/admin/messages/inbox', moduleCode: 'WORKBENCH', permissionKey: 'workbench.message.view' },
       { key: 'wb-approval', label: '审批中心', path: '/admin/approval', moduleCode: 'APPROVAL', permissionKey: 'approval.dashboard.view' },
       { key: 'wb-cockpit', label: '领导驾驶舱', path: '/admin/data-center', moduleCode: 'DATA_CENTER', permissionKey: 'dataCenter.dashboard.view' }
     ]

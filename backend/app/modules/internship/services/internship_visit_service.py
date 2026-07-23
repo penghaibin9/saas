@@ -94,6 +94,9 @@ def create(user, body) -> dict:
         db.add(v); db.flush()
         _trail(db, v.id, "CREATE", {"method": v.method, "hasRectify": has_rectify},
                operator=_op_name(user))
+        if has_rectify:
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.push_visit_rectify_todo(db, v, rec)
         db.commit()
         return {"id": str(v.id), "rectifyStatus": v.rectify_status}
 
@@ -114,6 +117,12 @@ def rectify_follow(user, visit_id, status, note="") -> dict:
         v.rectify_status = status
         v.version += 1
         _trail(db, v.id, f"RECTIFY_{status}", {"note": note.strip()}, operator=_op_name(user))
+        if status == "DONE":
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.todo_done(db, biz_id=v.id, todo_type=ix_todo.TODO_VISIT_RECTIFY)
+        elif status == "PENDING":
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.push_visit_rectify_todo(db, v, rec)
         db.commit()
         return {"id": str(v.id), "rectifyStatus": v.rectify_status}
 

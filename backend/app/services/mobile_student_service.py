@@ -1551,15 +1551,20 @@ def internship_checkin(user: dict, body: dict) -> dict:
                                 device_risk_flag=risk_flag, distance_m=distance_m,
                                 evidence_file_id=evidence_file_id, idempotency_key=key)
         db.add(row)
+        exc_row = None
         if exception_type:
-            db.add(AttendanceException(
+            exc_row = AttendanceException(
                 tenant_id=_tid(), internship_id=rec.id, exception_type=exception_type,
                 exception_date=_dt.utcnow(), distance_km=(distance_m / 1000 if distance_m is not None else None),
                 gps_accuracy=accuracy, device_risk_flag=risk_flag, address=row.address,
-                student_note=row.note, status="PENDING_HANDLE"))
+                student_note=row.note, status="PENDING_HANDLE")
+            db.add(exc_row)
         try:
             db.flush()
             rid = row.id
+            if exc_row is not None:
+                from app.modules.internship.services import internship_todo_helper as ix_todo
+                ix_todo.push_exception_todo(db, exc_row, rec)
             db.commit()
         except Exception as exc:
             db.rollback()
@@ -1670,6 +1675,8 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
             dup.reviewed_by_name = None
             dup.reviewed_at = None
             wid, status = dup.id, dup.status
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.push_weekly_todo(db, dup, rec)
             db.commit()
             audit_log.record("MOBILE_WEEKLY_RESUBMIT", f"internship:week{week_no}",
                              {"studentNo": u.get("studentNo"), "weekNo": week_no,
@@ -1685,6 +1692,8 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
         try:
             db.flush()
             wid, status = w.id, w.status
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.push_weekly_todo(db, w, rec)
             db.commit()
         except Exception as exc:  # 并发重复提交：唯一约束兜底 → 409（绝不 500）
             db.rollback()

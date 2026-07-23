@@ -541,6 +541,8 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
             if rec:
                 rec.risk_level = "HIGH"
         _trail(db, c.id, "EXCEPTION", f"HANDLE_{action}", {"comment": comment.strip()})
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=c.id, todo_type=ix_todo.TODO_EXCEPTION)
         db.commit()
         return {"id": str(c.id), "status": "COMPLETED",
                 "statusLabel": {"REASONABLE": "已标记合理", "ABNORMAL": "已记为异常",
@@ -681,6 +683,8 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
             # BUG-014：退回即冻结本版正文快照，学生重交后教师仍可逐版对比（版本记录数据源）
             detail["snapshot"] = _report_snapshot(w)
         _trail(db, w.id, "REPORT", f"REVIEW_{action}", detail)
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=w.id, todo_type=ix_todo.TODO_WEEKLY)
         db.commit()
         return {"id": str(w.id), "status": w.status,
                 "statusLabel": REPORT_STATUS_LABEL.get(w.status, w.status)}

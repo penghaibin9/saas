@@ -29,6 +29,29 @@ export function guidePrefKey(guideKey) {
 }
 
 export const GUIDES = {
+  'workbench.first-login': {
+    version: 1,
+    title: '我的工作台',
+    steps: [
+      {
+        title: '先看今天的结论',
+        description: '顶部一句话告诉你有没有逾期或临期待办。数字都来自你本人可见范围，不是全校汇总。'
+      },
+      {
+        title: '磁贴可以点进去办',
+        description: '「待我处理」「已逾期」等汇总磁贴，以及请假/开题等分类磁贴，点一下会跳到已筛好的业务列表。'
+      },
+      {
+        title: '右侧是常用入口',
+        description: '按你的角色给出本职页面（班级、课表、指导学生等）。可用「编辑布局」收藏或隐藏，偏好会跟着账号保存。'
+      },
+      {
+        title: '领导驾驶舱不是人人都能进',
+        description: '全校数据驾驶舱只给有数据中心权限的身份。一线老师处理本职待办即可，不会在菜单里看到无权入口。'
+      }
+    ]
+  },
+
   /* ═══════════ 毕业设计中心 ═══════════ */
 
   'graduation.gd-dashboard': {

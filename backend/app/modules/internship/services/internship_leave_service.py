@@ -117,6 +117,8 @@ def apply(user, body) -> dict:
         db.add(lv); db.flush()
         _trail(db, lv.id, "APPLY", {"range": f"{start}~{end}", "days": days},
                operator=lv.apply_by_name or "学生")
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.push_leave_todo(db, lv, rec)
         db.commit()
         return {"id": str(lv.id), "status": "PENDING", "statusLabel": "待审批", "days": days}
 
@@ -132,6 +134,8 @@ def withdraw(user, leave_id) -> dict:
         lv.status = "WITHDRAWN"
         lv.version = int(lv.version or 0) + 1
         _trail(db, lv.id, "WITHDRAW", {}, operator=_op_name(user))
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=lv.id, todo_type=ix_todo.TODO_LEAVE)
         db.commit()
         return {"id": str(lv.id), "status": "WITHDRAWN"}
 
@@ -240,6 +244,8 @@ def review(user, leave_id, action: str, comment: str = "") -> dict:
             leave_days = _write_leave_checkins(db, lv)
         _trail(db, lv.id, f"REVIEW_{action}", {"comment": (comment or "").strip(),
                "leaveCheckins": leave_days}, operator=_op_name(user))
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=lv.id, todo_type=ix_todo.TODO_LEAVE)
         db.commit()
         return {"id": str(lv.id), "status": lv.status, "statusLabel": STATUS_LABEL[lv.status],
                 "leaveDays": leave_days}

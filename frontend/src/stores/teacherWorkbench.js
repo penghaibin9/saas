@@ -1,37 +1,25 @@
-import { defineStore } from 'pinia'
-import { getTeacherWorkbench } from '../services/mock'
-
 /**
- * useTeacherWorkbenchStore 教师工作台数据
- * 契约：loading / error / data / refresh() / reset()
+ * 已废弃：旧 mock 教师工作台 store。
+ * 生产入口为 `/` → AdminWorkbenchView → modules/workbench/WorkbenchView（真实待办）。
+ * 保留空导出仅为避免历史动态 import 崩；勿再接入页面。
  */
+import { defineStore } from 'pinia'
+
 export const useTeacherWorkbenchStore = defineStore('teacherWorkbench', {
   state: () => ({
     loading: false,
-    error: null,
+    error: '已废弃：请使用管理端工作台 /',
     data: null
   }),
   getters: {
-    viewState(s) {
-      if (s.loading) return 'loading'
-      if (s.error) return 'error'
-      if (!s.data) return 'empty'
-      return 'ready'
-    },
-    todos: (s) => (s.data ? s.data.todos : []),
-    riskStudents: (s) => (s.data ? s.data.riskStudents : [])
+    viewState: () => 'error',
+    todos: () => [],
+    riskStudents: () => []
   },
   actions: {
-    async refresh(teacherId) {
-      this.loading = true
-      this.error = null
-      try {
-        this.data = await getTeacherWorkbench(teacherId)
-      } catch (e) {
-        this.error = e.message || '加载失败'
-      } finally {
-        this.loading = false
-      }
+    async refresh() {
+      this.error = '已废弃：请使用管理端工作台 /'
+      this.data = null
     },
     reset() {
       this.loading = false

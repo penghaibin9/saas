@@ -11,6 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.config import settings
 from app.core.exceptions import AppException, not_found
 from app.core.response import paginate, success
 from app.core.security import require_staff
@@ -19,6 +20,19 @@ from app.services import mock_todo_service as todo_svc
 from app.services import workbench_todo_service as wb_svc
 
 router = APIRouter(tags=["S7·简化-待办"])
+
+
+def _use_real_db() -> bool:
+    """真库优先；生产禁止 mock 汇总/列表（与 /admin/todos 同口径）。"""
+    if db_enabled():
+        return True
+    if settings.is_prod:
+        raise AppException(
+            "SERVER_ERROR",
+            "生产环境未启用数据库，待办不可用",
+            details={"reason": "DB_REQUIRED_IN_PROD"},
+        )
+    return False
 
 
 @router.get("", summary="待办列表（本人可见范围）")
@@ -30,7 +44,7 @@ def list_todos(
     user=Depends(require_staff),
 ):
     # 真库分支按「本人指派 + 范围内池待办」收敛；db_service.list_todos 只过滤租户（全校可见），不再使用。
-    if db_enabled():
+    if _use_real_db():
         items, total = wb_svc.list_todos(user, status, todoType, page, pageSize)
         data = paginate(items, total, page, pageSize)
         data["countByType"] = wb_svc.count_todos(user)["byType"]
@@ -42,7 +56,7 @@ def list_todos(
 def todo_summary(user=Depends(require_staff)):
     # 前端顶部角标消费本接口。此前走 db_service.todo_summary()：只过滤租户不分人，
     # 辅导员会看到全校待办数；且 overdue/nearDeadline 恒为 0、doneToday 实为历史全部完成数。
-    if db_enabled():
+    if _use_real_db():
         role = (user or {}).get("currentRoleCode") or "DB"
         return success({"role": role, **wb_svc.summary(user)})
     return success(todo_svc.get_summary(user))
@@ -51,7 +65,7 @@ def todo_summary(user=Depends(require_staff)):
 @router.post("/{todo_id}/done", summary="完成待办（仅限本人可见范围内）")
 def todo_done(todo_id: str, user=Depends(require_staff)):
     # 归属校验：此前 db_service.todo_done() 只按 id+租户更新，任意教职工可凭 ID 完成他人待办。
-    if db_enabled():
+    if _use_real_db():
         data, err = wb_svc.complete_todo(user, todo_id)
         if err == "NOT_FOUND":
             raise not_found("待办不存在")

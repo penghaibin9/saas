@@ -13,7 +13,7 @@
       v-if="!canView"
       state="forbidden"
       title="当前身份无权管理审批模板"
-      :description="viewReason + '；可通过右上角切换角色体验完整能力'"
+      :description="viewReason + '；请联系学校管理员为你开通审批模板权限，或切换到具备权限的真实身份'"
       @back="$router.push('/admin/approval')"
       @contact="onContact"
     />

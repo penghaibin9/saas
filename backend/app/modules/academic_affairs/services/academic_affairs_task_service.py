@@ -33,13 +33,14 @@ def _op():
 
 
 def _user_keys(user) -> set[str]:
-    """派生当前用户可能的教师标识键（userId/登录名/姓名），用于「教师任务确认」按本人授课范围收敛。
-    与 academic_affairs_grade_service._user_keys 同构（教务域内小工具函数按模块各自持有，不跨文件耦合）。"""
+    """派生当前用户教师标识键（userId/登录名），用于「教师任务确认」按本人授课范围收敛。
+
+    与 grade_service / schedule_service 同口径：**不含 realName**，避免同名越权。
+    """
     u = user or {}
     uid = str(u.get("userId") or "")
     login = u.get("loginName") or ""
-    name = u.get("realName") or ""
-    return {k for k in (uid, login, name, uid[2:] if uid.startswith("u_") else "") if k}
+    return {k for k in (uid, login, uid[2:] if uid.startswith("u_") else "") if k}
 
 
 def _audit(db, biz_type, biz_id, action, detail=""):
