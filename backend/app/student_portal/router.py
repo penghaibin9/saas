@@ -282,6 +282,16 @@ def affairs_leave_resubmit(leave_id: str, body: dict = Body(default={}), user=De
     return success(result, message="已重新提交，等待辅导员审批")
 
 
+@router.post("/affairs/leave/{leave_id}/cancel", summary="本人发起销假")
+def affairs_leave_cancel(leave_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(affairs.leave_cancel(user, leave_id, body or {}), message="销假已提交，等待辅导员确认")
+
+
+@router.get("/affairs/talk", summary="我的谈心谈话（本人摘要）")
+def affairs_talk(user=Depends(get_current_user)):
+    return success(affairs.talk(user))
+
+
 @router.get("/affairs/funding", summary="我的奖助勤贷补（本人）")
 def affairs_funding(user=Depends(get_current_user)):
     return success(affairs.funding(user))
@@ -357,6 +367,11 @@ def affairs_aid_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(affairs.aid_apply(user, body))
 
 
+@router.post("/affairs/aid/objection", summary="公示期本人对困难认定结果提异议")
+def affairs_aid_objection(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.aid_objection(user, body), message="异议已提交")
+
+
 @router.get("/affairs/activities", summary="活动二课/社团（本人可报名）")
 def affairs_activities(user=Depends(get_current_user),
                        page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100)):
@@ -412,6 +427,11 @@ def internship_makeup_list(user=Depends(get_current_user)):
 @router.post("/internship/makeup", summary="补卡申请（本人）")
 def internship_makeup_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(internship.makeup_apply(user, body))
+
+
+@router.post("/internship/makeup/{makeup_id}/withdraw", summary="撤回本人补卡申请")
+def internship_makeup_withdraw(makeup_id: str, user=Depends(get_current_user)):
+    return success(internship.makeup_withdraw(user, makeup_id), message="已撤回")
 
 
 @router.get("/internship/intention", summary="本人岗位意向")

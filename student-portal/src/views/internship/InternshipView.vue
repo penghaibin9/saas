@@ -113,7 +113,16 @@
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">我的补卡</div>
-            <AutoTable :rows="makeups" empty="暂无补卡申请" :columns="[{key:'checkinDate',label:'日期'},{key:'statusLabel',label:'状态'},{key:'reason',label:'事由'}]" />
+            <div v-if="!makeups.length" class="sp-muted">暂无补卡申请</div>
+            <div v-else style="display:flex;flex-direction:column;gap:10px">
+              <div v-for="m in makeups" :key="m.id" class="repitem" style="flex-direction:column;align-items:stretch;gap:6px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span>{{ m.checkinDate }} · {{ m.statusLabel || m.status }}</span>
+                  <button v-if="m.status === 'PENDING'" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawMakeup(m.id)">撤回</button>
+                </div>
+                <div class="sp-muted" style="font-size:12px">{{ m.reason }}</div>
+              </div>
+            </div>
           </section>
         </div>
       </template>
@@ -140,16 +149,20 @@
             <div class="sp-panel__head">提交正式申请</div>
             <div class="sp-fieldlabel">申请类型</div>
             <select v-model="appForm.applicationType" class="sp-inp" style="margin-bottom:12px">
-              <option value="POSITION">岗位实习</option>
-              <option value="SELF">自主实习</option>
+              <option value="POSITION">校内岗位志愿</option>
+              <option value="SELF_ARRANGED">自主实习</option>
             </select>
-            <div class="sp-fieldlabel">说明</div>
-            <textarea v-model.trim="appForm.remark" class="sp-inp" style="margin-bottom:12px" placeholder="申请说明" />
-            <button class="sp-btn" :disabled="busy" @click="submitApplication">保存并提交</button>
+            <template v-if="appForm.applicationType === 'POSITION'">
+              <div class="sp-fieldlabel">岗位 ID</div>
+              <input v-model.trim="appForm.positionId" class="sp-inp" style="margin-bottom:12px" placeholder="填写拟申请岗位编号" />
+            </template>
+            <div class="sp-fieldlabel">申请说明</div>
+            <textarea v-model.trim="appForm.applicationNote" class="sp-inp" style="margin-bottom:12px" placeholder="不少于 5 字" />
+            <button class="sp-btn" :disabled="busy || !appForm.applicationNote || appForm.applicationNote.length < 5" @click="submitApplication">保存并提交</button>
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">我的申请</div>
-            <AutoTable :rows="applications" empty="暂无申请" :columns="[{key:'applicationType',label:'类型'},{key:'statusLabel',label:'状态'},{key:'remark',label:'说明'}]" />
+            <AutoTable :rows="applications" empty="暂无申请" :columns="[{key:'applicationTypeLabel',label:'类型'},{key:'statusLabel',label:'状态'},{key:'applicationNote',label:'说明'}]" />
           </section>
         </div>
       </template>
@@ -161,17 +174,24 @@
             <div class="sp-panel__head">发起变更</div>
             <div class="sp-fieldlabel">变更类型</div>
             <select v-model="changeForm.changeType" class="sp-inp" style="margin-bottom:12px">
-              <option value="TRANSFER">调岗</option>
-              <option value="QUIT">退岗</option>
-              <option value="SELF">转自主实习</option>
+              <option value="CHANGE_POSITION">换岗</option>
+              <option value="CHANGE_ENTERPRISE">换实习单位</option>
+              <option value="SELF_ARRANGED">转自主实习</option>
+              <option value="WITHDRAW_POST">退岗</option>
             </select>
-            <div class="sp-fieldlabel">事由</div>
+            <template v-if="changeForm.changeType === 'CHANGE_ENTERPRISE' || changeForm.changeType === 'SELF_ARRANGED'">
+              <div class="sp-fieldlabel">目标企业名称</div>
+              <input v-model.trim="changeForm.targetEnterpriseName" class="sp-inp" style="margin-bottom:12px" />
+              <div class="sp-fieldlabel">目标岗位名称</div>
+              <input v-model.trim="changeForm.targetPositionName" class="sp-inp" style="margin-bottom:12px" />
+            </template>
+            <div class="sp-fieldlabel">事由（不少于 5 字）</div>
             <textarea v-model.trim="changeForm.reason" class="sp-inp" style="margin-bottom:12px" />
-            <button class="sp-btn" :disabled="busy || !changeForm.reason" @click="submitChange">提交变更</button>
+            <button class="sp-btn" :disabled="busy || !changeForm.reason || changeForm.reason.length < 5" @click="submitChange">提交变更</button>
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">我的变更</div>
-            <AutoTable :rows="changes" empty="暂无变更申请" :columns="[{key:'changeType',label:'类型'},{key:'statusLabel',label:'状态'},{key:'reason',label:'事由'}]" />
+            <AutoTable :rows="changes" empty="暂无变更申请" :columns="[{key:'changeTypeLabel',label:'类型'},{key:'statusLabel',label:'状态'},{key:'reason',label:'事由'}]" />
           </section>
         </div>
       </template>
@@ -300,9 +320,9 @@ const makeupForm = reactive({ checkinDate: '', reason: '' })
 const makeups = ref([])
 const intentionForm = reactive({ preferredCity: '', preferredIndustry: '', intentionNote: '' })
 const intentionMeta = ref({})
-const appForm = reactive({ applicationType: 'POSITION', remark: '' })
+const appForm = reactive({ applicationType: 'SELF_ARRANGED', positionId: '', applicationNote: '' })
 const applications = ref([])
-const changeForm = reactive({ changeType: 'TRANSFER', reason: '' })
+const changeForm = reactive({ changeType: 'CHANGE_POSITION', reason: '', targetEnterpriseName: '', targetPositionName: '' })
 const changes = ref([])
 const appealReason = ref('')
 
@@ -391,6 +411,13 @@ async function submitMakeup() {
     await loadExtras()
   } catch (e) { ui.notify(e?.message || '补卡失败') } finally { busy.value = false }
 }
+async function withdrawMakeup(id) {
+  busy.value = true
+  try {
+    await portalApi.internshipMakeupWithdraw(id)
+    ui.notify('已撤回'); await loadExtras()
+  } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
+}
 async function saveIntention() {
   busy.value = true
   try {
@@ -399,13 +426,27 @@ async function saveIntention() {
   } catch (e) { ui.notify(e?.message || '意向保存失败') } finally { busy.value = false }
 }
 async function submitApplication() {
+  if (appForm.applicationType === 'POSITION' && !appForm.positionId) {
+    return ui.notify('岗位志愿须填写岗位 ID')
+  }
+  if ((appForm.applicationNote || '').trim().length < 5) {
+    return ui.notify('申请说明不少于 5 字')
+  }
   busy.value = true
   try {
-    await portalApi.internshipApplicationSubmit({ ...appForm })
-    ui.notify('申请已提交'); await loadExtras()
+    const body = {
+      applicationType: appForm.applicationType,
+      applicationNote: appForm.applicationNote,
+      positionId: appForm.applicationType === 'POSITION' ? appForm.positionId : undefined
+    }
+    await portalApi.internshipApplicationSubmit(body)
+    ui.notify('申请已提交'); appForm.applicationNote = ''; await loadExtras()
   } catch (e) { ui.notify(e?.message || '申请失败') } finally { busy.value = false }
 }
 async function submitChange() {
+  if ((changeForm.reason || '').trim().length < 5) {
+    return ui.notify('变更事由不少于 5 字')
+  }
   busy.value = true
   try {
     await portalApi.internshipChangeApply({ ...changeForm })

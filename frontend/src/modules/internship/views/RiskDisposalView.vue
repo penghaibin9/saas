@@ -82,7 +82,22 @@
           </section>
 
           <div class="ws__actions">
-            <template v-if="detail.status === 'PENDING_HANDLE'">
+            <template v-if="complaintMode">
+              <AppPermissionButton v-if="detail.status === 'RECEIVED'" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="secondary"
+                @click="openComplaintAction('ACCEPT')">受理</AppPermissionButton>
+              <AppPermissionButton v-if="detail.status === 'ACCEPTED'" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="secondary"
+                @click="openComplaintAction('INVESTIGATE')">转入调查</AppPermissionButton>
+              <AppPermissionButton v-if="['ACCEPTED','INVESTIGATING'].includes(detail.status)" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="secondary"
+                @click="openComplaintAction('RESOLVE')">办结</AppPermissionButton>
+              <AppPermissionButton v-if="['RECEIVED','ACCEPTED','INVESTIGATING'].includes(detail.status)" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="ghost" :danger="true"
+                @click="openComplaintAction('REJECT')">判定不成立</AppPermissionButton>
+              <AppPermissionButton v-if="detail.studentId && !detail.riskId && ['ACCEPTED','INVESTIGATING','RESOLVED'].includes(detail.status)" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="ghost"
+                @click="openComplaintAction('TO_RISK')">转风险单</AppPermissionButton>
+              <AppPermissionButton v-if="['RESOLVED','REJECTED'].includes(detail.status)" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="ghost"
+                @click="openComplaintAction('CLOSE')">关闭归档</AppPermissionButton>
+              <span v-if="['CLOSED','WITHDRAWN'].includes(detail.status)" class="mp-note">该投诉已终结，仅保留留痕。</span>
+            </template>
+            <template v-else-if="detail.status === 'PENDING_HANDLE'">
               <AppPermissionButton code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="secondary"
                 @click="openAction('handle')">受理</AppPermissionButton>
             </template>
@@ -259,14 +274,18 @@ export default {
       if (res.code !== 0) { this.error = res.message || '投诉加载失败'; this.rows = []; this.total = 0; return }
       this.rows = (res.data.list || []).map((c) => ({
         ...c,
-        studentName: c.studentId || '企业投诉',
+        studentName: c.studentName || (c.studentId ? `学生#${c.studentId}` : '企业投诉'),
         studentNo: c.complaintNo || '',
         riskCode: c.category || 'COMPLAINT',
         riskTitle: (c.content || '').slice(0, 40),
         riskLevel: c.severity,
+        level: c.severity,
         ownerName: c.ownerName || c.acceptedByName || '',
         statusLabel: c.statusLabel,
-        deadlineAt: c.resolveDeadline || c.acceptDeadline || ''
+        deadline: c.resolveDeadline || c.acceptDeadline || '',
+        deadlineAt: c.resolveDeadline || c.acceptDeadline || '',
+        source: c.category || '企业投诉',
+        lastFollow: c.conclusion || '—'
       }))
       this.total = res.data.total || 0
     },
@@ -304,7 +323,7 @@ export default {
       if (this.detail?.internId) this.$router.push(`/admin/internship/students/${this.detail.internId}`)
     },
     openAction(kind) {
-      if (this.complaintMode) return toast.error('投诉处置请使用状态迁移，不支持风险催办动作')
+      if (this.complaintMode) return
       const d = this.detail
       if (!d) return
       const map = {
@@ -314,7 +333,21 @@ export default {
         escalate: { title: '风险升级', content: `将「${d.studentName}」风险等级升级为「${d.riskLevel === 'LOW' ? '中' : '高'}」，升级原因将写审计。`, danger: true, confirmText: '升级', reasonLabel: '升级原因', requireReason: true },
         close: { title: '风险关闭', content: `将「${d.studentName}」的风险化解并关闭归档，关闭说明将写审计。`, danger: true, confirmText: '关闭', reasonLabel: '关闭说明（≥5字）', requireReason: true }
       }[kind]
-      this.pending = { id: d.id, kind, level: d.riskLevel }
+      this.pending = { id: d.id, kind, level: d.riskLevel, mode: 'risk' }
+      this.cd = { visible: true, ...map, submitting: false }
+    },
+    openComplaintAction(action) {
+      const d = this.detail
+      if (!d) return
+      const map = {
+        ACCEPT: { title: '受理投诉', content: `受理投诉「${d.complaintNo || d.id}」，转入已受理。`, danger: false, confirmText: '受理', reasonLabel: '责任人（可空）', requireReason: false },
+        INVESTIGATE: { title: '转入调查', content: '将投诉转入调查中。', danger: false, confirmText: '转入调查', reasonLabel: '', requireReason: false },
+        RESOLVE: { title: '办结投诉', content: '填写办结结论（不少于 5 字）。', danger: false, confirmText: '办结', reasonLabel: '结论（≥5字）', requireReason: true },
+        REJECT: { title: '判定不成立', content: '填写不成立理由（不少于 5 字）。', danger: true, confirmText: '不成立', reasonLabel: '理由（≥5字）', requireReason: true },
+        CLOSE: { title: '关闭归档', content: '关闭该投诉并归档。', danger: false, confirmText: '关闭', reasonLabel: '', requireReason: false },
+        TO_RISK: { title: '转风险单', content: '将本投诉转为实习风险单，保留双向链接。', danger: true, confirmText: '转风险', reasonLabel: '', requireReason: false }
+      }[action]
+      this.pending = { id: d.id, kind: action, mode: 'complaint' }
       this.cd = { visible: true, ...map, submitting: false }
     },
     async onConfirm({ reason }) {
@@ -322,16 +355,27 @@ export default {
       if (!p) return
       this.cd.submitting = true
       let res
-      if (p.kind === 'handle') res = await riskApi.handle(p.id, { comment: reason })
-      else if (p.kind === 'follow') res = await riskApi.follow(p.id, { note: reason })
-      else if (p.kind === 'remind') res = await riskApi.remind(p.id, {})
-      else if (p.kind === 'escalate') res = await riskApi.escalate(p.id, { level: NEXT_LEVEL[p.level], note: reason })
-      else res = await riskApi.close(p.id, { result: 'RESOLVED', comment: reason })
-      this.cd.submitting = false
-      if (res.code !== 0) return toast.error(res.message || '操作失败')
+      try {
+        if (p.mode === 'complaint') {
+          if (p.kind === 'TO_RISK') res = await complaintApi.toRisk(p.id)
+          else {
+            const body = {}
+            if (p.kind === 'ACCEPT' && reason) body.ownerName = reason
+            if (['RESOLVE', 'REJECT'].includes(p.kind)) body.conclusion = reason
+            res = await complaintApi.transition(p.id, p.kind, body)
+          }
+        } else if (p.kind === 'handle') res = await riskApi.handle(p.id, { comment: reason })
+        else if (p.kind === 'follow') res = await riskApi.follow(p.id, { note: reason })
+        else if (p.kind === 'remind') res = await riskApi.remind(p.id, {})
+        else if (p.kind === 'escalate') res = await riskApi.escalate(p.id, { level: NEXT_LEVEL[p.level], note: reason })
+        else res = await riskApi.close(p.id, { result: 'RESOLVED', comment: reason })
+      } finally {
+        this.cd.submitting = false
+      }
+      if (!res || res.code !== 0) return toast.error((res && res.message) || '操作失败')
       this.cd.visible = false
       toast.success('操作成功，已写审计')
-      if (p.kind === 'close') {
+      if (p.kind === 'close' || p.kind === 'CLOSE') {
         await this.afterClose(p.id)
       } else {
         await this.load()

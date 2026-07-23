@@ -65,8 +65,18 @@ export const guidanceVisitApi = {
   // 企业沟通 / 巡访计划（深链真实接线）
   getCommunications(params = {}) { return callList(`${B}/communications`, params) },
   getCommunicationDetail(id) { return call(() => request(`${B}/communications/${id}`)) },
+  createCommunication(body) { return call(() => request(`${B}/communications`, { method: 'POST', body })) },
+  voidCommunication(id, reason) {
+    return call(() => request(`${B}/communications/${id}/void`, { method: 'POST', body: { reason } }))
+  },
   getVisitPlans(params = {}) { return callList(`${B}/visit-plans`, params) },
-  getVisitPlanDetail(id) { return call(() => request(`${B}/visit-plans/${id}`)) }
+  getVisitPlanDetail(id) { return call(() => request(`${B}/visit-plans/${id}`)) },
+  createVisitPlan(body) { return call(() => request(`${B}/visit-plans`, { method: 'POST', body })) },
+  transitionVisitPlan(id, action, body = {}) {
+    return call(() => request(`${B}/visit-plans/${id}/transition`, {
+      method: 'POST', body: { ...(body || {}), action }
+    }))
+  }
 }
 
 export default guidanceVisitApi

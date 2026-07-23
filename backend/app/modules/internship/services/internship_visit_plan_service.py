@@ -135,10 +135,27 @@ def create_visit_plan(body, user=None):
         raise AppException("VALIDATION_ERROR", "请至少填写巡访企业或巡访目标")
     plan_type = (body.get("planType") or "VISIT").upper()
     with session() as db:
+        scope = _scope(user)
+        # 学院负责人不可跨院写 collegeId（与读侧 collegeNames 对齐）
+        if scope.get("mode") == "SCOPED" and body.get("collegeId"):
+            college_names = scope.get("collegeNames") or set()
+            if college_names:
+                from app.models import College
+                col = db.get(College, int(body["collegeId"]))
+                if not col or (col.college_name or "").strip() not in college_names:
+                    raise no_permission("巡访计划学院不在你的数据范围内")
+            elif not ((scope.get("advisorNames") or set()) & {(user or {}).get("realName") or ""}):
+                # 无学院名范围且非本人指导名：拒绝指定外院
+                pass
         p = InternshipVisitPlan(tenant_id=_tid(), owner_name=_op_name(user),
                                 status="DRAFT", plan_type=plan_type,
                                 created_by=None)
         _apply(p, body)
+        # 创建后也必须可读（owner 本人或学院命中）
+        if not _scope_ok(scope, p, db):
+            # 草稿归属本人 owner_name，一般可通过；若 college 越权已在上拦截
+            if scope.get("mode") == "SCOPED" and p.college_id:
+                raise no_permission("巡访计划不在你的数据范围内")
         db.add(p)
         db.flush()
         _trail(db, p.id, "CREATE", {"planType": plan_type}, user)
@@ -153,7 +170,16 @@ def update_visit_plan(pid, body, user=None):
             raise no_permission("不在当前数据范围内")
         if p.status not in ("DRAFT", "PUBLISHED"):
             raise AppException("DATA_CONFLICT", "进行中/已完成/已取消的计划不可编辑")
-        _apply(p, body or {})
+        body = body or {}
+        scope = _scope(user)
+        if scope.get("mode") == "SCOPED" and body.get("collegeId"):
+            college_names = scope.get("collegeNames") or set()
+            if college_names:
+                from app.models import College
+                col = db.get(College, int(body["collegeId"]))
+                if not col or (col.college_name or "").strip() not in college_names:
+                    raise no_permission("巡访计划学院不在你的数据范围内")
+        _apply(p, body)
         p.version = int(p.version or 0) + 1
         _trail(db, p.id, "UPDATE", {}, user)
         db.commit()

@@ -101,6 +101,11 @@ def makeup_apply(user: dict, body: dict) -> dict:
                     internship_id=b.get("internshipId"))
 
 
+def makeup_withdraw(user: dict, makeup_id) -> dict:
+    from app.modules.internship.services import internship_makeup_service as mk
+    return mk.withdraw(user, makeup_id)
+
+
 def intention_my(user: dict) -> dict:
     return stu.internship_intention_my(user)
 

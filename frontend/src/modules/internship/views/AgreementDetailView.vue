@@ -99,8 +99,7 @@
                 variant="primary" @click="confirmAct('issue')">下发给学生确认</AppPermissionButton>
               <AppPermissionButton v-if="detail.esignStatus === 'NONE' && canVoid" code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')"
                 variant="ghost" @click="startEsign">发起电子签</AppPermissionButton>
-              <AppPermissionButton v-if="detail.esignStatus === 'PENDING' && detail.status === 'PENDING_ENTERPRISE'"
-                code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')" variant="ghost" @click="esignParty('ENTERPRISE')">企业电子签</AppPermissionButton>
+              <!-- 企业方禁止教师代签电子签；正式路径为上方纸质扫描件确认（对标企业真签） -->
               <AppPermissionButton v-if="detail.esignStatus === 'PENDING' && detail.status === 'PENDING_SCHOOL'"
                 code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')" variant="ghost" @click="esignParty('SCHOOL')">学校电子签</AppPermissionButton>
               <AppPermissionButton v-if="detail.status === 'PENDING_ENTERPRISE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"

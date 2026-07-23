@@ -13,7 +13,8 @@ from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import InternshipAuditTrail, InternshipComplaint, InternshipRecord, RiskRecord
+from app.models import (InternshipAuditTrail, InternshipComplaint, InternshipRecord, RiskRecord,
+                        StudentProfile)
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"RECEIVED": "已登记", "ACCEPTED": "已受理", "INVESTIGATING": "调查中",
@@ -52,7 +53,7 @@ def _mask(value: str) -> str:
     return v[:3] + "****" + v[-2:]
 
 
-def _row(c, user=None):
+def _row(c, user=None, student_name: str = ""):
     from app.core.permissions import has_permission
     can_sensitive = has_permission(user or {}, "internship.complaint.sensitive")
     contact = c.complainant_contact_encrypted or ""
@@ -61,6 +62,7 @@ def _row(c, user=None):
         "targetType": c.target_type or "",
         "enterpriseId": str(c.enterprise_id) if c.enterprise_id else "",
         "studentId": str(c.student_id) if c.student_id else "",
+        "studentName": student_name or ("企业投诉" if not c.student_id else ""),
         "batchId": str(c.batch_id) if c.batch_id else "",
         "category": c.category or "", "severity": c.severity,
         "content": c.content or "", "evidenceFileId": c.evidence_file_id or "",
@@ -73,6 +75,15 @@ def _row(c, user=None):
         "conclusion": c.conclusion or "", "followupResult": c.followup_result or "",
         "riskId": str(c.risk_id) if c.risk_id else "", "createdAt": _iso(c.created_at) or "",
     }
+
+
+def _assert_complaint_writable(db, c, user, msg: str = "该投诉不在你的可写范围内"):
+    """有学生：按学生范围；无学生企业投诉：仅校级 ADMIN_TENANT（教育部「学校是主体」口径）。"""
+    from app.modules.internship.services.internship_service import assert_admin_tenant, assert_student_in_scope
+    if not c.student_id:
+        assert_admin_tenant(user, msg)
+        return
+    assert_student_in_scope(db, c.student_id, user, msg)
 
 
 def _complaint_in_scope(db, c, user) -> bool:
@@ -115,7 +126,15 @@ def list_complaints(page, page_size, status=None, enterprise_id=None, severity=N
         if severity:
             q = q.where(InternshipComplaint.severity == severity)
         rows = db.scalars(q.order_by(InternshipComplaint.id.desc())).all()
-        items = [_row(c, user) for c in rows if _complaint_in_scope(db, c, user)]
+        items = []
+        for c in rows:
+            if not _complaint_in_scope(db, c, user):
+                continue
+            stu_name = ""
+            if c.student_id:
+                stu = db.get(StudentProfile, c.student_id)
+                stu_name = (stu.real_name if stu else "") or ""
+            items.append(_row(c, user, stu_name))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -126,7 +145,11 @@ def get_complaint(cid, user=None):
         c = _get(db, cid)
         if not _complaint_in_scope(db, c, user):
             raise no_permission("该投诉不在你的数据范围内")
-        item = _row(c, user)
+        stu_name = ""
+        if c.student_id:
+            stu = db.get(StudentProfile, c.student_id)
+            stu_name = (stu.real_name if stu else "") or ""
+        item = _row(c, user, stu_name)
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "COMPLAINT",
             InternshipAuditTrail.target_id == c.id).order_by(InternshipAuditTrail.id)).all()
@@ -180,8 +203,7 @@ def transition(cid, action, body=None, user=None):
     body = body or {}
     with session() as db:
         c = _get(db, cid)
-        from app.modules.internship.services.internship_service import assert_student_in_scope
-        assert_student_in_scope(db, c.student_id, user, "该投诉关联学生不在你的数据范围内")
+        _assert_complaint_writable(db, c, user, "该投诉不在你的可写范围内")
         if c.status not in allowed_from:
             raise AppException("DATA_CONFLICT", f"当前状态 {c.status} 不可执行 {action}")
         if action == "ACCEPT":
@@ -204,8 +226,7 @@ def transition(cid, action, body=None, user=None):
 def to_risk(cid, user=None):
     with session() as db:
         c = _get(db, cid)
-        from app.modules.internship.services.internship_service import assert_student_in_scope
-        assert_student_in_scope(db, c.student_id, user, "该投诉关联学生不在你的数据范围内")
+        _assert_complaint_writable(db, c, user, "该投诉不在你的可写范围内")
         if c.risk_id:
             raise AppException("DATA_CONFLICT", "该投诉已转风险单")
         if c.status in ("WITHDRAWN", "CLOSED", "REJECTED"):
@@ -239,8 +260,7 @@ def followup(cid, result, user=None):
         raise AppException("VALIDATION_ERROR", "回访结果不少于 2 个字符")
     with session() as db:
         c = _get(db, cid)
-        from app.modules.internship.services.internship_service import assert_student_in_scope
-        assert_student_in_scope(db, c.student_id, user, "该投诉关联学生不在你的数据范围内")
+        _assert_complaint_writable(db, c, user, "该投诉不在你的可写范围内")
         if c.status not in ("RESOLVED", "CLOSED"):
             raise AppException("DATA_CONFLICT", "仅办结/关闭的投诉可回访")
         c.followup_result = result

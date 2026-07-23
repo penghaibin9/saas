@@ -138,7 +138,7 @@ export default {
     return {
       ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT,
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
-      keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS,
+      keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS, viewFilter: '',
       selectedId: '', doneHint: false,
       detail: { loading: false, error: '', data: null },
       cmtForm: { advisorOpinion: '', mentorOpinion: '' }, cmtSubmitting: false,
@@ -198,7 +198,8 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     applyViewFromRoute() {
       const view = String(this.$route.query.view || '').toLowerCase()
-      if (['self', 'enterprise', 'position', 'advisor'].includes(view)) this.statusFilter = 'PENDING'
+      this.viewFilter = ['self', 'enterprise', 'position', 'advisor'].includes(view) ? view : ''
+      if (this.viewFilter) this.statusFilter = 'PENDING'
     },
     onPickMentorChip(text) {
       if (!text) return
@@ -218,6 +219,7 @@ export default {
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
       if (this.statusFilter) params.reviewStatus = this.statusFilter
+      if (this.viewFilter) params.view = this.viewFilter
       const res = await studentEvalApi.getEvals(params)
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }

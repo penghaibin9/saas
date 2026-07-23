@@ -91,6 +91,9 @@ export const portalApi = {
   affairsLeave: () => request('/portal/affairs/leave'),
   affairsLeaveResubmit: (leaveId, body = {}) =>
     request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/resubmit`, { method: 'POST', body }),
+  affairsLeaveCancel: (leaveId, body = {}) =>
+    request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/cancel`, { method: 'POST', body }),
+  affairsTalk: () => request('/portal/affairs/talk'),
   affairsFunding: () => request('/portal/affairs/funding'),
   affairsAid: () => request('/portal/affairs/aid'),
   affairsDiscipline: () => request('/portal/affairs/discipline'),
@@ -106,6 +109,7 @@ export const portalApi = {
   affairsFundingAppeal: (body) => request('/portal/affairs/funding/appeal', { method: 'POST', body }),
   affairsAidBatches: () => request('/portal/affairs/aid/batches'),
   affairsAidApply: (body) => request('/portal/affairs/aid/apply', { method: 'POST', body }),
+  affairsAidObjection: (body) => request('/portal/affairs/aid/objection', { method: 'POST', body }),
   affairsActivities: (page = 1, pageSize = 20) => request(`/portal/affairs/activities${q({ page, pageSize })}`),
   affairsActivitiesMy: () => request('/portal/affairs/activities/my'),
   affairsActivityEnroll: (activityId) =>
@@ -125,6 +129,8 @@ export const portalApi = {
   internshipSelfEval: (body) => request('/portal/internship/self-eval', { method: 'POST', body }),
   internshipMakeupApply: (body) => request('/portal/internship/makeup', { method: 'POST', body }),
   internshipMakeups: () => request('/portal/internship/makeup'),
+  internshipMakeupWithdraw: (id) =>
+    request(`/portal/internship/makeup/${encodeURIComponent(id)}/withdraw`, { method: 'POST' }),
   internshipIntentionMy: () => request('/portal/internship/intention'),
   internshipIntentionSave: (body) => request('/portal/internship/intention', { method: 'POST', body }),
   internshipApplications: () => request('/portal/internship/applications'),
