@@ -4,7 +4,7 @@
       <view class="page-pad stack">
         <view class="card">
           <text class="card-title">实习变更申请</text>
-          <text class="chg__hint">换岗、换实习单位或自主实习变更，提交后由指导教师审核。</text>
+          <text class="chg__hint">换岗须填目标岗位编号；退岗将释放当前岗位。提交后由指导教师审核。</text>
         </view>
 
         <view class="card stack">
@@ -14,17 +14,21 @@
               <view class="chg__picker">{{ typeLabels[typeIndex] || '请选择' }}</view>
             </picker>
           </view>
-          <view class="chg__field">
-            <text class="chg__label">目标企业（选填）</text>
+          <view v-if="needPositionId" class="chg__field">
+            <text class="chg__label">目标岗位编号 <text class="chg__req">*</text></text>
+            <input v-model="form.targetPositionId" class="chg__input" placeholder="换岗必填，岗位库 ID" />
+          </view>
+          <view v-if="needNames" class="chg__field">
+            <text class="chg__label">目标企业名称</text>
             <input v-model="form.targetEnterpriseName" class="chg__input" placeholder="新实习单位名称" />
           </view>
-          <view class="chg__field">
-            <text class="chg__label">目标岗位（选填）</text>
+          <view v-if="needNames" class="chg__field">
+            <text class="chg__label">目标岗位名称</text>
             <input v-model="form.targetPositionName" class="chg__input" placeholder="新岗位名称" />
           </view>
           <view class="chg__field">
             <text class="chg__label">变更原因 <text class="chg__req">*</text></text>
-            <textarea v-model="form.reason" class="chg__textarea" maxlength="500" placeholder="如：原岗位与专业方向不符，申请更换至更对口的岗位（不少于 5 字）" />
+            <textarea v-model="form.reason" class="chg__textarea" maxlength="500" placeholder="如：原岗位与专业方向不符（不少于 5 字）" />
           </view>
         </view>
 
@@ -50,7 +54,8 @@ import { toast, back } from '@/utils/nav'
 const TYPES = [
   { value: 'CHANGE_POSITION', label: '换岗' },
   { value: 'CHANGE_ENTERPRISE', label: '换实习单位' },
-  { value: 'SELF_ARRANGED', label: '自主实习变更' }
+  { value: 'SELF_ARRANGED', label: '自主实习变更' },
+  { value: 'WITHDRAW_POST', label: '退岗' }
 ]
 
 export default {
@@ -58,9 +63,14 @@ export default {
     return {
       pageState: 'loading', submitting: false,
       typeIndex: 0, typeLabels: TYPES.map((t) => t.label),
-      form: { targetEnterpriseName: '', targetPositionName: '', reason: '' },
+      form: { targetPositionId: '', targetEnterpriseName: '', targetPositionName: '', reason: '' },
       history: []
     }
+  },
+  computed: {
+    currentType() { return TYPES[this.typeIndex].value },
+    needPositionId() { return this.currentType === 'CHANGE_POSITION' },
+    needNames() { return this.currentType === 'CHANGE_ENTERPRISE' || this.currentType === 'SELF_ARRANGED' }
   },
   onLoad() { this.load() },
   methods: {
@@ -75,13 +85,17 @@ export default {
     submit() {
       if (this.submitting) return
       if ((this.form.reason || '').trim().length < 5) return toast('变更原因不少于 5 字')
+      if (this.needPositionId && !(this.form.targetPositionId || '').trim()) {
+        return toast('换岗须填写目标岗位编号')
+      }
       this.submitting = true
       const body = {
-        changeType: TYPES[this.typeIndex].value,
+        changeType: this.currentType,
         reason: this.form.reason,
         targetEnterpriseName: this.form.targetEnterpriseName,
         targetPositionName: this.form.targetPositionName
       }
+      if (this.needPositionId) body.targetPositionId = this.form.targetPositionId
       studentApi.applyInternshipChange(body).then(() => {
         toast('变更申请已提交')
         setTimeout(() => back(), 600)

@@ -37,10 +37,16 @@
           <section class="sp-card">
             <div class="sp-panel__head">实习三方协议 <StatusTag :text="agreementStatusText" :tone="agreementTone" /></div>
             <div class="agreement">甲方（学校）：{{ brandSchool }}<br />乙方（企业）：{{ my.enterpriseName }}<br />丙方（学生）：{{ studentName }}<br />实习岗位：{{ my.positionName }} · 指导教师：{{ my.advisorName || '待分配' }}</div>
-            <div style="display:flex;gap:10px;margin-top:16px">
+            <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
               <button class="sp-btn sp-btn--ghost" :disabled="busy" @click="printAgreement">打印协议</button>
+              <button v-if="activeAgreement?.status==='PENDING_STUDENT'" class="sp-btn" :disabled="busy" @click="confirmAgreement('CONFIRM')">确认协议</button>
+              <button v-if="activeAgreement?.status==='PENDING_STUDENT'" class="sp-btn sp-btn--ghost" :disabled="busy" @click="confirmAgreement('REJECT')">驳回协议</button>
             </div>
-            <p class="sp-muted" style="margin-top:10px">盖章件上传请在学生小程序完成，两端同一数据。</p>
+            <p class="sp-muted" style="margin-top:10px">盖章件上传请在学生小程序完成；确认/驳回两端同一数据。</p>
+          </section>
+          <section class="sp-card">
+            <div class="sp-panel__head">协议列表</div>
+            <AutoTable :rows="agreements" empty="暂无协议" :columns="[{key:'enterpriseName',label:'企业'},{key:'statusLabel',label:'状态'},{key:'positionName',label:'岗位'}]" />
           </section>
         </div>
       </template>
@@ -93,7 +99,10 @@
                   </div>
                   <StatusTag :text="lv.statusLabel || lv.status" :tone="lv.status==='APPROVED'||lv.status==='RETURNED'?'success':lv.status==='REJECTED'?'danger':'warn'" />
                 </div>
-                <button v-if="lv.status==='APPROVED'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="returnLeave(lv.id)">办理销假</button>
+                <div style="display:flex;gap:8px">
+                  <button v-if="lv.status==='PENDING'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="withdrawLeave(lv.id)">撤回</button>
+                  <button v-if="lv.status==='APPROVED'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="returnLeave(lv.id)">办理销假</button>
+                </div>
               </div>
             </div>
           </section>
@@ -132,13 +141,17 @@
         <section class="sp-card">
           <div class="sp-panel__head">岗位意向</div>
           <div class="sp-fieldlabel">意向城市</div>
-          <input v-model.trim="intentionForm.preferredCity" class="sp-inp" style="margin-bottom:12px" />
+          <input v-model.trim="intentionForm.preferredCity" class="sp-inp" style="margin-bottom:12px" :disabled="!intentionCanEdit" />
           <div class="sp-fieldlabel">意向行业</div>
-          <input v-model.trim="intentionForm.preferredIndustry" class="sp-inp" style="margin-bottom:12px" />
+          <input v-model.trim="intentionForm.preferredIndustry" class="sp-inp" style="margin-bottom:12px" :disabled="!intentionCanEdit" />
           <div class="sp-fieldlabel">补充说明</div>
-          <textarea v-model.trim="intentionForm.intentionNote" class="sp-inp" style="margin-bottom:12px" />
-          <button class="sp-btn" :disabled="busy" @click="saveIntention">保存意向</button>
-          <p class="sp-muted" style="margin-top:10px">当前状态：{{ intentionMeta.statusLabel || intentionMeta.status || '未填写' }}</p>
+          <textarea v-model.trim="intentionForm.intentionNote" class="sp-inp" style="margin-bottom:12px" :disabled="!intentionCanEdit" />
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button v-if="intentionCanEdit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="saveIntention">保存草稿</button>
+            <button v-if="intentionCanSubmit" class="sp-btn" :disabled="busy" @click="submitIntention">提交意向</button>
+            <button v-if="intentionCanWithdraw" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawIntention">撤回意向</button>
+          </div>
+          <p class="sp-muted" style="margin-top:10px">当前状态：{{ intentionMeta.statusLabel || intentionMeta.status || '未填写' }}（匹配只认已提交）</p>
         </section>
       </template>
 
@@ -155,6 +168,20 @@
             <template v-if="appForm.applicationType === 'POSITION'">
               <div class="sp-fieldlabel">岗位 ID</div>
               <input v-model.trim="appForm.positionId" class="sp-inp" style="margin-bottom:12px" placeholder="填写拟申请岗位编号" />
+            </template>
+            <template v-else>
+              <div class="sp-fieldlabel">企业名称</div>
+              <input v-model.trim="appForm.companyName" class="sp-inp" style="margin-bottom:12px" placeholder="不少于 2 字" />
+              <div class="sp-fieldlabel">岗位名称</div>
+              <input v-model.trim="appForm.positionName" class="sp-inp" style="margin-bottom:12px" placeholder="不少于 2 字" />
+              <div class="sp-fieldlabel">工作地址</div>
+              <input v-model.trim="appForm.workAddress" class="sp-inp" style="margin-bottom:12px" placeholder="不少于 5 字" />
+              <div class="sp-fieldlabel">单位联系人</div>
+              <input v-model.trim="appForm.contactName" class="sp-inp" style="margin-bottom:12px" />
+              <div class="sp-fieldlabel">联系人电话</div>
+              <input v-model.trim="appForm.contactPhone" class="sp-inp" style="margin-bottom:12px" placeholder="手机号" />
+              <div class="sp-fieldlabel">证明材料文件 ID</div>
+              <input v-model.trim="appForm.evidenceFileId" class="sp-inp" style="margin-bottom:12px" placeholder="文件中心上传后的 fileId" />
             </template>
             <div class="sp-fieldlabel">申请说明</div>
             <textarea v-model.trim="appForm.applicationNote" class="sp-inp" style="margin-bottom:12px" placeholder="不少于 5 字" />
@@ -179,6 +206,10 @@
               <option value="SELF_ARRANGED">转自主实习</option>
               <option value="WITHDRAW_POST">退岗</option>
             </select>
+            <template v-if="changeForm.changeType === 'CHANGE_POSITION'">
+              <div class="sp-fieldlabel">目标岗位编号（必填）</div>
+              <input v-model.trim="changeForm.targetPositionId" class="sp-inp" style="margin-bottom:12px" placeholder="岗位库 ID，审核通过后落岗" />
+            </template>
             <template v-if="changeForm.changeType === 'CHANGE_ENTERPRISE' || changeForm.changeType === 'SELF_ARRANGED'">
               <div class="sp-fieldlabel">目标企业名称</div>
               <input v-model.trim="changeForm.targetEnterpriseName" class="sp-inp" style="margin-bottom:12px" />
@@ -194,6 +225,59 @@
             <AutoTable :rows="changes" empty="暂无变更申请" :columns="[{key:'changeTypeLabel',label:'类型'},{key:'statusLabel',label:'状态'},{key:'reason',label:'事由'}]" />
           </section>
         </div>
+      </template>
+
+      <!-- 企业岗位库 -->
+      <template v-else-if="tab === 'enterprises'">
+        <section class="sp-card">
+          <div class="sp-panel__head">企业岗位库</div>
+          <div style="display:flex;gap:10px;margin-bottom:12px">
+            <input v-model.trim="enterpriseCity" class="sp-inp" placeholder="按城市筛选（可选）" />
+            <button class="sp-btn" :disabled="busy" @click="loadEnterprises">查询</button>
+          </div>
+          <AutoTable :rows="enterprises" empty="暂无已发布岗位" :columns="[{key:'companyName',label:'企业'},{key:'title',label:'岗位'},{key:'workLocation',label:'地点'},{key:'remaining',label:'余量'}]" />
+        </section>
+      </template>
+
+      <!-- 实习保险 -->
+      <template v-else-if="tab === 'insurance'">
+        <div class="two">
+          <section class="sp-card">
+            <div class="sp-panel__head">提交保险信息</div>
+            <div class="sp-fieldlabel">保单号</div>
+            <input v-model.trim="insForm.policyNo" class="sp-inp" style="margin-bottom:12px" />
+            <div class="sp-fieldlabel">承保机构</div>
+            <input v-model.trim="insForm.insurerName" class="sp-inp" style="margin-bottom:12px" />
+            <div class="sp-fieldlabel">险种</div>
+            <input v-model.trim="insForm.coverageType" class="sp-inp" style="margin-bottom:12px" />
+            <div class="sp-fieldlabel">生效日</div>
+            <input v-model="insForm.effectiveDate" type="date" class="sp-inp" style="margin-bottom:12px" />
+            <div class="sp-fieldlabel">失效日</div>
+            <input v-model="insForm.expiryDate" type="date" class="sp-inp" style="margin-bottom:12px" />
+            <div class="sp-fieldlabel">保单扫描件文件 ID</div>
+            <input v-model.trim="insForm.fileId" class="sp-inp" style="margin-bottom:12px" />
+            <button class="sp-btn" :disabled="busy" @click="saveInsurance">提交保险</button>
+          </section>
+          <section class="sp-card">
+            <div class="sp-panel__head">当前保险</div>
+            <p class="sp-muted">状态：{{ insuranceMeta?.statusLabel || insuranceMeta?.status || '未提交' }}</p>
+            <p v-if="insuranceMeta?.policyNo" class="sp-muted">保单号：{{ insuranceMeta.policyNo }} · {{ insuranceMeta.insurerName }}</p>
+          </section>
+        </div>
+      </template>
+
+      <!-- 实习计划 -->
+      <template v-else-if="tab === 'plan'">
+        <section class="sp-card">
+          <div class="sp-panel__head">实习计划书</div>
+          <template v-if="planMeta && (planMeta.title || planMeta.planTitle || planMeta.id)">
+            <p style="font-size:15px;font-weight:600">{{ planMeta.title || planMeta.planTitle || '实习计划' }}</p>
+            <p class="sp-muted" style="margin-top:8px">状态：{{ planMeta.statusLabel || planMeta.status || '—' }}</p>
+            <p v-if="planMeta.content || planMeta.summary" class="sp-muted" style="margin-top:10px;white-space:pre-wrap">{{ planMeta.content || planMeta.summary }}</p>
+            <button v-if="planMeta.canAcknowledge !== false && planMeta.status !== 'ACKNOWLEDGED'" class="sp-btn" style="margin-top:12px" :disabled="busy" @click="ackPlan">确认计划</button>
+          </template>
+          <p v-else class="sp-muted">暂无已发布计划</p>
+        </section>
       </template>
 
       <!-- 周报/月报/总结 -->
@@ -254,6 +338,7 @@
             <div class="sp-panel__head">实习自评 / 鉴定</div>
             <div class="sp-fieldlabel">工作表现自评</div><textarea v-model.trim="evalForm.performance" class="sp-inp" style="margin-bottom:12px" placeholder="请描述实习期间的工作表现" />
             <div class="sp-fieldlabel">收获与反思</div><textarea v-model.trim="evalForm.reflection" class="sp-inp" style="margin-bottom:12px" placeholder="请描述实习收获与不足" />
+            <div class="sp-fieldlabel">存在问题</div><textarea v-model.trim="evalForm.problems" class="sp-inp" style="margin-bottom:12px" placeholder="实习中遇到的问题与改进方向" />
             <button class="sp-btn" :disabled="busy || !evalForm.performance" @click="submitSelfEval">提交自评</button>
           </section>
           <section class="sp-card">
@@ -302,6 +387,8 @@ const tabs = [
   { key: 'checkin', label: '每日打卡' }, { key: 'leave', label: '实习请假' },
   { key: 'makeup', label: '补卡申请' }, { key: 'intention', label: '岗位意向' },
   { key: 'application', label: '正式申请' }, { key: 'change', label: '调岗退岗' },
+  { key: 'enterprises', label: '企业岗位库' }, { key: 'insurance', label: '实习保险' },
+  { key: 'plan', label: '实习计划' },
   { key: 'report', label: '周报/月报/总结' }, { key: 'eval', label: '实习成绩/自评' }
 ]
 const tab = ref('overview')
@@ -313,17 +400,33 @@ const error = ref('')
 const my = ref({})
 const weeklyForm = reactive({ week: null, workContent: '', harvestContent: '', planContent: '' })
 const reportForm = reactive({ title: '', content: '' })
-const evalForm = reactive({ performance: '', reflection: '' })
+const evalForm = reactive({ performance: '', reflection: '', problems: '' })
 const leaveForm = reactive({ leaveType: 'SICK', startDate: '', endDate: '', reason: '' })
 const leaves = ref([])
 const makeupForm = reactive({ checkinDate: '', reason: '' })
 const makeups = ref([])
 const intentionForm = reactive({ preferredCity: '', preferredIndustry: '', intentionNote: '' })
 const intentionMeta = ref({})
-const appForm = reactive({ applicationType: 'SELF_ARRANGED', positionId: '', applicationNote: '' })
+const intentionFlags = ref({ canEdit: true, canSubmit: false, canWithdraw: false })
+const appForm = reactive({
+  applicationType: 'SELF_ARRANGED', positionId: '', applicationNote: '',
+  companyName: '', positionName: '', workAddress: '', contactName: '', contactPhone: '', evidenceFileId: ''
+})
 const applications = ref([])
-const changeForm = reactive({ changeType: 'CHANGE_POSITION', reason: '', targetEnterpriseName: '', targetPositionName: '' })
+const changeForm = reactive({
+  changeType: 'CHANGE_POSITION', reason: '', targetPositionId: '',
+  targetEnterpriseName: '', targetPositionName: ''
+})
 const changes = ref([])
+const agreements = ref([])
+const activeAgreement = ref(null)
+const enterpriseCity = ref('')
+const enterprises = ref([])
+const insForm = reactive({
+  policyNo: '', insurerName: '', coverageType: '', effectiveDate: '', expiryDate: '', fileId: ''
+})
+const insuranceMeta = ref(null)
+const planMeta = ref(null)
 const appealReason = ref('')
 
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
@@ -339,8 +442,11 @@ function statusText(s) { return STATUS_MAP[s] || s || '—' }
 function riskText(s) { return RISK_MAP[s] || s || '—' }
 function reviewText(s) { return REVIEW_MAP[s] || s || '—' }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '—' }
-const agreementStatusText = computed(() => AGREEMENT_MAP[my.value.agreementStatus] || my.value.agreementStatusLabel || my.value.agreementStatus || '未发起')
-const agreementTone = computed(() => (my.value.agreementStatus === 'EFFECTIVE' ? 'success' : 'warn'))
+const agreementStatusText = computed(() => AGREEMENT_MAP[my.value.agreementStatus] || my.value.agreementStatusLabel || my.value.agreementStatus || activeAgreement.value?.statusLabel || '未发起')
+const agreementTone = computed(() => ((my.value.agreementStatus || activeAgreement.value?.status) === 'EFFECTIVE' ? 'success' : 'warn'))
+const intentionCanEdit = computed(() => intentionFlags.value.canEdit !== false && (intentionMeta.value.status || 'DRAFT') !== 'SUBMITTED')
+const intentionCanSubmit = computed(() => intentionFlags.value.canSubmit || ['DRAFT', '', undefined, null].includes(intentionMeta.value.status))
+const intentionCanWithdraw = computed(() => intentionFlags.value.canWithdraw || intentionMeta.value.status === 'SUBMITTED')
 
 const flowSteps = computed(() => {
   const order = ['协议签署', '岗前培训', '在岗实习', '考核评价', '归档']
@@ -367,11 +473,16 @@ async function loadExtras() {
   } catch { makeups.value = [] }
   try {
     const it = await portalApi.internshipIntentionMy()
+    intentionFlags.value = {
+      canEdit: it?.canEdit !== false,
+      canSubmit: !!it?.canSubmit,
+      canWithdraw: !!it?.canWithdraw
+    }
     intentionMeta.value = it?.intention || it || {}
     intentionForm.preferredCity = intentionMeta.value.preferredCity || ''
     intentionForm.preferredIndustry = intentionMeta.value.preferredIndustry || ''
     intentionForm.intentionNote = intentionMeta.value.intentionNote || ''
-  } catch { intentionMeta.value = {} }
+  } catch { intentionMeta.value = {}; intentionFlags.value = { canEdit: true, canSubmit: true, canWithdraw: false } }
   try {
     const apps = await portalApi.internshipApplications()
     applications.value = apps?.items || []
@@ -380,6 +491,32 @@ async function loadExtras() {
     const ch = await portalApi.internshipChanges()
     changes.value = ch?.items || []
   } catch { changes.value = [] }
+  try {
+    const ag = await portalApi.internshipAgreements()
+    agreements.value = ag?.items || (Array.isArray(ag) ? ag : [])
+    activeAgreement.value = agreements.value.find((x) => x.status === 'PENDING_STUDENT') || agreements.value[0] || null
+  } catch { agreements.value = []; activeAgreement.value = null }
+  try {
+    insuranceMeta.value = await portalApi.internshipInsurance()
+    if (insuranceMeta.value) {
+      insForm.policyNo = insuranceMeta.value.policyNo || ''
+      insForm.insurerName = insuranceMeta.value.insurerName || ''
+      insForm.coverageType = insuranceMeta.value.coverageType || ''
+      insForm.effectiveDate = insuranceMeta.value.effectiveDate || ''
+      insForm.expiryDate = insuranceMeta.value.expiryDate || ''
+      insForm.fileId = insuranceMeta.value.fileId || ''
+    }
+  } catch { insuranceMeta.value = null }
+  try {
+    planMeta.value = await portalApi.internshipPlan()
+  } catch { planMeta.value = null }
+  await loadEnterprises()
+}
+async function loadEnterprises() {
+  try {
+    const d = await portalApi.internshipEnterprises(enterpriseCity.value)
+    enterprises.value = d?.items || d?.list || (Array.isArray(d) ? d : [])
+  } catch { enterprises.value = [] }
 }
 
 async function load() {
@@ -422,12 +559,35 @@ async function saveIntention() {
   busy.value = true
   try {
     await portalApi.internshipIntentionSave({ ...intentionForm })
-    ui.notify('意向已保存'); await loadExtras()
+    ui.notify('意向草稿已保存'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '意向保存失败') } finally { busy.value = false }
+}
+async function submitIntention() {
+  busy.value = true
+  try {
+    await portalApi.internshipIntentionSave({ ...intentionForm })
+    await portalApi.internshipIntentionSubmit()
+    ui.notify('意向已提交'); await loadExtras()
+  } catch (e) { ui.notify(e?.message || '意向提交失败') } finally { busy.value = false }
+}
+async function withdrawIntention() {
+  busy.value = true
+  try {
+    await portalApi.internshipIntentionWithdraw()
+    ui.notify('意向已撤回'); await loadExtras()
+  } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
 async function submitApplication() {
   if (appForm.applicationType === 'POSITION' && !appForm.positionId) {
     return ui.notify('岗位志愿须填写岗位 ID')
+  }
+  if (appForm.applicationType === 'SELF_ARRANGED') {
+    if ((appForm.companyName || '').trim().length < 2) return ui.notify('请填写企业名称')
+    if ((appForm.positionName || '').trim().length < 2) return ui.notify('请填写岗位名称')
+    if ((appForm.workAddress || '').trim().length < 5) return ui.notify('请填写工作地址')
+    if ((appForm.contactName || '').trim().length < 2) return ui.notify('请填写联系人')
+    if (!(appForm.contactPhone || '').trim()) return ui.notify('请填写联系电话')
+    if (!(appForm.evidenceFileId || '').trim()) return ui.notify('请填写证明材料文件 ID')
   }
   if ((appForm.applicationNote || '').trim().length < 5) {
     return ui.notify('申请说明不少于 5 字')
@@ -437,7 +597,13 @@ async function submitApplication() {
     const body = {
       applicationType: appForm.applicationType,
       applicationNote: appForm.applicationNote,
-      positionId: appForm.applicationType === 'POSITION' ? appForm.positionId : undefined
+      positionId: appForm.applicationType === 'POSITION' ? appForm.positionId : undefined,
+      companyName: appForm.companyName,
+      positionName: appForm.positionName,
+      workAddress: appForm.workAddress,
+      contactName: appForm.contactName,
+      contactPhone: appForm.contactPhone,
+      evidenceFileId: appForm.evidenceFileId
     }
     await portalApi.internshipApplicationSubmit(body)
     ui.notify('申请已提交'); appForm.applicationNote = ''; await loadExtras()
@@ -446,6 +612,9 @@ async function submitApplication() {
 async function submitChange() {
   if ((changeForm.reason || '').trim().length < 5) {
     return ui.notify('变更事由不少于 5 字')
+  }
+  if (changeForm.changeType === 'CHANGE_POSITION' && !(changeForm.targetPositionId || '').trim()) {
+    return ui.notify('换岗须填写目标岗位编号')
   }
   busy.value = true
   try {
@@ -462,14 +631,52 @@ async function submitLeave() {
     await loadLeaves()
   } catch (e) { ui.notify(e?.message || '请假提交失败') } finally { busy.value = false }
 }
-async function returnLeave(id) {
+async function withdrawLeave(id) {
   busy.value = true
   try {
-    await portalApi.internshipLeaveReturn(id, { note: '已返岗销假' })
+    await portalApi.internshipLeaveWithdraw(id)
+    ui.notify('已撤回'); await loadLeaves()
+  } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
+}
+async function returnLeave(id) {
+  const note = (window.prompt('请填写销假说明（至少 2 字，如：已返岗）') || '').trim()
+  if (note.length < 2) return ui.notify('销假说明至少 2 字')
+  busy.value = true
+  try {
+    await portalApi.internshipLeaveReturn(id, { note })
     ui.notify('销假已登记'); await loadLeaves()
   } catch (e) { ui.notify(e?.message || '销假失败') } finally { busy.value = false }
 }
+async function confirmAgreement(action) {
+  if (!activeAgreement.value?.id) return ui.notify('暂无可操作协议')
+  busy.value = true
+  try {
+    const reason = action === 'REJECT' ? (window.prompt('请填写驳回原因') || '') : ''
+    if (action === 'REJECT' && reason.trim().length < 5) {
+      busy.value = false
+      return ui.notify('驳回原因不少于 5 字')
+    }
+    await portalApi.internshipAgreementConfirm(activeAgreement.value.id, { action, reason })
+    ui.notify(action === 'CONFIRM' ? '协议已确认' : '协议已驳回')
+    await loadExtras(); await load()
+  } catch (e) { ui.notify(e?.message || '协议操作失败') } finally { busy.value = false }
+}
+async function saveInsurance() {
+  busy.value = true
+  try {
+    await portalApi.internshipInsuranceSave({ ...insForm })
+    ui.notify('保险信息已提交'); await loadExtras()
+  } catch (e) { ui.notify(e?.message || '保险提交失败') } finally { busy.value = false }
+}
+async function ackPlan() {
+  busy.value = true
+  try {
+    await portalApi.internshipPlanAck()
+    ui.notify('已确认实习计划'); await loadExtras()
+  } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
+}
 async function submitWeekly() {
+  if (!weeklyForm.week) return ui.notify('请填写周次')
   busy.value = true
   try { await portalApi.internshipWeeklySubmit({ weekNo: weeklyForm.week, workContent: weeklyForm.workContent, harvestContent: weeklyForm.harvestContent, planContent: weeklyForm.planContent }); ui.notify('周报已提交'); Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' }); load() }
   catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
@@ -486,8 +693,12 @@ async function submitReport() {
 async function submitSelfEval() {
   busy.value = true
   try {
-    await portalApi.internshipSelfEval({ performance: evalForm.performance, reflection: evalForm.reflection })
-    ui.notify('自评已提交'); Object.assign(evalForm, { performance: '', reflection: '' }); load()
+    await portalApi.internshipSelfEval({
+      performance: evalForm.performance,
+      reflection: evalForm.reflection,
+      problems: evalForm.problems
+    })
+    ui.notify('自评已提交'); Object.assign(evalForm, { performance: '', reflection: '', problems: '' }); load()
   } catch (e) { ui.notify(e?.message || '自评提交失败') } finally { busy.value = false }
 }
 async function submitAppeal() {

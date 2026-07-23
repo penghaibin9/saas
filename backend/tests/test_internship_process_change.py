@@ -88,6 +88,16 @@ def test_change_request_apply_and_review(client, db_mode):
     assert rev.status_code == 200 and rev.json()["data"]["status"] == "APPROVED"
 
 
+def test_change_position_requires_target_position_id(client, db_mode):
+    """换岗缺 targetPositionId 不可申请，防止审过不落岗假通过。"""
+    _seed(db_mode)
+    bad = client.post(f"{MOB}/internship/change-request",
+                      json={"changeType": "CHANGE_POSITION", "reason": "想换一个更对口的岗位"},
+                      headers=_student())
+    assert bad.status_code == 400 or bad.json().get("code") not in (0, None)
+    assert "岗位" in (bad.json().get("message") or "")
+
+
 def test_self_eval_enterprise_rating(client, db_mode):
     _seed(db_mode)
     body = {

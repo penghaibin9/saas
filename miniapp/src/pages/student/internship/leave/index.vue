@@ -14,6 +14,7 @@
           <text class="lv__days">{{ item.days }} 天 · {{ item.leaveTypeLabel || item.leaveType }}</text>
           <text class="lv__reason">{{ item.reason }}</text>
           <button v-if="item.status === 'PENDING'" class="btn btn-ghost lv__withdraw" @click="withdraw(item)">撤回</button>
+          <button v-if="item.status === 'APPROVED'" class="btn btn-ghost lv__withdraw" @click="doReturn(item)">办理销假</button>
         </view>
         <MobileInlineAlert v-if="!list.length" type="info" description="暂无请假记录，可点击下方按钮新建申请。" />
       </view>
@@ -100,6 +101,22 @@ export default {
             toast('已撤回')
             this.loadList()
           }).catch((e) => toast((e && e.message) || '撤回失败'))
+        }
+      })
+    },
+    doReturn(item) {
+      uni.showModal({
+        title: '办理销假',
+        editable: true,
+        placeholderText: '销假说明（如：已返岗）',
+        success: (r) => {
+          if (!r.confirm) return
+          const note = String(r.content || '').trim()
+          if (note.length < 2) return toast('销假说明至少 2 字')
+          studentApi.returnInternshipLeave(item.id, { note }).then(() => {
+            toast('销假已登记')
+            this.loadList()
+          }).catch((e) => toast((e && e.message) || '销假失败'))
         }
       })
     }

@@ -117,6 +117,9 @@ def student_apply(rec, stu, body) -> dict:
     reason = (b.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "变更原因必填且不少于 5 字")
+    # 换岗必须带岗位库 ID，避免审核「假通过」不落岗
+    if ctype == "CHANGE_POSITION" and not b.get("targetPositionId"):
+        raise AppException("VALIDATION_ERROR", "换岗须填写目标岗位编号（targetPositionId）")
     with session() as db:
         pending = db.scalars(select(InternshipChangeRequest).where(
             InternshipChangeRequest.tenant_id == _tid(), InternshipChangeRequest.internship_id == rec.id,
@@ -187,7 +190,9 @@ def review_change(cid, action: str, comment: str = "", user=None) -> dict:
         if ctype == "WITHDRAW_POST":
             # 退岗：释放岗位占用（成熟产品独立类型，对应 unassign）
             stu_svc.unassign_position(rid, reason or "退岗审核通过", user=user)
-        elif ctype == "CHANGE_POSITION" and tpid:
+        elif ctype == "CHANGE_POSITION":
+            if not tpid:
+                raise AppException("DATA_CONFLICT", "换岗申请缺少目标岗位编号，不可通过")
             stu_svc.assign_position(rid, str(tpid), user=user)
         elif ctype in ("CHANGE_ENTERPRISE", "SELF_ARRANGED"):
             if ctype == "SELF_ARRANGED":

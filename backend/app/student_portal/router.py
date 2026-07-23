@@ -409,6 +409,11 @@ def internship_leave_return(leave_id: str, user=Depends(get_current_user), body:
     return success(internship.leave_return(user, leave_id, body or {}))
 
 
+@router.post("/internship/leaves/{leave_id}/withdraw", summary="撤回本人实习请假")
+def internship_leave_withdraw(leave_id: str, user=Depends(get_current_user)):
+    return success(internship.leave_withdraw(user, leave_id), message="已撤回")
+
+
 @router.post("/internship/checkin", summary="实习打卡（本人）")
 def internship_checkin(user=Depends(get_current_user), body: dict = Body(default={})):
     return success(internship.checkin(user, body or {}))
@@ -444,6 +449,16 @@ def internship_intention_save(user=Depends(get_current_user), body: dict = Body(
     return success(internship.intention_save(user, body))
 
 
+@router.post("/internship/intention/submit", summary="正式提交岗位意向（本人）")
+def internship_intention_submit(user=Depends(get_current_user)):
+    return success(internship.intention_submit(user), message="意向已提交")
+
+
+@router.post("/internship/intention/withdraw", summary="撤回岗位意向（本人）")
+def internship_intention_withdraw(user=Depends(get_current_user)):
+    return success(internship.intention_withdraw(user), message="意向已撤回")
+
+
 @router.get("/internship/applications", summary="本人岗位/自主实习申请列表")
 def internship_applications(user=Depends(get_current_user)):
     return success(internship.applications_my(user))
@@ -462,6 +477,46 @@ def internship_change_list(user=Depends(get_current_user)):
 @router.post("/internship/change", summary="调岗/退岗申请（本人）")
 def internship_change_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(internship.change_apply(user, body))
+
+
+@router.get("/internship/agreements", summary="本人实习协议列表")
+def internship_agreements(user=Depends(get_current_user)):
+    return success(internship.agreements_my(user))
+
+
+@router.get("/internship/agreements/{agreement_id}", summary="本人实习协议详情")
+def internship_agreement_detail(agreement_id: str, user=Depends(get_current_user)):
+    return success(internship.agreement_detail(user, agreement_id))
+
+
+@router.post("/internship/agreements/{agreement_id}/confirm", summary="确认/驳回实习协议（本人）")
+def internship_agreement_confirm(agreement_id: str, user=Depends(get_current_user), body: dict = Body(default={})):
+    return success(internship.agreement_confirm(user, agreement_id, body or {}))
+
+
+@router.get("/internship/insurance", summary="本人实习保险")
+def internship_insurance_my(user=Depends(get_current_user)):
+    return success(internship.insurance_my(user))
+
+
+@router.post("/internship/insurance", summary="提交实习保险信息（本人）")
+def internship_insurance_save(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(internship.insurance_save(user, body or {}), message="保险信息已提交")
+
+
+@router.get("/internship/plan", summary="本人实习计划")
+def internship_plan_my(user=Depends(get_current_user)):
+    return success(internship.plan_my(user))
+
+
+@router.post("/internship/plan/acknowledge", summary="确认实习计划（本人）")
+def internship_plan_ack(user=Depends(get_current_user)):
+    return success(internship.plan_ack(user), message="已确认实习计划")
+
+
+@router.get("/internship/enterprises", summary="可浏览企业岗位（本人）")
+def internship_enterprises(city: str = "", user=Depends(get_current_user)):
+    return success(internship.enterprises(user, city or ""))
 
 
 @router.post("/internship/weekly/submit", summary="提交实习周报（本人）")

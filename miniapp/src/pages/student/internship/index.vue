@@ -74,19 +74,21 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { useSubmissionsStore } from '@/stores/submissions'
 import { toast, go } from '@/utils/nav'
 export default {
   data() { return { i: null, state: 'loading',
     navItems: [
       { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯' },
+      { label: '正式申请', path: '/pages/student/internship/application/index', icon: '📋' },
       { label: '企业岗位库', path: '/pages/student/internship/enterprises/index', icon: '🏢' },
       { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄' },
       { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️' },
       { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️' },
       { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️' },
       { label: '补卡申请', path: '/pages/student/internship/makeup/index', icon: '📍' },
-      { label: '过程报告', path: '/pages/student/internship/process-report/index', icon: '📝' },
+      { label: '日报', path: '/pages/student/internship/process-report/index?type=daily', icon: '📝' },
+      { label: '月报', path: '/pages/student/internship/process-report/index?type=monthly', icon: '📑' },
+      { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒' },
       { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄' },
       { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐' }
     ] } },
@@ -103,9 +105,7 @@ export default {
       studentApi.getInternship().then((d) => { this.i = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
     },
     weekly() {
-      if (this.i.weekly.submitted || useSubmissionsStore().hasWeekly(this.i.weekly.week)) {
-        this.i.weekly.submitted = true
-        this.i.status.weekly = 'COMPLETED'
+      if (this.i.weekly && this.i.weekly.submitted) {
         return toast('本周周报已提交')
       }
       const q = 'week=' + encodeURIComponent(this.i.weekly.week) +

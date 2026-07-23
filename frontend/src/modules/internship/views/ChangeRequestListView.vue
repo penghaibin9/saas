@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="实习变更审核"
-    subtitle="换岗 · 换实习单位 · 自主实习变更"
+    subtitle="换岗 · 换实习单位 · 自主实习 · 退岗"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -17,7 +17,7 @@
         <template #aside>
           <div v-if="loading" class="state">加载中…</div>
           <div v-else-if="error" class="state is-err">{{ error }} <button type="button" class="mp-link" @click="load">重试</button></div>
-          <div v-else-if="!rows.length" class="state">暂无变更申请，学生可在小程序发起换岗/换单位申请</div>
+          <div v-else-if="!rows.length" class="state">暂无变更申请，学生可在小程序发起换岗/换单位/退岗申请</div>
           <ul v-else class="lv-list">
             <li v-for="r in rows" :key="r.id">
               <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
