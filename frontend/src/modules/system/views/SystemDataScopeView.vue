@@ -67,8 +67,8 @@
       <EmptyState v-else-if="!affected.list.length" title="暂无影响用户" description="该规则当前没有被任何账号的角色引用" />
       <template v-else>
         <div v-for="u in affected.list" :key="u.id" class="mp-kv">
-          <span class="mp-kv__k">{{ u.name }} · {{ u.roleName }}</span>
-          <span class="mp-kv__v">{{ u.orgName }}</span>
+          <span class="mp-kv__k">{{ u.name }} · {{ u.roleName || '—' }}</span>
+          <span class="mp-kv__v">{{ u.orgName || u.userNo || '—' }}</span>
         </div>
         <p class="mp-note" style="margin-top: var(--space-2)">仅展示姓名与组织，联系方式等敏感字段不在此页展示。</p>
       </template>

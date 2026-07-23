@@ -50,16 +50,53 @@ def _role_row(role, member_count: int) -> dict:
     }
 
 
-def _user_row(account, roles: list) -> dict:
+def _mask_user_phone(raw: str | None) -> str:
+    from app.services.db_service import _mask_phone
+    return _mask_phone(raw) if raw else ""
+
+
+def _user_org_hint(db, account) -> tuple[str, str]:
+    """尽量从学生档案/教师带班关系补组织展示；无则空。"""
+    try:
+        from app.models import College, SchoolClass, StudentProfile, TeacherStudentScope
+        if str(account.user_type or "").upper() == "STUDENT":
+            sp = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == account.tenant_id, StudentProfile.is_deleted.is_(False),
+                StudentProfile.student_no == account.login_name)).first()
+            if sp is not None:
+                college = db.get(College, sp.college_id) if sp.college_id else None
+                cls = db.get(SchoolClass, sp.class_id) if sp.class_id else None
+                name = " / ".join(x for x in [
+                    college.college_name if college else "",
+                    cls.class_name if cls else "",
+                ] if x) or "未设置"
+                return (str(sp.class_id or sp.college_id or ""), name)
+        scope = db.scalars(select(TeacherStudentScope).where(
+            TeacherStudentScope.tenant_id == account.tenant_id,
+            TeacherStudentScope.teacher_key == account.login_name).limit(1)).first()
+        if scope is not None:
+            return (str(scope.ref_value or ""), f"{scope.scope_type}:{scope.ref_value}" if scope.ref_value else "按岗位范围")
+    except Exception:
+        pass
+    return ("", "未设置")
+
+
+def _user_row(account, roles: list, db=None) -> dict:
     status = str(account.status or "").upper()
+    org_id, org_name = ("", "未设置")
+    if db is not None:
+        org_id, org_name = _user_org_hint(db, account)
+    phone_masked = _mask_user_phone(getattr(account, "phone_encrypted", None))
     return {
         "id": str(account.id),
         "userNo": account.login_name,
         "loginName": account.login_name,
         "name": account.real_name,
         "realName": account.real_name,
-        "orgId": "", "orgName": "未设置", "roles": [r.role_code for r in roles],
-        "roleNames": [r.role_name for r in roles], "phone": "", "email": "",
+        "userType": account.user_type,
+        "orgId": org_id, "orgName": org_name, "roles": [r.role_code for r in roles],
+        "roleNames": [r.role_name for r in roles], "phone": phone_masked, "email": "",
+        "mustChangePassword": bool(getattr(account, "must_change_password", False)),
         "status": "ACTIVE" if status == "ACTIVE" else status,
         "statusLabel": {"ACTIVE": "启用中", "DISABLED": "已停用", "LOCKED": "已锁定"}.get(status, "待激活"),
         "source": "统一师生导入" if account.user_type in ("TEACHER", "STUDENT") else "系统创建",
@@ -229,10 +266,252 @@ def list_system_users(keyword: str = "", role: str = "", status: str = "", page:
                 by_user[uid].append(r)
         page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 20)))
         start = (page - 1) * page_size
-        return success({"list": [_user_row(account, by_user.get(account.id, [])) for account in users[start:start + page_size]],
+        return success({"list": [_user_row(account, by_user.get(account.id, []), db) for account in users[start:start + page_size]],
                         "total": len(users), "page": page, "pageSize": page_size})
     finally:
         db.close()
+
+
+@router.get("/system/users/{user_id}", summary="学校账号详情（真实库）")
+def get_system_user(user_id: int, user=Depends(require_permission("systemAdmin.user.view"))):
+    from app.core.exceptions import AppException
+    from app.models import Role, User, UserRole
+    from app.models.audit import SecurityAuditLog
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        account = db.scalars(select(User).where(User.id == user_id, User.tenant_id == tenant_id,
+                                                User.is_deleted.is_(False))).first()
+        if account is None:
+            raise AppException("DATA_NOT_FOUND", "账号不存在或不在当前数据范围内")
+        roles = [r for _, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
+            UserRole.tenant_id == tenant_id, UserRole.user_id == user_id, UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).all()]
+        row = _user_row(account, roles, db)
+        audits = db.scalars(select(SecurityAuditLog).where(
+            SecurityAuditLog.tenant_id == tenant_id,
+            SecurityAuditLog.resource.like(f"%{account.login_name}%")
+        ).order_by(SecurityAuditLog.id.desc()).limit(20)).all()
+        row.update({
+            "roles": [{"code": r.role_code, "name": r.role_name, "scopeName": _role_scope(r)} for r in roles],
+            "contexts": [r.role_name for r in roles],
+            "loginHistory": [],
+            "auditTrail": [{"who": a.operator_name or "系统", "time": str(a.created_at or "")[:19],
+                            "action": a.action, "affected": a.resource or ""} for a in audits],
+        })
+        return success(row)
+    finally:
+        db.close()
+
+
+@router.put("/system/users/{user_id}", summary="编辑学校账号基础信息（不可改工号；建号请走统一导入）")
+def update_system_user(user_id: int, body: dict = Body(...),
+                       user=Depends(require_permission("systemAdmin.user.manage"))):
+    from app.core.exceptions import AppException
+    from app.models import Role, User, UserRole
+    tenant_id = current_tenant_id()
+    name = str((body or {}).get("name") or (body or {}).get("realName") or "").strip()
+    phone = str((body or {}).get("phone") or "").strip()
+    if len(name) < 2:
+        raise AppException("VALIDATION_ERROR", "姓名至少 2 个字")
+    if phone and (not phone.isdigit() or len(phone) < 11):
+        # 允许传入已脱敏号码（含*）时忽略更新
+        if "*" in phone:
+            phone = ""
+        else:
+            raise AppException("VALIDATION_ERROR", "手机号格式不正确")
+    db = get_sessionmaker()()
+    try:
+        account = db.scalars(select(User).where(User.id == user_id, User.tenant_id == tenant_id,
+                                                User.is_deleted.is_(False))).first()
+        if account is None:
+            raise AppException("DATA_NOT_FOUND", "账号不存在")
+        before = {"name": account.real_name, "phone": _mask_user_phone(account.phone_encrypted)}
+        account.real_name = name
+        if phone:
+            account.phone_encrypted = phone
+        account.version = int(account.version or 0) + 1
+        db.commit(); db.refresh(account)
+        roles = [r for _, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
+            UserRole.tenant_id == tenant_id, UserRole.user_id == user_id, UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).all()]
+        from app.services import audit_log
+        audit_log.record("USER_UPDATE", f"账号 {account.login_name}（{account.real_name}）",
+                         detail={"before": before, "after": {"name": name, "phone": _mask_user_phone(account.phone_encrypted)},
+                                 "summary": "编辑账号基础信息"})
+        return success(_user_row(account, roles, db), message="账号信息已更新")
+    except Exception:
+        db.rollback(); raise
+    finally:
+        db.close()
+
+
+@router.put("/system/user-batch-status", summary="批量停用/启用学校账号")
+def batch_set_system_user_status(body: dict = Body(...),
+                                 user=Depends(require_permission("systemAdmin.user.manage"))):
+    from app.core.exceptions import AppException
+    action = str((body or {}).get("action") or "DISABLE").strip().upper()
+    reason = str((body or {}).get("reason") or "").strip()
+    ids = [int(x) for x in (body or {}).get("ids") or [] if str(x).isdigit() or isinstance(x, int)]
+    if action == "DISABLE" and len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "批量停用原因必填且不少于 5 个字")
+    if not ids:
+        raise AppException("VALIDATION_ERROR", "请选择账号")
+    self_id = _acting_db_id(user)
+    count = 0
+    errors = []
+    for uid in ids:
+        if action == "DISABLE" and self_id == uid:
+            errors.append({"id": uid, "message": "不能停用本人"})
+            continue
+        try:
+            set_system_user_status(uid, {"action": action, "reason": reason}, user=user)
+            count += 1
+        except Exception as exc:  # noqa: BLE001
+            errors.append({"id": uid, "message": getattr(exc, "message", None) or str(exc)})
+    return success({"count": count, "errors": errors},
+                   message=f"已处理 {count} 个账号" + (f"，{len(errors)} 个失败" if errors else ""))
+
+
+@router.get("/system/users-exceptions", summary="账号异常中心（锁定/停用/长期未登录/强制改密）")
+def list_account_exceptions(page: int = 1, page_size: int = 50,
+                            user=Depends(require_any_permission(
+                                "systemAdmin.user.exception.view", "systemAdmin.user.view", "systemAdmin.user.manage"))):
+    from datetime import datetime, timedelta
+    from app.models import Role, User, UserRole
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        users = db.scalars(select(User).where(User.tenant_id == tenant_id, User.is_deleted.is_(False)
+                                              ).order_by(User.updated_at.desc())).all()
+        cutoff = datetime.utcnow() - timedelta(days=90)
+        rows = []
+        for account in users:
+            status = str(account.status or "").upper()
+            reasons = []
+            if status == "LOCKED":
+                reasons.append("账号已锁定")
+            if status == "DISABLED":
+                reasons.append("账号已停用")
+            if getattr(account, "must_change_password", False):
+                reasons.append("待强制改密")
+            if account.last_login_at is None or account.last_login_at < cutoff:
+                reasons.append("超过90天未登录或从未登录")
+            if not reasons:
+                continue
+            roles = [r for _, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
+                UserRole.tenant_id == tenant_id, UserRole.user_id == account.id, UserRole.status == "ACTIVE",
+                UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).all()]
+            item = _user_row(account, roles, db)
+            item["exceptionReasons"] = reasons
+            rows.append(item)
+        page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 50)))
+        start = (page - 1) * page_size
+        return success({"list": rows[start:start + page_size], "total": len(rows), "page": page, "pageSize": page_size})
+    finally:
+        db.close()
+
+
+@router.get("/system/staff-affiliations", summary="教职工岗位与归属（班级辅导员/班主任 + 教师范围）")
+def list_staff_affiliations(user=Depends(require_any_permission(
+        "systemAdmin.org.affiliation.manage", "systemAdmin.org.view"))):
+    from app.models import College, SchoolClass, TeacherStudentScope
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        rows = []
+        for cls in db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == tenant_id,
+                                SchoolClass.is_deleted.is_(False))).all():
+            if getattr(cls, "counselor_id", None):
+                rows.append({"id": f"class-counselor-{cls.id}", "orgName": cls.class_name, "orgType": "CLASS",
+                             "roleLabel": "辅导员", "staffKey": str(cls.counselor_id), "status": "ACTIVE"})
+            if getattr(cls, "head_teacher_id", None):
+                rows.append({"id": f"class-head-{cls.id}", "orgName": cls.class_name, "orgType": "CLASS",
+                             "roleLabel": "班主任", "staffKey": str(cls.head_teacher_id), "status": "ACTIVE"})
+        for college in db.scalars(select(College).where(College.tenant_id == tenant_id,
+                                  College.is_deleted.is_(False))).all():
+            if getattr(college, "secretary_id", None):
+                rows.append({"id": f"college-sec-{college.id}", "orgName": college.college_name, "orgType": "COLLEGE",
+                             "roleLabel": "教学秘书", "staffKey": str(college.secretary_id), "status": "ACTIVE"})
+        for scope in db.scalars(select(TeacherStudentScope).where(
+                TeacherStudentScope.tenant_id == tenant_id).limit(200)).all():
+            rows.append({"id": f"scope-{scope.id}", "orgName": f"{scope.scope_type}:{scope.ref_value}",
+                         "orgType": scope.scope_type, "roleLabel": scope.role_code or "岗位范围",
+                         "staffKey": scope.teacher_key, "staffName": scope.teacher_name or "",
+                         "status": getattr(scope, "status", None) or "ACTIVE"})
+        return success({"list": rows, "total": len(rows)})
+    finally:
+        db.close()
+
+
+@router.get("/system/permissions/tree", summary="学校可配置权限树（真实 permissionCode）")
+def get_permission_tree(user=Depends(require_permission("systemAdmin.role.config"))):
+    from app.services.system_admin_catalog_service import build_permission_tree, visible_codes_from_tree
+    tree = build_permission_tree(user)
+    return success({"tree": tree, "visibleCodes": sorted(visible_codes_from_tree(tree))})
+
+
+@router.get("/system/context", summary="系统管理页上下文（品牌/角色/权限动作）")
+def get_system_context(user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.user.view", "systemAdmin.role.view",
+        "systemAdmin.org.view", "systemAdmin.audit.view", "systemAdmin.config.view",
+        "systemAdmin.implementation.view", "systemAdmin.scope.view"))):
+    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        brand = _brand_form(db, tenant_id)
+    finally:
+        db.close()
+    role_code = (user or {}).get("currentRoleCode") or ""
+    patterns = sorted(ROLE_PERMISSIONS.get(role_code, set()) or [])
+    actions = {
+        "importUsers": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.import"), "reason": ""},
+        "exportUsers": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.export") or has_permission(user, "systemAdmin.user.view"), "reason": ""},
+        "createUser": {"visible": False, "allowed": False, "reason": "师生账号只能通过统一导入入口创建"},
+        "editUser": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.manage"), "reason": ""},
+        "disableUser": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.manage"), "reason": ""},
+        "enableUser": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.manage"), "reason": ""},
+        "resetPassword": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.manage"), "reason": ""},
+        "batchDisableUsers": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.manage"), "reason": ""},
+        "assignRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.assign-role"), "reason": ""},
+        "createRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.create"), "reason": ""},
+        "editRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.config"), "reason": ""},
+        "copyRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.create"), "reason": ""},
+        "configRolePermission": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.config"), "reason": ""},
+        "deprecateRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.config"), "reason": ""},
+        "exportRoleConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.view"), "reason": ""},
+        "createOrg": {"visible": True, "allowed": has_permission(user, "systemAdmin.org.create"), "reason": ""},
+        "editOrg": {"visible": True, "allowed": has_permission(user, "systemAdmin.org.update"), "reason": ""},
+        "deprecateOrg": {"visible": True, "allowed": has_permission(user, "systemAdmin.org.manage"), "reason": ""},
+        "importOrg": {"visible": True, "allowed": has_permission(user, "systemAdmin.implementation.mapping.manage"),
+                      "reason": "请前往实施中心「数据导入与智能匹配」"},
+        "exportOrg": {"visible": True, "allowed": has_permission(user, "systemAdmin.org.view"), "reason": ""},
+        "editBrandConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.config.manage"), "reason": ""},
+        "saveConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.config.manage"), "reason": ""},
+        "exportLogs": {"visible": True, "allowed": has_permission(user, "systemAdmin.audit.view"), "reason": ""},
+        "exportScopeRules": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.view"), "reason": ""},
+        "saveScopeRule": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.manage"), "reason": ""},
+        "deprecateScopeRule": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.manage"), "reason": ""},
+    }
+    for key, meta in actions.items():
+        if not meta["allowed"] and not meta["reason"]:
+            meta["reason"] = "当前角色无此操作权限"
+    return success({
+        "tenantBrandConfig": brand,
+        "currentRole": {"roleCode": role_code, "roleName": (user or {}).get("realName") or role_code,
+                        "userName": (user or {}).get("realName") or "", "userId": (user or {}).get("userId")},
+        "dataScope": {"scopeCode": (user or {}).get("dataScope") or "TENANT", "scopeName": "按当前角色数据范围"},
+        "permissionActions": actions,
+        "permissionPatterns": patterns,
+        "statusOptions": {
+            "userStatus": [{"value": "ACTIVE", "label": "启用中"}, {"value": "DISABLED", "label": "已停用"},
+                           {"value": "LOCKED", "label": "已锁定"}],
+            "scopeTypes": [{"value": k, "label": v} for k, v in _SCOPE_LABELS.items()],
+        },
+        "filterOptions": {"roles": [], "colleges": []},
+        "fieldColumns": {}, "batchActions": [], "importTemplates": {}, "exportOptions": {},
+    })
 
 
 @router.put("/system/users/{user_id}/roles", summary="分配学校账号角色")
@@ -290,7 +569,10 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
 
 @router.get("/system/roles/{role_id}", summary="学校角色详情（真实库）")
 def get_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.view"))):
+    from app.core.permissions import ROLE_PERMISSIONS
     from app.models import Permission, Role, RolePermission, User, UserRole
+    from app.services.system_admin_catalog_service import (
+        build_permission_tree, expand_permission_patterns, split_selection)
     tenant_id = current_tenant_id()
     db = get_sessionmaker()()
     try:
@@ -307,13 +589,17 @@ def get_system_role(role_id: int, user=Depends(require_permission("systemAdmin.r
             UserRole.tenant_id == tenant_id, UserRole.role_id == role.id,
             UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
             User.is_deleted.is_(False)).limit(50)).all()
-        permission_codes = [row[0] for row in db.execute(select(Permission.permission_code).join(
-            RolePermission, RolePermission.permission_id == Permission.id).where(
-            RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id,
-            RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False)).order_by(
-            Permission.permission_code)).all()]
+        if str(role.role_type or "").upper() == "SYSTEM":
+            permission_codes = sorted(expand_permission_patterns(set(ROLE_PERMISSIONS.get(role.role_code, set()))))
+        else:
+            permission_codes = [row[0] for row in db.execute(select(Permission.permission_code).join(
+                RolePermission, RolePermission.permission_id == Permission.id).where(
+                RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id,
+                RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False)).order_by(
+                Permission.permission_code)).all()]
+        selection = split_selection(permission_codes, build_permission_tree(user))
         return success({**_role_row(role, member_count), "permissionCodes": permission_codes,
-                        "menuKeys": [], "buttonKeys": [],
+                        "menuKeys": selection["menuKeys"], "buttonKeys": selection["buttonKeys"],
                         "members": [{"id": str(mid), "name": name, "orgName": "—"} for mid, name in members],
                         "auditTrail": []})
     finally:
@@ -351,6 +637,7 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
     from app.core.exceptions import AppException
     from app.core.permissions import ROLE_PERMISSIONS, has_permission
     from app.models import Permission, Role, RolePermission
+    from app.services.system_admin_catalog_service import expand_permission_patterns
     tenant_id = current_tenant_id()
     db = get_sessionmaker()()
     try:
@@ -359,12 +646,15 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
         if source is None:
             raise AppException("DATA_NOT_FOUND", "源角色不存在")
         if str(source.role_type or "").upper() == "SYSTEM":
-            source_codes = set(ROLE_PERMISSIONS.get(source.role_code, set()))
+            source_codes = expand_permission_patterns(set(ROLE_PERMISSIONS.get(source.role_code, set())))
         else:
             source_codes = set(db.scalars(select(Permission.permission_code).join(
                 RolePermission, RolePermission.permission_id == Permission.id).where(
                 RolePermission.tenant_id == tenant_id, RolePermission.role_id == source.id,
                 RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False))).all())
+            source_codes = expand_permission_patterns(source_codes)
+        # 禁止落库通配或 *
+        source_codes = {c for c in source_codes if c and c != "*" and not c.endswith(".*") and not c.startswith("*.")}
         excess = sorted(code for code in source_codes if not has_permission(user, code))
         if excess:
             raise AppException("NO_PERMISSION", "当前操作者不能复制超出自身权限边界的角色", {"codes": excess[:10]})
@@ -405,16 +695,24 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
     from app.core.exceptions import AppException
     from app.core.permissions import has_permission
     from app.models import Permission, Role, RolePermission
+    from app.services.system_admin_catalog_service import build_permission_tree, expand_permission_patterns, visible_codes_from_tree
     tenant_id = current_tenant_id()
     raw_codes = body.get("permissionCodes") or []
     if not isinstance(raw_codes, list):
         raise AppException("VALIDATION_ERROR", "permissionCodes 必须为数组")
-    codes = sorted({str(code).strip() for code in raw_codes if str(code).strip()})
-    if len(codes) > 300 or any(code == "*" or code.startswith("platform.") for code in codes):
+    codes = expand_permission_patterns({str(code).strip() for code in raw_codes if str(code).strip()})
+    codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.") and not c.startswith("platform.")}
+    if len(codes) > 500:
         raise AppException("VALIDATION_ERROR", "权限点超出学校角色可配置范围")
     forbidden = [code for code in codes if not has_permission(user, code)]
     if forbidden:
         raise AppException("NO_PERMISSION", "不能向角色授予当前操作者没有的权限", {"codes": forbidden[:10]})
+    # 可见码集合：仅替换本页能展示的权限，页外已有权限保留，防止误伤实习/教务等码
+    raw_visible = body.get("visiblePermissionCodes")
+    if isinstance(raw_visible, list) and raw_visible:
+        visible = {str(c).strip() for c in raw_visible if str(c).strip()}
+    else:
+        visible = visible_codes_from_tree(build_permission_tree(user))
     db = get_sessionmaker()()
     try:
         role = db.scalars(select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id,
@@ -423,22 +721,37 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
             raise AppException("DATA_NOT_FOUND", "角色不存在")
         if str(role.role_type or "").upper() == "SYSTEM":
             raise AppException("VALIDATION_ERROR", "预设角色由平台模板维护；请复制为自定义角色后再裁剪")
-        existing = {rp.permission_id: rp for rp in db.scalars(select(RolePermission).where(
-            RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id)).all()}
+        existing_links = list(db.scalars(select(RolePermission).where(
+            RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id)).all())
+        existing_by_perm_id = {rp.permission_id: rp for rp in existing_links}
+        existing_codes = set(db.scalars(select(Permission.permission_code).join(
+            RolePermission, RolePermission.permission_id == Permission.id).where(
+            RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id,
+            RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False))).all())
+        # merge：页外保留 + 页内以提交为准
+        preserved = {c for c in existing_codes if c not in visible}
+        final_codes = sorted(preserved | codes)
         permissions = {p.permission_code: p for p in db.scalars(select(Permission).where(
-            Permission.permission_code.in_(codes))).all()} if codes else {}
-        for code in codes:
+            Permission.permission_code.in_(final_codes))).all()} if final_codes else {}
+        for code in final_codes:
             if code not in permissions:
                 module, _, action = code.partition(".")
                 p = Permission(permission_code=code, permission_name=code, module_code=module, action=action or None)
                 db.add(p); db.flush(); permissions[code] = p
-        wanted_ids = {p.id for p in permissions.values()}
-        for permission_id, link in existing.items():
+        wanted_ids = {permissions[c].id for c in final_codes}
+        for permission_id, link in existing_by_perm_id.items():
             if permission_id in wanted_ids:
                 link.status = "ACTIVE"; link.is_deleted = False
             else:
-                link.status = "DISABLED"; link.is_deleted = True
-        for permission_id in wanted_ids - set(existing):
+                # 仅当该权限属于本页可见集合时才撤销
+                perm_code = next((c for c, p in permissions.items() if p.id == permission_id), None)
+                if perm_code is None:
+                    # 查库拿 code
+                    p_row = db.get(Permission, permission_id)
+                    perm_code = p_row.permission_code if p_row else ""
+                if perm_code in visible:
+                    link.status = "DISABLED"; link.is_deleted = True
+        for permission_id in wanted_ids - set(existing_by_perm_id):
             db.add(RolePermission(tenant_id=tenant_id, role_id=role.id, permission_id=permission_id, status="ACTIVE"))
         _set_role_scope(role, body.get("scopeCode") or _role_scope(role))
         role.version = int(role.version or 0) + 1
@@ -447,9 +760,10 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         invalidate_tenant_subject_caches(tenant_id)
         from app.services import audit_log
         audit_log.record("ROLE_PERMISSION_CONFIG", f"role:{role.id}",
-                         detail={"roleCode": role.role_code, "permissionCount": len(codes),
-                                 "scopeCode": _role_scope(role)})
-        return success({"id": str(role.id), "permissionCount": len(codes), "scopeCode": _role_scope(role)},
+                         detail={"roleCode": role.role_code, "permissionCount": len(final_codes),
+                                 "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved)})
+        return success({"id": str(role.id), "permissionCount": len(final_codes), "scopeCode": _role_scope(role),
+                        "permissionCodes": final_codes},
                        message="权限配置已生效；该角色成员需重新登录")
     except Exception:
         db.rollback(); raise
@@ -777,7 +1091,8 @@ def _resolve_login_names(db, operator_ids: set[int]) -> dict[int, str]:
 
 
 def _audit_page(login_only: bool, keyword: str, result: str, action: str, module: str,
-                page: int, page_size: int) -> dict:
+                page: int, page_size: int, date_from: str = "", date_to: str = "",
+                sensitive_only: bool = False) -> dict:
     from app.models import SecurityAuditLog
     tenant_id = current_tenant_id()
     page = max(1, int(page or 1))
@@ -789,6 +1104,9 @@ def _audit_page(login_only: bool, keyword: str, result: str, action: str, module
             stmt = stmt.where(SecurityAuditLog.action.in_(_LOGIN_ACTIONS))
         else:
             stmt = stmt.where(SecurityAuditLog.action.notin_(_LOGIN_ACTIONS))
+        if sensitive_only:
+            stmt = stmt.where(SecurityAuditLog.action.in_(
+                ("SENSITIVE_VIEW", "SENSITIVE_EXPORT", "EXPORT", "IMPORT", "IDENTITY_IMPORT")))
         if keyword.strip():
             like = f"%{keyword.strip()}%"
             stmt = stmt.where(SecurityAuditLog.operator_name.like(like) | SecurityAuditLog.resource.like(like))
@@ -798,6 +1116,10 @@ def _audit_page(login_only: bool, keyword: str, result: str, action: str, module
             stmt = stmt.where(SecurityAuditLog.result.in_(equivalents))
         if action.strip():
             stmt = stmt.where(SecurityAuditLog.action == action.strip().upper())
+        if date_from.strip():
+            stmt = stmt.where(SecurityAuditLog.created_at >= date_from.strip()[:10] + " 00:00:00")
+        if date_to.strip():
+            stmt = stmt.where(SecurityAuditLog.created_at <= date_to.strip()[:10] + " 23:59:59")
         total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = db.scalars(stmt.order_by(SecurityAuditLog.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
@@ -843,15 +1165,25 @@ def _operation_log_row(r) -> dict:
 
 @router.get("/system/login-logs", summary="登录与安全审计（真实库 t_security_audit_log）")
 def list_login_logs(keyword: str = "", result: str = "", page: int = 1, page_size: int = 20,
+                    date_from: str = "", date_to: str = "",
                     user=Depends(require_permission("systemAdmin.audit.view"))):
-    return success(_audit_page(True, keyword, result, "", "", page, page_size))
+    return success(_audit_page(True, keyword, result, "", "", page, page_size, date_from, date_to))
 
 
 @router.get("/system/operation-logs", summary="操作与权限审计（真实库 t_security_audit_log）")
 def list_operation_logs(keyword: str = "", result: str = "", action: str = "", module: str = "",
-                        page: int = 1, page_size: int = 20,
+                        page: int = 1, page_size: int = 20, date_from: str = "", date_to: str = "",
                         user=Depends(require_permission("systemAdmin.audit.view"))):
-    return success(_audit_page(False, keyword, result, action, module, page, page_size))
+    return success(_audit_page(False, keyword, result, action, module, page, page_size, date_from, date_to))
+
+
+@router.get("/system/sensitive-logs", summary="敏感与导入导出审计")
+def list_sensitive_logs(keyword: str = "", result: str = "", page: int = 1, page_size: int = 20,
+                        date_from: str = "", date_to: str = "",
+                        user=Depends(require_any_permission(
+                            "systemAdmin.audit.sensitive.view", "systemAdmin.audit.view"))):
+    return success(_audit_page(False, keyword, result, "", "", page, page_size, date_from, date_to,
+                               sensitive_only=True))
 
 
 # ═══════════ 导出（真实 xlsx：查真库 → build_ledger_xlsx → 流式下载 + 导出留痕审计） ═══════════
@@ -1074,6 +1406,34 @@ def list_scope_rules(keyword: str = "", status: str = "",
         db.close()
 
 
+@router.get("/system/scope-rules/{rule_id}/users", summary="数据范围规则影响用户明细")
+def list_scope_affected_users(rule_id: int, user=Depends(require_permission("systemAdmin.scope.view"))):
+    from app.core.exceptions import AppException
+    from app.models import DataScopeRule, Role, User, UserRole
+    tenant_id = current_tenant_id()
+    db = get_sessionmaker()()
+    try:
+        rule = db.scalars(select(DataScopeRule).where(DataScopeRule.id == rule_id,
+                          DataScopeRule.tenant_id == tenant_id, DataScopeRule.is_deleted.is_(False))).first()
+        if rule is None:
+            raise AppException("DATA_NOT_FOUND", "规则不存在")
+        code = str(rule.scope_type or "").upper()
+        roles = db.scalars(select(Role).where(Role.tenant_id == tenant_id, Role.is_deleted.is_(False),
+                                              Role.remark.like(f"%;scope={code}%"))).all()
+        role_ids = [r.id for r in roles]
+        if not role_ids:
+            return success([])
+        rows = db.execute(select(User.id, User.login_name, User.real_name, Role.role_name).join(
+            UserRole, UserRole.user_id == User.id).join(Role, Role.id == UserRole.role_id).where(
+            UserRole.tenant_id == tenant_id, UserRole.role_id.in_(role_ids),
+            UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+            User.is_deleted.is_(False)).limit(200)).all()
+        return success([{"id": str(uid), "userNo": login, "name": name, "roleName": role_name}
+                        for uid, login, name, role_name in rows])
+    finally:
+        db.close()
+
+
 @router.post("/system/scope-rules", summary="新增/编辑数据范围规则")
 def save_scope_rule(body: dict = Body(...), user=Depends(require_permission("systemAdmin.scope.manage"))):
     from app.core.exceptions import AppException
@@ -1241,21 +1601,110 @@ def save_system_brand(body: dict = Body(...), user=Depends(require_permission("s
         db.close()
 
 
-@router.get("/system/info", summary="系统信息 / 能力开关")
-def system_info():
+@router.get("/system/info", summary="系统信息 / 能力开关（需登录）")
+def system_info(user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.config.view", "systemAdmin.audit.view"))):
     now = datetime.now(timezone(timedelta(hours=settings.TIMEZONE_OFFSET_HOURS))).isoformat(timespec="seconds")
     return success({
         "appName": settings.APP_NAME,
         "env": settings.APP_ENV,
-        "version": "0.1.0-skeleton",
+        "version": "1.0.0",
         "apiPrefix": settings.API_V1_PREFIX,
         "tenancyMode": settings.TENANCY_MODE,
-        "databaseConnected": settings.DB_ENABLED,   # 本阶段恒 False：未连真实库
+        "databaseConnected": bool(settings.DB_ENABLED and db_enabled()),
         "serverTime": now,
         "capabilities": {
-            "auth": "mock", "rbac": "mock", "tenantBrand": "mock",
-            "todo": "mock", "message": "mock", "audit": "reserved",
-            "fileUpload": "placeholder", "import": "placeholder",
-            "export": "placeholder", "database": "reserved(not-connected)",
+            "auth": "real", "rbac": "real", "tenantBrand": "real",
+            "todo": "real", "message": "real", "audit": "real",
+            "fileUpload": "real", "import": "real",
+            "export": "real", "database": "mysql" if db_enabled() else "disabled",
         },
+        "operator": {"userId": (user or {}).get("userId"), "role": (user or {}).get("currentRoleCode")},
     })
+
+
+# ═══════════ 治理扩展：临时授权 / 接口 / 同步 / 模块开关 ═══════════
+
+@router.get("/system/delegations", summary="临时授权列表")
+def api_list_delegations(user=Depends(require_permission("systemAdmin.delegation.manage"))):
+    from app.services import system_governance_service as gov
+    items = gov.list_delegations()
+    return success({"list": items, "total": len(items)})
+
+
+@router.post("/system/delegations", summary="创建临时授权")
+def api_create_delegation(body: dict = Body(...), user=Depends(require_permission("systemAdmin.delegation.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.create_delegation(user, body or {}), message="临时授权已创建")
+
+
+@router.post("/system/delegations/{delegation_id}/revoke", summary="回收临时授权")
+def api_revoke_delegation(delegation_id: str, body: dict = Body(...),
+                          user=Depends(require_permission("systemAdmin.delegation.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.revoke_delegation(user, delegation_id, (body or {}).get("reason") or ""),
+                   message="临时授权已回收")
+
+
+@router.get("/system/integrations", summary="接口连接列表")
+def api_list_integrations(user=Depends(require_permission("systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    items = gov.list_integrations()
+    return success({"list": items, "total": len(items)})
+
+
+@router.post("/system/integrations", summary="保存接口连接")
+def api_save_integration(body: dict = Body(...), user=Depends(require_permission("systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.save_integration(user, body or {}), message="接口连接已保存")
+
+
+@router.post("/system/integrations/{integration_id}/rotate", summary="轮换接口凭证")
+def api_rotate_integration(integration_id: str, body: dict = Body(...),
+                           user=Depends(require_permission("systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.rotate_integration_credential(user, integration_id, (body or {}).get("credential") or ""),
+                   message="凭证已轮换")
+
+
+@router.get("/system/sync-jobs", summary="同步任务列表")
+def api_list_sync_jobs(user=Depends(require_any_permission(
+        "systemAdmin.integration.sync.view", "systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    items = gov.list_sync_jobs()
+    return success({"list": items, "total": len(items)})
+
+
+@router.post("/system/sync-jobs", summary="登记同步任务")
+def api_enqueue_sync_job(body: dict = Body(...), user=Depends(require_permission("systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.enqueue_sync_job(user, body or {}), message="同步任务已登记")
+
+
+@router.post("/system/sync-jobs/{job_id}/retry", summary="重试同步任务")
+def api_retry_sync_job(job_id: str, user=Depends(require_permission("systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.retry_sync_job(user, job_id), message="已重试")
+
+
+@router.post("/system/sync-jobs/{job_id}/cancel", summary="取消同步任务")
+def api_cancel_sync_job(job_id: str, body: dict = Body(...),
+                        user=Depends(require_permission("systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.cancel_sync_job(user, job_id, (body or {}).get("reason") or ""), message="已取消")
+
+
+@router.get("/system/module-features", summary="模块授权与业务开关（学校只读套餐 + 可调开关）")
+def api_get_module_features(user=Depends(require_any_permission(
+        "systemAdmin.config.feature.view", "systemAdmin.config.view"))):
+    from app.services import system_governance_service as gov
+    return success(gov.get_module_features())
+
+
+@router.put("/system/module-features", summary="调整业务开关")
+def api_save_module_features(body: dict = Body(...),
+                             user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.services import system_governance_service as gov
+    features = (body or {}).get("features") or body or {}
+    reason = (body or {}).get("reason") or ""
+    return success(gov.save_module_features(user, features, reason), message="业务开关已更新")

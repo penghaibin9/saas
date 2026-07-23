@@ -1,15 +1,13 @@
 /**
- * 系统管理中心 API（mock 实现）。
+ * 系统管理中心 API（半真实：读可合并 UI 脚手架；写操作禁止 mock 成功）。
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功。
- * 真实后端阶段仅替换实现，方法签名冻结不变（与 internship/dashboard 模块同约定）。
  * 页面禁止直接 import mocks，必须经本文件获取数据。
- * 留痕规则：所有写操作（含导入导出）均追加 operationLogList / auditLogs，不提供删除审计日志的方法。
+ * 留痕规则：所有写操作（含导入导出）均由后端审计；前端不伪造写成功。
  */
 /* P2 · 真实后端桥 */
 import { request, requestBlob, requestUpload, withFallback } from '@/services/http/client'
 import * as realApi from '@/services/http/adapters'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
-import { SYSTEM_ACTION_PERMISSION_BY_KEY, SYSTEM_MENU_PERMISSION_BY_KEY } from '@/modules/system/systemManagementCatalog'
 import {
   tenantBrandConfig,
   currentRole,
@@ -23,20 +21,12 @@ import {
   exportOptions,
   dashboardSummary,
   userList,
-  userDetailMap,
   roleList,
   roleDetailMap,
   permissionTree,
   menuTree,
   roleMenuPreview,
-  dataScopeRules,
-  scopeAffectedUsersMap,
   departmentTree,
-  positionList,
-  loginLogList,
-  operationLogList,
-  systemConfigList,
-  brandConfig,
   auditLogs
 } from '@/mocks/system/system.mock'
 
@@ -44,9 +34,14 @@ import { MOCK_DELAY_MS } from '@/utils/mockDelay'
 
 const DELAY = MOCK_DELAY_MS
 
-function ok(data) {
+/** 最近一次权限树展开得到的全部可见 permissionCode（保存角色权限时提交） */
+let _lastPermissionTreeVisibleCodes = []
+/** 最近一次权限树原始结构（角色详情拆分 menuKeys/buttonKeys 用） */
+let _lastPermissionTree = []
+
+function ok(data, message = 'ok') {
   return new Promise((resolve) => {
-    setTimeout(() => resolve({ code: 0, data, message: 'ok' }), DELAY)
+    setTimeout(() => resolve({ code: 0, data, message }), DELAY)
   })
 }
 
@@ -73,21 +68,36 @@ function clone(v) {
   return JSON.parse(JSON.stringify(v))
 }
 
-const menuKeyByPermission = Object.fromEntries(Object.entries(SYSTEM_MENU_PERMISSION_BY_KEY).map(([key, code]) => [code, key]))
-const actionKeyByPermission = Object.fromEntries(Object.entries(SYSTEM_ACTION_PERMISSION_BY_KEY).map(([key, code]) => [code, key]))
-
+/** 树节点 key 即后端 permissionCode，直接合并去重 */
 function permissionCodesFromSelection(menuKeys = [], buttonKeys = []) {
-  return [...new Set([
-    ...menuKeys.map((key) => SYSTEM_MENU_PERMISSION_BY_KEY[key]).filter(Boolean),
-    ...buttonKeys.map((key) => SYSTEM_ACTION_PERMISSION_BY_KEY[key]).filter(Boolean)
-  ])]
+  return [...new Set([...menuKeys, ...buttonKeys].filter(Boolean))]
 }
 
-function selectionFromPermissionCodes(permissionCodes = []) {
+function selectionFromPermissionCodes(permissionCodes = [], tree = []) {
+  const menuKeySet = new Set()
+  const buttonKeySet = new Set()
+  ;(tree || []).forEach((mod) => (mod.children || []).forEach((menu) => {
+    menuKeySet.add(menu.key)
+    ;(menu.children || []).forEach((btn) => buttonKeySet.add(btn.key))
+  }))
   return {
-    menuKeys: permissionCodes.map((code) => menuKeyByPermission[code]).filter(Boolean),
-    buttonKeys: permissionCodes.map((code) => actionKeyByPermission[code]).filter(Boolean)
+    menuKeys: permissionCodes.filter((c) => menuKeySet.has(c)),
+    buttonKeys: permissionCodes.filter((c) => buttonKeySet.has(c))
   }
+}
+
+function flattenPermissionTreeVisibleCodes(tree = []) {
+  const codes = []
+  ;(tree || []).forEach((mod) => {
+    if (mod?.key) codes.push(mod.key)
+    ;(mod.children || []).forEach((menu) => {
+      if (menu?.key) codes.push(menu.key)
+      ;(menu.children || []).forEach((btn) => {
+        if (btn?.key) codes.push(btn.key)
+      })
+    })
+  })
+  return [...new Set(codes.filter(Boolean))]
 }
 
 function paginate(list, { page = 1, pageSize = 10 } = {}) {
@@ -102,51 +112,48 @@ function now() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-let seed = 100
-
-/** 写审计：同时进入操作日志与通用留痕区（审计日志只增不删） */
-function audit({ module = 'SYSTEM', action, actionLabel, target, summary, before = '', after = '', reason = '', result = 'SUCCESS' }) {
-  const entry = {
-    id: 'ol-x' + ++seed,
-    time: now(),
-    who: currentRole.userName,
-    roleName: currentRole.roleName,
-    module,
-    moduleLabel: module === 'EXPORT' ? '导入导出' : '系统管理',
-    action,
-    actionLabel,
-    target,
-    result,
-    resultLabel: result === 'SUCCESS' ? '成功' : '失败',
-    ip: '10.12.*.*',
-    detail: { summary, before, after, reason }
+function mergeContextUiScaffold(data) {
+  const mockStatus = clone(statusOptions)
+  const mockFilter = clone(filterOptions)
+  return {
+    tenantBrandConfig: data.tenantBrandConfig || clone(tenantBrandConfig),
+    currentRole: data.currentRole || clone(currentRole),
+    dataScope: data.dataScope || clone(dataScope),
+    /* 后端动作覆盖脚手架；失败路径不得走到这里（见 getContext fail） */
+    permissionActions: {
+      ...clone(permissionActions),
+      ...(data.permissionActions || {})
+    },
+    permissionPatterns: data.permissionPatterns || [],
+    statusOptions: { ...mockStatus, ...(data.statusOptions || {}) },
+    filterOptions: {
+      roles: (data.filterOptions?.roles?.length ? data.filterOptions.roles : mockFilter.roles),
+      colleges: (data.filterOptions?.colleges?.length ? data.filterOptions.colleges : mockFilter.colleges),
+      logModules: data.filterOptions?.logModules || mockFilter.logModules,
+      logActions: data.filterOptions?.logActions || mockFilter.logActions
+    },
+    fieldColumns: (data.fieldColumns && Object.keys(data.fieldColumns).length)
+      ? data.fieldColumns
+      : clone(fieldColumns),
+    batchActions: (data.batchActions && data.batchActions.length) ? data.batchActions : clone(batchActions),
+    importTemplates: (data.importTemplates && Object.keys(data.importTemplates).length)
+      ? data.importTemplates
+      : clone(importTemplates),
+    exportOptions: (data.exportOptions && Object.keys(data.exportOptions).length)
+      ? data.exportOptions
+      : clone(exportOptions)
   }
-  operationLogList.unshift(entry)
-  auditLogs.unshift({
-    id: 'au-x' + seed,
-    who: `${currentRole.userName} · ${currentRole.roleName}`,
-    time: entry.time,
-    action: `${actionLabel}：${target}`,
-    affected: summary
-  })
-  return entry
 }
 
 export const systemApi = {
   /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典 / 列配置（页面初始化统一获取） */
-  getContext() {
-    return ok({
-      tenantBrandConfig: clone(tenantBrandConfig),
-      currentRole: clone(currentRole),
-      dataScope: clone(dataScope),
-      permissionActions: clone(permissionActions),
-      statusOptions: clone(statusOptions),
-      filterOptions: clone(filterOptions),
-      fieldColumns: clone(fieldColumns),
-      batchActions: clone(batchActions),
-      importTemplates: clone(importTemplates),
-      exportOptions: clone(exportOptions)
-    })
+  async getContext() {
+    try {
+      const data = await request('/system/context')
+      return ok(mergeContextUiScaffold(data || {}))
+    } catch (error) {
+      return fail(error.message || '系统管理上下文加载失败')
+    }
   },
 
   getDashboardSummary() {
@@ -182,63 +189,37 @@ export const systemApi = {
       return ok(paginate(list, params))
     }
     return withFallback('system.users', async () => ok(await request('/system/users', {
-      params: { keyword: params.keyword || undefined, role: params.role || undefined,
-        status: params.status || undefined, page: params.page || 1, page_size: params.pageSize || 20 }
+      params: {
+        keyword: params.keyword || undefined,
+        role: params.role || undefined,
+        status: params.status || undefined,
+        page: params.page || 1,
+        page_size: params.pageSize || 20
+      }
     })), mockUsers)
   },
 
-  getUserDetail(id) {
-    const preset = userDetailMap[id]
-    if (preset) return ok(clone(preset))
-    const row = userList.find((u) => u.id === id)
-    if (!row) return fail('账号不存在或不在当前数据范围内')
-    return ok({
-      ...clone(row),
-      roles: row.roles.map((code, i) => ({ code, name: row.roleNames[i] || code, scopeName: '按角色默认范围' })),
-      contexts: row.roleNames,
-      loginHistory: [],
-      auditTrail: [{ who: '系统', time: row.createdAt, action: '账号创建', affected: '来源：' + row.source }]
-    })
-  },
-
-  createUser(payload) {
-    if (!payload.name || !payload.userNo) return fail('姓名与工号/账号为必填项')
-    if (userList.some((u) => u.userNo === payload.userNo)) return fail('工号/账号已存在：' + payload.userNo)
-    const roleNames = (payload.roles || []).map((c) => (filterOptions.roles.find((r) => r.value === c) || { label: c }).label)
-    const row = {
-      id: 'sys-u-n' + ++seed,
-      userNo: payload.userNo,
-      name: payload.name,
-      orgId: payload.orgId || '',
-      orgName: (filterOptions.colleges.find((c) => c.value === payload.orgId) || { label: payload.orgName || '未设置' }).label,
-      roles: payload.roles || [],
-      roleNames,
-      phone: payload.phone || '',
-      email: payload.email || '',
-      status: 'PENDING',
-      statusLabel: '待激活',
-      source: '手工创建',
-      lastLoginAt: '',
-      createdAt: now().slice(0, 10)
+  async getUserDetail(id) {
+    try {
+      return ok(await request(`/system/users/${encodeURIComponent(id)}`))
+    } catch (error) {
+      return fail(error.message || '账号详情加载失败')
     }
-    userList.unshift(row)
-    audit({ action: 'CREATE', actionLabel: '新增', target: `账号 ${row.userNo}（${row.name}）`, summary: '创建账号，初始状态待激活，首登强制改密' })
-    return ok(clone(row))
   },
 
-  updateUser(id, payload) {
-    const row = userList.find((u) => u.id === id)
-    if (!row) return fail('账号不存在')
-    const before = `${row.orgName} · ${row.roleNames.join('/')}`
-    Object.assign(row, {
-      name: payload.name ?? row.name,
-      orgId: payload.orgId ?? row.orgId,
-      orgName: payload.orgId ? (filterOptions.colleges.find((c) => c.value === payload.orgId) || { label: row.orgName }).label : row.orgName,
-      phone: payload.phone ?? row.phone,
-      email: payload.email ?? row.email
-    })
-    audit({ action: 'UPDATE', actionLabel: '编辑', target: `账号 ${row.userNo}（${row.name}）`, summary: '编辑基础信息', before, after: `${row.orgName} · ${row.roleNames.join('/')}` })
-    return ok(clone(row))
+  createUser() {
+    return fail('师生账号只能通过统一导入入口创建')
+  },
+
+  async updateUser(id, payload) {
+    try {
+      return ok(await request(`/system/users/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '账号更新失败')
+    }
   },
 
   /** 停用/启用（真实库：更新 t_user.status，写审计。停用原因必填 ≥5 字，后端最终校验） */
@@ -273,37 +254,24 @@ export const systemApi = {
     }
   },
 
-  batchDisableUsers(ids, { reason }) {
+  async batchDisableUsers(ids, { reason }) {
     if (!reason || reason.trim().length < 5) return fail('批量停用原因必填且不少于 5 个字')
-    let count = 0
-    ids.forEach((id) => {
-      const row = userList.find((u) => u.id === id)
-      if (row && row.status !== 'DISABLED') {
-        row.status = 'DISABLED'
-        row.statusLabel = '已停用'
-        count++
-      }
-    })
-    audit({ action: 'DISABLE', actionLabel: '停用/作废', target: `批量停用 ${count} 个账号`, summary: '批量停用（逻辑删除，可恢复）', reason })
-    return ok({ count })
+    try {
+      return ok(await request('/system/user-batch-status', {
+        method: 'PUT',
+        body: { action: 'DISABLE', ids, reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '批量停用失败')
+    }
   },
 
-  /** 导入：返回校验预览（dry-run），confirm=true 时写入并生成回执 */
-  importUsers({ fileName, confirm = false }) {
-    const preview = {
-      batchNo: 'IMP-' + now().slice(0, 10).replaceAll('-', '') + '-02',
-      fileName: fileName || '用户账号导入_0704.xlsx',
-      total: 14,
-      valid: 12,
-      invalid: 2,
-      errors: [
-        { row: 6, field: '工号/账号', message: '与现有账号 T2019035 重复' },
-        { row: 11, field: '角色编码', message: '角色 OLD_EXPORTER 已作废，不允许分配' }
-      ]
+  /** 旧 mock 导入入口：禁止写成功，引导到 identityImport APIs */
+  importUsers({ confirm = false } = {}) {
+    if (!confirm) {
+      return fail('请使用统一导入：downloadIdentityImportTemplate / validateIdentityImportFile')
     }
-    if (!confirm) return ok(preview)
-    audit({ module: 'EXPORT', action: 'IMPORT', actionLabel: '导入', target: `用户账号（批次 ${preview.batchNo}）`, summary: `导入 ${preview.total} 行：成功 ${preview.valid} · 失败 ${preview.invalid}，错误清单已留存` })
-    return ok({ ...preview, receipt: `已导入 ${preview.valid} 行，失败 ${preview.invalid} 行（可下载错误清单修正后重新导入）` })
+    return fail('请使用 confirmIdentityImportBatch 完成师生账号导入，禁止 mock 写入')
   },
 
   /** 师生账号唯一导入入口：真实 xlsx 上传，不允许写操作回退 mock。 */
@@ -416,7 +384,6 @@ export const systemApi = {
     }
   },
 
-  /** 导出：受数据范围限制，敏感字段按选择脱敏，文件带水印，动作留痕 */
   /** 导出账号台账（真实 xlsx：后端查真库+水印+导出留痕，浏览器直接下载） */
   async exportUsers() {
     try {
@@ -468,12 +435,26 @@ export const systemApi = {
     }
     return withFallback('system.role.detail', async () => {
       const data = await request(`/system/roles/${encodeURIComponent(id)}`)
-      return ok({ ...data, ...selectionFromPermissionCodes(data.permissionCodes || []) })
+      const tree = _lastPermissionTree.length ? _lastPermissionTree : []
+      const fromBackend = (data.menuKeys || data.buttonKeys)
+        ? { menuKeys: data.menuKeys || [], buttonKeys: data.buttonKeys || [] }
+        : selectionFromPermissionCodes(data.permissionCodes || [], tree)
+      return ok({ ...data, ...fromBackend })
     }, mockDetail)
   },
 
-  getPermissionTree() {
-    return ok(clone(permissionTree))
+  async getPermissionTree() {
+    try {
+      const data = await request('/system/permissions/tree')
+      const tree = data.tree || data || []
+      _lastPermissionTree = tree
+      _lastPermissionTreeVisibleCodes = Array.isArray(data.visibleCodes) && data.visibleCodes.length
+        ? data.visibleCodes
+        : flattenPermissionTreeVisibleCodes(tree)
+      return ok(tree)
+    } catch (error) {
+      return fail(error.message || '权限树加载失败')
+    }
   },
 
   async createRole(payload) {
@@ -505,7 +486,6 @@ export const systemApi = {
     }
   },
 
-  /** 作废角色（逻辑删除）：内置角色禁止作废；有成员需先移除；原因必填留痕 */
   /** 停用自定义角色（真实库：预设角色不可停、有成员先改派，后端最终校验） */
   async deprecateRole(id, { reason }) {
     try {
@@ -517,10 +497,20 @@ export const systemApi = {
     }
   },
 
-  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode }) {
+  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, visiblePermissionCodes } = {}) {
     try {
+      const permissionCodes = permissionCodesFromSelection(menuKeys, buttonKeys)
+      const visible = visiblePermissionCodes
+        || (_lastPermissionTreeVisibleCodes.length
+          ? _lastPermissionTreeVisibleCodes
+          : permissionCodes)
       const data = await request(`/system/roles/${encodeURIComponent(id)}/permissions`, {
-        method: 'PUT', body: { permissionCodes: permissionCodesFromSelection(menuKeys, buttonKeys), scopeCode }
+        method: 'PUT',
+        body: {
+          permissionCodes,
+          visiblePermissionCodes: visible,
+          scopeCode
+        }
       })
       return ok(data)
     } catch (error) {
@@ -546,27 +536,12 @@ export const systemApi = {
     return ok(clone(menuTree))
   },
 
-  saveMenu(payload) {
-    audit({ action: 'CONFIG', actionLabel: '配置变更', target: `菜单「${payload.name || payload.code}」`, summary: payload.id ? '编辑菜单' : '新增菜单', reason: payload.reason || '' })
-    return ok({ ...payload, id: payload.id || 'menu-n' + ++seed })
+  saveMenu() {
+    return fail('菜单由平台导航派生，学校侧不可改')
   },
 
-  setMenuStatus(id, { action, reason }) {
-    if (action === 'DISABLE' && (!reason || reason.trim().length < 5)) return fail('停用原因必填且不少于 5 个字')
-    function walk(nodes) {
-      for (const n of nodes) {
-        if (n.id === id) return n
-        const hit = n.children && walk(n.children)
-        if (hit) return hit
-      }
-      return null
-    }
-    const node = walk(menuTree)
-    if (!node) return fail('菜单不存在')
-    node.status = action === 'DISABLE' ? 'DISABLED' : 'ENABLED'
-    node.statusLabel = action === 'DISABLE' ? '停用' : '启用'
-    audit({ action: 'DISABLE', actionLabel: action === 'DISABLE' ? '停用/作废' : '启用', target: `菜单「${node.name}」`, summary: action === 'DISABLE' ? '停用菜单（各角色即时不可见，配置保留）' : '恢复启用', reason: reason || '' })
-    return ok({ id, status: node.status })
+  setMenuStatus() {
+    return fail('菜单由平台导航派生，学校侧不可改')
   },
 
   previewRoleMenus(roleCode) {
@@ -604,8 +579,13 @@ export const systemApi = {
     }
   },
 
-  getScopeAffectedUsers(id) {
-    return ok(clone(scopeAffectedUsersMap[id] || []))
+  async getScopeAffectedUsers(id) {
+    try {
+      const data = await request(`/system/scope-rules/${encodeURIComponent(id)}/users`)
+      return ok(Array.isArray(data) ? data : (data.list || []))
+    } catch (error) {
+      return fail(error.message || '影响用户加载失败')
+    }
   },
 
   /** 导出数据范围规则清单（真实 xlsx：含引用角色/影响人数+水印，浏览器直接下载） */
@@ -627,8 +607,23 @@ export const systemApi = {
       () => ok(clone(departmentTree)))
   },
 
-  getPositions() {
-    return ok(clone(positionList))
+  /** 岗位列表：映射教职工归属；失败则返回空列表 */
+  async getPositions() {
+    try {
+      const data = await request('/system/staff-affiliations')
+      const list = (data.list || []).map((row) => ({
+        id: row.id,
+        name: row.roleLabel || '岗位',
+        orgName: row.orgName || '',
+        memberCount: 1,
+        remark: [row.staffName, row.staffKey].filter(Boolean).join(' · ') || '',
+        status: (row.status === 'ACTIVE' || !row.status) ? 'ENABLED' : row.status,
+        statusLabel: (row.status === 'ACTIVE' || !row.status) ? '启用' : String(row.status)
+      }))
+      return ok(list, '岗位数据来自教职工归属')
+    } catch (error) {
+      return ok([], error.message || '暂无岗位归属数据')
+    }
   },
 
   async saveOrgNode(payload) {
@@ -651,11 +646,8 @@ export const systemApi = {
     }
   },
 
-  importOrg({ confirm = false } = {}) {
-    const preview = { batchNo: 'IMP-ORG-' + now().slice(0, 10).replaceAll('-', ''), total: 8, valid: 8, invalid: 0, errors: [] }
-    if (!confirm) return ok(preview)
-    audit({ module: 'EXPORT', action: 'IMPORT', actionLabel: '导入', target: `组织结构（批次 ${preview.batchNo}）`, summary: '导入 8 行全部成功' })
-    return ok({ ...preview, receipt: '已导入 8 行组织节点' })
+  importOrg() {
+    return fail('组织导入请前往实施中心「数据导入与智能匹配」：/admin/system/implementation/data-mapping')
   },
 
   /** 导出组织结构（真实 xlsx：院系/专业/班级+在籍人数+水印，浏览器直接下载） */
@@ -710,6 +702,15 @@ export const systemApi = {
     }
   },
 
+  /** getConfigs / saveConfig 别名，供登录策略页绑定 SEC_* */
+  getConfigs() {
+    return this.getSystemConfigs()
+  },
+
+  saveConfig(key, valueText, opts) {
+    return this.saveSystemConfig(key, valueText, opts)
+  },
+
   /** 导出系统与品牌配置快照（真实 JSON：后端查真库,不含密钥,浏览器直接下载） */
   async exportConfigs() {
     try {
@@ -724,12 +725,18 @@ export const systemApi = {
 
   /* ==================== 日志（只读 + 导出，禁止删除） ==================== */
 
-  /** 登录与安全审计（真实库 t_security_audit_log）。安全敏感：不做 mock 回落，后端失败即报错，绝不展示编造日志。 */
+  /** 登录与安全审计（真实库 t_security_audit_log）。安全敏感：不做 mock 回落。 */
   async getLoginLogs(params = {}) {
     try {
       return ok(await request('/system/login-logs', {
-        params: { keyword: params.keyword || undefined, result: params.result || undefined,
-          page: params.page || 1, page_size: params.pageSize || 20 }
+        params: {
+          keyword: params.keyword || undefined,
+          result: params.result || undefined,
+          date_from: params.dateFrom || params.date_from || undefined,
+          date_to: params.dateTo || params.date_to || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 20
+        }
       }))
     } catch (error) {
       return fail(error.message || '登录日志加载失败')
@@ -740,9 +747,16 @@ export const systemApi = {
   async getOperationLogs(params = {}) {
     try {
       return ok(await request('/system/operation-logs', {
-        params: { keyword: params.keyword || undefined, result: params.result || undefined,
-          action: params.action || undefined, module: params.module || undefined,
-          page: params.page || 1, page_size: params.pageSize || 20 }
+        params: {
+          keyword: params.keyword || undefined,
+          result: params.result || undefined,
+          action: params.action || undefined,
+          module: params.module || undefined,
+          date_from: params.dateFrom || params.date_from || undefined,
+          date_to: params.dateTo || params.date_to || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 20
+        }
       }))
     } catch (error) {
       return fail(error.message || '操作日志加载失败')
@@ -764,11 +778,148 @@ export const systemApi = {
     } catch (error) {
       return apiError(error)
     }
-  }
-}
+  },
 
-function maskPhone(v) {
-  return v ? v.slice(0, 3) + '****' + v.slice(-4) : '未登记'
+  /* ==================== 治理扩展 P0–P3 ==================== */
+
+  async listAccountExceptions(params = {}) {
+    try {
+      return ok(await request('/system/users-exceptions', {
+        params: { page: params.page || 1, page_size: params.pageSize || 50 }
+      }))
+    } catch (error) {
+      return fail(error.message || '账号异常列表加载失败')
+    }
+  },
+
+  async listStaffAffiliations() {
+    try {
+      return ok(await request('/system/staff-affiliations'))
+    } catch (error) {
+      return fail(error.message || '教职工归属加载失败')
+    }
+  },
+
+  async listDelegations() {
+    try {
+      return ok(await request('/system/delegations'))
+    } catch (error) {
+      return fail(error.message || '临时授权列表加载失败')
+    }
+  },
+
+  async createDelegation(payload) {
+    try {
+      return ok(await request('/system/delegations', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '创建临时授权失败')
+    }
+  },
+
+  async revokeDelegation(id, { reason } = {}) {
+    try {
+      return ok(await request(`/system/delegations/${encodeURIComponent(id)}/revoke`, {
+        method: 'POST', body: { reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '回收临时授权失败')
+    }
+  },
+
+  async listIntegrations() {
+    try {
+      return ok(await request('/system/integrations'))
+    } catch (error) {
+      return fail(error.message || '接口连接列表加载失败')
+    }
+  },
+
+  async saveIntegration(payload) {
+    try {
+      return ok(await request('/system/integrations', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '保存接口连接失败')
+    }
+  },
+
+  async rotateIntegration(id, { credential } = {}) {
+    try {
+      return ok(await request(`/system/integrations/${encodeURIComponent(id)}/rotate`, {
+        method: 'POST', body: { credential }
+      }))
+    } catch (error) {
+      return fail(error.message || '轮换凭证失败')
+    }
+  },
+
+  async listSyncJobs() {
+    try {
+      return ok(await request('/system/sync-jobs'))
+    } catch (error) {
+      return fail(error.message || '同步任务列表加载失败')
+    }
+  },
+
+  async enqueueSyncJob(payload) {
+    try {
+      return ok(await request('/system/sync-jobs', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '登记同步任务失败')
+    }
+  },
+
+  async retrySyncJob(id) {
+    try {
+      return ok(await request(`/system/sync-jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' }))
+    } catch (error) {
+      return fail(error.message || '重试同步任务失败')
+    }
+  },
+
+  async cancelSyncJob(id, { reason } = {}) {
+    try {
+      return ok(await request(`/system/sync-jobs/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST', body: { reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '取消同步任务失败')
+    }
+  },
+
+  async getModuleFeatures() {
+    try {
+      return ok(await request('/system/module-features'))
+    } catch (error) {
+      return fail(error.message || '模块开关加载失败')
+    }
+  },
+
+  async saveModuleFeatures(features, { reason } = {}) {
+    try {
+      return ok(await request('/system/module-features', {
+        method: 'PUT', body: { features, reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '业务开关保存失败')
+    }
+  },
+
+  async listSensitiveLogs(params = {}) {
+    try {
+      return ok(await request('/system/sensitive-logs', {
+        params: {
+          keyword: params.keyword || undefined,
+          result: params.result || undefined,
+          date_from: params.dateFrom || params.date_from || undefined,
+          date_to: params.dateTo || params.date_to || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 20
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '敏感审计加载失败')
+    }
+  }
 }
 
 export default systemApi

@@ -66,9 +66,9 @@ def _entry(key, label, path, permission):
 
 COMMON_CARDS = ["students", "todos", "approvals", "messages", "warning"]
 WORKBENCH_PRESETS = (
-    ("SCHOOL_ADMIN", "学校管理工作台", [_entry("implementation", "实施与预设", "/admin/system/implementation", "systemAdmin.implementation.view"), _entry("users", "账号管理", "/admin/system/users", "systemAdmin.user.view"), _entry("audit", "安全审计", "/admin/system/audit", "systemAdmin.audit.view")], ["security", "import", "interface"]),
+    ("SCHOOL_ADMIN", "学校管理工作台", [_entry("implementation", "实施与预设", "/admin/system/implementation", "systemAdmin.implementation.view"), _entry("users", "账号管理", "/admin/system/users", "systemAdmin.user.view"), _entry("audit", "安全审计", "/admin/system/logs", "systemAdmin.audit.view")], ["security", "import", "interface"]),
     ("SYS_ADMIN", "系统管理工作台", [_entry("users", "账号管理", "/admin/system/users", "systemAdmin.user.view"), _entry("roles", "角色权限", "/admin/system/roles", "systemAdmin.role.view"), _entry("implementation", "实施中心", "/admin/system/implementation", "systemAdmin.implementation.view")], ["security", "import"]),
-    ("SECURITY_AUDITOR", "安全审计工作台", [_entry("audit", "审计日志", "/admin/system/audit", "systemAdmin.audit.view"), _entry("login", "登录日志", "/admin/system/login-logs", "systemAdmin.loginLog.view")], ["security"]),
+    ("SECURITY_AUDITOR", "安全审计工作台", [_entry("audit", "审计日志", "/admin/system/logs", "systemAdmin.audit.view"), _entry("login", "登录日志", "/admin/system/logs?tab=login", "systemAdmin.audit.view")], ["security"]),
     ("LEADER", "领导驾驶舱", [_entry("cockpit", "领导驾驶舱", "/admin/data-center", "dataCenter.dashboard.view"), _entry("approval", "审批中心", "/admin/approval", "approval.dashboard.view")], ["risk", "overdue"]),
     ("COLLEGE_ADMIN", "学院管理工作台", [_entry("approval", "学院待审", "/admin/approval", "approval.dashboard.view"), _entry("students", "学院学生", "/admin/students", "student.list.view")], ["risk", "overdue"]),
     ("ACADEMIC_ADMIN", "教务管理工作台", [_entry("academic", "教务工作台", "/admin/academic-affairs", "academicAffairs.dashboard.view"), _entry("schedule", "排课管理", "/admin/academic-affairs/schedule", "academicAffairs.schedule.view"), _entry("grades", "成绩管理", "/admin/academic-affairs/grades", "academicAffairs.grade.view")], ["schedule", "grade", "exam"]),
@@ -96,7 +96,7 @@ NOTIFICATION_PRESETS = (
     ("INTERNSHIP_EXCEPTION", "实习异常提醒", "学生 {studentName} 出现实习异常，请及时核实处理。", ["studentName"], "/admin/internship", {"type": "INTERNSHIP_ADVISOR"}),
     ("INTERNSHIP_WEEKLY_OVERDUE", "实习周报逾期", "学生 {studentName} 的第 {weekNo} 周周报尚未提交。", ["studentName", "weekNo"], "/admin/internship", {"type": "INTERNSHIP_ADVISOR"}),
     ("GRADUATION_OVERDUE", "毕设任务逾期", "学生 {studentName} 的 {stageName} 材料已逾期。", ["studentName", "stageName"], "/admin/graduation", {"type": "GRADUATION_MENTOR"}),
-    ("SECURITY_ALERT", "安全告警", "检测到账号 {accountNo} 的 {alertType}，请及时核查。", ["accountNo", "alertType"], "/admin/system/audit", {"role": "SECURITY_AUDITOR"}),
+    ("SECURITY_ALERT", "安全告警", "检测到账号 {accountNo} 的 {alertType}，请及时核查。", ["accountNo", "alertType"], "/admin/system/logs", {"role": "SECURITY_AUDITOR"}),
     ("SERVICE_EXPIRING", "服务即将到期", "服务 {serviceName} 将于 {expireDate} 到期，请提前处理。", ["serviceName", "expireDate"], "/admin/system", {"role": "SCHOOL_ADMIN"}),
 )
 

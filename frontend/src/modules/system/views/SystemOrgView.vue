@@ -19,7 +19,7 @@
       <LoadingState v-else-if="loading" />
 
       <template v-else-if="tab === 'tree'">
-        <EmptyState v-if="!tree.length" title="暂无组织数据" description="可通过「批量导入」初始化院系 / 专业 / 班级结构" />
+        <EmptyState v-if="!tree.length" title="暂无组织数据" description="请前往实施中心「数据导入与智能匹配」初始化院系 / 专业 / 班级结构" />
         <section v-else class="mp-card">
           <div class="mp-card__body" style="padding-top: var(--space-2)">
             <table class="og-table">
@@ -85,28 +85,20 @@
       :submitting="deprecateSubmitting"
       @confirm="doDeprecate"
     />
-
-    <ImportDialog
-      v-model:visible="importOpen"
-      :template="ctx.importTemplates.org"
-      :run-validate="() => api.importOrg()"
-      :run-import="() => api.importOrg({ confirm: true })"
-      @done="load"
-    />
   </ModulePageShell>
 </template>
 
 <script>
 /**
  * 组织结构管理（/admin/system/org）：
- * 组织树（学院/专业/班级/部门）增改 / 作废留痕 / 导入导出；岗位列表。
+ * 组织树（学院/专业/班级/部门）增改 / 作废留痕 / 导出；岗位列表来自教职工归属。
+ * 组织导入统一走实施中心「数据导入与智能匹配」。
  */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import FormFields from '@/modules/system/components/FormFields.vue'
-import ImportDialog from '@/modules/system/components/ImportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 
@@ -120,7 +112,7 @@ export default {
   name: 'SystemOrgView',
   components: {
     ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppConfirmDialog, FormFields, ImportDialog
+    AppButton, AppDrawer, AppConfirmDialog, FormFields
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -141,8 +133,7 @@ export default {
       form: { open: false, id: '', parentName: '', value: {}, errors: {}, submitting: false },
       confirmDeprecate: false,
       deprecateRow: null,
-      deprecateSubmitting: false,
-      importOpen: false
+      deprecateSubmitting: false
     }
   },
   computed: {
@@ -161,7 +152,7 @@ export default {
       const pa = this.ctx.permissionActions
       return [
         { key: 'createOrg', label: '＋ 新增学院/部门', variant: 'primary' },
-        { key: 'importOrg', label: '⇪ 批量导入' },
+        { key: 'importOrg', label: '⇪ 数据导入与匹配' },
         { key: 'exportOrg', label: '⇩ 导出组织结构' }
       ]
         .filter((a) => pa[a.key] && pa[a.key].visible)
@@ -176,9 +167,20 @@ export default {
     }
   },
   created() {
+    this.syncTabFromRoute()
     this.load()
   },
+  watch: {
+    '$route.query.tab'() {
+      this.syncTabFromRoute()
+    }
+  },
   methods: {
+    syncTabFromRoute() {
+      const q = String(this.$route.query.tab || '')
+      if (q === 'positions') this.tab = 'positions'
+      else if (q === 'college' || q === 'major' || q === 'class' || q === 'tree') this.tab = 'tree'
+    },
     can(key) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed)
@@ -189,10 +191,15 @@ export default {
     },
     async onToolbar(key) {
       if (key === 'createOrg') this.openEdit(null, null)
-      if (key === 'importOrg') this.importOpen = true
+      if (key === 'importOrg') {
+        toast.info('组织导入请前往实施中心「数据导入与智能匹配」')
+        this.$router.push('/admin/system/implementation/data-mapping')
+        return
+      }
       if (key === 'exportOrg') {
         const res = await systemApi.exportOrg()
         if (res.code === 0) toast.success('导出任务已创建：' + res.data.fileName + '（含水印），已留痕')
+        else toast.error(res.message)
       }
     },
     openEdit(node, parent) {

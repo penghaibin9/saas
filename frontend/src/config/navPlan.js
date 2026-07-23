@@ -27,6 +27,11 @@ function I(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'implemented', disabled: false, badge: '',
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
+/** 部分能力叶子（可点进现有页/能力页，灰橙「部分能力」badge） */
+function PA(label, path, permissionKey, entryType, opts) {
+  return { label, path, status: 'partial', disabled: false, badge: '部分能力',
+    ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
+}
 /** 待施工叶子（可批量），自动 disabled + 待施工 badge，无 path 不注册路由 */
 function P(...labels) {
   return labels.map((label) => ({ label, status: 'planned', disabled: true, badge: '待施工' }))
@@ -844,13 +849,14 @@ export const NAV_PLAN = [
      学校级仅保留 8 组 / 26 个三级能力。平台租户、套餐、全局菜单及权限点目录
      一律留在 PLATFORM_PLAN，避免学校管理员越权和两套角色权限重复维护。 */
   grp('system', '系统管理', 'systemAdmin', SYSTEM_MANAGEMENT_CATALOG.map((group) =>
-    mod(group.key, group.label, group.items[0].path, group.items.map((item) =>
-      I(item.label, item.path, item.permissionKey, 'CONFIG_VIEW', {
+    mod(group.key, group.label, group.items[0].path, group.items.map((item) => {
+      const leafFactory = item.view === 'capability' ? PA : I
+      return leafFactory(item.label, item.path, item.permissionKey, 'CONFIG_VIEW', {
         systemCapabilityKey: item.key,
         systemCapabilityGroup: group.key,
         description: item.description
       })
-    ))
+    }))
   ))
 ]
 

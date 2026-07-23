@@ -8,6 +8,7 @@
     @menu-select="onMenuSelect"
   >
     <router-view v-if="ctx" :ctx="ctx" />
+    <ErrorState v-else-if="contextError" :description="contextError" @retry="retryContext" />
     <LoadingState v-else text="正在加载系统管理中心…" />
   </BasePortalLayout>
 </template>
@@ -19,7 +20,7 @@
  * ctx 通过 props 下发给子路由页面，避免每页重复拉取。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
+import { LoadingState, ErrorState } from '@/components/business'
 import { systemApi } from '@/modules/system/api/system.api'
 import { SYSTEM_MANAGEMENT_CATALOG } from '@/modules/system/systemManagementCatalog'
 
@@ -30,9 +31,9 @@ const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
 
 export default {
   name: 'AdminSystemLayout',
-  components: { BasePortalLayout, LoadingState },
+  components: { BasePortalLayout, LoadingState, ErrorState },
   data() {
-    return { menus: MENUS, ctx: null }
+    return { menus: MENUS, ctx: null, contextError: '' }
   },
   computed: {
     brandTitle() {
@@ -49,11 +50,23 @@ export default {
   },
   async created() {
     const res = await systemApi.getContext()
-    if (res.code === 0) this.ctx = res.data
+    if (res.code === 0) {
+      this.ctx = res.data
+      this.contextError = ''
+    } else {
+      this.ctx = null
+      this.contextError = res.message || '系统管理上下文加载失败'
+    }
   },
   methods: {
     onMenuSelect(item) {
       if (item.path && item.path !== this.$route.path) this.$router.push(item.path)
+    },
+    async retryContext() {
+      this.contextError = ''
+      const res = await systemApi.getContext()
+      if (res.code === 0) this.ctx = res.data
+      else this.contextError = res.message || '系统管理上下文加载失败'
     }
   }
 }
