@@ -316,10 +316,9 @@ export default {
       if (!s) return []
       if (AID_NODES.includes(s)) {
         const label = { CLASS_REVIEW: '评议通过', COUNSELOR_REVIEW: '初审通过', COLLEGE_REVIEW: '复审通过', SCHOOL_REVIEW: '终审通过' }[s]
-        // 辅导员初审节点（2026-07-18 甲方拍板扩权）：学工处/资助老师/校管等 aid.approve 持有者仍可操作
-        // 全部节点；辅导员额外凭节点范围权限 aid.counselorReview 操作本班学生的「辅导员初审」一个节点
-        // （班级评议/学院复审/学校终审不放开，节点授权由后端 _check_node_authority 二次收敛）。
-        const allowed = s === 'COUNSELOR_REVIEW'
+        // 辅导员：班级评议 + 辅导员初审（对齐后端 counselorReview 覆盖 CLASS_REVIEW）
+        const counselorNode = s === 'CLASS_REVIEW' || s === 'COUNSELOR_REVIEW'
+        const allowed = counselorNode
           ? (this.canBtn('studentAffairs.aid.approve') || this.canBtn('studentAffairs.aid.counselorReview'))
           : this.canBtn('studentAffairs.aid.approve')
         return [

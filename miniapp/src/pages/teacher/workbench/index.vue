@@ -59,7 +59,7 @@
           <!-- 风险学生 -->
           <view class="section-head">
             <text class="section-head__title">风险学生</text>
-            <text class="section-head__more" @click="go('/pages/teacher/risk-students/index')">查看全部 ›</text>
+            <text class="section-head__more" @click="go('/pages/teacher/affairs-review/index?type=RISK_HANDLE')">学工风险 ›</text>
           </view>
           <view class="stack-sm">
             <view v-for="r in wb.riskStudents" :key="r.id" class="wb__risk card" @click="openStudent(r)">
@@ -147,7 +147,7 @@ export default {
         'plan-task': '/pages/teacher/plan-task-review/index',
         'internship-application': '/pages/teacher/internship-application/index',
         approval: '/pages/teacher/approval/index',
-        risk: '/pages/teacher/risk-students/index',
+        risk: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
         follow: '/pages/teacher/employment-follow/index',
         unemployed: '/pages/teacher/employment-follow/index',
         employmentTransfer: '/pages/teacher/employment-transfer/index',
@@ -183,7 +183,7 @@ export default {
       toast(q.label + '：即将开放')
     },
     handleTodo(t) { go('/pages/teacher/todos/index') },
-    handleRisk(r) { go('/pages/teacher/risk-students/index') },
+    handleRisk(r) { go('/pages/teacher/affairs-review/index?type=RISK_HANDLE') },
     openStudent(r) { go('/pages/teacher/student-detail/index?id=' + r.id) }
   }
 }

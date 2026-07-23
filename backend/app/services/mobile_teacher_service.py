@@ -641,6 +641,131 @@ def affairs_leave_extension_approve(user: dict, leave_id: str, action: str = "AP
     return result
 
 
+# ══════════ 学工待办处置（困难/奖助/处分/风险）——复用 PC 服务层权限+范围+指派人校验 ══════════
+
+def affairs_aid_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_aid_service as svc
+    items, _ = svc.list_applications(u, page=1, page_size=100)
+    nodes = {"CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW", "ADJUST_REVIEW"}
+    out = [x for x in items if (x.get("status") or "") in nodes]
+    return {"list": out, "total": len(out)}
+
+
+def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
+                       level: str | None = None) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_aid_service as svc
+    act = (action or "APPROVE").upper()
+    detail = svc.get_application(apply_id, u)
+    if (detail or {}).get("status") == "ADJUST_REVIEW":
+        mapped = "APPROVE" if act in ("APPROVE", "ADJUST_APPROVE") else "REJECT"
+        result = svc.approve_adjust(apply_id, u, action=mapped)
+    else:
+        result = svc.review(apply_id, u, act, level=level, reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_AID_REVIEW", f"aid:{apply_id}",
+                 {"operator": u.get("realName"), "action": act})
+    return result
+
+
+def affairs_funding_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_funding_service as svc
+    items, _ = svc.list_applications(u, page=1, page_size=100)
+    nodes = {"COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"}
+    out = [x for x in items if (x.get("status") or "") in nodes]
+    return {"list": out, "total": len(out)}
+
+
+def affairs_funding_review(user: dict, app_id: str, action: str, reason: str = "") -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_funding_service as svc
+    result = svc.review(app_id, u, (action or "APPROVE").upper(), reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_FUNDING_REVIEW", f"funding:{app_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+def affairs_discipline_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_discipline_service as svc
+    items, _ = svc.list_cases(u, page=1, page_size=100)
+    nodes = {"COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "REMOVE_REVIEW"}
+    out = [x for x in items if (x.get("status") or "") in nodes]
+    return {"list": out, "total": len(out)}
+
+
+def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str = "") -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_discipline_service as svc
+    act = (action or "APPROVE").upper()
+    detail = svc.get_case(case_id, u)
+    if (detail or {}).get("status") == "REMOVE_REVIEW":
+        result = svc.review_remove(case_id, u, act, reason=reason or "")
+    else:
+        result = svc.review(case_id, u, act, reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_DISC_REVIEW", f"discipline:{case_id}",
+                 {"operator": u.get("realName"), "action": act})
+    return result
+
+
+def affairs_risk_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.core.affairs_security import build_affairs_context
+    from app.services import affairs_risk_service as svc
+    from app.services.db_service import session as _db_session
+    items = []
+    for st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED"):
+        chunk, _ = svc.list_risks(u, status=st, page=1, page_size=50)
+        items.extend(chunk)
+    with _db_session() as db:
+        ctx = build_affairs_context(u, db)
+    raw = str((u or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        uid = int(raw)
+    except (TypeError, ValueError):
+        uid = 0
+    if ctx.scope_type != "TENANT_ALL" and uid:
+        items = [x for x in items if int(x.get("ownerId") or 0) == uid]
+    return {"list": items, "total": len(items)}
+
+
+def affairs_risk_process(user: dict, risk_id: str, content: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_risk_service as svc
+    result = svc.process(risk_id, u, content=content or "")
+    _audit_write("MOBILE_AFFAIRS_RISK_PROCESS", f"risk:{risk_id}", {"operator": u.get("realName")})
+    return result
+
+
+def affairs_risk_close(user: dict, risk_id: str, conclusion: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_risk_service as svc
+    result = svc.close(risk_id, u, conclusion=conclusion or "")
+    _audit_write("MOBILE_AFFAIRS_RISK_CLOSE", f"risk:{risk_id}", {"operator": u.get("realName")})
+    return result
+
+
 # ══════════ 班干部任命/免去（移动端包装：复用 affairs_dashboard_service 全套，owner+范围校验
 # 在服务层 _class_in_scope_or_403 完成。学生选择器刻意"先选班级再查该班学生"而不是借用
 # /teacher/my-students —— 后者走 resolve_teacher_scope+counselor_id 数字外键，与本模块

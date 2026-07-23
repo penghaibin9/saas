@@ -124,35 +124,35 @@ class ScoreBody(BaseModel):
     collegeScore: float = Field(..., ge=0, le=100, description="学院评分 0-100")
 
 
-@router.post("/counselor-assessment/periods", summary="新建辅导员考评周期")
-def counselor_period_create(body: PeriodCreate, user=Depends(require_permission("studentAffairs.class.create"))):
+@router.post("/counselor-assessment/periods", summary="新建辅导员考评周期（旧入口·权限对齐正式考评）")
+def counselor_period_create(body: PeriodCreate, user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
     return success(class_svc.create_period(user, body.periodName, body.semester, body.remark),
                    message="已创建")
 
 
 @router.get("/counselor-assessment/periods", summary="考评周期列表")
-def counselor_periods(page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.class.view"))):
+def counselor_periods(page: int = 1, pageSize: int = 20, user=Depends(require_permission("studentAffairs.counselorEval.view"))):
     items, total = class_svc.list_periods(user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/counselor-assessment/periods/{periodId}/collect", summary="生成/刷新考评指标（系统抓取工作量，幂等）")
-def counselor_collect(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
+def counselor_collect(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
     return success(class_svc.collect_assessments(periodId, user), message="已生成")
 
 
 @router.get("/counselor-assessment/periods/{periodId}/assessments", summary="考评记录（含自动指标+评分+排名）")
-def counselor_assessments(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.class.view"))):
+def counselor_assessments(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.counselorEval.view"))):
     return success({"items": class_svc.list_assessments(periodId, user)})
 
 
 @router.post("/counselor-assessment/periods/{periodId}/publish", summary="发布考评周期")
-def counselor_publish(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
+def counselor_publish(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
     return success(class_svc.publish_period(periodId, user), message="已发布")
 
 
 @router.post("/counselor-assessment/assessments/{assessmentId}/score", summary="学院评分（综合分=自动*0.6+学院*0.4）")
-def counselor_score(body: ScoreBody, assessmentId: int = Path(...), user=Depends(require_permission("studentAffairs.class.create"))):
+def counselor_score(body: ScoreBody, assessmentId: int = Path(...), user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
     return success(class_svc.score_assessment(assessmentId, user, body.collegeScore), message="已评分")
 
 

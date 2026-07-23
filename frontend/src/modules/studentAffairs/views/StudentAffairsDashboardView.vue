@@ -196,10 +196,10 @@ export default {
     },
     metricTarget(key) {
       const map = {
-        studentTotal: '/admin/student-affairs/profile',
-        classTotal: '/admin/student-affairs/classes',
-        pendingLeave: '/admin/student-affairs/leave/approvals',
-        overdueLeave: '/admin/student-affairs/leave/exceptions',
+        studentTotal: '/admin/student/list',
+        classTotal: '/admin/campus-service/classes',
+        pendingLeave: '/admin/campus-service/leave',
+        overdueLeave: '/admin/campus-service/leave-extensions',
         riskStudents: '/admin/student-affairs/risk'
       }
       return map[key] || '/admin/approval/todos'

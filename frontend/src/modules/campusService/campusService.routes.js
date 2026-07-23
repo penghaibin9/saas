@@ -69,16 +69,16 @@ export const campusServiceRoutes = {
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '班级画像' }
     },
     {
+      // 旧页已迁正式考评；保留 path 避免书签/外链 404
       path: 'counselor-assessment',
       name: 'campus-service-counselor-assessment',
-      component: () => import('@/modules/studentAffairs/views/class/CounselorAssessmentView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '辅导员考评' }
+      redirect: '/admin/student-affairs/counselor-eval'
     },
     {
+      // 旧 mock 奖助页停用，统一走 13A 奖助工作台
       path: 'grants',
       name: 'campus-service-grants',
-      component: () => import('@/views/admin/campusService/GrantApplicationView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.grant.view', title: '奖助资助' }
+      redirect: '/admin/student-affairs/funding'
     },
     {
       path: 'dormitory',
@@ -94,17 +94,15 @@ export const campusServiceRoutes = {
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dorm.view', title: '住宿详情' }
     },
     {
-      /* 第一批交互改造：违纪详情独立页（完整违纪业务不再放右侧抽屉）。权限沿用违纪台账 key，不扩大权限。 */
       path: 'discipline/:recordId',
       name: 'campus-service-discipline-detail',
-      component: () => import('@/views/admin/campusService/DisciplineDetailView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.discipline.view', title: '违纪详情' }
+      redirect: (to) => ({ path: '/admin/student-affairs/discipline', query: { caseId: to.params.recordId } })
     },
     {
+      // 旧 mock 违纪页停用，统一走 13A 处分工作台
       path: 'discipline',
       name: 'campus-service-discipline',
-      component: () => import('@/views/admin/campusService/DisciplineView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.discipline.view', title: '违纪处分' }
+      redirect: '/admin/student-affairs/discipline'
     },
     {
       path: 'work-orders',

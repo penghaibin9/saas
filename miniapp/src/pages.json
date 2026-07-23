@@ -424,6 +424,10 @@
       "style": { "navigationBarTitleText": "学生请假管理", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/teacher/affairs-review/index",
+      "style": { "navigationBarTitleText": "学工待办处置", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/teacher/class-cadre/index",
       "style": { "navigationBarTitleText": "班干部管理", "navigationStyle": "custom" }
     },

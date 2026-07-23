@@ -14,12 +14,12 @@
             </view>
             <MobileStatusTag :label="statusText(x.status)" :type="badgeType(x.status)" />
             <button
-              v-if="x.status === 'RETURNED'"
+              v-if="x.canResubmit"
               class="btn btn-ghost lv__resubmit"
               @click="resubmit(x)"
             >重新提交</button>
             <button
-              v-if="x.canCancel || x.status === 'APPROVED' || x.status === 'OVERDUE'"
+              v-if="x.canCancel"
               class="btn btn-ghost lv__resubmit"
               @click="cancelLeave(x)"
             >申请销假</button>

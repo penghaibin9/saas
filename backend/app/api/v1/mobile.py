@@ -655,6 +655,65 @@ def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(def
         user, leave_id, str(body.get("action") or "APPROVE").upper(), body.get("reason")), message="已处理")
 
 
+@router.get("/teacher/affairs/aid/pending", summary="辅导员·困难认定待审")
+def teacher_affairs_aid_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_aid_pending(user))
+
+
+@router.post("/teacher/affairs/aid/{apply_id}/review", summary="辅导员·困难认定审批")
+def teacher_affairs_aid_review(apply_id: str, body: dict = Body(default={}),
+                               user=Depends(get_current_user)):
+    return success(tea.affairs_aid_review(
+        user, apply_id, str((body or {}).get("action") or "APPROVE"),
+        reason=str((body or {}).get("reason") or ""),
+        level=(body or {}).get("level")), message="已处理")
+
+
+@router.get("/teacher/affairs/funding/pending", summary="辅导员·奖助待审")
+def teacher_affairs_funding_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_funding_pending(user))
+
+
+@router.post("/teacher/affairs/funding/{app_id}/review", summary="辅导员·奖助审批")
+def teacher_affairs_funding_review(app_id: str, body: dict = Body(default={}),
+                                   user=Depends(get_current_user)):
+    return success(tea.affairs_funding_review(
+        user, app_id, str((body or {}).get("action") or "APPROVE"),
+        reason=str((body or {}).get("reason") or "")), message="已处理")
+
+
+@router.get("/teacher/affairs/discipline/pending", summary="辅导员·处分/解除待审")
+def teacher_affairs_discipline_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_discipline_pending(user))
+
+
+@router.post("/teacher/affairs/discipline/{case_id}/review", summary="辅导员·处分/解除审批")
+def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}),
+                                      user=Depends(get_current_user)):
+    return success(tea.affairs_discipline_review(
+        user, case_id, str((body or {}).get("action") or "APPROVE"),
+        reason=str((body or {}).get("reason") or "")), message="已处理")
+
+
+@router.get("/teacher/affairs/risk/pending", summary="辅导员·学工风险待处置（本人责任单）")
+def teacher_affairs_risk_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_risk_pending(user))
+
+
+@router.post("/teacher/affairs/risk/{risk_id}/process", summary="辅导员·风险处置记录")
+def teacher_affairs_risk_process(risk_id: str, body: dict = Body(...),
+                                 user=Depends(get_current_user)):
+    return success(tea.affairs_risk_process(
+        user, risk_id, str((body or {}).get("content") or "")), message="已记录处置")
+
+
+@router.post("/teacher/affairs/risk/{risk_id}/close", summary="辅导员·关闭风险")
+def teacher_affairs_risk_close(risk_id: str, body: dict = Body(...),
+                               user=Depends(get_current_user)):
+    return success(tea.affairs_risk_close(
+        user, risk_id, str((body or {}).get("conclusion") or "")), message="已关闭")
+
+
 @router.get("/teacher/affairs/classes", summary="辅导员·我的班级（本人数据范围，供任命班干部先选班级）")
 def teacher_affairs_my_classes(user=Depends(get_current_user)):
     return success(tea.affairs_my_classes(user))
