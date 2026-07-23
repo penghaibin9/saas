@@ -89,7 +89,7 @@ export default {
     },
     handle(t) {
       const map = {
-        review: t.module.includes('毕业') ? '/pages/teacher/graduation-guide/index' : '/pages/teacher/internship-review/index',
+        review: t.module.includes('毕业') ? '/pages/teacher/graduation-guide/index?tab=review' : '/pages/teacher/internship-review/index',
         approve: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         contact: '/pages/teacher/risk-students/index',

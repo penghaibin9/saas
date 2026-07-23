@@ -226,6 +226,74 @@ def _student_no(db, user) -> str | None:
     return student.student_no if student else None
 
 
+def _inject_org_scope_claims(db, user, claims: dict) -> None:
+    """学院/专业管理员：从 TeacherStudentScope 解析可验证 collegeId/majorId 写入 JWT。
+
+    与学工 build_affairs_context 同源（学院名/专业名 → id），缺配置时不猜测、不注入。
+    配置后须重新登录或切换身份才会进入新令牌。
+    """
+    role = (claims.get("currentRoleCode") or "").strip().upper()
+    if role not in {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN", "GD_MAJOR_ADMIN"}:
+        return
+    from app.models import College, Major, TeacherStudentScope
+
+    keys = {k for k in (
+        claims.get("loginName") or "",
+        user.login_name or "",
+        user.real_name or "",
+        f"db-{user.id}",
+        str(user.id),
+    ) if k}
+    rows = db.scalars(select(TeacherStudentScope).where(
+        TeacherStudentScope.tenant_id == user.tenant_id,
+        TeacherStudentScope.is_deleted.is_(False),
+        TeacherStudentScope.status == "ACTIVE",
+        (TeacherStudentScope.teacher_key.in_(list(keys))) |
+        (TeacherStudentScope.teacher_name.in_(list(keys))),
+    )).all()
+    rows = [r for r in rows if not r.role_code or (r.role_code or "").upper() == role]
+
+    college_names, major_names = set(), set()
+    for r in rows:
+        st = (r.scope_type or "").upper()
+        v = (r.ref_value or "").strip()
+        if not v:
+            continue
+        if st == "COLLEGE":
+            college_names.add(v)
+        elif st == "MAJOR":
+            major_names.add(v)
+
+    college_ids: list[str] = []
+    if college_names:
+        cols = db.scalars(select(College).where(
+            College.tenant_id == user.tenant_id,
+            College.college_name.in_(list(college_names)),
+            College.is_deleted.is_(False),
+        )).all()
+        college_ids = [str(c.id) for c in cols]
+    major_ids: list[str] = []
+    if major_names:
+        majors = db.scalars(select(Major).where(
+            Major.tenant_id == user.tenant_id,
+            Major.major_name.in_(list(major_names)),
+            Major.is_deleted.is_(False),
+        )).all()
+        major_ids = [str(m.id) for m in majors]
+        # 专业授权顺带带上所属学院，便于前端展示与跨表回填
+        for m in majors:
+            cid = str(m.college_id)
+            if cid not in college_ids:
+                college_ids.append(cid)
+
+    if college_ids:
+        claims["collegeIds"] = college_ids
+        claims["collegeId"] = college_ids[0]
+    if major_ids:
+        claims["majorIds"] = major_ids
+        claims["majorId"] = major_ids[0]
+
+
 def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> dict:
     tenant_code, tenant_name = _tenant_meta(db, user.tenant_id)
     claims = {
@@ -244,6 +312,7 @@ def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> 
     student_no = _student_no(db, user)
     if student_no:
         claims["studentNo"] = student_no
+    _inject_org_scope_claims(db, user, claims)
     return claims
 
 

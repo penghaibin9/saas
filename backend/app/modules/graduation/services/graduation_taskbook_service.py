@@ -221,3 +221,116 @@ def export_taskbooks_xlsx(status=None) -> dict:
     return {"filename": f"任务书台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
             "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": len(items),
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+
+
+def _taskbook_print_vars(stu: GraduationStudent, t: GraduationTaskBook) -> dict[str, str]:
+    """套打占位变量（与 gd-templates TASKBOOK DEFAULT_VARS 对齐，并补任务内容/学号等）。"""
+    issued = _iso(t.issued_at) or ""
+    return {
+        "学生姓名": stu.name or "",
+        "学号": stu.student_no or "",
+        "班级": stu.class_name or "",
+        "课题名称": stu.topic_title or "",
+        "指导教师": stu.advisor_name or "",
+        "任务目标": t.objective or "",
+        "任务内容": t.content or "",
+        "进度安排": t.progress_plan or "",
+        "成果要求": t.outcome_requirement or "",
+        "下达日期": issued[:19] if issued else "",
+        "下达人": t.issued_by or "",
+        "状态": STATUS_LABEL.get(t.status, t.status or ""),
+        "版本": str(t.taskbook_version or 1),
+    }
+
+
+def _fill_template(content: str, variables: dict[str, str]) -> str:
+    text = content or ""
+    for key, val in variables.items():
+        text = text.replace("{" + key + "}", val or "")
+    return text
+
+
+def _builtin_taskbook_body(variables: dict[str, str]) -> str:
+    return (
+        f"学生姓名：{variables.get('学生姓名', '')}\n"
+        f"学号：{variables.get('学号', '')}\n"
+        f"班级：{variables.get('班级', '')}\n"
+        f"课题名称：{variables.get('课题名称', '')}\n"
+        f"指导教师：{variables.get('指导教师', '')}\n"
+        f"状态：{variables.get('状态', '')}　版本：v{variables.get('版本', '1')}\n"
+        "\n"
+        "一、任务目标\n"
+        f"{variables.get('任务目标', '') or '—'}\n"
+        "\n"
+        "二、任务内容\n"
+        f"{variables.get('任务内容', '') or '—'}\n"
+        "\n"
+        "三、进度安排\n"
+        f"{variables.get('进度安排', '') or '—'}\n"
+        "\n"
+        "四、成果要求\n"
+        f"{variables.get('成果要求', '') or '—'}\n"
+        "\n"
+        f"下达人：{variables.get('下达人', '') or '—'}　下达日期：{variables.get('下达日期', '') or '—'}\n"
+    )
+
+
+def export_taskbook_pdf(gd_student_id, template_id: str | None = None) -> dict:
+    """任务书 PDF 套打 MVP：优先用启用中的 TASKBOOK 模板（或指定模板）填变量，否则用内置版式。"""
+    from app.models import GraduationTemplate
+    from app.services.pdf_util import build_text_pdf, pack_pdf_result
+
+    with session() as db:
+        stu = _stu(db, gd_student_id)
+        t = db.scalars(select(GraduationTaskBook).where(
+            GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == stu.id,
+            GraduationTaskBook.is_deleted.is_(False))).first()
+        if not t:
+            raise AppException("DATA_CONFLICT", "该生尚未下达任务书，无法导出 PDF")
+
+        tpl = None
+        if template_id:
+            tpl = db.get(GraduationTemplate, int(template_id))
+            if (not tpl or tpl.is_deleted or tpl.tenant_id != _tid()
+                    or tpl.template_type != "TASKBOOK" or tpl.status != "ENABLED"):
+                raise AppException("VALIDATION_ERROR", "指定的任务书模板不存在或未启用")
+        else:
+            tpl = db.scalars(select(GraduationTemplate).where(
+                GraduationTemplate.tenant_id == _tid(),
+                GraduationTemplate.template_type == "TASKBOOK",
+                GraduationTemplate.status == "ENABLED",
+                GraduationTemplate.is_deleted.is_(False),
+                GraduationTemplate.is_default.is_(True),
+            )).first()
+            if not tpl:
+                tpl = db.scalars(select(GraduationTemplate).where(
+                    GraduationTemplate.tenant_id == _tid(),
+                    GraduationTemplate.template_type == "TASKBOOK",
+                    GraduationTemplate.status == "ENABLED",
+                    GraduationTemplate.is_deleted.is_(False),
+                ).order_by(GraduationTemplate.id.desc())).first()
+
+        variables = _taskbook_print_vars(stu, t)
+        if tpl and (tpl.content or "").strip():
+            body = _fill_template(tpl.content, variables)
+            # 无占位符的静态模板仍附内置字段，避免 PDF 缺真实业务数据
+            if "{" not in (tpl.content or ""):
+                body = body + "\n\n——\n" + _builtin_taskbook_body(variables)
+            title = tpl.name or "毕业设计任务书"
+            source = f"template:{tpl.id}"
+        else:
+            body = _builtin_taskbook_body(variables)
+            title = "毕业设计任务书"
+            source = "builtin"
+
+        operator, _role = _op()
+        watermark = f"导出人：{operator} · 任务书套打MVP · {datetime.now():%Y-%m-%d %H:%M}"
+        pdf_bytes = build_text_pdf(title, body, watermark=watermark)
+        _audit(db, t.id, "导出任务书PDF", detail=f"{stu.name} v{t.taskbook_version} · {source}")
+        db.commit()
+        safe_no = (stu.student_no or str(stu.id)).replace("/", "_")
+        packed = pack_pdf_result(pdf_bytes, f"任务书_{stu.name}_{safe_no}.pdf")
+        packed["templateSource"] = source
+        packed["gdStudentId"] = str(stu.id)
+        packed["taskbookId"] = str(t.id)
+        return packed

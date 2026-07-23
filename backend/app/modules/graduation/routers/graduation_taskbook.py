@@ -61,3 +61,16 @@ def gd_taskbook_change(gd_student_id: str, body: TaskBookChangeRequest, user=Dep
     result = svc.change_taskbook(gd_student_id, body.model_dump())
     audit_log.record("变更任务书", f"graduation-taskbook:{gd_student_id}", detail={"reason": body.reason})
     return success(result, message="已提交变更，待学生重新确认")
+
+
+@router.post("/gd-taskbooks/{gd_student_id}/export-pdf", summary="导出任务书 PDF 套打（MVP，写审计）")
+def gd_taskbook_export_pdf(gd_student_id: str, templateId: Optional[str] = Query(None),
+                           user=Depends(get_current_user)):
+    data = svc.export_taskbook_pdf(gd_student_id, template_id=templateId)
+    audit_log.record(
+        "导出任务书PDF",
+        f"graduation-taskbook:{gd_student_id}",
+        detail={"taskbookId": data.get("taskbookId"), "templateSource": data.get("templateSource"),
+                "filename": data.get("filename")},
+    )
+    return success(data)

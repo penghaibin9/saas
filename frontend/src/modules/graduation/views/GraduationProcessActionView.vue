@@ -41,6 +41,25 @@
         </label>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">发现的问题</span><textarea v-model.trim="guidanceForm.issues" class="ie-in" rows="2" /></label>
       </template>
+      <template v-else-if="action === 'plan'">
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">计划标题 <i>*</i></span>
+          <input v-model.trim="planForm.title" class="ie-in" placeholder="如：第3次进度汇报 / 中期前文献讨论" />
+        </label>
+        <AppDateTimePicker v-model="planForm.planDate" class="ie-fld" label="计划日期" hint="可选" />
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">计划内容</span>
+          <textarea v-model.trim="planForm.content" class="ie-in" rows="2" placeholder="本次计划要求学生完成的事项…" />
+        </label>
+      </template>
+      <template v-else-if="action === 'eval'">
+        <label class="ie-fld"><span class="ie-lbl">评价周期</span><input v-model.trim="evalForm.period" class="ie-in" placeholder="如 中期 / 2026春" /></label>
+        <label class="ie-fld"><span class="ie-lbl">评分（0-100）<i>*</i></span><input v-model.number="evalForm.score" type="number" min="0" max="100" class="ie-in" /></label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">评价等级 <i>*</i></span>
+          <AppSelect v-model="evalForm.level" :options="evalLevelOptions" />
+        </label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">评价意见</span>
+          <textarea v-model.trim="evalForm.content" class="ie-in" rows="3" placeholder="对学生过程表现、态度与质量的评价…" />
+        </label>
+      </template>
       <template v-else-if="action === 'midterm'">
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">结论 <i>*</i></span>
           <AppSelect v-model="mtForm.conclusion" :options="midtermConclusionOptions" />
@@ -79,6 +98,8 @@ import { toDateTimeInputValue, daysFromNowDeadline } from '@/utils/dateUtils'
 const ACTION_TITLES = {
   taskbook: '任务书',
   guidance: '新增指导记录',
+  plan: '新增指导计划',
+  eval: '提交导师评价',
   midterm: '发起中期检查',
   rectify: '提交整改'
 }
@@ -129,10 +150,13 @@ export default {
       TASKBOOK_OBJECTIVE_CHIPS, TASKBOOK_CONTENT_CHIPS, TASKBOOK_REQUIREMENT_CHIPS, TASKBOOK_PROGRESS_CHIPS, GUIDANCE_CONTENT_CHIPS,
       TASKBOOK_REASON_CHIPS, MIDTERM_COMMENT_CHIPS, RECTIFY_CONTENT_CHIPS,
       guidanceMethodOptions: [{ value: 'ONLINE', label: '线上' }, { value: 'OFFLINE', label: '线下' }],
+      evalLevelOptions: ['优秀', '良好', '合格', '不合格'].map((value) => ({ value, label: value })),
       midtermConclusionOptions: [{ value: 'PASS', label: '通过' }, { value: 'RECTIFY', label: '限期整改' }, { value: 'FAIL', label: '不通过' }],
       loading: true, error: '', student: null, action: 'taskbook', tbMode: 'issue',
       tbForm: { objective: '', content: '', progressPlan: '', outcomeRequirement: '', reason: '' },
       guidanceForm: { method: 'ONLINE', guidanceDate: '', content: '', issues: '' },
+      planForm: { title: '', planDate: '', content: '' },
+      evalForm: { period: '', score: 90, level: '良好', content: '' },
       mtForm: { conclusion: 'PASS', comment: '', rectifyDeadline: '' },
       rectifyContent: '',
       formError: '', submitting: false
@@ -145,7 +169,7 @@ export default {
       return ACTION_TITLES[this.action] || '过程指导'
     },
     backTo() {
-      const panel = { taskbook: 'taskbook', guidance: 'guidance', midterm: 'midterm', rectify: 'midterm' }[this.action] || 'taskbook'
+      const panel = { taskbook: 'taskbook', guidance: 'guidance', plan: 'plan', eval: 'eval', midterm: 'midterm', rectify: 'midterm' }[this.action] || 'taskbook'
       return `/admin/graduation/process?panel=${panel}`
     }
   },
@@ -155,7 +179,7 @@ export default {
       this.loading = true
       this.error = ''
       const action = this.$route.params.action
-      if (!['taskbook', 'guidance', 'midterm', 'rectify'].includes(action)) {
+      if (!['taskbook', 'guidance', 'plan', 'eval', 'midterm', 'rectify'].includes(action)) {
         this.error = '无效的操作类型'
         this.loading = false
         return
@@ -177,6 +201,10 @@ export default {
         }
       } else if (action === 'guidance') {
         this.guidanceForm = { method: 'ONLINE', guidanceDate: toDateTimeInputValue(new Date()), content: '', issues: '' }
+      } else if (action === 'plan') {
+        this.planForm = { title: '', planDate: toDateTimeInputValue(new Date()), content: '' }
+      } else if (action === 'eval') {
+        this.evalForm = { period: '', score: 90, level: '良好', content: '' }
       } else if (action === 'midterm') {
         this.mtForm = { conclusion: 'PASS', comment: '', rectifyDeadline: daysFromNowDeadline(7) }
       }
@@ -198,6 +226,15 @@ export default {
         } else if (this.action === 'guidance') {
           if (!this.guidanceForm.content) { this.formError = '指导内容必填'; return }
           res = await graduationTaskbookApi.createGuidance(this.studentId, this.guidanceForm)
+        } else if (this.action === 'plan') {
+          if (!this.planForm.title || this.planForm.title.length < 2) { this.formError = '计划标题至少 2 字'; return }
+          res = await graduationTaskbookApi.createGuidancePlan(this.studentId, this.planForm)
+        } else if (this.action === 'eval') {
+          if (this.evalForm.score === '' || this.evalForm.score < 0 || this.evalForm.score > 100) {
+            this.formError = '评分须 0-100'
+            return
+          }
+          res = await graduationTaskbookApi.createStudentEval(this.studentId, { ...this.evalForm, status: 'SUBMITTED' })
         } else if (this.action === 'midterm') {
           const payload = {
             ...this.mtForm,

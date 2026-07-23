@@ -443,6 +443,21 @@ def graduation_midterm_rectify(body: dict = Body(...), user=Depends(get_current_
     return success(stu.graduation_midterm_rectify(user, body.get("content") or ""), message="已提交整改")
 
 
+@gd.get("/guidance-plans", summary="指导计划·本人列表")
+def graduation_guidance_plans(user=Depends(get_current_user)):
+    return success(stu.graduation_guidance_plans(user))
+
+
+@gd.post("/guidance-plans/{plan_id}/checkin", summary="指导计划·本人签到")
+def graduation_guidance_plan_checkin(plan_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(stu.graduation_guidance_plan_checkin(user, plan_id, body or {}), message="已签到")
+
+
+@gd.get("/student-evals", summary="导师评价·本人收到的过程评价")
+def graduation_my_student_evals(user=Depends(get_current_user)):
+    return success(stu.graduation_my_student_evals(user))
+
+
 @gd.get("/defense", summary="答辩·查看本人答辩安排")
 def graduation_defense(user=Depends(get_current_user)):
     return success(stu.graduation_defense(user))

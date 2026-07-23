@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="过程指导"
-    subtitle="任务书 / 指导记录 / 中期检查 —— 按学生维度查看与处理"
+    subtitle="任务书 / 指导记录 / 指导计划 / 导师评价 / 中期检查 —— 按学生维度查看与处理"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -31,6 +31,8 @@
           <div class="gp-tabs">
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'taskbook' }" @click="switchTab('taskbook')">任务书</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'guidance' }" @click="switchTab('guidance')">指导记录</button>
+            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'plan' }" @click="switchTab('plan')">指导计划</button>
+            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'eval' }" @click="switchTab('eval')">导师评价</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'midterm' }" @click="switchTab('midterm')">中期检查</button>
             <button class="gp-tabs__item" :class="{ 'is-active': tab === 'workflow' }" @click="switchTab('workflow')">规范流程</button>
           </div>
@@ -53,6 +55,14 @@
               <div class="gp-kv"><span>下达时间</span><AppDateDisplay :value="taskbook.issuedAt || taskbook.createdAt" mode="datetime" /></div>
               <div class="gp-kv"><span>截止时间</span><AppDateDisplay :value="taskbook.deadline" mode="deadline" /></div>
               <div class="ie-actions">
+                <AppPermissionButton
+                  :allowed="exportPdfPerm.allowed"
+                  :reason="exportPdfPerm.reason"
+                  variant="ghost"
+                  size="sm"
+                  :loading="pdfLoading"
+                  @click="downloadTaskbookPdf"
+                >下载任务书 PDF</AppPermissionButton>
                 <button v-if="taskbook.status !== 'CONFIRMED'" class="mp-btn mp-btn--primary" @click="doConfirmTaskbook">代学生确认</button>
                 <button v-if="taskbook.status === 'CONFIRMED'" class="mp-btn" @click="openChangeTaskbook">发起变更</button>
               </div>
@@ -77,6 +87,37 @@
                 <div class="mp-cell-main"><AppDateDisplay :value="g.guidanceDate" mode="datetime" /> · {{ g.methodLabel }}</div>
                 <div class="mp-cell-sub">{{ g.content }}</div>
                 <div v-if="g.issues" class="gp-issue">问题：{{ g.issues }}</div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- 指导计划签到 -->
+          <div v-if="current && tab === 'plan'" class="gp-panel">
+            <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" @click="openPlanCreate">＋ 新增指导计划</button></div>
+            <LoadingState v-if="planLoading" />
+            <EmptyState v-else-if="!planList.length" title="暂无指导计划" description="创建计划后可由导师或学生签到留痕" />
+            <ul v-else class="gp-timeline">
+              <li v-for="p in planList" :key="p.id" class="gp-timeline-item">
+                <div class="mp-cell-main">{{ p.title }} · <StatusTag :type="p.status === 'CHECKED_IN' ? 'success' : (p.status === 'CANCELLED' ? 'danger' : 'warn')" :label="p.statusLabel" dot /></div>
+                <div class="mp-cell-sub"><AppDateDisplay :value="p.planDate" mode="datetime" /> · {{ p.content || '—' }}</div>
+                <div v-if="p.status === 'CHECKED_IN'" class="mp-cell-sub">签到：{{ p.checkedInBy }}（{{ p.checkinRole }}）· <AppDateDisplay :value="p.checkedInAt" mode="datetime" /></div>
+                <div v-if="p.status === 'PLANNED'" class="ie-actions" style="justify-content: flex-start; margin-top: 6px">
+                  <button class="mp-btn mp-btn--primary" @click="doPlanCheckin(p)">签到</button>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- 导师对学生评价 -->
+          <div v-if="current && tab === 'eval'" class="gp-panel">
+            <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" @click="openEvalCreate">＋ 提交导师评价</button></div>
+            <LoadingState v-if="evalLoading" />
+            <EmptyState v-else-if="!evalList.length" title="暂无导师评价" />
+            <ul v-else class="gp-timeline">
+              <li v-for="e in evalList" :key="e.id" class="gp-timeline-item">
+                <div class="mp-cell-main">{{ e.level }} · {{ e.score }}分 {{ e.period ? '（' + e.period + '）' : '' }} · {{ e.statusLabel }}</div>
+                <div class="mp-cell-sub">{{ e.content || '—' }}</div>
+                <div class="mp-cell-sub">{{ e.submittedBy || '—' }} · <AppDateDisplay :value="e.submittedAt || e.createdAt" mode="datetime" /></div>
               </li>
             </ul>
           </div>
@@ -142,7 +183,7 @@
 /** 过程指导（/admin/graduation/process）：任务书下达/确认/变更 + 指导记录时间线 + 中期检查三档结论/整改闭环。 */
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDateDisplay } from '@/components/common/date'
-import { AppPageGuide } from '@/components/common'
+import { AppPageGuide, AppPermissionButton } from '@/components/common'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { GRADUATION_MANUAL_GATES, GRADUATION_MANUAL_WORKFLOW } from '@/modules/graduation/constants/graduationManualWorkflow'
@@ -151,27 +192,40 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationProcessView',
-  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
+  components: { AppPageGuide, AppPermissionButton, GraduationBatchStrip, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       studentKeyword: '', studentOptions: [], current: null, tab: 'taskbook', submitting: false,
       sideError: '', loadError: '',
-      taskbook: null, tbLoading: false,
+      taskbook: null, tbLoading: false, pdfLoading: false,
       guidanceList: [], guidanceLoading: false,
+      planList: [], planLoading: false,
+      evalList: [], evalLoading: false,
       midterm: null, mtLoading: false,
       manualWorkflow: GRADUATION_MANUAL_WORKFLOW,
       manualGates: GRADUATION_MANUAL_GATES
     }
   },
+  computed: {
+    exportPdfPerm() {
+      const pa = this.ctx.permissionActions?.exportTaskbookPdf
+        || this.ctx.permissionActions?.exportStats
+        || {}
+      return {
+        allowed: !!(pa.visible && pa.allowed),
+        reason: pa.allowed ? '' : (pa.reason || '当前角色无导出权限（graduationDesign.export）')
+      }
+    }
+  },
   created() {
-    this.tab = ['taskbook', 'guidance', 'midterm', 'workflow'].includes(this.$route.query.panel) ? this.$route.query.panel : 'taskbook'
+    this.tab = ['taskbook', 'guidance', 'plan', 'eval', 'midterm', 'workflow'].includes(this.$route.query.panel) ? this.$route.query.panel : 'taskbook'
     this.searchStudents()
   },
   watch: {
     // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
     '$route.query.panel'(p) {
-      if (['taskbook', 'guidance', 'midterm', 'workflow'].includes(p) && p !== this.tab) this.tab = p
+      if (['taskbook', 'guidance', 'plan', 'eval', 'midterm', 'workflow'].includes(p) && p !== this.tab) this.tab = p
     }
   },
   methods: {
@@ -190,7 +244,7 @@ export default {
     },
     async loadAll() {
       this.loadError = ''
-      await Promise.all([this.loadTaskbook(), this.loadGuidance(), this.loadMidterm()])
+      await Promise.all([this.loadTaskbook(), this.loadGuidance(), this.loadPlans(), this.loadEvals(), this.loadMidterm()])
     },
     async loadTaskbook() {
       this.tbLoading = true
@@ -203,6 +257,18 @@ export default {
       const res = await graduationTaskbookApi.getGuidanceList({ gdStudentId: this.current.id, pageSize: 50 })
       if (res.code === 0) { this.guidanceList = res.data.list } else { this.guidanceList = []; this.loadError = res.message || '指导记录加载失败' }
       this.guidanceLoading = false
+    },
+    async loadPlans() {
+      this.planLoading = true
+      const res = await graduationTaskbookApi.getGuidancePlans({ gdStudentId: this.current.id, pageSize: 50 })
+      if (res.code === 0) { this.planList = res.data.list } else { this.planList = []; this.loadError = res.message || '指导计划加载失败' }
+      this.planLoading = false
+    },
+    async loadEvals() {
+      this.evalLoading = true
+      const res = await graduationTaskbookApi.getStudentEvals({ gdStudentId: this.current.id, pageSize: 50 })
+      if (res.code === 0) { this.evalList = res.data.list } else { this.evalList = []; this.loadError = res.message || '导师评价加载失败' }
+      this.evalLoading = false
     },
     async loadMidterm() {
       this.mtLoading = true
@@ -234,12 +300,38 @@ export default {
       const res = await graduationTaskbookApi.confirmTaskbook(this.current.id, { proxyReason: String(reason).trim() })
       if (res.code === 0) { toast.success('已代确认'); this.loadTaskbook() } else toast.error(res.message)
     },
+    async downloadTaskbookPdf() {
+      if (!this.current?.id || this.pdfLoading) return
+      this.pdfLoading = true
+      const res = await graduationTaskbookApi.downloadTaskbookPdf(this.current.id)
+      this.pdfLoading = false
+      if (res.code !== 0) return toast.error(res.message || 'PDF 生成失败')
+      toast.success('任务书 PDF 已下载（套打 MVP · 已留痕）')
+    },
     openGuidanceCreate() {
       if (!this.current) return
       this.$router.push({
         path: `/admin/graduation/process/${this.current.id}/guidance`,
         query: this.processQuery()
       })
+    },
+    openPlanCreate() {
+      if (!this.current) return
+      this.$router.push({
+        path: `/admin/graduation/process/${this.current.id}/plan`,
+        query: this.processQuery()
+      })
+    },
+    openEvalCreate() {
+      if (!this.current) return
+      this.$router.push({
+        path: `/admin/graduation/process/${this.current.id}/eval`,
+        query: this.processQuery()
+      })
+    },
+    async doPlanCheckin(p) {
+      const res = await graduationTaskbookApi.checkinGuidancePlan(p.id, { method: 'MANUAL', note: '导师端签到' })
+      if (res.code === 0) { toast.success('已签到'); this.loadPlans() } else toast.error(res.message)
     },
     openMidtermCheck() {
       if (!this.current) return

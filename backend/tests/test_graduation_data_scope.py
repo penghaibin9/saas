@@ -82,10 +82,35 @@ def test_defense_roles_are_limited_to_their_group_relation():
 
 def test_missing_organization_scope_fails_closed():
     _login("GD_COLLEGE_ADMIN", "学院负责人")
-    assert not can_access_student(FakeDb(), _student())
+    assert not can_access_student(FakeDb(), _student(college_id="10"))
     with pytest.raises(AppException) as exc:
-        assert_student_access(FakeDb(), _student(), "student.detail")
+        assert_student_access(FakeDb(), _student(college_id="10"), "student.detail")
     assert exc.value.http_status == 403
+
+
+def test_college_admin_with_claim_sees_matching_college_only():
+    set_current_user({
+        "currentRoleCode": "GD_COLLEGE_ADMIN",
+        "userType": "TEACHER",
+        "realName": "学院负责人",
+        "collegeId": "10",
+        "collegeIds": ["10"],
+    })
+    assert can_access_student(FakeDb(), _student(college_id="10"))
+    assert not can_access_student(FakeDb(), _student(college_id="99"))
+    assert not can_access_student(FakeDb(), _student(college_id=None))
+
+
+def test_major_admin_with_claim_sees_matching_major_only():
+    set_current_user({
+        "currentRoleCode": "GD_MAJOR_ADMIN",
+        "userType": "TEACHER",
+        "realName": "专业负责人",
+        "majorId": "20",
+        "majorIds": ["20"],
+    })
+    assert can_access_student(FakeDb(), _student(major_id="20", college_id="10"))
+    assert not can_access_student(FakeDb(), _student(major_id="21", college_id="10"))
 
 
 def test_list_and_stats_share_the_same_accessible_student_ids():

@@ -126,6 +126,7 @@ def build_xlsx(token: str) -> bytes:
     rows = [
         ["TEACHER", "e2e_academic_admin", "E2E教务管理员", "", "", "", "", "", "教务处", "教务管理员", "ACADEMIC_ADMIN,GRADUATION_ADMIN", "", ""],
         ["TEACHER", "e2e_college_secretary", "E2E学院秘书", "", "", "", "", "", COLLEGE, "学院秘书", "GD_COLLEGE_ADMIN", "COLLEGE", COLLEGE],
+        ["TEACHER", "e2e_major_admin", "E2E专业负责人", "", "", "", "", "", COLLEGE, "专业负责人", "GD_MAJOR_ADMIN", "MAJOR", MAJOR],
         ["TEACHER", "e2e_advisor_a", "E2E指导教师A", "", "", "", "", "", COLLEGE, "指导教师", "GD_MENTOR", "", ""],
         ["TEACHER", "e2e_advisor_b", "E2E指导教师B", "", "", "", "", "", COLLEGE, "指导教师", "GD_MENTOR", "", ""],
         ["TEACHER", "e2e_reviewer", "E2E评阅教师", "", "", "", "", "", COLLEGE, "评阅教师", "GD_REVIEWER", "", ""],

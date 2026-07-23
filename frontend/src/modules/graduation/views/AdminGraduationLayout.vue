@@ -7,6 +7,13 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
+    <AppInlineAlert
+      v-if="ctx && ctx.scopeHint"
+      type="warning"
+      title="数据范围未就绪"
+      :description="ctx.scopeHint"
+      class="gd-scope-alert"
+    />
     <router-view v-if="ctx" :ctx="ctx" />
     <LoadingState v-else text="正在加载毕业设计中心…" />
   </BasePortalLayout>
@@ -19,6 +26,7 @@
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
+import { AppInlineAlert } from '@/components/common'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationPickerAdapters } from '@/modules/graduation/pickerAdapters'
 
@@ -33,7 +41,7 @@ const MENUS = [
 
 export default {
   name: 'AdminGraduationLayout',
-  components: { BasePortalLayout, LoadingState },
+  components: { BasePortalLayout, LoadingState, AppInlineAlert },
   provide() {
     return { appPickerAdapters: graduationPickerAdapters }
   },
@@ -66,6 +74,9 @@ export default {
 </script>
 
 <style scoped>
+.gd-scope-alert {
+  margin: 0 0 var(--space-4);
+}
 .gl-scope {
   font-size: var(--font-size-xs);
   color: var(--primary-700);

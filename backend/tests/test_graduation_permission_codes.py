@@ -52,6 +52,9 @@ def test_request_permission_resolver_is_fail_closed_for_writes():
         "POST", "/api/v1/graduation/proposals/export"
     ) == "graduationDesign.export"
     assert graduation_permission_for(
+        "POST", "/api/v1/graduation/gd-taskbooks/123/export-pdf"
+    ) == "graduationDesign.export"
+    assert graduation_permission_for(
         "POST", "/api/v1/graduation/gd-plagiarism/123/result"
     ) == "graduationDesign.plagiarism.result"
     assert graduation_permission_for(
@@ -101,6 +104,45 @@ def test_organization_admin_without_verified_scope_claim_is_denied(client):
         headers=_headers("GD_COLLEGE_ADMIN"),
     )
     assert response.status_code == 403
+
+
+def test_organization_admin_context_allows_missing_claim_with_hint(client):
+    response = client.get(
+        "/api/v1/graduation/context",
+        headers=_headers("GD_COLLEGE_ADMIN"),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("code") == 0
+    data = body.get("data") or {}
+    assert data.get("roleNeedsOrgScope") is True
+    assert data.get("scopeConfigured") is False
+    assert "学院" in (data.get("scopeHint") or "")
+
+
+def test_organization_admin_with_verified_scope_claim_passes_gate(client):
+    """有 collegeId claim 时不再被组织范围门禁挡下；/context 不依赖业务库。"""
+    token = create_access_token({
+        "userId": "test-GD_COLLEGE_ADMIN",
+        "realName": "GD_COLLEGE_ADMIN",
+        "userType": "TEACHER",
+        "tid": "demo",
+        "tenantId": "1000000000000000001",
+        "activeContextId": "ctx",
+        "currentRoleCode": "GD_COLLEGE_ADMIN",
+        "clientType": "PC",
+        "collegeId": "1001",
+        "collegeIds": ["1001"],
+    })
+    response = client.get(
+        "/api/v1/graduation/context",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = (response.json() or {}).get("data") or {}
+    assert data.get("scopeConfigured") is True
+    assert data.get("collegeId") == "1001"
+    assert not (data.get("scopeHint") or "").strip()
 
 
 def test_school_admin_retains_tenant_scoped_full_access(client):

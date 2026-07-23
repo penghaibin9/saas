@@ -39,6 +39,7 @@ from app.modules.graduation.routers import graduation_mentor  # 导师管理+导
 from app.modules.graduation.routers import graduation_taskbook  # 任务书（/graduation/gd-taskbooks/*）
 from app.modules.graduation.routers import graduation_guidance  # 指导过程记录（/graduation/gd-guidances/*）
 from app.modules.graduation.routers import graduation_midterm  # 中期检查（/graduation/gd-midterms/*）
+from app.modules.graduation.routers import graduation_student_eval  # 导师评学生（/graduation/gd-student-evals/*）
 from app.modules.graduation.routers import graduation_review  # 查重记录+教师评阅（/graduation/gd-plagiarism/*、/gd-reviews/*）
 from app.modules.graduation.routers import graduation_defense_score  # 答辩评分（/graduation/gd-defense-scores/*）
 from app.modules.graduation.routers import graduation_grade  # 成绩评定（/graduation/gd-grades/*）
@@ -119,6 +120,7 @@ api_router.include_router(graduation_mentor.router, dependencies=_GD_DEP)       
 api_router.include_router(graduation_taskbook.router, dependencies=_GD_DEP)                        # /api/v1/graduation/gd-taskbooks/*
 api_router.include_router(graduation_guidance.router, dependencies=_GD_DEP)                        # /api/v1/graduation/gd-guidances/*
 api_router.include_router(graduation_midterm.router, dependencies=_GD_DEP)                        # /api/v1/graduation/gd-midterms/*
+api_router.include_router(graduation_student_eval.router, dependencies=_GD_DEP)                   # /api/v1/graduation/gd-student-evals/*
 api_router.include_router(graduation_review.router, dependencies=_GD_DEP)                         # /api/v1/graduation/gd-plagiarism/*、/gd-reviews/*
 api_router.include_router(graduation_defense_score.router, dependencies=_GD_DEP)                  # /api/v1/graduation/gd-defense-scores/*
 api_router.include_router(graduation_grade.router, dependencies=_GD_DEP)                          # /api/v1/graduation/gd-grades/*

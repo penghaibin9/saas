@@ -104,6 +104,10 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
         "studentNo": claims.get("studentNo"),
+        "collegeId": claims.get("collegeId"),
+        "collegeIds": claims.get("collegeIds"),
+        "majorId": claims.get("majorId"),
+        "majorIds": claims.get("majorIds"),
         "guardianPhoneHash": claims.get("guardianPhoneHash"),  # 学生PC门户·家长proxy令牌标识
         "tokenJti": claims.get("jti"),
         "tokenExp": claims.get("exp"),

@@ -26,6 +26,18 @@ def seed_graduation(db, tenant_id: int = TID) -> dict:
     classes = [("c-2301", "软件2301"), ("c-2302", "软件2302")]
     stages = ["TOPIC_SELECTING", "GUIDING", "MIDTERM", "FINAL_CHECK", "FINAL_CHECK", "DEFENSE",
               "GUIDING", "FINAL_CHECK", "MIDTERM", "TOPIC_SELECTING"]
+    # 学院/专业 claim 开箱：尽量挂上租户真实 org id，供 GD_COLLEGE_ADMIN / GD_MAJOR_ADMIN 收敛
+    from app.models import College, Major
+    seed_college = db.scalars(select(College).where(
+        College.tenant_id == tenant_id, College.is_deleted.is_(False)).order_by(College.id)).first()
+    seed_major = None
+    if seed_college:
+        seed_major = db.scalars(select(Major).where(
+            Major.tenant_id == tenant_id, Major.college_id == seed_college.id,
+            Major.is_deleted.is_(False)).order_by(Major.id)).first()
+    college_id_s = str(seed_college.id) if seed_college else None
+    major_id_s = str(seed_major.id) if seed_major else None
+
     stus = []
     for i in range(10):
         cid, cname = classes[i % 2]
@@ -33,6 +45,7 @@ def seed_graduation(db, tenant_id: int = TID) -> dict:
         stu = GraduationStudent(
             tenant_id=tenant_id, name=f"毕设生{i + 1:02d}", student_no=f"S2026-{i + 1:06d}",
             class_id=cid, class_name=cname,
+            college_id=college_id_s, major_id=major_id_s,
             topic_title=f"基于 Vue3 的课题{i + 1}设计与实现" if i not in (0, 9) else None,
             topic_source="教师申报", advisor_name=advisors[i % 3], stage=stages[i],
             student_group=f"软件技术过程组{(i % 3) + 1}",
