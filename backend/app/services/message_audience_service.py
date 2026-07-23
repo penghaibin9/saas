@@ -24,15 +24,8 @@ _PREVIEW_TTL_SEC = 15 * 60
 
 
 def _uid(user: dict | None) -> int:
-    raw = str((user or {}).get("userId") or "")
-    for prefix in ("db-", "u_"):
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):]
-            break
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return 0
+    from app.services.message_identity import resolve_message_user_id
+    return resolve_message_user_id(user)
 
 
 def _normalize_rules(audiences: list[dict]) -> list[dict]:
@@ -388,6 +381,36 @@ def consume_preview(user: dict, preview_token: str, audience_fingerprint: str) -
         raise AppException("DATA_CONFLICT", "受众已变化，请重新确认人数",
                            details={"reason": "MESSAGE_AUDIENCE_CHANGED"})
     return list(item["userIds"])
+
+
+def resolve_for_publish(
+    user: dict,
+    *,
+    preview_token: str,
+    audience_fingerprint: str,
+    audiences: list[dict] | None = None,
+    recipient_types: list[str] | None = None,
+) -> list[int]:
+    """发布时解析接收人：优先消费预览令牌；令牌因进程重启/过期丢失时，按已落库规则重算并校验指纹。
+
+    这样「预览人数 > 0 → 确认发布」不会因内存预览缓存丢失而整单失败，发布记录也能落到库。
+    """
+    try:
+        return consume_preview(user, preview_token, audience_fingerprint)
+    except AppException as exc:
+        details = getattr(exc, "details", None) or {}
+        if details.get("reason") != "MESSAGE_AUDIENCE_CHANGED":
+            raise
+        if not audiences:
+            raise
+        resolved = resolve_audience(user, audiences, recipient_types or ["STUDENT", "STAFF"])
+        if resolved["audienceFingerprint"] != audience_fingerprint:
+            raise AppException(
+                "DATA_CONFLICT",
+                "受众已变化，请返回上一步重新预览后再发布",
+                details={"reason": "MESSAGE_AUDIENCE_CHANGED"},
+            )
+        return list(resolved["userIds"])
 
 
 def list_audience_options(user: dict, audience_type: str, keyword: str | None = None,

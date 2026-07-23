@@ -10,7 +10,7 @@
     <EmptyState
       v-else-if="!rows.length"
       title="暂无发布记录"
-      description="可在「通知发布」创建本班或本院通知"
+      description="还没有入库的发布单（含草稿）。请到「通知发布」完成预览（接收人须大于 0）后点确认发布。浏览器本地自动保存不会出现在这里。若在正式演示学校（demo-school）登录，环境只读无法发布，请改用沙箱 admin2 / sandbox-school。"
     />
     <table v-else class="mc-table">
       <thead>
@@ -29,7 +29,7 @@
             <div class="mc-main">{{ r.title }}</div>
             <div class="mc-sub">{{ r.category }} · {{ r.priority }}</div>
           </td>
-          <td>{{ r.status }}</td>
+          <td>{{ statusLabel(r.status) }}</td>
           <td>{{ r.recipientCount }}</td>
           <td>{{ r.deliveredCount }}</td>
           <td>{{ formatTime(r.publishedAt || r.createdAt) }}</td>
@@ -46,6 +46,18 @@
 import { ModulePageShell, LoadingState, EmptyState, ErrorState } from '@/components/business'
 import { fetchCampaigns } from '@/modules/messageCenter/api/message-campaign.api'
 
+const STATUS_LABEL = {
+  DRAFT: '草稿',
+  PENDING_REVIEW: '待审核',
+  APPROVED: '已通过',
+  RETURNED: '已退回',
+  SCHEDULED: '已预约',
+  PUBLISHING: '投递中',
+  PUBLISHED: '已发布',
+  WITHDRAWN: '已撤回',
+  FAILED: '失败'
+}
+
 export default {
   name: 'MessageOutboxView',
   components: { ModulePageShell, LoadingState, EmptyState, ErrorState },
@@ -61,10 +73,13 @@ export default {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
     },
     subtitle() {
-      return this.total ? `共 ${this.total} 条发布单` : '本人权限范围内的发布记录'
+      return this.total ? `共 ${this.total} 条发布单（含草稿）` : '本人权限范围内的发布记录（含草稿）'
     }
   },
   created() {
+    this.load()
+  },
+  activated() {
     this.load()
   },
   methods: {
@@ -80,6 +95,10 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    statusLabel(status) {
+      const key = String(status || '').toUpperCase()
+      return STATUS_LABEL[key] || status || '—'
     },
     goDetail(id) {
       this.$router.push(`/admin/messages/outbox/${id}`)

@@ -60,7 +60,7 @@
         <EmptyState
           v-else-if="!items.length"
           title="暂无消息"
-          description="当前筛选下没有消息"
+          description="这里只显示别人发给你的通知。你自己发布的内容请到左侧「发布记录」查看。"
         />
         <ul v-else class="mc-list">
           <li

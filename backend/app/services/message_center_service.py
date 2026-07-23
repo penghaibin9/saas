@@ -19,15 +19,8 @@ from app.services.db_service import _iso, _tid, session
 
 
 def _uid(user: dict | None) -> int:
-    raw = str((user or {}).get("userId") or "")
-    for prefix in ("db-", "u_"):
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):]
-            break
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return 0
+    from app.services.message_identity import resolve_message_user_id
+    return resolve_message_user_id(user)
 
 
 def _is_student(user: dict | None) -> bool:

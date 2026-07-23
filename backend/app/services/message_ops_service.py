@@ -20,15 +20,8 @@ def _can_manage_tpl(user: dict) -> bool:
 
 
 def _uid(user: dict | None) -> int:
-    raw = str((user or {}).get("userId") or "")
-    for prefix in ("db-", "u_"):
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):]
-            break
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return 0
+    from app.services.message_identity import resolve_message_user_id
+    return resolve_message_user_id(user)
 
 
 def create_message_template(user: dict, body: dict) -> dict:

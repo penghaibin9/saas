@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException, not_found, no_permission
 from app.core.permissions import has_permission
@@ -17,15 +17,8 @@ _PENDING_DELIVERIES: list[dict] = []
 
 
 def _uid(user: dict | None) -> int:
-    raw = str((user or {}).get("userId") or "")
-    for prefix in ("db-", "u_"):
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):]
-            break
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return 0
+    from app.services.message_identity import resolve_message_user_id
+    return resolve_message_user_id(user)
 
 
 def _utc_now() -> datetime:
@@ -260,14 +253,23 @@ def list_campaigns(user: dict, *, status: str | None = None,
             or has_permission(user, "workbench.message.statistics.view")
         )
         # 非校级：本人发布；审核员额外可见待审单
+        # sender_user_id=0 的历史演示单：用 sender_context_id 兜底认领，避免修复 _uid 后列表“失踪”
         if not school_view:
+            uid = _uid(user)
+            ctx = str(user.get("activeContextId") or "").strip()
+            own = MessageCampaign.sender_user_id == uid
+            if ctx:
+                own = or_(
+                    own,
+                    and_(
+                        MessageCampaign.sender_user_id == 0,
+                        MessageCampaign.sender_context_id == ctx,
+                    ),
+                )
             if can_review:
-                conds.append(or_(
-                    MessageCampaign.sender_user_id == _uid(user),
-                    MessageCampaign.status == "PENDING_REVIEW",
-                ))
+                conds.append(or_(own, MessageCampaign.status == "PENDING_REVIEW"))
             else:
-                conds.append(MessageCampaign.sender_user_id == _uid(user))
+                conds.append(own)
         if status:
             conds.append(MessageCampaign.status == status.upper())
         total = db.scalar(select(func.count()).select_from(MessageCampaign).where(*conds)) or 0
@@ -389,7 +391,6 @@ def publish_campaign(user: dict, campaign_id: str, *,
     from app.services import message_governance_service as gov
 
     gov.assert_publish_rate(_uid(user))
-    user_ids = audience_svc.consume_preview(user, preview_token, audience_fingerprint)
 
     with session() as db:
         try:
@@ -412,6 +413,39 @@ def publish_campaign(user: dict, campaign_id: str, *,
             raise AppException("DATA_CONFLICT", f"当前状态不可发布：{camp.status}",
                                details={"reason": "INVALID_STATUS"})
 
+        rules = audience_svc.audiences_from_campaign_rules(db, camp.id)
+
+    # 预览令牌在进程外：允许按草稿规则重算（指纹须一致），避免重启后「有预览人数却发不出去、发布记录像空的」
+    user_ids = audience_svc.resolve_for_publish(
+        user,
+        preview_token=preview_token,
+        audience_fingerprint=audience_fingerprint,
+        audiences=rules,
+    )
+    if not user_ids:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "接收人为 0：所选范围内没有已开通账号的学生/教职工，无法发布。"
+            "请先确认学籍已开账号，或改选有账号的班级后再预览。"
+            "（本地草稿不会出现在发布记录；已创建的草稿可在发布记录中继续处理）",
+            details={"reason": "AUDIENCE_EMPTY_RECIPIENTS"},
+            http_status=422,
+        )
+
+    with session() as db:
+        camp = db.scalar(select(MessageCampaign).where(
+            MessageCampaign.id == cid,
+            MessageCampaign.tenant_id == _tid(),
+            MessageCampaign.is_deleted.is_(False),
+        ))
+        if not camp:
+            raise not_found("发布单不存在")
+        if int(camp.version or 0) != int(version):
+            raise AppException("DATA_CONFLICT", "发布单已被修改，请刷新后重试",
+                               details={"reason": "VERSION_CONFLICT"})
+        if camp.status not in ("DRAFT", "APPROVED", "RETURNED"):
+            raise AppException("DATA_CONFLICT", f"当前状态不可发布：{camp.status}",
+                               details={"reason": "INVALID_STATUS"})
         rules = audience_svc.audiences_from_campaign_rules(db, camp.id)
         if camp.status != "APPROVED" and _needs_review(user, camp, rules):
             camp.status = "PENDING_REVIEW"

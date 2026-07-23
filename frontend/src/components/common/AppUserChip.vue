@@ -1,96 +1,173 @@
 <template>
-  <!-- 全局用户胶囊：已登录且非登录页时显示，提供退出登录 -->
+  <!-- 全局用户胶囊：真实身份切换 + 退出。embedded=true 嵌顶栏。 -->
   <div
     v-if="user"
     class="uchip"
     :class="{ 'is-open': open, 'uchip--topbar': embedded }"
   >
-    <!-- 顶栏模式：身份展示 + 始终可见的「退出」按钮 -->
-    <template v-if="embedded">
-      <div class="uchip__identity">
-        <span class="uchip__avatar">{{ (user.realName || '?').slice(0, 1) }}</span>
-        <span class="uchip__info">
-          <span class="uchip__name">{{ user.realName }}</span>
-          <span class="uchip__role">{{ roleLabel }}</span>
-        </span>
-      </div>
-      <button
-        class="uchip__exit"
-        type="button"
-        :disabled="loading"
-        :title="loading ? '正在退出…' : '退出当前登录'"
-        @click="doLogout"
-      >
-        {{ loading ? '退出中' : '退出' }}
-      </button>
-    </template>
-
-    <!-- 悬浮兜底模式：下拉菜单退出 -->
-    <template v-else>
+    <div class="uchip__cluster">
       <button
         class="uchip__btn"
         type="button"
         :aria-expanded="open"
-        @click="open = !open"
+        title="查看账号与切换身份"
+        @click="toggleOpen"
       >
         <span class="uchip__avatar">{{ (user.realName || '?').slice(0, 1) }}</span>
-        <span class="uchip__name">{{ user.realName }}</span>
-        <span class="uchip__caret">▾</span>
+        <span class="uchip__info">
+          <span class="uchip__name">{{ user.realName }}</span>
+          <span class="uchip__role">{{ roleLabel || '未识别角色' }}</span>
+        </span>
+        <span class="uchip__caret" aria-hidden="true">▾</span>
       </button>
-      <div v-if="open" class="uchip__menu" @click.stop>
-        <div class="uchip__meta">
-          <div class="uchip__meta-name">{{ user.realName }}</div>
-          <div class="uchip__meta-sub">{{ roleLabel }}</div>
-          <div v-if="tenantName" class="uchip__meta-sub">{{ tenantName }}</div>
-        </div>
-        <button class="uchip__logout" type="button" :disabled="loading" @click="doLogout">
-          {{ loading ? '正在退出…' : '退出登录' }}
-        </button>
+
+      <!-- 常显入口：避免「只显示名字」导致找不到切换 -->
+      <button
+        class="uchip__switch"
+        type="button"
+        :disabled="!!switchingId"
+        :title="switchHint"
+        @click="toggleOpen"
+      >
+        切换身份
+      </button>
+    </div>
+
+    <div v-if="open" class="uchip__menu" role="menu" @click.stop>
+      <div class="uchip__meta">
+        <div class="uchip__meta-name">{{ user.realName }}</div>
+        <div class="uchip__meta-sub">{{ roleLabel }}</div>
+        <div v-if="scopeLabel" class="uchip__meta-sub">数据范围 · {{ scopeLabel }}</div>
+        <div v-if="tenantName" class="uchip__meta-sub">{{ tenantName }}</div>
       </div>
-    </template>
+
+      <div v-if="contextsLoading" class="uchip__hint">正在加载可用身份…</div>
+      <div v-else-if="contextsError" class="uchip__hint is-err">{{ contextsError }}</div>
+      <template v-else-if="contexts.length">
+        <div class="uchip__sec">可选身份（{{ contexts.length }}）</div>
+        <button
+          v-for="c in contexts"
+          :key="c.contextId"
+          type="button"
+          class="uchip__ctx"
+          :class="{ 'is-active': isActive(c), 'is-busy': switchingId === c.contextId }"
+          :disabled="!!switchingId || isActive(c)"
+          @click="pickContext(c)"
+        >
+          <span class="uchip__ctx-main">
+            <span class="uchip__ctx-name">{{ contextTitle(c) }}</span>
+            <span v-if="contextScope(c)" class="uchip__ctx-scope">{{ contextScope(c) }}</span>
+          </span>
+          <span v-if="isActive(c)" class="uchip__badge">当前</span>
+          <span v-else-if="switchingId === c.contextId" class="uchip__badge">切换中</span>
+          <span v-else class="uchip__badge is-go">切换</span>
+        </button>
+        <p v-if="contexts.length < 2" class="uchip__hint">
+          本账号目前只有一个可用身份，无法切换。需要多身份请在系统管理里给该账号再挂角色。
+        </p>
+      </template>
+      <div v-else class="uchip__hint">未获取到可用身份列表，请刷新后重试</div>
+
+      <button class="uchip__logout" type="button" :disabled="loading || !!switchingId" @click="doLogout">
+        {{ loading ? '正在退出…' : '退出登录' }}
+      </button>
+    </div>
+
+    <button
+      v-if="embedded"
+      class="uchip__exit"
+      type="button"
+      :disabled="loading || !!switchingId"
+      :title="loading ? '正在退出…' : '退出当前登录'"
+      @click="doLogout"
+    >
+      {{ loading ? '退出中' : '退出' }}
+    </button>
   </div>
 </template>
 
 <script>
 /**
- * AppUserChip — 全局登录态胶囊（P12：强制登录后全站唯一退出入口）。
- * embedded=true 时嵌入 BasePortalLayout 顶栏；否则右上角悬浮（仅无顶栏页面兜底）。
- * 退出：调 /auth/logout（jti 拉黑 + 吊销 refresh）→ 清本地令牌 → 回登录页。
+ * AppUserChip — 顶栏账号胶囊。
+ * 身份列表：GET /auth/me.contexts；切换：POST /auth/switch-role（真实令牌轮换，非演示假切）。
+ * 切换成功后整页刷新，保证菜单/数据范围/工作台按新身份重建。
  */
-import { currentUserFromToken, getToken, logoutRemote } from '@/services/http/client'
+import {
+  currentUserFromToken,
+  fetchMyAuthContexts,
+  getToken,
+  logoutRemote,
+  switchAuthContext
+} from '@/services/http/client'
 import { toast } from '@/utils/toast'
 
 const ROLE_LABEL = {
-  SCHOOL_ADMIN: '学校管理员', COLLEGE_ADMIN: '学院管理员', COUNSELOR: '辅导员/指导教师',
-  GD_MENTOR: '毕设导师', INTERN_MENTOR: '实习指导教师', ACADEMIC_TEACHER: '教务老师',
-  EMPLOYMENT_TEACHER: '就业老师', STUDENT: '学生', PLATFORM_SUPER_ADMIN: '平台超级管理员'
+  SCHOOL_ADMIN: '学校管理员',
+  COLLEGE_ADMIN: '学院管理员',
+  COUNSELOR: '辅导员',
+  GD_MENTOR: '毕设导师',
+  INTERN_MENTOR: '实习指导教师',
+  ACADEMIC_TEACHER: '任课教师',
+  ACADEMIC_ADMIN: '教务老师',
+  EMPLOYMENT_TEACHER: '就业老师',
+  STUDENT_AFFAIRS_ADMIN: '学工管理员',
+  STUDENT_AFFAIRS: '学工管理员',
+  PSYCHOLOGY_TEACHER: '心理老师',
+  FUNDING_TEACHER: '资助老师',
+  YOUTH_LEAGUE: '团委老师',
+  DORM_MANAGER: '宿管',
+  GRADUATION_ADMIN: '毕设管理员',
+  GD_REVIEWER: '毕设评阅人',
+  GD_DEFENSE_SECRETARY: '答辩秘书',
+  GD_DEFENSE_EXPERT: '答辩专家',
+  LEADER: '校领导',
+  SYS_ADMIN: '系统管理员',
+  SECURITY_AUDITOR: '安全审计',
+  ORG_PERSONNEL: '组织人事',
+  STUDENT: '学生',
+  PLATFORM_SUPER_ADMIN: '平台超级管理员'
 }
 
 export default {
   name: 'AppUserChip',
   props: {
-    /** 嵌入顶栏时使用与 bpl-role 一致的内联样式 */
     embedded: { type: Boolean, default: false }
   },
   data() {
-    return { open: false, loading: false, tick: 0 }
+    return {
+      open: false,
+      loading: false,
+      tick: 0,
+      contexts: [],
+      activeContextId: '',
+      scopeLabel: '',
+      contextsLoading: false,
+      contextsError: '',
+      switchingId: '',
+      loadedOnce: false
+    }
   },
   computed: {
     user() {
-      // tick 用于路由变化后强制重算（token 变化无响应式）
       void this.tick
       if (this.$route && (this.$route.path === '/login' || this.$route.meta?.public)) return null
       if (!getToken()) return null
       return currentUserFromToken()
     },
     roleLabel() {
-      return ROLE_LABEL[this.user?.currentRoleCode] || this.user?.currentRoleCode || ''
+      const code = this.user?.currentRoleCode
+      return ROLE_LABEL[code] || code || ''
     },
     tenantName() {
       const tid = this.user?.tenantId
       if (tid === '1000000000000000003') return '演示职业技术学校（只读演示）'
       if (tid === '1000000000000000007') return '体验沙箱学校（运营平台可恢复）'
-      return ''
+      return this.user?.tenantName || ''
+    },
+    switchHint() {
+      if (!this.loadedOnce) return '打开身份列表'
+      if (this.contexts.length > 1) return `本账号有 ${this.contexts.length} 个身份，点击切换`
+      return '本账号目前只有一个身份'
     }
   },
   watch: {
@@ -101,6 +178,8 @@ export default {
   },
   mounted() {
     document.addEventListener('click', this.onOutside)
+    // 进页就预拉身份，方便一眼知道有没有可切项
+    this.loadContexts()
   },
   beforeUnmount() {
     document.removeEventListener('click', this.onOutside)
@@ -110,11 +189,59 @@ export default {
       if (!this.$el || this.$el === e.target || this.$el.contains?.(e.target)) return
       this.open = false
     },
+    async toggleOpen() {
+      this.open = !this.open
+      if (this.open) await this.loadContexts()
+    },
+    async loadContexts() {
+      this.contextsLoading = true
+      this.contextsError = ''
+      try {
+        const data = await fetchMyAuthContexts()
+        this.contexts = (data.contexts || []).filter((c) => c && c.enabled !== false)
+        this.activeContextId = data.activeContextId || this.user?.activeContextId || ''
+        const cr = data.currentRole || {}
+        this.scopeLabel = cr.scopeLabel || cr.dataScope || ''
+        this.loadedOnce = true
+      } catch (e) {
+        this.contexts = []
+        this.contextsError = (e && e.message) || '身份列表加载失败'
+      } finally {
+        this.contextsLoading = false
+        this.tick++
+      }
+    },
+    contextTitle(c) {
+      return c.contextName || c.roleName || ROLE_LABEL[c.roleCode || c.contextType] || c.roleCode || c.contextType || c.contextId
+    },
+    contextScope(c) {
+      return c.scopeLabel || ''
+    },
+    isActive(c) {
+      if (!c) return false
+      if (this.activeContextId && c.contextId === this.activeContextId) return true
+      const code = this.user?.currentRoleCode
+      return !!(code && (c.roleCode === code || c.contextType === code) && this.contexts.length === 1)
+    },
+    async pickContext(c) {
+      if (!c || !c.contextId || this.switchingId || this.isActive(c)) return
+      this.switchingId = c.contextId
+      try {
+        const data = await switchAuthContext(c.contextId, 'PC')
+        const name = this.contextTitle(c)
+        toast.success(`已切换为「${data.contextName || name}」`)
+        this.open = false
+        window.location.reload()
+      } catch (e) {
+        toast.error((e && e.message) || '身份切换失败')
+        this.switchingId = ''
+      }
+    },
     async doLogout() {
       if (this.loading) return
       this.loading = true
       try {
-        await logoutRemote() // 服务端令牌失效 + 本地清空（离线也会清本地）
+        await logoutRemote()
         toast.success('已退出登录')
       } finally {
         this.loading = false
@@ -145,7 +272,12 @@ export default {
   align-items: center;
   gap: 6px;
 }
-.uchip__identity {
+.uchip__cluster {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.uchip__btn {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -153,6 +285,87 @@ export default {
   border-radius: 10px;
   border: 1px solid var(--pri-100, #dbeafe);
   background: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  font: inherit;
+  transition: all 0.12s;
+}
+.uchip:not(.uchip--topbar) .uchip__btn {
+  gap: 7px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--card-b, #e2e8f0);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 2px 10px -4px rgba(15, 23, 42, 0.18);
+}
+.uchip--topbar .uchip__btn:hover,
+.uchip--topbar.is-open .uchip__btn {
+  border-color: var(--glow, #93c5fd);
+  box-shadow: 0 0 12px var(--glow, rgba(59, 130, 246, 0.25));
+}
+.uchip__switch {
+  height: 35px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.uchip__switch:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #60a5fa;
+}
+.uchip__switch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.uchip__avatar {
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  background: var(--btn-p-bg, #2563eb);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.uchip__info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+  text-align: left;
+}
+.uchip__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t1, #0f172a);
+  max-width: 108px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uchip__role {
+  color: var(--pri, #2563eb);
+  font-size: 10px;
+  font-weight: 500;
+  max-width: 108px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uchip__caret {
+  font-size: 10px;
+  color: var(--t3, #94a3b8);
+  flex-shrink: 0;
 }
 .uchip__exit {
   height: 35px;
@@ -176,112 +389,22 @@ export default {
   opacity: 0.6;
   cursor: not-allowed;
 }
-.uchip__btn {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 12px 5px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--card-b, #e2e8f0);
-  background: rgba(255, 255, 255, 0.96);
-  cursor: pointer;
-  box-shadow: 0 2px 10px -4px rgba(15, 23, 42, 0.18);
-  font: inherit;
-}
-.uchip--topbar .uchip__btn {
-  gap: 8px;
-  padding: 4px 10px 4px 5px;
-  border-radius: 10px;
-  border: 1px solid var(--pri-100, #dbeafe);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: none;
-  box-shadow: none;
-  transition: all 0.12s;
-}
-.uchip--topbar .uchip__btn:hover,
-.uchip--topbar.is-open .uchip__btn {
-  border-color: var(--glow, #93c5fd);
-  box-shadow: 0 0 12px var(--glow, rgba(59, 130, 246, 0.25));
-}
-.uchip--topbar .uchip__avatar {
-  width: 27px;
-  height: 27px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold, 600);
-}
-.uchip--topbar .uchip__name {
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold, 600);
-  max-width: 108px;
-}
-.uchip__avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--btn-p-bg, #2563eb);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-.uchip__identity .uchip__avatar {
-  width: 27px;
-  height: 27px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold, 600);
-}
-.uchip__info {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-  min-width: 0;
-  text-align: left;
-}
-.uchip__name {
-  font-size: 12.5px;
-  color: var(--t1, #0f172a);
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.uchip--topbar .uchip__name {
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold, 600);
-  max-width: 108px;
-}
-.uchip__role {
-  color: var(--pri, #2563eb);
-  font-size: 10px;
-  font-weight: var(--font-weight-medium, 500);
-  max-width: 108px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.uchip__caret {
-  font-size: 10px;
-  color: var(--t3, #94a3b8);
-  flex-shrink: 0;
-}
 .uchip__menu {
   position: absolute;
   right: 0;
-  top: calc(100% + 8px);
-  width: 220px;
+  top: calc(100% + 6px);
+  width: 300px;
+  max-height: min(70vh, 420px);
+  overflow: auto;
   background: #fff;
   border: 1px solid var(--card-b, #e2e8f0);
   border-radius: 12px;
   box-shadow: 0 12px 32px -12px rgba(15, 23, 42, 0.25);
   padding: 12px;
+  z-index: 50;
 }
-.uchip--topbar .uchip__menu {
-  top: calc(100% + 6px);
+.uchip:not(.uchip--topbar) .uchip__menu {
+  top: calc(100% + 8px);
 }
 .uchip__meta-name {
   font-size: 13.5px;
@@ -292,6 +415,74 @@ export default {
   margin-top: 3px;
   font-size: 11.5px;
   color: var(--t3, #64748b);
+}
+.uchip__sec {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+.uchip__ctx {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  border: 1px solid #e8eef5;
+  background: #f8fafc;
+  cursor: pointer;
+  font: inherit;
+}
+.uchip__ctx:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.uchip__ctx.is-active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  cursor: default;
+}
+.uchip__ctx:disabled:not(.is-active) {
+  opacity: 0.65;
+  cursor: wait;
+}
+.uchip__ctx-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.uchip__ctx-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.uchip__ctx-scope {
+  font-size: 11px;
+  color: #64748b;
+}
+.uchip__badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #2563eb;
+  font-weight: 600;
+}
+.uchip__badge.is-go {
+  color: #1d4ed8;
+}
+.uchip__hint {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.45;
+}
+.uchip__hint.is-err {
+  color: #dc2626;
 }
 .uchip__logout {
   margin-top: 10px;

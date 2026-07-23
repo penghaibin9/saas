@@ -21,7 +21,7 @@
  * 布局壳复用 BasePortalLayout + navPlan（与学工/实习等中心一致），不破坏一级轨与权限投影。
  *
  * 已移除：演示用「视角」下拉（假切换，会切出无权限死菜单）。
- * 切身份请走系统真实身份切换（/auth/switch-role）；PC 顶栏当前以退出/账号信息为主。
+ * 切身份：顶栏 AppUserChip → POST /auth/switch-role（真实令牌轮换后整页刷新）。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'

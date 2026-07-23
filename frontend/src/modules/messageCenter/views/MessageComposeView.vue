@@ -6,6 +6,9 @@
     :data-scope-name="scopeName"
   >
     <ErrorState v-if="error" :description="error" @retry="error = ''" />
+    <p v-if="readonlyTenant" class="mc-warn mc-readonly">
+      {{ readonlyReason || '当前学校为正式演示只读环境，不能真正发布。请用沙箱账号 admin2（密码 123456，学校编码 sandbox-school）体验发布与发布记录。' }}
+    </p>
 
     <div class="mc-compose">
       <ol class="mc-steps">
@@ -79,11 +82,19 @@
         <div v-if="preview" class="mc-preview">
           <div>预计接收：<strong>{{ preview.recipientCount }}</strong> 人</div>
           <div v-for="e in preview.excluded || []" :key="e.reasonCode" class="mc-muted">
-            已排除 {{ e.reasonCode }}：{{ e.count }}
+            已排除 {{ excludeLabel(e.reasonCode) }}：{{ e.count }}
           </div>
+          <p v-if="!(preview.recipientCount > 0)" class="mc-warn">
+            接收人为 0，无法发布。常见原因：所选班级/学院学籍尚未开通登录账号（学号需与账号一致）。
+          </p>
         </div>
         <div v-if="preview" class="mc-actions">
-          <button type="button" class="mc-btn mc-btn--primary" @click="step = 3">下一步</button>
+          <button
+            type="button"
+            class="mc-btn mc-btn--primary"
+            :disabled="!(preview.recipientCount > 0)"
+            @click="step = 3"
+          >下一步</button>
         </div>
       </section>
 
@@ -108,7 +119,12 @@
         </p>
         <div class="mc-actions">
           <button type="button" class="mc-btn" @click="step = 2">上一步</button>
-          <button type="button" class="mc-btn mc-btn--primary" :disabled="publishing" @click="doPublish">
+          <button
+            type="button"
+            class="mc-btn mc-btn--primary"
+            :disabled="publishing || readonlyTenant"
+            @click="doPublish"
+          >
             {{ publishing ? '提交中…' : publishButtonLabel }}
           </button>
         </div>
@@ -181,6 +197,12 @@ export default {
     },
     permissionPatterns() {
       return (this.ctx && this.ctx.permissionPatterns) || null
+    },
+    readonlyTenant() {
+      return !!(this.ctx && this.ctx.readonlyTenant)
+    },
+    readonlyReason() {
+      return (this.ctx && this.ctx.readonlyReason) || ''
     },
     needsReviewHint() {
       if (this.form.category === 'EMERGENCY') return true
@@ -280,22 +302,40 @@ export default {
         this.previewing = false
       }
     },
+    excludeLabel(code) {
+      const map = {
+        ACCOUNT_UNLINKED: '学籍未开通账号',
+        STUDENT_STATUS_EXCLUDED: '学籍状态不可发',
+        ACCOUNT_DISABLED: '账号已停用'
+      }
+      return map[code] || code
+    },
     async doPublish() {
+      if (this.readonlyTenant) {
+        this.error = this.readonlyReason || '当前为只读演示环境，无法发布'
+        return
+      }
       if (!this.preview) {
         this.error = '请先预览受众'
+        return
+      }
+      const n = this.preview.recipientCount || 0
+      if (n <= 0) {
+        this.error = '接收人为 0，无法发布。请返回上一步重新选择范围并预览。'
+        this.step = 2
         return
       }
       if (this.form.scheduleEnabled && !this.form.scheduledAt) {
         this.error = '请填写计划发布时间'
         return
       }
-      const n = this.preview.recipientCount || 0
       const ok = window.confirm(
-        `确认向约 ${n} 人${this.needsReviewHint ? '提交审核' : '发布'}？\n标题：${this.form.title}`
+        `确认向约 ${n} 人${this.needsReviewHint ? '提交审核' : '发布'}？\n标题：${this.form.title}\n\n发布后请在「发布记录」查看；「我的消息」只显示别人发给你的通知。`
       )
       if (!ok) return
       this.publishing = true
       this.error = ''
+      let draft = null
       try {
         const toDt = (v) => (v ? String(v).replace('T', ' ') + ':00' : undefined)
         let actionParams
@@ -305,7 +345,7 @@ export default {
           this.error = (pe && pe.message) || '深链参数无效'
           return
         }
-        const draft = await createCampaign({
+        draft = await createCampaign({
           title: this.form.title.trim(),
           contentPlain: this.form.contentPlain.trim(),
           category: this.form.category,
@@ -331,7 +371,19 @@ export default {
         try { localStorage.removeItem('mc-compose-draft') } catch { /* ignore */ }
         this.$router.push(`/admin/messages/outbox/${result.campaignId || draft.campaignId}`)
       } catch (e) {
-        this.error = (e && e.message) || '发布失败'
+        const msg = (e && e.message) || '发布失败'
+        // 草稿已入库时仍应在「发布记录」可见；避免用户以为完全没发出去
+        if (draft && draft.campaignId) {
+          this.error = `${msg}。草稿已保存，正在打开发布记录…`
+          try { localStorage.removeItem('mc-compose-draft') } catch { /* ignore */ }
+          setTimeout(() => {
+            this.$router.push(`/admin/messages/outbox/${draft.campaignId}`).catch(() => {
+              this.$router.push('/admin/messages/outbox')
+            })
+          }, 600)
+        } else {
+          this.error = msg
+        }
       } finally {
         this.publishing = false
       }

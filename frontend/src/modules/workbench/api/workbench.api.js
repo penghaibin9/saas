@@ -60,6 +60,8 @@ export async function fetchLayoutContext() {
   let permissionPatterns = null
   let ctxKey = ''
   let messageUnreadCount = 0
+  let readonlyTenant = false
+  let readonlyReason = ''
 
   try {
     const b = await request('/tenant/brand')
@@ -99,6 +101,12 @@ export async function fetchLayoutContext() {
     if (Array.isArray(ctx.permissionPatterns)) {
       permissionPatterns = ctx.permissionPatterns
     }
+    readonlyTenant = !!ctx.readonlyTenant
+    readonlyReason = ctx.readonlyReason || (
+      readonlyTenant
+        ? '正式演示环境为只读，数据不可修改。需要动手体验请用沙箱账号登录（admin2 / teacher2 / student2，密码 123456）'
+        : ''
+    )
   } catch {
     /* 身份上下文失败：壳仍可开；业务数字由工作台页独立报错 */
   }
@@ -116,7 +124,9 @@ export async function fetchLayoutContext() {
     dataScope,
     permissionPatterns,
     messageUnreadCount,
-    ctxKey
+    ctxKey,
+    readonlyTenant,
+    readonlyReason
   }
 }
 
