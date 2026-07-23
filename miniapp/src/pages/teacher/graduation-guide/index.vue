@@ -42,7 +42,8 @@
 
           <!-- 中期检查队列 -->
           <template v-else-if="tab === 'midterm'">
-            <view v-if="!midtermQueue.length" class="gg__empty"><text>暂无待检查/待复核整改</text></view>
+            <view v-if="midtermError" class="gg__empty"><text>{{ midtermError }}</text></view>
+            <view v-else-if="!midtermQueue.length" class="gg__empty"><text>暂无待检查/待复核整改</text></view>
             <view class="stack">
               <view v-for="(m, i) in midtermQueue" :key="m.gdStudentId" class="gg card" @click="enterReview('midterm', midtermQueue, i)">
                 <view class="row-between"><text class="t-md t-bold">{{ m.studentName }}</text><text class="gg__st">{{ m.statusLabel }}</text></view>
@@ -54,7 +55,8 @@
 
           <!-- 评阅任务 -->
           <template v-else-if="tab === 'peer'">
-            <view v-if="!reviews.length" class="gg__empty"><text>暂无待评阅任务</text></view>
+            <view v-if="reviewsError" class="gg__empty"><text>{{ reviewsError }}</text></view>
+            <view v-else-if="!reviews.length" class="gg__empty"><text>暂无待评阅任务</text></view>
             <view class="stack">
               <view v-for="(r, i) in reviews" :key="r.id" class="gg card" @click="enterReview('peer', reviews, i)">
                 <view class="row-between"><text class="t-md t-bold">{{ r.studentName }}</text><text class="gg__st">{{ r.statusLabel }}</text></view>
@@ -83,7 +85,8 @@
 
           <!-- 成绩待复核队列 -->
           <template v-else-if="tab === 'grade'">
-            <view v-if="!gradeQueue.length" class="gg__empty"><text>暂无待复核成绩</text></view>
+            <view v-if="gradeError" class="gg__empty"><text>{{ gradeError }}</text></view>
+            <view v-else-if="!gradeQueue.length" class="gg__empty"><text>暂无待复核成绩</text></view>
             <view class="stack">
               <view v-for="(gr, i) in gradeQueue" :key="gr.gdStudentId" class="gg card" @click="enterReview('grade', gradeQueue, i)">
                 <view class="row-between"><text class="t-md t-bold">{{ gr.studentName }}</text><text class="gg__st">{{ gr.statusLabel }}</text></view>
@@ -215,6 +218,7 @@ export default {
       data: null, state: 'loading', f: 'all', acting: false,
       reviewQueue: [], finalQueue: [],
       tab: 'review', midtermQueue: [], reviews: [], defense: [], gradeQueue: [],
+      midtermError: '', reviewsError: '', defenseError: '', gradeError: '',
       loaded: { midterm: false, peer: false, defense: false, grade: false },
       mode: 'list', reviewKind: '', queue: [], queueIndex: 0, detail: null, detailState: 'loading',
       peerScore: '', peerOpinion: ''
@@ -274,10 +278,26 @@ export default {
       if (map[this.tab]) map[this.tab].call(this, done)
       else if (done) done()
     },
-    loadMidterm(done) { teacherApi.getGraduationMidtermQueue().then((r) => { this.midtermQueue = r || []; this.loaded.midterm = true }).catch(() => {}).finally(() => done && done()) },
-    loadReviews(done) { teacherApi.getGraduationMyReviews().then((r) => { this.reviews = r || []; this.loaded.peer = true }).catch(() => {}).finally(() => done && done()) },
-    loadDefense(done) { teacherApi.getGraduationDefenseArrangements().then((r) => { this.defense = r || []; this.loaded.defense = true }).catch(() => {}).finally(() => done && done()) },
-    loadGrade(done) { teacherApi.getGraduationGradeQueue().then((r) => { this.gradeQueue = r || []; this.loaded.grade = true }).catch(() => {}).finally(() => done && done()) },
+    loadMidterm(done) {
+      teacherApi.getGraduationMidtermQueue().then((r) => {
+        this.midtermQueue = r || []; this.loaded.midterm = true; this.midtermError = ''
+      }).catch(() => { this.midtermError = '中期队列加载失败' }).finally(() => done && done())
+    },
+    loadReviews(done) {
+      teacherApi.getGraduationMyReviews().then((r) => {
+        this.reviews = r || []; this.loaded.peer = true; this.reviewsError = ''
+      }).catch(() => { this.reviewsError = '评阅队列加载失败' }).finally(() => done && done())
+    },
+    loadDefense(done) {
+      teacherApi.getGraduationDefenseArrangements().then((r) => {
+        this.defense = r || []; this.loaded.defense = true; this.defenseError = ''
+      }).catch(() => { this.defenseError = '答辩安排加载失败' }).finally(() => done && done())
+    },
+    loadGrade(done) {
+      teacherApi.getGraduationGradeQueue().then((r) => {
+        this.gradeQueue = r || []; this.loaded.grade = true; this.gradeError = ''
+      }).catch(() => { this.gradeError = '成绩队列加载失败' }).finally(() => done && done())
+    },
     pIndexOf(g) { return this.reviewQueue.findIndex((q) => q.gdStudentId === g.id) },
     enterReview(kind, queueArr, index) {
       if (!queueArr || !queueArr.length) { toast('暂无待处理项'); return }

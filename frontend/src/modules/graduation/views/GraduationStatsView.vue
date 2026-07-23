@@ -8,11 +8,10 @@
     <div class="mp-stack">
       <AppDateRangePicker
         v-model="statsRange"
-        label="统计时间范围"
+        label="统计时间范围（当前汇总为全部时间，日期筛选后续接入）"
         mode="filter"
         empty-label="全部时间"
         memory-key="graduation.statsReport.dateRange"
-        @change="loadAll"
       />
       <LoadingState v-if="loading" />
       <div v-else class="mp-stack">

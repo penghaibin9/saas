@@ -373,12 +373,31 @@ export default {
       }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
         .finally(() => { this.rectifySubmitting = false })
     },
-    // 定位到本页真实功能区（不再 toast「去 PC 端」）
+    // 定位到本页真实功能区；目标未渲染时回退到节点区并提示
     scrollTo(anchor) {
-      uni.pageScrollTo({ selector: '#gd-' + anchor, duration: 260, fail: () => {} })
+      const id = '#gd-' + anchor
+      uni.createSelectorQuery().in(this).select(id).boundingClientRect((rect) => {
+        if (!rect) {
+          toast('当前环节暂无可展示内容')
+          uni.pageScrollTo({ selector: '#gd-nodes', duration: 260, fail: () => {} })
+          return
+        }
+        uni.pageScrollTo({ selector: id, duration: 260, fail: () => toast('定位失败') })
+      }).exec()
     },
     goPrimary() {
       const a = (this.g && this.g.primaryAction && this.g.primaryAction.anchor) || 'nodes'
+      // 中期未出结论 / 成绩未发布时，主按钮勿滚到隐藏区
+      if (a === 'midterm' && !(this.midterm && this.midterm.hasData && this.midterm.status !== 'PENDING')) {
+        toast('中期检查尚未出结论')
+        this.scrollTo('nodes')
+        return
+      }
+      if (a === 'grade' && !(this.grade && this.grade.published)) {
+        toast('成绩尚未发布')
+        this.scrollTo('nodes')
+        return
+      }
       this.scrollTo(a)
     }
   }

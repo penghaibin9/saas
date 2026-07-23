@@ -129,7 +129,7 @@ export default {
         { key: 'createBatch', label: '＋ 新增毕设批次', variant: 'primary' },
         { key: 'importStudents', label: '导入学生名单' },
         { key: 'exportStats', label: '导出进度统计' },
-        { key: 'viewAuditLog', label: '操作日志', variant: 'ghost' }
+        { key: 'viewAuditLog', label: '预警与统计', variant: 'ghost' }
       ]
         .filter((a) => pa[a.key] && pa[a.key].visible)
         .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))

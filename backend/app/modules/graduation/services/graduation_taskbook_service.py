@@ -112,7 +112,8 @@ def issue_taskbook(gd_student_id, body: dict) -> dict:
         return _row(t, stu)
 
 
-def confirm_taskbook(gd_student_id) -> dict:
+def confirm_taskbook(gd_student_id, proxy_reason: str | None = None) -> dict:
+    """学生本人确认；非学生须填写代确认原因（≥5字），审计区分代确认。"""
     with session() as db:
         stu = _stu(db, gd_student_id)
         t = db.scalars(select(GraduationTaskBook).where(
@@ -122,12 +123,22 @@ def confirm_taskbook(gd_student_id) -> dict:
             raise not_found("尚未下达任务书")
         if t.status not in ("PENDING_CONFIRM", "CHANGE_PENDING"):
             raise AppException("DATA_CONFLICT", "当前任务书无需确认")
+        u = get_current_user_ctx() or {}
+        role = (u.get("currentRoleCode") or "").strip().upper()
+        user_type = (u.get("userType") or "").strip().upper()
+        is_student = user_type == "STUDENT" or role == "STUDENT"
         before = t.status
         t.status = "CONFIRMED"
         t.confirmed_at = datetime.utcnow()
         if stu.stage == "TASKBOOK_CONFIRM":
             stu.stage = "GUIDING"
-        _audit(db, t.id, "学生确认任务书", before=before, after="CONFIRMED")
+        if is_student:
+            _audit(db, t.id, "学生确认任务书", before=before, after="CONFIRMED")
+        else:
+            reason = (proxy_reason or "").strip()
+            if len(reason) < 5:
+                raise AppException("VALIDATION_ERROR", "管理员代确认须填写原因（不少于 5 字）")
+            _audit(db, t.id, "管理员代确认任务书", detail=reason, before=before, after="CONFIRMED")
         db.commit()
         return _row(t, stu)
 

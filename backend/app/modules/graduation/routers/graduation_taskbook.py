@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
@@ -49,9 +49,9 @@ def gd_taskbook_issue(gd_student_id: str, body: TaskBookIssue, user=Depends(get_
     return success(result, message="已下达，待学生确认")
 
 
-@router.post("/gd-taskbooks/{gd_student_id}/confirm", summary="学生确认任务书")
-def gd_taskbook_confirm(gd_student_id: str, user=Depends(get_current_user)):
-    result = svc.confirm_taskbook(gd_student_id)
+@router.post("/gd-taskbooks/{gd_student_id}/confirm", summary="确认任务书（学生本人；管理员须传 proxyReason）")
+def gd_taskbook_confirm(gd_student_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    result = svc.confirm_taskbook(gd_student_id, proxy_reason=(body or {}).get("proxyReason"))
     audit_log.record("确认任务书", f"graduation-taskbook:{gd_student_id}")
     return success(result, message="已确认")
 

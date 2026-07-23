@@ -21,10 +21,14 @@ _ACTION_RULES: tuple[tuple[str, str, str], ...] = (
     ("/proposals/", "/review", "graduationDesign.proposal.review"),
     ("/finals/", "/review", "graduationDesign.final.review"),
     ("/defense-groups/", "/publish", "graduationDesign.defense.publish"),
+    ("/defense-groups", "", "graduationDesign.defense.manage"),
     ("/gd-defense-scores", "", "graduationDesign.defense.score"),
     ("/gd-grades/", "/publish", "graduationDesign.grade.publish"),
     ("/gd-archives/", "/submit", "graduationDesign.archive.submit"),
     ("/gd-guidances", "", "graduationDesign.guide.manage"),
+    ("/gd-midterms", "", "graduationDesign.guide.manage"),
+    ("/gd-taskbooks", "", "graduationDesign.guide.manage"),
+    ("/gd-mentors/", "/assign", "graduationDesign.mentor.assign"),
     ("/gd-reviews/", "/submit", "graduationDesign.final.review"),
 )
 

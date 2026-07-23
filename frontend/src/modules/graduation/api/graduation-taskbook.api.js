@@ -28,7 +28,9 @@ const MT = '/graduation/gd-midterms'
 export const graduationTaskbookApi = {
   getTaskbook(gdStudentId) { return call(() => request(`${TB}/${gdStudentId}`)) },
   issueTaskbook(gdStudentId, body) { return call(() => request(`${TB}/${gdStudentId}/issue`, { method: 'POST', body })) },
-  confirmTaskbook(gdStudentId) { return call(() => request(`${TB}/${gdStudentId}/confirm`, { method: 'POST' })) },
+  confirmTaskbook(gdStudentId, body = {}) {
+    return call(() => request(`${TB}/${gdStudentId}/confirm`, { method: 'POST', body }))
+  },
   changeTaskbook(gdStudentId, body) { return call(() => request(`${TB}/${gdStudentId}/change`, { method: 'POST', body })) },
   getTaskbookStats() { return call(() => request(`${TB}/stats`)) },
   async downloadTaskbookExport(params = {}) {

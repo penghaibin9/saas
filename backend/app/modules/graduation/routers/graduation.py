@@ -27,8 +27,9 @@ _ACTION_PERMISSION_MAP = {
     "createTopic": "graduationDesign.manage", "importTopics": "graduationDesign.manage",
     "exportTopics": "graduationDesign.export", "disableTopic": "graduationDesign.manage",
     "reviewProposal": "graduationDesign.proposal.review", "reviewFinal": "graduationDesign.final.review",
-    "exportProposals": "graduationDesign.export", "manageDefense": "graduationDesign.manage",
+    "exportProposals": "graduationDesign.export", "manageDefense": "graduationDesign.defense.manage",
     "publishDefense": "graduationDesign.defense.publish", "exportDefense": "graduationDesign.export",
+    "guideMidterm": "graduationDesign.guide.manage", "guideTaskbook": "graduationDesign.guide.manage",
 }
 
 

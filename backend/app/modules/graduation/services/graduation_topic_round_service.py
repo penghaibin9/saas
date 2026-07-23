@@ -219,6 +219,10 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
                 raise not_found(f"题目 {tid} 不存在")
             if t.review_status != "APPROVED" or t.status != "CONFIRMED":
                 raise AppException("DATA_CONFLICT", f"题目「{t.title}」未入池，不可选")
+            if r.batch_id and t.batch_id and int(t.batch_id) != int(r.batch_id):
+                raise AppException("DATA_CONFLICT", f"题目「{t.title}」不属于本轮次所在批次，不可选")
+            if r.batch_id and stu.batch_id and int(stu.batch_id) != int(r.batch_id):
+                raise AppException("DATA_CONFLICT", "学生批次与选题轮次不一致，不可填报志愿")
         existing = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
             GraduationTopicChoice.gd_student_id == int(gd_student_id),
