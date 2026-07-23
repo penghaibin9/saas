@@ -188,13 +188,23 @@ def review(user, eid, action: str, comment: str = "") -> dict:
                 "reviewStatusLabel": REVIEW_LABEL[e.school_review_status]}
 
 
-def list_evals(page, page_size, review_status=None, keyword=None, user=None):
+def list_evals(page, page_size, review_status=None, keyword=None, view=None, user=None):
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         q = select(InternshipStudentEval).where(InternshipStudentEval.tenant_id == _tid(),
                                                 InternshipStudentEval.is_deleted.is_(False))
         if review_status:
             q = q.where(InternshipStudentEval.school_review_status == review_status)
+        # 一页台账、按菜单 view 分工作队列（成熟产品：多维评价共用一张台账）
+        v = (view or "").lower()
+        if v == "self":
+            q = q.where(InternshipStudentEval.submit_status == "SUBMITTED")
+        elif v == "enterprise":
+            q = q.where((InternshipStudentEval.mentor_opinion.is_(None)) | (InternshipStudentEval.mentor_opinion == ""))
+        elif v == "position":
+            q = q.where(InternshipStudentEval.position_rating.is_(None))
+        elif v == "advisor":
+            q = q.where((InternshipStudentEval.advisor_opinion.is_(None)) | (InternshipStudentEval.advisor_opinion == ""))
         rows = db.scalars(q.order_by(InternshipStudentEval.id.desc())).all()
         items = []
         for e in rows:

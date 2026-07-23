@@ -13,7 +13,13 @@ from app.models import InternshipAuditTrail, InternshipChangeRequest, Internship
 from app.modules.internship.services import internship_student_service as stu_svc
 from app.services.db_service import _as_id, _iso, _tid, session
 
-TYPE_LABEL = {"CHANGE_POSITION": "换岗", "CHANGE_ENTERPRISE": "换实习单位", "SELF_ARRANGED": "自主实习变更"}
+# 对标成熟实习变更：换岗 / 换单位 / 转自主 / 退岗（结束岗位）分类型，不混为一谈
+TYPE_LABEL = {
+    "CHANGE_POSITION": "换岗",
+    "CHANGE_ENTERPRISE": "换实习单位",
+    "SELF_ARRANGED": "转自主实习",
+    "WITHDRAW_POST": "退岗",
+}
 STATUS_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
 
 
@@ -178,7 +184,10 @@ def review_change(cid, action: str, comment: str = "", user=None) -> dict:
         db.commit()
         rid = str(rec.id)
     if action == "APPROVE":
-        if ctype == "CHANGE_POSITION" and tpid:
+        if ctype == "WITHDRAW_POST":
+            # 退岗：释放岗位占用（成熟产品独立类型，对应 unassign）
+            stu_svc.unassign_position(rid, reason or "退岗审核通过", user=user)
+        elif ctype == "CHANGE_POSITION" and tpid:
             stu_svc.assign_position(rid, str(tpid), user=user)
         elif ctype in ("CHANGE_ENTERPRISE", "SELF_ARRANGED"):
             if ctype == "SELF_ARRANGED":

@@ -222,9 +222,10 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     applyStageFromRoute() {
       const stage = String(this.$route.query.stage || '').toLowerCase()
-      if (stage === 'review') this.statusFilter = 'DRAFT'
-      else if (stage === 'publish') this.statusFilter = 'CONFIRMED'
-      else if (stage === 'recheck') this.missingOnly = '1'
+      // 状态机：PENDING_CALC → PENDING_REVIEW → PUBLISHED → WITHDRAWN → ARCHIVED
+      if (stage === 'review') { this.statusFilter = 'PENDING_CALC'; this.missingOnly = '' }
+      else if (stage === 'publish') { this.statusFilter = 'PENDING_REVIEW'; this.missingOnly = '' }
+      else if (stage === 'recheck') { this.statusFilter = ''; this.missingOnly = 'MISSING' }
       else if (stage === 'overview') { this.statusFilter = ''; this.missingOnly = '' }
     },
     exportFn() { return scoreApi.exportScores({ keyword: this.keyword, status: this.statusFilter }) },

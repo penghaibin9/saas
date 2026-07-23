@@ -75,9 +75,10 @@ const PANEL_PRESETS = {
   'no-position': () => ({ level: '', status: '', riskCode: 'INT-R02' }),
   'no-checkin': () => ({ level: '', status: '', riskCode: 'INT-R07' }),
   'report-overdue': () => ({ level: '', status: '', riskCode: 'INT-R10' }),
-  'leave-post': () => ({ level: '', status: '', riskCode: 'INT-R06' }),
-  'leave-overdue': () => ({ level: '', status: '', riskCode: 'INT-R06' }),
-  'off-post': () => ({ level: 'HIGH', status: 'PROCESSING', riskCode: '' })
+  'leave-post': () => ({ level: '', status: 'PENDING_HANDLE', riskCode: 'INT-R06' }),
+  // leave-post=请假未返岗待处理；leave-overdue=超期未归跟进中（同 INT-R06，按状态分桶）
+  'leave-overdue': () => ({ level: '', status: 'PROCESSING', riskCode: 'INT-R06' }),
+  'off-post': () => ({ level: 'HIGH', status: '', riskCode: 'INT-GUIDE' })
 }
 
 export default {
@@ -135,7 +136,7 @@ export default {
     canExport() {
       const pa = this.ctx.permissionActions?.exportRiskList
       if (pa && typeof pa.allowed === 'boolean') return pa.allowed
-      return true
+      return false
     }
   },
   watch: {

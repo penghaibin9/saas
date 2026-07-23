@@ -516,8 +516,10 @@ def student_evals_export(reviewStatus: Optional[str] = None, keyword: Optional[s
 @router.get("/student-evals", summary="学生鉴定列表（按数据范围）")
 def student_evals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                   reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
+                  view: Optional[str] = None,
                   user=Depends(require_permission("internship.eval.self.view"))):
-    items, total = se.list_evals(page, pageSize, review_status=reviewStatus, keyword=keyword, user=user)
+    items, total = se.list_evals(page, pageSize, review_status=reviewStatus, keyword=keyword,
+                                 view=view, user=user)
     return success(paginate(items, total, page, pageSize))
 
 

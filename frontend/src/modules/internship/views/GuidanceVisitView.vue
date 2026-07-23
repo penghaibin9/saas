@@ -2,9 +2,11 @@
   <ModulePageShell title="指导巡访管理" subtitle="记录指导教师联系学生、企业沟通、现场巡访和问题整改情况 · 指导记录 · 教师巡访 · 安全隐患整改跟进"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppPermissionButton code="internship.guidance.manage" :allowed="canBtn('internship.guidance.manage')" variant="primary" @click="goCreate">＋ 新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
+      <AppPermissionButton v-if="tab === 'guidance' || tab === 'visit'" code="internship.guidance.manage" :allowed="canBtn('internship.guidance.manage')" variant="primary" @click="goCreate">＋ 新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
+      <AppPermissionButton v-else-if="tab === 'communication'" code="internship.communication.manage" :allowed="canBtn('internship.communication.manage')" variant="primary" @click="goCreate">＋ 登记沟通</AppPermissionButton>
+      <AppPermissionButton v-else-if="tab === 'visit-plan'" code="internship.visit.plan.manage" :allowed="canBtn('internship.visit.plan.manage')" variant="primary" @click="goCreate">＋ 新建巡访计划</AppPermissionButton>
       <AppButton variant="ghost" @click="$router.push('/admin/internship/guidance-plan')">指导计划</AppButton>
-      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
+      <AppExportButton v-if="canExportTab" :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
     <div class="mp-stack">
@@ -142,7 +144,7 @@ const PANEL_PRESETS = {
   communication: () => ({ tab: 'communication', rectifyFilter: '' }),
   visit: () => ({ tab: 'visit', rectifyFilter: '' }),
   'visit-plan': () => ({ tab: 'visit-plan', rectifyFilter: '' }),
-  'visit-issue': () => ({ tab: 'visit', rectifyFilter: '' }),
+  'visit-issue': () => ({ tab: 'visit', rectifyFilter: 'PENDING' }),
   rectify: () => ({ tab: 'visit', rectifyFilter: 'PENDING' })
 }
 const VIEW_TAB = { plan: 'visit-plan', record: 'visit', issue: 'visit', communication: 'communication' }
@@ -197,6 +199,7 @@ export default {
     summaryMetrics() {
       return this.statsCards.slice(0, 5).map((c) => ({ label: c.label, value: c.value }))
     },
+    canExportTab() { return this.tab === 'guidance' || this.tab === 'visit' },
     detailFields() { return DETAIL[this.tab] || DETAIL.guidance },
     detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
     attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
@@ -279,10 +282,34 @@ export default {
     exportFn() {
       if (this.tab === 'guidance') return guidanceVisitApi.exportGuidances({ keyword: this.keyword })
       if (this.tab === 'visit') return guidanceVisitApi.exportVisits({ keyword: this.keyword })
-      return Promise.resolve({ code: 0, data: { rowCount: 0 } })
+      return Promise.reject(new Error('当前页签不支持导出'))
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
-    goCreate() { this.$router.push('/admin/internship/guidance/new?type=' + this.tab) },
+    goCreate() {
+      if (this.tab === 'communication') {
+        const enterpriseId = window.prompt('企业 ID（必填）')
+        const summary = window.prompt('沟通摘要（不少于2字）')
+        if (!enterpriseId || !summary || summary.trim().length < 2) return toast.error('请填写企业 ID 与沟通摘要')
+        guidanceVisitApi.createCommunication({ enterpriseId, summary: summary.trim(), communicationType: 'PHONE' })
+          .then((res) => {
+            if (res.code !== 0) return toast.error(res.message || '登记失败')
+            toast.success('沟通已登记'); this.reload()
+          })
+        return
+      }
+      if (this.tab === 'visit-plan') {
+        const enterpriseName = window.prompt('巡访企业名称（或留空）') || ''
+        const objective = window.prompt('巡访目标（不少于2字，可与企业二选一）') || ''
+        if (objective.trim().length < 2 && !enterpriseName.trim()) return toast.error('请至少填写企业或目标')
+        guidanceVisitApi.createVisitPlan({ enterpriseName: enterpriseName.trim(), objective: objective.trim() || enterpriseName.trim() })
+          .then((res) => {
+            if (res.code !== 0) return toast.error(res.message || '创建失败')
+            toast.success('巡访计划已创建'); this.reload()
+          })
+        return
+      }
+      this.$router.push('/admin/internship/guidance/new?type=' + this.tab)
+    },
     switchTab(k) {
       const panel = TAB_PANEL[k] || k
       const query = { ...this.$route.query, panel }

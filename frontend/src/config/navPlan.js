@@ -783,7 +783,7 @@ export const NAV_PLAN = [
       I('连续未打卡', '/admin/internship/exceptions?status=PENDING_HANDLE', 'internship.attendance.exception.handle', 'TASK_QUEUE'),
       I('请假台账', '/admin/internship/leaves?panel=all', 'internship.leave.view', 'WORKBENCH'),
       I('请假审批', '/admin/internship/leaves?panel=pending', 'internship.leave.review', 'TASK_QUEUE'),
-      I('销假管理', '/admin/internship/leaves?panel=approved', 'internship.leave.resume', 'TASK_QUEUE'),
+      I('已批准请假', '/admin/internship/leaves?panel=approved', 'internship.leave.view', 'WORKBENCH'),
       I('超期未归', '/admin/internship/risks?panel=leave-overdue', 'internship.risk.view', 'TASK_QUEUE')
     ]),
     mod('in-weekly-task', '周报与任务', '/admin/internship/reports', [
