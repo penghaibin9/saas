@@ -130,7 +130,10 @@ export const studentApi = {
   getMySchedule: () => real.acadScheduleMy(),
   getMyTranscript: () => real.acadTranscriptMy(),
   getMyAcadStatus: () => real.acadStatusMy(),
+  getTransferOptions: () => real.acadTransferOptions(),
   submitStatusChange: (body) => real.acadStatusChange(body),
+  printMyTranscript: (reason) => real.acadTranscriptPrint(reason),
+  printMySchedule: (reason) => real.acadSchedulePrint(reason),
   getMyGraduation: () => real.acadGraduationMy(),
   // 教务中心·学分修读/学业预警/补考重修/网上选课（真实接口，无 mock 兜底）
   getMyCredits: () => real.acadCreditsMy(),

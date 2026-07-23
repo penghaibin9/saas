@@ -1009,6 +1009,11 @@ export const teacherDashboard = () => realRequest('/mobile/teacher/dashboard')
 // ── 13B 教务中心（P7 多端收口，学生自视图：课表/成绩/学籍异动/毕业进度；教师课表）──
 export const acadScheduleMy = () => realRequest('/mobile/academic/schedule/my')
 export const acadTranscriptMy = () => realRequest('/mobile/academic/transcript/my')
+export const acadTranscriptPrint = (reason) =>
+  realRequest('/mobile/academic/transcript/print', { method: 'POST', data: { reason: reason || '个人成绩单' } })
+export const acadSchedulePrint = (reason) =>
+  realRequest('/mobile/academic/schedule/print', { method: 'POST', data: { reason: reason || '个人课表' } })
+export const acadTransferOptions = () => realRequest('/mobile/academic/transfer-options')
 export const acadStatusMy = () => realRequest('/mobile/academic/status/my')
 export const acadStatusChange = (body) =>
   realRequest('/mobile/academic/status-change', { method: 'POST', data: body })
@@ -1078,6 +1083,8 @@ export const teacherGradeSubmitTask = (taskId) =>
 
 /** 教师·课堂考勤（真实接口） */
 export const teacherAttendanceSessions = () => realRequest('/mobile/teacher/academic/attendance/sessions')
+export const teacherAttendanceClassOptions = () =>
+  realRequest('/mobile/teacher/academic/attendance/class-options')
 export const teacherAttendanceCreate = (body) =>
   realRequest('/mobile/teacher/academic/attendance/sessions', { method: 'POST', data: body })
 export const teacherAttendanceDetail = (sessionId) =>
