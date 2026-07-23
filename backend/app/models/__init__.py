@@ -9,7 +9,14 @@ from app.models.portal_otp import PortalLoginOtp  # noqa: F401  (学生PC门户�
 from app.models.portal_sign import PortalSignRecord  # noqa: F401  (学生PC门户·电子签署留痕)
 from app.models.approval import (UnifiedTodo, WorkflowDefinition, WorkflowInstance,  # noqa: F401
                                  WorkflowNodeDefinition, WorkflowTask)
-from app.models.message import UnifiedMessage  # noqa: F401
+from app.models.message import (  # noqa: F401
+    MessageAttachment,
+    MessageAudience,
+    MessageCampaign,
+    MessageDeliveryJob,
+    MessageEventOutbox,
+    UnifiedMessage,
+)
 from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.models.user_preference import UserPreference  # noqa: F401
 from app.models.audit import ExportTask, SecurityAuditLog  # noqa: F401

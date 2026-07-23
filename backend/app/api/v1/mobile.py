@@ -313,9 +313,19 @@ def internship_agreement_esign_sign(agreement_id: str, user=Depends(get_current_
     return success(agr.esign_sign(user, agreement_id, "STUDENT"), message="电子签已完成")
 
 
+@router.get("/me/messages/{message_id}", summary="本人消息详情（按 messageId）")
+def me_message_detail(message_id: str, user=Depends(get_current_user)):
+    return success(stu.message_get(user, message_id))
+
+
 @router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")
 def me_message_read(message_id: str, user=Depends(get_current_user)):
     return success(stu.message_mark_read(user, message_id))
+
+
+@router.post("/me/messages/{message_id}/receipt", summary="本人消息确认回执")
+def me_message_receipt(message_id: str, user=Depends(get_current_user)):
+    return success(stu.message_ack(user, message_id), message="已确认")
 
 
 @router.get("/orientation/my", summary="我的迎新报到")

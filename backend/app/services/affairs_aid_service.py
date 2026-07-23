@@ -130,13 +130,25 @@ def _todo_done(db, apply_id, todo_type="AID_APPROVAL"):
 
 
 def _msg(db, receiver_id, title, content, mtype, apply_id):
-    from app.models import UnifiedMessage
-    rid = int(receiver_id or 0)
-    if rid <= 0:
-        return
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
-                          source_module="student-affairs", source_biz_id=int(apply_id),
-                          title=title, content=content, message_type=mtype, status="UNREAD"))
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    emit_receiver_notice(
+        db,
+        event_code="AID.NOTICE",
+        source_module="student-affairs",
+        source_biz_type="aid",
+        source_biz_id=int(apply_id),
+        receiver_id=receiver_id,
+        title=title,
+        content=content,
+        receiver_as="student",
+        dedup_extra=mtype,
+    )
+
+
+
+def _drain_message_outbox():
+    from app.services.message_event_outbox_service import try_process_pending_outbox
+    try_process_pending_outbox(worker_id="aid-inline")
 
 
 # ── 数据范围 / 敏感权限 ──
@@ -315,6 +327,7 @@ def create_batch(body, user) -> dict:
         db.flush()
         _audit(db, b.id, "BATCH_CREATE", f"publish={publish}")
         db.commit()
+        _drain_message_outbox()
         db.refresh(b)
         return _batch_row(b)
 
@@ -391,6 +404,7 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         _todo_upsert(db, x.id, assignee, student_id, f"困难认定待评议：{s.real_name}")
         _audit(db, x.id, "APPLY", f"level={body.applyLevel}")  # 涉家庭经济录入
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         db.refresh(fe)
         return _apply_row(x, s, fe)
@@ -482,6 +496,7 @@ def review(apply_id, user, action, level=None, reason="") -> dict:
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _apply_row(x, s, _family_of(db, x.id))
 
@@ -505,6 +520,7 @@ def resubmit(apply_id, user) -> dict:
         _todo_upsert(db, x.id, assignee, x.student_id, f"困难认定重新提交待评议：{s.real_name if s else ''}")
         _audit(db, x.id, "RESUBMIT")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _apply_row(x, s, _family_of(db, x.id))
 
@@ -556,6 +572,7 @@ def scan_publicity() -> dict:
                 _confirm_one(db, x)
                 cnt += 1
         db.commit()
+        _drain_message_outbox()
         return {"count": cnt, "skippedObjection": skipped}
 
 
@@ -569,6 +586,7 @@ def confirm_publicity(apply_id, user) -> dict:
         _assert_no_open_objection(db, x.id)
         _confirm_one(db, x)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _apply_row(x, s, _family_of(db, x.id), has_pending_objection=False)
 
@@ -591,6 +609,7 @@ def adjust(apply_id, user, target_level, reason="") -> dict:
                      todo_type="AID_ADJUST")
         _audit(db, x.id, "ADJUST_SUBMIT", f"{x.final_level}->{target_level}: {reason.strip()}")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _apply_row(x, s, _family_of(db, x.id))
 
@@ -620,6 +639,7 @@ def approve_adjust(apply_id, user, action="APPROVE") -> dict:
         _todo_done(db, x.id, todo_type="AID_ADJUST")
         _msg(db, x.student_id, "困难等级调整结果", f"当前等级：{LEVELS.get(x.final_level, '')}", "WORKFLOW_RESULT", x.id)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _apply_row(x, s, _family_of(db, x.id))
 
@@ -803,6 +823,7 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
             raise
         _audit(db, x.id, "AID_OBJECTION_SUBMIT", "")
         db.commit(); db.refresh(o)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
         return _obj_row(o, s)
 
@@ -876,5 +897,6 @@ def review_objection(objection_id, body, user) -> dict:
                      x.return_reason or "公示异议成立，认定结果已取消", "WORKFLOW_RESULT", x.id)
         _audit(db, o.apply_id, "AID_OBJECTION_REVIEW", result)
         db.commit(); db.refresh(o)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
         return _obj_row(o, s)

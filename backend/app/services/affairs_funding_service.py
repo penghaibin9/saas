@@ -130,13 +130,24 @@ def _todo_done(db, app_id):
 
 
 def _msg(db, receiver_id, title, content, mtype, app_id):
-    from app.models import UnifiedMessage
-    rid = int(receiver_id or 0)
-    if rid <= 0:
-        return
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
-                          source_module="student-affairs", source_biz_id=int(app_id),
-                          title=title, content=content, message_type=mtype, status="UNREAD"))
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    emit_receiver_notice(
+        db,
+        event_code="FUNDING.NOTICE",
+        source_module="student-affairs",
+        source_biz_type="funding",
+        source_biz_id=int(app_id),
+        receiver_id=receiver_id,
+        title=title,
+        content=content,
+        receiver_as="student",
+        dedup_extra=mtype,
+    )
+
+
+def _drain_message_outbox():
+    from app.services.message_event_outbox_service import try_process_pending_outbox
+    try_process_pending_outbox(worker_id="funding-inline")
 
 
 def _scope_or_403(db, student_id, user):
@@ -321,6 +332,7 @@ def create_project(body, user) -> dict:
         db.flush()
         _audit(db, p.id, "PROJECT_CREATE", body.projectType)
         db.commit()
+        _drain_message_outbox()
         db.refresh(p)
         return _project_row(p)
 
@@ -356,6 +368,7 @@ def create_batch(body, user) -> dict:
         db.flush()
         _audit(db, b.id, "BATCH_CREATE", f"publish={publish}")
         db.commit()
+        _drain_message_outbox()
         db.refresh(b)
         return _batch_row(b)
 
@@ -416,6 +429,7 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         _todo_upsert(db, x.id, assignee, student_id, f"资助申请待审：{s.real_name}")
         _audit(db, x.id, "APPLY", b.project_type)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _app_row(x, user, s)
 
@@ -489,6 +503,7 @@ def review(app_id, user, action, reason="") -> dict:
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _app_row(x, user, s)
 
@@ -535,6 +550,7 @@ def scan_publicity() -> dict:
                 _grant_one(db, x)
                 cnt += 1
         db.commit()
+        _drain_message_outbox()
         return {"count": cnt, "skippedAppeal": skipped}
 
 
@@ -547,6 +563,7 @@ def confirm_publicity(app_id, user) -> dict:
         _assert_no_open_appeal(db, x.id)
         _grant_one(db, x)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _app_row(x, user, s, has_pending_appeal=False)
 
@@ -665,6 +682,7 @@ def generate_disbursements(batch_id, user) -> dict:
         if made:
             _audit(db, int(batch_id), "FUNDING_DISBURSE_GENERATE", f"{made}条")
         db.commit()
+        _drain_message_outbox()
         return {"generated": made}
 
 
@@ -716,6 +734,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
         d.version += 1
         _audit(db, d.id, "FUNDING_DISBURSE_ISSUE", d.disburse_no or "")
         db.commit(); db.refresh(d)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(d.student_id))
         return _disb_row(d, user, s)
 
@@ -733,6 +752,7 @@ def fail_disbursement(disbursement_id, user, reason="") -> dict:
         d.bank_status, d.fail_reason, d.version = "FAILED", reason.strip(), d.version + 1
         _audit(db, d.id, "FUNDING_DISBURSE_FAIL", reason.strip())
         db.commit(); db.refresh(d)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(d.student_id))
         return _disb_row(d, user, s)
 
@@ -817,6 +837,7 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
             raise
         _audit(db, x.id, "FUNDING_APPEAL_SUBMIT", reason[:200])
         db.commit()
+        _drain_message_outbox()
         db.refresh(o)
         s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
         return _appeal_row(o, s)
@@ -890,6 +911,7 @@ def review_appeal(appeal_id, body, user) -> dict:
                      x.return_reason or "公示申诉成立，资助资格已取消", "WORKFLOW_RESULT", x.id)
         _audit(db, o.application_id, "FUNDING_APPEAL_REVIEW", result)
         db.commit()
+        _drain_message_outbox()
         db.refresh(o)
         s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
         return _appeal_row(o, s)

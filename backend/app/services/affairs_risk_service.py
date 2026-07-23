@@ -96,14 +96,39 @@ def _handle(db, risk_id, action, content, frm, to):
 
 
 def _msg(db, receiver_id, title, content, mtype, risk_id):
-    from app.models import UnifiedMessage
-    rid = int(receiver_id or 0)
-    if rid <= 0:
-        # 禁止 receiver_id=0 广播：学生首页会把 0 当公共消息拉取，造成风险隐私泄露
-        return
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
-                          source_module="student-affairs", source_biz_id=int(risk_id),
-                          title=title, content=content, message_type=mtype, status="UNREAD"))
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    if (mtype or "").upper() == "RISK_ALERT":
+        emit_receiver_notice(
+            db,
+            event_code="RISK.ALERT",
+            source_module="student-affairs",
+            source_biz_type="risk",
+            source_biz_id=int(risk_id),
+            receiver_id=receiver_id,
+            title=title,
+            content=content,
+            receiver_as="user",
+            dedup_extra=mtype,
+        )
+    else:
+        emit_receiver_notice(
+            db,
+            event_code="RISK.STATUS",
+            source_module="student-affairs",
+            source_biz_type="risk",
+            source_biz_id=int(risk_id),
+            receiver_id=receiver_id,
+            title=title,
+            content=content,
+            receiver_as="student",
+            dedup_extra=mtype,
+        )
+
+
+
+def _drain_message_outbox():
+    from app.services.message_event_outbox_service import try_process_pending_outbox
+    try_process_pending_outbox(worker_id="risk-inline")
 
 
 def _sa_admin_user_ids(db) -> set[int]:
@@ -285,6 +310,7 @@ def create_risk(body, user) -> dict:
         db.flush()
         _audit(db, x.id, "CREATE", body.source)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -304,6 +330,7 @@ def assign(risk_id, user, owner_id) -> dict:
         _msg(db, valid_owner_id, "风险待处置", f"有一条{x.risk_level}风险待你处置", "RISK_ALERT", x.id)
         _audit(db, x.id, "ASSIGN", str(valid_owner_id))
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -324,6 +351,7 @@ def process(risk_id, user, content="") -> dict:
         _handle(db, x.id, "PROCESS", content.strip(), frm, "PROCESSING")
         _audit(db, x.id, "PROCESS")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -340,6 +368,7 @@ def follow(risk_id, user, content="") -> dict:
         _handle(db, x.id, "FOLLOW", (content or "").strip(), frm, "FOLLOWING")
         _audit(db, x.id, "FOLLOW")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -360,6 +389,7 @@ def transfer(risk_id, user, new_owner_id, reason="") -> dict:
         _msg(db, valid_owner_id, "风险转办", reason or "有风险转办给你", "RISK_ALERT", x.id)
         _audit(db, x.id, "TRANSFER", str(valid_owner_id))
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -382,6 +412,7 @@ def escalate(risk_id, user, reason="") -> dict:
                               f"风险#{x.id} 已升级至 {x.risk_level}" + (f"：{reason}" if reason else ""))
         _audit(db, x.id, "ESCALATE", x.risk_level)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -401,6 +432,7 @@ def takeover(risk_id, user, content="") -> dict:
         _handle(db, x.id, "TAKEOVER", (content or "上级接管").strip(), "ESCALATED", "PROCESSING")
         _audit(db, x.id, "TAKEOVER")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -427,6 +459,7 @@ def close(risk_id, user, conclusion="") -> dict:
         _msg(db, x.student_id, "风险已关闭", "相关风险已处置关闭", "STATUS_CHANGED", x.id)
         _audit(db, x.id, "CLOSE")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -443,6 +476,7 @@ def reopen(risk_id, user, reason="") -> dict:
         _msg(db, x.owner_id, "风险重开", reason or "风险复发已重开", "RISK_ALERT", x.id)
         _audit(db, x.id, "REOPEN")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, user, s)
 
@@ -497,6 +531,7 @@ def scan_timeout() -> dict:
                 _audit(db, x.id, "AUTO_ESCALATE")
                 escalated += 1
         db.commit()
+        _drain_message_outbox()
         return {"escalated": escalated, "assigned": assigned}
 
 

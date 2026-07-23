@@ -73,7 +73,13 @@ export default {
       if (this.form.scopeType === 'CLASS') body.classId = this.selectedClassId
       if (this.form.scopeType === 'COLLEGE') body.collegeId = this.form.collegeId
       teacherApi.publishNotice(body).then((d) => {
-        uni.showToast({ title: `已发布给 ${d.recipientCount} 名学生`, icon: 'success' })
+        const st = d && d.status
+        const tip = st === 'PENDING_REVIEW'
+          ? '已提交审核'
+          : st === 'SCHEDULED'
+            ? '已预约发布'
+            : `已发布给 ${(d && d.recipientCount) || 0} 名学生`
+        uni.showToast({ title: tip, icon: 'success' })
         this.form = { title: '', content: '', scopeType: 'CLASS', collegeId: '' }
         this.selectedClassId = ''
       }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '发布失败，请稍后重试'))

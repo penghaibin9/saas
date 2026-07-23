@@ -734,9 +734,16 @@ export const signInternshipAgreementEsign = (id) =>
 export const remindWeeklyReal = (reportId) =>
   realRequest(`/mobile/teacher/internship/weekly/${reportId}/remind`, { method: 'POST' })
 
+/** 本人消息详情（按 messageId，杀进程后可重开） */
+export const getMessageDetail = (id) =>
+  realRequest('/mobile/me/messages/' + id)
+
 /** 标记本人消息已读（严格本人校验） */
 export const markMessageRead = (id) =>
   realRequest('/mobile/me/messages/' + id + '/read', { method: 'POST' })
+
+export const ackMessageReceipt = (id) =>
+  realRequest('/mobile/me/messages/' + id + '/receipt', { method: 'POST' })
 
 /** 学生档案：真实脱敏字段覆盖 mock 骨架（手机/身份证仅脱敏串，住址不返回）。 */
 /**
@@ -1058,11 +1065,6 @@ export const acadTeacherScheduleMy = () => realRequest('/mobile/academic/teacher
 export const acadCreditsMy = () => realRequest('/mobile/academic/credits/my')
 export const acadWarningMy = () => realRequest('/mobile/academic/warning/my')
 export const acadMakeupMy = () => realRequest('/mobile/academic/makeup/my')
-export const acadRetakeApply = (courseName, termCode, reason) =>
-  realRequest('/mobile/academic/makeup/retake-apply', { method: 'POST', data: { courseName, termCode, reason } })
-
-export const acadExemptionApply = (courseName, termCode, reason) =>
-  realRequest('/mobile/academic/makeup/exemption-apply', { method: 'POST', data: { courseName, termCode, reason } })
 export const acadMakeupOptions = () => realRequest('/mobile/academic/makeup/options')
 export const acadRetakeApply = (payload, termCode, reason) => {
   const data = typeof payload === 'string'
@@ -1096,6 +1098,8 @@ export const teacherAcademicScheduleChangeReview = (changeId, action, comment) =
 export const teacherAcademicStatusChangePending = () =>
   realRequest('/mobile/teacher/academic/status-changes/pending')
 export const teacherAcademicStatusChangeReview = (changeId, action, reason) =>
+  realRequest(`/mobile/teacher/academic/status-changes/${changeId}/review`,
+    { method: 'POST', data: { action, reason } })
 
 export const acadSelectionCourses = (batchId) =>
   realRequest('/mobile/academic/selection/courses' + (batchId ? `?batch_id=${batchId}` : ''))

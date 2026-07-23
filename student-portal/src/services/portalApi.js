@@ -182,6 +182,8 @@ export const portalApi = {
   // ── 消息中心（PC 分页 + 已读 + 偏好）──
   messagesInbox: (page = 1, pageSize = 20) => request(`/portal/messages${q({ page, pageSize })}`),
   messageRead: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/read`, { method: 'POST' }),
+  messagesReadAll: () => request('/portal/messages/read-all', { method: 'POST' }),
+  messageReceipt: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/receipt`, { method: 'POST' }),
   messagePreferences: () => request('/portal/messages/preferences'),
   messageSetPreference: (body) => request('/portal/messages/preferences', { method: 'POST', body }),
 

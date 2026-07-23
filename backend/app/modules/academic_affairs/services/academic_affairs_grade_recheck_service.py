@@ -176,10 +176,20 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
         a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
         if a:
             _refresh_aggregates(db, a)
-        db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(r.student_id), source_module="academic-affairs",
-                              source_biz_id=r.id, title="成绩复查结果",
-                              content=f"{r.course_name or ''} 经复查成绩由 {r.original_score} 调整为 {ns}",
-                              message_type="WORKFLOW_RESULT", status="UNREAD"))
+        from app.services.message_event_outbox_service import emit_receiver_notice
+        emit_receiver_notice(
+            db,
+            event_code="GRADE.RECHECK_RESULT",
+            source_module="academic-affairs",
+            source_biz_type="aa_grade_recheck",
+            source_biz_id=r.id,
+            receiver_id=int(r.student_id),
+            title="成绩复查结果",
+            content=f"{r.course_name or ''} 经复查成绩由 {r.original_score} 调整为 {ns}",
+            receiver_as="student",
+        )
         _audit(db, r.id, "RECHECK_ADJUST", f"{r.course_name or ''} {r.original_score}→{ns}")
         db.commit()
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(worker_id="aa-grade-recheck-inline")
         return _dto(r)

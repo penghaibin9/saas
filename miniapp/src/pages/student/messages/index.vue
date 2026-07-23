@@ -23,14 +23,16 @@
           </view>
           <MobileGlobalState v-if="!list.length" state="empty" title="暂无消息" description="这里会收到待办、通知、服务进度与课程教务消息。" />
           <view v-else class="stack-sm">
-            <view v-for="m in pagedSlice(list)" :key="m.id" class="msg__item card" :class="{ 'is-unread': !m.read }" @click="open(m)">
+            <view v-for="m in pagedSlice(list)" :key="m.id" class="msg__item card" :class="{ 'is-unread': !m.read, 'is-emg': m.emergency }" @click="open(m)">
               <view class="msg__item-top">
                 <text class="msg__dot" :class="{ 'is-on': !m.read }" />
                 <text class="msg__module">{{ m.module }}</text>
-                <text v-if="m.level === 'high'" class="msg__urgent">重要</text>
+                <text v-if="m.emergency" class="msg__urgent">紧急</text>
+                <text v-else-if="m.level === 'high'" class="msg__urgent">重要</text>
                 <text class="msg__time">{{ fromNow(m.time) }}</text>
               </view>
               <text class="msg__title">{{ m.title }}</text>
+              <view v-if="m.receipt" class="msg__sub">待确认回执</view>
               <view v-if="m.deadline" class="msg__sub">截止 {{ deadlineText(m.deadline) }}</view>
               <view v-if="m.status" class="msg__sub"><MobileStatusTag :status="m.status" /></view>
               <view v-if="m.actionable" class="msg__actions">
@@ -44,6 +46,20 @@
       </view>
     </MobileGlobalState>
     <MobileTabBar side="student" active="message" :badges="{ message: unreadTotal }" />
+
+    <view v-if="emg" class="emg-mask" @touchmove.stop.prevent>
+      <view class="emg-sheet">
+        <text class="emg-sheet__tag">紧急通知</text>
+        <text class="emg-sheet__title">{{ emg.title }}</text>
+        <text class="emg-sheet__body">{{ emg.content || '请立即查看并确认已阅。' }}</text>
+        <view class="emg-sheet__acts">
+          <button class="btn btn-ghost flex-1" @click="openEmg">查看详情</button>
+          <button class="btn btn-primary flex-1" :disabled="emgAcking" @click="ackEmg">
+            {{ emgAcking ? '提交中…' : '确认已阅' }}
+          </button>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -58,15 +74,21 @@ const TAB_GRAD = { todo: 'g1', notice: 'g1', progress: 'g3', course: 'g4' }
 
 export default {
   mixins: [listPaging(20)],
-  data() { return { data: null, state: 'loading', tab: 'todo', statusBarHeight: 20 } },
+  data() {
+    return {
+      data: null, state: 'loading', tab: 'todo', statusBarHeight: 20,
+      emg: null, emgAcking: false
+    }
+  },
   onLoad() {
     try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
     this.load()
   },
-  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
+  onShow() {
+    if (this.data) this._pickEmergency()
+  },
   onReachBottom() { this.pagedReachBottom() },
   watch: {
-    // 切换 tab 回到第一批
     tab() { this.pagedReset() }
   },
   computed: {
@@ -84,12 +106,41 @@ export default {
     load() {
       this.state = 'loading'
       this.pagedReset()
-      studentApi.getMessages().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      studentApi.getMessages().then((d) => {
+        this.data = d
+        this.state = 'ready'
+        this._pickEmergency()
+      }).catch(() => { this.state = 'error' })
+    },
+    _pickEmergency() {
+      const list = (this.data && this.data.emergencyPending) || []
+      const next = (list || []).find((x) => x && x.receipt && !x.acked)
+      this.emg = next || null
+    },
+    openEmg() {
+      if (!this.emg) return
+      this.open(this.emg)
+    },
+    async ackEmg() {
+      if (!this.emg || this.emgAcking) return
+      const raw = String(this.emg.messageId || this.emg.id || '').replace('msg-', '')
+      this.emgAcking = true
+      try {
+        await studentApi.ackMessageReceipt(raw)
+        this.emg.acked = true
+        this.emg.receipt = false
+        this.emg.read = true
+        toast('已确认')
+        this.load()
+      } catch (e) {
+        toast((e && e.message) || '确认失败')
+      } finally {
+        this.emgAcking = false
+      }
     },
     markAllRead() {
       this.list.forEach((m) => { if (!m.read) { m.read = true; this._syncRead(m) } })
     },
-    /** 打开消息：本地即时置灰 + 真实通知（msg- 前缀）同步服务器已读，失败不打扰阅读；再进详情页 */
     open(m) {
       m.read = true
       this._syncRead(m)
@@ -101,9 +152,12 @@ export default {
       go('/pages/common/search/index')
     },
     _syncRead(m) {
-      if (m._synced || !/^msg-\d+$/.test(String(m.id))) return
+      if (m._synced) return
+      const raw = String(m.messageId || m.id || '').replace('msg-', '')
+      const isUnified = m.kind === 'UNIFIED_MESSAGE' || /^\d+$/.test(raw)
+      if (!isUnified) return
       m._synced = true
-      studentApi.markMessageRead(String(m.id).replace('msg-', '')).catch(() => { m._synced = false })
+      studentApi.markMessageRead(raw).catch(() => { m._synced = false })
     },
     handle(m) {
       m.read = true
@@ -131,6 +185,7 @@ export default {
 .msg__readall { display: flex; align-items: center; gap: 4px; font-size: var(--font-size-sm); color: var(--brand-primary); }
 .msg__readall.is-done { color: var(--text-disabled); }
 .msg__item.is-unread { border-left: 3px solid var(--brand-primary); }
+.msg__item.is-emg { border-left-color: var(--danger-500); }
 .msg__item-top { display: flex; align-items: center; gap: var(--space-2); }
 .msg__dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: transparent; }
 .msg__dot.is-on { background: var(--danger-500); }
@@ -144,4 +199,24 @@ export default {
 .msg__btn.is-primary { color: #fff; background: var(--brand-primary); border-color: var(--brand-primary); }
 .msg__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--brand-primary); }
 .msg__paging.is-end { color: var(--text-tertiary); }
+.emg-mask {
+  position: fixed; inset: 0; z-index: 1000; background: rgba(15, 23, 42, 0.55);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.emg-sheet {
+  width: 100%; background: #fff; border-radius: 16px 16px 0 0;
+  padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
+}
+.emg-sheet__tag {
+  display: inline-block; font-size: 11px; color: #fff; background: var(--danger-500);
+  padding: 2px 8px; border-radius: 4px; margin-bottom: 8px;
+}
+.emg-sheet__title {
+  display: block; font-size: 17px; font-weight: 600; color: var(--text-primary); line-height: 1.4;
+}
+.emg-sheet__body {
+  display: block; margin-top: 10px; font-size: 14px; color: var(--text-secondary);
+  line-height: 1.6; max-height: 40vh; overflow: auto; white-space: pre-wrap;
+}
+.emg-sheet__acts { display: flex; gap: 10px; margin-top: 16px; }
 </style>

@@ -149,9 +149,15 @@
             type="button"
             @click="go(l.to)"
           >{{ l.label }}</button>
-          <div v-if="!loading && unread > 0" class="wb__msg" title="消息中心页面待建设，此处仅展示未读数">
+          <button
+            v-if="!loading && unread > 0"
+            type="button"
+            class="wb__msg"
+            title="进入我的消息"
+            @click="go('/admin/messages/inbox')"
+          >
             未读消息 <strong>{{ unread }}</strong>
-          </div>
+          </button>
         </div>
       </section>
     </template>
@@ -532,7 +538,9 @@ export default {
 .wb__msg {
   margin-top: 4px; padding: 10px 12px; border-radius: 10px;
   font-size: 14px; color: #8a5a00; background: #fff8e8; border: 1px solid #f0e0bb;
+  cursor: pointer; text-align: left; font-family: inherit; width: 100%;
 }
+.wb__msg:hover { border-color: #e0c88a; background: #fff3d6; }
 .wb__empty { margin: 0; padding: 22px 0; text-align: center; color: #5a9367; font-size: 14px; }
 .wb__muted { margin: 0; padding: 18px 0; text-align: center; color: #8a97a5; font-size: 13px; }
 </style>

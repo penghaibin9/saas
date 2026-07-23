@@ -57,10 +57,20 @@ def _audit(db, biz_id, action, detail=""):
 
 
 def _msg(db, receiver_id, title, content, mtype, biz_id):
-    from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0), source_module="academic-affairs",
-                          source_biz_id=int(biz_id), title=title, content=content,
-                          message_type=mtype, status="UNREAD"))
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    code = "SCHEDULE_CHANGE.RETURNED" if "RETURNED" in (mtype or "").upper() else "SCHEDULE_CHANGE.RESULT"
+    emit_receiver_notice(
+        db,
+        event_code=code,
+        source_module="academic-affairs",
+        source_biz_type="AA_SCHEDULE_CHANGE",
+        source_biz_id=int(biz_id),
+        receiver_id=receiver_id,
+        title=title,
+        content=content,
+        receiver_as="user",
+        dedup_extra=mtype,
+    )
 
 
 def _open_wf(db, cid, applicant_id, title, first_node):
@@ -270,6 +280,8 @@ def review(cid, user, action, comment="") -> dict:
                  "WORKFLOW_RESULT", x.id)
             _audit(db, x.id, "REJECT", comment.strip())
             db.commit()
+            from app.services.message_event_outbox_service import try_process_pending_outbox
+            try_process_pending_outbox(worker_id="aa-sched-change-inline")
             db.refresh(x)
             return _row(x)
 
@@ -298,6 +310,8 @@ def review(cid, user, action, comment="") -> dict:
         applied = _apply_schedule(db, x)
         _todo_done(db, x.id)
         db.commit()
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(worker_id="aa-sched-change-inline")
         db.refresh(x)
         out = _row(x)
         out["applied"] = applied

@@ -82,7 +82,8 @@ export const NAV_PLAN = [
       I('发布记录', '/admin/messages/outbox', 'workbench.message.publish'),
       I('发送统计', '/admin/messages/statistics', 'workbench.message.statistics.view'),
       I('消息模板', '/admin/messages/templates', 'workbench.message.template.manage'),
-      I('消息设置', '/admin/messages/settings', 'workbench.message.view')
+      I('消息设置', '/admin/messages/settings', 'workbench.message.view'),
+      I('投递运维', '/admin/messages/ops', 'workbench.message.statistics.view')
     ], 'workbench.message.view'),
     mod('wb-dashboard', '领导驾驶舱', '/admin/data-center', [
       I('数据驾驶舱', '/admin/data-center', 'dataCenter.dashboard.view'),
@@ -104,7 +105,8 @@ export const NAV_PLAN = [
     // 施工图卡·学工工作台（B包第5步·待施工）
     mod('sa-workbench', '学工工作台', null, [
       I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
-      I('辅导员工作台', '/admin/student-affairs/workbench', 'studentAffairs.dashboard.view'),
+      /* 旧辅导员双首页已 redirect → /；菜单只保留统一「我的工作台」 */
+      I('我的工作台', '/', 'workbench.home.view'),
       I('辅导员考评（指标/评分/申诉）', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
     // 施工图卡·学生画像（已有底座·6 三级已实现）

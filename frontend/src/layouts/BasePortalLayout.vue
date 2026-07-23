@@ -154,15 +154,15 @@
           v-if="ctx"
           type="button"
           class="bpl-bell"
-          :title="pendingCount ? ('待办提醒：' + pendingCount + ' 项待处理') : '待办提醒'"
-          aria-label="待办提醒"
+          :title="messageUnreadCount ? ('未读消息：' + messageUnreadCount + ' 条') : '消息中心'"
+          aria-label="消息中心"
           @click="goBell"
         >
           <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.7 21a2 2 0 01-3.4 0" />
           </svg>
-          <span v-if="pendingCount" class="bpl-bell__b">{{ pendingCount }}</span>
+          <span v-if="messageUnreadCount" class="bpl-bell__b">{{ messageUnreadCount }}</span>
         </button>
         <slot name="user">
           <AppUserChip embedded />
@@ -496,6 +496,9 @@ export default {
     pendingCount() {
       return (this.ctx && this.ctx.pendingCount) || 0
     },
+    messageUnreadCount() {
+      return (this.ctx && this.ctx.messageUnreadCount) || 0
+    },
     railItems() {
       // 一级图标轨 = adminMenu.js 的 6 个一级模块（工作台已作为第一个分组，
       // 其首叶「我的工作台」指向 /；不再额外合成 home，避免出现两个「工作台」）。
@@ -585,10 +588,10 @@ export default {
     }
   },
   methods: {
-    /** 顶栏铃铛：角标为待办计数（ctx.pendingCount），点击进「我的待办」。
-     *  统一消息中心落地前的过渡入口——先消灭"角标可见却不可点"的死元素。 */
+    /** 顶栏铃铛：角标为消息未读数（ctx.messageUnreadCount），点击进「我的消息」。
+     *  待办角标仍属于「我的待办」入口，二者不得共用。 */
     goBell() {
-      if (this.$route.path !== '/admin/approval/todos') this.$router.push('/admin/approval/todos')
+      if (this.$route.path !== '/admin/messages/inbox') this.$router.push('/admin/messages/inbox')
     },
     toggleDevPlanner() {
       if (!(import.meta.env && import.meta.env.DEV)) return

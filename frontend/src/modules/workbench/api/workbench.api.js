@@ -32,7 +32,7 @@ export function fetchTodoList(params = {}) {
   return request('/admin/todos', { params: { status: 'PENDING', pageSize: 8, ...params } })
 }
 
-/** 未读消息数：{ unread } */
+/** 未读消息数：{ unread, pendingAck } */
 export function fetchMessageCount() {
   return request('/admin/messages/count')
 }
@@ -46,7 +46,7 @@ export function completeTodo(todoId, comment) {
 }
 
 /**
- * 门户壳上下文（品牌 + 当前身份 + 权限码）。
+ * 门户壳上下文（品牌 + 当前身份 + 权限码 + 消息未读角标）。
  * 对齐学工/实习布局：真实共享端点，失败时静默降级保证壳可渲染；
  * 工作台业务数字仍由 fetchTodo* 严格失败，不在此兜底。
  *
@@ -59,6 +59,7 @@ export async function fetchLayoutContext() {
   let dataScope = { scopeName: '' }
   let permissionPatterns = null
   let ctxKey = ''
+  let messageUnreadCount = 0
 
   try {
     const b = await request('/tenant/brand')
@@ -102,11 +103,19 @@ export async function fetchLayoutContext() {
     /* 身份上下文失败：壳仍可开；业务数字由工作台页独立报错 */
   }
 
+  try {
+    const cnt = await fetchMessageCount()
+    messageUnreadCount = (cnt && cnt.unread) || 0
+  } catch {
+    /* 消息角标失败不阻断壳 */
+  }
+
   return {
     tenantBrandConfig: brand,
     currentRole,
     dataScope,
     permissionPatterns,
+    messageUnreadCount,
     ctxKey
   }
 }

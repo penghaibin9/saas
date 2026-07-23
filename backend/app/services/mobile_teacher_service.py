@@ -1365,19 +1365,20 @@ def dashboard(user: dict) -> dict:
     return dash.get_dashboard(user)
 
 
-# ══════════ 通知发布（移动端首创：教师发通知给学生，按班级/学院/全校，真实写 t_unified_message） ══════════
+# ══════════ 通知发布（改接消息中心 campaign，禁止直接逐人写 UnifiedMessage） ══════════
 
 def notify_publish(user: dict, body: dict) -> dict:
-    """教师/管理员发布通知：CLASS 范围任何教师限本人负责班级；COLLEGE/SCHOOL 范围仅管理类角色。
-    接收人解析为 StudentProfile.id 写入 receiver_id，与全仓库既有 UnifiedMessage 写入惯例一致
-    （见 academic_affairs_grade_service.py/internship_service.py 等既有调用点）。"""
+    """教师/管理员发布通知 → MessageCampaign 预览+发布。
+
+    CLASS：任意教师限本人负责班级；COLLEGE/SCHOOL：管理类角色。
+    """
     _require_teacher(user)
     b = body or {}
     title = (b.get("title") or "").strip()
     content = (b.get("content") or "").strip()
     scope_type = (b.get("scopeType") or "").upper()
-    if not title:
-        raise AppException("VALIDATION_ERROR", "标题必填")
+    if len(title) < 4:
+        raise AppException("VALIDATION_ERROR", "标题至少 4 字")
     if len(content) < 5:
         raise AppException("VALIDATION_ERROR", "内容必填且不少于 5 字")
     if scope_type not in ("CLASS", "COLLEGE", "SCHOOL"):
@@ -1386,34 +1387,61 @@ def notify_publish(user: dict, body: dict) -> dict:
     is_admin = role in _ADMIN_ROLES
     if scope_type in ("COLLEGE", "SCHOOL") and not is_admin:
         raise AppException("NO_PERMISSION", "仅管理类角色可发布学院/全校范围通知")
-    with _session() as db:
-        from app.models import SchoolClass, StudentProfile, UnifiedMessage
-        tid = _tid()
-        conds = [StudentProfile.tenant_id == tid, StudentProfile.is_deleted.is_(False)]
-        if scope_type == "CLASS":
-            class_id = b.get("classId")
-            if not class_id:
-                raise AppException("VALIDATION_ERROR", "班级ID必填")
+
+    audiences = []
+    if scope_type == "CLASS":
+        class_id = b.get("classId")
+        if not class_id:
+            raise AppException("VALIDATION_ERROR", "班级ID必填")
+        with _session() as db:
+            from app.models import SchoolClass
+            tid = _tid()
             if not is_admin:
                 numeric_uid = _teacher_numeric_id(user)
                 cls = db.get(SchoolClass, int(class_id))
                 if (not cls or cls.tenant_id != tid or cls.is_deleted or
                         (cls.counselor_id != numeric_uid and cls.head_teacher_id != numeric_uid)):
                     raise AppException("NO_DATA_SCOPE", "该班级不在您的负责范围内")
-            conds.append(StudentProfile.class_id == int(class_id))
-        elif scope_type == "COLLEGE":
-            college_id = b.get("collegeId")
-            if not college_id:
-                raise AppException("VALIDATION_ERROR", "学院ID必填")
-            conds.append(StudentProfile.college_id == int(college_id))
-        rows = db.scalars(select(StudentProfile).where(*conds)).all()
-        if not rows:
-            raise AppException("VALIDATION_ERROR", "该范围内暂无学生，未发布")
-        for s in rows:
-            db.add(UnifiedMessage(tenant_id=tid, receiver_id=s.id, source_module="teacher-notice",
-                                  title=title, content=content, status="UNREAD"))
-        db.commit()
-        return {"recipientCount": len(rows), "title": title}
+        audiences = [{"type": "CLASS", "includeOrExclude": "INCLUDE",
+                      "targetIds": [int(class_id)]}]
+    elif scope_type == "COLLEGE":
+        college_id = b.get("collegeId")
+        if not college_id:
+            raise AppException("VALIDATION_ERROR", "学院ID必填")
+        audiences = [{"type": "COLLEGE", "includeOrExclude": "INCLUDE",
+                      "targetIds": [int(college_id)]}]
+    else:
+        audiences = [{"type": "ALL_STUDENT", "includeOrExclude": "INCLUDE", "targetIds": []}]
+
+    from app.services import message_audience_service as audience_svc
+    from app.services import message_campaign_service as campaign_svc
+
+    preview = audience_svc.preview_audience(user, audiences, ["STUDENT"])
+    if int(preview.get("recipientCount") or 0) <= 0:
+        raise AppException("VALIDATION_ERROR", "该范围内暂无学生，未发布")
+
+    draft = campaign_svc.create_draft(user, {
+        "title": title,
+        "contentPlain": content,
+        "category": "ANNOUNCEMENT",
+        "priority": "NORMAL",
+        "audiences": audiences,
+        "publishMode": "IMMEDIATE",
+        "idempotencyKey": b.get("idempotencyKey") or f"teacher-mini-{_teacher_numeric_id(user)}-{int(datetime.utcnow().timestamp())}",
+    })
+    result = campaign_svc.publish_campaign(
+        user, draft["campaignId"],
+        preview_token=preview["previewToken"],
+        audience_fingerprint=preview["audienceFingerprint"],
+        version=draft["version"],
+    )
+    return {
+        "campaignId": result.get("campaignId") or draft["campaignId"],
+        "status": result.get("status"),
+        "recipientCount": result.get("recipientCount") or preview.get("recipientCount") or 0,
+        "title": title,
+        "message": result.get("message"),
+    }
 
 
 # ══════════ 消息通知设置（移动端首创，真实过滤 messages() 聚合） ══════════
@@ -1973,7 +2001,50 @@ def messages(user: dict) -> dict:
         return scope_match_row(scope, student_no=r.get("studentNo"),
                                class_name=r.get("className"),
                                advisor_name=r.get("advisorName"))
+
+    def _module_label(source_module: str | None) -> str:
+        labels = {
+            "academic-affairs": "学业过程",
+            "graduation": "毕业设计",
+            "internship": "岗位实习",
+            "student-affairs": "学工中心",
+            "campus-service": "在校服务",
+        }
+        return labels.get((source_module or "").strip(), "系统通知")
+
+    def _level_of(row) -> str:
+        pri = (getattr(row, "priority", None) or "").upper()
+        cat = (getattr(row, "category", None) or "").upper()
+        if pri in ("EMERGENCY", "IMPORTANT") or cat in ("EMERGENCY", "WARNING"):
+            return "high"
+        return "normal"
+
     system_msgs, dynamic_msgs, risk_msgs = [], [], []
+    uid = _teacher_numeric_id(u)
+    if uid:
+        with _session() as db:
+            from app.models import UnifiedMessage
+            vis = or_(
+                UnifiedMessage.receiver_user_id == uid,
+                and_(UnifiedMessage.receiver_user_id.is_(None), UnifiedMessage.receiver_id == uid),
+            )
+            rows = db.scalars(select(UnifiedMessage).where(
+                UnifiedMessage.tenant_id == _tid(),
+                UnifiedMessage.is_deleted.is_(False),
+                vis,
+            ).order_by(UnifiedMessage.id.desc()).limit(30)).all()
+            for n in rows:
+                system_msgs.append({
+                    "id": str(n.id),
+                    "messageId": str(n.id),
+                    "kind": "UNIFIED_MESSAGE",
+                    "title": n.title or "",
+                    "content": n.content or "",
+                    "module": _module_label(n.source_module),
+                    "level": _level_of(n),
+                    "time": _iso(n.created_at) if n.created_at else None,
+                    "read": (n.status or "").upper() != "UNREAD",
+                })
     # 学生动态：待批周报 / 开题
     reports, _ = _safe_list(internship_service.list_weekly_reports, 1, 15, status="PENDING_REVIEW")
     for r in filter(_in_scope, reports):
@@ -1996,8 +2067,6 @@ def messages(user: dict) -> dict:
         risk_msgs.append({"id": "risk-aw-" + str(w.get("id")),
                           "title": f"{w.get('name') or w.get('studentName') or '学生'} 学业预警",
                           "module": "风险预警", "level": "high", "read": False})
-    system_msgs.append({"id": "sys-1", "title": "本周待办已汇总，请及时处理",
-                        "module": "系统通知", "level": "normal", "read": False})
     groups_all = {"system": system_msgs, "dynamic": dynamic_msgs, "risk": risk_msgs}
     from app.services import notification_preference_service as notify_pref
     on = notify_pref.enabled_categories(user, list(groups_all.keys()))
@@ -2005,8 +2074,8 @@ def messages(user: dict) -> dict:
     tabs = [{"key": "system", "label": "系统通知", "badge": len([x for x in groups["system"] if not x["read"]])},
             {"key": "dynamic", "label": "学生动态", "badge": len([x for x in groups["dynamic"] if not x["read"]])},
             {"key": "risk", "label": "风险预警", "badge": len([x for x in groups["risk"] if not x["read"]])}]
-    unread = sum(len(v) for v in groups.values())
-    return {"hasData": unread > 0, "unreadCount": unread, "tabs": tabs, "groups": groups}
+    unread = sum(len([x for x in v if not x.get("read")]) for v in groups.values())
+    return {"hasData": unread > 0 or any(groups.values()), "unreadCount": unread, "tabs": tabs, "groups": groups}
 
 
 # ══════════ 教师审批列表（复用审批服务，mobile 轻量） ══════════

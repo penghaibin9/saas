@@ -198,7 +198,38 @@ def student_help_report(user, body=None) -> dict:
                operator=(stu.real_name if stu else "学生"))
         if (rec.risk_level or "NONE") in ("NONE", "", "LOW") and level in ("MEDIUM", "HIGH"):
             rec.risk_level = level
+        # 通知指导教师（outbox）
+        try:
+            from app.models import User
+            from app.services.message_event_outbox_service import emit_message_event
+            advisor = None
+            if getattr(rec, "advisor_user_id", None):
+                advisor = db.get(User, rec.advisor_user_id)
+            if not advisor and (rec.advisor_name or "").strip():
+                advisor = db.scalars(select(User).where(
+                    User.tenant_id == _tid(), User.real_name == rec.advisor_name.strip(),
+                    User.user_type == "TEACHER", User.is_deleted.is_(False),
+                    User.status == "ACTIVE")).first()
+            if advisor:
+                emit_message_event(
+                    db,
+                    event_code="INTERNSHIP.RISK_CREATED",
+                    source_module="internship",
+                    source_biz_type="risk_record",
+                    source_biz_id=int(r.id),
+                    recipient_refs=[{"userId": int(advisor.id)}],
+                    title=f"学生求助风险：{title[:40]}",
+                    content=content[:500],
+                    dedup_key=f"INTERNSHIP.RISK_CREATED:{r.id}:user:{advisor.id}",
+                )
+        except Exception:  # noqa: BLE001
+            pass
         db.commit()
+        try:
+            from app.services.message_event_outbox_service import process_pending_outbox
+            process_pending_outbox(limit=10, worker_id="internship-risk-inline")
+        except Exception:  # noqa: BLE001
+            pass
         return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status],
                 "riskTitle": r.risk_title, "riskLevel": r.risk_level,
                 "message": "求助已提交，指导教师将跟进"}
@@ -247,7 +278,8 @@ def remind(user, risk_id, channel="站内消息") -> dict:
     """向风险责任人发送站内催办；无账号映射时明确失败，不伪造成功。"""
     from datetime import timedelta
 
-    from app.models import UnifiedMessage, User
+    from app.models import User
+    from app.services.message_event_outbox_service import emit_message_event, process_pending_outbox
     with session() as db:
         r = _get(db, risk_id)
         rec, stu = _owner_or_403(db, r, user, "只能催办本人数据范围内的风险")
@@ -273,14 +305,25 @@ def remind(user, risk_id, channel="站内消息") -> dict:
         title = f"实习风险催办：{(r.risk_title or r.risk_code or '')[:40]}"
         content = (f"请及时跟进风险单 {r.risk_code or r.id}（学生 "
                    f"{stu.real_name if stu else '-'}）。催办渠道：{channel or '站内消息'}。")
-        db.add(UnifiedMessage(
-            tenant_id=_tid(), receiver_id=account.id, source_module="internship",
-            source_biz_id=r.id, title=title, content=content,
-            message_type="INTERNSHIP_RISK_REMIND", status="UNREAD"))
+        emit_message_event(
+            db,
+            event_code="INTERNSHIP.RISK_REMINDED",
+            source_module="internship",
+            source_biz_type="risk_record",
+            source_biz_id=int(r.id),
+            recipient_refs=[{"userId": int(account.id)}],
+            content=content,
+            title=title,
+            dedup_key=f"INTERNSHIP.RISK_REMINDED:{r.id}:user:{account.id}",
+        )
         _trail(db, r.id, "REMIND", {"channel": channel or "站内消息",
                                     "receiverId": str(account.id), "ownerName": owner_name},
                operator=_op_name(user))
         db.commit()
+        try:
+            process_pending_outbox(limit=20, worker_id="internship-inline")
+        except Exception:  # noqa: BLE001
+            pass
         return {"id": str(r.id), "reminded": True, "channel": channel or "站内消息",
                 "receiverName": account.real_name or owner_name}
 

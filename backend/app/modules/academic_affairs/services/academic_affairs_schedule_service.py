@@ -291,7 +291,8 @@ def pre_publish(batch_id, user) -> dict:
 def publish(batch_id, user) -> dict:
     """发布课表：通知师生（t_unified_message）+ 落发布记录（t_aa_schedule_publish，供「课表发布」历史查询）。"""
     with session() as db:
-        from app.models import AaScheduleBatch, AaScheduleItem, AaSchedulePublish, UnifiedMessage
+        from app.models import AaScheduleBatch, AaScheduleItem, AaSchedulePublish, User
+        from app.services.message_event_outbox_service import emit_receiver_notice
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaScheduleBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
@@ -300,22 +301,39 @@ def publish(batch_id, user) -> dict:
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次状态不可发布")
         b.status, b.publish_at = "PUBLISHED", datetime.utcnow()
-        # 通知涉及的教师（去重）
+        # 通知涉及的教师（去重；按 teacher_key 解析 User，无法解析则跳过）
         teachers = {r.teacher_key for r in db.scalars(select(AaScheduleItem).where(
             AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == b.id,
             AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False))).all()
             if r.teacher_key}
+        notified = 0
         for tk in teachers:
-            db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=0, source_module="academic-affairs",
-                                  source_biz_id=b.id, title="课表已发布",
-                                  content=f"{b.batch_name} 已发布，请查看你的课表", message_type="PUBLISHED_NOTICE",
-                                  status="UNREAD"))
+            acc = db.scalars(select(User).where(
+                User.tenant_id == _tid(), User.login_name == tk,
+                User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+            if not acc:
+                continue
+            emit_receiver_notice(
+                db,
+                event_code="COURSE.SCHEDULE_PUBLISHED",
+                source_module="academic-affairs",
+                source_biz_type="aa_schedule_batch",
+                source_biz_id=b.id,
+                receiver_id=acc.id,
+                title="课表已发布",
+                content=f"{b.batch_name} 已发布，请查看你的课表",
+                receiver_as="user",
+                dedup_extra=str(tk),
+            )
+            notified += 1
         n, _r, uid = _op()
         db.add(AaSchedulePublish(tenant_id=_tid(), batch_id=b.id, term_id=b.term_id, action="PUBLISH",
-                                 operator_name=n or uid, notified_count=len(teachers)))
-        _audit(db, "AA_SCHEDULE_BATCH", b.id, "PUBLISH", f"teachers={len(teachers)}")
+                                 operator_name=n or uid, notified_count=notified))
+        _audit(db, "AA_SCHEDULE_BATCH", b.id, "PUBLISH", f"teachers={notified}")
         db.commit()
-        return {"batchId": str(batch_id), "status": "PUBLISHED", "notified": len(teachers)}
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(worker_id="aa-schedule-inline")
+        return {"batchId": str(batch_id), "status": "PUBLISHED", "notified": notified}
 
 
 def void_and_reissue(batch_id, user, reason="") -> dict:

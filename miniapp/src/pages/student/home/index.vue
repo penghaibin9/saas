@@ -163,6 +163,12 @@
     </MobileGlobalState>
 
     <MobileTabBar side="student" active="home" :badges="{ message: home ? home.metrics.unread : 0 }" />
+
+    <view v-if="emg" class="emg-banner" @click="goMessages">
+      <text class="emg-banner__tag">紧急</text>
+      <text class="emg-banner__tx ellipsis">{{ emg.title }}</text>
+      <text class="emg-banner__go">去确认 ›</text>
+    </view>
   </view>
 </template>
 
@@ -189,7 +195,8 @@ export default {
   data() {
     return {
       brand: tenantBrandConfig, home: null, state: 'loading', user: {}, greeting: '你好', statusBarHeight: 20,
-      orientation: null, orientationBatch: { open: false, daysLeft: 0 }
+      orientation: null, orientationBatch: { open: false, daysLeft: 0 },
+      emg: null
     }
   },
   computed: {
@@ -234,6 +241,9 @@ export default {
     try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
     this.load()
   },
+  onShow() {
+    this.loadEmergency()
+  },
   onPullDownRefresh() {
     this.load(() => uni.stopPullDownRefresh())
   },
@@ -244,6 +254,15 @@ export default {
     },
     gradClass(i) {
       return GRAD_CLASSES[i % GRAD_CLASSES.length]
+    },
+    goMessages() {
+      go('/pages/student/messages/index')
+    },
+    loadEmergency() {
+      studentApi.getMessages().then((d) => {
+        const list = (d && d.emergencyPending) || []
+        this.emg = list.find((x) => x && x.receipt && !x.acked) || null
+      }).catch(() => { /* 横幅失败不阻断首页 */ })
     },
     load(done) {
       if (this._homeLoading) {
@@ -258,6 +277,7 @@ export default {
         this.orientationBatch = data.orientationBatch || { open: false, daysLeft: 0 }
         this.greeting = data.greeting || '你好'
         this.state = 'ready'
+        this.loadEmergency()
       }).catch(() => {
         this.state = 'error'
       }).finally(() => {
@@ -329,4 +349,16 @@ export default {
 .home__notice-tag { font-size: 10px; color: #fff; background: var(--danger-500); padding: 1px 5px; border-radius: var(--radius-sm); flex-shrink: 0; }
 .home__notice-title { font-size: var(--font-size-base); color: var(--text-primary); }
 .home__notice-src { font-size: var(--font-size-xs); color: var(--text-tertiary); flex-shrink: 0; }
+.emg-banner {
+  position: fixed; left: 12px; right: 12px; bottom: calc(56px + env(safe-area-inset-bottom));
+  z-index: 50; display: flex; align-items: center; gap: 8px;
+  background: #7f1d1d; color: #fff; border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(127, 29, 29, 0.35);
+}
+.emg-banner__tag {
+  font-size: 10px; font-weight: 600; background: #fff; color: #7f1d1d;
+  padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+}
+.emg-banner__tx { flex: 1; font-size: 13px; }
+.emg-banner__go { font-size: 12px; opacity: 0.9; flex-shrink: 0; }
 </style>

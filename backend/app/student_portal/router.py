@@ -653,9 +653,9 @@ def messages_inbox(user=Depends(get_current_user),
     return success(messages.inbox(user, page, pageSize))
 
 
-@router.post("/messages/{message_id}/read", summary="标记消息已读（本人）")
-def messages_read(message_id: str, user=Depends(get_current_user)):
-    return success(messages.mark_read(user, message_id))
+@router.post("/messages/read-all", summary="全部标为已读（本人）")
+def messages_read_all(user=Depends(get_current_user)):
+    return success(messages.mark_read_all(user), message="已全部标为已读")
 
 
 @router.get("/messages/preferences", summary="通知偏好（本人）")
@@ -666,6 +666,16 @@ def messages_preferences(user=Depends(get_current_user)):
 @router.post("/messages/preferences", summary="设置通知偏好（本人）")
 def messages_set_preference(user=Depends(get_current_user), body: dict = Body(...)):
     return success(messages.set_preference(user, body))
+
+
+@router.post("/messages/{message_id}/read", summary="标记消息已读（本人）")
+def messages_read(message_id: str, user=Depends(get_current_user)):
+    return success(messages.mark_read(user, message_id))
+
+
+@router.post("/messages/{message_id}/receipt", summary="消息确认回执（本人）")
+def messages_receipt(message_id: str, user=Depends(get_current_user)):
+    return success(messages.ack_receipt(user, message_id), message="已确认")
 
 
 # ── PC 重活公共底座：电子签署（可插拔）+ 打印/导出留痕 ──

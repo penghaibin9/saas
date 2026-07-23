@@ -12,6 +12,7 @@ from app.api.v1 import import_export
 from app.api.v1 import migration  # 老系统数据迁移（系统管理·6 域 P1 + 平台租户迁移进度）
 from app.api.v1 import message as message_simple
 from app.api.v1 import todo as todo_simple
+from app.api.v1 import message_center as message_center_api
 from app.api.v1 import mobile
 from app.api.v1 import mobile_export
 from app.api.v1 import mobile_orientation_teacher
@@ -143,6 +144,7 @@ api_router.include_router(message_simple.router, prefix="/messages", tags=["mess
 api_router.include_router(make_todos_router("admin"))
 api_router.include_router(make_todos_router("student-mini"))
 api_router.include_router(make_todos_router("teacher-mobile"))
+api_router.include_router(message_center_api.router)  # /api/v1/admin/message-campaigns/*
 
 # 导入导出（占位）
 api_router.include_router(import_export.import_router, prefix="/import", tags=["import-export"])

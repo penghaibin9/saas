@@ -201,10 +201,20 @@ def _todo_done(db, sc_id):
 
 
 def _msg(db, receiver_id, title, content, mtype, sc_id):
-    from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
-                          source_module="academic-affairs", source_biz_id=int(sc_id),
-                          title=title, content=content, message_type=mtype, status="UNREAD"))
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    code = "STATUS_CHANGE.RETURNED" if "RETURNED" in (mtype or "").upper() else "STATUS_CHANGE.RESULT"
+    emit_receiver_notice(
+        db,
+        event_code=code,
+        source_module="academic-affairs",
+        source_biz_type="AA_STATUS_CHANGE",
+        source_biz_id=int(sc_id),
+        receiver_id=receiver_id,
+        title=title,
+        content=content,
+        receiver_as="student",
+        dedup_extra=mtype,
+    )
 
 
 def _row(x, s=None) -> dict:
@@ -389,6 +399,8 @@ def review(sc_id, user, action, reason="") -> dict:
                  reason.strip(), "WORKFLOW_RESULT" if action == "REJECT" else "RETURNED_NOTICE", x.id)
             _audit(db, x.id, x.status, reason.strip())
             db.commit()
+            from app.services.message_event_outbox_service import try_process_pending_outbox
+            try_process_pending_outbox(worker_id="aa-change-inline")
             db.refresh(x)
             return _row(x, s)
         if action != "APPROVE":
@@ -421,6 +433,8 @@ def review(sc_id, user, action, reason="") -> dict:
              f"你的{L_CT[x.change_type]}申请已通过并生效", "WORKFLOW_RESULT", x.id)
         _audit(db, x.id, "EFFECTIVE", f"{res['fromStatus']}->{res['toStatus']}")
         db.commit()
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(worker_id="aa-change-inline")
         db.refresh(x)
         out = _row(x, s)
     audit_status_change(x.student_id, res["fromStatus"], res["toStatus"], x.change_type, uid)

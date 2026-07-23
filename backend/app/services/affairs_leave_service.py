@@ -168,14 +168,41 @@ def _todo_done(db, leave_id, todo_type="LEAVE_APPROVAL"):
         r.version += 1
 
 
-def _msg(db, receiver_id, title, content, mtype, leave_id):
-    from app.models import UnifiedMessage
+def _msg(db, receiver_id, title, content, mtype, leave_id, *, event_code: str | None = None):
+    """请假结果通知：同事务写 outbox，由调度异步生成 UnifiedMessage。"""
     rid = int(receiver_id or 0)
     if rid <= 0:
         return
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
-                          source_module="student-affairs", source_biz_id=int(leave_id),
-                          title=title, content=content, message_type=mtype, status="UNREAD"))
+    _MTYPE_TO_EVENT = {
+        "WORKFLOW_RESULT": "LEAVE.APPROVED",
+        "RETURNED_NOTICE": "LEAVE.RETURNED",
+        "STATUS_CHANGED": "LEAVE.CLOSED",
+        "DEADLINE_REMINDER": "LEAVE.OVERDUE",
+    }
+    code = (event_code or _MTYPE_TO_EVENT.get(mtype) or "LEAVE.CLOSED").strip().upper()
+    from app.services.message_event_outbox_service import emit_message_event
+    emit_message_event(
+        db,
+        event_code=code,
+        source_module="student-affairs",
+        source_biz_type="leave_request",
+        source_biz_id=int(leave_id),
+        recipient_refs=[{"studentId": rid}],
+        content=content,
+        title=title,
+        action_key="student.leave.detail",
+        action_params={"leaveId": int(leave_id)},
+        dedup_key=f"{code}:leave:{int(leave_id)}:{mtype}:{title[:20]}",
+    )
+
+
+def _drain_message_outbox():
+    """业务提交后尽力同步消费本租户 outbox（失败由调度重试，不回滚业务）。"""
+    try:
+        from app.services.message_event_outbox_service import process_pending_outbox
+        process_pending_outbox(limit=20, worker_id="leave-inline")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _check_leave_action_assignee(db, x, user, *, todo_type: str, node: str = "COUNSELOR_REVIEW"):
@@ -398,11 +425,14 @@ def approve(leave_id, user, comment="") -> dict:
             if inst:
                 inst.status = "APPROVED"
             _todo_done(db, x.id)
-            _msg(db, x.student_id, "请假已通过", f"你的请假（{x.days}天）已通过审批", "WORKFLOW_RESULT", x.id)
+            _msg(db, x.student_id, "请假已通过", f"你的请假（{x.days}天）已通过审批",
+                 "WORKFLOW_RESULT", x.id, event_code="LEAVE.APPROVED")
             _audit(db, x.id, "APPROVED", comment)
         db.commit()
         db.refresh(x)
-        return _resolve_class_names(db, [_row(x, s)])[0]
+        out = _resolve_class_names(db, [_row(x, s)])[0]
+    _drain_message_outbox()
+    return out
 
 
 def reject(leave_id, user, reason) -> dict:
@@ -420,11 +450,14 @@ def reject(leave_id, user, reason) -> dict:
         if inst:
             inst.status = "REJECTED"
         _todo_done(db, x.id)
-        _msg(db, x.student_id, "请假被驳回", reason.strip(), "RETURNED_NOTICE", x.id)
+        _msg(db, x.student_id, "请假被驳回", reason.strip(), "RETURNED_NOTICE", x.id,
+             event_code="LEAVE.REJECTED")
         _audit(db, x.id, "REJECTED", reason.strip())
         db.commit()
         db.refresh(x)
-        return _resolve_class_names(db, [_row(x, s)])[0]
+        out = _resolve_class_names(db, [_row(x, s)])[0]
+    _drain_message_outbox()
+    return out
 
 
 def return_leave(leave_id, user, reason) -> dict:
@@ -443,11 +476,14 @@ def return_leave(leave_id, user, reason) -> dict:
         if inst:
             inst.status = "RETURNED"
         _todo_done(db, x.id)
-        _msg(db, x.student_id, "请假被退回", reason.strip(), "RETURNED_NOTICE", x.id)
+        _msg(db, x.student_id, "请假被退回", reason.strip(), "RETURNED_NOTICE", x.id,
+             event_code="LEAVE.RETURNED")
         _audit(db, x.id, "RETURNED", reason.strip())
         db.commit()
         db.refresh(x)
-        return _resolve_class_names(db, [_row(x, s)])[0]
+        out = _resolve_class_names(db, [_row(x, s)])[0]
+    _drain_message_outbox()
+    return out
 
 
 def resubmit(leave_id, user, *, self_only: bool = False, reason: str | None = None) -> dict:
@@ -553,11 +589,14 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
                 x.overdue_pushed_at = None
             x.version += 1
             _todo_done(db, x.id, todo_type="LEAVE_CANCEL")
-            _msg(db, x.student_id, "销假被退回", reason.strip(), "RETURNED_NOTICE", x.id)
+            _msg(db, x.student_id, "销假被退回", reason.strip(), "RETURNED_NOTICE", x.id,
+                 event_code="LEAVE.RETURN_REJECTED")
             _audit(db, x.id, "CANCEL_RETURN", reason.strip())
             db.commit()
             db.refresh(x)
-            return _resolve_class_names(db, [_row(x, s)])[0]
+            out = _resolve_class_names(db, [_row(x, s)])[0]
+            _drain_message_outbox()
+            return out
         # CONFIRM：辅导员可校对/更正实际返校时间
         ret = _parse_dt(actual_return_at) if actual_return_at else None
         if ret:
@@ -581,11 +620,14 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
                                      to_stage="LEAVE_CLOSED", reason=f"请假销假（{x.days}天）",
                                      source_module="student-affairs"))
         _todo_done(db, x.id, todo_type="LEAVE_CANCEL")
-        _msg(db, x.student_id, "销假完成", "你的请假已销假归档", "STATUS_CHANGED", x.id)
+        _msg(db, x.student_id, "销假完成", "你的请假已销假归档", "STATUS_CHANGED", x.id,
+             event_code="LEAVE.RETURN_DONE")
         _audit(db, x.id, "CLOSED", note)
         db.commit()
         db.refresh(x)
-        return _resolve_class_names(db, [_row(x, s)])[0]
+        out = _resolve_class_names(db, [_row(x, s)])[0]
+    _drain_message_outbox()
+    return out
 
 
 # ═══════════ 续假 ═══════════
@@ -651,11 +693,14 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
             x.affairs_status, x.status = "APPROVED", "APPROVED"
             x.version += 1
             _todo_done(db, x.id, todo_type="LEAVE_EXTENSION")
-            _msg(db, x.student_id, "续假被驳回", reason.strip(), "WORKFLOW_RESULT", x.id)
+            _msg(db, x.student_id, "续假被驳回", reason.strip(), "WORKFLOW_RESULT", x.id,
+                 event_code="LEAVE.EXTEND_REJECTED")
             _audit(db, x.id, "EXTENSION_REJECTED", reason.strip())
             db.commit()
             db.refresh(x)
-            return _resolve_class_names(db, [_row(x, s)])[0]
+            out = _resolve_class_names(db, [_row(x, s)])[0]
+            _drain_message_outbox()
+            return out
         if ext:
             ext.status = "APPROVED"
             ext.version += 1
@@ -665,11 +710,14 @@ def approve_extension(leave_id, user, action="APPROVE", reason="") -> dict:
         x.affairs_status, x.status, x.overdue_pushed_at = "APPROVED", "APPROVED", None
         x.version += 1
         _todo_done(db, x.id, todo_type="LEAVE_EXTENSION")
-        _msg(db, x.student_id, "续假已通过", f"续假已通过，新结束时间 {_iso(x.end_time)}", "WORKFLOW_RESULT", x.id)
+        _msg(db, x.student_id, "续假已通过", f"续假已通过，新结束时间 {_iso(x.end_time)}", "WORKFLOW_RESULT", x.id,
+             event_code="LEAVE.EXTEND_APPROVED")
         _audit(db, x.id, "EXTENSION_APPROVED")
         db.commit()
         db.refresh(x)
-        return _resolve_class_names(db, [_row(x, s)])[0]
+        out = _resolve_class_names(db, [_row(x, s)])[0]
+    _drain_message_outbox()
+    return out
 
 
 # ═══════════ 代登记销假 + 逾期处置 ═══════════
@@ -731,16 +779,17 @@ def handle_overdue(leave_id, user, handle_type, note="") -> dict:
                                          to_stage="LEAVE_CLOSED", reason=f"逾期请假处置关闭（{x.days}天）",
                                          source_module="student-affairs"))
             _todo_done(db, x.id, todo_type="LEAVE_OVERDUE")
-            _msg(db, x.student_id, "逾期请假已处置关闭", note.strip(), "STATUS_CHANGED", x.id)
+            _msg(db, x.student_id, "逾期请假已处置关闭", note.strip(), "STATUS_CHANGED", x.id,
+                 event_code="LEAVE.CLOSED")
             _audit(db, x.id, "OVERDUE_CLOSED", note.strip())
         else:
             _audit(db, x.id, f"OVERDUE_{handle_type}", note.strip())
         db.commit()
         db.refresh(x)
-        return _resolve_class_names(db, [_row(x, s)])[0]
-
-
-# ═══════════ 逾期扫描（幂等） ═══════════
+        out = _resolve_class_names(db, [_row(x, s)])[0]
+    if handle_type == "CLOSE":
+        _drain_message_outbox()
+    return out
 
 def scan_overdue() -> dict:
     from app.models import CsLeave
@@ -757,11 +806,14 @@ def scan_overdue() -> dict:
             assignee = _assignee_for(db, "COUNSELOR_REVIEW", x.student_id)
             _todo_upsert(db, x.id, assignee, x.student_id, "请假逾期未销假，请跟进",
                          todo_type="LEAVE_OVERDUE")
-            _msg(db, x.student_id, "请假已逾期", "你的请假已到期未销假，请尽快销假", "DEADLINE_REMINDER", x.id)
+            _msg(db, x.student_id, "请假已逾期", "你的请假已到期未销假，请尽快销假", "DEADLINE_REMINDER", x.id,
+                 event_code="LEAVE.OVERDUE")
             _audit(db, x.id, "OVERDUE")
             cnt += 1
         db.commit()
-        return {"count": cnt}
+    if cnt:
+        _drain_message_outbox()
+    return {"count": cnt}
 
 
 # ═══════════ 查询 ═══════════

@@ -270,58 +270,17 @@ def complete_todo(user: dict, todo_id: str, comment: str | None = None) -> tuple
 
 # ────────────────────────── 消息 ──────────────────────────
 
-def _msg_cond(user: dict):
-    from app.models import UnifiedMessage
-    uid = _uid(user)
-    return (UnifiedMessage.receiver_id == uid) if uid else None
-
-
 def list_messages(user: dict, read_status: Optional[str] = None,
                   page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
-    from app.models import UnifiedMessage
-    with session() as db:
-        vis = _msg_cond(user)
-        if vis is None:
-            return [], 0
-        conds = [UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False), vis]
-        if read_status:
-            conds.append(UnifiedMessage.status == read_status)
-        total = db.scalar(select(func.count()).select_from(UnifiedMessage).where(*conds)) or 0
-        rows = db.scalars(select(UnifiedMessage).where(*conds)
-                          .order_by(UnifiedMessage.id.desc())
-                          .offset(max(0, (page - 1) * page_size)).limit(page_size)).all()
-        return [_msg_dict(r) for r in rows], int(total)
+    from app.services import message_center_service as mc
+    return mc.list_messages_compat(user, read_status=read_status, page=page, page_size=page_size)
 
 
 def count_messages(user: dict) -> dict:
-    from app.models import UnifiedMessage
-    with session() as db:
-        vis = _msg_cond(user)
-        if vis is None:
-            return {"unread": 0}
-        n = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
-            UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-            UnifiedMessage.status == "UNREAD", vis)) or 0
-        return {"unread": int(n)}
+    from app.services import message_center_service as mc
+    return mc.count_messages_compat(user)
 
 
 def read_message(user: dict, message_id: str) -> dict | None:
-    from app.models import UnifiedMessage
-    with session() as db:
-        vis = _msg_cond(user)
-        if vis is None:
-            return None
-        try:
-            mid = int(message_id)
-        except (TypeError, ValueError):
-            return None
-        row = db.scalar(select(UnifiedMessage).where(
-            UnifiedMessage.id == mid, UnifiedMessage.tenant_id == _tid(),
-            UnifiedMessage.is_deleted.is_(False), vis))
-        if not row:
-            return None
-        if row.status != "READ":
-            row.status = "READ"
-            row.read_at = _utc_now()          # 与 CommonMixin 的 utcnow 写入口径一致
-            db.commit()
-        return {"messageId": str(row.id), "readStatus": "READ"}
+    from app.services import message_center_service as mc
+    return mc.read_message_compat(user, message_id)

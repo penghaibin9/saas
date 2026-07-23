@@ -115,13 +115,25 @@ def _todo_done(db, biz_id, todo_type="DISCIPLINE_APPROVAL"):
 
 
 def _msg(db, receiver_id, title, content, mtype, biz_id):
-    from app.models import UnifiedMessage
-    rid = int(receiver_id or 0)
-    if rid <= 0:
-        return
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=rid,
-                          source_module="student-affairs", source_biz_id=int(biz_id),
-                          title=title, content=content, message_type=mtype, status="UNREAD"))
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    emit_receiver_notice(
+        db,
+        event_code="DISCIPLINE.NOTICE",
+        source_module="student-affairs",
+        source_biz_type="discipline",
+        source_biz_id=int(biz_id),
+        receiver_id=receiver_id,
+        title=title,
+        content=content,
+        receiver_as="student",
+        dedup_extra=mtype,
+    )
+
+
+
+def _drain_message_outbox():
+    from app.services.message_event_outbox_service import try_process_pending_outbox
+    try_process_pending_outbox(worker_id="discipline-inline")
 
 
 def _scope_or_403(db, student_id, user):
@@ -236,6 +248,7 @@ def register(body, user) -> dict:
         db.flush()
         _audit(db, x.id, "REGISTER", body.discType)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, s)
 
@@ -255,6 +268,7 @@ def submit(case_id, user) -> dict:
         _todo_upsert(db, x.id, assignee, x.student_id, f"处分待初审：{s.real_name if s else ''}")
         _audit(db, x.id, "SUBMIT")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, s)
 
@@ -269,6 +283,7 @@ def cancel(case_id, user) -> dict:
         _todo_done(db, x.id)
         _audit(db, x.id, "CANCELLED")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, s)
 
@@ -354,6 +369,7 @@ def review(case_id, user, action, reason="") -> dict:
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, s)
 
@@ -390,6 +406,7 @@ def submit_remove(case_id, user, reason="") -> dict:
                      f"处分解除待初审：{s.real_name if s else ''}", todo_type="DISCIPLINE_REMOVE")
         _audit(db, x.id, "REMOVE_SUBMIT")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, s)
 
@@ -474,6 +491,7 @@ def review_remove(case_id, user, action, reason="") -> dict:
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _row(x, s)
 
@@ -571,6 +589,7 @@ def deliver_case(case_id, body, user) -> dict:
         x.delivery_remark, x.version = getattr(body, "remark", None), x.version + 1
         _audit(db, x.id, "DISCIPLINE_DELIVER", method)
         db.commit(); db.refresh(x)
+        _drain_message_outbox()
         return _row(x, s)
 
 
@@ -606,6 +625,7 @@ def submit_appeal(case_id, body, user, *, skip_scope_check: bool = False) -> dic
         db.add(a); db.flush()
         _audit(db, x.id, "DISCIPLINE_APPEAL_SUBMIT", "")
         db.commit(); db.refresh(a)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(x.student_id))
         return _appeal_row(a, s)
 
@@ -669,5 +689,6 @@ def review_appeal(appeal_id, body, user) -> dict:
                 _msg(db, x.student_id, "处分已撤销", "你的申诉已获支持，原处分决定已撤销", "WORKFLOW_RESULT", x.id)
         _audit(db, a.case_id, "DISCIPLINE_APPEAL_REVIEW", result)
         db.commit(); db.refresh(a)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
         return _appeal_row(a, s)

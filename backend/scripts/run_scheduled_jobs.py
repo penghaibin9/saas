@@ -27,6 +27,10 @@ def _active_tenant_ids() -> list[int]:
 def run_once() -> None:
     from app.modules.internship.services import internship_leave_service
     from app.services import affairs_leave_service
+    from app.services import message_campaign_service as camp_svc
+    from app.services import message_delivery_service as delivery_svc
+    from app.services import message_event_outbox_service as msg_outbox
+    from app.services import message_ops_service as ops_svc
     for tenant_id in _active_tenant_ids():
         set_tenant({"tenantId": str(tenant_id)})
         try:
@@ -34,6 +38,13 @@ def run_once() -> None:
                 internship_leave_service.refresh_overdue(system=True)
             if settings.AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN:
                 affairs_leave_service.scan_overdue()
+            # 消息中心：定时发布 + 投递作业 + outbox + 失效/催确认 + 对账
+            camp_svc.process_scheduled_campaigns(limit=20)
+            delivery_svc.claim_and_process_delivery_jobs(limit=20, worker_id="run_scheduled_jobs")
+            msg_outbox.process_pending_outbox(limit=50, worker_id="run_scheduled_jobs")
+            camp_svc.process_expired_campaigns(limit=50)
+            camp_svc.nudge_unacked_emergency(limit=50)
+            ops_svc.reconcile_message_stats()
         except Exception:  # noqa: BLE001
             log.exception("scheduled scan failed tenant=%s", tenant_id)
         finally:

@@ -1006,7 +1006,7 @@ def publish_defense(gid) -> dict:
 
 def notify_defense_group(gid, user=None) -> dict:
     """向已发布答辩组学生投递站内信（receiver_id=StudentProfile.id）。"""
-    from app.models import UnifiedMessage
+    from app.services.message_event_outbox_service import emit_message_event, process_pending_outbox
 
     if not gid:
         raise AppException("VALIDATION_ERROR", "defenseGroupId 必填")
@@ -1035,14 +1035,25 @@ def notify_defense_group(gid, user=None) -> dict:
                 f"时间：{when}；地点：{where}；主席：{g.chair or '待指定'}。"
                 f"请按时参加，如有冲突请尽快联系指导教师。"
             )
-            db.add(UnifiedMessage(
-                tenant_id=_tid(), receiver_id=rid, source_module="graduation",
-                source_biz_id=g.id, title=title, content=content,
-                message_type="GRADUATION_DEFENSE_NOTIFY", status="UNREAD"))
+            emit_message_event(
+                db,
+                event_code="GRADUATION_DESIGN.DEFENSE_ARRANGED",
+                source_module="graduation",
+                source_biz_type="defense_group",
+                source_biz_id=int(g.id),
+                recipient_refs=[{"studentId": rid}],
+                content=content,
+                title=title,
+                dedup_key=f"GRADUATION_DESIGN.DEFENSE_ARRANGED:{g.id}:student:{rid}",
+            )
             notified += 1
         _audit(db, "DEFENSE", g.id, "发送答辩通知",
                f"{g.group_name} notified={notified} skipped={skipped}")
         db.commit()
+        try:
+            process_pending_outbox(limit=50, worker_id="graduation-inline")
+        except Exception:  # noqa: BLE001
+            pass
         if notified <= 0:
             msg = "暂无可投递学生（缺学籍关联或组内无学生）"
         else:
