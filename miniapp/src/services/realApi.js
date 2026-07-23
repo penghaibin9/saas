@@ -277,6 +277,22 @@ export const teacherAffairsLeaveExtensionApprove = (leaveId, action, reason) =>
   realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/extension-approve`,
     { method: 'POST', data: { action, reason: reason || '' } })
 
+/** 学工待办处置：困难/奖助/处分/风险（复用 PC 服务层校验，真实接口） */
+export const teacherAffairsAidPending = () => realRequest('/mobile/teacher/affairs/aid/pending')
+export const teacherAffairsAidReview = (applyId, body) =>
+  realRequest(`/mobile/teacher/affairs/aid/${applyId}/review`, { method: 'POST', data: body || {} })
+export const teacherAffairsFundingPending = () => realRequest('/mobile/teacher/affairs/funding/pending')
+export const teacherAffairsFundingReview = (appId, body) =>
+  realRequest(`/mobile/teacher/affairs/funding/${appId}/review`, { method: 'POST', data: body || {} })
+export const teacherAffairsDisciplinePending = () => realRequest('/mobile/teacher/affairs/discipline/pending')
+export const teacherAffairsDisciplineReview = (caseId, body) =>
+  realRequest(`/mobile/teacher/affairs/discipline/${caseId}/review`, { method: 'POST', data: body || {} })
+export const teacherAffairsRiskPending = () => realRequest('/mobile/teacher/affairs/risk/pending')
+export const teacherAffairsRiskProcess = (riskId, content) =>
+  realRequest(`/mobile/teacher/affairs/risk/${riskId}/process`, { method: 'POST', data: { content } })
+export const teacherAffairsRiskClose = (riskId, conclusion) =>
+  realRequest(`/mobile/teacher/affairs/risk/${riskId}/close`, { method: 'POST', data: { conclusion } })
+
 /** 班干部任命/免去：我的班级 / 班级学生名单 / 班干部名单 / 任命 / 免去
  * （owner+范围校验，真实接口，无 mock 兜底） */
 export const teacherAffairsMyClasses = () => realRequest('/mobile/teacher/affairs/classes')
@@ -931,13 +947,14 @@ export const affairsLeaveCancel = (leaveId, body) =>
   realRequest(`/mobile/affairs/leave/${leaveId}/cancel`, { method: 'POST', data: body || {} })
 export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
 export const affairsAidObjection = (body) =>
-  realRequest('/mobile/affairs/aid/objection', { method: 'POST', body })
+  realRequest('/mobile/affairs/aid/objection', { method: 'POST', data: body || {} })
 export const affairsTalkMy = () => realRequest('/mobile/affairs/talk/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
-export const affairsFundingAppeal = (body) => realRequest('/mobile/affairs/funding/appeal', { method: 'POST', body })
+export const affairsFundingAppeal = (body) =>
+  realRequest('/mobile/affairs/funding/appeal', { method: 'POST', data: body || {} })
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')
 export const affairsDisciplineAppeal = (body) =>
-  realRequest('/mobile/affairs/discipline/appeal', { method: 'POST', body })
+  realRequest('/mobile/affairs/discipline/appeal', { method: 'POST', data: body || {} })
 export const affairsDormMy = () => realRequest('/mobile/affairs/dorm/my')
 export const affairsDormOptions = () => realRequest('/mobile/affairs/dorm/select-options')
 export const affairsDormSelfSelect = (bedId) =>
