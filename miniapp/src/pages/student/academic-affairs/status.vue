@@ -42,6 +42,7 @@
 
           <textarea class="stx__reason" v-model="form.reason" placeholder="申请原因（不少于5字）" maxlength="200" />
           <button class="stx__btn" :disabled="submitting || !canSubmit" @click="submit">提交申请</button>
+          <button class="stx__btn stx__btn--ghost" :disabled="submitting || !canSubmit" @click="submitAndPrint" style="margin-top:8px">提交并打印申请表</button>
         </view>
       </view>
     </MobileGlobalState>
@@ -153,6 +154,46 @@ export default {
       this._lock.run(() => studentApi.submitStatusChange(body))
         .then(() => {
           safeToast('已提交', 'success')
+          this.form = { changeType: '', reason: '', toMajorId: '', toClassId: '' }
+          this.load()
+        })
+        .catch((e) => { if (e && e.code === 'LOCKED') return; toastError(e) })
+        .finally(() => { this.submitting = false })
+    },
+    submitAndPrint() {
+      if (!this.canSubmit) return safeToast('请完整填写申请信息')
+      const body = {
+        changeType: this.form.changeType,
+        reason: this.form.reason.trim(),
+        toMajorId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toMajorId || undefined) : undefined,
+        toClassId: (this.form.changeType === 'TRANSFER_MAJOR' || this.form.changeType === 'TRANSFER_CLASS')
+          ? (this.form.toClassId || undefined) : undefined
+      }
+      this.submitting = true
+      this._lock.run(() => studentApi.submitStatusChange(body)
+        .then(() => studentApi.printStatusChange(body)))
+        .then((res) => {
+          const doc = (res && res.document) || {}
+          const hist = (doc.history || []).map((h) =>
+            `${this.ctText(h.changeType)} ${this.statusLabel(h.status)}`
+          ).join('\n')
+          const text = [
+            '学籍异动申请表摘要',
+            `姓名：${doc.realName || '—'}`,
+            `学号：${doc.studentNo || '—'}`,
+            `当前学籍：${this.statusText(doc.studentStatus || (this.data && this.data.studentStatus))}`,
+            `申请类型：${this.ctText(doc.changeType || body.changeType)}`,
+            `申请原因：${doc.reason || body.reason || ''}`,
+            `留痕：${(res && res.loggedAt) || ''}`,
+            '',
+            '近期异动：',
+            hist || '无'
+          ].join('\n')
+          uni.setClipboardData({
+            data: text,
+            success: () => safeToast('已提交并复制申请摘要', 'success'),
+            fail: () => safeToast('已提交并留痕打印', 'success')
+          })
           this.form = { changeType: '', reason: '', toMajorId: '', toClassId: '' }
           this.load()
         })

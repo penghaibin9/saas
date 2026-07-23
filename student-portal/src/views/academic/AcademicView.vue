@@ -253,7 +253,10 @@
           <button v-for="e in examTabs" :key="e" class="sp-tab" :class="{ 'is-active': examTab === e }" @click="examTab = e">{{ e }}</button>
         </div>
         <section v-if="examTab === '我的考试'" class="sp-card" style="padding:0;overflow:hidden">
-          <div style="padding:14px 18px;border-bottom:1px solid var(--line2);font-weight:600">我的考试安排</div>
+          <div style="padding:14px 18px;border-bottom:1px solid var(--line2);font-weight:600;display:flex;justify-content:space-between;align-items:center">
+            <span>我的考试安排</span>
+            <button class="mini" :disabled="busy" @click="printExamTicket">打印准考证</button>
+          </div>
           <StateBlock v-if="!(examSchedule.items||[]).length" type="empty" :text="examSchedule.note || '暂无已发布的个人考试安排'" />
           <table v-else class="sp-table">
             <thead><tr><th>课程</th><th>日期</th><th>时间</th><th>考场</th><th>座位</th><th>准考证</th></tr></thead>
@@ -289,12 +292,31 @@
               <textarea v-model.trim="deferForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="如病假需附材料请线下提交辅导员" />
               <button class="sp-btn" :disabled="busy || !deferForm.examCourseId" @click="submitDefer">提交缓考申请</button>
             </template>
-            <template v-else>
-              <div class="sp-fieldlabel">课程名称</div>
-              <input v-model.trim="examForm.courseName" class="sp-inp" style="margin-bottom:12px" placeholder="如：高等数学(下)" />
+            <template v-else-if="examTab === '免修申请'">
+              <div class="sp-fieldlabel">选择未及格课程（必选）</div>
+              <select v-model="exemptionPick" class="sp-inp" style="margin-bottom:12px">
+                <option value="">请选择</option>
+                <option v-for="o in (makeupOptions.exemptionOptions || [])" :key="o.gradeId || o.courseName" :value="o.courseName">
+                  {{ o.courseName }} · {{ o.termCode || '无学期' }}
+                </option>
+              </select>
+              <div class="sp-muted" style="margin-bottom:8px">禁止纯手输为主入口；列表来自本人未及格/挂科成绩。</div>
               <div class="sp-fieldlabel">申请理由</div>
               <textarea v-model.trim="examForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明申请理由并准备佐证材料" />
-              <button class="sp-btn" :disabled="busy || !examForm.reason || !examForm.courseName" @click="submitExam">提交申请</button>
+              <button class="sp-btn" :disabled="busy || !exemptionPick" @click="submitExam">提交免修申请</button>
+            </template>
+            <template v-else>
+              <div class="sp-fieldlabel">选择挂科课程（必选）</div>
+              <select v-model="retakePick" class="sp-inp" style="margin-bottom:12px">
+                <option value="">请选择</option>
+                <option v-for="o in (makeupOptions.retakeOptions || [])" :key="o.gradeId" :value="o.gradeId">
+                  {{ o.courseName }} · {{ o.termCode || '无学期' }} · {{ o.score ?? '—' }}分
+                </option>
+              </select>
+              <div class="sp-muted" style="margin-bottom:8px">重修须从挂科列表选择；无挂科时不可手输冒充。</div>
+              <div class="sp-fieldlabel">申请理由</div>
+              <textarea v-model.trim="examForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="请说明申请理由并准备佐证材料" />
+              <button class="sp-btn" :disabled="busy || !retakePick" @click="submitExam">提交重修报名</button>
             </template>
           </section>
           <section class="sp-card">
@@ -318,11 +340,59 @@
         </div>
       </section>
 
+      <!-- 学期注册自助 -->
+      <section v-else-if="tab === 'registration'">
+        <section class="sp-card">
+          <div class="sp-panel__head">开放中的注册批次</div>
+          <div class="sp-muted" style="margin-bottom:12px">{{ registration.note || '在开放窗口内完成注册或申请暂缓；资格未通过/有未解除异常时不可自助注册。' }}</div>
+          <StateBlock v-if="!(registration.batches||[]).length" type="empty" :text="registration.note || '当前无开放注册批次'" />
+          <div v-for="b in registration.batches" :key="b.batchId" style="border:1px solid var(--line2);border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="font-weight:600">{{ b.batchName }} · {{ b.registerTypeLabel }}</div>
+            <div class="sp-muted">状态 {{ b.registrationStatus }} · 资格 {{ b.eligibilityStatus }}</div>
+            <div v-if="b.blockReason" class="sp-muted" style="color:var(--warn-fg)">{{ b.blockReason }}</div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="mini" :disabled="busy || !b.canRegister" @click="doRegister(b)">完成注册</button>
+              <button class="mini mini--ghost" :disabled="busy || !b.canDefer" @click="doDeferReg(b)">申请暂缓</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- 我的考勤 -->
+      <section v-else-if="tab === 'attendance'">
+        <section class="sp-card">
+          <div class="sp-panel__head">我的课堂考勤</div>
+          <div class="sp-muted">出勤 {{ attendance.summary?.PRESENT || 0 }} · 迟到 {{ attendance.summary?.LATE || 0 }} · 旷课 {{ attendance.summary?.ABSENT || 0 }} · 请假 {{ attendance.summary?.LEAVE || 0 }}</div>
+          <div class="sp-muted" style="margin-top:8px">{{ attendance.note || '点名入口在教师小程序；PC 仅统计，不做补点名。' }}</div>
+        </section>
+        <AutoTable :rows="attendance.items" empty="暂无已提交考勤" title="明细" />
+      </section>
+
+      <!-- 校历 -->
+      <section v-else-if="tab === 'calendar'">
+        <section class="sp-card">
+          <div class="sp-panel__head">当前学期校历（只读）</div>
+          <div class="sp-muted">{{ calendar.hasTerm ? ('学期 ' + calendar.termLabel) : (calendar.note || '尚未设置当前学期') }}</div>
+        </section>
+        <AutoTable :rows="calendar.events" empty="暂无校历事件" title="校历事件" />
+        <AutoTable :rows="(calendar.weeks || []).slice(0, 24)" empty="暂无教学周" title="教学周概览" />
+      </section>
+
+      <!-- 清考 -->
+      <section v-else-if="tab === 'clearance'">
+        <section class="sp-card">
+          <div class="sp-panel__head">清考结果</div>
+          <div class="sp-muted">{{ clearance.note || '清考由教务处圈定，此处只读。' }}</div>
+        </section>
+        <AutoTable :rows="clearance.items" empty="暂无清考安排" />
+      </section>
+
       <!-- 学分修读 -->
       <section v-else-if="tab === 'credits'">
         <section class="sp-card">
           <div class="sp-panel__head">学分修读</div>
           <div class="sp-muted">已获 <b style="color:var(--pri)">{{ credits.obtainedCredits ?? 0 }}</b> / 应修 {{ credits.requiredCredits ?? '—' }} · GPA {{ credits.gpa ?? '—' }} · 不及格 {{ credits.failCount ?? 0 }} 门</div>
+          <div class="sp-muted" style="margin-top:8px">说明：本页为本人学分汇总只读视图；分类占比/培养方案进度以教务处培养方案发布口径为准，移动端同口径。</div>
           <div class="bar" style="margin-top:12px"><span :style="{ width: creditPct + '%' }" /></div>
         </section>
         <AutoTable :rows="credits.passedCourses" empty="暂无已通过课程" title="已通过课程" />
@@ -485,9 +555,10 @@ const ui = useUiStore()
 const cfg = usePortalConfigStore()
 const session = useSessionStore()
 const tabs = [
-  { key: 'schedule', label: '我的课表' }, { key: 'select', label: '选课中心' }, { key: 'grades', label: '我的成绩' },
-  { key: 'transcript', label: '成绩单打印' }, { key: 'evaluation', label: '学生评教' }, { key: 'appeal', label: '成绩复查' },
-  { key: 'status', label: '学籍异动' }, { key: 'exam', label: '考试/缓考/免修' },
+  { key: 'registration', label: '学期注册' }, { key: 'schedule', label: '我的课表' }, { key: 'select', label: '选课中心' },
+  { key: 'grades', label: '我的成绩' }, { key: 'transcript', label: '成绩单打印' }, { key: 'evaluation', label: '学生评教' },
+  { key: 'appeal', label: '成绩复查' }, { key: 'status', label: '学籍异动' }, { key: 'exam', label: '考试/缓考/免修' },
+  { key: 'attendance', label: '我的考勤' }, { key: 'calendar', label: '校历' }, { key: 'clearance', label: '清考结果' },
   { key: 'credits', label: '学分修读' }, { key: 'warning', label: '学业预警' },
   { key: 'textbook', label: '教材领用' }, { key: 'level', label: '等级考试' },
   { key: 'split', label: '专业分流' }, { key: 'recognition', label: '成绩认定' },
@@ -512,6 +583,13 @@ const examDefer = ref({})
 const examSchedule = ref({ items: [] })
 const deferOptions = ref([])
 const makeup = ref({})
+const makeupOptions = ref({ retakeOptions: [], exemptionOptions: [] })
+const registration = ref({ batches: [] })
+const attendance = ref({ items: [], summary: {} })
+const calendar = ref({ events: [], weeks: [] })
+const clearance = ref({ items: [] })
+const retakePick = ref('')
+const exemptionPick = ref('')
 const audit = ref({})
 const info = ref({})
 const recheck = ref({ items: [] })
@@ -691,14 +769,16 @@ function canCancelLevel(r) {
 async function loadAll() {
   loading.value = true; error.value = ''
   try {
-    const [sc, tr, st, ex, mk, au, cs, rec, en, ev, exam, opts, rc, cr, wn, tb, lv, sp, rg, to] = await Promise.allSettled([
+    const [sc, tr, st, ex, mk, au, cs, rec, en, ev, exam, opts, rc, cr, wn, tb, lv, sp, rg, to, mko, reg, att, cal, clr] = await Promise.allSettled([
       portalApi.academicSchedule(), portalApi.academicTranscript(), portalApi.academicStatus(),
       portalApi.academicExamDefer(), portalApi.academicMakeup(), portalApi.academicGraduationAudit(),
       portalApi.academicCourseSelection(), portalApi.academicSelectionRecords(), portalApi.profileEnrollment(),
       portalApi.academicEvaluationTasks(), portalApi.academicExam(), portalApi.academicExamDeferOptions(),
       portalApi.academicGradeRecheck(), portalApi.academicCredits(), portalApi.academicWarning(),
       portalApi.academicTextbook(), portalApi.academicLevelExam(), portalApi.academicMajorSplit(),
-      portalApi.academicRecognition(), portalApi.academicTransferOptions()
+      portalApi.academicRecognition(), portalApi.academicTransferOptions(),
+      portalApi.academicMakeupOptions(), portalApi.academicRegistration(), portalApi.academicAttendance(),
+      portalApi.academicCalendar(), portalApi.academicClearance()
     ])
     const val = (r, d) => (r.status === 'fulfilled' ? (r.value ?? d) : d)
     schedule.value = val(sc, {}); transcript.value = val(tr, {}); status.value = val(st, {})
@@ -720,6 +800,17 @@ async function loadAll() {
     majorSplit.value = val(sp, { openBatches: [], myVolunteers: [] })
     recognition.value = val(rg, { items: [] })
     transferOptions.value = val(to, { majors: [], classes: [], majorClasses: {} })
+    makeupOptions.value = val(mko, { retakeOptions: [], exemptionOptions: [] })
+    registration.value = val(reg, { batches: [] })
+    attendance.value = val(att, { items: [], summary: {} })
+    calendar.value = val(cal, { events: [], weeks: [] })
+    clearance.value = val(clr, { items: [] })
+    if (!(retakePick.value) && (makeupOptions.value.retakeOptions || [])[0]) {
+      retakePick.value = makeupOptions.value.retakeOptions[0].gradeId
+    }
+    if (!(exemptionPick.value) && (makeupOptions.value.exemptionOptions || [])[0]) {
+      exemptionPick.value = makeupOptions.value.exemptionOptions[0].courseName
+    }
     for (const b of (majorSplit.value.openBatches || [])) {
       if (!splitPicks[b.batchId]) {
         const mine = (majorSplit.value.myVolunteers || []).find((v) => String(v.batchId) === String(b.batchId))
@@ -929,11 +1020,49 @@ async function submitStatusChange() {
 async function submitExam() {
   busy.value = true
   try {
-    const body = { reason: examForm.reason, courseName: examForm.courseName }
-    if (examTab.value === '免修申请') await portalApi.academicExemptionApply(body)
-    else await portalApi.academicRetakeApply(body)
+    if (examTab.value === '免修申请') {
+      const courseName = exemptionPick.value || examForm.courseName
+      if (!courseName) throw new Error('请从未及格课程列表选择')
+      const opt = (makeupOptions.value.exemptionOptions || []).find((x) => x.courseName === courseName)
+      await portalApi.academicExemptionApply({
+        courseName, termCode: opt?.termCode || '', reason: examForm.reason
+      })
+    } else {
+      const gradeId = retakePick.value
+      const opt = (makeupOptions.value.retakeOptions || []).find((x) => String(x.gradeId) === String(gradeId))
+      if (!opt) throw new Error('请从挂科课程列表选择')
+      await portalApi.academicRetakeApply({
+        gradeId: opt.gradeId, courseName: opt.courseName, termCode: opt.termCode || '', reason: examForm.reason
+      })
+    }
     ui.notify('申请已提交'); examForm.reason = ''; examForm.courseName = ''; loadAll()
   } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+}
+async function doRegister(b) {
+  if (!b?.canRegister || busy.value) return
+  busy.value = true
+  try { await portalApi.academicRegistrationRegister(b.batchId); ui.notify('注册成功'); loadAll() }
+  catch (e) { ui.notify(e?.message || '注册失败') } finally { busy.value = false }
+}
+async function doDeferReg(b) {
+  if (!b?.canDefer || busy.value) return
+  const reason = window.prompt('请填写暂缓原因（至少2字）') || ''
+  if (reason.trim().length < 2) { ui.notify('原因至少2字'); return }
+  busy.value = true
+  try { await portalApi.academicRegistrationDefer(b.batchId, { reason: reason.trim() }); ui.notify('暂缓已提交'); loadAll() }
+  catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+}
+async function printExamTicket() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const res = await portalApi.academicExamTicketPrint({ reason: '个人准考证' })
+    const items = res?.document?.items || examSchedule.value.items || []
+    const rows = items.map((it) => `<tr><td>${it.courseName || '—'}</td><td>${it.examDate || '—'}</td><td>${it.classroom || '—'}</td><td>${it.seatNo ?? '—'}</td><td>${it.admissionNo || '—'}</td></tr>`).join('')
+    downloadAcademicHtml('准考证', res, `<p>${res?.document?.realName || studentName.value} · ${res?.document?.studentNo || info.value.studentNo || ''}</p>
+<table><thead><tr><th>课程</th><th>日期</th><th>考场</th><th>座位</th><th>准考证号</th></tr></thead><tbody>${rows || '<tr><td colspan="5">暂无考试安排</td></tr>'}</tbody></table>`)
+    ui.notify('已下载准考证（含水印留痕）')
+  } catch (e) { ui.notify(e?.message || '打印失败') } finally { busy.value = false }
 }
 onMounted(loadAll)
 </script>

@@ -40,8 +40,10 @@
         <EmptyState title="请先选择批次" description="从上方下拉选择一个审核批次" />
       </template>
 
-      <!-- 学分 / 实践 / 毕设联动 / 实习联动 / 处分联动 · 单项透视 -->
-      <template v-else-if="['credit', 'practice', 'thesis', 'internship', 'discipline'].includes(tab)">
+      <!-- 学分 / 实践 / 毕设联动 / 实习联动 / 处分联动 / 费用结清 · 单项透视 -->
+      <template v-else-if="['credit', 'practice', 'thesis', 'internship', 'discipline', 'fee'].includes(tab)">
+        <AppInlineAlert v-if="tab === 'fee'" type="warning"
+          description="费用结清默认 UNKNOWN（不阻断）。财务未对接前，可由教务处人工勾选 CLEARED/OWED 过渡，禁止假装已自动通过。" />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!rows.length" :title="`暂无${currentTabLabel}数据`" description="批次尚未执行预审，或该项供数为空" />
@@ -49,7 +51,11 @@
           <template #cell-result="{ row }"><AppStatusTag :type="gradItemColor(itemOf(row).result)" dot>{{ itemResultLabel(itemOf(row).result) }}</AppStatusTag></template>
           <template #cell-evidence="{ row }"><span class="agc-evidence">{{ itemOf(row).evidence || '—' }}</span></template>
           <template #cell-ops="{ row }">
-            <router-link v-if="linkFor(row)" class="mp-link" :to="linkFor(row)">跳转责任模块</router-link>
+            <template v-if="tab === 'fee'">
+              <button class="mp-link" :disabled="feeBusy" @click="markFee(row, 'CLEARED')">勾选已结清</button>
+              <button class="mp-link" :disabled="feeBusy" @click="markFee(row, 'OWED')">勾选仍欠费</button>
+            </template>
+            <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">跳转责任模块</router-link>
             <button class="mp-link" @click="openDetail(row)">十项详情</button>
           </template>
         </DataTable>
@@ -239,9 +245,7 @@ const TAB_CONFIG = {
   thesis: { label: '毕设状态联动', item: 'GRADUATION_DESIGN' },
   internship: { label: '实习状态联动', item: 'INTERNSHIP' },
   discipline: { label: '处分状态联动', item: 'DISCIPLINE' },
-  // 费用结清：后端 _check_fee 恒返回 UNKNOWN + "待接入学校财务系统"，不阻断毕业资格。真实职校毕业审核
-  // 确有该条件，但核查责任方是财务处/后勤/图书馆、落点在离校手续领证环节（正方把它做成独立的离校管理
-  // 平台产品）；本系统当前无可用欠费数据源，故如实展示"未对接"而非假装已联动，详见后端 _check_fee 注释。
+  // 费用结清：无财务对接时默认 UNKNOWN（不阻断）。教务处可人工勾选 CLEARED/OWED 过渡，不得假装已自动通过。
   fee: { label: '费用结清', item: 'FEE' },
   final: { label: '毕业资格终审', status: 'ACADEMIC_REVIEW' },
   roster: { label: '毕业学生名单' },
@@ -278,6 +282,7 @@ export default {
       archiveDlg: { visible: false },
       collegeRejectDlg: { visible: false },
       archiving: false,
+      feeBusy: false,
       itemColumns: [
         { key: 'studentId', title: '学号' }, { key: 'realName', title: '姓名' },
         { key: 'result', title: '结果' }, { key: 'evidence', title: '证据' }, { key: 'ops', title: '操作', width: '160px' }
@@ -355,6 +360,28 @@ export default {
       return LINK_ITEM[cfg.item](it.refId)
     },
     canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },
+    async markFee(row, status) {
+      if (!this.batchId || this.feeBusy) return
+      const label = status === 'CLEARED' ? '已结清' : '仍欠费'
+      if (!window.confirm(`确认将 ${row.realName || row.studentNo || row.studentId} 费用状态勾选为「${label}」？`)) return
+      this.feeBusy = true
+      try {
+        const res = await academicAffairsApi.markFeeClearance(this.batchId, {
+          studentNo: row.studentNo,
+          studentId: row.studentId,
+          status,
+          evidence: `人工勾选过渡（${label}）`
+        })
+        if (res.code === 0) {
+          toast.success('费用结清已勾选')
+          this.loadTab()
+        } else toast.error(res.message || '勾选失败')
+      } catch (e) {
+        toast.error((e && e.message) || '勾选失败')
+      } finally {
+        this.feeBusy = false
+      }
+    },
     switchTab(k) {
       this.tab = k
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})

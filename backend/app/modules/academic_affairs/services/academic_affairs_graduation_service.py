@@ -606,6 +606,31 @@ def import_fee_clearance(batch_id, user, rows: list) -> dict:
     return {"batchId": str(batch_id), "updated": updated, "skipped": skipped}
 
 
+def mark_fee_clearance_one(batch_id, user, student_no=None, student_id=None,
+                           status="CLEARED", evidence="") -> dict:
+    """人工勾选过渡：单生费用结清（CLEARED/OWED）。财务对接前由教务处人工确认，不得默认 PASS。
+
+    复用 import_fee_clearance 写入口；evidence 缺省标注「人工勾选过渡」。
+    """
+    st = str(status or "").upper().strip()
+    if st not in ("CLEARED", "OWED"):
+        raise AppException("BAD_REQUEST", "status 仅支持 CLEARED / OWED")
+    sno = str(student_no or "").strip()
+    if not sno and student_id:
+        from app.models import StudentProfile
+        with session() as db:
+            s = db.get(StudentProfile, int(student_id))
+            if not s or s.is_deleted or s.tenant_id != _tid():
+                raise not_found("学生不存在")
+            sno = s.student_no or ""
+    if not sno:
+        raise AppException("BAD_REQUEST", "studentNo 或 studentId 必填")
+    note = (evidence or "").strip() or "人工勾选过渡（财务系统未对接）"
+    return import_fee_clearance(batch_id, user, [
+        {"studentNo": sno, "status": st, "evidence": note[:200]}
+    ])
+
+
 def _org_names(db, s):
     """学生 → 学院/专业/班级名称（供「毕业学生名单」补全展示；与 academic_affairs_service._resolve_org_names
     同口径，本文件独立维护同款只读小函数，避免跨 service 文件引用私有函数）。"""

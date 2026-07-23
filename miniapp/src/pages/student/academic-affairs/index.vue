@@ -35,6 +35,7 @@ const ST = { REGISTERED: '在籍注册', NORMAL: '在籍', SUSPENDED: '休学中
   WITHDRAWN: '已退学', GRADUATED: '已毕业', COMPLETED: '已结业', PENDING_REGISTER: '待注册' }
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7', 'g6', 'g8']
 const ENTRIES = [
+  { key: 'registration', label: '学期注册', icon: '🪪', route: '/pages/student/academic-affairs/registration' },
   { key: 'schedule', label: '我的课表', icon: '📅', route: '/pages/student/academic-affairs/schedule' },
   { key: 'transcript', label: '我的成绩', icon: '📊', route: '/pages/student/academic-affairs/transcript' },
   { key: 'credits', label: '学分修读', icon: '🎯', route: '/pages/student/academic-affairs/credits' },
@@ -49,6 +50,9 @@ const ENTRIES = [
   { key: 'textbook', label: '我的教材', icon: '📚', route: '/pages/student/academic-affairs/textbook' },
   { key: 'levelExam', label: '等级考试', icon: '🏅', route: '/pages/student/academic-affairs/level-exam' },
   { key: 'majorSplit', label: '专业分流', icon: '🧭', route: '/pages/student/academic-affairs/major-split' },
+  { key: 'attendance', label: '我的考勤', icon: '✅', route: '/pages/student/academic-affairs/attendance' },
+  { key: 'calendar', label: '校历', icon: '📆', route: '/pages/student/academic-affairs/calendar' },
+  { key: 'clearance', label: '清考结果', icon: '📎', route: '/pages/student/academic-affairs/clearance' },
   { key: 'evaluation', label: '学生评教', icon: '⭐', route: '/pages/student/academic-affairs/evaluation' }
 ]
 

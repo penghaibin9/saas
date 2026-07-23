@@ -3,7 +3,10 @@
     <MobileNavBar variant="brand" title="我的考试 / 缓考" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="d">
-        <view class="section-head"><text class="section-head__title">我的考试安排</text></view>
+        <view class="section-head">
+          <text class="section-head__title">我的考试安排</text>
+          <text class="section-head__more" @click="printTicket">打印准考证</text>
+        </view>
         <MobileGlobalState v-if="!(d.schedule && d.schedule.length)" state="empty" title="暂无已发布考试安排"
           description="教务发布考场座位后，准考证与考场信息会出现在此。" />
         <view class="list-group" v-else>
@@ -105,6 +108,28 @@ export default {
       }).catch(() => { this.state = 'error' })
     },
     reasonLabel(v) { return REASON_MAP[v] || v || '未说明' },
+    printTicket() {
+      studentApi.printExamTicket('个人准考证').then((res) => {
+        const doc = (res && res.document) || {}
+        const rows = doc.schedule || doc.items || this.d.schedule || []
+        const lines = rows.map((it) =>
+          `${it.courseName || '—'} ${it.examDate || ''} ${it.classroom || '—'} 座${it.seatNo ?? '—'} 准考证${it.admissionNo || '—'}`
+        ).join('\n')
+        const text = [
+          '准考证摘要',
+          `姓名：${doc.realName || '—'}`,
+          `学号：${doc.studentNo || '—'}`,
+          `留痕：${(res && res.loggedAt) || ''}`,
+          '',
+          lines || '暂无考试安排'
+        ].join('\n')
+        uni.setClipboardData({
+          data: text,
+          success: () => uni.showToast({ title: '已留痕并复制准考证摘要', icon: 'success' }),
+          fail: () => uni.showToast({ title: '已留痕，可截屏保存', icon: 'success' })
+        })
+      }).catch((e) => toast((e && e.message) || '打印留痕失败'))
+    },
     onReasonPick(e) { this.form.reasonType = this.reasonOptions[e.detail.value].value },
     openForm(c) {
       this.selectedCourse = c

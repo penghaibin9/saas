@@ -9,10 +9,12 @@
         </view>
 
         <view class="card stack-sm" v-if="showRetake">
-          <input class="mk__input" v-model="retakeForm.courseName" placeholder="课程名称（必填）" placeholder-class="mk__ph" />
-          <input class="mk__input" v-model="retakeForm.termCode" placeholder="学期（选填，如 2026-2027-1）" placeholder-class="mk__ph" />
+          <text class="mk__hint">请从挂科课程列表选择（禁止纯手输为主入口）</text>
+          <picker mode="selector" :range="retakeLabels" :value="retakeIndex" @change="onRetakePick">
+            <view class="mk__input">{{ retakeLabels[retakeIndex] || '请选择挂科课程' }}</view>
+          </picker>
           <textarea class="mk__textarea" v-model="retakeForm.reason" :maxlength="200" placeholder="申请说明（选填）" placeholder-class="mk__ph" />
-          <button class="btn btn-primary" :disabled="!retakeForm.courseName.trim() || submitting" @click="submitRetake">
+          <button class="btn btn-primary" :disabled="!retakeForm.gradeId || submitting" @click="submitRetake">
             {{ submitting ? '提交中…' : '提交重修报名' }}
           </button>
         </view>
@@ -27,7 +29,7 @@
             <MobileStatusTag :status="r.status" />
           </view>
         </view>
-        <MobileGlobalState v-else state="empty" title="暂无重修申请" description="点击右上角新增报名。" />
+        <MobileGlobalState v-else state="empty" title="暂无重修申请" description="点击右上角从挂科列表报名。" />
 
         <view class="section-head">
           <text class="section-head__title">我的免修申请</text>
@@ -35,10 +37,12 @@
         </view>
 
         <view class="card stack-sm" v-if="showExemption">
-          <input class="mk__input" v-model="exForm.courseName" placeholder="课程名称（必填）" placeholder-class="mk__ph" />
-          <input class="mk__input" v-model="exForm.termCode" placeholder="学期（选填）" placeholder-class="mk__ph" />
+          <text class="mk__hint">请从未及格课程列表选择</text>
+          <picker mode="selector" :range="exLabels" :value="exIndex" @change="onExPick">
+            <view class="mk__input">{{ exLabels[exIndex] || '请选择课程' }}</view>
+          </picker>
           <textarea class="mk__textarea" v-model="exForm.reason" :maxlength="200" placeholder="免修理由（选填）" placeholder-class="mk__ph" />
-          <button class="btn btn-primary" :disabled="!exForm.courseName.trim() || submitting" @click="submitExemption">
+          <button class="btn btn-primary" :disabled="!exForm.courseName || submitting" @click="submitExemption">
             {{ submitting ? '提交中…' : '提交免修申请' }}
           </button>
         </view>
@@ -53,7 +57,7 @@
             <MobileStatusTag :status="e.status" />
           </view>
         </view>
-        <MobileGlobalState v-else state="empty" title="暂无免修申请" description="点击右上角发起免修。" />
+        <MobileGlobalState v-else state="empty" title="暂无免修申请" description="点击右上角从课程列表发起免修。" />
       </view>
     </MobileGlobalState>
   </view>
@@ -69,18 +73,72 @@ const submitLock = createSubmitLock(1500)
 export default {
   data() {
     return {
-      d: null, state: 'loading', submitting: false,
+      d: null, opts: { retakeOptions: [], exemptionOptions: [] }, state: 'loading', submitting: false,
       showRetake: false, showExemption: false,
-      retakeForm: { courseName: '', termCode: '', reason: '' },
+      retakeIndex: 0, exIndex: 0,
+      retakeForm: { gradeId: '', courseName: '', termCode: '', reason: '' },
       exForm: { courseName: '', termCode: '', reason: '' }
+    }
+  },
+  computed: {
+    retakeLabels() {
+      const rows = this.opts.retakeOptions || []
+      return rows.length ? rows.map((x) => `${x.courseName}（${x.termCode || '无学期'} · ${x.score ?? '—'}分）`) : ['暂无挂科课程']
+    },
+    exLabels() {
+      const rows = this.opts.exemptionOptions || []
+      return rows.length ? rows.map((x) => `${x.courseName}（${x.termCode || '无学期'}）`) : ['暂无可选课程']
     }
   },
   onLoad() { this.load() },
   methods: {
     load() {
       this.state = 'loading'
-      studentApi.getMyMakeup().then((d) => { this.d = d; this.state = 'ready' })
+      Promise.all([studentApi.getMyMakeup(), studentApi.getMakeupOptions()])
+        .then(([d, opts]) => {
+          this.d = d
+          this.opts = opts || { retakeOptions: [], exemptionOptions: [] }
+          this.syncPickDefaults()
+          this.state = 'ready'
+        })
         .catch(() => { this.state = 'error' })
+    },
+    syncPickDefaults() {
+      const r = (this.opts.retakeOptions || [])[0]
+      if (r) {
+        this.retakeForm.gradeId = r.gradeId
+        this.retakeForm.courseName = r.courseName
+        this.retakeForm.termCode = r.termCode || ''
+        this.retakeIndex = 0
+      } else {
+        this.retakeForm.gradeId = ''
+        this.retakeForm.courseName = ''
+      }
+      const e = (this.opts.exemptionOptions || [])[0]
+      if (e) {
+        this.exForm.courseName = e.courseName
+        this.exForm.termCode = e.termCode || ''
+        this.exIndex = 0
+      } else {
+        this.exForm.courseName = ''
+      }
+    },
+    onRetakePick(e) {
+      const i = Number(e.detail.value || 0)
+      this.retakeIndex = i
+      const row = (this.opts.retakeOptions || [])[i]
+      if (!row) return
+      this.retakeForm.gradeId = row.gradeId
+      this.retakeForm.courseName = row.courseName
+      this.retakeForm.termCode = row.termCode || ''
+    },
+    onExPick(e) {
+      const i = Number(e.detail.value || 0)
+      this.exIndex = i
+      const row = (this.opts.exemptionOptions || [])[i]
+      if (!row) return
+      this.exForm.courseName = row.courseName
+      this.exForm.termCode = row.termCode || ''
     },
     toggleForm(kind) {
       if (kind === 'retake') {
@@ -92,43 +150,49 @@ export default {
       }
     },
     submitRetake() {
-      const name = this.retakeForm.courseName.trim()
-      if (!name || this.submitting) return
+      if (!this.retakeForm.gradeId || this.submitting) return
       this.submitting = true
-      submitLock.run(() => studentApi.applyRetake(name, this.retakeForm.termCode.trim(), this.retakeForm.reason.trim()))
+      submitLock.run(() => studentApi.applyRetake({
+        gradeId: this.retakeForm.gradeId,
+        courseName: this.retakeForm.courseName,
+        termCode: this.retakeForm.termCode,
+        reason: this.retakeForm.reason.trim()
+      }))
         .then(() => {
           uni.showToast({ title: '重修报名已提交', icon: 'success' })
           this.showRetake = false
-          this.retakeForm = { courseName: '', termCode: '', reason: '' }
+          this.retakeForm.reason = ''
           this.load()
-        }).catch((e) => {
-          if (e && e.code === 'LOCKED') return
-          toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试')
-        }).finally(() => { this.submitting = false })
+        })
+        .catch((e) => toast(normalizeError(e).message || '提交失败'))
+        .finally(() => { this.submitting = false })
     },
     submitExemption() {
-      const name = this.exForm.courseName.trim()
-      if (!name || this.submitting) return
+      if (!this.exForm.courseName || this.submitting) return
       this.submitting = true
-      submitLock.run(() => studentApi.applyExemption(name, this.exForm.termCode.trim(), this.exForm.reason.trim()))
+      submitLock.run(() => studentApi.applyExemption({
+        courseName: this.exForm.courseName,
+        termCode: this.exForm.termCode,
+        reason: this.exForm.reason.trim()
+      }))
         .then(() => {
           uni.showToast({ title: '免修申请已提交', icon: 'success' })
           this.showExemption = false
-          this.exForm = { courseName: '', termCode: '', reason: '' }
+          this.exForm.reason = ''
           this.load()
-        }).catch((e) => {
-          if (e && e.code === 'LOCKED') return
-          toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试')
-        }).finally(() => { this.submitting = false })
+        })
+        .catch((e) => toast(normalizeError(e).message || '提交失败'))
+        .finally(() => { this.submitting = false })
     }
   }
 }
 </script>
 
 <style scoped>
-.mk__input { width: 100%; height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }
-.mk__textarea { width: 100%; min-height: 60px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); box-sizing: border-box; }
-.mk__ph { color: var(--text-tertiary); }
-.mk__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
-.mk__reason { display: block; font-size: var(--font-size-xs); color: var(--danger-600); margin-top: 4px; }
+.mk__input { background: var(--bg-elevated, #f5f6f8); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.mk__textarea { background: var(--bg-elevated, #f5f6f8); border-radius: 8px; padding: 10px 12px; min-height: 72px; width: 100%; box-sizing: border-box; font-size: 14px; }
+.mk__ph { color: var(--t4); }
+.mk__sub { display: block; color: var(--t3); font-size: 12px; margin-top: 4px; }
+.mk__reason { display: block; color: var(--danger, #dc2626); font-size: 12px; margin-top: 4px; }
+.mk__hint { display: block; color: var(--t3); font-size: 12px; }
 </style>

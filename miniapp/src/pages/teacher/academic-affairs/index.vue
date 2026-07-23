@@ -29,6 +29,8 @@ const ENTRIES = [
   { key: 'grade-entry', label: '成绩录入', icon: '📊', route: '/pages/teacher/academic-affairs/grade-entry' },
   { key: 'attendance', label: '课堂考勤', icon: '✅', route: '/pages/teacher/academic-affairs/attendance' },
   { key: 'schedule-change', label: '调停课', icon: '🔀', route: '/pages/teacher/schedule-change/index' },
+  { key: 'sc-review', label: '调停课审批', icon: '✔️', route: '/pages/teacher/academic-affairs/schedule-change-review' },
+  { key: 'st-review', label: '异动审批', icon: '📋', route: '/pages/teacher/academic-affairs/status-change-review' },
   { key: 'exam-defer', label: '缓考审批', icon: '📝', route: '/pages/teacher/exam-defer/index' },
   { key: 'academic-task', label: '教学任务', icon: '📚', route: '/pages/teacher/academic-task/index' },
   { key: 'evaluation', label: '教学评价', icon: '⭐', route: '/pages/teacher/evaluation/index' },

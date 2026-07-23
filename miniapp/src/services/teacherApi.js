@@ -239,6 +239,10 @@ export const teacherApi = {
   // 缓考审批（辅导员初审+任课教师确认两节点身份共用，按当前身份自动收敛为对应节点队列，真实接口，无 mock 兜底）
   getAcademicDeferPending: () => real.teacherAcademicDeferPending(),
   reviewAcademicDefer: (deferId, action, reason) => real.teacherAcademicDeferReview(deferId, action, reason),
+  getScheduleChangePending: () => real.teacherAcademicScheduleChangePending(),
+  reviewScheduleChange: (changeId, action, comment) => real.teacherAcademicScheduleChangeReview(changeId, action, comment),
+  getStatusChangePending: () => real.teacherAcademicStatusChangePending(),
+  reviewStatusChange: (changeId, action, reason) => real.teacherAcademicStatusChangeReview(changeId, action, reason),
   // 教学评价（自评/同行/督导 + 我的结果(跨批次聚合) + 申诉(移动端补归属校验)，真实接口，无 mock 兜底）
   getAcademicEvaluationBatches: () => real.teacherAcademicEvaluationBatches(),
   getAcademicEvaluationMyTasks: (evaluatorType, batchId) => real.teacherAcademicEvaluationMyTasks(evaluatorType, batchId),

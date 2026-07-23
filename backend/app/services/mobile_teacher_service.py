@@ -1141,18 +1141,29 @@ def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str
 # get_change PC 端本身无归属校验，移动端补一道校验，不改 PC） ══════════
 
 def affairs_academic_my_schedule(user: dict, term_id: str | None = None, week: int | None = None) -> dict:
-    """我的课表（供选择「原课位」发起调停课）。self_key 与 `_teacher_key`/`_user_keys` 同口径
-    （优先去 u_ 前缀的 userId，再 loginName），避免「教师我的课表」与「调停课选课位」两套 key。"""
+    """我的课表（供选择「原课位」发起调停课）。
+
+    课表项 teacher_key 生产口径多为 loginName；JWT userId 常为 db-<id>。
+    因此优先 loginName，再按 `_user_keys` 逐个回退，避免「有排课但我的课表空白」。
+    """
     u = _require_teacher(user)
     if not db_enabled():
         return {"items": [], "batchId": None, "weeklyHours": 0, "note": ""}
     from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
-    uid = str(u.get("userId") or "")
-    # 与 mobile_academic_affairs_service._teacher_key / grade._user_keys 对齐：优先去 u_ 前缀的 userId，
-    # 再尝试 loginName，避免「我的课表」与「调停课原课位」各用一套 key 导致一边有课一边空白。
     from app.modules.academic_affairs.services.mobile_academic_affairs_service import _teacher_key
-    self_key = _teacher_key(u) or u.get("loginName") or (uid[2:] if uid.startswith("u_") else uid)
-    return sched_svc.teacher_schedule(u, self_key, term_id, week)
+    keys = []
+    for k in (u.get("loginName"), _teacher_key(u), *(sched_svc._user_keys(u) or [])):
+        if k and k not in keys:
+            keys.append(k)
+    empty = {"items": [], "batchId": None, "weeklyHours": 0, "note": ""}
+    best = empty
+    for self_key in keys:
+        data = sched_svc.teacher_schedule(u, self_key, term_id, week)
+        if data.get("items"):
+            return data
+        if data.get("batchId") and not best.get("batchId"):
+            best = data
+    return best or empty
 
 
 def affairs_academic_schedule_conflict_check(user: dict, body: dict) -> dict:
@@ -2899,3 +2910,106 @@ def graduation_grade_review(user: dict, gd_student_id: str, action: str, comment
     _audit_write("MOBILE_GRADE_REVIEW", f"graduation/grade:{gd_student_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
+
+def affairs_academic_schedule_change_pending(user: dict) -> dict:
+    """调停课待我审批：学院节点看 SUBMITTED；教务处节点看 COLLEGE_REVIEW。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.core.permissions import has_permission
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    statuses = []
+    if has_permission(u, _SC_COLLEGE_PERM):
+        statuses.append("SUBMITTED")
+    if has_permission(u, _SC_ACADEMIC_PERM):
+        statuses.append("COLLEGE_REVIEW")
+    if not statuses:
+        return {"list": [], "total": 0, "note": "当前身份无调停课审批权限"}
+    items, _ = chg_svc.list_changes(u, status=",".join(statuses), page=1, page_size=200)
+    # 再按 currentNode 收口，避免学院/教务处权限并存时串节点
+    out = []
+    for it in items:
+        node = (it.get("currentNode") or "").upper()
+        st = (it.get("status") or "").upper()
+        if st == "SUBMITTED" and node == "COLLEGE_REVIEW" and has_permission(u, _SC_COLLEGE_PERM):
+            out.append(it)
+        elif st == "COLLEGE_REVIEW" and node == "ACADEMIC_REVIEW" and has_permission(u, _SC_ACADEMIC_PERM):
+            out.append(it)
+    return {"list": out, "total": len(out)}
+
+def affairs_academic_schedule_change_review(user: dict, change_id: str, action: str,
+                                            comment: str | None = None) -> dict:
+    """调停课审批（APPROVE/REJECT）；节点权限由路由侧 + 本函数预检，服务层改写课表。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.core.permissions import has_permission
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    action = (action or "").upper()
+    detail = chg_svc.get_change(change_id, u)
+    node = (detail.get("currentNode") or "").upper()
+    if node == "COLLEGE_REVIEW" and not has_permission(u, _SC_COLLEGE_PERM):
+        raise AppException("NO_PERMISSION", "无权进行学院调停课审批", http_status=403)
+    if node == "ACADEMIC_REVIEW" and not has_permission(u, _SC_ACADEMIC_PERM):
+        raise AppException("NO_PERMISSION", "无权进行教务处调停课审批", http_status=403)
+    result = chg_svc.review(change_id, u, action, comment or "")
+    _audit_write("MOBILE_ACADEMIC_SCHEDULE_REVIEW", f"schedule-change:{change_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+# ══════════ 学籍异动待我审批（按节点权限 + list_changes 范围收敛） ══════════
+
+_ST_NODE_PERMS = {
+    "COUNSELOR_REVIEW": "academicAffairs.statusChange.counselorReview",
+    "COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "OUT_COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "COLLEGE_ASSIGN_CLASS": "academicAffairs.statusChange.collegeReview",
+    "IN_COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "AA_OFFICE_FINAL": "academicAffairs.statusChange.officeReview",
+}
+
+def affairs_academic_status_change_pending(user: dict) -> dict:
+    """学籍异动待我审批（SUBMITTED/IN_REVIEW 且 currentNode 命中本人权限）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.core.permissions import has_permission
+    from app.modules.academic_affairs.services import academic_affairs_change_service as chg
+    my_nodes = {n for n, p in _ST_NODE_PERMS.items() if has_permission(u, p)}
+    if not my_nodes:
+        return {"list": [], "total": 0, "note": "当前身份无学籍异动审批权限"}
+    # 两次拉（SUBMITTED + IN_REVIEW），再按节点过滤
+    items = []
+    for st in ("SUBMITTED", "IN_REVIEW"):
+        rows, _ = chg.list_changes(u, status=st, page=1, page_size=200)
+        items.extend(rows)
+    out = [it for it in items if (it.get("currentNode") or "").upper() in my_nodes]
+    # 去重
+    seen, uniq = set(), []
+    for it in out:
+        cid = it.get("changeId")
+        if cid in seen:
+            continue
+        seen.add(cid)
+        uniq.append(it)
+    return {"list": uniq, "total": len(uniq)}
+
+def affairs_academic_status_change_review(user: dict, change_id: str, action: str,
+                                          reason: str | None = None) -> dict:
+    """学籍异动审批（APPROVE/REJECT/RETURN）；节点授权在 change.review → _check_node_authority。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.academic_affairs.services import academic_affairs_change_service as chg
+    result = chg.review(change_id, u, action, reason or "")
+    _audit_write("MOBILE_ACADEMIC_STATUS_REVIEW", f"status-change:{change_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+# ══════════ 教务·教学评价（自评/同行/督导 + 我的结果 + 申诉，直接复用
+# academic_affairs_evaluation_service 的 list_my_role_tasks/submit_evaluation/list_results
+# ——均已按 evaluator_key/teacher_key 自校验；submit_appeal PC 端未校验 result 归属，
+# 移动端在此补一道校验，不改 PC） ══════════
+

@@ -1930,6 +1930,22 @@ def grad_fee_clearance(body: GradFeeClearanceBody, batchId: int = Path(...),
     return success(grad_svc.import_fee_clearance(batchId, user, body.rows), message="费用结清已回填")
 
 
+class GradFeeMarkOneBody(BaseModel):
+    studentNo: Optional[str] = Field(None, description="学号")
+    studentId: Optional[str] = Field(None, description="学生ID（与学号二选一）")
+    status: str = Field(..., description="CLEARED 已结清 / OWED 仍欠费")
+    evidence: Optional[str] = Field(None, max_length=200, description="依据说明，缺省=人工勾选过渡")
+
+
+@router.post("/graduation-audit-batches/{batchId}/fee-clearance/mark",
+             summary="人工勾选费用结清（过渡；CLEARED/OWED，不得默认 PASS）")
+def grad_fee_mark_one(body: GradFeeMarkOneBody, batchId: int = Path(...),
+                      user=Depends(require_permission(_GRAD_MANAGE))):
+    return success(grad_svc.mark_fee_clearance_one(
+        batchId, user, student_no=body.studentNo, student_id=body.studentId,
+        status=body.status, evidence=body.evidence or ""), message="费用结清已勾选")
+
+
 @router.post("/graduation-audit-batches/{batchId}/archive", summary="审核归档（收敛已终审毕业/结业结果）")
 def grad_archive(batchId: int = Path(...), user=Depends(require_permission(_GRAD_MANAGE))):
     return success(grad_svc.archive_batch(batchId, user), message="已归档")

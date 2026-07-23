@@ -424,16 +424,28 @@ def _rt_dto(r):
 
 
 def retake_apply(user, body):
-    """学生重修报名：次数上限校验（默2），同课程同学期在途唯一。"""
-    from app.models import AaRetakeApply
+    """学生重修报名：优先 gradeId（挂科成绩）锁定课程；次数上限校验（默2），同课程在途唯一。"""
+    from app.models import AaRetakeApply, AcademicGrade, AcademicStudent
     with session() as db:
         s = _student(db)
         if not s:
             raise not_found("学生档案不存在")
         course_name = (getattr(body, "courseName", None) or "").strip()
         term = getattr(body, "termCode", None)
+        grade_id = getattr(body, "gradeId", None)
+        if grade_id:
+            g = db.get(AcademicGrade, int(grade_id))
+            acad = db.query(AcademicStudent).filter(
+                AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == s.id,
+                AcademicStudent.is_deleted.is_(False)).first()
+            if (not g or g.is_deleted or g.tenant_id != _tid()
+                    or not acad or g.acad_student_id != acad.id
+                    or (g.pass_status or "").upper() not in ("FAIL", "FAILED")):
+                raise _bad("请从挂科课程列表选择有效成绩后再报名重修")
+            course_name = (g.course_name or "").strip()
+            term = term or g.term
         if not course_name:
-            raise _bad("课程名必填")
+            raise _bad("请从挂科课程列表选择课程（课程名必填）")
         max_count = int(_rule("retake_max_count", 2))
         done = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(),
                                               AaRetakeApply.student_id == s.id,

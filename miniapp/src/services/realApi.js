@@ -1050,6 +1050,40 @@ export const acadRetakeApply = (courseName, termCode, reason) =>
 
 export const acadExemptionApply = (courseName, termCode, reason) =>
   realRequest('/mobile/academic/makeup/exemption-apply', { method: 'POST', data: { courseName, termCode, reason } })
+export const acadMakeupOptions = () => realRequest('/mobile/academic/makeup/options')
+export const acadRetakeApply = (payload, termCode, reason) => {
+  const data = typeof payload === 'string'
+    ? { courseName: payload, termCode, reason }
+    : (payload || {})
+  return realRequest('/mobile/academic/makeup/retake-apply', { method: 'POST', data })
+}
+export const acadExemptionApply = (payload, termCode, reason) => {
+  const data = typeof payload === 'string'
+    ? { courseName: payload, termCode, reason }
+    : (payload || {})
+  return realRequest('/mobile/academic/makeup/exemption-apply', { method: 'POST', data })
+}
+export const acadRegistrationMy = () => realRequest('/mobile/academic/registration/my')
+export const acadRegistrationRegister = (batchId) =>
+  realRequest(`/mobile/academic/registration/${batchId}/register`, { method: 'POST' })
+export const acadRegistrationDefer = (batchId, reason, requestedUntil) =>
+  realRequest(`/mobile/academic/registration/${batchId}/defer`, { method: 'POST', data: { reason, requestedUntil } })
+export const acadAttendanceMy = () => realRequest('/mobile/academic/attendance/my')
+export const acadCalendarMy = () => realRequest('/mobile/academic/calendar/my')
+export const acadClearanceMy = () => realRequest('/mobile/academic/clearance/my')
+export const acadExamTicketPrint = (reason) =>
+  realRequest('/mobile/academic/exam/ticket/print', { method: 'POST', data: { reason: reason || '个人准考证' } })
+export const acadStatusChangePrint = (body) =>
+  realRequest('/mobile/academic/status-change/print', { method: 'POST', data: body || {} })
+export const teacherAcademicScheduleChangePending = () =>
+  realRequest('/mobile/teacher/academic/schedule-changes/pending')
+export const teacherAcademicScheduleChangeReview = (changeId, action, comment) =>
+  realRequest(`/mobile/teacher/academic/schedule-changes/${changeId}/review`,
+    { method: 'POST', data: { action, comment } })
+export const teacherAcademicStatusChangePending = () =>
+  realRequest('/mobile/teacher/academic/status-changes/pending')
+export const teacherAcademicStatusChangeReview = (changeId, action, reason) =>
+
 export const acadSelectionCourses = (batchId) =>
   realRequest('/mobile/academic/selection/courses' + (batchId ? `?batch_id=${batchId}` : ''))
 export const acadSelectionEnroll = (selectionCourseId) =>

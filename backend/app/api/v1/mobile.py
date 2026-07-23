@@ -820,6 +820,19 @@ def teacher_academic_schedule_changes(status: str = None, user=Depends(get_curre
     return success(tea.affairs_academic_schedule_changes(user, status))
 
 
+@router.get("/teacher/academic/schedule-changes/pending", summary="学院/教务处·调停课待我审批")
+def teacher_academic_schedule_change_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_change_pending(user))
+
+
+@router.post("/teacher/academic/schedule-changes/{change_id}/review", summary="学院/教务处·调停课审批（APPROVE/REJECT）")
+def teacher_academic_schedule_change_review(change_id: str, body: dict = Body(...),
+                                            user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_change_review(
+        user, change_id, str((body or {}).get("action") or "").upper(),
+        (body or {}).get("comment") or (body or {}).get("reason")), message="已处理")
+
+
 @router.get("/teacher/academic/schedule-changes/{change_id}", summary="教务老师·调停课单详情（移动端补归属校验）")
 def teacher_academic_schedule_change_detail(change_id: str, user=Depends(get_current_user)):
     return success(tea.affairs_academic_schedule_change_detail(user, change_id))
@@ -1659,6 +1672,63 @@ def academic_makeup_retake_apply(body: dict = Body(...), user=Depends(get_curren
 @router.post("/academic/makeup/exemption-apply", summary="教务·本人发起免修申请")
 def academic_makeup_exemption_apply(body: dict = Body(...), user=Depends(get_current_user)):
     return success(aa.exemption_apply_my(user, body), message="免修申请已提交")
+
+
+
+@router.get("/academic/makeup/options", summary="教务·重修/免修可选挂科与未及格课程")
+def academic_makeup_options(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.makeup_options_my(user))
+
+
+@router.get("/academic/registration/my", summary="教务·我的注册批次与自助状态")
+def academic_registration_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.registration_my(user))
+
+
+@router.post("/academic/registration/{batch_id}/register", summary="教务·本人完成注册")
+def academic_registration_self(batch_id: str, user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.registration_self_register(user, batch_id), message="注册成功")
+
+
+@router.post("/academic/registration/{batch_id}/defer", summary="教务·本人申请暂缓注册")
+def academic_registration_defer(batch_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.registration_defer_apply_my(
+        user, batch_id, (body or {}).get("reason"), (body or {}).get("requestedUntil")),
+        message="暂缓申请已提交")
+
+
+@router.get("/academic/attendance/my", summary="教务·我的课堂考勤（只读）")
+def academic_attendance_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.attendance_my(user))
+
+
+@router.get("/academic/calendar/my", summary="教务·当前学期校历（只读）")
+def academic_calendar_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.calendar_my(user))
+
+
+@router.get("/academic/clearance/my", summary="教务·我的清考结果（只读）")
+def academic_clearance_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.clearance_my(user))
+
+
+@router.post("/academic/exam/ticket/print", summary="教务·准考证打印留痕（本人）")
+def academic_exam_ticket_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.exam_ticket_print_my(user, body or {}))
+
+
+@router.post("/academic/status-change/print", summary="教务·学籍异动申请表打印留痕（本人）")
+def academic_status_change_print_mobile(body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.status_change_print_my(user, body or {}))
 
 
 @router.get("/academic/selection/courses", summary="教务·网上选课·可选课程（OPEN 批次+实时余量）")

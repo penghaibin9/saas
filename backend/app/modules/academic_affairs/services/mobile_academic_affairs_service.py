@@ -342,19 +342,31 @@ def makeup_my(user) -> dict:
 
 
 def retake_apply_my(user, body) -> dict:
-    """学生本人发起重修报名。"""
+    """学生本人发起重修报名。优先 gradeId（挂科列表）；无 gradeId 时课程名须落在挂科候选内。"""
     from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
-    if not (body or {}).get("courseName"):
-        raise AppException("VALIDATION_ERROR", "课程名必填")
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    body = body or {}
+    if not body.get("gradeId") and not body.get("courseName"):
+        raise AppException("VALIDATION_ERROR", "请从挂科课程列表选择后再提交")
+    if not body.get("gradeId"):
+        opts = gaps.makeup_options_my(user).get("retakeOptions") or []
+        names = {(x.get("courseName") or "").strip() for x in opts}
+        if (body.get("courseName") or "").strip() not in names:
+            raise AppException("VALIDATION_ERROR", "请从挂科课程列表选择，禁止纯手输未挂科课程")
     return makeup.retake_apply(user, _ns(body))
 
 
 def exemption_apply_my(user, body) -> dict:
-    """学生本人发起免修申请。此前学生门户"免修申请"页误接了重修接口（examTab 未参与实际
-    分支，两个入口提交的全是 AaRetakeApply 记录），修复为真正调用免修服务。"""
+    """学生本人发起免修申请。课程须落在未及格/挂科候选列表。"""
     from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
-    if not (body or {}).get("courseName"):
-        raise AppException("VALIDATION_ERROR", "课程名必填")
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    body = body or {}
+    if not (body.get("courseName") or "").strip():
+        raise AppException("VALIDATION_ERROR", "请从课程列表选择后再提交")
+    opts = gaps.makeup_options_my(user).get("exemptionOptions") or []
+    names = {(x.get("courseName") or "").strip() for x in opts}
+    if (body.get("courseName") or "").strip() not in names:
+        raise AppException("VALIDATION_ERROR", "请从未及格课程列表选择，禁止纯手输为主入口")
     return makeup.exemption_apply(user, _ns(body))
 
 
