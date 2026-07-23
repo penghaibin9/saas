@@ -154,31 +154,13 @@ def _current_scope(user: dict | None = None) -> dict:
 
 
 def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
-    """实习记录是否在教师数据范围内。实习以「校内指导教师」为业务关系（record.advisor_user_id）；
-    另叠加 学号 / 班级 / 学院 规则；非 SCOPED 模式一律放行（管理员/全校，跨租户由 _tid 兜底）。
-
-    IX-E2E：学生主档可能仅有 class_id/major_id 而无 college_id（身份导入缺口），
-    此时沿 班级→专业→学院 推导学院名，避免学院负责人误拒本院学生。
-    """
+    """实习记录是否在教师数据范围内。复用 internship_service 统一推导（含缺 college_id）。"""
     if scope.get("mode") != "SCOPED":
         return True
+    from app.modules.internship.services.internship_service import (
+        resolve_student_class_college_names)
     from app.services.mobile_teacher_service import scope_match_row
-    class_name = college_name = None
-    if stu is not None:
-        from app.models import College, Major, SchoolClass
-        cls = db.get(SchoolClass, stu.class_id) if getattr(stu, "class_id", None) else None
-        if cls:
-            class_name = cls.class_name
-        college_id = getattr(stu, "college_id", None)
-        if not college_id and getattr(stu, "major_id", None):
-            maj = db.get(Major, stu.major_id)
-            college_id = maj.college_id if maj else None
-        if not college_id and cls is not None:
-            maj = db.get(Major, cls.major_id)
-            college_id = maj.college_id if maj else None
-        if college_id:
-            col = db.get(College, college_id)
-            college_name = col.college_name if col else None
+    class_name, college_name = resolve_student_class_college_names(db, stu)
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=r.advisor_name,
                            college_name=college_name, advisor_user_id=r.advisor_user_id)

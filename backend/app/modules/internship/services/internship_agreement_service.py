@@ -14,7 +14,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import (College, InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
+from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
                         InternshipRecord, Major, SchoolClass, StudentProfile, Tenant)
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -72,15 +72,19 @@ def _render_body(db, tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> 
     class_name = college_name = major_name = school_name = ""
     if db is not None:
         if stu is not None:
-            if getattr(stu, "class_id", None):
-                c = db.get(SchoolClass, stu.class_id)
-                class_name = (c.class_name if c else "") or ""
-            if getattr(stu, "college_id", None):
-                col = db.get(College, stu.college_id)
-                college_name = (col.college_name if col else "") or ""
+            from app.modules.internship.services.internship_service import (
+                resolve_student_class_college_names)
+            class_name, college_name = resolve_student_class_college_names(db, stu)
+            class_name = class_name or ""
+            college_name = college_name or ""
             if getattr(stu, "major_id", None):
                 maj = db.get(Major, stu.major_id)
                 major_name = (maj.major_name if maj else "") or ""
+            elif getattr(stu, "class_id", None):
+                c = db.get(SchoolClass, stu.class_id)
+                if c and c.major_id:
+                    maj = db.get(Major, c.major_id)
+                    major_name = (maj.major_name if maj else "") or ""
         t = db.get(Tenant, _tid())
         school_name = (t.school_name if t else "") or ""
     advisor_name = (rec.advisor_name if rec else "") or ""

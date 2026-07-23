@@ -107,6 +107,28 @@ def _current_scope(user: dict | None = None) -> dict:
     return resolve_teacher_scope(user or get_current_user_ctx() or {})
 
 
+def resolve_student_class_college_names(db, stu) -> tuple[str | None, str | None]:
+    """解析学生班级名与学院名。主档缺 college_id 时沿 班级→专业→学院 推导（IX-BUG-002）。"""
+    if stu is None:
+        return None, None
+    from app.models import College, Major, SchoolClass
+    class_name = college_name = None
+    cls = db.get(SchoolClass, stu.class_id) if getattr(stu, "class_id", None) else None
+    if cls:
+        class_name = cls.class_name
+    college_id = getattr(stu, "college_id", None)
+    if not college_id and getattr(stu, "major_id", None):
+        maj = db.get(Major, stu.major_id)
+        college_id = maj.college_id if maj else None
+    if not college_id and cls is not None:
+        maj = db.get(Major, cls.major_id)
+        college_id = maj.college_id if maj else None
+    if college_id:
+        col = db.get(College, college_id)
+        college_name = col.college_name if col else None
+    return class_name, college_name
+
+
 def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
     """实习记录是否在教师数据范围内。非 SCOPED（管理员全校 / 无范围豁免）一律放行；
     SCOPED 按 指导教师账号 / 学号 / 班级 / 学院 收敛（记录缺失关键上下文时 SCOPED 下不放行）。
@@ -118,22 +140,7 @@ def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
     if r is None:
         return False
     from app.services.mobile_teacher_service import scope_match_row
-    class_name = college_name = None
-    if stu is not None:
-        from app.models import College, Major, SchoolClass
-        cls = db.get(SchoolClass, stu.class_id) if getattr(stu, "class_id", None) else None
-        if cls:
-            class_name = cls.class_name
-        college_id = getattr(stu, "college_id", None)
-        if not college_id and getattr(stu, "major_id", None):
-            maj = db.get(Major, stu.major_id)
-            college_id = maj.college_id if maj else None
-        if not college_id and cls is not None:
-            maj = db.get(Major, cls.major_id)
-            college_id = maj.college_id if maj else None
-        if college_id:
-            col = db.get(College, college_id)
-            college_name = col.college_name if col else None
+    class_name, college_name = resolve_student_class_college_names(db, stu)
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=r.advisor_name,
                            college_name=college_name, advisor_user_id=r.advisor_user_id)
@@ -174,10 +181,9 @@ def assert_student_in_scope(db, student_id, user, msg: str = "该学生不在你
 
 def _bulk_context(db, rows, id_attr: str = "internship_id"):
     """批量加载列表 rows 关联的 InternshipRecord / StudentProfile / SchoolClass 名 / College 名，
-    返回 (rec_map, stu_map, class_name_map, college_name_map)，用于消除逐行 db.get 的 N+1。
-    关联对象按去重后的 id 批量查询：一个 internship 对应多条打卡/周报，故 rec/stu 数量级=学生数，
-    远小于台账行数。行为与逐行 db.get 完全等价，只是把 2N~4N 次单行查询压成 3~4 次批量查询。"""
-    from app.models import College, SchoolClass
+    返回 (rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map)。
+    stu_college_name_map 含缺 college_id 时按 班级→专业→学院 推导后的学院名，与 _rec_in_scope 口径一致。"""
+    from app.models import College, Major, SchoolClass
     intern_ids = {getattr(x, id_attr) for x in rows if getattr(x, id_attr, None)}
     rec_map = {}
     if intern_ids:
@@ -189,18 +195,39 @@ def _bulk_context(db, rows, id_attr: str = "internship_id"):
         stu_map = {s.id: s for s in db.scalars(
             select(StudentProfile).where(StudentProfile.id.in_(stu_ids))).all()}
     class_ids = {getattr(s, "class_id", None) for s in stu_map.values() if getattr(s, "class_id", None)}
-    college_ids = {getattr(s, "college_id", None) for s in stu_map.values() if getattr(s, "college_id", None)}
-    class_name_map, college_name_map = {}, {}
+    major_ids = {getattr(s, "major_id", None) for s in stu_map.values() if getattr(s, "major_id", None)}
+    class_name_map, class_major_map = {}, {}
     if class_ids:
-        class_name_map = {c.id: c.class_name for c in db.scalars(
-            select(SchoolClass).where(SchoolClass.id.in_(class_ids))).all()}
+        class_rows = db.scalars(select(SchoolClass).where(SchoolClass.id.in_(class_ids))).all()
+        class_name_map = {c.id: c.class_name for c in class_rows}
+        class_major_map = {c.id: c.major_id for c in class_rows if c.major_id}
+        major_ids |= set(class_major_map.values())
+    major_college_map = {}
+    if major_ids:
+        major_college_map = {m.id: m.college_id for m in db.scalars(
+            select(Major).where(Major.id.in_(major_ids))).all() if m.college_id}
+    stu_college_id_map = {}
+    for s in stu_map.values():
+        cid = getattr(s, "college_id", None)
+        if not cid and getattr(s, "major_id", None):
+            cid = major_college_map.get(s.major_id)
+        if not cid and getattr(s, "class_id", None):
+            mid = class_major_map.get(s.class_id)
+            cid = major_college_map.get(mid) if mid else None
+        if cid:
+            stu_college_id_map[s.id] = cid
+    college_ids = set(stu_college_id_map.values())
+    college_name_map = {}
     if college_ids:
         college_name_map = {c.id: c.college_name for c in db.scalars(
             select(College).where(College.id.in_(college_ids))).all()}
-    return rec_map, stu_map, class_name_map, college_name_map
+    stu_college_name_map = {sid: college_name_map.get(cid)
+                            for sid, cid in stu_college_id_map.items()}
+    return rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map
 
 
-def _rec_in_scope_pre(scope: dict, rec, stu, class_name_map, college_name_map) -> bool:
+def _rec_in_scope_pre(scope: dict, rec, stu, class_name_map, college_name_map,
+                      stu_college_name_map=None) -> bool:
     """与 _rec_in_scope 等价，但用 _bulk_context 预加载的班级/学院名映射，不再逐行 db.get。"""
     if scope.get("mode") != "SCOPED":
         return True
@@ -211,7 +238,9 @@ def _rec_in_scope_pre(scope: dict, rec, stu, class_name_map, college_name_map) -
     if stu is not None:
         if getattr(stu, "class_id", None):
             class_name = class_name_map.get(stu.class_id)
-        if getattr(stu, "college_id", None):
+        if stu_college_name_map is not None:
+            college_name = stu_college_name_map.get(stu.id)
+        elif getattr(stu, "college_id", None):
             college_name = college_name_map.get(stu.college_id)
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=rec.advisor_name,
@@ -365,7 +394,7 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
         rows = db.scalars(q.order_by(InternshipCheckin.checkin_date.desc(),
                                      InternshipCheckin.id.desc())).all()
         scope = _current_scope(user)
-        rec_map, stu_map, class_name_map, college_name_map = _bulk_context(db, rows)  # 消 N+1
+        rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = _bulk_context(db, rows)
         items = []
         for c in rows:
             rec = rec_map.get(c.internship_id)
@@ -376,7 +405,8 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
             # 教师无法据此核对，展示出来只会污染台账与导出。
             if rec is None or rec.is_deleted or stu is None:
                 continue
-            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map):  # P0-D 数据范围
+            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
+                                     stu_college_name_map):  # P0-D 数据范围
                 continue
             items.append(_checkin_row(c, rec, stu))
         total = len(items)
@@ -425,14 +455,15 @@ def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=
             q = q.where(AttendanceException.status == status)
         rows = db.scalars(q.order_by(AttendanceException.exception_date.desc())).all()
         scope = _current_scope(user)
-        rec_map, stu_map, class_name_map, college_name_map = _bulk_context(db, rows)  # 消 N+1
+        rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = _bulk_context(db, rows)
         items = []
         for c in rows:
             rec = rec_map.get(c.internship_id)
             stu = stu_map.get(rec.student_id) if rec else None
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
                 continue
-            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map):  # P0-D
+            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
+                                     stu_college_name_map):  # P0-D
                 continue
             items.append(_exc_row(c, rec, stu))
         total = len(items)
@@ -569,14 +600,15 @@ def list_weekly_reports(page, page_size, status=None, keyword=None, user=None):
                                      WeeklyReport.submitted_at.desc(),
                                      WeeklyReport.id.desc())).all()
         scope = _current_scope(user)
-        rec_map, stu_map, class_name_map, college_name_map = _bulk_context(db, rows)  # 消 N+1
+        rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = _bulk_context(db, rows)
         items = []
         for w in rows:
             rec = rec_map.get(w.internship_id)
             stu = stu_map.get(rec.student_id) if rec else None
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
                 continue
-            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map):  # P0-D
+            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
+                                     stu_college_name_map):  # P0-D
                 continue
             items.append(_report_row(w, rec, stu))
         total = len(items)

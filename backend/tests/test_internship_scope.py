@@ -182,3 +182,93 @@ def test_legacy_students_list_scope(client, db_mode):
 def test_service_endpoints_student_403(client, db_mode):
     for ep in ("/dashboard", "/students", "/reports", "/exceptions", "/risks", "/match/intentions"):
         assert client.get(f"{INT}{ep}", headers=_student()).status_code == 403
+
+
+def test_college_scope_derives_missing_college_id(client, db_mode):
+    """IX-BUG-002：学生缺 college_id 时，单条/预加载/匹配三路范围判定均须按班级→专业→学院放行本院。"""
+    from sqlalchemy import select
+
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import (College, InternshipIntention, InternshipRecord, Major, SchoolClass,
+                            StudentProfile, TeacherStudentScope, WeeklyReport)
+    from app.modules.internship.services import internship_match_service as match_svc
+    from app.modules.internship.services import internship_service as ix_svc
+
+    db = get_sessionmaker()()
+    try:
+        col = College(tenant_id=TID, college_name="IX软件学院", code="IX-SOFT")
+        db.add(col); db.flush()
+        maj = Major(tenant_id=TID, college_id=col.id, major_name="IX软件技术", code="IX-ST")
+        db.add(maj); db.flush()
+        cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="IX软技2601", grade="2026")
+        db.add(cls); db.flush()
+        # 故意不写 college_id，只挂班级（历史身份导入缺口）
+        stu = StudentProfile(
+            tenant_id=TID, student_no="IX-SCOPE-C1", real_name="缺学院生",
+            class_id=cls.id, major_id=None, college_id=None,
+            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+        db.add(stu); db.flush()
+        rec = InternshipRecord(
+            tenant_id=TID, student_id=stu.id, advisor_name="外院导师",
+            enterprise_name="测试企业", position_name="实习生",
+            status="ONBOARD", risk_level="NONE",
+            intern_start_date=datetime(2026, 3, 2))
+        db.add(rec); db.flush()
+        wr = WeeklyReport(
+            tenant_id=TID, internship_id=rec.id, week_number=1, word_count=800,
+            report_version=1, submitted_at=datetime.utcnow(), status="PENDING_REVIEW")
+        intent = InternshipIntention(
+            tenant_id=TID, record_id=rec.id, student_id=stu.id, status="SUBMITTED")
+        db.add_all([wr, intent])
+        db.add(TeacherStudentScope(
+            tenant_id=TID, teacher_key="ix_college_scope", teacher_name="学院范围测",
+            role_code="COLLEGE_ADMIN", scope_type="COLLEGE", ref_value="IX软件学院",
+            status="ACTIVE"))
+        db.commit()
+        stu_id, rec_id = stu.id, rec.id
+    finally:
+        db.close()
+
+    scope_ok = {
+        "mode": "SCOPED", "collegeNames": {"IX软件学院"}, "classNames": set(),
+        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),
+    }
+    scope_other = {
+        "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),
+        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),
+    }
+
+    db = get_sessionmaker()()
+    try:
+        stu = db.get(StudentProfile, stu_id)
+        rec = db.get(InternshipRecord, rec_id)
+        assert stu.college_id is None
+        assert ix_svc._rec_in_scope(scope_ok, db, rec, stu) is True
+        assert ix_svc._rec_in_scope(scope_other, db, rec, stu) is False
+        assert match_svc._rec_in_scope(scope_ok, db, rec, stu) is True
+        assert match_svc._rec_in_scope(scope_other, db, rec, stu) is False
+
+        rows = db.scalars(select(WeeklyReport).where(WeeklyReport.internship_id == rec_id)).all()
+        rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = (
+            ix_svc._bulk_context(db, rows))
+        assert stu_college_name_map.get(stu_id) == "IX软件学院"
+        assert ix_svc._rec_in_scope_pre(
+            scope_ok, rec_map[rec_id], stu_map[stu_id],
+            class_name_map, college_name_map, stu_college_name_map) is True
+        assert ix_svc._rec_in_scope_pre(
+            scope_other, rec_map[rec_id], stu_map[stu_id],
+            class_name_map, college_name_map, stu_college_name_map) is False
+        _, college_name = ix_svc.resolve_student_class_college_names(db, stu)
+        assert college_name == "IX软件学院"
+    finally:
+        db.close()
+
+    hdr = {"Authorization": "Bearer " + create_access_token({
+        "userId": "u_ix_college_scope", "realName": "学院范围测", "userType": "TEACHER",
+        "tid": "x", "tenantId": str(TID), "activeContextId": "ctx_ix_college_scope",
+        "currentRoleCode": "COLLEGE_ADMIN", "clientType": "PC"})}
+    reports = client.get(f"{INT}/reports?keyword=缺学院生", headers=hdr).json()
+    assert reports["code"] == 0 and reports["data"]["total"] >= 1
+    intentions = client.get(f"{INT}/match/intentions?keyword=缺学院生", headers=hdr).json()
+    assert intentions["code"] == 0 and intentions["data"]["total"] >= 1
