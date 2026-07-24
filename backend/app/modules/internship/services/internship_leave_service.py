@@ -85,6 +85,7 @@ def _row(lv: InternshipLeave, rec, stu) -> dict:
         "reviewComment": lv.review_comment or "", "reviewAt": _iso(lv.review_at) or "",
         "returnedAt": _iso(lv.returned_at) or "", "returnNote": lv.return_note or "",
         "returnFileId": lv.return_file_id or "", "overdue": lv.status == "OVERDUE",
+        "version": int(lv.version or 0),
         "createdAt": _iso(lv.created_at) or "",
     }
 
@@ -225,11 +226,15 @@ def get_leave(leave_id, user=None) -> dict:
                                for t in trail]}
 
 
-def review(user, leave_id, action: str, comment: str = "") -> dict:
+def review(user, leave_id, action: str, comment: str = "", *, expected_version=None) -> dict:
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         lv = _get(db, leave_id)
@@ -237,23 +242,26 @@ def review(user, leave_id, action: str, comment: str = "") -> dict:
         stu = db.get(StudentProfile, lv.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):  # owner 级写校验
             raise no_permission("只能审批本人指导学生的请假申请")
-        if lv.status != "PENDING":
-            raise AppException("DATA_CONFLICT", "该申请已处理，请刷新")
-        lv.status = "APPROVED" if action == "APPROVE" else "REJECTED"
-        lv.review_by_name = _op_name(user)
-        lv.review_at = datetime.utcnow()
-        lv.review_comment = (comment or "").strip() or None
-        lv.version = int(lv.version or 0) + 1
+        new_status = "APPROVED" if action == "APPROVE" else "REJECTED"
+        now = datetime.utcnow()
+        new_ver = versioned_update(
+            db, InternshipLeave, entity_id=lv.id, tenant_id=_tid(), expected_version=ver,
+            values={
+                "status": new_status, "review_by_name": _op_name(user),
+                "review_at": now, "review_comment": (comment or "").strip() or None,
+            },
+            expected_status="PENDING")
         leave_days = 0
         if action == "APPROVE":  # 请假↔打卡台账联动：按区间写 LEAVE 留痕，台账显示请假不误判缺卡
+            db.refresh(lv)
             leave_days = _write_leave_checkins(db, lv)
         _trail(db, lv.id, f"REVIEW_{action}", {"comment": (comment or "").strip(),
                "leaveCheckins": leave_days}, operator=_op_name(user))
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.todo_done(db, biz_id=lv.id, todo_type=ix_todo.TODO_LEAVE)
         db.commit()
-        return {"id": str(lv.id), "status": lv.status, "statusLabel": STATUS_LABEL[lv.status],
-                "leaveDays": leave_days}
+        return {"id": str(lv.id), "status": new_status, "statusLabel": STATUS_LABEL[new_status],
+                "leaveDays": leave_days, "version": new_ver}
 
 
 def _write_leave_checkins(db, lv) -> int:

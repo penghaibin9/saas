@@ -57,6 +57,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                          "internship.stats.view", "internship.stats.enterprise.view", "internship.stats.position.view",
                          "internship.stats.score.view", "internship.match.log.view", "internship.application.view",
                          "internship.archive.view", "internship.complaint.view",
+                         "internship.compliance.view",
                          *_WORKBENCH_SELF, "dataCenter.*"},
     "LEADER": {"audit.view", "*.view", "*.stat", *_WORKBENCH_SELF},  # 校/院领导：只读驾驶舱；显式补工作台自助权限
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
@@ -258,6 +259,13 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 保险查看、任务完成度审核、调岗退岗初审（§3 投影：导师查本人学生保险、审任务、初审变更）
         "internship.insurance.*", "internship.task.review", "internship.change.view", "internship.change.review",
         "internship.archive.*",  # 材料检查与归档（§3.12 导师参与归档，service scope 收敛到本人指导学生）
+        # P2 合规：查看与本人指导相关的确认/安全/备案/事故处置；豁免与证据包导出归学校/学院
+        "internship.compliance.view",
+        "internship.consent.view", "internship.consent.manage",
+        "internship.safety.view", "internship.safety.manage",
+        "internship.filing.view",
+        "internship.enterprise.inspection.view",
+        "internship.incident.view", "internship.incident.handle",
     },
     # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
     "EMPLOYMENT_TEACHER": {

@@ -28,9 +28,25 @@ export const scoreApi = {
   getScores(params = {}) { return callList(B, params) },
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
   compute(body) { return call(() => request(`${B}/compute`, { method: 'POST', body })) },
-  publish(id) { return call(() => request(`${B}/${id}/publish`, { method: 'POST', body: {} })) },
-  returnRecalc(id, { reason } = {}) { return call(() => request(`${B}/${id}/return`, { method: 'POST', body: { reason: reason || '' } })) },
-  withdraw(id, { reason }) { return call(() => request(`${B}/${id}/withdraw`, { method: 'POST', body: { reason } })) },
-  archive(id) { return call(() => request(`${B}/${id}/archive`, { method: 'POST', body: {} })) },
+  publish(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/publish`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  returnRecalc(id, { reason, expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/return`, {
+      method: 'POST', body: { reason: reason || '', expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  withdraw(id, { reason, expectedVersion, version }) {
+    return call(() => request(`${B}/${id}/withdraw`, {
+      method: 'POST', body: { reason, expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  archive(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/archive`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
+  },
   exportScores(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) }
 }

@@ -55,6 +55,7 @@ def _row(r, rec, stu):
         "deadlineAt": _iso(r.deadline_at) or "",
         "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
         "lastFollowAt": _iso(r.last_follow_at) or "", "lastFollowNote": r.last_follow_note or "",
+        "version": int(r.version or 0),
         "createdAt": _iso(r.created_at) or "",
     }
 
@@ -72,54 +73,71 @@ def _owner_or_403(db, r, user, msg):
     return rec, stu
 
 
-def handle(user, risk_id, owner_name=None, deadline=None, comment="") -> dict:
+def handle(user, risk_id, owner_name=None, deadline=None, comment="", *, expected_version=None) -> dict:
     """受理：PENDING_HANDLE → PROCESSING，指定跟进责任人 + 截止 + 处理意见。"""
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
     if not (comment or "").strip() or len(comment.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "受理意见必填且不少于 5 字")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         r = _get(db, risk_id)
         _owner_or_403(db, r, user, "只能处置本人指导学生的风险")
-        if r.status not in ("PENDING_HANDLE",):
-            raise AppException("DATA_CONFLICT", "该风险单已受理，请刷新")
-        r.status = "PROCESSING"
-        r.owner_name = (owner_name or "").strip() or _op_name(user)
+        owner = (owner_name or "").strip() or _op_name(user)
+        deadline_at = None
         if deadline:
             try:
-                r.deadline_at = datetime.fromisoformat(str(deadline)[:19])
+                deadline_at = datetime.fromisoformat(str(deadline)[:19])
             except ValueError:
-                r.deadline_at = None
-        r.last_follow_at = datetime.utcnow()
-        r.last_follow_note = comment.strip()
-        r.version += 1
-        _trail(db, r.id, "HANDLE", {"owner": r.owner_name, "comment": comment.strip()},
+                deadline_at = None
+        values = {
+            "status": "PROCESSING", "owner_name": owner,
+            "last_follow_at": datetime.utcnow(), "last_follow_note": comment.strip(),
+        }
+        if deadline_at is not None:
+            values["deadline_at"] = deadline_at
+        new_ver = versioned_update(
+            db, RiskRecord, entity_id=r.id, tenant_id=_tid(), expected_version=ver,
+            values=values, expected_status="PENDING_HANDLE")
+        _trail(db, r.id, "HANDLE", {"owner": owner, "comment": comment.strip()},
                operator=_op_name(user))
         db.commit()
-        return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status]}
+        return {"id": str(r.id), "status": "PROCESSING", "statusLabel": STATUS_LABEL["PROCESSING"],
+                "version": new_ver}
 
 
-def follow(user, risk_id, note="") -> dict:
+def follow(user, risk_id, note="", *, expected_version=None) -> dict:
     """跟进：追加一条跟进记录（不改状态，必须处理中）。"""
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
     if not (note or "").strip() or len(note.strip()) < 2:
         raise AppException("VALIDATION_ERROR", "跟进说明必填")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         r = _get(db, risk_id)
         _owner_or_403(db, r, user, "只能跟进本人指导学生的风险")
-        if r.status not in ("PROCESSING",):
-            raise AppException("DATA_CONFLICT", "仅处理中的风险可跟进")
-        r.last_follow_at = datetime.utcnow()
-        r.last_follow_note = note.strip()
-        r.version += 1
+        now = datetime.utcnow()
+        new_ver = versioned_update(
+            db, RiskRecord, entity_id=r.id, tenant_id=_tid(), expected_version=ver,
+            values={"last_follow_at": now, "last_follow_note": note.strip()},
+            expected_status="PROCESSING")
         _trail(db, r.id, "FOLLOW", {"note": note.strip()}, operator=_op_name(user))
         db.commit()
-        return {"id": str(r.id), "lastFollowAt": _iso(r.last_follow_at)}
+        return {"id": str(r.id), "lastFollowAt": _iso(now), "version": new_ver}
 
 
-def escalate(user, risk_id, level, note="") -> dict:
+def escalate(user, risk_id, level, note="", *, expected_version=None) -> dict:
     """升级：调整风险等级（只能升不能降），写审计。"""
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
     if level not in ("MEDIUM", "HIGH"):
         raise AppException("VALIDATION_ERROR", "升级目标等级必须是 MEDIUM/HIGH")
     if not (note or "").strip() or len(note.strip()) < 2:
         raise AppException("VALIDATION_ERROR", "升级原因必填")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         r = _get(db, risk_id)
         _owner_or_403(db, r, user, "只能升级本人指导学生的风险")
@@ -128,37 +146,43 @@ def escalate(user, risk_id, level, note="") -> dict:
         if LEVEL_ORDER.get(level, 0) <= LEVEL_ORDER.get(r.risk_level, 0):
             raise AppException("DATA_CONFLICT", f"当前等级已为{LEVEL_LABEL.get(r.risk_level)}，不可降级/平级升级")
         old = r.risk_level
-        r.risk_level = level
-        r.last_follow_at = datetime.utcnow()
-        r.last_follow_note = note.strip()
-        r.version += 1
+        now = datetime.utcnow()
+        new_ver = versioned_update(
+            db, RiskRecord, entity_id=r.id, tenant_id=_tid(), expected_version=ver,
+            values={"risk_level": level, "last_follow_at": now, "last_follow_note": note.strip()})
         _trail(db, r.id, "ESCALATE", {"from": old, "to": level, "note": note.strip()},
                operator=_op_name(user))
         db.commit()
-        return {"id": str(r.id), "riskLevel": r.risk_level, "riskLevelLabel": LEVEL_LABEL[r.risk_level]}
+        return {"id": str(r.id), "riskLevel": level, "riskLevelLabel": LEVEL_LABEL[level],
+                "version": new_ver}
 
 
-def close(user, risk_id, result="RESOLVED", comment="") -> dict:
+def close(user, risk_id, result="RESOLVED", comment="", *, expected_version=None) -> dict:
     """关闭：PROCESSING → RESOLVED/CLOSED。result=RESOLVED 记为已化解后关闭，UNRESOLVED 记为直接关闭。"""
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
     if result not in ("RESOLVED", "UNRESOLVED"):
         raise AppException("VALIDATION_ERROR", "关闭结论必须是 RESOLVED/UNRESOLVED")
     if not (comment or "").strip() or len(comment.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "关闭说明必填且不少于 5 字")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         r = _get(db, risk_id)
         _owner_or_403(db, r, user, "只能关闭本人指导学生的风险")
         if r.status not in ("PROCESSING", "RESOLVED"):
             raise AppException("DATA_CONFLICT", "仅处理中/已化解的风险可关闭")
-        r.status = "RESOLVED" if result == "RESOLVED" else "CLOSED"
-        if result == "RESOLVED":
-            r.status = "CLOSED"  # 化解后直接归档关闭；留痕区分 result
-        r.last_follow_at = datetime.utcnow()
-        r.last_follow_note = comment.strip()
-        r.version += 1
+        new_status = "CLOSED"
+        now = datetime.utcnow()
+        new_ver = versioned_update(
+            db, RiskRecord, entity_id=r.id, tenant_id=_tid(), expected_version=ver,
+            values={"status": new_status, "last_follow_at": now, "last_follow_note": comment.strip()},
+            expected_status=r.status)
         _trail(db, r.id, "CLOSE", {"result": result, "comment": comment.strip()},
                operator=_op_name(user))
         db.commit()
-        return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status]}
+        return {"id": str(r.id), "status": new_status, "statusLabel": STATUS_LABEL[new_status],
+                "version": new_ver}
 
 
 def student_help_report(user, body=None) -> dict:
@@ -338,8 +362,10 @@ def remind(user, risk_id, channel="站内消息") -> dict:
 
 def export_risks(keyword=None, user=None, batch_id=None, level=None, status=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_risks(1, 100000, keyword=keyword, user=user, batch_id=batch_id,
+    items, total = list_risks(1, 100000, keyword=keyword, user=user, batch_id=batch_id,
                           level=level, status=status)
+    from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
+    require_exportable(total)
     headers = ["学号", "姓名", "指导教师", "企业", "风险编码", "风险标题", "等级", "来源",
                "责任人", "状态", "最近跟进", "最近跟进说明"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
@@ -351,4 +377,5 @@ def export_risks(keyword=None, user=None, batch_id=None, level=None, status=None
     packed = xlsx_util.pack_xlsx_result(content, "风险处置台账.xlsx", len(items))
     if batch_id is not None:
         packed["batchId"] = str(batch_id)
+    packed.update(pack_export_meta(total, len(items)))
     return packed

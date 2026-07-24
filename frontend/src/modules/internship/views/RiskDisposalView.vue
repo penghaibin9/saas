@@ -363,7 +363,7 @@ export default {
         escalate: { title: '风险升级', content: `将「${d.studentName}」风险等级升级为「${d.riskLevel === 'LOW' ? '中' : '高'}」，升级原因将写审计。`, danger: true, confirmText: '升级', reasonLabel: '升级原因', requireReason: true },
         close: { title: '风险关闭', content: `将「${d.studentName}」的风险化解并关闭归档，关闭说明将写审计。`, danger: true, confirmText: '关闭', reasonLabel: '关闭说明（≥5字）', requireReason: true }
       }[kind]
-      this.pending = { id: d.id, kind, level: d.riskLevel, mode: 'risk' }
+      this.pending = { id: d.id, kind, level: d.riskLevel, mode: 'risk', expectedVersion: d.version }
       this.cd = { visible: true, ...map, submitting: false }
     },
     openComplaintAction(action) {
@@ -394,11 +394,11 @@ export default {
             if (['RESOLVE', 'REJECT'].includes(p.kind)) body.conclusion = reason
             res = await complaintApi.transition(p.id, p.kind, body)
           }
-        } else if (p.kind === 'handle') res = await riskApi.handle(p.id, { comment: reason })
-        else if (p.kind === 'follow') res = await riskApi.follow(p.id, { note: reason })
+        } else if (p.kind === 'handle') res = await riskApi.handle(p.id, { comment: reason, expectedVersion: p.expectedVersion })
+        else if (p.kind === 'follow') res = await riskApi.follow(p.id, { note: reason, expectedVersion: p.expectedVersion })
         else if (p.kind === 'remind') res = await riskApi.remind(p.id, {})
-        else if (p.kind === 'escalate') res = await riskApi.escalate(p.id, { level: NEXT_LEVEL[p.level], note: reason })
-        else res = await riskApi.close(p.id, { result: 'RESOLVED', comment: reason })
+        else if (p.kind === 'escalate') res = await riskApi.escalate(p.id, { level: NEXT_LEVEL[p.level], note: reason, expectedVersion: p.expectedVersion })
+        else res = await riskApi.close(p.id, { result: 'RESOLVED', comment: reason, expectedVersion: p.expectedVersion })
       } finally {
         this.cd.submitting = false
       }

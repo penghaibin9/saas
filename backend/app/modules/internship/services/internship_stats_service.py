@@ -16,6 +16,29 @@ from app.models import (College, EmpStudent, InternshipAgreement, InternshipArch
 from app.services.db_service import _iso, _tid, session
 
 EMPLOYED_DEST = frozenset({"SIGNED", "FLEXIBLE", "FURTHER_STUDY", "ENLISTED", "STARTUP", "FREELANCE"})
+METRIC_VERSION = "internship-stats-v1"
+
+# This is deliberately API data rather than a front-end-only legend: the same
+# definitions travel with overview and drill-down results.
+METRIC_DEFINITIONS = {
+    "placementRate": {"key": "placementRate", "label": "实习落实率", "numeratorLabel": "已落实去向学生", "denominatorLabel": "本批次实习学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "去向为已分配岗位、自主实习或免实习的学生。"},
+    "matchRate": {"key": "matchRate", "label": "岗位匹配率", "numeratorLabel": "已分配岗位学生", "denominatorLabel": "本批次实习学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "已分配岗位学生。"},
+    "agreementSignRate": {"key": "agreementSignRate", "label": "协议签署率", "numeratorLabel": "已生效协议学生", "denominatorLabel": "本批次实习学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "协议状态为生效或已归档。"},
+    "arrivalRate": {"key": "arrivalRate", "label": "到岗率", "numeratorLabel": "有有效打卡学生", "denominatorLabel": "应在岗学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "应在岗学生为状态 ONBOARD、ASSESSING、ARCHIVED；分子为该队列中至少一条有效打卡的不同实习记录，避免历史打卡与当前在岗状态混算。"},
+    "checkinComplyRate": {"key": "checkinComplyRate", "label": "打卡合规率", "numeratorLabel": "合规打卡", "denominatorLabel": "全部打卡", "threshold": 85, "emptyPolicy": "null", "distinctKey": "checkinId", "note": "正常、补录或请假打卡为合规。"},
+    "leaveComplyRate": {"key": "leaveComplyRate", "label": "请假合规率", "numeratorLabel": "已审批请假", "denominatorLabel": "全部请假", "threshold": 95, "emptyPolicy": "null", "distinctKey": "leaveId", "note": "已审批请假占全部请假。"},
+    "weeklySubmitRate": {"key": "weeklySubmitRate", "label": "周报提交覆盖率", "numeratorLabel": "有周报学生", "denominatorLabel": "在岗或考核中学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "有周报学生覆盖率，不代表按应交周次的提交率；分母为 ONBOARD、ASSESSING 学生。"},
+    "weeklyReviewRate": {"key": "weeklyReviewRate", "label": "周报批阅率", "numeratorLabel": "已批阅周报", "denominatorLabel": "已提交周报", "threshold": 90, "emptyPolicy": "null", "distinctKey": "weeklyReportId", "note": "已通过或退回的周报。"},
+    "guidanceCoverRate": {"key": "guidanceCoverRate", "label": "指导覆盖率", "numeratorLabel": "有指导学生", "denominatorLabel": "在岗学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "正常指导记录覆盖。"},
+    "visitCoverRate": {"key": "visitCoverRate", "label": "巡访覆盖率", "numeratorLabel": "有巡访学生", "denominatorLabel": "在岗学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "巡访记录覆盖。"},
+    "riskCloseRate": {"key": "riskCloseRate", "label": "风险闭环率", "numeratorLabel": "已关闭风险", "denominatorLabel": "全部风险", "threshold": 95, "emptyPolicy": "null", "distinctKey": "riskId", "note": "风险工单闭环率。"},
+    "enterpriseEvalRate": {"key": "enterpriseEvalRate", "label": "企业评价完成率", "numeratorLabel": "完成企业评价学生", "denominatorLabel": "考核或归档学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "仅对进入考核或已归档学生计算。"},
+    "studentEvalRate": {"key": "studentEvalRate", "label": "学生自评完成率", "numeratorLabel": "已提交自评学生", "denominatorLabel": "考核或归档学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "仅对进入考核或已归档学生计算。"},
+    "scorePublishRate": {"key": "scorePublishRate", "label": "成绩发布率", "numeratorLabel": "已发布成绩", "denominatorLabel": "考核或归档学生", "threshold": 100, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "空分母返回暂无数据。"},
+    "employmentRate": {"key": "employmentRate", "label": "就业转化率", "numeratorLabel": "就业落实学生", "denominatorLabel": "考核或归档学生", "threshold": 85, "emptyPolicy": "null", "distinctKey": "studentId", "note": "就业台账已落实。"},
+    "helpCoverRate": {"key": "helpCoverRate", "label": "未就业帮扶覆盖率", "numeratorLabel": "已分配就业老师", "denominatorLabel": "未就业学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "studentId", "note": "未就业台账学生中已分配就业老师。"},
+    "archiveRate": {"key": "archiveRate", "label": "归档完成率", "numeratorLabel": "已实习归档学生", "denominatorLabel": "考核或归档学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "实习归档记录已归档。"},
+}
 
 
 def _scope_ctx(user):
@@ -49,9 +72,13 @@ def _rate(num, den):
 
 def _metric(key, label, num, den, threshold, note=""):
     rate = _rate(num, den)
+    anomaly = num > den
+    if anomaly:
+        rate = None
     return {"key": key, "label": label, "numerator": num, "denominator": den,
             "rate": rate, "threshold": threshold,
-            "warn": rate is not None and rate < threshold, "note": note}
+            "warn": rate is not None and rate < threshold, "anomaly": anomaly,
+            "definition": METRIC_DEFINITIONS.get(key), "note": note or METRIC_DEFINITIONS.get(key, {}).get("note", "")}
 
 
 def overview(user, college=None, major=None, class_name=None, batch_id=None) -> dict:
@@ -101,19 +128,26 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
                 model.internship_id.in_(rec_ids), *conds)) or 0
 
         # ── 落实 / 匹配 / 协议 ──
-        placed = sum(1 for r in kept if r.destination_type != "NONE")
+        placed = sum(1 for r in kept if r.destination_type in ("ASSIGNED", "SELF_ARRANGED", "EXEMPTED"))
         matched = sum(1 for r in kept if r.position_id or r.destination_type == "ASSIGNED")
         agr_signed = _distinct(InternshipAgreement, InternshipAgreement.status.in_(["EFFECTIVE", "ARCHIVED"]))
         # ── 打卡 / 请假 ──
         checkin_total = _cnt(InternshipCheckin)
         checkin_ok = _cnt(InternshipCheckin, InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"]))
-        arrived = _distinct(InternshipCheckin)
+        onsite_ids = [r.id for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED")] or [0]
+        arrived = db.scalar(select(func.count(func.distinct(InternshipCheckin.internship_id))).where(
+            InternshipCheckin.tenant_id == _tid(), InternshipCheckin.is_deleted.is_(False),
+            InternshipCheckin.internship_id.in_(onsite_ids),
+            InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"]))) or 0
         leave_total = _cnt(InternshipLeave)
         leave_ok = _cnt(InternshipLeave, InternshipLeave.status == "APPROVED")
         # ── 周报 ──
         weekly_total = _cnt(WeeklyReport)
         weekly_reviewed = _cnt(WeeklyReport, WeeklyReport.status.in_(["APPROVED", "RETURNED"]))
-        weekly_stu = _distinct(WeeklyReport)
+        weekly_cohort_ids = [r.id for r in kept if r.status in ("ONBOARD", "ASSESSING")] or [0]
+        weekly_stu = db.scalar(select(func.count(func.distinct(WeeklyReport.internship_id))).where(
+            WeeklyReport.tenant_id == _tid(), WeeklyReport.is_deleted.is_(False),
+            WeeklyReport.internship_id.in_(weekly_cohort_ids))) or 0
         # ── 指导 / 巡访 / 风险 ──
         guided = _distinct(InternshipGuidance, InternshipGuidance.status == "NORMAL")
         visited = _distinct(InternshipVisit)
@@ -160,10 +194,10 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             _metric("matchRate", "岗位匹配率", matched, total, 90,
                     "已分配岗位学生 / 本批次全部实习学生"),
             _metric("agreementSignRate", "协议签署率", agr_signed, total, 95),
-            _metric("arrivalRate", "到岗率", arrived, onboard, 90, "有打卡学生/在岗学生"),
+            _metric("arrivalRate", "到岗率", arrived, eval_base, 90),
             _metric("checkinComplyRate", "打卡合规率", checkin_ok, checkin_total, 85),
             _metric("leaveComplyRate", "请假合规率", leave_ok, leave_total, 95),
-            _metric("weeklySubmitRate", "周报提交覆盖率", weekly_stu, onboard, 90, "有周报学生/在岗学生"),
+            _metric("weeklySubmitRate", "周报提交覆盖率", weekly_stu, len(weekly_cohort_ids) if weekly_cohort_ids != [0] else 0, 90),
             _metric("weeklyReviewRate", "周报批阅率", weekly_reviewed, weekly_total, 90),
             _metric("guidanceCoverRate", "指导覆盖率", guided, onboard, 95),
             _metric("visitCoverRate", "巡访覆盖率", visited, onboard, 90),
@@ -197,6 +231,9 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             dist.append({"bucket": label, "count": c})
 
         return {
+            "metricVersion": METRIC_VERSION,
+            "appliedFilters": {"batchId": str(batch.id), "college": col_f, "major": maj_f,
+                               "className": cls_f, "scopeMode": scope.get("mode")},
             "dimensions": {"college": col_f, "major": maj_f, "className": cls_f,
                            "scopeMode": scope.get("mode"), **batch_public_fields(batch)},
             "counters": counters,
@@ -206,6 +243,85 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
             **batch_public_fields(batch),
         }
+
+
+def metric_definitions() -> dict:
+    return {"metricVersion": METRIC_VERSION, "definitions": list(METRIC_DEFINITIONS.values()),
+            "appliedFilters": {},
+            "generatedAt": datetime.now().isoformat(timespec="seconds")}
+
+
+def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=None,
+                     major=None, class_name=None, batch_id=None) -> dict:
+    """Return record rows from the exact visible overview cohort.
+
+    The subset is intentionally record-oriented even when a metric's numerator
+    is an event count; this preserves distinct-student denominator semantics.
+    """
+    if metric_key not in METRIC_DEFINITIONS:
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "未知统计指标")
+    if subset not in ("numerator", "denominator"):
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "subset 必须为 numerator 或 denominator")
+    from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        records = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id)).all()
+        cache, kept = {}, []
+        for rec in records:
+            stu = db.get(StudentProfile, rec.student_id)
+            if scope.get("mode") == "SCOPED" and not in_scope(scope, db, rec, stu):
+                continue
+            org = _org_of(db, stu, cache)
+            if (college and college != org[0]) or (major and major != org[1]) or (class_name and class_name != org[2]):
+                continue
+            kept.append(rec)
+        all_ids = {r.id for r in kept}
+        onsite = {r.id for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED")}
+        weekly_base = {r.id for r in kept if r.status in ("ONBOARD", "ASSESSING")}
+        eval_base = {r.id for r in kept if r.status in ("ASSESSING", "ARCHIVED")}
+        def related_ids(model, *conditions):
+            return set(db.scalars(select(model.internship_id).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False),
+                model.internship_id.in_(list(all_ids) or [0]), *conditions)).all())
+        positive = {
+            "placementRate": {r.id for r in kept if r.destination_type in ("ASSIGNED", "SELF_ARRANGED", "EXEMPTED")},
+            "matchRate": {r.id for r in kept if r.position_id or r.destination_type == "ASSIGNED"},
+            "agreementSignRate": related_ids(InternshipAgreement, InternshipAgreement.status.in_(["EFFECTIVE", "ARCHIVED"])),
+            "arrivalRate": related_ids(InternshipCheckin, InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"])) & onsite,
+            "weeklySubmitRate": related_ids(WeeklyReport) & weekly_base,
+            "guidanceCoverRate": related_ids(InternshipGuidance, InternshipGuidance.status == "NORMAL"),
+            "visitCoverRate": related_ids(InternshipVisit),
+            "enterpriseEvalRate": related_ids(InternshipEnterpriseEval),
+            "studentEvalRate": related_ids(InternshipStudentEval, InternshipStudentEval.submit_status == "SUBMITTED"),
+            "scorePublishRate": related_ids(InternshipFinalScore, InternshipFinalScore.status == "PUBLISHED"),
+            "archiveRate": related_ids(InternshipArchive, InternshipArchive.status == "ARCHIVED"),
+        }
+        denominator = {
+            "arrivalRate": onsite, "weeklySubmitRate": weekly_base,
+            "enterpriseEvalRate": eval_base, "studentEvalRate": eval_base,
+            "scorePublishRate": eval_base, "archiveRate": eval_base,
+        }.get(metric_key, all_ids)
+        chosen = (positive.get(metric_key, set()) if subset == "numerator" else denominator)
+        selected = [r for r in kept if r.id in chosen]
+        selected.sort(key=lambda r: (r.updated_at or datetime.min, r.id), reverse=True)
+        start = (max(1, int(page)) - 1) * int(page_size)
+        rows = []
+        for rec in selected[start:start + int(page_size)]:
+            stu = db.get(StudentProfile, rec.student_id)
+            org = _org_of(db, stu, cache)
+            rows.append({"internshipId": str(rec.id), "studentId": str(rec.student_id),
+                         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+                         "status": rec.status, "college": org[0], "major": org[1], "className": org[2]})
+        return {"metricVersion": METRIC_VERSION, "definition": METRIC_DEFINITIONS[metric_key],
+                "subset": subset, "total": len(selected), "items": rows, "page": int(page),
+                "pageSize": int(page_size), "appliedFilters": {"batchId": str(batch.id), "college": college or "",
+                "major": major or "", "className": class_name or "", "scopeMode": scope.get("mode")},
+                "generatedAt": datetime.now().isoformat(timespec="seconds"), **batch_public_fields(batch)}
 
 
 def dimension_options(user, batch_id=None) -> dict:

@@ -122,7 +122,9 @@ export default {
       }
       this.formError = ''
       this.submitting = true
-      const res = await internshipApi.reviewProcessReport(this.$route.params.id, { action, comment: this.comment })
+      const res = await internshipApi.reviewProcessReport(this.$route.params.id, {
+        action, comment: this.comment, expectedVersion: this.detail?.version
+      })
       this.submitting = false
       if (res.code === 0) {
         toast.success('批阅完成')

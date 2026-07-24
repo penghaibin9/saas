@@ -18,6 +18,12 @@ def _uniq(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _batch_version(client, h, bid) -> int:
+    d = client.get(f"{BATCH}/{bid}", headers=h).json()
+    assert d["code"] == 0, d
+    return int(d["data"].get("version") or 0)
+
+
 def _mk_batch(client, h, *, status="RUNNING", name=None, no=None):
     body = {
         "batchName": name or _uniq("批次"),
@@ -29,11 +35,18 @@ def _mk_batch(client, h, *, status="RUNNING", name=None, no=None):
     r = client.post(BATCH, headers=h, json=body).json()
     assert r["code"] == 0, r
     bid = r["data"]["id"]
+    ver = int(r["data"].get("version") or 0)
     if status == "RUNNING":
-        assert client.post(f"{BATCH}/{bid}/activate", headers=h).json()["code"] == 0
+        act = client.post(f"{BATCH}/{bid}/activate", headers=h, json={"expectedVersion": ver}).json()
+        assert act["code"] == 0, act
     elif status == "CLOSED":
-        assert client.post(f"{BATCH}/{bid}/activate", headers=h).json()["code"] == 0
-        assert client.post(f"{BATCH}/{bid}/close", headers=h).json()["code"] == 0
+        act = client.post(f"{BATCH}/{bid}/activate", headers=h, json={"expectedVersion": ver}).json()
+        assert act["code"] == 0, act
+        ver = int(act["data"].get("version") or (ver + 1))
+        cl = client.post(f"{BATCH}/{bid}/close", headers=h,
+                         json={"expectedVersion": ver, "force": True,
+                               "forceReason": "测试环境强制结束空批次"}).json()
+        assert cl["code"] == 0, cl
     elif status == "VOIDED":
         assert client.post(f"{BATCH}/{bid}/void", headers=h, json={"reason": "测试作废原因足够长"}).json()["code"] == 0
     return bid
@@ -128,7 +141,9 @@ def test_import_confirm_rejects_closed_batch_after_dry_run(client, auth_headers,
     dry = client.post(f"{IST}/import/dry-run", headers=auth_headers,
                       json={"rows": rows, "batchId": b}).json()
     assert dry["code"] == 0
-    assert client.post(f"{BATCH}/{b}/close", headers=auth_headers).json()["code"] == 0
+    assert client.post(f"{BATCH}/{b}/close", headers=auth_headers,
+                       json={"expectedVersion": _batch_version(client, auth_headers, b),
+                             "force": True, "forceReason": "导入确认前关闭批次"}).json()["code"] == 0
     conf = client.post(f"{IST}/import/confirm", headers=auth_headers,
                        json={"rows": rows, "batchId": b}).json()
     assert conf["code"] != 0

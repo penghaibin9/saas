@@ -16,6 +16,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
                         InternshipRecord, Major, SchoolClass, StudentProfile, Tenant)
+from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"DRAFT": "草稿", "PENDING_STUDENT": "待学生确认", "PENDING_ENTERPRISE": "待企业确认",
@@ -170,6 +171,7 @@ def _row(db, a, rec, stu):
         "enterpriseConfirm": a.enterprise_confirm_status, "enterpriseConfirmLabel": CONFIRM_LABEL.get(a.enterprise_confirm_status),
         "schoolConfirm": a.school_confirm_status, "schoolConfirmLabel": CONFIRM_LABEL.get(a.school_confirm_status),
         "status": a.status, "statusLabel": STATUS_LABEL.get(a.status, a.status),
+        "version": int(a.version or 0),
         "esignStatus": a.esign_status, "hasFile": bool(a.file_id),
         "createdAt": _iso(a.created_at) or "",
         # 历史协议（本次修复前生成）rendered_body 为空时按结构化字段兜底渲染，不写库、只读时补齐
@@ -225,21 +227,23 @@ def generate(user, body) -> dict:
         db.add(a); db.flush()
         _trail(db, a.id, "GENERATE", {"templateId": str(tpl_id) if tpl_id else ""}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status}
+        return {"id": str(a.id), "status": a.status, "version": int(a.version or 0)}
 
 
-def issue(user, aid) -> dict:
+def issue(user, aid, body=None) -> dict:
     """下发：DRAFT → PENDING_STUDENT。"""
     with session() as db:
         a = _get(db, aid)
         _owner_or_403(db, a, user, "只能下发本人指导学生的协议")
         if a.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅草稿协议可下发")
-        a.status = "PENDING_STUDENT"
-        a.version += 1
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body),
+                                   expected_status="DRAFT", values={"status": "PENDING_STUDENT"})
         _trail(db, a.id, "ISSUE", {}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status, "statusLabel": STATUS_LABEL[a.status]}
+        return {"id": str(a.id), "status": "PENDING_STUDENT", "statusLabel": STATUS_LABEL["PENDING_STUDENT"],
+                "version": new_ver}
 
 
 def enterprise_confirm(user, aid, body) -> dict:
@@ -251,36 +255,39 @@ def enterprise_confirm(user, aid, body) -> dict:
         _owner_or_403(db, a, user, "只能推进本人指导学生的协议")
         if a.status != "PENDING_ENTERPRISE":
             raise AppException("DATA_CONFLICT", "当前状态不可记录企业确认")
-        a.enterprise_confirm_status = "CONFIRMED"
-        a.enterprise_confirm_at = datetime.utcnow()
-        a.enterprise_confirm_by = (b.get("confirmBy") or "").strip() or None
-        a.file_id = file_id
-        a.status = "PENDING_SCHOOL"
-        a.version += 1
+        confirmed_at = datetime.utcnow()
+        new_ver = versioned_update(
+            db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+            expected_version=extract_expected_version(b), expected_status="PENDING_ENTERPRISE",
+            values={"enterprise_confirm_status": "CONFIRMED", "enterprise_confirm_at": confirmed_at,
+                    "enterprise_confirm_by": (b.get("confirmBy") or "").strip() or None,
+                    "file_id": file_id, "status": "PENDING_SCHOOL"})
         _trail(db, a.id, "ENTERPRISE_CONFIRM", {"confirmBy": a.enterprise_confirm_by, "hasFile": True},
                operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status, "statusLabel": STATUS_LABEL[a.status]}
+        return {"id": str(a.id), "status": "PENDING_SCHOOL", "statusLabel": STATUS_LABEL["PENDING_SCHOOL"],
+                "version": new_ver}
 
 
-def school_confirm(user, aid) -> dict:
+def school_confirm(user, aid, body=None) -> dict:
     """学校确认：PENDING_SCHOOL → EFFECTIVE。"""
     with session() as db:
         a = _get(db, aid)
         _owner_or_403(db, a, user, "只能确认本人指导学生的协议")
         if a.status != "PENDING_SCHOOL":
             raise AppException("DATA_CONFLICT", "仅待学校确认的协议可确认生效")
-        a.school_confirm_status = "CONFIRMED"
-        a.school_confirm_at = datetime.utcnow()
-        a.school_confirm_by = _op_name(user)
-        a.status = "EFFECTIVE"
-        a.version += 1
+        new_ver = versioned_update(
+            db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+            expected_version=extract_expected_version(body), expected_status="PENDING_SCHOOL",
+            values={"school_confirm_status": "CONFIRMED", "school_confirm_at": datetime.utcnow(),
+                    "school_confirm_by": _op_name(user), "status": "EFFECTIVE"})
         _trail(db, a.id, "SCHOOL_CONFIRM", {}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status, "statusLabel": STATUS_LABEL[a.status]}
+        return {"id": str(a.id), "status": "EFFECTIVE", "statusLabel": STATUS_LABEL["EFFECTIVE"],
+                "version": new_ver}
 
 
-def reject(user, aid, reason="") -> dict:
+def reject(user, aid, reason="", body=None) -> dict:
     if not (reason or "").strip() or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
@@ -288,40 +295,45 @@ def reject(user, aid, reason="") -> dict:
         _owner_or_403(db, a, user, "只能驳回本人指导学生的协议")
         if a.status not in ("PENDING_STUDENT", "PENDING_ENTERPRISE", "PENDING_SCHOOL"):
             raise AppException("DATA_CONFLICT", "当前状态不可驳回")
-        a.status = "REJECTED"
-        a.reject_reason = reason.strip()
-        a.version += 1
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body), values={
+                                       "status": "REJECTED", "reject_reason": reason.strip()},
+                                   extra_where=(InternshipAgreement.status.in_(
+                                       ("PENDING_STUDENT", "PENDING_ENTERPRISE", "PENDING_SCHOOL")),))
         _trail(db, a.id, "REJECT", {"reason": reason.strip()}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status}
+        return {"id": str(a.id), "status": "REJECTED", "version": new_ver}
 
 
-def void(user, aid, reason="") -> dict:
+def void(user, aid, reason="", body=None) -> dict:
     with session() as db:
         a = _get(db, aid)
         _owner_or_403(db, a, user, "只能作废本人指导学生的协议")
         if a.status in ("EFFECTIVE", "ARCHIVED", "VOIDED"):
             raise AppException("DATA_CONFLICT", "已生效/已归档/已作废协议不可作废")
-        a.status = "VOIDED"
-        a.is_deleted = False
-        a.reject_reason = (reason or "").strip() or a.reject_reason
-        a.version += 1
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body), values={
+                                       "status": "VOIDED", "is_deleted": False,
+                                       "reject_reason": (reason or "").strip() or a.reject_reason},
+                                   extra_where=(InternshipAgreement.status.notin_(
+                                       ("EFFECTIVE", "ARCHIVED", "VOIDED")),))
         _trail(db, a.id, "VOID", {"reason": (reason or "").strip()}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status}
+        return {"id": str(a.id), "status": "VOIDED", "version": new_ver}
 
 
-def archive(user, aid) -> dict:
+def archive(user, aid, body=None) -> dict:
     with session() as db:
         a = _get(db, aid)
         _owner_or_403(db, a, user, "只能归档本人指导学生的协议")
         if a.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效协议可归档")
-        a.status = "ARCHIVED"
-        a.version += 1
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body),
+                                   expected_status="EFFECTIVE", values={"status": "ARCHIVED"})
         _trail(db, a.id, "ARCHIVE", {}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "status": a.status}
+        return {"id": str(a.id), "status": "ARCHIVED", "version": new_ver}
 
 
 # ═══════════ 电子签流转（P3；三方齐签 → EFFECTIVE，无第三方签章时以平台内部签署时间线为准） ═══════════
@@ -471,7 +483,7 @@ def my_agreements(user) -> list[dict]:
         return [_row(db, a, rec, stu) for a in rows]
 
 
-def student_confirm(user, aid, action: str, reason="") -> dict:
+def student_confirm(user, aid, action: str, reason="", body=None) -> dict:
     """学生确认：PENDING_STUDENT →(CONFIRM) PENDING_ENTERPRISE /(REJECT) REJECTED。"""
     if action not in ("CONFIRM", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 CONFIRM/REJECT")
@@ -484,16 +496,15 @@ def student_confirm(user, aid, action: str, reason="") -> dict:
             raise no_permission("只能确认本人的协议")
         if a.status != "PENDING_STUDENT":
             raise AppException("DATA_CONFLICT", "当前协议状态不可由学生确认")
-        if action == "CONFIRM":
-            a.student_confirm_status = "CONFIRMED"
-            a.student_confirm_at = datetime.utcnow()
-            a.status = "PENDING_ENTERPRISE"
-        else:
-            a.student_confirm_status = "REJECTED"
-            a.status = "REJECTED"
-            a.reject_reason = reason.strip()
-        a.version += 1
+        values = ({"student_confirm_status": "CONFIRMED", "student_confirm_at": datetime.utcnow(),
+                   "status": "PENDING_ENTERPRISE"} if action == "CONFIRM" else
+                  {"student_confirm_status": "REJECTED", "status": "REJECTED",
+                   "reject_reason": reason.strip()})
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body),
+                                   expected_status="PENDING_STUDENT", values=values)
         _trail(db, a.id, f"STUDENT_{action}", {"reason": (reason or "").strip()},
                operator=(user or {}).get("realName") or "学生")
         db.commit()
-        return {"id": str(a.id), "status": a.status, "statusLabel": STATUS_LABEL[a.status]}
+        status = values["status"]
+        return {"id": str(a.id), "status": status, "statusLabel": STATUS_LABEL[status], "version": new_ver}

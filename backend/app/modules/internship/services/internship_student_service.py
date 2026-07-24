@@ -244,7 +244,14 @@ def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status
         q = q.where(InternshipRecord.position_id.is_not(None))
     elif has_position is False:
         q = q.where(InternshipRecord.position_id.is_(None))
-    rows = db.scalars(q.order_by(InternshipRecord.id.desc())).all()
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            or_(StudentProfile.real_name.like(like), StudentProfile.student_no.like(like)))
+    if class_id:
+        q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            StudentProfile.class_id == _as_id(class_id))
+    rows = db.scalars(q.order_by(InternshipRecord.updated_at.desc(), InternshipRecord.id.desc())).all()
     smap = _students_map(db, [r.student_id for r in rows])
     scope = _current_scope(user)
     kept = []
@@ -266,10 +273,44 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
                   risk_level=None, eligibility=None, destination=None,
                   has_position=None, batch_id=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
-        kept = _collect_scoped_records(
-            db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
-            risk_level=risk_level, eligibility=eligibility, destination=destination,
-            has_position=has_position, user=user)
+        # The common collector retains the complete Python scope fallback for
+        # class/college scopes.  For tenant-wide and advisor-id-only scopes,
+        # paginate in SQL so the flagship list does not load an entire batch.
+        scope = _current_scope(user)
+        sql_safe = scope.get("mode") != "SCOPED" or (
+            scope.get("by") == "ADVISOR" and scope.get("advisorUserIds"))
+        if sql_safe:
+            from app.modules.internship.services.internship_batch_context import resolve_batch
+            batch = resolve_batch(db, batch_id, for_write=False)
+            q = select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+                InternshipRecord.batch_id == batch.id)
+            if status: q = q.where(InternshipRecord.status == status)
+            if risk_level: q = q.where(InternshipRecord.risk_level == risk_level)
+            if eligibility: q = q.where(InternshipRecord.eligibility_status == eligibility)
+            if destination: q = q.where(InternshipRecord.destination_type == destination)
+            if has_position is True: q = q.where(InternshipRecord.position_id.is_not(None))
+            elif has_position is False: q = q.where(InternshipRecord.position_id.is_(None))
+            if scope.get("mode") == "SCOPED":
+                q = q.where(InternshipRecord.advisor_user_id.in_(scope["advisorUserIds"]))
+            if keyword or class_id:
+                q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id)
+                if keyword:
+                    like = f"%{keyword.strip()}%"
+                    q = q.where(or_(StudentProfile.real_name.like(like), StudentProfile.student_no.like(like)))
+                if class_id: q = q.where(StudentProfile.class_id == _as_id(class_id))
+            total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+            offset = (max(1, page) - 1) * page_size
+            kept = db.scalars(q.order_by(InternshipRecord.updated_at.desc(), InternshipRecord.id.desc())
+                              .offset(offset).limit(page_size)).all()
+        else:
+            kept = _collect_scoped_records(
+                db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
+                risk_level=risk_level, eligibility=eligibility, destination=destination,
+                has_position=has_position, user=user)
+            total = len(kept)
+            start = (max(1, page) - 1) * page_size
+            kept = kept[start:start + page_size]
         smap = _students_map(db, [r.student_id for r in kept])
         bmap = _batch_names(db, [r.batch_id for r in kept])
         from app.modules.internship.services.internship_service import resolve_student_class_college_names
@@ -278,9 +319,7 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
             stu = smap.get(r.student_id)
             cn, _ = resolve_student_class_college_names(db, stu)
             items.append(_row(r, stu, bmap.get(r.batch_id, ""), class_name=cn))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        return items, total
 
 
 def get_student(rec_id, user=None) -> dict:
@@ -404,7 +443,26 @@ def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None) -> dict
 
 # ═══════════ 学生-岗位分配（岗位库 allocated_count 收口）═══════════
 
+_RELEASE_SQL = (
+    "UPDATE t_internship_position SET "
+    "allocated_count = CASE WHEN allocated_count > 0 THEN allocated_count - 1 ELSE 0 END, "
+    "status = CASE WHEN status = 'FULL' AND "
+    "CASE WHEN allocated_count > 0 THEN allocated_count - 1 ELSE 0 END < headcount "
+    "THEN 'PUBLISHED' ELSE status END, "
+    "version = version + 1 "
+    "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0"
+)
+_CLAIM_SQL = (
+    "UPDATE t_internship_position SET allocated_count = allocated_count + 1, "
+    "status = CASE WHEN allocated_count + 1 >= headcount THEN 'FULL' ELSE status END, "
+    "version = version + 1 "
+    "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0 "
+    "AND status = 'PUBLISHED' AND allocated_count < headcount"
+)
+
+
 def assign_position(rec_id, position_id, user=None) -> dict:
+    """分配/调岗：先原子占用新岗位，成功后再释放旧岗位，避免新岗失败时丢旧岗。"""
     from sqlalchemy import text
     with session() as db:
         r = _get(db, rec_id)
@@ -423,31 +481,37 @@ def assign_position(rec_id, position_id, user=None) -> dict:
             raise not_found("岗位所属企业不存在")
         if c.blacklist or c.coop_status == "BLACKLIST":
             raise AppException("DATA_CONFLICT", "黑名单企业岗位不可分配学生")
-        # 调岗：原子释放旧岗位名额
-        if r.position_id:
-            old_id = r.position_id
-            released = db.execute(text(
-                "UPDATE t_internship_position SET allocated_count = allocated_count - 1, "
-                "status = CASE WHEN status = 'FULL' AND allocated_count - 1 < headcount "
-                "THEN 'PUBLISHED' ELSE status END, "
-                "version = version + 1 "
-                "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0 AND allocated_count > 0"
-            ), {"pid": old_id, "tid": _tid()}).rowcount
-            if released == 0:
-                # 旧岗位计数异常时仍允许调岗，但写审计提示
-                pass
-        # 原子占用新岗位：allocated_count < headcount 且 PUBLISHED
-        claimed = db.execute(text(
-            "UPDATE t_internship_position SET allocated_count = allocated_count + 1, "
-            "status = CASE WHEN allocated_count + 1 >= headcount THEN 'FULL' ELSE status END, "
-            "version = version + 1 "
-            "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0 "
-            "AND status = 'PUBLISHED' AND allocated_count < headcount"
-        ), {"pid": p.id, "tid": _tid()}).rowcount
+        from app.modules.internship.services.internship_compliance_rules import get_batch_compliance_rules
+        from app.modules.internship.services.internship_enterprise_inspection_service import is_enterprise_access_valid
+        from app.modules.internship.services.internship_position_rights import evaluate_position_compliance
+        batch = db.get(InternshipBatch, r.batch_id) if r.batch_id else None
+        compliance_rules = get_batch_compliance_rules(db, batch)
+        ea = compliance_rules.get("enterpriseAccess") or {}
+        if ea.get("required"):
+            access_ok, access_reason = is_enterprise_access_valid(db, c.id, compliance_rules)
+            if not access_ok:
+                raise AppException("DATA_CONFLICT", f"企业准入未通过：{access_reason}")
+        wr = compliance_rules.get("workRights") or {}
+        if wr.get("required"):
+            rights = evaluate_position_compliance(p, None, compliance_rules)
+            if rights["blockers"]:
+                raise AppException("DATA_CONFLICT", "岗位劳动权益不合规：" + "；".join(rights["blockers"]))
+        elif p.prohibited_reason:
+            raise AppException("DATA_CONFLICT", f"岗位禁止安排：{p.prohibited_reason}")
+        old_id = r.position_id
+        # 为降低死锁：同时涉及两岗时按 id 升序加行锁，再 claim 新岗 / release 旧岗
+        lock_ids = sorted({i for i in (old_id, p.id) if i})
+        for lid in lock_ids:
+            db.execute(text(
+                "SELECT id FROM t_internship_position WHERE id = :pid AND tenant_id = :tid "
+                "AND is_deleted = 0 FOR UPDATE"
+            ), {"pid": lid, "tid": _tid()})
+        claimed = db.execute(text(_CLAIM_SQL), {"pid": p.id, "tid": _tid()}).rowcount
         if claimed != 1:
             raise AppException("DATA_CONFLICT", "该岗位已满员或状态已变化，不能再分配")
+        if old_id:
+            db.execute(text(_RELEASE_SQL), {"pid": old_id, "tid": _tid()})
         db.refresh(p)
-        # 回填关联
         r.position_id = p.id
         r.enterprise_id = c.id
         r.mentor_contact_id = p.mentor_contact_id
@@ -455,7 +519,10 @@ def assign_position(rec_id, position_id, user=None) -> dict:
         r.enterprise_name = c.name
         r.enterprise_mentor_name = p.mentor_name
         r.destination_type = "ASSIGNED"
-        _trail(db, r.id, "ASSIGN_POSITION", {"positionId": str(p.id), "title": p.title})
+        _trail(db, r.id, "ASSIGN_POSITION", {
+            "positionId": str(p.id), "title": p.title,
+            "fromPositionId": str(old_id or ""),
+        })
         db.commit()
         return _row_of(db, r)
 
@@ -469,12 +536,10 @@ def unassign_position(rec_id, reason: str = "", user=None) -> dict:
             raise AppException("DATA_CONFLICT", "该学生未分配岗位")
         old_id = r.position_id
         db.execute(text(
-            "UPDATE t_internship_position SET allocated_count = allocated_count - 1, "
-            "status = CASE WHEN status = 'FULL' AND allocated_count - 1 < headcount "
-            "THEN 'PUBLISHED' ELSE status END, "
-            "version = version + 1 "
-            "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0 AND allocated_count > 0"
+            "SELECT id FROM t_internship_position WHERE id = :pid AND tenant_id = :tid "
+            "AND is_deleted = 0 FOR UPDATE"
         ), {"pid": old_id, "tid": _tid()})
+        db.execute(text(_RELEASE_SQL), {"pid": old_id, "tid": _tid()})
         r.position_id = None
         r.enterprise_id = None
         r.mentor_contact_id = None
@@ -496,34 +561,23 @@ def _onboard_rules(db, r: InternshipRecord) -> dict:
         return default
     b = db.get(InternshipBatch, r.batch_id)
     cfg = ((b.rules_config or {}).get("onboard") or {}) if b else {}
-    return {k: bool(cfg.get(k, v)) for k, v in default.items()}
+    values = {k: bool(cfg.get(k, v)) for k, v in default.items()}
+    if b:
+        values["compliance"] = ((b.rules_config or {}).get("compliance") or {})
+    return values
 
 
 def _onboard_blockers(db, r: InternshipRecord) -> list[str]:
-    """上岗前置校验清单（BUG-010）：岗位 + 三方协议生效 + 保险核验 + 校内指导教师。
-    岗位为硬前置（无岗即无实习关系）；其余三项按批次规则可关，默认要求。"""
-    rules = _onboard_rules(db, r)
+    """上岗前置：岗位硬门槛 + 统一合规评估（含协议/保险/知情/安全/备案等）。"""
     missing: list[str] = []
     if not r.position_id:
         missing.append("未分配岗位")
-    if rules["requireAgreement"]:
-        ag = db.scalars(select(InternshipAgreement).where(
-            InternshipAgreement.tenant_id == _tid(),
-            InternshipAgreement.internship_id == r.id,
-            InternshipAgreement.is_deleted.is_(False),
-            InternshipAgreement.status == "EFFECTIVE")).first()
-        if not ag:
-            missing.append("三方协议未生效")
-    if rules["requireInsurance"]:
-        ins = db.scalars(select(InternshipInsurance).where(
-            InternshipInsurance.tenant_id == _tid(),
-            InternshipInsurance.internship_id == r.id,
-            InternshipInsurance.is_deleted.is_(False),
-            InternshipInsurance.status == "VERIFIED")).first()
-        if not ins:
-            missing.append("实习保险未核验")
-    if rules["requireAdvisor"] and not (r.advisor_user_id or (r.advisor_name or "").strip()):
-        missing.append("未分配校内指导教师")
+    from app.modules.internship.services.internship_compliance_service import evaluate_internship_compliance
+    result = evaluate_internship_compliance(r.id, "ONBOARD")
+    for item in result.get("blockers") or []:
+        tip = item.get("label") or item.get("code")
+        reason = item.get("reason") or item.get("status")
+        missing.append(f"{tip}：{reason}")
     return missing
 
 
@@ -780,10 +834,12 @@ def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
         batch_meta = batch_public_fields(batch)
-    items, _ = list_students(
+    items, total = list_students(
         1, 100000, keyword=keyword, status=status, eligibility=eligibility,
         batch_id=batch_id, class_id=class_id, risk_level=risk_level,
         destination=destination, has_position=has_position, user=user)
+    from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
+    require_exportable(total)
     headers = ["学号", "姓名", "班级", "批次", "校内指导教师", "企业名称", "岗位名称",
                "实习状态", "实习资格", "实习去向", "风险"]
     data_rows = [[it["studentNo"], it["name"], it["className"], batch_meta["batchName"],
@@ -797,4 +853,5 @@ def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
     safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in bname)[:40] or "batch"
     packed = xlsx_util.pack_xlsx_result(content, f"实习学生台账_{safe_name}.xlsx", len(items))
     packed.update(batch_meta)
+    packed.update(pack_export_meta(total, len(items)))
     return packed

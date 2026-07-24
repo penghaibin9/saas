@@ -708,7 +708,9 @@ def match_stats(batch_id=None) -> dict:
 
 
 def export_matches(keyword=None, status=None, match_type=None, batch_id=None) -> dict:
-    items, _ = list_matches(1, 5000, keyword=keyword, status=status, match_type=match_type, batch_id=batch_id)
+    items, total = list_matches(1, 100000, keyword=keyword, status=status, match_type=match_type, batch_id=batch_id)
+    from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
+    require_exportable(total)
     headers = ["学号", "姓名", "专业", "岗位", "企业", "匹配方式", "得分", "专业命中",
                "冲突", "状态", "备注"]
     rows = [[x["studentNo"], x["studentName"], x["majorName"], x["positionTitle"],
@@ -717,4 +719,6 @@ def export_matches(keyword=None, status=None, match_type=None, batch_id=None) ->
              x["conflictReason"] if x["conflictFlag"] else "",
              x["statusLabel"], x["remark"]] for x in items]
     content = xlsx_util.build_ledger_xlsx("岗位匹配台账", headers, rows)
-    return xlsx_util.pack_xlsx_result(content, "岗位匹配台账.xlsx", len(rows))
+    packed = xlsx_util.pack_xlsx_result(content, "岗位匹配台账.xlsx", len(rows))
+    packed.update(pack_export_meta(total, len(rows)))
+    return packed

@@ -25,8 +25,10 @@ const B = '/internship'
 export const leaveApi = {
   getLeaves(params = {}) { return callList(`${B}/leaves`, params) },
   getLeaveDetail(id) { return call(() => request(`${B}/leaves/${id}`)) },
-  review(id, { action, comment }) {
-    return call(() => request(`${B}/leaves/${id}/review`, { method: 'POST', body: { action, comment } }))
+  review(id, { action, comment, expectedVersion, version }) {
+    return call(() => request(`${B}/leaves/${id}/review`, {
+      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
+    }))
   },
   exportLeaves(params = {}) { return call(() => request(`${B}/leaves/export`, { method: 'POST', params })) }
 }
@@ -34,20 +36,28 @@ export const leaveApi = {
 export const riskApi = {
   getRisks(params = {}) { return callList(`${B}/risks`, params) },
   getRiskDetail(id) { return call(() => request(`${B}/risks/${id}`)) },
-  handle(id, { ownerName, deadline, comment }) {
-    return call(() => request(`${B}/risks/${id}/handle`, { method: 'POST', body: { ownerName, deadline, comment } }))
+  handle(id, { ownerName, deadline, comment, expectedVersion, version }) {
+    return call(() => request(`${B}/risks/${id}/handle`, {
+      method: 'POST', body: { ownerName, deadline, comment, expectedVersion: expectedVersion ?? version }
+    }))
   },
-  follow(id, { note }) {
-    return call(() => request(`${B}/risks/${id}/follow`, { method: 'POST', body: { note } }))
+  follow(id, { note, expectedVersion, version }) {
+    return call(() => request(`${B}/risks/${id}/follow`, {
+      method: 'POST', body: { note, expectedVersion: expectedVersion ?? version }
+    }))
   },
   remind(id, { channel = '站内消息' } = {}) {
     return call(() => request(`${B}/risks/${id}/remind`, { method: 'POST', body: { channel } }))
   },
-  escalate(id, { level, note }) {
-    return call(() => request(`${B}/risks/${id}/escalate`, { method: 'POST', body: { level, note } }))
+  escalate(id, { level, note, expectedVersion, version }) {
+    return call(() => request(`${B}/risks/${id}/escalate`, {
+      method: 'POST', body: { level, note, expectedVersion: expectedVersion ?? version }
+    }))
   },
-  close(id, { result, comment }) {
-    return call(() => request(`${B}/risks/${id}/close`, { method: 'POST', body: { result, comment } }))
+  close(id, { result, comment, expectedVersion, version }) {
+    return call(() => request(`${B}/risks/${id}/close`, {
+      method: 'POST', body: { result, comment, expectedVersion: expectedVersion ?? version }
+    }))
   },
   exportRisks(params = {}) { return call(() => request(`${B}/risks/export`, { method: 'POST', params })) }
 }

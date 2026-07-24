@@ -55,8 +55,8 @@
           <div class="mp-cell-sub">{{ row.className }} · {{ row.enterpriseName }}</div>
         </template>
         <template #cell-version="{ row }">
-          <AppStatusTag v-if="row.isResubmit" type="info">{{ row.version }} 重交</AppStatusTag>
-          <span v-else>{{ row.version }}</span>
+          <AppStatusTag v-if="row.isResubmit" type="info">{{ row.reportVersion || row.version }} 重交</AppStatusTag>
+          <span v-else>{{ row.reportVersion || row.version }}</span>
         </template>
         <template #cell-riskFlag="{ row }">
           <AppRiskTag v-if="row.riskFlag" :level="row.riskFlag" label="风险学生" />
@@ -306,7 +306,11 @@ export default {
       if (!this.canBatchApprove || this.batchHasRisk || !this.selected.length) return
       this.batchSubmitting = true
       try {
-        const res = await internshipApi.batchReviewWeeklyReports(this.selected, { action: 'APPROVE', comment: '批量通过' })
+        const items = this.selected.map((id) => {
+          const row = this.rows.find((r) => String(r.id) === String(id))
+          return { id, expectedVersion: row?.version }
+        })
+        const res = await internshipApi.batchReviewWeeklyReports(items, { action: 'APPROVE', comment: '批量通过' })
         if (res.code === 0) {
           const d = res.data || {}
           toast.success(`已通过 ${d.approvedCount || 0} 篇，跳过 ${d.skippedCount || 0} 篇（已写审计）`)

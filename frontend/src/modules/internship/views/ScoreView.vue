@@ -318,17 +318,18 @@ export default {
         withdraw: { title: '撤回成绩', content: `撤回「${r.studentName}」的已发布成绩，原因将写审计。`, danger: true, confirmText: '撤回', requireReason: true },
         archive: { title: '归档成绩', content: `归档「${r.studentName}」的已发布成绩？`, danger: false, confirmText: '归档', requireReason: false }
       }[kind]
-      this.pending = { id: r.id, kind }
+      this.pending = { id: r.id, kind, expectedVersion: r.version }
       this.cd = { visible: true, ...map, submitting: false }
     },
     async onConfirm({ reason }) {
       const p = this.pending
+      const ver = { expectedVersion: p.expectedVersion }
       this.cd.submitting = true
       let res
-      if (p.kind === 'publish') res = await scoreApi.publish(p.id)
-      else if (p.kind === 'return') res = await scoreApi.returnRecalc(p.id, { reason })
-      else if (p.kind === 'withdraw') res = await scoreApi.withdraw(p.id, { reason })
-      else res = await scoreApi.archive(p.id)
+      if (p.kind === 'publish') res = await scoreApi.publish(p.id, ver)
+      else if (p.kind === 'return') res = await scoreApi.returnRecalc(p.id, { reason, ...ver })
+      else if (p.kind === 'withdraw') res = await scoreApi.withdraw(p.id, { reason, ...ver })
+      else res = await scoreApi.archive(p.id, ver)
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false; toast.success('操作成功，已写审计')

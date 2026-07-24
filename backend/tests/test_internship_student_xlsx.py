@@ -41,7 +41,10 @@ def _mk_running_batch(client):
     }).json()
     assert b["code"] == 0
     bid = b["data"]["id"]
-    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=h).json()["code"] == 0
+    ver = int(b["data"].get("version") or 0)
+    act = client.post(f"/api/v1/internship/batches/{bid}/activate", headers=h,
+                      json={"expectedVersion": ver}).json()
+    assert act["code"] == 0, act
     return bid
 
 

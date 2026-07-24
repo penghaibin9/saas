@@ -17,6 +17,12 @@ def _uniq(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _batch_version(client, h, bid) -> int:
+    d = client.get(f"{BATCH}/{bid}", headers=h).json()
+    assert d["code"] == 0, d
+    return int(d["data"].get("version") or 0)
+
+
 def _mk_batch(client, h, *, status="RUNNING"):
     body = {
         "batchName": _uniq("批次"),
@@ -28,12 +34,23 @@ def _mk_batch(client, h, *, status="RUNNING"):
     r = client.post(BATCH, headers=h, json=body).json()
     assert r["code"] == 0, r
     bid = r["data"]["id"]
+    ver = int(r["data"].get("version") or 0)
     if status in ("RUNNING", "CLOSED", "ARCHIVED"):
-        assert client.post(f"{BATCH}/{bid}/activate", headers=h).json()["code"] == 0
+        act = client.post(f"{BATCH}/{bid}/activate", headers=h,
+                          json={"expectedVersion": ver}).json()
+        assert act["code"] == 0, act
+        ver = int(act["data"].get("version") or (ver + 1))
     if status in ("CLOSED", "ARCHIVED"):
-        assert client.post(f"{BATCH}/{bid}/close", headers=h).json()["code"] == 0
+        cl = client.post(f"{BATCH}/{bid}/close", headers=h,
+                         json={"expectedVersion": ver, "force": True,
+                               "forceReason": "测试环境强制结束空批次"}).json()
+        assert cl["code"] == 0, cl
+        ver = int(cl["data"].get("version") or (ver + 1))
     if status == "ARCHIVED":
-        assert client.post(f"{BATCH}/{bid}/archive", headers=h).json()["code"] == 0
+        ar = client.post(f"{BATCH}/{bid}/archive", headers=h,
+                         json={"expectedVersion": ver, "force": True,
+                               "forceReason": "测试环境强制归档空批次"}).json()
+        assert ar["code"] == 0, ar
     return bid
 
 
@@ -59,7 +76,8 @@ def test_p0_resolver_prefers_running_batch_record(client, auth_headers, db_mode)
     assert client.post(IST, headers=auth_headers, json={"studentId": sid, "batchId": b_new}).json()["code"] == 0
     # 结束旧批次（空就绪，学生仍在 PREPARING 且无岗位 → 会阻断；用 force）
     cl = client.post(f"{BATCH}/{b_old}/close", headers=auth_headers,
-                     json={"force": True, "forceReason": "历史批次测试强制结束"}).json()
+                     json={"expectedVersion": _batch_version(client, auth_headers, b_old),
+                           "force": True, "forceReason": "历史批次测试强制结束"}).json()
     assert cl["code"] == 0, cl
 
     # 请求外直接调服务层必须显式绑租户（与 HTTP 中间件行为一致）
@@ -100,7 +118,8 @@ def test_p0_run_major_match_requires_running_batch(client, auth_headers, db_mode
     assert ok["code"] == 0, ok
     # 强制结束后不可再跑
     assert client.post(f"{BATCH}/{b}/close", headers=auth_headers,
-                       json={"force": True, "forceReason": "匹配测试强制结束"}).json()["code"] == 0
+                       json={"expectedVersion": _batch_version(client, auth_headers, b),
+                             "force": True, "forceReason": "匹配测试强制结束"}).json()["code"] == 0
     closed = client.post(f"{MATCH}/run/major", headers=auth_headers, params={"batchId": b}).json()
     assert closed["code"] != 0
 
@@ -165,13 +184,15 @@ def test_p0_batch_close_blocked_when_students_unplaced(client, auth_headers, db_
     b = _mk_batch(client, auth_headers)
     sid, _ = _mk_student(client, auth_headers)
     assert client.post(IST, headers=auth_headers, json={"studentId": sid, "batchId": b}).json()["code"] == 0
-    blocked = client.post(f"{BATCH}/{b}/close", headers=auth_headers).json()
+    blocked = client.post(f"{BATCH}/{b}/close", headers=auth_headers,
+                          json={"expectedVersion": _batch_version(client, auth_headers, b)}).json()
     assert blocked["code"] != 0
     ready = client.get(f"{BATCH}/{b}/readiness", headers=auth_headers).json()
     assert ready["code"] == 0
     assert ready["data"]["blockingCount"] >= 1
     forced = client.post(f"{BATCH}/{b}/close", headers=auth_headers,
-                         json={"force": True, "forceReason": "验收环境强制结束批次"}).json()
+                         json={"expectedVersion": _batch_version(client, auth_headers, b),
+                               "force": True, "forceReason": "验收环境强制结束批次"}).json()
     assert forced["code"] == 0
     assert forced["data"].get("forced") is True
 

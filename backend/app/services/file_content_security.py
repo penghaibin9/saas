@@ -139,14 +139,21 @@ def validate_zip_safety(data: bytes) -> None:
         raise AppException("FILE_TYPE_MISMATCH", "ZIP 内容损坏或非合法 ZIP")
 
 
+# 系统生成的监管/归档包允许落 ZIP（仍走 zip bomb 校验）；普通用户上传仍受 FILE_ALLOW_ZIP 约束
+_SYSTEM_ZIP_BIZ = frozenset({
+    "COMPLIANCE_EVIDENCE",
+    "ARCHIVE_PACKAGE",
+})
+
+
 def validate_content(*, filename: str, declared_content_type: str | None,
-                     data: bytes, ext: str) -> tuple[str, str]:
+                     data: bytes, ext: str, biz_type: str | None = None) -> tuple[str, str]:
     """
     校验扩展名、声明类型、magic 一致。
     返回 (normalized_mime, initial_status) — status 为 AVAILABLE 或 QUARANTINED。
     """
     ext = (ext or "").lower()
-    if ext == "zip" and not settings.FILE_ALLOW_ZIP:
+    if ext == "zip" and not settings.FILE_ALLOW_ZIP and (biz_type or "") not in _SYSTEM_ZIP_BIZ:
         raise AppException("FILE_TYPE_NOT_ALLOWED", "普通附件默认禁用 ZIP，请联系管理员开通")
 
     sniffed = sniff_mime(data[:64] if data else b"")

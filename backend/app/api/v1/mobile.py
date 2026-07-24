@@ -1087,7 +1087,7 @@ def teacher_internship_risk_handle(risk_id: str, body: dict = Body(...),
 @router.post("/teacher/internship/risks/{risk_id}/follow", summary="教师·跟进实习风险")
 def teacher_internship_risk_follow(risk_id: str, body: dict = Body(...),
                                    user=Depends(get_current_user)):
-    return success(tea.internship_risk_follow(user, risk_id, (body or {}).get("note") or ""),
+    return success(tea.internship_risk_follow(user, risk_id, (body or {}).get("note") or "", body or {}),
                    message="已跟进")
 
 
@@ -1098,8 +1098,8 @@ def teacher_internship_risk_close(risk_id: str, body: dict = Body(...),
 
 
 @router.get("/teacher/internship/my-students", summary="指导教师·本人指导实习学生名单（范围校验，供选择记指导记录）")
-def teacher_internship_my_students(user=Depends(get_current_user)):
-    return success(tea.internship_my_students(user))
+def teacher_internship_my_students(batchId: str | None = None, user=Depends(get_current_user)):
+    return success(tea.internship_my_students(user, batch_id=batchId))
 
 
 @router.post("/teacher/internship/guidance", summary="指导教师·新增指导记录（owner 校验，可联动转风险/通知辅导员）")

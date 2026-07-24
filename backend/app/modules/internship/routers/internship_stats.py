@@ -22,6 +22,22 @@ _P_VIEW = "internship.stats.view"
 _P_EXPORT = "internship.stats.export"
 
 
+@router.get("/stats/metrics", summary="实习统计指标字典")
+def stats_metrics(user=Depends(require_permission(_P_VIEW))):
+    return success(svc.metric_definitions())
+
+
+@router.get("/stats/metrics/{metricKey}/drilldown", summary="实习统计指标明细")
+def stats_metric_drilldown(metricKey: str, subset: str = Query(..., pattern="^(numerator|denominator)$"),
+                           page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                           college: Optional[str] = None, major: Optional[str] = None,
+                           className: Optional[str] = None, batchId: Optional[str] = None,
+                           user=Depends(require_permission(_P_VIEW))):
+    return success(svc.metric_drilldown(
+        user, metricKey, subset, page=page, page_size=pageSize, college=college, major=major,
+        class_name=className, batch_id=batchId))
+
+
 @router.get("/stats/overview", summary="实习总览统计（指标/计数/成绩分布，按数据范围+维度筛选）")
 def stats_overview(college: Optional[str] = None, major: Optional[str] = None,
                    className: Optional[str] = None, batchId: Optional[str] = None,

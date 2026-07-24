@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ═══════════ 实习批次 ═══════════
@@ -76,12 +76,17 @@ class OnboardRuleCfg(BaseModel):
 
 
 class RulesConfig(BaseModel):
+    """批次规则。compliance 为 P2 合规模块；允许冻结标记等扩展键。"""
+    model_config = ConfigDict(extra="allow")
+
     checkin: CheckinRule = Field(default_factory=CheckinRule)
     weeklyReport: WeeklyReportRuleCfg = Field(default_factory=WeeklyReportRuleCfg)
     guidance: GuidanceRuleCfg = Field(default_factory=GuidanceRuleCfg)
     evaluation: EvaluationRuleCfg = Field(default_factory=EvaluationRuleCfg)
     score: ScoreRuleCfg = Field(default_factory=ScoreRuleCfg)
     onboard: OnboardRuleCfg = Field(default_factory=OnboardRuleCfg)
+    # P2：学校级合规要求快照（结构化 dict，不在此做强类型，以免阻断演进）
+    compliance: Optional[dict] = None
 
 
 class BatchCreate(BaseModel):
@@ -114,6 +119,8 @@ class BatchUpdate(BaseModel):
     remark: Optional[str] = None
     stages: Optional[List[StageItem]] = None
     rules: Optional[dict] = None
+    expectedVersion: Optional[int] = Field(None, ge=0, description="乐观锁期望版本")
+    version: Optional[int] = Field(None, ge=0, description="expectedVersion 别名")
 
 
 class VoidBatchRequest(BaseModel):
@@ -123,11 +130,15 @@ class VoidBatchRequest(BaseModel):
 class ExceptionHandleRequest(BaseModel):
     action: str = Field(..., description="REASONABLE / ABNORMAL / TO_RISK")
     comment: str = Field(..., min_length=1, description="处理意见（后端强制 ≥5 字）")
+    expectedVersion: Optional[int] = Field(None, ge=0, description="乐观锁期望版本")
+    version: Optional[int] = Field(None, ge=0, description="expectedVersion 别名")
 
 
 class ReportReviewRequest(BaseModel):
     action: str = Field(..., description="APPROVE / RETURN")
     comment: Optional[str] = Field(None, description="退回时必填 ≥5 字")
+    expectedVersion: Optional[int] = Field(None, ge=0, description="乐观锁期望版本")
+    version: Optional[int] = Field(None, ge=0, description="expectedVersion 别名")
 
 
 # ═══════════ 企业库 ═══════════

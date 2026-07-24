@@ -147,16 +147,22 @@ export const internshipApi = {
     return call(() => request(`/internship/batches/${id}`, { method: 'PUT', body }))
   },
 
-  activateBatch(id) {
-    return call(() => request(`/internship/batches/${id}/activate`, { method: 'POST' }))
+  activateBatch(id, { expectedVersion, version } = {}) {
+    return call(() => request(`/internship/batches/${id}/activate`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
   },
 
-  closeBatch(id) {
-    return call(() => request(`/internship/batches/${id}/close`, { method: 'POST' }))
+  closeBatch(id, { expectedVersion, version } = {}) {
+    return call(() => request(`/internship/batches/${id}/close`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
   },
 
-  archiveBatch(id) {
-    return call(() => request(`/internship/batches/${id}/archive`, { method: 'POST' }))
+  archiveBatch(id, { expectedVersion, version } = {}) {
+    return call(() => request(`/internship/batches/${id}/archive`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
   },
 
   voidBatch(id, reason) {
@@ -174,11 +180,11 @@ export const internshipApi = {
   },
 
   getStudents(params = {}) {
-    return callList('/internship/students', params)
+    return callList('/internship/intern-students', params)
   },
 
   getStudentDetail(id) {
-    return call(() => request(`/internship/students/${id}`))
+    return call(() => request(`/internship/intern-students/${id}`))
   },
 
   getAttendanceExceptions(params = {}) {
@@ -189,8 +195,10 @@ export const internshipApi = {
     return call(() => request(`/internship/exceptions/${id}`))
   },
 
-  handleAttendanceException(id, { action, comment }) {
-    return call(() => request(`/internship/exceptions/${id}/handle`, { method: 'POST', body: { action, comment } }))
+  handleAttendanceException(id, { action, comment, expectedVersion, version }) {
+    return call(() => request(`/internship/exceptions/${id}/handle`, {
+      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
+    }))
   },
 
   getWeeklyReports(params = {}) {
@@ -201,17 +209,28 @@ export const internshipApi = {
     return call(() => request(`/internship/reports/${id}`))
   },
 
-  reviewWeeklyReport(id, { action, comment }) {
-    return call(() => request(`/internship/reports/${id}/review`, { method: 'POST', body: { action, comment } }))
+  reviewWeeklyReport(id, { action, comment, expectedVersion, version }) {
+    return call(() => request(`/internship/reports/${id}/review`, {
+      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
+    }))
   },
 
   exportWeeklyReports(params = {}) {
     return call(() => request('/internship/reports/export', { method: 'POST', params }))
   },
 
-  batchReviewWeeklyReports(ids, { action = 'APPROVE', comment = '' } = {}) {
+  batchReviewWeeklyReports(itemsOrIds, { action = 'APPROVE', comment = '', versions } = {}) {
+    const items = Array.isArray(itemsOrIds) && itemsOrIds.length && typeof itemsOrIds[0] === 'object'
+      ? itemsOrIds.map((it) => ({
+        id: it.id,
+        expectedVersion: it.expectedVersion ?? it.version
+      }))
+      : (itemsOrIds || []).map((id, i) => ({
+        id,
+        expectedVersion: Array.isArray(versions) ? versions[i] : undefined
+      }))
     return call(() => request('/internship/reports/batch-review', {
-      method: 'POST', body: { ids, action, comment }
+      method: 'POST', body: { items, action, comment }
     }))
   },
 
@@ -229,9 +248,9 @@ export const internshipApi = {
     return call(() => request(`/internship/process-reports/${id}`))
   },
 
-  reviewProcessReport(id, { action, comment }) {
+  reviewProcessReport(id, { action, comment, expectedVersion, version }) {
     return call(() => request(`/internship/process-reports/${id}/review`, {
-      method: 'POST', body: { action, comment }
+      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
     }))
   },
 

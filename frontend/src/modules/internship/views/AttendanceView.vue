@@ -182,27 +182,28 @@ export default {
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（脱敏 + 水印，已写审计）`) },
     openHandle(r, action) {
       const label = { REASONABLE: '标记合理', ABNORMAL: '记为异常', TO_RISK: '转风险跟进' }[action]
-      this.pending = { kind: 'handle', id: r.id, action }
+      this.pending = { kind: 'handle', id: r.id, action, expectedVersion: r.version }
       this.dlg = { visible: true, title: `打卡异常 · ${label}`, content: `对「${r.studentName}」的打卡异常${label}，处理意见将写入审计。`,
         danger: action === 'TO_RISK', confirmText: label, requireReason: true, submitting: false }
     },
     openApprove(r) {
-      this.pending = { kind: 'approve', id: r.id }
+      this.pending = { kind: 'approve', id: r.id, expectedVersion: r.version }
       this.dlg = { visible: true, title: '补卡 · 通过', content: `通过「${r.studentName}」${r.checkinDate} 的补卡，将真实补写一条打卡留痕并写审计。`,
         danger: false, confirmText: '通过', requireReason: false, submitting: false }
     },
     openReject(r) {
-      this.pending = { kind: 'reject', id: r.id }
+      this.pending = { kind: 'reject', id: r.id, expectedVersion: r.version }
       this.dlg = { visible: true, title: '补卡 · 驳回', content: `驳回「${r.studentName}」${r.checkinDate} 的补卡，原因将写入审计。`,
         danger: true, confirmText: '驳回', requireReason: true, submitting: false }
     },
     async onConfirm({ reason }) {
       const p = this.pending
+      const ver = { expectedVersion: p.expectedVersion }
       this.dlg.submitting = true
       let res
-      if (p.kind === 'handle') res = await attendanceApi.handleException(p.id, { action: p.action, comment: reason })
-      else if (p.kind === 'approve') res = await attendanceApi.approveMakeup(p.id, { comment: reason })
-      else res = await attendanceApi.rejectMakeup(p.id, { comment: reason })
+      if (p.kind === 'handle') res = await attendanceApi.handleException(p.id, { action: p.action, comment: reason, ...ver })
+      else if (p.kind === 'approve') res = await attendanceApi.approveMakeup(p.id, { comment: reason, ...ver })
+      else res = await attendanceApi.rejectMakeup(p.id, { comment: reason, ...ver })
       this.dlg.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.dlg.visible = false

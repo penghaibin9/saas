@@ -29,12 +29,14 @@ export const attendanceApi = {
   // 打卡异常
   getExceptions(params = {}) { return callList(`${B}/exceptions`, params) },
   getExceptionDetail(id) { return call(() => request(`${B}/exceptions/${id}`)) },
-  handleException(id, { action, comment }) {
-    return call(() => request(`${B}/exceptions/${id}/handle`, { method: 'POST', body: { action, comment } }))
+  handleException(id, { action, comment, expectedVersion, version }) {
+    return call(() => request(`${B}/exceptions/${id}/handle`, {
+      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
+    }))
   },
-  batchHandleExceptions(ids, { action = 'REASONABLE', comment = '' } = {}) {
+  batchHandleExceptions(ids, { action = 'REASONABLE', comment = '', versions } = {}) {
     return call(() => request(`${B}/exceptions/batch-handle`, {
-      method: 'POST', body: { ids, action, comment }
+      method: 'POST', body: { ids, action, comment, versions }
     }))
   },
   exportExceptions(params = {}) {
@@ -47,11 +49,15 @@ export const attendanceApi = {
   // 补卡审批
   getMakeups(params = {}) { return callList(`${B}/makeups`, params) },
   getMakeupDetail(id) { return call(() => request(`${B}/makeups/${id}`)) },
-  approveMakeup(id, { comment } = {}) {
-    return call(() => request(`${B}/makeups/${id}/approve`, { method: 'POST', body: { comment: comment || '' } }))
+  approveMakeup(id, { comment, expectedVersion, version } = {}) {
+    return call(() => request(`${B}/makeups/${id}/approve`, {
+      method: 'POST', body: { comment: comment || '', expectedVersion: expectedVersion ?? version }
+    }))
   },
-  rejectMakeup(id, { comment }) {
-    return call(() => request(`${B}/makeups/${id}/reject`, { method: 'POST', body: { comment } }))
+  rejectMakeup(id, { comment, expectedVersion, version }) {
+    return call(() => request(`${B}/makeups/${id}/reject`, {
+      method: 'POST', body: { comment, expectedVersion: expectedVersion ?? version }
+    }))
   },
   exportMakeups(params = {}) { return call(() => request(`${B}/makeups/export`, { method: 'POST', params })) }
 }

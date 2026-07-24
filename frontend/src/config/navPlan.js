@@ -740,6 +740,7 @@ export const NAV_PLAN = [
       I('未就业帮扶', '/admin/employment?panel=assistance', 'internship.employment.view', 'CROSS_MODULE'),
       I('实习归档', '/admin/internship/archive?panel=records', 'internship.archive.manage', 'WORKBENCH'),
       H('实习档案包', '/admin/internship/archive?panel=packages', 'internship.archive.package.generate', 'ACTION'),
+      I('合规与监管证据', '/admin/internship/compliance', 'internship.compliance.view', 'WORKBENCH'),
       I('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW'),
       I('企业统计', '/admin/internship/stats?dimension=enterprise', 'internship.stats.enterprise.view', 'ANALYTICS_VIEW'),
       I('岗位统计', '/admin/internship/stats?dimension=position', 'internship.stats.position.view', 'ANALYTICS_VIEW'),

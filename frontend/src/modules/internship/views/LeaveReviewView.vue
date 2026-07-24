@@ -259,7 +259,7 @@ export default {
       try { await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
     },
     openReview(r, action) {
-      this.pending = { id: r.id, action }
+      this.pending = { id: r.id, action, expectedVersion: r.version }
       const ap = action === 'APPROVE'
       this.cd = { visible: true, title: ap ? '请假 · 通过' : '请假 · 驳回',
         content: `${ap ? '通过' : '驳回'}「${r.studentName}」${r.startDate}~${r.endDate} 的请假，意见将写入审计。`,
@@ -267,7 +267,10 @@ export default {
     },
     async onConfirm({ reason }) {
       this.cd.submitting = true
-      const res = await leaveApi.review(this.pending.id, { action: this.pending.action, comment: reason || '' })
+      const res = await leaveApi.review(this.pending.id, {
+        action: this.pending.action, comment: reason || '',
+        expectedVersion: this.pending.expectedVersion
+      })
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false; toast.success('审批完成，已写审计')

@@ -24,16 +24,29 @@ def _scan(db, tenant_id: int | None):
 
     tid_clause = "AND r.tenant_id = :tid" if tenant_id else ""
     params = {"tid": tenant_id} if tenant_id else {}
+    sample_limit = 5000
 
-    null_rows = db.execute(text(f"""
+    def counted(where_sql: str, select_sql: str, limit=sample_limit):
+        total = db.execute(text(f"SELECT COUNT(*) {where_sql}"), params).scalar() or 0
+        rows = db.execute(text(f"{select_sql} LIMIT {limit}"), params).mappings().all()
+        return int(total), rows
+
+    null_count, null_rows = counted(f"""
+        FROM t_internship_record r
+        WHERE r.batch_id IS NULL AND r.is_deleted = 0 {tid_clause}""", f"""
         SELECT r.id, r.tenant_id, r.student_id, r.status, r.is_deleted
         FROM t_internship_record r
         WHERE r.batch_id IS NULL AND r.is_deleted = 0 {tid_clause}
         ORDER BY r.tenant_id, r.id
-        LIMIT 5000
-    """), params).mappings().all()
+    """)
 
-    dup_rows = db.execute(text(f"""
+    dup_count, dup_rows = counted(f"""
+        FROM (
+          SELECT r.tenant_id, r.student_id, r.batch_id
+          FROM t_internship_record r
+          WHERE r.is_deleted = 0 AND r.batch_id IS NOT NULL {tid_clause}
+          GROUP BY r.tenant_id, r.student_id, r.batch_id HAVING COUNT(*) > 1
+        ) d""", f"""
         SELECT r.tenant_id, r.student_id, r.batch_id, COUNT(*) AS cnt,
                GROUP_CONCAT(r.id ORDER BY r.id) AS ids
         FROM t_internship_record r
@@ -41,18 +54,19 @@ def _scan(db, tenant_id: int | None):
         GROUP BY r.tenant_id, r.student_id, r.batch_id
         HAVING COUNT(*) > 1
         ORDER BY cnt DESC
-        LIMIT 2000
-    """), params).mappings().all()
+    """, limit=2000)
 
-    orphan_rows = db.execute(text(f"""
+    orphan_count, orphan_rows = counted(f"""
+        FROM t_internship_record r LEFT JOIN t_internship_batch b
+          ON b.id = r.batch_id AND b.tenant_id = r.tenant_id AND b.is_deleted = 0
+        WHERE r.is_deleted = 0 AND r.batch_id IS NOT NULL AND b.id IS NULL {tid_clause}""", f"""
         SELECT r.id, r.tenant_id, r.student_id, r.batch_id, r.status
         FROM t_internship_record r
         LEFT JOIN t_internship_batch b
           ON b.id = r.batch_id AND b.tenant_id = r.tenant_id AND b.is_deleted = 0
         WHERE r.is_deleted = 0 AND r.batch_id IS NOT NULL AND b.id IS NULL {tid_clause}
         ORDER BY r.id
-        LIMIT 5000
-    """), params).mappings().all()
+    """)
 
     deleted_batch_rows = db.execute(text(f"""
         SELECT r.id, r.tenant_id, r.student_id, r.batch_id, b.status AS batch_status
@@ -73,16 +87,30 @@ def _scan(db, tenant_id: int | None):
         LIMIT 5000
     """), params).mappings().all()
 
+    deleted_count = db.execute(text(f"""SELECT COUNT(*) FROM t_internship_record r
+        JOIN t_internship_batch b ON b.id = r.batch_id AND b.tenant_id = r.tenant_id
+        WHERE r.is_deleted = 0 AND b.is_deleted = 1 {tid_clause}"""), params).scalar() or 0
+    illegal_count = db.execute(text(f"""SELECT COUNT(*) FROM t_internship_record r
+        JOIN t_internship_batch b ON b.id = r.batch_id AND b.tenant_id = r.tenant_id AND b.is_deleted = 0
+        WHERE r.is_deleted = 0 AND b.status IN ('VOIDED', 'ARCHIVED')
+          AND r.status IN ('PREPARING', 'READY', 'ONBOARD') {tid_clause}"""), params).scalar() or 0
     return {
-        "nullBatchCount": len(null_rows),
+        "nullBatchCount": null_count, "nullBatchTotalCount": null_count,
         "nullBatchIds": [int(r["id"]) for r in null_rows],
-        "duplicateCount": len(dup_rows),
+        "nullBatchSampleCount": len(null_rows), "nullBatchHasMore": null_count > len(null_rows),
+        "duplicateCount": dup_count, "duplicateTotalCount": dup_count,
         "duplicates": [dict(r) for r in dup_rows],
-        "orphanBatchCount": len(orphan_rows),
+        "duplicateSampleCount": len(dup_rows), "duplicateHasMore": dup_count > len(dup_rows),
+        "orphanBatchCount": orphan_count, "orphanBatchTotalCount": orphan_count,
         "orphanIds": [int(r["id"]) for r in orphan_rows],
-        "deletedBatchLinkCount": len(deleted_batch_rows),
-        "illegalStatusCount": len(illegal_status),
+        "orphanBatchSampleCount": len(orphan_rows), "orphanBatchHasMore": orphan_count > len(orphan_rows),
+        "deletedBatchLinkCount": int(deleted_count), "deletedBatchLinkTotalCount": int(deleted_count),
+        "deletedBatchLinkSampleCount": len(deleted_batch_rows),
+        "deletedBatchLinkHasMore": int(deleted_count) > len(deleted_batch_rows),
+        "illegalStatusCount": int(illegal_count), "illegalStatusTotalCount": int(illegal_count),
         "illegalStatusIds": [int(r["id"]) for r in illegal_status],
+        "illegalStatusSampleCount": len(illegal_status),
+        "illegalStatusHasMore": int(illegal_count) > len(illegal_status),
         "wroteData": False,
     }
 

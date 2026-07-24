@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -48,6 +48,22 @@ class InternshipPosition(PKMixin, TenantMixin, CommonMixin, Base):
     # ── 风险 ──
     risk_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     risk_note: Mapped[str | None] = mapped_column(String(500))
+    # ── P2 合规劳动权益快照（岗位发布/认领时校验）──
+    daily_hours: Mapped[float | None] = mapped_column(Float)
+    weekly_hours: Mapped[float | None] = mapped_column(Float)
+    shift_type: Mapped[str | None] = mapped_column(String(30))
+    night_shift: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    overtime_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    rest_days: Mapped[str | None] = mapped_column(String(50))
+    remuneration_type: Mapped[str | None] = mapped_column(String(30))
+    remuneration_amount: Mapped[float | None] = mapped_column(Float)
+    remuneration_cycle: Mapped[str | None] = mapped_column(String(30))
+    accommodation_provided: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    meal_provided: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hazardous_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    special_equipment: Mapped[str | None] = mapped_column(String(200))
+    work_content: Mapped[str | None] = mapped_column(Text)
+    prohibited_reason: Mapped[str | None] = mapped_column(String(500))
     # ── 状态机：DRAFT/PENDING/PUBLISHED/OFFLINE/SUSPENDED/FULL/RISK/ARCHIVED ──
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
     remark: Mapped[str | None] = mapped_column(String(500))

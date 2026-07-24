@@ -155,13 +155,13 @@ const internshipRoutes = {
       path: 'changes',
       name: 'internship-changes',
       component: () => import('@/modules/internship/views/ChangeRequestListView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: P.CHANGE_LEDGER, requiresAuth: true, permissionKey: 'internship.student.manage' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: P.CHANGE_LEDGER, requiresAuth: true, permissionKey: 'internship.change.view' }
     },
     {
       path: 'plans',
       name: 'internship-plans',
       component: () => import('@/modules/internship/views/InternshipPlanView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.WEEKLY_TASK, title: '实习计划书', requiresAuth: true, permissionKey: 'internship.batch.manage' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.WEEKLY_TASK, title: '实习计划书', requiresAuth: true, permissionKey: 'internship.plan.view' }
     },
     {
       path: 'insurance',
@@ -245,7 +245,7 @@ const internshipRoutes = {
       path: 'applications',
       name: 'internship-applications',
       component: () => import('@/modules/internship/views/InternshipApplicationReviewView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '实习申请审核', requiresAuth: true, permissionKey: 'internship.student.manage' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.APPLY_AGREEMENT, title: '实习申请审核', requiresAuth: true, permissionKey: 'internship.application.view' }
     },
     {
       path: 'agreements/:id',
@@ -293,6 +293,12 @@ const internshipRoutes = {
       name: 'internship-archive',
       component: () => import('@/modules/internship/views/ArchiveView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '实习归档', requiresAuth: true, permissionKey: 'internship.archive.view' }
+    },
+    {
+      path: 'compliance',
+      name: 'internship-compliance',
+      component: () => import('@/modules/internship/views/InternshipComplianceView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '合规与监管证据', requiresAuth: true, permissionKey: 'internship.compliance.view' }
     },
     {
       path: 'employment-archive-stats',

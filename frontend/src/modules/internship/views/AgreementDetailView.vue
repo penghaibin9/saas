@@ -223,7 +223,10 @@ export default {
     async submitEnterprise() {
       if (!this.entForm.fileId) return toast.error('请先上传企业已签署的扫描件')
       this.entSubmitting = true
-      const res = await agreementApi.enterpriseConfirm(this.detail.id, { confirmBy: this.entForm.confirmBy, fileId: this.entForm.fileId })
+      const res = await agreementApi.enterpriseConfirm(this.detail.id, {
+        confirmBy: this.entForm.confirmBy, fileId: this.entForm.fileId,
+        expectedVersion: this.detail.version
+      })
       this.entSubmitting = false
       if (res.code !== 0) return toast.error(res.message || '提交失败')
       toast.success('已记录企业签署，进入学校确认环节')
@@ -257,13 +260,14 @@ export default {
     },
     async onConfirm({ reason }) {
       const id = this.detail.id
+      const ver = { expectedVersion: this.detail.version }
       this.cd.submitting = true
       let res
-      if (this.pendingKind === 'issue') res = await agreementApi.issue(id)
-      else if (this.pendingKind === 'school') res = await agreementApi.schoolConfirm(id)
-      else if (this.pendingKind === 'archive') res = await agreementApi.archive(id)
-      else if (this.pendingKind === 'reject') res = await agreementApi.reject(id, { reason })
-      else res = await agreementApi.voidAgreement(id, { reason })
+      if (this.pendingKind === 'issue') res = await agreementApi.issue(id, ver)
+      else if (this.pendingKind === 'school') res = await agreementApi.schoolConfirm(id, ver)
+      else if (this.pendingKind === 'archive') res = await agreementApi.archive(id, ver)
+      else if (this.pendingKind === 'reject') res = await agreementApi.reject(id, { reason, ...ver })
+      else res = await agreementApi.voidAgreement(id, { reason, ...ver })
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false

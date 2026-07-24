@@ -220,7 +220,7 @@ async def store_upload(file, biz_type: str = "ATTACHMENT", *, biz_id: str | None
         data_for_scan = b"".join(chunks) if size <= 8 * 1024 * 1024 else target.read_bytes()
         declared = getattr(file, "content_type", None)
         mime, file_status = validate_content(
-            filename=filename, declared_content_type=declared, data=data_for_scan, ext=ext)
+            filename=filename, declared_content_type=declared, data=data_for_scan, ext=ext, biz_type=biz_type)
     except Exception:
         target.unlink(missing_ok=True)
         raise
@@ -270,7 +270,7 @@ def store_bytes(data: bytes, filename: str, biz_type: str = "ATTACHMENT",
     filename = sanitize_filename(filename)
     ext = validate_ext(filename)
     detected_mime, file_status = validate_content(
-        filename=filename, declared_content_type=mime_type, data=data, ext=ext)
+        filename=filename, declared_content_type=mime_type, data=data, ext=ext, biz_type=biz_type)
     key = f"{datetime.now():%Y%m%d}/{uuid.uuid4().hex}.{ext}"
     backend = get_backend()
     target = backend.staging_path(key)

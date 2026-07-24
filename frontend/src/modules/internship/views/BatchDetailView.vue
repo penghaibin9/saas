@@ -270,9 +270,9 @@ export default {
       const reason = (payload && payload.reason) || ''
       this.confirmSubmitting = true
       let res
-      if (this.confirmMode === 'activate') res = await internshipApi.activateBatch(d.id)
-      else if (this.confirmMode === 'close') res = await internshipApi.closeBatch(d.id)
-      else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(d.id)
+      if (this.confirmMode === 'activate') res = await internshipApi.activateBatch(d.id, { expectedVersion: d.version })
+      else if (this.confirmMode === 'close') res = await internshipApi.closeBatch(d.id, { expectedVersion: d.version })
+      else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(d.id, { expectedVersion: d.version })
       else if (this.confirmMode === 'void') res = await internshipApi.voidBatch(d.id, reason)
       this.confirmSubmitting = false
       if (res && res.code === 0) {

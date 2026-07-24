@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipRecord, InternshipScoreConfig, StudentProfile)
+from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PENDING_CALC": "待核算", "PENDING_REVIEW": "待复核", "PUBLISHED": "已发布",
@@ -199,33 +200,34 @@ def compute(user, body) -> dict:
         if s and s.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "成绩已发布，请先撤回再重算")
         new = s is None
+        values = {**comps, **w, "total_score": total, "score_config_id": cfg.id if cfg else None,
+                  "score_config_version": int(cfg.version or 0) if cfg else 0, "pass_line": pass_line,
+                  "is_pass": bool(total is not None and total >= pass_line), "incomplete": incomplete,
+                  "incomplete_reason": ("缺：" + "、".join(missing)) if missing else None,
+                  "status": "PENDING_REVIEW"}
         if new:
             s = InternshipFinalScore(tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
                                      batch_id=rec.batch_id)
             db.add(s)
-        for col, v in comps.items():
-            setattr(s, col, v)
-        for wk, wv in w.items():
-            setattr(s, wk, wv)
-        s.total_score = total
-        s.score_config_id = cfg.id if cfg else None
-        s.score_config_version = int(cfg.version or 0) if cfg else 0
-        s.pass_line = pass_line
-        s.is_pass = bool(total is not None and total >= pass_line)
-        s.incomplete = incomplete
-        s.incomplete_reason = ("缺：" + "、".join(missing)) if missing else None
-        s.status = "PENDING_REVIEW"
-        s.version = (s.version or 0) + 1
+            for key, value in values.items():
+                setattr(s, key, value)
+            s.version = (s.version or 0) + 1
+            db.flush()
+            new_ver = s.version
+        else:
+            new_ver = versioned_update(
+                db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                expected_version=extract_expected_version(b), expected_status=s.status, values=values)
         db.flush()
         _trail(db, s.id, "COMPUTE", {"total": total, "incomplete": incomplete, "missing": missing,
                "scoreConfigId": str(cfg.id) if cfg else "", "scoreConfigVersion": int(cfg.version or 0) if cfg else 0},
                operator=_op_name(user))
         db.commit()
         return {"id": str(s.id), "total": total, "incomplete": incomplete,
-                "incompleteReason": s.incomplete_reason, "isPass": s.is_pass}
+                "incompleteReason": values["incomplete_reason"], "isPass": values["is_pass"], "version": new_ver}
 
 
-def publish(user, sid) -> dict:
+def publish(user, sid, expected_version=None) -> dict:
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         s = _get(db, sid)
@@ -236,18 +238,18 @@ def publish(user, sid) -> dict:
             raise AppException("DATA_CONFLICT", "仅待复核成绩可发布")
         if s.incomplete:
             raise AppException("DATA_CONFLICT", f"成绩缺项不可发布（{s.incomplete_reason}）")
-        s.status = "PUBLISHED"
-        s.reviewed_by_name = _op_name(user)
-        s.reviewed_at = datetime.utcnow()
-        s.published_by_name = _op_name(user)
-        s.published_at = datetime.utcnow()
-        s.version = (s.version or 0) + 1
+        new_ver = versioned_update(
+            db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+            expected_version=extract_expected_version({"expectedVersion": expected_version}),
+            expected_status="PENDING_REVIEW", values={"status": "PUBLISHED",
+                "reviewed_by_name": _op_name(user), "reviewed_at": datetime.utcnow(),
+                "published_by_name": _op_name(user), "published_at": datetime.utcnow()})
         _trail(db, s.id, "PUBLISH", {"total": s.total_score, "isPass": s.is_pass}, operator=_op_name(user))
         db.commit()
-        return {"id": str(s.id), "status": s.status, "statusLabel": STATUS_LABEL[s.status]}
+        return {"id": str(s.id), "status": "PUBLISHED", "statusLabel": STATUS_LABEL["PUBLISHED"], "version": new_ver}
 
 
-def return_recalc(user, sid, reason="") -> dict:
+def return_recalc(user, sid, reason="", expected_version=None) -> dict:
     with session() as db:
         s = _get(db, sid)
         rec, stu = _ctx(db, s)
@@ -256,14 +258,15 @@ def return_recalc(user, sid, reason="") -> dict:
             raise no_permission("只能退回本人数据范围内的成绩")
         if s.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待复核成绩可退回重算")
-        s.status = "PENDING_CALC"
-        s.version = (s.version or 0) + 1
+        new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version({"expectedVersion": expected_version}),
+                                   expected_status="PENDING_REVIEW", values={"status": "PENDING_CALC"})
         _trail(db, s.id, "RETURN_RECALC", {"reason": (reason or "").strip()}, operator=_op_name(user))
         db.commit()
-        return {"id": str(s.id), "status": s.status}
+        return {"id": str(s.id), "status": "PENDING_CALC", "version": new_ver}
 
 
-def withdraw(user, sid, reason="") -> dict:
+def withdraw(user, sid, reason="", expected_version=None) -> dict:
     if not (reason or "").strip() or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "撤回原因必填且不少于 5 字")
     with session() as db:
@@ -274,14 +277,15 @@ def withdraw(user, sid, reason="") -> dict:
             raise no_permission("只能撤回本人数据范围内的成绩")
         if s.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布成绩可撤回")
-        s.status = "WITHDRAWN"
-        s.version = (s.version or 0) + 1
+        new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version({"expectedVersion": expected_version}),
+                                   expected_status="PUBLISHED", values={"status": "WITHDRAWN"})
         _trail(db, s.id, "WITHDRAW", {"reason": reason.strip()}, operator=_op_name(user))
         db.commit()
-        return {"id": str(s.id), "status": s.status}
+        return {"id": str(s.id), "status": "WITHDRAWN", "version": new_ver}
 
 
-def archive(user, sid) -> dict:
+def archive(user, sid, expected_version=None) -> dict:
     with session() as db:
         s = _get(db, sid)
         rec, stu = _ctx(db, s)
@@ -290,11 +294,12 @@ def archive(user, sid) -> dict:
             raise no_permission("只能归档本人数据范围内的成绩")
         if s.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布成绩可归档")
-        s.status = "ARCHIVED"
-        s.version = (s.version or 0) + 1
+        new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version({"expectedVersion": expected_version}),
+                                   expected_status="PUBLISHED", values={"status": "ARCHIVED"})
         _trail(db, s.id, "ARCHIVE", {}, operator=_op_name(user))
         db.commit()
-        return {"id": str(s.id), "status": s.status}
+        return {"id": str(s.id), "status": "ARCHIVED", "version": new_ver}
 
 
 def _grade_level(total, pass_line=60.0) -> str:
@@ -330,6 +335,7 @@ def _row(s, rec, stu):
         "scoreConfigVersion": int(s.score_config_version or 0),
         "incomplete": bool(s.incomplete), "incompleteReason": s.incomplete_reason or "",
         "status": s.status, "statusLabel": STATUS_LABEL.get(s.status, s.status),
+        "version": int(s.version or 0),
         "createdAt": _iso(s.created_at) or "",
     }
 

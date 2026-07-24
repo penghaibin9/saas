@@ -37,6 +37,12 @@ from app.models.internship import (AttendanceException, InternshipAgreement,  # 
                                     InternshipStudentEval, InternshipVisit, InternshipVisitPlan,
                                     RiskRecord, WeeklyReport)
 from app.models.internship_position import InternshipPosition  # noqa: F401  (岗位库·独立文件)
+from app.models.internship_compliance import (  # noqa: F401
+    InternshipComplianceExemption, InternshipComplianceTemplate, InternshipConsent,
+    InternshipEmergencyPlan, InternshipEnterpriseInspection, InternshipEvidencePackage,
+    InternshipIncident, InternshipRemunerationRecord, InternshipSafetyCompletion,
+    InternshipSafetyCourse, InternshipSpecialFiling,
+)
 from app.models.internship_match import InternshipApplication, InternshipIntention, InternshipMatch  # noqa: F401  (岗位匹配/申请)
 from app.models.excel_import_job import ExcelImportJob  # noqa: F401  (公共 Excel 底座·通用导入记录)
 from app.models.identity_import_batch import IdentityImportBatch  # noqa: F401

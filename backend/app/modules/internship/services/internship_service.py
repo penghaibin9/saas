@@ -42,6 +42,9 @@ DEFAULT_RULES = {
         {"name": "考核成绩", "weight": 0.2}]},
     # 上岗前置（BUG-010）：学校可按批次关闭其中某项，默认全部要求。
     "onboard": {"requireAgreement": True, "requireInsurance": True, "requireAdvisor": True},
+    "compliance": __import__(
+        "app.modules.internship.services.internship_compliance_rules", fromlist=["DEFAULT_COMPLIANCE_RULES"]
+    ).DEFAULT_COMPLIANCE_RULES,
 }
 
 
@@ -284,32 +287,12 @@ def _record_row(r: InternshipRecord, stu: StudentProfile | None, class_name: str
 # ═══ 实习学生列表 / 详情 ═══
 
 def list_internship_students(page, page_size, keyword=None, class_id=None,
-                             status=None, risk_level=None, user=None):
-    with session() as db:
-        q = select(InternshipRecord).where(InternshipRecord.tenant_id == _tid(),
-                                           InternshipRecord.is_deleted.is_(False))
-        if status:
-            q = q.where(InternshipRecord.status == status)
-        if risk_level:
-            q = q.where(InternshipRecord.risk_level == risk_level)
-        rows = db.scalars(q.order_by(InternshipRecord.id)).all()
-        smap = _students_map(db, [r.student_id for r in rows])
-        scope = _current_scope(user)
-        items = []
-        for r in rows:
-            stu = smap.get(r.student_id)
-            if keyword:
-                kw = keyword.strip()
-                if not stu or (kw not in (stu.real_name or "") and kw not in (stu.student_no or "")):
-                    continue
-            if class_id and (not stu or str(stu.class_id) != str(class_id)):
-                continue
-            if not _rec_in_scope(scope, db, r, stu):  # P0-D
-                continue
-            items.append(_record_row(r, stu))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+                             status=None, risk_level=None, batch_id=None, user=None):
+    """兼容入口：强制走 intern-students 批次/范围门禁，禁止无 batchId 全表扫描。"""
+    from app.modules.internship.services import internship_student_service as student_svc
+    return student_svc.list_students(
+        page, page_size, keyword=keyword, class_id=class_id, status=status,
+        risk_level=risk_level, batch_id=batch_id, user=user)
 
 
 def get_internship_student_detail(record_id, user=None) -> dict:
@@ -379,6 +362,7 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
         "appealStatus": c.appeal_status or "", "appealNote": c.appeal_note or "",
         "appealFileId": c.appeal_file_id or "", "appealedAt": _iso(c.appealed_at),
         "status": c.status, "statusLabel": EXC_STATUS_LABEL.get(c.status, c.status),
+        "version": int(c.version or 0),
     }
 
 
@@ -440,14 +424,18 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
 
 def export_checkins(result=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_checkins(1, 100000, result=result, keyword=keyword, batch_id=batch_id, user=user)
+    items, total = list_checkins(1, 100000, result=result, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
+    require_exportable(total)
     headers = ["学号", "姓名", "校内指导教师", "企业", "打卡日期", "打卡时间", "结果", "地址", "备注"]
     data_rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
                   it["date"], it["at"], it["resultLabel"], it["address"], it["note"]] for it in items]
     wm = (f"岗位实习中心·打卡台账 · 导出人：{(get_current_user_ctx() or {}).get('realName', '-')} · "
           f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
     content = xlsx_util.build_ledger_xlsx("打卡台账", headers, data_rows, watermark=wm)
-    return xlsx_util.pack_xlsx_result(content, "打卡台账.xlsx", len(items))
+    packed = xlsx_util.pack_xlsx_result(content, "打卡台账.xlsx", len(items))
+    packed.update(pack_export_meta(total, len(items)))
+    return packed
 
 
 def export_exceptions(type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
@@ -527,7 +515,7 @@ def get_exception_detail(exception_id, user=None) -> dict:
         return row
 
 
-def handle_attendance_exception(exception_id, action: str, comment: str, user=None) -> dict:
+def handle_attendance_exception(exception_id, action: str, comment: str, user=None, *, expected_version=None) -> dict:
     if action not in ("REASONABLE", "ABNORMAL", "TO_RISK"):
         raise AppException("VALIDATION_ERROR", "action 必须是 REASONABLE/ABNORMAL/TO_RISK")
     if not comment or len(comment.strip()) < 5:
@@ -542,14 +530,17 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
             raise no_permission("只能处理本人指导学生的打卡异常")
         if c.status == "COMPLETED":
             raise AppException("DATA_CONFLICT", "该异常已处理，请刷新")
-        c.status = "COMPLETED"
-        c.handle_action = action
-        c.handle_comment = comment.strip()
-        c.handled_by_name = _op_name()
-        c.handled_at = datetime.utcnow()
+        from app.modules.internship.services.internship_version import (
+            extract_expected_version, versioned_update,
+        )
+        ver = extract_expected_version({"expectedVersion": expected_version})
+        values = {"status": "COMPLETED", "handle_action": action, "handle_comment": comment.strip(),
+                  "handled_by_name": _op_name(), "handled_at": datetime.utcnow()}
         if c.appeal_status == "PENDING":
-            c.appeal_status = "ACCEPTED" if action == "REASONABLE" else "REJECTED"
-        c.version += 1
+            values["appeal_status"] = "ACCEPTED" if action == "REASONABLE" else "REJECTED"
+        new_ver = versioned_update(db, AttendanceException, entity_id=c.id, tenant_id=_tid(),
+                                   expected_version=ver, values=values,
+                                   extra_where=(AttendanceException.status != "COMPLETED",))
         # 转风险：自动生成风险单
         if action == "TO_RISK":
             db.add(RiskRecord(tenant_id=_tid(), internship_id=c.internship_id,
@@ -564,7 +555,7 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.todo_done(db, biz_id=c.id, todo_type=ix_todo.TODO_EXCEPTION)
         db.commit()
-        return {"id": str(c.id), "status": "COMPLETED",
+        return {"id": str(c.id), "status": "COMPLETED", "version": new_ver,
                 "statusLabel": {"REASONABLE": "已标记合理", "ABNORMAL": "已记为异常",
                                 "TO_RISK": "已转风险"}[action]}
 
@@ -618,7 +609,8 @@ def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfi
         "className": class_name or "-",
         "enterpriseName": rec.enterprise_name if rec else "",
         "week": f"第 {w.week_number} 周", "submitAt": _iso(w.submitted_at) or "",
-        "version": f"v{w.report_version}", "isResubmit": w.report_version > 1,
+        "version": int(w.version or 0), "reportVersion": f"v{w.report_version}",
+        "isResubmit": w.report_version > 1,
         "wordCount": w.word_count, "riskFlag": w.risk_flag or "",
         "status": w.status, "statusLabel": REPORT_STATUS_LABEL.get(w.status, w.status),
     }
@@ -683,7 +675,7 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
         return row
 
 
-def review_weekly_report(report_id, action: str, comment: str, user=None) -> dict:
+def review_weekly_report(report_id, action: str, comment: str, user=None, *, expected_version=None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     if action == "RETURN" and (not comment or len(comment.strip()) < 5):
@@ -699,12 +691,16 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
             raise no_permission("只能批阅本人指导学生的周报")
         if w.status in ("APPROVED", "RETURNED"):
             raise AppException("DATA_CONFLICT", "该周报已批阅，请刷新")
-        w.status = "APPROVED" if action == "APPROVE" else "RETURNED"
-        w.review_action = action
-        w.review_comment = (comment or "").strip()
-        w.reviewed_by_name = _op_name()
-        w.reviewed_at = datetime.utcnow()
-        w.version += 1
+        from app.modules.internship.services.internship_version import (
+            extract_expected_version, versioned_update,
+        )
+        ver = extract_expected_version({"expectedVersion": expected_version})
+        status = "APPROVED" if action == "APPROVE" else "RETURNED"
+        new_ver = versioned_update(
+            db, WeeklyReport, entity_id=w.id, tenant_id=_tid(), expected_version=ver,
+            expected_status=w.status, values={"status": status, "review_action": action,
+                                               "review_comment": (comment or "").strip(),
+                                               "reviewed_by_name": _op_name(), "reviewed_at": datetime.utcnow()})
         detail = {"comment": (comment or "").strip()}
         if action == "RETURN":
             # BUG-014：退回即冻结本版正文快照，学生重交后教师仍可逐版对比（版本记录数据源）
@@ -713,8 +709,49 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.todo_done(db, biz_id=w.id, todo_type=ix_todo.TODO_WEEKLY)
         db.commit()
-        return {"id": str(w.id), "status": w.status,
-                "statusLabel": REPORT_STATUS_LABEL.get(w.status, w.status)}
+        return {"id": str(w.id), "status": status, "version": new_ver,
+                "statusLabel": REPORT_STATUS_LABEL.get(status, status)}
+
+
+def batch_review_weekly_reports(body, user=None) -> dict:
+    """批量通过/退回：每条必须自带 expectedVersion，禁止先查版本再无条件更新。"""
+    b = body or {}
+    action = (b.get("action") or "APPROVE").strip().upper()
+    comment = (b.get("comment") or "").strip()
+    items = b.get("items")
+    if not items:
+        # 兼容：ids + versions 并行数组；禁止仅传 ids
+        ids = b.get("ids") or []
+        versions = b.get("versions") or b.get("expectedVersions") or []
+        if ids and not versions:
+            raise AppException("VALIDATION_ERROR", "批量批阅必须为每条提供 expectedVersion")
+        if len(versions) != len(ids):
+            raise AppException("VALIDATION_ERROR", "ids 与 expectedVersion 数量不一致")
+        items = [{"id": i, "expectedVersion": v} for i, v in zip(ids, versions)]
+    if not items:
+        raise AppException("VALIDATION_ERROR", "请选择要批阅的周报")
+    if action == "RETURN" and len(comment) < 5:
+        raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+    approved = skipped = 0
+    failures = []
+    for it in items:
+        rid = (it or {}).get("id")
+        ver = (it or {}).get("expectedVersion", (it or {}).get("version"))
+        try:
+            review_weekly_report(rid, action, comment, user=user, expected_version=ver)
+            approved += 1
+        except AppException as e:
+            if e.code in ("DATA_CONFLICT", "VALIDATION_ERROR", "NOT_FOUND", "NO_PERMISSION", "FORBIDDEN"):
+                skipped += 1
+                failures.append({"id": str(rid), "code": e.code, "message": e.message})
+            else:
+                raise
+    return {
+        "approvedCount": approved if action == "APPROVE" else 0,
+        "returnedCount": approved if action == "RETURN" else 0,
+        "skippedCount": skipped,
+        "failures": failures,
+    }
 
 
 def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
@@ -764,14 +801,18 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
 
 def export_weekly_reports(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_weekly_reports(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    items, total = list_weekly_reports(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
+    require_exportable(total)
     headers = ["学生", "班级", "企业", "周次", "提交时间", "版本", "字数", "风险", "状态"]
     rows = [[it["studentName"], it["className"], it["enterpriseName"], it["week"],
              it["submitAt"], it["version"], it["wordCount"], it["riskFlag"],
              it["statusLabel"]] for it in items]
     wm = f"岗位实习中心·周报台账 · 导出人：{_op_name()} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("周报台账", headers, rows, watermark=wm)
-    return xlsx_util.pack_xlsx_result(content, "周报台账.xlsx", len(items))
+    packed = xlsx_util.pack_xlsx_result(content, "周报台账.xlsx", len(items))
+    packed.update(pack_export_meta(total, len(items)))
+    return packed
 
 
 # ═══ 风险学生 ═══
@@ -849,6 +890,7 @@ def _batch_row(db, b: InternshipBatch) -> dict:
         "status": b.status, "statusLabel": BATCH_STATUS_LABEL.get(b.status, b.status),
         "archiveStatus": b.archive_status or "NOT_ARCHIVED",
         "rulesVersion": int(b.rules_version or 1),
+        "version": int(b.version or 0),
         "remark": b.remark or "", "updateTime": _iso(b.updated_at),
         "createTime": _iso(b.created_at) or "",
     }
@@ -974,6 +1016,15 @@ def create_batch(body: dict, user=None) -> dict:
             raise AppException("DATA_CONFLICT", f"批次编号 {no} 已存在")
         stages = _dump_stages(body.get("stages")) if body.get("stages") else list(DEFAULT_STAGES)
         rules = _merge_rules(DEFAULT_RULES, body.get("rules"))
+        template_id = body.get("complianceTemplateId")
+        template_version = None
+        if template_id:
+            from app.modules.internship.services.internship_compliance_template_service import get_active
+            active = get_active(db)
+            if not active or active.id != _as_id(template_id):
+                raise AppException("VALIDATION_ERROR", "指定合规模板不是当前有效模板")
+            rules["compliance"] = active.config or rules["compliance"]
+            template_version = active.template_version
         b = InternshipBatch(
             tenant_id=_tid(), batch_name=name, batch_no=no,
             academic_year=body.get("academicYear"), term=body.get("term"),
@@ -981,64 +1032,107 @@ def create_batch(body: dict, user=None) -> dict:
             signup_start_date=_parse_dt(body.get("signupStartDate")),
             signup_end_date=_parse_dt(body.get("signupEndDate")),
             planned_count=int(body.get("plannedCount") or 0), remark=body.get("remark"),
-            status="DRAFT", stage_config=stages, rules_config=rules, archive_status="NOT_ARCHIVED")
+            status="DRAFT", stage_config=stages, rules_config=rules, archive_status="NOT_ARCHIVED",
+            compliance_template_id=_as_id(template_id) if template_id else None,
+            compliance_template_version=template_version)
         db.add(b)
         db.flush()
         _trail(db, b.id, "BATCH", "CREATE", {"batchName": name, "batchNo": no})
         db.commit()
-        return {"id": str(b.id)}
+        return {"id": str(b.id), "version": int(b.version or 0)}
 
 
 def update_batch(bid, body: dict, user=None) -> dict:
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+    from app.models import InternshipBatch
     assert_admin_tenant(user or get_current_user_ctx() or {}, "编辑实习批次")
+    ver = extract_expected_version(body)
     with session() as db:
         b = _get_batch(db, bid)
         if b.status in ("CLOSED", "ARCHIVED", "VOIDED"):
             raise AppException("INVALID_STATE", "已结束/已归档/已作废的批次不可编辑")
+        values = {}
         for k, col in {"batchName": "batch_name", "academicYear": "academic_year",
                        "term": "term", "remark": "remark"}.items():
             if body.get(k) is not None:
-                setattr(b, col, body[k])
+                values[col] = body[k]
         for k, col in {"startDate": "start_date", "endDate": "end_date",
                        "signupStartDate": "signup_start_date",
                        "signupEndDate": "signup_end_date"}.items():
             if body.get(k) is not None:
-                setattr(b, col, _parse_dt(body[k]))
-        # BUG-008：改期同样校验（用改后的最终值，而非仅本次传入字段）
-        _assert_batch_dates(b.start_date, b.end_date, b.signup_start_date, b.signup_end_date)
+                values[col] = _parse_dt(body[k])
+        start = values.get("start_date", b.start_date)
+        end = values.get("end_date", b.end_date)
+        ss = values.get("signup_start_date", b.signup_start_date)
+        se = values.get("signup_end_date", b.signup_end_date)
+        _assert_batch_dates(start, end, ss, se)
         if body.get("plannedCount") is not None:
-            b.planned_count = int(body["plannedCount"] or 0)
+            values["planned_count"] = int(body["plannedCount"] or 0)
         if body.get("stages") is not None:
-            b.stage_config = _dump_stages(body["stages"])
+            values["stage_config"] = _dump_stages(body["stages"])
+        rules_version = int(b.rules_version or 1)
         if body.get("rules") is not None:
             if b.status != "DRAFT":
                 raise AppException("DATA_CONFLICT", "批次启用后规则不可原地修改，请新建批次版本")
-            b.rules_config = _merge_rules(b.rules_config, body["rules"])
-            b.rules_version = int(b.rules_version or 1) + 1
-        b.version += 1
-        _trail(db, b.id, "BATCH", "UPDATE", {"rulesVersion": int(b.rules_version or 1)})
+            values["rules_config"] = _merge_rules(b.rules_config, body["rules"])
+            rules_version = rules_version + 1
+            values["rules_version"] = rules_version
+        if not values:
+            raise AppException("VALIDATION_ERROR", "没有可更新的字段")
+        new_ver = versioned_update(
+            db, InternshipBatch, entity_id=b.id, tenant_id=_tid(),
+            expected_version=ver, values=values)
+        _trail(db, b.id, "BATCH", "UPDATE", {"rulesVersion": rules_version})
         db.commit()
-        return {"id": str(b.id)}
+        return {"id": str(b.id), "version": new_ver}
 
 
-def activate_batch(bid, user=None) -> dict:
+def activate_batch(bid, user=None, *, expected_version=None) -> dict:
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+    from app.models import InternshipBatch
     assert_admin_tenant(user or get_current_user_ctx() or {}, "启用实习批次")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         b = _get_batch(db, bid)
-        if b.status != "DRAFT":
-            raise AppException("INVALID_STATE", "仅草稿批次可启用")
-        b.previous_status, b.status = b.status, "RUNNING"
-        b.last_transition_at = datetime.utcnow()
-        b.last_transition_by = _op_name()
-        b.version += 1
+        now = datetime.utcnow()
+        frozen_rules = dict(b.rules_config or {})
+        if b.compliance_template_id:
+            from app.models import InternshipComplianceTemplate
+            t = db.get(InternshipComplianceTemplate, b.compliance_template_id)
+            if not t or t.tenant_id != _tid():
+                raise AppException("DATA_CONFLICT", "关联合规模板不存在")
+            frozen_rules["compliance"] = t.config or frozen_rules.get("compliance", {})
+            frozen_rules["compliance_template_version"] = t.template_version
+        frozen_rules["_complianceFrozen"] = True
+        frozen_rules["_frozenAt"] = now.isoformat()
+        new_ver = versioned_update(
+            db, InternshipBatch, entity_id=b.id, tenant_id=_tid(), expected_version=ver,
+            values={
+                "previous_status": "DRAFT", "status": "RUNNING",
+                "last_transition_at": now, "last_transition_by": _op_name(),
+                "rules_config": frozen_rules,
+                "compliance_template_version": frozen_rules.get("compliance_template_version", b.compliance_template_version),
+            },
+            expected_status="DRAFT")
         _trail(db, b.id, "BATCH", "ACTIVATE", {"before": "DRAFT", "after": "RUNNING"})
         db.commit()
-        return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
+        return {"id": str(b.id), "status": "RUNNING", "statusLabel": BATCH_STATUS_LABEL["RUNNING"],
+                "version": new_ver}
 
 
-def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "") -> dict:
+def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "",
+                expected_version=None) -> dict:
     """结束批次：先生成就绪报告；存在阻断项时拒绝，除非管理员强制结束并写审计。"""
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+    from app.models import InternshipBatch
     assert_admin_tenant(user or get_current_user_ctx() or {}, "结束实习批次")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "RUNNING":
@@ -1051,29 +1145,41 @@ def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "") 
                 "批次结束前置检查未通过，请先处理阻断项或使用强制结束",
                 details={"readiness": report, "blockers": blockers},
             )
+        reason = ""
         if force:
             reason = (force_reason or "").strip()
             if len(reason) < 5:
                 raise AppException("VALIDATION_ERROR", "强制结束必须填写原因（不少于 5 字）")
-        b.previous_status, b.status = b.status, "CLOSED"
-        b.last_transition_at = datetime.utcnow()
-        b.last_transition_by = _op_name()
-        b.version += 1
+        now = datetime.utcnow()
+        values = {
+            "previous_status": "RUNNING", "status": "CLOSED",
+            "last_transition_at": now, "last_transition_by": _op_name(),
+        }
+        if force:
+            values["transition_reason"] = reason
+        new_ver = versioned_update(
+            db, InternshipBatch, entity_id=b.id, tenant_id=_tid(), expected_version=ver,
+            values=values, expected_status="RUNNING")
         detail = {"before": "RUNNING", "after": "CLOSED", "readiness": report}
         if force:
             detail["force"] = True
             detail["forceReason"] = reason
-            b.transition_reason = reason
         _trail(db, b.id, "BATCH", "CLOSE", detail)
         db.commit()
         return {
-            "id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status],
-            "readiness": report, "forced": bool(force),
+            "id": str(b.id), "status": "CLOSED", "statusLabel": BATCH_STATUS_LABEL["CLOSED"],
+            "readiness": report, "forced": bool(force), "version": new_ver,
         }
 
 
-def archive_batch(bid, user=None, *, force: bool = False, force_reason: str = "") -> dict:
+def archive_batch(bid, user=None, *, force: bool = False, force_reason: str = "",
+                  expected_version=None) -> dict:
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+    from app.models import InternshipBatch
     assert_admin_tenant(user or get_current_user_ctx() or {}, "归档实习批次")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "CLOSED":
@@ -1087,28 +1193,32 @@ def archive_batch(bid, user=None, *, force: bool = False, force_reason: str = ""
                 "仍有学生未完成归档，请先完成学生归档或强制归档批次",
                 details={"readiness": report},
             )
+        reason = ""
         if force:
             reason = (force_reason or "").strip()
             if len(reason) < 5:
                 raise AppException("VALIDATION_ERROR", "强制归档必须填写原因（不少于 5 字）")
-        b.previous_status, b.status = b.status, "ARCHIVED"
-        b.archive_status = "ARCHIVED"
-        b.archived_at = datetime.utcnow()
-        b.archived_by = _op_name()
-        b.archive_batch_no = b.batch_no
-        b.last_transition_at = b.archived_at
-        b.last_transition_by = b.archived_by
-        b.version += 1
+        now = datetime.utcnow()
+        values = {
+            "previous_status": "CLOSED", "status": "ARCHIVED",
+            "archive_status": "ARCHIVED", "archived_at": now, "archived_by": _op_name(),
+            "archive_batch_no": b.batch_no, "last_transition_at": now,
+            "last_transition_by": _op_name(),
+        }
+        if force:
+            values["transition_reason"] = reason
+        new_ver = versioned_update(
+            db, InternshipBatch, entity_id=b.id, tenant_id=_tid(), expected_version=ver,
+            values=values, expected_status="CLOSED")
         detail = {"before": "CLOSED", "after": "ARCHIVED", "readiness": report}
         if force:
             detail["force"] = True
             detail["forceReason"] = reason
-            b.transition_reason = reason
         _trail(db, b.id, "BATCH", "ARCHIVE", detail)
         db.commit()
         return {
-            "id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status],
-            "readiness": report, "forced": bool(force),
+            "id": str(b.id), "status": "ARCHIVED", "statusLabel": BATCH_STATUS_LABEL["ARCHIVED"],
+            "readiness": report, "forced": bool(force), "version": new_ver,
         }
 
 

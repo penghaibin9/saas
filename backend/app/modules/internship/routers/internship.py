@@ -4,7 +4,7 @@ from __future__ import annotations
 import io
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
@@ -24,6 +24,7 @@ from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.internship.services import internship_risk_service as risk
 from app.modules.internship.services import internship_score_service as score
 from app.modules.internship.services import internship_service as svc
+from app.modules.internship.services import internship_student_service as student_svc
 from app.modules.internship.services import internship_student_eval_service as se
 from app.modules.internship.services import internship_visit_service as vis
 from app.services import xlsx_util
@@ -45,15 +46,29 @@ def dashboard(batchId: Optional[str] = None, user=Depends(require_permission("in
 def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
              keyword: Optional[str] = None, classId: Optional[str] = None,
              status: Optional[str] = None, riskLevel: Optional[str] = None,
+             batchId: Optional[str] = None, response: Response = None,
              user=Depends(require_permission("internship.student.view"))):
-    items, total = svc.list_internship_students(page, pageSize, keyword=keyword, class_id=classId,
-                                                status=status, risk_level=riskLevel, user=user)
-    return success(paginate(items, total, page, pageSize))
+    """Deprecated compatibility alias for the batch-scoped intern-students API."""
+    items, total = student_svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
+        status=status, risk_level=riskLevel, batch_id=batchId, user=user)
+    if response is not None:
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = '</api/v1/internship/intern-students>; rel="successor-version"'
+    payload = paginate(items, total, page, pageSize)
+    payload["deprecated"] = True
+    return success(payload)
 
 
-@router.get("/students/{record_id}", summary="实习学生详情（含打卡/周报/风险/留痕）")
-def student_detail(record_id: str, user=Depends(require_permission("internship.student.view"))):
-    return success(svc.get_internship_student_detail(record_id, user=user))
+@router.get("/students/{record_id}", summary="实习学生详情（兼容层，请改用 /intern-students/{id}）")
+def student_detail(record_id: str, response: Response = None,
+                   user=Depends(require_permission("internship.student.view"))):
+    if response is not None:
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = f'</api/v1/internship/intern-students/{record_id}>; rel="successor-version"'
+    data = student_svc.get_student(record_id, user=user)
+    if isinstance(data, dict):
+        data["deprecated"] = True
+    return success(data)
 
 
 @router.get("/checkins", summary="打卡台账（按数据范围）")
@@ -102,7 +117,9 @@ def exception_detail(exception_id: str, user=Depends(require_permission("interns
 @router.post("/exceptions/{exception_id}/handle", summary="处理打卡异常（合理/异常/转风险，意见≥5字）")
 def handle_exception(exception_id: str, body: ExceptionHandleRequest,
                      user=Depends(require_permission("internship.attendance.review"))):
-    result = svc.handle_attendance_exception(exception_id, body.action, body.comment, user=user)
+    result = svc.handle_attendance_exception(
+        exception_id, body.action, body.comment, user=user,
+        expected_version=body.expectedVersion if body.expectedVersion is not None else body.version)
     audit_log.record("处理打卡异常", f"internship-exception:{exception_id}",
                      detail={"action": body.action})
     return success(result, message="已处理")
@@ -124,14 +141,16 @@ def makeup_detail(makeup_id: str, user=Depends(require_permission("internship.ma
 
 @router.post("/makeups/{makeup_id}/approve", summary="补卡·通过（owner 校验，真实补写打卡）")
 def makeup_approve(makeup_id: str, body: dict = Body(default={}), user=Depends(require_permission("internship.makeup.review"))):
-    result = mk.review(user, makeup_id, "APPROVE", (body or {}).get("comment") or "")
+    result = mk.review(user, makeup_id, "APPROVE", (body or {}).get("comment") or "",
+                       expected_version=(body or {}).get("expectedVersion", (body or {}).get("version")))
     audit_log.record("审批补卡·通过", f"internship-makeup:{makeup_id}", detail=result)
     return success(result, message="已通过")
 
 
 @router.post("/makeups/{makeup_id}/reject", summary="补卡·驳回（owner 校验，原因≥5字）")
 def makeup_reject(makeup_id: str, body: dict = Body(...), user=Depends(require_permission("internship.makeup.review"))):
-    result = mk.review(user, makeup_id, "REJECT", (body or {}).get("comment") or "")
+    result = mk.review(user, makeup_id, "REJECT", (body or {}).get("comment") or "",
+                       expected_version=(body or {}).get("expectedVersion", (body or {}).get("version")))
     audit_log.record("审批补卡·驳回", f"internship-makeup:{makeup_id}", detail=result)
     return success(result, message="已驳回")
 
@@ -280,9 +299,20 @@ def report_remind(report_id: str, body: dict = Body(default={}), user=Depends(re
 
 @router.post("/reports/{report_id}/review", summary="批阅周报（通过/退回，退回原因≥5字）")
 def review_report(report_id: str, body: ReportReviewRequest, user=Depends(require_permission("internship.report.review"))):
-    result = svc.review_weekly_report(report_id, body.action, body.comment, user=user)
+    result = svc.review_weekly_report(
+        report_id, body.action, body.comment, user=user,
+        expected_version=body.expectedVersion if body.expectedVersion is not None else body.version)
     audit_log.record("批阅周报", f"internship-report:{report_id}", detail={"action": body.action})
     return success(result, message="批阅完成")
+
+
+@router.post("/reports/batch-review", summary="批量批阅周报（每条必须带 expectedVersion）")
+def reports_batch_review(body: dict = Body(...), user=Depends(require_permission("internship.report.review"))):
+    result = svc.batch_review_weekly_reports(body, user=user)
+    audit_log.record("批量批阅周报", "internship-report:batch-review",
+                     detail={"action": (body or {}).get("action"), "approved": result.get("approvedCount"),
+                             "skipped": result.get("skippedCount")})
+    return success(result, message="批量批阅完成")
 
 
 @router.get("/risks", summary="实习风险学生列表")
@@ -318,15 +348,19 @@ def risk_detail(risk_id: str, user=Depends(require_permission("internship.risk.v
 @router.post("/risks/{risk_id}/handle", summary="受理风险（PENDING→PROCESSING，owner）")
 def risk_handle(risk_id: str, body: dict = Body(...), user=Depends(require_permission("internship.risk.handle"))):
     b = body or {}
-    result = risk.handle(user, risk_id, owner_name=b.get("ownerName"),
-                         deadline=b.get("deadline"), comment=b.get("comment") or "")
+    result = risk.handle(
+        user, risk_id, owner_name=b.get("ownerName"),
+        deadline=b.get("deadline"), comment=b.get("comment") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("受理实习风险", f"internship-risk:{risk_id}", detail=result)
     return success(result, message="已受理")
 
 
 @router.post("/risks/{risk_id}/follow", summary="风险跟进（追加跟进说明，owner）")
 def risk_follow(risk_id: str, body: dict = Body(...), user=Depends(require_permission("internship.risk.handle"))):
-    result = risk.follow(user, risk_id, (body or {}).get("note") or "")
+    b = body or {}
+    result = risk.follow(user, risk_id, b.get("note") or "",
+                         expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("跟进实习风险", f"internship-risk:{risk_id}", detail=result)
     return success(result, message="已跟进")
 
@@ -342,7 +376,9 @@ def risk_remind(risk_id: str, body: dict = Body(default={}),
 @router.post("/risks/{risk_id}/escalate", summary="风险升级（提升等级，owner）")
 def risk_escalate(risk_id: str, body: dict = Body(...), user=Depends(require_permission("internship.risk.handle"))):
     b = body or {}
-    result = risk.escalate(user, risk_id, (b.get("level") or "").upper(), b.get("note") or "")
+    result = risk.escalate(
+        user, risk_id, (b.get("level") or "").upper(), b.get("note") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("升级实习风险", f"internship-risk:{risk_id}", detail=result)
     return success(result, message="已升级")
 
@@ -350,7 +386,9 @@ def risk_escalate(risk_id: str, body: dict = Body(...), user=Depends(require_per
 @router.post("/risks/{risk_id}/close", summary="风险关闭（化解/关闭归档，owner）")
 def risk_close(risk_id: str, body: dict = Body(...), user=Depends(require_permission("internship.risk.handle"))):
     b = body or {}
-    result = risk.close(user, risk_id, (b.get("result") or "RESOLVED").upper(), b.get("comment") or "")
+    result = risk.close(
+        user, risk_id, (b.get("result") or "RESOLVED").upper(), b.get("comment") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("关闭实习风险", f"internship-risk:{risk_id}", detail=result)
     return success(result, message="已关闭")
 
@@ -388,7 +426,9 @@ def leave_detail(leave_id: str, user=Depends(require_permission("internship.leav
 @router.post("/leaves/{leave_id}/review", summary="审批请假（通过/驳回，驳回原因≥5字，owner）")
 def leave_review(leave_id: str, body: dict = Body(...), user=Depends(require_permission("internship.leave.review"))):
     b = body or {}
-    result = lv.review(user, leave_id, (b.get("action") or "").upper(), b.get("comment") or "")
+    result = lv.review(
+        user, leave_id, (b.get("action") or "").upper(), b.get("comment") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("审批实习请假", f"internship-leave:{leave_id}", detail=result)
     return success(result, message="审批完成")
 
@@ -424,8 +464,9 @@ def agreement_detail(agreement_id: str, user=Depends(require_permission("interns
 
 
 @router.post("/agreements/{agreement_id}/issue", summary="下发协议（DRAFT→待学生确认）")
-def agreement_issue(agreement_id: str, user=Depends(require_permission("internship.agreement.manage"))):
-    return success(agr.issue(user, agreement_id), message="已下发")
+def agreement_issue(agreement_id: str, body: dict | None = Body(default=None),
+                    user=Depends(require_permission("internship.agreement.manage"))):
+    return success(agr.issue(user, agreement_id, body), message="已下发")
 
 
 @router.post("/agreements/{agreement_id}/enterprise-confirm", summary="记录企业签署（需上传扫描件→待学校确认）")
@@ -436,29 +477,31 @@ def agreement_enterprise_confirm(agreement_id: str, body: dict = Body(...), user
 
 
 @router.post("/agreements/{agreement_id}/school-confirm", summary="学校确认（待学校确认→已生效）")
-def agreement_school_confirm(agreement_id: str, user=Depends(require_permission("internship.agreement.manage"))):
-    result = agr.school_confirm(user, agreement_id)
+def agreement_school_confirm(agreement_id: str, body: dict | None = Body(default=None),
+                             user=Depends(require_permission("internship.agreement.manage"))):
+    result = agr.school_confirm(user, agreement_id, body)
     audit_log.record("学校确认三方协议生效", f"internship-agreement:{agreement_id}", detail=result)
     return success(result, message="协议已生效")
 
 
 @router.post("/agreements/{agreement_id}/reject", summary="驳回协议（原因≥5字）")
 def agreement_reject(agreement_id: str, body: dict = Body(...), user=Depends(require_permission("internship.agreement.manage"))):
-    result = agr.reject(user, agreement_id, (body or {}).get("reason") or "")
+    result = agr.reject(user, agreement_id, (body or {}).get("reason") or "", body)
     audit_log.record("驳回三方协议", f"internship-agreement:{agreement_id}", detail=result)
     return success(result, message="已驳回")
 
 
 @router.post("/agreements/{agreement_id}/void", summary="作废协议")
 def agreement_void(agreement_id: str, body: dict = Body(default={}), user=Depends(require_permission("internship.agreement.manage"))):
-    result = agr.void(user, agreement_id, (body or {}).get("reason") or "")
+    result = agr.void(user, agreement_id, (body or {}).get("reason") or "", body)
     audit_log.record("作废三方协议", f"internship-agreement:{agreement_id}", detail=result)
     return success(result, message="已作废")
 
 
 @router.post("/agreements/{agreement_id}/archive", summary="归档协议（已生效→已归档）")
-def agreement_archive(agreement_id: str, user=Depends(require_permission("internship.agreement.manage"))):
-    result = agr.archive(user, agreement_id)
+def agreement_archive(agreement_id: str, body: dict | None = Body(default=None),
+                      user=Depends(require_permission("internship.agreement.manage"))):
+    result = agr.archive(user, agreement_id, body)
     audit_log.record("归档三方协议", f"internship-agreement:{agreement_id}", detail=result)
     return success(result, message="已归档")
 
@@ -600,29 +643,33 @@ def score_detail(score_id: str, user=Depends(require_permission("internship.scor
 
 
 @router.post("/scores/{score_id}/publish", summary="发布成绩（待复核→已发布，缺项拒绝）")
-def score_publish(score_id: str, user=Depends(require_permission("internship.score.publish"))):
-    result = score.publish(user, score_id)
+def score_publish(score_id: str, body: dict | None = Body(default=None),
+                  user=Depends(require_permission("internship.score.publish"))):
+    result = score.publish(user, score_id, (body or {}).get("expectedVersion", (body or {}).get("version")))
     audit_log.record("发布实习成绩", f"internship-score:{score_id}", detail=result)
     return success(result, message="成绩已发布")
 
 
 @router.post("/scores/{score_id}/return", summary="退回重算（待复核→待核算）")
 def score_return(score_id: str, body: dict = Body(default={}), user=Depends(require_permission("internship.score.manage"))):
-    result = score.return_recalc(user, score_id, (body or {}).get("reason") or "")
+    result = score.return_recalc(user, score_id, (body or {}).get("reason") or "",
+                                 (body or {}).get("expectedVersion", (body or {}).get("version")))
     audit_log.record("退回实习成绩重算", f"internship-score:{score_id}", detail=result)
     return success(result, message="已退回重算")
 
 
 @router.post("/scores/{score_id}/withdraw", summary="撤回成绩（已发布→已撤回，原因≥5字）")
 def score_withdraw(score_id: str, body: dict = Body(...), user=Depends(require_permission("internship.score.publish"))):
-    result = score.withdraw(user, score_id, (body or {}).get("reason") or "")
+    result = score.withdraw(user, score_id, (body or {}).get("reason") or "",
+                            (body or {}).get("expectedVersion", (body or {}).get("version")))
     audit_log.record("撤回实习成绩", f"internship-score:{score_id}", detail=result)
     return success(result, message="已撤回")
 
 
 @router.post("/scores/{score_id}/archive", summary="归档成绩（已发布→已归档）")
-def score_archive(score_id: str, user=Depends(require_permission("internship.score.manage"))):
-    result = score.archive(user, score_id)
+def score_archive(score_id: str, body: dict | None = Body(default=None),
+                  user=Depends(require_permission("internship.score.manage"))):
+    result = score.archive(user, score_id, (body or {}).get("expectedVersion", (body or {}).get("version")))
     audit_log.record("归档实习成绩", f"internship-score:{score_id}", detail=result)
     return success(result, message="已归档")
 
@@ -666,8 +713,11 @@ def batch_update(bid: str, body: BatchUpdate, user=Depends(require_permission("i
 
 
 @router.post("/batches/{bid}/activate", summary="启用批次（草稿→进行中）")
-def batch_activate(bid: str, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.activate_batch(bid, user=user)
+def batch_activate(bid: str, body: dict | None = Body(default=None),
+                   user=Depends(require_permission("internship.batch.manage"))):
+    b = body or {}
+    result = svc.activate_batch(
+        bid, user=user, expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("启用实习批次", f"internship-batch:{bid}")
     return success(result, message="已启用")
 
@@ -680,6 +730,7 @@ def batch_close(bid: str, body: dict | None = Body(default=None),
         bid, user=user,
         force=bool(b.get("force")),
         force_reason=(b.get("forceReason") or b.get("reason") or ""),
+        expected_version=b.get("expectedVersion", b.get("version")),
     )
     audit_log.record("结束实习批次", f"internship-batch:{bid}",
                      detail={"forced": result.get("forced"), "blockingCount": (result.get("readiness") or {}).get("blockingCount")})
@@ -694,6 +745,7 @@ def batch_archive(bid: str, body: dict | None = Body(default=None),
         bid, user=user,
         force=bool(b.get("force")),
         force_reason=(b.get("forceReason") or b.get("reason") or ""),
+        expected_version=b.get("expectedVersion", b.get("version")),
     )
     audit_log.record("归档实习批次", f"internship-batch:{bid}",
                      detail={"forced": result.get("forced")})

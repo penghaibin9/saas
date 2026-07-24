@@ -2293,19 +2293,36 @@ def internship_risk_handle(user: dict, risk_id: str, body: dict | None = None) -
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实处置")
     from app.modules.internship.services import internship_risk_service as risk_svc
     b = body or {}
-    result = risk_svc.handle(u, risk_id, owner_name=b.get("ownerName"), deadline=b.get("deadline"),
-                             comment=b.get("comment") or b.get("note") or "")
+    result = risk_svc.handle(
+        u, risk_id, owner_name=b.get("ownerName"), deadline=b.get("deadline"),
+        comment=b.get("comment") or b.get("note") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     _audit_write("MOBILE_INTERNSHIP_RISK_HANDLE", f"internship-risk:{risk_id}",
                  {"operator": u.get("realName")})
     return result
 
 
-def internship_risk_follow(user: dict, risk_id: str, note: str) -> dict:
+def internship_my_students(user: dict, batch_id: str | None = None) -> dict:
+    """指导教师·本人指导实习学生名单（复用正式 intern-students 批次门禁 + 数据范围）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "必须指定实习批次 batchId")
+    from app.modules.internship.services import internship_student_service as student_svc
+    items, total = student_svc.list_students(1, 100, batch_id=batch_id, user=u)
+    return {"list": items, "total": total, "batchId": str(batch_id)}
+
+
+def internship_risk_follow(user: dict, risk_id: str, note: str, body: dict | None = None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实跟进")
     from app.modules.internship.services import internship_risk_service as risk_svc
-    result = risk_svc.follow(u, risk_id, note or "")
+    b = body or {}
+    result = risk_svc.follow(
+        u, risk_id, note or b.get("note") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     _audit_write("MOBILE_INTERNSHIP_RISK_FOLLOW", f"internship-risk:{risk_id}",
                  {"operator": u.get("realName")})
     return result
@@ -2317,20 +2334,13 @@ def internship_risk_close(user: dict, risk_id: str, body: dict | None = None) ->
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实关闭")
     from app.modules.internship.services import internship_risk_service as risk_svc
     b = body or {}
-    result = risk_svc.close(u, risk_id, result=(b.get("result") or "RESOLVED"),
-                            comment=b.get("comment") or b.get("note") or "")
+    result = risk_svc.close(
+        u, risk_id, result=(b.get("result") or "RESOLVED"),
+        comment=b.get("comment") or b.get("note") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     _audit_write("MOBILE_INTERNSHIP_RISK_CLOSE", f"internship-risk:{risk_id}",
                  {"operator": u.get("realName")})
     return result
-
-
-def internship_my_students(user: dict) -> dict:
-    """指导教师·本人指导实习学生名单（复用 PC 实习学生列表的 owner+数据范围收敛，供移动端选择记指导记录用）。"""
-    u = _require_teacher(user)
-    if not db_enabled():
-        return {"list": [], "total": 0}
-    items, total = internship_service.list_internship_students(1, 100, user=u)
-    return {"list": items, "total": total}
 
 
 def internship_guidance_create(user: dict, body: dict) -> dict:

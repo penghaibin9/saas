@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipMakeup,
                         InternshipRecord, StudentProfile)
+from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
@@ -63,6 +64,7 @@ def _row(m: InternshipMakeup, rec, stu) -> dict:
         "reason": m.reason, "status": m.status, "statusLabel": STATUS_LABEL.get(m.status, m.status),
         "applyBy": m.apply_by_name or "", "reviewBy": m.review_by_name or "",
         "reviewComment": m.review_comment or "", "reviewAt": _iso(m.review_at) or "",
+        "version": int(m.version or 0),
         "createdAt": _iso(m.created_at) or "",
     }
 
@@ -160,7 +162,7 @@ def get_makeup(makeup_id, user=None) -> dict:
                                for t in trail]}
 
 
-def review(user, makeup_id, action: str, comment: str = "") -> dict:
+def review(user, makeup_id, action: str, comment: str = "", *, expected_version=None) -> dict:
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
@@ -174,11 +176,13 @@ def review(user, makeup_id, action: str, comment: str = "") -> dict:
             raise no_permission("只能审批本人指导学生的补卡申请")
         if m.status != "PENDING":
             raise AppException("DATA_CONFLICT", "该申请已处理，请刷新")
-        m.status = "APPROVED" if action == "APPROVE" else "REJECTED"
-        m.review_by_name = _op_name(user)
-        m.review_at = datetime.utcnow()
-        m.review_comment = (comment or "").strip() or None
-        m.version += 1
+        status = "APPROVED" if action == "APPROVE" else "REJECTED"
+        new_ver = versioned_update(
+            db, InternshipMakeup, entity_id=m.id, tenant_id=_tid(),
+            expected_version=extract_expected_version({"expectedVersion": expected_version}),
+            expected_status="PENDING", values={"status": status, "review_by_name": _op_name(user),
+                                                "review_at": datetime.utcnow(),
+                                                "review_comment": (comment or "").strip() or None})
         if action == "APPROVE":  # 真实补写打卡留痕（不伪造定位）
             exist = db.scalars(select(InternshipCheckin).where(
                 InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
@@ -190,7 +194,7 @@ def review(user, makeup_id, action: str, comment: str = "") -> dict:
         _trail(db, m.id, f"REVIEW_{action}", {"comment": (comment or "").strip()},
                operator=_op_name(user))
         db.commit()
-        return {"id": str(m.id), "status": m.status, "statusLabel": STATUS_LABEL[m.status]}
+        return {"id": str(m.id), "status": status, "statusLabel": STATUS_LABEL[status], "version": new_ver}
 
 
 def export_makeups(status=None, user=None) -> dict:

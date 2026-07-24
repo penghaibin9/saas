@@ -275,9 +275,9 @@ export default {
       if (!row) return
       const reason = (payload && payload.reason) || ''
       let res
-      if (this.confirmMode === 'activate') res = await internshipApi.activateBatch(row.id)
-      else if (this.confirmMode === 'close') res = await internshipApi.closeBatch(row.id)
-      else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(row.id)
+      if (this.confirmMode === 'activate') res = await internshipApi.activateBatch(row.id, { expectedVersion: row.version })
+      else if (this.confirmMode === 'close') res = await internshipApi.closeBatch(row.id, { expectedVersion: row.version })
+      else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(row.id, { expectedVersion: row.version })
       else if (this.confirmMode === 'void') res = await internshipApi.voidBatch(row.id, reason)
       if (res && res.code === 0) {
         toast.success('操作成功')

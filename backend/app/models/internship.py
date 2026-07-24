@@ -32,6 +32,8 @@ class InternshipBatch(PKMixin, TenantMixin, CommonMixin, Base):
     rules_config: Mapped[dict | None] = mapped_column(
         JSON, comment="规则配置 {checkin/weeklyReport/guidance/evaluation/score}")
     rules_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="已生效规则版本")
+    compliance_template_id: Mapped[int | None] = mapped_column(BigInteger, comment="启用时冻结的合规模板")
+    compliance_template_version: Mapped[int | None] = mapped_column(Integer, comment="启用时冻结的合规模板版本")
     previous_status: Mapped[str | None] = mapped_column(String(50))
     last_transition_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_transition_by: Mapped[str | None] = mapped_column(String(100))

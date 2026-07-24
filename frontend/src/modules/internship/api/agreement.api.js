@@ -27,14 +27,36 @@ export const agreementApi = {
   getAgreements(params = {}) { return callList(B, params) },
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
   generate(body) { return call(() => request(B, { method: 'POST', body })) },
-  issue(id) { return call(() => request(`${B}/${id}/issue`, { method: 'POST', body: {} })) },
-  enterpriseConfirm(id, { confirmBy, fileId }) {
-    return call(() => request(`${B}/${id}/enterprise-confirm`, { method: 'POST', body: { confirmBy, fileId } }))
+  issue(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/issue`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
   },
-  schoolConfirm(id) { return call(() => request(`${B}/${id}/school-confirm`, { method: 'POST', body: {} })) },
-  reject(id, { reason }) { return call(() => request(`${B}/${id}/reject`, { method: 'POST', body: { reason } })) },
-  voidAgreement(id, { reason } = {}) { return call(() => request(`${B}/${id}/void`, { method: 'POST', body: { reason: reason || '' } })) },
-  archive(id) { return call(() => request(`${B}/${id}/archive`, { method: 'POST', body: {} })) },
+  enterpriseConfirm(id, { confirmBy, fileId, expectedVersion, version }) {
+    return call(() => request(`${B}/${id}/enterprise-confirm`, {
+      method: 'POST', body: { confirmBy, fileId, expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  schoolConfirm(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/school-confirm`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  reject(id, { reason, expectedVersion, version }) {
+    return call(() => request(`${B}/${id}/reject`, {
+      method: 'POST', body: { reason, expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  voidAgreement(id, { reason, expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/void`, {
+      method: 'POST', body: { reason: reason || '', expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  archive(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/archive`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
+  },
   startEsign(id) { return call(() => request(`${B}/${id}/esign/start`, { method: 'POST', body: {} })) },
   esignSign(id, { party }) { return call(() => request(`${B}/${id}/esign/sign`, { method: 'POST', body: { party } })) },
   exportAgreements(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) },

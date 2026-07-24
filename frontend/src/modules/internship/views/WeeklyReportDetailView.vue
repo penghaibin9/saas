@@ -191,7 +191,9 @@ export default {
         return
       }
       this.submitting = true
-      const res = await internshipApi.reviewWeeklyReport(this.detail.id, { action, comment: this.comment })
+      const res = await internshipApi.reviewWeeklyReport(this.detail.id, {
+        action, comment: this.comment, expectedVersion: this.detail.version
+      })
       this.submitting = false
       if (res.code === 0) {
         toast.success('批阅完成：' + res.data.statusLabel + '，已留痕并同步学生端')

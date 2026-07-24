@@ -102,6 +102,7 @@ class EmpCompany(PKMixin, TenantMixin, CommonMixin, Base):
     review_by: Mapped[str | None] = mapped_column(String(100))
     review_at: Mapped[datetime | None] = mapped_column(DateTime)
     review_comment: Mapped[str | None] = mapped_column(String(500))
+    access_valid_until: Mapped[datetime | None] = mapped_column(DateTime, comment="实习企业准入有效期")
     intern_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="累计接收实习生数")
     remark: Mapped[str | None] = mapped_column(String(500))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime)

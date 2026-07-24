@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
 from app.models import InternshipAuditTrail, InternshipProcessReport, InternshipRecord, StudentProfile
+from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 from app.services import xlsx_util
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -47,6 +48,7 @@ def _row(r, rec, stu, class_name=None):
         "enterpriseName": rec.enterprise_name if rec else "",
         "wordCount": r.word_count, "submitAt": _iso(r.submitted_at) or "",
         "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
+        "version": int(r.version or 0),
         "reviewComment": r.review_comment or "", "reviewedByName": r.reviewed_by_name or "",
         "reviewedAt": _iso(r.reviewed_at) or "",
     }
@@ -178,7 +180,7 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
         return {"id": str(row.id), "status": row.status, "message": f"{TYPE_LABEL[rt]}提交成功"}
 
 
-def review_report(rid, action: str, comment: str = "", user=None) -> dict:
+def review_report(rid, action: str, comment: str = "", user=None, *, expected_version=None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     if action == "RETURN" and len((comment or "").strip()) < 5:
@@ -195,14 +197,18 @@ def review_report(rid, action: str, comment: str = "", user=None) -> dict:
             raise no_permission("不在数据范围内")
         if r.status not in ("PENDING_REVIEW", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可批阅")
-        r.status = "APPROVED" if action == "APPROVE" else "RETURNED"
-        r.review_action = action
-        r.review_comment = (comment or "").strip()
-        r.reviewed_by_name = _op_name(user)
-        r.reviewed_at = datetime.utcnow()
+        status = "APPROVED" if action == "APPROVE" else "RETURNED"
+        new_ver = versioned_update(
+            db, InternshipProcessReport, entity_id=r.id, tenant_id=_tid(),
+            expected_version=extract_expected_version({"expectedVersion": expected_version}),
+            expected_status=r.status, values={"status": status, "review_action": action,
+                                               "review_comment": (comment or "").strip(),
+                                               "reviewed_by_name": _op_name(user),
+                                               "reviewed_at": datetime.utcnow()})
         _trail(db, r.id, f"REVIEW_{action}", {"comment": r.review_comment})
         db.commit()
-        return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL.get(r.status)}
+        return {"id": str(r.id), "status": status, "statusLabel": STATUS_LABEL.get(status),
+                "version": new_ver}
 
 
 def export_reports(report_type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
