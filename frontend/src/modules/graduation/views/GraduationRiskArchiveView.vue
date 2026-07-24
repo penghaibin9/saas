@@ -13,7 +13,15 @@
 
     <!-- 问题预警：连续双栏处置 -->
     <div v-if="tab === 'risk'" class="mp-stack">
-      <div v-if="hasBatch" class="ie-actions" style="justify-content: flex-start"><button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button></div>
+      <div v-if="hasBatch" class="rk-scan-bar">
+        <div class="rk-scan-bar__meta">
+          <span>当前批次：{{ batchStore.selectedBatchName || batchStore.selectedBatchId }}</span>
+          <span v-if="lastScanAt">上次扫描：{{ formatDateTime(lastScanAt) }}</span>
+          <span v-else>尚未扫描</span>
+          <span v-if="lastScanStats">扫描 {{ lastScanStats.scannedStudents || 0 }} 人 · 新增 {{ lastScanStats.newCasesCreated || 0 }} · 重开 {{ lastScanStats.reopenedCases || 0 }} · 耗时 {{ lastScanStats.elapsedMs || '—' }}ms</span>
+        </div>
+        <button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button>
+      </div>
       <AdvancedFilter v-if="hasBatch" v-model="riskFilters" :fields="riskFilterFields" @search="loadRisks" @reset="resetRiskFilters" />
       <ErrorState v-if="riskError" :description="riskError" @retry="loadRisks" />
       <LoadingState v-else-if="riskLoading" />
@@ -60,13 +68,16 @@
               <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="selectedRisk.statusTone" :label="selectedRisk.statusLabel" dot /></span></div>
               <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selectedRisk.studentName }} · {{ selectedRisk.studentNo }}</span></div>
               <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ selectedRisk.advisorName || '未分配导师' }}</span></div>
-              <div v-if="selectedRisk.detail" class="mp-kv"><span class="mp-kv__k">风险详情</span><span class="mp-kv__v">{{ selectedRisk.detail }}</span></div>
-              <div v-if="selectedRisk.createdAt" class="mp-kv"><span class="mp-kv__k">首次触发</span><span class="mp-kv__v">{{ formatDateTime(selectedRisk.createdAt) }}</span></div>
+              <div v-if="selectedRisk.nextActionHint" class="mp-kv"><span class="mp-kv__k">下一步</span><span class="mp-kv__v">{{ selectedRisk.nextActionHint }}</span></div>
+              <div v-if="selectedRisk.conditionSummary || selectedRisk.detail" class="mp-kv"><span class="mp-kv__k">当前触发原因</span><span class="mp-kv__v">{{ selectedRisk.conditionSummary || selectedRisk.detail }}{{ selectedRisk.conditionActive === false ? '（最近扫描条件已消失）' : '' }}</span></div>
+              <div v-if="selectedRisk.firstDetectedAt || selectedRisk.createdAt" class="mp-kv"><span class="mp-kv__k">首次触发</span><span class="mp-kv__v">{{ formatDateTime(selectedRisk.firstDetectedAt || selectedRisk.createdAt) }}</span></div>
+              <div v-if="selectedRisk.lastDetectedAt" class="mp-kv"><span class="mp-kv__k">最近仍命中</span><span class="mp-kv__v">{{ formatDateTime(selectedRisk.lastDetectedAt) }}</span></div>
+              <div v-if="selectedRisk.reopenCount" class="mp-kv"><span class="mp-kv__k">重开次数</span><span class="mp-kv__v">{{ selectedRisk.reopenCount }}</span></div>
               <div v-if="selectedRisk.handleNote" class="mp-kv"><span class="mp-kv__k">处理记录</span><span class="mp-kv__v">{{ selectedRisk.handleNote }}</span></div>
               <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
                 <button v-if="selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" @click="doAccept(selectedRisk)">受理</button>
                 <button v-if="selectedRisk.status === 'PROCESSING'" class="mp-btn mp-btn--primary" @click="doProcess(selectedRisk)">记录处理</button>
-                <button v-if="selectedRisk.status === 'PROCESSING'" class="mp-btn" @click="doClose(selectedRisk)">关闭风险</button>
+                <button v-if="selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false)" class="mp-btn" @click="doClose(selectedRisk)">关闭风险</button>
                 <span v-if="selectedRisk.status === 'CLOSED'" class="mp-note">该风险已关闭</span>
               </div>
               <p class="mp-note" style="margin-top: var(--space-2)">受理 / 处理 / 关闭均写入审计留痕；关闭需填写原因。</p>
@@ -222,6 +233,7 @@ export default {
       riskSelKey: '', riskAutoNext: true,
       archiveSelKey: '',
       riskFilters: { status: '', level: '', keyword: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
+      lastScanAt: '', lastScanStats: null,
       archiveFilters: { keyword: '', status: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true, archiveError: '',
       statsError: '',
       overview: null, collegeRows: [], statsLoading: true,
@@ -274,7 +286,7 @@ export default {
     if (['risk', 'archive', 'stats'].includes(p)) this.tab = p
     this.riskSelKey = (this.$route.query.rsel || '').toString()
     this.archiveSelKey = (this.$route.query.asel || '').toString()
-    this.loadRisks(); this.loadArchives(); this.loadStats()
+    this.loadRisks(); this.loadArchives(); this.loadStats(); this.loadLastScan()
   },
   watch: {
     // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
@@ -287,10 +299,23 @@ export default {
       this.loadRisks()
       this.loadArchives()
       this.loadStats()
+      this.loadLastScan()
     }
   },
   methods: {
     formatDateTime,
+    async loadLastScan() {
+      if (!this.batchStore.selectedBatchId) {
+        this.lastScanAt = ''
+        this.lastScanStats = null
+        return
+      }
+      const res = await graduationRiskArchiveApi.getLastRiskScan({ batchId: this.batchStore.selectedBatchId })
+      if (res.code === 0 && res.data) {
+        this.lastScanAt = res.data.lastScanAt || ''
+        this.lastScanStats = res.data.stats || null
+      }
+    },
     /** 页签切换同步到 URL，保证刷新/分享/左侧菜单高亮一致 */
     switchTab(t) {
       this.tab = t
@@ -304,9 +329,16 @@ export default {
       const res = await graduationRiskArchiveApi.scanRisks({ batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) {
         const d = res.data || {}
+        this.lastScanAt = d.lastScanAt || this.lastScanAt
+        this.lastScanStats = {
+          scannedStudents: d.scannedStudents,
+          newCasesCreated: d.newCasesCreated,
+          reopenedCases: d.reopenedCases,
+          elapsedMs: d.elapsedMs,
+        }
         toast.success(
           res.message
-          || `已扫描 ${d.scannedStudents || 0} 人，新增 ${d.newCasesCreated || 0}，已存在 ${d.existingCases || 0}`
+          || `已扫描 ${d.scannedStudents || 0} 人，新增 ${d.newCasesCreated || 0}，重开 ${d.reopenedCases || 0}`
         )
         this.loadRisks()
       } else toast.error(res.message)
@@ -571,6 +603,8 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.rk-scan-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3); margin-bottom: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--gray-50, #f8fafc); }
+.rk-scan-bar__meta { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--font-size-sm, 13px); color: var(--text-secondary); }
 .rk-split { display: flex; gap: var(--space-4); align-items: flex-start; }
 .rk-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .rk-pane { flex: 1; min-width: 0; padding: var(--space-4); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }

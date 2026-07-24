@@ -139,6 +139,8 @@ def confirm_taskbook(gd_student_id, proxy_reason: str | None = None) -> dict:
             if len(reason) < 5:
                 raise AppException("VALIDATION_ERROR", "管理员代确认须填写原因（不少于 5 字）")
             _audit(db, t.id, "管理员代确认任务书", detail=reason, before=before, after="CONFIRMED")
+        from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
+        notify_risk_rescan(db, stu.id)
         db.commit()
         return _row(t, stu)
 

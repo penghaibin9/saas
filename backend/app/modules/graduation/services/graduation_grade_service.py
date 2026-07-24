@@ -275,6 +275,8 @@ def publish_grade(gd_student_id) -> dict:
         if stu.stage == "DEFENSE":
             stu.stage = "COMPLETED"
         _audit(db, g.id, "发布成绩", detail=f"total={g.total_score}")
+        from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
+        notify_risk_rescan(db, stu.id)
         db.commit()
         return _row(g, stu)
 

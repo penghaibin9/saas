@@ -272,6 +272,8 @@ def verify_and_file(gd_student_id, archive_batch_no: str = None) -> dict:
         if getattr(stu, "grad_qual_status", None) not in ("FAIL", "PASS"):
             stu.grad_qual_status = "PASS"
         _audit(db, a.id, "核验归档", detail=a.archive_batch_no)
+        from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
+        notify_risk_rescan(db, stu.id)
         db.commit()
         return _row(a, stu)
 

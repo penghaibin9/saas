@@ -52,6 +52,8 @@ class GraduationBatch(PKMixin, TenantMixin, CommonMixin, Base):
     archived_by: Mapped[str | None] = mapped_column(String(100))
     void_reason: Mapped[str | None] = mapped_column(String(500))
     remark: Mapped[str | None] = mapped_column(String(500))
+    last_risk_scan_at: Mapped[datetime | None] = mapped_column(DateTime, comment="最近风险扫描时间")
+    last_risk_scan_stats_json: Mapped[dict | None] = mapped_column(JSON, comment="最近扫描摘要")
 
 
 class GraduationStudent(PKMixin, TenantMixin, CommonMixin, Base):
@@ -442,7 +444,14 @@ class GraduationRiskCase(PKMixin, TenantMixin, CommonMixin, Base):
     assignee: Mapped[str | None] = mapped_column(String(100))
     handle_note: Mapped[str | None] = mapped_column(String(1000))
     close_reason: Mapped[str | None] = mapped_column(String(500))
-    detected_at: Mapped[datetime | None] = mapped_column(DateTime)
+    detected_at: Mapped[datetime | None] = mapped_column(DateTime, comment="兼容：等同首次触发")
+    first_detected_at: Mapped[datetime | None] = mapped_column(DateTime, comment="首次触发")
+    last_detected_at: Mapped[datetime | None] = mapped_column(DateTime, comment="最近仍命中")
+    reopen_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="重开次数")
+    last_reopened_at: Mapped[datetime | None] = mapped_column(DateTime, comment="最近重开")
+    condition_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="最近扫描是否仍命中")
+    condition_summary: Mapped[str | None] = mapped_column(String(500), comment="条件摘要")
+    condition_hash: Mapped[str | None] = mapped_column(String(64), comment="条件指纹")
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 

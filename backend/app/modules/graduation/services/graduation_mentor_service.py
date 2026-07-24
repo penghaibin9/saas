@@ -398,6 +398,8 @@ def assign_mentor(gd_student_id, mentor_id, reason: str = None) -> dict:
         mentor.current_count += 1
         db.flush()
         _audit(db, "MENTOR_ASSIGN", a.id, "分配导师", detail=f"{stu.name}→{mentor.teacher_name}")
+        from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
+        notify_risk_rescan(db, stu.id)
         db.commit()
         return {"id": str(a.id), "gdStudentId": str(stu.id), "mentorId": str(mentor.id),
                 "mentorName": mentor.teacher_name, "status": "ACTIVE"}

@@ -20,12 +20,21 @@ def gd_risk_stats(batchId: int | None = Query(default=None, ge=1),
     return success(svc.risk_stats(batch_id=batchId))
 
 
-@router.post("/gd-risks/scan", summary="扫描生成风险项（须指定批次；幂等）")
+@router.post("/gd-risks/scan", summary="扫描生成风险项（须指定批次；幂等；支持重开）")
 def gd_risk_scan(batchId: int | None = Query(default=None, ge=1),
                  user=Depends(get_current_user)):
     result = svc.scan_risks(batch_id=batchId)
     audit_log.record("扫描毕设风险", "graduation-risk:scan", detail=result)
-    return success(result, message=f"新发现 {result['newCasesCreated']} 项")
+    msg = (
+        f"扫描 {result['scannedStudents']} 人：新增 {result['newCasesCreated']}，"
+        f"重开 {result.get('reopenedCases', 0)}，已存在触碰 {result.get('existingTouched', result.get('existingCases', 0))}"
+    )
+    return success(result, message=msg)
+
+
+@router.get("/gd-risks/last-scan", summary="最近一次风险扫描摘要")
+def gd_risk_last_scan(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    return success(svc.last_scan_info(batch_id=batchId))
 
 
 @router.get("/gd-risks", summary="风险列表（分页+筛选）")

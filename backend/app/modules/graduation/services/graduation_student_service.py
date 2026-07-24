@@ -453,6 +453,8 @@ def assign_topic(sid, topic_id, *, relationship_authorized: bool = False) -> dic
         s = assign_topic_in_session(
             db, sid, topic_id, relationship_authorized=relationship_authorized
         )
+        from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
+        notify_risk_rescan(db, s.id)
         db.commit()
         return _row_of(db, s)
 
