@@ -267,7 +267,7 @@ def activities(user: dict, page: int = 1, page_size: int = 20) -> dict:
     from app.services import affairs_activity_service as act
     res = act.list_activities(user, page=page, page_size=page_size)
     if isinstance(res, tuple):
-        items, total = res
+        items, total, _status_counts = res
         return {"items": items, "total": total}
     return res
 

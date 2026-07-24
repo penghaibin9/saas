@@ -76,18 +76,18 @@ export default {
   data() {
     return {
       contactColumns: CONTACT_COLUMNS,
-      loading: true, acting: '', errorMessage: '', all: [], items: [], activeStatus: '', statusFilters: STATUS_FILTERS,
+      loading: true, acting: '', errorMessage: '', all: [], items: [], statusCounts: null, activeStatus: '', statusFilters: STATUS_FILTERS,
       recDlg: { visible: false, contactId: '', who: '', note: '' }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const pend = this.all.filter((x) => x.receiptStatus === 'PENDING').length
+      const count = (status) => this.statusCounts === null ? '—' : (this.statusCounts[status] || 0)
       return [
-        { key: 't', label: '联系记录', value: this.all.length, accent: 'primary' },
-        { key: 'p', label: '待回执', value: pend, accent: pend ? 'warning' : 'success' },
-        { key: 'r', label: '已回执', value: this.all.length - pend, accent: 'success' }
+        { key: 't', label: '联系记录', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'primary' },
+        { key: 'p', label: '待回执', value: count('PENDING'), accent: 'warning' },
+        { key: 'r', label: '已回执', value: count('RECEIVED'), accent: 'success' }
       ]
     }
   },
@@ -99,12 +99,14 @@ export default {
       const res = await studentAffairsApi.getFamilyContactsAll({ receiptStatus: this.activeStatus })
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
         if (!this.activeStatus) this.all = this.items
       } else { this.errorMessage = res.message || '加载失败' }
       // 指标始终基于全量
       if (this.activeStatus) {
         const full = await studentAffairsApi.getFamilyContactsAll({})
         this.all = (full.code === 0 && full.data) ? (full.data.items || []) : this.all
+        this.statusCounts = (full.code === 0 && full.data) ? (full.data.statusCounts || null) : this.statusCounts
       }
       this.loading = false
     },

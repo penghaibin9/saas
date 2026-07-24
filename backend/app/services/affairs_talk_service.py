@@ -207,21 +207,31 @@ def get_talk(talk_id, user) -> dict:
 def list_talks(user, talk_type=None, status=None, student_id=None, page=1, page_size=20):
     from app.models import StudentProfile, TalkRecord
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        conds = [TalkRecord.tenant_id == _tid(), TalkRecord.is_deleted.is_(False)]
+        base_conds = [TalkRecord.tenant_id == _tid(), TalkRecord.is_deleted.is_(False)]
         if talk_type:
-            conds.append(TalkRecord.topic_type == talk_type)
-        if status:
-            conds.append(TalkRecord.status == status)
+            base_conds.append(TalkRecord.topic_type == talk_type)
         if student_id:
-            conds.append(TalkRecord.student_id == int(student_id))
-        if allowed is not None:
-            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+            try:
+                base_conds.append(TalkRecord.student_id == int(student_id))
+            except (TypeError, ValueError):
+                return [], 0, {"ALL": 0}
+        conds = list(base_conds)
+        if status:
+            statuses = [item.strip() for item in status.split(",") if item.strip()]
+            conds.append(TalkRecord.status.in_(statuses))
         student_conds = [
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
         ]
+        status_counts = status_counts_by_column(
+            db, TalkRecord, TalkRecord.status, [*base_conds, *student_conds],
+            join_student=StudentProfile, allowed_class_ids=allowed,
+        )
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         page, page_size = normalize_page(page, page_size)
         total = int(db.scalar(select(func.count()).select_from(TalkRecord)
                               .join(StudentProfile, StudentProfile.id == TalkRecord.student_id)
@@ -230,8 +240,8 @@ def list_talks(user, talk_type=None, status=None, student_id=None, page=1, page_
                           .where(*conds, *student_conds).order_by(TalkRecord.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         students = _students_by_ids(db, rows)
-        return [_talk_row(x, user, students.get(int(x.student_id)) if x.student_id else None)
-                for x in rows], total
+        return ([_talk_row(x, user, students.get(int(x.student_id)) if x.student_id else None)
+                for x in rows], total, status_counts)
 
 
 def talk_stats(user, group_by="TYPE"):

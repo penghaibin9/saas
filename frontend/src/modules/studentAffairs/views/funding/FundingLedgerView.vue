@@ -72,23 +72,20 @@ export default {
   data() {
     return {
       ledgerColumns: LEDGER_COLUMNS,
-      loading: true, errorMessage: '', items: [], activeType: '', activeStatus: '',
+      loading: true, errorMessage: '', items: [], statusCounts: null, activeType: '', activeStatus: '',
       typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS,
       page: 1, pageSize: 20, total: 0
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
-    // 后端 /funding/applications 支持 projectType/status/page/pageSize 真分页，此处按当前筛选服务端分页；
-    // 「申请总数」随筛选变化以匹配下方台账（此前版本一次性拉取 500 条做全局统计，历史数据超过 500 条时会静默截断，
-    // 改为服务端分页后不再有该上限）。「已获资助/公示中/已驳回」为当前筛选+分页下的即时状态分布提示，仅供参考。
     metricCards() {
-      const s = (k) => this.items.filter((x) => x.status === k).length
+      const s = (k) => this.statusCounts === null ? '—' : (this.statusCounts[k] || 0)
       return [
         { key: 'all', label: '申请总数', value: this.total, accent: 'primary' },
-        { key: 'gr', label: '本页已获资助', value: s('GRANTED'), accent: 'success' },
-        { key: 'pub', label: '本页公示中', value: s('PUBLICITY'), accent: 'warning' },
-        { key: 'rj', label: '本页已驳回', value: s('REJECTED'), accent: 'risk' }
+        { key: 'gr', label: '已获资助', value: s('GRANTED'), accent: 'success' },
+        { key: 'pub', label: '公示中', value: s('PUBLICITY'), accent: 'warning' },
+        { key: 'rj', label: '已驳回', value: s('REJECTED'), accent: 'risk' }
       ]
     }
   },
@@ -102,6 +99,7 @@ export default {
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
         this.total = res.data.total != null ? res.data.total : this.items.length
+        this.statusCounts = res.data.statusCounts || null
       } else {
         this.errorMessage = res.message || '资助台账加载失败'
       }

@@ -197,7 +197,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
-      loading: true, listError: '', list: [], stats: null,
+      loading: true, listError: '', list: [], statusCounts: null, stats: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false,
       activeStatus: 'ALL', typeFilter: '',
@@ -236,10 +236,9 @@ export default {
       return `当前学生筛选：#${id}`
     },
     statusFilters() {
-      const scoped = this.list.filter((x) => this._matchStudent(x))
-      const c = (arr) => scoped.filter((x) => arr.includes(x.status)).length
+      const c = (arr) => this.statusCounts === null ? '—' : arr.reduce((total, key) => total + (this.statusCounts[key] || 0), 0)
       return [
-        { key: 'ALL', label: '全部', count: scoped.length },
+        { key: 'ALL', label: '全部', count: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0) },
         { key: 'PLANNED', label: '待谈', count: c(['PLANNED', 'SCHEDULED']) },
         { key: 'COMPLETED', label: '已谈话', count: c(['COMPLETED']) },
         { key: 'FOLLOW_UP', label: '跟进中', count: c(['FOLLOW_UP']) },
@@ -327,17 +326,19 @@ export default {
     async loadList() {
       this.loading = true
       this.listError = ''
+      this.statusCounts = null
       const sid = this.studentFilter && this.studentFilter.studentId
       const res = await studentAffairsApi.getTalks({
         page: this.pagination.page,
         pageSize: this.pagination.pageSize,
         talkType: this.typeFilter,
-        status: this.statusMatch && this.statusMatch.length === 1 ? this.statusMatch[0] : '',
+        status: this.statusMatch && this.statusMatch.length ? this.statusMatch.join(',') : '',
         studentId: sid || ''
       })
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.talkId === this.selected.talkId)

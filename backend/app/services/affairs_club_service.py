@@ -62,12 +62,18 @@ def _row(c) -> dict:
 
 def list_clubs(user, status=None, club_type=None, page=1, page_size=50):
     from app.models import AffairsClub
+    from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
-        conds = [AffairsClub.tenant_id == _tid(), AffairsClub.is_deleted.is_(False)]
-        if status:
-            conds.append(AffairsClub.status == status)
+        base_conds = [AffairsClub.tenant_id == _tid(), AffairsClub.is_deleted.is_(False)]
         if club_type:
-            conds.append(AffairsClub.club_type == club_type)
+            base_conds.append(AffairsClub.club_type == club_type)
+        conds = list(base_conds)
+        if status:
+            statuses = [item.strip() for item in status.split(",") if item.strip()]
+            conds.append(AffairsClub.status.in_(statuses))
+        status_counts = status_counts_by_column(
+            db, AffairsClub, AffairsClub.status, base_conds,
+        )
         page = max(1, int(page or 1))
         page_size = max(1, min(200, int(page_size or 50)))
         total = int(db.scalar(select(func.count()).select_from(AffairsClub).where(*conds)) or 0)
@@ -75,7 +81,7 @@ def list_clubs(user, status=None, club_type=None, page=1, page_size=50):
                           .order_by(AffairsClub.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         out = [_row(c) for c in rows]
-        return out, total
+        return out, total, status_counts
 
 
 def create_club(body, user) -> dict:

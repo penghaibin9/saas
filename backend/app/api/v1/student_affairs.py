@@ -122,11 +122,11 @@ class PeriodCreate(BaseModel):
 
 class ScoreBody(BaseModel):
     collegeScore: float = Field(..., ge=0, le=100, description="学院评分 0-100")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class ClassVersionOnlyBody(BaseModel):
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.post("/counselor-assessment/periods", summary="新建辅导员考评周期（旧入口·权限对齐正式考评）")
@@ -152,13 +152,13 @@ def counselor_assessments(periodId: int = Path(...), user=Depends(require_permis
 
 
 @router.post("/counselor-assessment/periods/{periodId}/publish", summary="发布考评周期")
-def counselor_publish(periodId: int = Path(...), user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
-    return success(class_svc.publish_period(periodId, user), message="已发布")
+def counselor_publish(body: ClassVersionOnlyBody, periodId: int = Path(...), user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
+    return success(class_svc.publish_period(periodId, user, body.version), message="已发布")
 
 
 @router.post("/counselor-assessment/assessments/{assessmentId}/score", summary="学院评分（综合分=自动*0.6+学院*0.4）")
 def counselor_score(body: ScoreBody, assessmentId: int = Path(...), user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
-    return success(class_svc.score_assessment(assessmentId, user, body.collegeScore), message="已评分")
+    return success(class_svc.score_assessment(assessmentId, user, body.collegeScore, body.version), message="已评分")
 
 
 # ═══════════ 请假闭环（P2）═══════════
@@ -184,34 +184,34 @@ class CommentBody(BaseModel):
 class ExtensionBody(BaseModel):
     newEnd: str = Field(..., description="新结束时间")
     reason: Optional[str] = Field(None, max_length=500)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class ExtensionReviewBody(BaseModel):
     action: str = Field("APPROVE", description="APPROVE 续假通过 / REJECT 续假驳回")
     reason: Optional[str] = Field("", max_length=500, description="驳回原因≥5字")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class CancelBody(BaseModel):
     proofNote: Optional[str] = Field("", max_length=500)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class ProxyCancelBody(BaseModel):
     actualReturnAt: str = Field(..., description="实际返校时间 YYYY-MM-DD[ HH:MM:SS]")
     note: Optional[str] = Field("", max_length=500)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class LeaveVersionOnlyBody(BaseModel):
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class OverdueHandleBody(BaseModel):
     handleType: str = Field(..., description="CONTACT 联系 / TO_HOME_SCHOOL 转家校 / CLOSE 处置关闭")
     note: str = Field(..., min_length=1, description="处置说明≥5字")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class ConfirmBody(BaseModel):
@@ -219,7 +219,7 @@ class ConfirmBody(BaseModel):
     actualReturnAt: Optional[str] = Field(None, description="确认时可校对实际返校时间")
     reason: Optional[str] = Field("", max_length=500, description="退回原因≥5字")
     note: Optional[str] = Field("", max_length=500)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.post("/leave", summary="发起请假")
@@ -283,18 +283,18 @@ def leave_return(body: ReasonBody, leaveId: int = Path(...), user=Depends(requir
 
 
 @router.post("/leave/{leaveId}/resubmit", summary="退回后重新提交")
-def leave_resubmit(body: LeaveVersionOnlyBody = LeaveVersionOnlyBody(), leaveId: int = Path(...),
+def leave_resubmit(body: LeaveVersionOnlyBody, leaveId: int = Path(...),
                    user=Depends(require_permission("studentAffairs.leave.create"))):
     return success(leave_svc.resubmit(leaveId, user, body.version), message="已重新提交")
 
 
 @router.post("/leave/{leaveId}/cancel", summary="发起销假")
-def leave_cancel(body: CancelBody = CancelBody(), leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
+def leave_cancel(body: CancelBody, leaveId: int = Path(...), user=Depends(require_permission("studentAffairs.leave.create"))):
     return success(leave_svc.submit_cancel(leaveId, user, body.proofNote or "", body.version), message="销假已提交")
 
 
 @router.post("/leave/{leaveId}/cancel-confirm", summary="销假确认/退回（辅导员）→ CLOSED 进360 / 退回 APPROVED")
-def leave_cancel_confirm(body: ConfirmBody = ConfirmBody(), leaveId: int = Path(...),
+def leave_cancel_confirm(body: ConfirmBody, leaveId: int = Path(...),
                          user=Depends(require_permission("studentAffairs.leave.cancelLeaveConfirm"))):
     r = leave_svc.confirm_cancel(leaveId, user, action=body.action,
                                  actual_return_at=body.actualReturnAt, reason=body.reason or "",
@@ -321,7 +321,7 @@ def leave_extension(body: ExtensionBody, leaveId: int = Path(...), user=Depends(
 
 
 @router.post("/leave/{leaveId}/extension-approve", summary="续假审批（通过/驳回）")
-def leave_extension_approve(body: ExtensionReviewBody = ExtensionReviewBody(), leaveId: int = Path(...),
+def leave_extension_approve(body: ExtensionReviewBody, leaveId: int = Path(...),
                             user=Depends(require_permission("studentAffairs.leave.extension.approve"))):
     r = leave_svc.approve_extension(leaveId, user, action=body.action, reason=body.reason or "",
                                     expected_version=body.version)
@@ -367,11 +367,11 @@ class AidReviewBody(BaseModel):
 class AidAdjustBody(BaseModel):
     targetLevel: str = Field(..., description="SPECIAL/DIFFICULT/GENERAL")
     reason: str = Field(..., min_length=1)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class AidVersionOnlyBody(BaseModel):
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class AidObjectionBody(BaseModel):
@@ -382,6 +382,7 @@ class AidObjectionBody(BaseModel):
 class AidObjectionReviewBody(BaseModel):
     result: str = Field(..., description="SUSTAINED异议成立/OVERRULED异议不成立")
     opinion: str = Field(..., min_length=5)
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class AidRevealBody(BaseModel):
@@ -410,9 +411,9 @@ def aid_applications(batchId: Optional[str] = None, status: Optional[str] = None
                      level: Optional[str] = None, studentId: Optional[str] = None,
                      page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                      user=Depends(require_permission("studentAffairs.aid.view"))):
-    items, total = aid_svc.list_applications(user, batchId, status, level, page, pageSize,
-                                            student_id=studentId)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = aid_svc.list_applications(user, batchId, status, level, page, pageSize,
+                                                            student_id=studentId)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.post("/aid/applications/{applyId}/objection", summary="对公示中申请提异议（理由≥5字）")
@@ -462,13 +463,13 @@ def aid_review(body: AidReviewBody, applyId: int = Path(...),
 
 
 @router.post("/aid/applications/{applyId}/resubmit", summary="退回后重新提交")
-def aid_resubmit(body: AidVersionOnlyBody = AidVersionOnlyBody(), applyId: int = Path(...),
+def aid_resubmit(body: AidVersionOnlyBody, applyId: int = Path(...),
                  user=Depends(require_permission("studentAffairs.aid.create"))):
     return success(aid_svc.resubmit(applyId, user, body.version), message="已重新提交")
 
 
 @router.post("/aid/applications/{applyId}/publicity-confirm", summary="人工确认公示期满→通过")
-def aid_publicity_confirm(body: AidVersionOnlyBody = AidVersionOnlyBody(), applyId: int = Path(...),
+def aid_publicity_confirm(body: AidVersionOnlyBody, applyId: int = Path(...),
                           user=Depends(require_permission("studentAffairs.aid.approve"))):
     return success(aid_svc.confirm_publicity(applyId, user, body.version), message="已通过")
 
@@ -529,11 +530,11 @@ class FundingApplyBody(BaseModel):
 class FundingReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/RETURN")
     reason: Optional[str] = Field("", max_length=500)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class FundingVersionOnlyBody(BaseModel):
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class FundingAppealBody(BaseModel):
@@ -544,6 +545,7 @@ class FundingAppealBody(BaseModel):
 class FundingAppealReviewBody(BaseModel):
     result: str = Field(..., description="SUSTAINED申诉成立/OVERRULED申诉不成立")
     opinion: str = Field(..., min_length=5)
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.post("/funding/projects", summary="建资助项目（奖学金/助学金）")
@@ -580,9 +582,9 @@ def funding_applications(batchId: Optional[str] = None, projectType: Optional[st
                          status: Optional[str] = None, studentId: Optional[str] = None,
                          page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                          user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total = funding_svc.list_applications(user, batchId, projectType, status, page, pageSize,
-                                                student_id=studentId)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = funding_svc.list_applications(user, batchId, projectType, status, page, pageSize,
+                                                                student_id=studentId)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.get("/funding/applications/{applicationId}", summary="资助申请详情（含校验快照）")
@@ -597,7 +599,7 @@ def funding_review(body: FundingReviewBody, applicationId: int = Path(...), user
 
 
 @router.post("/funding/applications/{applicationId}/publicity-confirm", summary="确认公示期满→获资助")
-def funding_publicity_confirm(body: FundingVersionOnlyBody = FundingVersionOnlyBody(),
+def funding_publicity_confirm(body: FundingVersionOnlyBody,
                               applicationId: int = Path(...),
                               user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
     return success(funding_svc.confirm_publicity(applicationId, user, body.version), message="已通过")
@@ -636,7 +638,7 @@ def funding_stats(user=Depends(require_permission("studentAffairs.stats.view")))
 class DisbursementIssueBody(BaseModel):
     disburseNo: Optional[str] = None
     bankLast4: Optional[str] = None
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.get("/funding/disbursements", summary="资助发放台账（金额按角色脱敏，不含卡全号）")
@@ -688,6 +690,7 @@ class WsApplyBody(BaseModel):
 class WsActionBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/ONBOARD/TERMINATE")
     reason: Optional[str] = ""
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class LoanBody(BaseModel):
@@ -700,6 +703,10 @@ class LoanBody(BaseModel):
     remark: Optional[str] = None
 
 
+class VersionOnlyBody(BaseModel):
+    version: int = Field(..., description="乐观锁版本（必填）")
+
+
 class FeeBody(BaseModel):
     studentId: int = Field(...)
     itemType: Optional[str] = Field("REDUCTION", description="REDUCTION/TEMP_AID")
@@ -710,6 +717,7 @@ class FeeBody(BaseModel):
 class FeeReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT")
     opinion: Optional[str] = ""
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 # —— 勤工助学 ——
@@ -738,7 +746,8 @@ def ws_apply(body: WsApplyBody, postId: int = Path(...),
 @router.post("/work-study/records/{recordId}/action", summary="勤工流转（录用/拒绝/上岗/终止）")
 def ws_action(body: WsActionBody, recordId: int = Path(...),
               user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
-    return success(fext_svc.act_work_study(recordId, body.action, user, body.reason or ""), message="已处理")
+    return success(fext_svc.act_work_study(recordId, body.action, user, body.reason or "",
+                                            expected_version=body.version), message="已处理")
 
 
 class WsMonthlyBody(BaseModel):
@@ -773,9 +782,9 @@ def loan_register(body: LoanBody, user=Depends(require_permission("studentAffair
 
 
 @router.post("/loans/{loanId}/advance", summary="贷款推进（登记→回执→核对→确认）")
-def loan_advance(loanId: int = Path(...),
+def loan_advance(body: VersionOnlyBody, loanId: int = Path(...),
                  user=Depends(require_permission("studentAffairs.funding.loan.manage"))):
-    return success(fext_svc.advance_loan(loanId, user), message="已推进")
+    return success(fext_svc.advance_loan(loanId, user, expected_version=body.version), message="已推进")
 
 
 # —— 减免与临时补助 ——
@@ -797,9 +806,9 @@ def fee_review(body: FeeReviewBody, feeId: int = Path(...),
 
 
 @router.post("/fee-reductions/{feeId}/issue", summary="减免/临补发放")
-def fee_issue(feeId: int = Path(...),
+def fee_issue(body: VersionOnlyBody, feeId: int = Path(...),
               user=Depends(require_permission("studentAffairs.funding.reduction.manage"))):
-    return success(fext_svc.issue_reduction(feeId, user), message="已发放")
+    return success(fext_svc.issue_reduction(feeId, user, expected_version=body.version), message="已发放")
 
 
 # ═══════════ 违纪处分（P4，discipline 全套）═══════════
@@ -814,16 +823,16 @@ class DisciplineRegister(BaseModel):
 class DiscReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/RETURN")
     reason: Optional[str] = Field("", max_length=500)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class DiscRemoveBody(BaseModel):
     reason: str = Field(..., min_length=1, description="解除理由≥5字")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class DiscVersionOnlyBody(BaseModel):
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.post("/discipline/cases", summary="登记违纪处分")
@@ -835,8 +844,8 @@ def discipline_register(body: DisciplineRegister, user=Depends(require_permissio
 def discipline_cases(status: Optional[str] = None, discType: Optional[str] = None,
                      studentId: Optional[str] = None,
                      page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), user=Depends(require_permission("studentAffairs.discipline.view"))):
-    items, total = disc_svc.list_cases(user, status, discType, page, pageSize, student_id=studentId)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = disc_svc.list_cases(user, status, discType, page, pageSize, student_id=studentId)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.get("/discipline/reconcile", summary="处分投影一致性对账")
@@ -855,13 +864,13 @@ def discipline_case(caseId: int = Path(...), user=Depends(require_permission("st
 
 
 @router.post("/discipline/cases/{caseId}/submit", summary="提交学院初审")
-def discipline_submit(body: DiscVersionOnlyBody = DiscVersionOnlyBody(), caseId: int = Path(...),
+def discipline_submit(body: DiscVersionOnlyBody, caseId: int = Path(...),
                       user=Depends(require_permission("studentAffairs.discipline.create"))):
     return success(disc_svc.submit(caseId, user, body.version), message="已提交")
 
 
 @router.post("/discipline/cases/{caseId}/cancel", summary="撤销登记")
-def discipline_cancel(body: DiscVersionOnlyBody = DiscVersionOnlyBody(), caseId: int = Path(...),
+def discipline_cancel(body: DiscVersionOnlyBody, caseId: int = Path(...),
                       user=Depends(require_permission("studentAffairs.discipline.create"))):
     return success(disc_svc.cancel(caseId, user, body.version), message="已撤销")
 
@@ -885,7 +894,7 @@ def discipline_remove_review(body: DiscReviewBody, caseId: int = Path(...), user
 class DiscDeliverBody(BaseModel):
     method: str = Field(..., description="DIRECT/MAIL/PUBLIC/LEAVE")
     remark: Optional[str] = None
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class DiscAppealSubmitBody(BaseModel):
@@ -895,7 +904,7 @@ class DiscAppealSubmitBody(BaseModel):
 class DiscAppealReviewBody(BaseModel):
     result: str = Field(..., description="UPHELD/REVISED/REVOKED")
     opinion: str = Field(..., min_length=5, description="复核意见≥5字")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.post("/discipline/cases/{caseId}/deliver", summary="登记决定书送达（仅已生效）")
@@ -1131,13 +1140,13 @@ class TalkRecordBody(BaseModel):
     content: str = Field(..., min_length=1, description="谈话内容≥20字")
     result: Optional[str] = Field("", max_length=50)
     needFollowUp: bool = Field(False)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class TalkFollowBody(BaseModel):
     action: str = Field(..., description="FOLLOW/CLOSE/TO_RISK/TO_HOME_SCHOOL")
     content: Optional[str] = Field("", max_length=1000)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class ContactCreate(BaseModel):
@@ -1164,8 +1173,8 @@ def student_timeline(studentId: int = Path(...), eventType: Optional[str] = None
 def talks(talkType: Optional[str] = None, status: Optional[str] = None,
           studentId: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
           user=Depends(require_permission("studentAffairs.talk.view"))):
-    items, total = talk_svc.list_talks(user, talkType, status, studentId, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = talk_svc.list_talks(user, talkType, status, studentId, page, pageSize)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.post("/talks", summary="建谈话计划（批量圈定学生）")
@@ -1257,7 +1266,7 @@ class TransferSubmit(BaseModel):
 class DormReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT")
     reason: Optional[str] = Field("", max_length=500)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class CheckTaskCreate(BaseModel):
@@ -1403,11 +1412,11 @@ def dorm_exceptions(status: Optional[str] = None, studentId: Optional[str] = Non
 
 class DormExcHandleBody(BaseModel):
     reason: str = Field("", description="处置说明≥5字")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.post("/dorm/exceptions/{exceptionId}/handle", summary="处理宿舍异常（说明≥5字）")
-def dorm_exception_handle(exceptionId: int = Path(...), body: DormExcHandleBody = DormExcHandleBody(),
+def dorm_exception_handle(exceptionId: int = Path(...), body: DormExcHandleBody = ...,
                           user=Depends(require_permission("studentAffairs.dorm.exception.handle"))):
     return success(dorm_svc.handle_exception(exceptionId, user, body.reason or "", body.version), message="已处理")
 
@@ -1422,12 +1431,12 @@ class ArchiveBatchCreate(BaseModel):
 
 class CollectBody(BaseModel):
     studentIds: list[str] = Field(..., min_length=1)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class AdvanceBody(BaseModel):
     action: Optional[str] = Field("APPROVE")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.get("/archive/batches", summary="归档批次列表")
@@ -1453,7 +1462,7 @@ def archive_collect(body: CollectBody, batchId: int = Path(...), user=Depends(re
 
 
 @router.post("/archive/batches/{batchId}/advance", summary="批次流转（→归档时登记水印包）")
-def archive_advance(body: AdvanceBody = AdvanceBody(), batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
+def archive_advance(body: AdvanceBody, batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
     return success(archive_svc.advance(batchId, user, body.action or "APPROVE", body.version), message="已流转")
 
 
@@ -1476,23 +1485,23 @@ class ActivityBody(BaseModel):
 
 
 class ActivityVersionBody(BaseModel):
-    version: Optional[int] = Field(None, description="乐观锁版本")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class ActivityPublishBody(BaseModel):
     action: str = Field("PUBLISH")
     reason: Optional[str] = ""
-    version: Optional[int] = Field(None, description="乐观锁版本")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 class ActivityTransitionBody(BaseModel):
     action: str = Field(..., description="ENROLL_CLOSE/START/FINISH")
-    version: Optional[int] = Field(None, description="乐观锁版本")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 class ReasonOptionalBody(BaseModel):
     """reason 由 Pydantic 侧放行为可选/默认空串，真实"≥5字"校验在对应 service 函数内完成。
     与 169 行 ReasonBody(reason 必填) 是两个不同 schema，此前同名遮蔽，2026-07-17 改名消歧。"""
     reason: Optional[str] = ""
-    version: Optional[int] = Field(None, description="乐观锁版本")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 class CategoryBody(BaseModel):
     categoryCode: str = Field(..., min_length=1)
@@ -1523,7 +1532,7 @@ class ClubBody(BaseModel):
 class ClubReviewBody(BaseModel):
     action: str = Field("APPROVE", description="APPROVE/REJECT")
     reason: Optional[str] = ""
-    version: Optional[int] = Field(None, description="乐观锁版本")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 class ClubMemberBody(BaseModel):
     studentId: int = Field(...)
@@ -1561,14 +1570,15 @@ class LeagueStageBody(BaseModel):
     toStage: str = Field(..., description="APPLICANT/ACTIVIST/DEVELOPMENT_TARGET/PROBATIONARY/FULL_MEMBER")
     materialFileId: Optional[int] = None
     remark: Optional[str] = None
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.get("/activities", summary="活动列表（type/status 过滤）")
 def activities(activityType: Optional[str] = None, status: Optional[str] = None,
                page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                user=Depends(require_permission("studentAffairs.activity.view"))):
-    items, total = activity_svc.list_activities(user, activityType, status, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = activity_svc.list_activities(user, activityType, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.post("/activities", summary="建活动（草稿）")
@@ -1601,7 +1611,7 @@ def activity_participants(activityId: int = Path(...),
 
 
 @router.post("/activities/{activityId}/confirm", summary="确认名单+生成学时/积分→进360")
-def activity_confirm(body: ActivityVersionBody = ActivityVersionBody(), activityId: int = Path(...),
+def activity_confirm(body: ActivityVersionBody, activityId: int = Path(...),
                      user=Depends(require_permission("studentAffairs.activity.confirm"))):
     return success(activity_svc.confirm_activity(activityId, user, body.version), message="已确认")
 
@@ -1613,7 +1623,7 @@ def activity_unconfirm(body: ReasonOptionalBody, activityId: int = Path(...),
 
 
 @router.post("/activities/{activityId}/archive", summary="归档活动")
-def activity_archive(body: ActivityVersionBody = ActivityVersionBody(), activityId: int = Path(...),
+def activity_archive(body: ActivityVersionBody, activityId: int = Path(...),
                      user=Depends(require_permission("studentAffairs.activity.confirm"))):
     return success(activity_svc.archive_activity(activityId, user, body.version), message="已归档")
 
@@ -1648,7 +1658,6 @@ def activity_stats(user=Depends(require_permission("studentAffairs.stats.view"))
 
 
 # ── 第二课堂积分申诉（D 包）──
-    version: Optional[int] = Field(None, description="乐观锁版本")
 
 class CreditAppealBody(BaseModel):
     studentId: int = Field(...)
@@ -1662,13 +1671,14 @@ class CreditAppealBody(BaseModel):
 class CreditAppealReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT")
     opinion: Optional[str] = ""
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.get("/second-class/appeals", summary="第二课堂积分申诉列表")
 def credit_appeals(status: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                    user=Depends(require_permission("studentAffairs.activity.view"))):
-    items, total = activity_svc.list_credit_appeals(user, status, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = activity_svc.list_credit_appeals(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.post("/second-class/appeals", summary="提交积分申诉（缺记/记错，理由≥5字）")
@@ -1684,7 +1694,6 @@ def credit_appeal_review(body: CreditAppealReviewBody, appealId: int = Path(...)
 
 
 # ═══════════ 辅导员考评（D 包·指标/评分/发布/申诉）═══════════
-    version: Optional[int] = Field(None, description="乐观锁版本")
 
 class EvalIndicatorBody(BaseModel):
     name: str = Field(..., min_length=1)
@@ -1738,7 +1747,7 @@ def ce_eval_upsert(body: EvalUpsertBody,
 
 
 @router.post("/counselor-eval/evals/{evalId}/publish", summary="发布考评")
-def ce_eval_publish(body: ActivityVersionBody = ActivityVersionBody(), evalId: int = Path(...),
+def ce_eval_publish(body: ActivityVersionBody, evalId: int = Path(...),
                     user=Depends(require_permission("studentAffairs.counselorEval.manage"))):
     return success(ce_svc.publish_eval(evalId, user, body.version), message="已发布")
 
@@ -1758,8 +1767,8 @@ def ce_eval_appeal_review(body: EvalAppealReviewBody, evalId: int = Path(...),
 @router.get("/volunteer/records", summary="志愿服务时长补录列表（数据范围）")
 def volunteer_records(status: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                       user=Depends(require_permission("studentAffairs.activity.view"))):
-    items, total = activity_svc.list_volunteer(user, status, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = activity_svc.list_volunteer(user, status, page, pageSize)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.post("/volunteer/records", summary="补录志愿时长（待认定）")
@@ -1769,7 +1778,7 @@ def volunteer_create(body: VolunteerBody,
 
 
 @router.post("/volunteer/records/{recordId}/confirm", summary="认定志愿时长→生成学分")
-def volunteer_confirm(body: ActivityVersionBody = ActivityVersionBody(), recordId: int = Path(...),
+def volunteer_confirm(body: ActivityVersionBody, recordId: int = Path(...),
                       user=Depends(require_permission("studentAffairs.activity.confirm"))):
     return success(activity_svc.confirm_volunteer(recordId, user, body.version), message="已认定")
 
@@ -1784,8 +1793,8 @@ def volunteer_reject(body: ReasonOptionalBody, recordId: int = Path(...),
 @router.get("/clubs", summary="社团列表（status/type 过滤）")
 def clubs(status: Optional[str] = None, clubType: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
           user=Depends(require_permission("studentAffairs.club.view"))):
-    items, total = club_svc.list_clubs(user, status, clubType, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = club_svc.list_clubs(user, status, clubType, page, pageSize)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.post("/clubs", summary="建社团（待审批）")
@@ -1861,9 +1870,9 @@ def organization_appoint(body: OrgPositionBody, orgId: int = Path(...),
 
 
 @router.post("/organizations/positions/{positionId}/dismiss", summary="卸任组织成员")
-def organization_dismiss(positionId: int = Path(...),
+def organization_dismiss(body: VersionOnlyBody, positionId: int = Path(...),
                          user=Depends(require_permission("studentAffairs.org.manage"))):
-    return success(org_svc.dismiss(positionId, user), message="已卸任")
+    return success(org_svc.dismiss(positionId, user, expected_version=body.version), message="已卸任")
 
 
 @router.get("/students/{studentId}/cadre-resume", summary="学生干部履历（组织任职+班级班干部）")
@@ -1906,7 +1915,6 @@ def league_dev_stages(devId: int = Path(...),
 
 # ═══════════ 统一业务附件（违纪/送达/申诉/党团/减免贷款回执/家校 材料·授权下载+审计）═══════════
 # 上传字节复用 POST /api/v1/files/upload（真实落盘 + t_file_object），本节只做「关联/列表/授权下载」。
-    version: Optional[int] = Field(None, description="乐观锁版本")
 
 class AttachmentLinkBody(BaseModel):
     bizType: str = Field(..., description="DISCIPLINE/DISCIPLINE_APPEAL/LEAGUE/CLUB/FUNDING/REDUCTION/LOAN/HOME_SCHOOL")

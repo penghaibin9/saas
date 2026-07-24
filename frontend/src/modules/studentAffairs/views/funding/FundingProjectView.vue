@@ -98,7 +98,7 @@ export default {
   data() {
     return {
       projectColumns: PROJECT_COLUMNS,
-      loading: true, saving: false, errorMessage: '', projects: [], activeType: '', typeFilters: TYPES,
+      loading: true, saving: false, errorMessage: '', projects: [], statusCounts: null, activeType: '', typeFilters: TYPES,
       projectTypeOptions: PROJECT_TYPE_OPTIONS,
       drawer: { visible: false, form: freshForm(), errorMessage: '' }
     }
@@ -107,12 +107,11 @@ export default {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     filtered() { return this.activeType ? this.projects.filter((p) => p.projectType === this.activeType) : this.projects },
     metricCards() {
-      const enabled = this.projects.filter((p) => p.status === 'ENABLED').length
-      const grant = this.projects.filter((p) => p.projectType === 'GRANT').length
+      const enabled = this.statusCounts === null ? '—' : (this.statusCounts.ENABLED || 0)
       return [
-        { key: 'all', label: '项目总数', value: this.projects.length, accent: 'primary' },
+        { key: 'all', label: '项目总数', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'primary' },
         { key: 'en', label: '启用中', value: enabled, accent: 'success' },
-        { key: 'gr', label: '助学金项目', value: grant, accent: 'warning' }
+        { key: 'gr', label: '助学金项目', value: '—', accent: 'warning' }
       ]
     }
   },
@@ -124,6 +123,7 @@ export default {
       const res = await studentAffairsApi.getFundingProjects({ pageSize: 200 })
       if (res.code === 0 && res.data) {
         this.projects = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
       } else {
         this.errorMessage = res.message || '资助项目加载失败'
       }

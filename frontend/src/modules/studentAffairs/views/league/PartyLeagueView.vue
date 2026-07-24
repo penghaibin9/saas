@@ -126,7 +126,7 @@ export default {
   },
   data() {
     return {
-      loading: true, saving: false, errorMessage: '', items: [], activeStage: '', stageFilters: STAGE_FILTERS,
+      loading: true, saving: false, errorMessage: '', items: [], statusCounts: null, activeStage: '', stageFilters: STAGE_FILTERS,
       formVisible: false, form: { studentId: null, devType: 'PARTY', branchName: '', error: '' },
       sel: null, stages: [], advStage: '', attachments: [], uploading: false,
       terDlg: { visible: false }
@@ -135,12 +135,10 @@ export default {
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const ongoing = this.items.filter((d) => d.status === 'ONGOING').length
-      const done = this.items.filter((d) => d.status === 'COMPLETED').length
       return [
-        { key: 't', label: '发展档案', value: this.items.length, accent: 'primary' },
-        { key: 'o', label: '发展中', value: ongoing, accent: 'warning' },
-        { key: 'c', label: '已转正', value: done, accent: 'success' }
+        { key: 't', label: '发展档案', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'primary' },
+        { key: 'o', label: '发展中', value: this.statusCounts === null ? '—' : (this.statusCounts.ONGOING || 0), accent: 'warning' },
+        { key: 'c', label: '已转正', value: this.statusCounts === null ? '—' : (this.statusCounts.COMPLETED || 0), accent: 'success' }
       ]
     },
     nextStages() {
@@ -158,8 +156,12 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getLeagueDev({ stage: this.activeStage, pageSize: 300 })
-      if (res.code === 0 && res.data) this.items = res.data.items || []
+      // 待服务端全量统计：工作台仅加载 API 单页上限。
+      const res = await studentAffairsApi.getLeagueDev({ stage: this.activeStage, pageSize: 200 })
+      if (res.code === 0 && res.data) {
+        this.items = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
+      }
       else this.errorMessage = res.message || '发展台账加载失败'
       this.loading = false
     },

@@ -80,7 +80,7 @@ export default {
     return {
       exceptionColumns: EXCEPTION_COLUMNS,
       STATUS_OPTIONS,
-      loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '',
+      loading: true, actioning: false, errorMessage: '', items: [], statusCounts: null, filterStatus: '',
       pagination: { page: 1, pageSize: 20, total: 0 },
       dlg: { visible: false, exceptionId: '', excType: '', detail: '' }
     }
@@ -93,12 +93,10 @@ export default {
       return hit ? `当前状态筛选：${hit.label}` : `当前状态筛选：${this.filterStatus}`
     },
     metricCards() {
-      const pending = this.items.filter((x) => x.status !== 'HANDLED').length
-      const night = this.items.filter((x) => (x.excType || '').includes('NIGHT')).length
       return [
-        { key: 'p', label: '待处置', value: pending, accent: pending ? 'risk' : 'success' },
-        { key: 'n', label: '夜不归宿', value: night, accent: night ? 'warning' : 'info' },
-        { key: 't', label: '异常合计', value: this.items.length, accent: 'info' }
+        { key: 'p', label: '待处置', value: '—', accent: 'risk' },
+        { key: 'n', label: '夜不归宿', value: '—', accent: 'warning' },
+        { key: 't', label: '异常合计', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'info' }
       ]
     }
   },
@@ -140,6 +138,7 @@ export default {
         })
         this.items = res.data.items || []
         this.pagination.total = res.data.total != null ? res.data.total : this.items.length
+        this.statusCounts = res.data.statusCounts || null
       }
       catch (e) { this.errorMessage = e.message || '异常加载失败' } finally { this.loading = false }
     },

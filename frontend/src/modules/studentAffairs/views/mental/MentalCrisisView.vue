@@ -128,7 +128,7 @@ export default {
   data() {
     return {
       crisisColumns: CRISIS_COLUMNS,
-      loading: true, actioning: false, errorMessage: '', items: [],
+      loading: true, actioning: false, errorMessage: '', items: [], statusCounts: null,
       dlg: { visible: false, row: null, who: '', content: '' }
     }
   },
@@ -139,14 +139,12 @@ export default {
       return 'ready'
     },
     metricCards() {
-      const crisis = this.items.filter((r) => r.level === 'CRISIS').length
-      const escalated = this.items.filter((r) => r.status === 'ESCALATED' || r.riskId).length
-      const openCrisis = this.items.filter((r) => r.level === 'CRISIS' && r.status !== 'CLOSED').length
+      const count = (status) => this.statusCounts === null ? '—' : (this.statusCounts[status] || 0)
       return [
-        { key: 'crisis', label: '危机记录', value: crisis, accent: crisis ? 'risk' : 'success' },
-        { key: 'open', label: '在办危机', value: openCrisis, accent: openCrisis ? 'risk' : 'success' },
-        { key: 'escalated', label: '已接风险中枢', value: escalated, accent: 'primary' },
-        { key: 'total', label: '关注在册', value: this.items.length, accent: 'info' }
+        { key: 'crisis', label: '危机记录', value: '—', accent: 'risk' },
+        { key: 'open', label: '在办危机', value: '—', accent: 'risk' },
+        { key: 'escalated', label: '已接风险中枢', value: count('ESCALATED'), accent: 'primary' },
+        { key: 'total', label: '关注在册', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'info' }
       ]
     }
   },
@@ -161,6 +159,7 @@ export default {
       try {
         const res = await studentAffairsApi.listMentalAttention({ page: 1, pageSize: 100 })
         this.items = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
       } catch (e) {
         this.errorMessage = e.message || '心理危机记录加载失败'
       } finally {

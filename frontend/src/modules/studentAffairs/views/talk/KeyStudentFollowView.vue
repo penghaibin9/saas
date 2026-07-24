@@ -74,7 +74,8 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const [tk, rk] = await Promise.all([studentAffairsApi.getTalks({ pageSize: 300 }), studentAffairsApi.getRisks({ pageSize: 300 })])
+      // 待服务端全量统计：重点名单聚合仅加载各接口单页上限。
+      const [tk, rk] = await Promise.all([studentAffairsApi.getTalks({ pageSize: 200 }), studentAffairsApi.getRisks({ pageSize: 200 })])
       this.talks = (tk.code === 0 && tk.data) ? (tk.data.items || tk.data.list || []) : []
       if (rk.code === 0 && rk.data) this.risks = rk.data.items || []
       else this.errorMessage = rk.message || '加载失败'

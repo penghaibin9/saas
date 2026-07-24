@@ -106,7 +106,7 @@ export default {
   data() {
     return {
       batchColumns: BATCH_COLUMNS,
-      loading: true, saving: false, errorMessage: '', batches: [], projects: [],
+      loading: true, saving: false, errorMessage: '', batches: [], projects: [], statusCounts: null,
       page: 1, pageSize: 20, total: 0,
       drawer: { visible: false, form: freshForm(), errorMessage: '' }
     }
@@ -114,11 +114,10 @@ export default {
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const open = this.batches.filter((b) => b.status === 'OPEN').length
       return [
         { key: 'all', label: '批次总数', value: this.total, accent: 'primary' },
-        { key: 'open', label: '本页开放申请', value: open, accent: 'success' },
-        { key: 'proj', label: '在用项目', value: this.projects.length, accent: 'warning' }
+        { key: 'open', label: '开放申请', value: this.statusCounts === null ? '—' : (this.statusCounts.OPEN || 0), accent: 'success' },
+        { key: 'proj', label: '在用项目', value: '—', accent: 'warning' }
       ]
     },
     projectOptions() {
@@ -137,6 +136,7 @@ export default {
       if (bs.code === 0 && bs.data) {
         this.batches = bs.data.items || []
         this.total = bs.data.total != null ? bs.data.total : this.batches.length
+        this.statusCounts = bs.data.statusCounts || null
         this.projects = (ps.code === 0 && ps.data) ? (ps.data.items || []) : []
       } else {
         this.errorMessage = bs.message || '资助批次加载失败'

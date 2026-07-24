@@ -218,7 +218,7 @@ export default {
   data() {
     return {
       projects: [], batches: [], projectId: '', batchId: '',
-      loading: false, listError: '', list: [], selected: null,
+      loading: false, listError: '', list: [], statusCounts: null, selected: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
       acting: false, scanning: false, activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
@@ -272,10 +272,9 @@ export default {
       return `当前学生筛选：#${id}`
     },
     statusFilters() {
-      const scoped = this.list.filter((x) => this._matchStudent(x))
-      const c = (arr) => scoped.filter((x) => arr.includes(x.status)).length
+      const c = (arr) => this.statusCounts === null ? '—' : arr.reduce((total, key) => total + (this.statusCounts[key] || 0), 0)
       return [
-        { key: 'ALL', label: '全部', count: scoped.length },
+        { key: 'ALL', label: '全部', count: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0) },
         { key: 'REVIEW', label: '评审中', count: c(FUND_NODES) },
         { key: 'PUBLICITY', label: '公示中', count: c(['PUBLICITY']) },
         { key: 'GRANTED', label: '已获资助', count: c(['GRANTED']) },
@@ -413,15 +412,17 @@ export default {
       if (!this.batchId) return
       this.loading = true
       this.listError = ''
+      this.statusCounts = null
       const sid = this.studentFilter && this.studentFilter.studentId
       const res = await studentAffairsApi.getFundingApplications({
         batchId: this.batchId, page: this.pagination.page, pageSize: this.pagination.pageSize,
-        status: this.statusMatch && this.statusMatch.length === 1 ? this.statusMatch[0] : '',
+        status: this.statusMatch && this.statusMatch.length ? this.statusMatch.join(',') : '',
         studentId: sid || ''
       })
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.applicationId === this.selected.applicationId)

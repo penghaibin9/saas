@@ -117,7 +117,7 @@ export default {
     return {
       publicityColumns: PUBLICITY_COLUMNS,
       appealColumns: APPEAL_COLUMNS,
-      loading: true, acting: '', errorMessage: '', publicity: [], appeals: [], appealStatus: '', statusFilters: STATUS_FILTERS,
+      loading: true, acting: '', errorMessage: '', publicity: [], appeals: [], statusCounts: null, appealStatus: '', statusFilters: STATUS_FILTERS,
       appealDlg: { visible: false, applicationId: '', who: '', appellantName: '' },
       revDlg: { visible: false, appealId: '', result: 'OVERRULED' }
     }
@@ -126,12 +126,10 @@ export default {
     APPEAL_RESULTS: () => APPEAL_RESULTS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const pending = this.appeals.filter((o) => o.status === 'SUBMITTED').length
-      const sustained = this.appeals.filter((o) => o.result === 'SUSTAINED').length
       return [
-        { key: 'p', label: '公示中申请', value: this.publicity.length, accent: 'primary' },
-        { key: 'w', label: '待复核申诉', value: pending, accent: pending ? 'warning' : 'success' },
-        { key: 's', label: '申诉成立(已驳回)', value: sustained, accent: 'risk' }
+        { key: 'p', label: '公示中申请', value: '—', accent: 'primary' },
+        { key: 'w', label: '待复核申诉', value: this.statusCounts === null ? '—' : (this.statusCounts.SUBMITTED || 0), accent: 'warning' },
+        { key: 's', label: '申诉成立(已驳回)', value: '—', accent: 'risk' }
       ]
     }
   },
@@ -140,13 +138,15 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
+      // 待服务端全量统计：复核工作台仅加载各接口单页上限。
       const [pu, ap] = await Promise.all([
-        studentAffairsApi.getFundingApplications({ status: 'PUBLICITY', pageSize: 300 }),
-        studentAffairsApi.getFundingAppeals({ status: this.appealStatus, pageSize: 300 })
+        studentAffairsApi.getFundingApplications({ status: 'PUBLICITY', pageSize: 200 }),
+        studentAffairsApi.getFundingAppeals({ status: this.appealStatus, pageSize: 200 })
       ])
       if (pu.code === 0 && pu.data) this.publicity = pu.data.items || []
       else this.errorMessage = pu.message || '加载失败'
       this.appeals = (ap.code === 0 && ap.data) ? (ap.data.items || []) : []
+      this.statusCounts = (ap.code === 0 && ap.data) ? (ap.data.statusCounts || null) : null
       this.loading = false
     },
     setStatus(k) { if (this.appealStatus === k) return; this.appealStatus = k; this.load() },

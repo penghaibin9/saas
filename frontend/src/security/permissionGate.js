@@ -1,22 +1,40 @@
 /**
- * 岗位实习路由权限门（P5.1 残留 / 07 整改 §8.5.4 路由守卫消费 meta.permissionKey）。
+ * 业务中心路由权限门（纵深防御 + UX）。
  *
- * ⚠️ 安全声明：这是前端**纵深防御 + UX**层，不是安全边界。真正越权拦截由后端
- *    require_permission（模块授权 + 角色 + 数据范围 + 业务关系）完成。见 §0.3 / CLAUDE.md §6.3。
+ * ⚠️ 安全声明：这是前端纵深防御层，不是安全边界。真正越权拦截由后端
+ *    require_permission（模块授权 + 角色 + 数据范围 + 业务关系）完成。
  *
- * 机制：岗位实习布局初始化（internshipApi.getContext）拿到当前身份 permissionPatterns 后调用
- *   setPermissionPatterns 落到本模块；router.beforeEach 调用 canEnterRoute 消费 to.meta.permissionKey。
+ * 机制：各中心 getContext / 路由守卫 ensurePermissionPatterns 拿到 permissionPatterns 后
+ *   调用 setPermissionPatterns；router.beforeEach 调用 canEnterRoute 消费 to.meta.permissionKey。
  *
- * 安全口径（避免误伤，宁放勿错杀）：
- *   1. 只拦截岗位实习路由（meta.moduleCode==='INTERNSHIP'）——P5.1 已逐条核验其 permissionKey 与后端码对齐；
- *      其它模块 patterns 语义未纳入本门，一律放行，交各自后端 403 / 未来各模块守卫。
- *   2. permissionPatterns 未知（未登录 / 冷加载布局尚未拉到）→ 放行（fail-open）；后端仍是最终边界。
- *      即：直链冷加载首个实习页可能"先进后由后端 403"，后续应用内导航才被本门拦截。
+ * 门禁口径：
+ *   1. 拦截声明了 moduleCode∈GUARDED_MODULES 且带 permissionKey 的业务路由。
+ *   2. patterns 未知时：守卫应先 await ensurePermissionPatterns；仍未知则正式环境 fail-closed。
+ *   3. 缺少 permissionKey：正式环境 fail-closed；开发环境 warn 后放行。
+ *   4. 后端仍是最终安全边界。
  */
-// 相对导入（非 @ 别名）以便 node --test 直接加载本模块做真实单测；vite 同样可解析。
 import { matchPermission } from '../config/navPlan.js'
 
-let _patterns = null // null=未知（放行）；数组=已知（按 matchPermission 判定）
+/** 纳入本门拦截的业务中心 moduleCode（与路由 meta.moduleCode 对齐）。 */
+export const GUARDED_MODULES = new Set([
+  'STUDENT_AFFAIRS',
+  'INTERNSHIP',
+  'GRADUATION',
+  'ACADEMIC_AFFAIRS',
+  'CAMPUS_SERVICE',
+])
+
+let _patterns = null // null=未知；数组=已知
+let _moduleEntitlements = null // null=未知；数组=已知
+let _ensurePromise = null
+
+function _isProd() {
+  try {
+    return !!(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD)
+  } catch {
+    return false
+  }
+}
 
 /** 由 getContext 落库当前身份权限码模式集（与后端 enforce_permission 同一套码）。 */
 export function setPermissionPatterns(patterns) {
@@ -27,21 +45,90 @@ export function getPermissionPatterns() {
   return _patterns
 }
 
-/** 登出 / 需要强制重算时清空。 */
+/** 可选：模块授权集合（来自 current-context / 租户 entitlement）。null=未配置，不拦截模块。 */
+export function setModuleEntitlements(codes) {
+  if (codes == null) {
+    _moduleEntitlements = null
+    return
+  }
+  _moduleEntitlements = Array.isArray(codes) ? codes : Array.from(codes)
+}
+
+export function getModuleEntitlements() {
+  return _moduleEntitlements
+}
+
+/** 登出 / 强制重算时清空。 */
 export function clearPermissionPatterns() {
   _patterns = null
+  _moduleEntitlements = null
+  _ensurePromise = null
+}
+
+/**
+ * 冷加载时拉取 /rbac/current-context 并落库 patterns，避免「先进页再 403」。
+ * 失败时正式环境保持 patterns=null（随后 canEnterRoute fail-closed）。
+ */
+export async function ensurePermissionPatterns(requestFn) {
+  if (Array.isArray(_patterns)) return _patterns
+  if (_ensurePromise) return _ensurePromise
+  if (typeof requestFn !== 'function') return null
+  _ensurePromise = (async () => {
+    try {
+      const ctx = await requestFn('/rbac/current-context')
+      if (Array.isArray(ctx?.permissionPatterns)) {
+        setPermissionPatterns(ctx.permissionPatterns)
+      }
+      if (Array.isArray(ctx?.moduleEntitlements)) {
+        setModuleEntitlements(ctx.moduleEntitlements)
+      }
+      return _patterns
+    } catch {
+      return null
+    } finally {
+      _ensurePromise = null
+    }
+  })()
+  return _ensurePromise
 }
 
 /**
  * 路由守卫判定：是否允许进入该路由。
  * @param {object} meta 目标路由 to.meta（含 moduleCode / permissionKey）
- * @returns {boolean} 仅当"岗位实习路由 + 已知 patterns + 明确不匹配"时才 false（拦截）。
+ * @returns {boolean} false=拦截（跳 403）
  */
 export function canEnterRoute(meta) {
-  if (!meta || meta.moduleCode !== 'INTERNSHIP') return true // 非实习路由不由本门拦截
-  if (!meta.permissionKey) return true                        // 无权限码要求
-  if (!Array.isArray(_patterns)) return true                  // 未知 → fail-open
-  return matchPermission(_patterns, meta.permissionKey)
+  if (!meta || !GUARDED_MODULES.has(meta.moduleCode)) return true
+  const key = meta.permissionKey
+  const prod = _isProd()
+
+  if (Array.isArray(_moduleEntitlements) && meta.moduleCode
+      && !_moduleEntitlements.includes(meta.moduleCode)
+      && !_moduleEntitlements.includes('*')) {
+    return false
+  }
+
+  if (!key) {
+    if (prod) return false
+    // DEV only: missing key is not silently treated as authorized in production.
+    return true
+  }
+
+  if (!Array.isArray(_patterns)) {
+    if (prod) return false
+    return true
+  }
+
+  return matchPermission(_patterns, key)
 }
 
-export default { setPermissionPatterns, getPermissionPatterns, clearPermissionPatterns, canEnterRoute }
+export default {
+  GUARDED_MODULES,
+  setPermissionPatterns,
+  getPermissionPatterns,
+  setModuleEntitlements,
+  getModuleEntitlements,
+  clearPermissionPatterns,
+  ensurePermissionPatterns,
+  canEnterRoute,
+}

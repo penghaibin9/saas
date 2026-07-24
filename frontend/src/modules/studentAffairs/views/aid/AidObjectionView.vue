@@ -117,7 +117,7 @@ export default {
     return {
       publicityColumns: PUBLICITY_COLUMNS,
       objectionColumns: OBJECTION_COLUMNS,
-      loading: true, acting: '', errorMessage: '', publicity: [], objections: [], objStatus: '', statusFilters: STATUS_FILTERS,
+      loading: true, acting: '', errorMessage: '', publicity: [], objections: [], statusCounts: null, objStatus: '', statusFilters: STATUS_FILTERS,
       objDlg: { visible: false, applyId: '', who: '', objectorName: '' },
       revDlg: { visible: false, objectionId: '', result: 'OVERRULED' }
     }
@@ -126,12 +126,10 @@ export default {
     OBJECTION_RESULTS: () => OBJECTION_RESULTS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const pending = this.objections.filter((o) => o.status === 'SUBMITTED').length
-      const sustained = this.objections.filter((o) => o.result === 'SUSTAINED').length
       return [
-        { key: 'p', label: '公示中申请', value: this.publicity.length, accent: 'primary' },
-        { key: 'w', label: '待复核异议', value: pending, accent: pending ? 'warning' : 'success' },
-        { key: 's', label: '异议成立(已驳回)', value: sustained, accent: 'risk' }
+        { key: 'p', label: '公示中申请', value: '—', accent: 'primary' },
+        { key: 'w', label: '待复核异议', value: this.statusCounts === null ? '—' : (this.statusCounts.SUBMITTED || 0), accent: 'warning' },
+        { key: 's', label: '异议成立(已驳回)', value: '—', accent: 'risk' }
       ]
     }
   },
@@ -140,13 +138,15 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
+      // 待服务端全量统计：复核工作台仅加载各接口单页上限。
       const [pu, ob] = await Promise.all([
-        studentAffairsApi.getAidApplications({ status: 'PUBLICITY', pageSize: 300 }),
-        studentAffairsApi.getAidObjections({ status: this.objStatus, pageSize: 300 })
+        studentAffairsApi.getAidApplications({ status: 'PUBLICITY', pageSize: 200 }),
+        studentAffairsApi.getAidObjections({ status: this.objStatus, pageSize: 200 })
       ])
       if (pu.code === 0 && pu.data) this.publicity = pu.data.items || []
       else this.errorMessage = pu.message || '加载失败'
       this.objections = (ob.code === 0 && ob.data) ? (ob.data.items || []) : []
+      this.statusCounts = (ob.code === 0 && ob.data) ? (ob.data.statusCounts || null) : null
       this.loading = false
     },
     setStatus(k) { if (this.objStatus === k) return; this.objStatus = k; this.load() },

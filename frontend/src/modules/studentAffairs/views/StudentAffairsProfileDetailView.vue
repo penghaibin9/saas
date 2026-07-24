@@ -6,7 +6,7 @@
     watermark-purpose="学生画像详情查看"
   >
     <template #actions>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.profile.back') || canBtn('studentAffairs.student.view')" code="studentAffairs.student.view" variant="secondary" @click="$router.push('/admin/student/list')">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.student.view')" code="studentAffairs.student.view" variant="secondary" @click="$router.push('/admin/student/list')">
         返回列表
       </AppPermissionButton>
       <AppPermissionButton :allowed="canBtn('student.audit.view')" code="student.audit.view" variant="secondary" @click="showAudit = !showAudit">

@@ -33,7 +33,7 @@
         <AppSectionCard title="社团列表" class="cf-list">
           <div class="cf-filters">
             <button v-for="f in statusFilters" :key="f.key" type="button" class="cf-chip"
-                    :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
+                    :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}<em>{{ statusCount(f.key) }}</em></button>
           </div>
           <ul class="cf-clubs">
             <li v-for="c in items" :key="c.clubId" class="cf-club" :class="{ 'is-active': sel && sel.clubId === c.clubId }" @click="select(c)">
@@ -153,7 +153,7 @@ export default {
     return {
       memberColumns: MEMBER_COLUMNS,
       reviewColumns: REVIEW_COLUMNS,
-      loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
+      loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], statusCounts: null,
       activeStatus: '', statusFilters: STATUS_FILTERS, TYPES, ROLES,
       rejDlg: { visible: false, clubId: '' },
       disDlg: { visible: false, clubId: '', clubName: '' },
@@ -169,9 +169,9 @@ export default {
     REVIEW_RESULT_OPTIONS: () => REVIEW_RESULT_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const s = (k) => this.all.filter((c) => c.status === k).length
+      const s = (k) => this.statusCount(k)
       return [
-        { key: 't', label: '社团总数', value: this.all.length, accent: 'primary' },
+        { key: 't', label: '社团总数', value: this.statusCount(''), accent: 'primary' },
         { key: 'p', label: '待审批', value: s('PENDING'), accent: 'warning' },
         { key: 'a', label: '运营中', value: s('ACTIVE'), accent: 'success' }
       ]
@@ -182,13 +182,23 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getClubs({ pageSize: 300 })
-      if (res.code === 0 && res.data) { this.all = res.data.items || []; this.applyFilter() }
+      this.statusCounts = null
+      // 待服务端全量统计：工作台仅加载 API 单页上限。
+      const res = await studentAffairsApi.getClubs({ pageSize: 200 })
+      if (res.code === 0 && res.data) {
+        this.all = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
+        this.applyFilter()
+      }
       else this.errorMessage = res.message || '社团加载失败'
       this.loading = false
     },
     applyFilter() { this.items = this.activeStatus ? this.all.filter((c) => c.status === this.activeStatus) : this.all },
     setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    statusCount(key) {
+      if (this.statusCounts === null) return '—'
+      return this.statusCounts[key || 'ALL'] || 0
+    },
     openForm() { this.form = { clubName: '', clubType: 'INTEREST', advisorName: '', error: '' }; this.formVisible = true },
     async save() {
       const m = this.form

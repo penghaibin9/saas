@@ -40,7 +40,7 @@
       <AppSectionCard title="活动列表">
         <div class="af-filters">
           <button v-for="f in statusFilters" :key="f.key" type="button" class="af-chip"
-                  :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
+                  :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}<em>{{ statusCount(f.key) }}</em></button>
         </div>
         <DataTable v-if="items.length" :columns="activityColumns" :rows="items" row-key="activityId">
           <template #cell-name="{ row }">
@@ -129,7 +129,7 @@ export default {
     return {
       activityColumns: ACTIVITY_COLUMNS,
       participantColumns: PARTICIPANT_COLUMNS,
-      loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], categories: [],
+      loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], statusCounts: null, categories: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
       formVisible: false, form: this.blankForm(),
       pv: { visible: false, name: '', list: [] }
@@ -145,9 +145,9 @@ export default {
     },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const s = (k) => this.all.filter((a) => a.status === k).length
+      const s = (k) => this.statusCount(k)
       return [
-        { key: 't', label: '活动总数', value: this.all.length, accent: 'primary' },
+        { key: 't', label: '活动总数', value: this.statusCount(''), accent: 'primary' },
         { key: 'p', label: '报名中', value: s('PUBLISHED'), accent: 'success' },
         { key: 'f', label: '待确认', value: s('FINISHED'), accent: 'warning' },
         { key: 'c', label: '已确认', value: s('CONFIRMED'), accent: 'info' }
@@ -160,6 +160,7 @@ export default {
     blankForm() { return { activityName: '', activityType: 'ACTIVITY', creditType: 'SECOND_CLASS', creditValue: null, categoryCode: '', quota: null, startAt: '', endAt: '', location: '', error: '' } },
     async load() {
       this.loading = true; this.errorMessage = ''
+      this.statusCounts = null
       const [res, cat] = await Promise.all([
         studentAffairsApi.getActivities({ status: this.activeStatus, pageSize: 200 }),
         studentAffairsApi.getCreditCategories()
@@ -167,6 +168,7 @@ export default {
       if (res.code === 0 && res.data) {
         this.all = res.data.items || []
         this.items = this.all
+        this.statusCounts = res.data.statusCounts || null
         this.categories = (cat.code === 0 && cat.data) ? (cat.data.items || []) : []
       } else {
         this.errorMessage = res.message || '活动加载失败'
@@ -174,6 +176,10 @@ export default {
       this.loading = false
     },
     setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
+    statusCount(key) {
+      if (this.statusCounts === null) return '—'
+      return this.statusCounts[key || 'ALL'] || 0
+    },
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     async save() {
       const m = this.form

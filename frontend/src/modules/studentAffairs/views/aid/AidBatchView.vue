@@ -84,7 +84,7 @@ export default {
   data() {
     return {
       batchColumns: BATCH_COLUMNS,
-      loading: true, saving: false, errorMessage: '', batches: [], statsBatches: [],
+      loading: true, saving: false, errorMessage: '', batches: [], statusCounts: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: { batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' }
     }
@@ -92,12 +92,10 @@ export default {
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const open = this.statsBatches.filter((b) => b.status === 'OPEN').length
-      const closed = this.statsBatches.filter((b) => ['CLOSED', 'ARCHIVED'].includes(b.status)).length
       return [
         { key: 'all', label: '批次总数', value: this.pagination.total, accent: 'primary' },
-        { key: 'open', label: '开放受理', value: open, accent: 'success' },
-        { key: 'closed', label: '已截止/归档', value: closed, accent: 'warning' }
+        { key: 'open', label: '开放受理', value: this.statusCounts === null ? '—' : (this.statusCounts.OPEN || 0), accent: 'success' },
+        { key: 'closed', label: '已截止/归档', value: this.statusCounts === null ? '—' : ((this.statusCounts.CLOSED || 0) + (this.statusCounts.ARCHIVED || 0)), accent: 'warning' }
       ]
     }
   },
@@ -106,18 +104,14 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const [pageRes, statsRes] = await Promise.all([
-        studentAffairsApi.getAidBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize }),
-        // 独立于当前分页的全量口径（上限 200），仅用于统计卡；不影响列表本身的真实分页
-        studentAffairsApi.getAidBatches({ pageSize: 200 })
-      ])
+      const pageRes = await studentAffairsApi.getAidBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize })
       if (pageRes.code === 0 && pageRes.data) {
         this.batches = pageRes.data.items || []
         this.pagination.total = pageRes.data.total != null ? pageRes.data.total : this.batches.length
+        this.statusCounts = pageRes.data.statusCounts || null
       } else {
         this.errorMessage = pageRes.message || '认定批次加载失败'
       }
-      this.statsBatches = (statsRes.code === 0 && statsRes.data) ? (statsRes.data.items || []) : []
       this.loading = false
     },
     openForm() {

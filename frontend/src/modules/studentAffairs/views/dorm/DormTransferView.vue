@@ -116,7 +116,7 @@ export default {
   data() {
     return {
       transferColumns: TRANSFER_COLUMNS,
-      loading: true, actioning: false, errorMessage: '', items: [],
+      loading: true, actioning: false, errorMessage: '', items: [], statusCounts: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
       buildings: [], rooms: [], beds: [],
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
@@ -153,14 +153,11 @@ export default {
       return arr
     },
     metricCards() {
-      const pending = this.items.filter((t) => this.isPending(t.status)).length
-      const executed = this.items.filter((t) => t.status === 'EXECUTED').length
-      const rejected = this.items.filter((t) => t.status === 'REJECTED').length
       return [
-        { key: 'p', label: '待审批', value: pending, accent: pending ? 'warning' : 'success' },
-        { key: 'e', label: '已执行', value: executed, accent: 'primary' },
-        { key: 'r', label: '已驳回', value: rejected, accent: 'info' },
-        { key: 't', label: '合计', value: this.items.length, accent: 'info' }
+        { key: 'p', label: '待审批', value: '—', accent: 'warning' },
+        { key: 'e', label: '已执行', value: this.statusCounts === null ? '—' : (this.statusCounts.EXECUTED || 0), accent: 'primary' },
+        { key: 'r', label: '已驳回', value: this.statusCounts === null ? '—' : (this.statusCounts.REJECTED || 0), accent: 'info' },
+        { key: 't', label: '合计', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'info' }
       ]
     },
     buildingOptions() {
@@ -216,6 +213,7 @@ export default {
         })
         this.items = res.data.items || []
         this.pagination.total = res.data.total != null ? res.data.total : this.items.length
+        this.statusCounts = res.data.statusCounts || null
       }
       catch (e) { this.errorMessage = e.message || '调宿加载失败' } finally { this.loading = false }
     },
@@ -235,7 +233,8 @@ export default {
     async onBuildingChange() {
       this.dlg.roomId = ''; this.dlg.toBedId = ''; this.beds = []
       if (!this.dlg.buildingId) { this.rooms = []; return }
-      try { this.rooms = (await studentAffairsApi.listDormRooms(this.dlg.buildingId, { pageSize: 500 })).data.items || [] }
+      // 待服务端全量统计：下拉列表仅加载 API 单页上限。
+      try { this.rooms = (await studentAffairsApi.listDormRooms(this.dlg.buildingId, { pageSize: 200 })).data.items || [] }
       catch (e) { this.rooms = []; this.dlg.error = e.message || '房间加载失败' }
     },
     async onRoomChange() {

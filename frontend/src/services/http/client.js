@@ -215,6 +215,12 @@ export function applyAuthSession(accessToken, refreshToken) {
 export function clearAuthSession() {
   _holdTokens('', '')
   clearOfflineState()
+  try {
+    // 动态 import 会绕开循环依赖；登出必须清权限门缓存，避免下个账号继承菜单/路由权限。
+    import('@/security/permissionGate').then((m) => m.clearPermissionPatterns?.()).catch(() => {})
+  } catch {
+    /* ignore */
+  }
 }
 
 /** 当前已登录令牌（sessionStorage：F5 不掉登录，关浏览器即清） */
@@ -320,7 +326,7 @@ export async function logoutRemote() {
   } catch {
     /* 离线登出静默 */
   }
-  _holdTokens('', '')
+  clearAuthSession()
 }
 
 /** multipart 文件上传（FormData；浏览器自带 boundary，勿手工设 Content-Type） */

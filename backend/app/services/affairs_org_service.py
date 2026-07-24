@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 ORG_TYPES = ("STUDENT_UNION", "SOCIETY_FEDERATION", "SELF_GOV", "OTHER")
@@ -142,7 +142,7 @@ def appoint(org_id, body, user) -> dict:
         return _pos_row(p, s, org)
 
 
-def dismiss(position_id, user) -> dict:
+def dismiss(position_id, user, *, expected_version=None) -> dict:
     from app.models import AffairsOrgPosition
     with session() as db:
         p = db.get(AffairsOrgPosition, int(position_id))
@@ -150,6 +150,7 @@ def dismiss(position_id, user) -> dict:
             raise not_found("任职记录不存在")
         if p.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "该任职已卸任")
+        check_version(p.version, expected_version)
         p.status, p.removed_at, p.version = "REMOVED", datetime.utcnow(), p.version + 1
         _audit(db, p.org_id, "ORG_DISMISS", f"position={position_id}")
         db.commit()

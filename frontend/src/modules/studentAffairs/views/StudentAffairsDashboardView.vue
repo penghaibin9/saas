@@ -10,7 +10,7 @@
       <span class="sa-updated-hint">
         数据更新于 <AppDateDisplay :value="dashboard.updatedAt" mode="datetime" empty-text="—" />
       </span>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.dashboard.refresh')" code="studentAffairs.dashboard.refresh" variant="secondary" @click="load">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dashboard.view')" code="studentAffairs.dashboard.view" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
       <AppExportButton :export-fn="exportLedger" :has-permission="true" />

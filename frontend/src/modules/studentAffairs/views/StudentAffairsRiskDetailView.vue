@@ -7,10 +7,10 @@
     watermark-purpose="学工风险详情查看"
   >
     <template #actions>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.back')" code="studentAffairs.risk.back" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">
         返回列表
       </AppPermissionButton>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.refresh')" code="studentAffairs.risk.refresh" variant="secondary" @click="load">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
     </template>
@@ -167,20 +167,11 @@ export default {
     },
     auditRecords() {
       const handles = Array.isArray(this.detail.handles) ? this.detail.handles : []
-      if (!handles.length) {
-        return [{
-          id: 'risk-empty',
-          action: '暂无处置留痕',
-          actor: '系统',
-          target: this.detail.statusLabel || this.detail.status || '',
-          reason: '处置动作发生后将写入真实 handle 记录',
-          result: '—'
-        }]
-      }
+      if (!handles.length) return []
       return handles.map((h) => ({
         id: h.handleId,
         action: h.action,
-        actor: h.operator || '系统',
+        actor: h.operator || '未记录',
         target: `${h.fromStatus || '—'} → ${h.toStatus || '—'}`,
         reason: h.content || '',
         result: '成功',

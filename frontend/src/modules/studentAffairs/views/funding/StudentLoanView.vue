@@ -70,15 +70,15 @@ export default {
     AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
-  data() { return { loanColumns: LOAN_COLUMNS, loading: true, acting: '', errorMessage: '', loans: [], formVisible: false, form: this.blank() } },
+  data() { return { loanColumns: LOAN_COLUMNS, loading: true, acting: '', errorMessage: '', loans: [], statusCounts: null, formVisible: false, form: this.blank() } },
   computed: {
     LOAN_TYPE_OPTIONS: () => LOAN_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const s = (k) => this.loans.filter((l) => l.status === k).length
+      const s = (k) => this.statusCounts === null ? '—' : (this.statusCounts[k] || 0)
       return [
-        { key: 't', label: '贷款总数', value: this.loans.length, accent: 'primary' },
-        { key: 'p', label: '待核对/回执', value: s('REGISTERED') + s('RECEIPT'), accent: 'warning' },
+        { key: 't', label: '贷款总数', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'primary' },
+        { key: 'p', label: '待核对/回执', value: this.statusCounts === null ? '—' : s('REGISTERED') + s('RECEIPT'), accent: 'warning' },
         { key: 'c', label: '已确认', value: s('CONFIRMED'), accent: 'success' }
       ]
     }
@@ -90,7 +90,10 @@ export default {
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getLoans()
-      if (res.code === 0 && res.data) this.loans = res.data.items || []
+      if (res.code === 0 && res.data) {
+        this.loans = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
+      }
       else this.errorMessage = res.message || '加载失败'
       this.loading = false
     },

@@ -514,24 +514,31 @@ def get_case(case_id, user) -> dict:
 def list_cases(user, status=None, disc_type=None, page=1, page_size=20, student_id=None):
     from app.models import DisciplineCase, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        conds = [DisciplineCase.tenant_id == _tid(), DisciplineCase.is_deleted.is_(False)]
-        if status:
-            conds.append(DisciplineCase.status == status)
+        base_conds = [DisciplineCase.tenant_id == _tid(), DisciplineCase.is_deleted.is_(False)]
         if disc_type:
-            conds.append(DisciplineCase.disc_type == disc_type)
+            base_conds.append(DisciplineCase.disc_type == disc_type)
         if student_id:
             try:
-                conds.append(DisciplineCase.student_id == int(student_id))
+                base_conds.append(DisciplineCase.student_id == int(student_id))
             except (TypeError, ValueError):
-                return [], 0
-        if allowed is not None:
-            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+                return [], 0, {"ALL": 0}
+        conds = list(base_conds)
+        if status:
+            statuses = [item.strip() for item in status.split(",") if item.strip()]
+            conds.append(DisciplineCase.status.in_(statuses))
         student_conds = [
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
         ]
+        status_counts = status_counts_by_column(
+            db, DisciplineCase, DisciplineCase.status, [*base_conds, *student_conds],
+            join_student=StudentProfile, allowed_class_ids=allowed,
+        )
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         page, page_size = normalize_page(page, page_size)
         total = int(db.scalar(select(func.count()).select_from(DisciplineCase)
                               .join(StudentProfile, StudentProfile.id == DisciplineCase.student_id)
@@ -541,7 +548,8 @@ def list_cases(user, status=None, disc_type=None, page=1, page_size=20, student_
                           .where(*conds, *student_conds).order_by(DisciplineCase.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         students = _students_by_ids(db, rows)
-        return [_row(x, students.get(int(x.student_id)) if x.student_id else None) for x in rows], total
+        return ([_row(x, students.get(int(x.student_id)) if x.student_id else None) for x in rows],
+                total, status_counts)
 
 
 def projection_reconcile() -> dict:

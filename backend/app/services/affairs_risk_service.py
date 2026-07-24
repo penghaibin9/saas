@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
+from app.core.permissions import has_permission
 from app.services.db_service import _iso, _tid, session
 
 SOURCES = ("LEAVE_OVERDUE", "ACADEMIC_WARNING", "DORM", "MENTAL", "DISCIPLINE", "INTERNSHIP",
@@ -21,18 +22,6 @@ LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
 # 超时阈值：与 scan_timeout / 列表 stats.overdue 同一来源，禁止别处再写魔法数。
 _DEFAULT_RISK_NEW_ASSIGN_HOURS = 4.0
 _DEFAULT_RISK_ASSIGNED_PROCESS_HOURS = 72.0
-# SEC-2 修复：学工处管理员(STUDENT_AFFAIRS_ADMIN)默认不得查看心理原始明细（权限总控 §7.3 /
-# 13A §13 心理行）；需专项授权(PSY_STUDENT，见心理关注模块)方可。此处仅按角色保留心理老师与
-# 校/平台超管（超管查看心理明细仍强制填写原因 + 写 SENSITIVE_VIEW 审计，见 get_risk）。
-_MENTAL_ROLES = {"SCHOOL_ADMIN", "PSYCHOLOGY_TEACHER", "PLATFORM_SUPER_ADMIN"}
-
-# 风险责任人候选角色：分派后会给 owner 建待办(_todo_upsert)+发站内信(_msg)，owner 打开待办必须
-# 能真正处置，即必须持有 studentAffairs.risk.*（见 app/core/permissions.py ROLE_PERMISSIONS）。
-# 分派给任课教师等无该权限的账号会让待办变成点开即 403 的死信，故按角色码收敛候选集。
-OWNER_ROLE_CODES = ("COUNSELOR", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN",
-                    "PSYCHOLOGY_TEACHER", "COLLEGE_ADMIN", "SCHOOL_ADMIN")
-
-
 def _risk_new_assign_hours() -> float:
     """读取可配置分派时限；无效配置回退现网默认，避免风险永不触发。"""
     from app.core.config import settings
@@ -52,17 +41,34 @@ def _risk_assigned_process_hours() -> float:
 
 
 def _owner_role_user_ids(db) -> set[int]:
-    """持有学工风险处置角色、且角色与授权本身有效的账号 id 集合。"""
-    from app.models import Role, UserRole
-    rows = db.scalars(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(
+    """同租户在职且任一激活角色可处置风险的账号 id 集合。"""
+    from app.models import Role, User, UserRole
+
+    rows = db.execute(select(UserRole.user_id, Role).join(
+        Role, Role.id == UserRole.role_id
+    ).join(
+        User, User.id == UserRole.user_id
+    ).where(
         UserRole.tenant_id == _tid(), UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE",
         Role.tenant_id == _tid(), Role.is_deleted.is_(False), Role.status == "ACTIVE",
-        Role.role_code.in_(OWNER_ROLE_CODES))).all()
-    return {int(v) for v in rows}
+        User.tenant_id == _tid(), User.is_deleted.is_(False), User.status == "ACTIVE",
+    )).all()
+    eligible: set[int] = set()
+    tenant_id = str(_tid())
+    for user_id, role in rows:
+        fake_user_ctx = {
+            "userId": str(user_id),
+            "currentRoleCode": role.role_code,
+            "tenantId": tenant_id,
+            "activeContextId": f"role:{role.id}",
+        }
+        if has_permission(fake_user_ctx, "studentAffairs.risk.handle"):
+            eligible.add(int(user_id))
+    return eligible
 
 
 def list_owner_candidates(keyword: str | None = None) -> list[dict]:
-    """可分派的风险责任人（在职 + 同租户 + 持处置角色）。供前端责任人选择器远程搜索。"""
+    """可分派的风险责任人（在职 + 同租户 + 可处置风险）。供前端责任人选择器远程搜索。"""
     from app.models import User
     with session() as db:
         eligible = _owner_role_user_ids(db)
@@ -79,7 +85,7 @@ def list_owner_candidates(keyword: str | None = None) -> list[dict]:
 
 
 def _validate_owner(db, owner_id) -> int:
-    """责任人校验：必须是存在、同租户、在职、且持处置角色的真实账号（历史欠账收口，见 docs）。"""
+    """责任人校验：必须是存在、同租户、在职、且可处置风险的真实账号。"""
     from app.models import User
     raw = str(owner_id or "").strip()
     if not raw or not raw.isdigit():
@@ -88,13 +94,52 @@ def _validate_owner(db, owner_id) -> int:
     if not u or u.is_deleted or u.tenant_id != _tid() or u.status != "ACTIVE":
         raise AppException("VALIDATION_ERROR", "责任人不存在或已停用")
     if u.id not in _owner_role_user_ids(db):
-        raise AppException("VALIDATION_ERROR", "该账号无学工风险处置角色，不能作为责任人")
+        raise AppException("VALIDATION_ERROR", "该账号无学工风险处置权限，不能作为责任人")
     return int(u.id)
 
 L_RISK = {
     "NEW": "新建", "ASSIGNED": "已分派", "PROCESSING": "处置中", "FOLLOWING": "持续跟进",
     "TRANSFERRED": "已转办", "ESCALATED": "已升级", "CLOSED": "已关闭", "REOPENED": "已重开",
 }
+
+# 风险状态机唯一注册表：写操作和详情可用动作必须共同读取本表，禁止两处规则漂移。
+RISK_TRANSITIONS = {
+    "ASSIGN": {"from": {"NEW", "REOPENED", "TRANSFERRED"}, "to": "ASSIGNED",
+               "permission": "studentAffairs.risk.assign"},
+    "PROCESS": {"from": {"ASSIGNED", "PROCESSING"}, "to": "PROCESSING",
+                "permission": "studentAffairs.risk.handle", "relationship": "OWNER_OR_ADMIN"},
+    "FOLLOW": {"from": {"PROCESSING", "FOLLOWING"}, "to": "FOLLOWING",
+               "permission": "studentAffairs.risk.handle", "relationship": "OWNER_OR_ADMIN"},
+    "TRANSFER": {"from": {"PROCESSING", "FOLLOWING"}, "to": "TRANSFERRED",
+                 "permission": "studentAffairs.risk.transfer", "relationship": "OWNER_OR_ADMIN"},
+    "ESCALATE": {"from": {"PROCESSING", "FOLLOWING"}, "to": "ESCALATED",
+                 "permission": "studentAffairs.risk.escalate", "relationship": "OWNER_OR_ADMIN"},
+    "TAKEOVER": {"from": {"ESCALATED"}, "to": "PROCESSING",
+                 "permission": "studentAffairs.risk.handle", "relationship": "SUPERIOR"},
+    "CLOSE": {"from": {"PROCESSING", "FOLLOWING", "ESCALATED"}, "to": "CLOSED",
+              "permission": "studentAffairs.risk.close", "relationship": "OWNER_OR_ADMIN"},
+    "REOPEN": {"from": {"CLOSED"}, "to": "REOPENED",
+               "permission": "studentAffairs.risk.reopen", "relationship": "SUPERIOR"},
+}
+
+
+def _uid_norm(user_or_id) -> str:
+    """将 db-123、123 和 int 统一为可比较的数字字符串。"""
+    value = (user_or_id or {}).get("userId") if isinstance(user_or_id, dict) else user_or_id
+    raw = str(value or "").strip()
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return str(int(raw)) if raw else ""
+    except (TypeError, ValueError):
+        return ""
+
+
+def _transition_or_conflict(x, action: str) -> str:
+    rule = RISK_TRANSITIONS[action]
+    if x.status not in rule["from"]:
+        raise AppException("APPROVAL_VERSION_CONFLICT", f"当前状态不可{action.lower()}")
+    return rule["to"]
 
 
 def _op():
@@ -212,9 +257,7 @@ def _scope_or_403(db, student_id, user):
 
 
 def _uid_int(user) -> int:
-    raw = str((user or {}).get("userId") or "")
-    if raw.startswith("db-"):
-        raw = raw[3:]
+    raw = _uid_norm(user)
     try:
         return int(raw)
     except (TypeError, ValueError):
@@ -228,7 +271,7 @@ def _require_owner_or_admin(db, x, user, *, label: str = "处置") -> None:
     if ctx.scope_type == "TENANT_ALL":
         return
     uid = _uid_int(user)
-    if x.owner_id and uid and int(x.owner_id) == uid:
+    if x.owner_id and uid and _uid_norm(x.owner_id) == _uid_norm(uid):
         return
     raise AppException("NO_PERMISSION", f"仅风险责任人或学工管理员可{label}")
 
@@ -246,7 +289,7 @@ def _require_takeover_authority(db, user) -> None:
 
 
 def _can_view_mental(user) -> bool:
-    return (user or {}).get("currentRoleCode") in _MENTAL_ROLES
+    return has_permission(user or {}, "studentAffairs.risk.psyDetail.view")
 
 
 def _sensitive_view_audit(x, reason: str) -> None:
@@ -350,14 +393,13 @@ def assign(risk_id, user, owner_id, expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
-        if x.status not in ("NEW", "REOPENED", "TRANSFERRED"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可分派")
+        to_status = _transition_or_conflict(x, "ASSIGN")
         check_version(x.version, expected_version)
         valid_owner_id = _validate_owner(db, owner_id)
         frm = x.status
         x.owner_id, x.status, x.assigned_at, x.escalated_at, x.version = \
-            valid_owner_id, "ASSIGNED", datetime.utcnow(), None, x.version + 1
-        _handle(db, x.id, "ASSIGN", f"分派责任人 {valid_owner_id}", frm, "ASSIGNED")
+            valid_owner_id, to_status, datetime.utcnow(), None, x.version + 1
+        _handle(db, x.id, "ASSIGN", f"分派责任人 {valid_owner_id}", frm, to_status)
         _todo_upsert(db, x.id, valid_owner_id, x.student_id, f"风险待处置：{s.real_name if s else ''}")
         _msg(db, valid_owner_id, "风险待处置", f"有一条{x.risk_level}风险待你处置", "RISK_ALERT", x.id)
         _audit(db, x.id, "ASSIGN", str(valid_owner_id))
@@ -378,12 +420,11 @@ def process(risk_id, user, content="", expected_version=None) -> dict:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="填写处置")
-        if x.status not in ("ASSIGNED", "PROCESSING"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可处置")
+        to_status = _transition_or_conflict(x, "PROCESS")
         check_version(x.version, expected_version)
         frm = x.status
-        x.status, x.version = "PROCESSING", x.version + 1
-        _handle(db, x.id, "PROCESS", content.strip(), frm, "PROCESSING")
+        x.status, x.version = to_status, x.version + 1
+        _handle(db, x.id, "PROCESS", content.strip(), frm, to_status)
         _audit(db, x.id, "PROCESS")
         db.commit()
         _drain_message_outbox()
@@ -396,12 +437,11 @@ def follow(risk_id, user, content="", expected_version=None) -> dict:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="转跟进")
-        if x.status not in ("PROCESSING", "FOLLOWING"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可转跟进")
+        to_status = _transition_or_conflict(x, "FOLLOW")
         check_version(x.version, expected_version)
         frm = x.status
-        x.status, x.version = "FOLLOWING", x.version + 1
-        _handle(db, x.id, "FOLLOW", (content or "").strip(), frm, "FOLLOWING")
+        x.status, x.version = to_status, x.version + 1
+        _handle(db, x.id, "FOLLOW", (content or "").strip(), frm, to_status)
         _audit(db, x.id, "FOLLOW")
         db.commit()
         _drain_message_outbox()
@@ -414,14 +454,13 @@ def transfer(risk_id, user, new_owner_id, reason="", expected_version=None) -> d
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="转办")
-        if x.status not in ("PROCESSING", "FOLLOWING"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可转办")
+        to_status = _transition_or_conflict(x, "TRANSFER")
         check_version(x.version, expected_version)
         valid_owner_id = _validate_owner(db, new_owner_id)
         frm = x.status
-        _handle(db, x.id, "TRANSFER", f"转办：{reason}", frm, "ASSIGNED")
+        _handle(db, x.id, "TRANSFER", f"转办：{reason}", frm, to_status)
         x.owner_id, x.status, x.assigned_at, x.version = \
-            valid_owner_id, "ASSIGNED", datetime.utcnow(), x.version + 1
+            valid_owner_id, to_status, datetime.utcnow(), x.version + 1
         _todo_upsert(db, x.id, valid_owner_id, x.student_id, f"风险转办待处置：{s.real_name if s else ''}")
         _msg(db, valid_owner_id, "风险转办", reason or "有风险转办给你", "RISK_ALERT", x.id)
         _audit(db, x.id, "TRANSFER", str(valid_owner_id))
@@ -439,13 +478,12 @@ def escalate(risk_id, user, reason="", expected_version=None) -> dict:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="升级")
-        if x.status not in ("PROCESSING", "FOLLOWING"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可升级")
+        to_status = _transition_or_conflict(x, "ESCALATE")
         check_version(x.version, expected_version)
         frm = x.status
         x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
-        x.status, x.escalated_at, x.version = "ESCALATED", datetime.utcnow(), x.version + 1
-        _handle(db, x.id, "ESCALATE", f"升级：{reason}", frm, "ESCALATED")
+        x.status, x.escalated_at, x.version = to_status, datetime.utcnow(), x.version + 1
+        _handle(db, x.id, "ESCALATE", f"升级：{reason}", frm, to_status)
         _notify_risk_handlers(db, x, "风险升级",
                               f"风险#{x.id} 已升级至 {x.risk_level}" + (f"：{reason}" if reason else ""))
         _audit(db, x.id, "ESCALATE", x.risk_level)
@@ -460,15 +498,15 @@ def takeover(risk_id, user, content="", expected_version=None) -> dict:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_takeover_authority(db, user)
-        if x.status != "ESCALATED":
-            raise AppException("APPROVAL_VERSION_CONFLICT", "仅已升级的风险可接管")
+        to_status = _transition_or_conflict(x, "TAKEOVER")
         check_version(x.version, expected_version)
+        frm = x.status
         uid = _uid_int(user)
-        x.status, x.version = "PROCESSING", x.version + 1
+        x.status, x.version = to_status, x.version + 1
         if uid:
             x.owner_id = uid  # 接管后责任人改为接管人
             _todo_upsert(db, x.id, uid, x.student_id, f"风险已接管待处置：{s.real_name if s else ''}")
-        _handle(db, x.id, "TAKEOVER", (content or "上级接管").strip(), "ESCALATED", "PROCESSING")
+        _handle(db, x.id, "TAKEOVER", (content or "上级接管").strip(), frm, to_status)
         _audit(db, x.id, "TAKEOVER")
         db.commit()
         _drain_message_outbox()
@@ -484,14 +522,13 @@ def close(risk_id, user, conclusion="", expected_version=None) -> dict:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="关闭")
-        if x.status not in ("PROCESSING", "FOLLOWING", "ESCALATED"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可关闭")
+        to_status = _transition_or_conflict(x, "CLOSE")
         check_version(x.version, expected_version)
         if _handle_count(db, x.id) == 0:
             raise AppException("DATA_CONFLICT", "关闭前须至少一条处置记录")
         frm = x.status
-        x.status, x.closed_reason, x.version = "CLOSED", conclusion.strip(), x.version + 1
-        _handle(db, x.id, "CLOSE", conclusion.strip(), frm, "CLOSED")
+        x.status, x.closed_reason, x.version = to_status, conclusion.strip(), x.version + 1
+        _handle(db, x.id, "CLOSE", conclusion.strip(), frm, to_status)
         db.add(StudentStageEvent(tenant_id=_tid(), student_id=int(x.student_id), from_stage=None,
                                  to_stage="RISK_CLOSED", reason=f"风险处置关闭（{x.source}）",
                                  source_module="student-affairs"))
@@ -509,11 +546,10 @@ def reopen(risk_id, user, reason="", expected_version=None) -> dict:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         _require_takeover_authority(db, user)  # 重开属上级动作，防同班互改
-        if x.status != "CLOSED":
-            raise AppException("APPROVAL_VERSION_CONFLICT", "仅已关闭的风险可重开")
+        to_status = _transition_or_conflict(x, "REOPEN")
         check_version(x.version, expected_version)
-        x.status, x.version = "REOPENED", x.version + 1
-        _handle(db, x.id, "REOPEN", (reason or "复发重开").strip(), "CLOSED", "REOPENED")
+        x.status, x.version = to_status, x.version + 1
+        _handle(db, x.id, "REOPEN", (reason or "复发重开").strip(), "CLOSED", to_status)
         _msg(db, x.owner_id, "风险重开", reason or "风险复发已重开", "RISK_ALERT", x.id)
         _audit(db, x.id, "REOPEN")
         db.commit()
@@ -581,29 +617,26 @@ def scan_timeout() -> dict:
 # ═══════════ 查询 ═══════════
 
 def _allowed_risk_actions(x, user) -> list[str]:
-    """按状态 + 权限 + 是否责任人计算合法动作；后端写接口仍须再校验。"""
-    from app.core.permissions import has_permission
-    st = x.status
-    uid = str((user or {}).get("userId") or "")
-    is_owner = bool(x.owner_id) and str(x.owner_id) == uid
+    """严格按状态机、权限和责任关系计算；不得比写服务更宽。"""
+    from app.core.affairs_security import build_affairs_context
+
+    is_owner = bool(x.owner_id) and _uid_norm(x.owner_id) == _uid_norm(user)
+    ctx = build_affairs_context(user, None)
+    is_admin = ctx.scope_type == "TENANT_ALL"
+    role = (user or {}).get("currentRoleCode") or ""
+    is_superior = is_admin or role in (
+        "COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"
+    )
     actions: list[str] = []
-    if st in ("NEW", "REOPENED", "TRANSFERRED") and has_permission(user, "studentAffairs.risk.assign"):
-        actions.append("ASSIGN")
-    if st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED") and has_permission(user, "studentAffairs.risk.handle"):
-        if is_owner or has_permission(user, "studentAffairs.risk.assign"):
-            actions.append("PROCESS")
-            if st in ("PROCESSING", "FOLLOWING", "ASSIGNED"):
-                actions.append("FOLLOW")
-    if st not in ("CLOSED", "NEW") and has_permission(user, "studentAffairs.risk.transfer"):
-        actions.append("TRANSFER")
-    if st not in ("CLOSED",) and has_permission(user, "studentAffairs.risk.escalate"):
-        actions.append("ESCALATE")
-    if st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED", "TRANSFERRED") and has_permission(user, "studentAffairs.risk.handle"):
-        actions.append("TAKEOVER")
-    if st != "CLOSED" and has_permission(user, "studentAffairs.risk.close"):
-        actions.append("CLOSE")
-    if st == "CLOSED" and has_permission(user, "studentAffairs.risk.reopen"):
-        actions.append("REOPEN")
+    for action, rule in RISK_TRANSITIONS.items():
+        if x.status not in rule["from"] or not has_permission(user, rule["permission"]):
+            continue
+        relationship = rule.get("relationship")
+        if relationship == "OWNER_OR_ADMIN" and not (is_owner or is_admin):
+            continue
+        if relationship == "SUPERIOR" and not is_superior:
+            continue
+        actions.append(action)
     return actions
 
 

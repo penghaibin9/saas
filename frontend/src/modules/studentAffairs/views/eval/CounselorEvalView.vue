@@ -136,7 +136,8 @@ export default {
       this.loading = true; this.errorMessage = ''
       const [ind, ev] = await Promise.all([
         studentAffairsApi.getEvalIndicators(),
-        studentAffairsApi.getCounselorEvals({ pageSize: 300 })
+        // 待服务端全量统计：考评工作台仅加载 API 单页上限。
+        studentAffairsApi.getCounselorEvals({ pageSize: 200 })
       ])
       if (ind.code === 0 && ind.data) this.indicators = ind.data.items || []
       else this.errorMessage = ind.message || '加载失败'

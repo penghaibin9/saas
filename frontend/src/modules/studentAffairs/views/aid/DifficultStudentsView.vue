@@ -89,9 +89,9 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      // 指标始终基于全量聚合（不分页）；名单按当前筛选 + 真实分页取
+      // 指标待服务端全量统计；名单按当前筛选 + 真实分页取。
       const [all, filtered] = await Promise.all([
-        studentAffairsApi.getDifficultStudents({ pageSize: 500 }),
+        studentAffairsApi.getDifficultStudents({ pageSize: 200 }),
         studentAffairsApi.getDifficultStudents({ level: this.activeLevel, page: this.pagination.page, pageSize: this.pagination.pageSize })
       ])
       if (all.code === 0 && all.data) {

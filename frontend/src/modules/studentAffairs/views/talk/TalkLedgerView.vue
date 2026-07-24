@@ -80,17 +80,15 @@ export default {
   name: 'TalkLedgerView',
   components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
-    return { talkColumns: TALK_COLUMNS, loading: true, errorMessage: '', items: [], counts: { total: 0 }, activeType: '', activeStatus: '', typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS }
+    return { talkColumns: TALK_COLUMNS, loading: true, errorMessage: '', items: [], statusCounts: null, activeType: '', activeStatus: '', typeFilters: TYPE_FILTERS, statusFilters: STATUS_FILTERS }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const need = this.items.filter((x) => x.needFollow).length
-      const planned = this.items.filter((x) => x.status === 'PLANNED').length
       return [
-        { key: 't', label: '当前列表数', value: this.items.length, accent: 'primary' },
-        { key: 'p', label: '计划中', value: planned, accent: 'warning' },
-        { key: 'n', label: '需跟进', value: need, accent: need ? 'risk' : 'success' }
+        { key: 't', label: '谈话总数', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'primary' },
+        { key: 'p', label: '计划中', value: this.statusCounts === null ? '—' : (this.statusCounts.PLANNED || 0), accent: 'warning' },
+        { key: 'n', label: '需跟进', value: '—', accent: 'risk' }
       ]
     }
   },
@@ -98,16 +96,13 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      // 分页说明：/student-affairs/talks 后端已支持 page/pageSize/total 真分页，
-      // 但本页顶部统计卡（当前列表数/计划中/需跟进）按已加载全部过滤结果实时计算；
-      // 若接入逐页 AppPagination，卡片语义会变成“本页”而非“当前筛选下全部”，需产品确认展示口径后再引入。
-      // 暂维持 pageSize=500 上限一次性加载（超过 500 条时会截断，暂无提示）。
-      const params = { pageSize: 500 }
+      const params = { pageSize: 200 }
       if (this.activeType) params.talkType = this.activeType
       if (this.activeStatus) params.status = this.activeStatus
       const res = await studentAffairsApi.getTalks(params)
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
       } else {
         this.errorMessage = res.message || '谈话台账加载失败'
       }

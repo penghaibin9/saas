@@ -127,7 +127,8 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getOrganizations({ pageSize: 300 })
+      // 待服务端全量统计：工作台仅加载 API 单页上限。
+      const res = await studentAffairsApi.getOrganizations({ pageSize: 200 })
       if (res.code === 0 && res.data) this.items = res.data.items || []
       else this.errorMessage = res.message || '学生组织加载失败'
       this.loading = false

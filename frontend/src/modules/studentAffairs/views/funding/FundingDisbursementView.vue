@@ -134,8 +134,9 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
+      // 待服务端全量统计：发放列表仅加载 API 单页上限。
       const [ds, bs, st] = await Promise.all([
-        studentAffairsApi.getFundingDisbursements({ bankStatus: this.activeStatus, pageSize: 300 }),
+        studentAffairsApi.getFundingDisbursements({ bankStatus: this.activeStatus, pageSize: 200 }),
         studentAffairsApi.getFundingBatches({ pageSize: 200 }),
         studentAffairsApi.getDisbursementStats()
       ])

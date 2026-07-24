@@ -1,6 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getToken, isPlatformSuperAdmin } from '@/services/http/client'
-import { canEnterRoute } from '@/security/permissionGate'
+import { getToken, isPlatformSuperAdmin, request } from '@/services/http/client'
+import {
+  canEnterRoute,
+  ensurePermissionPatterns,
+  GUARDED_MODULES,
+  getPermissionPatterns,
+} from '@/security/permissionGate'
 
 /**
  * 路由表（对齐 docs/frontend/route-freeze.md）：
@@ -188,7 +193,7 @@ const router = createRouter({
  * 业务模块（学生/审批/迎新等对外演示页）与「进入演示环境」流程完全不受影响。
  * 说明：令牌为内存态，刷新后需重新登录；后端 /api/v1/platform/* 另有 403 强校验兜底。
  */
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   // P11：全站强制登录——未登录一律回登录页（账号密码=真实库 / 演示账号=演示租户）。
   // 登录页与安全错误页（meta.public）除外。
   const isPublic = to.path === '/login' || to.meta?.public
@@ -216,8 +221,10 @@ router.beforeEach((to, from, next) => {
     next({ path: '/admin/platform/overview', replace: true })
     return
   }
-  // 岗位实习路由权限门（P5.1 / 07 §8.5.4）：已知身份权限集且明确不匹配 meta.permissionKey → 403。
-  // fail-open：未知/未加载时放行（后端 require_permission 仍是最终边界）。/security/403 为 public，不成环。
+  // 业务中心路由权限门：冷加载先拉 RBAC 再判定，避免先进业务页再等接口 403。
+  if (GUARDED_MODULES.has(to.meta?.moduleCode) && getToken() && !Array.isArray(getPermissionPatterns())) {
+    await ensurePermissionPatterns(request)
+  }
   if (!canEnterRoute(to.meta)) {
     next({ path: '/security/403', query: { from: to.fullPath } })
     return

@@ -195,7 +195,8 @@ export default {
     },
     async loadRooms(buildingId) {
       if (!buildingId) { this.rooms = []; return }
-      try { this.rooms = (await studentAffairsApi.listDormRooms(buildingId, { pageSize: 500 })).data.items || [] }
+      // 待服务端全量统计：下拉列表仅加载 API 单页上限。
+      try { this.rooms = (await studentAffairsApi.listDormRooms(buildingId, { pageSize: 200 })).data.items || [] }
       catch { this.rooms = [] }
     },
     async openTask(t) {

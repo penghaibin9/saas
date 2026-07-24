@@ -86,20 +86,17 @@ export default {
   data() {
     return {
       ledgerColumns: LEDGER_COLUMNS, reportColumns: REPORT_COLUMNS,
-      loading: true, errorMessage: '', all: [], items: [], activeType: '', typeFilters: TYPE_FILTERS, report: null,
+      loading: true, errorMessage: '', items: [], statusCounts: null, activeType: '', typeFilters: TYPE_FILTERS, report: null,
       pagination: { page: 1, pageSize: 20, total: 0 }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      // 二课学时/志愿时长合计仍按改造前口径（all，pageSize 300 上限）汇总；
-      // 流水条数改用服务端真实 total，比改造前的 items.length（受 300 上限）更准确。
-      const sum = (t) => this.all.filter((x) => x.creditType === t).reduce((s, x) => s + (Number(x.creditValue) || 0), 0)
       return [
         { key: 'n', label: '流水条数', value: this.pagination.total, accent: 'primary' },
-        { key: 'sc', label: '二课学时合计', value: Math.round(sum('SECOND_CLASS') * 10) / 10, accent: 'success' },
-        { key: 'vh', label: '志愿时长合计', value: Math.round(sum('VOLUNTEER_HOUR') * 10) / 10, accent: 'info' }
+        { key: 'sc', label: '二课学时合计', value: '—', accent: 'success' },
+        { key: 'vh', label: '志愿时长合计', value: '—', accent: 'info' }
       ]
     }
   },
@@ -107,19 +104,16 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      // items 走真分页（服务端按 creditType 过滤+切片）；all 单独按改造前口径（同过滤条件，pageSize 300 一次性拉取）
-      // 仅供统计卡片的“合计”汇总使用，避免真分页把合计数字切小。
-      const [res, allRes] = await Promise.all([
-        studentAffairsApi.getSecondClassLedger({ creditType: this.activeType, page: this.pagination.page, pageSize: this.pagination.pageSize }),
-        studentAffairsApi.getSecondClassLedger({ creditType: this.activeType, pageSize: 300 })
-      ])
+      const res = await studentAffairsApi.getSecondClassLedger({
+        creditType: this.activeType, page: this.pagination.page, pageSize: this.pagination.pageSize
+      })
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
         this.pagination.total = res.data.total || 0
+        this.statusCounts = res.data.statusCounts || null
       } else {
         this.errorMessage = res.message || '二课台账加载失败'
       }
-      if (allRes.code === 0 && allRes.data) this.all = allRes.data.items || []
       this.loading = false
     },
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.pagination.page = 1; this.load() },

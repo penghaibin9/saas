@@ -125,7 +125,7 @@ export default {
     return {
       caseColumns: CASE_COLUMNS,
       appealColumns: APPEAL_COLUMNS,
-      loading: true, acting: '', errorMessage: '', effectiveCases: [], appeals: [], appealStatus: '', appealFilters: APPEAL_FILTERS,
+      loading: true, acting: '', errorMessage: '', effectiveCases: [], appeals: [], statusCounts: null, appealStatus: '', appealFilters: APPEAL_FILTERS,
       delDlg: { visible: false, caseId: '', method: 'DIRECT' },
       apDlg: { visible: false, caseId: '' },
       revDlg: { visible: false, appealId: '', result: 'UPHELD' }
@@ -136,12 +136,10 @@ export default {
     RESULT_OPTIONS: () => RESULT_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const undelivered = this.effectiveCases.filter((c) => !c.deliveredAt).length
-      const pending = this.appeals.filter((a) => ['SUBMITTED', 'REVIEWING'].includes(a.status)).length
       return [
-        { key: 'e', label: '已生效处分', value: this.effectiveCases.length, accent: 'primary' },
-        { key: 'u', label: '待送达', value: undelivered, accent: undelivered ? 'warning' : 'success' },
-        { key: 'p', label: '待复核申诉', value: pending, accent: pending ? 'warning' : 'success' }
+        { key: 'e', label: '已生效处分', value: '—', accent: 'primary' },
+        { key: 'u', label: '待送达', value: '—', accent: 'warning' },
+        { key: 'p', label: '待复核申诉', value: this.statusCounts === null ? '—' : (this.statusCounts.SUBMITTED || 0), accent: 'warning' }
       ]
     }
   },
@@ -150,13 +148,15 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
+      // 待服务端全量统计：申诉复核仅加载各接口单页上限。
       const [cs, ap] = await Promise.all([
-        studentAffairsApi.getDisciplineCases({ status: 'EFFECTIVE', pageSize: 300 }),
-        studentAffairsApi.getDisciplineAppeals({ status: this.appealStatus, pageSize: 300 })
+        studentAffairsApi.getDisciplineCases({ status: 'EFFECTIVE', pageSize: 200 }),
+        studentAffairsApi.getDisciplineAppeals({ status: this.appealStatus, pageSize: 200 })
       ])
       if (cs.code === 0 && cs.data) this.effectiveCases = cs.data.items || []
       else this.errorMessage = cs.message || '加载失败'
       this.appeals = (ap.code === 0 && ap.data) ? (ap.data.items || []) : []
+      this.statusCounts = (ap.code === 0 && ap.data) ? (ap.data.statusCounts || null) : null
       this.loading = false
     },
     setAppealStatus(k) { if (this.appealStatus === k) return; this.appealStatus = k; this.load() },

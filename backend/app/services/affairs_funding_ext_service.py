@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.affairs_funding_service import _amount_view
 from app.services.db_service import _iso, _tid, session
 
@@ -158,7 +158,7 @@ def _load_ws(db, rid):
     return r
 
 
-def act_work_study(record_id, action, user, reason="") -> dict:
+def act_work_study(record_id, action, user, reason="", *, expected_version=None) -> dict:
     """状态流转：APPROVE(APPLIED→APPROVED)/REJECT(APPLIED→REJECTED)/ONBOARD(APPROVED→ONBOARD)/
     TERMINATE(APPROVED|ONBOARD→TERMINATED)。"""
     from app.models import StudentProfile
@@ -166,6 +166,7 @@ def act_work_study(record_id, action, user, reason="") -> dict:
     with session() as db:
         r = _load_ws(db, record_id)
         _scope_or_403(db, r.student_id, user)
+        check_version(r.version, expected_version)
         if action == "APPROVE":
             if r.status != "APPLIED":
                 raise AppException("DATA_CONFLICT", "仅待审核可录用")
@@ -239,7 +240,7 @@ def register_loan(body, user) -> dict:
         return _loan_row(x, s, user)
 
 
-def advance_loan(loan_id, user) -> dict:
+def advance_loan(loan_id, user, *, expected_version=None) -> dict:
     """按 登记→回执→核对→确认 顺序推进一步。"""
     from app.models import StudentLoan, StudentProfile
     with session() as db:
@@ -247,6 +248,7 @@ def advance_loan(loan_id, user) -> dict:
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("贷款记录不存在")
         _scope_or_403(db, x.student_id, user)
+        check_version(x.version, expected_version)
         nxt = _LOAN_NEXT.get(x.status)
         if not nxt:
             raise AppException("DATA_CONFLICT", "已确认，无需再推进")
@@ -314,6 +316,7 @@ def review_reduction(fee_id, body, user) -> dict:
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("记录不存在")
         _scope_or_403(db, x.student_id, user)
+        check_version(x.version, getattr(body, "version", None))
         if x.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅待审核可处理")
         if action == "APPROVE":
@@ -331,13 +334,14 @@ def review_reduction(fee_id, body, user) -> dict:
         return _fee_row(x, s, user)
 
 
-def issue_reduction(fee_id, user) -> dict:
+def issue_reduction(fee_id, user, *, expected_version=None) -> dict:
     from app.models import FeeReduction, StudentProfile
     with session() as db:
         x = db.get(FeeReduction, int(fee_id))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("记录不存在")
         _scope_or_403(db, x.student_id, user)
+        check_version(x.version, expected_version)
         if x.status != "APPROVED":
             raise AppException("DATA_CONFLICT", "仅已批准可发放")
         x.status, x.issued_at, x.version = "ISSUED", datetime.utcnow(), x.version + 1

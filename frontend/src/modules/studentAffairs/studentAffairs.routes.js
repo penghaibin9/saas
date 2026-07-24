@@ -34,13 +34,13 @@ const studentAffairsRoutes = [
         path: 'profile',
         name: 'student-affairs-profile',
         redirect: '/admin/student/list',
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生画像', requiresAuth: true, permissionKey: 'studentAffairs.profile.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生画像', requiresAuth: true, permissionKey: 'studentAffairs.student.view' }
       },
       {
         path: 'profile/:studentId',
         name: 'student-affairs-profile-detail',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsProfileDetailView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生画像详情', requiresAuth: true, permissionKey: 'studentAffairs.profile.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生画像详情', requiresAuth: true, permissionKey: 'studentAffairs.student.view' }
       },
       {
         path: 'dormitory',
@@ -204,7 +204,7 @@ const studentAffairsRoutes = [
         path: 'talk/stats',
         name: 'student-affairs-talk-stats',
         component: () => import('@/modules/studentAffairs/views/talk/TalkStatsView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话统计', requiresAuth: true, permissionKey: 'studentAffairs.talk.view' }
       },
       {
         path: 'talk/key-follow',
@@ -240,7 +240,7 @@ const studentAffairsRoutes = [
         path: 'activity/second-class',
         name: 'student-affairs-second-class',
         component: () => import('@/modules/studentAffairs/views/activity/SecondClassLedgerView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '第二课堂积分', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '第二课堂积分', requiresAuth: true, permissionKey: 'studentAffairs.activity.view' }
       },
       {
         path: 'activity/stats',

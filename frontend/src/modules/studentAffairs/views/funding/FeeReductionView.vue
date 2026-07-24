@@ -88,7 +88,7 @@ export default {
   data() {
     return {
       feeColumns: FEE_COLUMNS,
-      loading: true, acting: '', errorMessage: '', items: [], activeType: '', typeFilters: TYPE_FILTERS,
+      loading: true, acting: '', errorMessage: '', items: [], statusCounts: null, activeType: '', typeFilters: TYPE_FILTERS,
       formVisible: false, form: this.blank(), rejDlg: { visible: false, feeId: '' }
     }
   },
@@ -96,7 +96,7 @@ export default {
     ITEM_TYPE_OPTIONS: () => ITEM_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const s = (k) => this.items.filter((x) => x.status === k).length
+      const s = (k) => this.statusCounts === null ? '—' : (this.statusCounts[k] || 0)
       return [
         { key: 'p', label: '待审核', value: s('SUBMITTED'), accent: 'warning' },
         { key: 'a', label: '已批准待发', value: s('APPROVED'), accent: 'processing' },
@@ -111,7 +111,10 @@ export default {
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getFeeReductions({ itemType: this.activeType })
-      if (res.code === 0 && res.data) this.items = res.data.items || []
+      if (res.code === 0 && res.data) {
+        this.items = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
+      }
       else this.errorMessage = res.message || '加载失败'
       this.loading = false
     },

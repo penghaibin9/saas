@@ -6,7 +6,7 @@
     watermark-purpose="宿舍管理查看"
   >
     <template #actions>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.refresh')" code="studentAffairs.dorm.refresh" variant="secondary" @click="load">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
       <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">

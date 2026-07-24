@@ -143,7 +143,7 @@ export default {
   data() {
     return {
       followColumns: FOLLOW_COLUMNS,
-      loading: true, actioning: false, errorMessage: '', items: [],
+      loading: true, actioning: false, errorMessage: '', items: [], statusCounts: null,
       refDlg: { visible: false, studentId: '', channel: '校内咨询', reasonSummary: '', error: '' },
       txtDlg: { visible: false, kind: '', row: null, title: '', type: 'primary', confirmText: '确认', reasonLabel: '', sceneKey: '' }
     }
@@ -159,14 +159,12 @@ export default {
       return this.items.filter((r) => r.status === 'REFERRED' || r.status === 'FOLLOWING')
     },
     metricCards() {
-      const referred = this.items.filter((r) => r.status === 'REFERRED').length
-      const following = this.items.filter((r) => r.status === 'FOLLOWING').length
-      const neverFollowed = this.openItems.filter((r) => !r.lastFollowTime).length
+      const count = (status) => this.statusCounts === null ? '—' : (this.statusCounts[status] || 0)
       return [
-        { key: 'open', label: '待回访', value: this.openItems.length, accent: this.openItems.length ? 'warning' : 'success' },
-        { key: 'referred', label: '已转介待跟进', value: referred, accent: 'info' },
-        { key: 'following', label: '回访中', value: following, accent: 'primary' },
-        { key: 'never', label: '尚未回访', value: neverFollowed, accent: neverFollowed ? 'risk' : 'success' }
+        { key: 'open', label: '待回访', value: this.statusCounts === null ? '—' : count('REFERRED') + count('FOLLOWING'), accent: 'warning' },
+        { key: 'referred', label: '已转介待跟进', value: count('REFERRED'), accent: 'info' },
+        { key: 'following', label: '回访中', value: count('FOLLOWING'), accent: 'primary' },
+        { key: 'never', label: '尚未回访', value: '—', accent: 'risk' }
       ]
     }
   },
@@ -181,6 +179,7 @@ export default {
       try {
         const res = await studentAffairsApi.listMentalAttention({ page: 1, pageSize: 100 })
         this.items = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
       } catch (e) {
         this.errorMessage = e.message || '转介回访工作台加载失败'
       } finally {

@@ -7,6 +7,21 @@
  */
 import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
+import { setPermissionPatterns } from '@/security/permissionGate'
+
+function buildCtxKey(ctx, permissionPatterns) {
+  const cr = ctx?.currentRole || {}
+  const tid = String(ctx?.tenantId || cr.tenantId || '')
+  const uid = String(ctx?.userId || cr.userId || '')
+  const cid = String(cr.contextId || ctx?.activeContextId || '')
+  const role = String(cr.roleCode || '')
+  const perms = Array.isArray(permissionPatterns) ? [...permissionPatterns].sort().join(',') : ''
+  const mods = Array.isArray(ctx?.moduleEntitlements)
+    ? [...ctx.moduleEntitlements].sort().join(',')
+    : ''
+  // 轻量签名：排序后拼接即可区分身份；正式哈希可选，避免引入 crypto 依赖。
+  return [tid, uid, cid, role, perms, mods].join('|')
+}
 
 function ok(data) {
   return { code: 0, data, message: 'ok' }
@@ -48,6 +63,8 @@ export const studentAffairsApi = {
     let currentRole = { roleCode: '', roleName: '', userName: '' }
     let dataScope = { scopeName: '' }
     let permissionPatterns = null
+    let ctxKey = ''
+    let rbacOk = false
     try {
       const b = await request('/tenant/brand')
       brand = {
@@ -57,10 +74,11 @@ export const studentAffairsApi = {
         platformDisplayName: b.platformDisplayName || brand.platformDisplayName
       }
     } catch {
-      /* 离线/未登录静默回退品牌兜底 */
+      /* 品牌可降级；RBAC 失败不得假装正常业务页 */
     }
     try {
       const ctx = await request('/rbac/current-context')
+      rbacOk = true
       if (ctx.currentRole) currentRole = { ...currentRole, ...ctx.currentRole }
       if (ctx.dataScope) {
         dataScope = {
@@ -72,11 +90,22 @@ export const studentAffairsApi = {
       // 此前只取 currentRole/dataScope，permissionPatterns 被静默丢弃，导致各页面
       // AppPermissionButton 只传展示用的 code、拿不到 allowed，按钮对无权限角色也一直可点
       // （后端会 403，但用户要走完整个确认弹窗才知道）。这里把它一并透传给子路由。
-      if (Array.isArray(ctx.permissionPatterns)) permissionPatterns = ctx.permissionPatterns
+      if (Array.isArray(ctx.permissionPatterns)) {
+        permissionPatterns = ctx.permissionPatterns
+        setPermissionPatterns(permissionPatterns)
+      }
+      ctxKey = buildCtxKey(ctx, permissionPatterns)
     } catch {
-      /* 静默回退，dashboard 仍会返回真实 viewLabel/scopeMode */
+      /* 正式环境由布局识别 rbacOk=false，禁止渲染空权限业务壳 */
     }
-    return ok({ tenantBrandConfig: brand, currentRole, dataScope, permissionPatterns })
+    return ok({
+      tenantBrandConfig: brand,
+      currentRole,
+      dataScope,
+      permissionPatterns,
+      ctxKey,
+      rbacOk,
+    })
   },
 
   /**

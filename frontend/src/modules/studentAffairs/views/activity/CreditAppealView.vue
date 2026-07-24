@@ -108,6 +108,7 @@ export default {
     return {
       appealColumns: APPEAL_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
+      statusCounts: null,
       activeStatus: '', statusFilters: STATUS_FILTERS,
       formVisible: false, form: this.blankForm(),
       rejDlg: { visible: false, appealId: '' }
@@ -118,7 +119,7 @@ export default {
     APPEAL_TYPE_OPTIONS: () => APPEAL_TYPE_OPTIONS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const s = (k) => this.all.filter((a) => a.status === k).length
+      const s = (k) => this.statusCount(k)
       return [
         { key: 'p', label: '待审核', value: s('SUBMITTED'), accent: 'warning' },
         { key: 'a', label: '已通过补记', value: s('APPROVED'), accent: 'success' },
@@ -129,11 +130,20 @@ export default {
   mounted() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    statusCount(key) {
+      if (this.statusCounts === null) return '—'
+      return this.statusCounts[key] != null ? this.statusCounts[key] : 0
+    },
     blankForm() { return { studentId: '', appealType: 'MISSING', claimCreditType: 'SECOND_CLASS', claimValue: null, reason: '', error: '' } },
     async load() {
-      this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getCreditAppeals({ pageSize: 300 })
-      if (res.code === 0 && res.data) { this.all = res.data.items || []; this.applyFilter() }
+      this.loading = true; this.errorMessage = ''; this.statusCounts = null
+      // 待服务端全量统计：工作台仅加载 API 单页上限。
+      const res = await studentAffairsApi.getCreditAppeals({ pageSize: 200 })
+      if (res.code === 0 && res.data) {
+        this.all = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
+        this.applyFilter()
+      }
       else this.errorMessage = res.message || '申诉加载失败'
       this.loading = false
     },

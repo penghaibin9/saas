@@ -102,6 +102,7 @@ export default {
     return {
       recordColumns: RECORD_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [],
+      statusCounts: null,
       activeStatus: '', statusFilters: STATUS_FILTERS,
       formVisible: false, form: this.blankForm(),
       rejDlg: { visible: false, recordId: '' }
@@ -110,24 +111,29 @@ export default {
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
-      const s = (k) => this.all.filter((x) => x.status === k).length
-      const hours = this.all.filter((x) => x.status === 'CONFIRMED').reduce((a, x) => a + (Number(x.hours) || 0), 0)
+      const s = (k) => this.statusCount(k)
       return [
         { key: 'p', label: '待认定', value: s('PENDING'), accent: 'warning' },
         { key: 'c', label: '已认定', value: s('CONFIRMED'), accent: 'success' },
-        { key: 'h', label: '已认定时长合计', value: Math.round(hours * 10) / 10, accent: 'primary' }
+        { key: 'h', label: '已认定条数', value: s('CONFIRMED'), accent: 'primary' }
       ]
     }
   },
   mounted() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    statusCount(key) {
+      if (this.statusCounts === null) return '—'
+      return this.statusCounts[key] != null ? this.statusCounts[key] : 0
+    },
     blankForm() { return { studentId: '', serviceName: '', hours: null, orgName: '', serviceDate: '', error: '' } },
     async load() {
-      this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getVolunteerRecords({ pageSize: 300 })
+      this.loading = true; this.errorMessage = ''; this.statusCounts = null
+      // 待服务端全量统计：工作台仅加载 API 单页上限。
+      const res = await studentAffairsApi.getVolunteerRecords({ pageSize: 200 })
       if (res.code === 0 && res.data) {
         this.all = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
         this.applyFilter()
       } else {
         this.errorMessage = res.message || '志愿记录加载失败'

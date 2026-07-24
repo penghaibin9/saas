@@ -657,26 +657,33 @@ def list_applications(user, batch_id=None, status=None, level=None, page=1, page
                       student_id=None):
     from app.models import AidApply, AidFamilyEconomy, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        conds = [AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False)]
+        base_conds = [AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False)]
         if batch_id:
-            conds.append(AidApply.batch_id == int(batch_id))
-        if status:
-            conds.append(AidApply.status == status)
+            base_conds.append(AidApply.batch_id == int(batch_id))
         if level:
-            conds.append(AidApply.final_level == level)
+            base_conds.append(AidApply.final_level == level)
         if student_id:
             try:
-                conds.append(AidApply.student_id == int(student_id))
+                base_conds.append(AidApply.student_id == int(student_id))
             except (TypeError, ValueError):
-                return [], 0
-        if allowed is not None:
-            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+                return [], 0, {"ALL": 0}
+        conds = list(base_conds)
+        if status:
+            statuses = [item.strip() for item in status.split(",") if item.strip()]
+            conds.append(AidApply.status.in_(statuses))
         student_conds = [
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
         ]
+        status_counts = status_counts_by_column(
+            db, AidApply, AidApply.status, [*base_conds, *student_conds],
+            join_student=StudentProfile, allowed_class_ids=allowed,
+        )
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         page, page_size = normalize_page(page, page_size)
         total = int(db.scalar(select(func.count()).select_from(AidApply)
                               .join(StudentProfile, StudentProfile.id == AidApply.student_id)
@@ -694,7 +701,7 @@ def list_applications(user, batch_id=None, status=None, level=None, page=1, page
             _apply_row(x, students.get(int(x.student_id)) if x.student_id else None,
                        families.get(x.id), has_pending_objection=int(x.id) in pending)
             for x in rows
-        ], total
+        ], total, status_counts
 
 
 def get_application(apply_id, user) -> dict:
@@ -922,6 +929,8 @@ def review_objection(objection_id, body, user) -> dict:
         if not o or o.is_deleted or o.tenant_id != _tid():
             raise not_found("异议不存在")
         _scope_or_403(db, o.student_id, user)
+        expected_version = body.get("version") if isinstance(body, dict) else getattr(body, "version", None)
+        check_version(o.version, expected_version)
         if o.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该异议已复核")
         o.status, o.result = "CLOSED", result

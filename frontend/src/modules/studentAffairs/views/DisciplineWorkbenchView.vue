@@ -179,7 +179,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
-      loading: true, listError: '', list: [],
+      loading: true, listError: '', list: [], statusCounts: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false, reconciling: false,
       activeStatus: 'ALL', typeFilter: '',
@@ -214,10 +214,9 @@ export default {
       return `当前学生筛选：#${id}`
     },
     statusFilters() {
-      const scoped = this.list.filter((x) => this._matchStudent(x))
-      const c = (arr) => scoped.filter((x) => arr.includes(x.status)).length
+      const c = (arr) => this.statusCounts === null ? '—' : arr.reduce((total, key) => total + (this.statusCounts[key] || 0), 0)
       return [
-        { key: 'ALL', label: '全部', count: scoped.length },
+        { key: 'ALL', label: '全部', count: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0) },
         { key: 'REVIEW', label: '审批中', count: c(REVIEW_NODES) },
         { key: 'REGISTERED', label: '待提交', count: c(['REGISTERED', 'RETURNED']) },
         { key: 'EFFECTIVE', label: '已生效', count: c(['EFFECTIVE']) },
@@ -327,15 +326,17 @@ export default {
     async loadList() {
       this.loading = true
       this.listError = ''
+      this.statusCounts = null
       const sid = this.studentFilter && this.studentFilter.studentId
       const res = await studentAffairsApi.getDisciplineCases({
         page: this.pagination.page, pageSize: this.pagination.pageSize,
-        status: this.statusMatch && this.statusMatch.length === 1 ? this.statusMatch[0] : '',
+        status: this.statusMatch && this.statusMatch.length ? this.statusMatch.join(',') : '',
         discType: this.typeFilter, studentId: sid || ''
       })
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
+        this.statusCounts = res.data.statusCounts || null
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.caseId === this.selected.caseId)

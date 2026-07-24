@@ -75,12 +75,18 @@ def _uid_int(user):
 
 def list_activities(user, activity_type=None, status=None, page=1, page_size=20):
     from app.models import AffairsActivity, AffairsActivitySignup
+    from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
-        conds = [AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False)]
+        base_conds = [AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False)]
         if activity_type:
-            conds.append(AffairsActivity.activity_type == activity_type)
+            base_conds.append(AffairsActivity.activity_type == activity_type)
+        conds = list(base_conds)
         if status:
-            conds.append(AffairsActivity.status == status)
+            statuses = [item.strip() for item in status.split(",") if item.strip()]
+            conds.append(AffairsActivity.status.in_(statuses))
+        status_counts = status_counts_by_column(
+            db, AffairsActivity, AffairsActivity.status, base_conds,
+        )
         rows = db.scalars(select(AffairsActivity).where(*conds).order_by(AffairsActivity.id.desc())).all()
         out = []
         for a in rows:
@@ -91,7 +97,7 @@ def list_activities(user, activity_type=None, status=None, page=1, page_size=20)
             out.append(_row(a, signup_count=sc))
         total = len(out)
         start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out[start:start + page_size], total, status_counts
 
 
 def create_activity(body, user) -> dict:
@@ -545,22 +551,34 @@ def list_volunteer(user, status=None, page=1, page_size=50):
     """志愿时长补录列表（数据范围过滤）。"""
     from app.models import AffairsVolunteerRecord, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        conds = [AffairsVolunteerRecord.tenant_id == _tid(), AffairsVolunteerRecord.is_deleted.is_(False)]
+        base_conds = [AffairsVolunteerRecord.tenant_id == _tid(), AffairsVolunteerRecord.is_deleted.is_(False)]
+        status_counts = status_counts_by_column(
+            db, AffairsVolunteerRecord, AffairsVolunteerRecord.status, base_conds,
+            join_student=StudentProfile, allowed_class_ids=allowed,
+        )
+        conds = list(base_conds)
         if status:
-            conds.append(AffairsVolunteerRecord.status == status)
-        rows = db.scalars(select(AffairsVolunteerRecord).where(*conds).order_by(
-            AffairsVolunteerRecord.id.desc())).all()
-        out = []
-        for r in rows:
-            s = db.get(StudentProfile, int(r.student_id)) if r.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_vol_row(r, s))
+            statuses = [s.strip() for s in str(status).split(",") if s.strip()]
+            if len(statuses) == 1:
+                conds.append(AffairsVolunteerRecord.status == statuses[0])
+            elif statuses:
+                conds.append(AffairsVolunteerRecord.status.in_(statuses))
+        stmt = select(AffairsVolunteerRecord).join(
+            StudentProfile, StudentProfile.id == AffairsVolunteerRecord.student_id
+        ).where(*conds, StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))
+        if allowed is not None:
+            stmt = stmt.where(StudentProfile.class_id.in_(allowed or {-1}))
+        rows = db.scalars(stmt.order_by(AffairsVolunteerRecord.id.desc())).all()
+        sids = {int(r.student_id) for r in rows if r.student_id}
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_(sids))).all()} if sids else {}
+        out = [_vol_row(r, students.get(int(r.student_id)) if r.student_id else None) for r in rows]
         total = len(out)
         start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out[start:start + page_size], total, status_counts
 
 
 def _vol_scope_or_403(db, student_id, user):
@@ -691,22 +709,34 @@ def submit_credit_appeal(body, user) -> dict:
 def list_credit_appeals(user, status=None, page=1, page_size=50):
     from app.models import AffairsCreditAppeal, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        conds = [AffairsCreditAppeal.tenant_id == _tid(), AffairsCreditAppeal.is_deleted.is_(False)]
+        base_conds = [AffairsCreditAppeal.tenant_id == _tid(), AffairsCreditAppeal.is_deleted.is_(False)]
+        status_counts = status_counts_by_column(
+            db, AffairsCreditAppeal, AffairsCreditAppeal.status, base_conds,
+            join_student=StudentProfile, allowed_class_ids=allowed,
+        )
+        conds = list(base_conds)
         if status:
-            conds.append(AffairsCreditAppeal.status == status)
-        rows = db.scalars(select(AffairsCreditAppeal).where(*conds).order_by(
-            AffairsCreditAppeal.id.desc())).all()
-        out = []
-        for a in rows:
-            s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_cappeal_row(a, s))
+            statuses = [s.strip() for s in str(status).split(",") if s.strip()]
+            if len(statuses) == 1:
+                conds.append(AffairsCreditAppeal.status == statuses[0])
+            elif statuses:
+                conds.append(AffairsCreditAppeal.status.in_(statuses))
+        stmt = select(AffairsCreditAppeal).join(
+            StudentProfile, StudentProfile.id == AffairsCreditAppeal.student_id
+        ).where(*conds, StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))
+        if allowed is not None:
+            stmt = stmt.where(StudentProfile.class_id.in_(allowed or {-1}))
+        rows = db.scalars(stmt.order_by(AffairsCreditAppeal.id.desc())).all()
+        sids = {int(a.student_id) for a in rows if a.student_id}
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_(sids))).all()} if sids else {}
+        out = [_cappeal_row(a, students.get(int(a.student_id)) if a.student_id else None) for a in rows]
         total = len(out)
         start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out[start:start + page_size], total, status_counts
 
 
 def review_credit_appeal(appeal_id, body, user) -> dict:

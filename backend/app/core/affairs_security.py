@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
-from app.core.permissions import ROLE_PERMISSIONS, is_super_admin
+from app.core.permissions import _db_granted, _granted, is_super_admin
 from app.services.db_service import _tid
 
 # ── 角色 → 范围类型 ──
@@ -197,7 +197,10 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
     u = user or {}
     role = (u.get("currentRoleCode") or "").upper()
     tenant_id = _tid()
-    granted = set(ROLE_PERMISSIONS.get(role, set()))
+    db_patterns = _db_granted(u)
+    granted = {"*"} if is_super_admin(u) else set(
+        db_patterns if db_patterns is not None else _granted(role)
+    )
     ctx = StudentAffairsSecurityContext(
         user_id=str(u.get("userId") or ""), login_name=u.get("loginName") or "",
         tenant_id=tenant_id, role_codes={role} if role else set(),

@@ -527,7 +527,9 @@ export default {
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
     isPlannerView() {
-      // DEV 默认隐藏 planned（避免 100+ 叶子拖慢侧栏）；点击顶栏 DEV 可临时开启施工地图
+      // 正式环境：学校业务菜单不展示施工地图 / planned / partial 待补强。
+      // 开发环境：顶栏 DEV 可临时开启施工地图；校管/平台在 DEV 默认可看能力目录。
+      if (import.meta.env && import.meta.env.PROD) return false
       if (import.meta.env && import.meta.env.DEV) return this.devPlannerView
       const rt =
         (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''

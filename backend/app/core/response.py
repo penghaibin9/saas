@@ -82,12 +82,20 @@ def fail(code: str, message: str, details: Any = None) -> dict:
 
 
 def paginate(items: list, total: int, page: int = 1, page_size: int = 20,
-             next_cursor: str | None = None) -> dict:
+             next_cursor: str | None = None, status_counts: dict | None = None,
+             updated_at: str | None = None, query_fingerprint: str | None = None) -> dict:
     """分页数据结构（放入 data），对齐冻结契约 §四。"""
-    return {
+    data = {
         "items": items,
         "page": page,
         "pageSize": page_size,
         "total": total,
         "nextCursor": next_cursor,
     }
+    if status_counts is not None:
+        data["statusCounts"] = status_counts
+    if updated_at is not None:
+        data["updatedAt"] = updated_at
+    if query_fingerprint is not None:
+        data["queryFingerprint"] = query_fingerprint
+    return data

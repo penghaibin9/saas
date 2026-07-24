@@ -750,7 +750,7 @@ def affairs_aid_pending(user: dict) -> dict:
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_aid_service as svc
-    items, _ = svc.list_applications(u, page=1, page_size=100)
+    items, _, _status_counts = svc.list_applications(u, page=1, page_size=100)
     nodes = {"CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW", "ADJUST_REVIEW"}
     out = [x for x in items if (x.get("status") or "") in nodes]
     out = _filter_by_assignee_todos(
@@ -793,7 +793,7 @@ def affairs_funding_pending(user: dict) -> dict:
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_funding_service as svc
-    items, _ = svc.list_applications(u, page=1, page_size=100)
+    items, _, _status_counts = svc.list_applications(u, page=1, page_size=100)
     nodes = {"COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"}
     out = [x for x in items if (x.get("status") or "") in nodes]
     out = _filter_by_assignee_todos(
@@ -825,7 +825,7 @@ def affairs_discipline_pending(user: dict) -> dict:
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_discipline_service as svc
-    items, _ = svc.list_cases(u, page=1, page_size=100)
+    items, _, _status_counts = svc.list_cases(u, page=1, page_size=100)
     nodes = {"COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "REMOVE_REVIEW"}
     out = [x for x in items if (x.get("status") or "") in nodes]
     out = _filter_by_assignee_todos(
@@ -1469,8 +1469,10 @@ def notify_set_preference(user: dict, body: dict) -> dict:
 def talk_list(user: dict, talk_type=None, status=None, student_id=None, page=1, page_size=20) -> dict:
     _require_teacher(user)
     from app.services import affairs_talk_service as talk
-    items, total = talk.list_talks(user, talk_type=talk_type, status=status,
-                                   student_id=student_id, page=page, page_size=page_size)
+    items, total, _status_counts = talk.list_talks(
+        user, talk_type=talk_type, status=status, student_id=student_id,
+        page=page, page_size=page_size,
+    )
     return {"items": items, "total": total}
 
 

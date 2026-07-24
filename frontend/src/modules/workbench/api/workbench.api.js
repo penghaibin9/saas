@@ -85,10 +85,14 @@ export async function fetchLayoutContext() {
       if (!currentRole.roleType && currentRole.roleCode) {
         currentRole.roleType = currentRole.roleCode
       }
-      ctxKey = [
+  ctxKey = [
+        String(ctx.tenantId || currentRole.tenantId || ''),
+        String(ctx.userId || currentRole.userId || ''),
         currentRole.contextId || '',
         currentRole.permissionVersion || '',
-        currentRole.roleCode || ''
+        currentRole.roleCode || '',
+        Array.isArray(permissionPatterns) ? [...permissionPatterns].sort().join(',') : '',
+        Array.isArray(ctx.moduleEntitlements) ? [...ctx.moduleEntitlements].sort().join(',') : '',
       ].join('|')
     }
     if (ctx.dataScope) {

@@ -177,7 +177,7 @@ export default {
   data() {
     return {
       attentionColumns: ATTENTION_COLUMNS,
-      loading: true, actioning: false, errorMessage: '', items: [], total: 0,
+      loading: true, actioning: false, errorMessage: '', items: [], total: 0, statusCounts: null,
       pagination: { page: 1, pageSize: 20, total: 0 }, filters: { level: '' },
       revDlg: { visible: false, row: null, who: '', error: '' },
       refDlg: { visible: false, studentId: '', level: 'FOCUS', channel: '校内咨询', reasonSummary: '', error: '' },
@@ -194,14 +194,12 @@ export default {
       return 'ready'
     },
     metricCards() {
-      const crisis = this.items.filter((r) => r.level === 'CRISIS' && r.status !== 'CLOSED').length
-      const following = this.items.filter((r) => r.status === 'FOLLOWING').length
-      const closed = this.items.filter((r) => r.status === 'CLOSED').length
+      const count = (status) => this.statusCounts === null ? '—' : (this.statusCounts[status] || 0)
       return [
         { key: 'total', label: '关注记录', value: this.total, accent: 'primary' },
-        { key: 'crisis', label: '在册危机', value: crisis, accent: crisis ? 'risk' : 'success' },
-        { key: 'following', label: '回访中', value: following, accent: following ? 'warning' : 'info' },
-        { key: 'closed', label: '已结案', value: closed, accent: 'success' }
+        { key: 'crisis', label: '在册危机', value: '—', accent: 'risk' },
+        { key: 'following', label: '回访中', value: count('FOLLOWING'), accent: 'info' },
+        { key: 'closed', label: '已结案', value: count('CLOSED'), accent: 'success' }
       ]
     }
   },
@@ -219,6 +217,7 @@ export default {
         })
         this.items = res.data.items || []
         this.total = res.data.total || this.items.length
+        this.statusCounts = res.data.statusCounts || null
         this.pagination.total = this.total
       } catch (e) {
         this.errorMessage = e.message || '心理关注名单加载失败'
