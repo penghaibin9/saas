@@ -170,6 +170,8 @@ class MessageDeliveryJob(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_message_delivery_job"
     __table_args__ = (
         Index("ix_msg_delivery_job_status_retry", "status", "next_retry_at", "id"),
+        UniqueConstraint("tenant_id", "campaign_id", "cursor_start",
+                         name="uk_msg_delivery_job_campaign_cursor"),
     )
 
     campaign_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)

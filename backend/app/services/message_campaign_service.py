@@ -22,21 +22,13 @@ def _uid(user: dict | None) -> int:
 
 
 def _utc_now() -> datetime:
-    return datetime.utcnow()
+    from app.core.timeutil import utc_now_naive
+    return utc_now_naive()
 
 
 def _parse_dt(raw) -> Optional[datetime]:
-    if not raw:
-        return None
-    if isinstance(raw, datetime):
-        return raw
-    s = str(raw).strip().replace("T", " ").replace("Z", "")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s[:19] if len(s) >= 19 else s, fmt)
-        except ValueError:
-            continue
-    return None
+    from app.core.timeutil import parse_api_datetime
+    return parse_api_datetime(raw)
 
 
 def _can_publish(user: dict) -> bool:
@@ -508,10 +500,27 @@ def publish_campaign(user: dict, campaign_id: str, *,
             {str(a.get("type") or "").upper() for a in rules}
             & {"ALL_STUDENT", "ALL_STAFF", "ALL_USERS"}
         )
+        # 同事务：状态迁移 + 投递作业；HTTP 只受理
+        use_async = delivery_svc.should_async(user_ids, force=school_scope)
+        enq = {"jobCount": 0, "async": False}
+        if use_async:
+            enq = delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
+        else:
+            camp.delivery_mode = "SYNC"
         db.commit()
 
-    result = delivery_svc.accept_and_deliver(
-        int(campaign_id), user_ids, force_async=school_scope)
+    if use_async:
+        result = delivery_svc.accept_and_deliver(
+            int(campaign_id), user_ids, force_async=True, already_enqueued=True)
+    else:
+        result = delivery_svc.deliver_campaign_all(int(campaign_id), user_ids)
+        result = {
+            "status": result.get("status") or "PUBLISHED",
+            "async": False,
+            "recipientCount": len(user_ids),
+            "deliveredCount": result.get("written") or result.get("deliveredCount") or 0,
+            "jobCount": 0,
+        }
     return {
         "campaignId": str(campaign_id),
         "status": result.get("status") or "PUBLISHING",
@@ -519,7 +528,7 @@ def publish_campaign(user: dict, campaign_id: str, *,
         "recipientCount": len(user_ids),
         "deliveredCount": result.get("deliveredCount") or 0,
         "async": bool(result.get("async")),
-        "jobCount": result.get("jobCount"),
+        "jobCount": result.get("jobCount") if result.get("jobCount") is not None else enq.get("jobCount"),
     }
 
 
@@ -598,10 +607,23 @@ def approve_campaign(user: dict, campaign_id: str, *, version: int,
         )).all():
             todo.status = "DONE"
             todo.version = int(todo.version or 0) + 1
+        use_async = delivery_svc.should_async(user_ids, force=school_scope)
+        if use_async:
+            delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
+        else:
+            camp.delivery_mode = "SYNC"
         db.commit()
 
-    result = delivery_svc.accept_and_deliver(
-        int(campaign_id), user_ids, force_async=school_scope)
+    if use_async:
+        result = delivery_svc.accept_and_deliver(
+            int(campaign_id), user_ids, force_async=True, already_enqueued=True)
+    else:
+        raw = delivery_svc.deliver_campaign_all(int(campaign_id), user_ids)
+        result = {
+            "status": raw.get("status") or "PUBLISHED",
+            "async": False,
+            "deliveredCount": raw.get("written") or raw.get("deliveredCount") or 0,
+        }
     return {
         "campaignId": str(campaign_id),
         "status": result.get("status") or "PUBLISHED",
@@ -771,10 +793,72 @@ def process_scheduled_campaigns(limit: int = 20) -> int:
             camp.recipient_count = len(user_ids)
             camp.published_at = now
             camp.version = int(camp.version or 0) + 1
+            use_async = delivery_svc.should_async(user_ids, force=school_scope)
+            if use_async:
+                delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
+            else:
+                camp.delivery_mode = "SYNC"
             db.commit()
-        delivery_svc.accept_and_deliver(cid, user_ids, force_async=school_scope)
+        if use_async:
+            delivery_svc.accept_and_deliver(cid, user_ids, force_async=True, already_enqueued=True)
+        else:
+            delivery_svc.deliver_campaign_all(cid, user_ids)
         done += 1
     return done
+
+
+def repair_publishing_without_jobs(limit: int = 20) -> int:
+    """修复 PUBLISHING 但无投递作业的断点状态：回退为 DRAFT 或重建空作业标记。
+
+    有 recipient_count>0 时尝试用受众规则重算并补建作业；否则标 PARTIAL_FAILED 允许运营介入。
+    """
+    from app.models import MessageCampaign, MessageDeliveryJob
+
+    repaired = 0
+    with session() as db:
+        rows = db.scalars(
+            select(MessageCampaign).where(
+                MessageCampaign.tenant_id == _tid(),
+                MessageCampaign.is_deleted.is_(False),
+                MessageCampaign.status == "PUBLISHING",
+            ).order_by(MessageCampaign.id.asc()).limit(limit)
+        ).all()
+        for camp in rows:
+            job_n = db.scalar(select(func.count()).select_from(MessageDeliveryJob).where(
+                MessageDeliveryJob.tenant_id == _tid(),
+                MessageDeliveryJob.campaign_id == camp.id,
+                MessageDeliveryJob.is_deleted.is_(False),
+            )) or 0
+            if job_n > 0:
+                continue
+            # 同步投递可能已完成但状态未收口
+            if int(camp.delivered_count or 0) >= int(camp.recipient_count or 0) > 0:
+                camp.status = "PUBLISHED"
+                camp.version = int(camp.version or 0) + 1
+                repaired += 1
+                continue
+            rules = audience_svc.audiences_from_campaign_rules(db, camp.id)
+            system_user = {
+                "userId": f"u_{camp.sender_user_id}",
+                "currentRoleCode": "SCHOOL_ADMIN",
+                "userType": "TEACHER",
+            }
+            try:
+                resolved = audience_svc.resolve_audience(system_user, rules)
+                user_ids = resolved.get("userIds") or []
+            except Exception:  # noqa: BLE001
+                user_ids = []
+            if user_ids:
+                delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
+                repaired += 1
+            else:
+                camp.status = "PARTIAL_FAILED"
+                camp.remark = ((camp.remark or "") + "\n自动修复：PUBLISHING 无作业且受众为空")[:500]
+                camp.version = int(camp.version or 0) + 1
+                repaired += 1
+        if repaired:
+            db.commit()
+    return repaired
 
 
 def process_expired_campaigns(limit: int = 50) -> int:

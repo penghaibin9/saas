@@ -21,7 +21,8 @@ _LEASE_SECONDS = 120
 
 
 def _utc_now() -> datetime:
-    return datetime.utcnow()
+    from app.core.timeutil import utc_now_naive
+    return utc_now_naive()
 
 
 def _backoff(attempt: int) -> int:
@@ -131,10 +132,52 @@ def deliver_campaign_all(campaign_id: int, user_ids: list[int]) -> dict:
     return last
 
 
+def enqueue_campaign_delivery_in_db(db, camp, user_ids: list[int], *,
+                                    batch_size: int = _BATCH) -> dict:
+    """在调用方事务内创建投递作业（不 commit）。用于发布状态与作业同事务。"""
+    from app.models import MessageDeliveryJob
+    from sqlalchemy import func
+
+    ids = [int(x) for x in (user_ids or []) if x]
+    camp.status = "PUBLISHING"
+    camp.recipient_count = len(ids)
+    camp.delivery_mode = "ASYNC" if ids else (camp.delivery_mode or "ASYNC")
+    camp.published_at = camp.published_at or _utc_now()
+    camp.version = int(camp.version or 0) + 1
+    if not ids:
+        camp.status = "PUBLISHED"
+        return {"ok": True, "jobCount": 0, "recipientCount": 0, "async": True}
+
+    existing = db.scalar(select(func.count()).select_from(MessageDeliveryJob).where(
+        MessageDeliveryJob.tenant_id == int(camp.tenant_id),
+        MessageDeliveryJob.campaign_id == int(camp.id),
+        MessageDeliveryJob.is_deleted.is_(False),
+    )) or 0
+    if existing:
+        return {"ok": True, "jobCount": int(existing), "recipientCount": len(ids),
+                "async": True, "idempotent": True}
+
+    jobs = 0
+    for i in range(0, len(ids), batch_size):
+        slice_ids = ids[i:i + batch_size]
+        db.add(MessageDeliveryJob(
+            tenant_id=int(camp.tenant_id),
+            campaign_id=int(camp.id),
+            cursor_start=i,
+            batch_size=batch_size,
+            status="PENDING",
+            recipient_slice_json=slice_ids,
+            created_by=0,
+        ))
+        jobs += 1
+    db.flush()
+    return {"ok": True, "jobCount": jobs, "recipientCount": len(ids), "async": True}
+
+
 def enqueue_campaign_delivery(campaign_id: int, user_ids: list[int], *,
                               batch_size: int = _BATCH) -> dict:
     """切片写入投递作业；HTTP 立即返回受理。"""
-    from app.models import MessageCampaign, MessageDeliveryJob
+    from app.models import MessageCampaign
 
     ids = [int(x) for x in (user_ids or []) if x]
     with session() as db:
@@ -145,31 +188,9 @@ def enqueue_campaign_delivery(campaign_id: int, user_ids: list[int], *,
         ))
         if not camp:
             return {"ok": False, "jobCount": 0}
-        camp.status = "PUBLISHING"
-        camp.recipient_count = len(ids)
-        camp.delivery_mode = "ASYNC"
-        camp.published_at = camp.published_at or _utc_now()
-        camp.version = int(camp.version or 0) + 1
-        if not ids:
-            camp.status = "PUBLISHED"
-            db.commit()
-            return {"ok": True, "jobCount": 0, "recipientCount": 0, "async": True}
-
-        jobs = 0
-        for i in range(0, len(ids), batch_size):
-            slice_ids = ids[i:i + batch_size]
-            db.add(MessageDeliveryJob(
-                tenant_id=_tid(),
-                campaign_id=int(campaign_id),
-                cursor_start=i,
-                batch_size=batch_size,
-                status="PENDING",
-                recipient_slice_json=slice_ids,
-                created_by=0,
-            ))
-            jobs += 1
+        result = enqueue_campaign_delivery_in_db(db, camp, ids, batch_size=batch_size)
         db.commit()
-        return {"ok": True, "jobCount": jobs, "recipientCount": len(ids), "async": True}
+        return result
 
 
 def should_async(user_ids: list[int], *, force: bool = False) -> bool:
@@ -179,11 +200,15 @@ def should_async(user_ids: list[int], *, force: bool = False) -> bool:
 
 
 def accept_and_deliver(campaign_id: int, user_ids: list[int], *,
-                       force_async: bool = False) -> dict:
-    """统一入口：大名单/全校范围异步，小名单同步。"""
-    if should_async(user_ids, force=force_async):
-        enq = enqueue_campaign_delivery(campaign_id, user_ids)
-        # 尽力立刻消费几批，降低演示延迟
+                       force_async: bool = False,
+                       already_enqueued: bool = False) -> dict:
+    """统一入口：大名单/全校范围异步，小名单同步。
+    already_enqueued=True：调用方已在同事务创建作业，此处只做尽力内联消费。"""
+    if already_enqueued or should_async(user_ids, force=force_async):
+        if not already_enqueued:
+            enq = enqueue_campaign_delivery(campaign_id, user_ids)
+        else:
+            enq = {"ok": True, "jobCount": None, "recipientCount": len(user_ids), "async": True}
         processed = claim_and_process_delivery_jobs(limit=5, worker_id="inline-publish")
         return {
             "status": "PUBLISHING",

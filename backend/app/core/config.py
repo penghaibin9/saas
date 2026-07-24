@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = True
     TIMEZONE_OFFSET_HOURS: int = 8
+    TENANT_TIMEZONE: str = "Asia/Shanghai"  # IANA；API 无偏移时间按此解释
     APP_VERSION: str = "1.0.0"
 
     # ── 认证（开发可用安全默认 JWT；生产由 assert_* 强制强密钥 + 关 mock-login）──

@@ -42,7 +42,10 @@ def _as_id(v):
 
 
 def _iso(v) -> str | None:
-    return v.isoformat(timespec="seconds") if isinstance(v, datetime) else (str(v) if v else None)
+    from app.core.timeutil import iso_utc
+    if isinstance(v, datetime):
+        return iso_utc(v)
+    return str(v) if v else None
 
 
 def _mask_phone(v: str | None) -> str:
@@ -241,12 +244,57 @@ def _as_optional_id(v, field_label: str):
 
 
 def create_student(body) -> dict:
+    """学号租户内不可重用：若存在软删除同号则恢复；否则新建。IntegrityError → DATA_CONFLICT。"""
+    from sqlalchemy.exc import IntegrityError
+
     with session() as db:
-        dup = db.scalars(select(StudentProfile).where(
+        active = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.student_no == body.studentNo,
             StudentProfile.is_deleted.is_(False))).first()
-        if dup:
+        if active:
             raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）")
+
+        voided = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.student_no == body.studentNo,
+            StudentProfile.is_deleted.is_(True))).first()
+        if voided:
+            voided.is_deleted = False
+            voided.real_name = body.realName
+            voided.gender = body.gender
+            voided.grade = body.grade
+            voided.college_id = _as_optional_id(body.collegeId, "学院ID")
+            voided.major_id = _as_optional_id(body.majorId, "专业ID")
+            voided.class_id = _as_optional_id(body.classId, "班级ID")
+            voided.student_status = "NORMAL"
+            voided.status = "ACTIVE"
+            voided.current_stage = ADMITTED
+            voided.remark = None
+            voided.version = int(voided.version or 0) + 1
+            db.add(StudentStageEvent(tenant_id=_tid(), student_id=voided.id, from_stage="RECYCLED",
+                                     to_stage=ADMITTED, reason="软删除后重建档（恢复）",
+                                     source_module="student"))
+            if body.phone:
+                from app.core.field_crypto import encrypt_field
+                enc = encrypt_field(body.phone)
+                c = db.scalars(select(StudentContact).where(
+                    StudentContact.tenant_id == _tid(), StudentContact.student_id == voided.id,
+                    StudentContact.contact_type == "PHONE")).first()
+                if c:
+                    c.contact_value_encrypted = enc
+                else:
+                    db.add(StudentContact(tenant_id=_tid(), student_id=voided.id, contact_type="PHONE",
+                                          contact_value_encrypted=enc, is_primary=True,
+                                          verified_status="UNVERIFIED"))
+            try:
+                db.commit()
+            except IntegrityError as e:
+                db.rollback()
+                raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
+            db.refresh(voided)
+            from app.services.student_projection_sync import sync_student_projections
+            sync_student_projections(voided.id)
+            return _student_row(voided, body.phone)
+
         s = StudentProfile(tenant_id=_tid(), student_no=body.studentNo, real_name=body.realName,
                            gender=body.gender, grade=body.grade,
                            college_id=_as_optional_id(body.collegeId, "学院ID"),
@@ -254,7 +302,11 @@ def create_student(body) -> dict:
                            class_id=_as_optional_id(body.classId, "班级ID"),
                            current_stage=ADMITTED, student_status="NORMAL", status="ACTIVE")
         db.add(s)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as e:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
         if body.phone:
             from app.core.field_crypto import encrypt_field
             db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
@@ -262,7 +314,11 @@ def create_student(body) -> dict:
                                   verified_status="UNVERIFIED"))
         db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=None,
                                  to_stage=ADMITTED, reason="建档", source_module="student"))
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
         db.refresh(s)
         return _student_row(s, body.phone)
 
@@ -291,6 +347,8 @@ def update_student(student_id, body) -> dict:
         db.commit()
         db.refresh(s)
         _org_names(db, [s])
+        from app.services.student_projection_sync import sync_student_projections
+        sync_student_projections(s.id)
         return _student_row(s, phone or _primary_phone(db, s.id))
 
 
@@ -562,26 +620,30 @@ def message_read(message_id) -> dict:
 
 # ═══════════ 审计 ═══════════
 
-def audit_insert(action: str, resource: str, detail: dict | None, result: str,
-                 *, tenant_id: int | None = None, resource_id: str | None = None) -> None:
-    """写一条安全审计。
-    tenant_id：显式指定审计归属租户（平台超管跨租户操作时传"被操作学校"，
-               使该校自身审计可见平台侧动作；默认沿用请求上下文租户）。
-    operator_id：从上下文 userId（db-<id>）解析真实操作人主键，不再恒为 None。"""
+def audit_insert_in_session(db, action: str, resource: str, detail: dict | None, result: str,
+                            *, tenant_id: int | None = None, resource_id: str | None = None) -> None:
+    """高危审计：写入调用方会话，随业务事务提交。"""
     user = get_current_user_ctx() or {}
     meta = get_request_meta()
     raw_uid = str(user.get("userId") or "")
     operator_id = int(raw_uid[3:]) if raw_uid.startswith("db-") and raw_uid[3:].isdigit() else None
+    db.add(SecurityAuditLog(
+        tenant_id=tenant_id if tenant_id is not None else _tid(),
+        operator_id=operator_id, operator_name=user.get("realName"),
+        current_role=user.get("currentRoleCode"), action=action, resource=resource,
+        resource_id=resource_id,
+        ip=meta.get("ip"), user_agent=meta.get("userAgent"),
+        request_method=meta.get("method"), request_path=meta.get("path"),
+        trace_id=get_trace_id(), result=result, detail_json=detail or {},
+    ))
+
+
+def audit_insert(action: str, resource: str, detail: dict | None, result: str,
+                 *, tenant_id: int | None = None, resource_id: str | None = None) -> None:
+    """写一条安全审计（独立会话提交）。高危场景优先用 audit_insert_in_session。"""
     with session() as db:
-        db.add(SecurityAuditLog(
-            tenant_id=tenant_id if tenant_id is not None else _tid(),
-            operator_id=operator_id, operator_name=user.get("realName"),
-            current_role=user.get("currentRoleCode"), action=action, resource=resource,
-            resource_id=resource_id,
-            ip=meta.get("ip"), user_agent=meta.get("userAgent"),
-            request_method=meta.get("method"), request_path=meta.get("path"),
-            trace_id=get_trace_id(), result=result, detail_json=detail or {},
-        ))
+        audit_insert_in_session(db, action, resource, detail, result,
+                                tenant_id=tenant_id, resource_id=resource_id)
         db.commit()
 
 
