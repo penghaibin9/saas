@@ -163,9 +163,13 @@ def _row(r: GraduationRiskCase, stu=None) -> dict:
 
 
 def list_risks(page: int, page_size: int, risk_code=None, level=None, status=None,
-               gd_student_id=None) -> tuple[list[dict], int]:
+               gd_student_id=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
+        if batch_id:
+            bid = int(batch_id)
+            scope_ids = [sid for sid in (scope_ids or []) if (
+                (s := db.get(GraduationStudent, sid)) is not None and s.batch_id == bid)]
         q = select(GraduationRiskCase).where(GraduationRiskCase.tenant_id == _tid(),
                                              GraduationRiskCase.is_deleted.is_(False),
                                              GraduationRiskCase.gd_student_id.in_(scope_ids or [-1]))

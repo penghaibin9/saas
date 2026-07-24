@@ -88,12 +88,28 @@ def gd_import_confirm(body: ExcelImportRows, user=Depends(get_current_user)):
     return success(result, message="导入完成")
 
 
-@router.post("/gd-students/export", summary="毕设学生台账导出 Excel（脱敏，写审计）")
-def gd_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
-              stage: Optional[str] = None, riskLevel: Optional[str] = None,
-              user=Depends(get_current_user)):
-    data = svc.export_students_xlsx(keyword=keyword, batch_id=batchId, stage=stage, risk_level=riskLevel)
-    audit_log.record("导出毕设学生", "graduation-student:export", detail={"rowCount": data["rowCount"]})
+@router.post("/gd-students/export", summary="毕设学生台账导出 Excel（脱敏，写审计；筛选与列表一致）")
+def gd_export(keyword: Optional[str] = None, classId: Optional[str] = None,
+              batchId: Optional[str] = None, stage: Optional[str] = None,
+              riskLevel: Optional[str] = None, advisorName: Optional[str] = None,
+              hasTopic: Optional[bool] = None, eligibility: Optional[str] = None,
+              studentGroup: Optional[str] = None, hasDefenseGroup: Optional[bool] = None,
+              gradQualStatus: Optional[str] = None, materialComplete: Optional[bool] = None,
+              archiveView: Optional[str] = None, user=Depends(get_current_user)):
+    data = svc.export_students_xlsx(
+        keyword=keyword, class_id=classId, batch_id=batchId, stage=stage, risk_level=riskLevel,
+        advisor_name=advisorName, has_topic=hasTopic, eligibility=eligibility,
+        student_group=studentGroup, has_defense_group=hasDefenseGroup,
+        grad_qual_status=gradQualStatus, material_complete=materialComplete,
+        archive_view=archiveView)
+    audit_log.record("导出毕设学生", "graduation-student:export",
+                     detail={"rowCount": data["rowCount"], "batchId": batchId,
+                             "filters": {"stage": stage, "riskLevel": riskLevel,
+                                         "hasTopic": hasTopic, "eligibility": eligibility,
+                                         "hasDefenseGroup": hasDefenseGroup,
+                                         "gradQualStatus": gradQualStatus,
+                                         "materialComplete": materialComplete,
+                                         "archiveView": archiveView}})
     return success(data)
 
 

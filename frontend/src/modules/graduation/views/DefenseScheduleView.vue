@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="答辩安排"
-    subtitle="分组 / 时间 / 地点 / 评委 · 自动检测评委与导师回避 · 发布后学生端即时可见"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -16,15 +16,14 @@
       </div>
     </template>
 
-    <GraduationBatchStrip />
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <EmptyState
       v-else-if="!rows.length"
-      title="还没有答辩组"
-      description="答辩要先建组：把学生分进组、排好时间地点，再发通知。评委可以从「答辩专家库」里选，不用每次重新录。"
+      :title="hasBatch ? '还没有答辩组' : '请先选择或创建毕设批次'"
+      :description="hasBatch ? '答辩要先建组：把学生分进组、排好时间地点，再发通知。评委可以从「答辩专家库」里选，不用每次重新录。' : '顶部批次条选择当前工作批次后，再安排答辩。'"
     >
-      <template #actions>
+      <template v-if="hasBatch" #actions>
         <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/defense/groups/create')">＋ 新增答辩组</button>
         <button class="mp-btn" @click="$router.push('/admin/graduation/more?panel=experts')">先维护答辩专家库</button>
         <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-defense-grade')">怎么安排答辩？</button>
@@ -90,16 +89,17 @@ import { AppExportButton, AppPageGuide } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
-
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'DefenseScheduleView',
-  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton, AppConfirmDialog },
+  components: { AppPageGuide, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       loading: true, error: '', rows: [], submitting: false,
       filterKey: 'all',
       confirm: { visible: false, title: '', message: '', row: null },
@@ -113,6 +113,14 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
+    pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
+      return `${batch}分组 / 时间 / 地点 / 评委 · 自动检测评委与导师回避 · 发布后学生端即时可见`
+    },
     summaryChips() {
       const r = this.rows
       return [
@@ -136,33 +144,44 @@ export default {
     },
     canManage() {
       const pa = this.ctx.permissionActions.manageDefense
-      return !!(pa && pa.visible && pa.allowed)
+      return !!(pa && pa.visible && pa.allowed) && this.ctx.writeEnabled !== false
     },
     manageReason() {
+      if (this.ctx.writeEnabled === false) return '写操作已禁用'
       const pa = this.ctx.permissionActions.manageDefense
       return pa && !pa.allowed ? pa.reason : ''
     },
     canPublish() {
       const pa = this.ctx.permissionActions.publishDefense
-      return !!(pa && pa.visible && pa.allowed)
+      return !!(pa && pa.visible && pa.allowed) && this.ctx.writeEnabled !== false
     },
     publishReason() {
+      if (this.ctx.writeEnabled === false) return '写操作已禁用'
       const pa = this.ctx.permissionActions.publishDefense
       return pa && !pa.allowed ? pa.reason : ''
     },
     exportPerm() {
       const pa = this.ctx.permissionActions.exportDefense || {}
-      return { visible: !!pa.visible, allowed: !!pa.allowed }
+      return { visible: !!pa.visible && this.hasBatch, allowed: !!pa.allowed }
     },
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [{ key: 'manageDefense', label: '＋ 新增答辩组', variant: 'primary' }]
         .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+        .map((a) => ({
+          ...a,
+          disabled: !pa[a.key].allowed || this.ctx.writeEnabled === false || !this.hasBatch,
+          disabledReason: this.ctx.writeEnabled === false ? '写操作已禁用' : (!this.hasBatch ? '请先选择批次' : pa[a.key].reason)
+        }))
     }
   },
   created() {
     this.load()
+  },
+  watch: {
+    'batchStore.selectedBatchId'() {
+      this.load()
+    }
   },
   methods: {
     async onToolbar(key) {
@@ -171,7 +190,14 @@ export default {
       }
     },
     exportDefenseFn() {
-      return graduationApi.exportDefenseGroups()
+      const hint = exportFilenameHint(this.batchStore.selectedBatchName, '答辩安排')
+      const p = { batchId: this.batchStore.selectedBatchId }
+      return graduationApi.exportDefenseGroups(p).then((res) => {
+        if (res.code === 0 && res.data) {
+          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        }
+        return res
+      })
     },
     openCreate() {
       this.$router.push('/admin/graduation/defense/groups/create')
@@ -213,9 +239,19 @@ export default {
       }
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = ''
+        this.rows = []
+        return
+      }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getDefenseSchedules({ page: 1, pageSize: 50 })
+      const res = await graduationApi.getDefenseSchedules({
+        page: 1,
+        pageSize: 50,
+        batchId: this.batchStore.selectedBatchId
+      })
       if (res.code === 0) this.rows = res.data.list
       else this.error = res.message
       this.loading = false

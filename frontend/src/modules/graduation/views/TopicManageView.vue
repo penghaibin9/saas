@@ -8,15 +8,19 @@
     <template #actions>
       <div class="gd-actions">
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
-        <AppExportButton :export-fn="exportTopicsFn">导出 Excel</AppExportButton>
+        <AppExportButton v-if="hasBatch" :export-fn="exportTopicsFn">导出 Excel</AppExportButton>
       </div>
     </template>
 
     <div class="mp-stack">
-      <GraduationBatchStrip />
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+      <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
+      <EmptyState
+        v-else-if="!hasBatch"
+        title="请先选择或创建毕设批次"
+        description="顶部批次条选择当前工作批次后，再查看已入池课题。"
+      />
       <!-- 空态分两种：筛选无果 ≠ 题目库还没入池。后者是跨页依赖，老师最容易卡在这里，
            所以直接给去题目库的按钮，而不是只写一句「请先在题目库申报」。 -->
       <EmptyState
@@ -120,21 +124,22 @@ import { AppExportButton, AppPageGuide } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { GD_TOPIC_STATUS } from '@/modules/graduation/constants/graduation-topic.constants'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', dateStart: '', dateEnd: '' })
 
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'TopicManageView',
-  components: { AppPageGuide, GraduationBatchStrip,
+  components: { AppPageGuide, 
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
     LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       loading: true, error: '', submitting: false,
       rows: [], filters: EMPTY_FILTERS(),
       pagination: { page: 1, pageSize: 10, total: 0 },
@@ -143,6 +148,9 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
     /** 是否处于筛选态：用于区分「筛选没结果」和「题目库真的还没入池」两种空态 */
     filtered() {
       const f = this.filters
@@ -167,15 +175,23 @@ export default {
     toolbarActions() {
       return [
         { key: 'topicLib', label: '题目库申报', variant: 'primary' },
-        { key: 'importTopics', label: '导入 Excel' }
+        { key: 'importTopics', label: '导入 Excel', disabled: !this.hasBatch || this.ctx.writeEnabled === false }
       ]
     },
     pageSubtitle() {
-      return `共 ${this.pagination.total} 个已入池课题 · 课题停用不影响已确认学生`
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
+      return `${batch}共 ${this.pagination.total} 个已入池课题 · 课题停用不影响已确认学生`
     }
   },
   created() {
     this.load()
+  },
+  watch: {
+    'batchStore.selectedBatchId'() {
+      this.pagination.page = 1
+      this.load()
+    }
   },
   methods: {
     canEdit(row) {
@@ -187,11 +203,18 @@ export default {
         pageSize: this.pagination.pageSize,
         keyword: this.filters.keyword || undefined,
         status: this.filters.status || undefined,
+        batchId: this.batchStore.selectedBatchId || undefined,
         reviewStatus: 'APPROVED',
         archiveView: 'active'
       }
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.rows = []
+        this.pagination.total = 0
+        return
+      }
       this.loading = true
       this.error = ''
       const res = await gdTopicApi.getTopics(this.buildParams())

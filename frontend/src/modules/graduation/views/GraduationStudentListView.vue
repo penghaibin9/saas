@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="毕设学生"
+    :title="pageTitle"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
@@ -13,7 +13,6 @@
     </template>
 
     <div class="mp-stack">
-      <GraduationBatchStrip />
       <!-- 页内视图页签：同一名单的不同工作视图（原三级菜单入口收口至此，?panel= 深链不变） -->
       <div class="mp-tabs">
         <button
@@ -24,15 +23,15 @@
           @click="switchPanel(p.key)"
         >{{ p.label }}</button>
       </div>
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+      <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <!-- 名单页签且非筛选态才给「怎么开始」的出路：其余页签的空态多是好消息（没缺口/没待办），
            给按钮反而误导。动作直接复用 onToolbar，不另起一套跳转。 -->
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
         <template v-if="showRosterEmptyActions" #actions>
-          <button class="mp-btn mp-btn--primary" @click="onToolbar('create')">＋ 建档</button>
-          <button class="mp-btn" @click="onToolbar('import')">导入 Excel</button>
+          <button class="mp-btn mp-btn--primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</button>
+          <button class="mp-btn" :disabled="!writeEnabled" @click="onToolbar('import')">导入 Excel</button>
           <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</button>
         </template>
       </EmptyState>
@@ -183,10 +182,12 @@ import {
   GD_STAGE, GD_RISK_LEVEL, HAS_TOPIC, GD_ELIGIBILITY, GD_GRAD_QUAL,
   HAS_DEFENSE_GROUP, MATERIAL_COMPLETE, ARCHIVE_VIEW
 } from '@/modules/graduation/constants/graduation-student.constants'
+import { buildStudentQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({
-  keyword: '', batchId: '', stage: '', riskLevel: '', hasTopic: '',
+  keyword: '', stage: '', riskLevel: '', hasTopic: '',
   eligibility: '', studentGroup: '', hasDefenseGroup: '', gradQualStatus: '',
   materialComplete: '', archiveView: '', dateStart: '', dateEnd: ''
 })
@@ -292,14 +293,13 @@ const STAGE_TONE = {
   MIDTERM: 'warning', FINAL_CHECK: 'processing', DEFENSE: 'warning', COMPLETED: 'info', ARCHIVED: 'success'
 }
 
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
-
 export default {
   name: 'GraduationStudentListView',
-  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
+  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       loading: true, error: '', submitting: false, activePanel: 'roster',
       panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
@@ -311,6 +311,12 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
+    writeEnabled() {
+      return this.ctx.writeEnabled !== false
+    },
     /** 是否处于筛选态（archiveView 是页签自带的视图切换，不算用户筛选） */
     filtered() {
       const f = this.filters
@@ -318,7 +324,7 @@ export default {
     },
     /** 只有「学生名单」页签、且不是筛选没结果时，空态才给建档/导入的出路 */
     showRosterEmptyActions() {
-      return this.activePanel === 'roster' && !this.filtered
+      return this.hasBatch && this.activePanel === 'roster' && !this.filtered
     },
     columns() {
       return COLUMN_PRESETS[this.activePanel] || COLUMN_PRESETS.default
@@ -329,8 +335,7 @@ export default {
     filterFields() {
       const groupOpts = this.groupOpts.map((g) => ({ value: g, label: g }))
       const base = [
-        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' },
-        { key: 'batchId', label: '批次', type: 'graduation-batch' }
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' }
       ]
       const panelFields = {
         roster: [
@@ -352,32 +357,44 @@ export default {
       return [...base, ...(panelFields[this.activePanel] || panelFields.roster)]
     },
     toolbarActions() {
+      const writeOff = !this.writeEnabled
       const base = []
       if (this.activePanel === 'roster') {
-        base.push({ key: 'create', label: '＋ 建档', variant: 'primary' }, { key: 'import', label: '导入 Excel' })
+        base.push(
+          { key: 'create', label: '＋ 建档', variant: 'primary', disabled: writeOff },
+          { key: 'import', label: '导入 Excel', disabled: writeOff }
+        )
       }
       if (this.activePanel === 'grouping') {
-        base.push({ key: 'batchGroup', label: '批量分组', variant: 'primary', disabled: !this.selectedIds.length })
+        base.push({ key: 'batchGroup', label: '批量分组', variant: 'primary', disabled: writeOff || !this.selectedIds.length })
       }
       if (this.activePanel === 'archive' && this.filters.archiveView !== 'archived') {
-        base.push({ key: 'batchArchive', label: '批量归档', variant: 'primary', disabled: !this.selectedIds.length })
+        base.push({ key: 'batchArchive', label: '批量归档', variant: 'primary', disabled: writeOff || !this.selectedIds.length })
       }
       return base
     },
     exportVisible() {
+      if (!this.hasBatch) return false
       if (this.activePanel === 'grouping' || this.activePanel === 'archive') return false
       return true
     },
+    pageTitle() {
+      const name = this.batchStore.selectedBatchName
+      return name ? `毕设学生 · ${name}` : '毕设学生'
+    },
     pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
       const hint = PANEL_HINTS[this.activePanel] || ''
       const sel = this.selectablePanel && this.selectedIds.length ? ` · 已选 ${this.selectedIds.length}` : ''
-      return `共 ${this.total} 人 · ${hint}${sel} · 学号默认脱敏`
+      return `${this.batchStore.selectedBatchName || '当前批次'} · 共 ${this.total} 人 · ${hint}${sel} · 学号默认脱敏`
     },
     emptyTitle() {
+      if (!this.hasBatch) return '请先选择或创建毕设批次'
       const m = { eligibility: '暂无待认定学生', materials: '暂无材料缺口学生', defense: '暂无待分配答辩组学生', archive: '暂无归档记录' }
       return m[this.activePanel] || '暂无毕设学生'
     },
     emptyDesc() {
+      if (!this.hasBatch) return '顶部批次条选择当前工作批次后，再查看本页名单与进度。'
       // 按钮已经写了「做什么」，描述就该讲「为什么」和「注意什么」，不重复按钮文字。
       if (this.activePanel === 'roster') {
         return this.filtered
@@ -393,6 +410,11 @@ export default {
       handler(panel) {
         this.applyPanel((panel || 'roster').toString())
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.selectedIds = []
+      this.load()
     }
   },
   created() {
@@ -427,22 +449,20 @@ export default {
       if (g.code === 0) this.groupOpts = g.data || []
     },
     buildQueryParams() {
-      const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
-      const boolKeys = ['hasTopic', 'hasDefenseGroup', 'materialComplete']
-      boolKeys.forEach((k) => {
-        if (p[k] === 'true') p[k] = true
-        else if (p[k] === 'false') p[k] = false
-        else delete p[k]
+      return buildStudentQuery(this.filters, {
+        page: this.page,
+        pageSize: this.pageSize,
+        batchId: this.batchStore.selectedBatchId
       })
-      if (!p.archiveView) {
-        delete p.archiveView
-      }
-      ;['batchId', 'stage', 'riskLevel', 'eligibility', 'studentGroup', 'gradQualStatus'].forEach((k) => {
-        if (!p[k]) delete p[k]
-      })
-      return p
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = ''
+        this.rows = []
+        this.total = 0
+        return
+      }
       this.loading = true
       this.error = ''
       const res = await gdStudentApi.getStudents(this.buildQueryParams())
@@ -457,6 +477,7 @@ export default {
     },
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
+      if (!this.writeEnabled && ['create', 'import', 'batchGroup', 'batchArchive'].includes(key)) return
       if (key === 'create') {
         this.$router.push({ path: '/admin/graduation/students/create', query: this.studentReturnQuery() })
       }
@@ -553,11 +574,18 @@ export default {
       this.load()
     },
     exportStudentsFn() {
-      const p = { ...this.filters }
-      ;['batchId', 'stage', 'riskLevel', 'eligibility', 'studentGroup', 'gradQualStatus'].forEach((k) => {
-        if (!p[k]) delete p[k]
+      const tab = PANEL_TABS.find((p) => p.key === this.activePanel)
+      const hint = exportFilenameHint(this.batchStore.selectedBatchName, tab?.label || '毕设学生')
+      const p = {
+        ...buildStudentQuery(this.filters, { batchId: this.batchStore.selectedBatchId }),
+        filenameHint: hint
+      }
+      return gdStudentApi.exportStudents(p).then((res) => {
+        if (res.code === 0 && res.data) {
+          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        }
+        return res
       })
-      return gdStudentApi.exportStudents(p)
     }
   }
 }

@@ -249,11 +249,20 @@ def _prop_row(p: GraduationProposal, stu=None) -> dict:
             "statusLabel": L_MAT.get(p.status, p.status)}
 
 
-def list_proposals(page, ps, keyword=None, status=None):
+
+def _match_batch(stu, batch_id) -> bool:
+    """学生是否属于指定批次；batch_id 为空时不限制。"""
+    if not batch_id:
+        return True
+    if not stu or not getattr(stu, "batch_id", None):
+        return False
+    return str(stu.batch_id) == str(batch_id)
+
+def list_proposals(page, ps, keyword=None, status=None, batch_id=None):
     """开题材料列表。status=NOT_SUBMITTED 时派生"已过选题但尚未提交开题报告"的学生行（用于催交）。"""
     with session() as db:
         if status == "NOT_SUBMITTED":
-            return _page(_not_submitted_proposals(db, keyword), page, ps)
+            return _page(_not_submitted_proposals(db, keyword, batch_id=batch_id), page, ps)
         q = select(GraduationProposal).where(GraduationProposal.tenant_id == _tid(),
                                              GraduationProposal.is_deleted.is_(False))
         if status:
@@ -264,16 +273,18 @@ def list_proposals(page, ps, keyword=None, status=None):
             stu = _stu_of(db, p.gd_student_id)
             if not stu or not can_access_student(db, stu):
                 continue
+            if not _match_batch(stu, batch_id):
+                continue
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_prop_row(p, stu))
         # 全部页签时也把"未提交"学生并入，便于一屏监管
         if not status:
-            items += _not_submitted_proposals(db, keyword)
+            items += _not_submitted_proposals(db, keyword, batch_id=batch_id)
         return _page(items, page, ps)
 
 
-def _not_submitted_proposals(db, keyword=None) -> list:
+def _not_submitted_proposals(db, keyword=None, batch_id=None) -> list:
     """派生未提交开题报告的学生：已确认选题（topic_id 存在或阶段已过选题中）且无任何开题记录。"""
     have = {r for (r,) in db.execute(select(GraduationProposal.gd_student_id).where(
         GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False))).all()}
@@ -283,6 +294,8 @@ def _not_submitted_proposals(db, keyword=None) -> list:
     rows = []
     for s in stus:
         if not can_access_student(db, s):
+            continue
+        if not _match_batch(s, batch_id):
             continue
         if s.id in have:
             continue
@@ -383,7 +396,7 @@ def proposal_stats() -> dict:
                      "count": int(db.scalar(select(func.count()).select_from(GraduationProposal).where(
                          *base, GraduationProposal.status == s)) or 0)}
                      for s in ("PENDING_REVIEW", "APPROVED", "REJECTED")]
-        not_submitted = len(_not_submitted_proposals(db))
+        not_submitted = len(_not_submitted_proposals(db, batch_id=batch_id))
         return {"total": total, "byStatus": by_status, "notSubmitted": not_submitted}
 
 
@@ -491,11 +504,11 @@ def remind_proposal(gd_student_id, channel="站内消息") -> dict:
         return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True}
 
 
-def export_proposals_xlsx(status=None) -> dict:
+def export_proposals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     """开题材料台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    items, _ = list_proposals(1, 100000, status=status)
+    items, total = list_proposals(1, 100000, keyword=keyword, status=status, batch_id=batch_id)
     headers = ["学生", "班级", "课题", "指导教师", "版本", "是否重交", "提交时间", "状态"]
     operator, _role = _op()
     title = f"开题材料台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
@@ -520,12 +533,12 @@ def export_proposals_xlsx(status=None) -> dict:
     import base64
     import io
     with session() as db:
-        _audit(db, "PROPOSAL", "export", "导出开题材料台账", f"共 {len(items)} 行，状态={status or '全部'}")
+        _audit(db, "PROPOSAL", "export", "导出开题材料台账", f"共 {total} 行，状态={status or '全部'}，批次={batch_id or '全部'}")
         db.commit()
     buf = io.BytesIO()
     wb.save(buf)
     return {"filename": f"开题材料台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": len(items),
+            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": total,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
@@ -544,11 +557,11 @@ def _final_row(f: GraduationFinal, stu=None) -> dict:
 FINAL_TYPES = ("初稿", "定稿")
 
 
-def list_finals(page, ps, keyword=None, status=None):
+def list_finals(page, ps, keyword=None, status=None, batch_id=None):
     """成果提交列表。status=NOT_SUBMITTED 时派生"已进入指导/中期/成果阶段但未提交论文"的学生行。"""
     with session() as db:
         if status == "NOT_SUBMITTED":
-            return _page(_not_submitted_finals(db, keyword), page, ps)
+            return _page(_not_submitted_finals(db, keyword, batch_id=batch_id), page, ps)
         q = select(GraduationFinal).where(GraduationFinal.tenant_id == _tid(),
                                           GraduationFinal.is_deleted.is_(False))
         if status:
@@ -559,15 +572,17 @@ def list_finals(page, ps, keyword=None, status=None):
             stu = _stu_of(db, f.gd_student_id)
             if not stu or not can_access_student(db, stu):
                 continue
+            if not _match_batch(stu, batch_id):
+                continue
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_final_row(f, stu))
         if not status:
-            items += _not_submitted_finals(db, keyword)
+            items += _not_submitted_finals(db, keyword, batch_id=batch_id)
         return _page(items, page, ps)
 
 
-def _not_submitted_finals(db, keyword=None) -> list:
+def _not_submitted_finals(db, keyword=None, batch_id=None) -> list:
     """派生未提交论文的学生：已进入指导/中期/成果检查/答辩阶段且无任何成果记录。"""
     have = {r for (r,) in db.execute(select(GraduationFinal.gd_student_id).where(
         GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False))).all()}
@@ -577,6 +592,8 @@ def _not_submitted_finals(db, keyword=None) -> list:
     rows = []
     for s in stus:
         if not can_access_student(db, s):
+            continue
+        if not _match_batch(s, batch_id):
             continue
         if s.id in have or s.stage not in ("GUIDING", "MIDTERM", "FINAL_CHECK", "DEFENSE"):
             continue
@@ -745,11 +762,11 @@ def remind_final(gd_student_id, channel="站内消息") -> dict:
         return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True}
 
 
-def export_finals_xlsx(status=None) -> dict:
+def export_finals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     """成果提交台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    items, _ = list_finals(1, 100000, status=status)
+    items, total = list_finals(1, 100000, keyword=keyword, status=status, batch_id=batch_id)
     headers = ["学生", "班级", "课题", "指导教师", "成果类型", "版本", "查重率", "查重状态", "提交时间", "状态"]
     operator, _role = _op()
     title = f"成果提交台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
@@ -774,12 +791,12 @@ def export_finals_xlsx(status=None) -> dict:
     import base64
     import io
     with session() as db:
-        _audit(db, "FINAL", "export", "导出成果提交台账", f"共 {len(items)} 行，状态={status or '全部'}")
+        _audit(db, "FINAL", "export", "导出成果提交台账", f"共 {total} 行，状态={status or '全部'}，批次={batch_id or '全部'}")
         db.commit()
     buf = io.BytesIO()
     wb.save(buf)
     return {"filename": f"成果提交台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": len(items),
+            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": total,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
@@ -808,12 +825,22 @@ def _can_access_defense_group(db, group: GraduationDefenseGroup) -> bool:
     return any(can_access_student(db, student) for student in _assigned_students(db, group.id))
 
 
-def list_defense_groups(page, ps, keyword=None):
+def list_defense_groups(page, ps, keyword=None, batch_id=None):
     with session() as db:
         rows = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(),
             GraduationDefenseGroup.is_deleted.is_(False)).order_by(GraduationDefenseGroup.id)).all()
-        items = [_def_row(g) for g in rows if _can_access_defense_group(db, g)]
+        items = []
+        bid = int(batch_id) if batch_id else None
+        for g in rows:
+            if not _can_access_defense_group(db, g):
+                continue
+            if bid is not None:
+                stus = _assigned_students(db, g.id)
+                # 空组可在当前批次下继续编排；已分配学生须至少有一人属于该批次
+                if stus and not any(s.batch_id == bid for s in stus):
+                    continue
+            items.append(_def_row(g))
         if keyword:
             kw = keyword.strip()
             items = [i for i in items if kw in i["groupName"]]
@@ -1139,9 +1166,13 @@ def list_audit(page, ps, biz_type=None, keyword=None):
         return _page(items, page, ps)
 
 
-def get_dashboard() -> dict:
+def get_dashboard(batch_id=None) -> dict:
     with session() as db:
         visible_ids = accessible_student_ids(db, _tid())
+        if batch_id:
+            bid = int(batch_id)
+            visible_ids = [sid for sid in visible_ids if (
+                (s := db.get(GraduationStudent, sid)) is not None and s.batch_id == bid)]
         total = len(visible_ids)
         pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
@@ -1213,9 +1244,15 @@ def get_dashboard() -> dict:
         # 当前批次信息回真：优先取进行中(RUNNING)批次，否则取最近一个未作废批次；无批次时兜底
         _BATCH_LABEL = {"DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
                         "ARCHIVED": "已归档", "VOIDED": "已作废"}
-        cur_batch = db.scalars(select(GraduationBatch).where(
-            GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),
-            GraduationBatch.status == "RUNNING").order_by(GraduationBatch.id.desc())).first()
+        cur_batch = None
+        if batch_id:
+            cur_batch = db.get(GraduationBatch, int(batch_id))
+            if cur_batch and (cur_batch.tenant_id != _tid() or cur_batch.is_deleted):
+                cur_batch = None
+        if not cur_batch:
+            cur_batch = db.scalars(select(GraduationBatch).where(
+                GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),
+                GraduationBatch.status == "RUNNING").order_by(GraduationBatch.id.desc())).first()
         if not cur_batch:
             cur_batch = db.scalars(select(GraduationBatch).where(
                 GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),

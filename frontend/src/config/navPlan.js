@@ -1,5 +1,6 @@
 import { SYSTEM_MANAGEMENT_CATALOG } from '../modules/system/systemManagementCatalog.js'
 import { PLATFORM_MANAGEMENT_CATALOG } from '../modules/platform/platformManagementCatalog.js'
+import { buildGraduationNavMods } from '../modules/graduation/config/graduationWorkspaces.js'
 
 /**
  * 菜单规划总纲（PC-NAV-PLAN）——「完整三级目录规划版」唯一事实源。
@@ -100,68 +101,37 @@ export const NAV_PLAN = [
 
   /* ═══════════ 一级②：学工中心 ═══════════ */
   grp('student-affairs', '学工中心', 'studentAffairs', [
-    /* 本组 1:1 对齐 docs/00-项目入口与总控/施工图/施工图-02-学工中心.html（14 个二级 + 数字迎新独立成二级 + 在校服务过渡尾）。
-       状态以代码真实路由为准：施工图上标「待施工」但代码已建的（请假 4/4、班级 4/4），此处按已实现标 I。 */
-    // 施工图卡·学工工作台（B包第5步·待施工）
+    /* 本组对齐学工中心业务入口；状态以代码真实路由为准。 */
     mod('sa-workbench', '学工工作台', null, [
       I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
       /* 旧辅导员双首页已 redirect → /；菜单只保留统一「我的工作台」 */
-      I('我的工作台', '/', 'workbench.home.view'),
-      I('辅导员考评（指标/评分/申诉）', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
+      I('我的工作台', '/', 'workbench.home.view')
     ]),
-    // 施工图卡·学生画像（已有底座·6 三级已实现）
-    mod('sa-profile', '学生画像', '/admin/student', [
-      I('学生列表（学生主档）', '/admin/student/list', 'studentAffairs.student.view'),
+    // 正式菜单只保留学生主档列表；学生360从主档详情进入；旧 /admin/student-affairs/profile 保留 redirect
+    mod('sa-profile', '学生主档', '/admin/student/list', [
+      I('学生列表', '/admin/student/list', 'studentAffairs.student.view'),
       I('学籍状态摘要', '/admin/student/status', 'studentAffairs.student.view'),
       I('风险标签', '/admin/student/risk-tags', 'studentAffairs.student.view'),
       I('信息更正审核', '/admin/student/corrections', 'studentAffairs.student.view'),
-      I('身份核验（现有）', '/admin/student/identity', 'studentAffairs.student.view'),
-      I('导入导出（现有）', '/admin/student/import-export', 'studentAffairs.student.view')
+      I('身份核验', '/admin/student/identity', 'studentAffairs.student.view'),
+      I('导入导出', '/admin/student/import-export', 'studentAffairs.student.view'),
+      H('学生360详情', '/admin/student-affairs/profile', 'studentAffairs.student.view', 'DETAIL')
     ]),
-    // 施工图卡·班级与辅导员（正式入口；旧 counselor-assessment 已 redirect）
+    // 班级列表/画像/材料原指向同一路由 → 收敛为「班级管理」；画像/材料从班级页内进入
     mod('sa-classes', '班级与辅导员', null, [
-      I('班级列表', '/admin/campus-service/classes', 'studentAffairs.class.view'),
-      I('班级画像', '/admin/campus-service/classes', 'studentAffairs.class.view'),
-      I('班级材料', '/admin/campus-service/classes', 'studentAffairs.class.view'),
+      I('班级管理', '/admin/campus-service/classes', 'studentAffairs.class.view'),
       I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
-    // 数字迎新：学工中心独立二级（甲方明确）·19 三级已实现
-    // 2026-07-18 真实点击巡检发现：以下 19 个叶子此前 I() 全部漏传第三参 permissionKey，
-    // 导致菜单对任何角色都不过滤显示——辅导员(COUNSELOR)在菜单里能看到并点进全部页面，
-    // 但后端 studentAffairs.orientation.view 从未授予该角色，进页面即 403，"看得见点不进"。
-    // 补上 permissionKey 只是让菜单如实反映后端真实权限（SCHOOL_ADMIN 等 "*" 通配角色不受影响，
-    // 仍可见全部）；"辅导员该不该有迎新权限"本身是业务决策，不在本次修复范围内，见历史欠账记录。
-    mod('sa-orientation', '数字迎新', '/admin/orientation', [
-      I('迎新看板', '/admin/orientation', 'studentAffairs.orientation.view'),
-      I('迎新批次', '/admin/orientation/batches', 'studentAffairs.orientation.view'),
-      I('新生数据', '/admin/orientation/data', 'studentAffairs.orientation.view'),
-      I('新生信息核验', '/admin/orientation/verify', 'studentAffairs.orientation.view'),
-      I('报到资格', '/admin/orientation/qualification', 'studentAffairs.orientation.view'),
-      I('报到流程配置', '/admin/orientation/flow-config', 'studentAffairs.orientation.view'),
-      I('新生报到', '/admin/orientation/students', 'studentAffairs.orientation.view'),
-      I('报到进度', '/admin/orientation/progress', 'studentAffairs.orientation.view'),
-      I('缴费状态', '/admin/orientation/payment', 'studentAffairs.orientation.view'),
-      I('绿色通道', '/admin/orientation/green-channels', 'studentAffairs.orientation.view'),
-      I('材料审核', '/admin/orientation/materials', 'studentAffairs.orientation.view'),
-      I('宿舍预分配', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view'),
-      I('宿舍入住', '/admin/orientation/dorm', 'studentAffairs.orientation.view'),
-      I('现场报到点', '/admin/orientation/checkin-points', 'studentAffairs.orientation.view'),
-      I('异常学生', '/admin/orientation/exceptions', 'studentAffairs.orientation.view'),
-      I('未报到学生', '/admin/orientation/no-show', 'studentAffairs.orientation.view'),
-      I('迎新通知', '/admin/orientation/notices', 'studentAffairs.orientation.view'),
-      I('迎新统计', '/admin/orientation/statistics', 'studentAffairs.orientation.view'),
-      I('迎新归档', '/admin/orientation/archive', 'studentAffairs.orientation.view')
-    ]),
-    // 施工图卡·请假销假（B包第1步·代码已建 4/4，施工图标注偏旧）
+    // 数字迎新：菜单收敛为单一入口；19 个功能页由迎新内部导航与旧深链保留
+    mod('sa-orientation', '数字迎新', '/admin/orientation', [], 'studentAffairs.orientation.view'),
+    // 请假销假
     mod('sa-leave', '请假销假', null, [
       I('请假审批', '/admin/campus-service/leave', 'studentAffairs.leave.view'),
       I('销假与续假', '/admin/campus-service/leave-extensions', 'studentAffairs.leave.view'),
       I('请假台账', '/admin/campus-service/leave-ledger', 'studentAffairs.leave.view'),
       I('请假统计', '/admin/campus-service/leave-stats', 'studentAffairs.leave.view')
     ]),
-    // 施工图卡·宿舍与公寓（2026-07-12 前端6页接通 /student-affairs/dorm/*；宿管 DORM_BUILDING 范围）
-    // 2026-07-18 真实点击巡检发现：同数字迎新，以下 6 个叶子漏传 permissionKey，
-    // 辅导员在菜单可见可点但后端 studentAffairs.dorm.view 未授予该角色，进页面即 403。
+    // 宿舍与公寓
     mod('sa-dorm', '宿舍与公寓', null, [
       I('房源管理', '/admin/student-affairs/dorm/resource', 'studentAffairs.dorm.view'),
       I('入住管理', '/admin/student-affairs/dorm/checkin', 'studentAffairs.dorm.view'),
@@ -170,11 +140,11 @@ export const NAV_PLAN = [
       I('宿舍异常（含夜不归宿）', '/admin/student-affairs/dorm/exception', 'studentAffairs.dorm.view'),
       I('宿舍统计', '/admin/student-affairs/dorm/stats', 'studentAffairs.dorm.view')
     ]),
-    // 施工图卡·风险预警与处置（B包第4步·待施工）
+    // 风险预警与处置
     mod('sa-risk', '风险预警与处置', null, [
       I('风险预警（看板/学生/处置）', '/admin/student-affairs/risk', 'studentAffairs.risk.view')
     ]),
-    // 施工图卡·困难认定（C包第6步·2026-07-13 夜间接通 /student-affairs/aid/*：批次管理/工作台/困难库）
+    // 困难认定
     mod('sa-difficulty', '困难认定', null, [
       I('认定批次', '/admin/student-affairs/aid/batches', 'studentAffairs.aid.view'),
       I('认定申请与审核（工作台）', '/admin/student-affairs/aid', 'studentAffairs.aid.view'),
@@ -184,7 +154,7 @@ export const NAV_PLAN = [
       I('认定统计', '/admin/student-affairs/aid/stats', 'studentAffairs.aid.view'),
       I('异议复核', '/admin/student-affairs/aid/objections', 'studentAffairs.aid.view')
     ]),
-    // 施工图卡·奖助勤贷补（旧 campus-service/grants 已 redirect 到本工作台）
+    // 奖助勤贷补
     mod('sa-aid', '奖助勤贷补', null, [
       I('资助项目', '/admin/student-affairs/funding/projects', 'studentAffairs.funding.view'),
       I('资助批次', '/admin/student-affairs/funding/batches', 'studentAffairs.funding.view'),
@@ -193,19 +163,19 @@ export const NAV_PLAN = [
       I('公示申诉', '/admin/student-affairs/funding/appeals', 'studentAffairs.funding.view'),
       I('发放台账', '/admin/student-affairs/funding/disbursements', 'studentAffairs.funding.view'),
       I('资助统计', '/admin/student-affairs/funding/stats', 'studentAffairs.funding.view'),
-      I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants', 'studentAffairs.funding.view'),
+      I('助学金管理', '/admin/campus-service/grants', 'studentAffairs.funding.view'),
       I('勤工助学', '/admin/student-affairs/funding/work-study', 'studentAffairs.funding.workstudy.manage'),
       I('助学贷款', '/admin/student-affairs/funding/loans', 'studentAffairs.funding.loan.manage'),
       I('减免与临时补助', '/admin/student-affairs/funding/fee-reductions', 'studentAffairs.funding.reduction.manage')
     ]),
-    // 施工图卡·违纪处分（旧 campus-service/discipline 已 redirect）
+    // 违纪处分
     mod('sa-discipline', '违纪处分', null, [
       I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
       I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view'),
       I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
       I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.discipline.view')
     ]),
-    // 施工图卡·谈心家校
+    // 谈心家校
     mod('sa-talks', '谈心家校', null, [
       I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
       I('谈话台账', '/admin/student-affairs/talk/ledger', 'studentAffairs.talk.view'),
@@ -214,7 +184,7 @@ export const NAV_PLAN = [
       I('重点学生跟进', '/admin/student-affairs/talk/key-follow', 'studentAffairs.talk.view'),
       I('家校回执', '/admin/student-affairs/family/receipts', 'studentAffairs.homeSchool.view')
     ]),
-    // 施工图卡·心理关注
+    // 心理关注
     mod('sa-mental', '心理关注', null, [
       I('心理关注名单', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
       I('心理预警摘要', '/admin/student-affairs/mental/summary', 'studentAffairs.risk.view'),
@@ -222,7 +192,7 @@ export const NAV_PLAN = [
       I('危机升级', '/admin/student-affairs/mental/crisis', 'studentAffairs.risk.psyDetail.view'),
       I('心理统计', '/admin/student-affairs/mental/stats', 'studentAffairs.risk.view')
     ]),
-    // 施工图卡·活动二课与社团
+    // 活动二课与社团
     mod('sa-activities', '活动二课与社团', null, [
       I('学生活动（发布/报名/签到/确认）', '/admin/student-affairs/activity', 'studentAffairs.activity.view'),
       I('志愿服务时长', '/admin/student-affairs/activity/volunteer', 'studentAffairs.activity.view'),
@@ -233,16 +203,13 @@ export const NAV_PLAN = [
       I('学生干部与组织', '/admin/student-affairs/activity/organizations', 'studentAffairs.org.view'),
       I('党团建设', '/admin/student-affairs/activity/party-league', 'studentAffairs.league.view')
     ]),
-    // 施工图卡·统计与档案
+    // 统计与档案
     mod('sa-archive-stats', '统计与档案', null, [
       I('学工统计', '/admin/student-affairs/stats', 'studentAffairs.stats.view'),
       I('统计驾驶舱', '/admin/student-affairs/stats/cockpit', 'studentAffairs.stats.view'),
       I('学工归档', '/admin/student-affairs/archive', 'studentAffairs.archive.view'),
       I('学生档案包', '/admin/student-affairs/archive/packages', 'studentAffairs.archive.view')
     ])
-    /* 2026-07-12 甲方拍板：删除「在校服务（现有·过渡）」二级——它与新14二级重复冲突（请假/奖助/违纪/宿舍/班级
-       已各自成正经二级、指向 /admin/campus-service/* 实现页照常用）。campus-service 旧路由与服务工作台/学生服务/
-       服务工单页仍在（不 404），仅从菜单撤出；如需保留「服务工单」等能力再单列二级。 */
   ]),
 
   /* ═══════════ 一级③：教务中心 ═══════════ */
@@ -278,7 +245,7 @@ export const NAV_PLAN = [
     ]),
     mod('aa-calendar', '校历节次', '/admin/academic-affairs/calendar', [
       I('校历管理', '/admin/academic-affairs/calendar'),
-      I('作息时间', '/admin/academic-affairs/time-slots'),
+      I('作息时间', '/admin/academic-affairs/time-slots', 'academicAffairs.timeslot.view'),
       // 2026-07-15 Tier1 R2：节假日/补课日=按 eventType 过滤同一批 t_aa_calendar_event（AaCalendarView 页签）；
       // 节次管理=复用「作息时间」页（t_aa_time_slot 全 CRUD）；上课时间段=新表 t_aa_class_time_band；
       // 教学周日历=派生只读聚合；校历发布/归档=复用学期状态机，仅教务处/学校管理员（后端角色白名单强制）。
@@ -514,10 +481,10 @@ export const NAV_PLAN = [
       I('材料归档', '/admin/academic-affairs/exemption/archive', 'academicAffairs.makeup.archive')
     ]),
     mod('aa-grades', '成绩管理', '/admin/academic-affairs/grade-overview', [
-      I('成绩总览', '/admin/academic-affairs/grade-overview'),
-      I('成绩录入（含暂存/提交）', '/admin/academic-affairs/grade-entry'),
-      I('挂科清单', '/admin/academic-affairs/grade-fail'),
-      I('学生成绩单', '/admin/academic-affairs/transcript'),
+      I('成绩总览', '/admin/academic-affairs/grade-overview', 'academicAffairs.grade.view'),
+      I('成绩录入（含暂存/提交）', '/admin/academic-affairs/grade-entry', 'academicAffairs.grade.input'),
+      I('挂科清单', '/admin/academic-affairs/grade-fail', 'academicAffairs.grade.view'),
+      I('学生成绩单', '/admin/academic-affairs/transcript', 'academicAffairs.grade.view'),
       I('成绩导入', '/admin/academic-affairs/grade-entry?action=import', 'academicAffairs.grade.input'),
       I('成绩导出', '/admin/academic-affairs/transcript?action=export', 'academicAffairs.grade.export'),
       I('成绩统计', '/admin/academic-affairs/stats?tab=grade', 'academicAffairs.stats.view'),
@@ -525,9 +492,9 @@ export const NAV_PLAN = [
       I('成绩认定/课程替代', '/admin/academic-affairs/grade-recognition', 'academicAffairs.gradeRecognition.view')
     ]),
     mod('aa-grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', [
-      I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review'),
-      I('教务发布（发布/退回/归档）', '/admin/academic-affairs/grade-publish'),
-      I('成绩更正申请与审核', '/admin/academic-affairs/grade-change'),
+      I('学院审核（待审核/通过/退回）', '/admin/academic-affairs/grade-college-review', 'academicAffairs.grade.collegeReview'),
+      I('教务发布（发布/退回/归档）', '/admin/academic-affairs/grade-publish', 'academicAffairs.grade.publish'),
+      I('成绩更正申请与审核', '/admin/academic-affairs/grade-change', 'academicAffairs.gradeChange.apply'),
       I('成绩复查复审（学生发起）', '/admin/academic-affairs/grade-recheck', 'academicAffairs.grade.view'),
       I('成绩操作审计', '/admin/academic-affairs/grade-audit', 'academicAffairs.grade.view')
     ]),
@@ -644,89 +611,9 @@ export const NAV_PLAN = [
     ])
   ]),
 
-  /* ═══════════ 一级④：毕业设计中心（key 对齐 adminMenu 的 graduation，供 rail 高亮联动）═══════════
-   * 2026-07-09 按三家成熟商业系统对标重新分组（详见 docs/施工记录/毕业设计中心-导航重构对标记录.md）。
-   * 2026-07-10 二级模块任务化与三级去重收口：
-   *   1) 三级只保留「真实独立的工作队列 / 工作区 / 配置页」；同一页面的状态筛选、动作按钮、
-   *      统计跳转不再挂菜单——能力全部保留在页面内（视图页签 / 筛选 / 工具栏按钮），
-   *      旧 ?panel= 深链继续可用（各页面 $route.query.panel 均已处理，路由未删）；
-   *   2) 叶子标签只用老师能理解的业务名称，不再出现施工口径与内部编码；
-   *   3) 每个二级模块 path 均为真实默认落点（列表 / 工作区），不依赖 ID、无空壳。 */
-  grp('graduation', '毕业设计中心', 'graduationDesign', [
-    mod('gd-dashboard', '毕设工作台', '/admin/graduation', [
-      I('毕设总览', '/admin/graduation'),
-      I('毕设统计报表', '/admin/graduation/stats-report'),
-      I('毕设操作日志', '/admin/graduation/audit-logs', 'graduationDesign.manage')
-    ]),
-    // 毕设批次：新建/导出为页面按钮，进行中/已归档为状态筛选，不再挂菜单（?panel=create/export/running/archived 深链仍可用）
-    mod('gd-batches', '毕设批次', '/admin/graduation/batches?panel=list', [
-      I('批次列表', '/admin/graduation/batches?panel=list'),
-      I('阶段时间轴配置', '/admin/graduation/batches?panel=stages'),
-      I('规则配置', '/admin/graduation/batches?panel=rules'),
-      I('材料模板', '/admin/graduation/templates?type=MATERIAL')
-    ]),
-    // 毕设学生：风险/导师/分组/材料/答辩组/毕业资格/归档等视图改为页内视图页签（?panel= 深链仍可用）；
-    // 学生风险并入「预警 · 归档 · 统计」、学生导师并入「导师管理与分配」，不再重复挂菜单。
-    mod('gd-students', '毕设学生', '/admin/graduation/students', [
-      I('学生名单', '/admin/graduation/students?panel=roster'),
-      I('学生进度', '/admin/graduation/students?panel=progress'),
-      I('未选题学生', '/admin/graduation/students?panel=topic'),
-      I('毕设资格认定', '/admin/graduation/students?panel=eligibility')
-    ]),
-    // 题目库：来源（教师/企业/学生自拟）与维护视图（分类/容量/要求/附件/历史/归档）改为页内视图页签。
-    mod('gd-topic-lib', '题目库', '/admin/graduation/topic-lib', [
-      I('题目列表', '/admin/graduation/topic-lib?panel=list'),
-      I('待审核题目', '/admin/graduation/topic-lib?panel=pending')
-    ]),
-    // 选题管理：教师确认/退选重选＝「学生志愿与确认」同一工作区的动作；选题归档＝轮次状态；统计并入统计报表。
-    mod('gd-topics', '选题管理', '/admin/graduation/topics', [
-      I('学生选题结果', '/admin/graduation/topics'),
-      I('选题轮次', '/admin/graduation/topic-rounds?panel=rounds'),
-      I('学生志愿与确认', '/admin/graduation/topic-rounds?panel=choices'),
-      I('匹配结果', '/admin/graduation/topic-rounds?panel=match'),
-      I('容量冲突复核', '/admin/graduation/topic-rounds?panel=conflicts'),
-      I('题目调整申请', '/admin/graduation/topic-changes')
-    ]),
-    // 导师管理与分配：容量/评价/批量分配/归档均为名单与分配页签内的列与动作，不再重复挂菜单。
-    mod('gd-mentors', '导师管理与分配', '/admin/graduation/mentors?panel=list', [
-      I('导师名单', '/admin/graduation/mentors?panel=list'),
-      I('学生分配', '/admin/graduation/mentors?panel=assign'),
-      I('分配冲突检测', '/admin/graduation/mentors/conflicts')
-    ]),
-    mod('gd-process', '过程指导', '/admin/graduation/process?panel=taskbook', [
-      I('规范流程', '/admin/graduation/process?panel=workflow'),
-      I('任务书', '/admin/graduation/process?panel=taskbook'),
-      I('指导记录', '/admin/graduation/process?panel=guidance'),
-      I('指导计划', '/admin/graduation/process?panel=plan'),
-      I('导师评价', '/admin/graduation/process?panel=eval'),
-      I('中期检查', '/admin/graduation/process?panel=midterm'),
-      I('任务书模板', '/admin/graduation/templates?type=TASKBOOK')
-    ]),
-    // 开题审核：附件/开题答辩/整改跟踪均在批阅详情页内完成；统计并入统计报表。
-    mod('gd-proposal', '开题审核', '/admin/graduation/proposals', [
-      I('开题报告批阅', '/admin/graduation/proposals'),
-      I('开题模板', '/admin/graduation/templates?type=PROPOSAL')
-    ]),
-    mod('gd-final-review', '成果检查', '/admin/graduation/finals', [
-      I('成果提交与批阅', '/admin/graduation/finals'),
-      I('查重记录', '/admin/graduation/defense-grade?panel=plagiarism'),
-      I('教师评阅', '/admin/graduation/defense-grade?panel=review'),
-      I('成果互查整改', '/admin/graduation/more?panel=peer')
-    ]),
-    // 答辩成绩：答辩分组/答辩通知＝答辩安排页内动作；归档统一走「预警 · 归档 · 统计」。
-    mod('gd-defense', '答辩成绩', '/admin/graduation/defense', [
-      I('答辩安排', '/admin/graduation/defense'),
-      I('答辩评分', '/admin/graduation/defense-grade?panel=defense'),
-      I('成绩评定', '/admin/graduation/defense-grade?panel=grade'),
-      I('答辩专家库', '/admin/graduation/more?panel=experts'),
-      I('成绩更正申诉', '/admin/graduation/more?panel=appeals')
-    ]),
-    mod('gd-risk-archive', '预警 · 归档 · 统计', '/admin/graduation/risk-archive?panel=risk', [
-      I('问题预警', '/admin/graduation/risk-archive?panel=risk'),
-      I('毕设材料归档', '/admin/graduation/risk-archive?panel=archive'),
-      I('毕设统计', '/admin/graduation/risk-archive?panel=stats')
-    ])
-  ]),
+  /* ═══════════ 一级④：毕业设计中心（8 工作区，事实源 modules/graduation/config/graduationWorkspaces.js）
+   * 旧路由与 ?panel= 深链继续可用；角色无权工作区由 getVisibleNavPlan + permissionKey 隐藏。 */
+  grp('graduation', '毕业设计中心', 'graduationDesign', buildGraduationNavMods(I, mod)),
 
   /* ═══════════ 一级⑤：岗位实习中心（12个二级）═══════════
    * 2026-07-12 甲方拍板「菜单全展开」：本组 1:1 对齐 施工图-05-岗位实习中心（12二级×99三级）。

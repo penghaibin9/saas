@@ -13,7 +13,6 @@
     </template>
 
     <div class="mp-stack">
-      <GraduationBatchStrip />
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -79,11 +78,10 @@ import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', dateStart: '', dateEnd: '' })
 
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'GraduationBatchListView',
-  components: { AppPageGuide, GraduationBatchStrip,
+  components: { AppPageGuide, 
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppDateDisplay, AppExportButton
   },

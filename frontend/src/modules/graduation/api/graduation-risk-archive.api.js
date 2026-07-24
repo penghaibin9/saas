@@ -47,7 +47,11 @@ export const graduationRiskArchiveApi = {
   },
   async downloadArchiveExport(params = {}) {
     const res = await this.exportArchives(params)
-    if (res.code === 0) downloadXlsxFromApi(res.data, '毕设归档台账.xlsx')
+    if (res.code === 0) {
+      const hint = params.filenameHint || params.exportHint
+      const filename = res.data?.filename || (hint ? `${String(hint).replace(/\.xlsx$/i, '')}.xlsx` : '毕设归档台账.xlsx')
+      downloadXlsxFromApi({ ...(res.data || {}), filename })
+    }
     return res
   },
 

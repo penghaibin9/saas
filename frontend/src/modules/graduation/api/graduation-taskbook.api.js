@@ -40,7 +40,7 @@ export const graduationTaskbookApi = {
     if (res.code === 0) downloadXlsxFromApi(res.data, '任务书台账.xlsx')
     return res
   },
-  /** 任务书 PDF 套打 MVP：返回 { filename, contentBase64, mediaType } */
+  /** 任务书 PDF 导出：返回 { filename, contentBase64, mediaType }，并写下载审计 */
   exportTaskbookPdf(gdStudentId, params = {}) {
     return call(() => request(`${TB}/${gdStudentId}/export-pdf`, { method: 'POST', params }))
   },

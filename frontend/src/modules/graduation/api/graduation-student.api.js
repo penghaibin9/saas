@@ -106,7 +106,11 @@ export const gdStudentApi = {
   },
   async downloadExport(params = {}) {
     const res = await this.exportStudents(params)
-    if (res.code === 0) downloadXlsxFromApi(res.data, '毕设学生台账.xlsx')
+    if (res.code === 0) {
+      const hint = params.filenameHint || params.exportHint
+      const filename = res.data?.filename || (hint ? `${String(hint).replace(/\.xlsx$/i, '')}.xlsx` : '毕设学生台账.xlsx')
+      downloadXlsxFromApi({ ...(res.data || {}), filename })
+    }
     return res
   },
   getStudentOptions(keyword) {

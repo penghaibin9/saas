@@ -29,10 +29,10 @@ def gd_risk_scan(user=Depends(get_current_user)):
 @router.get("/gd-risks", summary="风险列表（分页+筛选）")
 def gd_risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
             riskCode: Optional[str] = None, level: Optional[str] = None, status: Optional[str] = None,
-            gdStudentId: Optional[str] = None,
+            gdStudentId: Optional[str] = None, batchId: Optional[str] = None,
             user=Depends(get_current_user)):
     items, total = svc.list_risks(page, pageSize, risk_code=riskCode, level=level, status=status,
-                                  gd_student_id=gdStudentId)
+                                  gd_student_id=gdStudentId, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

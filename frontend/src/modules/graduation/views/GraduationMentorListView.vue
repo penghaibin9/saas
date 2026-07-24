@@ -12,7 +12,6 @@
       </div>
     </template>
 
-    <GraduationBatchStrip />
     <div class="gm-tabs">
       <button class="gm-tabs__item" :class="{ 'is-active': tab === 'mentors' }" @click="switchTab('mentors')">导师名单</button>
       <button class="gm-tabs__item" :class="{ 'is-active': tab === 'assign' }" @click="switchTab('assign')">导师分配</button>
@@ -119,11 +118,10 @@ import { toast } from '@/utils/toast'
 const EMPTY_FILTERS = () => ({ keyword: '', qualificationStatus: '', mentorType: '', dateStart: '', dateEnd: '' })
 const EMPTY_U_FILTERS = () => ({ keyword: '', dateStart: '', dateEnd: '' })
 
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'GraduationMentorListView',
-  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

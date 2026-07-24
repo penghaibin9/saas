@@ -72,8 +72,8 @@ def _p(i, t, page, ps):
 
 
 @router.get("/dashboard", summary="毕设看板")
-def dashboard(user=Depends(get_current_user)):
-    return success(svc.get_dashboard())
+def dashboard(batchId: Optional[str] = None, user=Depends(get_current_user)):
+    return success(svc.get_dashboard(batch_id=batchId))
 
 
 @router.get("/students", summary="毕设学生列表")
@@ -102,8 +102,8 @@ def topics(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 @router.get("/proposals", summary="开题材料列表")
 def proposals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, status: Optional[str] = None,
-              user=Depends(get_current_user)):
-    i, t = svc.list_proposals(page, pageSize, keyword=keyword, status=status)
+              batchId: Optional[str] = None, user=Depends(get_current_user)):
+    i, t = svc.list_proposals(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return _p(i, t, page, pageSize)
 
 
@@ -139,17 +139,19 @@ def proposal_remind(body: RemindBody, user=Depends(get_current_user)):
 
 
 @router.post("/proposals/export", summary="导出开题材料台账 Excel（写审计）")
-def proposal_export(status: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_proposals_xlsx(status=status)
-    audit_log.record("导出开题材料台账", "graduation-proposal:export", detail={"rowCount": data["rowCount"]})
+def proposal_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                    batchId: Optional[str] = None, user=Depends(get_current_user)):
+    data = svc.export_proposals_xlsx(status=status, keyword=keyword, batch_id=batchId)
+    audit_log.record("导出开题材料台账", "graduation-proposal:export",
+                     detail={"rowCount": data["rowCount"], "batchId": batchId, "status": status})
     return success(data)
 
 
 @router.get("/finals", summary="成果提交列表")
 def finals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            keyword: Optional[str] = None, status: Optional[str] = None,
-           user=Depends(get_current_user)):
-    i, t = svc.list_finals(page, pageSize, keyword=keyword, status=status)
+           batchId: Optional[str] = None, user=Depends(get_current_user)):
+    i, t = svc.list_finals(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return _p(i, t, page, pageSize)
 
 
@@ -164,16 +166,19 @@ def final_remind(body: RemindBody, user=Depends(get_current_user)):
 
 
 @router.post("/finals/export", summary="导出成果提交台账 Excel（写审计）")
-def final_export(status: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_finals_xlsx(status=status)
-    audit_log.record("导出成果提交台账", "graduation-final:export", detail={"rowCount": data["rowCount"]})
+def final_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                 batchId: Optional[str] = None, user=Depends(get_current_user)):
+    data = svc.export_finals_xlsx(status=status, keyword=keyword, batch_id=batchId)
+    audit_log.record("导出成果提交台账", "graduation-final:export",
+                     detail={"rowCount": data["rowCount"], "batchId": batchId, "status": status})
     return success(data)
 
 
 @router.get("/defense-groups", summary="答辩安排列表")
 def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                   keyword: Optional[str] = None, user=Depends(get_current_user)):
-    i, t = svc.list_defense_groups(page, pageSize, keyword=keyword)
+                   keyword: Optional[str] = None, batchId: Optional[str] = None,
+                   user=Depends(get_current_user)):
+    i, t = svc.list_defense_groups(page, pageSize, keyword=keyword, batch_id=batchId)
     return _p(i, t, page, pageSize)
 
 

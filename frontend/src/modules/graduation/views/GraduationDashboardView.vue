@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="毕业设计中心"
-    :subtitle="hero.batchName + ' · ' + hero.batchStatus"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,11 +11,21 @@
 
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
+    <EmptyState
+      v-else-if="!hasBatch"
+      title="请先选择或创建毕设批次"
+      description="顶部批次条选择当前工作批次后，再查看本批次运营总览。"
+    >
+      <template #actions>
+        <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches?panel=create')">＋ 新增毕设批次</button>
+        <button class="mp-btn" @click="$router.push('/admin/graduation/batches?panel=list')">去批次列表</button>
+      </template>
+    </EmptyState>
     <div v-else class="mp-stack gdb-page">
       <section class="gdb-command-bar" aria-label="当前毕设批次">
         <div class="gdb-command-bar__primary">
           <span class="gdb-command-bar__eyebrow">毕业设计运营驾驶舱</span>
-          <strong>{{ hero.batchName || '尚未创建毕业设计批次' }}</strong>
+          <strong>{{ hero.batchName || batchStore.selectedBatchName || '尚未创建毕业设计批次' }}</strong>
           <span v-if="hero.batchRange" class="gdb-command-bar__range">{{ hero.batchRange }}</span>
         </div>
         <div class="gdb-command-bar__scope">
@@ -27,7 +37,7 @@
 
       <ModuleHero
         :title="ctx.tenantBrandConfig.schoolName + ' · 毕业设计总览'"
-        :subtitle="hero.batchName + '（' + hero.batchRange + '）'"
+        :subtitle="(hero.batchName || batchStore.selectedBatchName) + '（' + (hero.batchRange || '—') + '）'"
         :chips="heroChips"
         :stats="hero.stats"
         :flow="hero.flow"
@@ -112,17 +122,32 @@
 
 <script>
 /** 毕业设计中心 · 管理看板（/admin/graduation）。 */
-import { ModulePageShell, ModuleHero, ModuleToolbar, RiskTag, LoadingState, ErrorState } from '@/components/business'
+import { ModulePageShell, ModuleHero, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 export default {
   name: 'GraduationDashboardView',
-  components: { ModulePageShell, ModuleHero, ModuleToolbar, RiskTag, LoadingState, ErrorState },
+  components: { ModulePageShell, ModuleHero, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', hero: { stats: [], flow: [], todos: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' } }
+    return {
+      batchStore: useGraduationBatchStore(),
+      loading: true,
+      error: '',
+      hero: { stats: [], flow: [], todos: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' }
+    }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
+    pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      const name = this.hero.batchName || this.batchStore.selectedBatchName || '当前批次'
+      const status = this.hero.batchStatus || this.batchStore.batchStatus || ''
+      return status ? `${name} · ${status}` : name
+    },
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [
@@ -132,7 +157,11 @@ export default {
         { key: 'viewAuditLog', label: '操作日志', variant: 'ghost' }
       ]
         .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+        .map((a) => ({
+          ...a,
+          disabled: !pa[a.key].allowed || (a.key !== 'createBatch' && a.key !== 'viewAuditLog' && !this.hasBatch),
+          disabledReason: pa[a.key].reason
+        }))
     },
     heroChips() {
       return ['当前角色：' + this.ctx.currentRole.roleName, '数据范围：' + this.ctx.dataScope.scopeName]
@@ -141,11 +170,22 @@ export default {
   created() {
     this.load()
   },
+  watch: {
+    'batchStore.selectedBatchId'() {
+      this.load()
+    }
+  },
   methods: {
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = ''
+        this.hero = { stats: [], flow: [], todos: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' }
+        return
+      }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getDashboardSummary()
+      const res = await graduationApi.getDashboardSummary({ batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) this.hero = res.data
       else this.error = res.message
       this.loading = false

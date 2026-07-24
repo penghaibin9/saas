@@ -35,17 +35,19 @@ def gd_archive_batch_file(body: dict = Body(default={}), user=Depends(get_curren
 
 
 @router.post("/gd-archives/export", summary="导出归档台账 Excel（写审计）")
-def gd_archive_export(status: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_archives_xlsx(status=status)
-    audit_log.record("导出毕设归档台账", "graduation-archive:export", detail={"rowCount": data["rowCount"]})
+def gd_archive_export(status: Optional[str] = None, keyword: Optional[str] = None,
+                      batchId: Optional[str] = None, user=Depends(get_current_user)):
+    data = svc.export_archives_xlsx(status=status, keyword=keyword, batch_id=batchId)
+    audit_log.record("导出毕设归档台账", "graduation-archive:export",
+                     detail={"rowCount": data["rowCount"], "batchId": batchId, "status": status})
     return success(data)
 
 
 @router.get("/gd-archives", summary="归档列表（分页+筛选）")
 def gd_archives(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                 keyword: Optional[str] = None, status: Optional[str] = None,
-                user=Depends(get_current_user)):
-    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status)
+                batchId: Optional[str] = None, user=Depends(get_current_user)):
+    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

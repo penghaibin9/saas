@@ -14,23 +14,21 @@
     </template>
 
     <div class="mp-stack">
-      <GraduationBatchStrip />
-
       <div class="mp-tabs">
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}<span v-if="tabCount(t.value) !== null" class="pr-tab-count">{{ tabCount(t.value) }}</span>
         </button>
       </div>
 
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
+      <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
 
       <!-- 连续批阅双栏：左队列 + 右批阅卡；窄屏自动降级为整页列表（点击进独立详情页） -->
       <div class="pr-split" :class="{ 'is-narrow': isNarrow }">
         <aside class="pr-list">
-          <AppSearchBox v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
+          <AppSearchBox v-if="hasBatch" v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
           <ErrorState v-if="error" :description="error" @retry="load" />
           <LoadingState v-else-if="loading" />
-          <EmptyState v-else-if="!rows.length" title="当前页签暂无开题材料" description="可切换页签或调整筛选" />
+          <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
           <ul v-else class="pr-rows">
             <li
               v-for="(row, i) in rows"
@@ -120,8 +118,9 @@ import { AppExportButton, AppSearchBox, AppPagination, AppPageGuide } from '@/co
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { buildMaterialQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import ProposalReviewCard from './_shared/ProposalReviewCard.vue'
 
 export default {
@@ -129,11 +128,12 @@ export default {
   components: { AppPageGuide,
     ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppExportButton, AppSearchBox, AppPagination, AppDateDisplay,
-    GraduationBatchStrip, ProposalReviewCard
+    ProposalReviewCard
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       loading: true,
       error: '',
       rows: [],
@@ -156,14 +156,25 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
     pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
       const p = this.stats
-      if (!p) return '学生提交开题材料，教师连续批阅 · 驳回需填写原因并即时同步学生端'
-      return `待审阅 ${this.statusCount('PENDING_REVIEW')} · 逾期未交 ${p.notSubmitted ?? 0} · 连续批阅不返回列表`
+      if (!p) return `${batch}学生提交开题材料，教师连续批阅 · 驳回需填写原因并即时同步学生端`
+      return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 逾期未交 ${p.notSubmitted ?? 0} · 连续批阅不返回列表`
+    },
+    emptyTitle() {
+      return this.hasBatch ? '当前页签暂无开题材料' : '请先选择或创建毕设批次'
+    },
+    emptyDesc() {
+      return this.hasBatch ? '可切换页签或调整筛选' : '顶部批次条选择当前工作批次后，再批阅开题材料。'
     },
     exportPerm() {
       const pa = this.ctx.permissionActions.exportProposals || {}
-      return { visible: !!pa.visible, allowed: !!pa.allowed }
+      return { visible: !!pa.visible && this.hasBatch, allowed: !!pa.allowed }
     },
     filterFields() {
       return []
@@ -188,6 +199,14 @@ export default {
     this.selKey = (this.$route.query.sel || '').toString()
     this.loadStats()
     this.load()
+  },
+  watch: {
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.selKey = ''
+      this.loadStats()
+      this.load()
+    }
   },
   mounted() {
     this._mq = window.matchMedia('(max-width: 1100px)')
@@ -304,7 +323,14 @@ export default {
       if (target && !this.isNarrow) this.select(target)
     },
     exportProposalsFn() {
-      return graduationApi.exportProposals(this.filters.status)
+      const hint = exportFilenameHint(this.batchStore.selectedBatchName, '开题材料')
+      const p = buildMaterialQuery(this.filters, { batchId: this.batchStore.selectedBatchId })
+      return graduationApi.exportProposals(p).then((res) => {
+        if (res.code === 0 && res.data) {
+          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        }
+        return res
+      })
     },
     async remind(row) {
       this.reminding = true
@@ -314,9 +340,21 @@ export default {
       else toast.error(res.message || '催交失败')
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = ''
+        this.rows = []
+        this.total = 0
+        this.selKey = ''
+        return
+      }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getProposals({ ...this.filters, page: this.page, pageSize: this.pageSize })
+      const res = await graduationApi.getProposals(buildMaterialQuery(this.filters, {
+        page: this.page,
+        pageSize: this.pageSize,
+        batchId: this.batchStore.selectedBatchId
+      }))
       if (res.code === 0) {
         this.rows = res.data.list
         this.total = res.data.total

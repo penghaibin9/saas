@@ -1,74 +1,75 @@
 <template>
   <div class="gbs">
     <span class="gbs__label">当前批次</span>
-    <template v-if="state === 'loading'">
+    <template v-if="store.batchLoading">
       <span class="gbs__text">正在读取…</span>
     </template>
-    <template v-else-if="state === 'ready'">
-      <span class="gbs__name">{{ batch.batchName }}</span>
-      <StatusTag type="processing" label="进行中" dot />
-      <span v-if="batch.gradeYear" class="gbs__meta">{{ batch.gradeYear }} 届</span>
-      <span v-if="extraRunning > 0" class="gbs__meta">另有 {{ extraRunning }} 个进行中批次</span>
-      <slot />
+    <template v-else-if="store.batchError">
+      <span class="gbs__text gbs__text--err">{{ store.batchError }}</span>
+      <button type="button" class="mp-link" @click="reload">重试</button>
     </template>
-    <template v-else-if="state === 'empty'">
-      <span class="gbs__text">暂无进行中的毕设批次，请先创建并启用毕设批次</span>
+    <template v-else-if="!store.availableBatches.length">
+      <span class="gbs__text">暂无可用毕设批次，请先创建并启用毕设批次</span>
       <button type="button" class="mp-link" @click="$router.push('/admin/graduation/batches?panel=list')">去毕设批次 →</button>
       <slot />
     </template>
     <template v-else>
-      <span class="gbs__text gbs__text--err">批次信息读取失败</span>
-      <button type="button" class="mp-link" @click="reload">重试</button>
+      <select
+        class="gbs__select"
+        :value="store.selectedBatchId"
+        aria-label="选择毕设批次"
+        @change="onSelect($event.target.value)"
+      >
+        <option v-if="store.needsExplicitSelect && !store.selectedBatchId" value="" disabled>请选择批次</option>
+        <option v-for="b in store.availableBatches" :key="b.id" :value="String(b.id)">
+          {{ b.batchName }}{{ b.status === 'RUNNING' ? '（进行中）' : '' }}{{ b.gradeYear ? ` · ${b.gradeYear}` : '' }}
+        </option>
+      </select>
+      <StatusTag v-if="store.batchStatus === 'RUNNING'" type="processing" label="进行中" dot />
+      <StatusTag v-else-if="store.batchStatus" type="default" :label="statusLabel" dot />
+      <span v-if="store.gradeYear" class="gbs__meta">{{ store.gradeYear }}</span>
+      <span v-if="runningCount > 1" class="gbs__meta">进行中 {{ runningCount }} 个</span>
+      <span v-if="store.needsExplicitSelect && !store.selectedBatchId" class="gbs__text gbs__text--err">请明确选择当前工作批次</span>
+      <slot />
     </template>
   </div>
 </template>
 
 <script>
 /**
- * GraduationBatchStrip — 毕设中心各二级模块落点页顶部的「当前批次」上下文条。
- * 数据来源：graduationBatchApi.getBatches({ status: 'RUNNING' })，真实后端，不 mock。
- * 模块级缓存一次请求，同一次会话内各落点页共享，避免每页重复打接口；「重试」会强制刷新。
- * 插槽：页面可追加自己的真实状态摘要（如待审阅数），本组件不造任何假指标。
+ * GraduationBatchStrip — 真实批次选择器，读写 Pinia graduationBatch + URL query.batchId。
  */
 import { StatusTag } from '@/components/business'
-import { graduationBatchApi } from '@/modules/graduation/api/graduation-batch.api'
-
-let runningCache = null
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 export default {
   name: 'GraduationBatchStrip',
   components: { StatusTag },
-  data() {
-    return { state: 'loading', batch: null, extraRunning: 0 }
+  setup() {
+    return { store: useGraduationBatchStore() }
   },
-  created() {
-    this.load()
+  computed: {
+    runningCount() {
+      return this.store.availableBatches.filter((b) => b.status === 'RUNNING').length
+    },
+    statusLabel() {
+      const m = { DRAFT: '草稿', RUNNING: '进行中', CLOSED: '已关闭', ARCHIVED: '已归档' }
+      return m[this.store.batchStatus] || this.store.batchStatus || '—'
+    }
   },
   methods: {
-    async load(force = false) {
-      this.state = 'loading'
-      if (force || !runningCache) {
-        runningCache = graduationBatchApi.getBatches({ status: 'RUNNING', page: 1, pageSize: 1 })
-      }
-      const res = await runningCache
-      if (res.code !== 0) {
-        runningCache = null
-        this.state = 'error'
-        return
-      }
-      const list = (res.data && res.data.list) || []
-      if (!list.length) {
-        this.state = 'empty'
-        this.batch = null
-        this.extraRunning = 0
-        return
-      }
-      this.batch = list[0]
-      this.extraRunning = Math.max(0, (res.data.total || 1) - 1)
-      this.state = 'ready'
+    onSelect(id) {
+      this.store.selectBatch(id)
+      const q = { ...this.$route.query }
+      if (id) q.batchId = id
+      else delete q.batchId
+      this.$router.replace({ query: q }).catch(() => {})
     },
     reload() {
-      this.load(true)
+      this.store.ensureLoaded({
+        batchIdFromUrl: this.$route.query.batchId || '',
+        force: true
+      })
     }
   }
 }
@@ -90,9 +91,16 @@ export default {
   color: var(--text-tertiary, #64748b);
   flex: none;
 }
-.gbs__name {
-  font-weight: var(--font-weight-semibold, 600);
+.gbs__select {
+  min-width: 220px;
+  max-width: 420px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-base, #cbd5e1);
+  border-radius: 6px;
+  background: #fff;
+  font-size: inherit;
   color: var(--text-primary, #0f172a);
+  font-weight: 600;
 }
 .gbs__meta {
   color: var(--text-secondary, #475569);

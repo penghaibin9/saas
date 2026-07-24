@@ -12,9 +12,8 @@
       </div>
     </template>
 
-    <GraduationBatchStrip />
     <div v-if="activePanel !== 'conflicts'" class="mp-stack">
-      <AdvancedFilter v-if="activePanel === 'rounds'" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+      <AdvancedFilter v-if="activePanel === 'rounds' && hasBatch" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
@@ -151,9 +150,10 @@ import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDateDisplay } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
 import { GD_ROUND_STATUS } from '@/modules/graduation/constants/graduation-topic-round.constants'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ batchId: '', status: '', dateStart: '', dateEnd: '' })
+const EMPTY_FILTERS = () => ({ status: '', dateStart: '', dateEnd: '' })
 
 const REJECT_CHOICE_REASON_CHIPS = [
   '题目范围过大，请缩小研究范围',
@@ -170,17 +170,17 @@ const PANEL_PRESETS = {
   conflicts: () => ({})
 }
 
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 export default {
   name: 'TopicRoundListView',
-  components: { GraduationBatchStrip,
+  components: { 
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppExcelImportDrawer, AppDateDisplay, AppExportButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       loading: true, error: '', submitting: false, activePanel: 'rounds',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       selectedRoundId: '', selectedRoundName: '',
@@ -189,6 +189,9 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
     roundColumns() {
       return [
         { key: 'name', title: '轮次' },
@@ -210,33 +213,36 @@ export default {
     },
     filterFields() {
       return [
-        { key: 'batchId', label: '批次', type: 'graduation-batch' },
         { key: 'status', label: '状态', type: 'select', options: GD_ROUND_STATUS }
       ]
     },
     toolbarActions() {
       if (this.activePanel === 'rounds') {
-        return [{ key: 'create', label: '＋ 新建轮次', variant: 'primary' }]
+        return [{ key: 'create', label: '＋ 新建轮次', variant: 'primary', disabled: !this.hasBatch || this.ctx.writeEnabled === false }]
       }
       const actions = [{ key: 'back', label: '返回轮次列表' }]
       if (this.activePanel === 'conflicts') return actions
       if (this.selectedRoundId) {
-        actions.push({ key: 'conflicts', label: '容量冲突复核' }, { key: 'import', label: '导入 Excel' })
+        actions.push({ key: 'conflicts', label: '容量冲突复核' }, { key: 'import', label: '导入 Excel', disabled: this.ctx.writeEnabled === false })
       }
       return actions
     },
     exportVisible() {
-      return this.activePanel === 'rounds' || !!this.selectedRoundId
+      return this.hasBatch && (this.activePanel === 'rounds' || !!this.selectedRoundId)
     },
     pageSubtitle() {
-      if (this.activePanel === 'rounds') return `共 ${this.total} 个轮次 · 开启后学生可填志愿，关闭后执行匹配`
-      if (this.activePanel === 'conflicts') return `${this.selectedRoundName || '轮次'} · 容量冲突人工复核 + 选题统计`
-      return `${this.selectedRoundName || '轮次'} · ${this.rows.length} 条志愿记录`
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      if (this.activePanel === 'rounds') return `${batch}共 ${this.total} 个轮次 · 开启后学生可填志愿，关闭后执行匹配`
+      if (this.activePanel === 'conflicts') return `${batch}${this.selectedRoundName || '轮次'} · 容量冲突人工复核 + 选题统计`
+      return `${batch}${this.selectedRoundName || '轮次'} · ${this.rows.length} 条志愿记录`
     },
     emptyTitle() {
+      if (!this.hasBatch) return '请先选择或创建毕设批次'
       return this.activePanel === 'rounds' ? '暂无选题轮次' : '暂无志愿记录'
     },
     emptyDesc() {
+      if (!this.hasBatch) return '顶部批次条选择当前工作批次后，再管理选题轮次。'
       return this.activePanel === 'rounds' ? '点「新建轮次」创建一轮选题互选' : '学生提交志愿后将在此展示'
     }
   },
@@ -250,6 +256,11 @@ export default {
         this.page = 1
         this.load()
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.selectedRoundId = ''
+      this.load()
     }
   },
   methods: {
@@ -257,12 +268,21 @@ export default {
       return s === 'MATCHED' ? 'success' : (s === 'UNMATCHED' ? 'danger' : 'warning')
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = ''
+        this.rows = []
+        this.total = 0
+        this.conflicts = []
+        this.stats = null
+        return
+      }
       this.loading = true
       this.error = ''
       if (this.activePanel === 'rounds') {
         const r = await gdTopicRoundApi.getRounds({
           page: this.page, pageSize: this.pageSize,
-          batchId: this.filters.batchId || undefined,
+          batchId: this.batchStore.selectedBatchId || undefined,
           status: this.filters.status || undefined
         })
         this.loading = false
@@ -273,7 +293,7 @@ export default {
       }
       if (this.activePanel === 'conflicts') {
         if (!this.selectedRoundId) {
-          const rr = await gdTopicRoundApi.getRounds({ page: 1, pageSize: 1 })
+          const rr = await gdTopicRoundApi.getRounds({ page: 1, pageSize: 1, batchId: this.batchStore.selectedBatchId })
           if (rr.code === 0 && rr.data.list.length) {
             this.selectedRoundId = rr.data.list[0].id
             this.selectedRoundName = rr.data.list[0].roundName
@@ -290,7 +310,7 @@ export default {
       }
       if ((this.activePanel === 'match' || this.activePanel === 'choices') && !this.selectedRoundId) {
         const status = this.activePanel === 'match' ? 'MATCHED' : undefined
-        const rr = await gdTopicRoundApi.getRounds({ status, page: 1, pageSize: 1 })
+        const rr = await gdTopicRoundApi.getRounds({ status, page: 1, pageSize: 1, batchId: this.batchStore.selectedBatchId })
         if (rr.code === 0 && rr.data.list.length) {
           this.selectedRoundId = rr.data.list[0].id
           this.selectedRoundName = rr.data.list[0].roundName
@@ -393,7 +413,7 @@ export default {
     exportRoundsFn() {
       if (this.activePanel === 'rounds') {
         return gdTopicRoundApi.exportRounds({
-          batchId: this.filters.batchId || undefined,
+          batchId: this.batchStore.selectedBatchId || undefined,
           status: this.filters.status || undefined
         })
       }

@@ -14,23 +14,21 @@
     </template>
 
     <div class="mp-stack">
-      <GraduationBatchStrip />
-
       <div class="mp-tabs">
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}<span v-if="tabCount(t.value) !== null" class="fr-tab-count">{{ tabCount(t.value) }}</span>
         </button>
       </div>
 
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
+      <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
 
       <!-- 连续批阅双栏：左队列 + 右批阅面板；窄屏降级为「列表 ⇄ 整屏详情」切换 -->
       <div class="fr-split" :class="{ 'is-narrow': isNarrow }">
         <aside v-if="!isNarrow || !selectedRow" class="fr-list">
-          <AppSearchBox v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
+          <AppSearchBox v-if="hasBatch" v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
           <ErrorState v-if="error" :description="error" @retry="load" />
           <LoadingState v-else-if="loading" />
-          <EmptyState v-else-if="!rows.length" title="当前页签暂无成果提交" description="可切换页签或调整筛选" />
+          <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
           <ul v-else class="fr-rows">
             <li
               v-for="(row, i) in rows"
@@ -163,8 +161,9 @@ import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppT
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { buildMaterialQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 
 const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达标，需修改', '格式不符合学校规范', '与选题方向不符']
 
@@ -173,12 +172,13 @@ export default {
   components: { AppPageGuide,
     ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppDateDisplay,
-    GraduationBatchStrip, AppTemplateChips
+    AppTemplateChips
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       REJECT_REASON_CHIPS,
+      batchStore: useGraduationBatchStore(),
       loading: true,
       error: '',
       rows: [],
@@ -204,20 +204,32 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
     pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
       const s = this.stats
-      if (!s) return '初稿 / 定稿连续批阅 · 查重超标不可直接通过，须退回修改'
-      return `待审阅 ${this.statusCount('PENDING_REVIEW')} · 查重超标 ${s.plagiarismOver ?? 0} · 连续批阅不返回列表`
+      if (!s) return `${batch}初稿 / 定稿连续批阅 · 查重超标不可直接通过，须退回修改`
+      return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 查重超标 ${s.plagiarismOver ?? 0} · 连续批阅不返回列表`
+    },
+    emptyTitle() {
+      return this.hasBatch ? '当前页签暂无成果提交' : '请先选择或创建毕设批次'
+    },
+    emptyDesc() {
+      return this.hasBatch ? '可切换页签或调整筛选' : '顶部批次条选择当前工作批次后，再批阅成果材料。'
     },
     exportPerm() {
       const pa = this.ctx.permissionActions.exportStats || {}
-      return { visible: !!pa.visible, allowed: !!pa.allowed }
+      return { visible: !!pa.visible && this.hasBatch, allowed: !!pa.allowed }
     },
     canReview() {
       const pa = this.ctx.permissionActions.reviewFinal
-      return !!(pa && pa.visible && pa.allowed)
+      return !!(pa && pa.visible && pa.allowed) && this.ctx.writeEnabled !== false
     },
     reviewReason() {
+      if (this.ctx.writeEnabled === false) return '写操作已禁用'
       const pa = this.ctx.permissionActions.reviewFinal
       return pa && !pa.allowed ? pa.reason : ''
     },
@@ -238,6 +250,14 @@ export default {
     this.selKey = (this.$route.query.sel || '').toString()
     this.loadStats()
     this.load()
+  },
+  watch: {
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.selKey = ''
+      this.loadStats()
+      this.load()
+    }
   },
   mounted() {
     this._mq = window.matchMedia('(max-width: 1100px)')
@@ -342,7 +362,14 @@ export default {
       if (row.projectId) this.$router.push('/admin/graduation/students/' + row.projectId)
     },
     exportFinalsFn() {
-      return graduationApi.exportFinals(this.filters.status)
+      const hint = exportFilenameHint(this.batchStore.selectedBatchName, '成果提交')
+      const p = buildMaterialQuery(this.filters, { batchId: this.batchStore.selectedBatchId })
+      return graduationApi.exportFinals(p).then((res) => {
+        if (res.code === 0 && res.data) {
+          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        }
+        return res
+      })
     },
     async submitReview(action) {
       if (!this.canReview || !this.selectedRow) return
@@ -379,9 +406,21 @@ export default {
       else toast.error(res.message || '催交失败')
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = ''
+        this.rows = []
+        this.total = 0
+        this.selKey = ''
+        return
+      }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getFinalSubmissions({ ...this.filters, page: this.page, pageSize: this.pageSize })
+      const res = await graduationApi.getFinalSubmissions(buildMaterialQuery(this.filters, {
+        page: this.page,
+        pageSize: this.pageSize,
+        batchId: this.batchStore.selectedBatchId
+      }))
       if (res.code === 0) {
         this.rows = res.data.list
         this.total = res.data.total

@@ -31,7 +31,6 @@
     </div>
 
     <div class="mp-stack">
-      <GraduationBatchStrip />
       <!-- 页内视图页签：同一题目库的来源/审核/维护视图（原三级菜单入口收口至此，?panel= 深链不变） -->
       <div class="mp-tabs">
         <button
@@ -42,7 +41,7 @@
           @click="switchPanel(p.key)"
         >{{ p.label }}</button>
       </div>
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+      <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <!-- 内嵌表单/详情：固定在筛选栏下方，替换表格区域 -->
       <router-view v-if="inlineOpen" :ctx="ctx" />
@@ -230,9 +229,11 @@ import {
   GD_TOPIC_DIFFICULTY, IS_FULL
 } from '@/modules/graduation/constants/graduation-topic.constants'
 import { toast } from '@/utils/toast'
+import { buildTopicLibQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 const EMPTY_FILTERS = () => ({
-  keyword: '', batchId: '', sourceType: '', category: '', reviewStatus: '',
+  keyword: '', sourceType: '', category: '', reviewStatus: '',
   status: '', isFull: '', archiveView: 'active',
   hasRequirements: '', hasAttachments: '', missingCategory: '',
   topicId: '', action: ''
@@ -338,15 +339,14 @@ const TOPIC_LIB_INLINE_ROUTES = new Set([
   'graduation-topic-lib-detail'
 ])
 
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
-
 export default {
   name: 'TopicLibListView',
-  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY,
+      batchStore: useGraduationBatchStore(),
       loading: true, error: '', submitting: false, activePanel: 'list',
       panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
@@ -356,6 +356,9 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
     inlineOpen() {
       return TOPIC_LIB_INLINE_ROUTES.has(this.$route.name)
     },
@@ -412,8 +415,7 @@ export default {
       }
       const catOpts = [{ value: '', label: '全部' }, ...GD_TOPIC_CATEGORY.map((c) => ({ value: c, label: c })), { value: '__uncat__', label: '未分类' }]
       const base = [
-        { key: 'keyword', label: '关键词', type: 'text', placeholder: '题目 / 教师 / 企业' },
-        { key: 'batchId', label: '批次', type: 'graduation-batch' }
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: '题目 / 教师 / 企业' }
       ]
       if (this.activePanel === 'category') {
         return [...base, { key: 'category', label: '分类', type: 'select', options: catOpts }]
@@ -478,17 +480,21 @@ export default {
       return base
     },
     exportVisible() {
+      if (!this.hasBatch) return false
       return ['list', 'teacher-apply', 'enterprise', 'student-proposed', 'pending', 'archive', 'category', 'capacity', 'requirements', 'attachments', 'history'].includes(this.activePanel)
     },
     pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
       const gap = this.libStats && this.activePanel === 'requirements'
         ? ` · 待补 ${this.libStats.requirementsGap} 题`
         : this.libStats && this.activePanel === 'attachments'
           ? ` · 缺附件 ${this.libStats.attachmentsGap} 题`
           : ''
-      return `共 ${this.total} 条 · ${PANEL_HINTS[this.activePanel] || ''}${gap}`
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
+      return `${batch}共 ${this.total} 条 · ${PANEL_HINTS[this.activePanel] || ''}${gap}`
     },
     emptyTitle() {
+      if (!this.hasBatch) return '请先选择或创建毕设批次'
       const m = {
         pending: '暂无待审核题目', archive: '暂无归档题目',
         requirements: '题目要求均已补全', attachments: '附件均已挂接', history: '暂无操作记录'
@@ -496,6 +502,7 @@ export default {
       return m[this.activePanel] || '暂无题目'
     },
     emptyDesc() {
+      if (!this.hasBatch) return '顶部批次条选择当前工作批次后，再维护本批次题目库。'
       if (['teacher-apply', 'enterprise', 'student-proposed', 'list'].includes(this.activePanel)) {
         return '点「申报」创建题目，保存后可提交审核'
       }
@@ -521,6 +528,11 @@ export default {
         this.loadPanelExtras()
         this.load()
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.loadPanelExtras()
+      this.load()
     }
   },
   methods: {
@@ -569,30 +581,20 @@ export default {
       this.load()
     },
     buildParams() {
-      if (this.isHistoryPanel) {
-        return {
-          page: this.page, pageSize: this.pageSize,
-          keyword: this.filters.keyword || undefined,
-          topicId: this.filters.topicId || undefined,
-          action: this.filters.action || undefined
-        }
-      }
-      const p = { page: this.page, pageSize: this.pageSize, keyword: this.filters.keyword || undefined, batchId: this.filters.batchId || undefined }
-      if (this.filters.sourceType) p.sourceType = this.filters.sourceType
-      if (this.filters.category && this.filters.category !== '__uncat__') p.category = this.filters.category
-      if (this.filters.category === '__uncat__' || this.filters.missingCategory === 'true') p.missingCategory = true
-      if (this.filters.reviewStatus) p.reviewStatus = this.filters.reviewStatus
-      if (this.filters.status) p.status = this.filters.status
-      if (this.filters.isFull === 'true') p.isFull = true
-      if (this.filters.isFull === 'false') p.isFull = false
-      if (this.filters.archiveView) p.archiveView = this.filters.archiveView
-      if (this.filters.hasRequirements === 'true') p.hasRequirements = true
-      if (this.filters.hasRequirements === 'false') p.hasRequirements = false
-      if (this.filters.hasAttachments === 'true') p.hasAttachments = true
-      if (this.filters.hasAttachments === 'false') p.hasAttachments = false
-      return p
+      return buildTopicLibQuery(this.filters, {
+        page: this.page,
+        pageSize: this.pageSize,
+        batchId: this.isHistoryPanel ? undefined : this.batchStore.selectedBatchId
+      })
     },
     async load() {
+      if (!this.batchStore.selectedBatchId && !this.isHistoryPanel) {
+        this.loading = false
+        this.error = ''
+        this.rows = []
+        this.total = 0
+        return
+      }
       this.loading = true
       this.error = ''
       const r = this.isHistoryPanel
@@ -721,7 +723,16 @@ export default {
       const p = this.buildParams()
       delete p.page
       delete p.pageSize
-      return this.isHistoryPanel ? gdTopicApi.exportTopicHistory(p) : gdTopicApi.exportTopics(p)
+      const tab = PANEL_TABS.find((x) => x.key === this.activePanel)
+      const hint = exportFilenameHint(this.batchStore.selectedBatchName, tab?.label || '题目库')
+      p.filenameHint = hint
+      const run = this.isHistoryPanel ? gdTopicApi.exportTopicHistory(p) : gdTopicApi.exportTopics(p)
+      return run.then((res) => {
+        if (res.code === 0 && res.data) {
+          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        }
+        return res
+      })
     }
   }
 }

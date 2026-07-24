@@ -147,9 +147,13 @@ def _row(a: GraduationArchiveRecord, stu=None) -> dict:
             "updatedAt": _iso(a.updated_at), "version": a.version}
 
 
-def list_archives(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
+def list_archives(page: int, page_size: int, keyword=None, status=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
+        if batch_id:
+            bid = int(batch_id)
+            scope_ids = [sid for sid in (scope_ids or []) if (
+                (s := db.get(GraduationStudent, sid)) is not None and s.batch_id == bid)]
         q = select(GraduationArchiveRecord).where(GraduationArchiveRecord.tenant_id == _tid(),
                                                    GraduationArchiveRecord.is_deleted.is_(False),
                                                    GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1]))
@@ -386,10 +390,10 @@ def archive_stats() -> dict:
                 "archiveRate": rate}
 
 
-def export_archives_xlsx(status=None) -> dict:
+def export_archives_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    items, _ = list_archives(1, 100000, status=status)
+    items, total = list_archives(1, 100000, keyword=keyword, status=status, batch_id=batch_id)
     headers = ["学生", "学号", "状态", "缺失材料数", "提交时间", "备案时间", "归档批次号"]
     operator, _role = _op()
     title = f"毕设归档台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
@@ -414,5 +418,5 @@ def export_archives_xlsx(status=None) -> dict:
     buf = io.BytesIO()
     wb.save(buf)
     return {"filename": f"毕设归档台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": len(items),
+            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": total,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}

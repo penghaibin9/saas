@@ -1,11 +1,10 @@
 <template>
   <ModulePageShell
     title="问题预警 · 毕设归档 · 毕设统计"
-    subtitle="风险扫描与处置闭环 / 材料归档核验 / 跨模块统计看板"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <GraduationBatchStrip />
     <div class="gp-tabs">
       <button class="gp-tabs__item" :class="{ 'is-active': tab === 'risk' }" @click="switchTab('risk')">问题预警</button>
       <button class="gp-tabs__item" :class="{ 'is-active': tab === 'archive' }" @click="switchTab('archive')">毕设归档</button>
@@ -14,16 +13,16 @@
 
     <!-- 问题预警：连续双栏处置 -->
     <div v-if="tab === 'risk'" class="mp-stack">
-      <div class="ie-actions" style="justify-content: flex-start"><button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button></div>
-      <AdvancedFilter v-model="riskFilters" :fields="riskFilterFields" @search="loadRisks" @reset="resetRiskFilters" />
+      <div v-if="hasBatch" class="ie-actions" style="justify-content: flex-start"><button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button></div>
+      <AdvancedFilter v-if="hasBatch" v-model="riskFilters" :fields="riskFilterFields" @search="loadRisks" @reset="resetRiskFilters" />
       <ErrorState v-if="riskError" :description="riskError" @retry="loadRisks" />
       <LoadingState v-else-if="riskLoading" />
       <EmptyState
         v-else-if="!riskRows.length"
-        title="还没有风险记录"
-        description="系统会自动排查 13 类毕设问题（没选题、任务书没下达、开题逾期、中期没做、论文没交、答辩没排、材料没归档、毕业资格受影响等）。点下面的按钮按当前数据扫一遍，出问题的学生会自动列出来，不用手工排查。"
+        :title="hasBatch ? '还没有风险记录' : '请先选择或创建毕设批次'"
+        :description="hasBatch ? '系统会自动排查 13 类毕设问题（没选题、任务书没下达、开题逾期、中期没做、论文没交、答辩没排、材料没归档、毕业资格受影响等）。点下面的按钮按当前数据扫一遍，出问题的学生会自动列出来，不用手工排查。' : '顶部批次条选择当前工作批次后，再扫描与处置风险。'"
       >
-        <template #actions>
+        <template v-if="hasBatch" #actions>
           <button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button>
         </template>
       </EmptyState>
@@ -78,15 +77,15 @@
     </div>
     <!-- 毕设归档：连续双栏核验（左队列 + 右缺件清单与状态机动作） -->
     <div v-if="tab === 'archive'" class="mp-stack">
-      <div class="ie-actions" style="justify-content: flex-start">
+      <div v-if="hasBatch" class="ie-actions" style="justify-content: flex-start">
         <button class="mp-btn mp-btn--primary" @click="doBatchGenerate">批量生成提交</button>
         <button class="mp-btn" @click="doBatchFile">一键核验备案</button>
         <AppExportButton :export-fn="exportArchivesFn">导出台账</AppExportButton>
       </div>
-      <AdvancedFilter v-model="archiveFilters" :fields="archiveFilterFields" @search="loadArchives" @reset="resetArchiveFilters" />
+      <AdvancedFilter v-if="hasBatch" v-model="archiveFilters" :fields="archiveFilterFields" @search="loadArchives" @reset="resetArchiveFilters" />
       <ErrorState v-if="archiveError" :description="archiveError" @retry="loadArchives" />
       <LoadingState v-else-if="archiveLoading" />
-      <EmptyState v-else-if="!archiveRows.length" title="暂无归档记录" />
+      <EmptyState v-else-if="!archiveRows.length" :title="hasBatch ? '暂无归档记录' : '请先选择或创建毕设批次'" :description="hasBatch ? '' : '顶部批次条选择当前工作批次后，再办理归档。'" />
       <div v-else class="rk-split">
         <aside class="rk-list">
           <ul class="rk-rows">
@@ -196,10 +195,11 @@
 <script>
 /** 问题预警+毕设归档+毕设统计（/admin/graduation/risk-archive）：扫描处置闭环 + 材料核验归档 + 跨模块统计看板。 */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPagination, AppStackedBarChart, AppPageGuide } from '@/components/common'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
+import { buildRiskArchiveQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
 
@@ -213,14 +213,15 @@ const ARCHIVE_REJECT_REASON_CHIPS = [
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { AppPageGuide, GraduationBatchStrip, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExportButton, AppPagination, AppStackedBarChart },
+  components: { AppPageGuide, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExportButton, AppPagination, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       tab: 'risk',
       riskSelKey: '', riskAutoNext: true,
       archiveSelKey: '',
-      riskFilters: { status: '', level: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
+      riskFilters: { status: '', level: '', keyword: '' }, riskRows: [], riskTotal: 0, riskPage: 1, riskPageSize: 10, riskLoading: true, riskError: '',
       archiveFilters: { keyword: '', status: '' }, archiveRows: [], archiveTotal: 0, archivePage: 1, archivePageSize: 10, archiveLoading: true, archiveError: '',
       statsError: '',
       overview: null, collegeRows: [], statsLoading: true,
@@ -231,6 +232,14 @@ export default {
     }
   },
   computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
+    pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
+      return `${batch}风险扫描与处置闭环 / 材料归档核验 / 跨模块统计看板`
+    },
     selectedRisk() {
       return this.riskRows.find((r) => String(r.id) === this.riskSelKey) || null
     },
@@ -248,6 +257,7 @@ export default {
     },
     riskFilterFields() {
       return [
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: '学生 / 风险名称' },
         { key: 'status', label: '状态', type: 'select', options: [{ value: 'OPEN', label: '待受理' }, { value: 'PROCESSING', label: '处理中' }, { value: 'CLOSED', label: '已关闭' }] },
         { key: 'level', label: '等级', type: 'select', options: [{ value: 'LOW', label: '低' }, { value: 'MEDIUM', label: '中' }, { value: 'HIGH', label: '高' }, { value: 'CRITICAL', label: '紧急' }] }
       ]
@@ -270,6 +280,13 @@ export default {
     // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
     '$route.query.panel'(p) {
       if (['risk', 'archive', 'stats'].includes(p) && p !== this.tab) this.tab = p
+    },
+    'batchStore.selectedBatchId'() {
+      this.riskPage = 1
+      this.archivePage = 1
+      this.loadRisks()
+      this.loadArchives()
+      this.loadStats()
     }
   },
   methods: {
@@ -312,13 +329,24 @@ export default {
       }
     },
     async loadRisks() {
+      if (!this.batchStore.selectedBatchId) {
+        this.riskLoading = false
+        this.riskError = ''
+        this.riskRows = []
+        this.riskTotal = 0
+        return
+      }
       this.riskLoading = true
       this.riskError = ''
-      const res = await graduationRiskArchiveApi.getRiskList({ ...this.riskFilters, page: this.riskPage, pageSize: this.riskPageSize })
+      const res = await graduationRiskArchiveApi.getRiskList(buildRiskArchiveQuery(this.riskFilters, {
+        page: this.riskPage,
+        pageSize: this.riskPageSize,
+        batchId: this.batchStore.selectedBatchId
+      }))
       if (res.code === 0) { this.riskRows = res.data.list; this.riskTotal = res.data.total; this.ensureRiskSelection() } else { this.riskRows = []; this.riskError = res.message || '加载失败' }
       this.riskLoading = false
     },
-    resetRiskFilters() { this.riskFilters = { status: '', level: '' }; this.riskPage = 1; this.loadRisks() },
+    resetRiskFilters() { this.riskFilters = { status: '', level: '', keyword: '' }; this.riskPage = 1; this.loadRisks() },
     doAccept(row) {
       this.confirm = { visible: true, title: '受理风险', message: `确认受理「${row.riskName}」（${row.studentName}）？`, type: 'primary', confirmText: '受理', requireReason: false, action: 'accept', row }
     },
@@ -373,9 +401,20 @@ export default {
       this.$router.push('/admin/graduation/students')
     },
     async loadArchives() {
+      if (!this.batchStore.selectedBatchId) {
+        this.archiveLoading = false
+        this.archiveError = ''
+        this.archiveRows = []
+        this.archiveTotal = 0
+        return
+      }
       this.archiveLoading = true
       this.archiveError = ''
-      const res = await graduationRiskArchiveApi.getArchiveList({ ...this.archiveFilters, page: this.archivePage, pageSize: this.archivePageSize })
+      const res = await graduationRiskArchiveApi.getArchiveList(buildRiskArchiveQuery(this.archiveFilters, {
+        page: this.archivePage,
+        pageSize: this.archivePageSize,
+        batchId: this.batchStore.selectedBatchId
+      }))
       if (res.code === 0) { this.archiveRows = res.data.list; this.archiveTotal = res.data.total; this.ensureArchiveSelection() } else { this.archiveRows = []; this.archiveError = res.message || '加载失败' }
       this.archiveLoading = false
     },
@@ -400,7 +439,14 @@ export default {
       }
     },
     exportArchivesFn() {
-      return graduationRiskArchiveApi.exportArchives({ ...this.archiveFilters })
+      const hint = exportFilenameHint(this.batchStore.selectedBatchName, '毕设归档')
+      const p = buildRiskArchiveQuery(this.archiveFilters, { batchId: this.batchStore.selectedBatchId })
+      return graduationRiskArchiveApi.exportArchives(p).then((res) => {
+        if (res.code === 0 && res.data) {
+          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        }
+        return res
+      })
     },
     async doBatchGenerate() {
       const res = await graduationRiskArchiveApi.batchGenerateArchive()

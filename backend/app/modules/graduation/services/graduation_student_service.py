@@ -932,7 +932,19 @@ def import_confirm(rows: list[dict]) -> dict:
     return {"created": result.get("created", 0)}
 
 
-def export_students_xlsx(keyword=None, batch_id=None, stage=None, risk_level=None) -> dict:
-    items, _ = list_students(1, 100000, keyword=keyword, batch_id=batch_id, stage=stage, risk_level=risk_level)
+def export_students_xlsx(keyword=None, class_id=None, batch_id=None, stage=None, risk_level=None,
+                         advisor_name=None, has_topic=None, eligibility=None, student_group=None,
+                         has_defense_group=None, grad_qual_status=None, material_complete=None,
+                         archive_view=None) -> dict:
+    """导出与 list_students 使用同一套筛选参数，保证 rowCount == 列表 total。"""
+    items, total = list_students(
+        1, 100000, keyword=keyword, class_id=class_id, batch_id=batch_id, stage=stage,
+        risk_level=risk_level, advisor_name=advisor_name, has_topic=has_topic,
+        eligibility=eligibility, student_group=student_group,
+        has_defense_group=has_defense_group, grad_qual_status=grad_qual_status,
+        material_complete=material_complete, archive_view=archive_view)
     user = get_current_user_ctx() or {}
-    return excel.build_export(build_export_spec(), items, operator_name=user.get("realName") or "系统")
+    pack = excel.build_export(build_export_spec(), items, operator_name=user.get("realName") or "系统")
+    # 与列表 total 对齐（build_export 通常已写 rowCount=len(items)）
+    pack["rowCount"] = total
+    return pack

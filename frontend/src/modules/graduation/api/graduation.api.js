@@ -2,10 +2,11 @@
  * 毕业设计中心 API（生产路径：callStrict / listStrict，仅真实后端）。
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功；方法签名冻结不变。
  * 真实接口 /api/v1/graduation/*；失败透出业务码或 503001，不回退 mock 业务数据。
- * getContext 在后端不可达时保留静态壳字段，避免布局白屏（非 mock 冒充业务成功）。
+ * getContext：品牌壳可显示；permissionReady=false 时写按钮禁用，不得用静态 mock 冒充权限成功。
  */
 import { request, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
+import { setPermissionPatterns } from '@/security/permissionGate'
 import {
   tenantBrandConfig,
   currentRole,
@@ -35,23 +36,25 @@ async function listStrict(path, params = {}) {
   } catch (e) { return toErr(e) }
 }
 
+function denyAllActions(pa, reason) {
+  Object.keys(pa).forEach((k) => {
+    pa[k] = { ...pa[k], allowed: false, reason }
+  })
+}
+
 export const graduationApi = {
   /**
-   * 上下文：权限动作以后端 GET /graduation/context 的真实 permissionCode 判定为准
-   * （每个按钮键映射到后端 graduation_permissions.py 同款 permissionCode，逐项 has_permission 计算）。
-   * 下面的 isTeacher 粗粒度推断仅作真实接口不可达时的静态壳兜底，不再是生产口径。
+   * 上下文：权限动作以后端 GET /graduation/context 为准；
+   * 同时拉取 /rbac/current-context 的 permissionPatterns 供侧栏投影。
+   * 真实权限失败时 permissionReady=false，全部写动作禁用。
    */
   async getContext() {
     const u = currentUserFromToken()
     const isTeacher = u && u.userType === 'TEACHER'
     const pa = JSON.parse(JSON.stringify(permissionActions))
-    if (isTeacher) {
-      pa.reviewProposal = { visible: true, allowed: true, reason: '' }
-      pa.reviewFinal = { visible: true, allowed: true, reason: '' }
-      ;['createBatch', 'importStudents', 'batchAssignAdvisor', 'batchArchive', 'voidProject', 'manageDefense', 'publishDefense', 'importTopics'].forEach((k) => {
-        if (pa[k]) pa[k] = { ...pa[k], allowed: false, reason: '需毕设管理员角色，教师身份仅查看' }
-      })
-    }
+    // 默认 fail-closed：在真实权限加载成功前全部禁止写
+    denyAllActions(pa, '权限上下文加载中，写操作暂不可用')
+
     let scopeName = isTeacher ? '本人指导学生' : '本校毕设数据（按后端数据范围）'
     let scopeHint = ''
     let orgScope = {
@@ -60,31 +63,63 @@ export const graduationApi = {
       collegeId: null,
       majorId: null
     }
-    // 品牌与姓名优先取真实 /auth/me（含 tenantName），后端不可达时回退 token/静态兜底，不阻塞页面
     const brand = { ...tenantBrandConfig }
     let roleName = isTeacher ? '指导教师' : currentRole.roleName
+    let permissionPatterns = null
+    let ctxKey = ''
+    let permissionReady = false
+    let permissionError = ''
+    let readonlyTenant = false
+
     try {
       if (shouldTryReal()) {
         const me = await request('/auth/me')
         const tenantName = me?.tenantName || me?.user?.tenantName || me?.tenant?.name
         if (tenantName) brand.schoolName = tenantName
         const realName = me?.realName || me?.user?.realName
+        try {
+          const rc = await request('/rbac/current-context')
+          if (rc && Array.isArray(rc.permissionPatterns)) {
+            permissionPatterns = rc.permissionPatterns
+            readonlyTenant = !!rc.readonlyTenant
+            const cr = rc.currentRole || {}
+            if (cr.roleName) roleName = cr.roleName
+            const tid = me?.tenantId || me?.user?.tenantId || ''
+            ctxKey = `${tid}|${cr.contextId || ''}|${cr.permissionVersion || ''}`
+          }
+        } catch {
+          /* rbac 不可达时继续尝试 graduation/context */
+        }
         if (realName) roleName = `${realName} · ${roleName}`
       }
     } catch {
-      /* 离线/未登录场景静默回退 */
+      /* 离线场景保留品牌壳 */
     }
-    // 真实权限上下文：后端按当前角色逐项判定每个按钮的 permissionCode，覆盖上面的粗粒度静态兜底
+
+    setPermissionPatterns(permissionPatterns)
+
     try {
       if (shouldTryReal()) {
         const ctx = await request('/graduation/context')
         if (ctx && ctx.permissionActions) {
           Object.keys(pa).forEach((key) => {
             if (key in ctx.permissionActions) {
-              const allowed = !!ctx.permissionActions[key]
-              pa[key] = { ...pa[key], allowed, reason: allowed ? '' : (pa[key].reason || '当前角色无该操作权限') }
+              const allowed = !!ctx.permissionActions[key] && !readonlyTenant
+              pa[key] = {
+                ...pa[key],
+                allowed,
+                reason: allowed
+                  ? ''
+                  : (readonlyTenant
+                    ? '当前环境为只读，不可修改'
+                    : (pa[key].reason || '当前角色无该操作权限'))
+              }
             }
           })
+          permissionReady = true
+        } else {
+          permissionError = '权限上下文缺少 permissionActions'
+          denyAllActions(pa, permissionError)
         }
         if (typeof ctx?.fullScope === 'boolean') {
           scopeName = ctx.fullScope ? '本校毕设数据（按后端数据范围）' : '本人业务范围内数据（按角色收敛）'
@@ -103,23 +138,34 @@ export const graduationApi = {
           collegeId: ctx?.collegeId || null,
           majorId: ctx?.majorId || null
         }
+      } else {
+        permissionError = '未启用真实接口，写操作已禁用'
+        denyAllActions(pa, permissionError)
       }
-    } catch {
-      /* 后端不可达时静默保留上面的粗粒度静态兜底，不阻塞页面 */
+    } catch (e) {
+      permissionReady = false
+      permissionError = e?.message || '毕业设计权限上下文不可用'
+      denyAllActions(pa, permissionError)
     }
+
     return ok({
       tenantBrandConfig: brand,
       currentRole: { ...currentRole, roleName },
       dataScope: { ...dataScope, scopeName },
       permissionActions: pa,
+      permissionPatterns,
+      ctxKey,
+      permissionReady,
+      permissionError,
+      readonlyTenant,
       statusOptions: JSON.parse(JSON.stringify(statusOptions)),
       scopeHint,
       ...orgScope
     })
   },
 
-  getDashboardSummary() {
-    return callStrict(() => request('/graduation/dashboard'))
+  getDashboardSummary(params = {}) {
+    return callStrict(() => request('/graduation/dashboard', { params }))
   },
 
   getStudents(params = {}) {
@@ -134,7 +180,6 @@ export const graduationApi = {
     return listStrict('/graduation/gd-topics', { ...params, archiveView: params.archiveView || 'active' })
   },
 
-  // ── 开题材料（仅真实后端）──
   getProposals(params = {}) {
     return listStrict('/graduation/proposals', params)
   },
@@ -151,17 +196,17 @@ export const graduationApi = {
     return callStrict(() => request('/graduation/proposals/remind', { method: 'POST', body: { gdStudentId, channel } }))
   },
 
-  exportProposals(status) {
-    return callStrict(() => request('/graduation/proposals/export', { method: 'POST', params: status ? { status } : {} }))
+  exportProposals(params = {}) {
+    const p = typeof params === 'string' ? { status: params } : (params || {})
+    return callStrict(() => request('/graduation/proposals/export', { method: 'POST', params: p }))
   },
 
-  async downloadProposalsExport(status) {
-    const res = await this.exportProposals(status)
-    if (res.code === 0) downloadXlsxFromApi(res.data, '开题材料台账.xlsx')
+  async downloadProposalsExport(params = {}) {
+    const res = await this.exportProposals(params)
+    if (res.code === 0) downloadXlsxFromApi(res.data, res.data?.filename || '开题材料台账.xlsx')
     return res
   },
 
-  // ── 成果提交（仅真实后端）──
   getFinalSubmissions(params = {}) {
     return listStrict('/graduation/finals', params)
   },
@@ -174,17 +219,17 @@ export const graduationApi = {
     return callStrict(() => request('/graduation/finals/remind', { method: 'POST', body: { gdStudentId, channel } }))
   },
 
-  exportFinals(status) {
-    return callStrict(() => request('/graduation/finals/export', { method: 'POST', params: status ? { status } : {} }))
+  exportFinals(params = {}) {
+    const p = typeof params === 'string' ? { status: params } : (params || {})
+    return callStrict(() => request('/graduation/finals/export', { method: 'POST', params: p }))
   },
 
-  async downloadFinalsExport(status) {
-    const res = await this.exportFinals(status)
-    if (res.code === 0) downloadXlsxFromApi(res.data, '成果提交台账.xlsx')
+  async downloadFinalsExport(params = {}) {
+    const res = await this.exportFinals(params)
+    if (res.code === 0) downloadXlsxFromApi(res.data, res.data?.filename || '成果提交台账.xlsx')
     return res
   },
 
-  // ── 答辩安排（仅真实后端）──
   getDefenseSchedules(params = {}) {
     return listStrict('/graduation/defense-groups', params)
   },
@@ -217,13 +262,13 @@ export const graduationApi = {
     return callStrict(() => request(`/graduation/defense-groups/${id}/publish`, { method: 'POST', body: {} }))
   },
 
-  exportDefenseGroups() {
-    return callStrict(() => request('/graduation/defense-groups/export', { method: 'POST' }))
+  exportDefenseGroups(params = {}) {
+    return callStrict(() => request('/graduation/defense-groups/export', { method: 'POST', params }))
   },
 
-  async downloadDefenseExport() {
-    const res = await this.exportDefenseGroups()
-    if (res.code === 0) downloadXlsxFromApi(res.data, '答辩安排台账.xlsx')
+  async downloadDefenseExport(params = {}) {
+    const res = await this.exportDefenseGroups(params)
+    if (res.code === 0) downloadXlsxFromApi(res.data, res.data?.filename || '答辩安排台账.xlsx')
     return res
   },
 
