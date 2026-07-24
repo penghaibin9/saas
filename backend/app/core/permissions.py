@@ -74,7 +74,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 课表异议/教材选用）逐条核对过端点 summary 与既有测试后保留。
     "ACADEMIC_TEACHER": {
         *_WORKBENCH_SELF,
-        # 基础只读：学期/校历/作息/课程库/培养方案/名册（敏感字段另由 roster.viewSensitive 控制，不授予）
+        # 基础只读：看板/学期/校历/作息/课程库/培养方案/名册（敏感字段另由 roster.viewSensitive 控制，不授予）
+        "academicAffairs.dashboard.view",
         "academicAffairs.term.view", "academicAffairs.calendar.view",
         "academicAffairs.timeslot.view", "academicAffairs.classTimeBand.view",
         "academicAffairs.course.view", "academicAffairs.program.view",
@@ -105,6 +106,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "academicAffairs.resourceOccupancy.view",
         # 学业过程域（/api/v1/academic/*，域级裁决 view/export/manage）：只读
         "academicAffairs.process.view",
+        # 课堂考勤 PC 查询（范围由 service 收敛到本人课程/班级）；评价本人任务/结果/申诉
+        "academicAffairs.attendance.view",
+        "academicAffairs.evaluation.view",
     },
     "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view"},  # 教务处管理员：本校教务全权（TENANT_ALL），
                                                              # 与 COLLEGE_ADMIN 区分——成绩发布/退回/归档等

@@ -56,15 +56,19 @@ from app.modules.academic_affairs.services import academic_affairs_task_service 
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 
+_DASHBOARD_VIEW = "academicAffairs.dashboard.view"
+_TERM_VIEW = "academicAffairs.term.view"
+_TERM_MANAGE = "academicAffairs.term.manage"
+
 
 @router.get("/dashboard", summary="教务首页（当前学期 + 模块卡）")
-def dashboard(user=Depends(require_staff)):
+def dashboard(user=Depends(require_permission(_DASHBOARD_VIEW))):
     return success(svc.dashboard(user))
 
 
 @router.get("/dashboard/reminders", summary="教务看板提醒聚合（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办"
                                              "/今日教学运行/今日课程/调停课提醒/教学资源占用/教务数据趋势）")
-def dashboard_reminders(user=Depends(require_staff)):
+def dashboard_reminders(user=Depends(require_permission(_DASHBOARD_VIEW))):
     return success(svc.dashboard_reminders(user))
 
 
@@ -80,29 +84,28 @@ class TermCreate(BaseModel):
 
 
 @router.post("/terms", summary="新建学年学期")
-def term_create(body: TermCreate, user=Depends(require_staff)):
+def term_create(body: TermCreate, user=Depends(require_permission(_TERM_MANAGE))):
     return success(svc.create_term(body, user), message="已创建")
 
 
 @router.get("/terms", summary="学期列表")
-def terms(status: Optional[str] = None, page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+def terms(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+          user=Depends(require_permission(_TERM_VIEW))):
     items, total = svc.list_terms(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/terms/current", summary="当前学期")
-def term_current(user=Depends(require_staff)):
+def term_current(user=Depends(require_permission(_TERM_VIEW))):
     return success(svc.current_term(user))
 
 
 @router.post("/terms/{termId}/publish", summary="发布学期（设为当前，幂等）")
-def term_publish(termId: int = Path(...), user=Depends(require_staff)):
+def term_publish(termId: int = Path(...), user=Depends(require_permission(_TERM_MANAGE))):
     return success(svc.publish_term(termId, user), message="已发布")
 
 
 # ── 学年学期 Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档总览 ──
-_TERM_VIEW = "academicAffairs.term.view"
-_TERM_MANAGE = "academicAffairs.term.manage"
 
 
 @router.post("/terms/{termId}/set-current", summary="当前学期设置：设为当前学期（仅 PUBLISHED，幂等）")
@@ -457,24 +460,24 @@ class RegisterBody(BaseModel):
 
 
 @router.post("/registration-batches", summary="新建注册批次")
-def reg_batch_create(body: RegBatchCreate, user=Depends(require_staff)):
+def reg_batch_create(body: RegBatchCreate, user=Depends(require_permission("academicAffairs.registration.manage"))):
     return success(svc.create_registration_batch(body, user), message="已创建")
 
 
 @router.get("/registration-batches", summary="注册批次列表（registerType 可收窄为入学/学年注册视图）")
 def reg_batches(status: Optional[str] = None, registerType: Optional[str] = None,
-                page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                page: int = 1, pageSize: int = 20, user=Depends(require_permission("academicAffairs.registration.view"))):
     items, total = svc.list_registration_batches(user, status, page, pageSize, registerType)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/registration-batches/{batchId}/register", summary="学生注册（经 change_student_status 单一入口）")
-def register(body: RegisterBody, batchId: int = Path(...), user=Depends(require_staff)):
+def register(body: RegisterBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.registration.manage"))):
     return success(svc.register_student(batchId, user, body.studentId), message="注册成功")
 
 
 @router.get("/registration-batches/{batchId}/registrations", summary="注册记录列表")
-def registrations(batchId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+def registrations(batchId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(require_permission("academicAffairs.registration.view"))):
     items, total = svc.list_registrations(batchId, user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
@@ -1103,13 +1106,13 @@ class TeacherActBody(BaseModel):
 
 
 @router.post("/teaching-task-batches/generate", summary="生成教学任务批次（按已发布方案，幂等）")
-def task_generate(body: TaskBatchGenerate, user=Depends(require_staff)):
+def task_generate(body: TaskBatchGenerate, user=Depends(require_permission("academicAffairs.teachingTask.manage"))):
     return success(task_svc.generate_batch(body, user), message="已生成")
 
 
 @router.get("/teaching-task-batches", summary="教学任务批次列表")
 def task_batches(termId: Optional[str] = None, status: Optional[str] = None,
-                 page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                 page: int = 1, pageSize: int = 20, user=Depends(require_permission("academicAffairs.teachingTask.view"))):
     items, total = task_svc.list_batches(user, termId, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
@@ -1122,18 +1125,18 @@ def task_batch_submit(batchId: int = Path(...),
 
 @router.get("/teaching-task-batches/{batchId}/tasks", summary="批次内教学任务列表")
 def task_list(batchId: int = Path(...), status: Optional[str] = None,
-              page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+              page: int = 1, pageSize: int = 50, user=Depends(require_permission("academicAffairs.teachingTask.view"))):
     items, total = task_svc.list_tasks(batchId, user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/teaching-tasks/{taskId}/assign", summary="分配授课教师")
-def task_assign(body: AssignBody, taskId: int = Path(...), user=Depends(require_staff)):
+def task_assign(body: AssignBody, taskId: int = Path(...), user=Depends(require_permission("academicAffairs.teachingTask.manage"))):
     return success(task_svc.assign_teacher(taskId, user, body), message="已分配")
 
 
 @router.post("/teaching-tasks/{taskId}/teacher-act", summary="教师确认/退回教学任务")
-def task_teacher_act(body: TeacherActBody, taskId: int = Path(...), user=Depends(require_staff)):
+def task_teacher_act(body: TeacherActBody, taskId: int = Path(...), user=Depends(require_permission("academicAffairs.teachingTask.view"))):
     return success(task_svc.teacher_act(taskId, user, body.action, body.reason or ""), message="已处理")
 
 
@@ -1239,24 +1242,24 @@ class VoidBody(BaseModel):
 
 
 @router.post("/schedule-batches", summary="新建课表批次")
-def schedule_batch_create(body: ScheduleBatchCreate, user=Depends(require_staff)):
+def schedule_batch_create(body: ScheduleBatchCreate, user=Depends(require_permission("academicAffairs.schedule.edit"))):
     return success(sched_svc.create_batch(body, user), message="已创建")
 
 
 @router.get("/schedule-batches", summary="课表批次列表")
 def schedule_batches(termId: Optional[str] = None, status: Optional[str] = None,
-                     page: int = 1, pageSize: int = 20, user=Depends(require_staff)):
+                     page: int = 1, pageSize: int = 20, user=Depends(require_permission("academicAffairs.schedule.view"))):
     items, total = sched_svc.list_batches(user, termId, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/schedule-batches/{batchId}/items", summary="手工排课（三重冲突检测→409）")
-def schedule_add_item(body: ScheduleItemBody, batchId: int = Path(...), user=Depends(require_staff)):
+def schedule_add_item(body: ScheduleItemBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
     return success(sched_svc.add_item(batchId, user, body), message="已排课")
 
 
 @router.post("/schedule-batches/{batchId}/import", summary="导入课表（同一冲突检测器，返回冲突清单）")
-def schedule_import(body: ScheduleImportBody, batchId: int = Path(...), user=Depends(require_staff)):
+def schedule_import(body: ScheduleImportBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.import"))):
     return success(sched_svc.import_items(batchId, user, body.items), message="导入完成")
 
 
@@ -1266,37 +1269,37 @@ class ScheduleMoveBody(BaseModel):
 
 
 @router.put("/schedule-items/{itemId}/move", summary="拖拽调格（同一冲突检测器，冲突409原位不动）")
-def schedule_move_item(body: ScheduleMoveBody, itemId: int = Path(...), user=Depends(require_staff)):
+def schedule_move_item(body: ScheduleMoveBody, itemId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
     return success(sched_svc.move_item(itemId, user, body), message="已调整")
 
 
 @router.post("/schedule-batches/{batchId}/pre-publish", summary="课表预发布")
-def schedule_pre_publish(batchId: int = Path(...), user=Depends(require_staff)):
+def schedule_pre_publish(batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
     return success(sched_svc.pre_publish(batchId, user), message="已预发布")
 
 
 @router.post("/schedule-batches/{batchId}/publish", summary="课表发布（通知师生）")
-def schedule_publish(batchId: int = Path(...), user=Depends(require_staff)):
+def schedule_publish(batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
     return success(sched_svc.publish(batchId, user), message="已发布")
 
 
 @router.post("/schedule-batches/{batchId}/void-reissue", summary="作废重发（调停课运维通道，留审计）")
-def schedule_void(body: VoidBody, batchId: int = Path(...), user=Depends(require_staff)):
+def schedule_void(body: VoidBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.archive"))):
     return success(sched_svc.void_and_reissue(batchId, user, body.reason), message="已作废")
 
 
 @router.get("/schedule-batches/{batchId}/class-view", summary="班级课表视图")
-def schedule_class_view(batchId: int = Path(...), classId: str = "", user=Depends(require_staff)):
+def schedule_class_view(batchId: int = Path(...), classId: str = "", user=Depends(require_permission("academicAffairs.schedule.view"))):
     return success(sched_svc.class_view(batchId, user, classId))
 
 
 @router.get("/schedule-batches/{batchId}/teacher-view", summary="教师课表视图")
-def schedule_teacher_view(batchId: int = Path(...), teacherKey: str = "", user=Depends(require_staff)):
+def schedule_teacher_view(batchId: int = Path(...), teacherKey: str = "", user=Depends(require_permission("academicAffairs.schedule.view"))):
     return success(sched_svc.teacher_view(batchId, user, teacherKey))
 
 
 @router.get("/schedule-batches/{batchId}/student-view", summary="学生课表视图（按行政班服务端推导）")
-def schedule_student_view(batchId: int = Path(...), studentId: str = "", user=Depends(require_staff)):
+def schedule_student_view(batchId: int = Path(...), studentId: str = "", user=Depends(require_permission("academicAffairs.schedule.view"))):
     return success(sched_svc.student_view(batchId, user, studentId))
 
 
@@ -1619,14 +1622,14 @@ def grade_transcript_export(body: TranscriptExportBody, studentId: int = Path(..
 
 
 @router.get("/grade-views/fail-list", summary="挂科清单（读侧下钻）")
-def grade_fail_list(term: Optional[str] = None, page: int = 1, pageSize: int = 50, user=Depends(require_staff)):
+def grade_fail_list(term: Optional[str] = None, page: int = 1, pageSize: int = 50, user=Depends(require_permission("academicAffairs.grade.view"))):
     items, total = grade_svc.fail_list(user, term, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/grade-views/analysis", summary="成绩分析（分数段+及格率+优秀率+平均分，可按课程/班级分组）")
 def grade_analysis(term: Optional[str] = None, dimension: Optional[str] = None,
-                   user=Depends(require_staff)):
+                   user=Depends(require_permission("academicAffairs.grade.view"))):
     return success(grade_svc.grade_analysis(user, term, dimension))
 
 
@@ -1653,19 +1656,19 @@ def grade_analysis_export(body: GradeAnalysisExportBody,
 @router.get("/attendance/sessions", summary="课堂考勤场次列表（PC 查询，按行政班/学期/类别筛选，数据范围收敛）")
 def attendance_sessions_list(classId: Optional[str] = None, termCode: Optional[str] = None,
                              sessionType: Optional[str] = None, page: int = 1, pageSize: int = 20,
-                             user=Depends(require_staff)):
+                             user=Depends(require_permission("academicAffairs.attendance.view"))):
     items, total = attendance_svc.list_sessions(user, page, pageSize, classId, termCode, sessionType)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/attendance/sessions/{sessionId}", summary="课堂考勤场次详情+名单")
-def attendance_session_detail(sessionId: int = Path(...), user=Depends(require_staff)):
+def attendance_session_detail(sessionId: int = Path(...), user=Depends(require_permission("academicAffairs.attendance.view"))):
     return success(attendance_svc.get_session(sessionId, user))
 
 
 @router.get("/attendance/stats", summary="跨堂次考勤统计（按学生汇总出勤/迟到/旷课/请假+缺勤率，正方4.19对标）")
 def attendance_stats_view(classId: Optional[str] = None, termCode: Optional[str] = None,
-                          sessionType: Optional[str] = None, user=Depends(require_staff)):
+                          sessionType: Optional[str] = None, user=Depends(require_permission("academicAffairs.attendance.view"))):
     return success(attendance_svc.attendance_stats(user, classId, termCode, sessionType))
 
 
@@ -2564,7 +2567,7 @@ class BookingReviewBody(BaseModel):
 
 
 @router.post("/classrooms/bookings", summary="申请教室预约（同教室同时段占用409）")
-def classroom_book(body: ClassroomBookBody, user=Depends(require_staff)):
+def classroom_book(body: ClassroomBookBody, user=Depends(require_permission("academicAffairs.classroom.view"))):
     return success(resource_svc.book_classroom(user, body), message="已提交预约")
 
 
@@ -2666,7 +2669,7 @@ class LabBookBody(BaseModel):
 
 
 @router.post("/labs/bookings", summary="申请实训室预约（同实训室同时段占用409）")
-def lab_book(body: LabBookBody, user=Depends(require_staff)):
+def lab_book(body: LabBookBody, user=Depends(require_permission("academicAffairs.lab.view"))):
     return success(resource_svc.book_lab(user, body), message="已提交预约")
 
 
@@ -2788,7 +2791,7 @@ class RepairCancelBody(BaseModel):
 
 
 @router.post("/resources/repairs", summary="登记故障报修（联动资源状态置为维修中）")
-def repair_report(body: RepairReportBody, user=Depends(require_staff)):
+def repair_report(body: RepairReportBody, user=Depends(require_permission("academicAffairs.resourceRepair.manage"))):
     return success(resource_svc.report_repair(user, body), message="已登记报修")
 
 
@@ -4118,12 +4121,12 @@ def sched_rule_delete(ruleId: int = Path(...), user=Depends(require_permission(_
 
 # ── 教师可用时间 ──
 @router.post("/scheduling/teacher-availability", summary="教师提交不可排课时段")
-def sched_avail_submit(body: AvailabilityBody, user=Depends(require_staff)):
+def sched_avail_submit(body: AvailabilityBody, user=Depends(require_permission("academicAffairs.schedule.teacherConfirm"))):
     return success(scheduling_svc.submit_availability(user, body), message="已提交")
 
 
 @router.get("/scheduling/teacher-availability/my", summary="我提交的可用时间")
-def sched_avail_my(termId: Optional[str] = None, user=Depends(require_staff)):
+def sched_avail_my(termId: Optional[str] = None, user=Depends(require_permission("academicAffairs.schedule.teacherConfirm"))):
     return success({"items": scheduling_svc.list_availability(user, termId, mine=True)})
 
 
@@ -4364,7 +4367,7 @@ def eval_role_tasks(body: EvalRoleGenBody, bid: int = Path(...), user=Depends(re
 
 
 @router.get("/evaluation/my-role-tasks", summary="我的评价任务（自评/同行/督导，按登录身份匹配 evaluatorKey）")
-def eval_my_role_tasks(evaluatorType: str, batchId: Optional[str] = None, user=Depends(require_staff)):
+def eval_my_role_tasks(evaluatorType: str, batchId: Optional[str] = None, user=Depends(require_permission("academicAffairs.evaluation.view"))):
     return success({"items": evaluation_svc.list_my_role_tasks(user, evaluatorType, batchId)})
 
 
@@ -4382,13 +4385,13 @@ def eval_results(bid: int = Path(...), page: int = 1, pageSize: int = 50, user=D
 
 
 @router.get("/evaluation/batches/{bid}/my-results", summary="我的评价结果（教师本人，已发布）")
-def eval_my_results(bid: int = Path(...), user=Depends(require_staff)):
+def eval_my_results(bid: int = Path(...), user=Depends(require_permission("academicAffairs.evaluation.view"))):
     items, total = evaluation_svc.list_results(user, bid, mine=True)
     return success({"items": items})
 
 
 @router.post("/evaluation/appeals", summary="教师对结果申诉")
-def eval_appeal_submit(body: EvalAppealBody, user=Depends(require_staff)):
+def eval_appeal_submit(body: EvalAppealBody, user=Depends(require_permission("academicAffairs.evaluation.view"))):
     return success(evaluation_svc.submit_appeal(user, int(body.resultId), body.reason), message="申诉已提交")
 
 

@@ -59,7 +59,7 @@ def link_attachment(biz_type, biz_id, file_id, note, user) -> dict:
     """把已上传文件(file_id)关联到业务记录。需 biz 管理权限；file 必须属当前租户。"""
     bt = _norm_biz(biz_type)
     enforce_permission(user, _BIZ_MANAGE[bt])
-    meta = file_service.get_file_meta(str(file_id))          # 租户收敛：非本租户/不存在→None
+    meta = file_service.get_file_meta(str(file_id), user=user)          # 租户+对象级授权
     if not meta:
         raise not_found("文件不存在或无权访问")
     from app.models import AffairsAttachment
@@ -70,6 +70,10 @@ def link_attachment(biz_type, biz_id, file_id, note, user) -> dict:
         db.add(a)
         db.commit()
         db.refresh(a)
+        try:
+            file_service.bind_file_biz(str(meta["fileId"]), bt, str(biz_id), user=user)
+        except Exception:
+            pass
         return _row(a)
 
 
@@ -101,7 +105,7 @@ def download_attachment(attachment_id, user):
         a = _load(db, attachment_id)
         bt, fid, fname = a.biz_type, str(a.file_id), a.file_name
     enforce_permission(user, _BIZ_VIEW.get(bt, "studentAffairs.dashboard.view"))
-    resolved = file_service.resolve_download(fid)
+    resolved = file_service.resolve_download(fid, user=user)
     audit_insert("SENSITIVE_EXPORT", f"affairs_attachment:{bt}",
                  {"attachmentId": str(attachment_id), "fileId": fid, "bizType": bt,
                   "fileName": fname, "hit": bool(resolved)}, "SUCCESS")

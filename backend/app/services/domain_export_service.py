@@ -73,7 +73,7 @@ def _call_list(path):
     return items, total
 
 
-def export_domain(domain: str, purpose: str) -> dict:
+def export_domain(domain: str, purpose: str, user: dict | None = None) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导出域：{domain}")
     if not purpose or len(purpose.strip()) < 5:
@@ -82,7 +82,7 @@ def export_domain(domain: str, purpose: str) -> dict:
         raise AppException("SERVER_ERROR", "导出需启用数据库")
     title, list_path, cols = DOMAINS[domain]
     items, total = _call_list(list_path)
-    user = get_current_user_ctx() or {}
+    user = user or get_current_user_ctx() or {}
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
@@ -101,18 +101,19 @@ def export_domain(domain: str, purpose: str) -> dict:
             "fileName": target.name, "purpose": purpose.strip(),
             "securityNotice": f"{title}导出：已脱敏 + 首行水印 + 审计留痕；不得随意外发"}
     from app.models import ExportTask
+    from app.services.message_identity import resolve_message_user_id
     db = get_sessionmaker()()
     try:
         row = ExportTask(tenant_id=_tid(), export_mode="LIST", module_code=domain, row_count=total,
                          purpose=purpose.strip(), file_hash=hashlib.sha256(target.read_bytes()).hexdigest(),
-                         status="SUCCESS", remark=key)
+                         status="SUCCESS", remark=key,
+                         created_by=resolve_message_user_id(user) or None)
         db.add(row)
         db.commit()
         db.refresh(row)
         task["taskId"] = str(row.id)
     finally:
         db.close()
-    # 域审计
     try:
         from app.services import audit_log
         audit_log.record("EXPORT", f"{domain}-export", detail={"rows": total, "purpose": purpose.strip()})

@@ -1,20 +1,21 @@
-"""6 大业务域通用导入（Dry-Run 校验 + 确认写入）。行级校验：主键字段必填 + 批内/库内查重。"""
+"""域白名单通用导入（Dry-Run 校验 + 确认写入）。domain 必须由路由层白名单裁决后传入。"""
 from __future__ import annotations
 
 import uuid
 
 from sqlalchemy import select
 
-from app.core.context import current_tenant_id
+from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.import_export_auth import assert_import_batch_owner
 from app.db.session import db_enabled, get_sessionmaker
 
 
 def _tid() -> int:
     try:
-        return int(current_tenant_id() or 1000000000000000001)
+        return int(current_tenant_id() or 0)
     except (TypeError, ValueError):
-        return 1000000000000000001
+        return 0
 
 
 # 域 → (key字段前端名, create 服务路径, list 服务路径, 展示名)
@@ -34,10 +35,6 @@ MAX_IMPORT_ROWS = 5000
 
 
 def _import_service(mod_name):
-    """定位服务模块：兼容旧 app.services.* 与目录收拢后的 app.modules.<中心>.services.*。
-
-    仅改变“到哪里找模块”，不改导入校验/写入行为（目录收拢后的接线兼容）。
-    """
     import importlib
     import pkgutil
     try:
@@ -59,7 +56,6 @@ def _svc(path):
 
 
 def _existing_keys(domain: str, list_path: str, key_field: str) -> set[str]:
-    """只读取当前租户的查重键，避免为 Dry-Run 构造十万条完整列表字典。"""
     if not db_enabled():
         return {str(r.get(key_field) or "") for r in _svc(list_path)(1, MAX_IMPORT_ROWS)[0]}
     from app.models import AcademicStudent, CsServiceStudent, EmpStudent, OrientationStudent
@@ -77,9 +73,11 @@ def _existing_keys(domain: str, list_path: str, key_field: str) -> set[str]:
         db.close()
 
 
-def dry_run(domain: str, rows: list[dict]) -> dict:
+def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user: dict | None = None) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导入域：{domain}（支持 {'/'.join(DOMAINS)}）")
+    if not _tid():
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝导入")
     if len(rows) > MAX_IMPORT_ROWS:
         raise AppException("VALIDATION_ERROR",
                            f"单次导入不能超过 {MAX_IMPORT_ROWS} 行，当前 {len(rows)} 行，请拆分后重试")
@@ -105,10 +103,29 @@ def dry_run(domain: str, rows: list[dict]) -> dict:
         ok_rows.append({"name": name, key_field: key, "className": row.get("className") or row.get("班级")})
     batch_no = f"IMP{uuid.uuid4().hex[:10]}"
     status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
-    # 绑定当前租户，防止跨租户凭 batchNo 猜测/泄露确认写入他人数据（与 import_export_service 口径一致）
-    _MEM[batch_no] = {"domain": domain, "rows": ok_rows, "status": status, "tenantId": _tid()}
+    actor = user or get_current_user_ctx() or {}
+    created_by = str(actor.get("userId") or "")
+    _MEM[batch_no] = {
+        "domain": domain, "rows": ok_rows, "status": status, "tenantId": _tid(),
+        "createdBy": created_by, "namespace": namespace or domain.upper(),
+    }
     return {"batchNo": batch_no, "status": status, "totalRows": len(rows),
             "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50]}
+
+
+def peek_batch(batch_no: str) -> dict | None:
+    batch = _MEM.get(batch_no)
+    if not batch or batch.get("tenantId") != _tid():
+        return None
+    return {"domain": batch.get("domain"), "status": batch.get("status"),
+            "createdBy": batch.get("createdBy")}
+
+
+def assert_confirm_allowed(user: dict, batch_no: str, auth) -> None:
+    batch = _MEM.get(batch_no)
+    if not batch or batch.get("tenantId") != _tid():
+        raise not_found("导入批次不存在或已过期，请重新校验")
+    assert_import_batch_owner(user, batch.get("createdBy"), auth.import_perm)
 
 
 def confirm(batch_no: str) -> dict:

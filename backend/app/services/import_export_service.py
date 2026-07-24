@@ -85,6 +85,28 @@ def parse_upload_rows(content: bytes, ext: str) -> list[dict]:
     raise AppException("FILE_TYPE_NOT_ALLOWED", "导入仅支持 .xlsx / .csv")
 
 
+def assert_confirm_allowed(user: dict, namespace: str, batch_no: str, manage_perm: str) -> None:
+    """确认前校验：租户内批次存在 + 创建人或具备导入权限。"""
+    from sqlalchemy import select
+
+    from app.core.import_export_auth import assert_import_batch_owner
+    from app.models import SharedImportBatch
+    from app.services import shared_import_batch_service as shared_batches
+
+    shared_batches.get(_tid(), namespace, batch_no)  # 租户/过期校验（统一 404）
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(SharedImportBatch).where(
+            SharedImportBatch.tenant_id == _tid(),
+            SharedImportBatch.namespace == namespace,
+            SharedImportBatch.batch_no == batch_no,
+            SharedImportBatch.is_deleted.is_(False))).first()
+        op = row.operator_key if row else None
+    finally:
+        db.close()
+    assert_import_batch_owner(user, op, manage_perm)
+
+
 def dry_run(rows: list[dict]) -> dict:
     _ensure_feature("studentImport", "学生导入")
     max_rows = int(_rule("import", "importMaxRows") or 5000)
@@ -164,14 +186,14 @@ def _mask_phone(v: str | None) -> str:
     return v[:3] + "****" + v[-4:] if len(v) >= 7 else ("***" if v else "")
 
 
-def create_students_export(purpose: str) -> dict:
+def create_students_export(purpose: str, user: dict | None = None) -> dict:
     """真实导出 xlsx（敏感字段脱敏 + 首行水印），写 t_export_task。"""
     _ensure_feature("studentExport", "学生导出")
     need = _rule("export", "exportNeedPurpose")
     min_len = int(_rule("export", "exportPurposeMinLength") or 0)
     if need and (not purpose or len(purpose.strip()) < min_len):
         raise AppException("VALIDATION_ERROR", f"导出用途必填且不少于 {min_len} 字（平台规则中心配置）")
-    user = get_current_user_ctx() or {}
+    user = user or get_current_user_ctx() or {}
     from openpyxl import Workbook
     from app.core.affairs_security import student_directory_scope
     from app.services import db_service
@@ -211,11 +233,14 @@ def create_students_export(purpose: str) -> dict:
     if db_enabled():
         import hashlib
         from app.models import ExportTask
+        from app.services.message_identity import resolve_message_user_id
         db = get_sessionmaker()()
         try:
             row = ExportTask(tenant_id=_tid(), export_mode="LIST", module_code="student",
-                             row_count=total, purpose=purpose.strip(), file_hash=hashlib.sha256(target.read_bytes()).hexdigest(),
-                             status="SUCCESS", remark=key)
+                             row_count=total, purpose=purpose.strip(),
+                             file_hash=hashlib.sha256(target.read_bytes()).hexdigest(),
+                             status="SUCCESS", remark=key,
+                             created_by=resolve_message_user_id(user) or None)
             db.add(row)
             db.commit()
             db.refresh(row)
@@ -227,19 +252,28 @@ def create_students_export(purpose: str) -> dict:
     return task
 
 
-def export_file_path(task_id: str) -> Path:
+def export_file_path(task_id: str, user: dict | None = None) -> Path:
+    from app.core.import_export_auth import assert_export_download
+    user = user or get_current_user_ctx() or {}
+    tid = _tid()
     if db_enabled() and task_id.isdigit():
         from sqlalchemy import select
         from app.models import ExportTask
         db = get_sessionmaker()()
         try:
             row = db.scalars(select(ExportTask).where(
-                ExportTask.id == int(task_id), ExportTask.tenant_id == _tid(),
-                ExportTask.is_deleted.is_(False))).first()
-            if row and row.remark:
+                ExportTask.id == int(task_id), ExportTask.is_deleted.is_(False))).first()
+            if not row:
+                raise not_found("导出任务不存在或文件已清理")
+            assert_export_download(
+                user, task_tenant_id=row.tenant_id, task_created_by=row.created_by,
+                module_code=row.module_code, current_tenant_id=tid)
+            if row.remark:
                 p = upload_dir() / row.remark
-                if p.exists():
+                # 文件必须确实属于该任务（remark 存相对 key）
+                if p.exists() and p.is_file():
                     return p
+            raise not_found("导出任务不存在或文件已清理")
         finally:
             db.close()
     raise not_found("导出任务不存在或文件已清理")

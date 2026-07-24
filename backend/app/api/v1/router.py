@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.core.security import require_staff
+from app.core.config import settings
 from app.core.permissions import require_module
 from app.core.graduation_permissions import require_graduation_request_permission
 from app.api.v1 import academic, approval, audit, auth, authz, campus_service, dashboard, files, orientation, platform, rbac, student, system, tenant, transfer
@@ -82,14 +83,31 @@ _INTERN_DEP = [Depends(require_staff), Depends(require_module("internship"))]
 # 键随本次修复同步注册，避免重蹈 module.graduationDesign.enabled 未注册键、门禁恒放行的覆辙。
 _SA_DEP = [Depends(require_staff), Depends(require_module("studentAffairs"))]
 _CS_DEP = [Depends(require_staff), Depends(require_module("campusService"))]
+# 教务中心 PC 路由门禁：教职工 + 模块授权。学生本人端点（选课/缓考等）仍挂在同 router，
+# 用 _AA_DEP 放行 STUDENT，由端点级 _require_student 收口；其余身份强制教职工。
+def _require_aa_route_user(user=Depends(require_module("academicAffairs"))):
+    from app.core.exceptions import no_permission
+    from app.core.security import STAFF_USER_TYPES
+    ut = (user.get("userType") or "").strip().upper()
+    if ut == "STUDENT":
+        return user
+    if ut not in STAFF_USER_TYPES:
+        raise no_permission("该接口仅教职工可用，请使用个人/家长门户")
+    return user
+
+
+_AA_DEP = [Depends(_require_aa_route_user)]
 
 # 全端共用底座
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])       # /api/v1/auth/*
 api_router.include_router(authz.router)                                      # /api/v1/authz/*（冻结契约）
 api_router.include_router(tenant.router, prefix="/tenant", tags=["tenant"])  # /api/v1/tenant/brand
 api_router.include_router(rbac.router, prefix="/rbac", tags=["rbac"])        # /api/v1/rbac/*
-api_router.include_router(files.router)                                      # /api/v1/files/*（正式两步契约）
-api_router.include_router(file_simple.router, prefix="/files", tags=["files"])  # /api/v1/files/upload-placeholder
+api_router.include_router(files.router)                                      # /api/v1/files/*（真实上传/URL）
+api_router.include_router(file_simple.router, prefix="/files", tags=["files"])  # /api/v1/files/upload|meta|download
+if not settings.is_prod:
+    # 仅非生产保留历史占位路由；生产绝不注册假成功接口
+    api_router.include_router(file_simple.placeholder_router, prefix="/files", tags=["files-placeholder"])
 
 # 业务第一批
 api_router.include_router(student.router)                                    # /api/v1/students/*
@@ -133,7 +151,7 @@ api_router.include_router(graduation_more.router, dependencies=_GD_DEP)         
 api_router.include_router(excel.router)                                       # /api/v1/excel/*（公共 Excel 底座·导入记录）
 api_router.include_router(employment.router, dependencies=_INTERN_DEP)                                 # /api/v1/employment/*（PC 管理端·学生 403）
 api_router.include_router(student_affairs.router, dependencies=_SA_DEP)      # /api/v1/student-affairs/*（13A 学工中心）
-api_router.include_router(academic_affairs.router)                           # /api/v1/academic-affairs/*（13B 教务中心）
+api_router.include_router(academic_affairs.router, dependencies=_AA_DEP)     # /api/v1/academic-affairs/*（13B 教务中心）
 
 # 看板 / 待办 / 消息（扁平简化端点）
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])

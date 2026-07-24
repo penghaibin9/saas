@@ -5,7 +5,7 @@ FEATURE_KEYS = [
     "studentProfile", "student360", "orientation", "campusService", "approval", "todoMessage",
     "fileUpload", "studentImport", "studentExport", "auditLog", "graduation", "internship",
     "employment", "riskWarning", "miniapp", "customBrand", "workflowConfig", "dataExport", "apiAccess",
-    "studentAffairs",
+    "studentAffairs", "academicAffairs",
 ]
 
 DEFAULT_FEATURES = {k: True for k in FEATURE_KEYS}
