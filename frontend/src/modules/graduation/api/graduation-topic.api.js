@@ -53,11 +53,11 @@ export const gdTopicApi = {
   archiveTopic(id, { reason }) {
     return call(() => request(`${BASE}/${id}/archive`, { method: 'POST', body: { reason } }))
   },
-  getStats() {
-    return call(() => request(`${BASE}/stats`))
+  getStats(params = {}) {
+    return call(() => request(`${BASE}/stats`, { params }))
   },
-  getCategoryStats() {
-    return call(() => request(`${BASE}/category-stats`))
+  getCategoryStats(params = {}) {
+    return call(() => request(`${BASE}/category-stats`, { params }))
   },
   getTopicHistory(params = {}) {
     return callList(`${BASE}/history`, params)

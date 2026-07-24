@@ -300,9 +300,9 @@ def withdraw_grade(gd_student_id, reason: str) -> dict:
         return _row(g, stu)
 
 
-def grade_stats() -> dict:
+def grade_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationGrade.tenant_id == _tid(), GraduationGrade.is_deleted.is_(False),
                 GraduationGrade.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationGrade).where(*base)) or 0)
@@ -312,4 +312,5 @@ def grade_stats() -> dict:
         published = db.scalars(select(GraduationGrade).where(*base, GraduationGrade.status == "PUBLISHED")).all()
         avg = round(sum(g.total_score for g in published) / len(published), 1) if published else 0
         excellent = sum(1 for g in published if g.grade_level == "优秀")
-        return {"total": total, "byStatus": by_status, "publishedAvg": avg, "excellentCount": excellent}
+        return {"total": total, "byStatus": by_status, "publishedAvg": avg, "excellentCount": excellent,
+                "batchId": str(batch_id) if batch_id else None}

@@ -291,7 +291,11 @@ export default {
       return this.statusCount(v)
     },
     async loadStats() {
-      const res = await graduationMoreApi.getFinalStats()
+      if (!this.batchStore.selectedBatchId) {
+        this.stats = null
+        return
+      }
+      const res = await graduationMoreApi.getFinalStats({ batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) this.stats = res.data
     },
     switchTab(v) {

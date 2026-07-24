@@ -58,6 +58,8 @@ class GraduationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_gd_student"
     __table_args__ = (
         Index("ix_gd_student_tenant_stage_active", "tenant_id", "stage", "record_status", "is_deleted"),
+        # batch_id 为 NULL 的历史行在 MySQL 下可并存多条（NULL 不互斥）；有批次后同生同批唯一
+        UniqueConstraint("tenant_id", "batch_id", "student_id", name="uk_gd_student_tenant_batch_sid"),
     )
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="毕设批次 t_gd_batch.id")
     topic_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="选题 t_gd_topic.id")
@@ -323,12 +325,19 @@ class GraduationFinal(PKMixin, TenantMixin, CommonMixin, Base):
 
 class GraduationDefenseGroup(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_gd_defense_group"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_id", "group_name", name="uk_gd_defense_tenant_batch_name"),
+        Index("ix_gd_defense_tenant_batch", "tenant_id", "batch_id", "is_deleted"),
+    )
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="毕设批次 t_gd_batch.id")
     group_name: Mapped[str] = mapped_column(String(50), nullable=False)
     defense_date: Mapped[str | None] = mapped_column(String(50))
     location: Mapped[str | None] = mapped_column(String(100))
-    chair: Mapped[str | None] = mapped_column(String(100))
-    members_json: Mapped[list | None] = mapped_column(JSON)
-    secretary: Mapped[str | None] = mapped_column(String(100))
+    chair: Mapped[str | None] = mapped_column(String(100), comment="主席姓名快照")
+    chair_mentor_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="主席→t_gd_mentor.id")
+    members_json: Mapped[list | None] = mapped_column(JSON, comment="评委列表 [{mentorId,name,teacherNo}] 或历史字符串")
+    secretary: Mapped[str | None] = mapped_column(String(100), comment="秘书姓名快照")
+    secretary_mentor_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="秘书→t_gd_mentor.id")
     student_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     conflict: Mapped[str | None] = mapped_column(String(300))
     published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -364,7 +373,8 @@ class GraduationReview(PKMixin, TenantMixin, CommonMixin, Base):
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     gd_final_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
-    reviewer_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    reviewer_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="评阅人姓名快照")
+    reviewer_mentor_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="评阅人→t_gd_mentor.id")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ASSIGNED",
                                         comment="ASSIGNED/REVIEWING/COMPLETED/RETURNED")
     score: Mapped[int | None] = mapped_column(Integer)
@@ -380,7 +390,8 @@ class GraduationDefenseScore(PKMixin, TenantMixin, CommonMixin, Base):
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     defense_group_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
-    judge_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    judge_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="评委姓名快照")
+    judge_mentor_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="评委→t_gd_mentor.id")
     score: Mapped[int | None] = mapped_column(Integer)
     comment: Mapped[str | None] = mapped_column(String(1000))
     absent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

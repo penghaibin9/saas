@@ -95,7 +95,12 @@
           <!-- 评阅 -->
           <div v-if="tab === 'review'" class="gp-panel">
             <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)">
-              <AppGraduationMentorPicker v-model="reviewerName" :query="{ qualificationStatus: 'QUALIFIED', excludeTeacherName: current?.advisorName || '' }" placeholder="搜索评阅教师（自动回避该生导师）" style="width: 260px" />
+              <AppGraduationMentorPicker
+                v-model="reviewerMentorId"
+                :query="{ qualificationStatus: 'QUALIFIED', valueMode: 'id', excludeMentorId: current?.mentorId || '', excludeTeacherName: current?.advisorName || '' }"
+                placeholder="搜索评阅教师（自动回避该生导师）"
+                style="width: 260px"
+              />
               <button class="mp-btn mp-btn--primary" @click="doAssignReview">分配评阅</button>
             </div>
             <ul class="gp-timeline">
@@ -191,7 +196,7 @@ export default {
       ],
       sideError: '', loadError: '',
       plagiarismList: [], reviewList: [], scoreList: [], grade: null, gradeLoading: false,
-      reviewerName: '',
+      reviewerMentorId: '',
       submitting: false
     }
   },
@@ -335,9 +340,9 @@ export default {
       if (res.code === 0) { toast.success('已审核'); this.loadPlagiarism() } else toast.error(res.message)
     },
     async doAssignReview() {
-      if (!this.reviewerName) return toast.error('请填写评阅人姓名')
-      const res = await graduationDefenseGradeApi.assignReview(this.current.id, this.reviewerName)
-      if (res.code === 0) { toast.success('已分配'); this.reviewerName = ''; this.loadReview() } else toast.error(res.message)
+      if (!this.reviewerMentorId) return toast.error('请选择评阅教师')
+      const res = await graduationDefenseGradeApi.assignReview(this.current.id, null, null, this.reviewerMentorId)
+      if (res.code === 0) { toast.success('已分配'); this.reviewerMentorId = ''; this.loadReview() } else toast.error(res.message)
     },
     openReviewSubmit(r) {
       this.openForm('reviewSubmit', r.id)

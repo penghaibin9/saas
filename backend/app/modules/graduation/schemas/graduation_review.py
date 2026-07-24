@@ -26,7 +26,8 @@ class PlagiarismDisputeReview(BaseModel):
 
 class ReviewAssignRequest(BaseModel):
     gdStudentId: str
-    reviewerName: str = Field(..., min_length=1)
+    reviewerName: Optional[str] = Field(default=None, description="评阅人姓名快照（有 reviewerMentorId 时可空）")
+    reviewerMentorId: Optional[int] = Field(default=None, description="评阅人→t_gd_mentor.id（优先）")
     gdFinalId: Optional[str] = None
 
 

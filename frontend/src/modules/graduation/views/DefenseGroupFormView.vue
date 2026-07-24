@@ -12,10 +12,14 @@
       </label>
       <AppDateTimePicker v-model="form.defenseDate" class="ie-fld" label="答辩时间" hint="建议提前一周排期" />
       <label class="ie-fld"><span class="ie-lbl">答辩地点</span><input v-model.trim="form.location" class="ie-in" placeholder="如 实训楼 A301" /></label>
-      <div class="ie-fld"><span class="ie-lbl">答辩组长（副高+）</span><AppGraduationMentorPicker v-model="form.chair" placeholder="按姓名 / 工号搜索组长" /></div>
-      <div class="ie-fld"><span class="ie-lbl">答辩秘书</span><AppGraduationMentorPicker v-model="form.secretary" placeholder="按姓名 / 工号搜索秘书" /></div>
+      <div class="ie-fld"><span class="ie-lbl">答辩组长（副高+）</span>
+        <AppGraduationMentorPicker v-model="form.chairMentorId" :query="{ valueMode: 'id' }" placeholder="按姓名 / 工号搜索组长" />
+      </div>
+      <div class="ie-fld"><span class="ie-lbl">答辩秘书</span>
+        <AppGraduationMentorPicker v-model="form.secretaryMentorId" :query="{ valueMode: 'id' }" placeholder="按姓名 / 工号搜索秘书" />
+      </div>
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">评委名单（建议≥5人，可搜索添加）</span>
-        <AppGraduationMentorPicker v-model="memberList" multiple placeholder="按姓名 / 工号搜索并添加评委" />
+        <AppGraduationMentorPicker v-model="form.memberMentorIds" multiple :query="{ valueMode: 'id' }" placeholder="按姓名 / 工号搜索并添加评委" />
       </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -65,6 +69,7 @@ import { EmptyState } from '@/components/business'
 import { AppDateTimePicker } from '@/components/common/date'
 import { AppGraduationMentorPicker, AppTemplateChips } from '@/components/common'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
 import { toDateTimeInputValue, addDays } from '@/utils/dateUtils'
 
@@ -77,36 +82,35 @@ export default {
   data() {
     return {
       GROUP_NAME_CHIPS,
+      batchStore: useGraduationBatchStore(),
       groupId: null, submitting: false,
-      form: { groupName: '', defenseDate: '', location: '', chair: '', secretary: '', membersText: '' },
+      form: { groupName: '', defenseDate: '', location: '', chairMentorId: '', secretaryMentorId: '', memberMentorIds: [] },
       formError: '',
       assigned: [], eligible: [], picked: [], eligKeyword: ''
     }
   },
   computed: {
-    /** 评委多选与既有 membersText 提交字段双向桥接（保存/回显零改动） */
-    memberList: {
-      get() { return this._members() },
-      set(v) { this.form.membersText = (v || []).join("、") }
-    },
     eligibleFree() {
       return this.eligible.filter((s) => !s.assignedHere)
+    },
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
     }
   },
   async created() {
     const id = this.$route.params.id
     if (id) {
       this.groupId = id
-      const res = await graduationApi.getDefenseSchedules({ page: 1, pageSize: 50 })
-      const row = res.code === 0 ? res.data.list.find((r) => r.id === id) : null
-      if (row) {
+      const res = await graduationApi.getDefenseGroupDetail(id)
+      if (res.code === 0 && res.data) {
+        const row = res.data
         this.form = {
           groupName: row.groupName === '待指定' ? '' : row.groupName,
           defenseDate: row.date === '待定' ? '' : toDateTimeInputValue(row.date),
           location: row.location === '待定' ? '' : row.location,
-          chair: row.chair === '待指定' ? '' : row.chair,
-          secretary: row.secretary === '待指定' ? '' : row.secretary,
-          membersText: (row.members || []).join('、')
+          chairMentorId: row.chairMentorId || '',
+          secretaryMentorId: row.secretaryMentorId || '',
+          memberMentorIds: (row.members || []).map((m) => (typeof m === 'object' ? m.mentorId : null)).filter(Boolean)
         }
       }
       await this.reloadDetail()
@@ -115,19 +119,22 @@ export default {
       this.form = {
         groupName: '',
         defenseDate: toDateTimeInputValue(addDays(new Date(), 7)),
-        location: '', chair: '', secretary: '', membersText: ''
+        location: '', chairMentorId: '', secretaryMentorId: '', memberMentorIds: []
       }
     }
   },
   methods: {
-    _members() {
-      return (this.form.membersText || '').split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
-    },
     _formBody() {
-      return {
-        groupName: this.form.groupName, defenseDate: this.form.defenseDate, location: this.form.location,
-        chair: this.form.chair, secretary: this.form.secretary, members: this._members()
+      const body = {
+        groupName: this.form.groupName,
+        defenseDate: this.form.defenseDate,
+        location: this.form.location,
+        chairMentorId: this.form.chairMentorId ? Number(this.form.chairMentorId) : null,
+        secretaryMentorId: this.form.secretaryMentorId ? Number(this.form.secretaryMentorId) : null,
+        memberMentorIds: (this.form.memberMentorIds || []).map((x) => Number(x)).filter(Boolean)
       }
+      if (!this.groupId) body.batchId = this.batchStore.selectedBatchId
+      return body
     },
     async reloadDetail() {
       const res = await graduationApi.getDefenseGroupDetail(this.groupId)
@@ -146,6 +153,10 @@ export default {
     async save() {
       this.formError = ''
       if (!this.form.groupName) { this.formError = '答辩组名称必填'; return }
+      if (!this.groupId && !this.hasBatch) {
+        this.formError = '请先在顶部选择毕设批次'
+        return
+      }
       this.submitting = true
       const res = this.groupId
         ? await graduationApi.updateDefenseGroup(this.groupId, this._formBody())

@@ -25,13 +25,21 @@ class ProposalSubmitBody(BaseModel):
 
 
 class DefenseGroupBody(BaseModel):
-    """答辩组新建/编辑：组长(副高+)+秘书+评委≥5(建议)+时间地点。"""
+    """答辩组新建/编辑：组长(副高+)+秘书+评委≥5(建议)+时间地点。
+
+    优先传 chairMentorId / secretaryMentorId / memberMentorIds（稳定身份）；
+    chair / secretary / members 姓名仅作快照或历史兼容。
+    """
     groupName: str = Field(..., description="答辩组名称")
+    batchId: Optional[int] = Field(default=None, description="毕设批次（新建必填；编辑不可改）")
     defenseDate: Optional[str] = Field(default="", description="答辩时间")
     location: Optional[str] = Field(default="", description="答辩地点")
-    chair: Optional[str] = Field(default="", description="答辩组长")
-    members: Optional[list] = Field(default=None, description="评委名单")
-    secretary: Optional[str] = Field(default="", description="答辩秘书")
+    chair: Optional[str] = Field(default="", description="答辩组长姓名快照")
+    chairMentorId: Optional[int] = Field(default=None, description="答辩组长→t_gd_mentor.id")
+    members: Optional[list] = Field(default=None, description="评委名单（字符串或 {mentorId,name}）")
+    memberMentorIds: Optional[list] = Field(default=None, description="评委 mentorId 列表（优先）")
+    secretary: Optional[str] = Field(default="", description="答辩秘书姓名快照")
+    secretaryMentorId: Optional[int] = Field(default=None, description="答辩秘书→t_gd_mentor.id")
 
 
 class AssignStudentsBody(BaseModel):

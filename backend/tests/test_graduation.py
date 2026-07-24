@@ -8,13 +8,17 @@ MAIN_TID = 1000000000000000001
 
 def _seed(_db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import (GraduationDefenseGroup, GraduationFinal, GraduationPlagiarismCheck,
+    from app.models import (GraduationBatch, GraduationDefenseGroup, GraduationFinal, GraduationPlagiarismCheck,
                             GraduationProposal, GraduationStudent, GraduationTopic)
     db = get_sessionmaker()()
     try:
-        s = GraduationStudent(tenant_id=MAIN_TID, name="毕设甲", student_no="S2026-999001",
+        batch = GraduationBatch(tenant_id=MAIN_TID, batch_name="种子批次", batch_no="GD-SEED-1",
+                                grade_year="2026届", planned_count=10, status="ACTIVE")
+        db.add(batch)
+        db.flush()
+        s = GraduationStudent(tenant_id=MAIN_TID, batch_id=batch.id, name="毕设甲", student_no="S2026-999001",
                               class_id="c-2301", class_name="软件2301", topic_title="课题A",
-                              advisor_name="王芳", stage="TASKBOOK_CONFIRM", risk_level="LOW",
+                              advisor_name="王芳", stage="FINAL_CHECK", risk_level="LOW",
                               phone_encrypted="13612349999")
         db.add(s)
         db.flush()
@@ -23,15 +27,17 @@ def _seed(_db_mode):
         f = GraduationFinal(tenant_id=MAIN_TID, gd_student_id=s.id, final_type="定稿", version="v3",
                             submit_at=datetime.utcnow(), plagiarism_rate="12.6%", plagiarism_status="达标",
                             status="PENDING_REVIEW")
-        db.add(GraduationTopic(tenant_id=MAIN_TID, title="选题A", source="教师申报", source_type="TEACHER",
-                               advisor_name="王芳", major_name="软件技术", capacity=2, selected=1,
-                               review_status="APPROVED", status="CONFIRMED"))
-        gok = GraduationDefenseGroup(tenant_id=MAIN_TID, group_name="第1组", defense_date="2026-07-08 09:00",
+        db.add(GraduationTopic(tenant_id=MAIN_TID, batch_id=batch.id, title="选题A", source="教师申报",
+                               source_type="TEACHER", advisor_name="王芳", major_name="软件技术", capacity=2,
+                               selected=1, review_status="APPROVED", status="CONFIRMED"))
+        gok = GraduationDefenseGroup(tenant_id=MAIN_TID, batch_id=batch.id, group_name="第1组",
+                                     defense_date="2026-07-08 09:00",
                                      location="B401", chair="周正邦（教授）", members_json=["孙晓梅"],
-                                     secretary="林小婉", student_count=10, conflict=None, published=False)
-        gbad = GraduationDefenseGroup(tenant_id=MAIN_TID, group_name="第2组", defense_date="2026-07-08 14:00",
+                                     secretary="林小婉", student_count=0, conflict=None, published=False)
+        gbad = GraduationDefenseGroup(tenant_id=MAIN_TID, batch_id=batch.id, group_name="第2组",
+                                      defense_date="2026-07-08 14:00",
                                       location="B402", chair="王芳", members_json=["王芳"], secretary="孙晓梅",
-                                      student_count=8, conflict="评委含指导教师本人", published=False)
+                                      student_count=0, conflict="评委含指导教师本人", published=False)
         db.add_all([p, f, gok, gbad])
         db.flush()
         db.add(GraduationPlagiarismCheck(
@@ -40,7 +46,8 @@ def _seed(_db_mode):
             over_threshold=False,
         ))
         db.commit()
-        return {"student": s.id, "proposal": p.id, "final": f.id, "gok": gok.id, "gbad": gbad.id}
+        return {"student": s.id, "proposal": p.id, "final": f.id, "gok": gok.id, "gbad": gbad.id,
+                "batch": batch.id}
     finally:
         db.close()
 
@@ -103,12 +110,22 @@ def test_defense_publish_conflict(client, auth_headers, db_mode):
     sid = client.post("/api/v1/students", headers=h,
                       json={"studentNo": "DPOK1", "realName": "正常答辩生"}).json()["data"]["id"]
     g2 = client.post("/api/v1/graduation/gd-students", headers=h,
-                     json={"studentId": sid}).json()["data"]["id"]
+                     json={"studentId": sid, "batchId": ids["batch"]}).json()["data"]["id"]
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+    db = get_sessionmaker()()
+    try:
+        stu = db.get(GraduationStudent, int(g2))
+        stu.stage = "FINAL_CHECK"
+        db.commit()
+    finally:
+        db.close()
     client.post(f"/api/v1/graduation/defense-groups/{ids['gok']}/assign", headers=h,
                 json={"studentIds": [str(g2)]})
     ok = client.post(f"/api/v1/graduation/defense-groups/{ids['gok']}/publish", headers=h).json()
     assert ok["code"] == 0 and ok["data"]["published"] is True
-    lst = client.get("/api/v1/graduation/defense-groups", headers=h).json()
+    lst = client.get("/api/v1/graduation/defense-groups", headers=h,
+                     params={"batchId": ids["batch"]}).json()
     pub = [g for g in lst["data"]["items"] if g["id"] == str(ids["gok"])][0]
     assert pub["published"] is True
 

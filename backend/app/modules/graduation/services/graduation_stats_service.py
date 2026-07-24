@@ -18,9 +18,9 @@ STAGE_LABEL = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确
               "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩中", "ARCHIVED": "已归档"}
 
 
-def overview_stats() -> dict:
+def overview_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
                 GraduationStudent.record_status == "ACTIVE",
                 GraduationStudent.id.in_(scope_ids or [-1])]
@@ -32,27 +32,30 @@ def overview_stats() -> dict:
             *base, GraduationStudent.risk_level == lv)) or 0)} for lv in ("NONE", "LOW", "MEDIUM", "HIGH")]
     full_scope = has_full_scope()
     return {
+        "batchId": str(batch_id) if batch_id else None,
         "studentTotal": total,
         "byStage": by_stage,
         "byRisk": by_risk,
         # 批次和导师库总量无法按学生关系准确切分，非全量角色不下发，避免统计侧信道。
         "batch": graduation_batch_service.batch_stats() if full_scope else {"restricted": True},
-        "mentor": graduation_mentor_service.mentor_stats() if full_scope else {"restricted": True},
-        "guidance": graduation_guidance_service.guidance_stats(),
-        "midterm": graduation_midterm_service.midterm_stats(),
-        "review": graduation_review_service.review_stats(),
-        "grade": graduation_grade_service.grade_stats(),
-        "risk": graduation_risk_service.risk_stats(),
-        "archive": graduation_archive_service.archive_stats(),
+        "mentor": graduation_mentor_service.mentor_stats(batch_id=batch_id) if full_scope else {"restricted": True},
+        "guidance": graduation_guidance_service.guidance_stats(batch_id=batch_id),
+        "midterm": graduation_midterm_service.midterm_stats(batch_id=batch_id),
+        "review": graduation_review_service.review_stats(batch_id=batch_id),
+        "grade": graduation_grade_service.grade_stats(batch_id=batch_id),
+        "risk": graduation_risk_service.risk_stats(batch_id=batch_id),
+        "archive": graduation_archive_service.archive_stats(batch_id=batch_id),
     }
 
 
-def college_comparison() -> list[dict]:
+def college_comparison(batch_id=None) -> list[dict]:
     """按学院对比（现按 college_id 字段聚合；无学院信息的学生归入"未分类"）。"""
     with session() as db:
+        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch_id))
         rows = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE")).all()
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.id.in_(scope_ids or [-1]))).all()
         rows = [student for student in rows if can_access_student(db, student)]
         buckets: dict[str, dict] = {}
         for s in rows:

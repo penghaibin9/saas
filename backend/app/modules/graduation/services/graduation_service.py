@@ -385,10 +385,10 @@ def review_proposal(pid, action, comment=None) -> dict:
         return {"id": str(p.id), "status": target, "statusLabel": L_MAT.get(target, target)}
 
 
-def proposal_stats() -> dict:
-    """开题统计：按状态分布 + 未提交数（供开题统计报表）。"""
+def proposal_stats(batch_id=None) -> dict:
+    """开题统计：按状态分布 + 未提交数（与列表/页签同一批次与数据范围）。"""
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
                 GraduationProposal.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationProposal).where(*base)) or 0)
@@ -397,13 +397,14 @@ def proposal_stats() -> dict:
                          *base, GraduationProposal.status == s)) or 0)}
                      for s in ("PENDING_REVIEW", "APPROVED", "REJECTED")]
         not_submitted = len(_not_submitted_proposals(db, batch_id=batch_id))
-        return {"total": total, "byStatus": by_status, "notSubmitted": not_submitted}
+        return {"total": total, "byStatus": by_status, "notSubmitted": not_submitted,
+                "batchId": str(batch_id) if batch_id else None}
 
 
-def final_stats() -> dict:
-    """成果统计：按状态分布 + 查重超标数。"""
+def final_stats(batch_id=None) -> dict:
+    """成果统计：按状态分布 + 查重超标数（与列表/页签同一批次与数据范围）。"""
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False),
                 GraduationFinal.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationFinal).where(*base)) or 0)
@@ -412,7 +413,8 @@ def final_stats() -> dict:
                          *base, GraduationFinal.status == s)) or 0)}
                      for s in ("PENDING_REVIEW", "APPROVED", "REJECTED")]
         overs = [f for f in db.scalars(select(GraduationFinal).where(*base)).all() if _rate_over(f.plagiarism_rate)]
-        return {"total": total, "byStatus": by_status, "plagiarismOver": len(overs)}
+        return {"total": total, "byStatus": by_status, "plagiarismOver": len(overs),
+                "batchId": str(batch_id) if batch_id else None}
 
 
 def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) -> dict:
@@ -803,9 +805,16 @@ def export_finals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
 # ═══ 答辩 ═══
 
 def _def_row(g: GraduationDefenseGroup) -> dict:
-    return {"id": str(g.id), "groupName": g.group_name, "date": g.defense_date or "待定",
+    from app.modules.graduation.services import graduation_identity as gid
+    members = [gid.normalize_member(m) for m in (g.members_json or [])]
+    return {"id": str(g.id), "groupName": g.group_name,
+            "batchId": str(g.batch_id) if g.batch_id else None,
+            "date": g.defense_date or "待定",
             "location": g.location or "待定", "chair": g.chair or "待指定",
-            "members": g.members_json or [], "secretary": g.secretary or "待指定",
+            "chairMentorId": str(g.chair_mentor_id) if getattr(g, "chair_mentor_id", None) else None,
+            "members": members or (g.members_json or []),
+            "secretary": g.secretary or "待指定",
+            "secretaryMentorId": str(g.secretary_mentor_id) if getattr(g, "secretary_mentor_id", None) else None,
             "studentCount": g.student_count, "conflict": g.conflict or "",
             "published": g.published,
             "publishedLabel": "已发布（学生端 P17 可见）" if g.published else "待调整后发布"}
@@ -817,29 +826,33 @@ def _can_access_defense_group(db, group: GraduationDefenseGroup) -> bool:
     user = get_current_user_ctx() or {}
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
     real_name = (user.get("realName") or "").strip()
-    if role == "GD_DEFENSE_SECRETARY" and real_name == (group.secretary or "").strip():
-        return True
-    panel = {(group.chair or "").strip(), *((x or "").strip() for x in (group.members_json or []))}
-    if role == "GD_DEFENSE_EXPERT" and real_name in panel:
-        return True
+    from app.modules.graduation.services import graduation_identity as gid
+    me = gid.current_user_mentor(db, group.tenant_id)
+    if role == "GD_DEFENSE_SECRETARY":
+        if getattr(group, "secretary_mentor_id", None):
+            return bool(me and int(me.id) == int(group.secretary_mentor_id))
+        return real_name == (group.secretary or "").strip()
+    if role == "GD_DEFENSE_EXPERT":
+        panel_ids = gid.judge_panel_mentor_ids(group)
+        if panel_ids:
+            return bool(me and int(me.id) in panel_ids)
+        return real_name in gid.judge_panel_names(group)
     return any(can_access_student(db, student) for student in _assigned_students(db, group.id))
 
 
 def list_defense_groups(page, ps, keyword=None, batch_id=None):
+    """按答辩组自身 batch_id 过滤；空组不再靠学生推断跨批出现。"""
     with session() as db:
-        rows = db.scalars(select(GraduationDefenseGroup).where(
+        q = select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(),
-            GraduationDefenseGroup.is_deleted.is_(False)).order_by(GraduationDefenseGroup.id)).all()
+            GraduationDefenseGroup.is_deleted.is_(False))
+        if batch_id is not None and batch_id != "":
+            q = q.where(GraduationDefenseGroup.batch_id == int(batch_id))
+        rows = db.scalars(q.order_by(GraduationDefenseGroup.id)).all()
         items = []
-        bid = int(batch_id) if batch_id else None
         for g in rows:
             if not _can_access_defense_group(db, g):
                 continue
-            if bid is not None:
-                stus = _assigned_students(db, g.id)
-                # 空组可在当前批次下继续编排；已分配学生须至少有一人属于该批次
-                if stus and not any(s.batch_id == bid for s in stus):
-                    continue
             items.append(_def_row(g))
         if keyword:
             kw = keyword.strip()
@@ -858,52 +871,102 @@ def _assigned_students(db, gid) -> list:
 
 def _recompute_defense(db, g):
     """按已分配学生重算人数 + 评委回避冲突（评委/组长不得是本组学生的指导教师）。"""
-    panel = set(m for m in (g.members_json or []) if m)
-    if g.chair:
-        panel.add(g.chair)
+    from app.modules.graduation.services import graduation_identity as gid
+    panel_ids = gid.panel_mentor_ids(g)
+    panel_names = gid.panel_names(g)
     students = _assigned_students(db, g.id)
-    clashes = sorted({s.advisor_name for s in students if s.advisor_name and s.advisor_name in panel})
+    clashes = []
+    for s in students:
+        hit = gid.assert_member_not_advisor(db, s, panel_ids, panel_names)
+        if hit and hit not in clashes:
+            clashes.append(hit)
     g.student_count = len(students)
     g.conflict = ("评委与指导教师冲突：" + "、".join(clashes) + "，须回避") if clashes else ""
 
 
+def _require_defense_batch(db, batch_id) -> GraduationBatch:
+    if batch_id is None or batch_id == "":
+        raise AppException("VALIDATION_ERROR", "新建答辩组必须指定毕设批次 batchId")
+    b = db.get(GraduationBatch, int(batch_id))
+    if not b or b.is_deleted or b.tenant_id != _tid():
+        raise not_found("毕设批次不存在")
+    if b.status in ("ARCHIVED", "VOIDED"):
+        raise AppException("DATA_CONFLICT", "已归档/已作废批次不可新建答辩组")
+    return b
+
+
+def _apply_defense_people(db, g, *, chair=None, secretary=None, members=None,
+                          chair_mentor_id=None, secretary_mentor_id=None, member_mentor_ids=None):
+    from app.modules.graduation.services import graduation_identity as gid
+    cid, cname = gid.resolve_chair_secretary(db, mentor_id=chair_mentor_id, name=chair)
+    sid, sname = gid.resolve_chair_secretary(db, mentor_id=secretary_mentor_id, name=secretary)
+    g.chair_mentor_id = cid
+    g.chair = cname or None
+    g.secretary_mentor_id = sid
+    g.secretary = sname or None
+    g.members_json = gid.build_members_from_ids(db, member_mentor_ids, members)
+
+
 def create_defense_group(group_name, defense_date=None, location=None, chair=None,
-                         members=None, secretary=None) -> dict:
+                         members=None, secretary=None, batch_id=None,
+                         chair_mentor_id=None, secretary_mentor_id=None,
+                         member_mentor_ids=None) -> dict:
     if not (group_name and group_name.strip()):
         raise AppException("VALIDATION_ERROR", "答辩组名称不能为空")
     with session() as db:
+        batch = _require_defense_batch(db, batch_id)
+        name = group_name.strip()
         dup = db.scalar(select(func.count()).select_from(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(),
-            GraduationDefenseGroup.group_name == group_name.strip(),
+            GraduationDefenseGroup.batch_id == batch.id,
+            GraduationDefenseGroup.group_name == name,
             GraduationDefenseGroup.is_deleted.is_(False))) or 0
         if dup:
-            raise AppException("DATA_CONFLICT", "同名答辩组已存在")
+            raise AppException("DATA_CONFLICT", "当前批次已存在同名答辩组")
         g = GraduationDefenseGroup(
-            tenant_id=_tid(), group_name=group_name.strip(), defense_date=(defense_date or "").strip() or None,
-            location=(location or "").strip() or None, chair=(chair or "").strip() or None,
-            members_json=[m for m in (members or []) if m], secretary=(secretary or "").strip() or None,
+            tenant_id=_tid(), batch_id=batch.id, group_name=name,
+            defense_date=(defense_date or "").strip() or None,
+            location=(location or "").strip() or None,
             student_count=0, conflict="", published=False)
+        _apply_defense_people(
+            db, g, chair=chair, secretary=secretary, members=members,
+            chair_mentor_id=chair_mentor_id, secretary_mentor_id=secretary_mentor_id,
+            member_mentor_ids=member_mentor_ids)
         db.add(g)
         db.flush()
         _recompute_defense(db, g)
-        _audit(db, "DEFENSE", g.id, "新建答辩组", g.group_name)
+        _audit(db, "DEFENSE", g.id, "新建答辩组", f"{g.group_name} batch={batch.id}")
         db.commit()
         return get_defense_group_detail(g.id)
 
 
 def update_defense_group(gid, group_name=None, defense_date=None, location=None, chair=None,
-                         members=None, secretary=None) -> dict:
+                         members=None, secretary=None,
+                         chair_mentor_id=None, secretary_mentor_id=None,
+                         member_mentor_ids=None) -> dict:
+    """编辑不可改 batch_id（禁止跨批迁移）。"""
     with session() as db:
         g = db.get(GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if group_name and group_name.strip():
-            g.group_name = group_name.strip()
+            new_name = group_name.strip()
+            if new_name != g.group_name and g.batch_id:
+                dup = db.scalar(select(func.count()).select_from(GraduationDefenseGroup).where(
+                    GraduationDefenseGroup.tenant_id == _tid(),
+                    GraduationDefenseGroup.batch_id == g.batch_id,
+                    GraduationDefenseGroup.group_name == new_name,
+                    GraduationDefenseGroup.is_deleted.is_(False),
+                    GraduationDefenseGroup.id != g.id)) or 0
+                if dup:
+                    raise AppException("DATA_CONFLICT", "当前批次已存在同名答辩组")
+            g.group_name = new_name
         g.defense_date = (defense_date or "").strip() or None
         g.location = (location or "").strip() or None
-        g.chair = (chair or "").strip() or None
-        g.members_json = [m for m in (members or []) if m]
-        g.secretary = (secretary or "").strip() or None
+        _apply_defense_people(
+            db, g, chair=chair, secretary=secretary, members=members,
+            chair_mentor_id=chair_mentor_id, secretary_mentor_id=secretary_mentor_id,
+            member_mentor_ids=member_mentor_ids)
         was_published = g.published
         g.published = False  # 编辑后须重新发布，学生端重新通知
         _recompute_defense(db, g)
@@ -920,27 +983,44 @@ def get_defense_group_detail(gid) -> dict:
             raise not_found("答辩组不存在")
         if not _can_access_defense_group(db, g):
             raise no_permission("Defense group is outside the current graduation-design scope")
+        from app.modules.graduation.services import graduation_identity as gid_id
+        panel_ids = gid_id.panel_mentor_ids(g)
+        panel_names = gid_id.panel_names(g)
         row = _def_row(g)
-        row["students"] = [{"id": str(s.id), "name": s.name, "className": s.class_name or "",
-                            "topicTitle": s.topic_title or "", "advisorName": s.advisor_name or "",
-                            "conflict": bool(s.advisor_name and s.advisor_name in
-                                             set([g.chair] + (g.members_json or [])))}
-                           for s in _assigned_students(db, g.id) if can_access_student(db, s)]
+        row["students"] = []
+        for s in _assigned_students(db, g.id):
+            if not can_access_student(db, s):
+                continue
+            conflict = bool(gid_id.assert_member_not_advisor(db, s, panel_ids, panel_names))
+            row["students"].append({
+                "id": str(s.id), "name": s.name, "className": s.class_name or "",
+                "topicTitle": s.topic_title or "", "advisorName": s.advisor_name or "",
+                "mentorId": str(s.mentor_id) if s.mentor_id else None,
+                "conflict": conflict,
+            })
         return row
 
 
 def list_defense_eligible_students(gid=None, keyword=None) -> list:
-    """可分配到答辩组的学生：须已进入成果检查及以后阶段（与 assign 门禁一致）。"""
+    """可分配到答辩组的学生：须已进入成果检查及以后阶段，且与答辩组同批次。"""
     with session() as db:
         if not has_full_scope():
             raise no_permission("Only graduation managers can list defense assignment candidates")
+        group_batch = None
+        gid_int = int(gid) if gid else None
+        if gid_int:
+            g = db.get(GraduationDefenseGroup, gid_int)
+            if not g or g.is_deleted or g.tenant_id != _tid():
+                raise not_found("答辩组不存在")
+            group_batch = g.batch_id
         stus = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
-        gid_int = int(gid) if gid else None
         out = []
         for s in stus:
             if s.stage not in ("FINAL_CHECK", "DEFENSE", "COMPLETED"):
+                continue
+            if group_batch is not None and s.batch_id != group_batch:
                 continue
             if not (s.topic_id or s.stage not in ("TOPIC_SELECTING", None, "")):
                 continue
@@ -959,6 +1039,8 @@ def assign_defense_students(gid, student_ids) -> dict:
         g = db.get(GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
+        if not g.batch_id:
+            raise AppException("DATA_CONFLICT", "答辩组未绑定批次，请先迁移/重建后再分配学生")
         current = len(_assigned_students(db, g.id))
         add_ids = [int(x) for x in (student_ids or [])]
         for sid in add_ids:
@@ -967,6 +1049,11 @@ def assign_defense_students(gid, student_ids) -> dict:
                 raise not_found(f"学生 {sid} 不存在")
             if s.defense_group_id == g.id:
                 continue
+            if s.batch_id != g.batch_id:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"学生 {s.name or sid} 与答辩组不在同一毕设批次，不能跨批分配",
+                )
             if s.stage not in ("FINAL_CHECK", "DEFENSE", "COMPLETED"):
                 raise AppException(
                     "DATA_CONFLICT",
@@ -1091,11 +1178,11 @@ def notify_defense_group(gid, user=None) -> dict:
                 "message": msg}
 
 
-def export_defense_xlsx() -> dict:
-    """答辩安排台账 Excel 导出（一组一行 + 学生名单，含导出人/时间抬头 + 审计）。"""
+def export_defense_xlsx(batch_id=None) -> dict:
+    """答辩安排台账 Excel 导出（一组一行；与列表同一 batch_id 口径）。"""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    items, _ = list_defense_groups(1, 100000)
+    items, _ = list_defense_groups(1, 100000, batch_id=batch_id)
     headers = ["答辩组", "时间", "地点", "组长", "评委", "秘书", "学生数", "冲突", "发布状态"]
     operator, _role = _op()
     title = f"答辩安排台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
@@ -1119,12 +1206,14 @@ def export_defense_xlsx() -> dict:
     import base64
     import io
     with session() as db:
-        _audit(db, "DEFENSE", "export", "导出答辩安排台账", f"共 {len(items)} 组")
+        _audit(db, "DEFENSE", "export", "导出答辩安排台账",
+               f"共 {len(items)} 组，批次={batch_id or '全部'}")
         db.commit()
     buf = io.BytesIO()
     wb.save(buf)
     return {"filename": f"答辩安排台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
             "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": len(items),
+            "batchId": str(batch_id) if batch_id else None,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
@@ -1168,40 +1257,46 @@ def list_audit(page, ps, biz_type=None, keyword=None):
 
 def get_dashboard(batch_id=None) -> dict:
     with session() as db:
-        visible_ids = accessible_student_ids(db, _tid())
-        if batch_id:
-            bid = int(batch_id)
-            visible_ids = [sid for sid in visible_ids if (
-                (s := db.get(GraduationStudent, sid)) is not None and s.batch_id == bid)]
+        visible_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         total = len(visible_ids)
+        scope = visible_ids or [-1]
         pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
             GraduationProposal.is_deleted.is_(False),
-            GraduationProposal.gd_student_id.in_(visible_ids))) or 0
+            GraduationProposal.gd_student_id.in_(scope))) or 0
         pend_final = db.scalar(select(func.count()).select_from(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
             GraduationFinal.is_deleted.is_(False),
-            GraduationFinal.gd_student_id.in_(visible_ids))) or 0
+            GraduationFinal.gd_student_id.in_(scope))) or 0
         high_risk = db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.risk_level == "HIGH",
-            GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(visible_ids))) or 0
+            GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(scope))) or 0
         flow = {}
-        for s in db.scalars(select(GraduationStudent).where(GraduationStudent.tenant_id == _tid(),
-                            GraduationStudent.is_deleted.is_(False),
-                            GraduationStudent.id.in_(visible_ids))).all():
+        for s in db.scalars(select(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.is_deleted.is_(False),
+                GraduationStudent.id.in_(scope))).all():
             flow[s.stage] = flow.get(s.stage, 0) + 1
-        # 答辩待发布组数（已建组未发布）
-        defense_groups = db.scalars(select(GraduationDefenseGroup).where(
+        # 答辩待发布：按答辩组自身 batch_id（与列表/导出一致）
+        bid = int(batch_id) if batch_id else None
+        defense_q = select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == _tid(), GraduationDefenseGroup.published.is_(False),
-            GraduationDefenseGroup.is_deleted.is_(False))).all()
-        pend_defense = sum(1 for group in defense_groups if _can_access_defense_group(db, group))
-        # 未提交开题（已确认选题但无开题记录）—— 复用派生逻辑
-        not_submitted = len(_not_submitted_proposals(db))
-        # 真实风险预警（未关闭的风险项，取前若干）
+            GraduationDefenseGroup.is_deleted.is_(False))
+        if bid is not None:
+            defense_q = defense_q.where(GraduationDefenseGroup.batch_id == bid)
+        defense_groups = db.scalars(defense_q).all()
+        pend_defense = 0
+        for group in defense_groups:
+            if not _can_access_defense_group(db, group):
+                continue
+            pend_defense += 1
+        # 未提交开题：与开题列表同一批次
+        not_submitted = len(_not_submitted_proposals(db, batch_id=batch_id))
+        # 真实风险预警（未关闭；限定当前批次）
         risk_alerts = []
         try:
             from app.modules.graduation.services import graduation_risk_service as risk_svc
-            items, _ = risk_svc.list_risks(1, 50)
+            items, _ = risk_svc.list_risks(1, 50, batch_id=batch_id)
             for r in items:
                 if r.get("status") == "CLOSED":
                     continue
@@ -1215,11 +1310,11 @@ def get_dashboard(batch_id=None) -> dict:
                     break
         except Exception:  # noqa: BLE001 - 风险模块异常不应影响看板主体
             risk_alerts = []
-        # 跨模块统计接入（导师/指导/中期/评阅/成绩/归档，复用 overview_stats 聚合）
+        # 跨模块统计：与综合统计同一批次
         module_stats = []
         try:
             from app.modules.graduation.services import graduation_stats_service as stats_svc
-            ov = stats_svc.overview_stats()
+            ov = stats_svc.overview_stats(batch_id=batch_id)
             m, gu, mt = ov.get("mentor", {}), ov.get("guidance", {}), ov.get("midterm", {})
             rv, gr, ar = ov.get("review", {}), ov.get("grade", {}), ov.get("archive", {})
 
@@ -1241,7 +1336,7 @@ def get_dashboard(batch_id=None) -> dict:
             ]
         except Exception:  # noqa: BLE001 - 统计异常不影响看板主体
             module_stats = []
-        # 当前批次信息回真：优先取进行中(RUNNING)批次，否则取最近一个未作废批次；无批次时兜底
+        # 当前批次信息：优先用请求的 batch_id；否则回落 RUNNING / 最近有效批次
         _BATCH_LABEL = {"DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
                         "ARCHIVED": "已归档", "VOIDED": "已作废"}
         cur_batch = None
@@ -1266,7 +1361,8 @@ def get_dashboard(batch_id=None) -> dict:
         else:
             batch_name, batch_range, batch_status = "暂无毕设批次", "", "未开始"
         _active_stage = _active_student_stage(cur_batch)
-        return {"batchName": batch_name, "batchRange": batch_range,
+        return {"batchId": str(batch_id) if batch_id else (str(cur_batch.id) if cur_batch else None),
+                "batchName": batch_name, "batchRange": batch_range,
                 "moduleStats": module_stats,
                 "batchStatus": batch_status,
                 "stats": [

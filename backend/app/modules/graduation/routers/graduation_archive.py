@@ -16,20 +16,36 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-毕设归档"])
 
 
 @router.get("/gd-archives/stats", summary="归档统计（归档率）")
-def gd_archive_stats(user=Depends(get_current_user)):
-    return success(svc.archive_stats())
+def gd_archive_stats(batchId: int | None = Query(default=None, ge=1),
+                     user=Depends(get_current_user)):
+    return success(svc.archive_stats(batch_id=batchId))
+
+
+@router.post("/gd-archives/batch-generate/preview", summary="批量生成提交预检查（不写状态）")
+def gd_archive_batch_generate_preview(batchId: int | None = Query(default=None, ge=1),
+                                      user=Depends(get_current_user)):
+    return success(svc.preview_batch_generate(batch_id=batchId))
 
 
 @router.post("/gd-archives/batch-generate", summary="批量归档·对材料齐全学生一键生成+提交")
-def gd_archive_batch_generate(user=Depends(get_current_user)):
-    result = svc.batch_generate_submit()
+def gd_archive_batch_generate(batchId: int | None = Query(default=None, ge=1),
+                              user=Depends(get_current_user)):
+    result = svc.batch_generate_submit(batch_id=batchId)
     audit_log.record("批量生成提交归档", "graduation-archive:batch-generate", detail=result)
     return success(result, message=f"已提交 {result['submitted']}，缺材料跳过 {result['skipped']}")
 
 
+@router.post("/gd-archives/batch-file/preview", summary="批量核验备案预检查（不写状态）")
+def gd_archive_batch_file_preview(batchId: int | None = Query(default=None, ge=1),
+                                  user=Depends(get_current_user)):
+    return success(svc.preview_batch_file(batch_id=batchId))
+
+
 @router.post("/gd-archives/batch-file", summary="批量归档·一键核验备案全部已提交")
-def gd_archive_batch_file(body: dict = Body(default={}), user=Depends(get_current_user)):
-    result = svc.batch_file((body or {}).get("archiveBatchNo"))
+def gd_archive_batch_file(batchId: int | None = Query(default=None, ge=1),
+                          body: dict = Body(default={}),
+                          user=Depends(get_current_user)):
+    result = svc.batch_file((body or {}).get("archiveBatchNo"), batch_id=batchId)
     audit_log.record("批量核验归档", "graduation-archive:batch-file", detail=result)
     return success(result, message=f"已备案 {result['filed']} 份")
 

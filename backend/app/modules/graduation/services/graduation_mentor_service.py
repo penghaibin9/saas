@@ -491,7 +491,7 @@ def unassigned_students(page: int, page_size: int, keyword=None) -> tuple[list[d
 
 # ═══════════ 统计 ═══════════
 
-def mentor_stats() -> dict:
+def mentor_stats(batch_id=None) -> dict:
     with session() as db:
         base = [GraduationMentor.tenant_id == _tid(), GraduationMentor.is_deleted.is_(False)]
         total = int(db.scalar(select(func.count()).select_from(GraduationMentor).where(*base)) or 0)
@@ -503,12 +503,15 @@ def mentor_stats() -> dict:
         full_count = sum(1 for m in qualified if m.current_count >= m.max_capacity)
         total_capacity = sum(m.max_capacity for m in qualified)
         total_assigned = sum(m.current_count for m in qualified)
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         unassigned_total = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.mentor_id.is_(None), GraduationStudent.record_status == "ACTIVE")) or 0)
+            GraduationStudent.mentor_id.is_(None), GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.id.in_(scope_ids or [-1]))) or 0)
         return {"total": total, "byStatus": by_status, "qualifiedCount": len(qualified),
                 "fullCapacityCount": full_count, "totalCapacity": total_capacity,
-                "totalAssigned": total_assigned, "unassignedStudents": unassigned_total}
+                "totalAssigned": total_assigned, "unassignedStudents": unassigned_total,
+                "batchId": str(batch_id) if batch_id else None}
 
 
 # ═══════════ Excel：导师名单导入 + 台账/工作量导出 ═══════════

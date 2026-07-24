@@ -15,13 +15,15 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-问题预警"])
 
 
 @router.get("/gd-risks/stats", summary="风险统计（按编码/等级）")
-def gd_risk_stats(user=Depends(get_current_user)):
-    return success(svc.risk_stats())
+def gd_risk_stats(batchId: int | None = Query(default=None, ge=1),
+                  user=Depends(get_current_user)):
+    return success(svc.risk_stats(batch_id=batchId))
 
 
-@router.post("/gd-risks/scan", summary="扫描生成风险项（幂等，不重复生成已存在项）")
-def gd_risk_scan(user=Depends(get_current_user)):
-    result = svc.scan_risks()
+@router.post("/gd-risks/scan", summary="扫描生成风险项（须指定批次；幂等）")
+def gd_risk_scan(batchId: int | None = Query(default=None, ge=1),
+                 user=Depends(get_current_user)):
+    result = svc.scan_risks(batch_id=batchId)
     audit_log.record("扫描毕设风险", "graduation-risk:scan", detail=result)
     return success(result, message=f"新发现 {result['newCasesCreated']} 项")
 

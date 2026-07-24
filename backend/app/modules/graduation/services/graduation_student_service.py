@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -134,6 +135,7 @@ def _row(s: GraduationStudent, batch: GraduationBatch | None = None, material: d
         "topicId": str(s.topic_id) if s.topic_id else "",
         "topicTitle": s.topic_title or "（未确认选题）", "topicSource": s.topic_source or "",
         "advisorName": s.advisor_name or "", "stage": s.stage,
+        "mentorId": str(s.mentor_id) if getattr(s, "mentor_id", None) else None,
         "stageLabel": STAGE_LABEL.get(s.stage, s.stage), "stageTone": STAGE_TONE.get(s.stage, "default"),
         "materialSummary": s.material_summary or mat.get("materialGap", "—"),
         "proposalStatus": mat.get("proposalStatus", "NOT_SUBMITTED"),
@@ -362,7 +364,11 @@ def create_student_record(body) -> dict:
             stage="TOPIC_SELECTING", risk_level="NONE", eligibility_status="PENDING",
             grad_qual_status="UNKNOWN", record_status="ACTIVE")
         db.add(s)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "该学生在此批次已有毕设记录") from exc
         _audit(db, s.id, "CREATE", f"学号 {stu.student_no}")
         db.commit()
         return _row_of(db, s)
@@ -414,6 +420,12 @@ def assign_topic_in_session(db, sid, topic_id, *, relationship_authorized: bool 
         raise AppException("DATA_CONFLICT", "仅「已审核入池」选题可分配")
     if int(t.selected or 0) >= int(t.capacity or 0):
         raise AppException("DATA_CONFLICT", "该选题已满员，不能再分配")
+    if s.batch_id and t.batch_id and int(s.batch_id) != int(t.batch_id):
+        raise AppException("DATA_CONFLICT", "题目与学生不在同一毕设批次，不能跨批选题")
+    if s.batch_id and not t.batch_id:
+        raise AppException("DATA_CONFLICT", "题目未绑定批次，不能分配给已分批学生")
+    if t.batch_id and not s.batch_id:
+        raise AppException("DATA_CONFLICT", "学生未绑定批次，不能分配已分批题目")
     if s.topic_id:
         old = db.scalars(select(GraduationTopic).where(
             GraduationTopic.id == s.topic_id,
@@ -669,6 +681,10 @@ def assign_defense_group(sid, group_id: str, reason: str = "") -> dict:
         g = db.get(GraduationDefenseGroup, int(group_id))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
+        if not g.batch_id:
+            raise AppException("DATA_CONFLICT", "答辩组未绑定批次，不能分配学生")
+        if s.batch_id != g.batch_id:
+            raise AppException("DATA_CONFLICT", "学生与答辩组不在同一毕设批次，不能跨批分配")
         old_gid = s.defense_group_id
         before = s.defense_group or ""
         s.defense_group_id = g.id

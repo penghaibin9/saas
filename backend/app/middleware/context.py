@@ -130,6 +130,10 @@ def _bind_token_tenant(request: Request) -> None:
             "permissionVersion": claims.get("permissionVersion"),
             "loginName": claims.get("loginName") or claims.get("username"),
             "studentNo": claims.get("studentNo"),
+            "collegeId": claims.get("collegeId"),
+            "collegeIds": claims.get("collegeIds"),
+            "majorId": claims.get("majorId"),
+            "majorIds": claims.get("majorIds"),
             "tokenJti": claims.get("jti"), "tokenExp": claims.get("exp"),
         })
         if claims.get("tenantId"):

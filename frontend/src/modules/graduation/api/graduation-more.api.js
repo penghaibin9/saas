@@ -15,9 +15,9 @@ const G = '/graduation'
 
 export const graduationMoreApi = {
   // ── 统计中心：直接取各域 /stats ──
-  stat(path) { return call(() => request(path)) },
-  getProposalStats() { return this.stat(`${G}/proposals/stats`) },
-  getFinalStats() { return this.stat(`${G}/finals/stats`) },
+  stat(path, params = {}) { return call(() => request(path, { params })) },
+  getProposalStats(params = {}) { return this.stat(`${G}/proposals/stats`, params) },
+  getFinalStats(params = {}) { return this.stat(`${G}/finals/stats`, params) },
   getGuidanceStats() { return this.stat(`${G}/gd-guidances/stats`) },
   getMidtermStats() { return this.stat(`${G}/gd-midterms/stats`) },
   getPlagiarismStats() { return this.stat(`${G}/gd-plagiarism/stats`) },

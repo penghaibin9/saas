@@ -57,10 +57,33 @@ def _student_org_keys(db, student: GraduationStudent) -> tuple[str, str]:
 
 
 def _has_review_relation(db, student: GraduationStudent, real_name: str) -> bool:
+    """评阅关系：优先 reviewer_mentor_id（loginName→teacher_no）；无 ID 的历史任务才比姓名。"""
+    login = _login_name()
+    if login:
+        try:
+            from app.models import GraduationMentor
+            mentor = db.scalars(select(GraduationMentor).where(
+                GraduationMentor.tenant_id == student.tenant_id,
+                GraduationMentor.teacher_no == login,
+                GraduationMentor.is_deleted.is_(False),
+            ).limit(1)).first()
+        except Exception:  # noqa: BLE001
+            mentor = None
+        if mentor is not None:
+            hit = db.scalar(select(GraduationReview.id).where(
+                GraduationReview.tenant_id == student.tenant_id,
+                GraduationReview.gd_student_id == student.id,
+                GraduationReview.reviewer_mentor_id == mentor.id,
+                GraduationReview.is_deleted.is_(False),
+            ).limit(1))
+            if hit is not None:
+                return True
+    # 历史无稳定 ID 的指派：仅匹配 reviewer_mentor_id IS NULL，避免同名串到已绑定 ID 的任务
     return db.scalar(select(GraduationReview.id).where(
         GraduationReview.tenant_id == student.tenant_id,
         GraduationReview.gd_student_id == student.id,
         GraduationReview.reviewer_name == real_name,
+        GraduationReview.reviewer_mentor_id.is_(None),
         GraduationReview.is_deleted.is_(False),
     ).limit(1)) is not None
 
@@ -206,40 +229,51 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         return (profile_id is not None and student.student_id is not None
                 and int(student.student_id) == profile_id)
 
-    # 以下 4 类角色的归属判定依赖「姓名字符串」。工号优先；姓名兜底仅在租户内不重名时可用，
-    # 重名一律 fail-closed，否则两名同名教师会互相访问对方学生（真实越权）。
-    # 学院/专业管理员走 claim（collegeId/majorId）判定，与姓名无关，不受本门禁影响。
-    if role in {"GD_MENTOR", "COUNSELOR", "GD_REVIEWER",
-                "GD_DEFENSE_SECRETARY", "GD_DEFENSE_EXPERT"}:
-        login_name = _login_name()
-        if role in {"GD_MENTOR", "COUNSELOR"} and login_name:
-            # 工号精确匹配：与 t_user.login_name 同口径，重名/改名都不串号
-            if _mentor_teacher_no(db, student) == login_name:
-                return True
-        if _name_is_ambiguous(db, student.tenant_id, real_name):
-            return False
-
-    if role in {"GD_MENTOR", "COUNSELOR"}:
-        # 移动教师端沿用辅导员主身份；仅凭学生台账中与本人姓名完全一致的真实指导关系放行，
-        # 不扩大到同班其他导师学生。
-        if (student.advisor_name or "").strip() == real_name:
-            return True
-        # 教师移动端单令牌承载多重业务身份：被指派为评阅人时，凭真实评阅指派关系访问
-        return _has_review_relation(db, student, real_name)
-
-    if role == "GD_REVIEWER":
-        return _has_review_relation(db, student, real_name)
-
+    # 以下角色历史上靠姓名串；工号 / mentor_id 优先。有稳定 ID 时不因同名用户 fail-closed。
+    # 学院/专业管理员走 claim，与姓名无关。
     if role in {"GD_DEFENSE_SECRETARY", "GD_DEFENSE_EXPERT"}:
         if not student.defense_group_id:
             return False
         group = db.get(GraduationDefenseGroup, student.defense_group_id)
         if not group or group.is_deleted or group.tenant_id != student.tenant_id:
             return False
+        from app.modules.graduation.services import graduation_identity as gid
+        me = gid.mentor_by_teacher_no(db, _login_name(), student.tenant_id) if _login_name() else None
+        if role == "GD_DEFENSE_SECRETARY":
+            if getattr(group, "secretary_mentor_id", None):
+                return bool(me and int(me.id) == int(group.secretary_mentor_id))
+        else:
+            panel_ids = gid.judge_panel_mentor_ids(group)
+            if panel_ids:
+                return bool(me and int(me.id) in panel_ids)
+        # 无稳定 ID：姓名兜底，重名 fail-closed
+        if _name_is_ambiguous(db, student.tenant_id, real_name):
+            return False
         if role == "GD_DEFENSE_SECRETARY":
             return (group.secretary or "").strip() == real_name
-        panel = {(group.chair or "").strip(), *((x or "").strip() for x in (group.members_json or []))}
-        return real_name in panel
+        return real_name in gid.judge_panel_names(group)
+
+    if role in {"GD_MENTOR", "COUNSELOR", "GD_REVIEWER"}:
+        login_name = _login_name()
+        if role in {"GD_MENTOR", "COUNSELOR"} and login_name:
+            if _mentor_teacher_no(db, student) == login_name:
+                return True
+        # 评阅关系已绑 mentor_id 时，后续 _has_review_relation 走 ID，不受同名门禁阻断
+        if role == "GD_REVIEWER" or (role in {"GD_MENTOR", "COUNSELOR"} and getattr(student, "mentor_id", None)):
+            pass  # 不因同名提前拒绝；由 ID / 评阅关系裁决
+        elif _name_is_ambiguous(db, student.tenant_id, real_name):
+            return False
+
+    if role in {"GD_MENTOR", "COUNSELOR"}:
+        # 已绑定 mentor_id 时禁止再靠同名 advisor_name 串号（张伟A/B 隔离）。
+        if getattr(student, "mentor_id", None):
+            return _has_review_relation(db, student, real_name)
+        if (student.advisor_name or "").strip() == real_name:
+            return True
+        return _has_review_relation(db, student, real_name)
+
+    if role == "GD_REVIEWER":
+        return _has_review_relation(db, student, real_name)
 
     user = get_current_user_ctx() or {}
     college_key, major_key = _student_org_keys(db, student)
@@ -260,14 +294,18 @@ def assert_student_access(db, student: GraduationStudent | None, action: str = "
     return student
 
 
-def accessible_student_ids(db, tenant_id: int) -> list[int]:
+def accessible_student_ids(db, tenant_id: int, batch_id=None) -> list[int]:
     """返回当前毕设角色在租户内可访问的学生 ID。
 
-    统计、列表、导出必须复用本口径，不允许各自用角色名猜范围。
+    统计、列表、导出、看板必须复用本口径，不允许各自用角色名猜范围。
+    batch_id 有值时再按批次收窄；列表 / 页签计数 / 统计 / 导出须传同一 batch_id。
     """
-    students = db.scalars(select(GraduationStudent).where(
+    q = select(GraduationStudent).where(
         GraduationStudent.tenant_id == tenant_id,
         GraduationStudent.is_deleted.is_(False),
         GraduationStudent.record_status == "ACTIVE",
-    )).all()
+    )
+    if batch_id is not None and batch_id != "":
+        q = q.where(GraduationStudent.batch_id == int(batch_id))
+    students = db.scalars(q).all()
     return [int(student.id) for student in students if can_access_student(db, student)]

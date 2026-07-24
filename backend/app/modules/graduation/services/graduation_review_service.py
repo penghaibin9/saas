@@ -209,6 +209,7 @@ def _review_row(r: GraduationReview, stu=None) -> dict:
     return {"id": str(r.id), "gdStudentId": str(r.gd_student_id), "gdFinalId": str(r.gd_final_id or ""),
             "studentName": stu.name if stu else "", "studentNo": stu.student_no if stu else "",
             "advisorName": stu.advisor_name if stu else "", "reviewerName": r.reviewer_name,
+            "reviewerMentorId": str(r.reviewer_mentor_id) if getattr(r, "reviewer_mentor_id", None) else None,
             "status": r.status, "statusLabel": REVIEW_STATUS_LABEL.get(r.status, r.status),
             "statusTone": REVIEW_STATUS_TONE.get(r.status, "default"),
             "score": r.score, "opinion": r.opinion or "", "reviewedAt": _iso(r.reviewed_at),
@@ -235,24 +236,20 @@ def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=No
         return items, total
 
 
-def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
+def assign_review(gd_student_id, reviewer_name: str | None = None, gd_final_id=None,
+                  reviewer_mentor_id=None) -> dict:
     with session() as db:
+        from app.modules.graduation.services import graduation_identity as gid
         stu = _stu(db, gd_student_id)
-        reviewer = reviewer_name.strip()
-        advisor_names = {str(stu.advisor_name or "").strip()}
-        # Also resolve mentor record / topic advisor — SoD must not depend only on a blank advisor_name.
-        if getattr(stu, "mentor_id", None):
-            from app.models import GraduationMentor
-            mentor = db.get(GraduationMentor, int(stu.mentor_id))
-            if mentor and not mentor.is_deleted and mentor.tenant_id == _tid():
-                advisor_names.add(str(mentor.teacher_name or "").strip())
-        if getattr(stu, "topic_id", None):
-            from app.models import GraduationTopic
-            topic = db.get(GraduationTopic, int(stu.topic_id))
-            if topic and not topic.is_deleted and topic.tenant_id == _tid():
-                advisor_names.add(str(topic.advisor_name or "").strip())
-        advisor_names.discard("")
-        if reviewer and reviewer in advisor_names:
+        mid = None
+        reviewer = (reviewer_name or "").strip()
+        if reviewer_mentor_id not in (None, ""):
+            m = gid.require_mentor(db, reviewer_mentor_id)
+            mid = int(m.id)
+            reviewer = (m.teacher_name or "").strip()
+        if not reviewer:
+            raise AppException("VALIDATION_ERROR", "评阅人必填（请选择导师台账或填写姓名）")
+        if gid.sod_conflict_with_advisor(db, stu, reviewer_mentor_id=mid, reviewer_name=reviewer):
             raise AppException("VALIDATION_ERROR", "评阅人不得是该生指导教师（SoD 冲突）")
         final_id = int(gd_final_id) if gd_final_id else None
         if final_id:
@@ -264,20 +261,28 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
             ).with_for_update()).first()
             if not final:
                 raise AppException("VALIDATION_ERROR", "Review target does not belong to this student")
-        existing = db.scalars(select(GraduationReview).where(
+        existing_q = select(GraduationReview).where(
             GraduationReview.tenant_id == _tid(),
             GraduationReview.gd_student_id == stu.id,
             GraduationReview.gd_final_id == final_id,
-            GraduationReview.reviewer_name == reviewer,
             GraduationReview.status.in_(("ASSIGNED", "REVIEWING", "RETURNED")),
             GraduationReview.is_deleted.is_(False),
-        ).with_for_update()).first()
+        )
+        if mid:
+            existing_q = existing_q.where(GraduationReview.reviewer_mentor_id == mid)
+        else:
+            existing_q = existing_q.where(
+                GraduationReview.reviewer_name == reviewer,
+                GraduationReview.reviewer_mentor_id.is_(None),
+            )
+        existing = db.scalars(existing_q.with_for_update()).first()
         if existing:
             return _review_row(existing, stu)
         n, _ = _op()
         r = GraduationReview(tenant_id=_tid(), gd_student_id=stu.id,
                              gd_final_id=final_id,
-                             reviewer_name=reviewer, status="ASSIGNED",
+                             reviewer_name=reviewer, reviewer_mentor_id=mid,
+                             status="ASSIGNED",
                              assigned_by=n, assigned_at=datetime.now(timezone.utc))
         db.add(r)
         db.flush()
@@ -288,6 +293,7 @@ def assign_review(gd_student_id, reviewer_name: str, gd_final_id=None) -> dict:
 
 def submit_review(rid, score: int, opinion: str) -> dict:
     with session() as db:
+        from app.modules.graduation.services import graduation_identity as gid
         r = db.scalars(select(GraduationReview).where(
             GraduationReview.id == int(rid), GraduationReview.tenant_id == _tid(),
             GraduationReview.is_deleted.is_(False),
@@ -295,11 +301,16 @@ def submit_review(rid, score: int, opinion: str) -> dict:
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
         assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.submit")
-        # 评阅提交是本人动作：仅被指派评阅人可提交/覆盖本任务，避免同一学生的另一评阅人
-        # 越权改写他人评分（管理岗全范围角色可代为处置）。
-        submitter = (get_current_user_ctx() or {}).get("realName", "").strip()
-        if not has_full_scope() and (r.reviewer_name or "").strip() != submitter:
-            raise no_permission("仅被指派的评阅人可提交本评阅任务")
+        # 评阅提交是本人动作：有 reviewer_mentor_id 时比 ID；否则比姓名（管理岗可代办）。
+        if not has_full_scope():
+            if getattr(r, "reviewer_mentor_id", None):
+                me = gid.current_user_mentor(db)
+                if not me or int(me.id) != int(r.reviewer_mentor_id):
+                    raise no_permission("仅被指派的评阅人可提交本评阅任务")
+            else:
+                submitter = (get_current_user_ctx() or {}).get("realName", "").strip()
+                if (r.reviewer_name or "").strip() != submitter:
+                    raise no_permission("仅被指派的评阅人可提交本评阅任务")
         if r.status == "COMPLETED" and r.score == score and (r.opinion or "") == opinion:
             return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status not in ("ASSIGNED", "REVIEWING", "RETURNED"):
@@ -336,13 +347,14 @@ def return_review(rid, reason: str) -> dict:
         return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
 
 
-def review_stats() -> dict:
+def review_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationReview.tenant_id == _tid(), GraduationReview.is_deleted.is_(False),
                 GraduationReview.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationReview).where(*base)) or 0)
         by_status = [{"status": s, "label": REVIEW_STATUS_LABEL[s],
                       "count": int(db.scalar(select(func.count()).select_from(GraduationReview).where(
                           *base, GraduationReview.status == s)) or 0)} for s in REVIEW_STATUS_LABEL]
-        return {"total": total, "byStatus": by_status}
+        return {"total": total, "byStatus": by_status,
+                "batchId": str(batch_id) if batch_id else None}

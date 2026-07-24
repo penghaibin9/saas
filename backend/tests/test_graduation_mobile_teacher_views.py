@@ -108,12 +108,30 @@ def test_review_assign_sod_and_submit(client, auth_headers, db_mode):
 def test_defense_arrangement_readonly(client, auth_headers, db_mode):
     h = auth_headers
     name, advisor = "答辩学生", "答辩导师"
-    gid = _gd_student_with_topic(client, h, "DF001", name, advisor)
+    bid = client.post("/api/v1/graduation/batches", headers=h, json={
+        "batchName": "移动答辩批", "batchNo": "GD-MOB-DF", "gradeYear": "2026届", "plannedCount": 10,
+    }).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "DF001", "realName": name}).json()["data"]["id"]
+    gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
+    tid = client.post(GD_TOPIC, headers=h, json={
+        "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
+        "capacity": 1, "submitReview": True, "batchId": bid}).json()["data"]["id"]
+    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
     th = _teacher_token(advisor)
+
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+    db = get_sessionmaker()()
+    try:
+        db.get(GraduationStudent, int(gid)).stage = "FINAL_CHECK"
+        db.commit()
+    finally:
+        db.close()
 
     # 建组（评委不含导师，避免回避冲突）→ 分配 → 发布
     grp = client.post(DG, headers=h, json={
-        "groupName": "移动答辩组", "chair": "答辩组长", "location": "M301",
+        "groupName": "移动答辩组", "batchId": bid, "chair": "答辩组长", "location": "M301",
         "members": ["评委甲", "评委乙"], "secretary": "答辩秘书", "defenseDate": "2026-06-01 09:00"}).json()["data"]
     gpid = grp["id"]
     client.post(f"{DG}/{gpid}/assign", headers=h, json={"studentIds": [str(gid)]})

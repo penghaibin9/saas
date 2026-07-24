@@ -24,13 +24,15 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-题目库"])
 
 
 @router.get("/gd-topics/stats", summary="题目库统计（含分类/容量/缺口）")
-def gd_topic_stats(user=Depends(get_current_user)):
-    return success(svc.topic_stats())
+def gd_topic_stats(batchId: int | None = Query(default=None, ge=1),
+                   user=Depends(get_current_user)):
+    return success(svc.topic_stats(batch_id=batchId))
 
 
 @router.get("/gd-topics/category-stats", summary="题目分类统计")
-def gd_topic_category_stats(user=Depends(get_current_user)):
-    return success(svc.category_stats())
+def gd_topic_category_stats(batchId: int | None = Query(default=None, ge=1),
+                            user=Depends(get_current_user)):
+    return success(svc.category_stats(batch_id=batchId))
 
 
 @router.get("/gd-topics/history", summary="题目操作历史（审计链）")

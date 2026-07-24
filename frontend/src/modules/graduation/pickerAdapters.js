@@ -51,18 +51,22 @@ const graduationStudent = adapter(
 )
 
 function mentorOption(row, query = {}) {
-  const isExcluded = !!query.excludeTeacherName && row.teacherName === query.excludeTeacherName
+  const isExcludedByName = !!query.excludeTeacherName && row.teacherName === query.excludeTeacherName
+  const isExcludedById = !!query.excludeMentorId && String(row.id) === String(query.excludeMentorId)
   return {
     value: query.valueMode === 'id' ? row.id : row.teacherName,
     label: row.teacherName || '导师',
-    desc: row.capacityText || row.collegeName || '',
-    disabled: isExcluded,
+    desc: [row.teacherNo, row.capacityText || row.collegeName].filter(Boolean).join(' · ') || '',
+    disabled: isExcludedByName || isExcludedById,
     raw: row
   }
 }
 
 const graduationMentor = adapter(
-  (keyword, query) => graduationMentorApi.getMentors({ ...query, keyword, page: 1, pageSize: 30, valueMode: undefined, excludeTeacherName: undefined }),
+  (keyword, query) => graduationMentorApi.getMentors({
+    ...query, keyword, page: 1, pageSize: 30,
+    valueMode: undefined, excludeTeacherName: undefined, excludeMentorId: undefined,
+  }),
   (row, query) => mentorOption(row, query)
 )
 

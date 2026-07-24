@@ -137,23 +137,33 @@ def test_detail(client, auth_headers, db_mode):
     assert d["code"] == 0 and d["data"]["name"] and "stateFlow" in d["data"] and "auditTrail" in d["data"]
 
 
-def _defense_group(db_mode, name="测试答辩组"):
+def _defense_group(db_mode, name="测试答辩组", batch_id=None):
     from app.db.session import get_sessionmaker
-    from app.models import GraduationDefenseGroup
+    from app.models import GraduationBatch, GraduationDefenseGroup
     MAIN_TID = 1000000000000000001
     db = get_sessionmaker()()
     try:
-        g = GraduationDefenseGroup(tenant_id=MAIN_TID, group_name=name, defense_date="2026-06-01",
+        bid = batch_id
+        if not bid:
+            b = GraduationBatch(tenant_id=MAIN_TID, batch_name="学生子面板批", batch_no="GD-SUB-1",
+                                grade_year="2026届", planned_count=10, status="ACTIVE")
+            db.add(b)
+            db.flush()
+            bid = b.id
+        g = GraduationDefenseGroup(tenant_id=MAIN_TID, batch_id=bid, group_name=name,
+                                   defense_date="2026-06-01",
                                    location="教学楼A101", student_count=0, published=False)
         db.add(g)
         db.commit()
         db.refresh(g)
-        return str(g.id)
+        return str(g.id), str(bid)
     finally:
         db.close()
 
 
 def test_subpanels_eligibility_group_defense_grad_qual(client, auth_headers, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
     rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-080"))
     e = client.post(f"{GD_STU}/{rid}/eligibility", headers=auth_headers,
                     json={"status": "QUALIFIED", "reason": "学籍正常"}).json()
@@ -161,7 +171,15 @@ def test_subpanels_eligibility_group_defense_grad_qual(client, auth_headers, db_
     g = client.post(f"{GD_STU}/{rid}/group", headers=auth_headers,
                     json={"groupName": "第1组", "reason": "过程分组"}).json()
     assert g["code"] == 0 and g["data"]["studentGroup"] == "第1组"
-    gid = _defense_group(db_mode)
+    gid, bid = _defense_group(db_mode)
+    db = get_sessionmaker()()
+    try:
+        stu = db.get(GraduationStudent, int(rid))
+        stu.batch_id = int(bid)
+        stu.stage = "FINAL_CHECK"
+        db.commit()
+    finally:
+        db.close()
     d = client.post(f"{GD_STU}/{rid}/defense-group", headers=auth_headers,
                     json={"defenseGroupId": gid, "reason": "安排答辩"}).json()
     assert d["code"] == 0 and d["data"]["defenseGroupId"] == gid

@@ -172,9 +172,9 @@ def review_rectification(gd_student_id, action: str, comment: str = None) -> dic
         return _row(m, stu)
 
 
-def midterm_stats() -> dict:
+def midterm_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationMidterm.tenant_id == _tid(), GraduationMidterm.is_deleted.is_(False),
                 GraduationMidterm.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationMidterm).where(*base)) or 0)
@@ -185,4 +185,5 @@ def midterm_stats() -> dict:
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE", GraduationStudent.stage == "MIDTERM",
             GraduationStudent.id.in_(scope_ids or [-1]))) or 0)
-        return {"total": total, "byStatus": by_status, "studentsAtMidtermStage": not_started}
+        return {"total": total, "byStatus": by_status, "studentsAtMidtermStage": not_started,
+                "batchId": str(batch_id) if batch_id else None}

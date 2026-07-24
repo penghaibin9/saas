@@ -79,7 +79,9 @@ def gd_review_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, l
 
 @router.post("/gd-reviews/assign", summary="分配评阅任务（SoD：评阅人不得是指导教师）")
 def gd_review_assign(body: ReviewAssignRequest, user=Depends(get_current_user)):
-    result = svc.assign_review(body.gdStudentId, body.reviewerName, body.gdFinalId)
+    result = svc.assign_review(
+        body.gdStudentId, body.reviewerName, body.gdFinalId,
+        reviewer_mentor_id=body.reviewerMentorId)
     audit_log.record("分配评阅任务", f"graduation-review:{result['id']}")
     return success(result, message="已分配")
 

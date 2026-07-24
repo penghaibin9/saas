@@ -1,13 +1,14 @@
 <template>
   <ModulePageShell
     title="毕设统计报表"
-    subtitle="开题 / 指导 / 中期 / 查重 / 评阅 / 答辩 / 成绩 / 互查各阶段进度与质量统计"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <p class="mp-note">以下为当前数据范围内的全量汇总（时间筛选待后端统一接入后开放）。</p>
-      <LoadingState v-if="loading" />
+      <p class="mp-note">以下为当前批次、当前数据范围内的汇总（时间筛选待后端统一接入后开放）。</p>
+      <EmptyState v-if="!hasBatch" title="请先选择或创建毕设批次" description="顶部批次条选择当前工作批次后，再查看统计。" />
+      <LoadingState v-else-if="loading" />
       <div v-else class="mp-stack">
         <section v-for="b in blocks" :key="b.key" class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">{{ b.title }}</span></div>
@@ -43,22 +44,24 @@
 
 <script>
 /** 毕设统计报表中心（/admin/graduation/stats-report）。接各域真实 /stats，只读聚合。 */
-import { ModulePageShell, LoadingState } from '@/components/business'
+import { ModulePageShell, LoadingState, EmptyState } from '@/components/business'
 import { AppStackedBarChart } from '@/components/common'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 export default {
   name: 'GraduationStatsView',
-  components: { ModulePageShell, LoadingState, AppStackedBarChart },
+  components: { ModulePageShell, LoadingState, EmptyState, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       loading: true,
       blocks: [
-        { key: 'proposal', title: '开题统计', fn: 'getProposalStats', data: null },
+        { key: 'proposal', title: '开题统计', fn: 'getProposalStats', withBatch: true, data: null },
         { key: 'guidance', title: '指导频次统计', fn: 'getGuidanceStats', data: null },
         { key: 'midterm', title: '中期检查统计', fn: 'getMidtermStats', data: null },
-        { key: 'final', title: '成果提交统计', fn: 'getFinalStats', data: null },
+        { key: 'final', title: '成果提交统计', fn: 'getFinalStats', withBatch: true, data: null },
         { key: 'plagiarism', title: '查重统计', fn: 'getPlagiarismStats', data: null },
         { key: 'review', title: '教师评阅统计', fn: 'getReviewStats', data: null },
         { key: 'peer', title: '成果互查统计', fn: 'getPeerStats', data: null },
@@ -67,7 +70,20 @@ export default {
       ]
     }
   },
+  computed: {
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
+    pageSubtitle() {
+      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
+      return `${batch}开题 / 指导 / 中期 / 查重 / 评阅 / 答辩 / 成绩 / 互查各阶段进度与质量统计`
+    }
+  },
   created() { this.loadAll() },
+  watch: {
+    'batchStore.selectedBatchId'() { this.loadAll() }
+  },
   methods: {
     /** 各域 byStatus → 横向条形图数据（全零/单项不出图，不造假） */
     chartData(b) {
@@ -85,7 +101,13 @@ export default {
       return out
     },
     async loadOne(b) {
-      const res = await graduationMoreApi[b.fn]()
+      if (!this.hasBatch) {
+        b.data = null
+        b.error = ''
+        return
+      }
+      const params = b.withBatch ? { batchId: this.batchStore.selectedBatchId } : undefined
+      const res = params ? await graduationMoreApi[b.fn](params) : await graduationMoreApi[b.fn]()
       if (res.code === 0) {
         b.data = res.data
         b.error = ''
@@ -96,6 +118,11 @@ export default {
     },
     async loadAll() {
       this.loading = true
+      if (!this.hasBatch) {
+        this.blocks.forEach((b) => { b.data = null; b.error = '' })
+        this.loading = false
+        return
+      }
       await Promise.all(this.blocks.map((b) => this.loadOne(b)))
       this.loading = false
     }

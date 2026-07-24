@@ -180,16 +180,20 @@ def test_open_risk_blocks_archive_submit(client, auth_headers, db_mode):
 
 def test_open_risk_skips_batch_archive_generate_and_file(client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import GraduationArchiveRecord
+    from app.models import GraduationArchiveRecord, GraduationStudent
 
     h = auth_headers
-    gid = _gd_student(client, h, "E2E-RISK-BATCH-01", "批量风险归档生")
+    bid = client.post(GD_BATCH, headers=h, json={
+        "batchName": "E2E批量风险批", "batchNo": "E2E-RISK-BATCH-B", "gradeYear": "2026届", "plannedCount": 10,
+    }).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "E2E-RISK-BATCH-01", "realName": "批量风险归档生"}).json()["data"]["id"]
+    gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     _seed_archive_ready(db, int(gid), with_open_risk=True)
     db.commit()
     db.close()
 
-    gen = client.post(f"{GD_ARCHIVE}/batch-generate", headers=h).json()
+    gen = client.post(f"{GD_ARCHIVE}/batch-generate", headers=h, params={"batchId": bid}).json()
     assert gen["code"] == 0
     assert gen["data"]["skipped"] >= 1
 
@@ -207,7 +211,7 @@ def test_open_risk_skips_batch_archive_generate_and_file(client, auth_headers, d
     db.commit()
     db.close()
 
-    filed = client.post(f"{GD_ARCHIVE}/batch-file", headers=h, json={}).json()
+    filed = client.post(f"{GD_ARCHIVE}/batch-file", headers=h, params={"batchId": bid}, json={}).json()
     assert filed["code"] == 0
     assert filed["data"]["skipped"] >= 1
 

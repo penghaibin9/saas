@@ -297,8 +297,19 @@ export default {
       if (this.$route.query.panel !== t) this.$router.replace({ query: { ...this.$route.query, panel: t } })
     },
     async doScan() {
-      const res = await graduationRiskArchiveApi.scanRisks()
-      if (res.code === 0) { toast.success(res.message || '扫描完成'); this.loadRisks() } else toast.error(res.message)
+      if (!this.batchStore.selectedBatchId) {
+        toast.error('请先选择毕设批次')
+        return
+      }
+      const res = await graduationRiskArchiveApi.scanRisks({ batchId: this.batchStore.selectedBatchId })
+      if (res.code === 0) {
+        const d = res.data || {}
+        toast.success(
+          res.message
+          || `已扫描 ${d.scannedStudents || 0} 人，新增 ${d.newCasesCreated || 0}，已存在 ${d.existingCases || 0}`
+        )
+        this.loadRisks()
+      } else toast.error(res.message)
     },
     /** 风险等级展示映射（不向老师透出内部英文枚举） */
     levelLabel(level) {
@@ -358,15 +369,31 @@ export default {
     },
     async onConfirm({ reason } = {}) {
       const { action, row } = this.confirm
+      if (action === 'batch-generate-noop' || action === 'batch-file-noop') {
+        this.confirm.visible = false
+        return
+      }
       let res
       if (action === 'accept') res = await graduationRiskArchiveApi.acceptRisk(row.id)
       else if (action === 'process') res = await graduationRiskArchiveApi.processRisk(row.id, reason || '')
       else if (action === 'close') res = await graduationRiskArchiveApi.closeRisk(row.id, reason || '')
       else if (action === 'reject-archive') res = await graduationRiskArchiveApi.rejectArchive(row.gdStudentId, reason || '')
-      else if (action === 'batch-file') res = await graduationRiskArchiveApi.batchFileArchive()
+      else if (action === 'batch-generate') {
+        res = await graduationRiskArchiveApi.batchGenerateArchive({ batchId: this.batchStore.selectedBatchId })
+      } else if (action === 'batch-file') {
+        res = await graduationRiskArchiveApi.batchFileArchive({ batchId: this.batchStore.selectedBatchId })
+      }
       if (res && res.code === 0) {
-        toast.success(action === 'batch-file' ? `已批量备案 ${res.data.filed} 份` : '已更新'); this.confirm.visible = false
-        if (action === 'reject-archive' || action === 'batch-file') this.loadArchives(); else this.loadRisks()
+        if (action === 'batch-generate') {
+          toast.success(`已提交 ${res.data.submitted}，跳过 ${res.data.skipped}（缺材料或未关闭风险）`)
+        } else if (action === 'batch-file') {
+          toast.success(`已批量备案 ${res.data.filed} 份（跳过 ${res.data.skipped}）`)
+        } else {
+          toast.success('已更新')
+        }
+        this.confirm.visible = false
+        if (action === 'reject-archive' || action === 'batch-file' || action === 'batch-generate') this.loadArchives()
+        else this.loadRisks()
       } else if (res) toast.error(res.message)
     },
     selectArchive(row) {
@@ -448,22 +475,91 @@ export default {
         return res
       })
     },
-    async doBatchGenerate() {
-      const res = await graduationRiskArchiveApi.batchGenerateArchive()
-      if (res.code === 0) { toast.success(`已提交 ${res.data.submitted}，跳过 ${res.data.skipped}（缺材料或未关闭风险）`); this.loadArchives() }
-      else toast.error(res.message)
+    _formatSkipReasons(preview) {
+      const rows = (preview && preview.skipReasons) || []
+      if (!rows.length) return '无'
+      const map = {
+        already_submitted_or_filed: '已提交/已备案',
+        missing_materials: '材料不齐',
+        open_risks: '风险未关闭',
+        out_of_scope: '不在当前范围'
+      }
+      return rows.map((r) => `${map[r.reason] || r.reason} ${r.count}`).join('；')
     },
-    doBatchFile() {
+    async doBatchGenerate() {
+      if (!this.batchStore.selectedBatchId) {
+        toast.error('请先选择毕设批次')
+        return
+      }
+      const prev = await graduationRiskArchiveApi.previewBatchGenerate({
+        batchId: this.batchStore.selectedBatchId
+      })
+      if (prev.code !== 0) {
+        toast.error(prev.message || '预检查失败')
+        return
+      }
+      const p = prev.data || {}
+      const batchName = p.batchName || this.batchStore.selectedBatchName || '当前批次'
       this.confirm = {
-        visible: true, title: '一键核验备案',
-        message: '系统将再次核验所有已提交归档记录，并将材料齐全的记录正式备案。备案后学生毕设阶段变为只读，是否继续？',
-        type: 'warning', confirmText: '确认核验备案', requireReason: false, reasonLabel: '说明', action: 'batch-file', row: null
+        visible: true,
+        title: '批量生成提交',
+        message: (
+          `批次「${batchName}」：候选 ${p.candidateCount} 人，预计成功 ${p.executableCount}，跳过 ${p.skippedCount}。`
+          + `主要跳过原因：${this._formatSkipReasons(p)}。`
+          + '本次只处理当前批次，不会处理其他届次。'
+        ),
+        type: 'primary',
+        confirmText: p.executableCount > 0 ? '确认生成提交' : '知道了',
+        requireReason: false,
+        reasonLabel: '说明',
+        action: p.executableCount > 0 ? 'batch-generate' : 'batch-generate-noop',
+        row: null
+      }
+    },
+    async doBatchFile() {
+      if (!this.batchStore.selectedBatchId) {
+        toast.error('请先选择毕设批次')
+        return
+      }
+      const prev = await graduationRiskArchiveApi.previewBatchFile({
+        batchId: this.batchStore.selectedBatchId
+      })
+      if (prev.code !== 0) {
+        toast.error(prev.message || '预检查失败')
+        return
+      }
+      const p = prev.data || {}
+      const batchName = p.batchName || this.batchStore.selectedBatchName || '当前批次'
+      this.confirm = {
+        visible: true,
+        title: '一键核验备案',
+        message: (
+          `批次「${batchName}」：预计备案 ${p.executableCount} 份，跳过 ${p.skippedCount}。`
+          + `主要跳过原因：${this._formatSkipReasons(p)}。`
+          + '备案后学生毕设阶段将变为只读。本次只处理当前批次，不会处理其他届次。'
+        ),
+        type: 'warning',
+        confirmText: p.executableCount > 0 ? '确认核验备案' : '知道了',
+        requireReason: false,
+        reasonLabel: '说明',
+        action: p.executableCount > 0 ? 'batch-file' : 'batch-file-noop',
+        row: null
       }
     },
     async loadStats() {
       this.statsLoading = true
       this.statsError = ''
-      const [o, c] = await Promise.all([graduationRiskArchiveApi.getOverviewStats(), graduationRiskArchiveApi.getCollegeComparison()])
+      if (!this.batchStore.selectedBatchId) {
+        this.overview = null
+        this.collegeRows = []
+        this.statsLoading = false
+        return
+      }
+      const params = { batchId: this.batchStore.selectedBatchId }
+      const [o, c] = await Promise.all([
+        graduationRiskArchiveApi.getOverviewStats(params),
+        graduationRiskArchiveApi.getCollegeComparison(params)
+      ])
       this.overview = o.code === 0 ? o.data : null
       this.collegeRows = c.code === 0 ? c.data : []
       if (o.code !== 0) this.statsError = o.message || '统计加载失败'

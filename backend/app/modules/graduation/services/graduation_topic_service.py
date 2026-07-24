@@ -351,9 +351,11 @@ def archive_topic(tid, reason: str = "") -> dict:
         return _row_of(db, t)
 
 
-def topic_stats() -> dict:
+def topic_stats(batch_id=None) -> dict:
     with session() as db:
         base = [GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False)]
+        if batch_id is not None and batch_id != "":
+            base.append(GraduationTopic.batch_id == int(batch_id))
         active = base + [GraduationTopic.status != "ARCHIVED"]
         rows = db.scalars(select(GraduationTopic).where(*active)).all()
         total = len(rows)
@@ -378,11 +380,12 @@ def topic_stats() -> dict:
             "fullCount": full, "availableCount": avail,
             "requirementsGap": req_gap, "attachmentsGap": att_gap, "uncategorized": uncat,
             "categoryStats": sorted(cat_map.values(), key=lambda x: -x["count"]),
+            "batchId": str(batch_id) if batch_id else None,
         }
 
 
-def category_stats() -> list[dict]:
-    return topic_stats().get("categoryStats", [])
+def category_stats(batch_id=None) -> list[dict]:
+    return topic_stats(batch_id=batch_id).get("categoryStats", [])
 
 
 def list_topic_history(page: int, page_size: int, keyword=None, topic_id=None, action=None) -> tuple[list[dict], int]:

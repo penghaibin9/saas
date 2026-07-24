@@ -17,13 +17,17 @@ def _gd_student(client, h, no, name):
 
 def test_risk_scan_accept_process_close(client, auth_headers, db_mode):
     h = auth_headers
-    _gd_student(client, h, "RK001", "预警测试生")  # stage=TOPIC_SELECTING, no topic → GD-R01
+    bid = client.post("/api/v1/graduation/batches", headers=h, json={
+        "batchName": "风险扫描批", "batchNo": "GD-RK-SCAN-1", "gradeYear": "2026届", "plannedCount": 10,
+    }).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "RK001", "realName": "预警测试生"}).json()["data"]["id"]
+    client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid})  # stage=TOPIC_SELECTING, no topic → GD-R01
 
-    scan = client.post(f"{GD_RISK}/scan", headers=h)
+    scan = client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": bid})
     body = scan.json()["data"]
     assert body["newCasesCreated"] >= 1
 
-    lst = client.get(GD_RISK, headers=h, params={"riskCode": "GD-R01"}).json()["data"]["items"]
+    lst = client.get(GD_RISK, headers=h, params={"riskCode": "GD-R01", "batchId": bid}).json()["data"]["items"]
     assert len(lst) >= 1
     rid = lst[0]["id"]
     assert lst[0]["status"] == "OPEN"
@@ -40,10 +44,10 @@ def test_risk_scan_accept_process_close(client, auth_headers, db_mode):
     close = client.post(f"{GD_RISK}/{rid}/close", headers=h, json={"reason": "学生已完成选题风险解除"})
     assert close.json()["data"]["status"] == "CLOSED"
 
-    rescan = client.post(f"{GD_RISK}/scan", headers=h).json()["data"]
+    rescan = client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": bid}).json()["data"]
     assert rescan["newCasesCreated"] == 0  # 幂等，不重复生成已存在（含已关闭）项
 
-    stats = client.get(f"{GD_RISK}/stats", headers=h).json()["data"]
+    stats = client.get(f"{GD_RISK}/stats", headers=h, params={"batchId": bid}).json()["data"]
     assert stats["total"] >= 1
 
 
@@ -139,15 +143,21 @@ def test_stats_overview_and_college_comparison(client, auth_headers, db_mode):
 def test_risk_list_filter_by_student(client, auth_headers, db_mode):
     """gdStudentId 过滤：只返回该生风险，不串其他学生。"""
     h = auth_headers
-    sid_a = _gd_student(client, h, "RKF01", "过滤生甲")
-    sid_b = _gd_student(client, h, "RKF02", "过滤生乙")
-    client.post(f"{GD_RISK}/scan", headers=h)
+    bid = client.post("/api/v1/graduation/batches", headers=h, json={
+        "batchName": "风险过滤批", "batchNo": "GD-RK-FLT-1", "gradeYear": "2026届", "plannedCount": 10,
+    }).json()["data"]["id"]
+    sid_a = client.post(STU, headers=h, json={"studentNo": "RKF01", "realName": "过滤生甲"}).json()["data"]["id"]
+    sid_b = client.post(STU, headers=h, json={"studentNo": "RKF02", "realName": "过滤生乙"}).json()["data"]["id"]
+    gid_a = client.post(GD_STU, headers=h, json={"studentId": sid_a, "batchId": bid}).json()["data"]["id"]
+    gid_b = client.post(GD_STU, headers=h, json={"studentId": sid_b, "batchId": bid}).json()["data"]["id"]
+    scan = client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": bid})
+    assert scan.json()["code"] == 0, scan.json()
 
-    only_a = client.get(GD_RISK, headers=h, params={"gdStudentId": sid_a}).json()["data"]["items"]
+    only_a = client.get(GD_RISK, headers=h, params={"gdStudentId": gid_a, "batchId": bid}).json()["data"]["items"]
     assert len(only_a) >= 1
-    assert all(str(r["gdStudentId"]) == str(sid_a) for r in only_a)
+    assert all(str(r["gdStudentId"]) == str(gid_a) for r in only_a)
 
-    only_b = client.get(GD_RISK, headers=h, params={"gdStudentId": sid_b}).json()["data"]["items"]
-    assert all(str(r["gdStudentId"]) == str(sid_b) for r in only_b)
+    only_b = client.get(GD_RISK, headers=h, params={"gdStudentId": gid_b, "batchId": bid}).json()["data"]["items"]
+    assert all(str(r["gdStudentId"]) == str(gid_b) for r in only_b)
     a_ids = {r["id"] for r in only_a}
     assert a_ids.isdisjoint({r["id"] for r in only_b})

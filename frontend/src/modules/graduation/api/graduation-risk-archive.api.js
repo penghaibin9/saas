@@ -25,19 +25,29 @@ const ARCHIVE = '/graduation/gd-archives'
 const STATS = '/graduation/gd-stats'
 
 export const graduationRiskArchiveApi = {
-  scanRisks() { return call(() => request(`${RISK}/scan`, { method: 'POST' })) },
+  scanRisks(params = {}) { return call(() => request(`${RISK}/scan`, { method: 'POST', params })) },
   getRiskList(params = {}) { return callList(RISK, params) },
   /** 按学生取归档记录（不存在则后端返回待生成态） */
   getArchiveByStudent(gdStudentId) { return call(() => request(ARCHIVE + '/' + gdStudentId)) },
-  getRiskStats() { return call(() => request(`${RISK}/stats`)) },
+  getRiskStats(params = {}) { return call(() => request(`${RISK}/stats`, { params })) },
   acceptRisk(id, assignee) { return call(() => request(`${RISK}/${id}/accept`, { method: 'POST', body: { assignee } })) },
   processRisk(id, note) { return call(() => request(`${RISK}/${id}/process`, { method: 'POST', body: { note } })) },
   closeRisk(id, reason) { return call(() => request(`${RISK}/${id}/close`, { method: 'POST', body: { reason } })) },
 
   getArchiveList(params = {}) { return callList(ARCHIVE, params) },
-  getArchiveStats() { return call(() => request(`${ARCHIVE}/stats`)) },
-  batchGenerateArchive() { return call(() => request(`${ARCHIVE}/batch-generate`, { method: 'POST' })) },
-  batchFileArchive() { return call(() => request(`${ARCHIVE}/batch-file`, { method: 'POST', body: {} })) },
+  getArchiveStats(params = {}) { return call(() => request(`${ARCHIVE}/stats`, { params })) },
+  previewBatchGenerate(params = {}) {
+    return call(() => request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params }))
+  },
+  batchGenerateArchive(params = {}) {
+    return call(() => request(`${ARCHIVE}/batch-generate`, { method: 'POST', params }))
+  },
+  previewBatchFile(params = {}) {
+    return call(() => request(`${ARCHIVE}/batch-file/preview`, { method: 'POST', params }))
+  },
+  batchFileArchive(params = {}, body = {}) {
+    return call(() => request(`${ARCHIVE}/batch-file`, { method: 'POST', params, body }))
+  },
   generateArchive(gdStudentId) { return call(() => request(`${ARCHIVE}/${gdStudentId}/generate`, { method: 'POST' })) },
   submitArchive(gdStudentId) { return call(() => request(`${ARCHIVE}/${gdStudentId}/submit`, { method: 'POST' })) },
   fileArchive(gdStudentId, archiveBatchNo) { return call(() => request(`${ARCHIVE}/${gdStudentId}/file`, { method: 'POST', body: { archiveBatchNo } })) },
@@ -55,8 +65,8 @@ export const graduationRiskArchiveApi = {
     return res
   },
 
-  getOverviewStats() { return call(() => request(`${STATS}/overview`)) },
-  getCollegeComparison() { return call(() => request(`${STATS}/college-comparison`)) }
+  getOverviewStats(params = {}) { return call(() => request(`${STATS}/overview`, { params })) },
+  getCollegeComparison(params = {}) { return call(() => request(`${STATS}/college-comparison`, { params })) }
 }
 
 export default graduationRiskArchiveApi

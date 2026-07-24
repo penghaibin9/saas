@@ -559,7 +559,8 @@ export default {
     },
     async loadPanelExtras() {
       if (this.activePanel === 'category' || this.activePanel === 'capacity' || this.activePanel === 'requirements' || this.activePanel === 'attachments') {
-        const s = await gdTopicApi.getStats()
+        const batchId = this.isHistoryPanel ? undefined : this.batchStore.selectedBatchId
+        const s = await gdTopicApi.getStats(batchId ? { batchId } : {})
         if (s.code === 0) {
           this.libStats = s.data
           this.categoryStats = s.data.categoryStats || []

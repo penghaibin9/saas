@@ -72,7 +72,8 @@ def _p(i, t, page, ps):
 
 
 @router.get("/dashboard", summary="毕设看板")
-def dashboard(batchId: Optional[str] = None, user=Depends(get_current_user)):
+def dashboard(batchId: int | None = Query(default=None, ge=1),
+              user=Depends(get_current_user)):
     return success(svc.get_dashboard(batch_id=batchId))
 
 
@@ -108,8 +109,9 @@ def proposals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200
 
 
 @router.get("/proposals/stats", summary="开题统计（状态分布+未提交）")
-def proposal_stats(user=Depends(get_current_user)):
-    return success(svc.proposal_stats())
+def proposal_stats(batchId: int | None = Query(default=None, ge=1),
+                   user=Depends(get_current_user)):
+    return success(svc.proposal_stats(batch_id=batchId))
 
 
 @router.get("/proposals/{pid}", summary="开题批阅详情")
@@ -129,8 +131,9 @@ def proposal_defense(pid: str, body: dict = Body(...), user=Depends(get_current_
 
 
 @router.get("/finals/stats", summary="成果统计（状态分布+查重超标）")
-def final_stats(user=Depends(get_current_user)):
-    return success(svc.final_stats())
+def final_stats(batchId: int | None = Query(default=None, ge=1),
+                user=Depends(get_current_user)):
+    return success(svc.final_stats(batch_id=batchId))
 
 
 @router.post("/proposals/remind", summary="开题催交（未提交学生留痕催办）")
@@ -176,7 +179,8 @@ def final_export(status: Optional[str] = None, keyword: Optional[str] = None,
 
 @router.get("/defense-groups", summary="答辩安排列表")
 def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                   keyword: Optional[str] = None, batchId: Optional[str] = None,
+                   keyword: Optional[str] = None,
+                   batchId: int | None = Query(default=None, ge=1),
                    user=Depends(get_current_user)):
     i, t = svc.list_defense_groups(page, pageSize, keyword=keyword, batch_id=batchId)
     return _p(i, t, page, pageSize)
@@ -184,8 +188,11 @@ def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, l
 
 @router.post("/defense-groups", summary="新建答辩组")
 def defense_create(body: DefenseGroupBody, user=Depends(get_current_user)):
-    return success(svc.create_defense_group(body.groupName, body.defenseDate, body.location,
-                   body.chair, body.members, body.secretary), message="已创建")
+    return success(svc.create_defense_group(
+        body.groupName, body.defenseDate, body.location,
+        body.chair, body.members, body.secretary, batch_id=body.batchId,
+        chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
+        member_mentor_ids=body.memberMentorIds), message="已创建")
 
 
 @router.get("/defense-groups/eligible-students", summary="可分配到答辩组的学生")
@@ -201,8 +208,11 @@ def defense_detail(gid: str, user=Depends(get_current_user)):
 
 @router.put("/defense-groups/{gid}", summary="编辑答辩组（编辑后撤回发布，需重新发布）")
 def defense_update(gid: str, body: DefenseGroupBody, user=Depends(get_current_user)):
-    return success(svc.update_defense_group(gid, body.groupName, body.defenseDate, body.location,
-                   body.chair, body.members, body.secretary), message="已保存")
+    return success(svc.update_defense_group(
+        gid, body.groupName, body.defenseDate, body.location,
+        body.chair, body.members, body.secretary,
+        chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
+        member_mentor_ids=body.memberMentorIds), message="已保存")
 
 
 @router.post("/defense-groups/{gid}/assign", summary="分配学生进答辩组（≤30人，评委回避自动检测）")
@@ -221,9 +231,11 @@ def defense_publish(gid: str, user=Depends(require_permission("graduationDesign.
 
 
 @router.post("/defense-groups/export", summary="导出答辩安排台账 Excel（写审计）")
-def defense_export(user=Depends(get_current_user)):
-    data = svc.export_defense_xlsx()
-    audit_log.record("导出答辩安排台账", "graduation-defense:export", detail={"rowCount": data["rowCount"]})
+def defense_export(batchId: int | None = Query(default=None, ge=1),
+                   user=Depends(get_current_user)):
+    data = svc.export_defense_xlsx(batch_id=batchId)
+    audit_log.record("导出答辩安排台账", "graduation-defense:export",
+                     detail={"rowCount": data["rowCount"], "batchId": batchId})
     return success(data)
 
 
