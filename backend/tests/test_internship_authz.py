@@ -22,22 +22,39 @@ def _tok(role, user_type="TEACHER", client_type="PC"):
         "currentRoleCode": role, "clientType": client_type})}
 
 
+def _batch_id():
+    from uuid import uuid4
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipBatch
+    db = get_sessionmaker()()
+    try:
+        b = InternshipBatch(tenant_id=1000000000000000001, batch_name="权限测试批次",
+                            batch_no=f"AUTHZB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.commit()
+        return b.id
+    finally:
+        db.close()
+
+
 def test_mentor_can_view_students(client, db_mode):
     # 指导教师有 internship.student.view → 列表可读（数据范围仍由 service 收敛）
-    assert client.get(INT, headers=_tok("INTERN_MENTOR")).status_code == 200
+    bid = _batch_id()
+    assert client.get(INT, headers=_tok("INTERN_MENTOR"), params={"batchId": bid}).status_code == 200
 
 
 def test_mentor_cannot_manage_export_log(client, db_mode):
     m = _tok("INTERN_MENTOR")
+    bid = _batch_id()
     assert client.get(f"{INT}/advisors", headers=m).status_code == 403          # student.manage
-    assert client.post(f"{INT}/export", headers=m).status_code == 403           # student.export
+    assert client.post(f"{INT}/export", headers=m, params={"batchId": bid}).status_code == 403  # student.export
     assert client.get(f"{INT}/assignment-logs", headers=m).status_code == 403   # match.log.view
 
 
 def test_counselor_view_only(client, db_mode):
     c = _tok("COUNSELOR")
-    assert client.get(INT, headers=c).status_code == 200                        # student.view
-    assert client.post(f"{INT}/export", headers=c).status_code == 403           # 无导出权
+    bid = _batch_id()
+    assert client.get(INT, headers=c, params={"batchId": bid}).status_code == 200  # student.view
+    assert client.post(f"{INT}/export", headers=c, params={"batchId": bid}).status_code == 403  # 无导出权
 
 
 def test_student_forbidden_on_pc(client, db_mode):
@@ -52,6 +69,7 @@ def test_unregistered_teacher_role_denied(client, db_mode):
 
 def test_admin_full_access(client, db_mode):
     a = _admin(client)
+    bid = _batch_id()
     assert client.get(f"{INT}/advisors", headers=a).status_code == 200
-    assert client.post(f"{INT}/export", headers=a).status_code == 200
+    assert client.post(f"{INT}/export", headers=a, params={"batchId": bid}).status_code == 200
     assert client.get(f"{INT}/assignment-logs", headers=a).status_code == 200

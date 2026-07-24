@@ -35,11 +35,17 @@ def _student():
 
 def _seed(db_mode):
     """记录 A(刘强) / B(王芳) 各挂 1 条待批周报；返回 {record_id, report_id}。"""
+    from uuid import uuid4
+
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile, User, WeeklyReport
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile, User, WeeklyReport
     db = get_sessionmaker()()
     ids = {}
     try:
+        b = InternshipBatch(tenant_id=TID, batch_name="周报指导测试批次",
+                            batch_no=f"WGB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.flush()
+        ids["batch"] = b.id
         for no, name, adv, key in [("WG-A", "甲", "刘强", "a"), ("WG-B", "乙", "王芳", "b")]:
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
@@ -48,7 +54,7 @@ def _seed(db_mode):
                         user_type="STUDENT", status="ACTIVE"))
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
-                                 status="ONBOARD", risk_level="NONE")
+                                 status="ONBOARD", risk_level="NONE", batch_id=b.id)
             db.add(r); db.flush()
             w = WeeklyReport(tenant_id=TID, internship_id=r.id, week_number=3, word_count=800,
                              report_version=1, submitted_at=datetime.utcnow(), status="PENDING_REVIEW")
@@ -74,14 +80,15 @@ def test_weekly_review_cross_mentor_403(client, db_mode):
 def test_weekly_review_own_ok(client, db_mode):
     ids = _seed(db_mode)
     r = client.post(f"{INT}/reports/{ids['rep_a']}/review",
-                    json={"action": "APPROVE", "comment": ""}, headers=_mentor("刘强"))
-    assert r.status_code == 200 and r.json()["code"] == 0
+                    json={"action": "APPROVE", "comment": "", "expectedVersion": 0}, headers=_mentor("刘强"))
+    assert r.status_code == 200 and r.json()["code"] == 0, r.json()
     assert r.json()["data"]["status"] == "APPROVED"
 
 
 def test_weekly_export_and_remind_are_real(client, db_mode):
     ids = _seed(db_mode)
-    exported = client.post(f"{INT}/reports/export", headers=_mentor("刘强")).json()["data"]
+    exported = client.post(f"{INT}/reports/export", headers=_mentor("刘强"),
+                           params={"batchId": ids["batch"]}).json()["data"]
     assert exported["rowCount"] == 1
     reminded = client.post(f"{INT}/reports/{ids['rep_a']}/remind",
                            json={"channel": "站内消息"}, headers=_mentor("刘强"))
@@ -116,13 +123,14 @@ def test_guidance_create_owner_and_scope(client, db_mode):
     client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_b"]), "content": "王芳指导"},
                 headers=_mentor("王芳"))
     # 数据范围：管理员看 2、刘强看 1
-    assert client.get(f"{INT}/guidances", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/guidances", headers=_mentor("刘强")).json()["data"]["total"] == 1
-    stats = client.get(f"{INT}/guidances/stats", headers=_mentor("刘强")).json()["data"]
+    assert client.get(f"{INT}/guidances", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/guidances", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
+    stats = client.get(f"{INT}/guidances/stats", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]
     assert stats["studentCount"] == 1 and stats["totalCount"] == 1
-    plans = client.get(f"{INT}/guidance-plans", headers=_mentor("刘强")).json()["data"]
+    plans = client.get(f"{INT}/guidance-plans", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]
     assert plans["total"] == 1 and plans["items"][0]["studentNo"] == "WG-A"
-    exported = client.post(f"{INT}/guidance-plans/export", headers=_mentor("刘强")).json()["data"]
+    exported = client.post(f"{INT}/guidance-plans/export", headers=_mentor("刘强"),
+                           params={"batchId": ids["batch"]}).json()["data"]
     assert exported["rowCount"] == 1
 
 
@@ -144,7 +152,7 @@ def test_guidance_void_and_audit(client, db_mode):
     # 撤销 → VOID；撤销后 list 不再可见
     v = client.post(f"{INT}/guidances/{gid}/void", json={"reason": "误填"}, headers=_mentor("刘强"))
     assert v.status_code == 200 and v.json()["data"]["status"] == "VOIDED"
-    assert client.get(f"{INT}/guidances", headers=_mentor("刘强")).json()["data"]["total"] == 0
+    assert client.get(f"{INT}/guidances", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 0
 
 
 def test_guidance_student_forbidden(client, db_mode):
@@ -179,7 +187,7 @@ def test_visit_create_scope_and_rectify(client, db_mode):
     assert good.status_code == 200 and good.json()["data"]["rectifyStatus"] == "DONE"
     detail = client.get(f"{INT}/visits/{vid}", headers=_mentor("刘强")).json()["data"]
     assert any(t["action"].startswith("RECTIFY_") for t in detail["auditTrail"])
-    stats = client.get(f"{INT}/visits/stats", headers=_mentor("刘强")).json()["data"]
+    stats = client.get(f"{INT}/visits/stats", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]
     assert stats["totalVisits"] == 1 and stats["doneRectify"] == 1
 
 
@@ -198,6 +206,6 @@ def test_visit_list_scope_and_student_403(client, db_mode):
     ids = _seed(db_mode)
     client.post(f"{INT}/visits", json={"internshipId": str(ids["rec_a"])}, headers=_mentor("刘强"))
     client.post(f"{INT}/visits", json={"internshipId": str(ids["rec_b"])}, headers=_mentor("王芳"))
-    assert client.get(f"{INT}/visits", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/visits", headers=_mentor("刘强")).json()["data"]["total"] == 1
-    assert client.get(f"{INT}/visits", headers=_student()).status_code == 403
+    assert client.get(f"{INT}/visits", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/visits", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/visits", headers=_student(), params={"batchId": ids["batch"]}).status_code == 403

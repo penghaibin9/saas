@@ -28,18 +28,23 @@ def _student(sno, tid=TID):
 
 
 def _seed(db_mode):
+    from uuid import uuid4
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     ids = {}
     try:
+        b = InternshipBatch(tenant_id=TID, batch_name="学生鉴定测试批次",
+                            batch_no=f"SEBATCH-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.flush()
+        ids["batch"] = b.id
         for no, name, adv, key in [("SE-A", "甲", "刘强", "a"), ("SE-B", "乙", "王芳", "b")]:
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
-                                 status="ONBOARD", risk_level="NONE")
+                                 status="ONBOARD", risk_level="NONE", batch_id=b.id)
             db.add(r); db.flush()
             ids[f"rec_{key}"] = r.id
         db.commit()
@@ -49,7 +54,7 @@ def _seed(db_mode):
 
 
 def test_full_flow(client, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     sa = _student("SE-A")
     # 学生提交自评
     sub = client.post(M, json={"selfSummary": "本次实习收获很大", "selfHarvest": "掌握了实操",
@@ -59,7 +64,7 @@ def test_full_flow(client, db_mode):
     mine = client.get(M, headers=sa).json()["data"]
     assert mine["selfSummary"] == "本次实习收获很大"
     # 教师端列表可见
-    lst = client.get(f"{INT}/student-evals", headers=_mentor("刘强")).json()["data"]
+    lst = client.get(f"{INT}/student-evals", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]
     assert lst["total"] == 1
     eid = lst["items"][0]["id"]
     # 指导教师填意见
@@ -81,10 +86,10 @@ def test_summary_required(client, db_mode):
 
 
 def test_return_and_resubmit(client, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     sa = _student("SE-A")
     client.post(M, json={"selfSummary": "初稿总结"}, headers=sa)
-    eid = client.get(f"{INT}/student-evals", headers=_mentor("刘强")).json()["data"]["items"][0]["id"]
+    eid = client.get(f"{INT}/student-evals", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["items"][0]["id"]
     # 退回需原因
     assert client.post(f"{INT}/student-evals/{eid}/review", json={"action": "RETURN", "comment": "no"}, headers=_mentor("刘强")).status_code == 400
     rv = client.post(f"{INT}/student-evals/{eid}/review", json={"action": "RETURN", "comment": "总结过于简单请补充"}, headers=_mentor("刘强"))
@@ -99,24 +104,24 @@ def test_advisor_before_submit_conflict(client, db_mode):
     # 直接建一条 DRAFT（未提交）无法用 API，改为：学生未提交时列表无记录，教师无从评论
     # 用已提交但由另一导师评论验证 owner
     client.post(M, json={"selfSummary": "总结"}, headers=_student("SE-A"))
-    eid = client.get(f"{INT}/student-evals", headers=_admin(client)).json()["data"]["items"][0]["id"]
+    eid = client.get(f"{INT}/student-evals", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["items"][0]["id"]
     # 王芳越权填意见 → 403
     assert client.post(f"{INT}/student-evals/{eid}/advisor-comment",
                        json={"advisorOpinion": "越权"}, headers=_mentor("王芳")).status_code == 403
 
 
 def test_scope_and_student_forbidden(client, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     client.post(M, json={"selfSummary": "A总结"}, headers=_student("SE-A"))
     client.post(M, json={"selfSummary": "B总结"}, headers=_student("SE-B"))
-    assert client.get(f"{INT}/student-evals", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/student-evals", headers=_mentor("刘强")).json()["data"]["total"] == 1
-    assert client.get(f"{INT}/student-evals", headers=_student("SE-A")).status_code == 403
+    assert client.get(f"{INT}/student-evals", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/student-evals", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/student-evals", headers=_student("SE-A"), params={"batchId": ids["batch"]}).status_code == 403
 
 
 def test_export(client, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     client.post(M, json={"selfSummary": "总结"}, headers=_student("SE-A"))
-    res = client.post(f"{INT}/student-evals/export", headers=_admin(client))
+    res = client.post(f"{INT}/student-evals/export", headers=_admin(client), params={"batchId": ids["batch"]})
     assert res.status_code == 200 and res.json()["data"]["filename"].endswith(".xlsx")
     assert res.json()["data"]["rowCount"] == 1

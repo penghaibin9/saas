@@ -27,18 +27,24 @@ def _student(sno, tid=TID):
 
 
 def _seed(db_mode):
+    from uuid import uuid4
+
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     ids = {}
     try:
+        b = InternshipBatch(tenant_id=TID, batch_name="成绩测试批次",
+                            batch_no=f"SCOREB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.flush()
+        ids["batch"] = b.id
         for no, name, adv, key in [("SC-A", "甲", "刘强", "a"), ("SC-B", "乙", "王芳", "b")]:
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
-                                 status="ONBOARD", risk_level="NONE")
+                                 status="ONBOARD", risk_level="NONE", batch_id=b.id)
             db.add(r); db.flush()
             ids[f"rec_{key}"] = r.id
         db.commit()
@@ -118,13 +124,19 @@ def test_incomplete_cannot_publish(client, db_mode):
 
 
 def test_enterprise_score_auto_from_eval(client, db_mode):
+    import io
     ids = _seed(db_mode)
     _cfg100(client)
     h = _mentor("刘强")
+    # 学校代录企业评价须绑定纸质评价扫描件
+    up = client.post("/api/v1/files/upload", headers=h,
+                     files={"file": ("eval.txt", io.BytesIO(b"scan"), "text/plain")},
+                     data={"bizType": "ENT_EVAL"})
+    fid = up.json()["data"]["fileId"]
     # 先录入并审核通过企业评价（均分 (80+80+80+80+100)/5 = 84）
     ev = client.post(f"{INT}/enterprise-evals", json={"internshipId": str(ids["rec_a"]), "mentorName": "李导师",
                      "attendanceScore": 80, "skillScore": 80, "attitudeScore": 80,
-                     "collaborationScore": 80, "safetyScore": 100}, headers=h).json()["data"]["id"]
+                     "collaborationScore": 80, "safetyScore": 100, "sourceFileId": fid}, headers=h).json()["data"]["id"]
     client.post(f"{INT}/enterprise-evals/{ev}/review", json={"action": "APPROVE"}, headers=h)
     # 核算不传 enterpriseScore → 自动取 84
     c = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), "checkinScore": 100,
@@ -142,10 +154,10 @@ def test_scope_and_student_forbidden(client, db_mode):
     # 刘强越权发布王芳学生成绩 → 403
     assert client.post(f"{INT}/scores/{bid}/publish", headers=_mentor("刘强")).status_code == 403
     # 数据范围
-    assert client.get(f"{INT}/scores", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/scores", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/scores", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/scores", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
     # 学生 403
-    assert client.get(f"{INT}/scores", headers=_student("SC-A")).status_code == 403
+    assert client.get(f"{INT}/scores", headers=_student("SC-A"), params={"batchId": ids["batch"]}).status_code == 403
     assert client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), **p}, headers=_student("SC-A")).status_code == 403
 
 

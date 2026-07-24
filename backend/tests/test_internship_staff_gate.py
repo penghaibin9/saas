@@ -44,9 +44,23 @@ def test_unauthenticated_returns_401(client):
         assert r.status_code == 401, f"{ep} 未登录应返回 401，实际 {r.status_code}"
 
 
+def _batch_id():
+    from uuid import uuid4
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipBatch
+    db = get_sessionmaker()()
+    try:
+        b = InternshipBatch(tenant_id=TID, batch_name="门禁测试批次",
+                            batch_no=f"GATEB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.commit()
+        return b.id
+    finally:
+        db.close()
+
+
 def test_staff_not_blocked_by_gate(client, auth_headers, db_mode):
     # 教职工（school_admin01）通过门禁并正常拿到看板数据（真库）
-    r = client.get("/api/v1/internship/dashboard", headers=auth_headers)
+    r = client.get("/api/v1/internship/dashboard", headers=auth_headers, params={"batchId": _batch_id()})
     assert r.status_code == 200, f"教职工应通过门禁，实际 {r.status_code}"
     assert r.json()["code"] == 0
 
@@ -54,6 +68,6 @@ def test_staff_not_blocked_by_gate(client, auth_headers, db_mode):
 def test_unlicensed_tenant_is_blocked(client, auth_headers, db_mode, monkeypatch):
     from app.services import platform_service
     monkeypatch.setattr(platform_service, "feature_enabled", lambda tenant_id, key: False)
-    r = client.get("/api/v1/internship/dashboard", headers=auth_headers)
+    r = client.get("/api/v1/internship/dashboard", headers=auth_headers, params={"batchId": _batch_id()})
     assert r.status_code == 403
     assert r.json()["code"] != 0

@@ -18,7 +18,7 @@ def _student_header(no: str, name: str = "申请测试学生") -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _record(db_mode, no: str, advisor: str = "申请审核老师") -> int:
+def _record(db_mode, no: str, advisor: str = "申请审核老师", batch_id=None) -> int:
     from app.db.session import get_sessionmaker
     from app.models import InternshipRecord, StudentProfile
     db = get_sessionmaker()()
@@ -28,21 +28,43 @@ def _record(db_mode, no: str, advisor: str = "申请审核老师") -> int:
         db.add(stu); db.flush()
         rec = InternshipRecord(tenant_id=TID, student_id=stu.id, advisor_name=advisor,
                                status="PREPARING", eligibility_status="QUALIFIED",
-                               destination_type="NONE", risk_level="NONE")
+                               destination_type="NONE", risk_level="NONE", batch_id=batch_id)
         db.add(rec); db.commit()
         return rec.id
     finally:
         db.close()
 
 
-def _published_position(client, headers):
+_RIGHTS_FACTS = {
+    "workContent": "参与前端页面开发与联调", "dailyHours": 8, "weeklyHours": 40,
+    "nightShift": False, "overtimeAllowed": False, "restDaysPerWeek": 2,
+    "remunerationType": "MONTHLY", "accommodationProvided": True,
+    "mealProvided": True, "hazardousFlag": False,
+    "remunerationAmount": 2000, "remunerationCycle": "MONTHLY",
+}
+
+
+def _mk_batch(client, headers):
+    from uuid import uuid4
+    b = client.post("/api/v1/internship/batches", headers=headers, json={
+        "batchName": f"申请测试批次-{uuid4().hex[:6]}", "batchNo": f"APPB-{uuid4().hex[:8]}",
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 10}).json()
+    bid = b["data"]["id"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=headers,
+                       json={"expectedVersion": 0}).json()["code"] == 0
+    return bid
+
+
+def _published_position(client, headers, batch_id=None):
+    if batch_id is None:
+        batch_id = _mk_batch(client, headers)
     company = client.post(ENT, headers=headers, json={
         "name": "申请闭环企业", "creditCode": "91310000APP0001X",
     }).json()["data"]["id"]
     assert client.post(f"{ENT}/{company}/review", headers=headers, json={"action": "APPROVE"}).json()["code"] == 0
     position = client.post(POS, headers=headers, json={
         "companyId": company, "title": "申请闭环岗位", "workLocation": "上海市浦东新区",
-        "headcount": 1,
+        "headcount": 1, "batchId": str(batch_id), **_RIGHTS_FACTS,
     }).json()["data"]["id"]
     assert client.post(f"{POS}/{position}/status", headers=headers, json={"action": "SUBMIT"}).json()["code"] == 0
     assert client.post(f"{POS}/{position}/status", headers=headers, json={"action": "PUBLISH"}).json()["code"] == 0
@@ -50,8 +72,9 @@ def _published_position(client, headers):
 
 
 def test_position_application_review_uses_real_assignment(client, auth_headers, db_mode):
-    rec_id = _record(db_mode, "APP-POS-001")
-    position_id = _published_position(client, auth_headers)
+    batch_id = _mk_batch(client, auth_headers)
+    rec_id = _record(db_mode, "APP-POS-001", batch_id=batch_id)
+    position_id = _published_position(client, auth_headers, batch_id=batch_id)
     student = _student_header("APP-POS-001")
     draft = client.put(f"{MOB}/internship/applications", headers=student, json={
         "applicationType": "POSITION", "volunteerNo": 1, "positionId": position_id,
@@ -62,9 +85,12 @@ def test_position_application_review_uses_real_assignment(client, auth_headers, 
     submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student)
     assert submitted.status_code == 200 and submitted.json()["data"]["status"] == "PENDING_REVIEW"
     ver = int(submitted.json()["data"].get("version") or 0)
+    # POSITION 类型审核通过会真实落岗（写实习学生记录），须单独回传该记录的 expectedVersion
+    record_ver = int(submitted.json()["data"].get("recordVersion") or 0)
     review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
-                         json={"action": "APPROVE", "expectedVersion": ver})
-    assert review.status_code == 200 and review.json()["data"]["status"] == "APPROVED"
+                         json={"action": "APPROVE", "expectedVersion": ver,
+                               "recordExpectedVersion": record_ver})
+    assert review.status_code == 200 and review.json()["data"]["status"] == "APPROVED", review.json()
     from app.db.session import get_sessionmaker
     from app.models import InternshipPosition, InternshipRecord
     db = get_sessionmaker()()
@@ -108,9 +134,13 @@ def test_self_arranged_application_requires_evidence_and_is_audited(client, auth
     submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).json()
     assert submitted["code"] == 0, submitted
     ver = int(submitted["data"].get("version") or 0)
+    # SELF_ARRANGED 类型通过审核时会同时写实习学生记录（去向/企业/岗位名），
+    # 须单独回传该记录的 expectedVersion（乐观锁），与申请自身的版本号是两回事
+    record_ver = int(submitted["data"].get("recordVersion") or 0)
     review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
-                         json={"action": "APPROVE", "expectedVersion": ver})
-    assert review.status_code == 200 and review.json()["data"]["status"] == "APPROVED", review.json()
+                         json={"action": "APPROVE", "expectedVersion": ver,
+                               "recordExpectedVersion": record_ver})
+    assert review.status_code == 200 and review.json()["data"]["status"] == "APPROVED", (submitted, review.json())
     detail = client.get(f"{APP}/{app_id}", headers=auth_headers).json()["data"]
     assert detail["evidenceFileId"] == file_id
     assert {x["action"] for x in detail["auditTrail"]} >= {"SAVE_DRAFT", "SUBMIT", "APPROVE"}
@@ -127,15 +157,16 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
         "name": "满员回滚企业", "creditCode": "91310000APPFULL1X",
     }).json()["data"]["id"]
     assert client.post(f"{ENT}/{company}/review", headers=auth_headers, json={"action": "APPROVE"}).json()["code"] == 0
+    batch_id = _mk_batch(client, auth_headers)
     position = client.post(POS, headers=auth_headers, json={
         "companyId": company, "title": "满员回滚岗位", "workLocation": "上海市浦东新区",
-        "headcount": 1,
+        "headcount": 1, "batchId": str(batch_id), **_RIGHTS_FACTS,
     }).json()["data"]["id"]
     assert client.post(f"{POS}/{position}/status", headers=auth_headers, json={"action": "SUBMIT"}).json()["code"] == 0
     assert client.post(f"{POS}/{position}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()["code"] == 0
 
     # 先提交申请（此时仍有名额），再被人占满，审核落岗才应失败并回滚
-    _record(db_mode, "APP-FULL-002")
+    _record(db_mode, "APP-FULL-002", batch_id=batch_id)
     student = _student_header("APP-FULL-002")
     draft = client.put(f"{MOB}/internship/applications", headers=student, json={
         "applicationType": "POSITION", "volunteerNo": 1, "positionId": position,
@@ -146,16 +177,18 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
     submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).json()
     assert submitted["code"] == 0, submitted
     ver = int(submitted["data"].get("version") or 0)
+    record_ver = int(submitted["data"].get("recordVersion") or 0)
 
-    rec1 = _record(db_mode, "APP-FULL-001")
+    rec1 = _record(db_mode, "APP-FULL-001", batch_id=batch_id)
     assign = client.post(
         f"/api/v1/internship/intern-students/{rec1}/assign",
-        headers=auth_headers, json={"positionId": position},
+        headers=auth_headers, json={"positionId": position, "expectedVersion": 0},
     ).json()
     assert assign["code"] == 0, assign
 
     review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
-                         json={"action": "APPROVE", "expectedVersion": ver})
+                         json={"action": "APPROVE", "expectedVersion": ver,
+                               "recordExpectedVersion": record_ver})
     body = review.json()
     assert body["code"] != 0, body
     detail = client.get(f"{APP}/{app_id}", headers=auth_headers).json()["data"]

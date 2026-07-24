@@ -21,6 +21,29 @@ def _uniq(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+TID = 1000000000000000001
+
+
+def _org_class():
+    """建档必须挂真实学院/专业/班级，见 tests/test_student.py::org_class。"""
+    from app.db.session import get_sessionmaker
+    from app.models.org import College, Major, SchoolClass
+    db = get_sessionmaker()()
+    try:
+        col = College(tenant_id=TID, college_name=_uniq("学院"), status="ACTIVE")
+        db.add(col); db.flush()
+        maj = Major(tenant_id=TID, college_id=col.id, major_name=_uniq("专业"), status="ACTIVE")
+        db.add(maj); db.flush()
+        cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name=_uniq("班级"),
+                          grade="2026", status="ACTIVE", class_status="NORMAL")
+        db.add(cls); db.flush()
+        cid = cls.id
+        db.commit()
+        return str(cid)
+    finally:
+        db.close()
+
+
 def test_stats_rate_integrity_and_empty_denominator():
     empty = _metric("arrivalRate", "到岗率", 0, 0, 90)
     assert empty["rate"] is None and empty["anomaly"] is False
@@ -79,7 +102,7 @@ def test_stats_drilldown_matches_overview_numerator(client, auth_headers, db_mod
     assert client.post(f"{BATCH}/{bid}/activate", headers=auth_headers,
                        json={"expectedVersion": ver}).json()["code"] == 0
     sid = client.post(STU, headers=auth_headers, json={
-        "studentNo": _uniq("PS"), "realName": "统计生"}).json()["data"]["id"]
+        "studentNo": _uniq("PS"), "realName": "统计生", "classId": _org_class()}).json()["data"]["id"]
     assert client.post(IST, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()["code"] == 0
     overview = client.get(f"{STATS}/overview", headers=auth_headers, params={"batchId": bid}).json()
     assert overview["code"] == 0, overview

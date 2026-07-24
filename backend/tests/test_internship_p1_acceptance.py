@@ -45,9 +45,30 @@ def _mk_running_batch(client, h):
     return bid
 
 
+def _org_class():
+    """建档必须挂真实学院/专业/班级，见 tests/test_student.py::org_class。"""
+    from app.db.session import get_sessionmaker
+    from app.models.org import College, Major, SchoolClass
+    db = get_sessionmaker()()
+    try:
+        col = College(tenant_id=int(TID), college_name=_uniq("学院"), status="ACTIVE")
+        db.add(col); db.flush()
+        maj = Major(tenant_id=int(TID), college_id=col.id, major_name=_uniq("专业"), status="ACTIVE")
+        db.add(maj); db.flush()
+        cls = SchoolClass(tenant_id=int(TID), major_id=maj.id, class_name=_uniq("班级"),
+                          grade="2026", status="ACTIVE", class_status="NORMAL")
+        db.add(cls); db.flush()
+        cid = cls.id
+        db.commit()
+        return str(cid)
+    finally:
+        db.close()
+
+
 def _mk_student(client, h):
     sno = _uniq("P1S")
-    r = client.post(STU, headers=h, json={"studentNo": sno, "realName": f"生{sno[-4:]}"}).json()
+    r = client.post(STU, headers=h, json={"studentNo": sno, "realName": f"生{sno[-4:]}",
+                                          "classId": _org_class()}).json()
     assert r["code"] == 0, r
     return r["data"]["id"], sno
 
@@ -150,6 +171,10 @@ def test_mysql_two_connections_last_slot_race(client, auth_headers, db_mode):
     client.post(f"{ENT}/{eid}/review", headers=auth_headers, json={"action": "APPROVE"})
     pos = client.post(POS, headers=auth_headers, json={
         "companyId": eid, "title": _uniq("末席岗"), "headcount": 1, "batchId": bid,
+        "workContent": "现场值守", "dailyHours": 8, "weeklyHours": 40, "nightShift": False,
+        "overtimeAllowed": False, "restDaysPerWeek": 2, "remunerationType": "MONTHLY",
+        "accommodationProvided": True, "mealProvided": True, "hazardousFlag": False,
+        "remunerationAmount": 2000, "remunerationCycle": "MONTHLY",
     }).json()
     if pos.get("code") != 0:
         pytest.fail(f"position create failed: {pos}")
@@ -172,7 +197,8 @@ def test_mysql_two_connections_last_slot_race(client, auth_headers, db_mode):
         set_current_user(admin)
         barrier.wait()
         try:
-            row = student_svc.assign_position(rec_id, pid, user=admin)
+            # 两条记录都是刚建档的实习学生记录，version 均为 0
+            row = student_svc.assign_position(rec_id, pid, expected_version=0, user=admin)
             with lock:
                 results.append(("ok", row))
         except AppException as e:
