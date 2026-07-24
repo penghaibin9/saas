@@ -185,14 +185,12 @@ export default {
         this.selectedId = sid
         if (sid) { this.doneHint = false; this.loadDetail(sid) } else { this.detail = { loading: false, error: '', data: null } }
       }
-    }
+    },
+    '$route.query.view'() { this.applyViewFromRoute(); this.reload() }
   },
   created() {
     this.applyViewFromRoute()
     this.load()
-  },
-  watch: {
-    '$route.query.view'() { this.applyViewFromRoute(); this.reload() }
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },

@@ -7,10 +7,10 @@
     watermark-purpose="学工风险详情查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.risk.back" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.back')" code="studentAffairs.risk.back" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">
         返回列表
       </AppPermissionButton>
-      <AppPermissionButton code="studentAffairs.risk.refresh" variant="secondary" @click="load">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.refresh')" code="studentAffairs.risk.refresh" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
     </template>
@@ -42,28 +42,28 @@
 
         <AppSectionCard title="处置动作">
           <div class="sa-actions">
-            <AppPermissionButton code="studentAffairs.risk.assign" variant="secondary" :loading="actioning" @click="assign">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.assign')" code="studentAffairs.risk.assign" variant="secondary" :loading="actioning" @click="assign">
               分派
             </AppPermissionButton>
-            <AppPermissionButton code="studentAffairs.risk.process" :loading="actioning" @click="process">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.process')" code="studentAffairs.risk.process" :loading="actioning" @click="process">
               处置
             </AppPermissionButton>
-            <AppPermissionButton code="studentAffairs.risk.follow" variant="secondary" :loading="actioning" @click="follow">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.follow')" code="studentAffairs.risk.follow" variant="secondary" :loading="actioning" @click="follow">
               持续跟进
             </AppPermissionButton>
-            <AppPermissionButton code="studentAffairs.risk.transfer" variant="secondary" :loading="actioning" @click="transfer">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.transfer')" code="studentAffairs.risk.transfer" variant="secondary" :loading="actioning" @click="transfer">
               转办
             </AppPermissionButton>
-            <AppPermissionButton code="studentAffairs.risk.escalate" variant="secondary" :loading="actioning" @click="escalate">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.escalate')" code="studentAffairs.risk.escalate" variant="secondary" :loading="actioning" @click="escalate">
               升级
             </AppPermissionButton>
-            <AppPermissionButton code="studentAffairs.risk.takeover" variant="secondary" :loading="actioning" @click="takeover">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.takeover')" code="studentAffairs.risk.takeover" variant="secondary" :loading="actioning" @click="takeover">
               接管
             </AppPermissionButton>
-            <AppPermissionButton code="studentAffairs.risk.close" variant="secondary" :loading="actioning" @click="close">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.close')" code="studentAffairs.risk.close" variant="secondary" :loading="actioning" @click="close">
               关闭
             </AppPermissionButton>
-            <AppPermissionButton code="studentAffairs.risk.reopen" variant="secondary" :loading="actioning" @click="reopen">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.reopen')" code="studentAffairs.risk.reopen" variant="secondary" :loading="actioning" @click="reopen">
               重开
             </AppPermissionButton>
           </div>
@@ -113,9 +113,12 @@ import {
   AppRiskOwnerPicker
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 export default {
   name: 'StudentAffairsRiskDetailView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppAuditTrail,
     AppConfirmDialog,
@@ -179,6 +182,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

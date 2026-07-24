@@ -106,10 +106,13 @@ def test_academic_teacher_denied_admin_actions():
 
 
 def test_academic_teacher_no_wildcard_left():
-    """显式清单不得混入任何通配模式——防止将来图省事塞回 'academicAffairs.*'。"""
+    """显式清单不得混入任何通配模式——防止将来图省事塞回 'academicAffairs.*'。
+    工作台自助权限（*_WORKBENCH_SELF）与待办读权属于全角色底座，允许与教务清单并存。"""
     granted = ROLE_PERMISSIONS["ACADEMIC_TEACHER"]
     assert all("*" not in code for code in granted), f"清单混入通配: {[c for c in granted if '*' in c]}"
-    assert all(code.startswith("academicAffairs.") for code in granted)
+    allowed_prefixes = ("academicAffairs.", "workbench.", "approval.todo.")
+    bad = [c for c in granted if not c.startswith(allowed_prefixes)]
+    assert not bad, f"ACADEMIC_TEACHER 出现非教务/工作台自助权限: {bad}"
 
 
 def test_admin_roles_unaffected():

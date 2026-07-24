@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.aid.batch.manage" :loading="saving" @click="openForm">
+        <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" :loading="saving" @click="openForm">
           建批次
         </AppPermissionButton>
       </div>
@@ -31,7 +31,7 @@
         <p v-if="form.error" class="bf-error">{{ form.error }}</p>
         <div class="bf-actions">
           <button type="button" class="bf-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.aid.batch.manage" :loading="saving" @click="save">保存</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" :loading="saving" @click="save">保存</AppPermissionButton>
         </div>
       </AppSectionCard>
 
@@ -65,6 +65,8 @@ import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPaginat
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', REVIEWING: '评审中', PUBLICITY: '公示中', CLOSED: '已截止', ARCHIVED: '已归档' }
 const BATCH_COLUMNS = [
@@ -78,6 +80,7 @@ const BATCH_COLUMNS = [
 export default {
   name: 'AidBatchView',
   components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return {
       batchColumns: BATCH_COLUMNS,
@@ -100,6 +103,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [pageRes, statsRes] = await Promise.all([

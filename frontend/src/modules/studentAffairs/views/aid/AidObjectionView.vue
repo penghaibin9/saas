@@ -17,7 +17,7 @@
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
           <template #cell-level="{ row }">{{ levelLabel(row.finalLevel || row.applyLevel) }}</template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton code="studentAffairs.aid.view" size="sm" variant="secondary" :loading="acting===row.applyId" @click="objecte(row)">提异议</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.aid.view')" code="studentAffairs.aid.view" size="sm" variant="secondary" :loading="acting===row.applyId" @click="objecte(row)">提异议</AppPermissionButton>
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前无公示中的申请</p>
@@ -37,7 +37,7 @@
             <em v-if="row.reviewOpinion" class="ob-opinion">{{ row.reviewOpinion }}</em>
           </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="row.status === 'SUBMITTED'" code="studentAffairs.aid.approve" size="sm" :loading="acting===row.objectionId" @click="review(row)">复核</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.aid.approve')" v-if="row.status === 'SUBMITTED'" code="studentAffairs.aid.approve" size="sm" :loading="acting===row.objectionId" @click="review(row)">复核</AppPermissionButton>
             <span v-else class="ob-dash">—</span>
           </template>
         </DataTable>
@@ -80,6 +80,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 /** 与后端复核结论取值一一对应；括号内为对原认定的影响，避免只看英文码选反。 */
 const OBJECTION_RESULTS = [
@@ -106,6 +108,7 @@ const OBJECTION_COLUMNS = [
 
 export default {
   name: 'AidObjectionView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
     AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable
@@ -134,6 +137,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [pu, ob] = await Promise.all([

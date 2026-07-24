@@ -11,7 +11,7 @@
       <div class="fc-picker__control">
         <AppStudentPicker v-model="studentId" placeholder="按姓名 / 学号搜索学生" @change="onPick" />
       </div>
-      <AppPermissionButton code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记联系</AppPermissionButton>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.homeSchool.record.create')" code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记联系</AppPermissionButton>
     </div>
 
     <EmptyState v-if="!studentId" title="请选择一名学生" description="查看并登记该生的家校联系记录" />
@@ -84,6 +84,8 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const CONTACT_TYPE = { PHONE: '电话', WECHAT: '微信', VISIT: '家访', MESSAGE: '短信' }
 const CONTACT_TYPE_OPTIONS = Object.entries(CONTACT_TYPE).map(([value, label]) => ({ value, label }))
@@ -113,6 +115,7 @@ export default {
     }
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     contactTypeLabel(t) {
       return CONTACT_TYPE[t] || t || '—'
     },

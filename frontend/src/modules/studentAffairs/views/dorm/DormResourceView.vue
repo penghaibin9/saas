@@ -7,7 +7,7 @@
     watermark-purpose="宿舍房源管理"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">
         新建楼栋（可一键铺床）
       </AppPermissionButton>
     </template>
@@ -34,8 +34,8 @@
           <template #cell-manager="{ row }">{{ row.managerTeacherKey || '未指派' }}</template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
-              <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openBuilding(row)">查看房间</AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.dorm.resource.manage" size="sm" variant="secondary" :loading="actioning" @click="generate(row)">铺床</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openBuilding(row)">查看房间</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" size="sm" variant="secondary" :loading="actioning" @click="generate(row)">铺床</AppPermissionButton>
             </div>
           </template>
         </DataTable>
@@ -56,7 +56,7 @@
           <template #cell-vacantBeds="{ row }">{{ row.vacantBeds }}</template>
           <template #cell-status="{ row }">{{ row.status }}</template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openRoom(row)">床位</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openRoom(row)">床位</AppPermissionButton>
           </template>
         </DataTable>
         <p v-else class="sa-empty">该楼暂无房间，点「铺床」生成</p>
@@ -134,6 +134,8 @@ import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberIn
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 /** 性别限制（后端 genderLimit）——原为 window.prompt 让用户手打 MALE/FEMALE/MIXED */
 const GENDER_LIMITS = [
@@ -162,6 +164,7 @@ const ROOM_COLUMNS = [
 
 export default {
   name: 'DormResourceView',
+  props: { ctx: { type: Object, default: null } },
   components: { AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
     AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, DataTable },
   data() {
@@ -190,6 +193,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       try {

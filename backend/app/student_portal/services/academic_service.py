@@ -65,7 +65,16 @@ def submit_status_change(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "异动类型（changeType）必填")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "异动事由至少 5 个字")
+    if change_type == "TRANSFER_MAJOR" and not body.get("toMajorId"):
+        raise AppException("VALIDATION_ERROR", "转专业需指定目标专业")
+    if change_type == "TRANSFER_CLASS" and not body.get("toClassId"):
+        raise AppException("VALIDATION_ERROR", "转班需指定目标班级")
     return aa.submit_status_change_my(user, body)
+
+
+def transfer_options(user: dict) -> dict:
+    _require_student(user)
+    return aa.transfer_options_my(user)
 
 
 def status_change_print(user: dict, body: dict) -> dict:
@@ -118,22 +127,73 @@ def makeup(user: dict) -> dict:
     return aa.makeup_my(user)
 
 
+def makeup_options(user: dict) -> dict:
+    """重修挂科候选 + 免修未及格候选。"""
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    return gaps.makeup_options_my(user)
+
+
 def retake_apply(user: dict, body: dict) -> dict:
-    """本人发起重修报名（课程名必填）。"""
+    """本人发起重修报名（优先 gradeId；课程名须落在挂科候选）。"""
     _require_student(user)
     body = body or {}
-    if not str(body.get("courseName") or "").strip():
-        raise AppException("VALIDATION_ERROR", "课程名必填")
+    if not body.get("gradeId") and not str(body.get("courseName") or "").strip():
+        raise AppException("VALIDATION_ERROR", "请从挂科课程列表选择后再提交")
     return aa.retake_apply_my(user, body)
 
 
 def exemption_apply(user: dict, body: dict) -> dict:
-    """本人发起免修申请（课程名必填）。"""
+    """本人发起免修申请（课程须在未及格候选内）。"""
     _require_student(user)
     body = body or {}
     if not str(body.get("courseName") or "").strip():
-        raise AppException("VALIDATION_ERROR", "课程名必填")
+        raise AppException("VALIDATION_ERROR", "请从课程列表选择后再提交")
     return aa.exemption_apply_my(user, body)
+
+
+def registration(user: dict) -> dict:
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    return gaps.registration_my(user)
+
+
+def registration_register(user: dict, batch_id) -> dict:
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    return gaps.registration_self_register(user, batch_id)
+
+
+def registration_defer(user: dict, batch_id, body: dict) -> dict:
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    body = body or {}
+    return gaps.registration_defer_apply_my(
+        user, batch_id, body.get("reason"), body.get("requestedUntil"))
+
+
+def attendance(user: dict) -> dict:
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    return gaps.attendance_my(user)
+
+
+def calendar(user: dict) -> dict:
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    return gaps.calendar_my(user)
+
+
+def clearance(user: dict) -> dict:
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    return gaps.clearance_my(user)
+
+
+def exam_ticket_print(user: dict, body: dict) -> dict:
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    _require_student(user)
+    return gaps.exam_ticket_print_my(user, body or {})
 
 
 def graduation_audit(user: dict) -> dict:

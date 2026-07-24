@@ -15,7 +15,7 @@
 
 | 端 | 路径 |
 |---|---|
-| PC | `frontend/src/views/admin/system/`、`navPlan.js` → `systemAdmin` |
+| PC | `frontend/src/modules/system/`、`navPlan.js` → `systemAdmin` |
 | 鉴权 | `backend/app/api/v1/authz.py`、RBAC 服务 |
 | 审计 | `backend/app/services/audit_log.py` |
 

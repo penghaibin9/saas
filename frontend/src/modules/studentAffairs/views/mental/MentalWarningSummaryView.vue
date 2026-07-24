@@ -28,7 +28,7 @@
       <AppSectionCard title="按学生查预警摘要（无明细）">
         <div class="sa-toolbar">
           <AppSearchBox v-model="queryStudentId" class="sa-input" placeholder="输入学生 ID 查询摘要" :debounce="0" @search="querySummary" />
-          <AppPermissionButton code="studentAffairs.risk.view" variant="secondary" :loading="actioning" @click="querySummary">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" :loading="actioning" @click="querySummary">
             查询摘要
           </AppPermissionButton>
         </div>
@@ -68,6 +68,8 @@ import {
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const LEVEL_COLUMNS = [{ key: 'label', title: '关注等级' }, { key: 'value', title: '数量' }]
 const LEVELS = [
@@ -79,6 +81,7 @@ const LEVELS = [
 export default {
   name: 'MentalWarningSummaryView',
   components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSearchBox, AppSectionCard, AppStatusTag, DataTable },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return { levelColumns: LEVEL_COLUMNS, loading: true, actioning: false, errorMessage: '', stats: null, queryStudentId: '', summary: null }
   },
@@ -108,6 +111,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

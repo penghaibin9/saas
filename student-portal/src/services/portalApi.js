@@ -55,6 +55,7 @@ export const portalApi = {
   academicDrop: (body) => request('/portal/academic/course-selection/drop', { method: 'POST', body }),
   academicSelectionRecords: (batchId) => request(`/portal/academic/course-selection/records${q({ batchId })}`),
   academicStatus: () => request('/portal/academic/status'),
+  academicTransferOptions: () => request('/portal/academic/transfer-options'),
   academicStatusChange: (body) => request('/portal/academic/status-change', { method: 'POST', body }),
   academicStatusChangePrint: (body) => request('/portal/academic/status-change/print', { method: 'POST', body }),
   academicExam: () => request('/portal/academic/exam'),
@@ -63,8 +64,16 @@ export const portalApi = {
   academicExamDeferResubmit: (deferId) =>
     request(`/portal/academic/exam/defer/${encodeURIComponent(deferId)}/resubmit`, { method: 'POST' }),
   academicMakeup: () => request('/portal/academic/makeup'),
+  academicMakeupOptions: () => request('/portal/academic/makeup/options'),
   academicRetakeApply: (body) => request('/portal/academic/retake/apply', { method: 'POST', body }),
   academicExemptionApply: (body) => request('/portal/academic/exemption/apply', { method: 'POST', body }),
+  academicRegistration: () => request('/portal/academic/registration'),
+  academicRegistrationRegister: (batchId) => request(`/portal/academic/registration/${encodeURIComponent(batchId)}/register`, { method: 'POST' }),
+  academicRegistrationDefer: (batchId, body) => request(`/portal/academic/registration/${encodeURIComponent(batchId)}/defer`, { method: 'POST', body }),
+  academicAttendance: () => request('/portal/academic/attendance'),
+  academicCalendar: () => request('/portal/academic/calendar'),
+  academicClearance: () => request('/portal/academic/clearance'),
+  academicExamTicketPrint: (body) => request('/portal/academic/exam/ticket/print', { method: 'POST', body }),
   academicGraduationAudit: () => request('/portal/academic/graduation-audit'),
   academicEvaluationTasks: () => request('/portal/academic/evaluation/tasks'),
   academicEvaluationSubmit: (body) => request('/portal/academic/evaluation/submit', { method: 'POST', body }),
@@ -93,6 +102,9 @@ export const portalApi = {
     request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/resubmit`, { method: 'POST', body }),
   affairsLeaveCancel: (leaveId, body = {}) =>
     request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/cancel`, { method: 'POST', body }),
+  affairsLeaveExtend: (leaveId, body = {}) =>
+    request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/extension`, { method: 'POST', body }),
+  affairsDorm: () => request('/portal/affairs/dorm'),
   affairsTalk: () => request('/portal/affairs/talk'),
   affairsFunding: () => request('/portal/affairs/funding'),
   affairsAid: () => request('/portal/affairs/aid'),
@@ -170,6 +182,8 @@ export const portalApi = {
   // ── 消息中心（PC 分页 + 已读 + 偏好）──
   messagesInbox: (page = 1, pageSize = 20) => request(`/portal/messages${q({ page, pageSize })}`),
   messageRead: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/read`, { method: 'POST' }),
+  messagesReadAll: () => request('/portal/messages/read-all', { method: 'POST' }),
+  messageReceipt: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/receipt`, { method: 'POST' }),
   messagePreferences: () => request('/portal/messages/preferences'),
   messageSetPreference: (body) => request('/portal/messages/preferences', { method: 'POST', body }),
 

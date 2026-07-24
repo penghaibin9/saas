@@ -124,7 +124,7 @@ def test_l6_extension(client, db_mode):
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
     client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=hdr)
     client.post(f"/api/v1/student-affairs/leave/{lid}/extension", headers=hdr,
-                json={"newEnd": "2026-03-05", "reason": "延后返校"})
+                json={"newEnd": "2026-03-05", "reason": "因病延后返校"})
     r = client.post(f"/api/v1/student-affairs/leave/{lid}/extension-approve", headers=hdr).json()
     assert r["data"]["affairsStatus"] == "APPROVED"
     assert r["data"]["endTime"].startswith("2026-03-05")
@@ -239,7 +239,7 @@ def test_l11_extension_reject_keeps_original(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     lid = _approved_leave(client, hdr, ids["sa"])
     client.post(f"/api/v1/student-affairs/leave/{lid}/extension", headers=hdr,
-                json={"newEnd": "2026-03-05", "reason": "延后返校"})
+                json={"newEnd": "2026-03-05", "reason": "因病延后返校"})
     # 驳回原因<5字 → 400
     assert client.post(f"/api/v1/student-affairs/leave/{lid}/extension-approve", headers=hdr,
                        json={"action": "REJECT", "reason": "no"}).status_code == 400

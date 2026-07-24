@@ -14,7 +14,7 @@
         </div>
         <div class="fd-gen">
           <AppFundingBatchPicker v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" />
-          <AppPermissionButton code="studentAffairs.funding.disburse.manage" :loading="acting==='gen'" :disabled="!genBatchId" @click="generate">生成发放台账</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.disburse.manage')" code="studentAffairs.funding.disburse.manage" :loading="acting==='gen'" :disabled="!genBatchId" @click="generate">生成发放台账</AppPermissionButton>
         </div>
       </div>
 
@@ -35,8 +35,8 @@
           <template #cell-actions="{ row }">
             <div class="fd-ops">
               <template v-if="row.bankStatus!=='ISSUED'">
-                <AppPermissionButton code="studentAffairs.funding.disburse.manage" size="sm" :loading="acting===row.disbursementId" @click="issue(row)">标记发放</AppPermissionButton>
-                <AppPermissionButton v-if="row.bankStatus==='PENDING'" code="studentAffairs.funding.disburse.manage" size="sm" variant="secondary" danger @click="fail(row)">置失败</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.disburse.manage')" code="studentAffairs.funding.disburse.manage" size="sm" :loading="acting===row.disbursementId" @click="issue(row)">标记发放</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.disburse.manage')" v-if="row.bankStatus==='PENDING'" code="studentAffairs.funding.disburse.manage" size="sm" variant="secondary" danger @click="fail(row)">置失败</AppPermissionButton>
               </template>
               <span v-else class="fd-dash">已发放</span>
             </div>
@@ -80,6 +80,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const DISBURSEMENT_COLUMNS = [
   { key: 'student', title: '学生' },
@@ -96,6 +98,7 @@ const STATUS_FILTERS = [
 
 export default {
   name: 'FundingDisbursementView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
     AppPermissionButton, AppSectionCard, AppFundingBatchPicker, AppTextInput, StatusTag: AppStatusTag, DataTable
@@ -128,6 +131,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const [ds, bs, st] = await Promise.all([

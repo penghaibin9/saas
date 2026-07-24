@@ -133,26 +133,43 @@ def _push_warning_notice(db, warning, counselor_id, student_global_id, scene=NOT
     见 mobile_student_service._resolve_uid）；辅导员侧＝SchoolClass.counselor_id 对应的登录 user_id
     （与调停课 _msg(db, x.applicant_id, ...) 同源）。任一方解析不到（未绑定辅导员/学生未关联全局身份）
     则跳过该方，不臆造收件人。返回实际推送条数。"""
-    from app.models import UnifiedMessage
+    from app.services.message_event_outbox_service import emit_message_event
     label = SOURCE_LABELS.get(warning.source_code or "", warning.source_code or "学业预警")
     reason = warning.reason or label
     is_remind = scene == NOTICE_REMIND
+    remind_n = int(warning.remind_count or 0) if is_remind else 0
     sent = 0
     if student_global_id:
         title = f"再次提醒：{label}" if is_remind else f"学业预警通知：{label}"
         content = (f"你已被再次提醒关注「{reason}」，请尽快改善学业情况，如有疑问请主动联系辅导员或任课教师。"
                    if is_remind else
                    f"你被系统标记「{reason}」，请及时关注学业情况，必要时主动联系辅导员或任课教师。")
-        db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(student_global_id),
-                              source_module="academic-affairs", source_biz_id=int(warning.id),
-                              title=title, content=content, message_type=scene, status="UNREAD"))
+        emit_message_event(
+            db,
+            event_code="WARNING.CREATED",
+            source_module="academic-affairs",
+            source_biz_type="academic_warning",
+            source_biz_id=int(warning.id),
+            recipient_refs=[{"studentId": int(student_global_id)}],
+            content=content,
+            title=title,
+            dedup_key=f"WARNING.CREATED:{warning.id}:student:{scene}:{remind_n}",
+        )
         sent += 1
     if counselor_id:
         title = f"预警再次提醒：{label}" if is_remind else f"学生{label}：请跟进"
         content = f"「{reason}」，请及时跟进处置（预警编号 {warning.id}）。"
-        db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(counselor_id),
-                              source_module="academic-affairs", source_biz_id=int(warning.id),
-                              title=title, content=content, message_type=scene, status="UNREAD"))
+        emit_message_event(
+            db,
+            event_code="WARNING.CREATED",
+            source_module="academic-affairs",
+            source_biz_type="academic_warning",
+            source_biz_id=int(warning.id),
+            recipient_refs=[{"userId": int(counselor_id)}],
+            content=content,
+            title=title,
+            dedup_key=f"WARNING.CREATED:{warning.id}:counselor:{scene}:{remind_n}",
+        )
         sent += 1
     return sent
 
@@ -737,6 +754,11 @@ def remind_warning(user, warning_id) -> dict:
         sent = _push_warning_notice(db, w, cid, sid, NOTICE_REMIND)
         _audit(db, "ACAD_WARNING", w.id, "REMIND", f"第 {w.remind_count} 次提醒，推送通知 {sent} 条")
         db.commit()
+        try:
+            from app.services.message_event_outbox_service import process_pending_outbox
+            process_pending_outbox(limit=20, worker_id="aa-warning-inline")
+        except Exception:  # noqa: BLE001
+            pass
         return {"warningId": str(w.id), "remindCount": w.remind_count, "notified": sent}
 
 

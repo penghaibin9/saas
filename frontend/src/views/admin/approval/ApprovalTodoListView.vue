@@ -243,6 +243,15 @@ export default {
     if (bizType && this.ctx.filterOptions.bizTypes.some((b) => b.value === bizType)) {
       this.filters.bizType = bizType
     }
+    const urgency = this.$route.query.urgency
+    if (urgency && this.ctx.filterOptions.urgencies.some((u) => u.value === urgency)) {
+      this.filters.urgency = urgency
+    }
+    // UnifiedTodo 分类下钻：approval 列表无 todoType 字段时仍保留 urgency/bizType；
+    // todoType 透传给 load 作为关键词兜底提示（业务页自带 status 筛选更准）。
+    if (this.$route.query.todoType && !this.filters.keyword) {
+      this.filters.keyword = String(this.$route.query.todoType)
+    }
     this.load()
     this.loadAudits()
   },

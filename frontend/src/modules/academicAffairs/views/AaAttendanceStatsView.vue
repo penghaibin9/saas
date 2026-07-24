@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="课堂考勤统计"
-    subtitle="按学生汇总各堂次 出勤/迟到/旷课/请假 次数与缺勤率（仅统计已提交场次；教师逐生点名在移动端）"
+    subtitle="按学生汇总各堂次 出勤/迟到/旷课/请假 次数与缺勤率（仅统计已提交场次）。产品口径：教师逐生点名仅在小程序；本页为 PC 统计查询，不提供补点名入口。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >

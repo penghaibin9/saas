@@ -304,12 +304,14 @@ export default {
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [
+        { key: 'createUser', label: '＋ 新增', variant: 'primary' },
         { key: 'importUsers', label: '⇪ 导入老师/学生' },
         { key: 'exportUsers', label: '⇩ 批量导出' }
       ]
         .filter((a) => {
           if (a.key === 'importUsers') return this.isIdentityImport
           if (this.isIdentityImport) return false
+          if (a.key === 'createUser') return !!(pa.createUser && pa.createUser.visible)
           return true
         })
         .filter((a) => pa[a.key] && pa[a.key].visible)
@@ -319,10 +321,8 @@ export default {
       return [
         { key: 'userNo', label: '工号 / 账号', required: true, disabled: !!this.form.id, lockNote: this.form.id ? '（创建后不可修改）' : '', placeholder: '如 T2026001' },
         { key: 'name', label: '姓名', required: true },
-        { key: 'orgId', label: '所属组织', type: 'select', required: true, options: this.ctx.filterOptions.colleges },
         { key: 'phone', label: '手机号', hint: '仅用于找回密码，列表默认脱敏展示' },
-        { key: 'email', label: '邮箱', full: true },
-        { key: 'roles', label: '初始角色', type: 'checkbox-group', full: true, options: this.ctx.filterOptions.roles, hint: '数据范围随角色配置生效' }
+        { key: 'roles', label: '初始角色', type: 'checkbox-group', full: true, options: this.ctx.filterOptions.roles, hint: '数据范围随角色配置生效；新建账号请走统一导入' }
       ]
     }
   },
@@ -376,6 +376,10 @@ export default {
       this.load()
     },
     onToolbar(key) {
+      if (key === 'createUser') {
+        toast.error(this.reason('createUser') || '师生账号只能通过统一导入入口创建')
+        return
+      }
       if (key === 'importUsers') this.importOpen = true
       if (key === 'exportUsers') this.openExport('FILTERED')
     },
@@ -384,30 +388,32 @@ export default {
       this.exportOpen = true
     },
     openEdit(row) {
-      if (row && !this.can('editUser')) return
       if (!row) {
-        toast.error('师生账号只能通过“导入老师/学生”创建')
+        toast.error(this.reason('createUser') || '师生账号只能通过统一导入入口创建')
         return
       }
+      if (!this.can('editUser')) return
       this.form = {
         open: true,
-        id: row ? row.id : '',
-        value: row ? { userNo: row.userNo, name: row.name, orgId: row.orgId, phone: row.phone, email: row.email, roles: [...row.roles] } : EMPTY_FORM(),
+        id: row.id,
+        value: { userNo: row.userNo, name: row.name, phone: row.phone, roles: [...(row.roles || [])] },
         errors: {},
         submitting: false
       }
     },
     async submitForm() {
+      if (!this.form.id) {
+        toast.error('师生账号只能通过统一导入入口创建')
+        return
+      }
       const errors = FormFields.validateRequired(this.formFields, this.form.value)
       this.form.errors = errors
       if (Object.keys(errors).length) return
       this.form.submitting = true
-      const res = this.form.id
-        ? await systemApi.updateUser(this.form.id, this.form.value)
-        : await systemApi.createUser(this.form.value)
+      const res = await systemApi.updateUser(this.form.id, this.form.value)
       this.form.submitting = false
       if (res.code === 0) {
-        toast.success((this.form.id ? '账号已更新' : '账号已创建（待激活）') + '，已写入审计日志')
+        toast.success('账号已更新，已写入审计日志')
         this.form.open = false
         this.load()
       } else {

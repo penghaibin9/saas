@@ -34,25 +34,46 @@ PLATFORM_SUPER_ADMIN = "PLATFORM_SUPER_ADMIN"
 #   "studentAffairs.*" / "audit.*"   前缀通配（"a.b.*" 命中 "a.b.xxx"）
 #   "academicAffairs.grade.publish"  精确匹配
 # 未登记的角色一律得到空集（默认拒绝）。数据范围（本人/班级/学院…）不在此裁定，由 scope 解析器另行收敛。
+
+# 工作台本人入口（一线老师磁贴下钻 /admin/approval/todos）。
+# 不含审批整舱 approval.dashboard.view / 领导驾驶舱 dataCenter.*（校级与 LEADER 的 *.view 覆盖）。
+# 消息中心收件能力：所有教职工默认可读本人消息、已读、确认；发布权按角色另行授予。
+# workbench.message.publish：发布入口菜单共用码（具体范围仍由 class/college/school* 码裁定）。
+_WORKBENCH_MESSAGE_SELF = {
+    "workbench.message.view",
+    "workbench.message.read",
+    "workbench.message.readAll",
+    "workbench.message.ack",
+}
+_WORKBENCH_SELF = {"workbench.home.view", "approval.todo.view", *_WORKBENCH_MESSAGE_SELF}
+
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PLATFORM_SUPER_ADMIN": {"*"},
     "SCHOOL_ADMIN": {"*"},                       # 学校管理员：本校全权（接库后再按需收敛）
-    "SYS_ADMIN": {"systemAdmin.*", "audit.*"},
+    "SYS_ADMIN": {"systemAdmin.*", "audit.*", *_WORKBENCH_SELF},
     "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view",
                          # 实习督导/审计：只读监督（看板/学生/风险/统计/分配日志/审核台账），不授予任何写操作
                          "internship.dashboard.view", "internship.student.view", "internship.risk.view",
                          "internship.stats.view", "internship.stats.enterprise.view", "internship.stats.position.view",
                          "internship.stats.score.view", "internship.match.log.view", "internship.application.view",
-                         "internship.archive.view", "internship.complaint.view"},
-    "LEADER": {"audit.view", "*.view", "*.stat"},  # 校/院领导：只读驾驶舱（含 campusService.*.view）
+                         "internship.archive.view", "internship.complaint.view",
+                         *_WORKBENCH_SELF, "dataCenter.*"},
+    "LEADER": {"audit.view", "*.view", "*.stat", *_WORKBENCH_SELF},  # 校/院领导：只读驾驶舱；显式补工作台自助权限
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
-                      "internship.*", "audit.view"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
+                      "internship.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
+                      # 消息中心：本院发布 + 本院发送统计（跨学院由 service 数据范围收敛）
+                      "workbench.message.publish",
+                      "workbench.message.college.publish", "workbench.message.schedule",
+                      "workbench.message.withdraw", "workbench.message.statistics.view",
+                      "workbench.message.recipient.view",
+                      "workbench.message.emergency.approve"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
     # 任课教师：2026-07-19 起从 academicAffairs.* 通配收窄为显式清单（教务中心测试报告
     # Bug#3 越权整改的完整版）。原则：教学职责所需的查看/录入/发起/流程节点动作显式授予，
     # 数据范围仍由 service 层收敛（本人课程/COURSE/仅本人课表等）；一切管理/审批/发布/
     # 资产维护/敏感导出动作不在清单即默认拒绝。教师参与的审批节点（缓考/免修/监考异常/
     # 课表异议/教材选用）逐条核对过端点 summary 与既有测试后保留。
     "ACADEMIC_TEACHER": {
+        *_WORKBENCH_SELF,
         # 基础只读：学期/校历/作息/课程库/培养方案/名册（敏感字段另由 roster.viewSensitive 控制，不授予）
         "academicAffairs.term.view", "academicAffairs.calendar.view",
         "academicAffairs.timeslot.view", "academicAffairs.classTimeBand.view",
@@ -85,18 +106,35 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 学业过程域（/api/v1/academic/*，域级裁决 view/export/manage）：只读
         "academicAffairs.process.view",
     },
-    "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view"},  # 教务处管理员：本校教务全权（TENANT_ALL），
+    "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view"},  # 教务处管理员：本校教务全权（TENANT_ALL），
                                                              # 与 COLLEGE_ADMIN 区分——成绩发布/退回/归档等
                                                              # 超高危动作端点内额外校验角色=ACADEMIC_ADMIN/SCHOOL_ADMIN
 
-    "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*"},
-    "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
-    "PSYCHOLOGY_TEACHER": {"studentAffairs.risk.*", "studentAffairs.talk.*", "studentAffairs.stats.view",
+    "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*", *_WORKBENCH_SELF, "approval.dashboard.view",
+                        "workbench.message.publish",
+                        "workbench.message.schoolStudent.publish", "workbench.message.schedule",
+                        "workbench.message.withdraw", "workbench.message.statistics.view",
+                        "workbench.message.recipient.view"},
+    "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view",
+                              *_WORKBENCH_SELF, "approval.dashboard.view",
+                              "workbench.message.publish",
+                              "workbench.message.schoolStudent.publish",
+                              "workbench.message.schoolAll.publish",
+                              "workbench.message.emergency.submit",
+                              "workbench.message.emergency.approve",
+                              "workbench.message.schedule", "workbench.message.withdraw",
+                              "workbench.message.retry", "workbench.message.statistics.view",
+                              "workbench.message.recipient.view",
+                              "workbench.message.recipient.export"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
+    # mental.manage 独立于 risk.*：避免辅导员通配拿到转介/升级/关闭写权；仅心理老师+学工处(studentAffairs.*)可写。
+    "PSYCHOLOGY_TEACHER": {*_WORKBENCH_SELF, "studentAffairs.risk.*", "studentAffairs.mental.manage",
+                           "studentAffairs.talk.*", "studentAffairs.stats.view",
                            "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
     # 资助老师（§12「资」列 / §13 FUNDING_BIZ）：困难认定 + 奖助勤贷全域经办，数据范围限资助业务学生。
     # 只授资助能力，不授违纪明细办理/心理/风险/宿舍（§12 资列：discipline 仅「资格校验只读结论」，risk/talk/dorm=✗）。
     # 注：FUNDING_BIZ 数据范围解析器尚未实现（见历史欠账），当前 scope 回退 NONE→受范围过滤的列表 fail-closed 为空；能力门禁已生效。
     "FUNDING_TEACHER": {
+        *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view", "studentAffairs.student.view", "studentAffairs.stats.view",
         "studentAffairs.aid.view", "studentAffairs.aid.batch.manage", "studentAffairs.aid.create",
         "studentAffairs.aid.approve", "studentAffairs.aid.adjust",
@@ -108,6 +146,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     # 团委（社团/学生组织/党团发展 + 二课活动组织）：全校团学口径。边界（是否含全部二课/志愿）待学校确认。
     "YOUTH_LEAGUE": {
+        *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view", "studentAffairs.student.view", "studentAffairs.stats.view",
         "studentAffairs.club.view", "studentAffairs.club.manage",
         "studentAffairs.org.view", "studentAffairs.org.manage",
@@ -117,13 +156,16 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     # 组织人事：辅导员考评的组织与复核（指标/评分/发布/申诉复核）；不介入学生业务。角色归属待学校确认。
     "ORG_PERSONNEL": {
+        *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view", "studentAffairs.stats.view",
         "studentAffairs.counselorEval.view", "studentAffairs.counselorEval.manage",
     },
-    "DORM_MANAGER": {"studentAffairs.dorm.*", "campusService.dorm.*"},  # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分
+    # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分；可进本人工作台与待办
+    "DORM_MANAGER": {*_WORKBENCH_SELF, "studentAffairs.dorm.*", "campusService.dorm.*"},
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
     # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
     "COUNSELOR": {
+        *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view",
         "studentAffairs.class.view", "studentAffairs.class.create", "studentAffairs.class.cadre.manage",
         "studentAffairs.student.view",
@@ -154,26 +196,38 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 范围收敛到本班由 academic_affairs_schedule_service.class_schedule 用 build_affairs_context 校验，
         # 越权（非本班 classId / 教师课表 / 教室课表）一律 403002，不额外放大到排课管理/规则/冲突。
         "academicAffairs.schedule.view",
+        # 消息中心：本班普通/重要通知发布（范围由受众服务按负责班级收敛）
+        "workbench.message.publish",
+        "workbench.message.class.publish",
+        "workbench.message.withdraw",
+        "workbench.message.recipient.view",
     },
     # 毕设角色权限只决定“能做什么”；具体学生/评阅/答辩组必须再由业务关系收敛。
-    "GRADUATION_ADMIN": {"graduationDesign.*"},
-    "GD_COLLEGE_ADMIN": {"graduationDesign.*"},
+    "GRADUATION_ADMIN": {"graduationDesign.*", *_WORKBENCH_SELF, "approval.dashboard.view"},
+    "GD_COLLEGE_ADMIN": {"graduationDesign.*", *_WORKBENCH_SELF, "approval.dashboard.view"},
     "GD_MAJOR_ADMIN": {
+        *_WORKBENCH_SELF,
         "graduationDesign.view", "graduationDesign.topic.*", "graduationDesign.mentor.assign",
         "graduationDesign.proposal.review", "graduationDesign.stats.view",
     },
     "GD_MENTOR": {
+        *_WORKBENCH_SELF,
         "graduationDesign.view", "graduationDesign.guide.*",
         "graduationDesign.proposal.review", "graduationDesign.final.review",
     },
-    "GD_REVIEWER": {"graduationDesign.view", "graduationDesign.final.review"},
+    "GD_REVIEWER": {*_WORKBENCH_SELF, "graduationDesign.view", "graduationDesign.final.review"},
     "GD_DEFENSE_SECRETARY": {
+        *_WORKBENCH_SELF,
         "graduationDesign.view", "graduationDesign.defense.manage",
         "graduationDesign.defense.publish", "graduationDesign.defense.score",
     },
-    "GD_DEFENSE_EXPERT": {"graduationDesign.view", "graduationDesign.defense.score"},
+    "GD_DEFENSE_EXPERT": {
+        *_WORKBENCH_SELF,
+        "graduationDesign.view", "graduationDesign.defense.score",
+    },
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {
+        *_WORKBENCH_SELF,
         "internship.guide.*", "internship.dashboard.view",
         "internship.student.view", "internship.student.material.view",
         "internship.attendance.*", "internship.makeup.*", "internship.leave.view", "internship.leave.review",
@@ -199,6 +253,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
     "EMPLOYMENT_TEACHER": {
+        *_WORKBENCH_SELF,
         "employment.*", "internship.dashboard.view",
         "internship.employment.view", "internship.archive.*",
         "internship.stats.view", "internship.stats.enterprise.view",

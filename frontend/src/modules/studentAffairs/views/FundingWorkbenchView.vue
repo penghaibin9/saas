@@ -14,10 +14,10 @@
         <AppFundingBatchPicker v-model="batchId" :options="batchSelectOptions" :query="{ projectId }" placeholder="（选择批次）" :disabled="!projectId" @change="onBatchChange" />
       </label>
       <div class="fd-ctxtools">
-        <AppPermissionButton code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
-        <AppPermissionButton code="studentAffairs.funding.project.manage" variant="secondary" size="sm" :disabled="!projectId" @click="openBatch">建批次</AppPermissionButton>
-        <AppPermissionButton code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :loading="scanning" @click="onScan">公示扫描</AppPermissionButton>
-        <AppPermissionButton code="studentAffairs.funding.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" :disabled="!projectId" @click="openBatch">建批次</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :loading="scanning" @click="onScan">公示扫描</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.create')" code="studentAffairs.funding.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
       </div>
     </div>
 
@@ -77,7 +77,7 @@
           <p v-if="selected.checkSnapshot" class="fd-snap">资格校验：{{ snapshotText(selected.checkSnapshot) }}</p>
 
           <div v-if="detailActions.length" class="fd-actions">
-            <AppPermissionButton
+            <AppPermissionButton :allowed="canBtn(a.code)"
               v-for="a in detailActions"
               :key="a.key"
               :code="a.code"
@@ -185,6 +185,8 @@ import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppPermi
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const FUND_NODES = ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'SCHOOL_REVIEW']
 const STATUS_TYPE = {
@@ -275,6 +277,7 @@ export default {
     this.loadProjects()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     projectTypeLabel(t) {
       return PROJECT_TYPE[t] || t || '—'
     },

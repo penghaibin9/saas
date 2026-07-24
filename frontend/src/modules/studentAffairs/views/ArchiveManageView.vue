@@ -11,7 +11,7 @@
       <div class="av-side">
         <div class="av-side__head">
           归档批次
-          <AppPermissionButton code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">建批次</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">建批次</AppPermissionButton>
         </div>
         <EmptyState v-if="!batches.length" title="暂无批次" description="点「建批次」新建归档批次" />
         <ul v-else class="av-blist">
@@ -61,8 +61,8 @@
           </div>
 
           <div class="av-actions">
-            <AppPermissionButton v-if="canCollect" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="openCollect">圈定学生</AppPermissionButton>
-            <AppPermissionButton v-if="advanceLabel" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="onAdvance">{{ advanceLabel }}</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" v-if="canCollect" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="openCollect">圈定学生</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" v-if="advanceLabel" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="onAdvance">{{ advanceLabel }}</AppPermissionButton>
             <span v-if="current.status === 'ARCHIVED'" class="av-archived">✓ 已归档（水印包已登记）</span>
           </div>
 
@@ -129,6 +129,8 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppButton } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const FLOW = [
   { key: 'DRAFT', label: '草稿' },
@@ -178,6 +180,7 @@ export default {
     this.loadBatches()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async loadBatches() {
       const res = await studentAffairsApi.getArchiveBatches({
         page: this.batchPagination.page,

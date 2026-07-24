@@ -53,6 +53,7 @@ export const roleConfigs = {
       { key: 'care', label: '创建关怀', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
       { key: 'affairsLeave', label: '请假管理', icon: '🗓' },
+      { key: 'dormReview', label: '宿舍待办', icon: '🏠' },
       { key: 'classCadre', label: '班干部管理', icon: '🎖' },
       { key: 'classMaterial', label: '班级材料', icon: '📁' },
       { key: 'examDefer', label: '缓考审批', icon: '📝' },
@@ -138,8 +139,8 @@ export const roleConfigs = {
     workbench: ['academic', 'warning', 'status'],
     quickActions: [
       { key: 'warning', label: '异常预警', icon: '⚠' },
-      { key: 'progress', label: '学业进度', icon: '▤' },
-      { key: 'status', label: '学籍异动', icon: '⇄' },
+      { key: 'progress', label: '教务工作台', icon: '▤' },
+      { key: 'status', label: '缓考审批', icon: '⇄' },
       { key: 'approval', label: '待审批', icon: '✓' },
       { key: 'academicTask', label: '教学任务确认', icon: '📚' },
       { key: 'scheduleChange', label: '调停课管理', icon: '🔀' },

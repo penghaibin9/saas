@@ -7,22 +7,7 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
-    <template #header-right>
-      <label v-if="ctx" class="al-role">
-        <span class="al-role__label">切换角色</span>
-        <select
-          class="al-role__select"
-          :value="ctx.currentRole.roleCode"
-          :disabled="switching"
-          @change="onRoleChange($event.target.value)"
-        >
-          <option v-for="r in ctx.availableRoles" :key="r.roleCode" :value="r.roleCode">
-            {{ r.roleName }} · {{ r.userName }}
-          </option>
-        </select>
-      </label>
-    </template>
-    <router-view v-if="ctx" :key="ctx.currentRole.roleCode" :ctx="ctx" />
+    <router-view v-if="ctx" :ctx="ctx" />
     <LoadingState v-else text="正在加载审批中心…" />
   </BasePortalLayout>
 </template>
@@ -31,18 +16,17 @@
 /**
  * AdminApprovalLayout — /admin/approval 父布局（待办/审批闭环，区别于 /admin/workflow）。
  * 品牌名 / 角色 / 数据范围全部来自 approvalApi.getContext()，禁止硬编码。
- * ctx 通过 props 下发子路由页面；切换角色后重新拉取 ctx，并用 :key 触发子页刷新。
+ * P6：已移除「切换角色」假视角；切身份须走真实 /auth/switch-role。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
 import { approvalApi } from '@/modules/approval/api/approval.api'
-import { toast } from '@/utils/toast'
 
 export default {
   name: 'AdminApprovalLayout',
   components: { BasePortalLayout, LoadingState },
   data() {
-    return { ctx: null, todoCount: 0, switching: false }
+    return { ctx: null, todoCount: 0 }
   },
   computed: {
     brandTitle() {
@@ -92,18 +76,6 @@ export default {
       const res = await approvalApi.getTodoSummary()
       if (res.code === 0) this.todoCount = res.data.total
     },
-    async onRoleChange(roleCode) {
-      if (!this.ctx || roleCode === this.ctx.currentRole.roleCode) return
-      this.switching = true
-      const res = await approvalApi.switchRole(roleCode)
-      if (res.code === 0) {
-        await this.loadContext()
-        toast.success('已切换至 ' + res.data.roleName + '（' + res.data.userName + '）视角，数据范围已更新')
-      } else {
-        toast.error(res.message)
-      }
-      this.switching = false
-    },
     onMenuSelect(item) {
       if (item.path && item.path !== this.$route.path) this.$router.push(item.path)
     }
@@ -123,45 +95,5 @@ export default {
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
-}
-.al-user {
-  padding-left: var(--space-4);
-  border-left: 1px solid var(--border-base);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.al-role {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-left: var(--space-4);
-  border-left: 1px solid var(--border-base);
-}
-.al-role__label {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-.al-role__select {
-  height: 30px;
-  max-width: 200px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  padding: 0 var(--space-2);
-  outline: none;
-  cursor: pointer;
-  transition: border-color var(--motion-fast) var(--ease-standard);
-}
-.al-role__select:focus {
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-50);
-}
-.al-role__select:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
 }
 </style>

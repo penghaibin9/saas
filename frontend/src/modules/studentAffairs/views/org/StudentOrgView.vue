@@ -12,7 +12,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.org.manage" :loading="saving" @click="openForm">建组织</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="openForm">建组织</AppPermissionButton>
       </div>
 
       <AppSectionCard v-if="formVisible" title="新建学生组织">
@@ -27,7 +27,7 @@
         <p v-if="form.error" class="og-error">{{ form.error }}</p>
         <div class="og-actions">
           <button type="button" class="og-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton code="studentAffairs.org.manage" :loading="saving" @click="save">保存</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="save">保存</AppPermissionButton>
         </div>
       </AppSectionCard>
 
@@ -48,20 +48,20 @@
           <template v-else>
             <div class="og-subhead">
               <h4>在任成员（{{ positions.length }}）</h4>
-              <AppPermissionButton v-if="sel.status==='ACTIVE'" code="studentAffairs.org.manage" size="sm" @click="openAppoint">任命</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" v-if="sel.status==='ACTIVE'" code="studentAffairs.org.manage" size="sm" @click="openAppoint">任命</AppPermissionButton>
             </div>
             <div v-if="apForm.visible" class="og-inline">
               <AppStudentPicker v-model="apForm.studentId" placeholder="按姓名 / 学号搜索学生" />
               <AppTextInput v-model="apForm.position" placeholder="职务 如 主席/部长" />
               <AppTextInput v-model="apForm.termCode" placeholder="任期 如 2025-2026" />
-              <AppPermissionButton code="studentAffairs.org.manage" size="sm" @click="appoint">任命</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" size="sm" @click="appoint">任命</AppPermissionButton>
             </div>
             <DataTable v-if="positions.length" :columns="positionColumns" :rows="positions" row-key="positionId">
               <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
               <template #cell-position="{ row }">{{ row.position }}</template>
               <template #cell-term="{ row }">{{ row.termCode || '—' }}</template>
               <template #cell-actions="{ row }">
-                <AppPermissionButton code="studentAffairs.org.manage" size="sm" variant="secondary" danger @click="dismiss(row)">卸任</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" size="sm" variant="secondary" danger @click="dismiss(row)">卸任</AppPermissionButton>
               </template>
             </DataTable>
             <p v-else class="sa-empty">暂无在任成员</p>
@@ -80,6 +80,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const TYPES = { STUDENT_UNION: '学生会', SOCIETY_FEDERATION: '社团联合会', SELF_GOV: '自律委员会', OTHER: '其他组织' }
 const TYPE_OPTIONS = Object.entries(TYPES).map(([value, label]) => ({ value, label }))
@@ -93,6 +95,7 @@ const POSITION_COLUMNS = [
 
 export default {
   name: 'StudentOrgView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect,
     StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
@@ -121,6 +124,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       const res = await studentAffairsApi.getOrganizations({ pageSize: 300 })

@@ -23,8 +23,8 @@
           </picker>
         </view>
 
-        <MobileGlobalState v-if="!tasks.length" state="empty" title="暂无待评价任务"
-          description="轮到你评价的任务会出现在这里。" />
+        <MobileGlobalState v-if="!tasks.length" state="empty" :title="taskError || '暂无待评价任务'"
+          :description="taskError ? '请下拉重试或切换评价类型。' : '轮到你评价的任务会出现在这里。'" />
         <view class="stack" v-else>
           <view v-for="t in tasks" :key="t.taskId" class="card ev">
             <view class="row-between">
@@ -95,7 +95,7 @@ const LEVEL_LABELS = { EXCELLENT: '优秀', GOOD: '良好', QUALIFIED: '合格',
 export default {
   data() {
     return {
-      tab: 'tasks', state: 'loading', tasks: null, results: null,
+      tab: 'tasks', state: 'loading', tasks: null, results: null, taskError: '',
       typeIndex: 0, acting: false, submitTarget: null, score: '', comment: '', submitting: false
     }
   },
@@ -119,23 +119,34 @@ export default {
       this.loadTasks(() => { this.state = 'ready'; done && done() })
     },
     loadTasks(done) {
+      this.taskError = ''
       teacherApi.getAcademicEvaluationMyTasks(TYPES[this.typeIndex].key).then((d) => {
         this.tasks = (d && d.list) || []
-      }).catch(() => { this.tasks = [] }).finally(() => { done && done() })
+        this.state = 'ready'
+      }).catch((e) => {
+        this.tasks = []
+        this.taskError = (e && e.message) || '任务加载失败'
+        this.state = 'error'
+      }).finally(() => { done && done() })
     },
     loadResults() {
       teacherApi.getAcademicEvaluationResults().then((d) => {
         this.results = (d && d.list) || []
-      }).catch(() => { this.results = [] })
+      }).catch((e) => {
+        this.results = []
+        toast((e && e.message) || '结果加载失败')
+      })
     },
     openSubmit(t) { this.submitTarget = t; this.score = ''; this.comment = '' },
     doSubmitEvaluation() {
       if (this.submitting || !this.submitTarget) return
       const score = this.score === '' ? null : Number(this.score)
-      if (score !== null && (score < 0 || score > 100)) { toast('评分需在 0-100 之间'); return }
+      if (score === null || Number.isNaN(score) || score < 0 || score > 100) {
+        toast('请填写 0-100 的评分'); return
+      }
       this.submitting = true
       teacherApi.submitAcademicEvaluation(this.submitTarget.taskId, {
-        answers: null, objectiveScore: score, comment: this.comment.trim() || null
+        answers: [{ q: '综合评分', score }], objectiveScore: score, comment: this.comment.trim() || null
       }).then(() => {
         toast('已提交')
         this.submitTarget = null

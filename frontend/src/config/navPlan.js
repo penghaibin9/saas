@@ -27,6 +27,11 @@ function I(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'implemented', disabled: false, badge: '',
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
+/** 部分能力叶子（可点进现有页/能力页，灰橙「部分能力」badge） */
+function PA(label, path, permissionKey, entryType, opts) {
+  return { label, path, status: 'partial', disabled: false, badge: '部分能力',
+    ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
+}
 /** 待施工叶子（可批量），自动 disabled + 待施工 badge，无 path 不注册路由 */
 function P(...labels) {
   return labels.map((label) => ({ label, status: 'planned', disabled: true, badge: '待施工' }))
@@ -42,12 +47,16 @@ function H(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'implemented', disabled: false, badge: '', hidden: true,
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
-/** 二级模块：有 path=已实现入口，无 path=待施工入口 */
-function mod(key, label, path, children) {
+/** 二级模块：有 path=已实现入口，无 path=待施工入口。
+ *  第 5 参 permissionKey：无子叶时用于整块过滤（如「我的待办」「领导驾驶舱」二级入口）。 */
+function mod(key, label, path, children, permissionKey) {
   const s = path
     ? { path, status: 'implemented', disabled: false, badge: '' }
     : { status: 'planned', disabled: true, badge: '待施工' }
-  return { key, label, ...s, children: children || [] }
+  return {
+    key, label, ...s, children: children || [],
+    ...(permissionKey ? { permissionKey } : {})
+  }
 }
 /** 一级模块 */
 function grp(key, label, moduleKey, children, extra) {
@@ -57,23 +66,32 @@ function grp(key, label, moduleKey, children, extra) {
 export const NAV_PLAN = [
   /* ═══════════ 一级①：工作台 ═══════════ */
   grp('workbench', '工作台', 'workbench', [
+    // 工作台首页：教职工人人可进（无 permissionKey，与「登录即见工作台」一致）
     mod('wb-home', '我的工作台', '/', []),
-    mod('wb-todo', '我的待办', '/admin/approval/todos', []),
+    mod('wb-todo', '我的待办', '/admin/approval/todos', [], 'approval.todo.view'),
     mod('wb-approval', '审批中心', '/admin/approval', [
-      I('待办看板', '/admin/approval'),
-      I('我的待办', '/admin/approval/todos'),
-      I('已办 · 抄送', '/admin/approval/done'),
-      I('退回记录', '/admin/approval/returned'),
-      I('审批模板', '/admin/approval/templates')
-    ]),
-    mod('wb-messages', '消息通知', null, P('通知中心', '公告', '待办提醒', '消息设置')),
+      I('待办看板', '/admin/approval', 'approval.todo.view'),
+      I('我的待办', '/admin/approval/todos', 'approval.todo.view'),
+      I('已办 · 抄送', '/admin/approval/done', 'approval.done.view'),
+      I('退回记录', '/admin/approval/returned', 'approval.returned.view'),
+      I('审批模板', '/admin/approval/templates', 'approval.template.view')
+    ], 'approval.dashboard.view'),
+    mod('wb-messages', '消息中心', '/admin/messages/inbox', [
+      I('我的消息', '/admin/messages/inbox', 'workbench.message.view'),
+      I('通知发布', '/admin/messages/compose', 'workbench.message.publish'),
+      I('发布记录', '/admin/messages/outbox', 'workbench.message.publish'),
+      I('发送统计', '/admin/messages/statistics', 'workbench.message.statistics.view'),
+      I('消息模板', '/admin/messages/templates', 'workbench.message.template.manage'),
+      I('消息设置', '/admin/messages/settings', 'workbench.message.view'),
+      I('投递运维', '/admin/messages/ops', 'workbench.message.statistics.view')
+    ], 'workbench.message.view'),
     mod('wb-dashboard', '领导驾驶舱', '/admin/data-center', [
-      I('数据驾驶舱', '/admin/data-center'),
-      I('生命周期总览', '/admin/data-center/lifecycle'),
-      I('排行分析', '/admin/data-center/rankings'),
-      I('风险预警', '/admin/data-center/risk'),
-      I('专题报表', '/admin/data-center/reports')
-    ]),
+      I('数据驾驶舱', '/admin/data-center', 'dataCenter.dashboard.view'),
+      I('生命周期总览', '/admin/data-center/lifecycle', 'dataCenter.lifecycle.view'),
+      I('排行分析', '/admin/data-center/rankings', 'dataCenter.ranking.view'),
+      I('风险预警', '/admin/data-center/risk', 'dataCenter.risk.view'),
+      I('专题报表', '/admin/data-center/reports', 'dataCenter.report.view')
+    ], 'dataCenter.dashboard.view'),
     mod('wb-recent', '最近访问', null, P('最近访问')),
     // 帮助中心：此前只能靠顶栏搜索进入，等于藏起来了。三级目录由帮助中心页自带左侧栏承载，
     // 这里不重复列举条目（AdminHelpView 仅支持 ?topic=<id> 深链，无分段路由，列了就是假入口）。
@@ -86,26 +104,26 @@ export const NAV_PLAN = [
        状态以代码真实路由为准：施工图上标「待施工」但代码已建的（请假 4/4、班级 4/4），此处按已实现标 I。 */
     // 施工图卡·学工工作台（B包第5步·待施工）
     mod('sa-workbench', '学工工作台', null, [
-      I('学工总览', '/admin/student-affairs/dashboard'),
-      I('辅导员工作台', '/admin/student-affairs/workbench'),
-      I('辅导员考评（指标/评分/申诉）', '/admin/student-affairs/counselor-eval')
+      I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
+      /* 旧辅导员双首页已 redirect → /；菜单只保留统一「我的工作台」 */
+      I('我的工作台', '/', 'workbench.home.view'),
+      I('辅导员考评（指标/评分/申诉）', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
     // 施工图卡·学生画像（已有底座·6 三级已实现）
     mod('sa-profile', '学生画像', '/admin/student', [
-      I('学生列表（学生主档）', '/admin/student/list'),
-      I('学籍状态摘要', '/admin/student/status'),
-      I('风险标签', '/admin/student/risk-tags'),
-      I('信息更正审核', '/admin/student/corrections'),
-      I('身份核验（现有）', '/admin/student/identity'),
-      I('导入导出（现有）', '/admin/student/import-export')
+      I('学生列表（学生主档）', '/admin/student/list', 'studentAffairs.student.view'),
+      I('学籍状态摘要', '/admin/student/status', 'studentAffairs.student.view'),
+      I('风险标签', '/admin/student/risk-tags', 'studentAffairs.student.view'),
+      I('信息更正审核', '/admin/student/corrections', 'studentAffairs.student.view'),
+      I('身份核验（现有）', '/admin/student/identity', 'studentAffairs.student.view'),
+      I('导入导出（现有）', '/admin/student/import-export', 'studentAffairs.student.view')
     ]),
-    // 施工图卡·班级与辅导员（B包第2步·代码已建 4/4，施工图标注偏旧）
+    // 施工图卡·班级与辅导员（正式入口；旧 counselor-assessment 已 redirect）
     mod('sa-classes', '班级与辅导员', null, [
-      I('班级列表', '/admin/campus-service/classes'),
-      // 班级画像/材料 = 班级列表点入的独立画像页（学生/材料/班干部 Tab）
-      I('班级画像', '/admin/campus-service/classes'),
-      I('班级材料', '/admin/campus-service/classes'),
-      I('辅导员考评', '/admin/campus-service/counselor-assessment')
+      I('班级列表', '/admin/campus-service/classes', 'studentAffairs.class.view'),
+      I('班级画像', '/admin/campus-service/classes', 'studentAffairs.class.view'),
+      I('班级材料', '/admin/campus-service/classes', 'studentAffairs.class.view'),
+      I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
     // 数字迎新：学工中心独立二级（甲方明确）·19 三级已实现
     // 2026-07-18 真实点击巡检发现：以下 19 个叶子此前 I() 全部漏传第三参 permissionKey，
@@ -136,10 +154,10 @@ export const NAV_PLAN = [
     ]),
     // 施工图卡·请假销假（B包第1步·代码已建 4/4，施工图标注偏旧）
     mod('sa-leave', '请假销假', null, [
-      I('请假审批', '/admin/campus-service/leave'),
-      I('销假与续假', '/admin/campus-service/leave-extensions'),
-      I('请假台账', '/admin/campus-service/leave-ledger'),
-      I('请假统计', '/admin/campus-service/leave-stats')
+      I('请假审批', '/admin/campus-service/leave', 'studentAffairs.leave.view'),
+      I('销假与续假', '/admin/campus-service/leave-extensions', 'studentAffairs.leave.view'),
+      I('请假台账', '/admin/campus-service/leave-ledger', 'studentAffairs.leave.view'),
+      I('请假统计', '/admin/campus-service/leave-stats', 'studentAffairs.leave.view')
     ]),
     // 施工图卡·宿舍与公寓（2026-07-12 前端6页接通 /student-affairs/dorm/*；宿管 DORM_BUILDING 范围）
     // 2026-07-18 真实点击巡检发现：同数字迎新，以下 6 个叶子漏传 permissionKey，
@@ -154,75 +172,73 @@ export const NAV_PLAN = [
     ]),
     // 施工图卡·风险预警与处置（B包第4步·待施工）
     mod('sa-risk', '风险预警与处置', null, [
-      I('风险预警（看板/学生/处置）', '/admin/student-affairs/risk')
+      I('风险预警（看板/学生/处置）', '/admin/student-affairs/risk', 'studentAffairs.risk.view')
     ]),
     // 施工图卡·困难认定（C包第6步·2026-07-13 夜间接通 /student-affairs/aid/*：批次管理/工作台/困难库）
     mod('sa-difficulty', '困难认定', null, [
-      I('认定批次', '/admin/student-affairs/aid/batches'),
-      I('认定申请与审核（工作台）', '/admin/student-affairs/aid'),
-      I('公示待办', '/admin/student-affairs/aid/publicity'),
-      I('认定台账', '/admin/student-affairs/aid/ledger'),
-      I('困难学生库', '/admin/student-affairs/aid/difficult-students'),
-      I('认定统计', '/admin/student-affairs/aid/stats'),
-      I('异议复核', '/admin/student-affairs/aid/objections')
+      I('认定批次', '/admin/student-affairs/aid/batches', 'studentAffairs.aid.view'),
+      I('认定申请与审核（工作台）', '/admin/student-affairs/aid', 'studentAffairs.aid.view'),
+      I('公示待办', '/admin/student-affairs/aid/publicity', 'studentAffairs.aid.view'),
+      I('认定台账', '/admin/student-affairs/aid/ledger', 'studentAffairs.aid.view'),
+      I('困难学生库', '/admin/student-affairs/aid/difficult-students', 'studentAffairs.aid.view'),
+      I('认定统计', '/admin/student-affairs/aid/stats', 'studentAffairs.aid.view'),
+      I('异议复核', '/admin/student-affairs/aid/objections', 'studentAffairs.aid.view')
     ]),
-    // 施工图卡·奖助勤贷补（C包第7步·2026-07-13 夜间接通 /student-affairs/funding/*：项目管理/申请评审工作台）
+    // 施工图卡·奖助勤贷补（旧 campus-service/grants 已 redirect 到本工作台）
     mod('sa-aid', '奖助勤贷补', null, [
-      I('资助项目', '/admin/student-affairs/funding/projects'),
-      I('资助批次', '/admin/student-affairs/funding/batches'),
-      I('申请评审（工作台）', '/admin/student-affairs/funding'),
-      I('公示待办', '/admin/student-affairs/funding/publicity'),
-      I('公示申诉', '/admin/student-affairs/funding/appeals'),
-      I('发放台账', '/admin/student-affairs/funding/disbursements'),
-      I('资助统计', '/admin/student-affairs/funding/stats'),
-      I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants'),
-      I('勤工助学', '/admin/student-affairs/funding/work-study'),
-      I('助学贷款', '/admin/student-affairs/funding/loans'),
-      I('减免与临时补助', '/admin/student-affairs/funding/fee-reductions')
+      I('资助项目', '/admin/student-affairs/funding/projects', 'studentAffairs.funding.view'),
+      I('资助批次', '/admin/student-affairs/funding/batches', 'studentAffairs.funding.view'),
+      I('申请评审（工作台）', '/admin/student-affairs/funding', 'studentAffairs.funding.view'),
+      I('公示待办', '/admin/student-affairs/funding/publicity', 'studentAffairs.funding.view'),
+      I('公示申诉', '/admin/student-affairs/funding/appeals', 'studentAffairs.funding.view'),
+      I('发放台账', '/admin/student-affairs/funding/disbursements', 'studentAffairs.funding.view'),
+      I('资助统计', '/admin/student-affairs/funding/stats', 'studentAffairs.funding.view'),
+      I('助学金管理（现有·奖助资助）', '/admin/campus-service/grants', 'studentAffairs.funding.view'),
+      I('勤工助学', '/admin/student-affairs/funding/work-study', 'studentAffairs.funding.workstudy.manage'),
+      I('助学贷款', '/admin/student-affairs/funding/loans', 'studentAffairs.funding.loan.manage'),
+      I('减免与临时补助', '/admin/student-affairs/funding/fee-reductions', 'studentAffairs.funding.reduction.manage')
     ]),
-    // 施工图卡·违纪处分（C包第8步·2026-07-13 夜间接通 /student-affairs/discipline/*：工作台+台账对账）
+    // 施工图卡·违纪处分（旧 campus-service/discipline 已 redirect）
     mod('sa-discipline', '违纪处分', null, [
-      I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline'),
-      I('送达与申诉复核', '/admin/student-affairs/discipline/appeals'),
-      I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger'),
-      I('处分统计', '/admin/student-affairs/discipline/stats'),
-      I('违纪登记（现有）', '/admin/campus-service/discipline')
+      I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
+      I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view'),
+      I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
+      I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.discipline.view')
     ]),
-    // 施工图卡·谈心家校（C包第9步·2026-07-13 夜间接通 /student-affairs/talks|family/*：工作台+统计+家校）
+    // 施工图卡·谈心家校
     mod('sa-talks', '谈心家校', null, [
-      I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk'),
-      I('谈话台账', '/admin/student-affairs/talk/ledger'),
-      I('谈话统计', '/admin/student-affairs/talk/stats'),
-      I('家校联系', '/admin/student-affairs/family'),
-      I('重点学生跟进', '/admin/student-affairs/talk/key-follow'),
-      I('家校回执', '/admin/student-affairs/family/receipts')
+      I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
+      I('谈话台账', '/admin/student-affairs/talk/ledger', 'studentAffairs.talk.view'),
+      I('谈话统计', '/admin/student-affairs/talk/stats', 'studentAffairs.talk.view'),
+      I('家校联系', '/admin/student-affairs/family', 'studentAffairs.homeSchool.view'),
+      I('重点学生跟进', '/admin/student-affairs/talk/key-follow', 'studentAffairs.talk.view'),
+      I('家校回执', '/admin/student-affairs/family/receipts', 'studentAffairs.homeSchool.view')
     ]),
-    // 施工图卡·心理关注（D包第10步·强敏感红线·2026-07-12 前端5页接通 /student-affairs/mental/*）
+    // 施工图卡·心理关注
     mod('sa-mental', '心理关注', null, [
-      I('心理关注名单', '/admin/student-affairs/mental'),
-      I('心理预警摘要', '/admin/student-affairs/mental/summary'),
-      I('谈话转介与回访', '/admin/student-affairs/mental/referrals'),
-      I('危机升级', '/admin/student-affairs/mental/crisis'),
-      I('心理统计', '/admin/student-affairs/mental/stats')
+      I('心理关注名单', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
+      I('心理预警摘要', '/admin/student-affairs/mental/summary', 'studentAffairs.risk.view'),
+      I('谈话转介与回访', '/admin/student-affairs/mental/referrals', 'studentAffairs.risk.psyDetail.view'),
+      I('危机升级', '/admin/student-affairs/mental/crisis', 'studentAffairs.risk.psyDetail.view'),
+      I('心理统计', '/admin/student-affairs/mental/stats', 'studentAffairs.risk.view')
     ]),
-    // 施工图卡·活动二课与社团（D包·2026-07-14 波次1 接通 /student-affairs/activity*：活动闭环+二课积分）
+    // 施工图卡·活动二课与社团
     mod('sa-activities', '活动二课与社团', null, [
-      I('学生活动（发布/报名/签到/确认）', '/admin/student-affairs/activity'),
-      I('志愿服务时长', '/admin/student-affairs/activity/volunteer'),
-      I('第二课堂积分', '/admin/student-affairs/activity/second-class'),
-      I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals'),
-      I('活动统计', '/admin/student-affairs/activity/stats'),
-      I('社团管理', '/admin/student-affairs/activity/clubs'),
-      I('学生干部与组织', '/admin/student-affairs/activity/organizations'),
-      I('党团建设', '/admin/student-affairs/activity/party-league')
+      I('学生活动（发布/报名/签到/确认）', '/admin/student-affairs/activity', 'studentAffairs.activity.view'),
+      I('志愿服务时长', '/admin/student-affairs/activity/volunteer', 'studentAffairs.activity.view'),
+      I('第二课堂积分', '/admin/student-affairs/activity/second-class', 'studentAffairs.activity.view'),
+      I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals', 'studentAffairs.activity.view'),
+      I('活动统计', '/admin/student-affairs/activity/stats', 'studentAffairs.activity.view'),
+      I('社团管理', '/admin/student-affairs/activity/clubs', 'studentAffairs.club.view'),
+      I('学生干部与组织', '/admin/student-affairs/activity/organizations', 'studentAffairs.org.view'),
+      I('党团建设', '/admin/student-affairs/activity/party-league', 'studentAffairs.league.view')
     ]),
-    // 施工图卡·统计与档案（D包第12步·待施工）
-    // 施工图卡·统计与档案（D包·2026-07-14 接通已建视图：学工统计 StudentAffairsStatsView / 学工归档 ArchiveManageView）
+    // 施工图卡·统计与档案
     mod('sa-archive-stats', '统计与档案', null, [
-      I('学工统计', '/admin/student-affairs/stats'),
-      I('统计驾驶舱', '/admin/student-affairs/stats/cockpit'),
-      I('学工归档', '/admin/student-affairs/archive'),
-      I('学生档案包', '/admin/student-affairs/archive/packages')
+      I('学工统计', '/admin/student-affairs/stats', 'studentAffairs.stats.view'),
+      I('统计驾驶舱', '/admin/student-affairs/stats/cockpit', 'studentAffairs.stats.view'),
+      I('学工归档', '/admin/student-affairs/archive', 'studentAffairs.archive.view'),
+      I('学生档案包', '/admin/student-affairs/archive/packages', 'studentAffairs.archive.view')
     ])
     /* 2026-07-12 甲方拍板：删除「在校服务（现有·过渡）」二级——它与新14二级重复冲突（请假/奖助/违纪/宿舍/班级
        已各自成正经二级、指向 /admin/campus-service/* 实现页照常用）。campus-service 旧路由与服务工作台/学生服务/
@@ -848,13 +864,14 @@ export const NAV_PLAN = [
      学校级仅保留 8 组 / 26 个三级能力。平台租户、套餐、全局菜单及权限点目录
      一律留在 PLATFORM_PLAN，避免学校管理员越权和两套角色权限重复维护。 */
   grp('system', '系统管理', 'systemAdmin', SYSTEM_MANAGEMENT_CATALOG.map((group) =>
-    mod(group.key, group.label, group.items[0].path, group.items.map((item) =>
-      I(item.label, item.path, item.permissionKey, 'CONFIG_VIEW', {
+    mod(group.key, group.label, group.items[0].path, group.items.map((item) => {
+      const leafFactory = item.view === 'capability' ? PA : I
+      return leafFactory(item.label, item.path, item.permissionKey, 'CONFIG_VIEW', {
         systemCapabilityKey: item.key,
         systemCapabilityGroup: group.key,
         description: item.description
       })
-    ))
+    }))
   ))
 ]
 
@@ -929,6 +946,10 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     return true
   }
   const keepMod = (mod2) => {
+    // 二级入口自身带 permissionKey 时，无权限整块隐藏（避免「领导驾驶舱」无子叶权限码却仍露入口）
+    if (applyPerm && mod2.permissionKey && !matchPermission(permissionPatterns, mod2.permissionKey)) {
+      return false
+    }
     if (mod2.children.length === 0) return includePlanned || mod2.status === 'implemented' || mod2.status === 'partial'
     if (mod2.children.some(keepLeaf)) return true
     return includePlanned && (mod2.status === 'implemented' || mod2.status === 'partial')

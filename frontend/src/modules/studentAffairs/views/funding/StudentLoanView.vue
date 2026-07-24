@@ -7,7 +7,7 @@
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton code="studentAffairs.funding.loan.manage" :loading="acting==='reg'" @click="formVisible=true">登记贷款</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" :loading="acting==='reg'" @click="formVisible=true">登记贷款</AppPermissionButton>
       </div>
       <AppSectionCard v-if="formVisible" title="登记助学贷款">
         <div class="ln-grid">
@@ -19,7 +19,7 @@
           <label class="ln-field"><span>金额</span><AppNumberInput v-model="form.amount" :min="0" /></label>
         </div>
         <div class="ln-actions"><button type="button" class="ln-btn" @click="formVisible=false">取消</button>
-          <AppPermissionButton code="studentAffairs.funding.loan.manage" :loading="acting==='reg'" @click="register">登记</AppPermissionButton></div>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" :loading="acting==='reg'" @click="register">登记</AppPermissionButton></div>
       </AppSectionCard>
       <AppSectionCard title="贷款台账">
         <DataTable v-if="loans.length" :columns="loanColumns" :rows="loans" row-key="loanId">
@@ -30,7 +30,7 @@
           <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
           <template #cell-status="{ row }"><StatusTag :type="lnType(row.status)" :label="row.statusLabel || row.status" dot /></template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="row.status!=='CONFIRMED'" code="studentAffairs.funding.loan.manage" size="sm" :loading="acting===row.loanId" @click="advance(row)">{{ nextLabel(row.status) }}</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" v-if="row.status!=='CONFIRMED'" code="studentAffairs.funding.loan.manage" size="sm" :loading="acting===row.loanId" @click="advance(row)">{{ nextLabel(row.status) }}</AppPermissionButton>
             <span v-else class="ln-muted">已确认</span>
           </template>
         </DataTable>
@@ -48,6 +48,8 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const NEXT = { REGISTERED: '上传回执', RECEIPT: '核对', VERIFIED: '确认' }
 const LOAN_TYPE_OPTIONS = [{ value: 'ORIGIN', label: '生源地' }, { value: 'CAMPUS', label: '校园地' }]
@@ -63,6 +65,7 @@ const LOAN_COLUMNS = [
 
 export default {
   name: 'StudentLoanView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
@@ -82,6 +85,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     blank() { return { studentId: '', loanType: 'ORIGIN', bankName: '', bankLast4: '', yearCode: '', amount: null } },
     async load() {
       this.loading = true; this.errorMessage = ''

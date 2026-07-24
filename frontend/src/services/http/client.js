@@ -196,6 +196,19 @@ export function setToken(token) {
 }
 
 /**
+ * 写入完整会话（access + refresh）。
+ * refreshToken 传 undefined 表示保留原 refresh（兼容 mock 切换只换 access）。
+ */
+export function applyAuthSession(accessToken, refreshToken) {
+  if (refreshToken === undefined) {
+    state.token = accessToken || ''
+    _save(TOKEN_KEY, state.token)
+    return
+  }
+  _holdTokens(accessToken, refreshToken)
+}
+
+/**
  * 主动退出或身份校验不匹配时清除完整会话。
  * 不能只清 access token，否则 refresh token 仍可能在下一次请求中恢复会话。
  */
@@ -229,12 +242,42 @@ export function currentUserFromToken() {
       realName: p.realName,
       userType: p.userType,
       currentRoleCode: p.currentRoleCode,
+      activeContextId: p.activeContextId || '',
       tenantId: p.tenantId,
       tenantName: p.tenantName
     }
   } catch {
     return null
   }
+}
+
+/** 拉取本人可用身份（GET /auth/me） */
+export async function fetchMyAuthContexts() {
+  const me = await request('/auth/me')
+  return {
+    activeContextId: (me && me.activeContextId) || '',
+    contexts: Array.isArray(me && me.contexts) ? me.contexts : [],
+    currentRole: (me && me.currentRole) || {}
+  }
+}
+
+/**
+ * 真实身份切换（POST /auth/switch-role）。
+ * 成功后持有新令牌；调用方应刷新页面以重建菜单/数据范围/工作台。
+ */
+export async function switchAuthContext(contextId, clientType = 'PC') {
+  const data = await request('/auth/switch-role', {
+    method: 'POST',
+    body: { contextId, clientType }
+  })
+  if (data && data.accessToken) {
+    // DB 路径会发新 refresh；mock 可能只换 access —— 有则替换，无则保留
+    applyAuthSession(
+      data.accessToken,
+      Object.prototype.hasOwnProperty.call(data, 'refreshToken') ? (data.refreshToken || '') : undefined
+    )
+  }
+  return data
 }
 
 /** 是否为平台超级管理员（老板本人）——用于 /admin/platform 路由守卫 */

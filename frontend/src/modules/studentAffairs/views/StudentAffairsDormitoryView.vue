@@ -6,10 +6,10 @@
     watermark-purpose="宿舍管理查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.dorm.refresh" variant="secondary" @click="load">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.refresh')" code="studentAffairs.dorm.refresh" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
-      <AppPermissionButton code="studentAffairs.risk.view" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">
         宿舍风险
       </AppPermissionButton>
     </template>
@@ -97,9 +97,12 @@ import {
   AppStatusTag
 } from '@/components/common'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 export default {
   name: 'StudentAffairsDormitoryView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppDescriptionList,
     AppGlobalState,
@@ -145,6 +148,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

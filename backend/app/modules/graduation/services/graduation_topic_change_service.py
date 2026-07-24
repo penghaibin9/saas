@@ -144,6 +144,8 @@ def request_change(gd_student_id, new_topic_id, reason: str, requested_by: str =
         db.add(r)
         db.flush()
         _audit(db, r.id, "REQUEST", f"{stu.name} 申请由「{stu.topic_title}」变更至「{new_t.title}」：{reason}")
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        gd_todo.push_topic_change_todo(db, r, stu)
         db.commit()
         return _row_of(db, r)
 
@@ -169,6 +171,8 @@ def review_change(request_id, action: str, comment: str = "", reviewer_name: str
             r.reviewer_name = reviewer_name or "教师"
             r.reviewed_at = datetime.now(timezone.utc)
             _audit(db, r.id, "REJECT", f"{r.reviewer_name}：{comment}")
+            from app.modules.graduation.services import graduation_todo_helper as gd_todo
+            gd_todo.todo_done(db, biz_id=r.id, todo_type=gd_todo.TODO_TOPIC_CHANGE)
             db.commit()
             return _row_of(db, r)
         # APPROVE：原题目释放名额 + 新题目容量复核 + 直接迁移（绕开 unassign_topic 的阶段限制，
@@ -193,5 +197,7 @@ def review_change(request_id, action: str, comment: str = "", reviewer_name: str
         r.reviewed_at = datetime.now(timezone.utc)
         _audit(db, r.id, "APPROVE",
               f"{r.reviewer_name}：由「{old_t.title if old_t else r.old_topic_id}」变更至「{new_t.title}」")
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        gd_todo.todo_done(db, biz_id=r.id, todo_type=gd_todo.TODO_TOPIC_CHANGE)
         db.commit()
         return _row_of(db, r)

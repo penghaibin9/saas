@@ -118,7 +118,7 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import ExportDialog from '@/modules/system/components/ExportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 
-const EMPTY_FILTERS = () => ({ keyword: '', module: '', action: '', result: '' })
+const EMPTY_FILTERS = () => ({ keyword: '', module: '', action: '', result: '', dateFrom: '', dateTo: '' })
 
 export default {
   name: 'SystemLogView',
@@ -162,7 +162,11 @@ export default {
   computed: {
     filterFields() {
       const o = this.ctx
-      const base = [{ key: 'keyword', label: '关键词', type: 'text', placeholder: this.tab === 'login' ? '姓名 / 工号' : '操作人 / 对象' }]
+      const base = [
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: this.tab === 'login' ? '姓名 / 工号' : '操作人 / 对象' },
+        { key: 'dateFrom', label: '开始日期', type: 'date' },
+        { key: 'dateTo', label: '结束日期', type: 'date' }
+      ]
       if (this.tab === 'operation') {
         base.push(
           { key: 'module', label: '模块', type: 'select', options: o.filterOptions.logModules },
@@ -184,6 +188,14 @@ export default {
   created() {
     if (this.$route.query.tab === 'login') this.tab = 'login'
     this.load()
+  },
+  watch: {
+    '$route.query.tab'(tab) {
+      if (tab === 'login' || tab === 'operation') {
+        this.tab = tab
+        this.load()
+      }
+    }
   },
   methods: {
     maskNo(v) {

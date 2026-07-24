@@ -16,7 +16,7 @@ def inbox(user: dict, page: int = 1, page_size: int = 20) -> dict:
         page_size = min(100, max(1, int(page_size)))
     except (TypeError, ValueError):
         page, page_size = 1, 20
-    data = stu.my_messages(user)  # {hasData, unreadCount, tabs, groups, list}
+    data = stu.my_messages(user)  # {hasData, unreadCount, tabs, groups, list, emergencyPending}
     items = list(data.get("list") or [])
     total = len(items)
     start = (page - 1) * page_size
@@ -27,6 +27,41 @@ def inbox(user: dict, page: int = 1, page_size: int = 20) -> dict:
 def mark_read(user: dict, message_id) -> dict:
     """标记本人某条消息为已读（非本人 404，不泄露存在性）。"""
     return stu.message_mark_read(user, message_id)
+
+
+def mark_read_all(user: dict) -> dict:
+    """学生 PC 全部已读：仅 UnifiedMessage 本人记录；todo/进度聚合项不改写业务。"""
+    from app.services import message_center_service as mc
+    # 学生端走 message_center（按 receiver_user_id）；同时兼容学籍 id 写入
+    try:
+        result = mc.read_all(user)
+    except Exception:
+        result = {"affectedCount": 0}
+    # 再扫一遍仅学籍 receiver 的旧消息
+    extra = 0
+    try:
+        data = stu.my_messages(user)
+        for m in data.get("list") or []:
+            mid = str(m.get("messageId") or m.get("id") or "")
+            if m.get("kind") == "TODO_AGG" or m.get("kind") == "PROGRESS_AGG":
+                continue
+            mid = mid.replace("msg-", "")
+            if mid.isdigit() and not m.get("read"):
+                try:
+                    stu.message_mark_read(user, mid)
+                    extra += 1
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return {
+        "affectedCount": int(result.get("affectedCount") or 0) + extra,
+        "updatedAt": result.get("updatedAt"),
+    }
+
+
+def ack_receipt(user: dict, message_id) -> dict:
+    return stu.message_ack(user, message_id)
 
 
 def get_preferences(user: dict) -> dict:

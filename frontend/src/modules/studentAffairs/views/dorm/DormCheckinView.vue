@@ -7,7 +7,7 @@
     watermark-purpose="宿舍入住管理"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.dorm.allocation.manage" variant="secondary" :loading="actioning" @click="toggleSelfSelect">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" code="studentAffairs.dorm.allocation.manage" variant="secondary" :loading="actioning" @click="toggleSelfSelect">
         {{ config.selfSelectEnabled ? '关闭学生自选' : '开放学生自选' }}
       </AppPermissionButton>
     </template>
@@ -31,8 +31,8 @@
             <template #cell-occupant="{ row }">{{ row.occupantName || '—' }}</template>
             <template #cell-actions="{ row }">
               <div class="sa-actions">
-                <AppPermissionButton v-if="row.status !== 'OCCUPIED'" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" @click="checkin(row)">入住</AppPermissionButton>
-                <AppPermissionButton v-else code="studentAffairs.dorm.allocation.manage" size="sm" variant="secondary" :loading="actioning" @click="checkout(row)">退宿</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" v-if="row.status !== 'OCCUPIED'" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" @click="checkin(row)">入住</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" v-else code="studentAffairs.dorm.allocation.manage" size="sm" variant="secondary" :loading="actioning" @click="checkout(row)">退宿</AppPermissionButton>
               </div>
             </template>
           </DataTable>
@@ -82,6 +82,8 @@ import {
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const BED_COLUMNS = [
   { key: 'bedNo', title: '床号' },
@@ -92,6 +94,7 @@ const BED_COLUMNS = [
 
 export default {
   name: 'DormCheckinView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
     AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, DataTable
@@ -123,6 +126,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       try {

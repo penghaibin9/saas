@@ -25,6 +25,7 @@ import approvalRoutes from '@/modules/approval/approval.routes'
 import systemRoutes from '@/modules/system/system.routes'
 import platformRoutes from '@/modules/platform/platform.routes'
 import studentAffairsRoutes from '@/modules/studentAffairs/studentAffairs.routes'
+import messageCenterRoutes from '@/modules/messageCenter/message-center.routes'
 
 /**
  * 模块 routes 文件形态不一（部分为数组、部分为单个父路由对象），
@@ -45,7 +46,8 @@ const moduleRoutes = [
   approvalRoutes,
   systemRoutes,
   platformRoutes,
-  studentAffairsRoutes
+  studentAffairsRoutes,
+  messageCenterRoutes
 ].flatMap((def) => (Array.isArray(def) ? def : [def]))
 
 const router = createRouter({
@@ -105,12 +107,14 @@ const router = createRouter({
       path: '/dev/preview',
       name: 'ui-preview',
       component: () => import('../views/UiPreview.vue'),
-      meta: { title: '旧产品体验页（存档）' }
+      // P6：生产环境封闭开发预览入口（直链也进不了）；开发态仍可打开
+      meta: { title: '旧产品体验页（存档）', requiresDev: true }
     },
     {
       path: '/dev/components',
       name: 'component-dev',
-      component: () => import('../views/ComponentDevPreview.vue')
+      component: () => import('../views/ComponentDevPreview.vue'),
+      meta: { title: '组件开发预览', requiresDev: true }
     },
     {
       path: '/security/401',
@@ -194,6 +198,11 @@ router.beforeEach((to, from, next) => {
       path: needsPlatformLogin ? '/platform-login' : '/login',
       query: to.fullPath !== '/' ? { redirect: to.fullPath } : {}
     })
+    return
+  }
+  // P6：生产构建封闭 /dev/*（组件预览、旧 UI 存档），避免学校环境直链打开开发页
+  if (to.meta?.requiresDev && import.meta.env.PROD) {
+    next({ path: '/', replace: true })
     return
   }
   const isPlatform = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')

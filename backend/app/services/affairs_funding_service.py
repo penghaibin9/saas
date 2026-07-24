@@ -130,10 +130,24 @@ def _todo_done(db, app_id):
 
 
 def _msg(db, receiver_id, title, content, mtype, app_id):
-    from app.models import UnifiedMessage
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(receiver_id or 0),
-                          source_module="student-affairs", source_biz_id=int(app_id),
-                          title=title, content=content, message_type=mtype, status="UNREAD"))
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    emit_receiver_notice(
+        db,
+        event_code="FUNDING.NOTICE",
+        source_module="student-affairs",
+        source_biz_type="funding",
+        source_biz_id=int(app_id),
+        receiver_id=receiver_id,
+        title=title,
+        content=content,
+        receiver_as="student",
+        dedup_extra=mtype,
+    )
+
+
+def _drain_message_outbox():
+    from app.services.message_event_outbox_service import try_process_pending_outbox
+    try_process_pending_outbox(worker_id="funding-inline")
 
 
 def _scope_or_403(db, student_id, user):
@@ -145,6 +159,47 @@ def _scope_or_403(db, student_id, user):
     s = db.get(StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
+
+
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _fund_node_visible(ctx, node: str) -> bool:
+    """奖助节点：学校审批仅 TENANT_ALL；学院可审学院/辅导员节点；其余仅辅导员初审。"""
+    if ctx.scope_type == "TENANT_ALL":
+        return True
+    if node == "SCHOOL_REVIEW":
+        return False
+    if ctx.scope_type == "COLLEGE":
+        return node in ("COUNSELOR_REVIEW", "COLLEGE_REVIEW")
+    return node == "COUNSELOR_REVIEW"
+
+
+def _check_fund_review_node(db, x, user):
+    from app.core.affairs_security import build_affairs_context
+    ctx = build_affairs_context(user, db)
+    if not _fund_node_visible(ctx, x.status):
+        raise AppException("NO_PERMISSION",
+                           f"无权审批当前节点（{L_FUND.get(x.status, x.status)}）")
+    if ctx.scope_type == "TENANT_ALL" or not x.workflow_instance_id:
+        return
+    from app.models import WorkflowTask
+    task = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
+        WorkflowTask.node_code == x.status, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
+    if not task or not task.assignee_id:
+        return
+    uid = _uid_int(user)
+    if uid and int(task.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "当前审批任务未指派给您")
 
 
 # ── 资格硬校验链（跨域只读，快照入 check_snapshot_json）──
@@ -277,6 +332,7 @@ def create_project(body, user) -> dict:
         db.flush()
         _audit(db, p.id, "PROJECT_CREATE", body.projectType)
         db.commit()
+        _drain_message_outbox()
         db.refresh(p)
         return _project_row(p)
 
@@ -312,6 +368,7 @@ def create_batch(body, user) -> dict:
         db.flush()
         _audit(db, b.id, "BATCH_CREATE", f"publish={publish}")
         db.commit()
+        _drain_message_outbox()
         db.refresh(b)
         return _batch_row(b)
 
@@ -372,6 +429,7 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         _todo_upsert(db, x.id, assignee, student_id, f"资助申请待审：{s.real_name}")
         _audit(db, x.id, "APPLY", b.project_type)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _app_row(x, user, s)
 
@@ -405,6 +463,7 @@ def review(app_id, user, action, reason="") -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in FUND_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
+        _check_fund_review_node(db, x, user)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
             i = FUND_NODES.index(x.status)
@@ -444,6 +503,7 @@ def review(app_id, user, action, reason="") -> dict:
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _app_row(x, user, s)
 
@@ -490,6 +550,7 @@ def scan_publicity() -> dict:
                 _grant_one(db, x)
                 cnt += 1
         db.commit()
+        _drain_message_outbox()
         return {"count": cnt, "skippedAppeal": skipped}
 
 
@@ -502,6 +563,7 @@ def confirm_publicity(app_id, user) -> dict:
         _assert_no_open_appeal(db, x.id)
         _grant_one(db, x)
         db.commit()
+        _drain_message_outbox()
         db.refresh(x)
         return _app_row(x, user, s, has_pending_appeal=False)
 
@@ -620,6 +682,7 @@ def generate_disbursements(batch_id, user) -> dict:
         if made:
             _audit(db, int(batch_id), "FUNDING_DISBURSE_GENERATE", f"{made}条")
         db.commit()
+        _drain_message_outbox()
         return {"generated": made}
 
 
@@ -660,6 +723,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
     from app.models import StudentProfile
     with session() as db:
         d = _load_disb(db, disbursement_id)
+        _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放，不可重复")
         d.bank_status, d.issued_at, d.fail_reason = "ISSUED", datetime.utcnow(), None
@@ -670,6 +734,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
         d.version += 1
         _audit(db, d.id, "FUNDING_DISBURSE_ISSUE", d.disburse_no or "")
         db.commit(); db.refresh(d)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(d.student_id))
         return _disb_row(d, user, s)
 
@@ -681,11 +746,13 @@ def fail_disbursement(disbursement_id, user, reason="") -> dict:
         raise AppException("VALIDATION_ERROR", "失败原因至少 5 字")
     with session() as db:
         d = _load_disb(db, disbursement_id)
+        _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放不可置失败")
         d.bank_status, d.fail_reason, d.version = "FAILED", reason.strip(), d.version + 1
         _audit(db, d.id, "FUNDING_DISBURSE_FAIL", reason.strip())
         db.commit(); db.refresh(d)
+        _drain_message_outbox()
         s = db.get(StudentProfile, int(d.student_id))
         return _disb_row(d, user, s)
 
@@ -770,6 +837,7 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
             raise
         _audit(db, x.id, "FUNDING_APPEAL_SUBMIT", reason[:200])
         db.commit()
+        _drain_message_outbox()
         db.refresh(o)
         s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
         return _appeal_row(o, s)
@@ -824,6 +892,7 @@ def review_appeal(appeal_id, body, user) -> dict:
             x = db.get(FundingApplication, int(o.application_id))
             # 正常应仍为 PUBLICITY（授予前已拦截进行中申诉）；若竞态已 GRANTED 亦撤回为驳回
             if x and x.status in ("PUBLICITY", "GRANTED"):
+                was_granted = x.status == "GRANTED"
                 x.status, x.result_at = "REJECTED", datetime.utcnow()
                 x.return_reason = (opinion[:200] if opinion else "公示申诉成立")
                 x.version += 1
@@ -831,11 +900,18 @@ def review_appeal(appeal_id, body, user) -> dict:
                     inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
                     if inst:
                         inst.status = "REJECTED"
+                if was_granted and x.student_id:
+                    from app.models import StudentStageEvent
+                    db.add(StudentStageEvent(
+                        tenant_id=_tid(), student_id=int(x.student_id), from_stage="FUNDING_GRANTED",
+                        to_stage="FUNDING_REVOKED", reason="公示申诉成立，撤回已获资助资格",
+                        source_module="student-affairs"))
                 _todo_done(db, x.id)
                 _msg(db, x.student_id, "资助申请未通过",
                      x.return_reason or "公示申诉成立，资助资格已取消", "WORKFLOW_RESULT", x.id)
         _audit(db, o.application_id, "FUNDING_APPEAL_REVIEW", result)
         db.commit()
+        _drain_message_outbox()
         db.refresh(o)
         s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
         return _appeal_row(o, s)

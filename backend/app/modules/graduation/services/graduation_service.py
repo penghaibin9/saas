@@ -354,6 +354,8 @@ def review_proposal(pid, action, comment=None) -> dict:
         p.version = p.version or "v1"
         _audit(db, "PROPOSAL", p.id, "批阅开题-" + ("通过" if action == "APPROVE" else "驳回"),
                (comment or "").strip(), before, target)
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        gd_todo.todo_done(db, biz_id=p.id, todo_type=gd_todo.TODO_PROPOSAL)
         # 开题通过仅在任务书已确认时推进到指导中，禁止跳过任务书确认
         stu = _stu_of(db, p.gd_student_id)
         if stu and action == "APPROVE" and stu.stage in ("TOPIC_SELECTING", "TASKBOOK_CONFIRM"):
@@ -442,6 +444,8 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         db.flush()
         _audit(db, "PROPOSAL", p.id, "提交开题报告-" + ("重交" if is_resubmit else "首次"),
                f"{stu.name} {version}", "", "PENDING_REVIEW")
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        gd_todo.push_proposal_todo(db, p, stu)
         db.commit()
         return {"id": str(p.id), "version": version, "isResubmit": is_resubmit, "status": "PENDING_REVIEW"}
 
@@ -648,6 +652,8 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         db.flush()
         _audit(db, "FINAL", f.id, f"提交成果-{final_type}", f"{stu.name} {final_type} {version}",
                "", "PENDING_REVIEW")
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        gd_todo.push_final_todo(db, f, stu)
         db.commit()
         return {"id": str(f.id), "finalType": final_type, "version": version, "status": "PENDING_REVIEW"}
 
@@ -693,6 +699,8 @@ def review_final(fid, action, comment=None) -> dict:
         f.review_time = datetime.now(timezone.utc)
         _audit(db, "FINAL", f.id, "批阅成果-" + ("通过" if action == "APPROVE" else "退回修改"),
                (comment or "").strip(), before, target)
+        from app.modules.graduation.services import graduation_todo_helper as gd_todo
+        gd_todo.todo_done(db, biz_id=f.id, todo_type=gd_todo.TODO_FINAL)
         db.commit()
         return {"id": str(f.id), "status": target, "statusLabel": L_MAT.get(target, target)}
 
@@ -998,7 +1006,7 @@ def publish_defense(gid) -> dict:
 
 def notify_defense_group(gid, user=None) -> dict:
     """向已发布答辩组学生投递站内信（receiver_id=StudentProfile.id）。"""
-    from app.models import UnifiedMessage
+    from app.services.message_event_outbox_service import emit_message_event, process_pending_outbox
 
     if not gid:
         raise AppException("VALIDATION_ERROR", "defenseGroupId 必填")
@@ -1027,14 +1035,25 @@ def notify_defense_group(gid, user=None) -> dict:
                 f"时间：{when}；地点：{where}；主席：{g.chair or '待指定'}。"
                 f"请按时参加，如有冲突请尽快联系指导教师。"
             )
-            db.add(UnifiedMessage(
-                tenant_id=_tid(), receiver_id=rid, source_module="graduation",
-                source_biz_id=g.id, title=title, content=content,
-                message_type="GRADUATION_DEFENSE_NOTIFY", status="UNREAD"))
+            emit_message_event(
+                db,
+                event_code="GRADUATION_DESIGN.DEFENSE_ARRANGED",
+                source_module="graduation",
+                source_biz_type="defense_group",
+                source_biz_id=int(g.id),
+                recipient_refs=[{"studentId": rid}],
+                content=content,
+                title=title,
+                dedup_key=f"GRADUATION_DESIGN.DEFENSE_ARRANGED:{g.id}:student:{rid}",
+            )
             notified += 1
         _audit(db, "DEFENSE", g.id, "发送答辩通知",
                f"{g.group_name} notified={notified} skipped={skipped}")
         db.commit()
+        try:
+            process_pending_outbox(limit=50, worker_id="graduation-inline")
+        except Exception:  # noqa: BLE001
+            pass
         if notified <= 0:
             msg = "暂无可投递学生（缺学籍关联或组内无学生）"
         else:

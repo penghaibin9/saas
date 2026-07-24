@@ -6,7 +6,7 @@
     watermark-purpose="学生画像列表查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="load">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.student.view')" code="studentAffairs.student.view" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
       <AppExportButton :export-fn="exportLedger" :has-permission="true" />
@@ -16,7 +16,7 @@
       <div class="sa-filter">
         <AppSearchBox v-model="filters.keyword" placeholder="搜索姓名、学号" @search="onSearch" />
         <AppSelect v-model="filters.riskLevel" class="sa-select" :options="RISK_FILTER_OPTIONS" placeholder="" @change="onSearch" />
-        <AppPermissionButton code="studentAffairs.student.view" variant="secondary" @click="onSearch">
+        <AppPermissionButton :allowed="canBtn('studentAffairs.student.view')" code="studentAffairs.student.view" variant="secondary" @click="onSearch">
           查询
         </AppPermissionButton>
       </div>
@@ -56,7 +56,7 @@
           <AppDateDisplay :value="row.updatedAt" mode="datetime" empty-text="未设置" />
         </template>
         <template #cell-actions="{ row }">
-          <AppPermissionButton
+          <AppPermissionButton :allowed="canBtn('studentAffairs.student.view')"
             code="studentAffairs.student.view"
             size="sm"
             variant="secondary"
@@ -86,6 +86,8 @@ import {
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const RISK_FILTER_OPTIONS = [
   { value: '', label: '全部风险' },
@@ -108,6 +110,7 @@ const COLUMNS = [
 
 export default {
   name: 'StudentAffairsProfileListView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppDateDisplay,
     AppExportButton,
@@ -144,6 +147,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

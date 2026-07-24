@@ -52,13 +52,21 @@ def no_data_scope(msg: str = "该数据不在您的管理范围内") -> AppExcep
 
 
 def _derive_keys(user: dict) -> set[str]:
-    """teacher_key/teacher_name 命中键：mock u_counselor01→counselor01 / db ctx_<login> / 姓名兜底。"""
+    """teacher_key 命中键：mock u_counselor01→counselor01 / db ctx_<login>。
+
+    只派生工号族标识（t_user.login_name，租户内唯一 uk_tenant_login），**不含 realName**：
+    姓名在学校里会重名，一旦参与匹配，两个同名教师会互相命中对方的授课/带班/指导范围
+    （t_teacher_student_scope 等表存在 `teacher_name.in_(keys)` 分支）。工号唯一，姓名不唯一，
+    因此身份判定一律以工号为准。
+    历史数据前提（改动前已核验开发库 t_teacher_student_scope 22 行）：teacher_key 全部为工号
+    （如 t_luo_yaqin / counselor_demo），无「仅有姓名」的行，故移除姓名不会使既有范围查空。
+    若今后导入的范围数据只有姓名没有工号，正确做法是在导入时补齐 teacher_key，而不是把姓名放回本函数。
+    """
     uid = str(user.get("userId") or "")
     ctx = str(user.get("activeContextId") or "")
-    name = user.get("realName") or ""
     login = user.get("loginName") or ""
     return {k for k in (uid, login, uid[2:] if uid.startswith("u_") else "",
-                        ctx[4:] if ctx.startswith("ctx_") else "", name) if k}
+                        ctx[4:] if ctx.startswith("ctx_") else "") if k}
 
 
 @dataclass

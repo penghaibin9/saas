@@ -72,11 +72,14 @@ def _acad_student_id(db, student_id, name=""):
 # ═══════════ 数据范围（COURSE/COLLEGE/TENANT_ALL） ═══════════
 
 def _user_keys(user) -> set[str]:
-    """派生当前用户可能的教师标识键（userId/登录名/姓名），用于 COURSE 归属比对。"""
+    """派生当前用户教师标识键（userId/登录名），用于 COURSE 归属比对。
+
+    与 schedule_service._user_keys / affairs_security._derive_keys 同口径：**不含 realName**。
+    姓名入键会使同名教师越权操作对方录入任务。
+    """
     uid = str(user.get("userId") or "")
     login = user.get("loginName") or ""
-    name = user.get("realName") or ""
-    return {k for k in (uid, login, name, uid[2:] if uid.startswith("u_") else "") if k}
+    return {k for k in (uid, login, uid[2:] if uid.startswith("u_") else "") if k}
 
 
 def _check_course_scope(task, user):
@@ -85,7 +88,8 @@ def _check_course_scope(task, user):
     if role in _REVIEW_ROLES or role == "COLLEGE_ADMIN":
         return
     if not task.teacher_key:
-        return  # 未建立归属（历史数据/未接入教学任务）时不做收敛，已知欠账，见施工记录
+        # 无归属键时 fail-closed：避免任意教师越权改他人任务（历史未回填请教务处代录）
+        raise AppException("NO_DATA_SCOPE", "该录入任务未绑定任课教师，请联系教务处处理")
     if task.teacher_key not in _user_keys(user):
         raise AppException("NO_DATA_SCOPE", "该录入任务不在您的授课范围内")
 
@@ -102,6 +106,68 @@ def _check_college_scope(db, task, user):
         return
     if task.class_id and task.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该录入任务不在您的学院范围内")
+
+
+TODO_GRADE_ENTRY = "AA_GRADE_ENTRY"
+
+
+def _resolve_grade_assignee_id(db, teacher_key: str) -> int:
+    """teacher_key（工号/登录名）→ User.id；无法证明则 0（不写池待办）。"""
+    from app.models import User
+    key = (teacher_key or "").strip()
+    if not key:
+        return 0
+    row = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.login_name == key,
+        User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+    if row:
+        return int(row.id)
+    # 兼容历史 teacher_key 存 u_123
+    if key.startswith("u_") and key[2:].isdigit():
+        row = db.get(User, int(key[2:]))
+        if row and not row.is_deleted and row.tenant_id == _tid() and row.status == "ACTIVE":
+            return int(row.id)
+    return 0
+
+
+def _push_grade_entry_todo(db, task) -> bool:
+    """待录/退回成绩 → 任课教师 UnifiedTodo（T1）。"""
+    from app.models import UnifiedTodo
+    aid = _resolve_grade_assignee_id(db, getattr(task, "teacher_key", None) or "")
+    if aid <= 0 or not getattr(task, "id", None):
+        return False
+    bid = int(task.id)
+    title = f"待录成绩：{getattr(task, 'course_name', None) or '课程'}"
+    row = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "academic-affairs",
+        UnifiedTodo.source_biz_id == bid, UnifiedTodo.todo_type == TODO_GRADE_ENTRY,
+        UnifiedTodo.assignee_id == aid, UnifiedTodo.is_deleted.is_(False))).first()
+    if row:
+        row.title = title
+        row.status = "PENDING"
+        row.source_biz_type = "AA_GRADE_TASK"
+        row.version = int(row.version or 0) + 1
+        return True
+    db.add(UnifiedTodo(
+        tenant_id=_tid(), source_module="academic-affairs", source_biz_type="AA_GRADE_TASK",
+        source_biz_id=bid, todo_type=TODO_GRADE_ENTRY, assignee_id=aid,
+        title=title, status="PENDING"))
+    return True
+
+
+def _todo_done_grade_entry(db, task_id) -> int:
+    from app.models import UnifiedTodo
+    if not task_id:
+        return 0
+    n = 0
+    for r in db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "academic-affairs",
+            UnifiedTodo.source_biz_id == int(task_id), UnifiedTodo.todo_type == TODO_GRADE_ENTRY,
+            UnifiedTodo.is_deleted.is_(False), UnifiedTodo.status == "PENDING")).all():
+        r.status = "DONE"
+        r.version = int(r.version or 0) + 1
+        n += 1
+    return n
 
 
 def _require_review_role(user):
@@ -175,6 +241,7 @@ def create_grade_task(body, user) -> dict:
         db.add(t)
         db.flush()
         _audit(db, "AA_GRADE_TASK", t.id, "CREATE", course_name or "")
+        _push_grade_entry_todo(db, t)
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "usualRatio": t.usual_ratio,
@@ -245,13 +312,15 @@ def list_records(task_id, user) -> dict:
             s = stus.get(r.student_id)
             items.append({"recordId": str(r.id), "studentId": str(r.student_id),
                          "realName": (s.real_name if s else ""), "studentNo": (s.student_no if s else ""),
-                         "usualScore": r.usual_score, "finalScore": r.final_score, "totalScore": r.total_score,
+                         "usualScore": r.usual_score, "midtermScore": r.midterm_score,
+                         "finalScore": r.final_score, "totalScore": r.total_score,
                          "passStatus": r.pass_status, "exceptionFlag": r.exception_flag or "NORMAL",
                          "source": r.source or "LEGACY", "prevUsualScore": r.prev_usual_score,
                          "prevFinalScore": r.prev_final_score, "prevTotalScore": r.prev_total_score,
                          "changeReason": r.change_reason or "", "changeAt": _iso(r.change_at),
                          "versionNo": r.version_no})
-        return {"items": items}
+        return {"items": items, "usualRatio": t.usual_ratio, "midtermRatio": t.midterm_ratio,
+                "finalRatio": t.final_ratio, "status": t.status}
 
 
 def _write_score_row(db, t, sid, usual, final, exception_flag, mid=None):
@@ -491,6 +560,7 @@ def submit_task(task_id, user) -> dict:
         t.workflow_instance_id = inst.id
         t.submitted_at = datetime.utcnow()
         t.status = "SUBMITTED"
+        _todo_done_grade_entry(db, t.id)
         _audit(db, "AA_GRADE_TASK", t.id, "SUBMIT")
         db.commit()
         db.refresh(t)
@@ -522,6 +592,7 @@ def college_review(task_id, user, action, reason="") -> dict:
             if inst:
                 inst.status = "RETURNED"
             t.status, t.return_reason = "RETURNED", reason.strip()
+            _push_grade_entry_todo(db, t)
             _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_RETURN", reason.strip())
         elif action == "APPROVE":
             if wtask:
@@ -667,6 +738,7 @@ def return_task(task_id, user, reason="") -> dict:
         if t.status != "ACADEMIC_REVIEW":
             raise AppException("DATA_CONFLICT", "当前状态不可退回")
         t.status, t.return_reason = "RETURNED", reason.strip()
+        _push_grade_entry_todo(db, t)
         _audit(db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip())
         db.commit()
         db.refresh(t)
@@ -812,8 +884,8 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
     _require_review_role(user)
     if action == "APPROVE":
         with session() as db:
-            from app.models import (AaGradeRecord, AaGradeTask, AcademicGrade,
-                                     AcademicStudent, UnifiedMessage)
+            from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, AcademicStudent
+            from app.services.message_event_outbox_service import emit_receiver_notice
             rec = db.get(AaGradeRecord, int(record_id))
             if not rec or rec.is_deleted or rec.tenant_id != _tid():
                 raise not_found("成绩明细不存在")
@@ -835,11 +907,20 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
                     a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
                     if a:
                         _refresh_aggregates(db, a)  # 更正终审后即时重算 GPA/学分/挂科聚合（与 publish/复查一致）
-            db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(rec.student_id), source_module="academic-affairs",
-                                  source_biz_id=rec.id, title="成绩已更正",
-                                  content=f"{t.course_name if t else ''} 成绩已更正为 {new_total}",
-                                  message_type="WORKFLOW_RESULT", status="UNREAD"))
+            emit_receiver_notice(
+                db,
+                event_code="GRADE.CORRECTED",
+                source_module="academic-affairs",
+                source_biz_type="aa_grade_record",
+                source_biz_id=rec.id,
+                receiver_id=int(rec.student_id),
+                title="成绩已更正",
+                content=f"{t.course_name if t else ''} 成绩已更正为 {new_total}",
+                receiver_as="student",
+            )
             db.commit()
+            from app.services.message_event_outbox_service import try_process_pending_outbox
+            try_process_pending_outbox(worker_id="aa-grade-inline")
     result = _change_review(record_id, user, action, reason, "ACADEMIC_REVIEW", "FINAL")
     if action == "APPROVE":
         try:

@@ -133,6 +133,11 @@ def academic_status(user=Depends(get_current_user)):
     return success(academic.status(user))
 
 
+@router.get("/academic/transfer-options", summary="异动可选目标专业/同专业班级（本人）")
+def academic_transfer_options(user=Depends(get_current_user)):
+    return success(academic.transfer_options(user))
+
+
 @router.post("/academic/status-change", summary="发起学籍异动申请（本人）")
 def academic_status_change(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.submit_status_change(user, body))
@@ -168,6 +173,10 @@ def academic_makeup(user=Depends(get_current_user)):
     return success(academic.makeup(user))
 
 
+@router.get("/academic/makeup/options", summary="重修/免修可选挂科与未及格课程（本人）")
+def academic_makeup_options(user=Depends(get_current_user)):
+    return success(academic.makeup_options(user))
+
 @router.post("/academic/retake/apply", summary="发起重修报名（本人）")
 def academic_retake_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.retake_apply(user, body))
@@ -177,6 +186,40 @@ def academic_retake_apply(user=Depends(get_current_user), body: dict = Body(...)
 def academic_exemption_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.exemption_apply(user, body))
 
+
+@router.get("/academic/registration", summary="我的注册批次与自助状态（本人）")
+def academic_registration(user=Depends(get_current_user)):
+    return success(academic.registration(user))
+
+
+@router.post("/academic/registration/{batch_id}/register", summary="本人完成注册")
+def academic_registration_register(batch_id: str, user=Depends(get_current_user)):
+    return success(academic.registration_register(user, batch_id), message="注册成功")
+
+
+@router.post("/academic/registration/{batch_id}/defer", summary="本人申请暂缓注册")
+def academic_registration_defer(batch_id: str, user=Depends(get_current_user), body: dict = Body(default={})):
+    return success(academic.registration_defer(user, batch_id, body or {}), message="暂缓申请已提交")
+
+
+@router.get("/academic/attendance", summary="我的课堂考勤（本人·只读）")
+def academic_attendance(user=Depends(get_current_user)):
+    return success(academic.attendance(user))
+
+
+@router.get("/academic/calendar", summary="当前学期校历（本人·只读）")
+def academic_calendar(user=Depends(get_current_user)):
+    return success(academic.calendar(user))
+
+
+@router.get("/academic/clearance", summary="我的清考结果（本人·只读）")
+def academic_clearance(user=Depends(get_current_user)):
+    return success(academic.clearance(user))
+
+
+@router.post("/academic/exam/ticket/print", summary="准考证打印留痕（本人）")
+def academic_exam_ticket_print(user=Depends(get_current_user), body: dict = Body(default={})):
+    return success(academic.exam_ticket_print(user, body or {}))
 
 @router.get("/academic/graduation-audit", summary="毕业资格自查（本人·进度/学分/预警）")
 def academic_graduation_audit(user=Depends(get_current_user)):
@@ -286,6 +329,15 @@ def affairs_leave_resubmit(leave_id: str, body: dict = Body(default={}), user=De
 def affairs_leave_cancel(leave_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
     return success(affairs.leave_cancel(user, leave_id, body or {}), message="销假已提交，等待辅导员确认")
 
+
+@router.post("/affairs/leave/{leave_id}/extension", summary="本人发起续假")
+def affairs_leave_extension(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.leave_extend(user, leave_id, body or {}), message="续假已提交，等待辅导员审批")
+
+
+@router.get("/affairs/dorm", summary="我的宿舍（本人只读）")
+def affairs_dorm(user=Depends(get_current_user)):
+    return success(affairs.dorm(user))
 
 @router.get("/affairs/talk", summary="我的谈心谈话（本人摘要）")
 def affairs_talk(user=Depends(get_current_user)):
@@ -600,9 +652,9 @@ def messages_inbox(user=Depends(get_current_user),
     return success(messages.inbox(user, page, pageSize))
 
 
-@router.post("/messages/{message_id}/read", summary="标记消息已读（本人）")
-def messages_read(message_id: str, user=Depends(get_current_user)):
-    return success(messages.mark_read(user, message_id))
+@router.post("/messages/read-all", summary="全部标为已读（本人）")
+def messages_read_all(user=Depends(get_current_user)):
+    return success(messages.mark_read_all(user), message="已全部标为已读")
 
 
 @router.get("/messages/preferences", summary="通知偏好（本人）")
@@ -613,6 +665,16 @@ def messages_preferences(user=Depends(get_current_user)):
 @router.post("/messages/preferences", summary="设置通知偏好（本人）")
 def messages_set_preference(user=Depends(get_current_user), body: dict = Body(...)):
     return success(messages.set_preference(user, body))
+
+
+@router.post("/messages/{message_id}/read", summary="标记消息已读（本人）")
+def messages_read(message_id: str, user=Depends(get_current_user)):
+    return success(messages.mark_read(user, message_id))
+
+
+@router.post("/messages/{message_id}/receipt", summary="消息确认回执（本人）")
+def messages_receipt(message_id: str, user=Depends(get_current_user)):
+    return success(messages.ack_receipt(user, message_id), message="已确认")
 
 
 # ── PC 重活公共底座：电子签署（可插拔）+ 打印/导出留痕 ──

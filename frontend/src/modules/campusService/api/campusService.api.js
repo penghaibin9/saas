@@ -23,6 +23,9 @@ const envelope = (data, code = 0, message = 'ok') => ({
 const fail = (message, code = 1) => envelope(null, code, message)
 const clone = (v) => JSON.parse(JSON.stringify(v))
 const kw = (t, k) => !k || String(t || '').includes(k)
+/** 旧奖助/违纪页写操作禁止静默回落内存 mock（已迁 13A 正式链路） */
+const refuseLegacyMockWrite = (biz) =>
+  fail(`${biz}已迁至学工中心正式模块，本页 mock 写操作已关闭；请从学工菜单进入正式工作台`, 410)
 
 /* ---------------- 上下文 ---------------- */
 const currentRole = () => db.roles.find((r) => r.roleId === db.state.currentRoleId) || db.roles[0]
@@ -424,53 +427,25 @@ export async function getGrantApplicationDetail(id) {
 export async function approveGrant(id, { comment = '' } = {}) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/campus-service/grants/${id}/approve`, { method: 'POST', body: { comment } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '审核失败') }
   }
-  await delay()
-  const g = db.grantApplications.find((x) => x.id === id)
-  if (!g) return fail('资助申请不存在')
-  const before = g.status
-  const role = currentRole()
-  Object.assign(g, { status: 'APPROVED', reviewer: role.userName, reviewTime: db.nowText(), returnReason: '', currentNode: '已办结' })
-  const s = db.serviceStudents.find((x) => x.id === g.studentId)
-  if (s) s.grantSummary = `${db.statusOptions.grantType.find((t) => t.value === g.type)?.label || ''} · 已通过`
-  pushAudit('GRANT', id, '审核通过', `${g.code} ${g.name}${comment ? '（' + comment + '）' : ''}，进入发放流程`, before, 'APPROVED')
-  return envelope({ id })
+  return refuseLegacyMockWrite('奖助审批')
 }
 
 export async function returnGrant(id, { reason }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/campus-service/grants/${id}/return`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '退回失败') }
   }
-  await delay()
-  const g = db.grantApplications.find((x) => x.id === id)
-  if (!g) return fail('资助申请不存在')
-  if (!reason || reason.trim().length < 5) return fail('退回原因必填且不少于 5 个字')
-  const before = g.status
-  const role = currentRole()
-  Object.assign(g, { status: 'RETURNED', reviewer: role.userName, reviewTime: db.nowText(), returnReason: reason.trim(), currentNode: '学生补充材料' })
-  pushAudit('GRANT', id, '退回补充', `${g.code} ${g.name}：${reason.trim()}（原因已同步学生端）`, before, 'RETURNED')
-  return envelope({ id })
+  return refuseLegacyMockWrite('奖助退回')
 }
 
 export async function batchApproveGrants(ids = []) {
   if (shouldTryReal()) {
     try { return envelope(await request('/campus-service/grants/batch-approve', { method: 'POST', body: { ids } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '批量审核失败') }
   }
-  await delay()
-  if (!ids.length) return fail('请先选择申请')
-  let count = 0
-  for (const id of ids) {
-    const g = db.grantApplications.find((x) => x.id === id)
-    if (g && ['PENDING_REVIEW', 'REVIEWING'].includes(g.status)) {
-      await approveGrant(id, { comment: '批量审核通过' })
-      count++
-    }
-  }
-  pushAudit('GRANT', ids.join(','), '批量审核通过', `批量通过 ${count} 条资助申请`)
-  return envelope({ count })
+  return refuseLegacyMockWrite('奖助批量审批')
 }
 
 /* ---------------- 宿舍住宿与异常 ---------------- */
@@ -649,73 +624,21 @@ export async function getDisciplineRecords(params = {}) {
 export async function createDisciplineRecord(payload) {
   if (shouldTryReal()) {
     try { return envelope(await request('/campus-service/disciplines', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '登记失败') }
   }
-  await delay()
-  if (!payload?.studentId || !payload?.type || !payload?.reason) return fail('学生、处分类型与事由为必填项')
-  if (payload.reason.trim().length < 5) return fail('事由说明不少于 5 个字')
-  const s = db.serviceStudents.find((x) => x.id === payload.studentId)
-  if (!s) return fail('学生不存在')
-  const id = `svc-dis-${Date.now()}`
-  db.disciplineRecords.unshift({
-    id,
-    code: `DIS-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-    studentId: s.id,
-    name: s.name,
-    classId: s.classId,
-    className: s.className,
-    collegeId: s.collegeId,
-    type: payload.type,
-    reason: payload.reason.trim(),
-    decideDate: payload.decideDate || db.nowText().slice(0, 10),
-    docNo: payload.docNo || '待补录文号',
-    status: 'EFFECTIVE',
-    revokeDate: '',
-    revokeReason: '',
-    recordStatus: 'ACTIVE',
-    voidReason: '',
-    operator: currentRole().userName,
-    updateTime: db.nowText()
-  })
-  s.disciplineCount += 1
-  pushAudit('DISCIPLINE', id, '新增处分记录', `${s.name} · ${db.statusOptions.disciplineType.find((t) => t.value === payload.type)?.label}：${payload.reason.trim()}（已按流程告知学生）`, '', 'EFFECTIVE')
-  return envelope({ id })
+  return refuseLegacyMockWrite('违纪处分登记')
 }
 
 export async function updateDisciplineRecord(id, payload) {
-  await delay()
-  const d = db.disciplineRecords.find((x) => x.id === id)
-  if (!d) return fail('处分记录不存在')
-  if (!payload?.reason || payload.reason.trim().length < 5) return fail('修改说明必填且不少于 5 个字')
-  const before = `${d.type}/${d.status}`
-  if (payload.status === 'REVOKED') {
-    d.status = 'REVOKED'
-    d.revokeDate = db.nowText().slice(0, 10)
-    d.revokeReason = payload.reason.trim()
-  } else if (payload.type) {
-    d.type = payload.type
-  }
-  d.updateTime = db.nowText()
-  pushAudit('DISCIPLINE', id, payload.status === 'REVOKED' ? '解除处分' : '编辑处分记录', `${d.code} ${d.name}：${payload.reason.trim()}`, before, `${d.type}/${d.status}`)
-  return envelope({ id })
+  return refuseLegacyMockWrite('违纪处分编辑')
 }
 
 export async function voidDisciplineRecord(id, { reason }) {
   if (shouldTryReal()) {
     try { return envelope(await request(`/campus-service/disciplines/${id}/void`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+    catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '作废失败') }
   }
-  await delay()
-  const d = db.disciplineRecords.find((x) => x.id === id)
-  if (!d) return fail('处分记录不存在')
-  if (!reason || reason.trim().length < 5) return fail('作废原因不少于 5 个字')
-  d.recordStatus = 'VOIDED'
-  d.voidReason = reason.trim()
-  d.updateTime = db.nowText()
-  const s = db.serviceStudents.find((x) => x.id === d.studentId)
-  if (s && s.disciplineCount > 0) s.disciplineCount -= 1
-  pushAudit('DISCIPLINE', id, '作废处分记录', `${d.code} ${d.name}：${reason.trim()}`, 'ACTIVE', 'VOIDED')
-  return envelope({ id })
+  return refuseLegacyMockWrite('违纪处分作废')
 }
 
 /* ---------------- 服务工单 ---------------- */

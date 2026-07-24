@@ -826,6 +826,16 @@ export const academicAffairsApi = {
   precheckGrad(batchId) {
     return call(() => request(`${BASE}/graduation-audit-batches/${batchId}/precheck`, { method: 'POST' }))
   },
+  markFeeClearance(batchId, body) {
+    return call(() => request(`${BASE}/graduation-audit-batches/${batchId}/fee-clearance/mark`, {
+      method: 'POST', body
+    }))
+  },
+  importFeeClearance(batchId, rows) {
+    return call(() => request(`${BASE}/graduation-audit-batches/${batchId}/fee-clearance`, {
+      method: 'POST', body: { rows }
+    }))
+  },
   getGradResults(batchId, params = {}) {
     return callList(`${BASE}/graduation-audit-batches/${batchId}/results`, params)
   },

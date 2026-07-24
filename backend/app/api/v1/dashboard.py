@@ -20,8 +20,8 @@ router = APIRouter()
 
 
 def _real_summary(user: dict) -> dict:
-    """DB 启用时的真实工作台概览（stats_service.get_workbench_summary 已实时聚合各域表）。"""
-    s = stats_service.get_workbench_summary()
+    """DB 启用时的真实工作台概览（按当前登录人数据范围收敛，见 stats_service.get_workbench_summary）。"""
+    s = stats_service.get_workbench_summary(user)
     cards_by_key = {
         "students": {"key": "students", "label": "在册学生", "value": s["studentTotal"], "unit": "人", "trend": ""},
         "todos": {"key": "todos", "label": "待办任务", "value": s["pendingTodo"], "unit": "项", "trend": ""},
@@ -64,7 +64,9 @@ def _real_summary(user: dict) -> dict:
                       "roleCode": workbench.role_code, "alerts": workbench.alert_keys_json}
                      if workbench else None,
         "updatedAt": s["updatedAt"],
-        "notice": "数据来自各业务域实时聚合（tenant 过滤）。",
+        "scopeType": s.get("scopeType"),
+        "scopeLabel": s.get("scopeLabel"),
+        "notice": f"数据按当前身份范围聚合（{s.get('scopeLabel') or '已收敛'}）。",
     }
 
 
@@ -75,9 +77,11 @@ def summary(user=Depends(require_staff)):
     return success(dash_svc.get_summary(user))
 
 
-@router.get("/lifecycle-overview", summary="生命周期总览（六阶段人数分布）")
+@router.get("/lifecycle-overview", summary="生命周期总览（六阶段人数分布·校级）")
 def lifecycle_overview(user=Depends(require_staff)):
     if db_enabled():
+        # 与 /stats/lifecycle 同口径：全校漏斗仅校级授权角色可见，一线禁止看全校数。
+        stats_service.require_tenant_all_stats(user)
         lc = stats_service.get_lifecycle()
         return success({
             "scope": user.get("currentRoleCode", "DEFAULT"),

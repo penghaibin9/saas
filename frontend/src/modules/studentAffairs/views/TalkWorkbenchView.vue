@@ -23,7 +23,7 @@
         <AppSelect v-model="typeFilter" class="tk-input" title="按类型筛选"
                    :options="[{ value: '', label: '全部类型' }, ...talkTypes]" />
         <span v-if="stats" class="tk-stat">完成率 {{ Math.round((stats.completionRate || 0) * 100) }}%（{{ stats.completed }}/{{ stats.total }}）</span>
-        <AppPermissionButton code="studentAffairs.talk.create" variant="primary" size="sm" @click="openCreate">发起谈话</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.talk.create')" code="studentAffairs.talk.create" variant="primary" size="sm" @click="openCreate">发起谈话</AppPermissionButton>
       </div>
     </div>
 
@@ -81,7 +81,7 @@
               <label class="tk-check"><input v-model="recordForm.needFollowUp" type="checkbox" /> 需持续跟进</label>
             </div>
             <p v-if="recordForm.error" class="tk-err">{{ recordForm.error }}</p>
-            <AppPermissionButton code="studentAffairs.talk.create" variant="primary" size="sm" :loading="acting" @click="submitRecord">提交记录（进 360）</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.talk.create')" code="studentAffairs.talk.create" variant="primary" size="sm" :loading="acting" @click="submitRecord">提交记录（进 360）</AppPermissionButton>
           </section>
 
           <!-- 已谈话内容 + 跟进动作 -->
@@ -94,7 +94,7 @@
               <p v-if="selected.relatedContactId" class="tk-linked">已转家校联系 #{{ selected.relatedContactId }}</p>
             </section>
             <div v-if="detailActions.length" class="tk-actions">
-              <AppPermissionButton
+              <AppPermissionButton :allowed="canBtn('studentAffairs.talk.create')"
                 v-for="a in detailActions"
                 :key="a.key"
                 code="studentAffairs.talk.create"
@@ -162,6 +162,8 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const STATUS_TYPE = {
   PLANNED: 'warning', SCHEDULED: 'processing', COMPLETED: 'success',
@@ -236,6 +238,7 @@ export default {
     this.loadStats()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     talkTypeLabel(t) {
       return TALK_TYPE[t] || t || '—'
     },

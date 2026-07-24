@@ -173,6 +173,53 @@ def funding_appeal(user: dict, body: dict) -> dict:
     return funding.submit_appeal(app_id, ns, user, skip_scope_check=True)
 
 
+def leave_cancel(user: dict, leave_id: str, body: dict | None = None) -> dict:
+    """本人对已通过/逾期请假发起销假（成熟学工产品常见：学生返校后自助销假，辅导员确认）。"""
+    body = body or {}
+    from app.services import affairs_leave_service as leave_svc
+    note = str(body.get("proofNote") or body.get("note") or "").strip()
+    return leave_svc.submit_cancel(leave_id, user, proof_note=note, self_only=True)
+
+
+def leave_extend(user: dict, leave_id: str, body: dict | None = None) -> dict:
+    """本人对已通过/逾期请假发起续假（须晚于原结束时间；辅导员审批）。"""
+    body = body or {}
+    from app.services import affairs_leave_service as leave_svc
+    new_end = body.get("newEndTime") or body.get("newEnd") or body.get("endTime") or ""
+    reason = str(body.get("reason") or "").strip()
+    return leave_svc.apply_extension(leave_id, user, new_end, reason=reason, self_only=True)
+
+
+def dorm(user: dict) -> dict:
+    """本人宿舍只读卡（床位/楼栋/房间；选床入口仍走小程序）。"""
+    return aff.dorm_my(user)
+
+
+def talk(user: dict) -> dict:
+    """本人谈心谈话摘要。"""
+    return aff.talk_my(user)
+
+
+def aid_objection(user: dict, body: dict) -> dict:
+    """公示期本人对困难认定结果提异议（对齐奖助公示申诉）。"""
+    body = body or {}
+    apply_id = str(body.get("applyId") or body.get("applicationId") or "").strip()
+    reason = str(body.get("reason") or "").strip()
+    if not apply_id:
+        raise AppException("VALIDATION_ERROR", "认定申请（applyId）必填")
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "异议理由至少 5 字")
+    sid = _resolve_self_id(user)
+    from app.models import AidApply
+    from app.services.db_service import _tid, session as _session
+    with _session() as db:
+        x = db.get(AidApply, int(apply_id))
+        if not x or x.is_deleted or x.tenant_id != _tid() or int(x.student_id or 0) != sid:
+            raise AppException("DATA_NOT_FOUND", "认定申请不存在或不属于本人")
+    from app.services import affairs_aid_service as aid_svc
+    return aid_svc.submit_objection(apply_id, body, user, skip_scope_check=True)
+
+
 def aid_batches_open(user: dict) -> dict:
     """当前开放中的困难认定批次（本人可申请）。"""
     _require_student(user)

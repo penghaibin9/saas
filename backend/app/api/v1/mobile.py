@@ -313,9 +313,19 @@ def internship_agreement_esign_sign(agreement_id: str, user=Depends(get_current_
     return success(agr.esign_sign(user, agreement_id, "STUDENT"), message="电子签已完成")
 
 
+@router.get("/me/messages/{message_id}", summary="本人消息详情（按 messageId）")
+def me_message_detail(message_id: str, user=Depends(get_current_user)):
+    return success(stu.message_get(user, message_id))
+
+
 @router.post("/me/messages/{message_id}/read", summary="标记本人消息已读")
 def me_message_read(message_id: str, user=Depends(get_current_user)):
     return success(stu.message_mark_read(user, message_id))
+
+
+@router.post("/me/messages/{message_id}/receipt", summary="本人消息确认回执")
+def me_message_receipt(message_id: str, user=Depends(get_current_user)):
+    return success(stu.message_ack(user, message_id), message="已确认")
 
 
 @router.get("/orientation/my", summary="我的迎新报到")
@@ -675,6 +685,85 @@ def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(def
         user, leave_id, str(body.get("action") or "APPROVE").upper(), body.get("reason")), message="已处理")
 
 
+@router.get("/teacher/affairs/aid/pending", summary="辅导员·困难认定待审")
+def teacher_affairs_aid_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_aid_pending(user))
+
+
+@router.get("/teacher/affairs/aid/{apply_id}", summary="辅导员·困难认定详情")
+def teacher_affairs_aid_detail(apply_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_aid_detail(user, apply_id))
+
+
+@router.post("/teacher/affairs/aid/{apply_id}/review", summary="辅导员·困难认定审批")
+def teacher_affairs_aid_review(apply_id: str, body: dict = Body(default={}),
+                               user=Depends(get_current_user)):
+    return success(tea.affairs_aid_review(
+        user, apply_id, str((body or {}).get("action") or "APPROVE"),
+        reason=str((body or {}).get("reason") or ""),
+        level=(body or {}).get("level")), message="已处理")
+
+
+@router.get("/teacher/affairs/funding/pending", summary="辅导员·奖助待审")
+def teacher_affairs_funding_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_funding_pending(user))
+
+
+@router.get("/teacher/affairs/funding/{app_id}", summary="辅导员·奖助详情")
+def teacher_affairs_funding_detail(app_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_funding_detail(user, app_id))
+
+
+@router.post("/teacher/affairs/funding/{app_id}/review", summary="辅导员·奖助审批")
+def teacher_affairs_funding_review(app_id: str, body: dict = Body(default={}),
+                                   user=Depends(get_current_user)):
+    return success(tea.affairs_funding_review(
+        user, app_id, str((body or {}).get("action") or "APPROVE"),
+        reason=str((body or {}).get("reason") or "")), message="已处理")
+
+
+@router.get("/teacher/affairs/discipline/pending", summary="辅导员·处分/解除待审")
+def teacher_affairs_discipline_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_discipline_pending(user))
+
+
+@router.get("/teacher/affairs/discipline/{case_id}", summary="辅导员·处分详情")
+def teacher_affairs_discipline_detail(case_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_discipline_detail(user, case_id))
+
+
+@router.post("/teacher/affairs/discipline/{case_id}/review", summary="辅导员·处分/解除审批")
+def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}),
+                                      user=Depends(get_current_user)):
+    return success(tea.affairs_discipline_review(
+        user, case_id, str((body or {}).get("action") or "APPROVE"),
+        reason=str((body or {}).get("reason") or "")), message="已处理")
+
+
+@router.get("/teacher/affairs/risk/pending", summary="辅导员·学工风险待处置（本人责任单）")
+def teacher_affairs_risk_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_risk_pending(user))
+
+
+@router.get("/teacher/affairs/risk/{risk_id}", summary="辅导员·学工风险详情")
+def teacher_affairs_risk_detail(risk_id: str, user=Depends(get_current_user)):
+    return success(tea.affairs_risk_detail(user, risk_id))
+
+
+@router.post("/teacher/affairs/risk/{risk_id}/process", summary="辅导员·风险处置记录")
+def teacher_affairs_risk_process(risk_id: str, body: dict = Body(...),
+                                 user=Depends(get_current_user)):
+    return success(tea.affairs_risk_process(
+        user, risk_id, str((body or {}).get("content") or "")), message="已记录处置")
+
+
+@router.post("/teacher/affairs/risk/{risk_id}/close", summary="辅导员·关闭风险")
+def teacher_affairs_risk_close(risk_id: str, body: dict = Body(...),
+                               user=Depends(get_current_user)):
+    return success(tea.affairs_risk_close(
+        user, risk_id, str((body or {}).get("conclusion") or "")), message="已关闭")
+
+
 @router.get("/teacher/affairs/classes", summary="辅导员·我的班级（本人数据范围，供任命班干部先选班级）")
 def teacher_affairs_my_classes(user=Depends(get_current_user)):
     return success(tea.affairs_my_classes(user))
@@ -744,6 +833,19 @@ def teacher_academic_schedule_submit(body: dict = Body(...), user=Depends(get_cu
 @router.get("/teacher/academic/schedule-changes", summary="教务老师·我的调停课申请列表")
 def teacher_academic_schedule_changes(status: str = None, user=Depends(get_current_user)):
     return success(tea.affairs_academic_schedule_changes(user, status))
+
+
+@router.get("/teacher/academic/schedule-changes/pending", summary="学院/教务处·调停课待我审批")
+def teacher_academic_schedule_change_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_change_pending(user))
+
+
+@router.post("/teacher/academic/schedule-changes/{change_id}/review", summary="学院/教务处·调停课审批（APPROVE/REJECT）")
+def teacher_academic_schedule_change_review(change_id: str, body: dict = Body(...),
+                                            user=Depends(get_current_user)):
+    return success(tea.affairs_academic_schedule_change_review(
+        user, change_id, str((body or {}).get("action") or "").upper(),
+        (body or {}).get("comment") or (body or {}).get("reason")), message="已处理")
 
 
 @router.get("/teacher/academic/schedule-changes/{change_id}", summary="教务老师·调停课单详情（移动端补归属校验）")
@@ -1383,14 +1485,64 @@ def affairs_leave_resubmit(leave_id: str, body: dict = Body(default={}), user=De
     return success(result, message="已重新提交，等待辅导员审批")
 
 
+@router.post("/affairs/leave/{leave_id}/cancel", summary="学工·本人发起销假")
+def affairs_leave_cancel(leave_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.leave_cancel(user, leave_id, body or {}), message="销假已提交")
+
+
+
+@router.post("/affairs/leave/{leave_id}/extension", summary="学工·本人发起续假")
+def affairs_leave_extension(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.leave_extend(user, leave_id, body or {}), message="续假已提交")
+
+@router.get("/affairs/talk/my", summary="学工·我的谈心谈话摘要")
+def affairs_talk_my(user=Depends(get_current_user)):
+    return success(aff.talk_my(user))
+
+
 @router.get("/affairs/aid/my", summary="学工·我的困难认定")
 def affairs_aid_my(user=Depends(get_current_user)):
     return success(aff.aid_my(user))
 
 
+@router.get("/affairs/aid/batches", summary="学工·当前开放困难认定批次")
+def affairs_aid_batches(user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.aid_batches_open(user))
+
+
+@router.post("/affairs/aid/apply", summary="学工·困难认定申请（本人·承诺书）")
+def affairs_aid_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.aid_apply(user, body or {}), message="认定申请已提交")
+
+
+@router.post("/affairs/aid/objection", summary="学工·公示期本人对困难认定提异议")
+def affairs_aid_objection(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.aid_objection(user, body or {}), message="异议已提交")
+
+
 @router.get("/affairs/funding/my", summary="学工·我的奖助")
 def affairs_funding_my(user=Depends(get_current_user)):
     return success(aff.funding_my(user))
+
+
+@router.get("/affairs/funding/batches", summary="学工·当前开放奖助批次（奖学金/助学金）")
+def affairs_funding_batches(user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    data = portal_aff.funding_batches_open(user)
+    items = [x for x in (data.get("items") or [])
+             if (x.get("projectType") or "") in ("SCHOLARSHIP", "GRANT")]
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/affairs/funding/apply", summary="学工·奖学金/助学金申请（本人·承诺书）")
+def affairs_funding_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.funding_apply(user, body or {}), message="奖助申请已提交")
 
 
 @router.post("/affairs/funding/appeal", summary="学工·公示期本人对资助结果申诉")
@@ -1452,6 +1604,27 @@ def affairs_activity_checkin(activity_id: int, body: dict = Body(default={}), us
 
 
 # ── 教师端·学工待办卡（P7）──
+@router.get("/teacher/affairs/dorm/pending", summary="辅导员/宿管·调宿与宿舍异常待办")
+def teacher_affairs_dorm_pending(user=Depends(get_current_user)):
+    return success(tea.affairs_dorm_pending(user))
+
+
+@router.post("/teacher/affairs/dorm/transfers/{transfer_id}/review",
+             summary="辅导员/宿管·调宿审批")
+def teacher_affairs_dorm_transfer_review(transfer_id: str, body: dict = Body(...),
+                                         user=Depends(get_current_user)):
+    return success(tea.affairs_dorm_transfer_review(
+        user, transfer_id, str(body.get("action") or "").upper(), body.get("reason") or ""),
+        message="已处理")
+
+
+@router.post("/teacher/affairs/dorm/exceptions/{exception_id}/handle",
+             summary="辅导员/宿管·宿舍异常处置")
+def teacher_affairs_dorm_exception_handle(exception_id: str, body: dict = Body(...),
+                                          user=Depends(get_current_user)):
+    return success(tea.affairs_dorm_exception_handle(
+        user, exception_id, body.get("note") or ""), message="已处置")
+
 @router.get("/teacher/affairs", summary="教师·学工待办卡（本校按类型聚合）")
 def teacher_affairs(user=Depends(get_current_user)):
     return success(aff.teacher_affairs(user))
@@ -1468,9 +1641,24 @@ def academic_transcript_my(user=Depends(get_current_user)):
     return success(aa.transcript_my(user))
 
 
+@router.post("/academic/transcript/print", summary="教务·成绩单打印留痕（本人）")
+def academic_transcript_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(aa.transcript_print_my(user, body or {}))
+
+
+@router.post("/academic/schedule/print", summary="教务·课表打印留痕（本人）")
+def academic_schedule_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(aa.schedule_print_my(user, body or {}))
+
+
 @router.get("/academic/status/my", summary="教务·我的学籍与异动")
 def academic_status_my(user=Depends(get_current_user)):
     return success(aa.status_my(user))
+
+
+@router.get("/academic/transfer-options", summary="教务·异动可选目标专业/同专业班级")
+def academic_transfer_options(user=Depends(get_current_user)):
+    return success(aa.transfer_options_my(user))
 
 
 @router.post("/academic/status-change", summary="教务·学生本人发起学籍异动申请（唯一学生写入口）")
@@ -1536,6 +1724,62 @@ def academic_makeup_retake_apply(body: dict = Body(...), user=Depends(get_curren
 @router.post("/academic/makeup/exemption-apply", summary="教务·本人发起免修申请")
 def academic_makeup_exemption_apply(body: dict = Body(...), user=Depends(get_current_user)):
     return success(aa.exemption_apply_my(user, body), message="免修申请已提交")
+
+
+@router.get("/academic/makeup/options", summary="教务·重修/免修可选挂科与未及格课程")
+def academic_makeup_options(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.makeup_options_my(user))
+
+
+@router.get("/academic/registration/my", summary="教务·我的注册批次与自助状态")
+def academic_registration_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.registration_my(user))
+
+
+@router.post("/academic/registration/{batch_id}/register", summary="教务·本人完成注册")
+def academic_registration_self(batch_id: str, user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.registration_self_register(user, batch_id), message="注册成功")
+
+
+@router.post("/academic/registration/{batch_id}/defer", summary="教务·本人申请暂缓注册")
+def academic_registration_defer(batch_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.registration_defer_apply_my(
+        user, batch_id, (body or {}).get("reason"), (body or {}).get("requestedUntil")),
+        message="暂缓申请已提交")
+
+
+@router.get("/academic/attendance/my", summary="教务·我的课堂考勤（只读）")
+def academic_attendance_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.attendance_my(user))
+
+
+@router.get("/academic/calendar/my", summary="教务·当前学期校历（只读）")
+def academic_calendar_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.calendar_my(user))
+
+
+@router.get("/academic/clearance/my", summary="教务·我的清考结果（只读）")
+def academic_clearance_my(user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.clearance_my(user))
+
+
+@router.post("/academic/exam/ticket/print", summary="教务·准考证打印留痕（本人）")
+def academic_exam_ticket_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.exam_ticket_print_my(user, body or {}))
+
+
+@router.post("/academic/status-change/print", summary="教务·学籍异动申请表打印留痕（本人）")
+def academic_status_change_print_mobile(body: dict = Body(default={}), user=Depends(get_current_user)):
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+    return success(gaps.status_change_print_my(user, body or {}))
 
 
 @router.get("/academic/selection/courses", summary="教务·网上选课·可选课程（OPEN 批次+实时余量）")
@@ -1627,23 +1871,34 @@ def academic_evaluation_submit(body: dict = Body(...), user=Depends(get_current_
 
 
 @router.get("/teacher/academic/grade-tasks", summary="教师·我的成绩录入任务")
-def teacher_grade_tasks(status: str = None, user=Depends(get_current_user)):
+def teacher_grade_tasks(status: str = None, user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_tasks(user, status))
 
 
-@router.get("/teacher/academic/grade-tasks/{task_id}/roster", summary="教师·成绩录入·教学班名单")
-def teacher_grade_roster(task_id: str, user=Depends(get_current_user)):
+@router.get("/teacher/academic/grade-tasks/{task_id}/roster", summary="教师·成绩录入·教学班名单（含已录回显）")
+def teacher_grade_roster(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_roster(task_id, user))
 
 
+@router.get("/teacher/academic/grade-tasks/{task_id}/records", summary="教师·成绩录入·已录记录")
+def teacher_grade_records(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
+    return success(aa.teacher_grade_records(task_id, user))
+
+
 @router.post("/teacher/academic/grade-tasks/{task_id}/enter-score", summary="教师·成绩录入·录入单生分数")
-def teacher_grade_enter_score(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_grade_enter_score(task_id: str, body: dict = Body(...),
+                              user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_enter_score(task_id, user, body))
 
 
 @router.post("/teacher/academic/grade-tasks/{task_id}/submit", summary="教师·成绩录入·提交学院审核")
-def teacher_grade_submit_task(task_id: str, user=Depends(get_current_user)):
+def teacher_grade_submit_task(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
     return success(aa.teacher_grade_submit_task(task_id, user), message="已提交学院审核")
+
+
+@router.get("/teacher/academic/attendance/class-options", summary="教师·课堂考勤·可选行政班")
+def teacher_attendance_class_options(user=Depends(get_current_user)):
+    return success(aa.teacher_attendance_class_options(user))
 
 
 @router.get("/teacher/academic/attendance/sessions", summary="教师·课堂考勤·我的场次列表")

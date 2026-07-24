@@ -18,9 +18,10 @@ const studentAffairsRoutes = [
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工看板', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
       },
       {
+        /* 旧「辅导员工作台」双首页 → 统一角色化工作台 /（WorkbenchView） */
         path: 'workbench',
         name: 'student-affairs-counselor-workbench',
-        component: () => import('@/modules/studentAffairs/views/CounselorWorkbenchView.vue'),
+        redirect: '/',
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '辅导员工作台', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
       },
       {
@@ -131,19 +132,19 @@ const studentAffairsRoutes = [
         path: 'funding/work-study',
         name: 'student-affairs-work-study',
         component: () => import('@/modules/studentAffairs/views/funding/WorkStudyView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '勤工助学', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '勤工助学', requiresAuth: true, permissionKey: 'studentAffairs.funding.workstudy.manage' }
       },
       {
         path: 'funding/loans',
         name: 'student-affairs-loans',
         component: () => import('@/modules/studentAffairs/views/funding/StudentLoanView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '助学贷款', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '助学贷款', requiresAuth: true, permissionKey: 'studentAffairs.funding.loan.manage' }
       },
       {
         path: 'funding/fee-reductions',
         name: 'student-affairs-fee-reductions',
         component: () => import('@/modules/studentAffairs/views/funding/FeeReductionView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '减免与临补', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '减免与临补', requiresAuth: true, permissionKey: 'studentAffairs.funding.reduction.manage' }
       },
       {
         path: 'funding/publicity',

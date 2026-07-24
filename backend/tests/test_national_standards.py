@@ -32,6 +32,8 @@ def _seed_standard():
     db.add(document); db.flush()
     db.add(NationalStandardSection(document_id=document.id, section_code="SECTION_01", section_no=1,
         section_title="概述", content_text="面向软件开发。", content_sha256="a" * 64))
+    db.add(NationalStandardSection(document_id=document.id, section_code="SECTION_08", section_no=8,
+        section_title="课程设置及学时安排", content_text="Java程序设计为专业核心课程。", content_sha256="b" * 64))
     college = College(tenant_id=1000000000000000001, college_name="信息工程学院", code="51")
     db.add(college); db.flush()
     school_major = Major(tenant_id=1000000000000000001, college_id=college.id,
@@ -64,6 +66,17 @@ def test_national_standard_search_detail_and_binding(client, auth_headers, db_mo
     assert bound["code"] == 0 and bound["data"]["isPrimary"] is True
     bindings = client.get("/api/v1/national-standards/bindings", headers=auth_headers).json()
     assert bindings["code"] == 0 and len(bindings["data"]) == 1
+    program = client.post("/api/v1/academic-affairs/programs", headers=auth_headers,
+                          json={"programName": "国家标准关联培养方案", "majorId": str(ids["schoolMajor"]),
+                                "gradeYear": "2026", "totalCredits": 120}).json()
+    assert program["code"] == 0
+    program_detail = client.get(f"/api/v1/academic-affairs/programs/{program['data']['programId']}",
+                                headers=auth_headers).json()
+    assert program_detail["code"] == 0 and program_detail["data"]["nationalStandardBound"] is True
+    assert program_detail["data"]["nationalStandards"][0]["documentId"] == str(ids["document"])
+    relevant = program_detail["data"]["nationalStandards"][0]["relevantSections"]
+    assert relevant[0]["no"] == 8
+    assert "Java程序设计" in relevant[0]["contentExcerpt"]
 
 
 def test_national_standard_is_fail_closed_for_student(client, db_mode):

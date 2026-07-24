@@ -117,32 +117,30 @@ const systemRoutes = {
       component: () => import('@/modules/system/views/SystemImplementationView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '上线检查与验收', requiresAuth: true, permissionKey: 'systemAdmin.implementation.check.run', implementationPageKey: 'acceptance' }
     },
-    /* 8 组 26 项学校级系统管理中尚未有独立业务页的治理能力。
-       统一进入 SystemCapabilityView，不伪造写接口；真实服务按 meta.systemCapabilityKey 接入。 */
     {
       path: 'account-exceptions', name: 'system-account-exceptions',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '账号异常中心', requiresAuth: true, permissionKey: 'systemAdmin.user.exception.view', systemCapabilityKey: 'sys-account-exceptions' }
+      component: () => import('@/modules/system/views/SystemAccountExceptionView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '账号异常中心', requiresAuth: true, permissionKey: 'systemAdmin.user.exception.view' }
     },
     {
       path: 'login-policy', name: 'system-login-policy',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '登录与安全策略', requiresAuth: true, permissionKey: 'systemAdmin.security.policy.manage', systemCapabilityKey: 'sys-login-policy' }
+      component: () => import('@/modules/system/views/SystemLoginPolicyView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '登录与安全策略', requiresAuth: true, permissionKey: 'systemAdmin.security.policy.manage' }
     },
     {
       path: 'staff-affiliations', name: 'system-staff-affiliations',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '教职工岗位与归属', requiresAuth: true, permissionKey: 'systemAdmin.org.affiliation.manage', systemCapabilityKey: 'sys-staff-affiliations' }
+      component: () => import('@/modules/system/views/SystemStaffAffiliationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '教职工岗位与归属', requiresAuth: true, permissionKey: 'systemAdmin.org.affiliation.manage' }
     },
     {
       path: 'delegations', name: 'system-delegations',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '临时授权与工作移交', requiresAuth: true, permissionKey: 'systemAdmin.delegation.manage', systemCapabilityKey: 'sys-delegations' }
+      component: () => import('@/modules/system/views/SystemDelegationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '临时授权与工作移交', requiresAuth: true, permissionKey: 'systemAdmin.delegation.manage' }
     },
     {
       path: 'module-entitlements', name: 'system-module-entitlements',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view', systemCapabilityKey: 'sys-module-entitlements' }
+      component: () => import('@/modules/system/views/SystemModuleFeatureView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view' }
     },
     {
       path: 'numbering-rules', name: 'system-numbering-rules',
@@ -166,18 +164,18 @@ const systemRoutes = {
     },
     {
       path: 'sensitive-audit', name: 'system-sensitive-audit',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '敏感与导入导出审计', requiresAuth: true, permissionKey: 'systemAdmin.audit.sensitive.view', systemCapabilityKey: 'sys-sensitive-audit' }
+      component: () => import('@/modules/system/views/SystemSensitiveAuditView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '敏感与导入导出审计', requiresAuth: true, permissionKey: 'systemAdmin.audit.sensitive.view' }
     },
     {
       path: 'integrations', name: 'system-integrations',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '接口、凭证与 Webhook', requiresAuth: true, permissionKey: 'systemAdmin.integration.manage', systemCapabilityKey: 'sys-integration-connections' }
+      component: () => import('@/modules/system/views/SystemIntegrationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '接口、凭证与 Webhook', requiresAuth: true, permissionKey: 'systemAdmin.integration.manage' }
     },
     {
       path: 'sync-jobs', name: 'system-sync-jobs',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '同步任务与失败中心', requiresAuth: true, permissionKey: 'systemAdmin.integration.sync.view', systemCapabilityKey: 'sys-sync-jobs' }
+      component: () => import('@/modules/system/views/SystemSyncJobView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '同步任务与失败中心', requiresAuth: true, permissionKey: 'systemAdmin.integration.sync.view' }
     }
   ]
 }

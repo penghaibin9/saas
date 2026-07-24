@@ -19,6 +19,7 @@
             </view>
           </view>
           <view style="margin-top: var(--space-3);"><MobileProgress :value="pct" tone="success" /></view>
+          <text class="cr__sub" style="margin-top:8px;display:block">本页为学分汇总只读；培养方案分类占比以教务处发布口径为准。</text>
         </view>
 
         <view class="section-head"><text class="section-head__title">已通过课程（{{ d.passedCourses.length }}）</text></view>

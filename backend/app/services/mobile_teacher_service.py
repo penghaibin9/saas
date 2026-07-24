@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
@@ -56,6 +56,29 @@ _RELATION_SCOPED_ROLES = {
 }
 
 
+def _real_name_is_ambiguous(real_name: str) -> bool:
+    """本租户内是否存在 ≥2 个同名账号——若是，姓名不足以证明身份，不得用于范围匹配。
+
+    仅在「能证明重名」时返回 True：命中 0 个（无账号的历史/外聘导师）或 1 个都返回 False，
+    保持既有数据可用，只堵同名越权。查不到库（旧库无表/连接异常）时保守返回 False，
+    维持原有可见性，不因基础设施问题把老师锁在门外。
+    """
+    name = (real_name or "").strip()
+    if not name:
+        return True
+    try:
+        with _session() as db:
+            from app.models import User
+            rows = db.scalars(select(User.id).where(
+                User.tenant_id == _tid(),
+                User.real_name == name,
+                User.is_deleted.is_(False),
+            ).limit(2)).all()
+        return len(rows) >= 2
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def resolve_teacher_scope(user: dict) -> dict:
     """解析教师数据范围（t_teacher_student_scope 最小可用版）：
     - 范围表行：CLASS(班级名) / COLLEGE(学院名) / STUDENT(学号) / ADVISOR(历史导师姓名，
@@ -81,10 +104,14 @@ def resolve_teacher_scope(user: dict) -> dict:
         # 键派生：mock 用户 u_counselor01→counselor01；db 用户 activeContextId=ctx_<login_name>；
         # 姓名兜底（teacher_key 或 teacher_name 任一命中即生效）
         ctx = str(u.get("activeContextId") or "")
+        # 只派生工号族标识（login_name 租户内唯一 uk_tenant_login），不含 realName：
+        # 姓名会重复，一旦作为范围表命中键，同名教师会互相拿到对方的班级/学院/学生范围。
+        # 与 core.affairs_security._derive_keys 同口径。实测开发库 t_teacher_student_scope
+        # 全部行都有 teacher_key（工号），无「仅登记姓名」的行，移除姓名不会使既有范围查空。
         keys = {k for k in (uid,
+                            str(u.get("loginName") or ""),
                             uid[2:] if uid.startswith("u_") else "",
-                            ctx[4:] if ctx.startswith("ctx_") else "",
-                            name) if k}
+                            ctx[4:] if ctx.startswith("ctx_") else "") if k}
         try:
             with _session() as db:
                 from app.models import TeacherStudentScope
@@ -108,7 +135,10 @@ def resolve_teacher_scope(user: dict) -> dict:
                 scope["collegeNames"].add(r.ref_value.strip())
             elif st == "ADVISOR":
                 scope["advisorNames"].add((r.ref_value or name).strip())
-    if role in _ADVISOR_ROLES and name:
+    if role in _ADVISOR_ROLES and name and not _real_name_is_ambiguous(name):
+        # 姓名只用于兼容「尚未回填 advisor_user_id」的历史记录（scope_match_row 中 ID 优先、姓名兜底）。
+        # 租户内存在同名账号时不得加入：否则两名同名指导教师会互相看到对方带教的实习生。
+        # 此类记录改由 advisor_user_id 精确匹配；未回填的历史记录宁可看不到，也不放行越权。
         scope["advisorNames"].add(name)
     if (scope["classNames"] or scope["studentNos"] or scope["collegeNames"]
             or scope["advisorNames"] or (role in _ADVISOR_ROLES and scope["advisorUserIds"])):
@@ -641,6 +671,353 @@ def affairs_leave_extension_approve(user: dict, leave_id: str, action: str = "AP
     return result
 
 
+# ══════════ 学工待办处置（困难/奖助/处分/风险）——复用 PC 服务层权限+范围+指派人校验 ══════════
+
+def _uid_int(user) -> int:
+    raw = str((user or {}).get("userId") or "")
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _filter_by_assignee_todos(user, items, *, id_keys: tuple[str, ...], todo_types: tuple[str, ...]) -> list:
+    """与 teacher_affairs 待办卡同一口径：指派人 + 学院池0；班级范围另含本班学生池化待办。"""
+    from app.core.affairs_security import build_affairs_context
+    from app.models import StudentProfile, UnifiedTodo
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.db_service import session as _db_session
+
+    if not items:
+        return []
+    with _db_session() as db:
+        ctx = build_affairs_context(user, db)
+        uid = _uid_int(user)
+        conds = [
+            UnifiedTodo.tenant_id == _tid(),
+            UnifiedTodo.source_module == "student-affairs",
+            UnifiedTodo.todo_type.in_(list(todo_types)),
+            UnifiedTodo.status == "PENDING",
+            UnifiedTodo.is_deleted.is_(False),
+        ]
+        if ctx.scope_type == "TENANT_ALL":
+            rows = db.scalars(select(UnifiedTodo).where(*conds)).all()
+        elif ctx.scope_type == "COLLEGE":
+            rows = db.scalars(select(UnifiedTodo).where(
+                *conds,
+                or_(UnifiedTodo.assignee_id == uid, UnifiedTodo.assignee_id == 0) if uid
+                else UnifiedTodo.assignee_id == 0)).all()
+        else:
+            allowed, _ = _allowed_class_ids(db, user)
+            if allowed is None:
+                rows = db.scalars(select(UnifiedTodo).where(*conds)).all()
+            elif not allowed:
+                rows = []
+            else:
+                stu_ids = list(db.scalars(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.class_id.in_(list(allowed)),
+                    StudentProfile.is_deleted.is_(False))).all())
+                pool = and_(UnifiedTodo.assignee_id == 0,
+                            UnifiedTodo.student_id.in_(stu_ids)) if stu_ids else False
+                if uid:
+                    rows = db.scalars(select(UnifiedTodo).where(
+                        *conds, or_(UnifiedTodo.assignee_id == uid, pool))).all()
+                elif stu_ids:
+                    rows = db.scalars(select(UnifiedTodo).where(*conds, pool)).all()
+                else:
+                    rows = []
+        allowed_ids = {int(r.source_biz_id) for r in rows if r.source_biz_id}
+
+    def _biz_id(row: dict) -> int:
+        for k in id_keys:
+            v = row.get(k)
+            if v is None or v == "":
+                continue
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                continue
+        return 0
+
+    return [x for x in items if _biz_id(x) in allowed_ids]
+
+
+def affairs_aid_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_aid_service as svc
+    items, _ = svc.list_applications(u, page=1, page_size=100)
+    nodes = {"CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW", "ADJUST_REVIEW"}
+    out = [x for x in items if (x.get("status") or "") in nodes]
+    out = _filter_by_assignee_todos(
+        u, out, id_keys=("applyId", "id"), todo_types=("AID_APPROVAL", "AID_ADJUST"))
+    return {"list": out, "total": len(out)}
+
+
+def affairs_aid_detail(user: dict, apply_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_aid_service as svc
+    return svc.get_application(apply_id, u)
+
+
+def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
+                       level: str | None = None) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_aid_service as svc
+    act = (action or "APPROVE").upper()
+    detail = svc.get_application(apply_id, u)
+    if (detail or {}).get("status") == "ADJUST_REVIEW":
+        if act == "RETURN":
+            raise AppException("VALIDATION_ERROR", "困难等级调整不支持退回，请选择通过或驳回")
+        mapped = "APPROVE" if act in ("APPROVE", "ADJUST_APPROVE") else "REJECT"
+        result = svc.approve_adjust(apply_id, u, action=mapped)
+    else:
+        result = svc.review(apply_id, u, act, level=level, reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_AID_REVIEW", f"aid:{apply_id}",
+                 {"operator": u.get("realName"), "action": act})
+    return result
+
+
+def affairs_funding_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_funding_service as svc
+    items, _ = svc.list_applications(u, page=1, page_size=100)
+    nodes = {"COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"}
+    out = [x for x in items if (x.get("status") or "") in nodes]
+    out = _filter_by_assignee_todos(
+        u, out, id_keys=("applicationId", "appId", "id"), todo_types=("FUNDING_APPROVAL",))
+    return {"list": out, "total": len(out)}
+
+
+def affairs_funding_detail(user: dict, app_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_funding_service as svc
+    return svc.get_application(app_id, u)
+
+
+def affairs_funding_review(user: dict, app_id: str, action: str, reason: str = "") -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_funding_service as svc
+    result = svc.review(app_id, u, (action or "APPROVE").upper(), reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_FUNDING_REVIEW", f"funding:{app_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+def affairs_discipline_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_discipline_service as svc
+    items, _ = svc.list_cases(u, page=1, page_size=100)
+    nodes = {"COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "REMOVE_REVIEW"}
+    out = [x for x in items if (x.get("status") or "") in nodes]
+    out = _filter_by_assignee_todos(
+        u, out, id_keys=("caseId", "id"),
+        todo_types=("DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE"))
+    return {"list": out, "total": len(out)}
+
+
+def affairs_discipline_detail(user: dict, case_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_discipline_service as svc
+    return svc.get_case(case_id, u)
+
+
+def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str = "") -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_discipline_service as svc
+    act = (action or "APPROVE").upper()
+    detail = svc.get_case(case_id, u)
+    if (detail or {}).get("status") == "REMOVE_REVIEW":
+        result = svc.review_remove(case_id, u, act, reason=reason or "")
+    else:
+        result = svc.review(case_id, u, act, reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_DISC_REVIEW", f"discipline:{case_id}",
+                 {"operator": u.get("realName"), "action": act})
+    return result
+
+
+def affairs_risk_pending(user: dict) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.services import affairs_risk_service as svc
+    items = []
+    for st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED"):
+        chunk, _ = svc.list_risks(u, status=st, page=1, page_size=50)
+        items.extend(chunk)
+    # 与待办卡 RISK_HANDLE 对齐：先按 UnifiedTodo 指派人收敛；无待办时回退本人 owner
+    filtered = _filter_by_assignee_todos(
+        u, items, id_keys=("riskId", "id"), todo_types=("RISK_HANDLE",))
+    if filtered:
+        return {"list": filtered, "total": len(filtered)}
+    from app.core.affairs_security import build_affairs_context
+    from app.services.db_service import session as _db_session
+    with _db_session() as db:
+        ctx = build_affairs_context(u, db)
+    uid = _uid_int(u)
+    if ctx.scope_type != "TENANT_ALL" and uid:
+        items = [x for x in items if int(x.get("ownerId") or 0) == uid]
+    return {"list": items, "total": len(items)}
+
+
+def affairs_risk_detail(user: dict, risk_id: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实数据")
+    from app.services import affairs_risk_service as svc
+    return svc.get_risk(risk_id, u)
+
+
+def affairs_risk_process(user: dict, risk_id: str, content: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_risk_service as svc
+    result = svc.process(risk_id, u, content=content or "")
+    _audit_write("MOBILE_AFFAIRS_RISK_PROCESS", f"risk:{risk_id}", {"operator": u.get("realName")})
+    return result
+
+
+def affairs_risk_close(user: dict, risk_id: str, conclusion: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_risk_service as svc
+    result = svc.close(risk_id, u, conclusion=conclusion or "")
+    _audit_write("MOBILE_AFFAIRS_RISK_CLOSE", f"risk:{risk_id}", {"operator": u.get("realName")})
+    return result
+
+
+def _dorm_filter_by_class(user: dict, items: list, student_id_key: str = "studentId") -> list:
+    """辅导员按班级范围收敛宿舍待办；宿管/全域由 dorm list_* 自身楼栋范围已处理。"""
+    if not db_enabled():
+        return items
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.services.db_service import _tid, session as _session
+    with _session() as db:
+        allowed, _ = _allowed_class_ids(db, user)
+        if allowed is None:
+            return items
+        if not allowed:
+            return []
+        out = []
+        for x in items:
+            sid = x.get(student_id_key)
+            if not sid:
+                continue
+            try:
+                sid_i = int(sid)
+            except (TypeError, ValueError):
+                continue
+            s = db.get(StudentProfile, sid_i)
+            if s and not s.is_deleted and s.tenant_id == _tid() and s.class_id in allowed:
+                out.append(x)
+        return out
+
+
+def affairs_dorm_pending(user: dict) -> dict:
+    """调宿待审 + 宿舍异常待处置（辅导员看本班 COUNSELOR_REVIEW；宿管看楼栋内全部节点/异常）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"transfers": [], "exceptions": [], "total": 0}
+    from app.core.affairs_security import build_affairs_context
+    from app.services import affairs_dorm_service as dorm
+    from app.services.db_service import session as _session
+    role = str((u or {}).get("currentRoleCode") or "").upper()
+    with _session() as db:
+        ctx = build_affairs_context(u, db)
+    transfers = []
+    if role == "DORM_MANAGER" or ctx.scope_type == "TENANT_ALL":
+        for st in ("COUNSELOR_REVIEW", "DORM_MANAGER_REVIEW"):
+            rows, _ = dorm.list_transfers(u, status=st, page=1, page_size=100)
+            transfers.extend(rows)
+    else:
+        rows, _ = dorm.list_transfers(u, status="COUNSELOR_REVIEW", page=1, page_size=100)
+        transfers = _dorm_filter_by_class(u, rows, "studentId")
+    exceptions, _ = dorm.list_exceptions(u, status="PENDING_HANDLE", page=1, page_size=100)
+    # 异常列表无 studentId 时用空；有 realName 的尽量按 cs 解析后的范围已在 list_exceptions 楼栋收敛
+    if role != "DORM_MANAGER" and ctx.scope_type not in ("TENANT_ALL",):
+        # 仅保留能解析到本班学生的异常（csStudentId 可能为 CsServiceStudent.id）
+        from app.models import CsServiceStudent, StudentProfile
+        from app.services.affairs_dashboard_service import _allowed_class_ids
+        from app.services.db_service import _tid, session as _session
+        with _session() as db:
+            allowed, _ = _allowed_class_ids(db, u)
+            if allowed is None:
+                pass
+            elif not allowed:
+                exceptions = []
+            else:
+                kept = []
+                for x in exceptions:
+                    csid = x.get("csStudentId")
+                    if not csid or str(csid) in ("", "0"):
+                        continue
+                    try:
+                        csid_i = int(csid)
+                    except (TypeError, ValueError):
+                        continue
+                    class_id = None
+                    cs = db.get(CsServiceStudent, csid_i)
+                    if cs and not cs.is_deleted and cs.student_id:
+                        s = db.get(StudentProfile, int(cs.student_id))
+                        class_id = s.class_id if s else None
+                    if class_id is None:
+                        s2 = db.get(StudentProfile, csid_i)
+                        class_id = s2.class_id if s2 and not s2.is_deleted else None
+                    if class_id in allowed:
+                        kept.append(x)
+                exceptions = kept
+    return {
+        "transfers": transfers,
+        "exceptions": exceptions,
+        "total": len(transfers) + len(exceptions),
+    }
+
+
+def affairs_dorm_transfer_review(user: dict, transfer_id: str, action: str, reason: str = "") -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_dorm_service as dorm
+    result = dorm.review_transfer(transfer_id, u, action, reason=reason or "")
+    _audit_write("MOBILE_AFFAIRS_DORM_TRANSFER_REVIEW", f"transfer:{transfer_id}",
+                 {"action": action, "operator": u.get("realName")})
+    return result
+
+
+def affairs_dorm_exception_handle(user: dict, exception_id: str, note: str) -> dict:
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.services import affairs_dorm_service as dorm
+    result = dorm.handle_exception(exception_id, u, note=note or "")
+    _audit_write("MOBILE_AFFAIRS_DORM_EXCEPTION_HANDLE", f"exception:{exception_id}",
+                 {"operator": u.get("realName")})
+    return result
+
+
 # ══════════ 班干部任命/免去（移动端包装：复用 affairs_dashboard_service 全套，owner+范围校验
 # 在服务层 _class_in_scope_or_403 完成。学生选择器刻意"先选班级再查该班学生"而不是借用
 # /teacher/my-students —— 后者走 resolve_teacher_scope+counselor_id 数字外键，与本模块
@@ -794,19 +1171,29 @@ def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str
 # get_change PC 端本身无归属校验，移动端补一道校验，不改 PC） ══════════
 
 def affairs_academic_my_schedule(user: dict, term_id: str | None = None, week: int | None = None) -> dict:
-    """我的课表（供选择「原课位」发起调停课）。self_key 推导与 `_user_keys`/`_derive_keys`
-    同口径（登录名优先；mock 登录 JWT claims 里并不携带 loginName，退化为 userId 去掉 'u_' 前缀）。
-    实测过：PC 端「查看本人课表」按字面 `userId||loginName` 取值，在 mock 演示账号下会直接拿到
-    'u_academic01' 前缀，与课表项 teacher_key='academic01' 对不上，查询结果恒为空——此处不是照抄
-    PC，而是按真正决定数据可见性的口径重新推导，确保选课位口径与 submit()/list_changes() 内部
-    的归属校验（_derive_keys）命中同一批数据。"""
+    """我的课表（供选择「原课位」发起调停课）。
+
+    课表项 teacher_key 生产口径多为 loginName；JWT userId 常为 db-<id>。
+    因此优先 loginName，再按 `_user_keys` 逐个回退，避免「有排课但我的课表空白」。
+    """
     u = _require_teacher(user)
     if not db_enabled():
         return {"items": [], "batchId": None, "weeklyHours": 0, "note": ""}
     from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
-    uid = str(u.get("userId") or "")
-    self_key = u.get("loginName") or (uid[2:] if uid.startswith("u_") else uid)
-    return sched_svc.teacher_schedule(u, self_key, term_id, week)
+    from app.modules.academic_affairs.services.mobile_academic_affairs_service import _teacher_key
+    keys = []
+    for k in (u.get("loginName"), _teacher_key(u), *(sched_svc._user_keys(u) or [])):
+        if k and k not in keys:
+            keys.append(k)
+    empty = {"items": [], "batchId": None, "weeklyHours": 0, "note": ""}
+    best = empty
+    for self_key in keys:
+        data = sched_svc.teacher_schedule(u, self_key, term_id, week)
+        if data.get("items"):
+            return data
+        if data.get("batchId") and not best.get("batchId"):
+            best = data
+    return best or empty
 
 
 def affairs_academic_schedule_conflict_check(user: dict, body: dict) -> dict:
@@ -978,19 +1365,20 @@ def dashboard(user: dict) -> dict:
     return dash.get_dashboard(user)
 
 
-# ══════════ 通知发布（移动端首创：教师发通知给学生，按班级/学院/全校，真实写 t_unified_message） ══════════
+# ══════════ 通知发布（改接消息中心 campaign，禁止直接逐人写 UnifiedMessage） ══════════
 
 def notify_publish(user: dict, body: dict) -> dict:
-    """教师/管理员发布通知：CLASS 范围任何教师限本人负责班级；COLLEGE/SCHOOL 范围仅管理类角色。
-    接收人解析为 StudentProfile.id 写入 receiver_id，与全仓库既有 UnifiedMessage 写入惯例一致
-    （见 academic_affairs_grade_service.py/internship_service.py 等既有调用点）。"""
+    """教师/管理员发布通知 → MessageCampaign 预览+发布。
+
+    CLASS：任意教师限本人负责班级；COLLEGE/SCHOOL：管理类角色。
+    """
     _require_teacher(user)
     b = body or {}
     title = (b.get("title") or "").strip()
     content = (b.get("content") or "").strip()
     scope_type = (b.get("scopeType") or "").upper()
-    if not title:
-        raise AppException("VALIDATION_ERROR", "标题必填")
+    if len(title) < 4:
+        raise AppException("VALIDATION_ERROR", "标题至少 4 字")
     if len(content) < 5:
         raise AppException("VALIDATION_ERROR", "内容必填且不少于 5 字")
     if scope_type not in ("CLASS", "COLLEGE", "SCHOOL"):
@@ -999,34 +1387,61 @@ def notify_publish(user: dict, body: dict) -> dict:
     is_admin = role in _ADMIN_ROLES
     if scope_type in ("COLLEGE", "SCHOOL") and not is_admin:
         raise AppException("NO_PERMISSION", "仅管理类角色可发布学院/全校范围通知")
-    with _session() as db:
-        from app.models import SchoolClass, StudentProfile, UnifiedMessage
-        tid = _tid()
-        conds = [StudentProfile.tenant_id == tid, StudentProfile.is_deleted.is_(False)]
-        if scope_type == "CLASS":
-            class_id = b.get("classId")
-            if not class_id:
-                raise AppException("VALIDATION_ERROR", "班级ID必填")
+
+    audiences = []
+    if scope_type == "CLASS":
+        class_id = b.get("classId")
+        if not class_id:
+            raise AppException("VALIDATION_ERROR", "班级ID必填")
+        with _session() as db:
+            from app.models import SchoolClass
+            tid = _tid()
             if not is_admin:
                 numeric_uid = _teacher_numeric_id(user)
                 cls = db.get(SchoolClass, int(class_id))
                 if (not cls or cls.tenant_id != tid or cls.is_deleted or
                         (cls.counselor_id != numeric_uid and cls.head_teacher_id != numeric_uid)):
                     raise AppException("NO_DATA_SCOPE", "该班级不在您的负责范围内")
-            conds.append(StudentProfile.class_id == int(class_id))
-        elif scope_type == "COLLEGE":
-            college_id = b.get("collegeId")
-            if not college_id:
-                raise AppException("VALIDATION_ERROR", "学院ID必填")
-            conds.append(StudentProfile.college_id == int(college_id))
-        rows = db.scalars(select(StudentProfile).where(*conds)).all()
-        if not rows:
-            raise AppException("VALIDATION_ERROR", "该范围内暂无学生，未发布")
-        for s in rows:
-            db.add(UnifiedMessage(tenant_id=tid, receiver_id=s.id, source_module="teacher-notice",
-                                  title=title, content=content, status="UNREAD"))
-        db.commit()
-        return {"recipientCount": len(rows), "title": title}
+        audiences = [{"type": "CLASS", "includeOrExclude": "INCLUDE",
+                      "targetIds": [int(class_id)]}]
+    elif scope_type == "COLLEGE":
+        college_id = b.get("collegeId")
+        if not college_id:
+            raise AppException("VALIDATION_ERROR", "学院ID必填")
+        audiences = [{"type": "COLLEGE", "includeOrExclude": "INCLUDE",
+                      "targetIds": [int(college_id)]}]
+    else:
+        audiences = [{"type": "ALL_STUDENT", "includeOrExclude": "INCLUDE", "targetIds": []}]
+
+    from app.services import message_audience_service as audience_svc
+    from app.services import message_campaign_service as campaign_svc
+
+    preview = audience_svc.preview_audience(user, audiences, ["STUDENT"])
+    if int(preview.get("recipientCount") or 0) <= 0:
+        raise AppException("VALIDATION_ERROR", "该范围内暂无学生，未发布")
+
+    draft = campaign_svc.create_draft(user, {
+        "title": title,
+        "contentPlain": content,
+        "category": "ANNOUNCEMENT",
+        "priority": "NORMAL",
+        "audiences": audiences,
+        "publishMode": "IMMEDIATE",
+        "idempotencyKey": b.get("idempotencyKey") or f"teacher-mini-{_teacher_numeric_id(user)}-{int(datetime.utcnow().timestamp())}",
+    })
+    result = campaign_svc.publish_campaign(
+        user, draft["campaignId"],
+        preview_token=preview["previewToken"],
+        audience_fingerprint=preview["audienceFingerprint"],
+        version=draft["version"],
+    )
+    return {
+        "campaignId": result.get("campaignId") or draft["campaignId"],
+        "status": result.get("status"),
+        "recipientCount": result.get("recipientCount") or preview.get("recipientCount") or 0,
+        "title": title,
+        "message": result.get("message"),
+    }
 
 
 # ══════════ 消息通知设置（移动端首创，真实过滤 messages() 聚合） ══════════
@@ -1586,7 +2001,50 @@ def messages(user: dict) -> dict:
         return scope_match_row(scope, student_no=r.get("studentNo"),
                                class_name=r.get("className"),
                                advisor_name=r.get("advisorName"))
+
+    def _module_label(source_module: str | None) -> str:
+        labels = {
+            "academic-affairs": "学业过程",
+            "graduation": "毕业设计",
+            "internship": "岗位实习",
+            "student-affairs": "学工中心",
+            "campus-service": "在校服务",
+        }
+        return labels.get((source_module or "").strip(), "系统通知")
+
+    def _level_of(row) -> str:
+        pri = (getattr(row, "priority", None) or "").upper()
+        cat = (getattr(row, "category", None) or "").upper()
+        if pri in ("EMERGENCY", "IMPORTANT") or cat in ("EMERGENCY", "WARNING"):
+            return "high"
+        return "normal"
+
     system_msgs, dynamic_msgs, risk_msgs = [], [], []
+    uid = _teacher_numeric_id(u)
+    if uid:
+        with _session() as db:
+            from app.models import UnifiedMessage
+            vis = or_(
+                UnifiedMessage.receiver_user_id == uid,
+                and_(UnifiedMessage.receiver_user_id.is_(None), UnifiedMessage.receiver_id == uid),
+            )
+            rows = db.scalars(select(UnifiedMessage).where(
+                UnifiedMessage.tenant_id == _tid(),
+                UnifiedMessage.is_deleted.is_(False),
+                vis,
+            ).order_by(UnifiedMessage.id.desc()).limit(30)).all()
+            for n in rows:
+                system_msgs.append({
+                    "id": str(n.id),
+                    "messageId": str(n.id),
+                    "kind": "UNIFIED_MESSAGE",
+                    "title": n.title or "",
+                    "content": n.content or "",
+                    "module": _module_label(n.source_module),
+                    "level": _level_of(n),
+                    "time": _iso(n.created_at) if n.created_at else None,
+                    "read": (n.status or "").upper() != "UNREAD",
+                })
     # 学生动态：待批周报 / 开题
     reports, _ = _safe_list(internship_service.list_weekly_reports, 1, 15, status="PENDING_REVIEW")
     for r in filter(_in_scope, reports):
@@ -1609,8 +2067,6 @@ def messages(user: dict) -> dict:
         risk_msgs.append({"id": "risk-aw-" + str(w.get("id")),
                           "title": f"{w.get('name') or w.get('studentName') or '学生'} 学业预警",
                           "module": "风险预警", "level": "high", "read": False})
-    system_msgs.append({"id": "sys-1", "title": "本周待办已汇总，请及时处理",
-                        "module": "系统通知", "level": "normal", "read": False})
     groups_all = {"system": system_msgs, "dynamic": dynamic_msgs, "risk": risk_msgs}
     from app.services import notification_preference_service as notify_pref
     on = notify_pref.enabled_categories(user, list(groups_all.keys()))
@@ -1618,8 +2074,8 @@ def messages(user: dict) -> dict:
     tabs = [{"key": "system", "label": "系统通知", "badge": len([x for x in groups["system"] if not x["read"]])},
             {"key": "dynamic", "label": "学生动态", "badge": len([x for x in groups["dynamic"] if not x["read"]])},
             {"key": "risk", "label": "风险预警", "badge": len([x for x in groups["risk"] if not x["read"]])}]
-    unread = sum(len(v) for v in groups.values())
-    return {"hasData": unread > 0, "unreadCount": unread, "tabs": tabs, "groups": groups}
+    unread = sum(len([x for x in v if not x.get("read")]) for v in groups.values())
+    return {"hasData": unread > 0 or any(groups.values()), "unreadCount": unread, "tabs": tabs, "groups": groups}
 
 
 # ══════════ 教师审批列表（复用审批服务，mobile 轻量） ══════════
@@ -2627,3 +3083,106 @@ def graduation_grade_review(user: dict, gd_student_id: str, action: str, comment
     _audit_write("MOBILE_GRADE_REVIEW", f"graduation/grade:{gd_student_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
+
+def affairs_academic_schedule_change_pending(user: dict) -> dict:
+    """调停课待我审批：学院节点看 SUBMITTED；教务处节点看 COLLEGE_REVIEW。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.core.permissions import has_permission
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    statuses = []
+    if has_permission(u, _SC_COLLEGE_PERM):
+        statuses.append("SUBMITTED")
+    if has_permission(u, _SC_ACADEMIC_PERM):
+        statuses.append("COLLEGE_REVIEW")
+    if not statuses:
+        return {"list": [], "total": 0, "note": "当前身份无调停课审批权限"}
+    items, _ = chg_svc.list_changes(u, status=",".join(statuses), page=1, page_size=200)
+    # 再按 currentNode 收口，避免学院/教务处权限并存时串节点
+    out = []
+    for it in items:
+        node = (it.get("currentNode") or "").upper()
+        st = (it.get("status") or "").upper()
+        if st == "SUBMITTED" and node == "COLLEGE_REVIEW" and has_permission(u, _SC_COLLEGE_PERM):
+            out.append(it)
+        elif st == "COLLEGE_REVIEW" and node == "ACADEMIC_REVIEW" and has_permission(u, _SC_ACADEMIC_PERM):
+            out.append(it)
+    return {"list": out, "total": len(out)}
+
+def affairs_academic_schedule_change_review(user: dict, change_id: str, action: str,
+                                            comment: str | None = None) -> dict:
+    """调停课审批（APPROVE/REJECT）；节点权限由路由侧 + 本函数预检，服务层改写课表。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.core.permissions import has_permission
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    action = (action or "").upper()
+    detail = chg_svc.get_change(change_id, u)
+    node = (detail.get("currentNode") or "").upper()
+    if node == "COLLEGE_REVIEW" and not has_permission(u, _SC_COLLEGE_PERM):
+        raise AppException("NO_PERMISSION", "无权进行学院调停课审批", http_status=403)
+    if node == "ACADEMIC_REVIEW" and not has_permission(u, _SC_ACADEMIC_PERM):
+        raise AppException("NO_PERMISSION", "无权进行教务处调停课审批", http_status=403)
+    result = chg_svc.review(change_id, u, action, comment or "")
+    _audit_write("MOBILE_ACADEMIC_SCHEDULE_REVIEW", f"schedule-change:{change_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+# ══════════ 学籍异动待我审批（按节点权限 + list_changes 范围收敛） ══════════
+
+_ST_NODE_PERMS = {
+    "COUNSELOR_REVIEW": "academicAffairs.statusChange.counselorReview",
+    "COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "OUT_COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "COLLEGE_ASSIGN_CLASS": "academicAffairs.statusChange.collegeReview",
+    "IN_COLLEGE_REVIEW": "academicAffairs.statusChange.collegeReview",
+    "AA_OFFICE_FINAL": "academicAffairs.statusChange.officeReview",
+}
+
+def affairs_academic_status_change_pending(user: dict) -> dict:
+    """学籍异动待我审批（SUBMITTED/IN_REVIEW 且 currentNode 命中本人权限）。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        return {"list": [], "total": 0}
+    from app.core.permissions import has_permission
+    from app.modules.academic_affairs.services import academic_affairs_change_service as chg
+    my_nodes = {n for n, p in _ST_NODE_PERMS.items() if has_permission(u, p)}
+    if not my_nodes:
+        return {"list": [], "total": 0, "note": "当前身份无学籍异动审批权限"}
+    # 两次拉（SUBMITTED + IN_REVIEW），再按节点过滤
+    items = []
+    for st in ("SUBMITTED", "IN_REVIEW"):
+        rows, _ = chg.list_changes(u, status=st, page=1, page_size=200)
+        items.extend(rows)
+    out = [it for it in items if (it.get("currentNode") or "").upper() in my_nodes]
+    # 去重
+    seen, uniq = set(), []
+    for it in out:
+        cid = it.get("changeId")
+        if cid in seen:
+            continue
+        seen.add(cid)
+        uniq.append(it)
+    return {"list": uniq, "total": len(uniq)}
+
+def affairs_academic_status_change_review(user: dict, change_id: str, action: str,
+                                          reason: str | None = None) -> dict:
+    """学籍异动审批（APPROVE/REJECT/RETURN）；节点授权在 change.review → _check_node_authority。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
+    from app.modules.academic_affairs.services import academic_affairs_change_service as chg
+    result = chg.review(change_id, u, action, reason or "")
+    _audit_write("MOBILE_ACADEMIC_STATUS_REVIEW", f"status-change:{change_id}",
+                 {"operator": u.get("realName"), "action": action})
+    return result
+
+
+# ══════════ 教务·教学评价（自评/同行/督导 + 我的结果 + 申诉，直接复用
+# academic_affairs_evaluation_service 的 list_my_role_tasks/submit_evaluation/list_results
+# ——均已按 evaluator_key/teacher_key 自校验；submit_appeal PC 端未校验 result 归属，
+# 移动端在此补一道校验，不改 PC） ══════════
+

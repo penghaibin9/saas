@@ -236,3 +236,107 @@ def test_scope_rule_catalog(seeded):
     # 被角色引用时不可作废
     with pytest.raises(AppException):
         system.set_scope_rule_status(int(rule["id"]), {"action": "DISABLE", "reason": "不再使用该范围"}, user=ADMIN)
+
+
+def test_user_detail_update_and_batch_disable(seeded):
+    """账号详情/编辑/批量停用走真库，禁止假成功。"""
+    from app.api.v1 import system
+    from app.services.db_service import session
+    from app.models import User
+    detail = system.get_system_user(2, user=ADMIN)["data"]
+    assert detail["userNo"] == "t2020019" and detail["id"] == "2"
+    updated = system.update_system_user(2, {"name": "李敏改", "phone": "13800138000"}, user=ADMIN)["data"]
+    assert updated["name"] == "李敏改"
+    with session() as db:
+        assert db.get(User, 2).real_name == "李敏改"
+        assert db.get(User, 2).phone_encrypted == "13800138000"
+    batch = system.batch_set_system_user_status(
+        {"action": "DISABLE", "ids": [2], "reason": "批量停用验证用例"}, user=ADMIN)["data"]
+    assert batch["count"] == 1
+    with session() as db:
+        assert db.get(User, 2).status == "DISABLED"
+
+
+def test_permission_tree_and_role_save_merge(seeded):
+    """权限树为真实 permissionCode；保存只替换可见码，页外码保留。"""
+    from app.api.v1 import system
+    from app.services.db_service import session
+    from app.models import Permission, RolePermission
+    from sqlalchemy import select
+    tree_res = system.get_permission_tree(user=ADMIN)["data"]
+    tree = tree_res["tree"]
+    visible = set(tree_res["visibleCodes"])
+    assert tree and any(m.get("key", "").startswith("systemAdmin.") for g in tree for m in g.get("children") or [])
+    outside = "employment.definitely.outside.tree.code"
+    with session() as db:
+        p = db.scalars(select(Permission).where(Permission.permission_code == outside)).first()
+        if p is None:
+            p = Permission(permission_code=outside, permission_name=outside, module_code="employment", action="view")
+            db.add(p); db.flush()
+        db.add(RolePermission(tenant_id=TID, role_id=90, permission_id=p.id, status="ACTIVE", is_deleted=False))
+        db.commit()
+    assert outside not in visible
+    submit = sorted(c for c in visible if c.startswith("systemAdmin.user."))[:3] or sorted(visible)[:3]
+    saved = system.save_system_role_permissions(
+        90, {"permissionCodes": submit, "visiblePermissionCodes": sorted(visible), "scopeCode": "COLLEGE"},
+        user=ADMIN)["data"]
+    codes = set(saved["permissionCodes"])
+    assert outside in codes
+    assert set(submit).issubset(codes)
+
+
+def test_copy_school_admin_expands_star(seeded):
+    """复制 SCHOOL_ADMIN 不得落库字面量 *。"""
+    from app.api.v1 import system
+    from app.services.db_service import session
+    from app.models import Permission, RolePermission
+    from sqlalchemy import select
+    copied = system.copy_system_role(91, user=ADMIN)["data"]
+    role_id = int(copied["id"])
+    with session() as db:
+        codes = set(db.scalars(select(Permission.permission_code).join(
+            RolePermission, RolePermission.permission_id == Permission.id).where(
+            RolePermission.role_id == role_id, RolePermission.status == "ACTIVE")).all())
+    assert "*" not in codes
+    assert codes
+
+
+def test_system_info_requires_auth_and_real_caps(seeded):
+    from app.api.v1 import system
+    info = system.system_info(user=ADMIN)["data"]
+    assert info["capabilities"]["auth"] == "real"
+    assert info["capabilities"]["rbac"] == "real"
+
+
+def test_governance_delegation_and_integration(seeded):
+    from app.api.v1 import system
+    from datetime import datetime, timedelta
+    expires = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    row = system.api_create_delegation({
+        "granteeUserNo": "t2020019", "roleCode": "COUNSELOR",
+        "expiresAt": expires, "reason": "临时顶岗一周"
+    }, user=ADMIN)["data"]
+    assert row["status"] == "ACTIVE"
+    listed = system.api_list_delegations(user=ADMIN)["data"]["list"]
+    assert any(x["id"] == row["id"] for x in listed)
+    system.api_revoke_delegation(row["id"], {"reason": "提前结束顶岗"}, user=ADMIN)
+    integ = system.api_save_integration({
+        "name": "教务同步", "endpoint": "https://example.edu/api", "credential": "secret-token-01"
+    }, user=ADMIN)["data"]
+    assert integ["hasCredential"] is True
+    job = system.api_enqueue_sync_job({"name": "全量同步", "integrationId": integ["id"], "forceFail": True},
+                                     user=ADMIN)["data"]
+    assert job["status"] == "FAILED"
+    retried = system.api_retry_sync_job(job["id"], user=ADMIN)["data"]
+    assert retried["status"] == "SUCCESS"
+
+
+def test_account_exceptions_and_scope_users(seeded):
+    from app.api.v1 import system
+    system.set_system_user_status(2, {"action": "DISABLE", "reason": "异常中心验证用例"}, user=ADMIN)
+    exc = system.list_account_exceptions(user=ADMIN)["data"]
+    assert exc["total"] >= 1
+    assert any(r["userNo"] == "t2020019" for r in exc["list"])
+    rule = system.save_scope_rule({"name": "影响用户规则", "scopeCode": "COLLEGE", "remark": "x"}, user=ADMIN)["data"]
+    users = system.list_scope_affected_users(int(rule["id"]), user=ADMIN)["data"]
+    assert isinstance(users, list)

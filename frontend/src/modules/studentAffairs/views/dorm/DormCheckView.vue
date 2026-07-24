@@ -7,7 +7,7 @@
     watermark-purpose="宿舍检查登记"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.dorm.inspection.manage" :loading="actioning" @click="createTask">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" :loading="actioning" @click="createTask">
         新建检查任务
       </AppPermissionButton>
     </template>
@@ -28,8 +28,8 @@
           <template #cell-status="{ row }">{{ row.status }}</template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
-              <AppPermissionButton code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openTask(row)">记录</AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="addRecord(row)">录结果</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openTask(row)">记录</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="addRecord(row)">录结果</AppPermissionButton>
             </div>
           </template>
         </DataTable>
@@ -117,6 +117,8 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const TASK_COLUMNS = [
   { key: 'name', title: '任务' },
@@ -147,6 +149,7 @@ const CHECK_RESULTS = [
 
 export default {
   name: 'DormCheckView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
     AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea, DataTable
@@ -179,6 +182,7 @@ export default {
   },
   mounted() { this.load(); this.loadBuildings() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       try { this.tasks = (await studentAffairsApi.listDormCheckTasks({ pageSize: 100 })).data.items || [] }

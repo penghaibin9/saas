@@ -4,10 +4,17 @@ import * as real from './realApi'
 import * as M from '@/mock'
 
 export const teacherApi = {
+  /** 与 PC 同源：/todos/summary + teacher-mobile todos；生产不得回落 mock 假工作台 */
   getWorkbench: (roleKey) =>
     realFirstStrict('teacher.workbench',
       () => real.enrichTeacherWorkbench(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor),
-      () => mockRequest(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor)),
+      () => {
+        // 仅非生产、且真实接口不可达时才允许骨架；PROD 下 ENV.useMock 已强制 false
+        if (import.meta.env && import.meta.env.PROD) {
+          return Promise.reject(new Error('生产环境教师工作台不可回落演示数据'))
+        }
+        return mockRequest(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor)
+      }),
   // 待办：mobile 范围接口（替代 PC /todos）
   getTodos: () =>
     realFirst('teacher.todos',
@@ -63,9 +70,9 @@ export const teacherApi = {
   setNotifyPreference: (key, enabled) => real.teacherNotifySetPreference(key, enabled),
   publishNotice: (body) => real.teacherNotifyPublish(body),
   getDashboard: () => real.teacherDashboard(),
-  // 实习批阅：mobile 范围真实数据
+  // 实习批阅：仅真实接口，禁止网络失败回落 mock 假周报
   getWeeklyReports: () =>
-    realFirst('teacher.internship',
+    realFirstStrict('teacher.internship',
       () => real.teacherInternshipReal({ reports: M.weeklyReports, abnormal: M.abnormalCheckins }),
       () => mockRequest({ reports: M.weeklyReports, abnormal: M.abnormalCheckins })),
   // 单份周报正文（列表只回摘要，正文按需拉取，范围安全）；业务错误透出，不 mock 兜底
@@ -206,6 +213,22 @@ export const teacherApi = {
   proxyCancelAffairsLeave: (leaveId, actualReturnAt, note) => real.teacherAffairsLeaveProxyCancel(leaveId, actualReturnAt, note),
   overdueHandleAffairsLeave: (leaveId, handleType, note) => real.teacherAffairsLeaveOverdueHandle(leaveId, handleType, note),
   extensionApproveAffairsLeave: (leaveId, action, reason) => real.teacherAffairsLeaveExtensionApprove(leaveId, action, reason),
+  getAffairsAidPending: () => real.teacherAffairsAidPending(),
+  getAffairsAidDetail: (applyId) => real.teacherAffairsAidDetail(applyId),
+  reviewAffairsAid: (applyId, body) => real.teacherAffairsAidReview(applyId, body),
+  getAffairsFundingPending: () => real.teacherAffairsFundingPending(),
+  getAffairsFundingDetail: (appId) => real.teacherAffairsFundingDetail(appId),
+  reviewAffairsFunding: (appId, body) => real.teacherAffairsFundingReview(appId, body),
+  getAffairsDisciplinePending: () => real.teacherAffairsDisciplinePending(),
+  getAffairsDisciplineDetail: (caseId) => real.teacherAffairsDisciplineDetail(caseId),
+  reviewAffairsDiscipline: (caseId, body) => real.teacherAffairsDisciplineReview(caseId, body),
+  getAffairsRiskPending: () => real.teacherAffairsRiskPending(),
+  getAffairsRiskDetail: (riskId) => real.teacherAffairsRiskDetail(riskId),
+  processAffairsRisk: (riskId, content) => real.teacherAffairsRiskProcess(riskId, content),
+  closeAffairsRisk: (riskId, conclusion) => real.teacherAffairsRiskClose(riskId, conclusion),
+  getAffairsDormPending: () => real.teacherAffairsDormPending(),
+  reviewAffairsDormTransfer: (transferId, body) => real.teacherAffairsDormTransferReview(transferId, body),
+  handleAffairsDormException: (exceptionId, note) => real.teacherAffairsDormExceptionHandle(exceptionId, note),
   // 班干部任命/免去：我的班级 + 班级学生名单 + 班干部名单 + 任命 + 免去（owner+范围校验，真实接口，无 mock 兜底）
   getAffairsMyClasses: () => real.teacherAffairsMyClasses(),
   getAffairsClassStudents: (classId) => real.teacherAffairsClassStudents(classId),
@@ -229,6 +252,10 @@ export const teacherApi = {
   // 缓考审批（辅导员初审+任课教师确认两节点身份共用，按当前身份自动收敛为对应节点队列，真实接口，无 mock 兜底）
   getAcademicDeferPending: () => real.teacherAcademicDeferPending(),
   reviewAcademicDefer: (deferId, action, reason) => real.teacherAcademicDeferReview(deferId, action, reason),
+  getScheduleChangePending: () => real.teacherAcademicScheduleChangePending(),
+  reviewScheduleChange: (changeId, action, comment) => real.teacherAcademicScheduleChangeReview(changeId, action, comment),
+  getStatusChangePending: () => real.teacherAcademicStatusChangePending(),
+  reviewStatusChange: (changeId, action, reason) => real.teacherAcademicStatusChangeReview(changeId, action, reason),
   // 教学评价（自评/同行/督导 + 我的结果(跨批次聚合) + 申诉(移动端补归属校验)，真实接口，无 mock 兜底）
   getAcademicEvaluationBatches: () => real.teacherAcademicEvaluationBatches(),
   getAcademicEvaluationMyTasks: (evaluatorType, batchId) => real.teacherAcademicEvaluationMyTasks(evaluatorType, batchId),
@@ -242,6 +269,7 @@ export const teacherApi = {
   submitGradeTask: (taskId) => real.teacherGradeSubmitTask(taskId),
   // 教务·课堂考勤（真实接口，移动端首创）
   getAttendanceSessions: () => real.teacherAttendanceSessions(),
+  getAttendanceClassOptions: () => real.teacherAttendanceClassOptions(),
   createAttendanceSession: (body) => real.teacherAttendanceCreate(body),
   getAttendanceDetail: (sessionId) => real.teacherAttendanceDetail(sessionId),
   markAttendance: (sessionId, studentId, status) => real.teacherAttendanceMark(sessionId, studentId, status),

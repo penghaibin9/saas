@@ -93,11 +93,12 @@ import { TYPE_LABEL, TYPE_PATH_SEGMENT } from '@/modules/academicAffairs/constan
 import { toast } from '@/utils/toast'
 
 const TYPE_HINT = {
-  SUSPEND: '仅在籍学生可休学；到期日按规则中心最长年限自动计算。',
+  SUSPEND: '仅在籍学生可休学；到期日按规则中心最长年限自动计算。休学≠保留学籍。',
+  PRESERVE: '保留学籍：人离校、学籍保留（如应征入伍/联合培养），复学走 RESUME。',
   WITHDRAW: '退学为终态，终审生效后不可再发起其它异动。',
-  RESUME: '仅休学中的学生可复学；休学超最长年限不可复学。',
-  RETAIN: '留级（保留学籍）：仅在籍学生可发起，按学业成绩条件命中的留级认定处理。',
-  TRANSFER_MAJOR: '转专业：需填目标院系，终审生效后同步迁移主档院系班。',
+  RESUME: '仅休学中或保留学籍中的学生可复学；休学超最长年限不可复学。',
+  RETAIN: '留级：降级继续修读，与「保留学籍」不是同一业务。',
+  TRANSFER_MAJOR: '转专业：必须选择目标专业，终审生效后同步迁移主档院系班。',
   TRANSFER_CLASS: '转班：仅限同专业换班，学院/专业不变；终审生效后同步迁移主档班级。'
 }
 
@@ -225,6 +226,10 @@ export default {
       if (this.submitting || !this.form.studentId) return
       if (this.form.changeType === 'TRANSFER_CLASS' && !this.form.toClassId) {
         toast.error('请先选择转班目标班级')
+        return
+      }
+      if (this.form.changeType === 'TRANSFER_MAJOR' && !this.form.toMajorId) {
+        toast.error('请先选择转专业目标专业')
         return
       }
       this.submitting = true

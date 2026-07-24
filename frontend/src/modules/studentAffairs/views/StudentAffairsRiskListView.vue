@@ -7,10 +7,10 @@
     watermark-purpose="学工风险预警查看"
   >
     <template #actions>
-      <AppPermissionButton code="studentAffairs.risk.handle" variant="secondary" :loading="actioning" @click="scanTimeout">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.handle')" code="studentAffairs.risk.handle" variant="secondary" :loading="actioning" @click="scanTimeout">
         扫描超时
       </AppPermissionButton>
-      <AppPermissionButton code="studentAffairs.risk.create" :loading="actioning" @click="createRisk">
+      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.create')" code="studentAffairs.risk.create" :loading="actioning" @click="createRisk">
         新建风险
       </AppPermissionButton>
     </template>
@@ -58,13 +58,13 @@
           </template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
-              <AppPermissionButton code="studentAffairs.risk.view" size="sm" variant="secondary" @click="$router.push(`/admin/student-affairs/risk/${row.riskId}`)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" size="sm" variant="secondary" @click="$router.push(`/admin/student-affairs/risk/${row.riskId}`)">
                 详情
               </AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.risk.assign" size="sm" variant="secondary" :loading="actioning" @click="assign(row)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.assign')" code="studentAffairs.risk.assign" size="sm" variant="secondary" :loading="actioning" @click="assign(row)">
                 分派
               </AppPermissionButton>
-              <AppPermissionButton code="studentAffairs.risk.handle" size="sm" :loading="actioning" @click="process(row)">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.handle')" code="studentAffairs.risk.handle" size="sm" :loading="actioning" @click="process(row)">
                 处置
               </AppPermissionButton>
             </div>
@@ -140,6 +140,8 @@ import {
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const RISK_COLUMNS = [
   { key: 'student', title: '学生', width: '160px' },
@@ -184,6 +186,7 @@ const STATUS_FILTER_OPTIONS = [
 
 export default {
   name: 'StudentAffairsRiskListView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppButton,
     AppConfirmDialog,
@@ -265,6 +268,7 @@ export default {
     this.load()
   },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true
       this.errorMessage = ''

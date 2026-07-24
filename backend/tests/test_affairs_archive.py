@@ -50,6 +50,8 @@ def test_v1_archive_full_flow(client, db_mode):
     from app.models import ExportTask
     db = get_sessionmaker()()
     assert db.query(ExportTask).filter_by(module_code="affairs_archive").count() == 1
+    task = db.query(ExportTask).filter_by(module_code="affairs_archive").one()
+    assert task.status == "PENDING", "占位导出任务不得冒充 SUCCESS"
     db.close()
 
 

@@ -21,7 +21,7 @@
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'HANDLED' ? 'success' : 'warning'" :label="row.status === 'HANDLED' ? '已处置' : '待处置'" /></template>
           <template #cell-createdAt="{ row }">{{ (row.createdAt || '').slice(0, 16) }}</template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="row.status !== 'HANDLED'" code="studentAffairs.dorm.exception.handle" size="sm" :loading="actioning" @click="handle(row)">处置</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.exception.handle')" v-if="row.status !== 'HANDLED'" code="studentAffairs.dorm.exception.handle" size="sm" :loading="actioning" @click="handle(row)">处置</AppPermissionButton>
             <span v-else class="sa-muted">已闭环</span>
           </template>
         </DataTable>
@@ -47,6 +47,8 @@ import {
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
 
 const EXCEPTION_COLUMNS = [
   { key: 'type', title: '类型' },
@@ -63,6 +65,7 @@ const STATUS_OPTIONS = [
 
 export default {
   name: 'DormExceptionView',
+  props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
     AppSelect, AppStatusTag, DataTable
@@ -89,6 +92,7 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
       try { this.items = (await studentAffairsApi.listDormExceptions({ status: this.filterStatus, pageSize: 100 })).data.items || [] }

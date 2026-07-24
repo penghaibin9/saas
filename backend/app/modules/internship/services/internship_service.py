@@ -63,17 +63,24 @@ def notify_counselor_for_student(db, student, title: str, content: str,
     解析路径：student.class_id → t_class.counselor_id（辅导员 user_id）。班级未配置
     辅导员或学生无班级时静默跳过（返回 False，不伪造）。用于指导转风险 / 请假等提醒。
     """
-    from app.models import SchoolClass, UnifiedMessage
+    from app.models import SchoolClass
+    from app.services.message_event_outbox_service import emit_receiver_notice
     if not student or not getattr(student, "class_id", None):
         return False
     cls = db.get(SchoolClass, student.class_id)
     if not cls or not getattr(cls, "counselor_id", None):
         return False
-    db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=int(cls.counselor_id),
-                          source_module="internship",
-                          source_biz_id=int(source_biz_id) if source_biz_id else None,
-                          title=title[:500], content=(content or "")[:2000],
-                          message_type=message_type, status="UNREAD"))
+    emit_receiver_notice(
+        db,
+        event_code="INTERNSHIP.COUNSELOR_NOTICE",
+        source_module="internship",
+        source_biz_type="internship",
+        source_biz_id=int(source_biz_id) if source_biz_id else 0,
+        receiver_id=int(cls.counselor_id),
+        title=title[:500],
+        content=(content or "")[:2000],
+        receiver_as="user",
+    )
     return True
 
 
@@ -541,6 +548,8 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
             if rec:
                 rec.risk_level = "HIGH"
         _trail(db, c.id, "EXCEPTION", f"HANDLE_{action}", {"comment": comment.strip()})
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=c.id, todo_type=ix_todo.TODO_EXCEPTION)
         db.commit()
         return {"id": str(c.id), "status": "COMPLETED",
                 "statusLabel": {"REASONABLE": "已标记合理", "ABNORMAL": "已记为异常",
@@ -681,6 +690,8 @@ def review_weekly_report(report_id, action: str, comment: str, user=None) -> dic
             # BUG-014：退回即冻结本版正文快照，学生重交后教师仍可逐版对比（版本记录数据源）
             detail["snapshot"] = _report_snapshot(w)
         _trail(db, w.id, "REPORT", f"REVIEW_{action}", detail)
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=w.id, todo_type=ix_todo.TODO_WEEKLY)
         db.commit()
         return {"id": str(w.id), "status": w.status,
                 "statusLabel": REPORT_STATUS_LABEL.get(w.status, w.status)}
@@ -711,14 +722,23 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
             InternshipAuditTrail.occurred_at >= datetime.utcnow() - timedelta(minutes=5))).first()
         if recent:
             raise AppException("DATA_CONFLICT", "5 分钟内已提醒，请勿重复操作")
-        db.add(UnifiedMessage(
-            tenant_id=_tid(), receiver_id=account.id, source_module="internship",
-            source_biz_id=w.id, title=f"第 {w.week_number} 周实习周报提醒",
+        from app.services.message_event_outbox_service import emit_receiver_notice
+        emit_receiver_notice(
+            db,
+            event_code="INTERNSHIP.WEEKLY_REMIND",
+            source_module="internship",
+            source_biz_type="weekly_report",
+            source_biz_id=w.id,
+            receiver_id=account.id,
+            title=f"第 {w.week_number} 周实习周报提醒",
             content=f"请及时查看并完成第 {w.week_number} 周实习周报。",
-            message_type="INTERNSHIP_WEEKLY_REMIND", status="UNREAD"))
+            receiver_as="user",
+        )
         _trail(db, w.id, "REPORT", "REMIND", {"channel": channel or "站内消息",
                                                 "receiverId": str(account.id)})
         db.commit()
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(worker_id="internship-inline")
         return {"id": str(w.id), "reminded": True, "channel": channel or "站内消息"}
 
 

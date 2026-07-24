@@ -185,9 +185,19 @@ export default {
     }
   },
   created() {
+    this.syncTabFromRoute()
     this.load()
   },
+  watch: {
+    '$route.query.tab'() {
+      this.syncTabFromRoute()
+    }
+  },
   methods: {
+    syncTabFromRoute() {
+      const tab = String(this.$route.query.tab || '')
+      if (tab === 'brand' || tab === 'system') this.tab = tab
+    },
     can(key) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed)

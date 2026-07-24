@@ -10,7 +10,9 @@
         </view>
 
         <view class="card stack-sm" v-if="showForm">
-          <input class="at__input" type="number" v-model="form.classId" placeholder="行政班 ID（必填）" placeholder-class="at__ph" />
+          <picker mode="selector" :range="classLabels" :value="classIndex" @change="onClassPick">
+            <view class="at__input at__date">{{ classLabels[classIndex] || '选择行政班（必填）' }}</view>
+          </picker>
           <input class="at__input" v-model="form.courseName" placeholder="课程名称" placeholder-class="at__ph" />
           <input class="at__input" v-model="form.termCode" placeholder="学期（选填）" placeholder-class="at__ph" />
           <picker mode="date" :value="form.sessionDate" @change="onDateChange">
@@ -23,6 +25,7 @@
           <button class="btn btn-primary" :disabled="!form.classId || !form.sessionDate || creating" @click="createSession">
             {{ creating ? '创建中…' : '按行政班圈定名单并新建' }}
           </button>
+          <text v-if="!classOptions.length" class="at__sub">暂无可选班级：请确认已绑定教学任务或辅导员/班主任班级。</text>
         </view>
 
         <MobileGlobalState v-if="!sessions.length" state="empty" title="暂无考勤场次" description="点击右上角新建场次。" />
@@ -87,14 +90,34 @@ export default {
     return {
       sessions: [], loaded: false, state: 'loading', showForm: false, creating: false,
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
+      classOptions: [], classIndex: 0,
       form: { classId: '', courseName: '', termCode: '', sessionDate: '', slotNo: '', sessionType: '' },
       active: null, items: [], submitting: false, STATUS_OPTS
     }
   },
-  onLoad() { this.load() },
+  computed: {
+    classLabels() {
+      return (this.classOptions || []).map((c) => `${c.className || '未命名班'}${c.grade ? ' · ' + c.grade : ''}`)
+    }
+  },
+  onLoad() { this.load(); this.loadClasses() },
   methods: {
     onDateChange(e) { this.form.sessionDate = e.detail.value },
     onTypeChange(e) { this.form.sessionType = this.sessionTypes[Number(e.detail.value)] || '' },
+    onClassPick(e) {
+      this.classIndex = Number(e.detail.value)
+      const c = this.classOptions[this.classIndex]
+      this.form.classId = c ? c.classId : ''
+    },
+    loadClasses() {
+      teacherApi.getAttendanceClassOptions().then((d) => {
+        this.classOptions = (d && d.items) || []
+        if (this.classOptions.length) {
+          this.classIndex = 0
+          this.form.classId = this.classOptions[0].classId
+        }
+      }).catch(() => { this.classOptions = [] })
+    },
     load() {
       this.state = 'loading'
       teacherApi.getAttendanceSessions().then((d) => {
@@ -114,7 +137,8 @@ export default {
       }).then(() => {
         uni.showToast({ title: '考勤场次已创建', icon: 'success' })
         this.showForm = false
-        this.form = { classId: '', courseName: '', termCode: '', sessionDate: '', slotNo: '', sessionType: '' }
+        this.form = { classId: this.classOptions[0] ? this.classOptions[0].classId : '', courseName: '', termCode: '', sessionDate: '', slotNo: '', sessionType: '' }
+        this.classIndex = 0
         this.load()
       }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '创建失败，请稍后重试'))
         .finally(() => { this.creating = false })

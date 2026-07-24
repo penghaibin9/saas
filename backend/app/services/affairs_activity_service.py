@@ -558,6 +558,17 @@ def list_volunteer(user, status=None, page=1, page_size=50):
         return out[start:start + page_size], total
 
 
+def _vol_scope_or_403(db, student_id, user):
+    from app.models import StudentProfile
+    from app.services.affairs_dashboard_service import _allowed_class_ids
+    allowed, _ = _allowed_class_ids(db, user)
+    if allowed is None:
+        return
+    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    if not s or s.class_id not in allowed:
+        raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
+
+
 def create_volunteer(body, user) -> dict:
     """补录一条志愿时长（PENDING）。"""
     from app.models import AffairsVolunteerRecord, StudentProfile
@@ -572,6 +583,7 @@ def create_volunteer(body, user) -> dict:
         s = db.get(StudentProfile, sid) if sid else None
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
+        _vol_scope_or_403(db, sid, user)
         r = AffairsVolunteerRecord(tenant_id=_tid(), student_id=sid, service_name=name,
                                    org_name=getattr(body, "orgName", None), hours=hours,
                                    service_date=_parse(getattr(body, "serviceDate", None)),
@@ -590,6 +602,7 @@ def confirm_volunteer(record_id, user) -> dict:
         r = db.get(AffairsVolunteerRecord, int(record_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("志愿记录不存在")
+        _vol_scope_or_403(db, r.student_id, user)
         if r.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待认定记录可认定")
         credit = AffairsActivityCredit(tenant_id=_tid(), student_id=r.student_id, activity_id=r.activity_id,
@@ -617,6 +630,7 @@ def reject_volunteer(record_id, user, reason="") -> dict:
         r = db.get(AffairsVolunteerRecord, int(record_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("志愿记录不存在")
+        _vol_scope_or_403(db, r.student_id, user)
         if r.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待认定记录可驳回")
         r.status, r.reject_reason, r.version = "REJECTED", reason.strip(), r.version + 1

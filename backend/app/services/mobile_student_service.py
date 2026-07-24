@@ -229,7 +229,8 @@ def _empty_messages():
             "tabs": [{"key": "todo", "label": "待办", "badge": 0},
                      {"key": "notice", "label": "通知", "badge": 0},
                      {"key": "progress", "label": "服务进度", "badge": 0}],
-            "groups": {"todo": [], "notice": [], "progress": []}, "list": []}
+            "groups": {"todo": [], "notice": [], "progress": []}, "list": [],
+            "emergencyPending": []}
 
 
 def my_messages(user: dict) -> dict:
@@ -246,40 +247,73 @@ def my_messages(user: dict) -> dict:
                                 CsWorkOrder, UnifiedMessage, UnifiedTodo)
         sid, name = stu.id, stu.real_name
         todo_msgs, notice_msgs, progress_msgs = [], [], []
+        emergency_pending = []
         # 待办 → 本人 todo
         todos = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == _tid(), UnifiedTodo.is_deleted.is_(False),
             UnifiedTodo.student_id == sid).order_by(UnifiedTodo.id.desc()).limit(30)).all()
         for t in todos:
-            todo_msgs.append({"id": "todo-" + str(t.id), "title": t.title,
+            todo_msgs.append({"id": "todo-" + str(t.id),
+                              "messageId": None,
+                              "kind": "TODO_AGG",
+                              "title": t.title,
                               "module": t.source_module or "待办",
                               "level": "high" if (t.status or "") == "PENDING" else "normal",
                               "time": _iso(getattr(t, "created_at", None)),
                               "deadline": _iso(getattr(t, "due_at", None)),
                               "read": (t.status or "") != "PENDING",
                               "status": t.status, "link": t.source_module or ""})
-        # 通知 → 本人接收的统一消息。全仓库业务写入点一律 receiver_id=StudentProfile.id
-        # （sid），非 user_id；sid/uid 双兼容，避免真实登录学生因 user_id 对不上而永久
-        # 看不到请假/资助/预警等审批结果通知（分角色测试发现，详见 me_overview 同款注释）。
+        # 通知 → 本人接收的统一消息。双键：学籍 id（旧写入）+ user_id（消息中心新写入）。
         uid = _resolve_uid(u)
         personal_ids = [x for x in (sid, uid) if x is not None]
         if personal_ids:
+            vis = [UnifiedMessage.receiver_id.in_(personal_ids)]
+            if uid is not None:
+                vis.append(UnifiedMessage.receiver_user_id == uid)
             notices = db.scalars(select(UnifiedMessage).where(
                 UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-                UnifiedMessage.receiver_id.in_(personal_ids)).order_by(UnifiedMessage.id.desc()).limit(30)).all()
+                or_(*vis)).order_by(UnifiedMessage.id.desc()).limit(40)).all()
             for m in notices:
-                notice_msgs.append({"id": "msg-" + str(m.id), "title": m.title,
-                                    "content": m.content or "", "module": m.source_module or "通知",
-                                    "level": "normal", "time": _iso(m.created_at), "deadline": None,
-                                    "read": (m.status or "") == "READ",
-                                    "status": m.status, "link": m.source_module or ""})
-        # 服务进度 → 本人请假/工单状态流转
+                pri = (getattr(m, "priority", None) or "").upper()
+                cat = (getattr(m, "category", None) or m.message_type or "").upper()
+                emergency = pri == "EMERGENCY" or cat == "EMERGENCY"
+                need_ack = bool(getattr(m, "require_ack", False))
+                acked = bool(getattr(m, "ack_at", None))
+                withdrawn = bool(getattr(m, "withdrawn_at", None))
+                level = "high" if emergency or pri == "IMPORTANT" else "normal"
+                notice_msgs.append({
+                    "id": str(m.id),
+                    "messageId": str(m.id),
+                    "title": m.title,
+                    "content": (getattr(m, "rendered_content_plain", None) or m.content or ""),
+                    "module": m.source_module or "通知",
+                    "level": level,
+                    "time": _iso(m.created_at),
+                    "deadline": _iso(getattr(m, "expire_at", None)),
+                    "read": (m.status or "") == "READ",
+                    "status": m.status,
+                    "link": m.source_module or "",
+                    "emergency": emergency,
+                    "receipt": need_ack and not acked and not withdrawn,
+                    "requireAck": need_ack,
+                    "acked": acked,
+                    "withdrawn": withdrawn,
+                    "kind": "UNIFIED_MESSAGE",
+                })
+        # 紧急待确认（供首页弹层）
+        emergency_pending = [
+            x for x in notice_msgs
+            if x.get("emergency") and x.get("receipt") and not x.get("withdrawn")
+        ]
+        # 服务进度 → 本人请假/工单状态流转（非统一 messageId，显式 kind）
         cs = _resolve_domain_student(db, CsServiceStudent, stu)
         if cs:
             for lv in db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
                                  CsLeave.cs_student_id == cs.id, CsLeave.is_deleted.is_(False)
                                  ).order_by(CsLeave.id.desc()).limit(10)).all():
                 progress_msgs.append({"id": "leave-" + str(lv.id),
+                                      "messageId": None,
+                                      "kind": "PROGRESS_AGG",
                                       "title": f"你的请假申请当前状态：{lv.status}",
                                       "module": "服务进度", "level": "normal",
                                       "time": _iso(getattr(lv, "apply_time", None)), "deadline": None,
@@ -303,8 +337,14 @@ def my_messages(user: dict) -> dict:
                  "badge": sum(1 for x in groups[k] if not x.get("read"))}
                 for k, lb in (("todo", "待办"), ("notice", "通知"), ("progress", "服务进度"))]
         flat = groups["todo"] + groups["notice"] + groups["progress"]
-        return {"hasData": bool(flat), "unreadCount": unread, "tabs": tabs,
-                "groups": groups, "list": flat}
+        return {
+            "hasData": bool(flat),
+            "unreadCount": unread,
+            "tabs": tabs,
+            "groups": groups,
+            "list": flat,
+            "emergencyPending": emergency_pending if "notice" in on else [],
+        }
 
 
 def _resolve_uid(u: dict):
@@ -317,6 +357,59 @@ def _resolve_uid(u: dict):
         return int(v)
     except (TypeError, ValueError):
         return None
+
+
+def message_get(user: dict, message_id) -> dict:
+    """按 messageId 拉取本人统一消息详情（杀进程后仍可打开）。"""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持")
+    try:
+        mid = int(str(message_id).replace("msg-", ""))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "消息 id 无效")
+    with _session() as db:
+        stu = resolve_student(db, u)
+        if not stu:
+            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
+        uid = _resolve_uid(u)
+        personal_ids = {x for x in (stu.id, uid) if x is not None}
+        from app.models import UnifiedMessage
+        m = db.get(UnifiedMessage, mid)
+        if m is None or m.is_deleted or m.tenant_id != _tid():
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        owned = (m.receiver_id in personal_ids) or (
+            uid is not None and getattr(m, "receiver_user_id", None) == uid)
+        if not owned:
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        pri = (getattr(m, "priority", None) or "").upper()
+        cat = (getattr(m, "category", None) or m.message_type or "").upper()
+        emergency = pri == "EMERGENCY" or cat == "EMERGENCY"
+        need_ack = bool(getattr(m, "require_ack", False))
+        acked = bool(getattr(m, "ack_at", None))
+        withdrawn = bool(getattr(m, "withdrawn_at", None))
+        return {
+            "id": str(m.id),
+            "messageId": str(m.id),
+            "kind": "UNIFIED_MESSAGE",
+            "title": m.title,
+            "content": (getattr(m, "rendered_content_plain", None) or m.content or ""),
+            "module": m.source_module or "通知",
+            "level": "high" if emergency or pri == "IMPORTANT" else "normal",
+            "time": _iso(m.created_at),
+            "deadline": _iso(getattr(m, "expire_at", None)),
+            "read": (m.status or "") == "READ",
+            "status": m.status,
+            "link": m.source_module or "",
+            "emergency": emergency,
+            "receipt": need_ack and not acked and not withdrawn,
+            "requireAck": need_ack,
+            "acked": acked,
+            "withdrawn": withdrawn,
+            "actionKey": getattr(m, "action_key", None),
+            "actionParams": getattr(m, "action_params_json", None),
+            "contentVersion": int(getattr(m, "content_version", 1) or 1),
+        }
 
 
 def message_mark_read(user: dict, message_id) -> dict:
@@ -338,7 +431,11 @@ def message_mark_read(user: dict, message_id) -> dict:
 
         from app.models import UnifiedMessage
         m = db.get(UnifiedMessage, mid)
-        if m is None or m.is_deleted or m.tenant_id != _tid() or m.receiver_id not in personal_ids:
+        if m is None or m.is_deleted or m.tenant_id != _tid():
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        owned = (m.receiver_id in personal_ids) or (
+            uid is not None and getattr(m, "receiver_user_id", None) == uid)
+        if not owned:
             raise AppException("DATA_NOT_FOUND", "消息不存在")
         if (m.status or "") != "READ":
             m.status = "READ"
@@ -347,6 +444,52 @@ def message_mark_read(user: dict, message_id) -> dict:
             db.commit()
             invalidate_home_cache(u)
         return {"messageId": str(m.id), "status": "READ"}
+
+
+def message_ack(user: dict, message_id) -> dict:
+    """学生确认回执；已读 ≠ 确认。"""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持")
+    try:
+        mid = int(str(message_id).replace("msg-", ""))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "消息 id 无效")
+    with _session() as db:
+        stu = resolve_student(db, u)
+        if not stu:
+            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
+        uid = _resolve_uid(u)
+        personal_ids = {x for x in (stu.id, uid) if x is not None}
+        from datetime import datetime as _dt
+
+        from app.models import UnifiedMessage
+        m = db.get(UnifiedMessage, mid)
+        if m is None or m.is_deleted or m.tenant_id != _tid():
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        owned = (m.receiver_id in personal_ids) or (
+            uid is not None and getattr(m, "receiver_user_id", None) == uid)
+        if not owned:
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        if getattr(m, "withdrawn_at", None):
+            raise AppException("DATA_CONFLICT", "消息已撤回，无法确认")
+        if not bool(getattr(m, "require_ack", False)):
+            raise AppException("VALIDATION_ERROR", "该消息无需确认回执")
+        now = _dt.utcnow()
+        if not m.ack_at:
+            m.ack_at = now
+            if (m.status or "") != "READ":
+                m.status = "READ"
+                m.read_at = now
+            m.version = int(m.version or 0) + 1
+            db.commit()
+            invalidate_home_cache(u)
+        return {
+            "messageId": str(m.id),
+            "acked": True,
+            "ackAt": _iso(m.ack_at),
+            "status": m.status,
+        }
 
 
 # ─────────── 六大域·我的 ───────────
@@ -1551,15 +1694,20 @@ def internship_checkin(user: dict, body: dict) -> dict:
                                 device_risk_flag=risk_flag, distance_m=distance_m,
                                 evidence_file_id=evidence_file_id, idempotency_key=key)
         db.add(row)
+        exc_row = None
         if exception_type:
-            db.add(AttendanceException(
+            exc_row = AttendanceException(
                 tenant_id=_tid(), internship_id=rec.id, exception_type=exception_type,
                 exception_date=_dt.utcnow(), distance_km=(distance_m / 1000 if distance_m is not None else None),
                 gps_accuracy=accuracy, device_risk_flag=risk_flag, address=row.address,
-                student_note=row.note, status="PENDING_HANDLE"))
+                student_note=row.note, status="PENDING_HANDLE")
+            db.add(exc_row)
         try:
             db.flush()
             rid = row.id
+            if exc_row is not None:
+                from app.modules.internship.services import internship_todo_helper as ix_todo
+                ix_todo.push_exception_todo(db, exc_row, rec)
             db.commit()
         except Exception as exc:
             db.rollback()
@@ -1670,6 +1818,8 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
             dup.reviewed_by_name = None
             dup.reviewed_at = None
             wid, status = dup.id, dup.status
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.push_weekly_todo(db, dup, rec)
             db.commit()
             audit_log.record("MOBILE_WEEKLY_RESUBMIT", f"internship:week{week_no}",
                              {"studentNo": u.get("studentNo"), "weekNo": week_no,
@@ -1685,6 +1835,8 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
         try:
             db.flush()
             wid, status = w.id, w.status
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.push_weekly_todo(db, w, rec)
             db.commit()
         except Exception as exc:  # 并发重复提交：唯一约束兜底 → 409（绝不 500）
             db.rollback()

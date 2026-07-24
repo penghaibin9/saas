@@ -513,8 +513,9 @@ def _check_arrangement_complete(db, batch_id):
 
 
 def _notify_publish(db, batch, courses):
-    """发布通知：给考生(座位记录学生)+监考教师各落一条 UnifiedMessage。"""
-    from app.models import AaExamInvigilator, AaExamRoom, AaExamRoomStudent, UnifiedMessage
+    """发布通知：给考生(座位记录学生)写 outbox，由异步消费生成 UnifiedMessage。"""
+    from app.models import AaExamRoom, AaExamRoomStudent
+    from app.services.message_event_outbox_service import emit_message_event
     sent = 0
     for c in courses:
         rooms = db.query(AaExamRoom.id).filter(AaExamRoom.exam_course_id == c.id, AaExamRoom.tenant_id == _tid()).all()
@@ -523,10 +524,20 @@ def _notify_publish(db, batch, courses):
             continue
         for s in db.query(AaExamRoomStudent).filter(AaExamRoomStudent.exam_room_id.in_(rids),
                                                     AaExamRoomStudent.tenant_id == _tid()).all():
-            db.add(UnifiedMessage(tenant_id=_tid(), receiver_id=s.student_id, source_module="academic_affairs",
-                                  source_biz_id=c.id, title=f"考试通知：{c.course_name}",
-                                  content=f"{c.exam_date or ''} {c.start_time or ''} 座位 {s.seat_no} 准考证 {s.admission_no}",
-                                  message_type="EXAM_NOTICE", status="UNREAD"))
+            sid = int(s.student_id or 0)
+            if sid <= 0:
+                continue
+            emit_message_event(
+                db,
+                event_code="EXAM.ARRANGED",
+                source_module="academic-affairs",
+                source_biz_type="exam_course",
+                source_biz_id=int(c.id),
+                recipient_refs=[{"studentId": sid}],
+                title=f"考试通知：{c.course_name}",
+                content=f"{c.exam_date or ''} {c.start_time or ''} 座位 {s.seat_no} 准考证 {s.admission_no}",
+                dedup_key=f"EXAM.ARRANGED:{c.id}:student:{sid}",
+            )
             sent += 1
     return sent
 
@@ -548,6 +559,11 @@ def publish_batch(user, bid):
         sent = _notify_publish(db, b, courses)
         _audit(db, "EXAM_BATCH", b.id, "EXAM_BATCH_PUBLISH", f"发布，推送 {sent} 条考试通知")
         db.commit()
+        try:
+            from app.services.message_event_outbox_service import process_pending_outbox
+            process_pending_outbox(limit=50, worker_id="aa-exam-inline")
+        except Exception:  # noqa: BLE001
+            pass
         return _batch_dto(b)
 
 

@@ -7,7 +7,7 @@
             {{ t.label }}<span v-if="t.badge" class="mbadge">{{ t.badge }}</span>
           </button>
         </div>
-        <a v-if="tab !== 'settings'" class="linkall" @click="ui.notify('已全部标为已读（演示）')">全部标为已读</a>
+        <a v-if="tab !== 'settings'" class="linkall" @click="markAll">全部标为已读</a>
       </div>
 
       <StateBlock v-if="loading" type="loading" text="加载中…" />
@@ -24,10 +24,14 @@
       <template v-else>
         <StateBlock v-if="!shownList.length" type="empty" text="暂无消息" />
         <button v-for="(m, i) in shownList" :key="m.id || i" class="mrow" @click="go(m)">
-          <span class="sp-tag" :class="'sp-tag--' + toneOf(m.level)" style="flex:none">{{ levelText(m.level) }}</span>
+          <span class="sp-tag" :class="'sp-tag--' + toneOf(m)" style="flex:none">{{ levelText(m) }}</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:14px;color:var(--t1);line-height:1.5" :style="{ fontWeight: m.read ? 400 : 600 }">{{ m.title }}</div>
-            <div style="margin-top:4px;font-size:12.5px;color:var(--t4)">{{ modName(m.module) }} · {{ fmt(m.time) }}<span v-if="m.deadline"> · 截止 {{ fmt(m.deadline) }}</span></div>
+            <div style="margin-top:4px;font-size:12.5px;color:var(--t4)">
+              {{ modName(m.module) }} · {{ fmt(m.time) }}
+              <span v-if="m.deadline"> · 截止 {{ fmt(m.deadline) }}</span>
+              <span v-if="m.receipt"> · 待确认</span>
+            </div>
           </div>
           <span v-if="!m.read" style="flex:none;margin-top:6px;width:8px;height:8px;border-radius:50%;background:var(--pri)" />
         </button>
@@ -65,8 +69,17 @@ const shownList = computed(() => {
 })
 
 function modName(key) { return MODULES.find((m) => m.key === key)?.title || '系统' }
-function toneOf(l) { return l === 'high' ? 'danger' : l === 'mid' ? 'warn' : 'primary' }
-function levelText(l) { return l === 'high' ? '重要' : l === 'mid' ? '提醒' : '通知' }
+function toneOf(m) {
+  if (m && (m.emergency || m.level === 'high')) return 'danger'
+  if (m && m.level === 'mid') return 'warn'
+  return 'primary'
+}
+function levelText(m) {
+  if (m && m.emergency) return '紧急'
+  if (m && m.level === 'high') return '重要'
+  if (m && m.level === 'mid') return '提醒'
+  return '通知'
+}
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '' }
 
 async function load() {
@@ -76,8 +89,30 @@ async function load() {
     pref.value = await portalApi.messagePreferences().catch(() => ({}))
   } catch (e) { data.value = {} } finally { loading.value = false }
 }
+async function markAll() {
+  try {
+    const r = await portalApi.messagesReadAll()
+    ui.notify(`已标已读 ${r?.affectedCount ?? ''}`.trim())
+    await load()
+  } catch (e) {
+    ui.notify(e?.message || '全部已读失败')
+  }
+}
 async function go(m) {
-  if (!m.read) { try { await portalApi.messageRead(m.id); m.read = true } catch (e) { /* ignore */ } }
+  const rawId = String(m.messageId || m.id || '')
+  const isUnified = m.kind === 'UNIFIED_MESSAGE' || /^\d+$/.test(rawId) || /^msg-\d+$/.test(rawId)
+  const mid = rawId.replace(/^msg-/, '')
+  if (isUnified && !m.read && /^\d+$/.test(mid)) {
+    try { await portalApi.messageRead(mid); m.read = true } catch (e) { /* ignore */ }
+  }
+  if (isUnified && m.receipt && /^\d+$/.test(mid)) {
+    try {
+      await portalApi.messageReceipt(mid)
+      m.receipt = false
+      m.acked = true
+      ui.notify('已确认回执')
+    } catch (e) { /* 非强制 */ }
+  }
   const link = m.link || m.module
   const mod = MODULES.find((x) => x.key === link || x.path === link)
   router.push('/' + (mod ? mod.path : (link || 'home')))
@@ -86,7 +121,7 @@ async function togglePref(p) {
   busy.value = true
   const next = !p.enabled
   try { await portalApi.messageSetPreference({ key: p.key, enabled: next }); p.enabled = next; ui.notify('偏好已更新') }
-  catch (e) { ui.notify(e?.message || '设置失败（演示租户为只读）') } finally { busy.value = false }
+  catch (e) { ui.notify(e?.message || '设置失败') } finally { busy.value = false }
 }
 onMounted(load)
 </script>

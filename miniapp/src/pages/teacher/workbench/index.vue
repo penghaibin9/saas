@@ -59,7 +59,7 @@
           <!-- 风险学生 -->
           <view class="section-head">
             <text class="section-head__title">风险学生</text>
-            <text class="section-head__more" @click="go('/pages/teacher/risk-students/index')">查看全部 ›</text>
+            <text class="section-head__more" @click="go('/pages/teacher/affairs-review/index?type=RISK_HANDLE')">学工风险 ›</text>
           </view>
           <view class="stack-sm">
             <view v-for="r in wb.riskStudents" :key="r.id" class="wb__risk card" @click="openStudent(r)">
@@ -149,14 +149,14 @@ export default {
         'internship-application': '/pages/teacher/internship-application/index',
         'internship-risk': '/pages/teacher/internship-risk/index',
         approval: '/pages/teacher/approval/index',
-        risk: '/pages/teacher/risk-students/index',
+        risk: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
         follow: '/pages/teacher/employment-follow/index',
         unemployed: '/pages/teacher/employment-follow/index',
         employmentTransfer: '/pages/teacher/employment-transfer/index',
         employmentCompany: '/pages/teacher/employment-company/index',
         warning: '/pages/teacher/academic-warning/index',
         progress: '/pages/teacher/academic-affairs/index',
-        status: '/pages/teacher/academic-affairs/index',
+        status: '/pages/teacher/exam-defer/index',
         'topic-review': '/pages/teacher/graduation-topics/index',
         taskbook: '/pages/teacher/graduation-taskbook/index',
         'guide-log': '/pages/teacher/graduation-guide/index',
@@ -169,6 +169,7 @@ export default {
         affairs: '/pages/teacher/affairs/index',
         familyContact: '/pages/teacher/family-contact/index',
         affairsLeave: '/pages/teacher/affairs-leave/index',
+        dormReview: '/pages/teacher/dorm-review/index',
         classCadre: '/pages/teacher/class-cadre/index',
         classMaterial: '/pages/teacher/class-material/index',
         academicTask: '/pages/teacher/academic-task/index',
@@ -191,6 +192,7 @@ export default {
     handleRisk(r) {
       const session = useSessionStore()
       if (session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
+      if (r && r.actionType === 'RISK_HANDLE') return go('/pages/teacher/affairs-review/index?type=RISK_HANDLE')
       go('/pages/teacher/risk-students/index')
     },
     openStudent(r) { go('/pages/teacher/student-detail/index?id=' + r.id) }

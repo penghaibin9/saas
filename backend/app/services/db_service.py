@@ -381,9 +381,30 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
             WorkflowInstance.is_deleted.is_(False))).first()
         if inst and action in ("APPROVED", "REJECTED"):
             inst.status = action
+        msg_campaign_id = None
+        if inst and (inst.source_biz_type or "") == "MESSAGE_CAMPAIGN" and action in ("APPROVED", "REJECTED"):
+            msg_campaign_id = int(inst.source_biz_id or 0)
         db.commit()
-        return {"taskId": str(t.id), "status": t.status, "actedAt": _iso(t.acted_at),
-                "instanceStatus": inst.status if inst else "RUNNING"}
+        result = {"taskId": str(t.id), "status": t.status, "actedAt": _iso(t.acted_at),
+                  "instanceStatus": inst.status if inst else "RUNNING"}
+    if msg_campaign_id:
+        try:
+            from app.core.context import get_current_user_ctx
+            from app.services import message_campaign_service as camp_svc
+            actor = dict(get_current_user_ctx() or {})
+            if not actor.get("userId"):
+                actor["userId"] = "0"
+            if not actor.get("realName"):
+                actor["realName"] = "审批中心"
+            camp_svc.apply_workflow_decision(
+                actor, campaign_id=msg_campaign_id,
+                approved=(action == "APPROVED"), comment=reason)
+            result["messageCampaignId"] = str(msg_campaign_id)
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger("app.approval").exception(
+                "MESSAGE_CAMPAIGN workflow side-effect failed campaign=%s", msg_campaign_id)
+    return result
 
 
 def list_processed(page: int, page_size: int) -> tuple[list[dict], int]:
