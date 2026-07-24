@@ -2,12 +2,19 @@
   <AppPageShell
     title="风险预警"
     subtitle="聚合学业、请假、宿舍、心理等来源的风险记录，PC 端负责分派、处置、升级和闭环入口。"
-    role-name="SCHOOL_ADMIN / COUNSELOR"
+    role-name="学工角色"
     data-scope-name="学工数据范围"
     watermark-purpose="学工风险预警查看"
   >
     <template #actions>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.handle')" code="studentAffairs.risk.handle" variant="secondary" :loading="actioning" @click="scanTimeout">
+      <AppPermissionButton
+        v-if="canScanTimeout"
+        :allowed="canScanTimeout"
+        code="studentAffairs.risk.handle"
+        variant="secondary"
+        :loading="actioning"
+        @click="scanTimeout"
+      >
         扫描超时
       </AppPermissionButton>
       <AppPermissionButton :allowed="canBtn('studentAffairs.risk.create')" code="studentAffairs.risk.create" :loading="actioning" @click="createRisk">
@@ -51,7 +58,7 @@
           <template #cell-source="{ row }">{{ sourceLabel(row.source) }}</template>
           <template #cell-riskLevel="{ row }"><AppRiskTag :level="row.riskLevel" /></template>
           <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
-          <template #cell-owner="{ row }">{{ row.ownerId || '待分派' }}</template>
+          <template #cell-owner="{ row }">{{ ownerLabel(row) }}</template>
           <template #cell-summary="{ row }">
             <div class="mp-cell-main">{{ row.title || '风险记录' }}</div>
             <div v-if="row.mentalMasked" class="mp-cell-sub">心理来源明细已按角色脱敏</div>
@@ -74,7 +81,6 @@
       </AppSectionCard>
     </AppGlobalState>
 
-    <!-- 建风险单：原为「学生ID + 标题」两连 prompt，且风险等级写死 MEDIUM、detail 直接复制 title -->
     <AppDrawer :visible="createDlg.visible" title="新建风险记录" @close="createDlg.visible = false">
       <div class="sa-form">
         <AppFormItem label="学生" required>
@@ -98,7 +104,6 @@
       </template>
     </AppDrawer>
 
-    <!-- 分派：责任人从后端候选集选（只含持学工风险处置角色的在职账号） -->
     <AppConfirmDialog
       v-model:visible="assignDlg.visible" title="分派责任人" type="primary" confirm-text="确认分派"
       :submitting="actioning" @confirm="submitAssign"
@@ -110,7 +115,6 @@
       </AppFormItem>
     </AppConfirmDialog>
 
-    <!-- 处置记录：sa.risk.handle 词条已核对与本动作一致 -->
     <AppConfirmDialog
       v-model:visible="processDlg.visible" title="记录处置" type="primary" confirm-text="确认处置"
       require-reason reason-label="处置内容（≥5字）" phrase-scene-key="sa.risk.handle"
@@ -142,7 +146,6 @@ import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
-
 const RISK_COLUMNS = [
   { key: 'student', title: '学生', width: '160px' },
   { key: 'source', title: '来源' },
@@ -153,7 +156,6 @@ const RISK_COLUMNS = [
   { key: 'actions', title: '操作', align: 'right', width: '220px' }
 ]
 
-/** 风险等级（后端 affairs_risk_service.LEVELS）——原建单写死 MEDIUM，无法选 */
 const RISK_LEVELS = [
   { value: 'LOW', label: '低风险' },
   { value: 'MEDIUM', label: '中风险' },
@@ -176,6 +178,7 @@ const LEVEL_FILTER_OPTIONS = [
 ]
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: '全部状态' },
+  { value: 'OPEN', label: '未关闭' },
   { value: 'NEW', label: '新建' },
   { value: 'ASSIGNED', label: '已分派' },
   { value: 'PROCESSING', label: '处置中' },
@@ -183,6 +186,10 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'ESCALATED', label: '已升级' },
   { value: 'CLOSED', label: '已关闭' }
 ]
+
+const SCAN_ROLES = new Set([
+  'SCHOOL_ADMIN', 'SCHOOL_LEADER', 'STUDENT_AFFAIRS_ADMIN', 'SA_ADMIN', 'PLATFORM_SUPER_ADMIN'
+])
 
 export default {
   name: 'StudentAffairsRiskListView',
@@ -219,14 +226,16 @@ export default {
       errorMessage: '',
       risks: [],
       total: 0,
+      stats: null,
       scanResult: '',
       createDlg: { visible: false, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' },
-      assignDlg: { visible: false, riskId: '', ownerId: '' },
-      processDlg: { visible: false, riskId: '' },
+      assignDlg: { visible: false, riskId: '', ownerId: '', version: null },
+      processDlg: { visible: false, riskId: '', version: null },
       filters: {
         source: '',
         riskLevel: '',
-        status: ''
+        status: '',
+        studentId: ''
       }
     }
   },
@@ -239,43 +248,65 @@ export default {
       if (this.errorMessage) return 'error'
       return 'ready'
     },
+    canScanTimeout() {
+      const role = (this.ctx?.currentRoleCode || this.ctx?.currentRole?.roleCode || '').toUpperCase()
+      return SCAN_ROLES.has(role) && this.canBtn('studentAffairs.risk.handle')
+    },
     metricCards() {
-      const high = this.risks.filter((item) => ['HIGH', 'CRITICAL'].includes(item.riskLevel)).length
-      const open = this.risks.filter((item) => item.status !== 'CLOSED').length
-      const mentalMasked = this.risks.filter((item) => item.mentalMasked).length
+      const s = this.stats || {}
+      const high = Number(s.highCritical || 0)
+      const open = Number(s.open || 0)
+      const unassigned = Number(s.unassigned || 0)
+      const overdue = Number(s.overdue || 0)
       return [
-        { key: 'total', label: '风险记录', value: this.total, accent: 'primary' },
-        { key: 'high', label: '高风险', value: high, accent: high ? 'risk' : 'success' },
+        { key: 'total', label: '风险记录', value: Number(s.total ?? this.total), accent: 'primary' },
+        { key: 'high', label: '高危/危急', value: high, accent: high ? 'risk' : 'success' },
         { key: 'open', label: '未闭环', value: open, accent: open ? 'warning' : 'success' },
-        { key: 'mental', label: '心理脱敏', value: mentalMasked, accent: 'primary' }
+        { key: 'unassigned', label: '待分派', value: unassigned, accent: unassigned ? 'warning' : 'success' },
+        { key: 'overdue', label: '超时', value: overdue, accent: overdue ? 'risk' : 'success' }
       ]
     },
     ruleItems() {
       return [
-        { title: '来源去重', desc: '同一学生、同一来源、同一 sourceRefId 重复建单由后端拦截。' },
-        { title: '心理明细脱敏', desc: '心理来源 detail 只对授权角色展示，普通辅导员只看到脱敏摘要。' },
-        { title: '处置后关闭', desc: '风险关闭前必须存在处置记录，关闭后写入学生 360 时间线。' },
-        { title: '超时扫描', desc: '超时扫描负责自动分派和升级，接口幂等，PC 端只触发真实后端任务。' }
+        { title: '来源去重', desc: '同一学生、同一来源、同一来源单据重复建单由后端拦截。' },
+        { title: '心理明细脱敏', desc: '心理来源明细只对授权角色展示，普通辅导员只看到脱敏摘要。' },
+        { title: '处置后关闭', desc: '风险关闭前必须存在处置记录，关闭后写入学生成长时间线。' },
+        { title: '超时扫描', desc: '可由学工管理员手动触发自动分派与升级；接口幂等。' }
       ]
     }
   },
   watch: {
-    '$route.name'() {
-      this.scanResult = ''
+    '$route.fullPath'() {
+      this.applyRouteFilters()
+      this.load()
     }
   },
   mounted() {
+    this.applyRouteFilters()
     this.load()
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyRouteFilters() {
+      const q = this.$route.query || {}
+      this.filters.source = q.source ? String(q.source) : this.filters.source
+      this.filters.riskLevel = q.riskLevel ? String(q.riskLevel) : this.filters.riskLevel
+      this.filters.status = q.status != null && q.status !== '' ? String(q.status) : this.filters.status
+      this.filters.studentId = q.studentId ? String(q.studentId) : (q.studentNo ? '' : '')
+      if (q.studentId) this.filters.studentId = String(q.studentId)
+    },
     async load() {
       this.loading = true
       this.errorMessage = ''
       try {
-        const res = await studentAffairsApi.listRiskRecords({ ...this.filters, page: 1, pageSize: 50 })
+        const res = await studentAffairsApi.listRiskRecords({
+          ...this.filters,
+          page: 1,
+          pageSize: 50
+        })
         this.risks = res.data.items || []
         this.total = res.data.total || this.risks.length
+        this.stats = res.data.stats || null
       } catch (e) {
         this.errorMessage = e.message || '风险数据加载失败'
       } finally {
@@ -285,6 +316,15 @@ export default {
     reload() {
       this.scanResult = ''
       this.load()
+    },
+    ownerLabel(row) {
+      if (!row.ownerId) return '待分派'
+      if (row.ownerName) {
+        return row.ownerLoginName
+          ? `${row.ownerName} / ${row.ownerLoginName}`
+          : row.ownerName
+      }
+      return '责任人账号异常'
     },
     createRisk() {
       this.createDlg = { visible: true, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' }
@@ -306,19 +346,25 @@ export default {
       if (ok) d.visible = false
     },
     assign(risk) {
-      this.assignDlg = { visible: true, riskId: risk.riskId, ownerId: risk.ownerId || '' }
+      this.assignDlg = {
+        visible: true,
+        riskId: risk.riskId,
+        ownerId: risk.ownerId || '',
+        version: risk.version
+      }
     },
     async submitAssign() {
       const d = this.assignDlg
       if (!d.ownerId) { this.errorMessage = '请选择责任人'; return }
-      const ok = await this.runAction(() => studentAffairsApi.assignRisk(d.riskId, d.ownerId))
+      const ok = await this.runAction(() => studentAffairsApi.assignRisk(d.riskId, d.ownerId, d.version))
       if (ok) d.visible = false
     },
     process(risk) {
-      this.processDlg = { visible: true, riskId: risk.riskId }
+      this.processDlg = { visible: true, riskId: risk.riskId, version: risk.version }
     },
     async submitProcess({ reason }) {
-      const ok = await this.runAction(() => studentAffairsApi.processRisk(this.processDlg.riskId, reason))
+      const ok = await this.runAction(() => studentAffairsApi.processRisk(
+        this.processDlg.riskId, reason, this.processDlg.version))
       if (ok) this.processDlg.visible = false
     },
     async scanTimeout() {
@@ -333,7 +379,6 @@ export default {
         this.actioning = false
       }
     },
-    /** @returns {boolean} 是否成功。调用方据此决定关不关弹窗——失败时保留已填内容。 */
     async runAction(fn) {
       this.actioning = true
       this.errorMessage = ''
@@ -342,6 +387,11 @@ export default {
         await this.load()
         return true
       } catch (e) {
+        if (e.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          this.errorMessage = '该记录已被其他人处理，数据已刷新'
+          await this.load()
+          return false
+        }
         this.errorMessage = e.message || '操作失败'
         return false
       } finally {
@@ -375,7 +425,7 @@ export default {
 }
 .sa-grid--metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-4);
 }
@@ -384,13 +434,6 @@ export default {
   flex-wrap: wrap;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
-}
-.sa-toolbar select {
-  min-width: 140px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-surface);
-  padding: var(--space-2) var(--space-3);
 }
 .sa-filter {
   width: 150px;

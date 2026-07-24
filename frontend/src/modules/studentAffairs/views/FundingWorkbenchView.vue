@@ -274,6 +274,8 @@ export default {
     }
   },
   created() {
+    const q = this.$route.query || {}
+    if (q.status) this.activeStatus = String(q.status)
     this.loadProjects()
   },
   methods: {

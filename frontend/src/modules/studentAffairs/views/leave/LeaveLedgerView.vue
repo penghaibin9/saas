@@ -127,6 +127,8 @@ export default {
   },
   created() {
     if (this.$route.query.status) this.filters.status = String(this.$route.query.status)
+    if (this.$route.query.studentId) this.filters.keyword = String(this.$route.query.studentId)
+    if (this.$route.query.studentNo) this.filters.keyword = String(this.$route.query.studentNo)
     this.load()
   },
   methods: {

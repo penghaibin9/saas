@@ -140,7 +140,7 @@ export default {
         { label: '分配模式', value: this.config.assignMode || '未设置' },
         { label: '学生自选', value: this.config.selfSelectEnabled ? '已开放' : '未开放' },
         { label: '学生提示', value: this.config.studentNotice || '未设置', span: 2 },
-        { label: '归档状态', value: 'B2 提供入口，D 包归档中心汇总' }
+        { label: '归档状态', value: this.config.archived ? '已归档' : '未归档' }
       ]
     }
   },

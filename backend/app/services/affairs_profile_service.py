@@ -40,8 +40,9 @@ def _scope_or_403(db, student_id, user):
 
 
 def get_profile(student_id, user) -> dict:
-    from app.models import (AffairsRiskRecord, AidApply, CsLeave, DisciplineCase,
-                            FundingApplication, TalkRecord)
+    from app.models import (AffairsRiskRecord, AidApply, CsLeave, DisciplineCase, DormBed,
+                            DormBuilding, DormRoom, FamilyContactLog, FundingApplication,
+                            SchoolClass, StudentContact, TalkRecord)
     role = (user or {}).get("currentRoleCode")
     with session() as db:
         s = _scope_or_403(db, student_id, user)
@@ -51,6 +52,12 @@ def get_profile(student_id, user) -> dict:
             return db.scalar(select(func.count()).select_from(model).where(
                 model.tenant_id == _tid(), model.student_id == sid,
                 model.is_deleted.is_(False), *extra)) or 0
+
+        # 班级真实名称（禁止把 class_id 当 className 返回）
+        class_name = ""
+        if s.class_id:
+            cls = db.get(SchoolClass, int(s.class_id))
+            class_name = (cls.class_name if cls else "") or ""
 
         # 请假
         leave_total = _count(CsLeave)
@@ -81,10 +88,40 @@ def get_profile(student_id, user) -> dict:
             TalkRecord.is_deleted.is_(False)).order_by(TalkRecord.id.desc())).all()
         last_talk = next((t.talk_at for t in talks if t.talk_at), None)
 
+        # 宿舍入住摘要（有则楼栋+房+床；无则空态，不造假）
+        bed = db.scalars(select(DormBed).where(
+            DormBed.tenant_id == _tid(), DormBed.student_id == sid,
+            DormBed.is_deleted.is_(False)).order_by(DormBed.id.desc())).first()
+        dorm_summary = {"hasDorm": False, "text": ""}
+        if bed and bed.room_id:
+            room = db.get(DormRoom, int(bed.room_id))
+            building = db.get(DormBuilding, int(room.building_id)) if room and room.building_id else None
+            parts = []
+            if building and building.building_name:
+                parts.append(building.building_name)
+            if room and room.room_no:
+                parts.append(str(room.room_no))
+            if bed.bed_no:
+                parts.append(f"{bed.bed_no}床")
+            dorm_summary = {"hasDorm": True, "text": " · ".join(parts) if parts else "已入住"}
+
+        # 家庭联系人：仅计数/有无；号码本体不在此返回（敏感访问另走家校接口）
+        contact_count = db.scalar(select(func.count()).select_from(StudentContact).where(
+            StudentContact.tenant_id == _tid(), StudentContact.student_id == sid,
+            StudentContact.is_deleted.is_(False),
+            StudentContact.contact_type.in_(["GUARDIAN_PHONE", "EMERGENCY_PHONE"]))) or 0
+        family_log_count = db.scalar(select(func.count()).select_from(FamilyContactLog).where(
+            FamilyContactLog.tenant_id == _tid(), FamilyContactLog.student_id == sid)) or 0
+        family_summary = {
+            "hasContact": bool(contact_count or family_log_count),
+            "contactCount": int(contact_count),
+            "logCount": int(family_log_count),
+        }
+
         return {
             "baseInfo": {"studentId": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
-                         "className": str(s.class_id or ""), "currentStage": s.current_stage,
-                         "studentStatus": s.student_status},
+                         "classId": str(s.class_id or ""), "className": class_name,
+                         "currentStage": s.current_stage, "studentStatus": s.student_status},
             "leaveSummary": {"total": leave_total},
             "aidSummary": {"difficultLevel": (aid.final_level if aid else None),
                            "inLibrary": bool(aid)},
@@ -94,6 +131,8 @@ def get_profile(student_id, user) -> dict:
             "riskSummary": {"openCount": risk_open, "topLevel": top_risk},
             "psyFlag": ("需关注" if psy_flag else "无"),
             "talkSummary": {"total": len(talks), "lastTalkAt": _iso(last_talk)},
+            "dormSummary": dorm_summary,
+            "familySummary": family_summary,
             "timelineUrl": f"/api/v1/student-affairs/students/{sid}/timeline",
         }
 

@@ -262,3 +262,39 @@ def test_r16_transfer_owner_validated(client, db_mode):
     ok = client.post(f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
                      json={"newOwnerId": str(ids["owner"]), "reason": "工作交接"}).json()
     assert ok["data"]["status"] == "ASSIGNED" and ok["data"]["ownerId"] == str(ids["owner"])
+
+
+def test_r17_list_stats_independent_of_page_size(client, db_mode):
+    """风险全局 stats 不受 pageSize 影响；责任人返回姓名/工号。"""
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    created = []
+    for i in range(3):
+        rid = _create(client, hdr, ids["sa"], ref=str(8100 + i),
+                      level="HIGH" if i == 0 else "MEDIUM").json()["data"]["riskId"]
+        created.append(rid)
+        if i < 2:
+            ar = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+                             json={"ownerId": str(ids["owner"])}).json()
+            assert ar["code"] == 0 and ar["data"]["ownerId"] == str(ids["owner"])
+            assert ar["data"]["ownerName"] == "风险责任人"
+            assert ar["data"]["ownerLoginName"] == "risk_owner01"
+    page1 = client.get(f"{BASE}/risk/records",
+                       params={"page": 1, "pageSize": 1}, headers=hdr).json()["data"]
+    page50 = client.get(f"{BASE}/risk/records",
+                        params={"page": 1, "pageSize": 50}, headers=hdr).json()["data"]
+    assert page1["stats"]["total"] == page50["stats"]["total"] >= 3
+    assert page1["stats"]["highCritical"] == page50["stats"]["highCritical"] >= 1
+    assert page1["stats"]["unassigned"] == page50["stats"]["unassigned"]
+    assert len(page1["items"]) == 1
+    assigned = [x for x in page50["items"] if x.get("ownerId")]
+    assert len(assigned) >= 2
+    assert assigned[0]["ownerName"] == "风险责任人"
+    assert assigned[0]["ownerLoginName"] == "risk_owner01"
+
+
+def test_r18_counselor_scan_timeout_forbidden(client, db_mode):
+    """普通辅导员不可触发超时扫描。"""
+    _seed(db_mode)
+    r = client.post(f"{BASE}/risk/scan-timeout", headers=_hdr(client, "counselor01"))
+    assert r.status_code == 403 and r.json()["bizCode"] == "NO_PERMISSION"

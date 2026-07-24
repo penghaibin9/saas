@@ -33,7 +33,7 @@ const studentAffairsRoutes = [
       {
         path: 'profile',
         name: 'student-affairs-profile',
-        component: () => import('@/modules/studentAffairs/views/StudentAffairsProfileListView.vue'),
+        redirect: '/admin/student/list',
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学生画像', requiresAuth: true, permissionKey: 'studentAffairs.profile.view' }
       },
       {

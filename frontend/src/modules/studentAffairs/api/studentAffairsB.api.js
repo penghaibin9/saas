@@ -242,6 +242,7 @@ export const studentAffairsApi = {
         source: params.source,
         status: params.status,
         riskLevel: params.riskLevel,
+        studentId: params.studentId,
         page: params.page || 1,
         pageSize: params.pageSize || 20
       }
@@ -250,7 +251,8 @@ export const studentAffairsApi = {
       items: data.items || [],
       total: data.total || 0,
       page: data.page || params.page || 1,
-      pageSize: data.pageSize || params.pageSize || 20
+      pageSize: data.pageSize || params.pageSize || 20,
+      stats: data.stats || null
     })
   },
 
@@ -265,59 +267,59 @@ export const studentAffairsApi = {
     }))
   },
 
-  async assignRisk(riskId, ownerId) {
+  async assignRisk(riskId, ownerId, version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/assign`, {
       method: 'POST',
-      body: { ownerId }
+      body: { ownerId, version }
     }))
   },
 
-  async processRisk(riskId, content) {
+  async processRisk(riskId, content, version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/process`, {
       method: 'POST',
-      body: { content }
+      body: { content, version }
     }))
   },
 
-  async followRisk(riskId, content = '') {
+  async followRisk(riskId, content = '', version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/follow`, {
       method: 'POST',
-      body: { content }
+      body: { content, version }
     }))
   },
 
-  async transferRisk(riskId, newOwnerId, reason = '') {
+  async transferRisk(riskId, newOwnerId, reason = '', version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/transfer`, {
       method: 'POST',
-      body: { newOwnerId, reason }
+      body: { newOwnerId, reason, version }
     }))
   },
 
-  async escalateRisk(riskId, reason = '') {
+  async escalateRisk(riskId, reason = '', version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/escalate`, {
       method: 'POST',
-      body: { reason }
+      body: { reason, version }
     }))
   },
 
-  async takeoverRisk(riskId, content = '') {
+  async takeoverRisk(riskId, content = '', version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/takeover`, {
       method: 'POST',
-      body: { content }
+      body: { content, version }
     }))
   },
 
-  async closeRisk(riskId, conclusion) {
+  async closeRisk(riskId, conclusion, version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/close`, {
       method: 'POST',
-      body: { conclusion }
+      body: { conclusion, version }
     }))
   },
 
-  async reopenRisk(riskId, reason = '') {
+  async reopenRisk(riskId, reason = '', version) {
     return ok(await request(`/student-affairs/risk/records/${riskId}/reopen`, {
       method: 'POST',
-      body: { reason }
+      body: { reason, version }
     }))
   },
 

@@ -87,3 +87,28 @@ def test_profile_cross_class_403(client, db_mode):
     ids = _seed(db_mode)
     r = client.get(f"{BASE}/students/{ids['sb']}/profile", headers=_hdr(client, "counselor01"))
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
+
+
+def test_profile_returns_real_class_name(client, db_mode):
+    """画像 className 必须是真实班级名称，不得返回 class_id。"""
+    ids = _seed(db_mode)
+    p = client.get(f"{BASE}/students/{ids['sa']}/profile",
+                   headers=_hdr(client, "school_admin01")).json()["data"]
+    assert p["baseInfo"]["className"] == "软件2101"
+    assert p["baseInfo"]["className"] != str(ids["A"])
+    assert p["baseInfo"]["classId"] == str(ids["A"])
+    assert p["dormSummary"]["hasDorm"] is False
+    assert "familySummary" in p
+
+
+def test_profile_psy_flag_no_mental_detail_leak(client, db_mode):
+    """心理敏感：画像只出需关注标记，不泄露心理明细正文。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    client.post(f"{BASE}/risk/records", headers=admin, json={
+        "studentId": str(ids["sa"]), "source": "MENTAL", "sourceRefId": "7701",
+        "riskLevel": "HIGH", "title": "心理关注", "detail": "绝密心理咨询内容不可泄露"})
+    p = client.get(f"{BASE}/students/{ids['sa']}/profile", headers=admin).json()["data"]
+    assert p["psyFlag"] == "需关注"
+    blob = str(p)
+    assert "绝密心理咨询内容不可泄露" not in blob

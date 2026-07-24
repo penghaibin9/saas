@@ -238,9 +238,11 @@ def _sensitive_view_audit(x, reason: str) -> None:
         pass
 
 
-def _row(x, user, s=None, reveal=False) -> dict:
+def _row(x, user, s=None, reveal=False, owner=None) -> dict:
     # 列表恒遮蔽心理明细（仅摘要）；明细页须经授权角色 + 填写原因，get_risk 内 reveal=True 且写 SENSITIVE_VIEW。
     mental_masked = (x.source == "MENTAL" and not (reveal and _can_view_mental(user)))
+    owner_name = (owner.real_name if owner else "") or ""
+    owner_login = (owner.login_name if owner else "") or ""
     return {
         "riskId": str(x.id), "studentId": str(x.student_id),
         "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
@@ -248,8 +250,11 @@ def _row(x, user, s=None, reveal=False) -> dict:
         "riskLevel": x.risk_level, "title": x.title or "",
         "detail": "[心理关注·明细受限]" if mental_masked else (x.detail or ""),
         "mentalMasked": mental_masked, "ownerId": str(x.owner_id or ""),
+        "ownerName": owner_name, "ownerLoginName": owner_login,
         "status": x.status, "statusLabel": L_RISK.get(x.status, x.status),
         "isArchived": bool(x.is_archived), "version": x.version,
+        "assignedAt": _iso(getattr(x, "assigned_at", None)),
+        "createdAt": _iso(getattr(x, "created_at", None)),
     }
 
 
@@ -333,7 +338,9 @@ def assign(risk_id, user, owner_id, expected_version=None) -> dict:
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
-        return _row(x, user, s)
+        from app.models import User
+        owner = db.get(User, int(x.owner_id)) if x.owner_id else None
+        return _row(x, user, s, owner=owner)
 
 
 # ═══════════ 处置 ═══════════
@@ -547,6 +554,7 @@ def scan_timeout() -> dict:
 
 def get_risk(risk_id, user, reason: str | None = None) -> dict:
     with session() as db:
+        from app.models import User
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         reveal = False
@@ -556,34 +564,87 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
             if reason and len(str(reason).strip()) >= 5:
                 reveal = True
                 _sensitive_view_audit(x, reason.strip())
-        return _row(x, user, s, reveal=reveal)
+        owner = db.get(User, int(x.owner_id)) if x.owner_id else None
+        return _row(x, user, s, reveal=reveal, owner=owner)
 
 
-def list_risks(user, source=None, status=None, risk_level=None, page=1, page_size=20):
-    from app.models import AffairsRiskRecord, StudentProfile
+def _risk_stats(rows: list[dict]) -> dict:
+    """全局指标（与列表同权限/同范围过滤结果，不受 page/pageSize 影响）。不泄露心理明细。"""
+    now = datetime.utcnow()
+    overdue = 0
+    for r in rows:
+        st = r.get("status")
+        if st == "ESCALATED":
+            overdue += 1
+            continue
+        if st == "NEW":
+            created = r.get("_createdAtRaw")
+            if created and created + timedelta(hours=4) <= now:
+                overdue += 1
+        elif st == "ASSIGNED":
+            assigned = r.get("_assignedAtRaw")
+            if assigned and assigned + timedelta(hours=72) <= now:
+                overdue += 1
+    return {
+        "total": len(rows),
+        "highCritical": sum(1 for r in rows if r.get("riskLevel") in ("HIGH", "CRITICAL")),
+        "open": sum(1 for r in rows if r.get("status") != "CLOSED"),
+        "unassigned": sum(1 for r in rows if not r.get("ownerId")),
+        "overdue": overdue,
+    }
+
+
+def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
+               page=1, page_size=20):
+    from app.models import AffairsRiskRecord, StudentProfile, User
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
         conds = [AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False)]
         if source:
             conds.append(AffairsRiskRecord.source == source)
-        if status:
+        if status == "OPEN":
+            conds.append(AffairsRiskRecord.status.notin_(["CLOSED"]))
+        elif status:
             conds.append(AffairsRiskRecord.status == status)
         if risk_level:
             conds.append(AffairsRiskRecord.risk_level == risk_level)
+        if student_id:
+            conds.append(AffairsRiskRecord.student_id == int(student_id))
         rows = db.scalars(select(AffairsRiskRecord).where(*conds).order_by(
             AffairsRiskRecord.id.desc())).all()
-        # 消 N+1：一次批量取回本页涉及的学生档案，替代循环内逐行 db.get（历史欠账收口，
-        # 行为等价——同样的行、同样的数据范围过滤、同样的顺序与内存分页，仅省掉 per-row 往返）。
+        # 消 N+1：批量取学生档案 + 责任人账号
         sids = {int(x.student_id) for x in rows if x.student_id}
         students = {s.id: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_(sids))).all()} if sids else {}
+        oids = {int(x.owner_id) for x in rows if x.owner_id}
+        owners = {u.id: u for u in db.scalars(select(User).where(
+            User.id.in_(oids))).all()} if oids else {}
         out = []
         for x in rows:
             s = students.get(int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
-            out.append(_row(x, user, s))
+            row = _row(x, user, s, owner=owners.get(int(x.owner_id)) if x.owner_id else None)
+            # 统计用原始时间（不进响应）
+            row["_createdAtRaw"] = x.created_at
+            row["_assignedAtRaw"] = x.assigned_at
+            out.append(row)
+        stats = _risk_stats(out)
+        for r in out:
+            r.pop("_createdAtRaw", None)
+            r.pop("_assignedAtRaw", None)
         total = len(out)
         start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out[start:start + page_size], total, stats
+
+
+_SCAN_ROLES = {"SCHOOL_ADMIN", "SCHOOL_LEADER", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN",
+               "PLATFORM_SUPER_ADMIN"}
+
+
+def require_scan_authority(user) -> None:
+    """超时扫描仅校级/学工管理角色；普通辅导员不可触发。"""
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role not in _SCAN_ROLES:
+        raise AppException("NO_PERMISSION", "仅学工管理员或校级管理可执行超时扫描")

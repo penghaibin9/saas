@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="学工看板"
-    subtitle="聚合今日待办、学生风险、请假审批、宿舍异常和跨系统入口，数据按当前身份范围返回。"
+    subtitle="聚合今日待办、学生风险、请假审批和跨系统入口，数据按当前身份范围返回。"
     :role-name="dashboard.viewLabel"
     :data-scope-name="scopeLabel"
     watermark-purpose="学工看板查看"
@@ -31,8 +31,8 @@
           :value="card.value"
           :unit="card.unit"
           :accent="metricAccent(card.key)"
-          drillable
-          :drill-target="metricTarget(card.key)"
+          :drillable="!!card.drillPath"
+          :drill-target="card.drillPath"
           @drill="go"
         />
       </div>
@@ -55,27 +55,30 @@
             <AppRiskTag :level="riskLevel" />
             <span>{{ riskSummary }}</span>
           </div>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk')">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
             进入风险预警
           </AppPermissionButton>
         </AppSectionCard>
 
         <AppSectionCard title="数字迎新摘要">
           <div class="sa-bridge">
-            <AppStatusTag type="info" label="外部系统承接" />
-            <p>本轮只提供入口和摘要，不修数字迎新主链路、日期底座或导出台账。</p>
-            <AppPermissionButton :allowed="canBtn('orientation.dashboard.view')" code="orientation.dashboard.view" variant="secondary" @click="go('/admin/orientation')">
+            <p>查看迎新批次、报到进度和异常学生等相关业务。</p>
+            <AppPermissionButton :allowed="canBtn('orientation.dashboard.view') || canBtn('studentAffairs.orientation.view')" code="studentAffairs.orientation.view" variant="secondary" @click="go('/admin/orientation')">
               打开数字迎新
             </AppPermissionButton>
           </div>
         </AppSectionCard>
 
-        <AppSectionCard title="在校服务摘要">
-          <div class="sa-bridge">
-            <AppStatusTag type="info" label="过渡入口" />
-            <p>请假、宿舍、风险等高频入口逐步收口到学工中心，旧在校服务保留兼容跳转。</p>
-            <AppPermissionButton :allowed="canBtn('campusService.dashboard.view')" code="campusService.dashboard.view" variant="secondary" @click="go('/admin/campus-service')">
-              打开在校服务
+        <AppSectionCard title="常用学工业务">
+          <div class="sa-actions">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/campus-service/leave')">
+              请假审批
+            </AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="go('/admin/student-affairs/dorm/exception')">
+              宿舍异常
+            </AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
+              风险预警
             </AppPermissionButton>
           </div>
         </AppSectionCard>
@@ -115,6 +118,30 @@ import {
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
+/** 卡片 key → 权限码；无权限时不下钻（避免假入口） */
+const CARD_PERM = {
+  studentTotal: 'studentAffairs.student.view',
+  classTotal: 'studentAffairs.class.view',
+  pendingTodo: 'approval.todo.view',
+  pendingLeave: 'studentAffairs.leave.view',
+  overdueLeave: 'studentAffairs.leave.view',
+  pendingAid: 'studentAffairs.aid.view',
+  pendingFunding: 'studentAffairs.funding.view',
+  pendingDiscipline: 'studentAffairs.discipline.view',
+  riskStudents: 'studentAffairs.risk.view'
+}
+
+const FALLBACK_DRILL = {
+  studentTotal: '/admin/student/list',
+  classTotal: '/admin/campus-service/classes',
+  pendingTodo: '/admin/approval/todos',
+  pendingLeave: '/admin/campus-service/leave',
+  overdueLeave: '/admin/campus-service/leave-ledger?status=OVERDUE',
+  pendingAid: '/admin/student-affairs/aid?status=REVIEW',
+  pendingFunding: '/admin/student-affairs/funding?status=REVIEW',
+  pendingDiscipline: '/admin/student-affairs/discipline?status=REVIEW',
+  riskStudents: '/admin/student-affairs/risk?status=OPEN'
+}
 
 export default {
   name: 'StudentAffairsDashboardView',
@@ -135,7 +162,7 @@ export default {
     return {
       loading: true,
       errorMessage: '',
-      dashboard: { summaryCards: [], moduleCards: [], viewLabel: '', scopeMode: '' },
+      dashboard: { summaryCards: [], moduleCards: [], viewLabel: '', scopeMode: '', scopeLabel: '' },
       auditLogs: []
     }
   },
@@ -146,18 +173,31 @@ export default {
       return this.metricCards.length ? 'ready' : 'empty'
     },
     metricCards() {
-      return this.dashboard.summaryCards || []
+      return (this.dashboard.summaryCards || []).map((card) => {
+        const perm = CARD_PERM[card.key]
+        const allowed = !perm || this.canBtn(perm)
+        const drillPath = allowed
+          ? (card.drillPath || FALLBACK_DRILL[card.key] || '')
+          : ''
+        return { ...card, drillPath }
+      })
     },
     scopeLabel() {
-      const map = { ADMIN_TENANT: '全校', SCOPED: '本人负责范围', TENANT_FALLBACK: '当前租户' }
-      return map[this.dashboard.scopeMode] || this.dashboard.scopeMode || '按当前身份'
+      if (this.dashboard.scopeLabel) return this.dashboard.scopeLabel
+      const map = {
+        ADMIN_TENANT: '全校',
+        SCOPED: '本人负责范围',
+        NONE: '无数据范围',
+        SELF: '本人负责范围'
+      }
+      return map[this.dashboard.scopeMode] || '按当前身份'
     },
     todoItems() {
       const value = (key) => this.metricCards.find((c) => c.key === key)?.value || 0
+      // 宿舍异常无与学工首页同口径可信统计：不展示假宿舍卡，也不用逾期销假顶替
       return [
-        { key: 'todo', label: '今日待办', count: value('pendingTodo'), hint: '统一待办中心待处理事项' },
+        { key: 'todo', label: '今日待办', count: value('pendingTodo'), hint: '按当前身份可见的统一待办' },
         { key: 'leave', label: '请假审批概览', count: value('pendingLeave'), hint: '待辅导员/学院/学工处处理' },
-        { key: 'dorm', label: '宿舍异常概览', count: value('overdueLeave'), hint: 'B2 接入夜不归宿与宿舍异常' },
         { key: 'focus', label: '重点学生提醒', count: value('riskStudents'), hint: '来自风险预警未关闭学生' }
       ]
     },
@@ -197,16 +237,6 @@ export default {
       if (['riskStudents', 'overdueLeave'].includes(key)) return 'risk'
       if (['pendingTodo', 'pendingLeave', 'pendingAid', 'pendingFunding', 'pendingDiscipline'].includes(key)) return 'warning'
       return 'primary'
-    },
-    metricTarget(key) {
-      const map = {
-        studentTotal: '/admin/student/list',
-        classTotal: '/admin/campus-service/classes',
-        pendingLeave: '/admin/campus-service/leave',
-        overdueLeave: '/admin/campus-service/leave-extensions',
-        riskStudents: '/admin/student-affairs/risk'
-      }
-      return map[key] || '/admin/approval/todos'
     },
     go(path) {
       if (!path) return
@@ -270,4 +300,3 @@ export default {
   color: var(--text-tertiary);
 }
 </style>
-

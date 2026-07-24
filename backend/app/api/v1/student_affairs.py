@@ -957,12 +957,16 @@ def risk_create(body: RiskCreate, user=Depends(require_permission("studentAffair
     return success(risk_svc.create_risk(body, user), message="已建单")
 
 
-@router.get("/risk/records", summary="风险列表（心理来源仅摘要，明细遮蔽）")
+@router.get("/risk/records", summary="风险列表（心理来源仅摘要，明细遮蔽；含全局 stats）")
 def risk_records(source: Optional[str] = None, status: Optional[str] = None,
-                 riskLevel: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                 riskLevel: Optional[str] = None, studentId: Optional[int] = None,
+                 page: int = 1, pageSize: int = 20,
                  user=Depends(require_permission("studentAffairs.risk.view"))):
-    items, total = risk_svc.list_risks(user, source, status, riskLevel, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    items, total, stats = risk_svc.list_risks(
+        user, source, status, riskLevel, studentId, page, pageSize)
+    data = paginate(items, total, page, pageSize)
+    data["stats"] = stats
+    return success(data)
 
 
 @router.get("/risk/records/{riskId}", summary="风险详情（心理明细须填原因+SENSITIVE_VIEW）")
@@ -1026,8 +1030,9 @@ def risk_reopen(body: RiskReasonBody = RiskReasonBody(), riskId: int = Path(...)
     return success(risk_svc.reopen(riskId, user, body.reason or "", body.version), message="已重开")
 
 
-@router.post("/risk/scan-timeout", summary="风险超时扫描（分派/升级，幂等）")
+@router.post("/risk/scan-timeout", summary="风险超时扫描（分派/升级，幂等；仅学工/校级管理）")
 def risk_scan_timeout(user=Depends(require_permission("studentAffairs.risk.handle"))):
+    risk_svc.require_scan_authority(user)
     return success(risk_svc.scan_timeout())
 
 

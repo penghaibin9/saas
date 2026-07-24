@@ -116,3 +116,65 @@ def test_school_admin_any_class(client, db_mode):
     r = client.post(f"/api/v1/student-affairs/classes/{ids['B']}/cadres",
                     json={"studentId": "9", "position": "STUDY"}, headers=hdr)
     assert r.json()["code"] == 0
+
+
+def test_dashboard_todo_scoped_to_assignee(client, db_mode):
+    """辅导员待办按统一待办可见性：仅本班池待办 + 本人指派；看不到他班池待办与他人指派。
+
+    mock 令牌 userId=u_<数字>，与 workbench_todo_service._uid 解析一致。
+    """
+    ids = _seed_classes(db_mode)
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile, UnifiedTodo
+    CA_UID, OTHER_UID = 61001, 61002
+    db = get_sessionmaker()()
+    sa = db.query(StudentProfile).filter_by(class_id=ids["A"]).first()
+    sb = db.query(StudentProfile).filter_by(class_id=ids["B"]).first()
+    assert sa and sb
+    db.add(UnifiedTodo(
+        tenant_id=TID, source_module="student-affairs", source_biz_type="LEAVE",
+        source_biz_id=9101, todo_type="LEAVE_APPROVAL", assignee_id=0,
+        student_id=sa.id, title="本班池待办", status="PENDING"))
+    db.add(UnifiedTodo(
+        tenant_id=TID, source_module="student-affairs", source_biz_type="LEAVE",
+        source_biz_id=9102, todo_type="LEAVE_APPROVAL", assignee_id=0,
+        student_id=sb.id, title="他班池待办", status="PENDING"))
+    db.add(UnifiedTodo(
+        tenant_id=TID, source_module="student-affairs", source_biz_type="LEAVE",
+        source_biz_id=9103, todo_type="LEAVE_APPROVAL", assignee_id=OTHER_UID,
+        student_id=sa.id, title="他人指派待办", status="PENDING"))
+    db.add(UnifiedTodo(
+        tenant_id=TID, source_module="student-affairs", source_biz_type="RISK",
+        source_biz_id=9104, todo_type="RISK_HANDLE", assignee_id=CA_UID,
+        student_id=sb.id, title="本人指派待办", status="PENDING"))
+    db.commit()
+    db.close()
+
+    token = create_access_token({
+        "userId": f"u_{CA_UID}", "loginName": "counselor01", "realName": "王莉",
+        "userType": "TEACHER", "tid": "demo", "tenantId": str(TID),
+        "activeContextId": "ctx", "currentRoleCode": "COUNSELOR", "clientType": "PC"})
+    hdr = {"Authorization": f"Bearer {token}"}
+    r = client.get("/api/v1/student-affairs/dashboard", headers=hdr).json()
+    assert r["code"] == 0
+    todo = next(c["value"] for c in r["data"]["summaryCards"] if c["key"] == "pendingTodo")
+    # 本班池 1 + 本人指派 1；他班池与他人指派不可见
+    assert todo == 2
+    assert r["data"]["scopeLabel"] in ("本人负责范围", "全校", "本院", "无数据范围")
+    keys = {c["key"] for c in r["data"]["summaryCards"]}
+    assert "dormException" not in keys
+    assert "overdueLeave" in keys
+    card = next(c for c in r["data"]["summaryCards"] if c["key"] == "pendingLeave")
+    assert card.get("drillPath") == "/admin/campus-service/leave"
+
+
+def test_dashboard_admin_scope_label_schoolwide(client, db_mode):
+    _seed_classes(db_mode)
+    r = client.get("/api/v1/student-affairs/dashboard", headers=_hdr(client, "school_admin01")).json()
+    assert r["data"]["scopeLabel"] == "全校"
+    assert r["data"]["scopeMode"] == "ADMIN_TENANT"
+    # 学工管理员可见全校池待办口径：conftest 种子里无 assignee_id=0 的 PENDING，
+    # 另有 assignee_id=1 的个人待办——mock 管理员 uid 不可解析时只计池待办，不得回退全量 PENDING
+    todo = next(c["value"] for c in r["data"]["summaryCards"] if c["key"] == "pendingTodo")
+    assert todo == 0

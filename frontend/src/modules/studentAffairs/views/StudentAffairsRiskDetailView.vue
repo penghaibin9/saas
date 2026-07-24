@@ -159,7 +159,7 @@ export default {
         { label: '来源编号', value: x.sourceRefId },
         { label: '风险等级', value: x.riskLevel },
         { label: '状态', value: x.statusLabel || x.status },
-        { label: '责任人', value: x.ownerId || '待分派' },
+        { label: '责任人', value: this.ownerLabel(x) },
         { key: 'detail', label: '风险明细', value: x.detail, span: 2 },
         { label: '归档状态', value: x.isArchived ? '已归档' : '未归档' },
         { label: '版本', value: x.version }
@@ -207,9 +207,10 @@ export default {
     async submitOwnerDlg({ reason } = {}) {
       const d = this.ownerDlg
       if (!d.ownerId) { this.errorMessage = '请选择责任人'; return }
+      const ver = this.detail.version
       const ok = await this.runAction(() => (d.kind === 'assign'
-        ? studentAffairsApi.assignRisk(this.riskId, d.ownerId)
-        : studentAffairsApi.transferRisk(this.riskId, d.ownerId, reason || '')))
+        ? studentAffairsApi.assignRisk(this.riskId, d.ownerId, ver)
+        : studentAffairsApi.transferRisk(this.riskId, d.ownerId, reason || '', ver)))
       if (ok) d.visible = false
     },
     /* ── 处置类：统一走必填说明弹窗；sceneKey 均已核对与本动作语义一致 ── */
@@ -224,13 +225,14 @@ export default {
       this.textDlg = { visible: true, kind, title, type, confirmText, reasonLabel, sceneKey, minLength: 5 }
     },
     async submitTextDlg({ reason }) {
+      const ver = this.detail.version
       const fnMap = {
-        process: (t) => studentAffairsApi.processRisk(this.riskId, t),
-        follow: (t) => studentAffairsApi.followRisk(this.riskId, t),
-        escalate: (t) => studentAffairsApi.escalateRisk(this.riskId, t),
-        takeover: (t) => studentAffairsApi.takeoverRisk(this.riskId, t),
-        close: (t) => studentAffairsApi.closeRisk(this.riskId, t),
-        reopen: (t) => studentAffairsApi.reopenRisk(this.riskId, t)
+        process: (t) => studentAffairsApi.processRisk(this.riskId, t, ver),
+        follow: (t) => studentAffairsApi.followRisk(this.riskId, t, ver),
+        escalate: (t) => studentAffairsApi.escalateRisk(this.riskId, t, ver),
+        takeover: (t) => studentAffairsApi.takeoverRisk(this.riskId, t, ver),
+        close: (t) => studentAffairsApi.closeRisk(this.riskId, t, ver),
+        reopen: (t) => studentAffairsApi.reopenRisk(this.riskId, t, ver)
       }
       const fn = fnMap[this.textDlg.kind]
       if (!fn) return
@@ -246,11 +248,23 @@ export default {
         await this.load()
         return true
       } catch (e) {
+        if (e.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          this.errorMessage = '该记录已被其他人处理，数据已刷新'
+          await this.load()
+          return false
+        }
         this.errorMessage = e.message || '操作失败'
         return false
       } finally {
         this.actioning = false
       }
+    },
+    ownerLabel(x) {
+      if (!x.ownerId) return '待分派'
+      if (x.ownerName) {
+        return x.ownerLoginName ? `${x.ownerName} / ${x.ownerLoginName}` : x.ownerName
+      }
+      return '责任人账号异常'
     },
     sourceLabel(source) {
       return ({

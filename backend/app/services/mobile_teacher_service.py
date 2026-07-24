@@ -863,7 +863,7 @@ def affairs_risk_pending(user: dict) -> dict:
     from app.services import affairs_risk_service as svc
     items = []
     for st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED"):
-        chunk, _ = svc.list_risks(u, status=st, page=1, page_size=50)
+        chunk, _, _ = svc.list_risks(u, status=st, page=1, page_size=50)
         items.extend(chunk)
     # 与待办卡 RISK_HANDLE 对齐：先按 UnifiedTodo 指派人收敛；无待办时回退本人 owner
     filtered = _filter_by_assignee_todos(
