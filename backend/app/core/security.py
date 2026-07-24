@@ -1,11 +1,10 @@
 """
-认证与权限边界（当前为 mock）
-────────────────────────────────────────────────────────────
-- create_access_token / decode_token：演示用 JWT（HS256）。
-- get_current_user：从 Authorization: Bearer 解析当前用户 + active_context，写入上下文。
+认证与权限边界
+
+- create_access_token / decode_token：JWT（HS256）；生产必须强密钥。
+- get_current_user：从 Authorization: Bearer 解析当前用户 + active_context。
 - 平台运营端（跨租户）鉴权见 api/v1/platform.py 的 require_platform_super_admin。
-真实接库后：get_current_user 改为校验签名 + 查 t_user/t_user_active_context；
-并叠加 模块授权 × 角色权限 × 数据范围 × 当前身份 四要素校验链（DB 冻结册 §10/§11）。
+- DB 账号（userId 以 db- 开头）逐请求复核；演示账号仅在非 production 且 mock-login 开启时可用。
 """
 from __future__ import annotations
 
@@ -21,26 +20,39 @@ from app.core.exceptions import no_permission, unauthorized
 
 
 def assert_secret_safe() -> None:
-    """生产环境禁止默认 JWT 密钥（JWT_SECRET_KEY/JWT_SECRET 必须来自环境变量）。"""
+    """生产环境禁止默认 JWT 密钥（JWT_SECRET / JWT_SECRET_KEY 必须够长且非默认）。"""
     if settings.is_prod:
         weak = {"change-me-in-production", "school-lifecycle-dev-secret-change-me-please-32", ""}
         if settings.jwt_secret in weak or len(settings.jwt_secret) < 32:
-            raise RuntimeError("生产环境必须通过环境变量设置 ≥32 位随机 JWT_SECRET_KEY")
+            raise RuntimeError("生产环境必须通过环境变量设置 ≥32 位随机 JWT_SECRET（或兼容名 JWT_SECRET_KEY）")
 
 
 def assert_prod_flags_safe() -> None:
-    """生产环境基线开关：DEBUG 必须为 false；mock-login 不得显式开启。"""
-    if settings.is_prod:
-        if settings.DEBUG:
-            raise RuntimeError("生产环境必须设置 DEBUG=false")
-        v = (settings.MOCK_LOGIN_ENABLED or "").strip().lower()
-        if v in ("true", "1", "yes", "on"):
-            raise RuntimeError("生产环境禁止显式开启 MOCK_LOGIN_ENABLED（免密演示登录）")
+    """生产 / DEPLOYMENT_MODE=production 基线开关。"""
+    if not settings.is_prod:
+        return
+    if settings.DEBUG:
+        raise RuntimeError("生产环境必须设置 DEBUG=false")
+    v = (settings.MOCK_LOGIN_ENABLED or "").strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        raise RuntimeError("生产环境禁止显式开启 MOCK_LOGIN_ENABLED（免密演示登录）")
+    if not settings.DB_ENABLED:
+        raise RuntimeError("生产环境必须设置 DB_ENABLED=true")
+    # MySQL 连接必须完整：DATABASE_URL 或 DB_* 分项
+    url = (settings.DATABASE_URL or "").strip()
+    if not url:
+        if not (settings.DB_HOST and settings.DB_NAME and settings.DB_USER):
+            raise RuntimeError("生产环境必须配置 DATABASE_URL 或完整的 DB_HOST/DB_NAME/DB_USER")
+        if settings.db_dialect != "mysql":
+            raise RuntimeError("生产环境仅允许 MySQL（请配置 mysql DATABASE_URL 或 DB_DRIVER=mysql）")
+    elif settings.db_dialect != "mysql":
+        raise RuntimeError("生产环境仅允许 MySQL DATABASE_URL")
+    if not (settings.INTERNAL_OPS_TOKEN or "").strip():
+        raise RuntimeError("生产环境必须设置 INTERNAL_OPS_TOKEN（保护 /health/ready 与 /internal/metrics）")
 
 
 def assert_cors_safe() -> None:
-    """生产环境禁止 CORS 通配符（allow_credentials=True 时 * 既不安全也不合规）。
-    留空回退通配或显式含 * 均拒绝启动，强制运维显式配置白名单。"""
+    """生产环境禁止 CORS 通配符。"""
     if settings.is_prod:
         origins = settings.cors_origin_list
         if not settings.CORS_ORIGINS.strip() or "*" in origins:
@@ -48,15 +60,23 @@ def assert_cors_safe() -> None:
 
 
 def assert_scale_safe() -> None:
-    """多实例/多 worker 部署必须配 Redis（P1 加固）。
-    限流（token_store.rate_limit）、登录失败锁定、accessToken jti 黑名单在 Redis 不可用时
-    退回「进程内内存」——单进程语义正确，但一旦横向扩到多台服务器或多 uvicorn worker，
-    各进程各算一份桶/计数，攻击者轮询打不同进程即可绕过，等于形同虚设。
-    默认 MULTI_INSTANCE=false（单进程）不受影响；扩容时显式置 true 即由本守卫强制 Redis。"""
+    """多实例部署必须配 Redis。"""
     if settings.is_prod and settings.MULTI_INSTANCE and not settings.REDIS_URL.strip():
         raise RuntimeError(
             "多实例部署（MULTI_INSTANCE=true）必须配置 REDIS_URL：否则限流/登录锁定/"
             "令牌黑名单在各进程间不共享，无法生效。请配置 Redis，或单进程部署时置 MULTI_INSTANCE=false")
+
+
+def assert_scheduler_safe() -> None:
+    """多 worker / 多实例禁止在 Web 进程内嵌定时任务。"""
+    mode = (settings.SCHEDULER_MODE or "web").strip().lower()
+    multi = bool(settings.MULTI_INSTANCE) or int(settings.WEB_CONCURRENCY or 1) > 1
+    if mode == "web" and multi:
+        raise RuntimeError(
+            "MULTI_INSTANCE=true 或 WEB_CONCURRENCY>1 时禁止 SCHEDULER_MODE=web；"
+            "请改用独立 scheduler 进程（SCHEDULER_MODE=external）")
+    if settings.is_prod and mode == "web" and multi:
+        raise RuntimeError("生产多实例禁止 Web 内嵌定时任务")
 
 
 def create_access_token(payload: dict, *, expires_in: int | None = None) -> str:

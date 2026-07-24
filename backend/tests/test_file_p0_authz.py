@@ -29,7 +29,12 @@ def _token(role: str, *, tenant_id: int = TID, user_id: str = "u-x",
 
 
 def _upload(client, hdr, name="p0.txt", content=b"hello-p0", biz_type="ATTACHMENT", biz_id=None):
-    files = {"file": (name, io.BytesIO(content), "text/plain")}
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "txt"
+    mime = {
+        "txt": "text/plain", "csv": "text/csv", "pdf": "application/pdf",
+        "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    }.get(ext, "application/octet-stream")
+    files = {"file": (name, io.BytesIO(content), mime)}
     data = {"bizType": biz_type}
     if biz_id:
         data["bizId"] = biz_id
@@ -62,7 +67,7 @@ def test_cross_tenant_download_denied(client, db_mode):
 
 def test_biz_permission_holder_can_download_after_bind(client, db_mode):
     admin = _hdr(client, "school_admin01")
-    fid = _upload(client, admin, name="leave.pdf", content=b"%PDF", biz_type="LEAVE", biz_id="1001")
+    fid = _upload(client, admin, name="leave.pdf", content=b"%PDF-1.4\n%", biz_type="LEAVE", biz_id="1001")
     # 辅导员有 leave.view
     counselor = _hdr(client, "counselor01")
     assert client.get(f"/api/v1/files/download/{fid}", headers=counselor).status_code == 200
@@ -70,9 +75,9 @@ def test_biz_permission_holder_can_download_after_bind(client, db_mode):
 
 def test_student_only_own_attachment(client, db_mode):
     admin = _hdr(client, "school_admin01")
-    own = _upload(client, admin, name="own.pdf", content=b"own",
+    own = _upload(client, admin, name="own.pdf", content=b"%PDF-1.4\nown",
                   biz_type="ATTACHMENT", biz_id="2023100001")
-    other = _upload(client, admin, name="other.pdf", content=b"other",
+    other = _upload(client, admin, name="other.pdf", content=b"%PDF-1.4\nother",
                     biz_type="ATTACHMENT", biz_id="OTHERNO")
     stu = _hdr(client, "student01")  # studentNo=2023100001
     assert client.get(f"/api/v1/files/download/{own}", headers=stu).status_code == 200

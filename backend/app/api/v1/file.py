@@ -78,4 +78,7 @@ def download_file(file_id: str, user=Depends(get_current_user)):
         raise not_found("文件不存在或无权访问")
     path, filename = resolved
     audit_log.record("FILE_DOWNLOAD", filename, detail={"fileId": file_id})
-    return FileResponse(str(path), filename=filename)
+    resp = FileResponse(str(path), filename=filename, content_disposition_type="attachment")
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp

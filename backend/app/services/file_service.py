@@ -13,6 +13,13 @@ from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import has_permission, is_super_admin
 from app.db.session import db_enabled, get_sessionmaker
+from app.services.file_content_security import (
+    FILE_STATUS_AVAILABLE,
+    FILE_STATUS_QUARANTINED,
+    is_downloadable_status,
+    sanitize_filename,
+    validate_content,
+)
 from app.services.storage import get_backend
 
 ALLOWED_EXT = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
@@ -52,7 +59,8 @@ def upload_dir() -> Path:
 
 
 def validate_ext(filename: str) -> str:
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    safe = sanitize_filename(filename)
+    ext = safe.rsplit(".", 1)[-1].lower() if "." in safe else ""
     if ext in BLOCKED_EXT or ext not in ALLOWED_EXT:
         raise AppException("FILE_TYPE_NOT_ALLOWED", f"文件类型不允许：.{ext or '未知'}",
                            details={"allowed": sorted(ALLOWED_EXT)})
@@ -65,6 +73,8 @@ def _require_tenant_id() -> int:
     except (TypeError, ValueError):
         tid = 0
     if db_enabled() and not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝写入文件")
+    if not tid:
         raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝写入文件")
     return tid
 
@@ -99,6 +109,9 @@ def authorize_file_access(user: dict, file_obj, action: str = "download") -> boo
     if not tid or not file_tid or tid != file_tid:
         return False
     if getattr(file_obj, "is_deleted", False):
+        return False
+    status = getattr(file_obj, "status", None)
+    if action == "download" and not is_downloadable_status(status):
         return False
     if is_super_admin(user):
         return True
@@ -179,8 +192,8 @@ def _load_file_row(file_id: str):
 async def store_upload(file, biz_type: str = "ATTACHMENT", *, biz_id: str | None = None,
                        user: dict | None = None, visibility: str = "BIZ_SCOPED",
                        security_level: str = "NORMAL") -> dict:
-    """校验 + 落盘 + 登记。DB 模式强制租户上下文。"""
-    filename = file.filename or "unnamed"
+    """校验 + 落盘 + 登记。DB 模式强制租户上下文；服务端生成 fileKey。"""
+    filename = sanitize_filename(file.filename or "unnamed")
     _ensure_upload_allowed()
     tid = _require_tenant_id()
     max_size = _upload_max_size()
@@ -192,21 +205,31 @@ async def store_upload(file, biz_type: str = "ATTACHMENT", *, biz_id: str | None
     key = f"{datetime.now():%Y%m%d}/{uuid.uuid4().hex}.{ext}"
     backend = get_backend()
     target = backend.staging_path(key)
-    with target.open("wb") as out:
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > max_size:
-                out.close()
-                target.unlink(missing_ok=True)
-                raise AppException("FILE_TOO_LARGE",
-                                   f"文件超过 {max_size // (1024 * 1024)}MB 上限（平台规则中心配置）")
-            sha.update(chunk)
-            out.write(chunk)
+    chunks: list[bytes] = []
+    try:
+        with target.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_size:
+                    raise AppException("FILE_TOO_LARGE",
+                                       f"文件超过 {max_size // (1024 * 1024)}MB 上限（平台规则中心配置）")
+                sha.update(chunk)
+                out.write(chunk)
+                if size <= 8 * 1024 * 1024:
+                    chunks.append(chunk)
+        data_for_scan = b"".join(chunks) if size <= 8 * 1024 * 1024 else target.read_bytes()
+        declared = getattr(file, "content_type", None)
+        mime, file_status = validate_content(
+            filename=filename, declared_content_type=declared, data=data_for_scan, ext=ext)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
     backend.persist(key, target)
     digest = sha.hexdigest()
     meta = {"fileName": filename, "ext": ext, "sizeBytes": size, "sha256": digest,
             "fileKey": key, "bizType": biz_type, "bizId": biz_id,
             "visibility": visibility, "securityLevel": security_level,
+            "mimeType": mime, "status": file_status,
             "storedAt": datetime.now().isoformat(timespec="seconds")}
     if db_enabled():
         from app.models import FileObject
@@ -214,11 +237,10 @@ async def store_upload(file, biz_type: str = "ATTACHMENT", *, biz_id: str | None
         try:
             row = FileObject(
                 tenant_id=tid, file_key=key, file_name=filename, ext=ext,
-                mime_type=getattr(file, "content_type", None),
-                size_bytes=size, sha256=digest, biz_type=biz_type, biz_id=biz_id,
+                mime_type=mime, size_bytes=size, sha256=digest, biz_type=biz_type, biz_id=biz_id,
                 owner_user_id=owner_id, created_by=owner_id,
                 visibility=visibility or "BIZ_SCOPED",
-                security_level=security_level or "NORMAL", status="STORED")
+                security_level=security_level or "NORMAL", status=file_status)
             db.add(row)
             db.commit()
             db.refresh(row)
@@ -227,8 +249,6 @@ async def store_upload(file, biz_type: str = "ATTACHMENT", *, biz_id: str | None
         finally:
             db.close()
     else:
-        if not tid:
-            raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝写入文件")
         meta["fileId"] = f"mem-{uuid.uuid4().hex[:12]}"
         _MEM_REGISTRY[meta["fileId"]] = meta
         _MEM_TENANT[meta["fileId"]] = tid
@@ -237,7 +257,7 @@ async def store_upload(file, biz_type: str = "ATTACHMENT", *, biz_id: str | None
             "biz_type": biz_type, "biz_id": biz_id, "visibility": visibility,
             "security_level": security_level, "owner_user_id": owner_id,
             "created_by": owner_id, "tenant_id": tid, "is_deleted": False,
-            "file_key": key, "file_name": filename,
+            "file_key": key, "file_name": filename, "status": file_status,
         }
     return meta
 
@@ -247,7 +267,10 @@ def store_bytes(data: bytes, filename: str, biz_type: str = "ATTACHMENT",
                 user: dict | None = None, visibility: str = "PRIVATE",
                 security_level: str = "NORMAL") -> dict:
     tid = _require_tenant_id()
-    ext = (filename.rsplit(".", 1)[-1] if "." in filename else "bin").lower()
+    filename = sanitize_filename(filename)
+    ext = validate_ext(filename)
+    detected_mime, file_status = validate_content(
+        filename=filename, declared_content_type=mime_type, data=data, ext=ext)
     key = f"{datetime.now():%Y%m%d}/{uuid.uuid4().hex}.{ext}"
     backend = get_backend()
     target = backend.staging_path(key)
@@ -259,17 +282,19 @@ def store_bytes(data: bytes, filename: str, biz_type: str = "ATTACHMENT",
     owner_id = _actor_user_id(actor)
     meta = {"fileName": filename, "ext": ext, "sizeBytes": size, "sha256": digest,
             "fileKey": key, "bizType": biz_type, "bizId": biz_id,
+            "mimeType": detected_mime, "status": file_status,
             "storedAt": datetime.now().isoformat(timespec="seconds")}
     if db_enabled():
         from app.models import FileObject
         db = get_sessionmaker()()
         try:
             row = FileObject(
-                tenant_id=tid, file_key=key, file_name=filename, ext=ext, mime_type=mime_type,
-                size_bytes=size, sha256=digest, biz_type=biz_type, biz_id=biz_id,
+                tenant_id=tid, file_key=key, file_name=filename, ext=ext,
+                mime_type=detected_mime, size_bytes=size, sha256=digest,
+                biz_type=biz_type, biz_id=biz_id,
                 owner_user_id=owner_id, created_by=owner_id,
                 visibility=visibility or "PRIVATE",
-                security_level=security_level or "NORMAL", status="STORED")
+                security_level=security_level or "NORMAL", status=file_status)
             db.add(row)
             db.commit()
             db.refresh(row)
@@ -285,7 +310,7 @@ def store_bytes(data: bytes, filename: str, biz_type: str = "ATTACHMENT",
             "biz_type": biz_type, "biz_id": biz_id, "visibility": visibility,
             "security_level": security_level, "owner_user_id": owner_id,
             "created_by": owner_id, "tenant_id": tid, "is_deleted": False,
-            "file_key": key, "file_name": filename,
+            "file_key": key, "file_name": filename, "status": file_status,
         }
     return meta
 
@@ -294,6 +319,7 @@ class _MemFile:
     """内存模式伪 FileObject，供 authorize_file_access 复用。"""
     def __init__(self, file_id: str):
         extra = _MEM_META_EXTRA.get(file_id) or {}
+        reg = _MEM_REGISTRY.get(file_id) or {}
         self.id = file_id
         self.tenant_id = extra.get("tenant_id") or _MEM_TENANT.get(file_id) or 0
         self.owner_user_id = extra.get("owner_user_id") or _MEM_OWNER.get(file_id)
@@ -305,7 +331,7 @@ class _MemFile:
         self.is_deleted = bool(extra.get("is_deleted"))
         self.file_key = extra.get("file_key")
         self.file_name = extra.get("file_name")
-        reg = _MEM_REGISTRY.get(file_id) or {}
+        self.status = extra.get("status") or reg.get("status") or FILE_STATUS_AVAILABLE
         self.ext = reg.get("ext")
         self.size_bytes = reg.get("sizeBytes")
         self.sha256 = reg.get("sha256")
@@ -412,4 +438,7 @@ def _ensure_upload_allowed() -> None:
     except Exception:
         allowed = True
     if not allowed:
-        raise AppException("MODULE_NOT_AUTHORIZED", "当前学校套餐未开通「文件上传」功能，请联系平台方 13549666867")
+        from app.core.config import settings
+        raise AppException(
+            "MODULE_NOT_AUTHORIZED",
+            f"当前学校套餐未开通「文件上传」功能，请联系{settings.support_contact_display}")

@@ -33,9 +33,12 @@ _REMARK_PREFIX = "migration:"
 
 def _tid() -> int:
     try:
-        return int(current_tenant_id() or 1000000000000000001)
+        tid = int(current_tenant_id() or 0)
     except (TypeError, ValueError):
-        return 1000000000000000001
+        tid = 0
+    if not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝迁移导入写入")
+    return tid
 
 
 def _require_db():

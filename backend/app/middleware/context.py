@@ -173,47 +173,57 @@ def is_readonly_tenant(tenant: dict | None = None) -> bool:
 
 
 def _demo_tenant_readonly_deny(request: Request):
-    """正式演示租户数据不许改动：登录后的所有写操作（POST/PUT/PATCH/DELETE）返回 403，
-    引导参观者去体验沙箱（sandbox-school）随意操作。auth/登录/登出/刷新不受限。"""
+    """正式演示租户数据不许改动：写操作 403。守卫自身异常时对写请求 503，禁止 fail-open。"""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    path = request.url.path
+    if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
+        return None
     try:
         from app.core.config import settings
         if not settings.demo_tenant_readonly:
-            return None
-        if request.method in ("GET", "HEAD", "OPTIONS"):
-            return None
-        path = request.url.path
-        if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
             return None
         from app.core.context import get_tenant
         tenant = get_tenant() or {}
         if str(tenant.get("tenantId") or "") != _DEMO_READONLY_TENANT_ID:
             return None
+    except Exception:  # noqa: BLE001
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        return JSONResponse(status_code=503, content=fail(
+            "TENANT_GUARD_UNAVAILABLE", "租户只读守卫暂时不可用，请稍后重试"))
+    try:
         from starlette.responses import JSONResponse
         from app.core.response import fail
         from app.services import audit_log
-        audit_log.record("DEMO_READONLY_DENY", path,
-                         detail={"method": request.method}, result="DENIED")
+        try:
+            audit_log.record("DEMO_READONLY_DENY", path,
+                             detail={"method": request.method}, result="DENIED")
+        except Exception:  # noqa: BLE001 — 审计失败不影响拒绝判定
+            pass
         return JSONResponse(status_code=403, content=fail(
             "NO_PERMISSION",
-            "正式演示环境为只读，数据不可修改。想动手体验请用沙箱账号登录"
-            "（学生 student2 / 教师 teacher2 / 管理员 admin2，密码 123456，可由运营平台恢复）"))
-    except Exception:  # noqa: BLE001 — 只读锁自身故障不阻断业务
-        return None
+            "正式演示环境为只读，数据不可修改。想动手体验请使用沙箱环境"))
+    except Exception:  # noqa: BLE001
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        return JSONResponse(status_code=503, content=fail(
+            "TENANT_GUARD_UNAVAILABLE", "租户只读守卫暂时不可用，请稍后重试"))
 
 
 def _expired_tenant_readonly_deny(request: Request):
-    """租户到期（trial/active 已过 expireAt 或被标记 expired）后：
-    可登录、可查看（GET），所有写操作（POST/PUT/PATCH/DELETE）返回 403 MODULE_EXPIRED_READONLY。
-    平台超管不受限；配置缺失/异常一律放行，绝不阻断正常业务。"""
+    """租户到期后写操作 403。状态读取异常时对写请求 503，禁止 fail-open。"""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    path = request.url.path
+    if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
+        return None
     try:
-        if request.method in ("GET", "HEAD", "OPTIONS"):
-            return None
-        path = request.url.path
-        if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
-            return None
         from app.core.context import get_current_user_ctx, get_tenant
+        from app.core.permissions import is_super_admin
         user = get_current_user_ctx() or {}
-        if user.get("userType") == "PLATFORM_SUPER_ADMIN":
+        # 平台超管豁免须已绑定已验证身份（有 userId + PLATFORM_SUPER_ADMIN）
+        if is_super_admin(user) and user.get("userId"):
             return None
         tenant = get_tenant() or {}
         tid = tenant.get("tenantId")
@@ -223,15 +233,28 @@ def _expired_tenant_readonly_deny(request: Request):
         if not db_enabled():
             return None
         from app.services.platform_service import tenant_status
-        if tenant_status(int(tid)) != "expired":
+        status = tenant_status(int(tid), strict=True)
+        if status != "expired":
             return None
+    except Exception:  # noqa: BLE001 — 含 strict 状态读取失败
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        return JSONResponse(status_code=503, content=fail(
+            "TENANT_GUARD_UNAVAILABLE", "租户状态守卫暂时不可用，请稍后重试"))
+    try:
         from starlette.responses import JSONResponse
         from app.core.response import fail
         from app.services import audit_log
-        audit_log.record("WRITE_DENIED_EXPIRED", path,
-                         detail={"method": request.method, "tenantId": str(tid)}, result="DENIED")
+        try:
+            audit_log.record("WRITE_DENIED_EXPIRED", path,
+                             detail={"method": request.method, "tenantId": str(tid)}, result="DENIED")
+        except Exception:  # noqa: BLE001
+            pass
         return JSONResponse(status_code=403, content=fail(
             "MODULE_EXPIRED_READONLY",
-            "服务已到期，当前为只读模式：可查看数据，无法新增或修改。续费请联系平台方 13549666867"))
-    except Exception:  # noqa: BLE001 — 只读控制自身故障不阻断业务
-        return None
+            "服务已到期，当前为只读模式：可查看数据，无法新增或修改。请联系平台运营续费"))
+    except Exception:  # noqa: BLE001
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        return JSONResponse(status_code=503, content=fail(
+            "TENANT_GUARD_UNAVAILABLE", "租户状态守卫暂时不可用，请稍后重试"))

@@ -1,53 +1,59 @@
 """
 应用配置（pydantic-settings）
-────────────────────────────────────────────────────────────
-从 .env 读取，全部有安全默认值，缺 .env 也能起。
 
-数据库仅做「预留」：DATABASE_URL 读进来但默认不连库、不建表、不迁移。
-是否真正启用数据库由 DB_ENABLED 控制（默认 False）。
-对齐冻结文档：docs/api/00-API契约冻结总册、docs/database/00-数据库设计冻结总册、
-deploy/08-环境变量说明（APP_ENV / APP_PORT=8000 / DATABASE_URL / JWT_SECRET / REDIS_URL）。
+从 .env / 环境变量读取。正式部署必须显式声明 DEPLOYMENT_MODE=production 与 APP_ENV=production，
+不得依赖「未写 production 即当开发」上线。DB_ENABLED 控制是否连接真实数据库（生产强制 true）。
+主配置名：APP_ENV、DEPLOYMENT_MODE、JWT_SECRET、JWT_ALG、DATABASE_URL。
+兼容旧名：ENV / ENVIRONMENT、JWT_SECRET_KEY、JWT_ALGORITHM（冲突时拒绝启动）。
 """
 from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ALLOWED_APP_ENV = frozenset({"development", "test", "staging", "production"})
+_APP_ENV_ALIASES = {
+    "dev": "development", "develop": "development", "local": "development",
+    "prod": "production", "production": "production",
+    "test": "test", "testing": "test",
+    "staging": "staging", "stage": "staging",
+}
+_ALLOWED_DEPLOYMENT = frozenset({"local", "staging", "production"})
 
 
 class Settings(BaseSettings):
     # ── 应用 ──
     APP_NAME: str = "高校学生全生命周期管理平台 · 后端"
-    APP_ENV: str = "dev"                 # dev / test / prod
-    ENV: str = ""                        # 兼容部分部署脚本使用 ENV=production
-    ENVIRONMENT: str = ""                # 兼容 ENVIRONMENT=production
-    APP_PORT: int = 8000                 # 与 deploy/05、08 预留端口一致
+    APP_ENV: str = "development"         # development / test / staging / production
+    ENV: str = ""                        # 兼容旧部署脚本 ENV=production（弃用，冲突拒绝）
+    ENVIRONMENT: str = ""                # 兼容 ENVIRONMENT=production（弃用，冲突拒绝）
+    # local=本机；staging=预发；production=正式。正式部署必须显式 production。
+    DEPLOYMENT_MODE: str = "local"
+    APP_PORT: int = 8000
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = True
-    TIMEZONE_OFFSET_HOURS: int = 8       # 响应 timestamp 用 +08:00（固定偏移，跨平台无需 tz 库）
+    TIMEZONE_OFFSET_HOURS: int = 8
+    APP_VERSION: str = "1.0.0"
 
-    # ── 认证（当前为 mock，仅用于签发演示令牌）──
+    # ── 认证（开发可用安全默认 JWT；生产由 assert_* 强制强密钥 + 关 mock-login）──
     JWT_SECRET: str = "school-lifecycle-dev-secret-change-me-please-32"
     JWT_ALG: str = "HS256"
     JWT_EXPIRES_IN: int = 7200           # 秒
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    # 演示登录（/auth/mock-login）开关。生产环境默认强制关闭，关闭后端点返回 403，
-    # 不再免密签发任意角色令牌。留空/未设时按 is_prod 推断（prod 关、非 prod 开）。
+    # 演示登录（/auth/mock-login）。留空时按 is_prod 推断（production 关、其余开）。
     MOCK_LOGIN_ENABLED: str = ""
-    # 正式演示租户只读锁：写操作一律 403（参观者改不动演示数据）。置 false 可临时放开。
     DEMO_TENANT_READONLY: str = ""
-    # 体验沙箱自动重置开关；默认关闭，运营平台可随时手动恢复。
     SANDBOX_AUTO_RESET: str = "false"
-    # 实习请假逾期扫描：生产环境默认开启；多实例通过数据库幂等规则保证重复扫描安全。
     INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
-    # 学工请假逾期扫描（affairs_leave_service.scan_overdue，幂等）：同款启动定时；默认开启。
     AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN: bool = True
+    # 运维探针令牌：/health/ready、/internal/metrics（生产建议必填）
+    INTERNAL_OPS_TOKEN: str = ""
+    # 对外联系方式；错误提示用配置而非硬编码个人电话
+    SUPPORT_CONTACT: str = ""
 
     # ── 反向代理 ──
-    # 可信代理（逗号分隔，支持单 IP 或 CIDR 网段，如 172.16.0.0/12）。请求直连方 IP 命中时，
-    # 才信任 X-Forwarded-For/X-Real-IP 解析真实客户端 IP（登录限流、审计日志按真实 IP 计）；
-    # 否则一律用直连 IP，防头部伪造。默认仅本机回环（Nginx 与后端同机直装拓扑）；
-    # docker compose 拓扑请设为容器网段（见 deploy/docker/docker-compose.mysql.yml）。
     TRUSTED_PROXY_IPS: str = "127.0.0.1,::1"
 
     # ── 多租户（对齐 DB 冻结册：单库/单 schema + tenant_id 行级隔离）──
@@ -59,19 +65,19 @@ class Settings(BaseSettings):
     WX_SECRET: str = ""                  # 小程序 AppSecret；仅经 .env/环境变量注入，禁止写进仓库
 
     # ── 数据库 ──
-    DB_ENABLED: bool = False             # 关闭时走 mock；开启后按 effective_database_url 连库
-    DATABASE_URL: str = ""               # 显式连接串（最高优先级）：sqlite/mysql/postgresql 均可；留空则按 DB_DRIVER 组装
-    REDIS_URL: str = ""                  # 多实例共享鉴权、限流与短时业务缓存；空值时安全降级
-    MULTI_INSTANCE: bool = False         # 多台服务器/多 uvicorn worker 部署置 true：生产环境将强制要求 REDIS_URL
-                                         # （否则限流/登录锁定/令牌黑名单退回进程内，跨进程不共享 → 形同虚设）
+    DB_ENABLED: bool = False             # False 时部分链路可走内存/演示；生产强制 True
+    DATABASE_URL: str = ""
+    REDIS_URL: str = ""
+    MULTI_INSTANCE: bool = False
+    WEB_CONCURRENCY: int = 1             # >1 或 MULTI_INSTANCE 时禁止 SCHEDULER_MODE=web
     REDIS_KEY_PREFIX: str = "school-lifecycle"
     REDIS_CONNECT_TIMEOUT: float = 0.3
     REDIS_SOCKET_TIMEOUT: float = 0.5
-    AUTH_SUBJECT_CACHE_TTL: int = 30      # 账号/租户/角色复核缓存；关键变更会主动失效
-    HOME_CACHE_TTL: int = 20              # 学生首页短缓存，写操作后主动失效
-    TENANT_API_RATE_LIMIT_PER_SECOND: int = 500  # 单校 API 总量保护；Redis 下多实例共享
-    USER_API_RATE_LIMIT_PER_SECOND: int = 120    # 单用户突发保护；正常首页并发不会误伤
-    FILE_STORAGE_ENDPOINT: str = ""      # 预留（MinIO/对象存储）
+    AUTH_SUBJECT_CACHE_TTL: int = 30
+    HOME_CACHE_TTL: int = 20
+    TENANT_API_RATE_LIMIT_PER_SECOND: int = 500
+    USER_API_RATE_LIMIT_PER_SECOND: int = 120
+    FILE_STORAGE_ENDPOINT: str = ""
 
     # ── 数据库分项配置（DATABASE_URL 留空时按此组装）──
     # MySQL-only 收口（2026-07-07）：正式开发/测试/部署统一 MySQL(utf8mb4)。
@@ -94,7 +100,7 @@ class Settings(BaseSettings):
     DB_WRITE_TIMEOUT: int = 30
     SLOW_QUERY_MS: int = 500              # 仅记录耗时与 SQL 动词，不记录敏感参数
     HTTP_SLOW_REQUEST_MS: int = 1000
-    # web=兼容单进程开发；external=生产多 worker，由独立 scheduler 容器执行定时任务。
+    # web=单进程开发内嵌定时；external=独立 scheduler 进程（production 默认应 external）
     SCHEDULER_MODE: str = "web"
 
     # ── CORS（逗号分隔白名单；留空开发放开）──
@@ -115,14 +121,15 @@ class Settings(BaseSettings):
     # 密钥一旦轮换，此前密文将无法解密（需先用旧密钥读出、用新密钥重新写入）。
     FIELD_ENCRYPTION_KEY: str = "jxd5OL3YvyF335hh52bntwYmmA7ZJ_BXWxyZt4CcGd4="
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # legacy 配置名；正式令牌统一读取 JWT_EXPIRES_IN
-    UPLOAD_DIR: str = "./uploads"       # 文件落点：local 后端的存储根 / cos 后端的临时·缓存根
-    EXPORT_DIR: str = "./exports"       # 就绪探针与异步导出工作目录；生产应挂持久化目录
-    AUDIT_ENABLED: bool = True          # 审计开关（DB_ENABLED=False 时写内存列表）
+    UPLOAD_DIR: str = "./uploads"
+    EXPORT_DIR: str = "./exports"
+    AUDIT_ENABLED: bool = True
+    FILE_ALLOW_ZIP: bool = False
+    FILE_ZIP_MAX_ENTRIES: int = 200
+    FILE_ZIP_MAX_UNCOMPRESSED_MB: int = 100
+    FILE_ZIP_MAX_RATIO: int = 100
 
-    # ── 文件存储后端（附件/论文/材料字节存哪）──
-    # local（默认）：字节存服务器本地 UPLOAD_DIR，单机部署够用。
-    # cos          ：字节存腾讯云对象存储 COS，多机/上云部署用；需下方 COS_* 配置 + cos-python-sdk-v5。
-    # 切换只改本项，t_file_object 表零迁移（file_key 语义两后端相同）。
+    # local / cos；字节存本地或腾讯云 COS（t_file_object.file_key 语义一致）
     FILE_STORAGE_BACKEND: str = "local"
     COS_REGION: str = ""                # 如 ap-guangzhou（COS 桶所在地域）
     COS_BUCKET: str = ""                # 如 student-files-1250000000（含 APPID 后缀）
@@ -148,16 +155,67 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @field_validator("APP_ENV", mode="before")
+    @classmethod
+    def _normalize_app_env(cls, v):
+        raw = (str(v or "")).strip().lower() or "development"
+        norm = _APP_ENV_ALIASES.get(raw, raw)
+        if norm not in _ALLOWED_APP_ENV:
+            raise ValueError(f"APP_ENV 非法：{v}；允许 development/test/staging/production")
+        return norm
+
+    @field_validator("DEPLOYMENT_MODE", mode="before")
+    @classmethod
+    def _normalize_deployment(cls, v):
+        raw = (str(v or "local")).strip().lower() or "local"
+        if raw in ("dev", "development"):
+            raw = "local"
+        if raw not in _ALLOWED_DEPLOYMENT:
+            raise ValueError(f"DEPLOYMENT_MODE 非法：{v}；允许 local/staging/production")
+        return raw
+
+    @field_validator("SCHEDULER_MODE", mode="before")
+    @classmethod
+    def _normalize_scheduler(cls, v):
+        raw = (str(v or "web")).strip().lower() or "web"
+        if raw not in ("web", "external"):
+            raise ValueError(f"SCHEDULER_MODE 非法：{v}；允许 web/external")
+        return raw
+
+    @model_validator(mode="after")
+    def _reconcile_aliases_and_deployment(self):
+        for legacy_name, legacy_val in (("ENV", self.ENV), ("ENVIRONMENT", self.ENVIRONMENT)):
+            raw = (legacy_val or "").strip().lower()
+            if not raw:
+                continue
+            norm = _APP_ENV_ALIASES.get(raw, raw)
+            if norm not in _ALLOWED_APP_ENV:
+                raise ValueError(f"{legacy_name} 非法：{legacy_val}")
+            if norm != self.APP_ENV:
+                raise ValueError(
+                    f"{legacy_name}={legacy_val} 与 APP_ENV={self.APP_ENV} 冲突，请统一后启动")
+        # JWT 双名冲突：两键都非空且值不同 → 拒绝
+        if (self.JWT_SECRET_KEY or "").strip() and (self.JWT_SECRET or "").strip():
+            if self.JWT_SECRET_KEY.strip() != self.JWT_SECRET.strip():
+                raise ValueError("JWT_SECRET 与 JWT_SECRET_KEY 同时存在且值冲突")
+        if (self.JWT_ALGORITHM or "").strip() and (self.JWT_ALG or "").strip():
+            if self.JWT_ALGORITHM.strip() != self.JWT_ALG.strip():
+                raise ValueError("JWT_ALG 与 JWT_ALGORITHM 同时存在且值冲突")
+        if self.DEPLOYMENT_MODE == "production" and self.APP_ENV != "production":
+            raise ValueError("DEPLOYMENT_MODE=production 时必须 APP_ENV=production")
+        # production 未显式指定 scheduler 时默认 external（仅当仍为默认 web 且部署正式）
+        if self.DEPLOYMENT_MODE == "production" and self.SCHEDULER_MODE == "web":
+            object.__setattr__(self, "SCHEDULER_MODE", "external")
+        return self
+
     @property
     def is_prod(self) -> bool:
-        for val in (self.APP_ENV, self.ENV, self.ENVIRONMENT):
-            if (val or "").strip().lower() in ("prod", "production"):
-                return True
-        return False
+        if self.DEPLOYMENT_MODE == "production":
+            return True
+        return self.APP_ENV == "production"
 
     @property
     def mock_login_enabled(self) -> bool:
-        """演示登录是否启用。显式配置优先；未配置时生产关、其余环境开。"""
         v = (self.MOCK_LOGIN_ENABLED or "").strip().lower()
         if v in ("true", "1", "yes", "on"):
             return True
@@ -167,14 +225,11 @@ class Settings(BaseSettings):
 
     @property
     def demo_tenant_readonly(self) -> bool:
-        """正式演示租户是否只读（默认开）。"""
         return (self.DEMO_TENANT_READONLY or "").strip().lower() not in ("false", "0", "no", "off")
 
     @property
     def sandbox_auto_reset(self) -> bool:
-        """沙箱是否启用每晚自动重置（默认关闭；需 DB_ENABLED）。"""
         return (self.SANDBOX_AUTO_RESET or "").strip().lower() not in ("false", "0", "no", "off")
-
 
     @property
     def field_encryption_key(self) -> str:
@@ -182,11 +237,11 @@ class Settings(BaseSettings):
 
     @property
     def jwt_secret(self) -> str:
-        return self.JWT_SECRET_KEY or self.JWT_SECRET
+        return (self.JWT_SECRET_KEY or self.JWT_SECRET or "").strip()
 
     @property
     def jwt_algorithm(self) -> str:
-        return self.JWT_ALGORITHM or self.JWT_ALG
+        return (self.JWT_ALGORITHM or self.JWT_ALG or "HS256").strip()
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -196,11 +251,6 @@ class Settings(BaseSettings):
 
     @property
     def effective_database_url(self) -> str:
-        """实际连接串。优先级：显式 DATABASE_URL > 按 DB_DRIVER 组装。
-        - mysql   → mysql+pymysql://user:pwd@host:port/db?charset=utf8mb4
-        - sqlite  → sqlite+pysqlite:///<DB_SQLITE_PATH>（保留本地 dev 模式）
-        - postgresql → postgresql+psycopg://user:pwd@host:port/db
-        密码经 URL 编码，不落仓库。"""
         if self.DATABASE_URL.strip():
             return self.DATABASE_URL.strip()
         drv = (self.DB_DRIVER or "sqlite").strip().lower()
@@ -216,12 +266,10 @@ class Settings(BaseSettings):
             user = quote_plus(self.DB_USER or "postgres")
             return (f"postgresql+psycopg://{user}:{pwd}@{self.DB_HOST}:{self.DB_PORT}"
                     f"/{self.DB_NAME}")
-        # sqlite（默认）
         return f"sqlite+pysqlite:///{self.DB_SQLITE_PATH}"
 
     @property
     def db_dialect(self) -> str:
-        """由 effective_database_url 推断方言：mysql / sqlite / postgresql。"""
         url = self.effective_database_url
         head = url.split(":", 1)[0].lower() if url else ""
         if head.startswith("mysql") or head.startswith("mariadb"):
@@ -229,6 +277,10 @@ class Settings(BaseSettings):
         if head.startswith("postgresql") or head.startswith("postgres"):
             return "postgresql"
         return "sqlite"
+
+    @property
+    def support_contact_display(self) -> str:
+        return (self.SUPPORT_CONTACT or "").strip() or "平台运营"
 
 
 @lru_cache

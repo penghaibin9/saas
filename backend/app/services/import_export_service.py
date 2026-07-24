@@ -19,9 +19,12 @@ EXPORT_PAGE_SIZE = 2000
 
 def _tid() -> int:
     try:
-        return int(current_tenant_id() or 1000000000000000001)
+        tid = int(current_tenant_id() or 0)
     except (TypeError, ValueError):
-        return 1000000000000000001
+        tid = 0
+    if not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝导入导出写入")
+    return tid
 
 
 def _validate_rows(rows: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -287,7 +290,8 @@ def _rule(group: str, key: str):
 
 
 def _ensure_feature(key: str, label: str) -> None:
+    from app.core.config import settings
     from app.services.platform_service import feature_enabled
     if not feature_enabled(_tid(), key):
         raise AppException("MODULE_NOT_AUTHORIZED",
-                           f"当前学校套餐未开通「{label}」功能，请联系平台方 13549666867")
+                           f"当前学校套餐未开通「{label}」功能，请联系{settings.support_contact_display}")

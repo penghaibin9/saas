@@ -152,8 +152,11 @@ def effective_brand(tenant_id: int) -> dict:
             base.update({k: v for k, v in {
                 "watermarkText": b.watermark_text, "primaryColor": b.primary_color,
             }.items() if v})
+    from app.core.config import settings
     base.update(get_config_json(tenant_id, "BRAND") or {})
-    base["contactPhone"] = base.get("contactPhone") or "13549666867"
+    base["contactPhone"] = base.get("contactPhone") or settings.support_contact_display
+    if base["contactPhone"] == "平台运营":
+        base["contactPhone"] = settings.SUPPORT_CONTACT or ""
     return base
 
 
@@ -343,10 +346,14 @@ def update_tenant_meta(tenant_id: int, patch: dict) -> dict:
     return get_tenant(tenant_id)
 
 
-def tenant_status(tenant_id: int) -> str:
+def tenant_status(tenant_id: int, *, strict: bool = False) -> str:
+    """返回 trial/active/expired/disabled。
+    strict=True 时读取失败抛出，供写守卫 fail-closed；默认兼容旧调用方。"""
     try:
         meta = tenant_meta(tenant_id)
     except Exception:
+        if strict:
+            raise
         return "active"
     status = meta.get("status", "active")
     expire = meta.get("expireAt")
@@ -355,7 +362,8 @@ def tenant_status(tenant_id: int) -> str:
             if datetime.fromisoformat(expire) < datetime.now():
                 return "expired"
         except ValueError:
-            pass
+            if strict:
+                raise
     return status
 
 
@@ -712,7 +720,7 @@ def active_notices_for(tenant_id: int) -> list[dict]:
 
 DEFAULT_SETTINGS = {
     "platformName": "高校学生全生命周期管理平台",
-    "trialContactPhone": "13549666867",
+    "trialContactPhone": "",
     "trialDefaultDays": 30,
     "expireRemindDays": 30,
     "demoTenantCode": "demo-school",

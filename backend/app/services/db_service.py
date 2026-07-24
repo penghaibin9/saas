@@ -18,14 +18,17 @@ from app.db.session import get_sessionmaker
 from app.models import (SecurityAuditLog, StudentContact, StudentProfile, StudentStageEvent,
                         UnifiedMessage, UnifiedTodo, WorkflowInstance, WorkflowTask)
 
-DEFAULT_TENANT = 1000000000000000001
+DEFAULT_TENANT = 1000000000000000001  # 仅文档/历史引用；写路径禁止兜底
 
 
 def _tid() -> int:
     try:
-        return int(current_tenant_id() or DEFAULT_TENANT)
+        tid = int(current_tenant_id() or 0)
     except (TypeError, ValueError):
-        return DEFAULT_TENANT
+        tid = 0
+    if not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝数据库写入")
+    return tid
 
 
 def _as_id(v):

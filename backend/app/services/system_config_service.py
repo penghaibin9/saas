@@ -23,8 +23,14 @@ _DEFAULT_MAP = {d["key"]: d for d in DEFAULTS}
 _RANGES = {"SEC_LOCK_MAX_FAIL": (3, 10), "SEC_LOCK_MINUTES": (5, 120), "SEC_PASSWORD_MIN_LEN": (6, 32)}
 
 
-def _tid() -> int:
-    return int(current_tenant_id() or 1000000000000000001)
+def _tid(*, for_write: bool = False) -> int:
+    try:
+        tid = int(current_tenant_id() or 0)
+    except (TypeError, ValueError):
+        tid = 0
+    if for_write and not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝配置写入")
+    return tid
 
 
 def get_int(key: str, fallback: int | None = None) -> int:
@@ -39,7 +45,10 @@ def get_int(key: str, fallback: int | None = None) -> int:
         from app.models import SysConfig
         db = get_sessionmaker()()
         try:
-            row = db.scalars(select(SysConfig).where(SysConfig.tenant_id == _tid(),
+            tid = _tid()
+            if not tid:
+                return default
+            row = db.scalars(select(SysConfig).where(SysConfig.tenant_id == tid,
                              SysConfig.config_key == key, SysConfig.is_deleted.is_(False))).first()
             if row is None or row.value_text is None:
                 return default
@@ -57,13 +66,15 @@ def list_configs() -> list[dict]:
     if db_enabled():
         from sqlalchemy import select
         from app.models import SysConfig
-        db = get_sessionmaker()()
-        try:
-            for row in db.scalars(select(SysConfig).where(SysConfig.tenant_id == _tid(),
-                                  SysConfig.is_deleted.is_(False))).all():
-                saved[row.config_key] = row
-        finally:
-            db.close()
+        tid = _tid()
+        if tid:
+            db = get_sessionmaker()()
+            try:
+                for row in db.scalars(select(SysConfig).where(SysConfig.tenant_id == tid,
+                                      SysConfig.is_deleted.is_(False))).all():
+                    saved[row.config_key] = row
+            finally:
+                db.close()
     items = []
     for d in DEFAULTS:
         row = saved.get(d["key"])
@@ -92,7 +103,7 @@ def save_config(user: dict, key: str, value_text: str, reason: str = "") -> dict
         raise AppException("VALIDATION_ERROR", f"{_DEFAULT_MAP[key]['name']}必须是整数")
     if not (lo <= num <= hi):
         raise AppException("VALIDATION_ERROR", f"{_DEFAULT_MAP[key]['name']}取值须在 {lo}–{hi} 之间")
-    tid = _tid()
+    tid = _tid(for_write=True)
     db = get_sessionmaker()()
     try:
         row = db.scalars(select(SysConfig).where(SysConfig.tenant_id == tid,

@@ -1,86 +1,101 @@
 """
-应用入口 —— 高校学生全生命周期管理平台 · SaaS 后台骨架
-────────────────────────────────────────────────────────────
+应用入口 —— 高校学生全生命周期管理平台 · SaaS 后台
+
 启动：
     cd backend
     uvicorn app.main:app --reload --port 8000
 验收：
-    http://localhost:8000/health   健康检查（统一响应结构）
-    http://localhost:8000/docs     Swagger 文档
-契约来源：docs/api/00-API契约冻结总册.md。
+    http://localhost:8000/health
 """
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
-from app.core.response import success
-from app.core.security import assert_cors_safe, assert_prod_flags_safe, assert_scale_safe, assert_secret_safe
+from app.core.response import fail, success
+from app.core.security import (
+    assert_cors_safe,
+    assert_prod_flags_safe,
+    assert_scale_safe,
+    assert_scheduler_safe,
+    assert_secret_safe,
+)
 from app.middleware.context import RequestContextMiddleware
 
-APP_VERSION = "0.1.0"
+APP_VERSION = getattr(settings, "APP_VERSION", None) or "1.0.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+_log = logging.getLogger("app.startup")
 
 
-def create_app() -> FastAPI:
-    # 安全底线：生产环境弱/默认 JWT 密钥拒绝启动（防伪造令牌绕过权限）。
-    assert_secret_safe()
-    # 生产环境禁止 CORS 通配符（* + credentials 不安全），强制显式白名单。
-    assert_cors_safe()
-    # 生产环境 DEBUG 必须关闭；mock-login 不得显式开启。
-    assert_prod_flags_safe()
-    # 多实例部署（MULTI_INSTANCE=true）生产环境必须配 Redis，否则限流/锁定/黑名单跨进程失效。
-    assert_scale_safe()
-    # 生产环境关闭 /docs、/redoc、/openapi.json，不把接口蓝图暴露公网。
-    _is_prod = settings.is_prod
-    # 启动即打印当前环境——APP_ENV 忘设时所有生产守卫按 dev 放行，必须在日志里一眼可查
-    logging.getLogger("app.startup").info(
-        "environment=%s (is_prod=%s, mock_login=%s, db_enabled=%s)",
-        settings.APP_ENV or "dev", settings.is_prod,
-        settings.mock_login_enabled, settings.DB_ENABLED,
-    )
-    app = FastAPI(
-        title=settings.APP_NAME,
-        version=APP_VERSION,
-        description="SaaS 后台。统一响应：code / message / data / traceId / timestamp。",
-        docs_url=None if _is_prod else "/docs",
-        redoc_url=None if _is_prod else "/redoc",
-        openapi_url=None if _is_prod else "/openapi.json",
-    )
+def _ops_authorized(request: Request, x_ops_token: str | None) -> bool:
+    """运维探针：INTERNAL_OPS_TOKEN 匹配；非生产允许本机/测试客户端。"""
+    expected = (settings.INTERNAL_OPS_TOKEN or "").strip()
+    provided = (x_ops_token or "").strip()
+    if expected and provided and provided == expected:
+        return True
+    auth = (request.headers.get("authorization") or "").strip()
+    if expected and auth.lower().startswith("bearer "):
+        if auth[7:].strip() == expected:
+            return True
+    if not settings.is_prod:
+        # 非生产：无令牌时放开本机与 TestClient；有令牌则上面已匹配
+        if not expected:
+            return True
+        client = request.client.host if request.client else ""
+        if client in ("127.0.0.1", "::1", "localhost", "testclient"):
+            return True
+    return False
 
-    app.add_middleware(RequestContextMiddleware)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origin_list,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["X-Trace-Id"],
-    )
 
-    register_exception_handlers(app)
-    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+def _deny_ops() -> JSONResponse:
+    return JSONResponse(status_code=403, content=fail("NO_PERMISSION", "运维探针未授权"))
 
-    @app.on_event("startup")
-    async def _sandbox_midnight_reset():
-        """可选的体验沙箱每晚 0 点自动重置（默认关闭；单实例进程内定时；多实例部署请改用 cron 跑
-        scripts/reset_sandbox_school.py --confirm 并置 SANDBOX_AUTO_RESET=false）。"""
-        import asyncio
 
-        from app.db.session import db_enabled
-        if settings.SCHEDULER_MODE.strip().lower() != "web":
-            return
-        if not (settings.sandbox_auto_reset and db_enabled()):
-            return
+async def _cancel_tasks(tasks: list) -> None:
+    import asyncio
 
-        async def _loop():
+    for t in tasks:
+        if t is None or t.done():
+            continue
+        t.cancel()
+    for t in tasks:
+        if t is None:
+            continue
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            _log.exception("scheduler task shutdown error")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import asyncio
+
+    from app.db.session import db_enabled
+
+    tasks: list = []
+    app.state.scheduler_tasks = tasks
+    mode = (settings.SCHEDULER_MODE or "web").strip().lower()
+    if mode != "web":
+        _log.info("scheduler_mode=%s — web process will not start in-process jobs", mode)
+        yield
+        return
+
+    if settings.sandbox_auto_reset and db_enabled():
+        async def _sandbox_loop():
             from anyio import to_thread
 
             from app.services.sandbox_service import reset_sandbox, seconds_until_next_midnight
@@ -95,23 +110,13 @@ def create_app() -> FastAPI:
                         db.close()
                 except asyncio.CancelledError:
                     return
-                except Exception:  # noqa: BLE001 — 单次失败不终止调度，次日再试
+                except Exception:  # noqa: BLE001
                     logging.getLogger("app.sandbox").exception("sandbox midnight reset failed")
 
-        asyncio.create_task(_loop())
+        tasks.append(asyncio.create_task(_sandbox_loop(), name="sandbox-midnight-reset"))
 
-    @app.on_event("startup")
-    async def _internship_overdue_scan():
-        """Run the idempotent leave-overdue scan for every active tenant without an HTTP caller."""
-        import asyncio
-
-        from app.db.session import db_enabled
-        if settings.SCHEDULER_MODE.strip().lower() != "web":
-            return
-        if not (settings.INTERNSHIP_OVERDUE_AUTO_SCAN and db_enabled()):
-            return
-
-        def _run_once():
+    if settings.INTERNSHIP_OVERDUE_AUTO_SCAN and db_enabled():
+        def _internship_once():
             from sqlalchemy import select
 
             from app.core.context import set_tenant
@@ -126,18 +131,18 @@ def create_app() -> FastAPI:
             for tenant_id in tenant_ids:
                 try:
                     set_tenant({"tenantId": str(tenant_id)})
-                    leave_service.refresh_overdue(system=True)  # 系统定时扫描：绕过人工触发的校级守卫
+                    leave_service.refresh_overdue(system=True)
                 except Exception:  # noqa: BLE001
-                    logging.getLogger("app.internship").exception("internship overdue scan failed tenant=%s", tenant_id)
+                    logging.getLogger("app.internship").exception(
+                        "internship overdue scan failed tenant=%s", tenant_id)
                 finally:
                     set_tenant(None)
 
-        async def _loop():
+        async def _internship_loop():
             from anyio import to_thread
-
             while True:
                 try:
-                    await to_thread.run_sync(_run_once)
+                    await to_thread.run_sync(_internship_once)
                     await asyncio.sleep(6 * 60 * 60)
                 except asyncio.CancelledError:
                     return
@@ -145,22 +150,10 @@ def create_app() -> FastAPI:
                     logging.getLogger("app.internship").exception("internship overdue scheduler failed")
                     await asyncio.sleep(5 * 60)
 
-        asyncio.create_task(_loop())
+        tasks.append(asyncio.create_task(_internship_loop(), name="internship-overdue-scan"))
 
-    @app.on_event("startup")
-    async def _affairs_leave_overdue_scan():
-        """学工请假逾期定时扫描（历史欠账 L-5 收口）：逐 ACTIVE 租户跑幂等
-        `affairs_leave_service.scan_overdue()`（APPROVED 且超预计返校时间→置 OVERDUE+建待办+提醒），
-        与上方实习请假循环同款模式；手动端点 POST /student-affairs/leave/scan-overdue 仍保留。"""
-        import asyncio
-
-        from app.db.session import db_enabled
-        if settings.SCHEDULER_MODE.strip().lower() != "web":
-            return
-        if not (settings.AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN and db_enabled()):
-            return
-
-        def _run_once():
+    if settings.AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN and db_enabled():
+        def _affairs_once():
             from sqlalchemy import select
 
             from app.core.context import set_tenant
@@ -182,12 +175,11 @@ def create_app() -> FastAPI:
                 finally:
                     set_tenant(None)
 
-        async def _loop():
+        async def _affairs_loop():
             from anyio import to_thread
-
             while True:
                 try:
-                    await to_thread.run_sync(_run_once)
+                    await to_thread.run_sync(_affairs_once)
                     await asyncio.sleep(6 * 60 * 60)
                 except asyncio.CancelledError:
                     return
@@ -195,7 +187,61 @@ def create_app() -> FastAPI:
                     logging.getLogger("app.affairs").exception("affairs leave overdue scheduler failed")
                     await asyncio.sleep(5 * 60)
 
-        asyncio.create_task(_loop())
+        tasks.append(asyncio.create_task(_affairs_loop(), name="affairs-leave-overdue-scan"))
+
+    try:
+        yield
+    finally:
+        await _cancel_tasks(tasks)
+        app.state.scheduler_tasks = []
+
+
+def create_app() -> FastAPI:
+    assert_secret_safe()
+    assert_cors_safe()
+    assert_prod_flags_safe()
+    assert_scale_safe()
+    assert_scheduler_safe()
+
+    _is_prod = settings.is_prod
+    # 启动日志只输出状态，不输出密钥/密码/完整连接串
+    _log.info(
+        "deployment=%s app_env=%s is_prod=%s mock_login=%s db_enabled=%s scheduler=%s multi_instance=%s",
+        settings.DEPLOYMENT_MODE, settings.APP_ENV, settings.is_prod,
+        settings.mock_login_enabled, settings.DB_ENABLED,
+        settings.SCHEDULER_MODE, settings.MULTI_INSTANCE,
+    )
+    if (settings.JWT_SECRET_KEY or "").strip() and not (settings.JWT_SECRET or "").strip():
+        _log.warning("JWT_SECRET_KEY is deprecated; prefer JWT_SECRET")
+    elif (settings.JWT_SECRET_KEY or "").strip() and (settings.JWT_SECRET or "").strip():
+        if settings.JWT_SECRET_KEY.strip() == settings.JWT_SECRET.strip():
+            _log.warning("JWT_SECRET_KEY is deprecated; prefer JWT_SECRET only")
+    if (settings.ENV or settings.ENVIRONMENT or "").strip():
+        _log.warning("ENV/ENVIRONMENT is deprecated; prefer APP_ENV")
+    if (settings.JWT_ALGORITHM or "").strip():
+        _log.warning("JWT_ALGORITHM is deprecated; prefer JWT_ALG")
+    app = FastAPI(
+        title=settings.APP_NAME,
+        version=APP_VERSION,
+        description="SaaS 后台。统一响应：code / message / data / traceId / timestamp。",
+        docs_url=None if _is_prod else "/docs",
+        redoc_url=None if _is_prod else "/redoc",
+        openapi_url=None if _is_prod else "/openapi.json",
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Trace-Id"],
+    )
+
+    register_exception_handlers(app)
+    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
     @app.get("/health", tags=["00·基础"], summary="健康检查")
     def health():
@@ -209,21 +255,59 @@ def create_app() -> FastAPI:
             "dbEnabled": settings.DB_ENABLED,
         })
 
-    @app.get("/health/ready", tags=["00·基础"], summary="就绪检查（DB/上传/导出目录）")
-    def health_ready():
-        import os
+    @app.get("/health/ready", tags=["00·基础"], summary="就绪检查（运维）")
+    def health_ready(
+        request: Request,
+        x_ops_token: str | None = Header(default=None, alias="X-Ops-Token"),
+    ):
+        if not _ops_authorized(request, x_ops_token):
+            return _deny_ops()
+        return _build_ready_payload(expose_detail=not _is_prod)
 
-        checks = {}
-        # 数据库连通
-        if settings.DB_ENABLED:
-            try:
-                from sqlalchemy import text
+    @app.get("/internal/metrics", tags=["00·基础"], summary="进程指标（运维）")
+    def internal_metrics(
+        request: Request,
+        x_ops_token: str | None = Header(default=None, alias="X-Ops-Token"),
+    ):
+        if not _ops_authorized(request, x_ops_token):
+            return _deny_ops()
+        from app.core.runtime_metrics import snapshot
+        return success(snapshot())
 
-                from app.db.session import get_engine
-                with get_engine().connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                checks["database"] = {"ok": True}
-                engine = get_engine()
+    @app.get("/health/metrics", include_in_schema=False)
+    def health_metrics_compat(
+        request: Request,
+        x_ops_token: str | None = Header(default=None, alias="X-Ops-Token"),
+    ):
+        """兼容旧路径：同样要求运维鉴权，正式文档以 /internal/metrics 为准。"""
+        if not _ops_authorized(request, x_ops_token):
+            return _deny_ops()
+        from app.core.runtime_metrics import snapshot
+        return success(snapshot())
+
+    @app.get("/", include_in_schema=False)
+    def index():
+        if _is_prod:
+            return success({"status": "UP"})
+        return RedirectResponse(url="/docs")
+
+    return app
+
+
+def _build_ready_payload(*, expose_detail: bool) -> Any:
+    import os
+
+    from sqlalchemy import text
+
+    checks: dict = {}
+    if settings.DB_ENABLED:
+        try:
+            from app.db.session import get_engine
+            engine = get_engine()
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            checks["database"] = {"ok": True}
+            if expose_detail:
                 pool = engine.pool
                 checks["dbPool"] = {
                     "ok": True,
@@ -243,48 +327,79 @@ def create_app() -> FastAPI:
                     "current": sorted(current_heads),
                     "expected": sorted(expected_heads),
                 }
-            except Exception as e:  # noqa: BLE001
-                checks["database"] = {"ok": False, "error": str(e)[:120]}
-        else:
-            checks["database"] = {"ok": True, "note": "DB_ENABLED=false（mock 模式）"}
-        if settings.REDIS_URL:
+            else:
+                # production：只返回迁移是否一致，不暴露 SHA
+                try:
+                    from alembic.config import Config
+                    from alembic.runtime.migration import MigrationContext
+                    from alembic.script import ScriptDirectory
+                    from app.db.session import get_engine as _ge
+                    eng = _ge()
+                    config = Config("alembic.ini")
+                    expected_heads = set(ScriptDirectory.from_config(config).get_heads())
+                    with eng.connect() as migration_conn:
+                        current_heads = set(MigrationContext.configure(migration_conn).get_current_heads())
+                    checks["schemaMigration"] = {"ok": current_heads == expected_heads}
+                except Exception:  # noqa: BLE001
+                    checks["schemaMigration"] = {"ok": False}
+        except Exception:  # noqa: BLE001
+            checks["database"] = {"ok": False} if not expose_detail else {
+                "ok": False, "error": "database_unreachable",
+            }
+    else:
+        checks["database"] = {"ok": True, "note": "DB_ENABLED=false"}
+
+    if settings.REDIS_URL:
+        try:
             from app.core.redis_client import redis_health
-            checks["redis"] = redis_health()
-        # 审计落库（历史欠账收口：落库失败此前静默吞掉，现暴露到 /health/ready）
-        if settings.DB_ENABLED:
+            rh = redis_health()
+            if expose_detail:
+                checks["redis"] = rh
+            else:
+                checks["redis"] = {"ok": bool(rh.get("ok"))}
+        except Exception:  # noqa: BLE001
+            checks["redis"] = {"ok": False}
+
+    if settings.DB_ENABLED:
+        try:
             from app.services.audit_log import get_audit_db_health
             audit_state = get_audit_db_health()
             fails = audit_state.get("consecutiveFailures") or 0
-            checks["auditLog"] = ({"ok": True} if fails == 0 else
-                                  {"ok": False, "consecutiveFailures": fails,
-                                   "lastFailure": audit_state.get("lastFailure")})
-        # 上传目录可写
-        for key, path in (("uploadDir", settings.UPLOAD_DIR), ("exportDir", settings.EXPORT_DIR)):
+            if expose_detail:
+                checks["auditLog"] = (
+                    {"ok": True} if fails == 0 else
+                    {"ok": False, "consecutiveFailures": fails,
+                     "lastFailure": audit_state.get("lastFailure")}
+                )
+            else:
+                checks["auditLog"] = {"ok": fails == 0}
+        except Exception:  # noqa: BLE001
+            checks["auditLog"] = {"ok": False}
+
+    for key, path in (("uploadDir", settings.UPLOAD_DIR), ("exportDir", settings.EXPORT_DIR)):
+        probe = None
+        try:
+            os.makedirs(path, exist_ok=True)
+            fd, probe = tempfile.mkstemp(prefix=".write_probe_", dir=path)
             try:
-                os.makedirs(path, exist_ok=True)
-                probe = os.path.join(path, ".write_probe")
-                with open(probe, "w") as f:
-                    f.write("ok")
-                os.remove(probe)
-                checks[key] = {"ok": True, "path": path}
-            except Exception as e:  # noqa: BLE001
-                checks[key] = {"ok": False, "path": path, "error": str(e)[:120]}
-        all_ok = all(c.get("ok") for c in checks.values())
-        payload = success({"status": "READY" if all_ok else "DEGRADED", "checks": checks})
-        return payload if all_ok else JSONResponse(status_code=503, content=payload)
+                os.write(fd, b"ok")
+            finally:
+                os.close(fd)
+            checks[key] = {"ok": True} if not expose_detail else {"ok": True, "path": path}
+        except Exception as e:  # noqa: BLE001
+            checks[key] = {"ok": False} if not expose_detail else {
+                "ok": False, "error": str(e)[:80],
+            }
+        finally:
+            if probe:
+                try:
+                    os.remove(probe)
+                except OSError:
+                    pass
 
-    @app.get("/health/metrics", tags=["00·基础"], summary="当前进程接口耗时指标")
-    def health_metrics():
-        from app.core.runtime_metrics import snapshot
-        return success(snapshot())
-
-    @app.get("/", include_in_schema=False)
-    def index():
-        if _is_prod:
-            return success({"status": "UP"})
-        return RedirectResponse(url="/docs")
-
-    return app
+    all_ok = all(c.get("ok") for c in checks.values())
+    payload = success({"status": "READY" if all_ok else "DEGRADED", "checks": checks})
+    return payload if all_ok else JSONResponse(status_code=503, content=payload)
 
 
 app = create_app()

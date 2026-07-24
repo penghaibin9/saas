@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.context import current_tenant_id
+from app.core.exceptions import AppException
 from app.core.response import success
 from app.core.security import require_staff
 from app.services import audit_log
@@ -22,9 +23,12 @@ router = APIRouter(prefix="/admin/students", tags=["02·导入导出（占位）
 
 def _tid() -> int:
     try:
-        return int(current_tenant_id() or 1000000000000000001)
+        tid = int(current_tenant_id() or 0)
     except (TypeError, ValueError):
-        return 1000000000000000001
+        tid = 0
+    if not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝写入")
+    return tid
 
 
 class DryRunBody(BaseModel):

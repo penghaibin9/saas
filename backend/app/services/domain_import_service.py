@@ -13,9 +13,14 @@ from app.db.session import db_enabled, get_sessionmaker
 
 def _tid() -> int:
     try:
-        return int(current_tenant_id() or 0)
+        tid = int(current_tenant_id() or 0)
     except (TypeError, ValueError):
-        return 0
+        tid = 0
+    if db_enabled() and not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝域导入写入")
+    if not tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝域导入写入")
+    return tid
 
 
 # 域 → (key字段前端名, create 服务路径, list 服务路径, 展示名)

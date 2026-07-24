@@ -26,5 +26,7 @@ class FileObject(PKMixin, TenantMixin, CommonMixin, Base):
     security_level: Mapped[str] = mapped_column(
         String(30), nullable=False, default="NORMAL",
         comment="NORMAL/SENSITIVE — 敏感附件需业务权限，禁止同租户猜 ID")
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="STORED", comment="STORED/DELETED")
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="AVAILABLE",
+        comment="UPLOADING/QUARANTINED/AVAILABLE/REJECTED/DELETED；历史 STORED 视同 AVAILABLE")
     remark: Mapped[str | None] = mapped_column(String(500))
