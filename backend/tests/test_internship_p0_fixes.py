@@ -46,6 +46,7 @@ def _mk_student(client, h, no=None):
 
 def test_p0_resolver_prefers_running_batch_record(client, auth_headers, db_mode):
     """同学生两批次时，解析器不得随意 .first()；显式 batchId 必须命中。"""
+    from app.core.context import set_tenant
     from app.modules.internship.services.internship_record_resolver import (
         resolve_student_internship_context,
     )
@@ -61,17 +62,22 @@ def test_p0_resolver_prefers_running_batch_record(client, auth_headers, db_mode)
                      json={"force": True, "forceReason": "历史批次测试强制结束"}).json()
     assert cl["code"] == 0, cl
 
-    with session() as db:
-        ctx_new = resolve_student_internship_context(db, student_no=sno, batch_id=b_new, for_write=True)
-        assert str(ctx_new.record.batch_id) == str(b_new)
-        ctx_old_write = None
-        try:
-            resolve_student_internship_context(db, student_no=sno, batch_id=b_old, for_write=True)
-        except Exception as e:  # noqa: BLE001
-            ctx_old_write = e
-        assert ctx_old_write is not None
-        ctx_auto = resolve_student_internship_context(db, student_no=sno, for_write=True)
-        assert str(ctx_auto.record.batch_id) == str(b_new)
+    # 请求外直接调服务层必须显式绑租户（与 HTTP 中间件行为一致）
+    set_tenant({"tenantId": "1000000000000000001"})
+    try:
+        with session() as db:
+            ctx_new = resolve_student_internship_context(db, student_no=sno, batch_id=b_new, for_write=True)
+            assert str(ctx_new.record.batch_id) == str(b_new)
+            ctx_old_write = None
+            try:
+                resolve_student_internship_context(db, student_no=sno, batch_id=b_old, for_write=True)
+            except Exception as e:  # noqa: BLE001
+                ctx_old_write = e
+            assert ctx_old_write is not None
+            ctx_auto = resolve_student_internship_context(db, student_no=sno, for_write=True)
+            assert str(ctx_auto.record.batch_id) == str(b_new)
+    finally:
+        set_tenant(None)
 
 
 def test_p0_risk_export_requires_same_batch_as_list(client, auth_headers, db_mode):
