@@ -43,3 +43,16 @@ export const assessmentApi = {
   score(aid, body) { return call(() => request(`${B}/counselor-assessment/assessments/${aid}/score`, { method: 'POST', body })) },
   publish(pid) { return call(() => request(`${B}/counselor-assessment/periods/${pid}/publish`, { method: 'POST' })) }
 }
+
+export const counselorAssignmentApi = {
+  assignments(params = {}) { return callList(`${B}/counselor-assignments`, params) },
+  ledger(params = {}) { return callList(`${B}/counselor-ledger`, params) },
+  vacancies() { return call(() => request(`${B}/counselor-vacancies`)) },
+  assign(body) { return call(() => request(`${B}/counselor-assignments`, { method: 'POST', body })) },
+  end(assignmentId, body) {
+    return call(() => request(`${B}/counselor-assignments/${assignmentId}/end`, { method: 'POST', body }))
+  },
+  handover(classId, body) {
+    return call(() => request(`${B}/classes/${classId}/counselor-handover`, { method: 'POST', body }))
+  }
+}

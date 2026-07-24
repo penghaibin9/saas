@@ -111,6 +111,7 @@ from app.models.affairs_league import (AffairsLeagueDev,  # noqa: F401
                                        AffairsLeagueDevStage)
 from app.models.affairs_counselor_eval import (CounselorEval,  # noqa: F401
                                                CounselorEvalIndicator)
+from app.models.affairs_counselor_assignment import AffairsCounselorAssignment  # noqa: F401
 from app.models.affairs_funding_ext import (FeeReduction,  # noqa: F401
                                             StudentLoan, WorkStudyMonthly,
                                             WorkStudyPost, WorkStudyRecord)

@@ -29,6 +29,16 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
+      <TaskContextBar
+        :role-name="roleName"
+        :scope-name="scopeName"
+        :pending="pendingCount"
+        :overdue="stats && stats.overdue"
+        :filter-summary="taskFilterSummary"
+        next-hint="优先分派或处置超时、高危风险记录。"
+        :degraded="!!errorMessage"
+        @clear-filter="clearTaskFilters"
+      />
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
       </div>
@@ -152,6 +162,7 @@ import {
   AppTextInput,
   AppTextarea
 } from '@/components/common'
+import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
@@ -225,7 +236,8 @@ export default {
     AppTextarea,
     AppSectionCard,
     AppStatusTag,
-    DataTable
+    DataTable,
+    TaskContextBar
   },
   data() {
     return {
@@ -255,6 +267,23 @@ export default {
     }
   },
   computed: {
+    roleName() {
+      return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '学工角色'
+    },
+    scopeName() {
+      return (this.ctx && this.ctx.dataScope && (this.ctx.dataScope.scopeName || this.ctx.dataScope.name)) || '学工数据范围'
+    },
+    pendingCount() {
+      return this.stats ? Number(this.stats.unassigned || 0) : null
+    },
+    taskFilterSummary() {
+      if (this.studentFilterLabel) return this.studentFilterLabel
+      const parts = []
+      if (this.filters.source) parts.push(`来源：${this.filters.source}`)
+      if (this.filters.riskLevel) parts.push(`等级：${this.filters.riskLevel}`)
+      if (this.filters.status) parts.push(`状态：${this.filters.status}`)
+      return parts.join('；')
+    },
     isRulePanel() {
       return this.$route.name === 'student-affairs-risk-rules'
     },
@@ -317,6 +346,13 @@ export default {
     this.load()
   },
   methods: {
+    clearTaskFilters() {
+      this.filters.source = ''
+      this.filters.riskLevel = ''
+      this.filters.status = ''
+      this.clearStudentFilter()
+      this.reload()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}

@@ -7,7 +7,6 @@ NEW→ASSIGNED→PROCESSING→(FOLLOWING)→CLOSED；转办/升级/接管/重开
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from math import isfinite
 
 from sqlalchemy import func, select
 
@@ -15,29 +14,18 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.permissions import has_permission
 from app.services.db_service import _iso, _tid, session
+from app.services.affairs_sla import get_risk_sla, risk_due_at, risk_is_overdue
 
 SOURCES = ("LEAVE_OVERDUE", "ACADEMIC_WARNING", "DORM", "MENTAL", "DISCIPLINE", "INTERNSHIP",
            "GRADUATION_DESIGN", "EMPLOYMENT", "FAMILY", "MANUAL")
 LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
-# 超时阈值：与 scan_timeout / 列表 stats.overdue 同一来源，禁止别处再写魔法数。
-_DEFAULT_RISK_NEW_ASSIGN_HOURS = 4.0
-_DEFAULT_RISK_ASSIGNED_PROCESS_HOURS = 72.0
-def _risk_new_assign_hours() -> float:
-    """读取可配置分派时限；无效配置回退现网默认，避免风险永不触发。"""
-    from app.core.config import settings
-
-    value = float(getattr(settings, "AFFAIRS_RISK_NEW_ASSIGN_HOURS",
-                          _DEFAULT_RISK_NEW_ASSIGN_HOURS) or _DEFAULT_RISK_NEW_ASSIGN_HOURS)
-    return value if isfinite(value) and value > 0 else _DEFAULT_RISK_NEW_ASSIGN_HOURS
+# 兼容既有内部调用；实际时限一律由 affairs_sla 的等级配置决定。
+def _risk_new_assign_hours(level: str | None = None) -> float:
+    return get_risk_sla(level)["assignHours"]
 
 
-def _risk_assigned_process_hours() -> float:
-    """读取可配置处置时限；无效配置回退现网默认，避免风险永不触发。"""
-    from app.core.config import settings
-
-    value = float(getattr(settings, "AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS",
-                          _DEFAULT_RISK_ASSIGNED_PROCESS_HOURS) or _DEFAULT_RISK_ASSIGNED_PROCESS_HOURS)
-    return value if isfinite(value) and value > 0 else _DEFAULT_RISK_ASSIGNED_PROCESS_HOURS
+def _risk_assigned_process_hours(level: str | None = None) -> float:
+    return get_risk_sla(level)["processHours"]
 
 
 def _owner_role_user_ids(db) -> set[int]:
@@ -312,6 +300,8 @@ def _row(x, user, s=None, reveal=False, owner=None) -> dict:
     mental_masked = (x.source == "MENTAL" and not (reveal and _can_view_mental(user)))
     owner_name = (owner.real_name if owner else "") or ""
     owner_login = (owner.login_name if owner else "") or ""
+    sla = get_risk_sla(getattr(x, "risk_level", None))
+    due_at = risk_due_at(x)
     return {
         "riskId": str(x.id), "studentId": str(x.student_id),
         "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
@@ -324,6 +314,10 @@ def _row(x, user, s=None, reveal=False, owner=None) -> dict:
         "isArchived": bool(x.is_archived), "version": x.version,
         "assignedAt": _iso(getattr(x, "assigned_at", None)),
         "createdAt": _iso(getattr(x, "created_at", None)),
+        "sla": {
+            **sla, "overdue": risk_is_overdue(x),
+            "dueAt": _iso(due_at) if due_at else None,
+        },
     }
 
 
@@ -566,8 +560,6 @@ def scan_timeout() -> dict:
     now = datetime.utcnow()
     with session() as db:
         assigned = 0
-        new_assign_hours = _risk_new_assign_hours()
-        assigned_process_hours = _risk_assigned_process_hours()
         # NEW 超过分派时限未分派 → 尝试分给班级辅导员
         new_rows = db.scalars(select(AffairsRiskRecord).where(
             AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.status == "NEW",
@@ -575,7 +567,7 @@ def scan_timeout() -> dict:
             AffairsRiskRecord.is_deleted.is_(False))).all()
         eligible_owners = _owner_role_user_ids(db)
         for x in new_rows:
-            if not x.created_at or x.created_at + timedelta(hours=new_assign_hours) > now:
+            if not x.created_at or not risk_is_overdue(x, now):
                 continue
             counselor_id = None
             if x.student_id:
@@ -601,7 +593,7 @@ def scan_timeout() -> dict:
             AffairsRiskRecord.is_deleted.is_(False))).all()
         escalated = 0
         for x in rows:
-            if x.assigned_at + timedelta(hours=assigned_process_hours) <= now:
+            if risk_is_overdue(x, now):
                 x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
                 x.status, x.escalated_at, x.version = "ESCALATED", now, x.version + 1
                 _handle(db, x.id, "ESCALATE", "处置超时自动升级", "ASSIGNED", "ESCALATED")
@@ -724,21 +716,20 @@ def _risk_stats_sql(db, base_conds, allowed) -> dict:
     from app.models import AffairsRiskRecord
 
     now = datetime.utcnow()
-    new_deadline = now - timedelta(hours=_risk_new_assign_hours())
-    assigned_deadline = now - timedelta(hours=_risk_assigned_process_hours())
-    overdue_pred = (
-        (AffairsRiskRecord.status == "ESCALATED")
-        | (
-            (AffairsRiskRecord.status == "NEW")
-            & AffairsRiskRecord.created_at.is_not(None)
-            & (AffairsRiskRecord.created_at <= new_deadline)
+    overdue_pred = AffairsRiskRecord.status == "ESCALATED"
+    for level in LEVELS:
+        sla = get_risk_sla(level)
+        overdue_pred |= (
+            (AffairsRiskRecord.risk_level == level)
+            & (
+                ((AffairsRiskRecord.status == "NEW")
+                 & AffairsRiskRecord.created_at.is_not(None)
+                 & (AffairsRiskRecord.created_at <= now - timedelta(hours=sla["assignHours"])))
+                | ((AffairsRiskRecord.status == "ASSIGNED")
+                   & AffairsRiskRecord.assigned_at.is_not(None)
+                   & (AffairsRiskRecord.assigned_at <= now - timedelta(hours=sla["processHours"])))
+            )
         )
-        | (
-            (AffairsRiskRecord.status == "ASSIGNED")
-            & AffairsRiskRecord.assigned_at.is_not(None)
-            & (AffairsRiskRecord.assigned_at <= assigned_deadline)
-        )
-    )
     stmt = _risk_scope_join(
         select(
             func.count().label("total"),

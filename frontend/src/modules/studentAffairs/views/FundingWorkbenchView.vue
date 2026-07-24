@@ -6,6 +6,15 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="奖助管理"
   >
+    <TaskContextBar
+      :role-name="roleName"
+      :scope-name="dataScopeName"
+      :pending="pendingCount"
+      :filter-summary="taskFilterSummary"
+      next-hint="选择待审申请，完成当前评审节点。"
+      :degraded="!!listError"
+      @clear-filter="clearTaskFilters"
+    />
     <div class="fd-ctxbar">
       <label class="fd-ctxsel"><span>资助项目</span>
         <AppFundingProjectPicker v-model="projectId" :options="projectSelectOptions" placeholder="（选择项目）" @change="onProjectChange" />
@@ -192,6 +201,7 @@
  * 助学金硬校验困难库在库，奖学金硬校验学籍/处分/成绩；不满足受理即被 409 拦截并透出原因。金额按角色脱敏。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppPagination, AppPermissionButton, AppSelect, AppStatusTag,
         AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -212,7 +222,7 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 
 export default {
   name: 'FundingWorkbenchView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDrawer, AppFormItem,
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, TaskContextBar, AppConfirmDialog, AppDrawer, AppFormItem,
                AppInlineAlert, AppNumberInput, AppPagination, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -235,6 +245,13 @@ export default {
     },
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
+    },
+    pendingCount() {
+      if (!this.statusCounts) return null
+      return FUND_NODES.reduce((total, key) => total + Number(this.statusCounts[key] || 0), 0)
+    },
+    taskFilterSummary() {
+      return this.studentFilterLabel || (this.activeStatus !== 'ALL' ? `状态：${this.activeStatus}` : '')
     },
     filteredBatches() {
       return this.batches.filter((b) => b.projectId === this.projectId)
@@ -318,6 +335,10 @@ export default {
     '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications() }
   },
   methods: {
+    clearTaskFilters() {
+      this.activeStatus = 'ALL'
+      this.clearStudentFilter()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}

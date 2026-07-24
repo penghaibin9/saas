@@ -6,6 +6,15 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="违纪处分"
   >
+    <TaskContextBar
+      :role-name="roleName"
+      :scope-name="dataScopeName"
+      :pending="pendingCount"
+      :filter-summary="taskFilterSummary"
+      next-hint="选择审批中的处分记录，完成当前处理。"
+      :degraded="!!listError"
+      @clear-filter="clearTaskFilters"
+    />
     <div v-if="studentFilterLabel" class="dp-student-filter">
       <span>{{ studentFilterLabel }}</span>
       <button type="button" class="dp-chip" @click="clearStudentFilter">清除筛选</button>
@@ -149,6 +158,7 @@
  * 列表端点服务端 status/discType 过滤；review 单端点带 action=APPROVE/REJECT/RETURN；解除 remove-review 带 action=APPROVE/REJECT。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppConfirmDialog, AppDateDisplay, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
   AppStudentPicker, AppTextarea, AppTextInput
@@ -173,7 +183,7 @@ const DISC_TYPE = {
 export default {
   name: 'DisciplineWorkbenchView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppDrawer,
+    ModulePageShell, LoadingState, ErrorState, EmptyState, TaskContextBar, AppConfirmDialog, AppDateDisplay, AppDrawer,
     AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },
@@ -196,6 +206,13 @@ export default {
     },
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
+    },
+    pendingCount() {
+      if (!this.statusCounts) return null
+      return REVIEW_NODES.reduce((total, key) => total + Number(this.statusCounts[key] || 0), 0)
+    },
+    taskFilterSummary() {
+      return this.studentFilterLabel || (this.activeStatus !== 'ALL' ? `状态：${this.activeStatus}` : (this.typeFilter ? `类型：${this.typeFilter}` : ''))
     },
     studentFilterLabel() {
       const f = this.studentFilter || {}
@@ -279,6 +296,11 @@ export default {
     typeFilter() { this.pagination.page = 1; this.loadList() }
   },
   methods: {
+    clearTaskFilters() {
+      this.activeStatus = 'ALL'
+      this.typeFilter = ''
+      this.clearStudentFilter()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}

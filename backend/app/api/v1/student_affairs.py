@@ -13,6 +13,7 @@ from app.services import affairs_activity_service as activity_svc
 from app.services import affairs_attachment_service as attach_svc
 from app.services import affairs_aid_service as aid_svc
 from app.services import affairs_club_service as club_svc
+from app.services import affairs_counselor_service as counselor_svc
 from app.services import affairs_counselor_eval_service as ce_svc
 from app.services import affairs_league_service as league_svc
 from app.services import affairs_org_service as org_svc
@@ -27,6 +28,7 @@ from app.services import affairs_leave_service as leave_svc
 from app.services import affairs_mental_service as mental_svc
 from app.services import affairs_profile_service as profile_svc
 from app.services import affairs_risk_service as risk_svc
+from app.services import affairs_sla as sla_svc
 from app.services import affairs_talk_service as talk_svc
 
 router = APIRouter(prefix="/student-affairs", tags=["学工中心"])
@@ -41,6 +43,15 @@ def dashboard(user=Depends(require_permission("studentAffairs.dashboard.view")))
 def stats_cockpit(user=Depends(require_permission("studentAffairs.stats.view"))):
     from app.services import affairs_cockpit_service as cockpit_svc
     return success(cockpit_svc.cockpit(user))
+
+
+@router.get("/sla-config", summary="当前生效的学工风险与请假 SLA 配置")
+def sla_config(user=Depends(require_any_permission(
+        "studentAffairs.stats.view", "studentAffairs.dashboard.view"))):
+    return success({
+        "risk": {level: sla_svc.get_risk_sla(level) for level in ("CRITICAL", "HIGH", "MEDIUM", "LOW")},
+        "leave": sla_svc.get_leave_sla(),
+    })
 
 
 @router.get("/classes", summary="班级列表（名称+指标，按数据范围，可筛学院/专业/年级/关键词）")
@@ -127,6 +138,68 @@ class ScoreBody(BaseModel):
 
 class ClassVersionOnlyBody(BaseModel):
     version: int = Field(..., description="乐观锁版本（必填）")
+
+
+class CounselorAssignmentCreate(BaseModel):
+    classId: int = Field(..., ge=1)
+    userId: int = Field(..., ge=1, description="真实辅导员 User.id")
+    dutyType: str = Field(..., description="PRIMARY/CO/TEMP")
+    effectiveFrom: Optional[str] = None
+    effectiveTo: Optional[str] = None
+    reason: Optional[str] = Field("", max_length=500)
+
+
+class CounselorAssignmentEnd(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+    version: int = Field(..., description="乐观锁版本（必填）")
+
+
+class CounselorHandover(BaseModel):
+    fromUserId: int = Field(..., ge=1)
+    toUserId: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=1, max_length=500)
+    version: int = Field(..., description="原责任关系乐观锁版本（必填）")
+
+
+@router.get("/counselor-assignments", summary="班级辅导员责任关系台账（含历史/协同/临时代班）")
+def counselor_assignments(classId: Optional[int] = None, userId: Optional[int] = None,
+                          status: Optional[str] = None, vacancyOnly: bool = False,
+                          page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                          user=Depends(require_permission("studentAffairs.class.view"))):
+    items, total = counselor_svc.list_assignments(user, classId, userId, status, vacancyOnly, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/counselor-ledger", summary="辅导员责任工作量摘要")
+def counselor_ledger(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                     user=Depends(require_permission("studentAffairs.class.view"))):
+    items, total = counselor_svc.list_counselor_ledger(user, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/counselor-vacancies", summary="无有效主辅导员的在读班级")
+def counselor_vacancies(user=Depends(require_permission("studentAffairs.class.view"))):
+    return success(counselor_svc.vacancies(user))
+
+
+@router.post("/counselor-assignments", summary="分配主辅导员/协同辅导员/临时代班")
+def counselor_assignment_create(body: CounselorAssignmentCreate,
+                                user=Depends(require_permission("studentAffairs.class.create"))):
+    return success(counselor_svc.assign(user, body.classId, body.userId, body.dutyType,
+                                        body.effectiveFrom, body.effectiveTo, body.reason or ""), message="已分配")
+
+
+@router.post("/counselor-assignments/{assignmentId}/end", summary="结束辅导员责任关系")
+def counselor_assignment_end(body: CounselorAssignmentEnd, assignmentId: int = Path(...),
+                             user=Depends(require_permission("studentAffairs.class.create"))):
+    return success(counselor_svc.end_assignment(user, assignmentId, body.reason, body.version), message="已结束")
+
+
+@router.post("/classes/{classId}/counselor-handover", summary="辅导员调岗/离职交接")
+def counselor_handover(body: CounselorHandover, classId: int = Path(...),
+                       user=Depends(require_permission("studentAffairs.class.create"))):
+    return success(counselor_svc.handover(user, classId, body.fromUserId, body.toUserId,
+                                          body.reason, body.version), message="已交接")
 
 
 @router.post("/counselor-assessment/periods", summary="新建辅导员考评周期（旧入口·权限对齐正式考评）")

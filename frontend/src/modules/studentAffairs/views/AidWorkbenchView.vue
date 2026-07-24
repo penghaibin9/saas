@@ -6,6 +6,15 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="困难认定（含家庭经济敏感信息）"
   >
+    <TaskContextBar
+      :role-name="roleName"
+      :scope-name="dataScopeName"
+      :pending="pendingCount"
+      :filter-summary="taskFilterSummary"
+      next-hint="选择待审申请，完成当前评审节点。"
+      :degraded="!!listError"
+      @clear-filter="clearTaskFilters"
+    />
     <!-- 批次上下文 -->
     <div class="ad-batchbar">
       <label class="ad-batchsel">
@@ -245,6 +254,7 @@
  * 家庭经济默认脱敏（年收入区间）；查看完整走 reveal（sensitiveView 鉴权 + SENSITIVE 审计，非授权 403）。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppConfirmDialog, AppNumberInput, AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
   AppStudentPicker, AppAidBatchPicker, AppTextInput, AppTextarea
@@ -266,7 +276,7 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 export default {
   name: 'AidWorkbenchView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppNumberInput,
+    ModulePageShell, LoadingState, ErrorState, EmptyState, TaskContextBar, AppConfirmDialog, AppNumberInput,
     AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppAidBatchPicker, AppTextInput, AppTextarea
   },
   props: { ctx: { type: Object, default: null } },
@@ -296,6 +306,13 @@ export default {
     },
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
+    },
+    pendingCount() {
+      if (!this.statusCounts) return null
+      return AID_NODES.reduce((total, key) => total + Number(this.statusCounts[key] || 0), 0)
+    },
+    taskFilterSummary() {
+      return this.studentFilterLabel || (this.activeStatus !== 'ALL' ? `状态：${this.activeStatus}` : '')
     },
     batchOptions() {
       return this.batches.map((b) => ({
@@ -394,6 +411,10 @@ export default {
     '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications() }
   },
   methods: {
+    clearTaskFilters() {
+      this.activeStatus = 'ALL'
+      this.clearStudentFilter()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}

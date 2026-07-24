@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     AFFAIRS_RISK_TIMEOUT_AUTO_SCAN: bool = True
     AFFAIRS_RISK_NEW_ASSIGN_HOURS: float = 4
     AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS: float = 72
+    # 学工 SLA JSON 覆盖；解析失败或字段非法时由 affairs_sla 回退内置默认。
+    AFFAIRS_RISK_SLA_JSON: str = ""
+    AFFAIRS_LEAVE_SLA_JSON: str = ""
     # 运维探针令牌：/health/ready、/internal/metrics（生产建议必填）
     INTERNAL_OPS_TOKEN: str = ""
     # 对外联系方式；错误提示用配置而非硬编码个人电话

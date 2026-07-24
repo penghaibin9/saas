@@ -2,6 +2,15 @@
   <ModulePageShell title="请假初审" subtitle="请假初审工作台 · 通过 / 驳回 / 退回重提（连续处理双栏）"
     :role-name="roleName" :data-scope-name="scopeHint">
     <div class="mp-stack">
+      <TaskContextBar
+        :role-name="roleName"
+        :scope-name="scopeHint"
+        :pending="total"
+        :filter-summary="keyword ? `关键词：${keyword}` : ''"
+        next-hint="从待初审队列选择一条请假并处理。"
+        :degraded="!!error"
+        @clear-filter="clearKeyword"
+      />
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名 / 学号搜索" @search="reload" />
       </div>
@@ -72,6 +81,7 @@
  * 走新版工作流(affairs_status 非空)提交的请假，本页补齐初审这一步的真实页面。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
+import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppStatusTag, AppConfirmDialog, AppPermissionButton, AppDescriptionList, AppAuditTrail,
   AppSearchBox, AppGlobalState
@@ -86,7 +96,7 @@ import { canCode } from '@/modules/studentAffairs/composables/permission'
 export default {
   name: 'LeaveApprovalWorkbenchView',
   components: {
-    ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
+    ModulePageShell, EmptyState, TaskContextBar, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
     AppDescriptionList, AppAuditTrail, AppSearchBox, AppGlobalState
   },
   props: { ctx: { type: Object, default: null } },
@@ -146,6 +156,10 @@ export default {
   },
   created() { this.load() },
   methods: {
+    clearKeyword() {
+      this.keyword = ''
+      this.reload()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     fmt(v) { return v ? formatDateTime(v) : '' },
     reload() { this.load() },

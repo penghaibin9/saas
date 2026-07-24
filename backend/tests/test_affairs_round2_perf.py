@@ -1,7 +1,8 @@
 """第二轮学工：风险列表/统计性能实测（真实 MySQL，报告实测毫秒，不伪造达标）。
 
 默认插入 PERF_N=10000 条；可用环境变量 AFFAIRS_R2_PERF_N 覆盖（如 100000）。
-门槛参考：列表 P95≤800ms、统计随列表一并返回。机器不足时仅记录实测。
+门槛参考：列表 P95≤800ms、统计随列表一并返回。默认 1 万仅记录实测；
+当 AFFAIRS_R2_PERF_N>=100000 时，P95 超过 800ms 必须失败。
 """
 from __future__ import annotations
 
@@ -99,10 +100,13 @@ def test_risk_list_perf_report(client, db_mode, capsys):
 
     p95 = sorted(list_ms)[max(0, int(len(list_ms) * 0.95) - 1)]
     mean = statistics.mean(list_ms)
-    # 诚实报告：不因超时硬失败；仅当极端慢（>10s）才失败提示环境异常
+    hard_target = n >= 100_000
     print(
         f"\n[R2-PERF] n={n} rounds={ROUNDS} list_ms={['%.1f' % x for x in list_ms]} "
         f"mean={mean:.1f}ms p95≈{p95:.1f}ms target_p95=800ms "
-        f"{'PASS_HINT' if p95 <= 800 else 'BELOW_TARGET_REPORTED'}"
+        f"{'HARD_PASS' if hard_target and p95 <= 800 else ('HARD_FAIL' if hard_target else ('PASS_HINT' if p95 <= 800 else 'BELOW_TARGET_REPORTED'))}"
     )
-    assert p95 < 10_000, f"风险列表异常缓慢 p95={p95:.1f}ms n={n}"
+    if hard_target:
+        assert p95 <= 800, f"10万级风险列表 P95 超标: {p95:.1f}ms n={n}"
+    else:
+        assert p95 < 10_000, f"风险列表异常缓慢 p95={p95:.1f}ms n={n}"

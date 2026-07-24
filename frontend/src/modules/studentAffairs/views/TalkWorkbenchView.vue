@@ -6,6 +6,15 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="谈心谈话"
   >
+    <TaskContextBar
+      :role-name="roleName"
+      :scope-name="dataScopeName"
+      :pending="pendingCount"
+      :filter-summary="taskFilterSummary"
+      next-hint="优先记录待谈事项，需跟进的谈话及时闭环。"
+      :degraded="!!listError"
+      @clear-filter="clearTaskFilters"
+    />
     <div v-if="studentFilterLabel" class="tk-student-filter">
       <span>{{ studentFilterLabel }}</span>
       <button type="button" class="tk-chip" @click="clearStudentFilter">清除筛选</button>
@@ -166,6 +175,7 @@
  * 心理(PSYCHOLOGY)类谈话内容对非授权角色脱敏。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppConfirmDialog, AppDateDisplay, AppDateTimePicker, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
   AppQuickPhrases, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
@@ -190,7 +200,7 @@ const TALK_TYPE = {
 export default {
   name: 'TalkWorkbenchView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog,
+    ModulePageShell, LoadingState, ErrorState, EmptyState, TaskContextBar, AppConfirmDialog,
     AppDateDisplay, AppDateTimePicker, AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
     AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
@@ -215,6 +225,13 @@ export default {
     },
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
+    },
+    pendingCount() {
+      if (!this.statusCounts) return null
+      return ['PLANNED', 'SCHEDULED', 'FOLLOW_UP'].reduce((total, key) => total + Number(this.statusCounts[key] || 0), 0)
+    },
+    taskFilterSummary() {
+      return this.studentFilterLabel || (this.activeStatus !== 'ALL' ? `状态：${this.activeStatus}` : (this.typeFilter ? `类型：${this.typeFilter}` : ''))
     },
     canRecord() {
       return this.selected && ['PLANNED', 'SCHEDULED'].includes(this.selected.status)
@@ -280,6 +297,11 @@ export default {
     typeFilter() { this.pagination.page = 1; this.loadList() }
   },
   methods: {
+    clearTaskFilters() {
+      this.activeStatus = 'ALL'
+      this.typeFilter = ''
+      this.clearStudentFilter()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}

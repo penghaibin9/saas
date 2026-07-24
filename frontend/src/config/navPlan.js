@@ -120,6 +120,7 @@ export const NAV_PLAN = [
     // 班级列表/画像/材料原指向同一路由 → 收敛为「班级管理」；画像/材料从班级页内进入
     mod('sa-classes', '班级与辅导员', null, [
       I('班级管理', '/admin/campus-service/classes', 'studentAffairs.class.view'),
+      I('辅导员责任台账', '/admin/student-affairs/counselor-assignments', 'studentAffairs.class.view'),
       I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
     // 数字迎新：菜单收敛为单一入口；19 个功能页由迎新内部导航与旧深链保留
@@ -749,7 +750,7 @@ export const NAV_PLAN = [
   ]),
 
   /* ═══════════ 一级⑥：系统管理 ═══════════
-     学校级仅保留 8 组 / 26 个三级能力。平台租户、套餐、全局菜单及权限点目录
+     学校级收口为 9 个二级工作区。平台租户、套餐、全局菜单及权限点目录
      一律留在 PLATFORM_PLAN，避免学校管理员越权和两套角色权限重复维护。 */
   grp('system', '系统管理', 'systemAdmin', SYSTEM_MANAGEMENT_CATALOG.map((group) =>
     mod(group.key, group.label, group.items[0].path, group.items.map((item) => {

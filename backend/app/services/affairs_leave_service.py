@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, or_, select
 
@@ -15,6 +15,11 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
+from app.services.affairs_sla import (
+    get_leave_sla,
+    leave_approval_deadline,
+    leave_is_pending_approval_overdue,
+)
 
 # ── 审批层级阈值（规则中心键 affairs.leave.*_threshold_days，默认 3/7；P0 §5）──
 # TODO：接平台规则中心后改读 t_platform_config；当前单一来源函数即"可配"锚点。
@@ -235,6 +240,7 @@ def _check_leave_action_assignee(db, x, user, *, todo_type: str, node: str = "CO
 
 
 def _row(x, s=None) -> dict:
+    approval_deadline = leave_approval_deadline(getattr(x, "created_at", None))
     return {
         "id": str(x.id), "studentId": str(x.student_id or ""),
         "studentNo": (s.student_no if s else "") or "",
@@ -248,6 +254,11 @@ def _row(x, s=None) -> dict:
         "legacyStatus": x.status,  # 投影列（老端点读这个，双状态列一致性）
         "workflowInstanceId": str(x.workflow_instance_id or ""),
         "expectedReturnAt": _iso(x.expected_return_at), "actualReturnAt": _iso(x.actual_return_at),
+        "slaOverdue": leave_is_pending_approval_overdue(x),
+        "sla": {
+            "approvalDeadline": _iso(approval_deadline) if approval_deadline else None,
+            "approvalHours": get_leave_sla()["approvalHours"],
+        },
     }
 
 
@@ -954,7 +965,9 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
             return stu_cache[sid]
 
         students, total_days = set(), 0.0
-        m = {"pendingReview": 0, "waitCancel": 0, "overdue": 0, "closed": 0, "onLeave": 0}
+        m = {"pendingReview": 0, "waitCancel": 0, "overdue": 0, "closed": 0, "onLeave": 0,
+             "pendingApprovalOverdue": 0, "nearDue": 0}
+        leave_sla = get_leave_sla()
         buckets: dict = {}
         for x in rows:
             s = _stu(x.student_id)
@@ -971,6 +984,8 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
                 total_days += float(x.days or 0)
             if aff in _REVIEW_NODES:
                 m["pendingReview"] += 1
+                if leave_is_pending_approval_overdue(x, now):
+                    m["pendingApprovalOverdue"] += 1
             elif aff == "WAIT_CANCEL_LEAVE":
                 m["waitCancel"] += 1
             elif aff == "OVERDUE":
@@ -979,6 +994,10 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
                 m["closed"] += 1
             if aff == "APPROVED" and x.start_time and x.end_time and x.start_time <= now <= x.end_time:
                 m["onLeave"] += 1
+            if (aff in ("APPROVED", "WAIT_CANCEL_LEAVE")
+                    and x.expected_return_at and now <= x.expected_return_at
+                    <= now + timedelta(hours=leave_sla["nearDueHours"])):
+                m["nearDue"] += 1
             key = (str(s.class_id or "") if s else "") if gb == "CLASS" else (
                 (x.leave_type or "OTHER") if gb == "TYPE" else (aff or ""))
             b = buckets.setdefault(key, {"count": 0, "days": 0.0, "students": set()})
@@ -1009,6 +1028,8 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
                 {"key": "totalDays", "label": "请假总天数", "value": round(total_days, 1), "unit": "天"},
                 {"key": "onLeave", "label": "当前在假", "value": m["onLeave"], "unit": "人次"},
                 {"key": "pendingReview", "label": "待审批", "value": m["pendingReview"], "unit": "件"},
+                {"key": "pendingApprovalOverdue", "label": "审批超时", "value": m["pendingApprovalOverdue"], "unit": "件"},
+                {"key": "nearDue", "label": "临近返校", "value": m["nearDue"], "unit": "件"},
                 {"key": "waitCancel", "label": "待销假", "value": m["waitCancel"], "unit": "件"},
                 {"key": "overdue", "label": "逾期未销", "value": m["overdue"], "unit": "件"},
                 {"key": "closed", "label": "已销假", "value": m["closed"], "unit": "件"},

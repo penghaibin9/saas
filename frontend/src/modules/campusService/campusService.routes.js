@@ -69,6 +69,11 @@ export const campusServiceRoutes = {
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '班级画像' }
     },
     {
+      path: 'counselor-assignments',
+      name: 'campus-service-counselor-assignments',
+      redirect: '/admin/student-affairs/counselor-assignments'
+    },
+    {
       // 旧页已迁正式考评；保留 path 避免书签/外链 404
       path: 'counselor-assessment',
       name: 'campus-service-counselor-assessment',
