@@ -265,7 +265,9 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
     from app.models import AaScheduleBatch, AaScheduleItem, AaTeacherAvailability
     with session() as db:
         _require_school(user, db)
-        b = db.get(AaScheduleBatch, int(batch_id))
+        # 并发防护：对批次行加 FOR UPDATE，避免双请求同时读缺口并各插一轮课表
+        b = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id == int(batch_id)).with_for_update()).first()
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):

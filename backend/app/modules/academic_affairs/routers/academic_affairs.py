@@ -716,13 +716,13 @@ class ProgramCreate(BaseModel):
     programName: str = Field(..., min_length=1)
     majorId: Optional[str] = None
     gradeYear: Optional[str] = None
-    totalCredits: Optional[int] = None
+    totalCredits: Optional[float] = Field(None, ge=0)
     requirement: Optional[dict] = Field(default_factory=dict)
 
 
 class ProgramUpdate(BaseModel):
     programName: Optional[str] = None
-    totalCredits: Optional[int] = None
+    totalCredits: Optional[float] = Field(None, ge=0)
     requirement: Optional[dict] = None
 
 
@@ -731,7 +731,7 @@ class ProgramCourseBody(BaseModel):
     courseName: str = Field(..., min_length=1)
     openTermNo: Optional[int] = None
     module: Optional[str] = None
-    credit: Optional[int] = None
+    credit: Optional[float] = Field(None, ge=0)
 
 
 _PROG_VIEW = require_permission("academicAffairs.program.view")
@@ -772,7 +772,7 @@ class ProgramCourseUpdate(BaseModel):
     courseName: Optional[str] = None
     openTermNo: Optional[int] = None
     module: Optional[str] = None
-    credit: Optional[int] = None
+    credit: Optional[float] = Field(None, ge=0)
 
 
 @router.put("/programs/courses/{programCourseId}", summary="方案课程模块：编辑课程明细（编制态）")
@@ -1387,6 +1387,8 @@ class GradeTaskCreate(BaseModel):
     midtermRatio: int = Field(0, ge=0, le=100, description="期中占比%(0=不启用期中)")
     finalRatio: int = Field(70, ge=0, le=100, description="期末占比%")
     passLine: int = Field(60, ge=0, le=100)
+    # 管理员特殊补录（无教学任务）必须填原因；普通教师禁止脱离教学任务创建
+    adminSupplementReason: Optional[str] = Field(None, description="管理员脱离教学任务补录原因，不少于5字")
 
     @model_validator(mode="after")
     def _require_course_or_task(self):
@@ -1400,7 +1402,11 @@ class ScoreBody(BaseModel):
     usualScore: Optional[int] = Field(None, ge=0, le=100)
     midtermScore: Optional[int] = Field(None, ge=0, le=100)
     finalScore: Optional[int] = Field(None, ge=0, le=100)
-    exceptionFlag: Optional[str] = Field(None, description="NORMAL/ABSENT/DEFERRED/EXEMPT")
+    exceptionFlag: Optional[str] = Field(None, description="NORMAL/ABSENT/DEFERRED/EXEMPT/CHEAT")
+    # 显式传字段名列表时做 merge；未传则按「请求体出现的字段」合并，避免未传分项被清空
+    clearUsual: bool = False
+    clearMidterm: bool = False
+    clearFinal: bool = False
 
 
 class GradeImportRowsBody(BaseModel):

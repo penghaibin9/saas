@@ -153,7 +153,7 @@
         <AppFormItem label="课程名称" required><AppTextInput v-model="courseForm.courseName" :disabled="saving" /></AppFormItem>
         <AppFormItem label="课程模块"><AppTextInput v-model="courseForm.module" :disabled="saving" placeholder="如 专业核心/实践环节" /></AppFormItem>
         <AppFormItem label="开课学期"><AppNumberInput v-model="courseForm.openTermNo" :min="1" :max="12" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="学分"><AppNumberInput v-model="courseForm.credit" :min="0" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="学分"><AppNumberInput v-model="courseForm.credit" :min="0" :step="0.5" :precision="1" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -613,7 +613,7 @@ export default {
       if (!this.courseForm.courseName) { this.formError = '课程名称必填'; return }
       this.saving = true
       const body = { courseName: this.courseForm.courseName, module: this.courseForm.module || undefined,
-        openTermNo: this.courseForm.openTermNo || undefined, credit: this.courseForm.credit != null ? Math.round(this.courseForm.credit) : undefined }
+        openTermNo: this.courseForm.openTermNo || undefined, credit: this.courseForm.credit != null ? this.courseForm.credit : undefined }
       const res = this.courseForm.programCourseId
         ? await academicAffairsApi.updateProgramCourse(this.courseForm.programCourseId, body)
         : await academicAffairsApi.addProgramCourse(this.selectedProgramId, body)

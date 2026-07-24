@@ -93,7 +93,16 @@ def dashboard(user, term_id=None, college_id=None, major_id=None):
                             AaScheduleChange, AaTeachingTask, AaTeachingTaskBatch,
                             AcademicGrade, AcademicWarning, Major, SchoolClass)
     with session() as db:
-        build_affairs_context(user, db)
+        from app.modules.academic_affairs.services.academic_affairs_stats_service import (
+            _resolve_scope, _validate_college_param)
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, int(college_id) if college_id else None)
+        # 学院角色未传 collegeId 时默认本院，禁止偷看全校
+        if not scope.all and not college_id and scope.college_ids:
+            if len(scope.college_ids) == 1:
+                college_id = next(iter(scope.college_ids))
+            else:
+                raise AppException("VALIDATION_ERROR", "请指定学院后再查看质量看板")
         T = _tid()
         term_id = int(term_id) if term_id else None
         college_id = int(college_id) if college_id else None
@@ -102,6 +111,12 @@ def dashboard(user, term_id=None, college_id=None, major_id=None):
         org_dims = (["college"] if college_id else []) + (["major"] if major_id else [])
 
         class_ids = _class_ids(db, college_id, major_id)      # None=不过滤
+        # 受限角色即使未传学院，也按 scope.class_ids 收敛
+        if not scope.all and scope.class_ids is not None:
+            if class_ids is None:
+                class_ids = list(scope.class_ids)
+            else:
+                class_ids = [c for c in class_ids if c in scope.class_ids]
         profile_ids = _profile_ids(db, college_id, major_id)
         acad_ids = _acad_ids(db, profile_ids)
         inds = []

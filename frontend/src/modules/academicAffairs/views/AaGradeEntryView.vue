@@ -14,16 +14,18 @@
       <!-- 建任务 -->
       <AppSectionCard v-if="!task" title="新建成绩录入任务">
         <div class="aa-grid2">
-          <label class="aa-field"><span class="req">课程</span><AppCoursePicker v-model="form.courseId" @change="onCourseChange" /></label>
+          <label class="aa-field"><span class="req">教学任务</span><AppTeachingTaskPicker v-model="form.teachingTaskId" @change="onTeachingTaskChange" placeholder="从教学任务带出课程/班级/学分" /></label>
+          <label class="aa-field"><span>课程</span><input :value="form.courseName" type="text" class="aa-input" disabled placeholder="由教学任务带出" /></label>
           <label class="aa-field"><span>学期</span><AppTermCodePicker v-model="form.termCode" placeholder="选择学期（可空）" /></label>
-          <label class="aa-field"><span>学分</span><input v-model.number="form.credit" type="number" min="0" step="0.5" class="aa-input" /></label>
-          <label class="aa-field"><span>班级</span><AppClassPicker v-model="form.classId" placeholder="选填，选择后可自动圈定名单" /></label>
+          <label class="aa-field"><span>学分</span><input v-model.number="form.credit" type="number" min="0" step="0.5" class="aa-input" :disabled="!!form.teachingTaskId" /></label>
+          <label class="aa-field"><span>班级</span><AppClassPicker v-model="form.classId" placeholder="由教学任务带出" :disabled="!!form.teachingTaskId" /></label>
           <label class="aa-field"><span>平时占比%</span><input v-model.number="form.usualRatio" type="number" min="0" max="100" class="aa-input" /></label>
           <label class="aa-field"><span>期中占比%</span><input v-model.number="form.midtermRatio" type="number" min="0" max="100" class="aa-input" placeholder="0=不启用期中" /></label>
           <label class="aa-field"><span>期末占比%</span><input v-model.number="form.finalRatio" type="number" min="0" max="100" class="aa-input" /></label>
           <label class="aa-field"><span>及格线</span><input v-model.number="form.passLine" type="number" min="0" max="100" class="aa-input" /></label>
+          <label v-if="isAdminRole" class="aa-field"><span>补录原因</span><input v-model="form.adminSupplementReason" type="text" class="aa-input" placeholder="无教学任务时必填（≥5字）" /></label>
         </div>
-        <p class="mp-note">平时 + 期中 + 期末占比之和必须 = 100（期中占比填 0 即不启用期中，等同「平时 + 期末」）。</p>
+        <p class="mp-note">普通教师必须选择教学任务；课程/班级/学分由教学任务带出。平时 + 期中 + 期末占比之和必须 = 100。</p>
         <div class="aa-actions"><AppButton variant="primary" :loading="creating" @click="createTask">创建任务</AppButton></div>
 
         <div v-if="myTasks.length" class="aa-my-tasks">
@@ -61,10 +63,10 @@
         <AppExcelImportDrawer
           v-if="task"
           v-model:visible="importVisible"
-          title="导入成绩（学号/平时分/期末分/异常标记）"
+          title="导入成绩（学号/平时/期中/期末/异常标记）"
           template-name="成绩导入模板.xlsx"
           :required-fields="['学号']"
-          :preview-fields="['studentNo', 'studentName', 'usualScore', 'finalScore', 'exceptionFlag']"
+          :preview-fields="['studentNo', 'studentName', 'usualScore', 'midtermScore', 'finalScore', 'exceptionFlag']"
           :download-template-fn="() => academicAffairsApi.downloadGradeImportTemplate(task.gradeTaskId)"
           :upload-fn="(file) => academicAffairsApi.uploadGradeImportXlsx(task.gradeTaskId, file)"
           :confirm-fn="({ rows }) => academicAffairsApi.confirmGradeImport(task.gradeTaskId, rows)"
@@ -105,7 +107,7 @@
 /** 成绩录入（/admin/academic-affairs/grade-entry）：POST /grade-tasks + /scores + /submit。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppCoursePicker, AppTermCodePicker, AppClassPicker, AppStudentPicker } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppTermCodePicker, AppClassPicker, AppStudentPicker, AppTeachingTaskPicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
@@ -116,14 +118,15 @@ const TASK_STATUS = {
   RETURNED: '已退回', ARCHIVED: '已归档'
 }
 const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
+const ADMIN_ROLES = new Set(['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'JWC_ADMIN', 'COLLEGE_ADMIN', 'PLATFORM_SUPER_ADMIN'])
 
 export default {
   name: 'AaGradeEntryView',
-  components: { ModulePageShell, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer, AppCoursePicker, AppTermCodePicker, AppClassPicker, AppStudentPicker },
+  components: { ModulePageShell, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer, AppTermCodePicker, AppClassPicker, AppStudentPicker, AppTeachingTaskPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      form: { courseId: '', courseName: '', termCode: '', credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70, passLine: 60 },
+      form: { teachingTaskId: '', courseId: '', courseName: '', termCode: '', credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70, passLine: 60, adminSupplementReason: '' },
       creating: false, task: null, myTasks: [],
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
       importVisible: false
@@ -132,12 +135,17 @@ export default {
   computed: {
     editable() { return this.task && EDITABLE_STATUS.has(this.task.status) },
     hasMidterm() { return this.task && Number(this.task.midtermRatio) > 0 },
+    isAdminRole() {
+      const code = (this.ctx?.currentRole?.roleCode || this.ctx?.currentRoleCode || '').toUpperCase()
+      return ADMIN_ROLES.has(code) || this.ctx?.userType === 'PLATFORM_SUPER_ADMIN'
+    },
     exceptionOptions() {
       return [
         { value: 'NORMAL', label: '正常' },
         { value: 'ABSENT', label: '缺考' },
         { value: 'DEFERRED', label: '缓考' },
-        { value: 'EXEMPT', label: '免修' }
+        { value: 'EXEMPT', label: '免修' },
+        { value: 'CHEAT', label: '作弊' }
       ]
     }
   },
@@ -145,6 +153,14 @@ export default {
     this.loadTasks()
   },
   methods: {
+    onTeachingTaskChange(value, items) {
+      const item = items?.[0]
+      const t = item?.raw || item || {}
+      this.form.courseName = t.courseName || t.name || item?.label || ''
+      if (t.credit != null) this.form.credit = t.credit
+      if (t.classId != null) this.form.classId = String(t.classId)
+      if (t.termCode) this.form.termCode = t.termCode
+    },
     onCourseChange(value, items) {
       const item = items?.[0]
       const course = item?.raw || item || {}
@@ -199,7 +215,8 @@ export default {
       const res = await academicAffairsApi.getGradeRecords(this.task.gradeTaskId)
       if (res.code === 0) {
         this.rows = (res.data.items || []).map((it) => ({
-          studentId: it.studentId, realName: it.realName, usual: it.usualScore, final: it.finalScore,
+          studentId: it.studentId, realName: it.realName, usual: it.usualScore,
+          midterm: it.midtermScore, final: it.finalScore,
           total: it.totalScore, passStatus: it.passStatus, exceptionFlag: it.exceptionFlag || 'NORMAL'
         }))
       }
@@ -213,14 +230,29 @@ export default {
     },
     async createTask() {
       if (this.creating) return
-      if (!this.form.courseName) { toast.error('请填写课程名称'); return }
-      if (Number(this.form.usualRatio) + Number(this.form.midtermRatio) + Number(this.form.finalRatio) !== 100) { toast.error('平时+期中+期末占比之和须=100'); return }
+      if (!this.form.teachingTaskId && !this.isAdminRole) {
+        toast.error('请选择教学任务'); return
+      }
+      if (!this.form.teachingTaskId && this.isAdminRole) {
+        if (!this.form.courseName) { toast.error('请填写课程名称或选择教学任务'); return }
+        if (!(this.form.adminSupplementReason || '').trim() || this.form.adminSupplementReason.trim().length < 5) {
+          toast.error('管理员脱离教学任务补录须填写原因（不少于5字）'); return
+        }
+      }
+      if (Number(this.form.usualRatio) + Number(this.form.midtermRatio) + Number(this.form.finalRatio) !== 100) {
+        toast.error('平时+期中+期末占比之和须=100'); return
+      }
       this.creating = true
       const res = await academicAffairsApi.createGradeTask({
-        courseName: this.form.courseName, termCode: this.form.termCode || undefined,
-        credit: this.form.credit || undefined, classId: this.form.classId || undefined,
+        teachingTaskId: this.form.teachingTaskId || undefined,
+        courseName: this.form.teachingTaskId ? undefined : (this.form.courseName || undefined),
+        termCode: this.form.termCode || undefined,
+        credit: this.form.teachingTaskId ? undefined : (this.form.credit || undefined),
+        classId: this.form.teachingTaskId ? undefined : (this.form.classId || undefined),
         usualRatio: this.form.usualRatio, midtermRatio: this.form.midtermRatio,
-        finalRatio: this.form.finalRatio, passLine: this.form.passLine
+        finalRatio: this.form.finalRatio, passLine: this.form.passLine,
+        adminSupplementReason: (!this.form.teachingTaskId && this.isAdminRole)
+          ? this.form.adminSupplementReason.trim() : undefined
       })
       this.creating = false
       if (res.code === 0) { this.task = res.data; toast.success('任务已创建，开始录入'); this.loadTasks() }

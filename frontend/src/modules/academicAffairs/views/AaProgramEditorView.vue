@@ -160,8 +160,7 @@ export default {
       const res = await academicAffairsApi.addProgramCourse(this.programId, {
         courseId: this.addForm.courseId,
         courseName: this.addForm.courseName,
-        // 后端 AaProgramCourse.credit_snapshot 为 Integer 列，方案内学分按整数存；半学分课程取整（避免 float→int 422）
-        credit: this.addForm.credit != null ? Math.round(this.addForm.credit) : undefined,
+        credit: this.addForm.credit != null ? this.addForm.credit : undefined,
         openTermNo: this.addForm.openTermNo || undefined,
         module: this.addForm.module || undefined
       })

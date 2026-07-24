@@ -36,7 +36,8 @@ def _seed(db_mode, n=1):
 def _task(client, hdr, usual=30, final=70):
     return client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseName": "大学物理", "termCode": "2026-2027-1", "credit": 3,
-        "usualRatio": usual, "finalRatio": final}).json()["data"]["gradeTaskId"]
+        "usualRatio": usual, "finalRatio": final,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
 
 
 def test_rf1_return_resubmit_approve_publish(client, db_mode):
@@ -90,8 +91,14 @@ def test_rf4_teacher_cannot_publish_even_with_wildcard_403(client, db_mode):
     sids = _seed(db_mode, 1)
     teacher_hdr = _hdr(client, "academic01")
     admin_hdr = _hdr(client, "school_admin01")
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask
+    db = get_sessionmaker()()
+    tt = AaTeachingTask(tenant_id=TID, batch_id=1, course_id=1, course_name="英语",
+                        teacher_key="academic01", class_id=None, status="READY")
+    db.add(tt); db.commit(); tt_id = tt.id; db.close()
     tid = client.post(f"{BASE}/grade-tasks", headers=teacher_hdr, json={
-        "courseName": "英语", "termCode": "2026-2027-1", "usualRatio": 30, "finalRatio": 70
+        "teachingTaskId": str(tt_id), "usualRatio": 30, "finalRatio": 70
     }).json()["data"]["gradeTaskId"]
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=teacher_hdr,
                json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})

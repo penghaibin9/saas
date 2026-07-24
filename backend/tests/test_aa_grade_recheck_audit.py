@@ -43,7 +43,8 @@ def _seed(db_mode, n=1):
 def _task(client, hdr, course_name="大学英语", usual=30, final=70):
     return client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseName": course_name, "termCode": "2026-2027-1", "credit": 3,
-        "usualRatio": usual, "finalRatio": final}).json()["data"]["gradeTaskId"]
+        "usualRatio": usual, "finalRatio": final,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
 
 
 def test_ra1_records_show_source_and_change_history(client, db_mode):

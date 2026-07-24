@@ -60,7 +60,8 @@ def test_mb2_transcript_my(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     tid = client.post(f"{AA}/grade-tasks", headers=admin, json={
-        "courseName": "高数", "termCode": "2023-1", "credit": 4, "usualRatio": 30, "finalRatio": 70}).json()["data"]["gradeTaskId"]
+        "courseName": "高数", "termCode": "2023-1", "credit": 4, "usualRatio": 30, "finalRatio": 70,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
     client.post(f"{AA}/grade-tasks/{tid}/scores", headers=admin,
                 json={"studentId": str(ids["student"]), "usualScore": 85, "finalScore": 90})
     # R1 起成绩发布必须走完整审核链：提交→学院审→教务终审发布（school_admin01 在审核角色白名单内可代行）

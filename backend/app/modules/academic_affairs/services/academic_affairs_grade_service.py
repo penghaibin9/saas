@@ -202,36 +202,73 @@ def create_grade_task(body, user) -> dict:
     midterm = int(getattr(body, "midtermRatio", 0) or 0)
     if usual + midterm + final != 100:
         raise AppException("VALIDATION_ERROR", "平时+期中+期末占比之和必须=100")
+    if usual < 0 or midterm < 0 or final < 0 or usual > 100 or midterm > 100 or final > 100:
+        raise AppException("VALIDATION_ERROR", "成绩占比须在 0-100 之间")
+    role = (user.get("currentRoleCode") or "").upper()
+    is_admin = role in _REVIEW_ROLES or role == "COLLEGE_ADMIN" or user.get("userType") == "PLATFORM_SUPER_ADMIN"
+    teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
+    supplement = (getattr(body, "adminSupplementReason", None) or "").strip()
+    if not teaching_task_id and not is_admin:
+        raise AppException("VALIDATION_ERROR", "普通教师必须关联真实教学任务创建成绩任务")
+    if not teaching_task_id and is_admin and len(supplement) < 5:
+        raise AppException("VALIDATION_ERROR", "管理员脱离教学任务补录必须填写原因（不少于5字）")
     with session() as db:
         from app.models import AaGradeTask, AaTeachingTask
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         guard_term_writable(db, getattr(body, "termId", None))  # 归档11卡§6.2：已归档学期不应新建成绩任务
-        teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
         teacher_key = None
         inherit_class_id = None
         inherit_course_name = None
         inherit_credit = None
+        inherit_term_id = None
         if teaching_task_id:
             # 租户隔离收口：教学任务必须属本租户，否则拒绝——此前 db.get 不校验 tenant_id，
             # 传他租户 teachingTaskId 会把他租户 teacher_key 带进本租户新成绩任务。
             tt = db.get(AaTeachingTask, teaching_task_id)
             if not tt or tt.is_deleted or tt.tenant_id != _tid():
                 raise not_found("教学任务不存在或不在当前数据范围内")
+            # 学院管理员：教学任务班级须在数据范围内
+            if role == "COLLEGE_ADMIN":
+                from app.core.affairs_security import build_affairs_context
+                ctx = build_affairs_context(user, db)
+                allowed = ctx.allowed_class_ids(db)
+                if allowed is not None and tt.class_id and tt.class_id not in allowed:
+                    raise AppException("NO_DATA_SCOPE", "该教学任务不在您的学院范围内")
+            # 任课教师：只能为自己负责的教学任务建成绩任务
+            if not is_admin:
+                if not tt.teacher_key or tt.teacher_key not in _user_keys(user):
+                    raise AppException("NO_DATA_SCOPE", "只能为自己负责的教学任务创建成绩任务")
+            # 幂等：同租户同教学任务已有有效成绩任务则直接返回（防双击/重试）
+            exist = db.scalars(select(AaGradeTask).where(
+                AaGradeTask.tenant_id == _tid(), AaGradeTask.teaching_task_id == teaching_task_id,
+                AaGradeTask.is_deleted.is_(False),
+                AaGradeTask.status.notin_(["ARCHIVED"]))
+            ).first()
+            if exist:
+                raise AppException("DATA_CONFLICT", "该教学任务已存在成绩录入任务，请勿重复创建",
+                                   http_status=409)
             teacher_key = tt.teacher_key
             inherit_class_id = tt.class_id
             inherit_course_name = tt.course_name
             inherit_credit = getattr(tt, "credit", None)
+            inherit_term_id = getattr(tt, "term_id", None)
         if not teacher_key:
             teacher_key = next(iter(_user_keys(user)), None)
-        class_id = int(body.classId) if getattr(body, "classId", None) else inherit_class_id
-        course_name = getattr(body, "courseName", None) or inherit_course_name
+        # 有教学任务时强制继承，禁止前端篡改班级/课程/学分
+        if teaching_task_id:
+            class_id = inherit_class_id
+            course_name = inherit_course_name
+            credit = inherit_credit
+            term_id = inherit_term_id or (int(body.termId) if getattr(body, "termId", None) else None)
+        else:
+            class_id = int(body.classId) if getattr(body, "classId", None) else None
+            course_name = getattr(body, "courseName", None)
+            credit = getattr(body, "credit", None)
+            term_id = int(body.termId) if getattr(body, "termId", None) else None
         if not (course_name or "").strip():
             raise AppException("VALIDATION_ERROR", "courseName 与 teachingTaskId 至少填一项（且教学任务须有课程名）")
-        credit = getattr(body, "credit", None)
-        if credit is None:
-            credit = inherit_credit
         t = AaGradeTask(tenant_id=_tid(), teaching_task_id=teaching_task_id,
-                        term_id=(int(body.termId) if getattr(body, "termId", None) else None),
+                        term_id=term_id,
                         term_code=getattr(body, "termCode", None), course_name=course_name,
                         class_id=class_id,
                         teacher_key=teacher_key,
@@ -240,13 +277,16 @@ def create_grade_task(body, user) -> dict:
                         pass_line=int(getattr(body, "passLine", 60) or 60), status="NOT_STARTED")
         db.add(t)
         db.flush()
-        _audit(db, "AA_GRADE_TASK", t.id, "CREATE", course_name or "")
+        audit_detail = course_name or ""
+        if supplement:
+            audit_detail = f"{audit_detail}|ADMIN_SUPPLEMENT:{supplement}"
+        _audit(db, "AA_GRADE_TASK", t.id, "CREATE", audit_detail)
         _push_grade_entry_todo(db, t)
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "usualRatio": t.usual_ratio,
                 "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio, "status": t.status,
-                "classId": str(t.class_id or "")}
+                "classId": str(t.class_id or ""), "teachingTaskId": str(t.teaching_task_id or "")}
 
 
 def _task_row(t) -> dict:
@@ -258,14 +298,24 @@ def _task_row(t) -> dict:
 
 
 def list_tasks(user, status=None, page=1, page_size=20):
-    """成绩录入任务列表（学院审核/教务发布工作台的队列来源；按状态筛选）。数据范围：
-    TENANT_ALL/COLLEGE 角色不收敛列表（学院教务员看不同状态的跨学院任务仍需自行核实每条详情时才会被
-    _check_college_scope 拦截，列表本身按状态供选，未做逐条隐藏——已知欠账，见施工记录）。"""
+    """成绩录入任务列表。数据范围：教务处全校；学院管理员按本院班级；教师仅本人任务。"""
     from app.models import AaGradeTask
     with session() as db:
         conds = [AaGradeTask.tenant_id == _tid(), AaGradeTask.is_deleted.is_(False)]
         if status:
             conds.append(AaGradeTask.status == status)
+        role = (user.get("currentRoleCode") or "").upper()
+        if role in _REVIEW_ROLES or user.get("userType") == "PLATFORM_SUPER_ADMIN":
+            pass
+        elif role == "COLLEGE_ADMIN":
+            from app.core.affairs_security import build_affairs_context
+            ctx = build_affairs_context(user, db)
+            allowed = ctx.allowed_class_ids(db)
+            if allowed is not None:
+                conds.append(AaGradeTask.class_id.in_(list(allowed) or [0]))
+        else:
+            keys = _user_keys(user)
+            conds.append(AaGradeTask.teacher_key.in_(list(keys) or ["__none__"]))
         rows = db.scalars(select(AaGradeTask).where(*conds).order_by(AaGradeTask.id.desc())).all()
         out = [_task_row(t) for t in rows]
         total = len(out)
@@ -353,9 +403,10 @@ def _write_score_row(db, t, sid, usual, final, exception_flag, mid=None):
 
 
 def enter_score(task_id, user, body) -> dict:
-    """录入某生平时/期末分，实时合成总评（NOT_STARTED/INPUTTING/RETURNED 可写）。"""
+    """录入某生平时/期中/期末分，实时合成总评（NOT_STARTED/INPUTTING/RETURNED 可写）。
+    分项采用 merge：请求未传的分项保留原值，避免单字段保存清空其他分项。"""
     with session() as db:
-        from app.models import AaGradeRecord, AaGradeTask
+        from app.models import AaGradeRecord, AaGradeTask, StudentProfile
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaGradeTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
@@ -365,24 +416,46 @@ def enter_score(task_id, user, body) -> dict:
         if t.status not in ("NOT_STARTED", "INPUTTING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
         sid = int(body.studentId)
-        usual = getattr(body, "usualScore", None)
-        mid = getattr(body, "midtermScore", None)
-        final = getattr(body, "finalScore", None)
+        # 有关联行政班时，禁止写入非本班学生
+        if t.class_id:
+            stu = db.get(StudentProfile, sid)
+            if not stu or stu.is_deleted or stu.tenant_id != _tid():
+                raise not_found("学生不存在")
+            if stu.class_id != t.class_id:
+                raise AppException("VALIDATION_ERROR", "该学生不属于本成绩任务关联的教学班/行政班")
+        fields_set = getattr(body, "model_fields_set", None) or getattr(body, "__fields_set__", set())
+        usual_in = getattr(body, "usualScore", None) if "usualScore" in fields_set else None
+        mid_in = getattr(body, "midtermScore", None) if "midtermScore" in fields_set else None
+        final_in = getattr(body, "finalScore", None) if "finalScore" in fields_set else None
+        # 兼容未用 pydantic fields_set 的调用方（dict/SimpleNamespace）：显式传了就算
+        if not fields_set:
+            usual_in = getattr(body, "usualScore", None)
+            mid_in = getattr(body, "midtermScore", None)
+            final_in = getattr(body, "finalScore", None)
+            fields_set = {k for k in ("usualScore", "midtermScore", "finalScore", "exceptionFlag")
+                          if getattr(body, k, None) is not None or k == "exceptionFlag"}
         exception_flag = (getattr(body, "exceptionFlag", None) or "NORMAL").upper()
-        if exception_flag not in ("NORMAL", "ABSENT", "DEFERRED", "EXEMPT"):
+        if exception_flag not in ("NORMAL", "ABSENT", "DEFERRED", "EXEMPT", "CHEAT"):
             raise AppException("VALIDATION_ERROR", "异常标记非法")
-        total = None
-        if exception_flag == "NORMAL":
-            if _scores_complete(t, usual, mid, final):
-                total = _compose_total(t, usual, mid, final)
-        else:
-            usual = mid = final = None  # 缺考/缓考/免修与正常分互斥
         rec = db.scalars(select(AaGradeRecord).where(
             AaGradeRecord.tenant_id == _tid(), AaGradeRecord.task_id == t.id,
             AaGradeRecord.student_id == sid, AaGradeRecord.is_deleted.is_(False))).first()
         if not rec:
             rec = AaGradeRecord(tenant_id=_tid(), task_id=t.id, student_id=sid)
             db.add(rec)
+            usual = usual_in if "usualScore" in fields_set else None
+            mid = mid_in if "midtermScore" in fields_set else None
+            final = final_in if "finalScore" in fields_set else None
+        else:
+            usual = usual_in if "usualScore" in fields_set else rec.usual_score
+            mid = mid_in if "midtermScore" in fields_set else rec.midterm_score
+            final = final_in if "finalScore" in fields_set else rec.final_score
+        total = None
+        if exception_flag == "NORMAL":
+            if _scores_complete(t, usual, mid, final):
+                total = _compose_total(t, usual, mid, final)
+        else:
+            usual = mid = final = None  # 缺考/缓考/免修/作弊与正常分互斥
         rec.usual_score, rec.midterm_score, rec.final_score, rec.total_score = usual, mid, final, total
         rec.exception_flag = exception_flag
         rec.pass_status = ("PASSED" if (total is not None and total >= t.pass_line) else
@@ -400,15 +473,16 @@ def enter_score(task_id, user, body) -> dict:
 # ═══════════ 成绩批量导入（学号/平时分/期末分/异常标记；dry-run 逐行零写入 → 确认整批事务） ═══════════
 
 def _resolve_exception_flag(raw):
-    """中文/英文异常标记 → 内部枚举 (NORMAL/ABSENT/DEFERRED/EXEMPT)。
+    """中文/英文异常标记 → 内部枚举 (NORMAL/ABSENT/DEFERRED/EXEMPT/CHEAT)。
     返回 (flag, bad_raw)：合法时 bad_raw=None；非法时 flag=None、bad_raw=原始输入供报错回显。"""
     v = (raw or "").strip()
     if not v:
         return "NORMAL", None
-    cn_map = {"正常": "NORMAL", "缺考": "ABSENT", "缓考": "DEFERRED", "免修": "EXEMPT"}
+    cn_map = {"正常": "NORMAL", "缺考": "ABSENT", "缓考": "DEFERRED", "免修": "EXEMPT",
+              "作弊": "CHEAT", "取消考试资格": "CHEAT"}
     if v in cn_map:
         return cn_map[v], None
-    if v.upper() in ("NORMAL", "ABSENT", "DEFERRED", "EXEMPT"):
+    if v.upper() in ("NORMAL", "ABSENT", "DEFERRED", "EXEMPT", "CHEAT"):
         return v.upper(), None
     return None, v
 
@@ -428,7 +502,7 @@ def _parse_score(raw):
 
 
 def grade_import_dry_run(task_id, user, rows) -> dict:
-    """成绩批量导入预校验（学号必填且匹配本校学生、文件内学号不重复、平时/期末分 0-100、异常标记合法）。
+    """成绩批量导入预校验（学号必填且匹配本校学生、文件内学号不重复、平时/期中/期末分 0-100、异常标记合法）。
     仅任务处于可写状态（NOT_STARTED/INPUTTING/RETURNED）才允许导入，零写入。"""
     with session() as db:
         from app.models import AaGradeTask, StudentProfile
@@ -438,6 +512,7 @@ def grade_import_dry_run(task_id, user, rows) -> dict:
         _check_course_scope(t, user)
         if t.status not in ("NOT_STARTED", "INPUTTING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可导入（已提交/已发布，如需修改请走成绩更正）")
+        need_mid = (getattr(t, "midterm_ratio", 0) or 0) > 0
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))).all()}
         errors, seen, valid = [], set(), 0
@@ -450,6 +525,11 @@ def grade_import_dry_run(task_id, user, rows) -> dict:
             if no not in profiles:
                 errors.append({"rowNo": row_no, "field": "studentNo", "message": f"未匹配到学生：{no}"})
                 continue
+            stu = profiles[no]
+            if t.class_id and stu.class_id != t.class_id:
+                errors.append({"rowNo": row_no, "field": "studentNo",
+                               "message": f"学生不属于本成绩任务关联班级：{no}"})
+                continue
             if no in seen:
                 errors.append({"rowNo": row_no, "field": "studentNo", "message": f"文件内学号重复：{no}"})
                 continue
@@ -461,9 +541,16 @@ def grade_import_dry_run(task_id, user, rows) -> dict:
             if usual is False:
                 errors.append({"rowNo": row_no, "field": "usualScore", "message": "平时分须为 0-100 整数"})
                 continue
+            mid = _parse_score(r.get("midtermScore"))
+            if mid is False:
+                errors.append({"rowNo": row_no, "field": "midtermScore", "message": "期中分须为 0-100 整数"})
+                continue
             final = _parse_score(r.get("finalScore"))
             if final is False:
                 errors.append({"rowNo": row_no, "field": "finalScore", "message": "期末分须为 0-100 整数"})
+                continue
+            if need_mid and flag == "NORMAL" and mid is None and (usual is not None or final is not None):
+                errors.append({"rowNo": row_no, "field": "midtermScore", "message": "本任务启用期中占比，期中分必填"})
                 continue
             seen.add(no)
             valid += 1
@@ -493,28 +580,30 @@ def grade_import_confirm(task_id, user, rows) -> dict:
                 continue  # 已在 dry_run 校验过，理论不会命中；防御式跳过而非整批失败
             flag, _bad = _resolve_exception_flag(r.get("exceptionFlag"))
             usual = _parse_score(r.get("usualScore"))
+            mid = _parse_score(r.get("midtermScore"))
             final = _parse_score(r.get("finalScore"))
-            # 此处 usual/final 已在 dry_run 校验为 None 或合法 0-100 整数（非 False 哨兵）；
+            # 此处 usual/mid/final 已在 dry_run 校验为 None 或合法 0-100 整数（非 False 哨兵）；
             # 直接传递，禁止 `usual or None` 写法——0 分是合法分数，`or` 会把 0 误判成"未填"。
-            _write_score_row(db, t, stu.id, usual, final, flag)
+            _write_score_row(db, t, stu.id, usual, final, flag, mid=mid)
             created += 1
         _audit(db, "AA_GRADE_TASK", t.id, "IMPORT", f"imported={created}")
         db.commit()
         return {"created": created, "imported": created}
 
 
-# 导入模板 5 列（表头文字 → 行字段 key）。正式交付以 Excel/xlsx 为准（CLAUDE.md §6.1）。
-IMPORT_HEADERS = ["学号", "姓名", "平时分", "期末分", "异常标记"]
+# 导入模板（表头文字 → 行字段 key）。正式交付以 Excel/xlsx 为准（CLAUDE.md §6.1）。
+IMPORT_HEADERS = ["学号", "姓名", "平时分", "期中分", "期末分", "异常标记"]
 IMPORT_REQUIRED = ["学号"]
 IMPORT_HEADER_MAP = {"学号": "studentNo", "姓名": "studentName", "平时分": "usualScore",
-                     "期末分": "finalScore", "异常标记": "exceptionFlag"}
-IMPORT_SAMPLE = ["2023115001", "赵一凡", "85", "90", ""]
-IMPORT_NOTES = ["学号必填，且必须是本校已建档学生（未匹配到学生该行报错）。",
-                "平时分/期末分为 0-100 整数，留空表示未录（可稍后在录入表补录）。",
-                "异常标记留空默认「正常」；可填「缺考/缓考/免修」，填后当行平时分/期末分将被忽略。",
+                     "期中分": "midtermScore", "期末分": "finalScore", "异常标记": "exceptionFlag"}
+IMPORT_SAMPLE = ["2023115001", "赵一凡", "85", "80", "90", ""]
+IMPORT_NOTES = ["学号必填，且必须是本校已建档学生（未匹配到学生该行报错）；若任务关联行政班，学生须属该班。",
+                "平时分/期中分/期末分为 0-100 整数，留空表示未录（可稍后在录入表补录）。",
+                "任务期中占比>0 时，正常成绩行必须填写期中分，否则预校验失败、整批不写入。",
+                "异常标记留空默认「正常」；可填「缺考/缓考/免修/作弊」，填后当行分数将被忽略。",
                 "同一学号在同一份文件内不可重复；已存在的成绩记录会被本次导入覆盖，请谨慎核对。",
                 "仅任务处于「未开始/录入中/已退回」状态时可导入；已提交/已发布任务需走「成绩更正」流程。",
-                "仅导入「导入模板」页。"]
+                "仅导入「导入模板」页；预校验全部通过后才写入，任一行失败则整批不写入。"]
 
 
 def _row_values_for_error(r: dict) -> list:
@@ -544,6 +633,15 @@ def submit_task(task_id, user) -> dict:
             raise AppException("DATA_CONFLICT", f"名单 {roster_count} 人，仅录入 {len(recs)} 人，未录全不可提交")
         if incomplete:
             raise AppException("DATA_CONFLICT", f"仍有 {len(incomplete)} 名学生成绩未录全，不可提交")
+        # CAS：仅 INPUTTING/RETURNED 可抢占为 SUBMITTED，防并发双提交产生孤儿工作流
+        claim = db.query(AaGradeTask).filter(
+            AaGradeTask.id == t.id, AaGradeTask.tenant_id == _tid(),
+            AaGradeTask.status.in_(["INPUTTING", "RETURNED"])).update(
+            {AaGradeTask.status: "SUBMITTED"}, synchronize_session=False)
+        if not claim:
+            db.rollback()
+            raise AppException("APPROVAL_VERSION_CONFLICT", "成绩任务已提交或状态已变更")
+        t.status = "SUBMITTED"
         n, r, uid = _op()
         first_node = "COLLEGE_REVIEW"
         from app.models import WorkflowInstance, WorkflowTask
@@ -559,7 +657,6 @@ def submit_task(task_id, user) -> dict:
                             status="PENDING"))
         t.workflow_instance_id = inst.id
         t.submitted_at = datetime.utcnow()
-        t.status = "SUBMITTED"
         _todo_done_grade_entry(db, t.id)
         _audit(db, "AA_GRADE_TASK", t.id, "SUBMIT")
         db.commit()
@@ -716,13 +813,20 @@ def publish_grades(task_id, user) -> dict:
         t.academic_reviewer_id = int(uid) if uid.isdigit() else None
         _audit(db, "AA_GRADE_TASK", t.id, "PUBLISH", f"projected={projected},fail={fail_count}")
         db.commit()
+    warning_scan_ok = True
+    warning_scan_error = None
     try:
         from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_warnings
         scan_warnings(user)
-    except Exception:
+    except Exception as e:
         import logging
+        warning_scan_ok = False
+        warning_scan_error = str(e)[:200]
         logging.getLogger(__name__).exception("grade publish → scan_warnings failed")
-    return {"gradeTaskId": str(task_id), "status": "PUBLISHED", "projected": projected, "failCount": fail_count}
+    # 投影主事务已成功；预警扫描失败不得伪装为「全部完成」——显式返回扫描状态供调用方重试
+    return {"gradeTaskId": str(task_id), "status": "PUBLISHED", "projected": projected,
+            "failCount": fail_count, "warningScanOk": warning_scan_ok,
+            "warningScanError": warning_scan_error}
 
 
 def return_task(task_id, user, reason="") -> dict:
@@ -1025,8 +1129,8 @@ def export_transcript_xlsx(user, student_id, purpose="") -> bytes:
 
 def fail_list(user, term=None, page=1, page_size=50):
     """挂科清单（下钻，读侧）。与 t_acad_student 一次性 JOIN 取数 + DB 级分页，
-    避免逐行 db.get(AcademicStudent) 的 N+1 与全量加载后内存切片。"""
-    from app.models import AcademicGrade, AcademicStudent
+    避免逐行 db.get(AcademicStudent) 的 N+1 与全量加载后内存切片。学院角色按数据范围收敛。"""
+    from app.models import AcademicGrade, AcademicStudent, StudentProfile
     with session() as db:
         join = and_(AcademicStudent.id == AcademicGrade.acad_student_id,
                     AcademicStudent.tenant_id == AcademicGrade.tenant_id)
@@ -1034,6 +1138,19 @@ def fail_list(user, term=None, page=1, page_size=50):
                  AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False)]
         if term:
             conds.append(AcademicGrade.term == term)
+        role = (user.get("currentRoleCode") or "").upper()
+        if role == "COLLEGE_ADMIN":
+            from app.core.affairs_security import build_affairs_context
+            ctx = build_affairs_context(user, db)
+            allowed = ctx.allowed_class_ids(db)
+            if allowed is not None:
+                # 经学生主档班级收敛
+                sid_q = select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.class_id.in_(list(allowed) or [0]),
+                    StudentProfile.is_deleted.is_(False))
+                acad_q = select(AcademicStudent.id).where(
+                    AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id.in_(sid_q))
+                conds.append(AcademicGrade.acad_student_id.in_(acad_q))
         total = db.scalar(select(func.count()).select_from(AcademicGrade)
                           .outerjoin(AcademicStudent, join).where(*conds)) or 0
         offset = (max(1, page) - 1) * page_size
@@ -1046,12 +1163,8 @@ def fail_list(user, term=None, page=1, page_size=50):
 
 
 def exception_list(user, term=None, exception_flag=None, page=1, page_size=50):
-    """成绩异常清单（读侧，跨录入任务汇总缺考/缓考/免修标记学生，供教务/学院巡查）。
-    数据源：t_aa_grade_record.exception_flag——该标记只在成绩明细表保留；发布时投影到
-    t_acad_grade 只写 score/pass_status（PENDING），异常类型本身不下沉，故只能从本表读，
-    不能从已发布台账反查（与 fail_list 数据源刻意不同，各自读各自权威源）。
-    未做角色数据范围收敛（与同组 fail_list/grade_analysis 同一简化口径，见二者注释），
-    仅 require_staff 门禁，已知简化见施工记录。"""
+    """成绩异常清单（读侧，跨录入任务汇总缺考/缓考/免修/作弊标记学生，供教务/学院巡查）。
+    数据源：t_aa_grade_record.exception_flag。学院角色按任务 class_id 收敛。"""
     from app.models import AaGradeRecord, AaGradeTask, StudentProfile
     with session() as db:
         join_task = and_(AaGradeTask.id == AaGradeRecord.task_id, AaGradeTask.tenant_id == AaGradeRecord.tenant_id)
@@ -1063,6 +1176,13 @@ def exception_list(user, term=None, exception_flag=None, page=1, page_size=50):
             conds.append(AaGradeRecord.exception_flag == exception_flag.upper())
         if term:
             conds.append(AaGradeTask.term_code == term)
+        role = (user.get("currentRoleCode") or "").upper()
+        if role == "COLLEGE_ADMIN":
+            from app.core.affairs_security import build_affairs_context
+            ctx = build_affairs_context(user, db)
+            allowed = ctx.allowed_class_ids(db)
+            if allowed is not None:
+                conds.append(AaGradeTask.class_id.in_(list(allowed) or [0]))
         total = db.scalar(select(func.count()).select_from(AaGradeRecord)
                           .join(AaGradeTask, join_task).outerjoin(StudentProfile, join_stu)
                           .where(*conds)) or 0

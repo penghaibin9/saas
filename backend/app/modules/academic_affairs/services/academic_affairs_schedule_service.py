@@ -298,9 +298,24 @@ def publish(batch_id, user) -> dict:
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再发布
-        if b.status not in ("DRAFT", "PRE_PUBLISHED"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "该批次状态不可发布")
-        b.status, b.publish_at = "PUBLISHED", datetime.utcnow()
+        if b.status == "PUBLISHED":
+            # 幂等：已发布重复请求返回原结果，不重复写通知/发布记录
+            last = db.scalars(select(AaSchedulePublish).where(
+                AaSchedulePublish.tenant_id == _tid(), AaSchedulePublish.batch_id == b.id,
+                AaSchedulePublish.action == "PUBLISH", AaSchedulePublish.is_deleted.is_(False)
+            ).order_by(AaSchedulePublish.id.desc())).first()
+            return {"batchId": str(batch_id), "status": "PUBLISHED",
+                    "notified": (last.notified_count if last else 0), "idempotent": True}
+        # CAS：仅 DRAFT/PRE_PUBLISHED 可抢占为 PUBLISHED
+        claim = db.query(AaScheduleBatch).filter(
+            AaScheduleBatch.id == b.id, AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.status.in_(["DRAFT", "PRE_PUBLISHED"])).update(
+            {AaScheduleBatch.status: "PUBLISHED", AaScheduleBatch.publish_at: datetime.utcnow()},
+            synchronize_session=False)
+        if not claim:
+            db.rollback()
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该批次状态不可发布或已发布")
+        b.status = "PUBLISHED"
         # 通知涉及的教师（去重；按 teacher_key 解析 User，无法解析则跳过）
         teachers = {r.teacher_key for r in db.scalars(select(AaScheduleItem).where(
             AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == b.id,

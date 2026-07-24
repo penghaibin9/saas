@@ -91,7 +91,8 @@ def test_grade_import_confirm_writes_records(client, db_mode):
     _seed_student(db_mode, "IMPORT01")
     tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseName": "线性代数", "termCode": "2026-2027-1", "credit": 3,
-        "usualRatio": 30, "finalRatio": 70}).json()["data"]["gradeTaskId"]
+        "usualRatio": 30, "finalRatio": 70,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
     rows = [{"studentNo": "IMPORT01", "usualScore": 80, "finalScore": 80}]
     confirm = client.post(f"{BASE}/grade-tasks/{tid}/import/confirm", headers=hdr, json={"rows": rows})
     assert confirm.status_code == 200, confirm.text
@@ -106,7 +107,8 @@ def test_grade_import_confirm_unmatched_student_409(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseName": "线性代数", "termCode": "2026-2027-1", "credit": 3,
-        "usualRatio": 30, "finalRatio": 70}).json()["data"]["gradeTaskId"]
+        "usualRatio": 30, "finalRatio": 70,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
     rows = [{"studentNo": "NOBODY", "usualScore": 80, "finalScore": 75}]
     confirm = client.post(f"{BASE}/grade-tasks/{tid}/import/confirm", headers=hdr, json={"rows": rows})
     assert confirm.status_code == 409, confirm.text

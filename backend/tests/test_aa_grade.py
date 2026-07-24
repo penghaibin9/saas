@@ -35,7 +35,8 @@ def _seed(db_mode, n=2):
 def _task(client, hdr, usual=30, final=70):
     return client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseName": "高等数学", "termCode": "2026-2027-1", "credit": 4,
-        "usualRatio": usual, "finalRatio": final}).json()["data"]["gradeTaskId"]
+        "usualRatio": usual, "finalRatio": final,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
 
 
 def _submit_and_approve(client, hdr, tid):
@@ -66,7 +67,8 @@ def test_g1_compose_publish_project(client, db_mode):
 def test_g2_ratio_not_100_422(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "X", "usualRatio": 40, "finalRatio": 70}).status_code == 400
+        "courseName": "X", "usualRatio": 40, "finalRatio": 70,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 400
 
 
 def test_g3_incomplete_submit_409(client, db_mode):
@@ -148,22 +150,26 @@ def test_g10_midterm_three_component(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseName": "钳工实训", "termCode": "2026-1", "credit": 3,
-        "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40}).json()["data"]["gradeTaskId"]
+        "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
     r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
         "studentId": str(sids[0]), "usualScore": 80, "midtermScore": 90, "finalScore": 100}).json()
     assert r["data"]["totalScore"] == 91  # 80*.3 + 90*.3 + 100*.4 = 24+27+40
     assert r["data"]["passStatus"] == "PASSED"
     r2 = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
-        "studentId": str(sids[0]), "usualScore": 80, "finalScore": 100}).json()  # 缺期中→未录全
+        "studentId": str(sids[0]), "usualScore": 80, "midtermScore": None, "finalScore": 100}).json()  # 显式清空期中→未录全
     assert r2["data"]["totalScore"] is None
+    assert r2["data"]["midtermScore"] is None
 
 
 def test_g11_midterm_ratio_sum_must_100(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "X", "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30}).status_code == 400
+        "courseName": "X", "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 400
     assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "Y", "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40}).status_code == 200
+        "courseName": "Y", "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40,
+        "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 200
 
 
 def test_g6_fail_list_no_n_plus_one(client, db_mode):

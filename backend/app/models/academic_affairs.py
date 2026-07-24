@@ -179,7 +179,7 @@ class AaProgram(PKMixin, TenantMixin, CommonMixin, Base):
     program_name: Mapped[str] = mapped_column(String(200), nullable=False)
     major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     grade_year: Mapped[str | None] = mapped_column(String(20), comment="适用年级 如 2026")
-    total_credits: Mapped[float | None] = mapped_column(Integer)
+    total_credits: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="毕业总学分(支持0.5步长)")
     requirement_json: Mapped[str | None] = mapped_column(String(2000), comment="分模块学分要求")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     prev_version_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -197,7 +197,7 @@ class AaProgramCourse(PKMixin, TenantMixin, CommonMixin, Base):
     course_name: Mapped[str | None] = mapped_column(String(200), comment="P2 编制期课程名占位")
     open_term_no: Mapped[int | None] = mapped_column(Integer, comment="第几学期开课")
     module: Mapped[str | None] = mapped_column(String(50), comment="课程模块 公共/专业/实践…")
-    credit_snapshot: Mapped[float | None] = mapped_column(Integer)
+    credit_snapshot: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="方案课程学分快照(支持0.5步长)")
 
 
 class AaProgramBinding(PKMixin, TenantMixin, CommonMixin, Base):
@@ -426,6 +426,9 @@ class AaSchedulePublish(PKMixin, TenantMixin, CommonMixin, Base):
 class AaGradeTask(PKMixin, TenantMixin, CommonMixin, Base):
     """成绩录入任务（对应教学任务/教学班）。平时+期末按比例合成。DRAFT/ENTERING/SUBMITTED/PUBLISHED。"""
     __tablename__ = "t_aa_grade_task"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "teaching_task_id", name="uk_aa_grade_task_tt"),
+    )
 
     teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)

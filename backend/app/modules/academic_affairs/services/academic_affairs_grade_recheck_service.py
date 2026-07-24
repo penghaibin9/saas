@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import select
+
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -173,6 +175,14 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
         r.new_score, r.status = ns, "ADJUSTED"
         r.review_note = (note or "").strip() or None
         r.reviewed_by, r.reviewed_at = _op(), datetime.utcnow()
+        # 回写教务录入明细（若发布投影时建立了 acad_grade_id 回链），保持工作流表与权威读模型一致
+        from app.models import AaGradeRecord
+        aa_rec = db.scalars(select(AaGradeRecord).where(
+            AaGradeRecord.tenant_id == _tid(), AaGradeRecord.acad_grade_id == g.id,
+            AaGradeRecord.is_deleted.is_(False))).first()
+        if aa_rec:
+            aa_rec.total_score = ns
+            aa_rec.pass_status = g.pass_status
         a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
         if a:
             _refresh_aggregates(db, a)

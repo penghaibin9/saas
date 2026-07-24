@@ -195,6 +195,14 @@ def submit_program(program_id, user) -> dict:
         if csum < float(p.total_credits):
             raise AppException("VALIDATION_ERROR",
                                f"课程学分合计 {csum} 未达毕业总学分 {p.total_credits}，不可提交")
+        # CAS：防并发双提交
+        claim = db.query(AaProgram).filter(
+            AaProgram.id == p.id, AaProgram.tenant_id == _tid(),
+            AaProgram.status.in_(["DRAFT", "RETURNED"])).update(
+            {AaProgram.status: "COLLEGE_REVIEW"}, synchronize_session=False)
+        if not claim:
+            db.rollback()
+            raise AppException("APPROVAL_VERSION_CONFLICT", "方案已提交或状态已变更")
         p.status = "COLLEGE_REVIEW"
         _audit(db, p.id, "SUBMIT", f"creditSum={csum}")
         db.commit()

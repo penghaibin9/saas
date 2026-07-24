@@ -79,11 +79,24 @@ def generate_batch(body, user) -> dict:
         from app.models import (AaProgram, AaProgramBinding, AaProgramCourse, AaCourse,
                                 AaTeachingTask, AaTeachingTaskBatch, SchoolClass)
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+        from app.modules.academic_affairs.services.academic_affairs_stats_service import (
+            _resolve_scope, _validate_college_param)
         guard_term_writable(db, term_id)  # 归档11卡§6.2：已归档学期不应重新生成教学任务
-        # 幂等：找现有 DRAFT 批次或新建
-        batch = db.scalars(select(AaTeachingTaskBatch).where(
+        scope = _resolve_scope(user, db)
+        _validate_college_param(scope, college_id)
+        # 学院角色未传 collegeId 时强制注入本院，禁止生成全校批次
+        if not scope.all and not college_id:
+            if len(scope.college_ids) == 1:
+                college_id = next(iter(scope.college_ids))
+            else:
+                raise AppException("VALIDATION_ERROR", "请指定学院后再生成教学任务")
+        # 幂等：找现有 DRAFT 批次或新建（同 term+college）
+        batch_conds = [
             AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == term_id,
-            AaTeachingTaskBatch.status == "DRAFT", AaTeachingTaskBatch.is_deleted.is_(False))).first()
+            AaTeachingTaskBatch.status == "DRAFT", AaTeachingTaskBatch.is_deleted.is_(False)]
+        if college_id:
+            batch_conds.append(AaTeachingTaskBatch.college_id == college_id)
+        batch = db.scalars(select(AaTeachingTaskBatch).where(*batch_conds)).first()
         if not batch:
             batch = AaTeachingTaskBatch(tenant_id=_tid(), term_id=term_id,
                                         batch_name=(getattr(body, "batchName", None) or f"学期{term_id}教学任务"),
@@ -115,6 +128,14 @@ def generate_batch(body, user) -> dict:
                         SchoolClass.is_deleted.is_(False))).all()
                 for cls in target_classes:
                     if not cls:
+                        continue
+                    # 学院范围：只生成本院班级任务
+                    if college_id:
+                        from app.models import Major
+                        maj = db.get(Major, int(cls.major_id)) if cls.major_id else None
+                        if not maj or maj.college_id != college_id:
+                            continue
+                    if not scope.all and scope.class_ids and cls.id not in scope.class_ids:
                         continue
                     for pc in courses:
                         if not pc.course_id:

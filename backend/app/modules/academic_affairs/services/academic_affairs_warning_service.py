@@ -291,7 +291,8 @@ def scan_warnings(user) -> dict:
             AcademicGrade.is_deleted.is_(False))).all()
         counts: dict = {}
         for g in effective_grade_rows(all_rows):
-            if g.pass_status == "FAILED":
+            # 兼容历史迁移枚举 FAIL/PASS 与正式 PASSED/FAILED
+            if g.pass_status in ("FAILED", "FAIL"):
                 counts[g.acad_student_id] = counts.get(g.acad_student_id, 0) + 1
         fails = list(counts.items())
         created = updated = 0

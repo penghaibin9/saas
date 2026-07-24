@@ -226,6 +226,8 @@ def list_grades(page, ps, keyword=None, term=None, pass_status=None, exam_type=N
 
 
 def create_grade(body: dict) -> dict:
+    """兼容旧学业 API：仍写入权威读模型 t_acad_grade，并刷新台账聚合。
+    正式成绩变更应优先走教务成绩任务发布/更正流程；本接口保留兼容并强制审计。"""
     if not body.get("studentId") or not body.get("courseName"):
         raise AppException("VALIDATION_ERROR", "学生、课程必填")
     score = body.get("score")
@@ -234,10 +236,13 @@ def create_grade(body: dict) -> dict:
         g = AcademicGrade(tenant_id=_tid(), acad_student_id=s.id, course_name=body["courseName"],
                           term=body.get("term"), nature=body.get("nature") or "REQUIRED",
                           credit_value=body.get("creditValue") or 0, score=score,
-                          pass_status=_pass_of(score), exam_type=body.get("examType") or "FINAL")
+                          pass_status=_pass_of(score), exam_type=body.get("examType") or "FINAL",
+                          record_status="ACTIVE", source="LEGACY_API")
         db.add(g)
         db.flush()
-        _audit(db, "GRADE", g.id, "新增成绩", f"{s.name} {body['courseName']} {score}")
+        from app.modules.academic_affairs.services.academic_affairs_grade_service import _refresh_aggregates
+        _refresh_aggregates(db, s)
+        _audit(db, "GRADE", g.id, "新增成绩", f"{s.name} {body['courseName']} {score}|source=LEGACY_API")
         db.commit()
         return {"id": str(g.id)}
 
@@ -255,6 +260,18 @@ def update_grade(gid, score, reason) -> dict:
         g.score = int(score)
         g.pass_status = _pass_of(int(score))
         g.version += 1
+        # 同步回写教务工作流明细（若发布时已建立回链），避免 t_aa / t_acad 分数漂移
+        from app.models import AaGradeRecord
+        aa_rec = db.scalars(select(AaGradeRecord).where(
+            AaGradeRecord.tenant_id == _tid(), AaGradeRecord.acad_grade_id == g.id,
+            AaGradeRecord.is_deleted.is_(False))).first()
+        if aa_rec:
+            aa_rec.total_score = int(score)
+            aa_rec.pass_status = g.pass_status
+        a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
+        if a:
+            from app.modules.academic_affairs.services.academic_affairs_grade_service import _refresh_aggregates
+            _refresh_aggregates(db, a)
         _audit(db, "GRADE", g.id, "成绩变更", reason.strip(), before, f"{g.score}/{g.pass_status}")
         db.commit()
         return {"id": str(g.id)}
@@ -271,6 +288,10 @@ def void_grade(gid, reason) -> dict:
         g.void_reason = reason.strip()
         g.is_deleted = True
         g.version += 1
+        a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
+        if a:
+            from app.modules.academic_affairs.services.academic_affairs_grade_service import _refresh_aggregates
+            _refresh_aggregates(db, a)
         _audit(db, "GRADE", g.id, "作废成绩", reason.strip())
         db.commit()
         return {"id": str(g.id)}
