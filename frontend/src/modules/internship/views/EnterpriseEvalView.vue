@@ -2,10 +2,10 @@
   <ModulePageShell title="评价管理" subtitle="完成学生、企业和教师评价，并进行成绩核算、审核、发布和复核 · 企业评价 · 企业导师五维评价 · 学校审核 · 来源可追溯"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppButton variant="ghost" @click="$router.push('/admin/internship/student-evals')">学生自评与教师评价</AppButton>
-      <AppButton variant="ghost" @click="$router.push('/admin/internship/scores')">综合成绩</AppButton>
+      <AppButton variant="ghost" @click="goStudentEvals">学生自评与教师评价</AppButton>
+      <AppButton variant="ghost" @click="goScores">综合成绩</AppButton>
       <AppPermissionButton code="internship.eval.enterprise.manage" :allowed="canBtn('internship.eval.enterprise.manage')" variant="primary"
-        @click="$router.push('/admin/internship/enterprise-evals/new')">＋ 录入企业评价</AppPermissionButton>
+        @click="goCreate">＋ 录入企业评价</AppPermissionButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
@@ -113,6 +113,7 @@ import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const STATUS_OPTIONS = [{ label: '待审核', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已退回', value: 'RETURNED' }]
 /* 右栏只渲染 /internship/enterprise-evals/{id} 真实返回字段（见 internship_enterprise_eval_service._row + get_eval） */
@@ -152,6 +153,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     summaryMetrics() {
       // 仅在列表真实加载成功后展示服务端 total；loading / error 一律不展示
       if (this.loading || this.error) return []
@@ -180,18 +182,33 @@ export default {
         this.selectedId = sid
         if (sid) { this.doneHint = false; this.loadDetail(sid) } else { this.detail = { loading: false, error: '', data: null } }
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.clearSelection()
+      this.load()
     }
   },
   created() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
-    exportFn() { return enterpriseEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter }) },
+    goStudentEvals() { this.$router.push({ path: '/admin/internship/student-evals', query: this.batchStore.withBatchQuery() }) },
+    goScores() { this.$router.push({ path: '/admin/internship/scores', query: this.batchStore.withBatchQuery() }) },
+    goCreate() { this.$router.push({ path: '/admin/internship/enterprise-evals/new', query: this.batchStore.withBatchQuery() }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return enterpriseEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
+        return
+      }
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.reviewStatus = this.statusFilter
       const res = await enterpriseEvalApi.getEvals(params)
       this.loading = false
@@ -208,12 +225,12 @@ export default {
         if (this.selectedId !== sid) { this.selectedId = sid; this.loadDetail(sid) }
         return
       }
-      this.$router.replace({ query: { ...this.$route.query, id: sid } })
+      this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid }) })
     },
     clearSelection() {
       const query = { ...this.$route.query }
       delete query.id
-      this.$router.replace({ query })
+      this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     async loadDetail(id) {
       this.detail = { loading: true, error: '', data: null }

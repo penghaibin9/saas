@@ -39,19 +39,21 @@ def _get(db, app_id) -> InternshipApplication:
     return app
 
 
-def _record_for_student(db, student_no: str | None):
+def _record_for_student(db, student_no: str | None, *, batch_id=None, for_write: bool = True):
+    """学生本人申请写路径：统一解析器。"""
+    from app.modules.internship.services.internship_record_resolver import (
+        require_active_student_record,
+        resolve_optional_student_record,
+    )
     if not student_no:
         raise no_permission("学生身份信息缺失")
-    stu = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == _tid(), StudentProfile.student_no == student_no,
-        StudentProfile.is_deleted.is_(False))).first()
+    if for_write:
+        return require_active_student_record(db, batch_id=batch_id, student_no=student_no)
+    rec, stu, ctx = resolve_optional_student_record(db, batch_id=batch_id, student_no=student_no)
     if not stu:
         raise not_found("未找到当前学生档案")
-    rec = db.scalars(select(InternshipRecord).where(
-        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-        InternshipRecord.is_deleted.is_(False)).order_by(InternshipRecord.id.desc())).first()
     if not rec:
-        raise not_found("当前学生尚无实习档案")
+        raise not_found(ctx.message or "当前学生尚无实习档案")
     return rec, stu
 
 

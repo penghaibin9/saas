@@ -143,9 +143,7 @@ def student_submit_task(user, sort_order: int, body: dict) -> dict:
     if len(note) < 5:
         raise AppException("VALIDATION_ERROR", "完成说明至少 5 字")
     with session() as db:
-        rec, stu = _student_record(db, user)
-        if not rec:
-            raise not_found("未找到实习记录")
+        rec, stu = _student_record(db, user, for_write=True)
         ack = db.scalars(select(InternshipPlanAck).where(
             InternshipPlanAck.tenant_id == _tid(), InternshipPlanAck.internship_id == rec.id,
             InternshipPlanAck.status == "ACKNOWLEDGED", InternshipPlanAck.is_deleted.is_(False))).first()

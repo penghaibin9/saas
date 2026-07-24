@@ -46,8 +46,8 @@ export const guidanceVisitApi = {
     return call(() => request(`${B}/guidances/${id}/void`, { method: 'POST', body: { reason: reason || '' } }))
   },
   exportGuidances(params = {}) { return call(() => request(`${B}/guidances/export`, { method: 'POST', params })) },
-  getGuidanceStats(threshold = 2) {
-    return call(() => request(`${B}/guidances/stats`, { params: { threshold } }))
+  getGuidanceStats(threshold = 2, params = {}) {
+    return call(() => request(`${B}/guidances/stats`, { params: { threshold, ...params } }))
   },
   getGuidancePlans(params = {}) { return callList(`${B}/guidance-plans`, params) },
   exportGuidancePlans(params = {}) {
@@ -61,7 +61,7 @@ export const guidanceVisitApi = {
     return call(() => request(`${B}/visits/${id}/rectify`, { method: 'POST', body: { status, note } }))
   },
   exportVisits(params = {}) { return call(() => request(`${B}/visits/export`, { method: 'POST', params })) },
-  getVisitStats() { return call(() => request(`${B}/visits/stats`)) },
+  getVisitStats(params = {}) { return call(() => request(`${B}/visits/stats`, { params })) },
   // 企业沟通 / 巡访计划（深链真实接线）
   getCommunications(params = {}) { return callList(`${B}/communications`, params) },
   getCommunicationDetail(id) { return call(() => request(`${B}/communications/${id}`)) },

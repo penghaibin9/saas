@@ -44,10 +44,15 @@ def _row(ins, rec, stu):
     }
 
 
-def list_insurances(page, page_size, status=None, keyword=None, user=None):
+def list_insurances(page, page_size, status=None, keyword=None, batch_id=None, user=None):
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         rows = db.scalars(select(InternshipInsurance).where(
-            InternshipInsurance.tenant_id == _tid(), InternshipInsurance.is_deleted.is_(False)
+            InternshipInsurance.tenant_id == _tid(), InternshipInsurance.is_deleted.is_(False),
+            InternshipInsurance.internship_id.in_(record_ids)
         ).order_by(InternshipInsurance.id.desc())).all()
         scope, in_scope = _scope(user)
         items = []
@@ -74,9 +79,7 @@ def student_submit(user, body) -> dict:
     if not policy_no or not insurer:
         raise AppException("VALIDATION_ERROR", "保单号与承保单位必填")
     with session() as db:
-        rec, stu = _student_record(db, user)
-        if not rec:
-            raise not_found("未找到实习记录")
+        rec, stu = _student_record(db, user, for_write=True)
         ins = db.scalars(select(InternshipInsurance).where(
             InternshipInsurance.tenant_id == _tid(), InternshipInsurance.internship_id == rec.id,
             InternshipInsurance.is_deleted.is_(False))).first()

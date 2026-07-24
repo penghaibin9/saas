@@ -158,11 +158,16 @@ def review(user, eid, action: str, comment: str = "") -> dict:
                 "reviewStatusLabel": REVIEW_LABEL[e.school_review_status]}
 
 
-def list_evals(page, page_size, review_status=None, keyword=None, user=None):
+def list_evals(page, page_size, review_status=None, keyword=None, batch_id=None, user=None):
     scope, in_scope = _scope_ctx(user)
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipEnterpriseEval).where(InternshipEnterpriseEval.tenant_id == _tid(),
-                                                   InternshipEnterpriseEval.is_deleted.is_(False))
+                                                   InternshipEnterpriseEval.is_deleted.is_(False),
+                                                   InternshipEnterpriseEval.internship_id.in_(record_ids))
         if review_status:
             q = q.where(InternshipEnterpriseEval.school_review_status == review_status)
         rows = db.scalars(q.order_by(InternshipEnterpriseEval.id.desc())).all()
@@ -198,9 +203,9 @@ def get_eval(eid, user=None) -> dict:
                                for t in trail]}
 
 
-def export_evals(review_status=None, keyword=None, user=None) -> dict:
+def export_evals(review_status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_evals(1, 100000, review_status=review_status, keyword=keyword, user=user)
+    items, _ = list_evals(1, 100000, review_status=review_status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "岗位", "企业导师", "出勤", "技能", "态度", "协作", "安全纪律",
                "均分", "建议录用", "来源", "审核状态"]
     rows = [[it["studentNo"], it["studentName"], it["positionName"], it["mentorName"],

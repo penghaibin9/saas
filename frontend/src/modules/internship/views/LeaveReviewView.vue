@@ -108,6 +108,7 @@ import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { REJECT_LEAVE } from '@/modules/internship/constants/presetPrompts'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const STATUS_OPTIONS = [
   { label: '待审批', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' },
@@ -153,6 +154,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     summaryMetrics() {
       if (this.loading || this.error) return []
       const cur = this.statusOptions.find((o) => o.value === this.statusFilter)
@@ -191,6 +193,11 @@ export default {
         this.selectedId = sid
         if (sid) { this.doneHint = false; this.loadDetail(sid) } else { this.detail = { loading: false, error: '', data: null } }
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.clearSelection()
+      this.load()
     }
   },
   methods: {
@@ -202,12 +209,19 @@ export default {
       this.page = 1
       this.load()
     },
-    exportFn() { return leaveApi.exportLeaves({ keyword: this.keyword, status: this.statusFilter }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return leaveApi.exportLeaves({ keyword: this.keyword, status: this.statusFilter, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
+        return
+      }
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.status = this.statusFilter
       const res = await leaveApi.getLeaves(params)
       this.loading = false
@@ -224,12 +238,12 @@ export default {
         if (this.selectedId !== sid) { this.selectedId = sid; this.loadDetail(sid) }
         return
       }
-      this.$router.replace({ query: { ...this.$route.query, id: sid } })
+      this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid }) })
     },
     clearSelection() {
       const query = { ...this.$route.query }
       delete query.id
-      this.$router.replace({ query })
+      this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     async loadDetail(id) {
       this.detail = { loading: true, error: '', data: null }

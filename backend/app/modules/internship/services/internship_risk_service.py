@@ -177,9 +177,7 @@ def student_help_report(user, body=None) -> dict:
     if level not in ("LOW", "MEDIUM", "HIGH"):
         raise AppException("VALIDATION_ERROR", "riskLevel 须为 LOW/MEDIUM/HIGH")
     with session() as db:
-        rec, stu = _student_record(db, user)
-        if not rec:
-            raise AppException("DATA_NOT_FOUND", "你当前没有实习记录，无法上报")
+        rec, stu = _student_record(db, user, for_write=True)
         open_help = db.scalars(select(RiskRecord).where(
             RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == rec.id,
             RiskRecord.risk_code == "INT-R-HELP",
@@ -338,9 +336,10 @@ def remind(user, risk_id, channel="站内消息") -> dict:
                 "receiverName": account.real_name or owner_name}
 
 
-def export_risks(keyword=None, user=None) -> dict:
+def export_risks(keyword=None, user=None, batch_id=None, level=None, status=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_risks(1, 100000, keyword=keyword, user=user)
+    items, _ = list_risks(1, 100000, keyword=keyword, user=user, batch_id=batch_id,
+                          level=level, status=status)
     headers = ["学号", "姓名", "指导教师", "企业", "风险编码", "风险标题", "等级", "来源",
                "责任人", "状态", "最近跟进", "最近跟进说明"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
@@ -349,4 +348,7 @@ def export_risks(keyword=None, user=None) -> dict:
             for it in items]
     wm = f"岗位实习中心·风险处置台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("风险处置台账", headers, rows, watermark=wm)
-    return xlsx_util.pack_xlsx_result(content, "风险处置台账.xlsx", len(items))
+    packed = xlsx_util.pack_xlsx_result(content, "风险处置台账.xlsx", len(items))
+    if batch_id is not None:
+        packed["batchId"] = str(batch_id)
+    return packed

@@ -152,11 +152,16 @@ def void_guidance(user, gid, reason="") -> dict:
         return {"id": str(g.id), "status": "VOIDED"}
 
 
-def list_guidances(page, page_size, keyword=None, user=None) -> tuple[list[dict], int]:
+def list_guidances(page, page_size, keyword=None, batch_id=None, user=None) -> tuple[list[dict], int]:
     scope, in_scope = _scope_ctx(user)
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         rows = db.scalars(select(InternshipGuidance).where(
-            InternshipGuidance.tenant_id == _tid(), InternshipGuidance.is_deleted.is_(False)
+            InternshipGuidance.tenant_id == _tid(), InternshipGuidance.is_deleted.is_(False),
+            InternshipGuidance.internship_id.in_(record_ids)
         ).order_by(InternshipGuidance.id.desc())).all()
         items = []
         for g in rows:
@@ -185,13 +190,18 @@ def _guidance_limits(batch) -> tuple[int, int]:
 
 
 def list_guidance_plans(page, page_size, keyword=None, plan_status=None,
-                        insufficient_only=False, user=None) -> tuple[list[dict], int]:
+                        insufficient_only=False, batch_id=None, user=None) -> tuple[list[dict], int]:
     """按学生实习记录与批次规则实时聚合指导达成情况，避免维护平行计划表。"""
     scope, in_scope = _scope_ctx(user)
     month_prefix = datetime.now().strftime("%Y-%m")
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         recs = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.id.in_(record_ids),
             InternshipRecord.status.in_(("READY", "ONBOARD", "ASSESSING"))
         ).order_by(InternshipRecord.id)).all()
         items = []
@@ -234,12 +244,12 @@ def list_guidance_plans(page, page_size, keyword=None, plan_status=None,
         return items[start:start + page_size], total
 
 
-def guidance_stats(threshold=2, user=None) -> dict:
+def guidance_stats(threshold=2, batch_id=None, user=None) -> dict:
     try:
         threshold = max(0, int(threshold))
     except (TypeError, ValueError):
         threshold = 2
-    items, _ = list_guidance_plans(1, 100000, user=user)
+    items, _ = list_guidance_plans(1, 100000, batch_id=batch_id, user=user)
     total_count = sum(int(item["termCount"]) for item in items)
     return {"studentCount": len(items), "totalCount": total_count,
             "avgCount": round(total_count / len(items), 1) if items else 0,
@@ -247,9 +257,9 @@ def guidance_stats(threshold=2, user=None) -> dict:
             "insufficientCount": sum(1 for item in items if int(item["termCount"]) < threshold)}
 
 
-def export_guidance_plans(keyword=None, user=None) -> dict:
+def export_guidance_plans(keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_guidance_plans(1, 100000, keyword=keyword, user=user)
+    items, _ = list_guidance_plans(1, 100000, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "企业", "批次", "月最低", "本月次数",
                "学期最低", "学期次数", "下次跟进", "计划状态"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
@@ -276,9 +286,9 @@ def get_guidance(gid, user=None) -> dict:
                                 "occurredAt": _iso(t.occurred_at)} for t in trail]}
 
 
-def export_guidances(keyword=None, user=None) -> dict:
+def export_guidances(keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_guidances(1, 100000, keyword=keyword, user=user)
+    items, _ = list_guidances(1, 100000, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "企业", "指导方式", "主题", "问题类型", "处理建议",
                "下次跟进", "是否形成风险"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],

@@ -265,12 +265,12 @@ def _rec_in_scope_pre(scope: dict, rec, stu, class_name_map, college_name_map,
                            college_name=college_name, advisor_user_id=rec.advisor_user_id)
 
 
-def _record_row(r: InternshipRecord, stu: StudentProfile | None) -> dict:
+def _record_row(r: InternshipRecord, stu: StudentProfile | None, class_name: str | None = None) -> dict:
     return {
         "id": str(r.id), "studentId": str(r.student_id),
         "name": stu.real_name if stu else "-",
         "studentNo": stu.student_no if stu else "-",
-        "className": (stu.grade + "级") if stu and stu.grade else "-",
+        "className": class_name or "-",
         "classId": str(stu.class_id) if stu and stu.class_id else "",
         "enterpriseName": r.enterprise_name or "", "positionName": r.position_name or "",
         "advisorName": r.advisor_name or "", "enterpriseMentor": r.enterprise_mentor_name or "",
@@ -364,11 +364,12 @@ def get_internship_student_detail(record_id, user=None) -> dict:
 
 # ═══ 打卡异常 ═══
 
-def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentProfile | None) -> dict:
+def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentProfile | None,
+             class_name: str | None = None) -> dict:
     return {
         "id": str(c.id), "internId": str(c.internship_id),
         "studentName": stu.real_name if stu else "-",
-        "className": (stu.grade + "级") if stu and stu.grade else "-",
+        "className": class_name or "-",
         "enterpriseName": rec.enterprise_name if rec else "",
         "date": _iso(c.exception_date)[:16] if c.exception_date else "",
         "type": c.exception_type, "typeLabel": EXC_TYPE_LABEL.get(c.exception_type, c.exception_type),
@@ -401,10 +402,15 @@ def _checkin_row(c: InternshipCheckin, rec, stu) -> dict:
     }
 
 
-def list_checkins(page, page_size, result=None, keyword=None, internship_id=None, user=None):
+def list_checkins(page, page_size, result=None, keyword=None, internship_id=None, batch_id=None, user=None):
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipCheckin).where(InternshipCheckin.tenant_id == _tid(),
-                                            InternshipCheckin.is_deleted.is_(False))
+                                            InternshipCheckin.is_deleted.is_(False),
+                                            InternshipCheckin.internship_id.in_(record_ids))
         if result:
             q = q.where(InternshipCheckin.result == result)
         if internship_id:
@@ -432,9 +438,9 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
         return items[start:start + page_size], total
 
 
-def export_checkins(result=None, keyword=None, user=None) -> dict:
+def export_checkins(result=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_checkins(1, 100000, result=result, keyword=keyword, user=user)
+    items, _ = list_checkins(1, 100000, result=result, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "校内指导教师", "企业", "打卡日期", "打卡时间", "结果", "地址", "备注"]
     data_rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
                   it["date"], it["at"], it["resultLabel"], it["address"], it["note"]] for it in items]
@@ -444,9 +450,10 @@ def export_checkins(result=None, keyword=None, user=None) -> dict:
     return xlsx_util.pack_xlsx_result(content, "打卡台账.xlsx", len(items))
 
 
-def export_exceptions(type=None, status=None, keyword=None, user=None) -> dict:
+def export_exceptions(type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_attendance_exceptions(1, 100000, type=type, status=status, keyword=keyword, user=user)
+    items, _ = list_attendance_exceptions(
+        1, 100000, type=type, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["姓名", "班级", "企业", "异常类型", "异常时间", "距离", "连续", "设备", "处理状态"]
     data_rows = [[it["studentName"], it["className"], it["enterpriseName"], it["typeLabel"],
                   it["date"], it["distance"], it["streak"], it["deviceRisk"], it["statusLabel"]]
@@ -463,10 +470,15 @@ def _exc_ctx(db, c: AttendanceException):
     return rec, stu
 
 
-def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=None, user=None):
+def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=None, batch_id=None, user=None):
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(AttendanceException).where(AttendanceException.tenant_id == _tid(),
-                                              AttendanceException.is_deleted.is_(False))
+                                              AttendanceException.is_deleted.is_(False),
+                                              AttendanceException.internship_id.in_(record_ids))
         if type:
             q = q.where(AttendanceException.exception_type == type)
         if status:
@@ -483,7 +495,8 @@ def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=
             if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
                                      stu_college_name_map):  # P0-D
                 continue
-            items.append(_exc_row(c, rec, stu))
+            cn = class_name_map.get(stu.class_id) if stu and stu.class_id else None
+            items.append(_exc_row(c, rec, stu, class_name=cn))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -597,11 +610,12 @@ def _report_versions(trail, w: WeeklyReport) -> list[dict]:
     return items
 
 
-def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfile | None) -> dict:
+def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfile | None,
+                class_name: str | None = None) -> dict:
     return {
         "id": str(w.id), "internId": str(w.internship_id),
         "studentName": stu.real_name if stu else "-",
-        "className": (stu.grade + "级") if stu and stu.grade else "-",
+        "className": class_name or "-",
         "enterpriseName": rec.enterprise_name if rec else "",
         "week": f"第 {w.week_number} 周", "submitAt": _iso(w.submitted_at) or "",
         "version": f"v{w.report_version}", "isResubmit": w.report_version > 1,
@@ -610,10 +624,15 @@ def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfi
     }
 
 
-def list_weekly_reports(page, page_size, status=None, keyword=None, user=None):
+def list_weekly_reports(page, page_size, status=None, keyword=None, batch_id=None, user=None):
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(WeeklyReport).where(WeeklyReport.tenant_id == _tid(),
-                                       WeeklyReport.is_deleted.is_(False))
+                                       WeeklyReport.is_deleted.is_(False),
+                                       WeeklyReport.internship_id.in_(record_ids))
         if status:
             q = q.where(WeeklyReport.status == status)
         rows = db.scalars(q.order_by(WeeklyReport.submitted_at.is_(None),
@@ -630,7 +649,8 @@ def list_weekly_reports(page, page_size, status=None, keyword=None, user=None):
             if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
                                      stu_college_name_map):  # P0-D
                 continue
-            items.append(_report_row(w, rec, stu))
+            cn = class_name_map.get(stu.class_id) if stu and stu.class_id else None
+            items.append(_report_row(w, rec, stu, class_name=cn))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -742,9 +762,9 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
         return {"id": str(w.id), "reminded": True, "channel": channel or "站内消息"}
 
 
-def export_weekly_reports(status=None, keyword=None, user=None) -> dict:
+def export_weekly_reports(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_weekly_reports(1, 100000, status=status, keyword=keyword, user=user)
+    items, _ = list_weekly_reports(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学生", "班级", "企业", "周次", "提交时间", "版本", "字数", "风险", "状态"]
     rows = [[it["studentName"], it["className"], it["enterpriseName"], it["week"],
              it["submitAt"], it["version"], it["wordCount"], it["riskFlag"],
@@ -789,11 +809,12 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
                 continue
             if kw and kw not in (stu.real_name or "") and kw not in (stu.student_no or ""):
                 continue
+            cn, _ = resolve_student_class_college_names(db, stu)
             items.append({
                 "id": str(k.id), "internId": str(k.internship_id),
                 "studentName": stu.real_name if stu else "-",
                 "studentNo": stu.student_no if stu else "-",
-                "className": (stu.grade + "级") if stu and stu.grade else "-",
+                "className": cn or "-",
                 "source": f"{k.risk_code} {k.risk_title}",
                 "sourceDetail": k.source_module or "",
                 "level": k.risk_level, "riskLevel": k.risk_level,
@@ -1015,27 +1036,61 @@ def activate_batch(bid, user=None) -> dict:
         return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
 
 
-def close_batch(bid, user=None) -> dict:
+def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "") -> dict:
+    """结束批次：先生成就绪报告；存在阻断项时拒绝，除非管理员强制结束并写审计。"""
     assert_admin_tenant(user or get_current_user_ctx() or {}, "结束实习批次")
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "RUNNING":
             raise AppException("INVALID_STATE", "仅进行中批次可结束")
+        report = _batch_readiness_report(db, b.id)
+        blockers = [x for x in report["checks"] if x.get("blocking") and x.get("count", 0) > 0]
+        if blockers and not force:
+            raise AppException(
+                "DATA_CONFLICT",
+                "批次结束前置检查未通过，请先处理阻断项或使用强制结束",
+                details={"readiness": report, "blockers": blockers},
+            )
+        if force:
+            reason = (force_reason or "").strip()
+            if len(reason) < 5:
+                raise AppException("VALIDATION_ERROR", "强制结束必须填写原因（不少于 5 字）")
         b.previous_status, b.status = b.status, "CLOSED"
         b.last_transition_at = datetime.utcnow()
         b.last_transition_by = _op_name()
         b.version += 1
-        _trail(db, b.id, "BATCH", "CLOSE", {"before": "RUNNING", "after": "CLOSED"})
+        detail = {"before": "RUNNING", "after": "CLOSED", "readiness": report}
+        if force:
+            detail["force"] = True
+            detail["forceReason"] = reason
+            b.transition_reason = reason
+        _trail(db, b.id, "BATCH", "CLOSE", detail)
         db.commit()
-        return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
+        return {
+            "id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status],
+            "readiness": report, "forced": bool(force),
+        }
 
 
-def archive_batch(bid, user=None) -> dict:
+def archive_batch(bid, user=None, *, force: bool = False, force_reason: str = "") -> dict:
     assert_admin_tenant(user or get_current_user_ctx() or {}, "归档实习批次")
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "CLOSED":
             raise AppException("INVALID_STATE", "仅已结束批次可归档")
+        report = _batch_readiness_report(db, b.id)
+        # 归档要求学生全部 ARCHIVED，或强制
+        not_archived = next((x for x in report["checks"] if x["key"] == "notArchived"), None)
+        if not_archived and not_archived["count"] > 0 and not force:
+            raise AppException(
+                "DATA_CONFLICT",
+                "仍有学生未完成归档，请先完成学生归档或强制归档批次",
+                details={"readiness": report},
+            )
+        if force:
+            reason = (force_reason or "").strip()
+            if len(reason) < 5:
+                raise AppException("VALIDATION_ERROR", "强制归档必须填写原因（不少于 5 字）")
         b.previous_status, b.status = b.status, "ARCHIVED"
         b.archive_status = "ARCHIVED"
         b.archived_at = datetime.utcnow()
@@ -1044,9 +1099,103 @@ def archive_batch(bid, user=None) -> dict:
         b.last_transition_at = b.archived_at
         b.last_transition_by = b.archived_by
         b.version += 1
-        _trail(db, b.id, "BATCH", "ARCHIVE", {"before": "CLOSED", "after": "ARCHIVED"})
+        detail = {"before": "CLOSED", "after": "ARCHIVED", "readiness": report}
+        if force:
+            detail["force"] = True
+            detail["forceReason"] = reason
+            b.transition_reason = reason
+        _trail(db, b.id, "BATCH", "ARCHIVE", detail)
         db.commit()
-        return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
+        return {
+            "id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status],
+            "readiness": report, "forced": bool(force),
+        }
+
+
+def batch_readiness(bid, user=None) -> dict:
+    """只读：批次结束/归档前置检查报告。"""
+    with session() as db:
+        b = _get_batch(db, bid)
+        report = _batch_readiness_report(db, b.id)
+        report["batchId"] = str(b.id)
+        report["batchStatus"] = b.status
+        return report
+
+
+def _batch_readiness_report(db, batch_id: int) -> dict:
+    """生成批次就绪报告（结束/归档共用）。"""
+    from app.models import (InternshipAgreement, InternshipEnterpriseEval, InternshipFinalScore,
+                            InternshipInsurance, InternshipStudentEval, WeeklyReport)
+
+    recs = db.scalars(select(InternshipRecord).where(
+        InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+        InternshipRecord.batch_id == batch_id)).all()
+    ids = [r.id for r in recs] or [0]
+
+    def _cnt(model, *conds):
+        return int(db.scalar(select(func.count()).select_from(model).where(
+            model.tenant_id == _tid(), model.is_deleted.is_(False),
+            model.internship_id.in_(ids), *conds)) or 0)
+
+    no_position = sum(1 for r in recs if not r.position_id and r.status != "ARCHIVED")
+    open_high_risk = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]),
+                          RiskRecord.risk_level == "HIGH")
+    pending_weekly = _cnt(WeeklyReport, WeeklyReport.status == "PENDING_REVIEW")
+    # 协议未生效：无 EFFECTIVE 协议的学生数（近似：记录 agreement_info 非生效且未归档）
+    uneffective_agreement = 0
+    unverified_insurance = 0
+    missing_ent_eval = 0
+    missing_stu_eval = 0
+    unpublished_score = 0
+    not_archived = sum(1 for r in recs if r.status != "ARCHIVED")
+    for r in recs:
+        if r.status == "ARCHIVED":
+            continue
+        agr = db.scalars(select(InternshipAgreement).where(
+            InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == r.id,
+            InternshipAgreement.is_deleted.is_(False)).order_by(InternshipAgreement.id.desc())).first()
+        if not agr or agr.status not in ("EFFECTIVE", "ARCHIVED"):
+            uneffective_agreement += 1
+        ins = db.scalars(select(InternshipInsurance).where(
+            InternshipInsurance.tenant_id == _tid(), InternshipInsurance.internship_id == r.id,
+            InternshipInsurance.is_deleted.is_(False)).order_by(InternshipInsurance.id.desc())).first()
+        if not ins or ins.status != "VERIFIED":
+            unverified_insurance += 1
+        ee = db.scalars(select(InternshipEnterpriseEval).where(
+            InternshipEnterpriseEval.tenant_id == _tid(), InternshipEnterpriseEval.internship_id == r.id,
+            InternshipEnterpriseEval.is_deleted.is_(False),
+            InternshipEnterpriseEval.submit_status == "SUBMITTED")).first()
+        if not ee:
+            missing_ent_eval += 1
+        se = db.scalars(select(InternshipStudentEval).where(
+            InternshipStudentEval.tenant_id == _tid(), InternshipStudentEval.internship_id == r.id,
+            InternshipStudentEval.is_deleted.is_(False),
+            InternshipStudentEval.submit_status == "SUBMITTED")).first()
+        if not se:
+            missing_stu_eval += 1
+        sc = db.scalars(select(InternshipFinalScore).where(
+            InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == r.id,
+            InternshipFinalScore.is_deleted.is_(False),
+            InternshipFinalScore.status == "PUBLISHED")).first()
+        if not sc:
+            unpublished_score += 1
+
+    checks = [
+        {"key": "noPosition", "label": "未落实岗位", "count": no_position, "blocking": True},
+        {"key": "uneffectiveAgreement", "label": "未生效协议", "count": uneffective_agreement, "blocking": False},
+        {"key": "unverifiedInsurance", "label": "未核验保险", "count": unverified_insurance, "blocking": True},
+        {"key": "openHighRisk", "label": "开放高风险", "count": open_high_risk, "blocking": True},
+        {"key": "pendingWeekly", "label": "待批周报", "count": pending_weekly, "blocking": True},
+        {"key": "missingEval", "label": "未完成评价", "count": missing_ent_eval + missing_stu_eval, "blocking": False},
+        {"key": "unpublishedScore", "label": "未发布成绩", "count": unpublished_score, "blocking": True},
+        {"key": "notArchived", "label": "未完成学生归档", "count": not_archived, "blocking": False},
+    ]
+    return {
+        "totalStudents": len(recs),
+        "checks": checks,
+        "blockingCount": sum(1 for c in checks if c["blocking"] and c["count"] > 0),
+        "warningCount": sum(1 for c in checks if (not c["blocking"]) and c["count"] > 0),
+    }
 
 
 def void_batch(bid, reason: str, user=None) -> dict:
@@ -1127,12 +1276,22 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
                     if _rec_in_scope(scope, db, r, db.get(StudentProfile, r.student_id))]
         scoped_ids = [r.id for r in recs] or [0]
         flow_map = {"PREPARING": 0, "READY": 0, "ONBOARD": 0, "ASSESSING": 0, "ARCHIVED": 0}
+        dest_none = 0
+        progress_weights = {
+            "PREPARING": 0.0, "READY": 0.25, "ONBOARD": 0.60, "ASSESSING": 0.85, "ARCHIVED": 1.0,
+        }
+        weight_sum = 0.0
         for r in recs:
             flow_map[r.status] = flow_map.get(r.status, 0) + 1
+            if (r.destination_type or "NONE") == "NONE":
+                dest_none += 1
+            weight_sum += progress_weights.get(r.status, 0.0)
         preparing = flow_map["PREPARING"]
         ready = flow_map["READY"]
         onboard = flow_map["ONBOARD"]
         total_students = len(recs)
+        batch_progress = round(weight_sum / total_students * 100, 1) if total_students else 0
+        onboard_rate = round(onboard / total_students * 100, 1) if total_students else 0
 
         def _cnt(model, *conds):
             q2 = select(func.count()).select_from(model).where(
@@ -1187,14 +1346,18 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
         return {
             **batch_meta,
             "batchStatus": "进行中" if batch.status == "RUNNING" else batch_meta.get("batchStatusLabel") or "—",
-            "batchProgress": round(onboard / total_students * 100, 1) if total_students else 0,
+            "batchProgress": batch_progress,
+            "batchProgressLabel": "批次进度",
+            "onboardRate": onboard_rate,
             "stats": [
                 {"label": "本批学生", "value": str(total_students), "trend": "", "trendQuality": "neutral",
                  "route": f"/admin/internship/students?batchId={batch.id}"},
                 {"label": "在岗学生", "value": str(onboard), "trend": "", "trendQuality": "neutral",
                  "route": f"/admin/internship/students?batchId={batch.id}&panel=status"},
-                {"label": "待落实", "value": str(preparing), "trend": "", "trendQuality": "neutral",
+                {"label": "去向待落实", "value": str(dest_none), "trend": "", "trendQuality": "neutral",
                  "route": f"/admin/internship/students?batchId={batch.id}&panel=destination"},
+                {"label": "准备中", "value": str(preparing), "trend": "", "trendQuality": "neutral",
+                 "route": f"/admin/internship/students?batchId={batch.id}&status=PREPARING"},
                 {"label": "待上岗", "value": str(ready), "trend": "", "trendQuality": "neutral",
                  "route": f"/admin/internship/students?batchId={batch.id}&status=READY"},
                 {"label": "待处理打卡异常", "value": str(pending_exc),

@@ -46,18 +46,19 @@ def _scope_ctx(user):
     return _current_scope(user), _rec_in_scope
 
 
-def _student_record(db, user):
+def _student_record(db, user, *, batch_id=None, for_write: bool = False):
+    from app.modules.internship.services.internship_record_resolver import (
+        require_active_student_record,
+        resolve_optional_student_record,
+    )
     sno = (user or {}).get("studentNo")
     if not sno:
+        if for_write:
+            raise AppException("VALIDATION_ERROR", "学生身份信息缺失")
         return None, None
-    stu = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == _tid(), StudentProfile.student_no == sno,
-        StudentProfile.is_deleted.is_(False))).first()
-    if not stu:
-        return None, None
-    rec = db.scalars(select(InternshipRecord).where(
-        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-        InternshipRecord.is_deleted.is_(False))).first()
+    if for_write:
+        return require_active_student_record(db, user, batch_id=batch_id, student_no=sno)
+    rec, stu, _ctx = resolve_optional_student_record(db, user, batch_id=batch_id, student_no=sno)
     return rec, stu
 
 
@@ -101,9 +102,7 @@ def student_submit(user, body) -> dict:
     if not (b.get("selfSummary") or "").strip():
         raise AppException("VALIDATION_ERROR", "实习总结必填")
     with session() as db:
-        rec, stu = _student_record(db, user)
-        if not rec:
-            raise not_found("未找到你的实习记录，无法提交自评")
+        rec, stu = _student_record(db, user, for_write=True)
         e = db.scalars(select(InternshipStudentEval).where(
             InternshipStudentEval.tenant_id == _tid(), InternshipStudentEval.internship_id == rec.id,
             InternshipStudentEval.is_deleted.is_(False))).first()
@@ -188,11 +187,16 @@ def review(user, eid, action: str, comment: str = "") -> dict:
                 "reviewStatusLabel": REVIEW_LABEL[e.school_review_status]}
 
 
-def list_evals(page, page_size, review_status=None, keyword=None, view=None, user=None):
+def list_evals(page, page_size, review_status=None, keyword=None, view=None, batch_id=None, user=None):
     scope, in_scope = _scope_ctx(user)
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipStudentEval).where(InternshipStudentEval.tenant_id == _tid(),
-                                                InternshipStudentEval.is_deleted.is_(False))
+                                                InternshipStudentEval.is_deleted.is_(False),
+                                                InternshipStudentEval.internship_id.in_(record_ids))
         if review_status:
             q = q.where(InternshipStudentEval.school_review_status == review_status)
         # 一页台账、按菜单 view 分工作队列（成熟产品：多维评价共用一张台账）
@@ -237,9 +241,9 @@ def get_eval(eid, user=None) -> dict:
                                for t in trail]}
 
 
-def export_evals(review_status=None, keyword=None, user=None) -> dict:
+def export_evals(review_status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_evals(1, 100000, review_status=review_status, keyword=keyword, user=user)
+    items, _ = list_evals(1, 100000, review_status=review_status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "自评提交", "指导教师意见", "企业导师意见", "学校审核"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["submitStatusLabel"],
              "已填" if it["hasAdvisorOpinion"] else "未填", "已填" if it["hasMentorOpinion"] else "未填",

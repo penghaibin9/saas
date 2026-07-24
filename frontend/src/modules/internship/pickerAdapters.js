@@ -28,12 +28,12 @@ const candidateInternshipStudent = adapter(
 )
 
 const internshipStudent = adapter(
-  (keyword, query) => internshipApi.getStudents({ ...query, keyword, page: 1, pageSize: 30 }),
+  (keyword, query) => internshipApi.getStudents({ ...query, keyword, page: 1, pageSize: 30, batchId: query.batchId }),
   (row) => ({ value: row.id, label: row.name || row.studentName || '实习学生', desc: [row.studentNo, row.className, row.enterpriseName].filter(Boolean).join(' · '), raw: row })
 )
 
 const unassignedInternshipStudent = adapter(
-  (keyword, query) => matchApi.getStudentOptions(keyword, query.pageSize || 30),
+  (keyword, query) => matchApi.getStudentOptions(keyword, query.pageSize || 30, query.batchId),
   (row) => ({ value: row.id, label: row.name || row.studentName || '实习学生', desc: [row.studentNo, row.className, row.batchName].filter(Boolean).join(' · '), raw: row })
 )
 

@@ -2,7 +2,7 @@
   <ModulePageShell title="评价与成绩" subtitle="学生鉴定 · 学生自评 · 指导教师意见 · 学校审核"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppButton variant="ghost" @click="$router.push('/admin/internship/enterprise-evals')">返回评价管理</AppButton>
+      <AppButton variant="ghost" @click="goEnterpriseEvals">返回评价管理</AppButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
@@ -114,6 +114,7 @@ import { studentEvalApi } from '@/modules/internship/api/student-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT } from '@/modules/internship/constants/presetPrompts'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 /* 右栏只渲染 /internship/student-evals/{id} 真实返回字段（见 internship_student_eval_service._row + _full + get_eval） */
 const DETAIL = [
@@ -148,6 +149,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     summaryMetrics() {
       // 仅在列表真实加载成功后展示服务端 total；loading / error 一律不展示
       if (this.loading || this.error) return []
@@ -186,7 +188,12 @@ export default {
         if (sid) { this.doneHint = false; this.loadDetail(sid) } else { this.detail = { loading: false, error: '', data: null } }
       }
     },
-    '$route.query.view'() { this.applyViewFromRoute(); this.reload() }
+    '$route.query.view'() { this.applyViewFromRoute(); this.reload() },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.clearSelection()
+      this.load()
+    }
   },
   created() {
     this.applyViewFromRoute()
@@ -210,12 +217,20 @@ export default {
       this.cmtForm.advisorOpinion = cur ? cur + '；' + text : text
     },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
-    exportFn() { return studentEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter }) },
+    goEnterpriseEvals() { this.$router.push({ path: '/admin/internship/enterprise-evals', query: this.batchStore.withBatchQuery() }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return studentEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
+        return
+      }
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.reviewStatus = this.statusFilter
       if (this.viewFilter) params.view = this.viewFilter
       const res = await studentEvalApi.getEvals(params)
@@ -233,12 +248,12 @@ export default {
         if (this.selectedId !== sid) { this.selectedId = sid; this.loadDetail(sid) }
         return
       }
-      this.$router.replace({ query: { ...this.$route.query, id: sid } })
+      this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid }) })
     },
     clearSelection() {
       const query = { ...this.$route.query }
       delete query.id
-      this.$router.replace({ query })
+      this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     async loadDetail(id) {
       this.detail = { loading: true, error: '', data: null }

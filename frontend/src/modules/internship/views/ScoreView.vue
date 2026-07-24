@@ -134,6 +134,7 @@ import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { scoreApi } from '@/modules/internship/api/score.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const WEIGHTS = [
   { key: 'checkinWeight', label: '打卡' }, { key: 'weeklyWeight', label: '周报' },
@@ -182,6 +183,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     weightSum() { return WEIGHTS.reduce((a, w) => a + (Number(this.cfg[w.key]) || 0), 0) },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
     displayRows() { return this.missingOnly ? this.rows.filter((r) => r.incomplete) : this.rows },
@@ -216,7 +218,8 @@ export default {
     this.load()
   },
   watch: {
-    '$route.query.stage'() { this.applyStageFromRoute(); this.reload() }
+    '$route.query.stage'() { this.applyStageFromRoute(); this.reload() },
+    'batchStore.selectedBatchId'() { this.page = 1; this.closePanel(); this.load() }
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
@@ -228,7 +231,10 @@ export default {
       else if (stage === 'recheck') { this.statusFilter = ''; this.missingOnly = 'MISSING' }
       else if (stage === 'overview') { this.statusFilter = ''; this.missingOnly = '' }
     },
-    exportFn() { return scoreApi.exportScores({ keyword: this.keyword, status: this.statusFilter }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return scoreApi.exportScores({ keyword: this.keyword, status: this.statusFilter, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     async loadConfig() { const res = await scoreApi.getConfig(); if (res.code === 0) this.cfg = { ...this.cfg, ...res.data } },
     async saveConfig() {
@@ -242,8 +248,12 @@ export default {
     reload() { this.page = 1; this.load() },
     onPageChange(p) { this.page = p; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
+        return
+      }
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.status = this.statusFilter
       const res = await scoreApi.getScores(params)
       this.loading = false

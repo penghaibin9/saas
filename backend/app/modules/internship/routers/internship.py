@@ -59,16 +59,17 @@ def student_detail(record_id: str, user=Depends(require_permission("internship.s
 @router.get("/checkins", summary="打卡台账（按数据范围）")
 def checkins(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
              result: Optional[str] = None, keyword: Optional[str] = None,
-             internshipId: Optional[str] = None, user=Depends(require_permission("internship.attendance.view"))):
+             internshipId: Optional[str] = None, batchId: Optional[str] = None,
+             user=Depends(require_permission("internship.attendance.view"))):
     items, total = svc.list_checkins(page, pageSize, result=result, keyword=keyword,
-                                     internship_id=internshipId, user=user)
+                                     internship_id=internshipId, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/checkins/export", summary="打卡台账导出 Excel(.xlsx)")
-def checkins_export(result: Optional[str] = None, keyword: Optional[str] = None,
+def checkins_export(result: Optional[str] = None, keyword: Optional[str] = None, batchId: Optional[str] = None,
                     user=Depends(require_permission("internship.attendance.export"))):
-    data = svc.export_checkins(result=result, keyword=keyword, user=user)
+    data = svc.export_checkins(result=result, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出打卡台账", "internship-checkin:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -76,16 +77,18 @@ def checkins_export(result: Optional[str] = None, keyword: Optional[str] = None,
 @router.get("/exceptions", summary="打卡异常列表")
 def exceptions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                type: Optional[str] = None, status: Optional[str] = None,
-               keyword: Optional[str] = None, user=Depends(require_permission("internship.attendance.view"))):
+               keyword: Optional[str] = None, batchId: Optional[str] = None,
+               user=Depends(require_permission("internship.attendance.view"))):
     items, total = svc.list_attendance_exceptions(page, pageSize, type=type, status=status,
-                                                  keyword=keyword, user=user)
+                                                  keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/exceptions/export", summary="打卡异常台账导出 Excel(.xlsx)")
 def exceptions_export(type: Optional[str] = None, status: Optional[str] = None,
-                      keyword: Optional[str] = None, user=Depends(require_permission("internship.attendance.export"))):
-    data = svc.export_exceptions(type=type, status=status, keyword=keyword, user=user)
+                      keyword: Optional[str] = None, batchId: Optional[str] = None,
+                      user=Depends(require_permission("internship.attendance.export"))):
+    data = svc.export_exceptions(type=type, status=status, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出打卡异常台账", "internship-exception:export",
                      detail={"rowCount": data["rowCount"]})
     return success(data)
@@ -145,29 +148,33 @@ def makeups_export(status: Optional[str] = None, user=Depends(require_permission
 
 @router.get("/guidances", summary="指导记录列表（按数据范围）")
 def guidances(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-              keyword: Optional[str] = None, user=Depends(require_permission("internship.guidance.view"))):
-    items, total = gd.list_guidances(page, pageSize, keyword=keyword, user=user)
+              keyword: Optional[str] = None, batchId: Optional[str] = None,
+              user=Depends(require_permission("internship.guidance.view"))):
+    items, total = gd.list_guidances(page, pageSize, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/guidances/stats", summary="指导记录统计（按数据范围）")
-def guidance_stats(threshold: int = Query(2, ge=0, le=100), user=Depends(require_permission("internship.guidance.view"))):
-    return success(gd.guidance_stats(threshold=threshold, user=user))
+def guidance_stats(threshold: int = Query(2, ge=0, le=100), batchId: Optional[str] = None,
+                   user=Depends(require_permission("internship.guidance.view"))):
+    return success(gd.guidance_stats(threshold=threshold, batch_id=batchId, user=user))
 
 
 @router.get("/guidance-plans", summary="指导计划达成列表（按批次规则实时聚合）")
 def guidance_plans(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                    keyword: Optional[str] = None, planStatus: Optional[str] = None,
-                   insufficientOnly: bool = False, user=Depends(require_permission("internship.guidance.view"))):
+                   insufficientOnly: bool = False, batchId: Optional[str] = None,
+                   user=Depends(require_permission("internship.guidance.view"))):
     items, total = gd.list_guidance_plans(page, pageSize, keyword=keyword,
                                           plan_status=planStatus,
-                                          insufficient_only=insufficientOnly, user=user)
+                                          insufficient_only=insufficientOnly, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/guidance-plans/export", summary="导出指导计划达成台账")
-def guidance_plans_export(keyword: Optional[str] = None, user=Depends(require_permission("internship.guidance.export"))):
-    data = gd.export_guidance_plans(keyword=keyword, user=user)
+def guidance_plans_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
+                          user=Depends(require_permission("internship.guidance.export"))):
+    data = gd.export_guidance_plans(keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出指导计划台账", "internship-guidance-plan:export",
                      detail={"rowCount": data["rowCount"]})
     return success(data)
@@ -181,8 +188,9 @@ def create_guidance(body: dict = Body(...), user=Depends(require_permission("int
 
 
 @router.post("/guidances/export", summary="指导记录台账导出 Excel(.xlsx)")
-def guidances_export(keyword: Optional[str] = None, user=Depends(require_permission("internship.guidance.export"))):
-    data = gd.export_guidances(keyword=keyword, user=user)
+def guidances_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
+                     user=Depends(require_permission("internship.guidance.export"))):
+    data = gd.export_guidances(keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出指导记录台账", "internship-guidance:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -204,14 +212,14 @@ def void_guidance(guidance_id: str, body: dict = Body(default={}), user=Depends(
 @router.get("/visits", summary="巡访记录列表（按数据范围）")
 def visits(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            keyword: Optional[str] = None, rectify: Optional[str] = None,
-           user=Depends(require_permission("internship.visit.view"))):
-    items, total = vis.list_visits(page, pageSize, keyword=keyword, rectify=rectify, user=user)
+           batchId: Optional[str] = None, user=Depends(require_permission("internship.visit.view"))):
+    items, total = vis.list_visits(page, pageSize, keyword=keyword, rectify=rectify, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/visits/stats", summary="巡访与整改统计（按数据范围）")
-def visit_stats(user=Depends(require_permission("internship.visit.view"))):
-    return success(vis.visit_stats(user=user))
+def visit_stats(batchId: Optional[str] = None, user=Depends(require_permission("internship.visit.view"))):
+    return success(vis.visit_stats(batch_id=batchId, user=user))
 
 
 @router.post("/visits", summary="新增巡访记录（owner：仅本人指导学生）")
@@ -222,8 +230,9 @@ def create_visit(body: dict = Body(...), user=Depends(require_permission("intern
 
 
 @router.post("/visits/export", summary="巡访记录台账导出 Excel(.xlsx)")
-def visits_export(keyword: Optional[str] = None, user=Depends(require_permission("internship.visit.export"))):
-    data = vis.export_visits(keyword=keyword, user=user)
+def visits_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
+                  user=Depends(require_permission("internship.visit.export"))):
+    data = vis.export_visits(keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出巡访记录台账", "internship-visit:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -244,15 +253,15 @@ def visit_rectify(visit_id: str, body: dict = Body(...), user=Depends(require_pe
 @router.get("/reports", summary="周报批阅列表")
 def reports(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
             status: Optional[str] = None, keyword: Optional[str] = None,
-            user=Depends(require_permission("internship.report.view"))):
-    items, total = svc.list_weekly_reports(page, pageSize, status=status, keyword=keyword, user=user)
+            batchId: Optional[str] = None, user=Depends(require_permission("internship.report.view"))):
+    items, total = svc.list_weekly_reports(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/reports/export", summary="导出周报台账")
 def reports_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                   user=Depends(require_permission("internship.report.export"))):
-    data = svc.export_weekly_reports(status=status, keyword=keyword, user=user)
+                   batchId: Optional[str] = None, user=Depends(require_permission("internship.report.export"))):
+    data = svc.export_weekly_reports(status=status, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出周报台账", "internship-report:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -292,9 +301,12 @@ def risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 # 静态子路由 export 声明在 /{rid} 之前，避免被动态段吞掉。
 
 @router.post("/risks/export", summary="风险处置台账导出 Excel(.xlsx)")
-def risks_export(keyword: Optional[str] = None, user=Depends(require_permission("internship.risk.export"))):
-    data = risk.export_risks(keyword=keyword, user=user)
-    audit_log.record("导出风险处置台账", "internship-risk:export", detail={"rowCount": data["rowCount"]})
+def risks_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
+                 level: Optional[str] = None, status: Optional[str] = None,
+                 user=Depends(require_permission("internship.risk.export"))):
+    data = risk.export_risks(keyword=keyword, batch_id=batchId, level=level, status=status, user=user)
+    audit_log.record("导出风险处置台账", "internship-risk:export",
+                     detail={"rowCount": data["rowCount"], "batchId": batchId})
     return success(data)
 
 
@@ -347,8 +359,8 @@ def risk_close(risk_id: str, body: dict = Body(...), user=Depends(require_permis
 
 @router.post("/leaves/export", summary="请假审批台账导出 Excel(.xlsx)")
 def leaves_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                  user=Depends(require_permission("internship.leave.export"))):
-    data = lv.export_leaves(status=status, keyword=keyword, user=user)
+                  batchId: Optional[str] = None, user=Depends(require_permission("internship.leave.export"))):
+    data = lv.export_leaves(status=status, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出请假审批台账", "internship-leave:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -363,8 +375,8 @@ def leave_overdue_refresh(user=Depends(require_permission("internship.leave.revi
 @router.get("/leaves", summary="实习请假列表（按数据范围）")
 def leaves(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            status: Optional[str] = None, keyword: Optional[str] = None,
-           user=Depends(require_permission("internship.leave.view"))):
-    items, total = lv.list_leaves(page, pageSize, status=status, keyword=keyword, user=user)
+           batchId: Optional[str] = None, user=Depends(require_permission("internship.leave.view"))):
+    items, total = lv.list_leaves(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -385,8 +397,8 @@ def leave_review(leave_id: str, body: dict = Body(...), user=Depends(require_per
 
 @router.post("/agreements/export", summary="三方协议台账导出 Excel(.xlsx)")
 def agreements_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                      user=Depends(require_permission("internship.agreement.export"))):
-    data = agr.export_agreements(status=status, keyword=keyword, user=user)
+                      batchId: Optional[str] = None, user=Depends(require_permission("internship.agreement.export"))):
+    data = agr.export_agreements(status=status, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出三方协议台账", "internship-agreement:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -394,8 +406,8 @@ def agreements_export(status: Optional[str] = None, keyword: Optional[str] = Non
 @router.get("/agreements", summary="三方协议列表（按数据范围）")
 def agreements(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                status: Optional[str] = None, keyword: Optional[str] = None,
-               user=Depends(require_permission("internship.agreement.view"))):
-    items, total = agr.list_agreements(page, pageSize, status=status, keyword=keyword, user=user)
+               batchId: Optional[str] = None, user=Depends(require_permission("internship.agreement.view"))):
+    items, total = agr.list_agreements(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -470,8 +482,9 @@ def agreement_esign_sign(agreement_id: str, body: dict = Body(default={}), user=
 
 @router.post("/enterprise-evals/export", summary="企业评价台账导出 Excel(.xlsx)")
 def enterprise_evals_export(reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
+                            batchId: Optional[str] = None,
                             user=Depends(require_permission("internship.eval.enterprise.export"))):
-    data = ee.export_evals(review_status=reviewStatus, keyword=keyword, user=user)
+    data = ee.export_evals(review_status=reviewStatus, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出企业评价台账", "internship-enterprise-eval:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -479,8 +492,8 @@ def enterprise_evals_export(reviewStatus: Optional[str] = None, keyword: Optiona
 @router.get("/enterprise-evals", summary="企业评价列表（按数据范围）")
 def enterprise_evals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                      reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
-                     user=Depends(require_permission("internship.eval.enterprise.view"))):
-    items, total = ee.list_evals(page, pageSize, review_status=reviewStatus, keyword=keyword, user=user)
+                     batchId: Optional[str] = None, user=Depends(require_permission("internship.eval.enterprise.view"))):
+    items, total = ee.list_evals(page, pageSize, review_status=reviewStatus, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -508,8 +521,8 @@ def enterprise_eval_review(eval_id: str, body: dict = Body(...), user=Depends(re
 
 @router.post("/student-evals/export", summary="学生鉴定台账导出 Excel(.xlsx)")
 def student_evals_export(reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
-                         user=Depends(require_permission("internship.eval.self.export"))):
-    data = se.export_evals(review_status=reviewStatus, keyword=keyword, user=user)
+                         batchId: Optional[str] = None, user=Depends(require_permission("internship.eval.self.export"))):
+    data = se.export_evals(review_status=reviewStatus, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出学生鉴定台账", "internship-student-eval:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -518,9 +531,9 @@ def student_evals_export(reviewStatus: Optional[str] = None, keyword: Optional[s
 def student_evals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                   reviewStatus: Optional[str] = None, keyword: Optional[str] = None,
                   view: Optional[str] = None,
-                  user=Depends(require_permission("internship.eval.self.view"))):
+                  batchId: Optional[str] = None, user=Depends(require_permission("internship.eval.self.view"))):
     items, total = se.list_evals(page, pageSize, review_status=reviewStatus, keyword=keyword,
-                                 view=view, user=user)
+                                 view=view, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -560,8 +573,8 @@ def score_config_save(body: dict = Body(...), user=Depends(require_permission("i
 
 @router.post("/scores/export", summary="实习成绩台账导出 Excel(.xlsx)")
 def scores_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                  user=Depends(require_permission("internship.score.export"))):
-    data = score.export_scores(status=status, keyword=keyword, user=user)
+                  batchId: Optional[str] = None, user=Depends(require_permission("internship.score.export"))):
+    data = score.export_scores(status=status, keyword=keyword, batch_id=batchId, user=user)
     audit_log.record("导出实习成绩台账", "internship-score:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -569,8 +582,8 @@ def scores_export(status: Optional[str] = None, keyword: Optional[str] = None,
 @router.get("/scores", summary="实习成绩列表（按数据范围）")
 def scores(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            status: Optional[str] = None, keyword: Optional[str] = None,
-           user=Depends(require_permission("internship.score.view"))):
-    items, total = score.list_scores(page, pageSize, status=status, keyword=keyword, user=user)
+           batchId: Optional[str] = None, user=Depends(require_permission("internship.score.view"))):
+    items, total = score.list_scores(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -659,18 +672,37 @@ def batch_activate(bid: str, user=Depends(require_permission("internship.batch.m
     return success(result, message="已启用")
 
 
-@router.post("/batches/{bid}/close", summary="结束批次（进行中→已结束）")
-def batch_close(bid: str, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.close_batch(bid, user=user)
-    audit_log.record("结束实习批次", f"internship-batch:{bid}")
-    return success(result, message="已结束")
+@router.post("/batches/{bid}/close", summary="结束批次（进行中→已结束；含就绪闸门）")
+def batch_close(bid: str, body: dict | None = Body(default=None),
+                user=Depends(require_permission("internship.batch.manage"))):
+    b = body or {}
+    result = svc.close_batch(
+        bid, user=user,
+        force=bool(b.get("force")),
+        force_reason=(b.get("forceReason") or b.get("reason") or ""),
+    )
+    audit_log.record("结束实习批次", f"internship-batch:{bid}",
+                     detail={"forced": result.get("forced"), "blockingCount": (result.get("readiness") or {}).get("blockingCount")})
+    return success(result, message="已强制结束" if result.get("forced") else "已结束")
 
 
-@router.post("/batches/{bid}/archive", summary="归档批次（已结束→已归档）")
-def batch_archive(bid: str, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.archive_batch(bid, user=user)
-    audit_log.record("归档实习批次", f"internship-batch:{bid}")
-    return success(result, message="已归档")
+@router.post("/batches/{bid}/archive", summary="归档批次（已结束→已归档；含就绪闸门）")
+def batch_archive(bid: str, body: dict | None = Body(default=None),
+                  user=Depends(require_permission("internship.batch.manage"))):
+    b = body or {}
+    result = svc.archive_batch(
+        bid, user=user,
+        force=bool(b.get("force")),
+        force_reason=(b.get("forceReason") or b.get("reason") or ""),
+    )
+    audit_log.record("归档实习批次", f"internship-batch:{bid}",
+                     detail={"forced": result.get("forced")})
+    return success(result, message="已强制归档" if result.get("forced") else "已归档")
+
+
+@router.get("/batches/{bid}/readiness", summary="批次结束/归档就绪报告（只读）")
+def batch_readiness(bid: str, user=Depends(require_permission("internship.batch.view"))):
+    return success(svc.batch_readiness(bid, user=user))
 
 
 @router.post("/batches/{bid}/void", summary="作废批次（仅草稿，原因≥5字）")

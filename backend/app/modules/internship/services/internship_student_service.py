@@ -166,11 +166,12 @@ def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
                            college_name=college_name, advisor_user_id=r.advisor_user_id)
 
 
-def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "") -> dict:
+def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "",
+         class_name: str | None = None) -> dict:
     return {
         "id": str(r.id), "studentId": str(r.student_id),
         "name": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
-        "className": (stu.grade + "级") if stu and stu.grade else "-",
+        "className": class_name or "-",
         "classId": str(stu.class_id) if stu and stu.class_id else "",
         "batchId": str(r.batch_id) if r.batch_id else "",
         # BUG-009：同一学生跨批次会有多条实习记录，下拉必须能靠批次名区分
@@ -205,11 +206,14 @@ def _batch_names(db, batch_ids) -> dict:
 
 
 def _row_of(db, r: InternshipRecord) -> dict:
+    from app.modules.internship.services.internship_service import resolve_student_class_college_names
     batch_name = ""
     if r.batch_id:
         b = db.get(InternshipBatch, r.batch_id)
         batch_name = (b.batch_name or "") if b else ""
-    return _row(r, db.get(StudentProfile, r.student_id), batch_name)
+    stu = db.get(StudentProfile, r.student_id)
+    class_name, _ = resolve_student_class_college_names(db, stu)
+    return _row(r, stu, batch_name, class_name=class_name)
 
 
 # ═══════════ 列表 / 详情 ═══════════
@@ -268,7 +272,12 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
             has_position=has_position, user=user)
         smap = _students_map(db, [r.student_id for r in kept])
         bmap = _batch_names(db, [r.batch_id for r in kept])
-        items = [_row(r, smap.get(r.student_id), bmap.get(r.batch_id, "")) for r in kept]
+        from app.modules.internship.services.internship_service import resolve_student_class_college_names
+        items = []
+        for r in kept:
+            stu = smap.get(r.student_id)
+            cn, _ = resolve_student_class_college_names(db, stu)
+            items.append(_row(r, stu, bmap.get(r.batch_id, ""), class_name=cn))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -396,6 +405,7 @@ def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None) -> dict
 # ═══════════ 学生-岗位分配（岗位库 allocated_count 收口）═══════════
 
 def assign_position(rec_id, position_id, user=None) -> dict:
+    from sqlalchemy import text
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
@@ -413,16 +423,31 @@ def assign_position(rec_id, position_id, user=None) -> dict:
             raise not_found("岗位所属企业不存在")
         if c.blacklist or c.coop_status == "BLACKLIST":
             raise AppException("DATA_CONFLICT", "黑名单企业岗位不可分配学生")
-        if p.allocated_count >= p.headcount:
-            raise AppException("DATA_CONFLICT", "该岗位已满员，不能再分配")
-        # 调岗：释放旧岗位名额
+        # 调岗：原子释放旧岗位名额
         if r.position_id:
-            old = db.get(InternshipPosition, r.position_id)
-            if old and old.allocated_count > 0:
-                old.allocated_count -= 1
-                if old.status == "FULL" and old.allocated_count < old.headcount:
-                    old.status = "PUBLISHED"
-        # 回填关联 + 占用新岗位名额
+            old_id = r.position_id
+            released = db.execute(text(
+                "UPDATE t_internship_position SET allocated_count = allocated_count - 1, "
+                "status = CASE WHEN status = 'FULL' AND allocated_count - 1 < headcount "
+                "THEN 'PUBLISHED' ELSE status END, "
+                "version = version + 1 "
+                "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0 AND allocated_count > 0"
+            ), {"pid": old_id, "tid": _tid()}).rowcount
+            if released == 0:
+                # 旧岗位计数异常时仍允许调岗，但写审计提示
+                pass
+        # 原子占用新岗位：allocated_count < headcount 且 PUBLISHED
+        claimed = db.execute(text(
+            "UPDATE t_internship_position SET allocated_count = allocated_count + 1, "
+            "status = CASE WHEN allocated_count + 1 >= headcount THEN 'FULL' ELSE status END, "
+            "version = version + 1 "
+            "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0 "
+            "AND status = 'PUBLISHED' AND allocated_count < headcount"
+        ), {"pid": p.id, "tid": _tid()}).rowcount
+        if claimed != 1:
+            raise AppException("DATA_CONFLICT", "该岗位已满员或状态已变化，不能再分配")
+        db.refresh(p)
+        # 回填关联
         r.position_id = p.id
         r.enterprise_id = c.id
         r.mentor_contact_id = p.mentor_contact_id
@@ -430,25 +455,26 @@ def assign_position(rec_id, position_id, user=None) -> dict:
         r.enterprise_name = c.name
         r.enterprise_mentor_name = p.mentor_name
         r.destination_type = "ASSIGNED"
-        p.allocated_count += 1
-        if p.allocated_count >= p.headcount:
-            p.status = "FULL"
         _trail(db, r.id, "ASSIGN_POSITION", {"positionId": str(p.id), "title": p.title})
         db.commit()
         return _row_of(db, r)
 
 
 def unassign_position(rec_id, reason: str = "", user=None) -> dict:
+    from sqlalchemy import text
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
         if not r.position_id:
             raise AppException("DATA_CONFLICT", "该学生未分配岗位")
-        p = db.get(InternshipPosition, r.position_id)
-        if p and p.allocated_count > 0:
-            p.allocated_count -= 1
-            if p.status == "FULL" and p.allocated_count < p.headcount:
-                p.status = "PUBLISHED"
+        old_id = r.position_id
+        db.execute(text(
+            "UPDATE t_internship_position SET allocated_count = allocated_count - 1, "
+            "status = CASE WHEN status = 'FULL' AND allocated_count - 1 < headcount "
+            "THEN 'PUBLISHED' ELSE status END, "
+            "version = version + 1 "
+            "WHERE id = :pid AND tenant_id = :tid AND is_deleted = 0 AND allocated_count > 0"
+        ), {"pid": old_id, "tid": _tid()})
         r.position_id = None
         r.enterprise_id = None
         r.mentor_contact_id = None
@@ -626,10 +652,6 @@ def import_dry_run(rows: list[dict], batch_id=None) -> dict:
         existing_sids = {r.student_id for r in db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id)).all()}
-        companies = {(c.name or "").strip() for c in db.scalars(select(EmpCompany).where(
-            EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()}
-        positions = {(p.title or "").strip() for p in db.scalars(select(InternshipPosition).where(
-            InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False))).all()}
         eligible_ids = _advisor_role_user_ids(db)
         advisors_by_name: dict[str, list[User]] = {}
         for teacher in db.scalars(select(User).where(
@@ -650,14 +672,6 @@ def import_dry_run(rows: list[dict], batch_id=None) -> dict:
             if stu.id in existing_sids or no in seen:
                 errors.append({"rowNo": row_no, "field": "studentNo",
                                "message": f"该学生在本批次已有实习记录：{no}"})
-                continue
-            ent = (r.get("enterpriseName") or "").strip()
-            if ent and ent not in companies:
-                errors.append({"rowNo": row_no, "field": "enterpriseName", "message": f"企业不存在：{ent}"})
-                continue
-            pos = (r.get("positionName") or "").strip()
-            if pos and pos not in positions:
-                errors.append({"rowNo": row_no, "field": "positionName", "message": f"岗位不存在：{pos}"})
                 continue
             advisor_name = (r.get("advisorName") or "").strip()
             if advisor_name and len(advisors_by_name.get(advisor_name, [])) != 1:
@@ -734,24 +748,22 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
                 **batch_public_fields(batch)}
 
 
-# 导入模板 15 列（表头文字 → 行字段 key）。正式交付以 Excel/xlsx 为准（CLAUDE.md §38）。
-# 「实习批次」列仅作可读备注；真实归属以页面上下文 batchId 为准。
-IMPORT_HEADERS = ["学号", "姓名", "学院", "专业", "班级", "指导教师", "企业名称", "岗位名称",
-                  "实习批次", "实习开始日期", "实习结束日期", "联系电话", "实习状态", "就业去向", "备注"]
+# 导入模板仅含真实可写入字段（P0-6）。本次导入只建实习学生名单，不自动分岗、不上岗。
+IMPORT_HEADERS = ["学号", "指导教师", "实习开始日期", "实习结束日期", "备注"]
 IMPORT_REQUIRED = ["学号"]
-IMPORT_HEADER_MAP = {"学号": "studentNo", "姓名": "name", "学院": "collegeName", "专业": "majorName",
-                     "班级": "className", "指导教师": "advisorName", "企业名称": "enterpriseName",
-                     "岗位名称": "positionName", "实习批次": "batchName", "实习开始日期": "startDate",
-                     "实习结束日期": "endDate", "联系电话": "phone", "实习状态": "statusText",
-                     "就业去向": "destinationText", "备注": "remark"}
-IMPORT_SAMPLE = ["2023115001", "赵一凡", "信息工程学院", "软件技术", "软件2301", "刘强",
-                 "湖南智联科技有限公司", "前端开发实习生", "2026 春季顶岗实习",
-                 "2026-03-02", "2026-08-28", "138****0001", "在岗中", "已分配岗位", ""]
-IMPORT_NOTES = ["学号必填，且必须是本校已有学生。",
-                "导入归属当前页面所选批次，Excel「实习批次」列仅作备注，不决定写入批次。",
-                "企业/岗位如填写，必须是系统中已存在的名称，否则该行报错。",
-                "日期格式：YYYY-MM-DD（如 2026-03-02）。", "联系电话仅登记，导出时脱敏。",
-                "仅导入「导入模板」页。"]
+IMPORT_HEADER_MAP = {
+    "学号": "studentNo", "指导教师": "advisorName",
+    "实习开始日期": "startDate", "实习结束日期": "endDate", "备注": "remark",
+}
+IMPORT_SAMPLE = ["2023115001", "刘强", "2026-03-02", "2026-08-28", ""]
+IMPORT_NOTES = [
+    "学号必填，且必须是本校已有学生。",
+    "导入归属当前页面所选批次（必选），本模板不包含企业/岗位/状态等字段。",
+    "本次导入仅建立实习学生名单，不自动分岗、不自动上岗。",
+    "指导教师须为本校已有教师姓名（可选）。",
+    "日期格式：YYYY-MM-DD（如 2026-03-02）。",
+    "仅导入「导入模板」页。",
+]
 
 
 def _row_values_for_error(r: dict) -> list:

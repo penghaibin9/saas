@@ -31,9 +31,10 @@ _P_CHANGE_REVIEW = "internship.change.review"
 @router.get("/process-reports", summary="过程报告列表（教师/管理端，按数据范围）")
 def report_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                 reportType: Optional[str] = None, status: Optional[str] = None,
-                keyword: Optional[str] = None, user=Depends(require_permission(_P_REPORT_VIEW))):
+                keyword: Optional[str] = None, batchId: Optional[str] = None,
+                user=Depends(require_permission(_P_REPORT_VIEW))):
     items, total = report_svc.list_reports(page, pageSize, report_type=reportType, status=status,
-                                           keyword=keyword, user=user)
+                                           keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -50,8 +51,10 @@ def report_review(report_id: int, body: dict = Body(...), user=Depends(require_p
 
 @router.post("/process-reports/export", summary="导出过程报告台账（xlsx）")
 def report_export(reportType: Optional[str] = None, status: Optional[str] = None,
-                  keyword: Optional[str] = None, user=Depends(require_permission(_P_REPORT_EXPORT))):
-    return success(report_svc.export_reports(report_type=reportType, status=status, keyword=keyword, user=user))
+                  keyword: Optional[str] = None, batchId: Optional[str] = None,
+                  user=Depends(require_permission(_P_REPORT_EXPORT))):
+    return success(report_svc.export_reports(
+        report_type=reportType, status=status, keyword=keyword, batch_id=batchId, user=user))
 
 
 # ── 实习变更 ──

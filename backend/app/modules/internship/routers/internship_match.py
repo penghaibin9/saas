@@ -49,8 +49,8 @@ def _int_row_values(r: dict) -> list:
 @router.get("/intentions", summary="学生意向列表")
 def intentions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                keyword: Optional[str] = None, status: Optional[str] = None,
-               user=Depends(require_permission(_P_INT_VIEW))):
-    items, total = svc.list_intentions(page, pageSize, keyword=keyword, status=status, user=user)
+               batchId: Optional[str] = None, user=Depends(require_permission(_P_INT_VIEW))):
+    items, total = svc.list_intentions(page, pageSize, keyword=keyword, status=status, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -75,22 +75,24 @@ def intention_template(user=Depends(require_permission(_P_INT_MANAGE))):
 
 
 @router.post("/intentions/import/xlsx", summary="意向导入·上传 Excel 预校验")
-async def intention_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_P_INT_MANAGE))):
+async def intention_import_xlsx(file: UploadFile = File(...), batchId: Optional[str] = None,
+                                user=Depends(require_permission(_P_INT_MANAGE))):
     content = await file.read()
     rows = xlsx_util.read_xlsx(content, _INT_MAP)
-    dry = svc.intention_import_dry_run(rows)
+    dry = svc.intention_import_dry_run(rows, batch_id=batchId)
     return success({"rows": rows, **dry})
 
 
 @router.post("/intentions/import/dry-run", summary="意向导入·预校验")
 def intention_dry_run(body: IntentionImport, user=Depends(require_permission(_P_INT_MANAGE))):
-    return success(svc.intention_import_dry_run(body.rows))
+    return success(svc.intention_import_dry_run(body.rows, batch_id=body.batchId))
 
 
 @router.post("/intentions/import/confirm", summary="意向导入·确认")
 def intention_confirm(body: IntentionImport, user=Depends(require_permission(_P_INT_MANAGE))):
-    result = svc.intention_import_confirm(body.rows, user=user)
-    audit_log.record("导入实习意向", "internship-match:intention:import", detail=result)
+    result = svc.intention_import_confirm(body.rows, user=user, batch_id=body.batchId)
+    audit_log.record("导入实习意向", "internship-match:intention:import",
+                     detail={**result, "batchId": body.batchId})
     return success(result, message="导入完成")
 
 
@@ -102,8 +104,8 @@ def intention_errors_xlsx(body: IntentionImportErrors, user=Depends(require_perm
 
 @router.post("/intentions/export", summary="导出意向 Excel 台账")
 def intention_export(keyword: Optional[str] = None, status: Optional[str] = None,
-                     user=Depends(require_permission(_P_EXPORT))):
-    data = svc.export_intentions(keyword=keyword, status=status)
+                     batchId: Optional[str] = None, user=Depends(require_permission(_P_EXPORT))):
+    data = svc.export_intentions(keyword=keyword, status=status, batch_id=batchId)
     audit_log.record("导出实习意向", "internship-match:intention:export",
                      detail={"rowCount": data["rowCount"]})
     return success(data)
@@ -133,15 +135,15 @@ def withdraw_intention(intention_id: str, user=Depends(require_permission(_P_INT
 # ── 匹配运行 / 台账 ──
 
 @router.post("/run/major", summary="跑专业匹配（规则推荐）")
-def run_major(user=Depends(require_permission(_P_MANUAL))):
-    result = svc.run_major_match(user=user)
+def run_major(batchId: Optional[str] = None, user=Depends(require_permission(_P_MANUAL))):
+    result = svc.run_major_match(batch_id=batchId, user=user)
     audit_log.record("跑专业匹配", "internship-match:run:major", detail=result)
     return success(result, message=f"已生成/更新 {result['created']} 条")
 
 
 @router.post("/run/enterprise", summary="跑企业匹配（按意向企业）")
-def run_enterprise(user=Depends(require_permission(_P_MANUAL))):
-    result = svc.run_enterprise_match(user=user)
+def run_enterprise(batchId: Optional[str] = None, user=Depends(require_permission(_P_MANUAL))):
+    result = svc.run_enterprise_match(batch_id=batchId, user=user)
     audit_log.record("跑企业匹配", "internship-match:run:enterprise", detail=result)
     return success(result, message=f"已生成/更新 {result['created']} 条")
 
@@ -163,28 +165,31 @@ def batch(body: BatchMatchBody, user=Depends(require_permission(_P_BATCH))):
 @router.get("/results", summary="匹配结果台账")
 def results(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
             keyword: Optional[str] = None, status: Optional[str] = None,
-            matchType: Optional[str] = None, user=Depends(require_permission(_P_RESULT))):
+            matchType: Optional[str] = None, batchId: Optional[str] = None,
+            user=Depends(require_permission(_P_RESULT))):
     items, total = svc.list_matches(page, pageSize, keyword=keyword, status=status,
-                                    match_type=matchType, user=user)
+                                    match_type=matchType, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/conflicts", summary="匹配冲突列表")
 def conflicts(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-              keyword: Optional[str] = None, user=Depends(require_permission(_P_CONFLICT))):
-    items, total = svc.list_conflicts(page, pageSize, keyword=keyword, user=user)
+              keyword: Optional[str] = None, batchId: Optional[str] = None,
+              user=Depends(require_permission(_P_CONFLICT))):
+    items, total = svc.list_conflicts(page, pageSize, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/stats", summary="匹配统计")
-def stats(user=Depends(require_permission(_P_RESULT))):
-    return success(svc.match_stats())
+def stats(batchId: Optional[str] = None, user=Depends(require_permission(_P_RESULT))):
+    return success(svc.match_stats(batch_id=batchId))
 
 
 @router.post("/export", summary="导出匹配 Excel 台账")
 def export_matches(keyword: Optional[str] = None, status: Optional[str] = None,
-                   matchType: Optional[str] = None, user=Depends(require_permission(_P_EXPORT))):
-    data = svc.export_matches(keyword=keyword, status=status, match_type=matchType)
+                   matchType: Optional[str] = None, batchId: Optional[str] = None,
+                   user=Depends(require_permission(_P_EXPORT))):
+    data = svc.export_matches(keyword=keyword, status=status, match_type=matchType, batch_id=batchId)
     audit_log.record("导出岗位匹配", "internship-match:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 

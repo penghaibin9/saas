@@ -25,6 +25,7 @@ class IntentionUpdate(BaseModel):
 
 class IntentionImport(BaseModel):
     rows: list[dict] = Field(default_factory=list)
+    batchId: Optional[str] = Field(None, description="实习批次（必填，导入归属）")
 
 
 class IntentionImportErrors(BaseModel):

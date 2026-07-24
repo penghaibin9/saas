@@ -127,11 +127,16 @@ def rectify_follow(user, visit_id, status, note="") -> dict:
         return {"id": str(v.id), "rectifyStatus": v.rectify_status}
 
 
-def list_visits(page, page_size, keyword=None, rectify=None, user=None) -> tuple[list[dict], int]:
+def list_visits(page, page_size, keyword=None, rectify=None, batch_id=None, user=None) -> tuple[list[dict], int]:
     scope, in_scope = _scope_ctx(user)
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipVisit).where(InternshipVisit.tenant_id == _tid(),
-                                          InternshipVisit.is_deleted.is_(False))
+                                          InternshipVisit.is_deleted.is_(False),
+                                          InternshipVisit.internship_id.in_(record_ids))
         if rectify:
             q = q.where(InternshipVisit.rectify_status == rectify)
         rows = db.scalars(q.order_by(InternshipVisit.id.desc())).all()
@@ -166,17 +171,17 @@ def get_visit(vid, user=None) -> dict:
                                for t in trail]}
 
 
-def visit_stats(user=None) -> dict:
-    items, _ = list_visits(1, 100000, user=user)
+def visit_stats(batch_id=None, user=None) -> dict:
+    items, _ = list_visits(1, 100000, batch_id=batch_id, user=user)
     return {"totalVisits": len(items),
             "pendingRectify": sum(1 for item in items if item["rectifyStatus"] == "PENDING"),
             "doneRectify": sum(1 for item in items if item["rectifyStatus"] == "DONE"),
             "withSafetyIssue": sum(1 for item in items if item["safetyIssue"])}
 
 
-def export_visits(keyword=None, user=None) -> dict:
+def export_visits(keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_visits(1, 100000, keyword=keyword, user=user)
+    items, _ = list_visits(1, 100000, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "巡访教师", "企业", "巡访时间", "方式", "安全隐患", "整改要求",
                "整改截止", "整改状态"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],

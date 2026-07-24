@@ -3,7 +3,7 @@
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppPermissionButton code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')" variant="primary" @click="openGenerate">＋ 生成协议</AppPermissionButton>
-      <AppButton variant="ghost" @click="$router.push('/admin/internship/agreement-templates')">协议模板</AppButton>
+      <AppButton variant="ghost" @click="goTemplates">协议模板</AppButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
@@ -82,6 +82,7 @@ import { agreementApi } from '@/modules/internship/api/agreement.api'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const STATUS_MAP = {
   DRAFT: '草稿', PENDING_STUDENT: '待学生确认', PENDING_ENTERPRISE: '待企业确认',
@@ -123,6 +124,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
     flowSteps() {
       return [
@@ -151,6 +153,10 @@ export default {
         this.applyPanel((panel || 'issue').toString())
       }
     },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.load()
+    },
     'genForm.internshipId'() { this.loadPreview() },
     'genForm.templateId'() { this.loadPreview() }
   },
@@ -166,17 +172,25 @@ export default {
     },
     goPanel(panel) {
       if (this.activePanel === panel) return
-      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
+      this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery({ ...this.$route.query, panel }) })
     },
     confirmTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
-    openDossier(row) { this.$router.push(`/admin/internship/agreements/${row.id}`) },
-    exportFn() { return agreementApi.exportAgreements({ keyword: this.keyword, status: this.statusFilter }) },
+    goTemplates() { this.$router.push({ path: '/admin/internship/agreement-templates', query: this.batchStore.withBatchQuery() }) },
+    openDossier(row) { this.$router.push({ path: `/admin/internship/agreements/${row.id}`, query: this.batchStore.withBatchQuery() }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return agreementApi.exportAgreements({ keyword: this.keyword, status: this.statusFilter, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.load() },
     onPageChange(p) { this.page = p; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
+        return
+      }
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.status = this.statusFilter
       const res = await agreementApi.getAgreements(params)
       this.loading = false

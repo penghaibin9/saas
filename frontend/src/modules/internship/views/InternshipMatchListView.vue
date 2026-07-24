@@ -86,6 +86,7 @@
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
           <AppUnassignedInternshipStudentPicker
             v-model="intentionForm.recordId"
+            :query="{ batchId: batchStore.selectedBatchId }"
             placeholder="输入姓名或学号搜索学生"
             search-placeholder="按姓名 / 学号搜索"
             data-scope-hint="仅显示你数据范围内未落实岗位的实习学生"
@@ -114,6 +115,7 @@
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
           <AppUnassignedInternshipStudentPicker
             v-model="manualForm.recordId"
+            :query="{ batchId: batchStore.selectedBatchId }"
             placeholder="输入姓名或学号搜索学生"
             search-placeholder="按姓名 / 学号搜索"
             data-scope-hint="仅显示你数据范围内未落实岗位的实习学生"
@@ -156,8 +158,8 @@
       :required-fields="['学号']"
       :preview-fields="['studentNo', 'city', 'industry', 'company', 'note']"
       :download-template-fn="() => matchApi.downloadIntentionTemplate()"
-      :upload-fn="(file) => matchApi.importIntentionsXlsx(file)"
-      :confirm-fn="({ rows }) => matchApi.importIntentionsConfirm(rows)"
+      :upload-fn="(file) => matchApi.importIntentionsXlsx(file, batchStore.selectedBatchId)"
+      :confirm-fn="({ rows }) => matchApi.importIntentionsConfirm(rows, batchStore.selectedBatchId)"
       :download-errors-fn="({ rows, errors }) => matchApi.downloadIntentionImportErrors(rows, errors)"
       @imported="onImported"
     />
@@ -186,6 +188,7 @@ import { TableActionColumn } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { matchApi } from '@/modules/internship/api/match.api'
 import { canCode } from '@/modules/internship/composables/permission'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', matchType: '' })
@@ -224,6 +227,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     canMatchManual() { return canCode(this.ctx, 'internship.match.manual') },
     canMatchBatch() { return canCode(this.ctx, 'internship.match.batch') },
     canIntentionManage() { return canCode(this.ctx, 'internship.match.intention.manage') },
@@ -348,7 +352,7 @@ export default {
   },
   async created() {
     // 学生/岗位/企业候选已改为选择器内按关键字远程搜索（后端裁定数据范围），不再一次性预载
-    const st = await matchApi.getStats()
+    const st = await matchApi.getStats({ batchId: this.batchStore.selectedBatchId })
     if (st.code === 0 && !this.matchStats) this.matchStats = st.data
   },
   methods: {
@@ -365,28 +369,28 @@ export default {
     },
     goPanel(panel) {
       if (this.activePanel === panel) return
-      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
+      this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery({ ...this.$route.query, panel }) })
     },
     async load() {
       this.loading = true
       this.error = ''
       try {
         if (this.isStatsPanel) {
-          const res = await matchApi.getStats()
+          const res = await matchApi.getStats({ batchId: this.batchStore.selectedBatchId })
           if (res.code === 0) this.matchStats = res.data
           else this.error = res.message
           this.rows = []
           this.total = 0
         } else if (this.isIntentionPanel) {
-          const res = await matchApi.getIntentions({ ...this.filters, page: this.page, pageSize: this.pageSize })
+          const res = await matchApi.getIntentions({ ...this.filters, page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId })
           if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
           else this.error = res.message
         } else if (this.isConflictPanel) {
-          const res = await matchApi.getConflicts({ keyword: this.filters.keyword, page: this.page, pageSize: this.pageSize })
+          const res = await matchApi.getConflicts({ keyword: this.filters.keyword, page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId })
           if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
           else this.error = res.message
         } else {
-          const params = { ...this.filters, page: this.page, pageSize: this.pageSize }
+          const params = { ...this.filters, page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId }
           const res = await matchApi.getResults(params)
           if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
           else this.error = res.message
@@ -399,8 +403,8 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     exportFn() {
-      if (this.isIntentionPanel) return matchApi.exportIntentions({ ...this.filters })
-      return matchApi.exportMatches({ ...this.filters })
+      if (this.isIntentionPanel) return matchApi.exportIntentions({ ...this.filters, batchId: this.batchStore.selectedBatchId })
+      return matchApi.exportMatches({ ...this.filters, batchId: this.batchStore.selectedBatchId })
     },
     async onToolbar(key) {
       this.formError = ''
@@ -419,7 +423,7 @@ export default {
       if (key === 'runMajor') {
         this.submitting = true
         try {
-          const res = await matchApi.runMajor()
+          const res = await matchApi.runMajor({ batchId: this.batchStore.selectedBatchId })
           if (res.code === 0) { toast.success(`专业匹配完成 · ${res.data.created} 条`); this.load() }
           else toast.error(res.message)
         } finally { this.submitting = false }
@@ -427,7 +431,7 @@ export default {
       if (key === 'runEnterprise') {
         this.submitting = true
         try {
-          const res = await matchApi.runEnterprise()
+          const res = await matchApi.runEnterprise({ batchId: this.batchStore.selectedBatchId })
           if (res.code === 0) { toast.success(`企业匹配完成 · ${res.data.created} 条`); this.load() }
           else toast.error(res.message)
         } finally { this.submitting = false }

@@ -245,8 +245,13 @@ export default {
   watch: {
     '$route.query.panel': {
       immediate: true,
-      handler(panel) {
-        this.applyPanel((panel || 'roster').toString())
+      handler() {
+        this.applyRouteFilters()
+      }
+    },
+    '$route.query.status': {
+      handler() {
+        this.applyRouteFilters()
       }
     },
     'batchStore.selectedBatchId'() {
@@ -255,6 +260,18 @@ export default {
     }
   },
   methods: {
+    applyRouteFilters() {
+      const panel = (this.$route.query.panel || 'roster').toString()
+      const status = (this.$route.query.status || '').toString().trim().toUpperCase()
+      if (status && ['PREPARING', 'READY', 'ONBOARD', 'ASSESSING', 'ARCHIVED'].includes(status)) {
+        this.activePanel = PANEL_PRESETS[panel] ? panel : 'roster'
+        this.filters = { ...EMPTY_FILTERS(), status }
+        this.page = 1
+        this.load()
+        return
+      }
+      this.applyPanel(panel)
+    },
     applyPanel(panel) {
       const key = PANEL_PRESETS[panel] ? panel : 'roster'
       this.activePanel = key

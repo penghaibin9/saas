@@ -334,11 +334,16 @@ def _row(s, rec, stu):
     }
 
 
-def list_scores(page, page_size, status=None, keyword=None, user=None):
+def list_scores(page, page_size, status=None, keyword=None, batch_id=None, user=None):
     scope, in_scope = _scope_ctx(user)
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipFinalScore).where(InternshipFinalScore.tenant_id == _tid(),
-                                               InternshipFinalScore.is_deleted.is_(False))
+                                               InternshipFinalScore.is_deleted.is_(False),
+                                               InternshipFinalScore.internship_id.in_(record_ids))
         if status:
             q = q.where(InternshipFinalScore.status == status)
         rows = db.scalars(q.order_by(InternshipFinalScore.id.desc())).all()
@@ -373,9 +378,9 @@ def get_score(sid, user=None) -> dict:
                                for t in trail]}
 
 
-def export_scores(status=None, keyword=None, user=None) -> dict:
+def export_scores(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_scores(1, 100000, status=status, keyword=keyword, user=user)
+    items, _ = list_scores(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "打卡", "周报", "月报总结", "企业评价", "学校评价",
                "总分", "及格线", "是否及格", "缺项", "状态"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["checkinScore"], it["weeklyScore"],

@@ -44,12 +44,12 @@ export const archiveApi = {
     return call(() => request(`${B}/${id}`))
   },
 
-  byBatch() {
-    return call(() => request(`${B}/by-batch`))
+  byBatch(params = {}) {
+    return call(() => request(`${B}/by-batch`, { params }))
   },
 
-  byEnterprise() {
-    return call(() => request(`${B}/by-enterprise`))
+  byEnterprise(params = {}) {
+    return call(() => request(`${B}/by-enterprise`, { params }))
   },
 
   archive(id, { force } = {}) {

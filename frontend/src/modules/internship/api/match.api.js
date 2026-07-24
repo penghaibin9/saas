@@ -74,15 +74,18 @@ export const matchApi = {
     a.click()
     URL.revokeObjectURL(url)
   },
-  async importIntentionsXlsx(file) {
+  async importIntentionsXlsx(file, batchId) {
     try {
-      return { code: 0, data: await requestUpload(`${BASE}/intentions/import/xlsx`, file), message: 'ok' }
+      const q = batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''
+      return { code: 0, data: await requestUpload(`${BASE}/intentions/import/xlsx${q}`, file), message: 'ok' }
     } catch (e) {
       return { code: e.code || 1, data: null, message: e.message || '上传失败' }
     }
   },
-  importIntentionsConfirm(rows) {
-    return call(() => request(`${BASE}/intentions/import/confirm`, { method: 'POST', body: { rows } }))
+  importIntentionsConfirm(rows, batchId) {
+    return call(() => request(`${BASE}/intentions/import/confirm`, {
+      method: 'POST', body: { rows, batchId }
+    }))
   },
   downloadIntentionImportErrors(rows, errors) {
     return call(() => request(`${BASE}/intentions/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
@@ -96,11 +99,11 @@ export const matchApi = {
     return res
   },
 
-  runMajor() {
-    return call(() => request(`${BASE}/run/major`, { method: 'POST' }))
+  runMajor(params = {}) {
+    return call(() => request(`${BASE}/run/major`, { method: 'POST', params }))
   },
-  runEnterprise() {
-    return call(() => request(`${BASE}/run/enterprise`, { method: 'POST' }))
+  runEnterprise(params = {}) {
+    return call(() => request(`${BASE}/run/enterprise`, { method: 'POST', params }))
   },
   manualMatch(body) {
     return call(() => request(`${BASE}/manual`, { method: 'POST', body }))
@@ -114,8 +117,8 @@ export const matchApi = {
   getConflicts(params = {}) {
     return callList(`${BASE}/conflicts`, params)
   },
-  getStats() {
-    return call(() => request(`${BASE}/stats`))
+  getStats(params = {}) {
+    return call(() => request(`${BASE}/stats`, { params }))
   },
   confirmMatch(id) {
     return call(() => request(`${BASE}/${id}/confirm`, { method: 'POST' }))
@@ -132,9 +135,17 @@ export const matchApi = {
     return res
   },
 
-  getStudentOptions(keyword, pageSize = 200) {
+  getStudentOptions(keyword, pageSize = 200, batchId) {
     return call(() =>
-      request('/internship/intern-students', { params: { page: 1, pageSize, hasPosition: false, keyword: keyword || '' } }).then((d) =>
+      request('/internship/intern-students', {
+        params: {
+          page: 1,
+          pageSize,
+          hasPosition: false,
+          keyword: keyword || '',
+          batchId: batchId || undefined
+        }
+      }).then((d) =>
         // BUG-009：一名学生跨批次有多条实习记录，原来 4 条选项显示完全一致无法区分。
         // 这里按「学生 + 批次」去重（同一批次内不可能有两条待分配记录），并把批次名带进选项。
         dedupeByStudentBatch(d.items || []).map((s) => ({

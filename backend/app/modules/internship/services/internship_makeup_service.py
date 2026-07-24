@@ -37,19 +37,20 @@ def _get(db, mid) -> InternshipMakeup:
     return m
 
 
-def _student_record(db, user):
-    """定位当前学生用户的实习记录（严格本人，按 studentNo）。"""
+def _student_record(db, user, *, batch_id=None, for_write: bool = False):
+    """定位当前学生用户的实习记录（统一解析器，禁止 .first()）。"""
+    from app.modules.internship.services.internship_record_resolver import (
+        require_active_student_record,
+        resolve_optional_student_record,
+    )
     sno = (user or {}).get("studentNo")
     if not sno:
+        if for_write:
+            raise AppException("VALIDATION_ERROR", "学生身份信息缺失")
         return None, None
-    stu = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == _tid(), StudentProfile.student_no == sno,
-        StudentProfile.is_deleted.is_(False))).first()
-    if not stu:
-        return None, None
-    rec = db.scalars(select(InternshipRecord).where(
-        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-        InternshipRecord.is_deleted.is_(False))).first()
+    if for_write:
+        return require_active_student_record(db, user, batch_id=batch_id, student_no=sno)
+    rec, stu, _ctx = resolve_optional_student_record(db, user, batch_id=batch_id, student_no=sno)
     return rec, stu
 
 
@@ -85,9 +86,7 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
     if not (checkin_date or "").strip() or not (reason or "").strip() or len(reason.strip()) < 2:
         raise AppException("VALIDATION_ERROR", "补卡日期与事由必填（事由不少于 2 字）")
     with session() as db:
-        rec, stu = _student_record(db, user)
-        if not rec:
-            raise not_found("未找到你的实习记录，无法申请补卡")
+        rec, stu = _student_record(db, user, for_write=True)
         if internship_id and str(internship_id) != str(rec.id):
             raise no_permission("只能对本人实习记录申请补卡")
         dup = db.scalars(select(InternshipMakeup).where(
@@ -109,7 +108,7 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
 def withdraw(user, makeup_id) -> dict:
     with session() as db:
         m = _get(db, makeup_id)
-        rec, _ = _student_record(db, user)
+        rec, _ = _student_record(db, user, for_write=True)
         if not rec or m.internship_id != rec.id:
             raise no_permission("只能撤回本人的补卡申请")
         if m.status != "PENDING":

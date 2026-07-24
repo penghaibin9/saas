@@ -233,9 +233,7 @@ def student_my_plan(user) -> dict | None:
 def student_acknowledge(user) -> dict:
     from app.modules.internship.services.internship_agreement_service import _student_record
     with session() as db:
-        rec, stu = _student_record(db, user)
-        if not rec:
-            raise not_found("未找到实习记录")
+        rec, stu = _student_record(db, user, for_write=True)
         ack = db.scalars(select(InternshipPlanAck).where(
             InternshipPlanAck.tenant_id == _tid(), InternshipPlanAck.internship_id == rec.id,
             InternshipPlanAck.status == "PENDING", InternshipPlanAck.is_deleted.is_(False))).first()

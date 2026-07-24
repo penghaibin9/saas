@@ -69,12 +69,17 @@ export default {
   methods: {
     onMenuSelect(item) {
       if (!item?.path) return
-      const q = this.batchStore.withBatchQuery({})
-      if (item.path.includes('?')) {
-        router.push(item.path).catch(() => {})
-      } else {
-        router.push({ path: item.path, query: q }).catch(() => {})
+      const batchQ = this.batchStore.withBatchQuery({})
+      const raw = String(item.path)
+      const qIdx = raw.indexOf('?')
+      if (qIdx < 0) {
+        router.push({ path: raw, query: batchQ }).catch(() => {})
+        return
       }
+      const path = raw.slice(0, qIdx) || '/'
+      const search = new URLSearchParams(raw.slice(qIdx + 1))
+      const query = { ...Object.fromEntries(search.entries()), ...batchQ }
+      router.push({ path, query }).catch(() => {})
     }
   }
 }

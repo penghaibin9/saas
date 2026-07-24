@@ -131,9 +131,15 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
             UnifiedMessage.receiver_id.in_(personal_ids)
         ).order_by(UnifiedMessage.id.desc()).limit(5)).all()
         # 各域是否有我的记录 + 关键状态
-        intern = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
-            InternshipRecord.is_deleted.is_(False))).first()
+        from app.modules.internship.services.internship_record_resolver import (
+            resolve_student_internship_context,
+        )
+        from app.modules.internship.services.internship_service import (
+            resolve_student_class_college_names,
+        )
+        _ictx = resolve_student_internship_context(db, student=stu, for_write=False)
+        intern = _ictx.record if _ictx.mode in ("active", "history") else None
+        class_name, _ = resolve_student_class_college_names(db, stu)
         ori = _resolve_domain_student(db, OrientationStudent, stu)
         acad = _resolve_domain_student(db, AcademicStudent, stu)
         warn = 0
@@ -154,7 +160,7 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
                            "domain": "orientation"})
         result = {
             "student": {"name": name, "studentNo": stu.student_no, "grade": stu.grade or "",
-                        "className": (stu.grade + "级") if stu.grade else "", "stage": stu.current_stage},
+                        "className": class_name or "", "stage": stu.current_stage},
             "stage": {"code": stu.current_stage, "label": student_stage_label(stu.current_stage)},
             "todos": [{"id": str(t.id), "title": t.title, "type": t.todo_type,
                        "module": getattr(t, "source_module", None) or t.todo_type or "待办",
@@ -651,11 +657,21 @@ def internship_my(user: dict) -> dict:
 
         from app.models import (AttendanceException, InternshipCheckin, InternshipFinalScore,
                                 InternshipProcessReport, InternshipRecord, WeeklyReport)
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-            InternshipRecord.is_deleted.is_(False))).first()
+        from app.modules.internship.services.internship_record_resolver import (
+            resolve_student_internship_context,
+        )
+        ctx = resolve_student_internship_context(db, student=stu, for_write=False)
+        if ctx.mode == "need_select":
+            return {
+                "empty": True,
+                "needSelect": True,
+                "message": ctx.message or "你有多条进行中的实习记录，请选择批次",
+                "candidates": ctx.candidates,
+            }
+        rec = ctx.record
         if not rec:
-            return _empty("你暂无实习记录")
+            return _empty(ctx.message or "你暂无实习记录")
+        history_mode = ctx.mode == "history"
         reports = db.scalars(select(WeeklyReport).where(WeeklyReport.tenant_id == _tid(),
                              WeeklyReport.internship_id == rec.id, WeeklyReport.is_deleted.is_(False)
                              ).order_by(WeeklyReport.week_number.desc())).all()
@@ -740,6 +756,9 @@ def internship_my(user: dict) -> dict:
         ]
 
         return {"hasData": True,
+                "historyMode": history_mode,
+                "batchId": str(rec.batch_id or ""),
+                "recordId": str(rec.id),
                 "enterpriseName": rec.enterprise_name or "", "positionName": rec.position_name or "",
                 "advisorName": rec.advisor_name or "",
                 "enterpriseMentor": rec.enterprise_mentor_name or "",
@@ -1521,7 +1540,9 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         # 退回重交：指定 leaveId / resubmitLeaveId 时走 resubmit，避免重叠请假 409
         resubmit_id = str(body.get("leaveId") or body.get("resubmitLeaveId") or "").strip()
         if resubmit_id:
-            result = leave_svc.resubmit(resubmit_id, user, self_only=True, reason=content or None)
+            version = body.get("version")
+            result = leave_svc.resubmit(
+                resubmit_id, user, expected_version=version, self_only=True, reason=content or None)
             audit_log.record("MOBILE_SERVICE_APPLY", "campus-service:LEAVE_RESUBMIT",
                              {"studentNo": u.get("studentNo"), "leaveId": resubmit_id})
             return {"id": result.get("id"), "status": result.get("affairsStatus"),
@@ -1609,9 +1630,7 @@ def internship_checkin_week(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return {"hasData": False, "days": []}
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-            InternshipRecord.is_deleted.is_(False))).first()
+        rec, _ = _internship_record(db, u)
         if not rec:
             return {"hasData": False, "days": []}
         today = _dt.now().date()
@@ -1650,17 +1669,9 @@ def internship_checkin(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "定位精度不合法")
     evidence_file_id = _file_id(body.get("evidenceFileId"))
     with _session() as db:
-        stu = resolve_student(db, u)
-        if not stu:
-            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
         from datetime import datetime as _dt
-        from app.models import (AttendanceException, InternshipCheckin, InternshipPosition,
-                                InternshipRecord)
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-            InternshipRecord.is_deleted.is_(False))).first()
-        if not rec:
-            raise AppException("DATA_NOT_FOUND", "你当前没有实习记录，无法打卡")
+        from app.models import AttendanceException, InternshipCheckin, InternshipPosition
+        rec, stu = _internship_record(db, u, for_write=True)
         if rec.status not in {"ONBOARD", "ASSESSING"}:
             raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以打卡")
         today = f"{_dt.now():%Y-%m-%d}"
@@ -1788,17 +1799,10 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
     with _session() as db:
-        stu = resolve_student(db, u)
-        if not stu:
-            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
         from datetime import datetime as _dt
 
-        from app.models import InternshipRecord, WeeklyReport
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-            InternshipRecord.is_deleted.is_(False))).first()
-        if not rec:
-            raise AppException("DATA_NOT_FOUND", "你当前没有实习记录，无法提交周报")
+        from app.models import WeeklyReport
+        rec, stu = _internship_record(db, u, for_write=True)
         dup = db.scalars(select(WeeklyReport).where(
             WeeklyReport.tenant_id == _tid(), WeeklyReport.internship_id == rec.id,
             WeeklyReport.week_number == week_no, WeeklyReport.is_deleted.is_(False))).first()
@@ -1851,14 +1855,18 @@ def internship_weekly_submit(user: dict, body: dict) -> dict:
 
 # ─────────── 实习意向（学生本人填报，对接岗位匹配） ───────────
 
-def _internship_record(db, u: dict):
-    from app.models import InternshipRecord
+def _internship_record(db, u: dict, *, batch_id=None, for_write: bool = False):
+    from app.modules.internship.services.internship_record_resolver import (
+        require_active_student_record,
+        resolve_optional_student_record,
+    )
     stu = resolve_student(db, u)
     if not stu:
         return None, None
-    rec = db.scalars(select(InternshipRecord).where(
-        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-        InternshipRecord.is_deleted.is_(False))).first()
+    if for_write:
+        return require_active_student_record(db, u, batch_id=batch_id, student_id=stu.id)
+    rec, _stu, _ctx = resolve_optional_student_record(
+        db, u, batch_id=batch_id, student=stu)
     return rec, stu
 
 
@@ -1969,9 +1977,7 @@ def internship_intention_save(user: dict, body: dict) -> dict:
     b = body or {}
     record_id = None
     with _session() as db:
-        rec, stu = _internship_record(db, u)
-        if not rec:
-            raise AppException("NOT_FOUND", "你暂无实习档案")
+        rec, stu = _internship_record(db, u, for_write=True)
         it = _active_intention(db, rec.id)
         if it and it.status == "SUBMITTED":
             raise AppException("DATA_CONFLICT", "已提交意向不可编辑，请先撤回后再修改")

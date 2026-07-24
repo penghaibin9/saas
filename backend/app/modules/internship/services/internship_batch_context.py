@@ -53,3 +53,17 @@ def batch_public_fields(b: InternshipBatch) -> dict:
             if b.start_date and b.end_date else ""
         ),
     }
+
+
+def batch_record_ids(db, batch_id, *, for_write: bool = False) -> tuple[InternshipBatch, list[int]]:
+    """解析批次并返回该批次下全部未删除实习记录 id（列表/统计/导出共用）。"""
+    from sqlalchemy import select
+    from app.models import InternshipRecord
+
+    batch = resolve_batch(db, batch_id, for_write=for_write)
+    ids = list(db.scalars(select(InternshipRecord.id).where(
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.is_deleted.is_(False),
+        InternshipRecord.batch_id == batch.id,
+    )).all())
+    return batch, ids

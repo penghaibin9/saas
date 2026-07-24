@@ -2,7 +2,7 @@
   <ModulePageShell title="实习归档" subtitle="检查实习材料是否齐全，完成学生归档并查看批次统计结果 · 材料完整性检查 · 缺失提醒 · 按学生/批次/企业归档"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppButton variant="ghost" @click="$router.push('/admin/internship/stats')">实习统计</AppButton>
+      <AppButton variant="ghost" @click="goStats">实习统计</AppButton>
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
@@ -124,6 +124,7 @@ import { archiveApi } from '@/modules/internship/api/archive.api'
 import { downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const STUDENT_COLUMNS = [
   { key: 'studentNo', title: '学号', width: '110px' }, { key: 'studentName', title: '姓名' },
@@ -155,6 +156,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
     aggColumns() {
       return [
@@ -203,11 +205,20 @@ export default {
   watch: {
     '$route.query.panel'(value) {
       if (this.applyRoutePanel(value)) this.reload()
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.closePanel()
+      this.load()
     }
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
-    exportFn() { return archiveApi.exportArchives({ keyword: this.keyword }) },
+    goStats() { this.$router.push({ path: '/admin/internship/stats', query: this.batchStore.withBatchQuery() }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return archiveApi.exportArchives({ keyword: this.keyword, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     applyRoutePanel(value) {
       const next = value === 'materials' ? 'materials' : ''
@@ -223,15 +234,19 @@ export default {
     clearMaterialEntry() {
       const query = { ...this.$route.query }
       delete query.panel
-      this.$router.replace({ query })
+      this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     switchTab(k) { this.panelMode = ''; this.tab = k; this.page = 1; this.closePanel(); this.load() },
     reload() { this.page = 1; this.load() },
     onPageChange(p) { this.page = p; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false; this.error = '请先选择批次'; this.rows = []; this.aggRows = []; this.total = 0
+        return
+      }
       this.loading = true; this.error = ''
       if (this.tab === 'student') {
-        const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+        const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
         if (this.onlyIncomplete) params.onlyIncomplete = true
         const res = await archiveApi.getByStudent(params)
         this.loading = false
@@ -240,7 +255,8 @@ export default {
         // 无筛选时缓存服务端全量应归档人数，避免把筛选后小计当全量
         if (!this.keyword && !this.onlyIncomplete) this.archiveStudentTotal = res.data.total
       } else {
-        const res = this.tab === 'batch' ? await archiveApi.byBatch() : await archiveApi.byEnterprise()
+        const params = { batchId: this.batchStore.selectedBatchId }
+        const res = this.tab === 'batch' ? await archiveApi.byBatch(params) : await archiveApi.byEnterprise(params)
         this.loading = false
         if (res.code !== 0) { this.error = res.message || '加载失败'; this.aggRows = []; return }
         this.aggRows = res.data || []
@@ -252,7 +268,7 @@ export default {
       const query = { ...this.$route.query }
       if (id) query.id = id
       else delete query.id
-      this.$router.replace({ query })
+      this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     closePanel() {
       this.panel = { visible: false, rowId: '', loading: false, data: null }

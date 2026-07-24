@@ -202,10 +202,13 @@ def _filter_scope(db, rows, scope):
 
 
 def list_intentions(page: int, page_size: int, keyword=None, status=None,
-                    user=None) -> tuple[list[dict], int]:
+                    batch_id=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        batch = resolve_batch(db, batch_id)
         q = select(InternshipIntention).where(
-            InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False))
+            InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
+            InternshipIntention.batch_id == batch.id)
         if status:
             q = q.where(InternshipIntention.status == status)
         rows = db.scalars(q.order_by(InternshipIntention.id.desc())).all()
@@ -307,8 +310,10 @@ def withdraw_intention(iid, user=None, self_service: bool = False) -> dict:
         return _intention_row(db, it)
 
 
-def intention_import_dry_run(rows: list[dict]) -> dict:
+def intention_import_dry_run(rows: list[dict], batch_id=None) -> dict:
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
         errors, valid = [], 0
         for i, r in enumerate(rows or []):
             row_no = i + 1
@@ -324,22 +329,27 @@ def intention_import_dry_run(rows: list[dict]) -> dict:
                 continue
             rec = db.scalars(select(InternshipRecord).where(
                 InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-                InternshipRecord.student_id == stu.id)).first()
+                InternshipRecord.student_id == stu.id,
+                InternshipRecord.batch_id == batch.id)).first()
             if not rec:
-                errors.append({"rowNo": row_no, "field": "studentNo", "message": "无实习学生记录，请先建档"})
+                errors.append({"rowNo": row_no, "field": "studentNo",
+                               "message": "该批次无实习学生记录，请先建档"})
                 continue
             valid += 1
-        return {"total": len(rows or []), "validRows": valid, "invalidRows": len(errors), "errors": errors}
+        return {"total": len(rows or []), "validRows": valid, "invalidRows": len(errors),
+                "errors": errors, "batchId": str(batch.id)}
 
 
-def intention_import_confirm(rows: list[dict], user=None) -> dict:
+def intention_import_confirm(rows: list[dict], user=None, batch_id=None) -> dict:
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     from app.modules.internship.services.internship_service import assert_admin_tenant
     assert_admin_tenant(user, "意向批量导入")
-    dry = intention_import_dry_run(rows)
+    dry = intention_import_dry_run(rows, batch_id=batch_id)
     if dry["invalidRows"]:
         raise AppException("VALIDATION_ERROR", "存在校验失败行，请先修正")
     created = 0
     with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=True)
         for r in rows or []:
             sno = (r.get("studentNo") or "").strip()
             stu = db.scalars(select(StudentProfile).where(
@@ -347,7 +357,8 @@ def intention_import_confirm(rows: list[dict], user=None) -> dict:
                 StudentProfile.student_no == sno)).first()
             rec = db.scalars(select(InternshipRecord).where(
                 InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-                InternshipRecord.student_id == stu.id)).first()
+                InternshipRecord.student_id == stu.id,
+                InternshipRecord.batch_id == batch.id)).first()
             company_id = None
             cname = (r.get("company") or "").strip()
             if cname:
@@ -381,8 +392,8 @@ def intention_import_confirm(rows: list[dict], user=None) -> dict:
     return {"created": created, "total": len(rows or [])}
 
 
-def export_intentions(keyword=None, status=None) -> dict:
-    items, _ = list_intentions(1, 5000, keyword=keyword, status=status)
+def export_intentions(keyword=None, status=None, batch_id=None) -> dict:
+    items, _ = list_intentions(1, 5000, keyword=keyword, status=status, batch_id=batch_id)
     headers = ["学号", "姓名", "专业", "意向城市", "意向行业", "意向企业", "状态", "备注"]
     rows = [[x["studentNo"], x["studentName"], x["majorName"], x["preferredCity"],
              x["preferredIndustry"], x["preferredCompanyName"], x["statusLabel"],
@@ -443,21 +454,28 @@ def _upsert_match(db, record: InternshipRecord, pos: InternshipPosition,
     return m
 
 
-def run_major_match(user=None) -> dict:
+def run_major_match(batch_id=None, user=None) -> dict:
     """未分配学生 × 已上架岗位 · 专业规则推荐。"""
     from app.modules.internship.services.internship_service import assert_admin_tenant
     assert_admin_tenant(user, "专业自动匹配")
     created = 0
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        batch = resolve_batch(db, batch_id)
+        if batch.status != "RUNNING":
+            raise AppException("DATA_CONFLICT", "仅进行中的实习批次可执行自动匹配")
         records = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
             InternshipRecord.position_id.is_(None),
             InternshipRecord.status != "ARCHIVED")).all()
         positions = db.scalars(select(InternshipPosition).where(
             InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False),
-            InternshipPosition.status == "PUBLISHED")).all()
+            InternshipPosition.status == "PUBLISHED",
+            or_(InternshipPosition.batch_id == batch.id, InternshipPosition.batch_id.is_(None)))).all()
         intent_map = {it.record_id: it for it in db.scalars(select(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
+            InternshipIntention.batch_id == batch.id,
             InternshipIntention.status == "SUBMITTED")).all()}
         for rec in records:
             stu = db.get(StudentProfile, rec.student_id)
@@ -484,25 +502,31 @@ def run_major_match(user=None) -> dict:
     return {"created": created}
 
 
-def run_enterprise_match(user=None) -> dict:
+def run_enterprise_match(batch_id=None, user=None) -> dict:
     """按意向 preferred_company_id 推荐该企业下上架岗位。"""
     from app.modules.internship.services.internship_service import assert_admin_tenant
     assert_admin_tenant(user, "企业自动匹配")
     created = 0
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        batch = resolve_batch(db, batch_id)
+        if batch.status != "RUNNING":
+            raise AppException("DATA_CONFLICT", "仅进行中的实习批次可执行自动匹配")
         intents = db.scalars(select(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
+            InternshipIntention.batch_id == batch.id,
             InternshipIntention.status == "SUBMITTED",
             InternshipIntention.preferred_company_id.is_not(None))).all()
         for it in intents:
             rec = db.get(InternshipRecord, it.record_id)
-            if not rec or rec.is_deleted or rec.position_id:
+            if not rec or rec.is_deleted or rec.batch_id != batch.id or rec.position_id or rec.status == "ARCHIVED":
                 continue
             stu = db.get(StudentProfile, rec.student_id)
             maj = _major_name(db, stu)
             positions = db.scalars(select(InternshipPosition).where(
                 InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False),
                 InternshipPosition.status == "PUBLISHED",
+                or_(InternshipPosition.batch_id == batch.id, InternshipPosition.batch_id.is_(None)),
                 InternshipPosition.company_id == it.preferred_company_id)).all()
             for p in positions:
                 if max(0, p.headcount - p.allocated_count) <= 0:
@@ -565,10 +589,15 @@ def batch_match(pairs: list[dict], user=None) -> dict:
 
 
 def list_matches(page: int, page_size: int, keyword=None, status=None,
-                 match_type=None, conflict_only=False, user=None) -> tuple[list[dict], int]:
+                 match_type=None, conflict_only=False, batch_id=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipMatch).where(
-            InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False))
+            InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False),
+            InternshipMatch.record_id.in_(record_ids))
         if status:
             q = q.where(InternshipMatch.status == status)
         if match_type:
@@ -588,8 +617,8 @@ def list_matches(page: int, page_size: int, keyword=None, status=None,
         return items[start:start + page_size], total
 
 
-def list_conflicts(page: int, page_size: int, keyword=None, user=None) -> tuple[list[dict], int]:
-    return list_matches(page, page_size, keyword=keyword, conflict_only=True, user=user)
+def list_conflicts(page: int, page_size: int, keyword=None, batch_id=None, user=None) -> tuple[list[dict], int]:
+    return list_matches(page, page_size, keyword=keyword, conflict_only=True, batch_id=batch_id, user=user)
 
 
 def confirm_match(mid, user=None) -> dict:
@@ -642,9 +671,12 @@ def reject_match(mid, reason: str = "", user=None) -> dict:
         return _match_row(db, m)
 
 
-def match_stats() -> dict:
+def match_stats(batch_id=None) -> dict:
     with session() as db:
-        base = [InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False)]
+        from app.modules.internship.services.internship_batch_context import batch_record_ids, resolve_batch
+        batch, record_ids = batch_record_ids(db, batch_id)
+        base = [InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False),
+                InternshipMatch.record_id.in_(record_ids or [0])]
         total = int(db.scalar(select(func.count()).select_from(InternshipMatch).where(*base)) or 0)
         by_status = []
         for st, label in MATCH_STATUS_LABEL.items():
@@ -666,6 +698,7 @@ def match_stats() -> dict:
             *base, InternshipMatch.status == "CONFIRMED")) or 0)
         intent_submitted = int(db.scalar(select(func.count()).select_from(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
+            InternshipIntention.batch_id == batch.id,
             InternshipIntention.status == "SUBMITTED")) or 0)
         return {
             "total": total, "byStatus": by_status, "byType": by_type,
@@ -674,8 +707,8 @@ def match_stats() -> dict:
         }
 
 
-def export_matches(keyword=None, status=None, match_type=None) -> dict:
-    items, _ = list_matches(1, 5000, keyword=keyword, status=status, match_type=match_type)
+def export_matches(keyword=None, status=None, match_type=None, batch_id=None) -> dict:
+    items, _ = list_matches(1, 5000, keyword=keyword, status=status, match_type=match_type, batch_id=batch_id)
     headers = ["学号", "姓名", "专业", "岗位", "企业", "匹配方式", "得分", "专业命中",
                "冲突", "状态", "备注"]
     rows = [[x["studentNo"], x["studentName"], x["majorName"], x["positionTitle"],

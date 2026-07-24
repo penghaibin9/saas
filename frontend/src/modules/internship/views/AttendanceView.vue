@@ -64,6 +64,7 @@ import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const COLS = {
   checkins: [
@@ -112,6 +113,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     columns() { return COLS[this.tab] },
     statusOptions() { return STATUS_OPTS[this.tab] || [] },
     chipOptions() { return [{ label: '全部状态', value: '' }, ...this.statusOptions] },
@@ -158,7 +160,7 @@ export default {
     },
     async load() {
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.status = this.statusFilter
       const api = { checkins: 'getCheckins', exceptions: 'getExceptions', makeups: 'getMakeups' }[this.tab]
       const res = await attendanceApi[api](params)
@@ -175,7 +177,7 @@ export default {
     },
     exportFn() {
       const api = { checkins: 'exportCheckins', exceptions: 'exportExceptions', makeups: 'exportMakeups' }[this.tab]
-      return attendanceApi[api]({ keyword: this.keyword, status: this.statusFilter })
+      return attendanceApi[api]({ keyword: this.keyword, status: this.statusFilter, batchId: this.batchStore.selectedBatchId })
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（脱敏 + 水印，已写审计）`) },
     openHandle(r, action) {

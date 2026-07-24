@@ -14,7 +14,7 @@ from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAgreement, InternshipArchive, InternshipAuditTrail,
                         InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipGuidance, InternshipRecord, InternshipStudentEval,
-                        StudentProfile, WeeklyReport)
+                        RiskRecord, StudentProfile, WeeklyReport)
 from app.services.db_service import _as_id, _iso, _tid, session
 
 MATERIALS = [
@@ -108,7 +108,9 @@ def _scoped_records(db, user, batch_id=None, enterprise=None):
 
 def list_by_student(page, page_size, keyword=None, batch_id=None, only_incomplete=False, user=None):
     with session() as db:
-        pairs = _scoped_records(db, user, batch_id=batch_id)
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        batch = resolve_batch(db, batch_id)
+        pairs = _scoped_records(db, user, batch_id=batch.id)
         items = []
         for r, stu in pairs:
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
@@ -158,6 +160,18 @@ def archive_student(user, internship_id, force=False) -> dict:
         if pct < 100 and not force:
             raise AppException("DATA_CONFLICT", f"材料不完整（缺：{'、'.join(missing)}），"
                                f"如需带缺失归档请确认强制归档")
+        # P0-11：开放高风险 / 待批周报阻断普通归档
+        open_high = db.scalar(select(func.count()).select_from(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == r.id,
+            RiskRecord.is_deleted.is_(False), RiskRecord.risk_level == "HIGH",
+            RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")))) or 0
+        if open_high and not force:
+            raise AppException("DATA_CONFLICT", "存在未关闭的高风险，请先处置后再归档（或强制归档）")
+        pending_wr = db.scalar(select(func.count()).select_from(WeeklyReport).where(
+            WeeklyReport.tenant_id == _tid(), WeeklyReport.internship_id == r.id,
+            WeeklyReport.is_deleted.is_(False), WeeklyReport.status == "PENDING_REVIEW")) or 0
+        if pending_wr and not force:
+            raise AppException("DATA_CONFLICT", "存在待批周报，请先批阅后再归档（或强制归档）")
         arch = _archive_row(db, r.id)
         new = arch is None
         if new:
@@ -291,18 +305,22 @@ def _aggregate(pairs, db, group_key):
     return sorted(out, key=lambda x: x["group"])
 
 
-def by_batch(user=None):
+def by_batch(user=None, batch_id=None):
     from app.models import InternshipBatch
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     with session() as db:
-        pairs = _scoped_records(db, user)
+        batch = resolve_batch(db, batch_id)
+        pairs = _scoped_records(db, user, batch_id=batch.id)
         names = {b.id: b.batch_name for b in db.scalars(select(InternshipBatch).where(
             InternshipBatch.tenant_id == _tid())).all()}
         return _aggregate(pairs, db, lambda r: names.get(r.batch_id, f"批次{r.batch_id}") if r.batch_id else "未分批")
 
 
-def by_enterprise(user=None):
+def by_enterprise(user=None, batch_id=None):
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     with session() as db:
-        pairs = _scoped_records(db, user)
+        batch = resolve_batch(db, batch_id)
+        pairs = _scoped_records(db, user, batch_id=batch.id)
         return _aggregate(pairs, db, lambda r: r.enterprise_name or "未分配企业")
 
 

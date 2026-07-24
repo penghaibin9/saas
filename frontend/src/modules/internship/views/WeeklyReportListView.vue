@@ -87,6 +87,7 @@ import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const PANEL_STATUS = {
   all: '',
@@ -151,6 +152,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     isProcessReport() {
       return !!TYPE_MAP[this.reportTypeKey]
     },
@@ -282,10 +284,11 @@ export default {
       if (this.isProcessReport) {
         return internshipApi.exportProcessReports({
           reportType: this.typeConfig.reportType,
-          status: this.filters.status
+          status: this.filters.status,
+          batchId: this.batchStore.selectedBatchId
         })
       }
-      return internshipApi.exportWeeklyReports({ status: this.filters.status })
+      return internshipApi.exportWeeklyReports({ status: this.filters.status, batchId: this.batchStore.selectedBatchId })
     },
     remind(row) {
       if (!row?.id) return
@@ -319,7 +322,7 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const params = { ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize }
+      const params = { ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize, batchId: this.batchStore.selectedBatchId }
       const res = this.isProcessReport
         ? await internshipApi.getProcessReports({ ...params, reportType: this.typeConfig.reportType })
         : await internshipApi.getWeeklyReports(params)

@@ -33,13 +33,13 @@ def archive_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=
 
 
 @router.get("/archive/by-enterprise", summary="按企业聚合归档完整度")
-def archive_by_enterprise(user=Depends(require_permission(_P_VIEW))):
-    return success(svc.by_enterprise(user=user))
+def archive_by_enterprise(batchId: Optional[str] = None, user=Depends(require_permission(_P_VIEW))):
+    return success(svc.by_enterprise(user=user, batch_id=batchId))
 
 
 @router.get("/archive/by-batch", summary="按批次聚合归档完整度")
-def archive_by_batch(user=Depends(require_permission(_P_VIEW))):
-    return success(svc.by_batch(user=user))
+def archive_by_batch(batchId: Optional[str] = None, user=Depends(require_permission(_P_VIEW))):
+    return success(svc.by_batch(user=user, batch_id=batchId))
 
 
 @router.post("/archive/export", summary="导出归档台账（xlsx）")

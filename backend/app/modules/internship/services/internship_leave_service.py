@@ -38,18 +38,20 @@ def _get(db, lid) -> InternshipLeave:
     return lv
 
 
-def _student_record(db, user):
+def _student_record(db, user, *, batch_id=None, for_write: bool = False):
+    """学生本人实习记录：统一走 resolve_student_internship_context（禁止 .first()）。"""
+    from app.modules.internship.services.internship_record_resolver import (
+        require_active_student_record,
+        resolve_optional_student_record,
+    )
     sno = (user or {}).get("studentNo")
     if not sno:
+        if for_write:
+            raise AppException("VALIDATION_ERROR", "学生身份信息缺失")
         return None, None
-    stu = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == _tid(), StudentProfile.student_no == sno,
-        StudentProfile.is_deleted.is_(False))).first()
-    if not stu:
-        return None, None
-    rec = db.scalars(select(InternshipRecord).where(
-        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-        InternshipRecord.is_deleted.is_(False))).first()
+    if for_write:
+        return require_active_student_record(db, user, batch_id=batch_id, student_no=sno)
+    rec, stu, _ctx = resolve_optional_student_record(db, user, batch_id=batch_id, student_no=sno)
     return rec, stu
 
 
@@ -100,9 +102,7 @@ def apply(user, body) -> dict:
         raise AppException("VALIDATION_ERROR", "结束日期不能早于开始日期")
     file_id = _validate_file(b.get("fileId"))
     with session() as db:
-        rec, stu = _student_record(db, user)
-        if not rec:
-            raise not_found("未找到你的实习记录，无法申请请假")
+        rec, stu = _student_record(db, user, for_write=True)
         if rec.status not in ("ONBOARD", "ASSESSING"):
             raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以申请请假")
         dup = db.scalars(select(InternshipLeave).where(
@@ -126,7 +126,7 @@ def apply(user, body) -> dict:
 def withdraw(user, leave_id) -> dict:
     with session() as db:
         lv = _get(db, leave_id)
-        rec, _ = _student_record(db, user)
+        rec, _ = _student_record(db, user, for_write=True)
         if not rec or lv.internship_id != rec.id:
             raise no_permission("只能撤回本人的请假申请")
         if lv.status != "PENDING":
@@ -179,11 +179,16 @@ def my_leaves(user) -> list[dict]:
 
 # ═══════════ 指导教师 / 管理员（PC 管理端，owner + 数据范围） ═══════════
 
-def list_leaves(page, page_size, status=None, keyword=None, user=None) -> tuple[list[dict], int]:
+def list_leaves(page, page_size, status=None, keyword=None, batch_id=None, user=None) -> tuple[list[dict], int]:
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipLeave).where(InternshipLeave.tenant_id == _tid(),
-                                          InternshipLeave.is_deleted.is_(False))
+                                          InternshipLeave.is_deleted.is_(False),
+                                          InternshipLeave.internship_id.in_(record_ids))
         if status:
             q = q.where(InternshipLeave.status == status)
         rows = db.scalars(q.order_by(InternshipLeave.id.desc())).all()
@@ -363,9 +368,9 @@ def refresh_overdue(reference_date: date | None = None, user=None, system: bool 
     return {"referenceDate": today.isoformat(), "markedOverdue": marked, "risksCreated": risks_created}
 
 
-def export_leaves(status=None, keyword=None, user=None) -> dict:
+def export_leaves(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_leaves(1, 100000, status=status, keyword=keyword, user=user)
+    items, _ = list_leaves(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "校内指导教师", "请假类型", "开始", "结束", "天数", "事由",
                "状态", "审批人", "审批意见"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["leaveTypeLabel"],

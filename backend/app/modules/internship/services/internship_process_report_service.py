@@ -37,13 +37,13 @@ def _scope(user):
     return _current_scope(user), _rec_in_scope
 
 
-def _row(r, rec, stu):
+def _row(r, rec, stu, class_name=None):
     return {
         "id": str(r.id), "internId": str(r.internship_id),
         "reportType": r.report_type, "reportTypeLabel": TYPE_LABEL.get(r.report_type, r.report_type),
         "periodKey": r.period_key,
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
-        "className": (stu.grade + "级") if stu and stu.grade else "-",
+        "className": class_name or "-",
         "enterpriseName": rec.enterprise_name if rec else "",
         "wordCount": r.word_count, "submitAt": _iso(r.submitted_at) or "",
         "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
@@ -52,18 +52,19 @@ def _row(r, rec, stu):
     }
 
 
-def _student_record(db, user):
+def _student_record(db, user, *, batch_id=None, for_write: bool = False):
+    from app.modules.internship.services.internship_record_resolver import (
+        require_active_student_record,
+        resolve_optional_student_record,
+    )
     sno = (user or {}).get("studentNo")
     if not sno:
+        if for_write:
+            raise AppException("VALIDATION_ERROR", "学生身份信息缺失")
         return None, None
-    stu = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == _tid(), StudentProfile.student_no == sno,
-        StudentProfile.is_deleted.is_(False))).first()
-    if not stu:
-        return None, None
-    rec = db.scalars(select(InternshipRecord).where(
-        InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
-        InternshipRecord.is_deleted.is_(False))).first()
+    if for_write:
+        return require_active_student_record(db, user, batch_id=batch_id, student_no=sno)
+    rec, stu, _ctx = resolve_optional_student_record(db, user, batch_id=batch_id, student_no=sno)
     return rec, stu
 
 
@@ -80,11 +81,16 @@ def my_reports(user) -> dict:
         return {"items": [_row(r, rec, stu) for r in rows]}
 
 
-def list_reports(page, page_size, report_type=None, status=None, keyword=None, user=None):
+def list_reports(page, page_size, report_type=None, status=None, keyword=None, batch_id=None, user=None):
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import batch_record_ids
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipProcessReport).where(
             InternshipProcessReport.tenant_id == _tid(),
-            InternshipProcessReport.is_deleted.is_(False))
+            InternshipProcessReport.is_deleted.is_(False),
+            InternshipProcessReport.internship_id.in_(record_ids))
         if report_type:
             q = q.where(InternshipProcessReport.report_type == report_type)
         if status:
@@ -100,7 +106,10 @@ def list_reports(page, page_size, report_type=None, status=None, keyword=None, u
                 continue
             if not in_scope(scope, db, rec, stu):
                 continue
-            items.append(_row(r, rec, stu))
+            from app.modules.internship.services.internship_service import (
+                resolve_student_class_college_names)
+            cn, _ = resolve_student_class_college_names(db, stu)
+            items.append(_row(r, rec, stu, class_name=cn))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -196,8 +205,9 @@ def review_report(rid, action: str, comment: str = "", user=None) -> dict:
         return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL.get(r.status)}
 
 
-def export_reports(report_type=None, status=None, keyword=None, user=None) -> dict:
-    items, _ = list_reports(1, 100000, report_type=report_type, status=status, keyword=keyword, user=user)
+def export_reports(report_type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
+    items, _ = list_reports(
+        1, 100000, report_type=report_type, status=status, keyword=keyword, batch_id=batch_id, user=user)
     label = TYPE_LABEL.get((report_type or "").upper(), "过程报告")
     rows = [[it["studentNo"], it["studentName"], it["enterpriseName"], it["periodKey"],
              it["wordCount"], it["submitAt"], it["statusLabel"]] for it in items]

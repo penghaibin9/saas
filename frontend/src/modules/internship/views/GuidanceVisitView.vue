@@ -5,7 +5,7 @@
       <AppPermissionButton v-if="tab === 'guidance' || tab === 'visit'" code="internship.guidance.manage" :allowed="canBtn('internship.guidance.manage')" variant="primary" @click="goCreate">＋ 新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
       <AppPermissionButton v-else-if="tab === 'communication'" code="internship.communication.manage" :allowed="canBtn('internship.communication.manage')" variant="primary" @click="goCreate">＋ 登记沟通</AppPermissionButton>
       <AppPermissionButton v-else-if="tab === 'visit-plan'" code="internship.visit.plan.manage" :allowed="canBtn('internship.visit.plan.manage')" variant="primary" @click="goCreate">＋ 新建巡访计划</AppPermissionButton>
-      <AppButton variant="ghost" @click="$router.push('/admin/internship/guidance-plan')">指导计划</AppButton>
+      <AppButton variant="ghost" @click="goGuidancePlan">指导计划</AppButton>
       <AppExportButton v-if="canExportTab" :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
@@ -111,6 +111,7 @@ import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 /* 右栏只渲染详情接口真实返回字段（/internship/guidances/{id}、/internship/visits/{id}） */
 const DETAIL = {
@@ -177,6 +178,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     statsCards() {
       if (this.tab === 'guidance' && this.guidanceStats) {
         const g = this.guidanceStats
@@ -237,6 +239,12 @@ export default {
         if (sid) this.loadDetail(sid)
         else this.detail = { loading: false, error: '', data: null }
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.clearSelection()
+      this.loadStats()
+      this.load()
     }
   },
   methods: {
@@ -255,7 +263,9 @@ export default {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.guidance
       const cfg = preset()
       if (cfg.redirect) {
-        this.$router.replace(cfg.redirect)
+        const [path, queryString] = cfg.redirect.split('?')
+        const query = queryString === 'insufficient=1' ? { insufficient: '1' } : {}
+        this.$router.replace({ path, query: this.batchStore.withBatchQuery(query) })
         return
       }
       const { tab, rectifyFilter } = cfg
@@ -267,11 +277,16 @@ export default {
       this.load()
     },
     async loadStats() {
+      if (!this.batchStore.selectedBatchId) {
+        this.guidanceStats = null
+        this.visitStats = null
+        return
+      }
       if (this.tab === 'guidance') {
-        const res = await guidanceVisitApi.getGuidanceStats(2)
+        const res = await guidanceVisitApi.getGuidanceStats(2, { batchId: this.batchStore.selectedBatchId })
         if (res.code === 0) this.guidanceStats = res.data
       } else if (this.tab === 'visit') {
-        const res = await guidanceVisitApi.getVisitStats()
+        const res = await guidanceVisitApi.getVisitStats({ batchId: this.batchStore.selectedBatchId })
         if (res.code === 0) this.visitStats = res.data
       } else {
         this.guidanceStats = null
@@ -280,11 +295,13 @@ export default {
     },
     rectifyTone(s) { return s === 'PENDING' ? 'warning' : s === 'DONE' ? 'success' : 'default' },
     exportFn() {
-      if (this.tab === 'guidance') return guidanceVisitApi.exportGuidances({ keyword: this.keyword })
-      if (this.tab === 'visit') return guidanceVisitApi.exportVisits({ keyword: this.keyword })
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      if (this.tab === 'guidance') return guidanceVisitApi.exportGuidances({ keyword: this.keyword, batchId: this.batchStore.selectedBatchId })
+      if (this.tab === 'visit') return guidanceVisitApi.exportVisits({ keyword: this.keyword, batchId: this.batchStore.selectedBatchId })
       return Promise.reject(new Error('当前页签不支持导出'))
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
+    goGuidancePlan() { this.$router.push({ path: '/admin/internship/guidance-plan', query: this.batchStore.withBatchQuery() }) },
     goCreate() {
       if (this.tab === 'communication') {
         const enterpriseId = window.prompt('企业 ID（必填）')
@@ -308,24 +325,28 @@ export default {
           })
         return
       }
-      this.$router.push('/admin/internship/guidance/new?type=' + this.tab)
+      this.$router.push({ path: '/admin/internship/guidance/new', query: this.batchStore.withBatchQuery({ type: this.tab }) })
     },
     switchTab(k) {
       const panel = TAB_PANEL[k] || k
       const query = { ...this.$route.query, panel }
       delete query.id
       if (this.$route.query.panel !== panel) {
-        this.$router.replace({ path: this.$route.path, query })
+        this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery(query) })
       } else if (this.$route.query.id) {
-        this.$router.replace({ path: this.$route.path, query })
+        this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery(query) })
       } else {
         this.applyPanel(panel)
       }
     },
     reload() { this.page = 1; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
+        return
+      }
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       let res
       if (this.tab === 'guidance') res = await guidanceVisitApi.getGuidances(params)
       else if (this.tab === 'communication') res = await guidanceVisitApi.getCommunications(params)
@@ -343,12 +364,12 @@ export default {
         if (this.selectedId !== sid) { this.selectedId = sid; this.loadDetail(sid) }
         return
       }
-      this.$router.replace({ query: { ...this.$route.query, id: sid } })
+      this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid }) })
     },
     clearSelection() {
       const query = { ...this.$route.query }
       delete query.id
-      this.$router.replace({ query })
+      this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     async loadDetail(id) {
       this.detail = { loading: true, error: '', data: null }

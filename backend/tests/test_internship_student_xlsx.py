@@ -77,14 +77,17 @@ def test_template_download(client, db_mode):
     wb = load_workbook(io.BytesIO(r.content))
     assert "导入模板" in wb.sheetnames
     headers = [c.value for c in wb["导入模板"][1]]
-    assert "学号 *" in headers and "企业名称" in headers and len(headers) == 15
+    # P0-6：模板仅保留真实可写入字段（学号必填；不含企业/岗位等未写入列）
+    assert any(str(h).startswith("学号") for h in headers)
+    assert "企业名称" not in headers and "岗位名称" not in headers
+    assert len(headers) == 5
 
 
 def test_import_valid(client, db_mode):
     _seed(db_mode)
     # 不填顾问姓名：顾问为选填，填了则必须匹配唯一在职指导教师账号
     body = _upload(client, [{"studentNo": "XLSX-001",
-                             "enterpriseName": "真实科技有限公司", "startDate": "2026-03-02",
+                             "startDate": "2026-03-02",
                              "endDate": "2026-08-28", "remark": "OK"}]).json()
     assert body["code"] == 0, body
     assert body["data"]["validRows"] == 1 and body["data"]["invalidRows"] == 0
@@ -105,11 +108,12 @@ def test_import_student_not_found(client, db_mode):
     assert "未匹配到学生" in body["data"]["errors"][0]["message"]
 
 
-def test_import_enterprise_not_found(client, db_mode):
+def test_import_ignores_enterprise_column_not_in_template(client, db_mode):
+    """P0-6：缩模板后企业字段不再校验；多余字段被忽略，学号有效即通过。"""
     _seed(db_mode)
     body = _upload(client, [{"studentNo": "XLSX-001", "enterpriseName": "不存在企业"}]).json()
-    assert body["data"]["invalidRows"] == 1
-    assert body["data"]["errors"][0]["field"] == "enterpriseName"
+    assert body["code"] == 0
+    assert body["data"]["validRows"] == 1
 
 
 def test_import_bad_date(client, db_mode):
