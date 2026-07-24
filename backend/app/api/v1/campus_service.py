@@ -9,7 +9,8 @@ from app.core.response import paginate, success
 from app.core.permissions import require_permission
 from app.schemas.campus_service import (AssignBody, CommentBody, DisciplineCreate, DisciplineUpdate,
                                         DormExcHandle, DormExcMark, HandleBody, IdsBody, NoteBody,
-                                        ReasonBody, StudentCreate, StudentUpdate, WorkOrderCreate)
+                                        ReasonBody, StudentCreate, StudentUpdate, VersionedIdsBody,
+                                        WorkOrderCreate)
 from app.services import campus_service_service as svc
 
 router = APIRouter(prefix="/campus-service", tags=["在校服务"])
@@ -70,7 +71,7 @@ def leave_detail(lid: str, user=Depends(require_permission("campusService.leave.
 
 
 @router.post("/leaves/{lid}/approve", summary="请假通过")
-def leave_approve(lid: str, body: CommentBody = CommentBody(), user=Depends(require_permission("campusService.leave.approve"))):
+def leave_approve(lid: str, body: CommentBody, user=Depends(require_permission("campusService.leave.approve"))):
     return success(svc.approve_leave(lid, body.comment, body.version), message="已通过")
 
 
@@ -80,8 +81,9 @@ def leave_return(lid: str, body: ReasonBody, user=Depends(require_permission("ca
 
 
 @router.post("/leaves/batch-approve", summary="批量通过请假")
-def leave_batch(body: IdsBody, user=Depends(require_permission("campusService.leave.approve"))):
-    return success(svc.batch_approve_leaves(body.ids), message="已批量通过")
+def leave_batch(body: VersionedIdsBody, user=Depends(require_permission("campusService.leave.approve"))):
+    items = [{"id": x.id, "version": x.version} for x in (body.items or [])]
+    return success(svc.batch_approve_leaves(items), message="已批量通过")
 
 
 # 资助
@@ -99,7 +101,7 @@ def grant_detail(gid: str, user=Depends(require_permission("campusService.grant.
 
 
 @router.post("/grants/{gid}/approve", summary="资助通过")
-def grant_approve(gid: str, body: CommentBody = CommentBody(), user=Depends(require_permission("campusService.grant.approve"))):
+def grant_approve(gid: str, body: CommentBody, user=Depends(require_permission("campusService.grant.approve"))):
     return success(svc.approve_grant(gid, body.comment, body.version), message="已通过")
 
 
@@ -109,8 +111,9 @@ def grant_return(gid: str, body: ReasonBody, user=Depends(require_permission("ca
 
 
 @router.post("/grants/batch-approve", summary="批量通过资助")
-def grant_batch(body: IdsBody, user=Depends(require_permission("campusService.grant.approve"))):
-    return success(svc.batch_approve_grants(body.ids), message="已批量通过")
+def grant_batch(body: VersionedIdsBody, user=Depends(require_permission("campusService.grant.approve"))):
+    items = [{"id": x.id, "version": x.version} for x in (body.items or [])]
+    return success(svc.batch_approve_grants(items), message="已批量通过")
 
 
 # 宿舍

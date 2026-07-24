@@ -162,8 +162,9 @@ def confirm(batch_no: str) -> dict:
                 db.add(s)
                 db.flush()
                 if r.get("phone"):
+                    from app.core.field_crypto import encrypt_field
                     db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
-                                          contact_value_encrypted=r["phone"], is_primary=True,
+                                          contact_value_encrypted=encrypt_field(r["phone"]), is_primary=True,
                                           verified_status="UNVERIFIED"))
                 inserted += 1
             b = db.scalars(select(StudentImportBatch).where(

@@ -351,9 +351,9 @@ export const approvalApi = {
   },
 
   /** 通过（意见选填；更新状态 + 时间线 + 已办 + 审计，待办统计随之联动） */
-  approveTask(taskId, { comment } = {}) {
+  approveTask(taskId, { comment, version } = {}) {
     if (/^\d+$/.test(String(taskId))) {
-      return withFallback('approvals.approve', () => realApi.approveTask(taskId, comment), () => this._mockApproveTask(taskId, { comment }))
+      return withFallback('approvals.approve', () => realApi.approveTask(taskId, { comment, version }), () => this._mockApproveTask(taskId, { comment }))
     }
     return this._mockApproveTask(taskId, { comment })
   },
@@ -371,10 +371,10 @@ export const approvalApi = {
   },
 
   /** 退回（原因必填 ≥5 字；写入退回记录并留痕，结果同步申请人） */
-  returnTask(taskId, { reason } = {}) {
+  returnTask(taskId, { reason, version } = {}) {
     if (!reason || reason.trim().length < 5) return fail('退回原因必填且不少于 5 个字')
     if (/^\d+$/.test(String(taskId))) {
-      return withFallback('approvals.return', () => realApi.returnTask(taskId, reason), () => this._mockReturnTask(taskId, { reason }))
+      return withFallback('approvals.return', () => realApi.returnTask(taskId, { reason, version }), () => this._mockReturnTask(taskId, { reason }))
     }
     return this._mockReturnTask(taskId, { reason })
   },

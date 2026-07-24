@@ -6,8 +6,9 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, check_version, not_found
+from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field
+from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
 from app.models import (CsAuditTrail, CsDiscipline, CsDormException, CsDormRecord, CsGrant, CsLeave,
                         CsMentalRecord, CsServiceStudent, CsWorkOrder)
 from app.services.db_service import _iso, _mask_id_card, _mask_phone, _tid, session
@@ -118,7 +119,7 @@ def _stu_row(s: CsServiceStudent) -> dict:
             "studentNo": s.student_no or "", "gender": s.gender or "", "collegeName": s.college_name or "",
             "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
             "grade": s.grade or "", "phone": _mask_phone(decrypt_field(s.phone_encrypted)),
-            "idCard": _mask_id_card(s.id_card_encrypted), "counselor": s.counselor or "",
+            "idCard": _mask_id_card(decrypt_field(s.id_card_encrypted)), "counselor": s.counselor or "",
             "building": s.building or "", "room": s.room or "",
             "careLevel": s.care_level, "careLevelLabel": L_CARE.get(s.care_level, s.care_level),
             "riskLevel": s.risk_level, "riskLabel": L_RISK.get(s.risk_level, s.risk_level),
@@ -222,7 +223,8 @@ def _leave_row(x: CsLeave, stu=None) -> dict:
             "duration": x.duration or "", "reason": x.reason or "",
             "status": x.status, "statusLabel": L_LEAVE_S.get(x.status, x.status),
             "applyTime": _iso(x.apply_time) or "", "reviewer": x.reviewer or "",
-            "reviewTime": _iso(x.review_time) or "", "returnReason": x.return_reason or ""}
+            "reviewTime": _iso(x.review_time) or "", "returnReason": x.return_reason or "",
+            "version": int(x.version or 0)}
 
 
 def list_leaves(page, page_size, keyword=None, type=None, status=None):
@@ -273,6 +275,7 @@ def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=Non
                expected_version=None):
     if need_reason and (not reason or len(reason.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+    ver = require_expected_version(expected_version)
     with session() as db:
         x = db.get(CsLeave, int(lid))
         if not x or x.is_deleted or x.tenant_id != _tid():
@@ -285,18 +288,21 @@ def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=Non
             raise AppException("DATA_CONFLICT", "该请假已接入新版多级审批流程，请到「请假销假」工作台处理审批")
         if x.status in ("APPROVED", "RETURNED"):
             raise AppException("DATA_CONFLICT", "该请假已处理，请刷新")
-        check_version(x.version, expected_version)
         before = x.status
         n, _ = _op()
-        x.status = target
-        x.reviewer = n
-        x.review_time = datetime.utcnow()
+        values = {
+            "status": target,
+            "reviewer": n,
+            "review_time": datetime.utcnow(),
+        }
         if target == "RETURNED":
-            x.return_reason = (reason or "").strip()
-        x.version += 1
+            values["return_reason"] = (reason or "").strip()
+        atomic_versioned_update(
+            db, CsLeave, entity_id=int(x.id), tenant_id=_tid(),
+            expected_version=ver, values=values, expected_status=before)
         _audit(db, "LEAVE", x.id, action, reason or reviewer_comment or "", before, target)
         db.commit()
-        return {"id": str(x.id), "status": target}
+        return {"id": str(x.id), "status": target, "version": ver + 1}
 
 
 def approve_leave(lid, comment="", expected_version=None):
@@ -307,15 +313,26 @@ def return_leave(lid, reason, expected_version=None):
     return _leave_act(lid, "RETURNED", None, True, reason, "退回修改", expected_version)
 
 
-def batch_approve_leaves(ids):
+def _parse_versioned_item(raw):
+    if isinstance(raw, dict):
+        return raw.get("id"), raw.get("version")
+    if isinstance(raw, (list, tuple)) and len(raw) >= 2:
+        return raw[0], raw[1]
+    return raw, None
+
+
+def batch_approve_leaves(items):
+    """批量审批：每项必须为 {id, version}。无 version 的项计失败（不吞异常口径）。"""
     cnt = 0
-    for lid in ids:
+    errors = []
+    for raw in items or []:
+        lid, ver = _parse_versioned_item(raw)
         try:
-            _leave_act(lid, "APPROVED", "", False, None, "批量审批通过")
+            _leave_act(lid, "APPROVED", "", False, None, "批量审批通过", ver)
             cnt += 1
-        except AppException:
-            continue
-    return {"count": cnt}
+        except AppException as e:
+            errors.append({"id": str(lid), "code": e.code, "message": e.message})
+    return {"count": cnt, "failed": errors}
 
 
 # ═══ 资助 ═══
@@ -328,7 +345,8 @@ def _grant_row(x: CsGrant, stu=None, mask=True) -> dict:
            "materialSensitive": x.material_sensitive, "status": x.status,
            "statusLabel": L_GRANT_S.get(x.status, x.status), "applyTime": _iso(x.apply_time) or "",
            "reviewer": x.reviewer or "", "reviewTime": _iso(x.review_time) or "",
-           "returnReason": x.return_reason or "", "currentNode": x.current_node or ""}
+           "returnReason": x.return_reason or "", "currentNode": x.current_node or "",
+           "version": int(x.version or 0)}
     if not mask:
         row["amount"] = float(x.amount or 0)
     return row
@@ -368,6 +386,7 @@ def get_grant_detail(gid) -> dict:
 def _grant_act(gid, target, need_reason=False, reason=None, node="", action="", expected_version=None):
     if need_reason and (not reason or len(reason.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+    ver = require_expected_version(expected_version)
     with session() as db:
         x = db.get(CsGrant, int(gid))
         if not x or x.is_deleted or x.tenant_id != _tid():
@@ -375,19 +394,22 @@ def _grant_act(gid, target, need_reason=False, reason=None, node="", action="", 
         _require_cs_scope(db, x.cs_student_id)
         if x.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该资助已终审，请刷新")
-        check_version(x.version, expected_version)
         before = x.status
         n, _ = _op()
-        x.status = target
-        x.reviewer = n
-        x.review_time = datetime.utcnow()
-        x.current_node = node
+        values = {
+            "status": target,
+            "reviewer": n,
+            "review_time": datetime.utcnow(),
+            "current_node": node,
+        }
         if target == "RETURNED":
-            x.return_reason = (reason or "").strip()
-        x.version += 1
+            values["return_reason"] = (reason or "").strip()
+        atomic_versioned_update(
+            db, CsGrant, entity_id=int(x.id), tenant_id=_tid(),
+            expected_version=ver, values=values, expected_status=before)
         _audit(db, "GRANT", x.id, action, reason or "", before, target)
         db.commit()
-        return {"id": str(x.id), "status": target}
+        return {"id": str(x.id), "status": target, "version": ver + 1}
 
 
 def approve_grant(gid, comment="", expected_version=None):
@@ -398,15 +420,17 @@ def return_grant(gid, reason, expected_version=None):
     return _grant_act(gid, "RETURNED", True, reason, "学生补充材料", "退回补充", expected_version)
 
 
-def batch_approve_grants(ids):
+def batch_approve_grants(items):
     cnt = 0
-    for gid in ids:
+    errors = []
+    for raw in items or []:
+        gid, ver = _parse_versioned_item(raw)
         try:
-            _grant_act(gid, "APPROVED", False, None, "已办结", "批量审批通过")
+            _grant_act(gid, "APPROVED", False, None, "已办结", "批量审批通过", ver)
             cnt += 1
-        except AppException:
-            continue
-    return {"count": cnt}
+        except AppException as e:
+            errors.append({"id": str(gid), "code": e.code, "message": e.message})
+    return {"count": cnt, "failed": errors}
 
 
 # ═══ 宿舍 ═══
@@ -493,20 +517,24 @@ def mark_dorm_exception(body: dict) -> dict:
 def handle_dorm_exception(eid, note, complete=False, expected_version=None) -> dict:
     if not note or len(note.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
+    ver = require_expected_version(expected_version)
     with session() as db:
         e = db.get(CsDormException, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("宿舍异常不存在")
         _require_cs_scope(db, e.cs_student_id)
-        check_version(e.version, expected_version)
         before = e.status
-        e.status = "COMPLETED" if complete else "PROCESSING"
-        e.handle_note = note.strip()
-        e.handle_time = datetime.utcnow()
-        e.version += 1
-        _audit(db, "DORM", e.id, "处理宿舍异常", note.strip(), before, e.status)
+        new_status = "COMPLETED" if complete else "PROCESSING"
+        atomic_versioned_update(
+            db, CsDormException, entity_id=int(e.id), tenant_id=_tid(),
+            expected_version=ver, values={
+                "status": new_status,
+                "handle_note": note.strip(),
+                "handle_time": datetime.utcnow(),
+            }, expected_status=before)
+        _audit(db, "DORM", e.id, "处理宿舍异常", note.strip(), before, new_status)
         db.commit()
-        return {"id": str(e.id), "status": e.status}
+        return {"id": str(e.id), "status": new_status, "version": ver + 1}
 
 
 # ═══ 违纪 ═══
@@ -654,41 +682,47 @@ def assign_work_orders(ids, handler) -> dict:
 def handle_work_order(wid, note, close=False, expected_version=None) -> dict:
     if not note or len(note.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
+    ver = require_expected_version(expected_version)
     with session() as db:
         w = db.get(CsWorkOrder, int(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)
-        check_version(w.version, expected_version)
         before = w.status
-        w.status = "COMPLETED" if close else "PROCESSING"
+        new_status = "COMPLETED" if close else "PROCESSING"
+        trail = list(w.trail_json or []) + [{"title": "办结" if close else "处理中",
+                                            "desc": note.strip(), "time": _iso(datetime.utcnow()),
+                                            "tone": "success" if close else "processing"}]
+        values = {"status": new_status, "trail_json": trail}
         if close:
-            w.close_time = datetime.utcnow()
-        w.trail_json = (w.trail_json or []) + [{"title": "办结" if close else "处理中",
-                                                "desc": note.strip(), "time": _iso(datetime.utcnow()),
-                                                "tone": "success" if close else "processing"}]
-        w.version += 1
-        _audit(db, "WORKORDER", w.id, "处理工单", note.strip(), before, w.status)
+            values["close_time"] = datetime.utcnow()
+        atomic_versioned_update(
+            db, CsWorkOrder, entity_id=int(w.id), tenant_id=_tid(),
+            expected_version=ver, values=values, expected_status=before)
+        _audit(db, "WORKORDER", w.id, "处理工单", note.strip(), before, new_status)
         db.commit()
-        return {"id": str(w.id), "status": w.status}
+        return {"id": str(w.id), "status": new_status, "version": ver + 1}
 
 
 def close_work_order(wid, reason, expected_version=None) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "关闭原因必填且不少于 5 字")
+    ver = require_expected_version(expected_version)
     with session() as db:
         w = db.get(CsWorkOrder, int(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)
-        check_version(w.version, expected_version)
-        w.status = "CLOSED"
-        w.close_time = datetime.utcnow()
-        w.version += 1
-        _audit(db, "WORKORDER", w.id, "关闭工单", reason.strip())
+        before = w.status
+        atomic_versioned_update(
+            db, CsWorkOrder, entity_id=int(w.id), tenant_id=_tid(),
+            expected_version=ver, values={
+                "status": "CLOSED",
+                "close_time": datetime.utcnow(),
+            }, expected_status=before)
+        _audit(db, "WORKORDER", w.id, "关闭工单", reason.strip(), before, "CLOSED")
         db.commit()
-        return {"id": str(w.id), "status": "CLOSED"}
-
+        return {"id": str(w.id), "status": "CLOSED", "version": ver + 1}
 
 # ═══ 心理关怀 ═══
 

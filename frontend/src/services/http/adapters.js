@@ -172,7 +172,8 @@ function approvalItem(t) {
     status: 'PENDING_REVIEW',
     statusLabel: '待审批',
     currentNode: t.nodeName || t.nodeCode || '',
-    transferred: false
+    transferred: false,
+    version: t.version,
   }
 }
 
@@ -199,14 +200,20 @@ export async function getApprovalDetail(taskId) {
   })
 }
 
-export async function approveTask(taskId, comment) {
-  const d = await request(`/approvals/tasks/${taskId}/approve`, { method: 'POST', body: { comment } })
-  return envelope({ taskId: String(d.taskId), status: 'APPROVED', statusLabel: '已通过' })
+export async function approveTask(taskId, { comment, version } = {}) {
+  const d = await request(`/approvals/tasks/${taskId}/approve`, {
+    method: 'POST',
+    body: { comment, version },
+  })
+  return envelope({ taskId: String(d.taskId), status: 'APPROVED', statusLabel: '已通过', version: d.version })
 }
 
-export async function returnTask(taskId, reason) {
-  const d = await request(`/approvals/tasks/${taskId}/reject`, { method: 'POST', body: { reason } })
-  return envelope({ taskId: String(d.taskId), status: 'RETURNED', statusLabel: '已退回' })
+export async function returnTask(taskId, { reason, version } = {}) {
+  const d = await request(`/approvals/tasks/${taskId}/reject`, {
+    method: 'POST',
+    body: { reason, version },
+  })
+  return envelope({ taskId: String(d.taskId), status: 'RETURNED', statusLabel: '已退回', version: d.version })
 }
 
 export async function getTodoSummary() {

@@ -8,21 +8,31 @@ from pydantic import BaseModel, Field
 
 class ReasonBody(BaseModel):
     reason: str = Field(..., min_length=1)
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本，必填")
 
 
 class NoteBody(BaseModel):
     note: Optional[str] = Field(default="")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本，必填")
 
 
 class CommentBody(BaseModel):
     comment: Optional[str] = Field(default="")
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本，必填")
+
+
+class VersionedIdItem(BaseModel):
+    id: str
+    version: int = Field(..., description="乐观锁版本，必填")
 
 
 class IdsBody(BaseModel):
+    """兼容旧调用：仅 ids。新批量写路径请用 VersionedIdsBody。"""
     ids: List[str] = Field(default_factory=list)
+
+
+class VersionedIdsBody(BaseModel):
+    items: List[VersionedIdItem] = Field(default_factory=list)
 
 
 class StudentCreate(BaseModel):
@@ -54,7 +64,7 @@ class DormExcMark(BaseModel):
 class DormExcHandle(BaseModel):
     note: str = Field(..., min_length=1)
     complete: bool = False
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本，必填")
 
 
 class DisciplineCreate(BaseModel):
@@ -88,4 +98,4 @@ class AssignBody(BaseModel):
 class HandleBody(BaseModel):
     note: str = Field(..., min_length=1)
     close: bool = False
-    version: Optional[int] = Field(None, description="乐观锁：传则校验，不传不阻断（兼容旧前端）")
+    version: int = Field(..., description="乐观锁版本，必填")

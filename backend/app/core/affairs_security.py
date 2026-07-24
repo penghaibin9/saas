@@ -151,24 +151,44 @@ class StudentAffairsSecurityContext:
         return code in self.sensitive_permissions
 
 
-# ── 学生主档目录数据范围（/students 公共选择器 + 学生主档导出共用，2026-07-17 收敛）──
-# 仅收敛具有明确范围语义的学工侧角色；管理类 TENANT_ALL 不收敛；毕设/实习/就业/宿管等
-# 其他域角色沿用全租户目录语义（各域业务端点已有本域范围校验）。
-STUDENT_DIRECTORY_SCOPED_ROLES = {"COUNSELOR", "COLLEGE_ADMIN", "COLLEGE_SA", "PSYCHOLOGY_TEACHER"}
+# ── 学生主档目录数据范围（/students 公共选择器 + 学生主档；fail-closed）──
+# TENANT_ALL → 不收敛；有明确 CLASS/COLLEGE/STUDENT/DORM 范围 → 按范围；
+# 其余角色（含未配置 scope 的教职工）→ 空集合，禁止全校目录。
 
 
 def student_directory_scope(user) -> tuple[set[int] | None, set[int] | None]:
-    """返回 (class_ids, student_ids)：均为 None = 不收敛；空集合 = fail-closed。"""
+    """返回 (class_ids, student_ids)。
+    - (None, None)：TENANT_ALL，不收敛
+    - (set(), None) 或 (None, set())：fail-closed 空结果
+    - (ids, None) / (None, ids)：按班级或学生集合过滤
+    """
     from app.db.session import db_enabled
-    role = ((user or {}).get("currentRoleCode") or "").upper()
-    if role not in STUDENT_DIRECTORY_SCOPED_ROLES or not db_enabled():
-        return None, None
+    if not db_enabled():
+        # 非 DB 演示模式：仅 TENANT_ALL 角色可看全量，其余空
+        from app.core.permissions import is_super_admin
+        role = ((user or {}).get("currentRoleCode") or "").upper()
+        if is_super_admin(user) or role in _TENANT_ALL_ROLES:
+            return None, None
+        return set(), None
     from app.services.db_service import session
     with session() as db:
         ctx = build_affairs_context(user, db)
-        if ctx.scope_type == "STUDENT":  # 心理教师：限授权学生集合
+        if ctx.scope_type == "TENANT_ALL":
+            return None, None
+        if ctx.scope_type == "SELF":
+            sid = ctx.self_student_id
+            try:
+                return None, {int(sid)} if sid else set()
+            except (TypeError, ValueError):
+                return None, set()
+        if ctx.scope_type == "STUDENT":
             return None, {int(i) for i in (ctx.psychology_student_ids | ctx.student_ids)}
-        ids = ctx.allowed_class_ids(db)  # CLASS/COLLEGE → 班级集合；NONE → 空集合 fail-closed
+        if ctx.scope_type == "NONE":
+            return set(), None
+        if ctx.scope_type == "DORM_BUILDING":
+            # 宿管：通过宿舍楼关联学生由上层业务收敛；公共 /students 目录默认空，避免全校
+            return set(), None
+        ids = ctx.allowed_class_ids(db)
         return (ids if ids is not None else set()), None
 
 

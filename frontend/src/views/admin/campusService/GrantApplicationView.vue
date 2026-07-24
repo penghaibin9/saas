@@ -381,7 +381,10 @@ export default {
       if (!this.can('campus.grant.review') || !this.detail) return
       this.submitting = true
       const prevIndex = this.selectedIndex
-      const res = await approveGrant(this.detail.grant.id, { comment: this.comment.trim() })
+      const res = await approveGrant(this.detail.grant.id, {
+        comment: this.comment.trim(),
+        version: this.detail.grant.version,
+      })
       this.submitting = false
       if (res.code === 0) {
         toast.success('已审核通过，进入发放流程（已留痕并同步学生端）')
@@ -399,7 +402,10 @@ export default {
     async submitReturn({ reason }) {
       this.returnDialog.submitting = true
       const prevIndex = this.selectedIndex
-      const res = await returnGrant(this.detail.grant.id, { reason })
+      const res = await returnGrant(this.detail.grant.id, {
+        reason,
+        version: this.detail.grant.version,
+      })
       this.returnDialog.submitting = false
       if (res.code === 0) {
         toast.success('已退回补充，原因已原文同步学生端并留痕')
@@ -453,7 +459,11 @@ export default {
     },
     async submitBatch() {
       this.batchDialog.submitting = true
-      const res = await batchApproveGrants(this.checked)
+      const items = this.checked.map((id) => {
+        const row = this.rows.find((r) => r.id === id)
+        return { id, version: row?.version }
+      })
+      const res = await batchApproveGrants(items)
       this.batchDialog.submitting = false
       this.batchDialog.visible = false
       if (res.code === 0) toast.success(`批量通过 ${res.data.count} 条资助申请（跳过非待审核状态），已留痕`)

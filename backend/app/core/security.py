@@ -25,6 +25,8 @@ def assert_secret_safe() -> None:
         weak = {"change-me-in-production", "school-lifecycle-dev-secret-change-me-please-32", ""}
         if settings.jwt_secret in weak or len(settings.jwt_secret) < 32:
             raise RuntimeError("生产环境必须通过环境变量设置 ≥32 位随机 JWT_SECRET（或兼容名 JWT_SECRET_KEY）")
+    from app.core.field_crypto import assert_field_encryption_safe
+    assert_field_encryption_safe()
 
 
 def assert_prod_flags_safe() -> None:

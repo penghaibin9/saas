@@ -326,9 +326,9 @@ export async function getLeaveApplicationDetail(id) {
   return envelope({ leave: clone(l), student: student ? maskStudent(clone(student)) : null, history, auditLogs: clone(audits) })
 }
 
-export async function approveLeave(id, { comment = '' } = {}) {
+export async function approveLeave(id, { comment = '', version } = {}) {
   if (shouldTryReal()) {
-    try { return envelope(await request(`/campus-service/leaves/${id}/approve`, { method: 'POST', body: { comment } })) }
+    try { return envelope(await request(`/campus-service/leaves/${id}/approve`, { method: 'POST', body: { comment, version } })) }
     catch (e) { if (e.biz) return fail(e.message, e.code) }
   }
   await delay()
@@ -341,9 +341,9 @@ export async function approveLeave(id, { comment = '' } = {}) {
   return envelope({ id })
 }
 
-export async function returnLeave(id, { reason }) {
+export async function returnLeave(id, { reason, version } = {}) {
   if (shouldTryReal()) {
-    try { return envelope(await request(`/campus-service/leaves/${id}/return`, { method: 'POST', body: { reason } })) }
+    try { return envelope(await request(`/campus-service/leaves/${id}/return`, { method: 'POST', body: { reason, version } })) }
     catch (e) { if (e.biz) return fail(e.message, e.code) }
   }
   await delay()
@@ -357,22 +357,24 @@ export async function returnLeave(id, { reason }) {
   return envelope({ id })
 }
 
-export async function batchApproveLeaves(ids = []) {
+export async function batchApproveLeaves(items = []) {
   if (shouldTryReal()) {
-    try { return envelope(await request('/campus-service/leaves/batch-approve', { method: 'POST', body: { ids } })) }
+    try { return envelope(await request('/campus-service/leaves/batch-approve', { method: 'POST', body: { items } })) }
     catch (e) { if (e.biz) return fail(e.message, e.code) }
   }
   await delay()
-  if (!ids.length) return fail('请先选择申请')
+  const list = Array.isArray(items) ? items : []
+  if (!list.length) return fail('请先选择申请')
   let count = 0
-  for (const id of ids) {
+  for (const raw of list) {
+    const id = typeof raw === 'object' ? raw.id : raw
     const l = db.leaveApplications.find((x) => x.id === id)
     if (l && l.status === 'PENDING_REVIEW') {
-      await approveLeave(id, { comment: '批量通过' })
+      await approveLeave(id, { comment: '批量通过', version: typeof raw === 'object' ? raw.version : undefined })
       count++
     }
   }
-  pushAudit('LEAVE', ids.join(','), '批量审批通过', `批量通过 ${count} 条待审批请假`)
+  pushAudit('LEAVE', list.map((x) => (typeof x === 'object' ? x.id : x)).join(','), '批量审批通过', `批量通过 ${count} 条待审批请假`)
   return envelope({ count })
 }
 
@@ -424,25 +426,25 @@ export async function getGrantApplicationDetail(id) {
   })
 }
 
-export async function approveGrant(id, { comment = '' } = {}) {
+export async function approveGrant(id, { comment = '', version } = {}) {
   if (shouldTryReal()) {
-    try { return envelope(await request(`/campus-service/grants/${id}/approve`, { method: 'POST', body: { comment } })) }
+    try { return envelope(await request(`/campus-service/grants/${id}/approve`, { method: 'POST', body: { comment, version } })) }
     catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '审核失败') }
   }
   return refuseLegacyMockWrite('奖助审批')
 }
 
-export async function returnGrant(id, { reason }) {
+export async function returnGrant(id, { reason, version } = {}) {
   if (shouldTryReal()) {
-    try { return envelope(await request(`/campus-service/grants/${id}/return`, { method: 'POST', body: { reason } })) }
+    try { return envelope(await request(`/campus-service/grants/${id}/return`, { method: 'POST', body: { reason, version } })) }
     catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '退回失败') }
   }
   return refuseLegacyMockWrite('奖助退回')
 }
 
-export async function batchApproveGrants(ids = []) {
+export async function batchApproveGrants(items = []) {
   if (shouldTryReal()) {
-    try { return envelope(await request('/campus-service/grants/batch-approve', { method: 'POST', body: { ids } })) }
+    try { return envelope(await request('/campus-service/grants/batch-approve', { method: 'POST', body: { items } })) }
     catch (e) { if (e.biz) return fail(e.message, e.code); return fail(e.message || '批量审核失败') }
   }
   return refuseLegacyMockWrite('奖助批量审批')

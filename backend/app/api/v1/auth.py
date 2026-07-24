@@ -171,14 +171,34 @@ from fastapi import Header  # noqa: E402
 
 @router.post("/logout", summary="登出（access 令牌 jti 进入黑名单即刻失效；吊销该用户全部 refreshToken）")
 def logout(user=Depends(get_current_user), authorization: _Optional[str] = Header(default=None)):
-    try:
-        raw = (authorization or "")[7:].strip()
-        claims = decode_token(raw) if raw else {}
-        block_jti(claims.get("jti"), float(claims.get("exp") or 0) or None)
-    except Exception:  # noqa: BLE001 — 解析失败不影响登出语义
-        pass
+    from app.core.exceptions import AppException
     from app.core.token_store import revoke_refresh_by_user
-    revoke_refresh_by_user(str(user.get("userId", "")))
+    jti_ok = True
+    refresh_ok = False
+    errors = []
+    try:
+        raw = (authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else (authorization or "")
+        claims = decode_token(raw) if raw else {}
+        jti = claims.get("jti")
+        if jti:
+            jti_ok = bool(block_jti(jti, float(claims.get("exp") or 0) or None))
+    except AppException as e:
+        jti_ok = False
+        errors.append(e.message)
+    except Exception:  # noqa: BLE001
+        jti_ok = False
+        errors.append("access令牌拉黑失败")
+    try:
+        revoke_refresh_by_user(str(user.get("userId", "")))
+        refresh_ok = True
+    except AppException as e:
+        errors.append(e.message)
     audit.record("登出", method="POST", path="/api/v1/auth/logout",
                  status_code=200, target_type="auth", target_id=user.get("userId", "-"))
+    invalidated = bool(jti_ok and refresh_ok)
+    if not invalidated:
+        return success({
+            "loggedOut": True, "tokenInvalidated": False, "partial": True,
+            "errors": errors,
+        }, message="登出未完全生效，请稍后重试或清除本地令牌")
     return success({"loggedOut": True, "tokenInvalidated": True}, message="已登出，令牌已失效")

@@ -1,10 +1,8 @@
-"""学生主档 API（阶段11）。mock 阶段敏感字段恒返回脱敏口径；tenant_id 过滤在 service 层。
+"""学生主档 API。
 
-数据范围（SEC 口径，2026-07-17 收敛）：本目录是跨域公共学生选择器的后端，
-仅对具有明确范围语义的学工侧角色按 StudentAffairsSecurityContext 收敛：
-辅导员/班主任(CLASS)、学院管理员(COLLEGE)、心理教师(PSY 授权学生)；未配 scope = fail-closed 空。
-管理类角色(TENANT_ALL)不收敛；毕设/实习/就业/宿管等其他域角色沿用全租户目录语义
-（各域业务端点已有本域范围校验，收敛口径见「上线前必做清单-总闸门」登记）。
+两种语义：
+1) 主档管理：student.profile.view / manage，未知角色 fail-closed（空范围）。
+2) 公共选择器：?mode=picker，仅最小字段，且必须按数据范围过滤，无写能力。
 """
 from __future__ import annotations
 
@@ -13,6 +11,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from app.core.affairs_security import no_data_scope, student_directory_scope
+from app.core.exceptions import AppException
+from app.core.permissions import has_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.schemas.student import StudentCreateRequest, StudentUpdateRequest, StudentVoidRequest
@@ -21,25 +21,48 @@ from app.services import student_service as svc
 
 router = APIRouter(prefix="/students", tags=["students"])
 
+_PICKER_PERMS = (
+    "student.profile.view",
+    "studentAffairs.student.view",
+    "campusService.student.view",
+    "internship.student.view",
+    "graduationDesign.view",
+    "academicAffairs.roster.view",
+)
+
+
+def _can_pick_students(user) -> bool:
+    return has_permission(user, "*") or any(has_permission(user, p) for p in _PICKER_PERMS)
+
+
+def _can_view_profile(user) -> bool:
+    return has_permission(user, "*") or has_permission(user, "student.profile.view")
+
 
 def _check_target_scope(student_id: str, user) -> None:
-    """详情/写操作目标学生范围校验；越租户仍由 service 报 not_found（不泄露存在性）。"""
+    """详情/写操作目标学生范围校验；越租户仍由 service 报 not_found。"""
     class_ids, student_ids = student_directory_scope(user)
     if class_ids is None and student_ids is None:
         return
-    from app.services.db_service import _tid, session
-    from app.models import StudentProfile
+    # 空集合：明确无范围
+    if student_ids is not None and len(student_ids) == 0:
+        raise no_data_scope("该学生不在您的数据范围内")
+    if class_ids is not None and len(class_ids) == 0 and student_ids is None:
+        raise no_data_scope("该学生不在您的数据范围内")
     from sqlalchemy import select
+
+    from app.models import StudentProfile
+    from app.services.db_service import _tid, session
     try:
         sid = int(student_id)
     except (TypeError, ValueError):
-        return  # 非法 id 交给 service 报 not_found
+        return
     with session() as db:
         s = db.scalars(select(StudentProfile).where(
             StudentProfile.id == sid, StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False))).first()
         if s is None:
-            return  # 不存在/越租户 → service 统一 not_found
+            return
         if student_ids is not None:
             if s.id in student_ids:
                 return
@@ -48,25 +71,58 @@ def _check_target_scope(student_id: str, user) -> None:
     raise no_data_scope("该学生不在您的数据范围内")
 
 
-@router.get("", summary="学生主档列表（分页 + keyword/college/major/className/status/riskLevel；按角色数据范围收敛）")
+def _to_picker_item(row: dict) -> dict:
+    return {
+        "id": row.get("id") or row.get("studentId"),
+        "studentId": row.get("id") or row.get("studentId"),
+        "studentNo": row.get("studentNo"),
+        "realName": row.get("realName") or row.get("name"),
+        "className": row.get("className"),
+        "collegeName": row.get("collegeName"),
+        "majorName": row.get("majorName"),
+        "status": row.get("status") or row.get("studentStatus"),
+    }
+
+
+@router.get("", summary="学生列表（主档或选择器）")
 def list_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                   keyword: Optional[str] = None, college: Optional[str] = None,
                   major: Optional[str] = None, className: Optional[str] = None,
                   status: Optional[str] = None, riskLevel: Optional[str] = None,
+                  mode: Optional[str] = Query(None, description="picker=最小字段选择器"),
                   user=Depends(require_staff)):
+    is_picker = (mode or "").strip().lower() == "picker"
+    if is_picker:
+        if not _can_pick_students(user):
+            raise AppException("NO_PERMISSION", "无权检索学生目录")
+    elif not _can_view_profile(user) and not _can_pick_students(user):
+        raise AppException("NO_PERMISSION", "无权查看学生主档")
     class_ids, student_ids = student_directory_scope(user)
     items, total = svc.list_students(page, pageSize, keyword, college, major, className, status, riskLevel,
                                      class_ids=class_ids, student_ids=student_ids)
+    if is_picker or not _can_view_profile(user):
+        items = [_to_picker_item(x) for x in items]
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/{student_id}", summary="学生 360 详情（主档 + 联系方式(脱敏) + 状态 + 时间线）")
-def get_student(student_id: str, user=Depends(require_staff)):
+@router.get("/{student_id}", summary="学生 360 详情")
+def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends(require_staff)):
+    is_picker = (mode or "").strip().lower() == "picker"
+    if is_picker:
+        if not _can_pick_students(user):
+            raise AppException("NO_PERMISSION", "无权检索学生目录")
+    elif not _can_view_profile(user):
+        # 无主档查看权：仅返回最小字段（若有域内学生查看权）
+        if not _can_pick_students(user):
+            raise AppException("NO_PERMISSION", "无权查看学生主档")
+        is_picker = True
     _check_target_scope(student_id, user)
-    return success(svc.get_student(student_id))
+    row = svc.get_student(student_id)
+    return success(_to_picker_item(row) if is_picker else row)
 
 
-@router.post("", summary="新增学生主档（mock；DB_ENABLED=true 后写 t_student_profile）")
+@router.post("", summary="新增学生主档",
+             dependencies=[Depends(require_permission("student.profile.manage"))])
 def create_student(body: StudentCreateRequest, user=Depends(require_staff)):
     row = svc.create_student(body)
     audit.record("新增学生", method="POST", path="/api/v1/students", status_code=200,
@@ -74,7 +130,8 @@ def create_student(body: StudentCreateRequest, user=Depends(require_staff)):
     return success(row, message="建档成功")
 
 
-@router.put("/{student_id}", summary="更新学生主档")
+@router.put("/{student_id}", summary="更新学生主档",
+            dependencies=[Depends(require_permission("student.profile.manage"))])
 def update_student(student_id: str, body: StudentUpdateRequest, user=Depends(require_staff)):
     _check_target_scope(student_id, user)
     row = svc.update_student(student_id, body)
@@ -83,7 +140,8 @@ def update_student(student_id: str, body: StudentUpdateRequest, user=Depends(req
     return success(row, message="已保存")
 
 
-@router.post("/{student_id}/void", summary="作废学生主档（逻辑删除，不物理删除，原因≥5字写审计）")
+@router.post("/{student_id}/void", summary="作废学生主档",
+             dependencies=[Depends(require_permission("student.profile.manage"))])
 def void_student(student_id: str, body: StudentVoidRequest, user=Depends(require_staff)):
     _check_target_scope(student_id, user)
     result = svc.void_student(student_id, body.reason)
@@ -94,11 +152,15 @@ def void_student(student_id: str, body: StudentVoidRequest, user=Depends(require
 
 @router.get("/{student_id}/timeline", summary="学生成长时间线")
 def student_timeline(student_id: str, user=Depends(require_staff)):
+    if not _can_view_profile(user):
+        raise AppException("NO_PERMISSION", "无权查看学生主档")
     _check_target_scope(student_id, user)
     return success({"items": svc.get_timeline(student_id)})
 
 
-@router.get("/{student_id}/risk-summary", summary="学生风险摘要（学业/实习/就业三维信号）")
+@router.get("/{student_id}/risk-summary", summary="学生风险摘要")
 def student_risk(student_id: str, user=Depends(require_staff)):
+    if not _can_view_profile(user):
+        raise AppException("NO_PERMISSION", "无权查看学生主档")
     _check_target_scope(student_id, user)
     return success(svc.get_risk_summary(student_id))

@@ -36,21 +36,35 @@ def _tok_hash(token: str) -> str:
     return hashlib.sha256((token or "").encode()).hexdigest()
 
 
-def _db():
-    """DB 可用则返回 session，否则 None（内存回落）。绝不因 DB 故障阻断认证主流程。"""
+def _db(*, required: bool = False):
+    """DB 可用则返回 session。required=True 时不可用则抛错（安全写路径）。"""
+    from app.core.config import settings
+    from app.core.exceptions import AppException
     try:
         from app.db.session import db_enabled, get_sessionmaker
         if not db_enabled():
+            if required and settings.is_prod:
+                raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储不可用（生产必须启用数据库）",
+                                   http_status=503)
             return None
         return get_sessionmaker()()
+    except AppException:
+        raise
     except Exception:  # noqa: BLE001
+        if required or settings.is_prod:
+            raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
         return None
 
 
 # ── refreshToken ──
 def issue_refresh(claims: dict) -> str:
+    from app.core.config import settings
+    from app.core.exceptions import AppException
     token = secrets.token_urlsafe(48)
-    db = _db()
+    # 生产或 DB 开启：必须持久化，禁止仅内存签发
+    from app.db.session import db_enabled
+    must_persist = settings.is_prod or db_enabled()
+    db = _db(required=must_persist)
     if db is not None:
         try:
             from app.models import AuthRefreshToken
@@ -60,18 +74,33 @@ def issue_refresh(claims: dict) -> str:
                                     expires_at=datetime.utcnow() + timedelta(seconds=REFRESH_TTL)))
             db.commit()
             return token
-        except Exception:  # noqa: BLE001 — DB 异常回落内存
-            db.rollback()
+        except AppException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if must_persist:
+                raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发刷新令牌：认证存储写入失败",
+                                   http_status=503) from e
         finally:
             db.close()
+    if must_persist:
+        raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发刷新令牌：认证存储不可用", http_status=503)
     _refresh[token] = {"claims": dict(claims), "exp": _now() + REFRESH_TTL}
     return token
 
 
 def consume_refresh(token: str) -> dict | None:
     """校验并轮换：旧 refresh 立即作废，返回 claims；无效/过期返回 None。
-    DB 模式用「删除即消费」保证并发下同一 refresh 只能成功一次。"""
-    db = _db()
+    DB 模式用「删除即消费」保证并发下同一 refresh 只能成功一次。
+    生产/DB 开启时查询失败不得静默回落内存。"""
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+    from app.db.session import db_enabled
+    must_persist = settings.is_prod or db_enabled()
+    db = _db(required=must_persist)
     if db is not None:
         try:
             from sqlalchemy import delete, select
@@ -80,7 +109,10 @@ def consume_refresh(token: str) -> dict | None:
             row = db.scalars(select(AuthRefreshToken).where(
                 AuthRefreshToken.token_hash == h)).first()
             if row is None:
-                return _consume_refresh_memory(token)  # 兼容 DB 开启前签发的内存 refresh
+                # 仅演示模式允许兼容进程内存中的旧 token
+                if not must_persist:
+                    return _consume_refresh_memory(token)
+                return None
             claims = dict(row.claims_json or {})
             expired = row.expires_at < datetime.utcnow()
             res = db.execute(delete(AuthRefreshToken).where(
@@ -89,8 +121,15 @@ def consume_refresh(token: str) -> dict | None:
             if expired or (res.rowcount or 0) == 0:
                 return None  # 过期，或已被并发消费
             return claims
-        except Exception:  # noqa: BLE001
-            db.rollback()
+        except AppException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if must_persist:
+                raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503) from e
             return _consume_refresh_memory(token)
         finally:
             db.close()
@@ -105,8 +144,13 @@ def _consume_refresh_memory(token: str) -> dict | None:
 
 
 def revoke_refresh_by_user(user_id: str) -> int:
+    """吊销用户全部 refresh。DB 开启时写入失败抛错，禁止假成功。"""
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+    from app.db.session import db_enabled
     n = 0
-    db = _db()
+    must_persist = settings.is_prod or db_enabled()
+    db = _db(required=must_persist)
     if db is not None:
         try:
             from sqlalchemy import delete
@@ -115,10 +159,20 @@ def revoke_refresh_by_user(user_id: str) -> int:
                 AuthRefreshToken.user_id == str(user_id)))
             db.commit()
             n += int(res.rowcount or 0)
-        except Exception:  # noqa: BLE001
-            db.rollback()
+        except AppException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if must_persist:
+                raise AppException("AUTH_STORE_UNAVAILABLE", "无法吊销刷新令牌：认证存储写入失败",
+                                   http_status=503) from e
         finally:
             db.close()
+    elif must_persist:
+        raise AppException("AUTH_STORE_UNAVAILABLE", "无法吊销刷新令牌：认证存储不可用", http_status=503)
     dead = [t for t, v in _refresh.items() if v["claims"].get("userId") == user_id]
     for t in dead:
         _refresh.pop(t, None)
@@ -126,27 +180,44 @@ def revoke_refresh_by_user(user_id: str) -> int:
 
 
 # ── accessToken 黑名单（logout 即失效）──
-def block_jti(jti: str, exp_ts: float | None = None) -> None:
+def block_jti(jti: str, exp_ts: float | None = None) -> bool:
+    """拉黑 access jti。返回是否完成持久化（生产必须 True）。"""
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+    from app.db.session import db_enabled
     if not jti:
-        return
+        return False
     exp = exp_ts or (_now() + 7200)
-    _blocked_jti[jti] = exp  # L1：本进程立即生效
+    _blocked_jti[jti] = exp
     _allowed_jti.pop(jti, None)
     from app.core.redis_client import cache_set
     cache_set(f"auth:jti:{jti}", "1", max(1, int(exp - _now())))
-    db = _db()
+    must_persist = settings.is_prod or db_enabled()
+    db = _db(required=must_persist)
+    persisted = not must_persist
     if db is not None:
         try:
             from app.models import AuthBlockedJti
             db.add(AuthBlockedJti(jti=jti, expires_at=datetime.utcfromtimestamp(exp)))
             db.commit()
-        except Exception:  # noqa: BLE001 — 重复登出等冲突不影响语义
-            db.rollback()
+            persisted = True
+        except AppException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if must_persist:
+                raise AppException("AUTH_STORE_UNAVAILABLE", "无法拉黑令牌：认证存储写入失败",
+                                   http_status=503) from e
         finally:
             db.close()
-    # 顺手清理内存过期项
+    elif must_persist:
+        raise AppException("AUTH_STORE_UNAVAILABLE", "无法拉黑令牌：认证存储不可用", http_status=503)
     for k in [k for k, v in _blocked_jti.items() if v < _now()]:
         _blocked_jti.pop(k, None)
+    return persisted
 
 
 def jti_blocked(jti: str | None) -> bool:
@@ -181,8 +252,12 @@ def jti_blocked(jti: str | None) -> bool:
                 _blocked_jti[jti] = row.expires_at.timestamp()  # 回填 L1
                 cache_set(f"auth:jti:{jti}", "1", max(1, int(row.expires_at.timestamp() - _now())))
                 return True
-        except Exception:  # noqa: BLE001 — 查询异常按未拉黑处理（access 本身有过期时间兜底）
-            pass
+        except Exception:  # noqa: BLE001 — 查询异常：生产/DB 模式 fail-closed
+            from app.core.config import settings
+            from app.core.exceptions import AppException
+            from app.db.session import db_enabled
+            if settings.is_prod or db_enabled():
+                raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
         finally:
             db.close()
     # Cache a negative lookup.  Redis overwrites this immediately on logout;

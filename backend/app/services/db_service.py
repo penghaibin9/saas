@@ -100,11 +100,13 @@ def _org_names(db, rows: list[StudentProfile]) -> None:
 
 
 def _primary_phone(db, student_id: int) -> str | None:
+    from app.core.field_crypto import decrypt_field
     c = db.scalars(select(StudentContact).where(
         StudentContact.tenant_id == _tid(), StudentContact.student_id == student_id,
         StudentContact.contact_type == "PHONE", StudentContact.is_deleted.is_(False))).first()
-    # 演示环境：contact_value_encrypted 存的是演示明文占位（真实环境为密文，解密在授权服务内完成）
-    return c.contact_value_encrypted if c else None
+    if not c:
+        return None
+    return decrypt_field(c.contact_value_encrypted)
 
 
 def list_students(page: int, page_size: int, keyword=None, college=None, major=None,
@@ -173,7 +175,8 @@ def list_students(page: int, page_size: int, keyword=None, college=None, major=N
                 StudentContact.is_deleted.is_(False),
             ).order_by(StudentContact.is_primary.desc(), StudentContact.id)).all()
             for contact in contacts:
-                phones.setdefault(contact.student_id, contact.contact_value_encrypted)
+                from app.core.field_crypto import decrypt_field
+                phones.setdefault(contact.student_id, decrypt_field(contact.contact_value_encrypted))
         return [_student_row(s, phones.get(s.id)) for s in page_rows], total
 
 
@@ -196,16 +199,30 @@ def get_student(student_id) -> dict:
         events = db.scalars(select(StudentStageEvent).where(
             StudentStageEvent.tenant_id == _tid(), StudentStageEvent.student_id == s.id
         ).order_by(StudentStageEvent.occurred_at.desc())).all()
-        phone = next((c.contact_value_encrypted for c in contacts if c.contact_type == "PHONE"), None)
-        return {
-            **_student_row(s, phone),
-            "contacts": [{
+        from app.core.field_crypto import decrypt_field
+        phone = None
+        contact_views = []
+        for c in contacts:
+            plain = decrypt_field(c.contact_value_encrypted)
+            if c.contact_type == "PHONE" and phone is None:
+                phone = plain
+            if "PHONE" in (c.contact_type or ""):
+                masked = _mask_phone(plain)
+            elif "ID" in (c.contact_type or "").upper() or "CARD" in (c.contact_type or "").upper():
+                raw = plain or ""
+                masked = (raw[:4] + "**********" + raw[-2:]) if len(raw) >= 6 else "****"
+            else:
+                raw = plain or ""
+                masked = (raw[:6] + "****") if raw else "****"
+            contact_views.append({
                 "contactType": c.contact_type,
-                "valueMasked": _mask_phone(c.contact_value_encrypted) if "PHONE" in c.contact_type
-                               else ((c.contact_value_encrypted or "")[:6] + "****"),
+                "valueMasked": masked,
                 "contactName": c.contact_name or "", "verifiedStatus": c.verified_status,
                 "isPrimary": bool(c.is_primary),
-            } for c in contacts],
+            })
+        return {
+            **_student_row(s, phone),
+            "contacts": contact_views,
             "statusRecord": {"currentStage": s.current_stage, "studentStatus": s.student_status},
             "timeline": [{"eventCategory": e.source_module or "STAGE",
                           "title": f"{e.from_stage or '—'} → {e.to_stage}" if e.to_stage else (e.reason or ""),
@@ -239,8 +256,9 @@ def create_student(body) -> dict:
         db.add(s)
         db.flush()
         if body.phone:
+            from app.core.field_crypto import encrypt_field
             db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
-                                  contact_value_encrypted=body.phone, is_primary=True,
+                                  contact_value_encrypted=encrypt_field(body.phone), is_primary=True,
                                   verified_status="UNVERIFIED"))
         db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=None,
                                  to_stage=ADMITTED, reason="建档", source_module="student"))
@@ -259,14 +277,16 @@ def update_student(student_id, body) -> dict:
         s.version += 1
         phone = getattr(body, "phone", None)
         if phone:
+            from app.core.field_crypto import encrypt_field
+            enc = encrypt_field(phone)
             c = db.scalars(select(StudentContact).where(
                 StudentContact.tenant_id == _tid(), StudentContact.student_id == s.id,
                 StudentContact.contact_type == "PHONE")).first()
             if c:
-                c.contact_value_encrypted = phone
+                c.contact_value_encrypted = enc
             else:
                 db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
-                                      contact_value_encrypted=phone, is_primary=True,
+                                      contact_value_encrypted=enc, is_primary=True,
                                       verified_status="UNVERIFIED"))
         db.commit()
         db.refresh(s)
@@ -303,6 +323,7 @@ def get_risk_summary(student_id) -> dict:
 def _task_row(t: WorkflowTask, inst: WorkflowInstance | None) -> dict:
     return {
         "taskId": str(t.id), "instanceId": str(t.instance_id), "tenantId": str(t.tenant_id),
+        "assigneeId": str(t.assignee_id), "version": int(t.version or 0),
         "title": (inst.title if inst else "") or "", "sourceModule": inst.source_module if inst else "",
         "sourceBizType": inst.source_biz_type if inst else "",
         "applicantName": (inst.remark or "") if inst else "",
@@ -311,6 +332,27 @@ def _task_row(t: WorkflowTask, inst: WorkflowInstance | None) -> dict:
         "actedAt": _iso(t.acted_at), "actionReason": t.action_reason or "",
         "urgency": "NORMAL",
     }
+
+
+def _approval_actor_id(user: dict | None) -> int:
+    from app.core.context import get_current_user_ctx
+    from app.services.message_identity import resolve_message_user_id
+    return resolve_message_user_id(user or get_current_user_ctx() or {})
+
+
+def _can_manage_all_approvals(user: dict | None) -> bool:
+    from app.core.context import get_current_user_ctx
+    from app.core.permissions import has_permission
+    u = user or get_current_user_ctx() or {}
+    return has_permission(u, "*") or has_permission(u, "approval.manage")
+
+
+def _assert_task_assignee(t: WorkflowTask, user: dict | None) -> None:
+    if _can_manage_all_approvals(user):
+        return
+    uid = _approval_actor_id(user)
+    if not uid or int(t.assignee_id) != int(uid):
+        raise not_found("审批任务不存在")
 
 
 def _insts(db, ids) -> dict:
@@ -322,10 +364,13 @@ def _insts(db, ids) -> dict:
     return {r.id: r for r in rows}
 
 
-def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple[list[dict], int]:
+def list_tasks(page: int, page_size: int, status: Optional[str] = None,
+               user: dict | None = None) -> tuple[list[dict], int]:
     with session() as db:
-        cond = (WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
-                WorkflowTask.status == (status or "PENDING"))
+        cond = [WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status == (status or "PENDING")]
+        if not _can_manage_all_approvals(user):
+            cond.append(WorkflowTask.assignee_id == _approval_actor_id(user))
         total = db.scalar(select(func.count()).select_from(WorkflowTask).where(*cond)) or 0
         rows = db.scalars(select(WorkflowTask).where(*cond).order_by(WorkflowTask.id)
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
@@ -333,28 +378,32 @@ def list_tasks(page: int, page_size: int, status: Optional[str] = None) -> tuple
         return [_task_row(t, insts.get(t.instance_id)) for t in rows], total
 
 
-def tasks_by_biz_type() -> list[dict]:
+def tasks_by_biz_type(user: dict | None = None) -> list[dict]:
     with session() as db:
+        cond = [WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status == "PENDING", WorkflowInstance.tenant_id == _tid(),
+                WorkflowInstance.is_deleted.is_(False)]
+        if not _can_manage_all_approvals(user):
+            cond.append(WorkflowTask.assignee_id == _approval_actor_id(user))
         rows = db.execute(
             select(WorkflowInstance.source_biz_type, func.count(WorkflowTask.id),
                    func.min(WorkflowTask.created_at))
             .select_from(WorkflowTask)
             .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
-            .where(WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
-                   WorkflowTask.status == "PENDING", WorkflowInstance.tenant_id == _tid(),
-                   WorkflowInstance.is_deleted.is_(False))
+            .where(*cond)
             .group_by(WorkflowInstance.source_biz_type)
         ).all()
         return [{"bizType": r[0] or "GENERAL", "count": r[1], "earliest": _iso(r[2])} for r in rows]
 
 
-def get_task(task_id) -> dict:
+def get_task(task_id, user: dict | None = None) -> dict:
     with session() as db:
         t = db.scalars(select(WorkflowTask).where(
             WorkflowTask.id == int(task_id), WorkflowTask.tenant_id == _tid(),
             WorkflowTask.is_deleted.is_(False))).first()
         if not t:
             raise not_found("审批任务不存在")
+        _assert_task_assignee(t, user)
         inst = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid(),
             WorkflowInstance.is_deleted.is_(False))).first()
@@ -363,38 +412,46 @@ def get_task(task_id) -> dict:
                              "at": _iso(t.created_at)}]}
 
 
-def act_task(task_id, action: str, reason: str | None = None, target: str | None = None) -> dict:
+def act_task(task_id, action: str, reason: str | None = None, target: str | None = None,
+             user: dict | None = None, version=None) -> dict:
+    from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
+    require_expected_version(version)
+    msg_campaign_id = None
+    result = {}
     with session() as db:
         t = db.scalars(select(WorkflowTask).where(
             WorkflowTask.id == int(task_id), WorkflowTask.tenant_id == _tid(),
             WorkflowTask.is_deleted.is_(False))).first()
         if not t:
             raise not_found("审批任务不存在")
-        if t.status != "PENDING":
-            raise AppException("APPROVAL_VERSION_CONFLICT", "任务已被处理，请刷新")
-        t.status = action
-        t.acted_at = datetime.utcnow()
+        _assert_task_assignee(t, user)
+        values = {
+            "status": action,
+            "acted_at": datetime.utcnow(),
+        }
         if reason:
-            t.action_reason = reason
+            values["action_reason"] = reason
         if target:
-            t.remark = f"TRANSFER_TO:{target}"
-        t.version += 1
+            values["remark"] = f"TRANSFER_TO:{target}"
+        atomic_versioned_update(
+            db, WorkflowTask, entity_id=int(task_id), tenant_id=_tid(),
+            expected_version=version, values=values, expected_status="PENDING")
         inst = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid(),
             WorkflowInstance.is_deleted.is_(False))).first()
         if inst and action in ("APPROVED", "REJECTED"):
             inst.status = action
-        msg_campaign_id = None
         if inst and (inst.source_biz_type or "") == "MESSAGE_CAMPAIGN" and action in ("APPROVED", "REJECTED"):
             msg_campaign_id = int(inst.source_biz_id or 0)
         db.commit()
-        result = {"taskId": str(t.id), "status": t.status, "actedAt": _iso(t.acted_at),
-                  "instanceStatus": inst.status if inst else "RUNNING"}
+        result = {"taskId": str(task_id), "status": action, "actedAt": _iso(datetime.utcnow()),
+                  "instanceStatus": inst.status if inst else "RUNNING",
+                  "version": int(version) + 1}
     if msg_campaign_id:
         try:
             from app.core.context import get_current_user_ctx
             from app.services import message_campaign_service as camp_svc
-            actor = dict(get_current_user_ctx() or {})
+            actor = dict(user or get_current_user_ctx() or {})
             if not actor.get("userId"):
                 actor["userId"] = "0"
             if not actor.get("realName"):
@@ -410,10 +467,12 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
     return result
 
 
-def list_processed(page: int, page_size: int) -> tuple[list[dict], int]:
+def list_processed(page: int, page_size: int, user: dict | None = None) -> tuple[list[dict], int]:
     with session() as db:
-        cond = (WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
-                WorkflowTask.status.in_(["APPROVED", "REJECTED", "TRANSFERRED"]))
+        cond = [WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status.in_(["APPROVED", "REJECTED", "TRANSFERRED"])]
+        if not _can_manage_all_approvals(user):
+            cond.append(WorkflowTask.assignee_id == _approval_actor_id(user))
         total = db.scalar(select(func.count()).select_from(WorkflowTask).where(*cond)) or 0
         rows = db.scalars(select(WorkflowTask).where(*cond).order_by(WorkflowTask.acted_at.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()

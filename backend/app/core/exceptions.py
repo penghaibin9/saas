@@ -70,18 +70,11 @@ def tenant_not_found(msg: str = "租户不存在或已停用"):
 
 
 def check_version(current_version: int, expected_version) -> None:
-    """真乐观锁：调用方传了 expectedVersion 时才校验，未传时不阻断（兼容尚未升级的前端）。
-    安全审计 2026-07-17 发现：各审批服务的 version 此前只自增、从未在任何地方与客户端期望
-    版本比对，"APPROVAL_VERSION_CONFLICT" 实际只是状态机判断，挡不住并发双批准（两个请求
-    都读到同一旧状态、都通过状态检查、都提交）。此函数提供真正的版本比对，由各写操作在状态
-    校验之后、落库之前调用。"""
-    if expected_version is None:
-        return
-    try:
-        expected = int(expected_version)
-    except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "版本号非法")
-    if expected != current_version:
+    """真乐观锁：必须传入 expectedVersion；与当前 version 不一致则冲突。
+    新写路径优先使用 optimistic_lock.atomic_versioned_update（数据库原子条件）。"""
+    from app.core.optimistic_lock import require_expected_version
+    expected = require_expected_version(expected_version)
+    if expected != int(current_version or 0):
         raise AppException("APPROVAL_VERSION_CONFLICT", "数据已被他人修改，请刷新后重试")
 
 

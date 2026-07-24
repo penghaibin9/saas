@@ -61,6 +61,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "LEADER": {"audit.view", "*.view", "*.stat", *_WORKBENCH_SELF},  # 校/院领导：只读驾驶舱；显式补工作台自助权限
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       "internship.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
+                      "student.profile.view", "student.profile.manage",
                       # 消息中心：本院发布 + 本院发送统计（跨学院由 service 数据范围收敛）
                       "workbench.message.publish",
                       "workbench.message.college.publish", "workbench.message.schedule",
@@ -110,17 +111,20 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "academicAffairs.attendance.view",
         "academicAffairs.evaluation.view",
     },
-    "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view"},  # 教务处管理员：本校教务全权（TENANT_ALL），
+    "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
+                       "student.profile.view", "student.profile.manage"},  # 教务处管理员：本校教务全权（TENANT_ALL），
                                                              # 与 COLLEGE_ADMIN 区分——成绩发布/退回/归档等
                                                              # 超高危动作端点内额外校验角色=ACADEMIC_ADMIN/SCHOOL_ADMIN
 
     "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*", *_WORKBENCH_SELF, "approval.dashboard.view",
+                        "student.profile.view", "student.profile.manage",
                         "workbench.message.publish",
                         "workbench.message.schoolStudent.publish", "workbench.message.schedule",
                         "workbench.message.withdraw", "workbench.message.statistics.view",
                         "workbench.message.recipient.view"},
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view",
-                              *_WORKBENCH_SELF, "approval.dashboard.view",
+                              *_WORKBENCH_SELF, "approval.dashboard.view", "approval.manage",
+                              "student.profile.view", "student.profile.manage",
                               "workbench.message.publish",
                               "workbench.message.schoolStudent.publish",
                               "workbench.message.schoolAll.publish",

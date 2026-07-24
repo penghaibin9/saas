@@ -298,7 +298,10 @@ export default {
       if (!this.can('approveTask')) return
       this.formError = ''
       this.submitting = true
-      const res = await approvalApi.approveTask(this.task.taskId, { comment: this.comment })
+      const res = await approvalApi.approveTask(this.task.taskId, {
+        comment: this.comment,
+        version: this.task.version,
+      })
       this.submitting = false
       if (res.code === 0) {
         toast.success('审批通过：已留痕并同步申请人，待办统计已联动更新')
@@ -310,7 +313,10 @@ export default {
     },
     async submitReturn({ reason }) {
       this.submitting = true
-      const res = await approvalApi.returnTask(this.task.taskId, { reason })
+      const res = await approvalApi.returnTask(this.task.taskId, {
+        reason,
+        version: this.task.version,
+      })
       this.submitting = false
       this.returnDialog = false
       if (res.code === 0) {

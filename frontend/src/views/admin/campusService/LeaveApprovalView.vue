@@ -370,7 +370,10 @@ export default {
       if (!this.can('campus.leave.approve') || !this.detail) return
       this.submitting = true
       const prevIndex = this.selectedIndex
-      const res = await approveLeave(this.detail.leave.id, { comment: this.comment.trim() })
+      const res = await approveLeave(this.detail.leave.id, {
+        comment: this.comment.trim(),
+        version: this.detail.leave.version,
+      })
       this.submitting = false
       if (res.code === 0) {
         toast.success('已审批通过，结果已同步学生端并留痕')
@@ -395,7 +398,10 @@ export default {
     async submitReturn({ reason }) {
       this.returnDialog.submitting = true
       const prevIndex = this.selectedIndex
-      const res = await returnLeave(this.detail.leave.id, { reason })
+      const res = await returnLeave(this.detail.leave.id, {
+        reason,
+        version: this.detail.leave.version,
+      })
       this.returnDialog.submitting = false
       if (res.code === 0) {
         toast.success('已退回修改，原因已原文同步学生端并留痕')
@@ -450,7 +456,11 @@ export default {
     },
     async submitBatch() {
       this.batchDialog.submitting = true
-      const res = await batchApproveLeaves(this.checked)
+      const items = this.checked.map((id) => {
+        const row = this.rows.find((r) => r.id === id)
+        return { id, version: row?.version }
+      })
+      const res = await batchApproveLeaves(items)
       this.batchDialog.submitting = false
       this.batchDialog.visible = false
       if (res.code === 0) toast.success(`批量通过 ${res.data.count} 条待审批请假（跳过非待审批状态），已留痕`)
