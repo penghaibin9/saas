@@ -13,6 +13,24 @@ on:
     - cron: "0 18 * * *"
 
 jobs:
+  control-plane-contracts:
+    name: 控制面合同检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 校验模块清单
+        run: python scripts/check/validate-module-manifest.py
+      - name: 生成能力注册表
+        run: node scripts/check/generate-capability-registry.mjs
+      - name: 控制面合同检查
+        run: python scripts/check/check-control-plane-contracts.py
+
   internship-production-gates:
     name: 岗位实习生产闸门
     runs-on: ubuntu-latest

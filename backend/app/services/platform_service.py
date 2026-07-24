@@ -552,15 +552,27 @@ def reset_demo_data() -> dict:
 
 
 def feature_enabled(tenant_id: int, key: str) -> bool:
-    """业务端功能开关检查：配置缺失/异常时默认放行（不因总控故障阻断业务）。
-    fail-open 是刻意设计，但异常必须留痕以便运营发现总控读取故障。"""
+    """功能键检查：未知键默认拒绝；已知键按套餐/租户配置；读取异常 fail-closed。"""
+    from app.core.module_registry import resolve_feature_key
+    from app.services import platform_defaults as D
+
+    feature = resolve_feature_key(key) or (key if key in D.FEATURE_KEYS else None)
+    if feature is None or feature not in D.FEATURE_KEYS:
+        import logging
+        logging.getLogger("platform.feature").warning(
+            "feature_enabled 未知功能键，默认拒绝 tenant=%s key=%s", tenant_id, key)
+        return False
     try:
-        return bool(effective_features(tenant_id).get(key, True))
+        features = effective_features(tenant_id)
+        # 已知键缺失时回落套餐默认，不得对未知键 True
+        if feature not in features:
+            return bool(D.DEFAULT_FEATURES.get(feature, False))
+        return bool(features.get(feature))
     except Exception:
         import logging
         logging.getLogger("platform.feature").warning(
-            "feature_enabled 读取失败，已 fail-open 放行 tenant=%s key=%s", tenant_id, key)
-        return True
+            "feature_enabled 读取失败，fail-closed 拒绝 tenant=%s key=%s", tenant_id, key)
+        return False
 
 
 def safe_rule(tenant_id: int, group: str, key: str):

@@ -342,15 +342,80 @@ def _match(code: str, patterns: Iterable[str]) -> bool:
     return False
 
 
+def get_effective_permission_patterns(user: dict) -> list[str]:
+    """唯一有效权限计算入口：内置角色读平台基线；自定义角色读 DB；超管为 *。"""
+    if is_super_admin(user):
+        return ["*"]
+    database_patterns = _db_granted(user)
+    if database_patterns is not None:
+        # 自定义角色：DB 权限 + 有效临时授权
+        patterns = set(database_patterns)
+        try:
+            from app.services import system_governance_service as gov
+            patterns.update(gov.active_delegation_permission_patterns(user) or [])
+        except Exception:
+            pass
+        return sorted(patterns)
+    role = _role_of(user)
+    patterns = set(_granted(role))
+    try:
+        from app.services import system_governance_service as gov
+        patterns.update(gov.active_delegation_permission_patterns(user) or [])
+    except Exception:
+        pass
+    return sorted(patterns)
+
+
 def has_permission(user: dict, code: str) -> bool:
-    """纯判定：当前身份是否拥有指定 permissionCode。默认拒绝。"""
+    """纯判定：当前身份是否拥有指定 permissionCode。默认拒绝。与 get_effective_permission_patterns 同源。"""
     if is_super_admin(user):
         return True
     role = _role_of(user)
-    database_patterns = _db_granted(user)
-    if database_patterns is None and code in ROLE_PERMISSION_DENY.get(role, ()):
-        return False
-    return _match(code, database_patterns if database_patterns is not None else _granted(role))
+    patterns = get_effective_permission_patterns(user)
+    if code in ROLE_PERMISSION_DENY.get(role, ()) and "*" not in patterns:
+        from_db = _db_granted(user)
+        if from_db is None:
+            return False
+    return _match(code, patterns)
+
+
+def get_effective_access_context(user: dict) -> dict:
+    """前后端共用的访问上下文：权限模式 + 模块四态摘要 + 版本戳。"""
+    patterns = get_effective_permission_patterns(user)
+    role = _role_of(user)
+    tenant_id = int(user.get("tenantId") or 0) or None
+    try:
+        from app.core.context import current_tenant_id
+        tenant_id = int(current_tenant_id() or tenant_id or 0)
+    except Exception:
+        pass
+    module_states = {}
+    entitlements: list[str] = []
+    if tenant_id:
+        try:
+            from app.core.module_registry import all_module_keys
+            from app.services.module_access_service import module_access_state
+            for mk in all_module_keys():
+                st = module_access_state(tenant_id, mk)
+                module_states[mk] = st
+                if st.get("entitled") and st.get("enabled"):
+                    entitlements.append(mk)
+                    if st.get("featureKey"):
+                        entitlements.append(st["featureKey"])
+        except Exception:
+            pass
+    # permissionVersion：权限集变化即变，用于前端失效缓存；旧令牌对比失败则重新拉上下文
+    import hashlib
+    blob = f"{role}|{'|'.join(patterns)}|{'|'.join(sorted(set(entitlements)))}"
+    permission_version = hashlib.sha256(blob.encode()).hexdigest()[:16]
+    return {
+        "roleCode": role,
+        "permissionPatterns": patterns,
+        "moduleEntitlements": sorted(set(entitlements)),
+        "moduleStates": module_states,
+        "permissionVersion": permission_version,
+        "dataScope": (user or {}).get("dataScope") or "ASSIGNED",
+    }
 
 
 def _audit_denied(user: dict, code: str) -> None:
@@ -389,7 +454,7 @@ def require_any_permission(*codes: str):
 
 
 def require_module(module_key: str):
-    """模块授权门禁：DB 模式下未授权租户 fail-closed 403；DB 未启用（mock 演示态）不阻断。"""
+    """模块授权门禁：未知功能键默认拒绝；未购买/学校停用 403+审计。mock 演示态不阻断。"""
     def _dep(user: dict = Depends(get_current_user)) -> dict:
         from app.db.session import db_enabled
         if not db_enabled():
@@ -397,14 +462,20 @@ def require_module(module_key: str):
         if is_super_admin(user):
             return user
         from app.core.context import current_tenant_id
-        from app.services.platform_service import feature_enabled
-        tid = current_tenant_id()
-        if tid and not feature_enabled(int(tid), module_key):
+        from app.core.module_registry import resolve_feature_key
+        from app.services.module_access_service import assert_module_access
+
+        feature = resolve_feature_key(module_key)
+        if feature is None:
             try:
                 from app.services import audit_log
-                audit_log.record("MODULE_DENIED", f"module:{module_key}", result="DENIED")
+                audit_log.record("MODULE_DENIED", f"module:{module_key}",
+                                 detail={"reason": "unknown_feature_key"}, result="DENIED")
             except Exception:  # noqa: BLE001
                 pass
-            raise no_permission(f"该模块未授权：{module_key}")
+            raise no_permission(f"未知功能键，默认拒绝：{module_key}")
+        tid = current_tenant_id()
+        if tid:
+            assert_module_access(int(tid), module_key, write=False)
         return user
     return _dep

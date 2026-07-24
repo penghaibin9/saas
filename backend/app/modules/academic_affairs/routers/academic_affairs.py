@@ -2261,6 +2261,7 @@ class CollegeBody(BaseModel):
     sortOrder: Optional[int] = None
     status: Optional[str] = None
     remark: Optional[str] = None
+    expectedVersion: Optional[int] = None
 
 
 class SecretaryBindBody(BaseModel):
@@ -2277,6 +2278,7 @@ class MajorBody(BaseModel):
     direction: Optional[str] = None
     status: Optional[str] = None
     remark: Optional[str] = None
+    expectedVersion: Optional[int] = None
 
 
 class ClassBody(BaseModel):
@@ -2291,6 +2293,7 @@ class ClassBody(BaseModel):
     headTeacherId: Optional[str] = None
     status: Optional[str] = None
     remark: Optional[str] = None
+    expectedVersion: Optional[int] = None
 
 
 class ClassAdjustBody(BaseModel):

@@ -1,23 +1,22 @@
 /**
  * 学校级系统管理能力目录（唯一业务口径）。
  *
- * 平台运营的租户、套餐、全局权限点维护不在这里；本目录只描述学校管理员可见的
- * 基础 8 组 26 个三级能力，以及甲方新增的「实施与预设中心」统一消费本目录。
- * 避免再出现「侧边栏、权限树、路由」三份菜单各自维护的情况。
+ * 收口为 9 个二级工作区；既有真实能力归入对应工作区，不删除。
+ * 平台运营的租户、套餐、全局权限点维护不在这里。
  */
 const action = (key, label, risk = 'NORMAL') => ({ key, label, risk })
 
 const RAW_SYSTEM_MANAGEMENT_CATALOG = [
   {
-    key: 'sys-overview', label: '系统概览', icon: '◫',
-    description: '学校初始化检查、账号与组织完整性、模块开通状态及异常提醒。',
+    key: 'sys-overview', label: '系统总览', icon: '◫',
+    description: '模块健康、配置缺口、同步失败、安全风险与待处理事项。',
     items: [
-      { key: 'sys-overview-readiness', label: '系统概览与初始化检查', path: '/admin/system/overview', permissionKey: 'system.dashboard.view', view: 'dashboard', actions: [action('system:overview:view', '查看概览')] }
+      { key: 'sys-overview-readiness', label: '系统总览', path: '/admin/system/overview', permissionKey: 'system.dashboard.view', view: 'dashboard', actions: [action('system:overview:view', '查看概览')] }
     ]
   },
   {
-    key: 'sys-implementation', label: '实施与预设中心', icon: '⌘',
-    description: '用问答、预设、真实数据盘点和上线检查完成学校首次实施，并保留版本化变更链。',
+    key: 'sys-implementation', label: '实施与验收', icon: '⌘',
+    description: '学校初始化、基础数据与权限检查、模块准备度和上线检查。',
     items: [
       { key: 'sys-implementation-overview', label: '实施总览', path: '/admin/system/implementation/overview', permissionKey: 'systemAdmin.implementation.view', view: 'implementation', actions: [action('systemAdmin.implementation.create', '创建实施项目'), action('systemAdmin.implementation.view', '查看实施进度')] },
       { key: 'sys-implementation-wizard', label: '首次开局向导', path: '/admin/system/implementation/wizard', permissionKey: 'systemAdmin.implementation.configure', view: 'implementation', actions: [action('systemAdmin.implementation.configure', '保存问答配置'), action('systemAdmin.implementation.preview', '生成安装预览', 'HIGH')] },
@@ -40,7 +39,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-master-data', label: '组织主数据', icon: '♜',
+    key: 'sys-org', label: '组织与任职', icon: '♜',
     description: '学院、专业、班级与教职工任职关系是四大业务中心共用的唯一主数据。',
     items: [
       { key: 'sys-org-colleges', label: '学院与部门', path: '/admin/system/org?tab=college', permissionKey: 'system.org.view', view: 'org', actions: [action('org:create', '新增组织'), action('org:update', '编辑组织'), action('org:disable', '停用组织', 'HIGH')] },
@@ -50,8 +49,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-access', label: '角色与权限', icon: '❖',
-    description: '学校从平台角色模板启用并裁剪权限；不能新建平台菜单或越权授予。',
+    key: 'sys-access', label: '角色权限与数据范围', icon: '❖',
+    description: '学校从平台角色模板启用并裁剪权限；数据范围使用结构化规则。',
     items: [
       { key: 'sys-role-templates', label: '预设角色模板', path: '/admin/system/roles?tab=templates', permissionKey: 'system.role.template.view', view: 'roles', actions: [action('role:template:enable', '启用角色模板', 'HIGH')] },
       { key: 'sys-role-members', label: '学校角色与成员', path: '/admin/system/roles?tab=members', permissionKey: 'system.role.view', view: 'roles', actions: [action('role:create', '新增角色', 'HIGH'), action('role:member:assign', '分配角色成员', 'HIGH'), action('role:deprecate', '停用角色', 'HIGH')] },
@@ -61,8 +60,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-school-config', label: '学校配置', icon: '✦',
-    description: '学校可维护本校可配置项；套餐和租户授权只读，仍由平台运营侧管理。',
+    key: 'sys-modules', label: '模块与学校配置', icon: '✦',
+    description: '学校可在已购范围内启停模块，并维护本校可配置项。',
     items: [
       { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'system.config.brand.manage', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
       { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
@@ -71,8 +70,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-workflow', label: '流程配置', icon: '⧉',
-    description: '流程只引用系统统一角色；审批任务归工作台，不在这里重复维护。',
+    key: 'sys-workflow', label: '流程配置与运行', icon: '⧉',
+    description: '流程只引用系统统一角色；审批任务归工作台。',
     items: [
       { key: 'sys-process-templates', label: '流程模板', path: '/admin/workflow/processes', permissionKey: 'workflow.process.view', view: 'workflow', actions: [action('workflow:template:manage', '维护流程模板', 'HIGH')] },
       { key: 'sys-process-rules', label: '节点与规则配置', path: '/admin/system/process-rules', permissionKey: 'workflow.rule.manage', view: 'capability', actions: [action('workflow:rule:manage', '维护节点与规则', 'HIGH')] },
@@ -81,7 +80,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
   },
   {
     key: 'sys-security-audit', label: '安全与审计', icon: '≡',
-    description: '审计日志只增不删；敏感查看、导入导出与权限变更必须可追溯到自然人。',
+    description: '审计日志只增不删；敏感查看、导入导出与权限变更必须可追溯。',
     items: [
       { key: 'sys-operation-audit', label: '操作与权限审计', path: '/admin/system/logs?tab=operation', permissionKey: 'system.audit.operation.view', view: 'logs', actions: [action('audit:operation:view', '查看操作审计'), action('audit:operation:export', '导出操作审计', 'HIGH')] },
       { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'system.audit.login.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
@@ -89,17 +88,11 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-integrations', label: '接口与同步', icon: '↔',
-    description: '接口凭证必须加密、可测试、可审计；同步失败进入统一失败中心。',
+    key: 'sys-integration-migration', label: '接口同步与数据迁移', icon: '↔',
+    description: '接口凭证加密可测；同步失败进入失败中心；老系统迁移全程留痕。',
     items: [
       { key: 'sys-integration-connections', label: '接口、凭证与 Webhook', path: '/admin/system/integrations', permissionKey: 'system.integration.manage', view: 'integrations', actions: [action('integration:connection:manage', '维护接口连接', 'HIGH'), action('integration:credential:rotate', '轮换接口凭证', 'HIGH')] },
-      { key: 'sys-sync-jobs', label: '同步任务与失败中心', path: '/admin/system/sync-jobs', permissionKey: 'system.integration.sync.view', view: 'sync-jobs', actions: [action('integration:sync:retry', '重试同步任务', 'HIGH'), action('integration:sync:cancel', '取消同步任务', 'HIGH')] }
-    ]
-  },
-  {
-    key: 'sys-migration', label: '数据迁移', icon: '⇅',
-    description: '老系统（教务/学工）历史数据经模板导入：dry-run 行级校验 → 错误清零 → 整批事务确认，全程留痕可对账。',
-    items: [
+      { key: 'sys-sync-jobs', label: '同步任务与失败中心', path: '/admin/system/sync-jobs', permissionKey: 'system.integration.sync.view', view: 'sync-jobs', actions: [action('integration:sync:retry', '重试同步任务', 'HIGH'), action('integration:sync:cancel', '取消同步任务', 'HIGH')] },
       { key: 'sys-migration-workbench', label: '老系统数据迁移', path: '/admin/system/migration', permissionKey: 'system.migration.view', view: 'migration', actions: [action('migration:template:download', '下载迁移模板'), action('migration:validate', '上传并校验'), action('migration:confirm', '确认导入', 'HIGH')] }
     ]
   }

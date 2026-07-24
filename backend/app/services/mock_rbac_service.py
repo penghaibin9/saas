@@ -162,13 +162,12 @@ def get_current_context(user_ctx: dict) -> dict:
     """当前身份上下文：currentRole + dataScope + permissionActions（前端 ctx 契约）。"""
     active = _active_context(user_ctx)
     is_platform = active["contextType"] == "PLATFORM_OP"
-    # permissionPatterns 直接取自集中式 ROLE_PERMISSIONS —— 与后端 enforce_permission 共用同一套权限码，
-    # 是前端角色菜单投影(getVisibleNavPlan/canSeeLeaf)的唯一权限来源，彻底打通前后端权限链路。
-    from app.core.permissions import _granted, _role_of, is_super_admin
-    role = _role_of(user_ctx) or active["contextType"]
-    patterns = ["*"] if is_super_admin(user_ctx) else sorted(_granted(role))
-    # BUG-001：正式演示租户是只读的（中间件对所有写请求返回 403），但前端此前无从得知，
-    # 仍渲染全部写按钮，用户点了才吃 403。把只读态显式下发，前端按钮层同步收敛。
+    from app.core.permissions import get_effective_access_context, is_super_admin
+    access = get_effective_access_context(user_ctx)
+    role = access.get("roleCode") or _role_of_safe(user_ctx) or active["contextType"]
+    patterns = list(access.get("permissionPatterns") or [])
+    if is_super_admin(user_ctx) and "*" not in patterns:
+        patterns = ["*"]
     from app.core.context import get_tenant
     from app.middleware.context import is_readonly_tenant
     tenant = get_tenant() or {}
@@ -180,11 +179,12 @@ def get_current_context(user_ctx: dict) -> dict:
         "currentRole": {"roleCode": role, "roleName": active["contextName"],
                         "userName": user_ctx.get("realName", ""),
                         "contextId": active.get("contextId", ""),
-                        # 权限版本：权限集变化即变，前端据此失效菜单/搜索缓存；接真实 RBAC 后替换为 t_role_permission 更新戳
-                        "permissionVersion": f"{role}:{len(patterns)}"},
+                        "permissionVersion": access.get("permissionVersion") or f"{role}:{len(patterns)}"},
         "dataScope": {"scope": active["dataScope"], "scopeLabel": active.get("scopeLabel", ""),
                       "scopeName": active.get("scopeLabel", "")},
         "permissionPatterns": patterns,
+        "moduleEntitlements": access.get("moduleEntitlements") or [],
+        "moduleStates": access.get("moduleStates") or {},
         "permissionActions": {
             "viewList": {"visible": True, "enabled": True},
             "export": {"visible": not is_platform, "enabled": not is_platform,
@@ -194,3 +194,7 @@ def get_current_context(user_ctx: dict) -> dict:
         },
         "boundary": "平台运营与学校角色边界：平台侧不可见学校学生敏感明文；学生仅拥有小程序侧能力",
     }
+
+
+def _role_of_safe(user_ctx: dict) -> str:
+    return (user_ctx.get("currentRoleCode") or user_ctx.get("userType") or "").strip()

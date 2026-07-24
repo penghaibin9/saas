@@ -22,18 +22,23 @@ router = APIRouter()
 
 
 def _role_scope(role) -> str:
+    """只读兼容：优先结构化规则，历史 Role.remark 仅作回落。"""
+    try:
+        from app.services.data_scope_service import resolve_role_scope_code
+        coded = resolve_role_scope_code(role)
+        if coded:
+            return coded
+    except Exception:
+        pass
     marker = str(role.remark or "")
     prefix = ";scope="
     return marker.split(prefix, 1)[1].split(";", 1)[0] if prefix in marker else "ASSIGNED"
 
 
-def _set_role_scope(role, scope_code: str) -> None:
-    scope = str(scope_code or "ASSIGNED").strip().upper()
-    if not re.fullmatch(r"[A-Z_]{2,40}", scope):
-        from app.core.exceptions import AppException
-        raise AppException("VALIDATION_ERROR", "数据范围编码不合法")
-    remark = str(role.remark or "SAAS_CUSTOM")
-    role.remark = re.sub(r";scope=[^;]*", "", remark).rstrip(";") + f";scope={scope};permMode=DB"
+def _set_role_scope(role, scope_code: str, *, target_json: dict | None = None, user: dict | None = None) -> None:
+    """写入结构化数据范围；禁止再以 Role.remark 作为主链路。"""
+    from app.services.data_scope_service import save_role_scope
+    save_role_scope(role, scope_code, target_json=target_json, actor=user)
 
 
 def _role_row(role, member_count: int) -> dict:
@@ -51,8 +56,15 @@ def _role_row(role, member_count: int) -> dict:
 
 
 def _mask_user_phone(raw: str | None) -> str:
+    from app.core.field_crypto import decrypt_field
     from app.services.db_service import _mask_phone
-    return _mask_phone(raw) if raw else ""
+    if not raw:
+        return ""
+    try:
+        plain = decrypt_field(raw, allow_legacy_plaintext=True)
+    except Exception:
+        plain = None
+    return _mask_phone(plain or "")
 
 
 def _user_org_hint(db, account) -> tuple[str, str]:
@@ -168,39 +180,18 @@ def get_system_org_tree(user=Depends(require_permission("systemAdmin.org.view"))
 def save_system_org_node(body: dict = Body(...), node_id: int | None = None,
                          user=Depends(require_any_permission("systemAdmin.org.create", "systemAdmin.org.update",
                                                               "systemAdmin.org.major.manage", "systemAdmin.org.class.manage"))):
-    from app.core.exceptions import AppException
-    from app.models import College, Major, SchoolClass
-    tenant_id = current_tenant_id(); node_type = str(body.get("type") or "").upper()
-    name = str(body.get("name") or "").strip(); code = str(body.get("code") or "").strip()
-    parent_id = body.get("parentId")
-    if node_type not in {"COLLEGE", "MAJOR", "CLASS"} or not name or not code:
-        raise AppException("VALIDATION_ERROR", "请填写名称、编码，并选择学院/专业/班级类型")
-    model = {"COLLEGE": College, "MAJOR": Major, "CLASS": SchoolClass}[node_type]
-    db = get_sessionmaker()()
-    try:
-        row = db.scalars(select(model).where(model.id == node_id, model.tenant_id == tenant_id,
-                                             model.is_deleted.is_(False))).first() if node_id else None
-        if node_id and row is None: raise AppException("DATA_NOT_FOUND", "组织节点不存在")
-        if not row:
-            if node_type == "COLLEGE": row = College(tenant_id=tenant_id, college_name=name, code=code, status="ACTIVE")
-            elif node_type == "MAJOR":
-                if not parent_id: raise AppException("VALIDATION_ERROR", "专业必须归属学院")
-                row = Major(tenant_id=tenant_id, college_id=int(parent_id), major_name=name, code=code, status="ACTIVE")
-            else:
-                if not parent_id: raise AppException("VALIDATION_ERROR", "班级必须归属专业")
-                row = SchoolClass(tenant_id=tenant_id, major_id=int(parent_id), class_name=name, class_code=code, status="ACTIVE")
-            db.add(row)
-        else:
-            if node_type == "COLLEGE": row.college_name = name
-            elif node_type == "MAJOR": row.major_name = name
-            else: row.class_name = name
-        db.commit(); db.refresh(row)
-        from app.services import audit_log
-        audit_log.record("ORG_NODE_SAVE", f"{node_type}:{row.id}", detail={"name": name, "code": code})
-        return success({"id": str(row.id)}, message="组织主数据已保存")
-    except Exception:
-        db.rollback(); raise
-    finally: db.close()
+    from app.services.org_master_service import save_org_node
+    result = save_org_node(
+        node_type=str((body or {}).get("type") or ""),
+        name=str((body or {}).get("name") or ""),
+        code=str((body or {}).get("code") or ""),
+        parent_id=(body or {}).get("parentId"),
+        node_id=node_id,
+        reason=str((body or {}).get("reason") or ""),
+        expected_version=(body or {}).get("expectedVersion"),
+        actor=user,
+    )
+    return success({"id": result["id"], "version": result.get("version")}, message="组织主数据已保存")
 
 
 @router.get("/system/roles", summary="学校预设角色与成员统计（真实库）")
@@ -329,7 +320,9 @@ def update_system_user(user_id: int, body: dict = Body(...),
         before = {"name": account.real_name, "phone": _mask_user_phone(account.phone_encrypted)}
         account.real_name = name
         if phone:
-            account.phone_encrypted = phone
+            from app.core.field_crypto import encrypt_field, hash_sensitive
+            account.phone_encrypted = encrypt_field(phone)
+            account.phone_hash = hash_sensitive(phone, "phone")
         account.version = int(account.version or 0) + 1
         db.commit(); db.refresh(account)
         roles = [r for _, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
@@ -456,15 +449,18 @@ def get_system_context(user=Depends(require_any_permission(
         "systemAdmin.dashboard.view", "systemAdmin.user.view", "systemAdmin.role.view",
         "systemAdmin.org.view", "systemAdmin.audit.view", "systemAdmin.config.view",
         "systemAdmin.implementation.view", "systemAdmin.scope.view"))):
-    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    from app.core.permissions import get_effective_access_context, has_permission
     tenant_id = int(current_tenant_id() or 0)
-    db = get_sessionmaker()()
-    try:
-        brand = _brand_form(db, tenant_id)
-    finally:
-        db.close()
+    brand = {}
+    if db_enabled():
+        db = get_sessionmaker()()
+        try:
+            brand = _brand_form(db, tenant_id)
+        finally:
+            db.close()
     role_code = (user or {}).get("currentRoleCode") or ""
-    patterns = sorted(ROLE_PERMISSIONS.get(role_code, set()) or [])
+    access = get_effective_access_context(user or {})
+    patterns = list(access.get("permissionPatterns") or [])
     actions = {
         "importUsers": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.import"), "reason": ""},
         "exportUsers": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.export") or has_permission(user, "systemAdmin.user.view"), "reason": ""},
@@ -504,6 +500,9 @@ def get_system_context(user=Depends(require_any_permission(
         "dataScope": {"scopeCode": (user or {}).get("dataScope") or "TENANT", "scopeName": "按当前角色数据范围"},
         "permissionActions": actions,
         "permissionPatterns": patterns,
+        "moduleEntitlements": access.get("moduleEntitlements") or [],
+        "moduleStates": access.get("moduleStates") or {},
+        "permissionVersion": access.get("permissionVersion"),
         "statusOptions": {
             "userStatus": [{"value": "ACTIVE", "label": "启用中"}, {"value": "DISABLED", "label": "已停用"},
                            {"value": "LOCKED", "label": "已锁定"}],
@@ -721,6 +720,9 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
             raise AppException("DATA_NOT_FOUND", "角色不存在")
         if str(role.role_type or "").upper() == "SYSTEM":
             raise AppException("VALIDATION_ERROR", "预设角色由平台模板维护；请复制为自定义角色后再裁剪")
+        expected_version = body.get("expectedVersion")
+        if expected_version is not None and int(role.version or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "角色权限已被他人修改，请刷新后重试")
         existing_links = list(db.scalars(select(RolePermission).where(
             RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id)).all())
         existing_by_perm_id = {rp.permission_id: rp for rp in existing_links}
@@ -753,18 +755,30 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
                     link.status = "DISABLED"; link.is_deleted = True
         for permission_id in wanted_ids - set(existing_by_perm_id):
             db.add(RolePermission(tenant_id=tenant_id, role_id=role.id, permission_id=permission_id, status="ACTIVE"))
-        _set_role_scope(role, body.get("scopeCode") or _role_scope(role))
+        _set_role_scope(role, body.get("scopeCode") or _role_scope(role),
+                        target_json=body.get("scopeTarget") or body.get("targetJson"), user=user)
         role.version = int(role.version or 0) + 1
         db.commit()
         from app.services.auth_service_db import invalidate_tenant_subject_caches
-        invalidate_tenant_subject_caches(tenant_id)
+        try:
+            invalidate_tenant_subject_caches(tenant_id)
+            cache_ok = True
+            cache_warn = ""
+        except Exception as cache_exc:
+            cache_ok = False
+            cache_warn = str(cache_exc)[:200]
         from app.services import audit_log
-        audit_log.record("ROLE_PERMISSION_CONFIG", f"role:{role.id}",
+        audit_log.record("ROLE_PERMISSION_SAVE", f"role:{role.id}",
                          detail={"roleCode": role.role_code, "permissionCount": len(final_codes),
-                                 "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved)})
-        return success({"id": str(role.id), "permissionCount": len(final_codes), "scopeCode": _role_scope(role),
-                        "permissionCodes": final_codes},
-                       message="权限配置已生效；该角色成员需重新登录")
+                                 "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),
+                                 "moduleCode": "systemAdmin", "cacheInvalidated": cache_ok,
+                                 "cacheWarning": cache_warn, "version": role.version})
+        payload = {"id": str(role.id), "permissionCount": len(final_codes), "scopeCode": _role_scope(role),
+                   "permissionCodes": final_codes, "version": int(role.version or 0),
+                   "cacheInvalidated": cache_ok}
+        if not cache_ok:
+            payload["warning"] = "权限已保存，但缓存失效失败，请人工刷新或通知成员重新登录"
+        return success(payload, message="权限配置已生效；该角色成员需重新登录")
     except Exception:
         db.rollback(); raise
     finally:
@@ -849,44 +863,27 @@ def set_system_role_status(role_id: int, body: dict = Body(...),
 def set_system_org_node_status(node_id: int, body: dict = Body(...),
                                user=Depends(require_permission("systemAdmin.org.manage"))):
     from app.core.exceptions import AppException
-    from app.models import College, Major, SchoolClass, StudentProfile
-    tenant_id = current_tenant_id()
+    from app.services.org_master_service import disable_org_node
     node_type = str((body or {}).get("type") or "").strip().upper()
     action = str((body or {}).get("action") or "").strip().upper()
     reason = str((body or {}).get("reason") or "").strip()
-    model = {"COLLEGE": College, "MAJOR": Major, "CLASS": SchoolClass}.get(node_type)
-    if model is None:
+    if node_type not in ("COLLEGE", "MAJOR", "CLASS"):
         raise AppException("VALIDATION_ERROR", "type 必须是 COLLEGE / MAJOR / CLASS")
     if action not in ("DISABLE", "ENABLE"):
         raise AppException("VALIDATION_ERROR", "action 必须是 DISABLE 或 ENABLE")
-    if action == "DISABLE" and len(reason) < 5:
-        raise AppException("VALIDATION_ERROR", "停用原因必填且不少于 5 个字")
-    db = get_sessionmaker()()
-    try:
-        node = db.scalars(select(model).where(model.id == node_id, model.tenant_id == tenant_id,
-                                              model.is_deleted.is_(False))).first()
-        if node is None:
-            raise AppException("DATA_NOT_FOUND", "组织节点不存在")
-        if action == "DISABLE" and node_type == "CLASS":
-            students = int(db.scalar(select(func.count(StudentProfile.id)).where(
-                StudentProfile.tenant_id == tenant_id, StudentProfile.class_id == node.id,
-                StudentProfile.is_deleted.is_(False))) or 0)
-            if students > 0:
-                raise AppException("DATA_CONFLICT", f"该班级仍有 {students} 名在籍学生，请先转出学生再停用")
-        node.status = "DISABLED" if action == "DISABLE" else "ACTIVE"
-        node.version = int(node.version or 0) + 1
-        db.commit()
-        from app.services import audit_log
-        name = getattr(node, "college_name", None) or getattr(node, "major_name", None) or getattr(node, "class_name", "")
-        audit_log.record("ORG_NODE_DISABLE" if action == "DISABLE" else "ORG_NODE_ENABLE",
-                         f"组织节点「{name}」",
-                         detail={"type": node_type, "after": "已停用" if action == "DISABLE" else "启用中", "reason": reason})
-        return success({"id": str(node.id), "status": node.status},
-                       message="节点已停用" if action == "DISABLE" else "节点已启用")
-    except Exception:
-        db.rollback(); raise
-    finally:
-        db.close()
+    result = disable_org_node(
+        node_type=node_type, node_id=node_id, reason=reason,
+        expected_version=(body or {}).get("expectedVersion"), actor=user,
+        enable=(action == "ENABLE"),
+    )
+    return success(result, message="节点已停用" if action == "DISABLE" else "节点已启用")
+
+
+@router.get("/system/org-duplicate-codes", summary="只读：检测学院/专业/班级编码重复")
+def api_org_duplicate_codes(user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.implementation.check.run"))):
+    from app.services.org_master_service import find_duplicate_org_codes
+    return success(find_duplicate_org_codes())
 
 
 @router.get("/system/identity-import/role-templates", summary="师生导入可选的 SaaS 预设角色")
@@ -1120,9 +1117,23 @@ def _audit_page(login_only: bool, keyword: str, result: str, action: str, module
             stmt = stmt.where(SecurityAuditLog.created_at >= date_from.strip()[:10] + " 00:00:00")
         if date_to.strip():
             stmt = stmt.where(SecurityAuditLog.created_at <= date_to.strip()[:10] + " 23:59:59")
+        # module 筛选：优先 detail.moduleCode，再按 action/path 归类后过滤
         total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = db.scalars(stmt.order_by(SecurityAuditLog.id.desc())
-                          .offset((page - 1) * page_size).limit(page_size)).all()
+                          .offset(0).limit(min(2000, max(page_size * page, page_size)))).all()
+        if module.strip():
+            want = module.strip()
+            rows = [r for r in rows if _audit_module_of(r)[0] == want
+                    or _audit_module_of(r)[0].lower() == want.lower()
+                    or want.upper() in (_audit_module_of(r)[0].upper(), "SYSTEM" if _audit_module_of(r)[0] == "systemAdmin" else "")]
+            total = len(rows)
+            start = (page - 1) * page_size
+            rows = rows[start:start + page_size]
+        else:
+            start = (page - 1) * page_size
+            # 重新按分页取（无 module 时走 SQL 分页）
+            rows = db.scalars(stmt.order_by(SecurityAuditLog.id.desc())
+                              .offset(start).limit(page_size)).all()
         name_map = _resolve_login_names(db, {r.operator_id for r in rows})
         items = [_login_log_row(r, name_map) if login_only else _operation_log_row(r) for r in rows]
         return {"list": items, "total": int(total), "page": page, "pageSize": page_size}
@@ -1149,17 +1160,66 @@ def _login_log_row(r, name_map: dict) -> dict:
     }
 
 
+_MODULE_BY_ACTION = {
+    "LOGIN": "systemAdmin", "LOGOUT": "systemAdmin", "LOGIN_FAIL": "systemAdmin",
+    "PERMISSION_DENIED": "systemAdmin", "MODULE_DENIED": "systemAdmin",
+    "USER_UPDATE": "systemAdmin", "USER_ROLE_ASSIGN": "systemAdmin", "RESET_PASSWORD": "systemAdmin",
+    "ROLE_CREATE": "systemAdmin", "ROLE_UPDATE": "systemAdmin", "ROLE_PERMISSION_SAVE": "systemAdmin",
+    "ORG_NODE_SAVE": "systemAdmin", "ORG_NODE_DISABLE": "systemAdmin",
+    "DATA_SCOPE_SAVE": "systemAdmin", "DELEGATION_CREATE": "systemAdmin", "DELEGATION_REVOKE": "systemAdmin",
+    "INTEGRATION_SAVE": "systemAdmin", "INTEGRATION_ROTATE": "systemAdmin", "INTEGRATION_TEST": "systemAdmin",
+    "SYNC_JOB_ENQUEUE": "systemAdmin", "SYNC_JOB_RETRY": "systemAdmin", "SYNC_JOB_CANCEL": "systemAdmin",
+    "MODULE_FEATURE_SAVE": "systemAdmin", "SENSITIVE_VIEW": "systemAdmin",
+    "EXPORT": "systemAdmin", "IMPORT": "systemAdmin", "IDENTITY_IMPORT": "systemAdmin",
+    "BRAND_CONFIG": "systemAdmin", "CONFIG_CHANGE": "systemAdmin",
+    "GO_LIVE_CHECK": "systemAdmin",
+}
+
+_MODULE_LABELS = {
+    "systemAdmin": "系统管理", "studentAffairs": "学工中心", "academicAffairs": "教务中心",
+    "graduationDesign": "毕业设计", "internship": "岗位实习", "employment": "就业",
+    "orientation": "数字迎新", "campusService": "在校服务", "workbench": "工作台",
+    "platform": "平台运营",
+}
+
+
+def _audit_module_of(r) -> tuple[str, str]:
+    detail = r.detail_json if isinstance(r.detail_json, dict) else {}
+    code = str(detail.get("moduleCode") or detail.get("module") or "").strip()
+    if not code:
+        code = _MODULE_BY_ACTION.get(str(r.action or "").upper(), "")
+    if not code:
+        # 从 resource / path 启发式
+        path = str(r.request_path or "")
+        resource = str(r.resource or "")
+        for key, label_key in (
+            ("student-affairs", "studentAffairs"), ("academic-affairs", "academicAffairs"),
+            ("graduation", "graduationDesign"), ("internship", "internship"),
+            ("employment", "employment"), ("orientation", "orientation"),
+            ("campus-service", "campusService"), ("system", "systemAdmin"),
+            ("platform", "platform"),
+        ):
+            if key in path or key in resource:
+                code = label_key
+                break
+    if not code:
+        code = "systemAdmin"
+    return code, _MODULE_LABELS.get(code, code)
+
+
 def _operation_log_row(r) -> dict:
     detail = r.detail_json if isinstance(r.detail_json, dict) else {}
     bucket, label = _RESULT_TO_BUCKET.get(str(r.result or "SUCCESS").upper(), ("SUCCESS", "成功"))
+    module_code, module_label = _audit_module_of(r)
     return {
         "id": str(r.id), "time": str(r.created_at or "")[:16], "who": r.operator_name or "—",
-        "roleName": r.current_role or "—", "module": "SYSTEM", "moduleLabel": "系统管理",
+        "roleName": r.current_role or "—", "module": module_code, "moduleLabel": module_label,
         "action": r.action, "actionLabel": _ACTION_LABELS.get(r.action, r.action),
         "target": r.resource or "", "result": bucket, "resultLabel": label, "ip": _mask_ip(r.ip),
         "detail": {"summary": detail.get("summary", ""), "before": detail.get("before", ""),
                    "after": detail.get("after", ""), "reason": detail.get("reason", ""),
-                   "path": r.request_path or "", "method": r.request_method or ""},
+                   "path": r.request_path or "", "method": r.request_method or "",
+                   "traceId": r.trace_id or "", "dataScope": r.data_scope or detail.get("dataScope", "")},
     }
 
 
@@ -1707,4 +1767,76 @@ def api_save_module_features(body: dict = Body(...),
     from app.services import system_governance_service as gov
     features = (body or {}).get("features") or body or {}
     reason = (body or {}).get("reason") or ""
-    return success(gov.save_module_features(user, features, reason), message="业务开关已更新")
+    return success(gov.save_module_features(
+        user, features, reason, expected_version=(body or {}).get("expectedVersion")),
+        message="业务开关已更新")
+
+
+@router.post("/system/integrations/{integration_id}/test", summary="测试接口连接（可达性，不伪造成功连接）")
+def api_test_integration(integration_id: str, user=Depends(require_permission("systemAdmin.integration.manage"))):
+    from app.services import system_governance_service as gov
+    return success(gov.test_integration_connection(user, integration_id), message="连接测试完成")
+
+
+@router.post("/system/data-scope/simulate", summary="数据范围模拟：输入用户与业务对象，返回允许/拒绝原因")
+def api_simulate_data_scope(body: dict = Body(...),
+                            user=Depends(require_permission("systemAdmin.scope.view"))):
+    from app.services.data_scope_service import simulate_access
+    target_user = (body or {}).get("user") or user
+    result = simulate_access(
+        target_user,
+        resource_type=str((body or {}).get("resourceType") or "generic"),
+        resource=(body or {}).get("resource") or {},
+        sensitive=bool((body or {}).get("sensitive")),
+    )
+    return success(result)
+
+
+@router.get("/system/go-live-checks", summary="上线检查（阻断/建议/通过/不适用）")
+def api_go_live_checks(user=Depends(require_any_permission(
+        "systemAdmin.implementation.check.run", "systemAdmin.implementation.view", "systemAdmin.dashboard.view"))):
+    from app.services.go_live_check_service import run_go_live_checks
+    return success(run_go_live_checks())
+
+
+@router.get("/system/capability-map", summary="完整能力地图（与日常菜单分离）")
+def api_capability_map(user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.implementation.view"))):
+    from pathlib import Path
+    import json
+    path = Path(__file__).resolve().parents[4] / "shared" / "generated" / "capability-registry.json"
+    if not path.exists():
+        return success({"count": 0, "capabilities": [], "note": "请先运行 generate-capability-registry.mjs"})
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return success({"count": data.get("count"), "generatedAt": data.get("generatedAt"),
+                    "capabilities": data.get("capabilities") or []})
+
+
+@router.get("/system/overview-board", summary="系统总览第一屏：健康/缺口/同步失败/安全风险/待办")
+def api_overview_board(user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.implementation.view"))):
+    from app.services import system_governance_service as gov
+    from app.services.go_live_check_service import run_go_live_checks
+    from app.services.module_access_service import module_access_state
+
+    tid = int(current_tenant_id() or 0)
+    checks = run_go_live_checks(tid)
+    jobs = gov.list_sync_jobs()
+    failed = [j for j in jobs if j.get("status") == "FAILED"]
+    modules = {}
+    for mk in ("studentAffairs", "academicAffairs", "graduationDesign", "internship", "employment", "orientation"):
+        modules[mk] = module_access_state(tid, mk) if tid else {"entitled": False, "enabled": False}
+    risks = []
+    if checks["summary"]["blocker"]:
+        risks.append({"level": "HIGH", "text": f"{checks['summary']['blocker']} 项阻断上线检查未通过"})
+    if failed:
+        risks.append({"level": "MEDIUM", "text": f"{len(failed)} 个同步任务失败"})
+    todos = [c for c in checks["items"] if c["status"] in ("BLOCKER", "ADVISORY")][:12]
+    return success({
+        "moduleHealth": modules,
+        "configGaps": [c for c in checks["items"] if c["status"] in ("BLOCKER", "ADVISORY")],
+        "syncFailures": failed[:20],
+        "securityRisks": risks,
+        "pendingItems": todos,
+        "goLive": {"canGoLive": checks["canGoLive"], "summary": checks["summary"]},
+    })

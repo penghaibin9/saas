@@ -21,6 +21,7 @@ def _require_aa_route_user(user=Depends(require_module("academicAffairs"))):
 
 
 def build_deps():
+    """统一模块门禁依赖；禁止在注册处再手工拼装导致漂移。"""
     return {
         "gd": [
             Depends(require_staff),
@@ -28,9 +29,12 @@ def build_deps():
             Depends(require_graduation_request_permission),
         ],
         "intern": [Depends(require_staff), Depends(require_module("internship"))],
+        "employment": [Depends(require_staff), Depends(require_module("employment"))],
+        "orientation": [Depends(require_staff), Depends(require_module("orientation"))],
         "sa": [Depends(require_staff), Depends(require_module("studentAffairs"))],
         "cs": [Depends(require_staff), Depends(require_module("campusService"))],
         "aa": [Depends(_require_aa_route_user)],
+        "academic_legacy": [Depends(require_staff), Depends(require_module("academicAffairs"))],
     }
 
 
@@ -88,7 +92,7 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import campus_service, orientation, student_affairs
 
-    api_router.include_router(orientation.router)
+    api_router.include_router(orientation.router, dependencies=deps["orientation"])
     api_router.include_router(campus_service.router, dependencies=deps["cs"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
 
@@ -97,7 +101,7 @@ def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
     from app.modules.academic_affairs.routers import academic_affairs
 
-    api_router.include_router(academic.router)
+    api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
 
 
@@ -192,12 +196,12 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(student.router)
     api_router.include_router(approval.router)
     register_internship_routes(api_router, deps)
-    api_router.include_router(orientation.router)
+    api_router.include_router(orientation.router, dependencies=deps["orientation"])
     api_router.include_router(campus_service.router, dependencies=deps["cs"])
-    api_router.include_router(academic.router)
+    api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     register_graduation_routes(api_router, deps)
     api_router.include_router(excel.router)
-    api_router.include_router(employment.router, dependencies=deps["intern"])
+    api_router.include_router(employment.router, dependencies=deps["employment"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
     register_platform_routes(api_router)

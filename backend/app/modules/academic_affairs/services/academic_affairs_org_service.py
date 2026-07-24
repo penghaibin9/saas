@@ -140,6 +140,7 @@ def list_colleges(user, keyword=None, status=None, page=1, page_size=50):
 
 
 def create_college(user, body) -> dict:
+    """学院写入统一走系统组织主数据服务，保留教务权限校验。"""
     from app.models import College
     name = (getattr(body, "collegeName", None) or "").strip()
     if not name:
@@ -148,44 +149,58 @@ def create_college(user, body) -> dict:
         ctx = _ctx(user, db)
         if _allowed_college_ids(ctx, db) is not None:  # 仅全租户角色可新建学院
             raise no_data_scope("仅教务处/校管可新建学院")
-        dup = db.scalars(select(College).where(
-            College.tenant_id == _tid(), College.is_deleted.is_(False),
-            College.college_name == name)).first()
-        if dup:
-            raise AppException("DATA_CONFLICT", "同名学院已存在")
-        c = College(tenant_id=_tid(), college_name=name, code=getattr(body, "code", None),
-                    short_name=getattr(body, "shortName", None),
-                    sort_order=int(getattr(body, "sortOrder", 0) or 0),
-                    status="ACTIVE", remark=getattr(body, "remark", None))
-        db.add(c)
-        db.flush()
+    code = (getattr(body, "code", None) or "").strip()
+    from app.services.org_master_service import save_org_node
+    result = save_org_node(
+        node_type="COLLEGE", name=name, code=code, actor=user,
+        extras={
+            "short_name": getattr(body, "shortName", None),
+            "sort_order": int(getattr(body, "sortOrder", 0) or 0),
+            "remark": getattr(body, "remark", None),
+        },
+    )
+    with session() as db:
+        c = db.get(College, int(result["id"]))
+        if c is None:
+            raise AppException("INTERNAL_ERROR", "学院创建后读取失败")
         _audit(db, "AA_ORG_COLLEGE", c.id, "CREATE", name)
         db.commit()
-        db.refresh(c)
         return _college_dto(c)
 
 
 def update_college(user, college_id, body) -> dict:
+    """学院更新：权限校验后走统一主数据服务。"""
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_college(db, college_id)
         _require_college_write(ctx, db, c.id)
         before = _college_dto(c)
-        for attr, key in (("college_name", "collegeName"), ("code", "code"), ("short_name", "shortName"),
-                          ("remark", "remark"), ("status", "status")):
-            v = getattr(body, key, None)
-            if v is not None:
-                if attr == "college_name" and not str(v).strip():
-                    raise AppException("VALIDATION_ERROR", "学院名称不能为空")
-                setattr(c, attr, v)
-        so = getattr(body, "sortOrder", None)
-        if so is not None:
-            c.sort_order = int(so)
-        db.flush()
+        name = getattr(body, "collegeName", None)
+        code = getattr(body, "code", None)
+        expected = getattr(body, "expectedVersion", None)
+    from app.services.org_master_service import save_org_node
+    extras = {
+        k: v for k, v in {
+            "short_name": getattr(body, "shortName", None),
+            "sort_order": (int(getattr(body, "sortOrder")) if getattr(body, "sortOrder", None) is not None else None),
+            "remark": getattr(body, "remark", None),
+            "status": getattr(body, "status", None),
+        }.items() if v is not None
+    }
+    save_org_node(
+        node_type="COLLEGE",
+        name=(str(name).strip() if name is not None else before["collegeName"]),
+        code=("" if code is None else str(code).strip()),
+        node_id=int(college_id),
+        expected_version=int(expected) if expected is not None else None,
+        actor=user,
+        extras=extras,
+    )
+    with session() as db:
+        c = _get_college(db, college_id)
         _audit(db, "AA_ORG_COLLEGE", c.id, "UPDATE", c.college_name,
                before=str(before), after=str(_college_dto(c)))
         db.commit()
-        db.refresh(c)
         return _college_dto(c)
 
 
@@ -274,21 +289,22 @@ def create_major(user, body) -> dict:
         ctx = _ctx(user, db)
         _get_college(db, college_id)
         _require_college_write(ctx, db, college_id)
-        dup = db.scalars(select(Major).where(
-            Major.tenant_id == _tid(), Major.is_deleted.is_(False),
-            Major.college_id == int(college_id), Major.major_name == name)).first()
-        if dup:
-            raise AppException("DATA_CONFLICT", "该学院下同名专业已存在")
-        m = Major(tenant_id=_tid(), college_id=int(college_id), major_name=name,
-                  code=getattr(body, "code", None), education_years=years,
-                  training_level=getattr(body, "trainingLevel", None), enroll_status=enroll,
-                  direction=getattr(body, "direction", None), status="ACTIVE",
-                  remark=getattr(body, "remark", None))
-        db.add(m)
-        db.flush()
+    from app.services.org_master_service import save_org_node
+    result = save_org_node(
+        node_type="MAJOR", name=name, code=(getattr(body, "code", None) or ""),
+        parent_id=int(college_id), actor=user,
+        extras={
+            "education_years": years,
+            "training_level": getattr(body, "trainingLevel", None),
+            "enroll_status": enroll,
+            "direction": getattr(body, "direction", None),
+            "remark": getattr(body, "remark", None),
+        },
+    )
+    with session() as db:
+        m = db.get(Major, int(result["id"]))
         _audit(db, "AA_ORG_MAJOR", m.id, "CREATE", name)
         db.commit()
-        db.refresh(m)
         return _major_dto(m)
 
 
@@ -298,27 +314,43 @@ def update_major(user, major_id, body) -> dict:
         m = _get_major(db, major_id)
         _require_college_write(ctx, db, m.college_id)
         before = _major_dto(m)
-        for attr, key in (("major_name", "majorName"), ("code", "code"), ("training_level", "trainingLevel"),
-                          ("direction", "direction"), ("remark", "remark"), ("status", "status")):
-            v = getattr(body, key, None)
-            if v is not None:
-                setattr(m, attr, v)
+        name = getattr(body, "majorName", None)
+        code = getattr(body, "code", None)
+        expected = getattr(body, "expectedVersion", None)
         yrs = getattr(body, "educationYears", None)
         if yrs is not None:
             yrs = int(yrs)
             if yrs < 1 or yrs > 10:
                 raise AppException("VALIDATION_ERROR", "学制须在 1~10 年之间")
-            m.education_years = yrs
         es = getattr(body, "enrollStatus", None)
-        if es is not None:
-            if es not in _MAJOR_ENROLL:
-                raise AppException("VALIDATION_ERROR", "招生状态非法")
-            m.enroll_status = es
-        db.flush()
+        if es is not None and es not in _MAJOR_ENROLL:
+            raise AppException("VALIDATION_ERROR", "招生状态非法")
+        parent_id = getattr(body, "collegeId", None)
+        reason = getattr(body, "reason", None) or ""
+    from app.services.org_master_service import save_org_node
+    save_org_node(
+        node_type="MAJOR",
+        name=(str(name).strip() if name is not None else before["majorName"]),
+        code=("" if code is None else str(code).strip()),
+        parent_id=(int(parent_id) if parent_id is not None else None),
+        node_id=int(major_id),
+        reason=str(reason or ""),
+        expected_version=int(expected) if expected is not None else None,
+        actor=user,
+        extras={
+            "education_years": yrs,
+            "training_level": getattr(body, "trainingLevel", None),
+            "direction": getattr(body, "direction", None),
+            "remark": getattr(body, "remark", None),
+            "status": getattr(body, "status", None),
+            "enroll_status": es,
+        },
+    )
+    with session() as db:
+        m = _get_major(db, major_id)
         _audit(db, "AA_ORG_MAJOR", m.id, "UPDATE", m.major_name,
                before=str(before), after=str(_major_dto(m)))
         db.commit()
-        db.refresh(m)
         return _major_dto(m)
 
 
@@ -403,30 +435,35 @@ def create_class(user, body) -> dict:
     cap = getattr(body, "capacity", None)
     if cap is not None and int(cap) < 0:
         raise AppException("VALIDATION_ERROR", "编制人数不能为负")
+    class_status = (getattr(body, "classStatus", None) or "NORMAL")
+    if class_status not in _CLASS_STATUS:
+        raise AppException("VALIDATION_ERROR", "班级状态非法")
     with session() as db:
         ctx = _ctx(user, db)
         m = _get_major(db, major_id)
         _require_college_write(ctx, db, m.college_id)
-        dup = db.scalars(select(SchoolClass).where(
-            SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False),
-            SchoolClass.major_id == int(major_id), SchoolClass.class_name == name)).first()
-        if dup:
-            raise AppException("DATA_CONFLICT", "该专业下同名班级已存在")
-        c = SchoolClass(tenant_id=_tid(), major_id=int(major_id), class_name=name,
-                        class_code=getattr(body, "classCode", None), grade=getattr(body, "grade", None),
-                        capacity=(int(cap) if cap is not None else None),
-                        graduate_year=getattr(body, "graduateYear", None),
-                        class_status=(getattr(body, "classStatus", None) or "NORMAL"),
-                        counselor_id=(int(body.counselorId) if getattr(body, "counselorId", None) else None),
-                        head_teacher_id=(int(body.headTeacherId) if getattr(body, "headTeacherId", None) else None),
-                        status="ACTIVE", remark=getattr(body, "remark", None))
-        if c.class_status not in _CLASS_STATUS:
-            raise AppException("VALIDATION_ERROR", "班级状态非法")
-        db.add(c)
-        db.flush()
+    from app.services.org_master_service import save_org_node
+    extras = {
+        "grade": getattr(body, "grade", None),
+        "capacity": (int(cap) if cap is not None else None),
+        "graduate_year": getattr(body, "graduateYear", None),
+        "class_status": class_status,
+        "remark": getattr(body, "remark", None),
+    }
+    if getattr(body, "counselorId", "__omit__") != "__omit__":
+        extras["counselor_id"] = int(body.counselorId) if body.counselorId else None
+    if getattr(body, "headTeacherId", "__omit__") != "__omit__":
+        extras["head_teacher_id"] = int(body.headTeacherId) if body.headTeacherId else None
+    result = save_org_node(
+        node_type="CLASS", name=name,
+        code=(getattr(body, "classCode", None) or ""),
+        parent_id=int(major_id), actor=user,
+        extras=extras,
+    )
+    with session() as db:
+        c = db.get(SchoolClass, int(result["id"]))
         _audit(db, "AA_ORG_CLASS", c.id, "CREATE", name)
         db.commit()
-        db.refresh(c)
         return _class_dto(c)
 
 
@@ -479,6 +516,7 @@ def _sync_counselor_scope(db, c, old_counselor_id) -> str:
 
 
 def update_class(user, class_id, body) -> dict:
+    """班级核心主数据走统一服务；辅导员 scope 同步仍由教务适配层完成。"""
     from app.models import TeacherStudentScope
     with session() as db:
         ctx = _ctx(user, db)
@@ -486,26 +524,45 @@ def update_class(user, class_id, body) -> dict:
         _require_college_write(ctx, db, _class_college_id(db, c.id))
         before = _class_dto(c)
         old_class_name, old_counselor_id = c.class_name, c.counselor_id
-        for attr, key in (("class_name", "className"), ("class_code", "classCode"), ("grade", "grade"),
-                          ("graduate_year", "graduateYear"), ("remark", "remark"), ("status", "status")):
-            v = getattr(body, key, None)
-            if v is not None:
-                setattr(c, attr, v)
+        name = getattr(body, "className", None)
+        code = getattr(body, "classCode", None)
+        expected = getattr(body, "expectedVersion", None)
+        parent_id = getattr(body, "majorId", None)
+        reason = getattr(body, "reason", None) or ""
         cap = getattr(body, "capacity", None)
-        if cap is not None:
-            if int(cap) < 0:
-                raise AppException("VALIDATION_ERROR", "编制人数不能为负")
-            c.capacity = int(cap)
+        if cap is not None and int(cap) < 0:
+            raise AppException("VALIDATION_ERROR", "编制人数不能为负")
         cs = getattr(body, "classStatus", None)
-        if cs is not None:
-            if cs not in _CLASS_STATUS:
-                raise AppException("VALIDATION_ERROR", "班级状态非法")
-            c.class_status = cs
-        for attr, key in (("counselor_id", "counselorId"), ("head_teacher_id", "headTeacherId")):
-            v = getattr(body, key, None)
-            if v is not None:
-                setattr(c, attr, int(v) if v else None)
-        # 班级改名：CLASS scope 按班级名引用，批量跟随改 ref_value，否则全部指向旧名失效
+        if cs is not None and cs not in _CLASS_STATUS:
+            raise AppException("VALIDATION_ERROR", "班级状态非法")
+    from app.services.org_master_service import save_org_node
+    extras = {
+        "grade": getattr(body, "grade", None),
+        "graduate_year": getattr(body, "graduateYear", None),
+        "remark": getattr(body, "remark", None),
+        "status": getattr(body, "status", None),
+        "capacity": (int(cap) if cap is not None else None),
+        "class_status": cs,
+    }
+    # 去掉未提供的键，避免把 None 误写入
+    extras = {k: v for k, v in extras.items() if v is not None or k in ("capacity", "class_status")}
+    if getattr(body, "counselorId", "__omit__") != "__omit__":
+        extras["counselor_id"] = int(body.counselorId) if body.counselorId else None
+    if getattr(body, "headTeacherId", "__omit__") != "__omit__":
+        extras["head_teacher_id"] = int(body.headTeacherId) if body.headTeacherId else None
+    save_org_node(
+        node_type="CLASS",
+        name=(str(name).strip() if name is not None else before["className"]),
+        code=("" if code is None else str(code).strip()),
+        parent_id=(int(parent_id) if parent_id is not None else None),
+        node_id=int(class_id),
+        reason=str(reason or ""),
+        expected_version=int(expected) if expected is not None else None,
+        actor=user,
+        extras=extras,
+    )
+    with session() as db:
+        c = _get_class(db, class_id)
         scope_notes = ""
         if c.class_name != old_class_name:
             for row in db.scalars(select(TeacherStudentScope).where(
@@ -515,17 +572,14 @@ def update_class(user, class_id, body) -> dict:
                     TeacherStudentScope.is_deleted.is_(False))).all():
                 row.ref_value, row.version = c.class_name, int(row.version or 0) + 1
             scope_notes = f"班名scope跟随:{old_class_name}->{c.class_name}"
-        # 辅导员改绑：同步 scope（撤旧+立新），学工数据范围随绑定真实生效
         if getattr(body, "counselorId", None) is not None and \
                 int(c.counselor_id or 0) != int(old_counselor_id or 0):
             note = _sync_counselor_scope(db, c, old_counselor_id)
             scope_notes = f"{scope_notes};{note}" if scope_notes else note
-        db.flush()
         _audit(db, "AA_ORG_CLASS", c.id, "UPDATE",
                f"{c.class_name}({scope_notes})" if scope_notes else c.class_name,
                before=str(before), after=str(_class_dto(c)))
         db.commit()
-        db.refresh(c)
         return _class_dto(c)
 
 

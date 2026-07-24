@@ -22,6 +22,11 @@ export const GUARDED_MODULES = new Set([
   'GRADUATION',
   'ACADEMIC_AFFAIRS',
   'CAMPUS_SERVICE',
+  'EMPLOYMENT',
+  'ORIENTATION',
+  'SYSTEM',
+  'WORKBENCH',
+  'PLATFORM',
 ])
 
 let _patterns = null // null=未知；数组=已知
@@ -92,6 +97,26 @@ export async function ensurePermissionPatterns(requestFn) {
   return _ensurePromise
 }
 
+const MODULE_CODE_TO_KEYS = {
+  STUDENT_AFFAIRS: ['studentAffairs', 'STUDENT_AFFAIRS'],
+  INTERNSHIP: ['internship', 'INTERNSHIP'],
+  GRADUATION: ['graduation', 'graduationDesign', 'GRADUATION'],
+  ACADEMIC_AFFAIRS: ['academicAffairs', 'academicLegacy', 'ACADEMIC_AFFAIRS'],
+  CAMPUS_SERVICE: ['campusService', 'CAMPUS_SERVICE'],
+  EMPLOYMENT: ['employment', 'EMPLOYMENT'],
+  ORIENTATION: ['orientation', 'ORIENTATION'],
+  SYSTEM: ['systemAdmin', 'system', 'SYSTEM', 'auditLog'],
+  WORKBENCH: ['workbench', 'todoMessage', 'WORKBENCH', 'approval'],
+  PLATFORM: ['platform', 'PLATFORM', 'apiAccess'],
+}
+
+function moduleEntitled(moduleCode) {
+  if (!Array.isArray(_moduleEntitlements)) return true // 未下发时不在前端阻断（后端仍是边界）
+  if (_moduleEntitlements.includes('*')) return true
+  const keys = MODULE_CODE_TO_KEYS[moduleCode] || [moduleCode, String(moduleCode || '').toLowerCase()]
+  return keys.some((k) => _moduleEntitlements.includes(k))
+}
+
 /**
  * 路由守卫判定：是否允许进入该路由。
  * @param {object} meta 目标路由 to.meta（含 moduleCode / permissionKey）
@@ -102,9 +127,7 @@ export function canEnterRoute(meta) {
   const key = meta.permissionKey
   const prod = _isProd()
 
-  if (Array.isArray(_moduleEntitlements) && meta.moduleCode
-      && !_moduleEntitlements.includes(meta.moduleCode)
-      && !_moduleEntitlements.includes('*')) {
+  if (!moduleEntitled(meta.moduleCode)) {
     return false
   }
 
