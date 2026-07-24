@@ -136,7 +136,7 @@ DEFAULT_SECURITY = {
 DEFAULT_BRAND = {
     "schoolName": "", "platformName": "高校学生全生命周期管理平台", "logoUrl": "", "faviconUrl": "",
     "watermarkText": "", "primaryColor": "#2563EB", "loginBackground": "",
-    "topBarName": "高校学生全生命周期管理平台", "copyrightText": "", "contactPhone": "13549666867",
+    "topBarName": "高校学生全生命周期管理平台", "copyrightText": "", "contactPhone": "",
 }
 
 # 安全设置合法范围（保存校验：不允许放开为不设防）

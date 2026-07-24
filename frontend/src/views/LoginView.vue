@@ -168,7 +168,7 @@
         </div>
 
         <div class="lgx-divider" />
-        <p class="lgx-foot">首次登录？请联系学校管理员开通账号 {{ trialPhone }}</p>
+        <p class="lgx-foot">首次登录？请联系学校管理员开通账号<span v-if="trialPhone"> {{ trialPhone }}</span></p>
       </div>
 
       <div class="lgx-copyright">
@@ -192,7 +192,8 @@ export default {
   name: 'LoginView',
   data() {
     return {
-      trialPhone: '13549666867',
+      trialPhone: (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPPORT_CONTACT)
+        || '',
       tab: 'account',
       pwdVisible: false,
       remember: true,

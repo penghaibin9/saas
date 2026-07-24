@@ -1,11 +1,11 @@
 """
 数据库会话
-────────────────────────────────────────────────────────────
-- 默认 DB_ENABLED=false：不创建 engine、不连库、不建表、不删表。
-- DB_ENABLED=true 时按 effective_database_url 惰性创建 engine/session。
-  支持 sqlite（本地 dev，默认，保留）/ mysql（部署演示）/ postgresql。
-- 测试环境用 TEST_DATABASE_URL（SQLite 内存库）。
-- 永不自动 drop/reset；建表只允许经 Alembic 迁移或显式 init_db / init_mysql_db（开发用）。
+
+- DB_ENABLED=false：不创建 engine；部分演示链路可走内存服务（非生产验收口径）。
+- DB_ENABLED=true：按 effective_database_url 惰性创建 engine/session。
+  生产/正式验收仅 MySQL（utf8mb4）；sqlite/postgresql 仅历史兼容或本地实验。
+- 测试环境用 TEST_DATABASE_URL（MySQL test 库；conftest 拒绝回落 SQLite 冒充验收）。
+- 永不自动 drop/reset；建表只允许经 Alembic 迁移或显式 init 工具（开发用）。
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _SessionLocal = None
 class DBNotEnabledError(RuntimeError):
     def __init__(self):
         super().__init__(
-            "数据库未启用（DB_ENABLED=false 或连接串为空）。当前接口走 mock 数据；"
+            "数据库未启用（DB_ENABLED=false 或连接串为空）。"
             "如需连库：在 backend/.env 设置 DB_ENABLED=true 与 DB_DRIVER=mysql + DB_* "
             "（或直接 DATABASE_URL），见 backend/README.md。"
         )

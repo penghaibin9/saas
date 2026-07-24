@@ -2,7 +2,7 @@
   "name": "gaoxiao-lifecycle-miniapp",
   "version": "1.0.0",
   "private": true,
-  "description": "高校学生全生命周期管理平台 · 小程序端（学生端 + 教师端），uni-app + Vue3，纯 mock 数据。",
+  "description": "高校学生全生命周期管理平台 · 小程序端（学生端 + 教师端），uni-app + Vue3，对接真实后端 API。",
   "scripts": {
     "dev:h5": "uni",
     "dev:mp-weixin": "uni -p mp-weixin",

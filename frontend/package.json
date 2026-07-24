@@ -1,8 +1,8 @@
 {
   "name": "school-lifecycle-frontend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "职校学生全生命周期 SaaS 平台 - 前端工程壳（UI-P1.5，无 UI 框架，遵循 V2.1 Final 冻结规范）",
+  "description": "职校学生全生命周期 SaaS 平台 - PC 管理端（Vue3 + Vite）",
   "type": "module",
   "scripts": {
     "dev": "vite",
