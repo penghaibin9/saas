@@ -155,7 +155,8 @@ export default {
     },
     issue(d) {
       this.issDlg = {
-        visible: true, disbursementId: d.disbursementId, who: d.realName || d.studentNo || '该笔',
+        visible: true, disbursementId: d.disbursementId, version: d.version,
+        who: d.realName || d.studentNo || '该笔',
         disburseNo: '', bankLast4: '', error: ''
       }
     },
@@ -167,19 +168,24 @@ export default {
       d.error = ''
       this.acting = d.disbursementId
       const res = await studentAffairsApi.issueDisbursement(d.disbursementId, {
-        disburseNo: d.disburseNo.trim() || undefined, bankLast4: last4 || undefined
+        disburseNo: d.disburseNo.trim() || undefined,
+        bankLast4: last4 || undefined,
+        version: d.version
       })
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已标记发放'); this.load() }
       else { d.error = res.message || '标记失败' }
     },
     fail(d) {
-      this.failDlg = { visible: true, disbursementId: d.disbursementId, who: d.realName || d.studentNo || '该笔' }
+      this.failDlg = {
+        visible: true, disbursementId: d.disbursementId, version: d.version,
+        who: d.realName || d.studentNo || '该笔'
+      }
     },
     async submitFail({ reason }) {
       const d = this.failDlg
       this.acting = d.disbursementId
-      const res = await studentAffairsApi.failDisbursement(d.disbursementId, reason.trim())
+      const res = await studentAffairsApi.failDisbursement(d.disbursementId, reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已置失败'); this.load() } else toast.error(res.message || '操作失败')
     },

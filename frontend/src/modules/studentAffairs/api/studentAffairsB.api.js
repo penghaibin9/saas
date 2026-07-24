@@ -1,14 +1,34 @@
-import { request } from '@/services/http/client'
-import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
+/**
+ * 学工 B 兼容导出层：旧方法名保留，内部全部委托 studentAffairs.api.js（唯一真实请求实现）。
+ * B 页面习惯 try/catch + throw；因此对主客户端 {code,data,message} 做 unwrap。
+ */
+import { studentAffairsApi as core } from './studentAffairs.api.js'
 
-const ok = (data) => ({ code: 0, message: 'ok', data })
+function unwrap(res) {
+  if (res && res.code !== 0) {
+    const e = new Error(res.message || '操作失败')
+    e.biz = true
+    e.bizCode = res.bizCode || ''
+    e.code = res.code
+    throw e
+  }
+  return res
+}
 
-function normalizeStudent(row = {}) {
+async function pass(promise) {
+  return unwrap(await promise)
+}
+
+/** 规范化学生主档展示字段；禁止用 classId 冒充 className。 */
+export function normalizeStudent(row = {}) {
+  const classId = row.classId != null ? String(row.classId) : (row.class_id != null ? String(row.class_id) : '')
+  const className = row.className || row.class_name || (classId ? '' : '未分班')
   return {
     studentId: String(row.id || row.studentId || ''),
     studentNo: row.studentNo || row.student_no || '',
     realName: row.realName || row.real_name || row.name || '',
-    className: row.className || row.class_name || row.classId || row.class_id || '未分班',
+    className,
+    classId,
     collegeName: row.collegeName || row.college_name || '',
     majorName: row.majorName || row.major_name || '',
     grade: row.grade || '',
@@ -35,371 +55,253 @@ function normalizeAudit(row = {}) {
 }
 
 export const studentAffairsApi = {
-  async getDashboard() {
-    return ok(await request('/student-affairs/dashboard'))
+  getDashboard() {
+    return pass(core.getDashboard())
   },
 
   async listStudents(params = {}) {
-    const data = await request('/students', {
-      params: {
-        page: params.page || 1,
-        pageSize: params.pageSize || 10,
-        keyword: params.keyword,
-        className: params.className,
-        riskLevel: params.riskLevel
+    const res = await pass(core.getStudents(params))
+    const data = res.data || {}
+    return {
+      ...res,
+      data: {
+        items: (data.items || []).map(normalizeStudent),
+        total: data.total || 0,
+        page: data.page || params.page || 1,
+        pageSize: data.pageSize || params.pageSize || 10
       }
-    })
-    return ok({
-      items: (data.items || []).map(normalizeStudent),
-      total: data.total || 0,
-      page: data.page || params.page || 1,
-      pageSize: data.pageSize || params.pageSize || 10
-    })
+    }
   },
 
-  async getProfile(studentId) {
-    return ok(await request(`/student-affairs/students/${studentId}/profile`))
+  getProfile(studentId) {
+    return pass(core.getStudentProfile(studentId))
   },
 
-  async getTimeline(studentId, params = {}) {
-    return ok(await request(`/student-affairs/students/${studentId}/timeline`, { params }))
+  getTimeline(studentId, params = {}) {
+    return pass(core.getStudentTimeline(studentId, params))
   },
 
-  async listClasses() {
-    return ok(await request('/student-affairs/classes'))
+  listClasses() {
+    return pass(core.getClasses())
   },
 
-  async listClassCadres(classId) {
-    return ok(await request(`/student-affairs/classes/${classId}/cadres`))
+  listClassCadres(classId) {
+    return pass(core.getClassCadres(classId))
   },
 
-  async getDormOccupancy() {
-    return ok(await request('/student-affairs/dorm/occupancy'))
+  getDormOccupancy() {
+    return pass(core.getOccupancy())
   },
 
-  async listDormBuildings(params = {}) {
-    return ok(await request('/student-affairs/dorm/buildings', { params }))
+  listDormBuildings(params = {}) {
+    return pass(core.getBuildings(params))
   },
 
-  async listDormRooms(buildingId, params = {}) {
-    return ok(await request(`/student-affairs/dorm/buildings/${buildingId}/rooms`, { params }))
+  listDormRooms(buildingId, params = {}) {
+    return pass(core.getRooms(buildingId, params))
   },
 
-  async listDormBeds(roomId) {
-    return ok(await request(`/student-affairs/dorm/rooms/${roomId}/beds`))
+  listDormBeds(roomId) {
+    return pass(core.getBeds(roomId))
   },
 
-  async getDormConfig() {
-    return ok(await request('/student-affairs/dorm/config'))
+  getDormConfig() {
+    return pass(core.getDormConfig())
   },
 
-  async createDormBuilding(body) {
-    return ok(await request('/student-affairs/dorm/buildings', { method: 'POST', body }))
+  createDormBuilding(body) {
+    return pass(core.createBuilding(body))
   },
 
-  async generateDormLayout(buildingId, body) {
-    return ok(await request(`/student-affairs/dorm/buildings/${buildingId}/generate`, { method: 'POST', body }))
+  generateDormLayout(buildingId, body) {
+    return pass(core.generateLayout(buildingId, body))
   },
 
-  async dormCheckin(bedId, studentId) {
-    return ok(await request(`/student-affairs/dorm/beds/${bedId}/checkin`, { method: 'POST', body: { studentId } }))
+  dormCheckin(bedId, studentId) {
+    return pass(core.checkinBed(bedId, studentId))
   },
 
-  async dormCheckout(bedId) {
-    return ok(await request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST' }))
+  dormCheckout(bedId) {
+    return pass(core.checkoutBed(bedId))
   },
 
-  async setDormSelfSelect(enabled) {
-    return ok(await request('/student-affairs/dorm/config/self-select', { method: 'PUT', body: { enabled } }))
+  setDormSelfSelect(enabled) {
+    return pass(core.setDormSelfSelect(enabled))
   },
 
-  async listDormTransfers(params = {}) {
-    const data = await request('/student-affairs/dorm/transfers', {
-      params: { status: params.status, page: params.page || 1, pageSize: params.pageSize || 50 }
-    })
-    return ok({ items: data.items || [], total: data.total || 0 })
+  listDormTransfers(params = {}) {
+    return pass(core.getDormTransfers(params))
   },
 
-  async submitDormTransfer(body) {
-    return ok(await request('/student-affairs/dorm/transfers', { method: 'POST', body }))
+  submitDormTransfer(body) {
+    return pass(core.submitDormTransfer(body))
   },
 
-  async reviewDormTransfer(transferId, action, reason = '') {
-    return ok(await request(`/student-affairs/dorm/transfers/${transferId}/review`, {
-      method: 'POST', body: { action, reason }
-    }))
+  reviewDormTransfer(transferId, action, reason = '', version) {
+    return pass(core.reviewDormTransfer(transferId, action, reason, version))
   },
 
-  async listDormCheckTasks(params = {}) {
-    const data = await request('/student-affairs/dorm/check-tasks', {
-      params: { status: params.status, page: params.page || 1, pageSize: params.pageSize || 50 }
-    })
-    return ok({ items: data.items || [], total: data.total || 0 })
+  listDormCheckTasks(params = {}) {
+    return pass(core.getDormCheckTasks(params))
   },
 
-  async createDormCheckTask(body) {
-    return ok(await request('/student-affairs/dorm/check-tasks', { method: 'POST', body }))
+  createDormCheckTask(body) {
+    return pass(core.createDormCheckTask(body))
   },
 
-  async listDormCheckRecords(taskId, params = {}) {
-    const data = await request(`/student-affairs/dorm/check-tasks/${taskId}/records`, {
-      params: { page: params.page || 1, pageSize: params.pageSize || 100 }
-    })
-    return ok({ items: data.items || [], total: data.total || 0 })
+  listDormCheckRecords(taskId, params = {}) {
+    return pass(core.getDormCheckRecords(taskId, params))
   },
 
-  async submitDormCheckRecord(taskId, body) {
-    return ok(await request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { method: 'POST', body }))
+  submitDormCheckRecord(taskId, body) {
+    return pass(core.submitDormCheckRecord(taskId, body))
   },
 
-  async listDormExceptions(params = {}) {
-    const data = await request('/student-affairs/dorm/exceptions', {
-      params: { status: params.status, page: params.page || 1, pageSize: params.pageSize || 50 }
-    })
-    return ok({ items: data.items || [], total: data.total || 0 })
+  listDormExceptions(params = {}) {
+    return pass(core.getDormExceptions(params))
   },
 
-  async handleDormException(exceptionId, reason) {
-    return ok(await request(`/student-affairs/dorm/exceptions/${exceptionId}/handle`, {
-      method: 'POST', body: { reason }
-    }))
+  handleDormException(exceptionId, reason, version) {
+    return pass(core.handleDormException(exceptionId, reason, version))
   },
 
-  async listPendingLeaves(params = {}) {
-    const data = await request('/student-affairs/leave/pending', {
-      params: {
-        page: params.page || 1,
-        pageSize: params.pageSize || 20
-      }
-    })
-    return ok({
-      items: data.items || [],
-      total: data.total || 0,
-      page: data.page || params.page || 1,
-      pageSize: data.pageSize || params.pageSize || 20
-    })
+  listPendingLeaves(params = {}) {
+    return pass(core.getPendingLeaves(params))
   },
 
-  async getLeaveDetail(leaveId) {
-    return ok(await request(`/student-affairs/leave/${leaveId}`))
+  getLeaveDetail(leaveId) {
+    return pass(core.getLeaveDetail(leaveId))
   },
 
-  async approveLeave(leaveId, comment = '') {
-    return ok(await request(`/student-affairs/leave/${leaveId}/approve`, {
-      method: 'POST',
-      body: { comment }
-    }))
+  approveLeave(leaveId, comment = '', version) {
+    return pass(core.approveLeave(leaveId, comment, version))
   },
 
-  async rejectLeave(leaveId, reason) {
-    return ok(await request(`/student-affairs/leave/${leaveId}/reject`, {
-      method: 'POST',
-      body: { reason }
-    }))
+  rejectLeave(leaveId, reason, version) {
+    return pass(core.rejectLeave(leaveId, reason, version))
   },
 
-  async returnLeave(leaveId, reason) {
-    return ok(await request(`/student-affairs/leave/${leaveId}/return`, {
-      method: 'POST',
-      body: { reason }
-    }))
+  returnLeave(leaveId, reason, version) {
+    return pass(core.returnLeave(leaveId, reason, version))
   },
 
-  async cancelLeave(leaveId, proofNote = '') {
-    return ok(await request(`/student-affairs/leave/${leaveId}/cancel`, {
-      method: 'POST',
-      body: { proofNote }
-    }))
+  cancelLeave(leaveId, proofNote = '', version) {
+    return pass(core.cancelLeave(leaveId, proofNote, version))
   },
 
-  async confirmCancelLeave(leaveId, note = '') {
-    return ok(await request(`/student-affairs/leave/${leaveId}/cancel-confirm`, {
-      method: 'POST',
-      body: { note }
-    }))
+  confirmCancelLeave(leaveId, note = '', version) {
+    return pass(core.confirmCancelLeave(leaveId, note, version))
   },
 
-  async applyLeaveExtension(leaveId, body) {
-    return ok(await request(`/student-affairs/leave/${leaveId}/extension`, {
-      method: 'POST',
-      body
-    }))
+  applyLeaveExtension(leaveId, body = {}) {
+    return pass(core.extendLeave(leaveId, body.newEnd, body.reason || '', body.version))
   },
 
-  async approveLeaveExtension(leaveId) {
-    return ok(await request(`/student-affairs/leave/${leaveId}/extension-approve`, {
-      method: 'POST'
-    }))
+  approveLeaveExtension(leaveId, version) {
+    return pass(core.approveExtension(leaveId, version))
   },
 
-  async scanLeaveOverdue() {
-    return ok(await request('/student-affairs/leave/scan-overdue', { method: 'POST' }))
+  scanLeaveOverdue() {
+    return pass(core.scanOverdueLeaves())
   },
 
-  async listRiskRecords(params = {}) {
-    const data = await request('/student-affairs/risk/records', {
-      params: {
-        source: params.source,
-        status: params.status,
-        riskLevel: params.riskLevel,
-        studentId: params.studentId,
-        page: params.page || 1,
-        pageSize: params.pageSize || 20
-      }
-    })
-    return ok({
-      items: data.items || [],
-      total: data.total || 0,
-      page: data.page || params.page || 1,
-      pageSize: data.pageSize || params.pageSize || 20,
-      stats: data.stats || null
-    })
+  listRiskRecords(params = {}) {
+    return pass(core.getRisks(params))
   },
 
-  async getRiskRecord(riskId) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}`))
+  getRiskRecord(riskId, reason = '') {
+    return pass(core.getRiskDetail(riskId, reason))
+  },
+  listRiskHandles(riskId) {
+    return pass(core.listRiskHandles(riskId))
   },
 
-  async createRiskRecord(body) {
-    return ok(await request('/student-affairs/risk/records', {
-      method: 'POST',
-      body
-    }))
+  createRiskRecord(body) {
+    return pass(core.createRisk(body))
   },
 
-  async assignRisk(riskId, ownerId, version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/assign`, {
-      method: 'POST',
-      body: { ownerId, version }
-    }))
+  assignRisk(riskId, ownerId, version) {
+    return pass(core.assignRisk(riskId, ownerId, version))
   },
 
-  async processRisk(riskId, content, version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/process`, {
-      method: 'POST',
-      body: { content, version }
-    }))
+  processRisk(riskId, content, version) {
+    return pass(core.processRisk(riskId, content, version))
   },
 
-  async followRisk(riskId, content = '', version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/follow`, {
-      method: 'POST',
-      body: { content, version }
-    }))
+  followRisk(riskId, content = '', version) {
+    return pass(core.followRisk(riskId, content, version))
   },
 
-  async transferRisk(riskId, newOwnerId, reason = '', version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/transfer`, {
-      method: 'POST',
-      body: { newOwnerId, reason, version }
-    }))
+  transferRisk(riskId, newOwnerId, reason = '', version) {
+    return pass(core.transferRisk(riskId, newOwnerId, reason, version))
   },
 
-  async escalateRisk(riskId, reason = '', version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/escalate`, {
-      method: 'POST',
-      body: { reason, version }
-    }))
+  escalateRisk(riskId, reason = '', version) {
+    return pass(core.escalateRisk(riskId, reason, version))
   },
 
-  async takeoverRisk(riskId, content = '', version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/takeover`, {
-      method: 'POST',
-      body: { content, version }
-    }))
+  takeoverRisk(riskId, content = '', version) {
+    return pass(core.takeoverRisk(riskId, content, version))
   },
 
-  async closeRisk(riskId, conclusion, version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/close`, {
-      method: 'POST',
-      body: { conclusion, version }
-    }))
+  closeRisk(riskId, conclusion, version) {
+    return pass(core.closeRisk(riskId, conclusion, version))
   },
 
-  async reopenRisk(riskId, reason = '', version) {
-    return ok(await request(`/student-affairs/risk/records/${riskId}/reopen`, {
-      method: 'POST',
-      body: { reason, version }
-    }))
+  reopenRisk(riskId, reason = '', version) {
+    return pass(core.reopenRisk(riskId, reason, version))
   },
 
-  async scanRiskTimeout() {
-    return ok(await request('/student-affairs/risk/scan-timeout', { method: 'POST' }))
+  scanRiskTimeout() {
+    return pass(core.scanRiskTimeout())
   },
 
-  // ── 心理关注（强敏感·PSY_STUDENT·危机接风险中枢）──
-  async listMentalAttention(params = {}) {
-    const data = await request('/student-affairs/mental/list', {
-      params: { level: params.level, page: params.page || 1, pageSize: params.pageSize || 50 }
-    })
-    return ok({
-      items: data.items || [],
-      total: data.total || 0,
-      page: data.page || params.page || 1,
-      pageSize: data.pageSize || params.pageSize || 50
-    })
+  // ── 心理关注 ──
+  listMentalAttention(params = {}) {
+    return pass(core.listMentalAttention(params))
   },
 
-  async getMentalReferral(refId, reason) {
-    return ok(await request(`/student-affairs/mental/referrals/${refId}`, {
-      params: reason ? { reason } : {}
-    }))
+  getMentalReferral(refId, reason) {
+    return pass(core.getMentalReferral(refId, reason))
   },
 
-  async getMentalSummary(studentId) {
-    return ok(await request(`/student-affairs/mental/students/${studentId}/summary`))
+  getMentalSummary(studentId) {
+    return pass(core.getMentalSummary(studentId))
   },
 
-  async createMentalReferral(body) {
-    return ok(await request('/student-affairs/mental/referrals', { method: 'POST', body }))
+  createMentalReferral(body) {
+    return pass(core.createMentalReferral(body))
   },
 
-  async followMentalReferral(refId, content) {
-    return ok(await request(`/student-affairs/mental/referrals/${refId}/follow`, {
-      method: 'POST', body: { content }
-    }))
+  followMentalReferral(refId, content, version) {
+    return pass(core.followMentalReferral(refId, content, version))
   },
 
-  async escalateMentalReferral(refId, content = '') {
-    return ok(await request(`/student-affairs/mental/referrals/${refId}/escalate`, {
-      method: 'POST', body: { content }
-    }))
+  escalateMentalReferral(refId, content = '', version) {
+    return pass(core.escalateMentalReferral(refId, content, version))
   },
 
-  async closeMentalReferral(refId, conclusion) {
-    return ok(await request(`/student-affairs/mental/referrals/${refId}/close`, {
-      method: 'POST', body: { conclusion }
-    }))
+  closeMentalReferral(refId, conclusion, version) {
+    return pass(core.closeMentalReferral(refId, conclusion, version))
   },
 
-  async getMentalStats() {
-    return ok(await request('/student-affairs/mental/stats'))
+  getMentalStats() {
+    return pass(core.getMentalStats())
   },
 
   async getStudentBasic(studentId) {
-    return ok(normalizeStudent(await request(`/students/${studentId}`)))
+    const res = await pass(core.getStudentBasic(studentId))
+    return { ...res, data: normalizeStudent(res.data || {}) }
   },
 
   async getAuditLogs(params = {}) {
-    const data = await request('/audit/logs', {
-      params: { page: params.page || 1, pageSize: params.pageSize || 8 }
-    })
-    return ok((data.items || []).map(normalizeAudit))
+    const res = await pass(core.getAuditLogs(params))
+    const items = Array.isArray(res.data) ? res.data : (res.data?.items || [])
+    return { ...res, data: items.map(normalizeAudit) }
   },
 
-  async exportProfileLedger({ purpose = '学工学生画像台账导出' } = {}) {
-    const task = await request('/export/students', {
-      method: 'POST',
-      body: { purpose }
-    })
-    return {
-      code: 0,
-      message: 'ok',
-      data: {
-        filename: task.fileName || `student-affairs-profile-${Date.now()}.xlsx`,
-        downloadUrl: `${API_BASE_URL}${API_PREFIX}/export/tasks/${task.taskId}/download`
-      }
-    }
+  exportProfileLedger(opts = {}) {
+    return pass(core.exportProfileLedger(opts))
   }
 }
 

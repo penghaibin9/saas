@@ -284,16 +284,17 @@ export default {
     },
     openAction(a) {
       const id = this.detail.data.id
+      const ver = this.detail.data.version
       if (a.key === 'extApprove') {
-        this.cd = { visible: true, title: '续假通过', content: '通过续假后将更新请假结束时间与到期提醒。', danger: false, confirmText: '通过续假', requireReason: false, reasonPlaceholder: '', phraseSceneKey: '', submitting: false, submit: () => leaveApi.extensionReview(id, { action: 'APPROVE' }) }
+        this.cd = { visible: true, title: '续假通过', content: '通过续假后将更新请假结束时间与到期提醒。', danger: false, confirmText: '通过续假', requireReason: false, reasonPlaceholder: '', phraseSceneKey: '', submitting: false, submit: () => leaveApi.extensionReview(id, { action: 'APPROVE', version: ver }) }
         return
       }
       if (a.key === 'extReject') {
-        this.cd = { visible: true, title: '续假驳回', content: '驳回后维持原假期与原到期日。', danger: true, confirmText: '驳回续假', requireReason: true, reasonPlaceholder: '请填写驳回原因（不少于 5 字）', phraseSceneKey: 'sa.leave.return', submitting: false, submit: (r) => leaveApi.extensionReview(id, { action: 'REJECT', reason: r }) }
+        this.cd = { visible: true, title: '续假驳回', content: '驳回后维持原假期与原到期日。', danger: true, confirmText: '驳回续假', requireReason: true, reasonPlaceholder: '请填写驳回原因（不少于 5 字）', phraseSceneKey: 'sa.leave.return', submitting: false, submit: (r) => leaveApi.extensionReview(id, { action: 'REJECT', reason: r, version: ver }) }
         return
       }
       if (a.key === 'cancelReturn') {
-        this.cd = { visible: true, title: '销假退回', content: '退回后请假回到「已通过」，学生可重新销假。', danger: true, confirmText: '退回重办', requireReason: true, reasonPlaceholder: '请说明退回原因（如返校证明不符，不少于 5 字）', phraseSceneKey: '', submitting: false, submit: (r) => leaveApi.cancelConfirm(id, { action: 'RETURN', reason: r }) }
+        this.cd = { visible: true, title: '销假退回', content: '退回后请假回到「已通过」，学生可重新销假。', danger: true, confirmText: '退回重办', requireReason: true, reasonPlaceholder: '请说明退回原因（如返校证明不符，不少于 5 字）', phraseSceneKey: '', submitting: false, submit: (r) => leaveApi.cancelConfirm(id, { action: 'RETURN', reason: r, version: ver }) }
         return
       }
       if (a.key === 'proxyCancel') {
@@ -302,7 +303,7 @@ export default {
             { type: 'datetime', key: 'actualReturnAt', label: '实际返校时间', required: true, max: this.nowLocal },
             { type: 'textarea', key: 'note', label: '说明', placeholder: '如：本人已返校 / 家长代办', max: 500 }
           ], values: { actualReturnAt: '', note: '' },
-          submit: (v) => leaveApi.proxyCancel(id, { actualReturnAt: v.actualReturnAt, note: v.note }) }
+          submit: (v) => leaveApi.proxyCancel(id, { actualReturnAt: v.actualReturnAt, note: v.note, version: ver }) }
         return
       }
       if (a.key === 'cancelConfirm') {
@@ -311,7 +312,7 @@ export default {
             { type: 'datetime', key: 'actualReturnAt', label: '实际返校时间（可校对，选填）', required: false, max: this.nowLocal },
             { type: 'textarea', key: 'note', label: '确认说明', placeholder: '选填', max: 500 }
           ], values: { actualReturnAt: '', note: '' },
-          submit: (v) => leaveApi.cancelConfirm(id, { action: 'CONFIRM', actualReturnAt: v.actualReturnAt || null, note: v.note }) }
+          submit: (v) => leaveApi.cancelConfirm(id, { action: 'CONFIRM', actualReturnAt: v.actualReturnAt || null, note: v.note, version: ver }) }
         return
       }
       if (a.key === 'applyExtension') {
@@ -320,7 +321,7 @@ export default {
             { type: 'datetime', key: 'newEnd', label: '续假后新结束时间', required: true },
             { type: 'textarea', key: 'reason', label: '续假原因', required: true, minLen: 10, placeholder: '请说明续假原因（不少于 10 字）', max: 500 }
           ], values: { newEnd: '', reason: '' },
-          submit: (v) => leaveApi.applyExtension(id, { newEnd: v.newEnd, reason: v.reason }) }
+          submit: (v) => leaveApi.applyExtension(id, { newEnd: v.newEnd, reason: v.reason, version: ver }) }
         return
       }
       if (a.key === 'overdueHandle') {
@@ -333,7 +334,7 @@ export default {
             ] },
             { type: 'textarea', key: 'note', label: '处置说明', required: true, minLen: 5, placeholder: '请填写处置说明（不少于 5 字）', max: 500 }
           ], values: { handleType: '', note: '' },
-          submit: (v) => leaveApi.overdueHandle(id, { handleType: v.handleType, note: v.note }) }
+          submit: (v) => leaveApi.overdueHandle(id, { handleType: v.handleType, note: v.note, version: ver }) }
         return
       }
     },

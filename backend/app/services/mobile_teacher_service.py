@@ -767,20 +767,22 @@ def affairs_aid_detail(user: dict, apply_id: str) -> dict:
 
 
 def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
-                       level: str | None = None) -> dict:
+                       level: str | None = None, version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_aid_service as svc
     act = (action or "APPROVE").upper()
     detail = svc.get_application(apply_id, u)
+    expected = version if version is not None else (detail or {}).get("version")
     if (detail or {}).get("status") == "ADJUST_REVIEW":
         if act == "RETURN":
             raise AppException("VALIDATION_ERROR", "困难等级调整不支持退回，请选择通过或驳回")
         mapped = "APPROVE" if act in ("APPROVE", "ADJUST_APPROVE") else "REJECT"
-        result = svc.approve_adjust(apply_id, u, action=mapped)
+        result = svc.approve_adjust(apply_id, u, action=mapped, expected_version=expected)
     else:
-        result = svc.review(apply_id, u, act, level=level, reason=reason or "")
+        result = svc.review(apply_id, u, act, level=level, reason=reason or "",
+                            expected_version=expected)
     _audit_write("MOBILE_AFFAIRS_AID_REVIEW", f"aid:{apply_id}",
                  {"operator": u.get("realName"), "action": act})
     return result

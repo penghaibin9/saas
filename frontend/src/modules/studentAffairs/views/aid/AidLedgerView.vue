@@ -8,10 +8,6 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载认定台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/aid')">
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
-
       <AppSectionCard title="认定申请记录">
         <div class="al-filters">
           <div class="al-fgroup">
@@ -23,7 +19,8 @@
                     :class="{ 'is-on': activeLevel === f.key }" @click="setLevel(f.key)">{{ f.label }}</button>
           </div>
         </div>
-        <DataTable v-if="items.length" :columns="ledgerColumns" :rows="items" row-key="applyId">
+        <DataTable v-if="items.length || pagination.total > 0" :columns="ledgerColumns" :rows="items" row-key="applyId"
+                   :pagination="pagination" @page-change="onPageChange">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
           <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
           <template #cell-applyLevel="{ row }">{{ levelLabel(row.applyLevel) }}</template>
@@ -37,7 +34,7 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
@@ -67,45 +64,38 @@ const LEVEL_FILTERS = [
 
 export default {
   name: 'AidLedgerView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  components: { AppGlobalState, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
-    return { ledgerColumns: LEDGER_COLUMNS, loading: true, errorMessage: '', all: [], items: [], activeStatus: '', activeLevel: '', statusFilters: STATUS_FILTERS, levelFilters: LEVEL_FILTERS }
+    return {
+      ledgerColumns: LEDGER_COLUMNS, loading: true, errorMessage: '', items: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
+      activeStatus: '', activeLevel: '', statusFilters: STATUS_FILTERS, levelFilters: LEVEL_FILTERS
+    }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
-    metricCards() {
-      const s = (k) => this.all.filter((x) => x.status === k).length
-      return [
-        { key: 'all', label: '申请总数', value: this.all.length, accent: 'primary' },
-        { key: 'ap', label: '已通过', value: s('APPROVED'), accent: 'success' },
-        { key: 'pub', label: '公示中', value: s('PUBLICITY'), accent: 'warning' },
-        { key: 'rj', label: '已驳回', value: s('REJECTED'), accent: 'risk' }
-      ]
-    }
   },
   mounted() { this.load() },
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      // 注：后端 /aid/applications 支持真实 page/pageSize 分页，但本页状态/等级筛选是对
-      // 已拉取全量数据做前端过滤（applyFilter），若改为真分页需把筛选参数一并发给后端、
-      // 重新设计翻页与筛选联动逻辑，超出本次仅替换交互展示层的范围，故暂保留一次性拉取。
-      const res = await studentAffairsApi.getAidApplications({ pageSize: 500 })
+      const res = await studentAffairsApi.getAidApplications({
+        status: this.activeStatus,
+        level: this.activeLevel,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize
+      })
       if (res.code === 0 && res.data) {
-        this.all = res.data.items || []
-        this.applyFilter()
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total != null ? res.data.total : this.items.length
       } else {
         this.errorMessage = res.message || '认定台账加载失败'
       }
       this.loading = false
     },
-    applyFilter() {
-      this.items = this.all.filter((x) =>
-        (!this.activeStatus || x.status === this.activeStatus) &&
-        (!this.activeLevel || x.applyLevel === this.activeLevel || x.finalLevel === this.activeLevel))
-    },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
-    setLevel(k) { this.activeLevel = k; this.applyFilter() },
+    setStatus(k) { this.activeStatus = k; this.pagination.page = 1; this.load() },
+    setLevel(k) { this.activeLevel = k; this.pagination.page = 1; this.load() },
+    onPageChange(page) { this.pagination.page = page; this.load() },
     levelLabel(l) { return LEVELS[l] || l || '—' },
     statusType(s) {
       if (s === 'APPROVED') return 'success'

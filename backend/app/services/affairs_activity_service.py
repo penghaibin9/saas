@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 ACTIVITY_STATUS = ("DRAFT", "PUBLISHED", "ENROLL_CLOSED", "ONGOING",
@@ -145,9 +145,10 @@ def update_activity(activity_id, body, user) -> dict:
         return _row(a)
 
 
-def publish_activity(activity_id, user, action="PUBLISH", reason="") -> dict:
+def publish_activity(activity_id, user, action="PUBLISH", reason="", expected_version=None) -> dict:
     with session() as db:
         a = _load(db, activity_id)
+        check_version(a.version, expected_version)
         if action == "PUBLISH":
             if a.status != "DRAFT":
                 raise AppException("DATA_CONFLICT", "仅草稿可发布")
@@ -171,7 +172,7 @@ def publish_activity(activity_id, user, action="PUBLISH", reason="") -> dict:
         return _row(a)
 
 
-def transition_activity(activity_id, user, action) -> dict:
+def transition_activity(activity_id, user, action, expected_version=None) -> dict:
     """手动/到时流转 ENROLL_CLOSE/START/FINISH。"""
     if action not in _MANUAL:
         raise AppException("VALIDATION_ERROR", "非法流转")
@@ -180,19 +181,21 @@ def transition_activity(activity_id, user, action) -> dict:
         a = _load(db, activity_id)
         if a.status != need:
             raise AppException("DATA_CONFLICT", f"当前状态不可{action}")
+        check_version(a.version, expected_version)
         a.status = nxt; a.version += 1
         _audit(db, a.id, f"ACTIVITY_{action}")
         db.commit(); db.refresh(a)
         return _row(a)
 
 
-def confirm_activity(activity_id, user) -> dict:
+def confirm_activity(activity_id, user, expected_version=None) -> dict:
     """FINISHED→CONFIRMED：为已签到学生生成学时/积分/时长（唯一约束幂等）+ 进360。"""
     from app.models import (AffairsActivityCredit, AffairsActivitySignup, StudentStageEvent)
     with session() as db:
         a = _load(db, activity_id)
         if a.status != "FINISHED":
             raise AppException("DATA_CONFLICT", "仅已结束活动可确认")
+        check_version(a.version, expected_version)
         signups = db.scalars(select(AffairsActivitySignup).where(
             AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
             AffairsActivitySignup.signup_status == "CHECKED_IN",
@@ -225,7 +228,7 @@ def confirm_activity(activity_id, user) -> dict:
         return d
 
 
-def unconfirm_activity(activity_id, user, reason="") -> dict:
+def unconfirm_activity(activity_id, user, reason="", expected_version=None) -> dict:
     """撤销确认：删除本活动 credit + 回退 signup + 活动回 FINISHED。"""
     from app.models import AffairsActivityCredit, AffairsActivitySignup
     if not reason or len(reason.strip()) < 5:
@@ -234,6 +237,7 @@ def unconfirm_activity(activity_id, user, reason="") -> dict:
         a = _load(db, activity_id)
         if a.status != "CONFIRMED":
             raise AppException("DATA_CONFLICT", "仅已确认活动可撤销")
+        check_version(a.version, expected_version)
         for c in db.scalars(select(AffairsActivityCredit).where(
                 AffairsActivityCredit.tenant_id == _tid(), AffairsActivityCredit.activity_id == a.id)).all():
             db.delete(c)
@@ -247,11 +251,12 @@ def unconfirm_activity(activity_id, user, reason="") -> dict:
         return _row(a)
 
 
-def archive_activity(activity_id, user) -> dict:
+def archive_activity(activity_id, user, expected_version=None) -> dict:
     with session() as db:
         a = _load(db, activity_id)
         if a.status != "CONFIRMED":
             raise AppException("DATA_CONFLICT", "仅已确认活动可归档")
+        check_version(a.version, expected_version)
         a.status = "ARCHIVED"; a.version += 1
         _audit(db, a.id, "ACTIVITY_ARCHIVE")
         db.commit(); db.refresh(a)
@@ -594,7 +599,7 @@ def create_volunteer(body, user) -> dict:
         return _vol_row(r, s)
 
 
-def confirm_volunteer(record_id, user) -> dict:
+def confirm_volunteer(record_id, user, expected_version=None) -> dict:
     """认定：PENDING→CONFIRMED，生成 VOLUNTEER_HOUR 学分（复用波次1 学分账）+ 进360。"""
     from app.models import (AffairsActivityCredit, AffairsVolunteerRecord, StudentProfile,
                             StudentStageEvent)
@@ -605,6 +610,7 @@ def confirm_volunteer(record_id, user) -> dict:
         _vol_scope_or_403(db, r.student_id, user)
         if r.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待认定记录可认定")
+        check_version(r.version, expected_version)
         credit = AffairsActivityCredit(tenant_id=_tid(), student_id=r.student_id, activity_id=r.activity_id,
                                        credit_type="VOLUNTEER_HOUR", credit_value=r.hours,
                                        category_code=VOL_CATEGORY, source="VOLUNTEER_RECORD",
@@ -621,7 +627,7 @@ def confirm_volunteer(record_id, user) -> dict:
         return _vol_row(r, s)
 
 
-def reject_volunteer(record_id, user, reason="") -> dict:
+def reject_volunteer(record_id, user, reason="", expected_version=None) -> dict:
     """驳回：PENDING→REJECTED（原因≥5字，不生成学分）。"""
     from app.models import AffairsVolunteerRecord, StudentProfile
     if len((reason or "").strip()) < 5:
@@ -633,6 +639,7 @@ def reject_volunteer(record_id, user, reason="") -> dict:
         _vol_scope_or_403(db, r.student_id, user)
         if r.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待认定记录可驳回")
+        check_version(r.version, expected_version)
         r.status, r.reject_reason, r.version = "REJECTED", reason.strip(), r.version + 1
         _audit(db, r.id, "VOLUNTEER_REJECT", reason.strip())
         db.commit(); db.refresh(r)
@@ -717,6 +724,7 @@ def review_credit_appeal(appeal_id, body, user) -> dict:
             raise not_found("申诉不存在")
         if a.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该申诉已审核")
+        check_version(a.version, getattr(body, "version", None))
         if action == "APPROVE":
             val = float(a.claim_value or 0)
             if val <= 0:

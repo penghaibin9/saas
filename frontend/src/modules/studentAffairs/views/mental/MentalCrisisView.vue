@@ -185,8 +185,10 @@ export default {
       this.$nextTick(() => applyInsertion(el, r.selStart, r.selEnd))
     },
     async submitEscalate() {
+      const ver = this.dlg.row && this.dlg.row.version
       const ok = await this.runAction(() =>
-        studentAffairsApi.escalateMentalReferral(this.dlg.row.referralId, (this.dlg.content || '').trim()))
+        studentAffairsApi.escalateMentalReferral(
+          this.dlg.row.referralId, (this.dlg.content || '').trim(), ver))
       if (ok) this.dlg.visible = false
     },
     gotoRisk(riskId) {
@@ -201,6 +203,11 @@ export default {
         await this.load()
         return true
       } catch (e) {
+        if (e.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          this.errorMessage = '该记录已被其他人处理，数据已刷新'
+          await this.load()
+          return false
+        }
         this.errorMessage = e.message || '操作失败'
         return false
       } finally {

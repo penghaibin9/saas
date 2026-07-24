@@ -43,14 +43,25 @@
       </AppSectionCard>
 
       <AppSectionCard v-else title="风险学生与处置">
+        <div v-if="studentFilterLabel" class="sa-student-filter">
+          <span>{{ studentFilterLabel }}</span>
+          <button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button>
+        </div>
         <div class="sa-toolbar">
           <AppSelect v-model="filters.source" class="sa-filter" :options="SOURCE_OPTIONS" placeholder="" @change="reload" />
           <AppSelect v-model="filters.riskLevel" class="sa-filter" :options="LEVEL_FILTER_OPTIONS" placeholder="" @change="reload" />
-          <AppSelect v-model="filters.status" class="sa-filter" :options="STATUS_FILTER_OPTIONS" placeholder="" @change="reload" />
+          <AppSelect v-model="filters.status" class="sa-filter" :options="STATUS_FILTER_OPTIONS" placeholder="" @change="onStatusSelect" />
           <span v-if="scanResult" class="sa-scan">{{ scanResult }}</span>
         </div>
 
-        <DataTable v-if="risks.length" :columns="riskColumns" :rows="risks" row-key="riskId">
+        <DataTable
+          v-if="risks.length || pagination.total > 0"
+          :columns="riskColumns"
+          :rows="risks"
+          row-key="riskId"
+          :pagination="pagination"
+          @page-change="onPageChange"
+        >
           <template #cell-student="{ row }">
             <div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div>
             <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
@@ -145,6 +156,7 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 
 const RISK_COLUMNS = [
   { key: 'student', title: '学生', width: '160px' },
@@ -178,6 +190,7 @@ const LEVEL_FILTER_OPTIONS = [
 ]
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: '全部状态' },
+  { value: 'PENDING', label: '待处置' },
   { value: 'OPEN', label: '未关闭' },
   { value: 'NEW', label: '新建' },
   { value: 'ASSIGNED', label: '已分派' },
@@ -227,6 +240,7 @@ export default {
       risks: [],
       total: 0,
       stats: null,
+      pagination: { page: 1, pageSize: 20, total: 0 },
       scanResult: '',
       createDlg: { visible: false, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' },
       assignDlg: { visible: false, riskId: '', ownerId: '', version: null },
@@ -236,12 +250,29 @@ export default {
         riskLevel: '',
         status: '',
         studentId: ''
-      }
+      },
+      studentFilter: { studentId: '', studentNo: '', studentName: '' }
     }
   },
   computed: {
     isRulePanel() {
       return this.$route.name === 'student-affairs-risk-rules'
+    },
+    studentFilterLabel() {
+      const f = this.studentFilter || {}
+      if (!f.studentId && !f.studentNo) return ''
+      let name = f.studentName || ''
+      let no = f.studentNo || ''
+      const id = f.studentId || ''
+      if ((!name || !no) && id && this.risks && this.risks.length) {
+        const hit = this.risks.find((x) => String(x.studentId) === String(id))
+        if (hit) {
+          if (!name) name = hit.realName || ''
+          if (!no) no = hit.studentNo || ''
+        }
+      }
+      if (name || no) return `当前学生筛选：${name || '学生'}${no ? ` / ${no}` : ''}`
+      return `当前学生筛选：#${id}`
     },
     pageState() {
       if (this.loading) return 'loading'
@@ -289,11 +320,34 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}
+      this.studentFilter = readStudentFilter(q)
+      this.filters.studentId = this.studentFilter.studentId || ''
       this.filters.source = q.source ? String(q.source) : this.filters.source
       this.filters.riskLevel = q.riskLevel ? String(q.riskLevel) : this.filters.riskLevel
-      this.filters.status = q.status != null && q.status !== '' ? String(q.status) : this.filters.status
-      this.filters.studentId = q.studentId ? String(q.studentId) : (q.studentNo ? '' : '')
-      if (q.studentId) this.filters.studentId = String(q.studentId)
+      if (q.status != null && q.status !== '') {
+        const resolved = resolveTodoStatus('risk', q.status)
+        // PENDING/OPEN/DONE/OVERDUE 等公共语义：下拉用 activeKey；后端 OPEN/PENDING 已识别
+        this.filters.status = resolved.activeKey === 'CLOSED' ? 'CLOSED'
+          : (resolved.activeKey === 'ESCALATED' ? 'ESCALATED'
+            : (['PENDING', 'OPEN'].includes(resolved.activeKey) ? resolved.activeKey
+              : (resolved.matchStatuses && resolved.matchStatuses.length === 1 ? resolved.matchStatuses[0] : String(q.status))))
+      }
+    },
+    clearStudentFilter() {
+      this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
+      this.filters.studentId = ''
+      const q = { ...this.$route.query }
+      delete q.studentId
+      delete q.studentNo
+      delete q.studentName
+      this.$router.replace({ query: q }).catch(() => {})
+    },
+    onStatusSelect() {
+      const q = { ...this.$route.query }
+      if (!this.filters.status) delete q.status
+      else q.status = this.filters.status
+      this.$router.replace({ query: q }).catch(() => {})
+      this.reload()
     },
     async load() {
       this.loading = true
@@ -301,11 +355,12 @@ export default {
       try {
         const res = await studentAffairsApi.listRiskRecords({
           ...this.filters,
-          page: 1,
-          pageSize: 50
+          page: this.pagination.page,
+          pageSize: this.pagination.pageSize
         })
         this.risks = res.data.items || []
-        this.total = res.data.total || this.risks.length
+        this.total = res.data.total || 0
+        this.pagination.total = this.total
         this.stats = res.data.stats || null
       } catch (e) {
         this.errorMessage = e.message || '风险数据加载失败'
@@ -315,6 +370,11 @@ export default {
     },
     reload() {
       this.scanResult = ''
+      this.pagination.page = 1
+      this.load()
+    },
+    onPageChange(page) {
+      this.pagination.page = page
       this.load()
     },
     ownerLabel(row) {
@@ -434,6 +494,19 @@ export default {
   flex-wrap: wrap;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+.sa-student-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
 }
 .sa-filter {
   width: 150px;

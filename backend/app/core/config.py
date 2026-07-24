@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     SANDBOX_AUTO_RESET: str = "false"
     INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
     AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN: bool = True
+    AFFAIRS_RISK_TIMEOUT_AUTO_SCAN: bool = True
+    AFFAIRS_RISK_NEW_ASSIGN_HOURS: float = 4
+    AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS: float = 72
     # 运维探针令牌：/health/ready、/internal/metrics（生产建议必填）
     INTERNAL_OPS_TOKEN: str = ""
     # 对外联系方式；错误提示用配置而非硬编码个人电话

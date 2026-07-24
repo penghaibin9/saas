@@ -25,11 +25,12 @@
 
       <AppSectionCard title="关注名单（明细遮蔽）">
         <div class="sa-toolbar">
-          <AppSelect v-model="filters.level" :options="LEVEL_FILTERS" placeholder="全部等级" class="sa-pick" @change="load" />
+          <AppSelect v-model="filters.level" :options="LEVEL_FILTERS" placeholder="全部等级" class="sa-pick" @change="onFilterChange" />
           <span class="sa-hint">共 {{ total }} 条 · 明细默认脱敏</span>
         </div>
 
-        <DataTable v-if="items.length" :columns="attentionColumns" :rows="items" row-key="referralId">
+        <DataTable v-if="items.length || pagination.total > 0" :columns="attentionColumns" :rows="items" row-key="referralId"
+                   :pagination="pagination" @page-change="onPageChange">
           <template #cell-student="{ row }">
             <div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div>
             <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
@@ -176,7 +177,8 @@ export default {
   data() {
     return {
       attentionColumns: ATTENTION_COLUMNS,
-      loading: true, actioning: false, errorMessage: '', items: [], total: 0, filters: { level: '' },
+      loading: true, actioning: false, errorMessage: '', items: [], total: 0,
+      pagination: { page: 1, pageSize: 20, total: 0 }, filters: { level: '' },
       revDlg: { visible: false, row: null, who: '', error: '' },
       refDlg: { visible: false, studentId: '', level: 'FOCUS', channel: '校内咨询', reasonSummary: '', error: '' },
       txtDlg: { visible: false, kind: '', row: null, title: '', type: 'primary', confirmText: '确认', reasonLabel: '', sceneKey: '' }
@@ -212,14 +214,25 @@ export default {
       this.loading = true
       this.errorMessage = ''
       try {
-        const res = await studentAffairsApi.listMentalAttention({ level: this.filters.level, page: 1, pageSize: 50 })
+        const res = await studentAffairsApi.listMentalAttention({
+          level: this.filters.level, page: this.pagination.page, pageSize: this.pagination.pageSize
+        })
         this.items = res.data.items || []
         this.total = res.data.total || this.items.length
+        this.pagination.total = this.total
       } catch (e) {
         this.errorMessage = e.message || '心理关注名单加载失败'
       } finally {
         this.loading = false
       }
+    },
+    onFilterChange() {
+      this.pagination.page = 1
+      this.load()
+    },
+    onPageChange(page) {
+      this.pagination.page = page
+      this.load()
     },
     /* ── 查看心理明细（敏感，SENSITIVE_VIEW 审计） ── */
     reveal(row) {
@@ -282,9 +295,10 @@ export default {
     },
     async submitText({ reason }) {
       const d = this.txtDlg
+      const ver = d.row && d.row.version
       const fn = d.kind === 'follow'
-        ? () => studentAffairsApi.followMentalReferral(d.row.referralId, reason.trim())
-        : () => studentAffairsApi.closeMentalReferral(d.row.referralId, reason.trim())
+        ? () => studentAffairsApi.followMentalReferral(d.row.referralId, reason.trim(), ver)
+        : () => studentAffairsApi.closeMentalReferral(d.row.referralId, reason.trim(), ver)
       const ok = await this.runAction(fn)
       if (ok) d.visible = false
     },
@@ -297,6 +311,11 @@ export default {
         await this.load()
         return true
       } catch (e) {
+        if (e.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          this.errorMessage = '该记录已被其他人处理，数据已刷新'
+          await this.load()
+          return false
+        }
         this.errorMessage = e.message || '操作失败'
         return false
       } finally {

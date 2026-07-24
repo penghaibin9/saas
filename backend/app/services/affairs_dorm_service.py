@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
+from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
 
 GENDER_LIMITS = ("MALE", "FEMALE", "MIXED")
@@ -664,27 +665,41 @@ def occupancy_stats(user):
 
 # ═══════════ 列表（调宿/检查/异常，宿管按楼栋收敛）═══════════
 
-def list_transfers(user, status=None, page=1, page_size=50):
+def list_transfers(user, status=None, page=1, page_size=50, student_id=None):
     from app.models import DormBed, DormTransfer, StudentProfile
     with session() as db:
         scope = _dorm_scope_building_ids(db, user)
         conds = [DormTransfer.tenant_id == _tid(), DormTransfer.is_deleted.is_(False)]
-        if status:
+        if status == "PENDING":
+            conds.append(DormTransfer.status.in_(
+                ["PENDING", "SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW", "DORM_MANAGER_REVIEW"]))
+        elif status:
             conds.append(DormTransfer.status == status)
-        rows = db.scalars(select(DormTransfer).where(*conds).order_by(DormTransfer.id.desc())).all()
+        if student_id:
+            try:
+                conds.append(DormTransfer.student_id == int(student_id))
+            except (TypeError, ValueError):
+                return [], 0
+        query = select(DormTransfer)
+        count_query = select(func.count()).select_from(DormTransfer)
+        if scope is not None:
+            query = query.join(DormBed, DormBed.id == DormTransfer.to_bed_id)
+            count_query = count_query.join(DormBed, DormBed.id == DormTransfer.to_bed_id)
+            conds.append(DormBed.building_id.in_(scope or {-1}))
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(count_query.where(*conds)) or 0)
+        rows = db.scalars(query.where(*conds).order_by(DormTransfer.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_({int(t.student_id) for t in rows if t.student_id})
+        )).all()} if rows else {}
         out = []
         for t in rows:
-            if scope is not None:  # 宿管仅见目标床所在楼栋的调宿
-                tb = db.get(DormBed, int(t.to_bed_id)) if t.to_bed_id else None
-                if not tb or tb.building_id not in scope:
-                    continue
-            s = db.get(StudentProfile, int(t.student_id)) if t.student_id else None
+            s = students.get(int(t.student_id)) if t.student_id else None
             r = _transfer_row(t)
             r["realName"], r["studentNo"] = (s.real_name if s else ""), (s.student_no if s else "")
             out.append(r)
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 def list_check_tasks(user, status=None, page=1, page_size=50):
@@ -745,7 +760,7 @@ def list_check_records(task_id, user, page=1, page_size=100):
 
 def _resolve_exception_student(db, exception_id, cs_student_id):
     """t_cs_dorm_exception.cs_student_id 可能是 CsServiceStudent.id、（无台账行时）退化的全局 student_id、
-    或 0（纯房间级异常无涉事学生）。解析出 (realName, studentNo, buildingId)：优先经学生当前占用床位
+    或 0（纯房间级异常无涉事学生）。解析出 (realName, studentNo, buildingId, globalStudentId)：优先经学生当前占用床位
     （DormBed.status=OCCUPIED）反查楼栋；纯房间级异常（cs_student_id=0）改经回链的 DormCheckRecord.room_id
     反查楼栋。供宿管楼栋范围收敛与列表展示学生身份用。"""
     from app.models import CsServiceStudent, DormBed, DormCheckRecord, DormRoom, StudentProfile
@@ -776,30 +791,117 @@ def _resolve_exception_student(db, exception_id, cs_student_id):
             room = db.get(DormRoom, int(rec.room_id))
             if room:
                 building_id = room.building_id
-    return real_name, student_no, building_id
+    return real_name, student_no, building_id, global_sid
 
 
-def list_exceptions(user, status=None, page=1, page_size=50):
+def _resolve_exception_students(db, rows):
+    """批量解析异常关联学生/楼栋，供列表避免逐条查学生、床位和检查记录。"""
+    from app.models import CsServiceStudent, DormBed, DormCheckRecord, DormRoom, StudentProfile
+    cs_ids = {int(x.cs_student_id) for x in rows if x.cs_student_id}
+    cs_rows = db.scalars(select(CsServiceStudent).where(
+        CsServiceStudent.tenant_id == _tid(), CsServiceStudent.id.in_(cs_ids),
+        CsServiceStudent.is_deleted.is_(False))).all() if cs_ids else []
+    cs_by_id = {int(x.id): x for x in cs_rows}
+    fallback_ids = cs_ids - set(cs_by_id)
+    fallback_students = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(fallback_ids),
+        StudentProfile.is_deleted.is_(False))).all() if fallback_ids else []
+    fallback_by_id = {int(x.id): x for x in fallback_students}
+    identities = {}
+    for x in rows:
+        csid = int(x.cs_student_id or 0)
+        cs = cs_by_id.get(csid)
+        student = fallback_by_id.get(csid)
+        identities[int(x.id)] = (
+            (cs.name if cs else (student.real_name if student else "")) or "",
+            (cs.student_no if cs else (student.student_no if student else "")) or "",
+            (cs.student_id if cs else (student.id if student else None)),
+        )
+    student_ids = {int(identity[2]) for identity in identities.values() if identity[2]}
+    beds = db.scalars(select(DormBed).where(
+        DormBed.tenant_id == _tid(), DormBed.student_id.in_(student_ids),
+        DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).all() if student_ids else []
+    building_by_student = {int(b.student_id): b.building_id for b in beds if b.student_id}
+    exception_ids = [int(x.id) for x in rows]
+    check_rows = db.scalars(select(DormCheckRecord).where(
+        DormCheckRecord.tenant_id == _tid(), DormCheckRecord.related_exception_id.in_(exception_ids),
+        DormCheckRecord.is_deleted.is_(False))).all() if exception_ids else []
+    rooms = db.scalars(select(DormRoom).where(
+        DormRoom.tenant_id == _tid(), DormRoom.id.in_({int(r.room_id) for r in check_rows if r.room_id}),
+        DormRoom.is_deleted.is_(False))).all() if check_rows else []
+    room_buildings = {int(r.id): r.building_id for r in rooms}
+    check_buildings = {
+        int(r.related_exception_id): room_buildings.get(int(r.room_id))
+        for r in check_rows if r.related_exception_id and r.room_id
+    }
+    return {
+        int(x.id): (*identities[int(x.id)],
+                    building_by_student.get(int(identities[int(x.id)][2]))
+                    if identities[int(x.id)][2] else check_buildings.get(int(x.id)))
+        for x in rows
+    }
+
+
+def list_exceptions(user, status=None, page=1, page_size=50, student_id=None):
     """宿舍异常列表（含夜不归宿）。按学生当前占用床位反查楼栋，宿管收敛至负责楼栋；展示学生姓名/学号。"""
     from app.models import CsDormException
+    want_sid = None
+    if student_id:
+        try:
+            want_sid = int(student_id)
+        except (TypeError, ValueError):
+            return [], 0
     with session() as db:
         scope = _dorm_scope_building_ids(db, user)
         conds = [CsDormException.tenant_id == _tid(), CsDormException.is_deleted.is_(False)]
-        if status:
+        if status in ("PENDING", "PENDING_HANDLE"):
+            conds.append(CsDormException.status.in_(["PENDING_HANDLE", "OPEN", "PENDING"]))
+        elif status:
             conds.append(CsDormException.status == status)
-        rows = db.scalars(select(CsDormException).where(*conds).order_by(CsDormException.id.desc())).all()
+        from app.models import CsServiceStudent, DormBed, DormCheckRecord, DormRoom, StudentProfile
+        if want_sid is not None:
+            conds.append(or_(
+                CsDormException.cs_student_id == want_sid,
+                CsDormException.cs_student_id.in_(select(CsServiceStudent.id).where(
+                    CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_id == want_sid,
+                    CsServiceStudent.is_deleted.is_(False))),
+            ))
+        if scope is not None:
+            scoped = scope or {-1}
+            student_buildings = select(CsServiceStudent.id).join(
+                DormBed, DormBed.student_id == CsServiceStudent.student_id).where(
+                CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
+                DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False),
+                DormBed.status == "OCCUPIED", DormBed.building_id.in_(scoped))
+            legacy_buildings = select(StudentProfile.id).join(
+                DormBed, DormBed.student_id == StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False),
+                DormBed.status == "OCCUPIED", DormBed.building_id.in_(scoped))
+            room_exceptions = select(DormCheckRecord.related_exception_id).join(
+                DormRoom, DormRoom.id == DormCheckRecord.room_id).where(
+                DormCheckRecord.tenant_id == _tid(), DormCheckRecord.is_deleted.is_(False),
+                DormRoom.tenant_id == _tid(), DormRoom.is_deleted.is_(False),
+                DormRoom.building_id.in_(scoped))
+            conds.append(or_(
+                CsDormException.cs_student_id.in_(student_buildings),
+                CsDormException.cs_student_id.in_(legacy_buildings),
+                CsDormException.id.in_(room_exceptions),
+            ))
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(CsDormException).where(*conds)) or 0)
+        rows = db.scalars(select(CsDormException).where(*conds).order_by(CsDormException.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        resolved = _resolve_exception_students(db, rows)
         out = []
         for x in rows:
-            real_name, student_no, building_id = _resolve_exception_student(db, x.id, x.cs_student_id)
-            if scope is not None and (building_id is None or building_id not in scope):
-                continue
+            real_name, student_no, global_sid, _building_id = resolved[int(x.id)]
             out.append({"exceptionId": str(x.id), "csStudentId": str(x.cs_student_id or ""),
+                       "studentId": str(global_sid or ""),
                        "realName": real_name, "studentNo": student_no,
                        "excType": x.exc_type or "", "detail": x.detail or "", "status": x.status,
                        "createdAt": _iso(x.created_at), "version": x.version})
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 def handle_exception(exception_id, user, note="", expected_version=None):
@@ -810,7 +912,7 @@ def handle_exception(exception_id, user, note="", expected_version=None):
         x = db.get(CsDormException, int(exception_id))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("异常记录不存在")
-        _, _, building_id = _resolve_exception_student(db, x.id, x.cs_student_id)
+        _, _, building_id, _ = _resolve_exception_student(db, x.id, x.cs_student_id)
         _require_dorm_scope(db, building_id, user)
         if x.status == "HANDLED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异常已处置")

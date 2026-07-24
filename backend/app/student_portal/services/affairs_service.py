@@ -178,7 +178,8 @@ def leave_cancel(user: dict, leave_id: str, body: dict | None = None) -> dict:
     body = body or {}
     from app.services import affairs_leave_service as leave_svc
     note = str(body.get("proofNote") or body.get("note") or "").strip()
-    return leave_svc.submit_cancel(leave_id, user, proof_note=note, self_only=True)
+    version = body.get("version")
+    return leave_svc.submit_cancel(leave_id, user, proof_note=note, expected_version=version, self_only=True)
 
 
 def leave_extend(user: dict, leave_id: str, body: dict | None = None) -> dict:
@@ -187,7 +188,9 @@ def leave_extend(user: dict, leave_id: str, body: dict | None = None) -> dict:
     from app.services import affairs_leave_service as leave_svc
     new_end = body.get("newEndTime") or body.get("newEnd") or body.get("endTime") or ""
     reason = str(body.get("reason") or "").strip()
-    return leave_svc.apply_extension(leave_id, user, new_end, reason=reason, self_only=True)
+    version = body.get("version")
+    return leave_svc.apply_extension(
+        leave_id, user, new_end, reason=reason, expected_version=version, self_only=True)
 
 
 def dorm(user: dict) -> dict:

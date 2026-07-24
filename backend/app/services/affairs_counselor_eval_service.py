@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 L_EVAL_STATUS = {"DRAFT": "草稿", "PUBLISHED": "已发布"}
@@ -201,11 +201,12 @@ def _load(db, eval_id):
     return e
 
 
-def publish_eval(eval_id, user) -> dict:
+def publish_eval(eval_id, user, expected_version=None) -> dict:
     with session() as db:
         e = _load(db, eval_id)
         if e.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布")
+        check_version(e.version, expected_version)
         e.status, e.published_at, e.version = "PUBLISHED", datetime.utcnow(), e.version + 1
         _audit(db, e.id, "EVAL_PUBLISH", "")
         db.commit(); db.refresh(e)
@@ -244,6 +245,7 @@ def review_eval_appeal(eval_id, body, user) -> dict:
         e = _load(db, eval_id)
         if e.appeal_status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "无待复核申诉")
+        check_version(e.version, getattr(body, "version", None))
         e.appeal_status, e.appeal_result, e.appeal_opinion = "REVIEWED", result, opinion
         new_scores = getattr(body, "scores", None)
         if result == "ADJUSTED" and isinstance(new_scores, dict) and new_scores:

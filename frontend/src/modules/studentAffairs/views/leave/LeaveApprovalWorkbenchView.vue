@@ -173,15 +173,15 @@ export default {
     },
     openApprove() {
       const id = this.detail.data.id
-      this.cd = { visible: true, title: '请假通过', content: '通过后将流转到下一审批节点，或终审通过并通知学生。', danger: false, confirmText: '通过', requireReason: false, reasonPlaceholder: '', submitting: false, submit: (r) => leaveApi.approve(id, { comment: r || '' }) }
+      this.cd = { visible: true, title: '请假通过', content: '通过后将流转到下一审批节点，或终审通过并通知学生。', danger: false, confirmText: '通过', requireReason: false, reasonPlaceholder: '', submitting: false, submit: (r) => leaveApi.approve(id, { comment: r || '', version: this.detail.data.version }) }
     },
     openReject() {
       const id = this.detail.data.id
-      this.cd = { visible: true, title: '请假驳回', content: '驳回为终态，学生需重新发起申请。', danger: true, confirmText: '驳回', requireReason: true, reasonPlaceholder: '请填写驳回原因（不少于 5 字）', submitting: false, submit: (r) => leaveApi.reject(id, { reason: r }) }
+      this.cd = { visible: true, title: '请假驳回', content: '驳回为终态，学生需重新发起申请。', danger: true, confirmText: '驳回', requireReason: true, reasonPlaceholder: '请填写驳回原因（不少于 5 字）', submitting: false, submit: (r) => leaveApi.reject(id, { reason: r, version: this.detail.data.version }) }
     },
     openReturn() {
       const id = this.detail.data.id
-      this.cd = { visible: true, title: '退回重提', content: '退回后学生可修改申请内容重新提交，重新进入首个审批节点。', danger: true, confirmText: '退回', requireReason: true, reasonPlaceholder: '请填写退回原因（不少于 5 字）', submitting: false, submit: (r) => leaveApi.returnForResubmit(id, { reason: r }) }
+      this.cd = { visible: true, title: '退回重提', content: '退回后学生可修改申请内容重新提交，重新进入首个审批节点。', danger: true, confirmText: '退回', requireReason: true, reasonPlaceholder: '请填写退回原因（不少于 5 字）', submitting: false, submit: (r) => leaveApi.returnForResubmit(id, { reason: r, version: this.detail.data.version }) }
     },
     async onConfirm({ reason }) {
       this.cd.submitting = true

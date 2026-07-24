@@ -189,6 +189,43 @@ async def lifespan(app: FastAPI):
 
         tasks.append(asyncio.create_task(_affairs_loop(), name="affairs-leave-overdue-scan"))
 
+    if settings.AFFAIRS_RISK_TIMEOUT_AUTO_SCAN and db_enabled():
+        def _affairs_risk_once():
+            from sqlalchemy import select
+
+            from app.core.context import set_tenant
+            from app.db.session import get_sessionmaker
+            from app.models import Tenant
+            from app.services import affairs_risk_service
+            db = get_sessionmaker()()
+            try:
+                tenant_ids = list(db.scalars(select(Tenant.id).where(Tenant.status == "ACTIVE")))
+            finally:
+                db.close()
+            for tenant_id in tenant_ids:
+                try:
+                    set_tenant({"tenantId": str(tenant_id)})
+                    affairs_risk_service.scan_timeout()
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception(
+                        "affairs risk timeout scan failed tenant=%s", tenant_id)
+                finally:
+                    set_tenant(None)
+
+        async def _affairs_risk_loop():
+            from anyio import to_thread
+            while True:
+                try:
+                    await to_thread.run_sync(_affairs_risk_once)
+                    await asyncio.sleep(6 * 60 * 60)
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception("affairs risk timeout scheduler failed")
+                    await asyncio.sleep(5 * 60)
+
+        tasks.append(asyncio.create_task(_affairs_risk_loop(), name="affairs-risk-timeout-scan"))
+
     try:
         yield
     finally:

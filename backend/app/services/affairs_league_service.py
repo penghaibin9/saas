@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 DEV_TYPES = ("PARTY", "LEAGUE")
@@ -132,6 +132,7 @@ def advance_stage(dev_id, body, user) -> dict:
         d = _load(db, dev_id)
         if d.status != "ONGOING":
             raise AppException("DATA_CONFLICT", "该台账非发展中，不可推进")
+        check_version(d.version, getattr(body, "version", None))
         cur_i = PARTY_STAGES.index(d.current_stage) if d.current_stage in PARTY_STAGES else -1
         to_i = PARTY_STAGES.index(to_stage)
         if to_i <= cur_i:
@@ -153,7 +154,7 @@ def advance_stage(dev_id, body, user) -> dict:
         return _dev_row(d, s)
 
 
-def terminate_dev(dev_id, user, reason="") -> dict:
+def terminate_dev(dev_id, user, reason="", expected_version=None) -> dict:
     from app.models import AffairsLeagueDevStage, StudentProfile
     if len((reason or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "终止原因至少 5 字")
@@ -161,6 +162,7 @@ def terminate_dev(dev_id, user, reason="") -> dict:
         d = _load(db, dev_id)
         if d.status != "ONGOING":
             raise AppException("DATA_CONFLICT", "仅发展中台账可终止")
+        check_version(d.version, expected_version)
         d.status, d.version = "TERMINATED", d.version + 1
         db.add(AffairsLeagueDevStage(tenant_id=_tid(), dev_id=d.id, from_stage=d.current_stage,
                                      to_stage=d.current_stage, operator=_op()[0],

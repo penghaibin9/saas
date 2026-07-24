@@ -6,6 +6,11 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="违纪处分"
   >
+    <div v-if="studentFilterLabel" class="dp-student-filter">
+      <span>{{ studentFilterLabel }}</span>
+      <button type="button" class="dp-chip" @click="clearStudentFilter">清除筛选</button>
+    </div>
+
     <div class="dp-toolbar">
       <div class="dp-filters">
         <button
@@ -14,7 +19,7 @@
           type="button"
           class="dp-chip"
           :class="{ 'is-on': activeStatus === f.key }"
-          @click="activeStatus = f.key"
+          @click="setStatusFilter(f.key)"
         >
           {{ f.label }}<em>{{ f.count }}</em>
         </button>
@@ -30,7 +35,7 @@
       <div class="dp-list">
         <LoadingState v-if="loading" text="正在加载处分记录…" />
         <ErrorState v-else-if="listError" :description="listError" @retry="loadList" />
-        <EmptyState v-else-if="!filteredList.length" title="暂无处分记录" description="可点「登记处分」录入，或调整筛选条件" />
+        <EmptyState v-else-if="!filteredList.length && pagination.total === 0" title="暂无处分记录" description="可点「登记处分」录入，或调整筛选条件" />
         <ul v-else class="dp-queue">
           <li
             v-for="it in filteredList"
@@ -46,6 +51,13 @@
             <div class="dp-qitem__mid">{{ discTypeLabel(it.discType) }} · {{ it.reason }}</div>
           </li>
         </ul>
+        <AppPagination
+          v-if="pagination.total > pagination.pageSize"
+          v-model:page="pagination.page"
+          v-model:pageSize="pagination.pageSize"
+          :total="pagination.total"
+          @change="loadList"
+        />
       </div>
 
       <div class="dp-detail">
@@ -138,12 +150,13 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppConfirmDialog, AppDateDisplay, AppFormItem, AppInlineAlert, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
+  AppConfirmDialog, AppDateDisplay, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
   AppStudentPicker, AppTextarea, AppTextInput
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 import { toast } from '@/utils/toast'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
@@ -161,14 +174,17 @@ export default {
   name: 'DisciplineWorkbenchView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppDrawer,
-    AppFormItem, AppInlineAlert, AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
+    AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
       loading: true, listError: '', list: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false, reconciling: false,
       activeStatus: 'ALL', typeFilter: '',
+      studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       registerModal: { visible: false, studentId: '', discType: 'WARNING', reason: '', docNo: '', error: '' },
       discTypes: Object.entries(DISC_TYPE).map(([value, label]) => ({ value, label }))
@@ -181,10 +197,27 @@ export default {
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
     },
+    studentFilterLabel() {
+      const f = this.studentFilter || {}
+      if (!f.studentId && !f.studentNo) return ''
+      let name = f.studentName || ''
+      let no = f.studentNo || ''
+      const id = f.studentId || ''
+      if ((!name || !no) && id && this.list && this.list.length) {
+        const hit = this.list.find((x) => String(x.studentId) === String(id))
+        if (hit) {
+          if (!name) name = hit.realName || ''
+          if (!no) no = hit.studentNo || ''
+        }
+      }
+      if (name || no) return `当前学生筛选：${name || '学生'}${no ? ` / ${no}` : ''}`
+      return `当前学生筛选：#${id}`
+    },
     statusFilters() {
-      const c = (arr) => this.list.filter((x) => arr.includes(x.status)).length
+      const scoped = this.list.filter((x) => this._matchStudent(x))
+      const c = (arr) => scoped.filter((x) => arr.includes(x.status)).length
       return [
-        { key: 'ALL', label: '全部', count: this.list.length },
+        { key: 'ALL', label: '全部', count: scoped.length },
         { key: 'REVIEW', label: '审批中', count: c(REVIEW_NODES) },
         { key: 'REGISTERED', label: '待提交', count: c(['REGISTERED', 'RETURNED']) },
         { key: 'EFFECTIVE', label: '已生效', count: c(['EFFECTIVE']) },
@@ -193,10 +226,16 @@ export default {
       ]
     },
     filteredList() {
-      let arr = this.list
-      if (this.activeStatus === 'REVIEW') arr = arr.filter((x) => REVIEW_NODES.includes(x.status))
-      else if (this.activeStatus === 'REGISTERED') arr = arr.filter((x) => ['REGISTERED', 'RETURNED'].includes(x.status))
-      else if (this.activeStatus !== 'ALL') arr = arr.filter((x) => x.status === this.activeStatus)
+      let arr = this.list.filter((x) => this._matchStudent(x))
+      if (this.statusMatch && this.statusMatch.length) {
+        arr = arr.filter((x) => this.statusMatch.includes(x.status))
+      } else if (this.activeStatus === 'REVIEW') {
+        arr = arr.filter((x) => REVIEW_NODES.includes(x.status))
+      } else if (this.activeStatus === 'REGISTERED') {
+        arr = arr.filter((x) => ['REGISTERED', 'RETURNED'].includes(x.status))
+      } else if (this.activeStatus !== 'ALL') {
+        arr = arr.filter((x) => x.status === this.activeStatus)
+      }
       if (this.typeFilter) arr = arr.filter((x) => x.discType === this.typeFilter)
       return arr
     },
@@ -233,12 +272,52 @@ export default {
     }
   },
   created() {
-    const q = this.$route.query || {}
-    if (q.status) this.activeStatus = String(q.status)
+    this.applyRouteFilters()
     this.loadList()
+  },
+  watch: {
+    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.loadList() },
+    typeFilter() { this.pagination.page = 1; this.loadList() }
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyRouteFilters() {
+      const q = this.$route.query || {}
+      this.studentFilter = readStudentFilter(q)
+      if (!q.status) {
+        this.activeStatus = 'ALL'
+        this.statusMatch = null
+        return
+      }
+      const resolved = resolveTodoStatus('discipline', q.status)
+      this.activeStatus = resolved.activeKey
+      this.statusMatch = resolved.matchStatuses
+    },
+    _matchStudent(row) {
+      const id = this.studentFilter && this.studentFilter.studentId
+      if (!id) return true
+      return String(row.studentId) === String(id)
+    },
+    clearStudentFilter() {
+      this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
+      const q = { ...this.$route.query }
+      delete q.studentId
+      delete q.studentNo
+      delete q.studentName
+      this.$router.replace({ query: q })
+    },
+    setStatusFilter(key) {
+      this.activeStatus = key
+      if (key === 'ALL') this.statusMatch = null
+      else if (key === 'REVIEW') this.statusMatch = REVIEW_NODES
+      else if (key === 'REGISTERED') this.statusMatch = ['REGISTERED', 'RETURNED']
+      else this.statusMatch = [key]
+      this.pagination.page = 1
+      const q = { ...this.$route.query }
+      if (key === 'ALL') delete q.status
+      else q.status = key
+      this.$router.replace({ query: q }).catch(() => {})
+    },
     discTypeLabel(t) {
       return DISC_TYPE[t] || t || '—'
     },
@@ -248,10 +327,16 @@ export default {
     async loadList() {
       this.loading = true
       this.listError = ''
-      const res = await studentAffairsApi.getDisciplineCases({ page: 1, pageSize: 200 })
+      const sid = this.studentFilter && this.studentFilter.studentId
+      const res = await studentAffairsApi.getDisciplineCases({
+        page: this.pagination.page, pageSize: this.pagination.pageSize,
+        status: this.statusMatch && this.statusMatch.length === 1 ? this.statusMatch[0] : '',
+        discType: this.typeFilter, studentId: sid || ''
+      })
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
+        this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.caseId === this.selected.caseId)
           if (hit) this.selected = hit
@@ -287,23 +372,24 @@ export default {
     async onDialogConfirm(payload) {
       const reason = (payload && payload.reason) || ''
       const id = this.selected.caseId
+      const ver = this.selected.version
       const a = this.dialog.action
       const call = {
-        submit: () => studentAffairsApi.submitDiscipline(id),
-        cancel: () => studentAffairsApi.cancelDiscipline(id),
-        approve: () => studentAffairsApi.reviewDiscipline(id, 'APPROVE'),
-        return: () => studentAffairsApi.reviewDiscipline(id, 'RETURN', reason),
-        reject: () => studentAffairsApi.reviewDiscipline(id, 'REJECT', reason),
-        remove: () => studentAffairsApi.submitRemoveDiscipline(id, reason),
-        removeApprove: () => studentAffairsApi.reviewRemoveDiscipline(id, 'APPROVE'),
-        removeReject: () => studentAffairsApi.reviewRemoveDiscipline(id, 'REJECT', reason)
+        submit: () => studentAffairsApi.submitDiscipline(id, ver),
+        cancel: () => studentAffairsApi.cancelDiscipline(id, ver),
+        approve: () => studentAffairsApi.reviewDiscipline(id, 'APPROVE', '', ver),
+        return: () => studentAffairsApi.reviewDiscipline(id, 'RETURN', reason, ver),
+        reject: () => studentAffairsApi.reviewDiscipline(id, 'REJECT', reason, ver),
+        remove: () => studentAffairsApi.submitRemoveDiscipline(id, reason, ver),
+        removeApprove: () => studentAffairsApi.reviewRemoveDiscipline(id, 'APPROVE', '', ver),
+        removeReject: () => studentAffairsApi.reviewRemoveDiscipline(id, 'REJECT', reason, ver)
       }[a]
       if (!call) return
-      await this.runAction(call, {
+      const ok = await this.runAction(call, {
         submit: '已提交初审', cancel: '已撤销', approve: '已审批通过', return: '已退回',
         reject: '已驳回', remove: '解除已发起', removeApprove: '解除审批已通过', removeReject: '解除已驳回'
       }[a])
-      this.dialog.visible = false
+      if (ok) this.dialog.visible = false
     },
     openRegister() {
       this.registerModal = { visible: true, studentId: '', discType: 'WARNING', reason: '', docNo: '', error: '' }
@@ -348,6 +434,14 @@ export default {
         this.acting = false
         return true
       }
+      if (res.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+        this._lastErr = '该记录已被其他人处理，数据已刷新'
+        toast.error(this._lastErr)
+        await this.reloadDetail()
+        await this.loadList()
+        this.acting = false
+        return false
+      }
       this._lastErr = res.message || '操作失败'
       toast.error(this._lastErr)
       this.acting = false
@@ -358,6 +452,19 @@ export default {
 </script>
 
 <style scoped>
+.dp-student-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
 .dp-toolbar {
   display: flex;
   align-items: center;

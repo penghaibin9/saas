@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
+from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
 
 DISC_TYPES = ("WARNING", "SERIOUS_WARNING", "DEMERIT", "PROBATION", "EXPEL")
@@ -510,7 +511,7 @@ def get_case(case_id, user) -> dict:
         return _row(x, s)
 
 
-def list_cases(user, status=None, disc_type=None, page=1, page_size=20):
+def list_cases(user, status=None, disc_type=None, page=1, page_size=20, student_id=None):
     from app.models import DisciplineCase, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
@@ -520,17 +521,27 @@ def list_cases(user, status=None, disc_type=None, page=1, page_size=20):
             conds.append(DisciplineCase.status == status)
         if disc_type:
             conds.append(DisciplineCase.disc_type == disc_type)
-        rows = db.scalars(select(DisciplineCase).where(*conds).order_by(DisciplineCase.id.desc())).all()
+        if student_id:
+            try:
+                conds.append(DisciplineCase.student_id == int(student_id))
+            except (TypeError, ValueError):
+                return [], 0
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        student_conds = [
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(DisciplineCase)
+                              .join(StudentProfile, StudentProfile.id == DisciplineCase.student_id)
+                              .where(*conds, *student_conds)) or 0)
+        rows = db.scalars(select(DisciplineCase)
+                          .join(StudentProfile, StudentProfile.id == DisciplineCase.student_id)
+                          .where(*conds, *student_conds).order_by(DisciplineCase.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
         students = _students_by_ids(db, rows)
-        out = []
-        for x in rows:
-            s = students.get(int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_row(x, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return [_row(x, students.get(int(x.student_id)) if x.student_id else None) for x in rows], total
 
 
 def projection_reconcile() -> dict:

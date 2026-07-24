@@ -11,10 +11,11 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
+from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
 
 PROJECT_TYPES = {"SCHOLARSHIP", "GRANT", "WORK_STUDY", "LOAN",
@@ -573,7 +574,8 @@ def confirm_publicity(app_id, user, expected_version=None) -> dict:
 
 # ═══════════ 查询 ═══════════
 
-def list_applications(user, batch_id=None, project_type=None, status=None, page=1, page_size=20):
+def list_applications(user, batch_id=None, project_type=None, status=None, page=1, page_size=20,
+                      student_id=None):
     from app.models import FundingApplication, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
@@ -585,22 +587,34 @@ def list_applications(user, batch_id=None, project_type=None, status=None, page=
             conds.append(FundingApplication.project_type == project_type)
         if status:
             conds.append(FundingApplication.status == status)
-        rows = db.scalars(select(FundingApplication).where(*conds).order_by(
-            FundingApplication.id.desc())).all()
-        # 消 N+1：批量取本页学生档案，替代循环内逐行 db.get（行为等价，见 list_risks 同款收口）。
+        if student_id:
+            try:
+                conds.append(FundingApplication.student_id == int(student_id))
+            except (TypeError, ValueError):
+                return [], 0
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        student_conds = [
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(FundingApplication)
+                              .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+                              .where(*conds, *student_conds)) or 0)
+        rows = db.scalars(select(FundingApplication)
+                          .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+                          .where(*conds, *student_conds).order_by(FundingApplication.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
         sids = {int(x.student_id) for x in rows if x.student_id}
         students = {s.id: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_(sids))).all()} if sids else {}
         pending = _pending_appeal_ids(db, [x.id for x in rows])
-        out = []
-        for x in rows:
-            s = students.get(int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_app_row(x, user, s, has_pending_appeal=int(x.id) in pending))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return [
+            _app_row(x, user, students.get(int(x.student_id)) if x.student_id else None,
+                     has_pending_appeal=int(x.id) in pending)
+            for x in rows
+        ], total
 
 
 def funding_stats(user) -> dict:
@@ -698,17 +712,27 @@ def list_disbursements(user, batch_id=None, bank_status=None, page=1, page_size=
             conds.append(FundingDisbursement.batch_id == int(batch_id))
         if bank_status:
             conds.append(FundingDisbursement.bank_status == bank_status)
-        rows = db.scalars(select(FundingDisbursement).where(*conds).order_by(
-            FundingDisbursement.id.desc())).all()
-        out = []
-        for d in rows:
-            s = db.get(StudentProfile, int(d.student_id)) if d.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_disb_row(d, user, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        student_conds = [
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(FundingDisbursement)
+                              .join(StudentProfile, StudentProfile.id == FundingDisbursement.student_id)
+                              .where(*conds, *student_conds)) or 0)
+        rows = db.scalars(select(FundingDisbursement)
+                          .join(StudentProfile, StudentProfile.id == FundingDisbursement.student_id)
+                          .where(*conds, *student_conds).order_by(FundingDisbursement.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        students = {
+            s.id: s for s in db.scalars(select(StudentProfile).where(
+                StudentProfile.id.in_({int(d.student_id) for d in rows if d.student_id})
+            )).all()
+        } if rows else {}
+        return [_disb_row(d, user, students.get(int(d.student_id)) if d.student_id else None)
+                for d in rows], total
 
 
 def _load_disb(db, disbursement_id):

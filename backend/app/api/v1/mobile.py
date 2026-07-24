@@ -1481,7 +1481,8 @@ def affairs_leave_my(user=Depends(get_current_user)):
 def affairs_leave_resubmit(leave_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
     from app.services import affairs_leave_service as leave_svc
     reason = str((body or {}).get("reason") or "").strip() or None
-    result = leave_svc.resubmit(leave_id, user, self_only=True, reason=reason)
+    version = (body or {}).get("version")
+    result = leave_svc.resubmit(leave_id, user, expected_version=version, self_only=True, reason=reason)
     return success(result, message="已重新提交，等待辅导员审批")
 
 

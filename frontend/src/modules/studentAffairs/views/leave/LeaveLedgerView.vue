@@ -8,10 +8,15 @@
     <div class="mp-stack">
       <div class="flt">
         <AppSearchBox v-model="filters.keyword" placeholder="学生姓名 / 学号" @search="search" />
-        <AppSelect v-model="filters.status" :options="statusOptions" placeholder="全部状态" @change="search" />
+        <AppSelect v-model="filters.status" :options="statusOptions" placeholder="全部状态" @change="onStatusChange" />
         <AppSelect v-model="filters.leaveType" :options="typeOptions" placeholder="全部类型" @change="search" />
         <AppDateRangePicker v-model="filters.range" @change="search" />
         <button type="button" class="mp-link" @click="reset">重置</button>
+      </div>
+
+      <div v-if="studentFilterLabel" class="lv-student-filter">
+        <span>{{ studentFilterLabel }}</span>
+        <button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -71,8 +76,10 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
+import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 
 const STATUS_OPTIONS = [
+  { label: '待审批(公共)', value: 'PENDING' },
   { label: '待辅导员审批', value: 'COUNSELOR_REVIEW' }, { label: '学院审批', value: 'COLLEGE_REVIEW' },
   { label: '学工处审批', value: 'STUDENT_AFFAIRS_REVIEW' }, { label: '已通过', value: 'APPROVED' },
   { label: '续假审批中', value: 'EXTENSION_REVIEW' }, { label: '待销假确认', value: 'WAIT_CANCEL_LEAVE' },
@@ -88,7 +95,7 @@ const COLUMNS = [
   { key: 'range', title: '起止时间' }, { key: 'days', title: '天数' },
   { key: 'status', title: '状态' }, { key: 'actions', title: '操作' }
 ]
-const EMPTY_FILTERS = () => ({ keyword: '', status: '', leaveType: '', range: { start: '', end: '' } })
+const EMPTY_FILTERS = () => ({ keyword: '', status: '', leaveType: '', range: { start: '', end: '' }, studentId: '' })
 
 export default {
   name: 'LeaveLedgerView',
@@ -100,6 +107,7 @@ export default {
   data() {
     return {
       loading: true, error: '', rows: [], columns: COLUMNS, filters: EMPTY_FILTERS(),
+      studentFilter: { studentId: '', studentNo: '', studentName: '' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       statusOptions: STATUS_OPTIONS, typeOptions: TYPE_OPTIONS,
       detailVisible: false, detail: null
@@ -108,6 +116,22 @@ export default {
   computed: {
     roleName() { return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '辅导员 / 学院学工 / 学工处' },
     scopeHint() { return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.name) || '按数据范围裁剪' },
+    studentFilterLabel() {
+      const f = this.studentFilter || {}
+      if (!f.studentId && !f.studentNo) return ''
+      let name = f.studentName || ''
+      let no = f.studentNo || ''
+      const id = f.studentId || ''
+      if ((!name || !no) && id && this.rows && this.rows.length) {
+        const hit = this.rows.find((x) => String(x.studentId) === String(id))
+        if (hit) {
+          if (!name) name = hit.studentName || hit.realName || ''
+          if (!no) no = hit.studentNo || ''
+        }
+      }
+      if (name || no) return `当前学生筛选：${name || '学生'}${no ? ` / ${no}` : ''}`
+      return `当前学生筛选：#${id}`
+    },
     detailItems() {
       const d = this.detail || {}
       return [
@@ -126,25 +150,66 @@ export default {
     }
   },
   created() {
-    if (this.$route.query.status) this.filters.status = String(this.$route.query.status)
-    if (this.$route.query.studentId) this.filters.keyword = String(this.$route.query.studentId)
-    if (this.$route.query.studentNo) this.filters.keyword = String(this.$route.query.studentNo)
+    this.applyRouteFilters()
     this.load()
+  },
+  watch: {
+    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.load() }
   },
   methods: {
     fmt(v) { return v ? formatDateTime(v) : '' },
+    applyRouteFilters() {
+      const q = this.$route.query || {}
+      this.studentFilter = readStudentFilter(q)
+      this.filters.studentId = this.studentFilter.studentId || ''
+      if (!q.status) {
+        this.filters.status = ''
+        return
+      }
+      const resolved = resolveTodoStatus('leave', q.status)
+      if (resolved.activeKey === 'PENDING' || q.status === 'PENDING') this.filters.status = 'PENDING'
+      else if (resolved.activeKey === 'WAIT_CANCEL_LEAVE' || q.status === 'CANCEL_PENDING') this.filters.status = 'WAIT_CANCEL_LEAVE'
+      else if (resolved.activeKey === 'OVERDUE') this.filters.status = 'OVERDUE'
+      else if (resolved.matchStatuses && resolved.matchStatuses.length === 1) this.filters.status = resolved.matchStatuses[0]
+      else this.filters.status = String(q.status)
+    },
+    clearStudentFilter() {
+      this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
+      this.filters.studentId = ''
+      const q = { ...this.$route.query }
+      delete q.studentId
+      delete q.studentNo
+      delete q.studentName
+      this.$router.replace({ query: q }).catch(() => {})
+    },
+    onStatusChange() {
+      const q = { ...this.$route.query }
+      if (!this.filters.status) delete q.status
+      else q.status = this.filters.status
+      this.$router.replace({ query: q }).catch(() => {})
+      this.search()
+    },
     buildParams() {
       const f = this.filters
       const p = { page: this.pagination.page, pageSize: this.pagination.pageSize }
       if (f.keyword) p.keyword = f.keyword
       if (f.status) p.status = f.status
       if (f.leaveType) p.leaveType = f.leaveType
+      if (f.studentId) p.studentId = f.studentId
       if (f.range && f.range.start) p.dateStart = f.range.start
       if (f.range && f.range.end) p.dateEnd = f.range.end
       return p
     },
     search() { this.pagination.page = 1; this.load() },
-    reset() { this.filters = EMPTY_FILTERS(); this.pagination.page = 1; this.load() },
+    reset() {
+      this.filters = EMPTY_FILTERS()
+      this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
+      this.pagination.page = 1
+      const q = { ...this.$route.query }
+      delete q.status; delete q.studentId; delete q.studentNo; delete q.studentName
+      this.$router.replace({ query: q }).catch(() => {})
+      this.load()
+    },
     onPageChange(page) { this.pagination.page = page; this.load() },
     async load() {
       this.loading = true; this.error = ''
@@ -173,6 +238,12 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .flt { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.lv-student-filter {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a); font-size: var(--font-size-sm); color: var(--text-primary);
+}
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
 .rec-list { list-style: none; margin: 0; padding: 0; font-size: var(--font-size-sm); color: var(--text-secondary); }
 .rec-list li { padding: var(--space-1) 0; }

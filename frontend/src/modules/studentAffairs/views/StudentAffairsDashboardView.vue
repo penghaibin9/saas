@@ -202,14 +202,21 @@ export default {
       ]
     },
     riskLevel() {
-      const count = Number(this.metricCards.find((c) => c.key === 'riskStudents')?.value || 0)
-      if (count >= 10) return 'HIGH'
-      if (count > 0) return 'MEDIUM'
+      const card = this.metricCards.find((c) => c.key === 'riskStudents') || {}
+      const fromCard = card.topRiskLevel
+      const fromSummary = (this.dashboard && this.dashboard.riskSummary && this.dashboard.riskSummary.topRiskLevel) || ''
+      const level = String(fromCard || fromSummary || 'NONE').toUpperCase()
+      if (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(level)) return level
       return 'LOW'
     },
     riskSummary() {
-      const count = this.metricCards.find((c) => c.key === 'riskStudents')?.value || 0
-      return count ? `当前范围内有 ${count} 名学生存在未关闭风险。` : '当前范围暂无未关闭风险。'
+      const rs = (this.dashboard && this.dashboard.riskSummary) || {}
+      const card = this.metricCards.find((c) => c.key === 'riskStudents') || {}
+      const count = Number(rs.openStudentCount != null ? rs.openStudentCount : (card.value || 0))
+      const top = rs.topRiskLevel || card.topRiskLevel || ''
+      if (!count) return '当前范围暂无未关闭风险。'
+      const label = ({ CRITICAL: '危急', HIGH: '高', MEDIUM: '中', LOW: '低' })[top] || top
+      return `当前范围内有 ${count} 名学生存在未关闭风险${label ? `（最高等级：${label}）` : ''}。`
     }
   },
   created() {

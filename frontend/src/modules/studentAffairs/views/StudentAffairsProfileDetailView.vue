@@ -257,7 +257,10 @@ export default {
       this.$router.push({ path: '/admin/campus-service/leave-ledger', query: { studentId: this.studentId } })
     },
     goDorm() {
-      this.$router.push('/admin/student-affairs/dorm/checkin')
+      this.$router.push({
+        path: '/admin/student-affairs/dorm/transfer',
+        query: { studentId: this.studentId, status: 'PENDING' }
+      })
     },
     goFamily() {
       this.$router.push({ path: '/admin/student-affairs/family', query: { studentId: this.studentId } })

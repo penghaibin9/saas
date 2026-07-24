@@ -196,6 +196,22 @@ def job_leave_overdue() -> None:
             set_tenant(None)
 
 
+def job_risk_timeout() -> None:
+    """按租户扫描风险分派/处置超时；单租户失败不阻塞其余租户。"""
+    if not settings.AFFAIRS_RISK_TIMEOUT_AUTO_SCAN:
+        return
+
+    from app.services import affairs_risk_service
+    for tenant_id in _schedulable_tenant_ids():
+        set_tenant({"tenantId": str(tenant_id)})
+        try:
+            _run_isolated(
+                f"affairs_risk_timeout:{tenant_id}",
+                lambda: affairs_risk_service.scan_timeout())
+        finally:
+            set_tenant(None)
+
+
 def job_stats_reconcile() -> None:
     from app.services import message_ops_service as ops_svc
     for tenant_id in _schedulable_tenant_ids():
@@ -248,15 +264,16 @@ def main() -> int:
     if not db_enabled():
         raise RuntimeError("scheduler requires DB_ENABLED=true")
     log.info(
-        "external scheduler started intervals delivery=%ss scheduled=%ss expire=%ss leave=%ss stats=%ss",
+        "external scheduler started intervals delivery=%ss scheduled=%ss expire=%ss leave=%ss risk=%ss stats=%ss",
         INTERVAL_DELIVERY, INTERVAL_SCHEDULED_MSG, INTERVAL_EXPIRE_NUDGE,
-        INTERVAL_LEAVE_OVERDUE, INTERVAL_STATS)
+        INTERVAL_LEAVE_OVERDUE, INTERVAL_LEAVE_OVERDUE, INTERVAL_STATS)
     now0 = time.monotonic()
     tickers = [
         _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox),
         _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages),
         _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge),
         _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue),
+        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_risk_timeout),
         _Ticker(INTERVAL_STATS, now0, job_stats_reconcile),
         _Ticker(INTERVAL_CLEANUP, now0, lambda: _run_isolated("cleanup", cleanup_import_batches)),
     ]

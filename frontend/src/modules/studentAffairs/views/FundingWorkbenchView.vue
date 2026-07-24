@@ -21,6 +21,11 @@
       </div>
     </div>
 
+    <div v-if="studentFilterLabel" class="fd-student-filter">
+      <span>{{ studentFilterLabel }}</span>
+      <button type="button" class="fd-chip" @click="clearStudentFilter">清除筛选</button>
+    </div>
+
     <div class="fd-toolbar">
       <div class="fd-filters">
         <button
@@ -29,7 +34,7 @@
           type="button"
           class="fd-chip"
           :class="{ 'is-on': activeStatus === f.key }"
-          @click="activeStatus = f.key"
+          @click="setStatusFilter(f.key)"
         >{{ f.label }}<em>{{ f.count }}</em></button>
       </div>
     </div>
@@ -39,7 +44,7 @@
         <LoadingState v-if="loading" text="正在加载资助申请…" />
         <ErrorState v-else-if="listError" :description="listError" @retry="loadApplications" />
         <EmptyState v-else-if="!batchId" title="请先选择项目与批次" description="从上方选择，或点「建项目」「建批次」" />
-        <EmptyState v-else-if="!filteredList.length" title="该批次暂无申请" description="可点「受理申请」，或调整筛选" />
+        <EmptyState v-else-if="!filteredList.length && pagination.total === 0" title="该批次暂无申请" description="可点「受理申请」，或调整筛选" />
         <ul v-else class="fd-queue">
           <li
             v-for="it in filteredList"
@@ -55,6 +60,13 @@
             <div class="fd-qitem__meta">{{ projectTypeLabel(it.projectType) }} · 金额：{{ amountText(it.amount) }}</div>
           </li>
         </ul>
+        <AppPagination
+          v-if="pagination.total > pagination.pageSize"
+          v-model:page="pagination.page"
+          v-model:pageSize="pagination.pageSize"
+          :total="pagination.total"
+          @change="loadApplications"
+        />
       </div>
 
       <div class="fd-detail">
@@ -180,12 +192,13 @@
  * 助学金硬校验困难库在库，奖学金硬校验学籍/处分/成绩；不满足受理即被 409 拦截并透出原因。金额按角色脱敏。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppPermissionButton, AppSelect, AppStatusTag,
+import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppPagination, AppPermissionButton, AppSelect, AppStatusTag,
         AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 
 
 const FUND_NODES = ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'SCHOOL_REVIEW']
@@ -200,13 +213,16 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 export default {
   name: 'FundingWorkbenchView',
   components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDrawer, AppFormItem,
-               AppInlineAlert, AppNumberInput, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea },
+               AppInlineAlert, AppNumberInput, AppPagination, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
       projects: [], batches: [], projectId: '', batchId: '',
       loading: false, listError: '', list: [], selected: null,
+      pagination: { page: 1, pageSize: 20, total: 0 },
       acting: false, scanning: false, activeStatus: 'ALL',
+      studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       projectModal: { visible: false, projectType: 'GRANT', projectName: '', amount: null, quota: null, error: '' },
       batchModal: { visible: false, schoolYear: '', publicityDays: 0, quota: null, publish: true, error: '' },
@@ -239,10 +255,27 @@ export default {
       const b = this.batches.find((x) => x.batchId === this.batchId)
       return !!b && b.status === 'OPEN'
     },
+    studentFilterLabel() {
+      const f = this.studentFilter || {}
+      if (!f.studentId && !f.studentNo) return ''
+      let name = f.studentName || ''
+      let no = f.studentNo || ''
+      const id = f.studentId || ''
+      if ((!name || !no) && id && this.list && this.list.length) {
+        const hit = this.list.find((x) => String(x.studentId) === String(id))
+        if (hit) {
+          if (!name) name = hit.realName || ''
+          if (!no) no = hit.studentNo || ''
+        }
+      }
+      if (name || no) return `当前学生筛选：${name || '学生'}${no ? ` / ${no}` : ''}`
+      return `当前学生筛选：#${id}`
+    },
     statusFilters() {
-      const c = (arr) => this.list.filter((x) => arr.includes(x.status)).length
+      const scoped = this.list.filter((x) => this._matchStudent(x))
+      const c = (arr) => scoped.filter((x) => arr.includes(x.status)).length
       return [
-        { key: 'ALL', label: '全部', count: this.list.length },
+        { key: 'ALL', label: '全部', count: scoped.length },
         { key: 'REVIEW', label: '评审中', count: c(FUND_NODES) },
         { key: 'PUBLICITY', label: '公示中', count: c(['PUBLICITY']) },
         { key: 'GRANTED', label: '已获资助', count: c(['GRANTED']) },
@@ -250,9 +283,14 @@ export default {
       ]
     },
     filteredList() {
-      let arr = this.list
-      if (this.activeStatus === 'REVIEW') arr = arr.filter((x) => FUND_NODES.includes(x.status))
-      else if (this.activeStatus !== 'ALL') arr = arr.filter((x) => x.status === this.activeStatus)
+      let arr = this.list.filter((x) => this._matchStudent(x))
+      if (this.statusMatch && this.statusMatch.length) {
+        arr = arr.filter((x) => this.statusMatch.includes(x.status))
+      } else if (this.activeStatus === 'REVIEW') {
+        arr = arr.filter((x) => FUND_NODES.includes(x.status))
+      } else if (this.activeStatus !== 'ALL') {
+        arr = arr.filter((x) => x.status === this.activeStatus)
+      }
       return arr
     },
     // 通用确认弹窗按当前动作切换快捷用语场景；仅“驳回”命中 sa.aid.reject（词库 §3.12：A8/B13 均归入 sa.aid.reject）
@@ -274,12 +312,50 @@ export default {
     }
   },
   created() {
-    const q = this.$route.query || {}
-    if (q.status) this.activeStatus = String(q.status)
+    this.applyRouteFilters()
     this.loadProjects()
+  },
+  watch: {
+    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications() }
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyRouteFilters() {
+      const q = this.$route.query || {}
+      this.studentFilter = readStudentFilter(q)
+      if (!q.status) {
+        this.activeStatus = 'ALL'
+        this.statusMatch = null
+        return
+      }
+      const resolved = resolveTodoStatus('funding', q.status)
+      this.activeStatus = resolved.activeKey
+      this.statusMatch = resolved.matchStatuses
+    },
+    _matchStudent(row) {
+      const id = this.studentFilter && this.studentFilter.studentId
+      if (!id) return true
+      return String(row.studentId) === String(id)
+    },
+    clearStudentFilter() {
+      this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
+      const q = { ...this.$route.query }
+      delete q.studentId
+      delete q.studentNo
+      delete q.studentName
+      this.$router.replace({ query: q })
+    },
+    setStatusFilter(key) {
+      this.activeStatus = key
+      if (key === 'ALL') this.statusMatch = null
+      else if (key === 'REVIEW') this.statusMatch = FUND_NODES
+      else this.statusMatch = [key]
+      this.pagination.page = 1
+      const q = { ...this.$route.query }
+      if (key === 'ALL') delete q.status
+      else q.status = key
+      this.$router.replace({ query: q }).catch(() => {})
+    },
     projectTypeLabel(t) {
       return PROJECT_TYPE[t] || t || '—'
     },
@@ -324,21 +400,29 @@ export default {
     onProjectChange() {
       this.batchId = ''
       this.selected = null
+      this.pagination.page = 1
       this.autoPickBatch()
     },
     onBatchChange() {
       this.selected = null
+      this.pagination.page = 1
       if (this.batchId) this.loadApplications()
-      else this.list = []
+      else { this.list = []; this.pagination.total = 0 }
     },
     async loadApplications() {
       if (!this.batchId) return
       this.loading = true
       this.listError = ''
-      const res = await studentAffairsApi.getFundingApplications({ batchId: this.batchId, page: 1, pageSize: 200 })
+      const sid = this.studentFilter && this.studentFilter.studentId
+      const res = await studentAffairsApi.getFundingApplications({
+        batchId: this.batchId, page: this.pagination.page, pageSize: this.pagination.pageSize,
+        status: this.statusMatch && this.statusMatch.length === 1 ? this.statusMatch[0] : '',
+        studentId: sid || ''
+      })
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
+        this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.applicationId === this.selected.applicationId)
           if (hit) this.selected = hit
@@ -370,16 +454,17 @@ export default {
     async onDialogConfirm(payload) {
       const reason = (payload && payload.reason) || ''
       const id = this.selected.applicationId
+      const ver = this.selected.version
       const a = this.dialog.action
       const call = {
-        approve: () => studentAffairsApi.reviewFunding(id, 'APPROVE'),
-        return: () => studentAffairsApi.reviewFunding(id, 'RETURN', reason),
-        reject: () => studentAffairsApi.reviewFunding(id, 'REJECT', reason),
-        publicityConfirm: () => studentAffairsApi.confirmFundingPublicity(id)
+        approve: () => studentAffairsApi.reviewFunding(id, 'APPROVE', '', ver),
+        return: () => studentAffairsApi.reviewFunding(id, 'RETURN', reason, ver),
+        reject: () => studentAffairsApi.reviewFunding(id, 'REJECT', reason, ver),
+        publicityConfirm: () => studentAffairsApi.confirmFundingPublicity(id, ver)
       }[a]
       if (!call) return
-      await this.runAction(call, { approve: '已审批通过', return: '已退回', reject: '已驳回', publicityConfirm: '已获资助' }[a])
-      this.dialog.visible = false
+      const ok = await this.runAction(call, { approve: '已审批通过', return: '已退回', reject: '已驳回', publicityConfirm: '已获资助' }[a])
+      if (ok) this.dialog.visible = false
     },
     openProject() {
       this.projectModal = { visible: true, projectType: 'GRANT', projectName: '', amount: null, quota: null, error: '' }
@@ -441,6 +526,14 @@ export default {
         this.acting = false
         return true
       }
+      if (res.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+        this._lastErr = '该记录已被其他人处理，数据已刷新'
+        toast.error(this._lastErr)
+        await this.reloadDetail()
+        await this.loadApplications()
+        this.acting = false
+        return false
+      }
       this._lastErr = res.message || '操作失败'
       toast.error(this._lastErr)
       this.acting = false
@@ -474,6 +567,19 @@ export default {
   gap: var(--space-2);
   margin-left: auto;
   flex-wrap: wrap;
+}
+.fd-student-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
 }
 .fd-toolbar {
   margin-bottom: var(--space-3);

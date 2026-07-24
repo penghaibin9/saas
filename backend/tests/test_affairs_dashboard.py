@@ -48,12 +48,12 @@ def test_dashboard_three_role_views(client, db_mode):
     assert r["data"]["view"] == "SA_ADMIN"
     assert r["data"]["scopeMode"] == "ADMIN_TENANT"
     assert len(r["data"]["moduleCards"]) == 13
-    # 首页卡随阶段点亮：P1 class / P2 leave / P3 aid+funding / P4 discipline+risk / P5 talk+family+profile
-    # / P6 dorm+archive（psy/activity 未在 13A P1-P8 范围，保持空态）
+    # 首页卡随阶段点亮：P1-P8 后 psy/activity 已 LIVE
     _live = {"class", "leave", "aid", "funding", "discipline", "risk", "talk", "family", "profile",
-             "dorm", "archive"}
+             "dorm", "archive", "psy", "activity"}
     assert {m["key"] for m in r["data"]["moduleCards"] if m["status"] == "LIVE"} == _live
-    assert all(m["empty"] for m in r["data"]["moduleCards"] if m["key"] not in _live)
+    assert all(m["status"] == "LIVE" for m in r["data"]["moduleCards"])
+    assert not any(m.get("status") == "PENDING" for m in r["data"]["moduleCards"])
 
     # 学院学工：本院视图
     r2 = client.get("/api/v1/student-affairs/dashboard", headers=_hdr(client, "college_admin01")).json()
@@ -178,3 +178,25 @@ def test_dashboard_admin_scope_label_schoolwide(client, db_mode):
     # 另有 assignee_id=1 的个人待办——mock 管理员 uid 不可解析时只计池待办，不得回退全量 PENDING
     todo = next(c["value"] for c in r["data"]["summaryCards"] if c["key"] == "pendingTodo")
     assert todo == 0
+
+
+def test_dashboard_top_risk_level_critical_single_student(client, db_mode):
+    """即使只有 1 名危急风险学生，topRiskLevel 也必须是 CRITICAL（禁止用人数>10 推断）。"""
+    ids = _seed_classes(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsRiskRecord, StudentProfile
+    db = get_sessionmaker()()
+    sa = db.query(StudentProfile).filter_by(class_id=ids["A"]).first()
+    assert sa
+    db.add(AffairsRiskRecord(
+        tenant_id=TID, student_id=sa.id, source="MANUAL", risk_level="CRITICAL",
+        title="危急一人", detail="单人危急", status="NEW"))
+    db.commit(); db.close()
+    r = client.get("/api/v1/student-affairs/dashboard", headers=_hdr(client, "school_admin01")).json()
+    assert r["code"] == 0
+    rs = r["data"]["riskSummary"]
+    assert rs["openStudentCount"] == 1
+    assert rs["criticalCount"] == 1
+    assert rs["topRiskLevel"] == "CRITICAL"
+    card = next(c for c in r["data"]["summaryCards"] if c["key"] == "riskStudents")
+    assert card["value"] == 1 and card["topRiskLevel"] == "CRITICAL"

@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
+from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
 
 # 明细可见角色（按角色）：心理老师 + 校/平台超管（超管查看仍须原因+审计）。
@@ -129,22 +130,22 @@ def _ref_row(x, s, reveal) -> dict:
 
 def list_attention(user, reason=None, level=None, page=1, page_size=20):
     """心理关注名单：PSY_STUDENT 数据范围过滤；列表恒仅摘要，note 明细遮蔽（reveal 仅在明细端点带原因）。"""
-    from app.models import PsyReferral
+    from app.models import PsyReferral, StudentProfile
     with session() as db:
         scope = psy_scope_ids(db, user)
         conds = [PsyReferral.tenant_id == _tid(), PsyReferral.is_deleted.is_(False)]
         if level:
             conds.append(PsyReferral.level == level)
-        rows = db.scalars(select(PsyReferral).where(*conds).order_by(PsyReferral.id.desc())).all()
-        out = []
-        for x in rows:
-            if scope is not None and int(x.student_id) not in scope:
-                continue
-            s = _stu(db, x.student_id)
-            out.append(_ref_row(x, s, reveal=False))  # 列表恒遮蔽心理明细
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        if scope is not None:
+            conds.append(PsyReferral.student_id.in_(scope or {-1}))
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(PsyReferral).where(*conds)) or 0)
+        rows = db.scalars(select(PsyReferral).where(*conds).order_by(PsyReferral.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_({int(x.student_id) for x in rows if x.student_id})
+        )).all()} if rows else {}
+        return [_ref_row(x, students.get(int(x.student_id)), reveal=False) for x in rows], total
 
 
 def get_referral(user, ref_id, reason=None) -> dict:
@@ -175,7 +176,10 @@ def student_summary(user, student_id) -> dict:
             AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.student_id == int(student_id),
             AffairsRiskRecord.source == "MENTAL", AffairsRiskRecord.is_deleted.is_(False))).all()
         open_risk = [r for r in risks if r.status != "CLOSED"]
-        top = max((r.level for r in active), default="") if active else ""
+        top = ""
+        if active:
+            _LEVEL_ORDER = {"GENERAL": 1, "FOCUS": 2, "CRISIS": 3}
+            top = max(active, key=lambda r: _LEVEL_ORDER.get(r.level, 0)).level
         return {
             "studentId": str(student_id), "needAttention": bool(active),
             "attentionLevel": top, "attentionLabel": L_LEVEL.get(top, ""),

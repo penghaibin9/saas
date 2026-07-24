@@ -114,6 +114,22 @@ export default {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
     }
   },
+  created() {
+    const q = this.$route.query || {}
+    if (q.studentId) {
+      this.studentId = String(q.studentId)
+      this.load()
+    }
+  },
+  watch: {
+    '$route.query.studentId'(v) {
+      if (v) {
+        this.studentId = String(v)
+        this.page = 1
+        this.load()
+      }
+    }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     contactTypeLabel(t) {

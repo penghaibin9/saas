@@ -48,25 +48,27 @@ def test_m1_referral_close_loop(client, db_mode):
     admin = _hdr(client, "school_admin01")
     ref = _refer(client, admin, ids["sa"]).json()["data"]
     assert ref["status"] == "REFERRED" and ref["level"] == "FOCUS"
-    rid = ref["referralId"]
+    rid, ver = ref["referralId"], ref["version"]
     r2 = client.post(f"{BASE}/mental/referrals/{rid}/follow", headers=admin,
-                     json={"content": "已电话回访，情绪稳定"}).json()["data"]
+                     json={"content": "已电话回访，情绪稳定", "version": ver}).json()["data"]
     assert r2["status"] == "FOLLOWING" and r2["lastFollowTime"]
     r3 = client.post(f"{BASE}/mental/referrals/{rid}/close", headers=admin,
-                     json={"conclusion": "评估稳定，结案观察"}).json()["data"]
+                     json={"conclusion": "评估稳定，结案观察", "version": r2["version"]}).json()["data"]
     assert r3["status"] == "CLOSED"
 
 
 def test_m2_crisis_escalate_to_risk_hub_idempotent(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    rid = _refer(client, admin, ids["sa"]).json()["data"]["referralId"]
+    ref = _refer(client, admin, ids["sa"]).json()["data"]
+    rid, ver = ref["referralId"], ref["version"]
     r = client.post(f"{BASE}/mental/referrals/{rid}/escalate", headers=admin,
-                    json={"content": "出现危机信号，立即升级"}).json()["data"]
+                    json={"content": "出现危机信号，立即升级", "version": ver}).json()["data"]
     assert r["status"] == "ESCALATED" and r["level"] == "CRISIS" and r["riskId"]
     risk_id = r["riskId"]
-    # 幂等：再升级返回同一 riskId（不重复建风险）
-    r2 = client.post(f"{BASE}/mental/referrals/{rid}/escalate", headers=admin, json={}).json()["data"]
+    # 幂等：再升级返回同一 riskId（不重复建风险）；仍须带 version
+    r2 = client.post(f"{BASE}/mental/referrals/{rid}/escalate", headers=admin,
+                     json={"content": "重复升级", "version": r["version"]}).json()["data"]
     assert r2["riskId"] == risk_id
     # 风险中枢已建 source=MENTAL·CRITICAL 记录
     from app.db.session import get_sessionmaker
@@ -75,6 +77,19 @@ def test_m2_crisis_escalate_to_risk_hub_idempotent(client, db_mode):
     x = db.get(AffairsRiskRecord, int(risk_id))
     assert x and x.source == "MENTAL" and x.risk_level == "CRITICAL"
     db.close()
+
+
+def test_m9_attention_level_crisis_overrides_focus(client, db_mode):
+    """关注等级顺序 GENERAL < FOCUS < CRISIS，禁止字符串 max。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _refer(client, admin, ids["sa"], level="FOCUS")
+    _refer(client, admin, ids["sa"], level="CRISIS", summary="出现危机信号需立即干预处置")
+    _refer(client, admin, ids["sa"], level="GENERAL", summary="一般关注观察即可")
+    s = client.get(f"{BASE}/mental/students/{ids['sa']}/summary", headers=admin).json()["data"]
+    assert s["attentionLevel"] == "CRISIS"
+    assert s["needAttention"] is True
+    assert s["openReferralCount"] >= 3
 
 
 def test_m3_list_summary_only_masked(client, db_mode):

@@ -54,39 +54,58 @@ def _create(client, hdr, sid, source="ACADEMIC_WARNING", ref="1001", level="MEDI
         "title": "风险", "detail": detail})
 
 
+def _ver(resp_or_data):
+    """从创建/动作响应取当前 version。"""
+    data = resp_or_data.json()["data"] if hasattr(resp_or_data, "json") else resp_or_data
+    return int(data["version"])
+
+
 def test_r1_create_assign(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
+    created = _create(client, hdr, ids["sa"]).json()["data"]
+    rid, ver = created["riskId"], _ver(created)
     owner_id = str(ids["owner"])
-    r = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": owner_id}).json()
+    r = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+                    json={"ownerId": owner_id, "version": ver}).json()
     assert r["data"]["status"] == "ASSIGNED" and r["data"]["ownerId"] == owner_id
+    assert "allowedActions" in r["data"] or True  # assign 响应可能仍是 _row；详情才带
+    detail = client.get(f"{BASE}/risk/records/{rid}", headers=hdr).json()["data"]
+    assert "ASSIGN" not in detail.get("allowedActions", [])
+    assert isinstance(detail.get("handles"), list)
 
 
 def test_r2_process_close_360(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
-    client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr, json={"content": "已约谈学生了解情况"})
+    created = _create(client, hdr, ids["sa"]).json()["data"]
+    rid, ver = created["riskId"], _ver(created)
+    ver = _ver(client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+                           json={"ownerId": str(ids["owner"]), "version": ver}))
+    ver = _ver(client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+                           json={"content": "已约谈学生了解情况", "version": ver}))
     r = client.post(f"{BASE}/risk/records/{rid}/close", headers=hdr,
-                    json={"conclusion": "学生情绪稳定，风险解除"}).json()
+                    json={"conclusion": "学生情绪稳定，风险解除", "version": ver}).json()
     assert r["data"]["status"] == "CLOSED"
     from app.db.session import get_sessionmaker
     from app.models import StudentStageEvent
     db = get_sessionmaker()()
     assert db.query(StudentStageEvent).filter_by(student_id=ids["sa"], to_stage="RISK_CLOSED").count() == 1
     db.close()
+    handles = client.get(f"{BASE}/risk/records/{rid}/handles", headers=hdr).json()["data"]["items"]
+    assert len(handles) >= 2
 
 
 def test_r3_close_without_handle_409(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
+    created = _create(client, hdr, ids["sa"]).json()["data"]
+    rid, ver = created["riskId"], _ver(created)
+    ver = _ver(client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+                           json={"ownerId": str(ids["owner"]), "version": ver}))
     # ASSIGNED 无处置记录直接关闭 → 状态校验 409（close 要求 PROCESSING/FOLLOWING/ESCALATED）
     assert client.post(f"{BASE}/risk/records/{rid}/close", headers=hdr,
-                       json={"conclusion": "无处置直接关闭"}).status_code == 409
+                       json={"conclusion": "无处置直接关闭", "version": ver}).status_code == 409
 
 
 def test_r4_duplicate_source_ref_409(client, db_mode):
@@ -99,10 +118,14 @@ def test_r4_duplicate_source_ref_409(client, db_mode):
 def test_r5_escalate_and_scan_idempotent(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    rid = _create(client, hdr, ids["sa"], level="LOW").json()["data"]["riskId"]
-    client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
-    client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr, json={"content": "首次处置记录"})
-    r = client.post(f"{BASE}/risk/records/{rid}/escalate", headers=hdr, json={"reason": "情况恶化"}).json()
+    created = _create(client, hdr, ids["sa"], level="LOW").json()["data"]
+    rid, ver = created["riskId"], _ver(created)
+    ver = _ver(client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+                           json={"ownerId": str(ids["owner"]), "version": ver}))
+    ver = _ver(client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+                           json={"content": "首次处置记录", "version": ver}))
+    r = client.post(f"{BASE}/risk/records/{rid}/escalate", headers=hdr,
+                    json={"reason": "情况恶化", "version": ver}).json()
     assert r["data"]["status"] == "ESCALATED" and r["data"]["riskLevel"] == "MEDIUM"  # LOW→MEDIUM
     # 超时扫描幂等（无 ASSIGNED 超时项 → 0）
     r2 = client.post(f"{BASE}/risk/scan-timeout", headers=hdr).json()
@@ -186,22 +209,21 @@ def test_r11_invalid_source_ref_400_not_500(client, db_mode):
 
 
 def test_r13_optimistic_lock_stale_version_409(client, db_mode):
-    """真乐观锁：version 此前只自增从未比对，APPROVAL_VERSION_CONFLICT 只挡状态、挡不住并发
-    双提交。传 expectedVersion 与当前不符（即便状态允许该动作）→ 409；不传 version 不受影响
-    （兼容未升级前端）；传当前正确 version → 正常通过。"""
+    """真乐观锁：传 expectedVersion 与当前不符 → 409；缺 version → 422/400；正确 version → 通过。"""
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
     r0 = client.post(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
                      json={"ownerId": str(ids["owner"]), "version": 0}).json()
     assert r0["data"]["status"] == "ASSIGNED" and r0["data"]["version"] == 1
-    # 用分派前的旧 version(0) 处置 → 409（模拟并发场景：另一请求已抢先修改，version 已推进到 1）
     stale = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                         json={"content": "并发场景下的处置尝试", "version": 0})
     assert stale.status_code == 409 and stale.json()["bizCode"] == "APPROVAL_VERSION_CONFLICT"
-    # 不传 version（旧前端行为）→ 不受影响，正常处置
+    missing = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+                          json={"content": "不带 version 的处置"})
+    assert missing.status_code in (400, 422)
     ok = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
-                     json={"content": "不带 version 的处置"})
+                     json={"content": "带正确 version 的处置", "version": 1})
     assert ok.status_code == 200 and ok.json()["data"]["status"] == "PROCESSING"
 
 

@@ -6,6 +6,11 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="谈心谈话"
   >
+    <div v-if="studentFilterLabel" class="tk-student-filter">
+      <span>{{ studentFilterLabel }}</span>
+      <button type="button" class="tk-chip" @click="clearStudentFilter">清除筛选</button>
+    </div>
+
     <div class="tk-toolbar">
       <div class="tk-filters">
         <button
@@ -14,7 +19,7 @@
           type="button"
           class="tk-chip"
           :class="{ 'is-on': activeStatus === f.key }"
-          @click="activeStatus = f.key"
+          @click="setStatusFilter(f.key)"
         >
           {{ f.label }}<em>{{ f.count }}</em>
         </button>
@@ -31,7 +36,7 @@
       <div class="tk-list">
         <LoadingState v-if="loading" text="正在加载谈话…" />
         <ErrorState v-else-if="listError" :description="listError" @retry="loadList" />
-        <EmptyState v-else-if="!filteredList.length" title="暂无谈话记录" description="可点「发起谈话」圈定学生，或调整筛选条件" />
+        <EmptyState v-else-if="!filteredList.length && pagination.total === 0" title="暂无谈话记录" description="可点「发起谈话」圈定学生，或调整筛选条件" />
         <ul v-else class="tk-queue">
           <li
             v-for="it in filteredList"
@@ -50,6 +55,13 @@
             </div>
           </li>
         </ul>
+        <AppPagination
+          v-if="pagination.total > pagination.pageSize"
+          v-model:page="pagination.page"
+          v-model:pageSize="pagination.pageSize"
+          :total="pagination.total"
+          @change="loadList"
+        />
       </div>
 
       <div class="tk-detail">
@@ -155,7 +167,7 @@
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppConfirmDialog, AppDateDisplay, AppDateTimePicker, AppFormItem, AppInlineAlert, AppPermissionButton,
+  AppConfirmDialog, AppDateDisplay, AppDateTimePicker, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
   AppQuickPhrases, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -163,6 +175,7 @@ import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.a
 import { toast } from '@/utils/toast'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 
 
 const STATUS_TYPE = {
@@ -178,15 +191,18 @@ export default {
   name: 'TalkWorkbenchView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog,
-    AppDateDisplay, AppDateTimePicker, AppDrawer, AppFormItem, AppInlineAlert, AppPermissionButton,
+    AppDateDisplay, AppDateTimePicker, AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
     AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
       loading: true, listError: '', list: [], stats: null,
+      pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false,
       activeStatus: 'ALL', typeFilter: '',
+      studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      statusMatch: null,
       recordForm: { content: '', result: '', needFollowUp: false, error: '' },
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       createModal: { visible: false, talkType: 'DAILY', topic: '', studentIds: [], scheduledAt: '', error: '' },
@@ -203,10 +219,27 @@ export default {
     canRecord() {
       return this.selected && ['PLANNED', 'SCHEDULED'].includes(this.selected.status)
     },
+    studentFilterLabel() {
+      const f = this.studentFilter || {}
+      if (!f.studentId && !f.studentNo) return ''
+      let name = f.studentName || ''
+      let no = f.studentNo || ''
+      const id = f.studentId || ''
+      if ((!name || !no) && id && this.list && this.list.length) {
+        const hit = this.list.find((x) => String(x.studentId) === String(id))
+        if (hit) {
+          if (!name) name = hit.realName || ''
+          if (!no) no = hit.studentNo || ''
+        }
+      }
+      if (name || no) return `当前学生筛选：${name || '学生'}${no ? ` / ${no}` : ''}`
+      return `当前学生筛选：#${id}`
+    },
     statusFilters() {
-      const c = (arr) => this.list.filter((x) => arr.includes(x.status)).length
+      const scoped = this.list.filter((x) => this._matchStudent(x))
+      const c = (arr) => scoped.filter((x) => arr.includes(x.status)).length
       return [
-        { key: 'ALL', label: '全部', count: this.list.length },
+        { key: 'ALL', label: '全部', count: scoped.length },
         { key: 'PLANNED', label: '待谈', count: c(['PLANNED', 'SCHEDULED']) },
         { key: 'COMPLETED', label: '已谈话', count: c(['COMPLETED']) },
         { key: 'FOLLOW_UP', label: '跟进中', count: c(['FOLLOW_UP']) },
@@ -214,9 +247,14 @@ export default {
       ]
     },
     filteredList() {
-      let arr = this.list
-      if (this.activeStatus === 'PLANNED') arr = arr.filter((x) => ['PLANNED', 'SCHEDULED'].includes(x.status))
-      else if (this.activeStatus !== 'ALL') arr = arr.filter((x) => x.status === this.activeStatus)
+      let arr = this.list.filter((x) => this._matchStudent(x))
+      if (this.statusMatch && this.statusMatch.length) {
+        arr = arr.filter((x) => this.statusMatch.includes(x.status))
+      } else if (this.activeStatus === 'PLANNED') {
+        arr = arr.filter((x) => ['PLANNED', 'SCHEDULED'].includes(x.status))
+      } else if (this.activeStatus !== 'ALL') {
+        arr = arr.filter((x) => x.status === this.activeStatus)
+      }
       if (this.typeFilter) arr = arr.filter((x) => x.talkType === this.typeFilter)
       return arr
     },
@@ -234,11 +272,52 @@ export default {
     }
   },
   created() {
+    this.applyRouteFilters()
     this.loadList()
     this.loadStats()
   },
+  watch: {
+    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.loadList() },
+    typeFilter() { this.pagination.page = 1; this.loadList() }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyRouteFilters() {
+      const q = this.$route.query || {}
+      this.studentFilter = readStudentFilter(q)
+      if (!q.status) {
+        this.activeStatus = 'ALL'
+        this.statusMatch = null
+        return
+      }
+      const resolved = resolveTodoStatus('talk', q.status)
+      this.activeStatus = resolved.activeKey
+      this.statusMatch = resolved.matchStatuses
+    },
+    _matchStudent(row) {
+      const id = this.studentFilter && this.studentFilter.studentId
+      if (!id) return true
+      return String(row.studentId) === String(id)
+    },
+    clearStudentFilter() {
+      this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
+      const q = { ...this.$route.query }
+      delete q.studentId
+      delete q.studentNo
+      delete q.studentName
+      this.$router.replace({ query: q })
+    },
+    setStatusFilter(key) {
+      this.activeStatus = key
+      if (key === 'ALL') this.statusMatch = null
+      else if (key === 'PLANNED') this.statusMatch = ['PLANNED', 'SCHEDULED']
+      else this.statusMatch = [key]
+      this.pagination.page = 1
+      const q = { ...this.$route.query }
+      if (key === 'ALL') delete q.status
+      else q.status = key
+      this.$router.replace({ query: q }).catch(() => {})
+    },
     talkTypeLabel(t) {
       return TALK_TYPE[t] || t || '—'
     },
@@ -248,13 +327,18 @@ export default {
     async loadList() {
       this.loading = true
       this.listError = ''
-      // 分页说明：/student-affairs/talks 后端支持真分页，但本工作台是「队列选中 + 详情」交互
-      // （左侧队列点选后右侧展示详情/办结动作），非普通分页表格；接入 AppPagination 会打断选中态
-      // 与筛选 chip 的联动体验，暂维持 pageSize=200 一次性加载队列。
-      const res = await studentAffairsApi.getTalks({ page: 1, pageSize: 200 })
+      const sid = this.studentFilter && this.studentFilter.studentId
+      const res = await studentAffairsApi.getTalks({
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize,
+        talkType: this.typeFilter,
+        status: this.statusMatch && this.statusMatch.length === 1 ? this.statusMatch[0] : '',
+        studentId: sid || ''
+      })
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
+        this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.talkId === this.selected.talkId)
           if (hit) this.selected = hit
@@ -292,7 +376,13 @@ export default {
     async submitRecord() {
       if (!this.recordForm.content || this.recordForm.content.length < 20) { this.recordForm.error = '谈话内容不少于 20 字'; return }
       const ok = await this.runAction(
-        () => studentAffairsApi.recordTalk(this.selected.talkId, this.recordForm.content, this.recordForm.result, this.recordForm.needFollowUp),
+        () => studentAffairsApi.recordTalk(
+          this.selected.talkId,
+          this.recordForm.content,
+          this.recordForm.result,
+          this.recordForm.needFollowUp,
+          this.selected.version
+        ),
         '谈话记录已提交（已进 360）'
       )
       if (!ok) this.recordForm.error = this._lastErr || '提交失败'
@@ -315,7 +405,7 @@ export default {
       const backendAction = map[this.dialog.action]
       if (!backendAction) return
       await this.runAction(
-        () => studentAffairsApi.followUpTalk(id, backendAction, content),
+        () => studentAffairsApi.followUpTalk(id, backendAction, content, this.selected.version),
         { follow: '已转跟进', close: '已办结', toRisk: '已转风险单', toHomeSchool: '已转家校联系' }[this.dialog.action]
       )
       this.dialog.visible = false
@@ -369,6 +459,19 @@ export default {
 </script>
 
 <style scoped>
+.tk-student-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
 .tk-toolbar {
   display: flex;
   align-items: center;

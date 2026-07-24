@@ -18,7 +18,12 @@
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
       <AppSectionCard title="调宿申请">
-        <DataTable v-if="items.length" :columns="transferColumns" :rows="items" row-key="transferId">
+        <div v-if="studentFilterLabel" class="sa-student-filter">
+          <span>{{ studentFilterLabel }}</span>
+          <button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button>
+        </div>
+        <DataTable v-if="displayItems.length || pagination.total > 0" :columns="transferColumns" :rows="displayItems" row-key="transferId"
+                   :pagination="pagination" @page-change="onPageChange">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || row.studentId }}</span><div class="mp-cell-sub">{{ row.studentNo }}</div></template>
           <template #cell-toBed="{ row }">床 #{{ row.toBedId }}</template>
           <template #cell-reason="{ row }">{{ row.reason || '—' }}</template>
@@ -89,6 +94,7 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 
 
 const TRANSFER_COLUMNS = [
@@ -111,13 +117,41 @@ export default {
     return {
       transferColumns: TRANSFER_COLUMNS,
       loading: true, actioning: false, errorMessage: '', items: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       buildings: [], rooms: [], beds: [],
+      studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      statusMatch: null,
       dlg: { visible: false, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' },
       rejDlg: { visible: false, transferId: '' }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    studentFilterLabel() {
+      const f = this.studentFilter || {}
+      if (!f.studentId && !f.studentNo) return ''
+      let name = f.studentName || ''
+      let no = f.studentNo || ''
+      const id = f.studentId || ''
+      if ((!name || !no) && id && this.items && this.items.length) {
+        const hit = this.items.find((x) => String(x.studentId) === String(id))
+        if (hit) {
+          if (!name) name = hit.realName || ''
+          if (!no) no = hit.studentNo || ''
+        }
+      }
+      if (name || no) return `当前学生筛选：${name || '学生'}${no ? ` / ${no}` : ''}`
+      return `当前学生筛选：#${id}`
+    },
+    displayItems() {
+      let arr = this.items
+      const sid = this.studentFilter && this.studentFilter.studentId
+      if (sid) arr = arr.filter((x) => String(x.studentId) === String(sid))
+      if (this.statusMatch && this.statusMatch.length) {
+        arr = arr.filter((x) => this.statusMatch.includes(x.status) || (this.statusMatch.includes('PENDING') && this.isPending(x.status)))
+      }
+      return arr
+    },
     metricCards() {
       const pending = this.items.filter((t) => this.isPending(t.status)).length
       const executed = this.items.filter((t) => t.status === 'EXECUTED').length
@@ -148,13 +182,46 @@ export default {
       return this.bedOptions.length ? '选择空床' : '该房间当前无空床'
     }
   },
-  mounted() { this.load(); this.loadBuildings() },
+  mounted() {
+    this.applyRouteFilters()
+    this.load()
+    this.loadBuildings()
+  },
+  watch: {
+    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.load() }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyRouteFilters() {
+      const q = this.$route.query || {}
+      this.studentFilter = readStudentFilter(q)
+      if (!q.status) { this.statusMatch = null; return }
+      const resolved = resolveTodoStatus('dormTransfer', q.status)
+      this.statusMatch = resolved.matchStatuses
+    },
+    clearStudentFilter() {
+      this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
+      const q = { ...this.$route.query }
+      delete q.studentId
+      delete q.studentNo
+      delete q.studentName
+      this.$router.replace({ query: q }).catch(() => {})
+    },
     async load() {
       this.loading = true; this.errorMessage = ''
-      try { this.items = (await studentAffairsApi.listDormTransfers({ pageSize: 100 })).data.items || [] }
+      try {
+        const sid = this.studentFilter && this.studentFilter.studentId
+        const res = await studentAffairsApi.listDormTransfers({
+          page: this.pagination.page, pageSize: this.pagination.pageSize, studentId: sid || undefined
+        })
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total != null ? res.data.total : this.items.length
+      }
       catch (e) { this.errorMessage = e.message || '调宿加载失败' } finally { this.loading = false }
+    },
+    onPageChange(page) {
+      this.pagination.page = page
+      this.load()
     },
     async loadBuildings() {
       try { this.buildings = (await studentAffairsApi.listDormBuildings({ pageSize: 200 })).data.items || [] }
@@ -190,11 +257,15 @@ export default {
     },
     /* ── 审批 ── */
     async review(t, action) {
-      if (action === 'REJECT') { this.rejDlg = { visible: true, transferId: t.transferId }; return }
-      await this.runAction(() => studentAffairsApi.reviewDormTransfer(t.transferId, action, ''))
+      if (action === 'REJECT') {
+        this.rejDlg = { visible: true, transferId: t.transferId, version: t.version }
+        return
+      }
+      await this.runAction(() => studentAffairsApi.reviewDormTransfer(t.transferId, action, '', t.version))
     },
     async submitReject({ reason }) {
-      const ok = await this.runAction(() => studentAffairsApi.reviewDormTransfer(this.rejDlg.transferId, 'REJECT', reason.trim()))
+      const d = this.rejDlg
+      const ok = await this.runAction(() => studentAffairsApi.reviewDormTransfer(d.transferId, 'REJECT', reason.trim(), d.version))
       if (ok) this.rejDlg.visible = false
     },
     /** @returns {boolean} 是否成功；失败时保留弹窗与已填内容。 */
@@ -214,6 +285,12 @@ export default {
 
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+.sa-student-filter {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a); font-size: var(--font-size-sm); color: var(--text-primary);
+}
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sa-muted { color: var(--text-tertiary); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }

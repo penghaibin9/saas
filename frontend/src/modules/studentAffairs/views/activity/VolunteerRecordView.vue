@@ -152,15 +152,15 @@ export default {
     },
     async confirm(r) {
       this.acting = r.recordId
-      const res = await studentAffairsApi.confirmVolunteerRecord(r.recordId)
+      const res = await studentAffairsApi.confirmVolunteerRecord(r.recordId, r.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已认定，计入志愿时长'); this.load() } else toast.error(res.message || '认定失败')
     },
-    reject(r) { this.rejDlg = { visible: true, recordId: r.recordId } },
+    reject(r) { this.rejDlg = { visible: true, recordId: r.recordId, version: r.version } },
     async submitReject({ reason }) {
       const d = this.rejDlg
       this.acting = d.recordId
-      const res = await studentAffairsApi.rejectVolunteerRecord(d.recordId, reason.trim())
+      const res = await studentAffairsApi.rejectVolunteerRecord(d.recordId, reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已驳回'); this.load() } else toast.error(res.message || '驳回失败')
     },

@@ -165,19 +165,19 @@ export default {
     },
     async publish(e) {
       this.acting = e.evalId
-      const res = await studentAffairsApi.publishCounselorEval(e.evalId)
+      const res = await studentAffairsApi.publishCounselorEval(e.evalId, e.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已发布'); this.load() } else toast.error(res.message || '发布失败')
     },
     /** 复核申诉：结论走下拉（原让用户手打 UPHELD/ADJUSTED），意见走弹窗必填区（≥5字由组件校验） */
     reviewAppeal(e) {
-      this.appealDlg = { visible: true, evalId: e.evalId, result: 'UPHELD', submitting: false }
+      this.appealDlg = { visible: true, evalId: e.evalId, version: e.version, result: 'UPHELD', submitting: false }
     },
     async submitAppealReview({ reason }) {
       const d = this.appealDlg
       d.submitting = true
       this.acting = d.evalId
-      const res = await studentAffairsApi.reviewEvalAppeal(d.evalId, { result: d.result, opinion: reason })
+      const res = await studentAffairsApi.reviewEvalAppeal(d.evalId, { result: d.result, opinion: reason, version: d.version })
       d.submitting = false
       this.acting = ''
       if (res.code !== 0) { toast.error(res.message || '复核失败'); return }

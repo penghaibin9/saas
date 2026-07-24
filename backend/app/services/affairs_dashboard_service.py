@@ -33,8 +33,8 @@ _MODULE_CARDS = [
     ("dorm", "宿舍管理", "LIVE"),
     ("archive", "学工归档", "LIVE"),
     ("profile", "学生画像", "LIVE"),
-    ("psy", "心理关注", "PENDING"),
-    ("activity", "学生活动", "PENDING"),
+    ("psy", "心理关注", "LIVE"),
+    ("activity", "学生活动", "LIVE"),
 ]
 
 
@@ -145,6 +145,23 @@ def get_dashboard(user: dict) -> dict:
         pending_disc = db.scalar(select(func.count()).select_from(DisciplineCase).where(*disc_cond)) or 0
         risk_open = db.scalar(select(func.count(func.distinct(AffairsRiskRecord.student_id)))
                               .select_from(AffairsRiskRecord).where(*risk_cond)) or 0
+        high_count = db.scalar(select(func.count(func.distinct(AffairsRiskRecord.student_id)))
+                               .select_from(AffairsRiskRecord).where(
+                                   *risk_cond, AffairsRiskRecord.risk_level == "HIGH")) or 0
+        critical_count = db.scalar(select(func.count(func.distinct(AffairsRiskRecord.student_id)))
+                                   .select_from(AffairsRiskRecord).where(
+                                       *risk_cond, AffairsRiskRecord.risk_level == "CRITICAL")) or 0
+        if critical_count:
+            top_risk_level = "CRITICAL"
+        elif high_count:
+            top_risk_level = "HIGH"
+        elif risk_open:
+            # 有未关闭风险但非高/危急 → 取范围内最高实际等级
+            levels = db.scalars(select(AffairsRiskRecord.risk_level).where(*risk_cond).distinct()).all()
+            order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+            top_risk_level = max(levels, key=lambda lv: order.get(lv, 0)) if levels else "LOW"
+        else:
+            top_risk_level = "NONE"
         # 下钻路径与首页统计同口径；宿舍异常无与学工范围对齐的可信统计，本轮不展示该指标
         cards = [
             {"key": "studentTotal", "label": "学生数(范围内)", "value": stu_total, "unit": "人",
@@ -164,7 +181,9 @@ def get_dashboard(user: dict) -> dict:
             {"key": "pendingDiscipline", "label": "待审处分", "value": pending_disc, "unit": "件",
              "drillPath": "/admin/student-affairs/discipline?status=REVIEW"},
             {"key": "riskStudents", "label": "风险学生", "value": risk_open, "unit": "人",
-             "drillPath": "/admin/student-affairs/risk?status=OPEN"},
+             "drillPath": "/admin/student-affairs/risk?status=OPEN",
+             "openStudentCount": risk_open, "highCount": high_count,
+             "criticalCount": critical_count, "topRiskLevel": top_risk_level},
         ]
         return {
             "view": view,
@@ -174,6 +193,12 @@ def get_dashboard(user: dict) -> dict:
             "scopeLabel": scope["scopeLabel"],
             "updatedAt": _iso(datetime.now()),
             "summaryCards": cards,
+            "riskSummary": {
+                "openStudentCount": risk_open,
+                "highCount": high_count,
+                "criticalCount": critical_count,
+                "topRiskLevel": top_risk_level,
+            },
             "moduleCards": [
                 {"key": k, "label": label, "status": st,
                  "empty": st != "LIVE",

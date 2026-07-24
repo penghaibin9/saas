@@ -247,7 +247,7 @@ export default {
       const ids = Array.isArray(this.collectModal.studentIds) ? this.collectModal.studentIds : []
       if (!ids.length) { this.collectModal.error = '请至少圈定一名学生'; return }
       this.acting = true
-      const res = await studentAffairsApi.collectArchive(this.current.batchId, ids)
+      const res = await studentAffairsApi.collectArchive(this.current.batchId, ids, this.current.version)
       this.acting = false
       if (res.code === 0) {
         toast.success(`已生成 ${res.data.packagesCreated} 个档案包`)
@@ -260,7 +260,7 @@ export default {
     },
     async onAdvance() {
       this.acting = true
-      const res = await studentAffairsApi.advanceArchive(this.current.batchId, 'APPROVE')
+      const res = await studentAffairsApi.advanceArchive(this.current.batchId, 'APPROVE', this.current.version)
       this.acting = false
       if (res.code === 0) {
         toast.success(res.data.status === 'ARCHIVED' ? '已归档，水印包已登记' : '已推进')

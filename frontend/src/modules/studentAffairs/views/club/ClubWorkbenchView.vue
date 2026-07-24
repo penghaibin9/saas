@@ -200,24 +200,24 @@ export default {
       if (res.code === 0) { toast.success('已提交待审批'); this.formVisible = false; this.load() } else m.error = res.message || '创建失败'
     },
     async review(c, action) {
-      if (action === 'REJECT') { this.rejDlg = { visible: true, clubId: c.clubId }; return }
+      if (action === 'REJECT') { this.rejDlg = { visible: true, clubId: c.clubId, version: c.version }; return }
       this.acting = c.clubId
-      const res = await studentAffairsApi.reviewClub(c.clubId, action, '')
+      const res = await studentAffairsApi.reviewClub(c.clubId, action, '', c.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '处理失败')
     },
     async submitReject({ reason }) {
       const d = this.rejDlg
       this.acting = d.clubId
-      const res = await studentAffairsApi.reviewClub(d.clubId, 'REJECT', reason.trim())
+      const res = await studentAffairsApi.reviewClub(d.clubId, 'REJECT', reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已处理'); this.load() } else toast.error(res.message || '处理失败')
     },
-    disband(c) { this.disDlg = { visible: true, clubId: c.clubId, clubName: c.clubName || '该社团' } },
+    disband(c) { this.disDlg = { visible: true, clubId: c.clubId, clubName: c.clubName || '该社团', version: c.version } },
     async submitDisband({ reason }) {
       const d = this.disDlg
       this.acting = d.clubId
-      const res = await studentAffairsApi.disbandClub(d.clubId, reason.trim())
+      const res = await studentAffairsApi.disbandClub(d.clubId, reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) {
         d.visible = false

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
+from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
 
 # ── 审批层级阈值（规则中心键 affairs.leave.*_threshold_days，默认 3/7；P0 §5）──
@@ -489,7 +490,7 @@ def return_leave(leave_id, user, reason, expected_version=None) -> dict:
     return out
 
 
-def resubmit(leave_id, user, *, self_only: bool = False, reason: str | None = None) -> dict:
+def resubmit(leave_id, user, expected_version=None, *, self_only: bool = False, reason: str | None = None) -> dict:
     """退回后重新提交 → 回到首个审批节点（新审批周期）。
 
     self_only=True：学生自助入口，仅允许本人对自己的 RETURNED 请假重交；
@@ -533,7 +534,7 @@ def resubmit(leave_id, user, *, self_only: bool = False, reason: str | None = No
 
 # ═══════════ 销假 ═══════════
 
-def submit_cancel(leave_id, user, proof_note="", *, self_only: bool = False) -> dict:
+def submit_cancel(leave_id, user, proof_note="", expected_version=None, *, self_only: bool = False) -> dict:
     with session() as db:
         from app.models import AffairsLeaveCancelRecord
         x, s = _load(db, leave_id)
@@ -639,7 +640,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
 
 # ═══════════ 续假 ═══════════
 
-def apply_extension(leave_id, user, new_end, reason="", *, self_only: bool = False) -> dict:
+def apply_extension(leave_id, user, new_end, reason="", expected_version=None, *, self_only: bool = False) -> dict:
     with session() as db:
         from app.models import AffairsLeaveExtension
         x, s = _load(db, leave_id)
@@ -865,42 +866,70 @@ def get_detail(leave_id, user) -> dict:
 # ═══════════ 请假台账 / 统计 / 导出（本模块新增：13A-05 台账 + 统计口径）═══════════
 
 def list_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
-                date_start=None, date_end=None, followup_only=False, page=1, page_size=20):
+                date_start=None, date_end=None, followup_only=False, page=1, page_size=20,
+                student_id=None):
     """请假台账/后续处理列表：全状态可筛，数据范围裁剪。followup_only=只取延期销假可处理的活动态。"""
     from app.models import CsLeave, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    want_sid = None
+    if student_id:
+        try:
+            want_sid = int(student_id)
+        except (TypeError, ValueError):
+            return [], 0
+    want_class_id = None
+    if class_id:
+        try:
+            want_class_id = int(class_id)
+        except (TypeError, ValueError):
+            return [], 0
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        q_rows = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
-            CsLeave.affairs_status.is_not(None)).order_by(CsLeave.id.desc())).all()
         ds, de = _parse_dt(date_start), _parse_dt(date_end)
-        out = []
-        for x in q_rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            if followup_only and x.affairs_status not in FOLLOWUP_STATES:
-                continue
-            if status and x.affairs_status != status:
-                continue
-            if leave_type and x.leave_type != leave_type:
-                continue
-            if class_id and (not s or str(s.class_id or "") != str(class_id)):
-                continue
-            if keyword:
-                k = str(keyword)
-                if not (s and (k in (s.real_name or "") or k in (s.student_no or ""))):
-                    continue
-            if ds and x.start_time and x.start_time < ds:
-                continue
-            if de and x.start_time and x.start_time > de:
-                continue
-            out.append(_row(x, s))
+        conds = [CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+                 CsLeave.affairs_status.is_not(None), StudentProfile.tenant_id == _tid(),
+                 StudentProfile.is_deleted.is_(False)]
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        if want_sid is not None:
+            conds.append(CsLeave.student_id == want_sid)
+        if followup_only:
+            conds.append(CsLeave.affairs_status.in_(FOLLOWUP_STATES))
+        if status == "PENDING":
+            conds.append(CsLeave.affairs_status.in_(_REVIEW_NODES))
+        elif status == "CANCEL_PENDING":
+            conds.append(CsLeave.affairs_status == "WAIT_CANCEL_LEAVE")
+        elif status == "OPEN":
+            conds.append(CsLeave.affairs_status.in_(
+                (*_REVIEW_NODES, "APPROVED", "OVERDUE", "WAIT_CANCEL_LEAVE", "EXTENSION_REVIEW")))
+        elif status == "DONE":
+            conds.append(CsLeave.affairs_status.in_(("CLOSED", "REJECTED", "CANCELLED")))
+        elif status:
+            conds.append(CsLeave.affairs_status == status)
+        if leave_type:
+            conds.append(CsLeave.leave_type == leave_type)
+        if want_class_id is not None:
+            conds.append(StudentProfile.class_id == want_class_id)
+        if keyword:
+            k = str(keyword)
+            conds.append(or_(StudentProfile.real_name.contains(k), StudentProfile.student_no.contains(k)))
+        if ds:
+            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time >= ds))
+        if de:
+            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time <= de))
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(CsLeave)
+                              .join(StudentProfile, StudentProfile.id == CsLeave.student_id)
+                              .where(*conds)) or 0)
+        q_rows = db.scalars(select(CsLeave).join(StudentProfile, StudentProfile.id == CsLeave.student_id)
+                            .where(*conds).order_by(CsLeave.id.desc())
+                            .offset((page - 1) * page_size).limit(page_size)).all()
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_({int(x.student_id) for x in q_rows if x.student_id})
+        )).all()} if q_rows else {}
+        out = [_row(x, students.get(int(x.student_id)) if x.student_id else None) for x in q_rows]
         _resolve_class_names(db, out)
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
@@ -989,11 +1018,12 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
 
 
 def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
-                  date_start=None, date_end=None) -> dict:
+                  date_start=None, date_end=None, student_id=None) -> dict:
     """请假台账导出（xlsx，水印 + 导出留痕）。契约 §16.2 affairs_leave 导出。"""
     from app.services import excel
     items_all, _ = list_leaves(user, status, leave_type, class_id, keyword,
-                               date_start, date_end, page=1, page_size=1_000_000)
+                               date_start, date_end, page=1, page_size=1_000_000,
+                               student_id=student_id)
     export_items = [{
         "studentNo": it.get("studentNo", ""),
         "studentName": it.get("studentName", ""),
@@ -1047,18 +1077,22 @@ def list_pending(user, page=1, page_size=20):
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
         ctx = build_affairs_context(user, db)
-        rows = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
-            CsLeave.affairs_status.in_(list(_REVIEW_NODES))).order_by(CsLeave.id.desc())).all()
-        out = []
-        for x in rows:
-            if not _node_visible(ctx, x.affairs_status):
-                continue
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_row(x, s))
+        visible_nodes = [node for node in _REVIEW_NODES if _node_visible(ctx, node)]
+        conds = [CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+                 CsLeave.affairs_status.in_(visible_nodes or ("__NO_VISIBLE_NODE__",)),
+                 StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(CsLeave)
+                              .join(StudentProfile, StudentProfile.id == CsLeave.student_id)
+                              .where(*conds)) or 0)
+        rows = db.scalars(select(CsLeave).join(StudentProfile, StudentProfile.id == CsLeave.student_id)
+                          .where(*conds).order_by(CsLeave.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_({int(x.student_id) for x in rows if x.student_id})
+        )).all()} if rows else {}
+        out = [_row(x, students.get(int(x.student_id)) if x.student_id else None) for x in rows]
         _resolve_class_names(db, out)  # list_leaves 已有此转换，list_pending 此前遗漏（className 一直回数字 class_id）
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total

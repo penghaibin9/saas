@@ -7,6 +7,7 @@ NEW→ASSIGNED→PROCESSING→(FOLLOWING)→CLOSED；转办/升级/接管/重开
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from math import isfinite
 
 from sqlalchemy import func, select
 
@@ -17,6 +18,9 @@ from app.services.db_service import _iso, _tid, session
 SOURCES = ("LEAVE_OVERDUE", "ACADEMIC_WARNING", "DORM", "MENTAL", "DISCIPLINE", "INTERNSHIP",
            "GRADUATION_DESIGN", "EMPLOYMENT", "FAMILY", "MANUAL")
 LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+# 超时阈值：与 scan_timeout / 列表 stats.overdue 同一来源，禁止别处再写魔法数。
+_DEFAULT_RISK_NEW_ASSIGN_HOURS = 4.0
+_DEFAULT_RISK_ASSIGNED_PROCESS_HOURS = 72.0
 # SEC-2 修复：学工处管理员(STUDENT_AFFAIRS_ADMIN)默认不得查看心理原始明细（权限总控 §7.3 /
 # 13A §13 心理行）；需专项授权(PSY_STUDENT，见心理关注模块)方可。此处仅按角色保留心理老师与
 # 校/平台超管（超管查看心理明细仍强制填写原因 + 写 SENSITIVE_VIEW 审计，见 get_risk）。
@@ -27,6 +31,24 @@ _MENTAL_ROLES = {"SCHOOL_ADMIN", "PSYCHOLOGY_TEACHER", "PLATFORM_SUPER_ADMIN"}
 # 分派给任课教师等无该权限的账号会让待办变成点开即 403 的死信，故按角色码收敛候选集。
 OWNER_ROLE_CODES = ("COUNSELOR", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN",
                     "PSYCHOLOGY_TEACHER", "COLLEGE_ADMIN", "SCHOOL_ADMIN")
+
+
+def _risk_new_assign_hours() -> float:
+    """读取可配置分派时限；无效配置回退现网默认，避免风险永不触发。"""
+    from app.core.config import settings
+
+    value = float(getattr(settings, "AFFAIRS_RISK_NEW_ASSIGN_HOURS",
+                          _DEFAULT_RISK_NEW_ASSIGN_HOURS) or _DEFAULT_RISK_NEW_ASSIGN_HOURS)
+    return value if isfinite(value) and value > 0 else _DEFAULT_RISK_NEW_ASSIGN_HOURS
+
+
+def _risk_assigned_process_hours() -> float:
+    """读取可配置处置时限；无效配置回退现网默认，避免风险永不触发。"""
+    from app.core.config import settings
+
+    value = float(getattr(settings, "AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS",
+                          _DEFAULT_RISK_ASSIGNED_PROCESS_HOURS) or _DEFAULT_RISK_ASSIGNED_PROCESS_HOURS)
+    return value if isfinite(value) and value > 0 else _DEFAULT_RISK_ASSIGNED_PROCESS_HOURS
 
 
 def _owner_role_user_ids(db) -> set[int]:
@@ -228,14 +250,18 @@ def _can_view_mental(user) -> bool:
 
 
 def _sensitive_view_audit(x, reason: str) -> None:
-    """查看心理来源风险明细 → 写 t_security_audit_log(SENSITIVE_VIEW)。审计绝不阻塞主流程。"""
-    try:
-        from app.services import audit_log
-        audit_log.record("SENSITIVE_VIEW", f"risk:{x.id}",
-                         detail={"source": x.source, "studentId": str(x.student_id),
-                                 "reason": str(reason)[:200]}, result="SUCCESS")
-    except Exception:  # noqa: BLE001
-        pass
+    """查看心理来源风险明细 → 写 t_security_audit_log(SENSITIVE_VIEW)。
+
+    强敏感：审计失败不得静默放行明文（调用方须在审计成功后再 reveal）。
+    """
+    from app.services import audit_log
+    audit_log.record(
+        "SENSITIVE_VIEW",
+        f"risk:{x.id}",
+        detail={"source": x.source, "studentId": str(x.student_id),
+                "reason": str(reason)[:200]},
+        result="SUCCESS",
+    )
 
 
 def _row(x, user, s=None, reveal=False, owner=None) -> dict:
@@ -499,19 +525,21 @@ def reopen(risk_id, user, reason="", expected_version=None) -> dict:
 # ═══════════ 超时扫描（幂等） ═══════════
 
 def scan_timeout() -> dict:
-    """NEW≥4h 自动分派给班级辅导员（有则分）；ASSIGNED≥72h 无处置自动升级。幂等：escalated_at 标记。"""
+    """按当前配置自动分派 NEW 风险，并升级超时未处置的 ASSIGNED 风险。"""
     from app.models import AffairsRiskRecord, SchoolClass, StudentProfile
     now = datetime.utcnow()
     with session() as db:
         assigned = 0
-        # NEW ≥4h 未分派 → 尝试分给班级辅导员
+        new_assign_hours = _risk_new_assign_hours()
+        assigned_process_hours = _risk_assigned_process_hours()
+        # NEW 超过分派时限未分派 → 尝试分给班级辅导员
         new_rows = db.scalars(select(AffairsRiskRecord).where(
             AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.status == "NEW",
             AffairsRiskRecord.created_at.is_not(None),
             AffairsRiskRecord.is_deleted.is_(False))).all()
         eligible_owners = _owner_role_user_ids(db)
         for x in new_rows:
-            if not x.created_at or x.created_at + timedelta(hours=4) > now:
+            if not x.created_at or x.created_at + timedelta(hours=new_assign_hours) > now:
                 continue
             counselor_id = None
             if x.student_id:
@@ -530,14 +558,14 @@ def scan_timeout() -> dict:
             _audit(db, x.id, "AUTO_ASSIGN", str(counselor_id))
             assigned += 1
 
-        # 处置超时：ASSIGNED ≥72h 无处置且未升级过 → ESCALATED
+        # 处置超时：ASSIGNED 超过处置时限、无处置且未升级过 → ESCALATED
         rows = db.scalars(select(AffairsRiskRecord).where(
             AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.status == "ASSIGNED",
             AffairsRiskRecord.assigned_at.is_not(None), AffairsRiskRecord.escalated_at.is_(None),
             AffairsRiskRecord.is_deleted.is_(False))).all()
         escalated = 0
         for x in rows:
-            if x.assigned_at + timedelta(hours=72) <= now:
+            if x.assigned_at + timedelta(hours=assigned_process_hours) <= now:
                 x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
                 x.status, x.escalated_at, x.version = "ESCALATED", now, x.version + 1
                 _handle(db, x.id, "ESCALATE", "处置超时自动升级", "ASSIGNED", "ESCALATED")
@@ -552,6 +580,62 @@ def scan_timeout() -> dict:
 
 # ═══════════ 查询 ═══════════
 
+def _allowed_risk_actions(x, user) -> list[str]:
+    """按状态 + 权限 + 是否责任人计算合法动作；后端写接口仍须再校验。"""
+    from app.core.permissions import has_permission
+    st = x.status
+    uid = str((user or {}).get("userId") or "")
+    is_owner = bool(x.owner_id) and str(x.owner_id) == uid
+    actions: list[str] = []
+    if st in ("NEW", "REOPENED", "TRANSFERRED") and has_permission(user, "studentAffairs.risk.assign"):
+        actions.append("ASSIGN")
+    if st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED") and has_permission(user, "studentAffairs.risk.handle"):
+        if is_owner or has_permission(user, "studentAffairs.risk.assign"):
+            actions.append("PROCESS")
+            if st in ("PROCESSING", "FOLLOWING", "ASSIGNED"):
+                actions.append("FOLLOW")
+    if st not in ("CLOSED", "NEW") and has_permission(user, "studentAffairs.risk.transfer"):
+        actions.append("TRANSFER")
+    if st not in ("CLOSED",) and has_permission(user, "studentAffairs.risk.escalate"):
+        actions.append("ESCALATE")
+    if st in ("ASSIGNED", "PROCESSING", "FOLLOWING", "ESCALATED", "TRANSFERRED") and has_permission(user, "studentAffairs.risk.handle"):
+        actions.append("TAKEOVER")
+    if st != "CLOSED" and has_permission(user, "studentAffairs.risk.close"):
+        actions.append("CLOSE")
+    if st == "CLOSED" and has_permission(user, "studentAffairs.risk.reopen"):
+        actions.append("REOPEN")
+    return actions
+
+
+def list_handles(risk_id, user) -> list[dict]:
+    """真实处置留痕（append-only）。心理来源内容按角色脱敏。"""
+    from app.models import AffairsRiskHandle
+    with session() as db:
+        x, _s = _load(db, risk_id)
+        _scope_or_403(db, x.student_id, user)
+        rows = db.scalars(select(AffairsRiskHandle).where(
+            AffairsRiskHandle.tenant_id == _tid(),
+            AffairsRiskHandle.risk_id == int(risk_id),
+            AffairsRiskHandle.is_deleted.is_(False),
+        ).order_by(AffairsRiskHandle.id.asc())).all()
+        mental_mask = x.source == "MENTAL" and not _can_view_mental(user)
+        out = []
+        for h in rows:
+            content = h.content or ""
+            if mental_mask and content:
+                content = "[心理关注·处置内容已脱敏]"
+            out.append({
+                "handleId": str(h.id),
+                "action": h.action,
+                "operator": h.operator or "",
+                "fromStatus": h.from_status or "",
+                "toStatus": h.to_status or "",
+                "content": content,
+                "occurredAt": _iso(getattr(h, "created_at", None)),
+            })
+        return out
+
+
 def get_risk(risk_id, user, reason: str | None = None) -> dict:
     with session() as db:
         from app.models import User
@@ -559,84 +643,124 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
         _scope_or_403(db, x.student_id, user)
         reveal = False
         # 心理来源明细=敏感：仅授权角色 + 填写原因(≥5字) 方可查看明文，并写 SENSITIVE_VIEW 审计；
-        # 无原因则返回遮蔽摘要（不报错，前端另起"查看明细"动作带原因）。
+        # 审计必须先成功，再 reveal（强敏感不可吞异常后仍返明文）。
         if x.source == "MENTAL" and _can_view_mental(user):
             if reason and len(str(reason).strip()) >= 5:
-                reveal = True
                 _sensitive_view_audit(x, reason.strip())
+                reveal = True
         owner = db.get(User, int(x.owner_id)) if x.owner_id else None
-        return _row(x, user, s, reveal=reveal, owner=owner)
+        row = _row(x, user, s, reveal=reveal, owner=owner)
+        row["allowedActions"] = _allowed_risk_actions(x, user)
+    # 独立会话拉 handles，避免与详情会话交叉
+    row["handles"] = list_handles(risk_id, user)
+    return row
 
 
-def _risk_stats(rows: list[dict]) -> dict:
-    """全局指标（与列表同权限/同范围过滤结果，不受 page/pageSize 影响）。不泄露心理明细。"""
+def _risk_filter_conds(source=None, status=None, risk_level=None, student_id=None):
+    """列表 / count / 聚合共用过滤条件（不含数据范围）。"""
+    from app.models import AffairsRiskRecord
+    conds = [AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False)]
+    if source:
+        conds.append(AffairsRiskRecord.source == source)
+    if status == "OPEN":
+        conds.append(AffairsRiskRecord.status.notin_(["CLOSED"]))
+    elif status == "PENDING":
+        conds.append(AffairsRiskRecord.status.in_(
+            ["NEW", "ASSIGNED", "REOPENED", "TRANSFERRED"]))
+    elif status:
+        conds.append(AffairsRiskRecord.status == status)
+    if risk_level:
+        conds.append(AffairsRiskRecord.risk_level == risk_level)
+    if student_id:
+        conds.append(AffairsRiskRecord.student_id == int(student_id))
+    return conds
+
+
+def _risk_scope_join(stmt, allowed):
+    """按班级数据范围 join 学生表。allowed=None 表示 TENANT_ALL。"""
+    from app.models import AffairsRiskRecord, StudentProfile
+    stmt = stmt.join(StudentProfile, StudentProfile.id == AffairsRiskRecord.student_id)
+    if allowed is not None:
+        stmt = stmt.where(StudentProfile.class_id.in_(allowed or {-1}))
+    return stmt
+
+
+def _risk_stats_sql(db, base_conds, allowed) -> dict:
+    """与列表同过滤/同范围的单次 SQL 条件聚合；超时阈值与 scan_timeout 共用配置。"""
+    from sqlalchemy import case
+    from app.models import AffairsRiskRecord
+
     now = datetime.utcnow()
-    overdue = 0
-    for r in rows:
-        st = r.get("status")
-        if st == "ESCALATED":
-            overdue += 1
-            continue
-        if st == "NEW":
-            created = r.get("_createdAtRaw")
-            if created and created + timedelta(hours=4) <= now:
-                overdue += 1
-        elif st == "ASSIGNED":
-            assigned = r.get("_assignedAtRaw")
-            if assigned and assigned + timedelta(hours=72) <= now:
-                overdue += 1
+    new_deadline = now - timedelta(hours=_risk_new_assign_hours())
+    assigned_deadline = now - timedelta(hours=_risk_assigned_process_hours())
+    overdue_pred = (
+        (AffairsRiskRecord.status == "ESCALATED")
+        | (
+            (AffairsRiskRecord.status == "NEW")
+            & AffairsRiskRecord.created_at.is_not(None)
+            & (AffairsRiskRecord.created_at <= new_deadline)
+        )
+        | (
+            (AffairsRiskRecord.status == "ASSIGNED")
+            & AffairsRiskRecord.assigned_at.is_not(None)
+            & (AffairsRiskRecord.assigned_at <= assigned_deadline)
+        )
+    )
+    stmt = _risk_scope_join(
+        select(
+            func.count().label("total"),
+            func.coalesce(func.sum(case(
+                (AffairsRiskRecord.risk_level.in_(["HIGH", "CRITICAL"]), 1), else_=0)), 0).label("high_critical"),
+            func.coalesce(func.sum(case(
+                (AffairsRiskRecord.status.notin_(["CLOSED"]), 1), else_=0)), 0).label("open_n"),
+            func.coalesce(func.sum(case(
+                (AffairsRiskRecord.owner_id.is_(None), 1), else_=0)), 0).label("unassigned"),
+            func.coalesce(func.sum(case((overdue_pred, 1), else_=0)), 0).label("overdue"),
+        ).select_from(AffairsRiskRecord).where(*base_conds),
+        allowed,
+    )
+    row = db.execute(stmt).one()
     return {
-        "total": len(rows),
-        "highCritical": sum(1 for r in rows if r.get("riskLevel") in ("HIGH", "CRITICAL")),
-        "open": sum(1 for r in rows if r.get("status") != "CLOSED"),
-        "unassigned": sum(1 for r in rows if not r.get("ownerId")),
-        "overdue": overdue,
+        "total": int(row.total or 0),
+        "highCritical": int(row.high_critical or 0),
+        "open": int(row.open_n or 0),
+        "unassigned": int(row.unassigned or 0),
+        "overdue": int(row.overdue or 0),
     }
 
 
 def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
                page=1, page_size=20):
+    from app.core.pagination import normalize_page
     from app.models import AffairsRiskRecord, StudentProfile, User
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    page, page_size = normalize_page(page, page_size)
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        conds = [AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False)]
-        if source:
-            conds.append(AffairsRiskRecord.source == source)
-        if status == "OPEN":
-            conds.append(AffairsRiskRecord.status.notin_(["CLOSED"]))
-        elif status:
-            conds.append(AffairsRiskRecord.status == status)
-        if risk_level:
-            conds.append(AffairsRiskRecord.risk_level == risk_level)
-        if student_id:
-            conds.append(AffairsRiskRecord.student_id == int(student_id))
-        rows = db.scalars(select(AffairsRiskRecord).where(*conds).order_by(
-            AffairsRiskRecord.id.desc())).all()
-        # 消 N+1：批量取学生档案 + 责任人账号
+        base_conds = _risk_filter_conds(source, status, risk_level, student_id)
+        stats = _risk_stats_sql(db, base_conds, allowed)
+        total = stats["total"]
+        id_stmt = _risk_scope_join(
+            select(AffairsRiskRecord.id).where(*base_conds), allowed
+        ).order_by(AffairsRiskRecord.id.desc()).offset((page - 1) * page_size).limit(page_size)
+        page_ids = list(db.scalars(id_stmt).all())
+        if not page_ids:
+            return [], total, stats
+        rows = db.scalars(select(AffairsRiskRecord).where(
+            AffairsRiskRecord.id.in_(page_ids)).order_by(AffairsRiskRecord.id.desc())).all()
+        # 消 N+1：仅对本页批量取学生 / 责任人
         sids = {int(x.student_id) for x in rows if x.student_id}
         students = {s.id: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_(sids))).all()} if sids else {}
         oids = {int(x.owner_id) for x in rows if x.owner_id}
         owners = {u.id: u for u in db.scalars(select(User).where(
             User.id.in_(oids))).all()} if oids else {}
-        out = []
-        for x in rows:
-            s = students.get(int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            row = _row(x, user, s, owner=owners.get(int(x.owner_id)) if x.owner_id else None)
-            # 统计用原始时间（不进响应）
-            row["_createdAtRaw"] = x.created_at
-            row["_assignedAtRaw"] = x.assigned_at
-            out.append(row)
-        stats = _risk_stats(out)
-        for r in out:
-            r.pop("_createdAtRaw", None)
-            r.pop("_assignedAtRaw", None)
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total, stats
+        out = [
+            _row(x, user, students.get(int(x.student_id)) if x.student_id else None,
+                 owner=owners.get(int(x.owner_id)) if x.owner_id else None)
+            for x in rows
+        ]
+        return out, total, stats
 
 
 _SCAN_ROLES = {"SCHOOL_ADMIN", "SCHOOL_LEADER", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN",

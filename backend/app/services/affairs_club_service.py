@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
 
 CLUB_TYPES = ("INTEREST", "ACADEMIC", "SPORTS", "ARTS", "VOLUNTEER", "PRACTICE")
@@ -104,12 +104,13 @@ def create_club(body, user) -> dict:
         return _row(c)
 
 
-def review_club(club_id, user, action="APPROVE", reason="") -> dict:
+def review_club(club_id, user, action="APPROVE", reason="", expected_version=None) -> dict:
     """PENDING→ACTIVE(通过)/REJECTED-态(此处并入 DISBANDED? 用 reject 保留 PENDING→驳回置 SUSPENDED)。"""
     with session() as db:
         c = _load(db, club_id)
         if c.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待审批社团可审批")
+        check_version(c.version, expected_version)
         if action == "APPROVE":
             c.status, c.established_at = "ACTIVE", datetime.utcnow()
             _audit(db, c.id, "CLUB_APPROVE", "")
@@ -123,13 +124,14 @@ def review_club(club_id, user, action="APPROVE", reason="") -> dict:
         return _row(c)
 
 
-def disband_club(club_id, user, reason="") -> dict:
+def disband_club(club_id, user, reason="", expected_version=None) -> dict:
     with session() as db:
         c = _load(db, club_id)
         if c.status == "DISBANDED":
             raise AppException("DATA_CONFLICT", "社团已注销")
         if len((reason or "").strip()) < 5:
             raise AppException("VALIDATION_ERROR", "注销原因至少 5 字")
+        check_version(c.version, expected_version)
         c.status, c.reject_reason, c.version = "DISBANDED", reason.strip(), c.version + 1
         _audit(db, c.id, "CLUB_DISBAND", reason.strip())
         db.commit(); db.refresh(c)

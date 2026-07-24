@@ -222,9 +222,10 @@ export default {
     },
     async submitText({ reason }) {
       const d = this.txtDlg
+      const ver = d.row && d.row.version
       const fn = d.kind === 'follow'
-        ? () => studentAffairsApi.followMentalReferral(d.row.referralId, reason.trim())
-        : () => studentAffairsApi.closeMentalReferral(d.row.referralId, reason.trim())
+        ? () => studentAffairsApi.followMentalReferral(d.row.referralId, reason.trim(), ver)
+        : () => studentAffairsApi.closeMentalReferral(d.row.referralId, reason.trim(), ver)
       const ok = await this.runAction(fn)
       if (ok) d.visible = false
     },
@@ -237,6 +238,11 @@ export default {
         await this.load()
         return true
       } catch (e) {
+        if (e.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          this.errorMessage = '该记录已被其他人处理，数据已刷新'
+          await this.load()
+          return false
+        }
         this.errorMessage = e.message || '操作失败'
         return false
       } finally {

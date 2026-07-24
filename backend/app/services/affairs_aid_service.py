@@ -11,11 +11,12 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field
+from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, audit_insert, session
 
 LEVELS = {"SPECIAL": "特别困难", "DIFFICULT": "困难", "GENERAL": "一般困难"}
@@ -341,11 +342,11 @@ def list_batches(user, school_year=None, status=None, page=1, page_size=20):
             conds.append(AidBatch.year_code == school_year)
         if status:
             conds.append(AidBatch.status == status)
-        rows = db.scalars(select(AidBatch).where(*conds).order_by(AidBatch.id.desc())).all()
-        out = [_batch_row(b) for b in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(AidBatch).where(*conds)) or 0)
+        rows = db.scalars(select(AidBatch).where(*conds).order_by(AidBatch.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
+        return [_batch_row(b) for b in rows], total
 
 
 # ═══════════ 申请（管理端受理直达班级评议）═══════════
@@ -619,7 +620,7 @@ def adjust(apply_id, user, target_level, reason="", expected_version=None) -> di
         return _apply_row(x, s, _family_of(db, x.id))
 
 
-def approve_adjust(apply_id, user, action="APPROVE") -> dict:
+def approve_adjust(apply_id, user, action="APPROVE", expected_version=None) -> dict:
     """动态调整终审：仅持 aid.approve 的角色可批；并校验 AID_ADJUST 待办指派人。"""
     from app.core.permissions import has_permission
     if not has_permission(user, "studentAffairs.aid.approve"):
@@ -652,7 +653,8 @@ def approve_adjust(apply_id, user, action="APPROVE") -> dict:
 
 # ═══════════ 查询 / 困难库 / 敏感 reveal ═══════════
 
-def list_applications(user, batch_id=None, status=None, level=None, page=1, page_size=20):
+def list_applications(user, batch_id=None, status=None, level=None, page=1, page_size=20,
+                      student_id=None):
     from app.models import AidApply, AidFamilyEconomy, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
@@ -664,21 +666,35 @@ def list_applications(user, batch_id=None, status=None, level=None, page=1, page
             conds.append(AidApply.status == status)
         if level:
             conds.append(AidApply.final_level == level)
-        rows = db.scalars(select(AidApply).where(*conds).order_by(AidApply.id.desc())).all()
+        if student_id:
+            try:
+                conds.append(AidApply.student_id == int(student_id))
+            except (TypeError, ValueError):
+                return [], 0
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        student_conds = [
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        page, page_size = normalize_page(page, page_size)
+        total = int(db.scalar(select(func.count()).select_from(AidApply)
+                              .join(StudentProfile, StudentProfile.id == AidApply.student_id)
+                              .where(*conds, *student_conds)) or 0)
+        rows = db.scalars(select(AidApply).join(StudentProfile, StudentProfile.id == AidApply.student_id)
+                          .where(*conds, *student_conds).order_by(AidApply.id.desc())
+                          .offset((page - 1) * page_size).limit(page_size)).all()
         students = _students_by_ids(db, rows)
         pending = _pending_objection_ids(db, [x.id for x in rows])
-        out = []
-        for x in rows:
-            s = students.get(int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            fe = db.scalars(select(AidFamilyEconomy).where(
-                AidFamilyEconomy.tenant_id == _tid(), AidFamilyEconomy.apply_id == x.id,
-                AidFamilyEconomy.is_deleted.is_(False))).first()
-            out.append(_apply_row(x, s, fe, has_pending_objection=int(x.id) in pending))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        apply_ids = [x.id for x in rows]
+        families = {fe.apply_id: fe for fe in db.scalars(select(AidFamilyEconomy).where(
+            AidFamilyEconomy.tenant_id == _tid(), AidFamilyEconomy.apply_id.in_(apply_ids),
+            AidFamilyEconomy.is_deleted.is_(False))).all()} if apply_ids else {}
+        return [
+            _apply_row(x, students.get(int(x.student_id)) if x.student_id else None,
+                       families.get(x.id), has_pending_objection=int(x.id) in pending)
+            for x in rows
+        ], total
 
 
 def get_application(apply_id, user) -> dict:
@@ -707,31 +723,63 @@ def reveal_family_economy(apply_id, user, reason="") -> dict:
 
 
 def difficult_students(user, level=None, page=1, page_size=50):
-    """困难学生库：认定通过(APPROVED)的最新等级聚合，供助学金/绿通/临补前置校验。"""
+    """困难学生库：认定通过(APPROVED)的最新等级聚合，供助学金/绿通/临补前置校验。
+
+    SQL 先按学生取最新 APPROVED 申请（MAX(id)），再分页；避免全量拉取后 Python 截断。
+    """
+    from app.core.pagination import normalize_page
     from app.models import AidApply, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        rows = db.scalars(select(AidApply).where(
-            AidApply.tenant_id == _tid(), AidApply.status == "APPROVED",
-            AidApply.is_deleted.is_(False)).order_by(AidApply.id.desc())).all()
+        page, page_size = normalize_page(page, page_size, default_size=50)
+        latest = (
+            select(
+                AidApply.student_id.label("student_id"),
+                func.max(AidApply.id).label("max_id"),
+            )
+            .where(
+                AidApply.tenant_id == _tid(),
+                AidApply.status == "APPROVED",
+                AidApply.is_deleted.is_(False),
+            )
+            .group_by(AidApply.student_id)
+            .subquery()
+        )
+        conds = [
+            AidApply.id == latest.c.max_id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        if level:
+            conds.append(AidApply.final_level == level)
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        base = (
+            select(AidApply)
+            .join(latest, AidApply.id == latest.c.max_id)
+            .join(StudentProfile, StudentProfile.id == AidApply.student_id)
+            .where(*conds)
+        )
+        total = int(db.scalar(
+            select(func.count()).select_from(base.subquery())) or 0)
+        rows = db.scalars(
+            base.order_by(AidApply.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
         students = _students_by_ids(db, rows)
-        seen, out = set(), []
+        out = []
         for x in rows:
-            if x.student_id in seen:
-                continue
-            seen.add(x.student_id)
-            if level and x.final_level != level:
-                continue
             s = students.get(int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append({"studentId": str(x.student_id), "realName": s.real_name if s else "",
-                        "level": x.final_level, "levelLabel": LEVELS.get(x.final_level, ""),
-                        "identifiedAt": _iso(x.result_at), "batchId": str(x.batch_id)})
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+            out.append({
+                "studentId": str(x.student_id),
+                "realName": s.real_name if s else "",
+                "level": x.final_level,
+                "levelLabel": LEVELS.get(x.final_level, ""),
+                "identifiedAt": _iso(x.result_at),
+                "batchId": str(x.batch_id),
+            })
+        return out, total
 
 
 def is_in_difficult_library(db, student_id) -> str | None:

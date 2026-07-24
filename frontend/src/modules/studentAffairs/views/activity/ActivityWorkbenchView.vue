@@ -194,11 +194,12 @@ export default {
     },
     async act(a, kind, arg) {
       this.acting = a.activityId
+      const ver = a.version
       let res
-      if (kind === 'publish') res = await studentAffairsApi.publishActivity(a.activityId, arg)
-      else if (kind === 'transition') res = await studentAffairsApi.transitionActivity(a.activityId, arg)
-      else if (kind === 'confirm') res = await studentAffairsApi.confirmActivity(a.activityId)
-      else if (kind === 'archive') res = await studentAffairsApi.archiveActivity(a.activityId)
+      if (kind === 'publish') res = await studentAffairsApi.publishActivity(a.activityId, arg, '', ver)
+      else if (kind === 'transition') res = await studentAffairsApi.transitionActivity(a.activityId, arg, ver)
+      else if (kind === 'confirm') res = await studentAffairsApi.confirmActivity(a.activityId, ver)
+      else if (kind === 'archive') res = await studentAffairsApi.archiveActivity(a.activityId, ver)
       this.acting = ''
       if (res && res.code === 0) {
         toast.success(kind === 'confirm' ? `已确认，生成 ${res.data.creditsGranted || 0} 条学分` : '操作成功')

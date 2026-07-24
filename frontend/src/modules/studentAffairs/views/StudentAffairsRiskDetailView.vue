@@ -42,28 +42,28 @@
 
         <AppSectionCard title="处置动作">
           <div class="sa-actions">
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.assign')" code="studentAffairs.risk.assign" variant="secondary" :loading="actioning" @click="assign">
+            <AppPermissionButton v-if="canAct('ASSIGN')" :allowed="canBtn('studentAffairs.risk.assign')" code="studentAffairs.risk.assign" variant="secondary" :loading="actioning" @click="assign">
               分派
             </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.process')" code="studentAffairs.risk.process" :loading="actioning" @click="process">
+            <AppPermissionButton v-if="canAct('PROCESS')" :allowed="canBtn('studentAffairs.risk.handle')" code="studentAffairs.risk.handle" :loading="actioning" @click="process">
               处置
             </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.follow')" code="studentAffairs.risk.follow" variant="secondary" :loading="actioning" @click="follow">
+            <AppPermissionButton v-if="canAct('FOLLOW')" :allowed="canBtn('studentAffairs.risk.handle')" code="studentAffairs.risk.handle" variant="secondary" :loading="actioning" @click="follow">
               持续跟进
             </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.transfer')" code="studentAffairs.risk.transfer" variant="secondary" :loading="actioning" @click="transfer">
+            <AppPermissionButton v-if="canAct('TRANSFER')" :allowed="canBtn('studentAffairs.risk.transfer')" code="studentAffairs.risk.transfer" variant="secondary" :loading="actioning" @click="transfer">
               转办
             </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.escalate')" code="studentAffairs.risk.escalate" variant="secondary" :loading="actioning" @click="escalate">
+            <AppPermissionButton v-if="canAct('ESCALATE')" :allowed="canBtn('studentAffairs.risk.escalate')" code="studentAffairs.risk.escalate" variant="secondary" :loading="actioning" @click="escalate">
               升级
             </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.takeover')" code="studentAffairs.risk.takeover" variant="secondary" :loading="actioning" @click="takeover">
+            <AppPermissionButton v-if="canAct('TAKEOVER')" :allowed="canBtn('studentAffairs.risk.handle')" code="studentAffairs.risk.handle" variant="secondary" :loading="actioning" @click="takeover">
               接管
             </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.close')" code="studentAffairs.risk.close" variant="secondary" :loading="actioning" @click="close">
+            <AppPermissionButton v-if="canAct('CLOSE')" :allowed="canBtn('studentAffairs.risk.close')" code="studentAffairs.risk.close" variant="secondary" :loading="actioning" @click="close">
               关闭
             </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.reopen')" code="studentAffairs.risk.reopen" variant="secondary" :loading="actioning" @click="reopen">
+            <AppPermissionButton v-if="canAct('REOPEN')" :allowed="canBtn('studentAffairs.risk.reopen')" code="studentAffairs.risk.reopen" variant="secondary" :loading="actioning" @click="reopen">
               重开
             </AppPermissionButton>
           </div>
@@ -166,16 +166,26 @@ export default {
       ]
     },
     auditRecords() {
-      return [
-        {
-          id: 'risk-current',
-          action: '当前风险状态',
-          actor: '学工中心',
-          target: this.detail.statusLabel || this.detail.status,
-          reason: '详情由后端风险接口返回，心理来源明细按角色脱敏',
-          result: '成功'
-        }
-      ]
+      const handles = Array.isArray(this.detail.handles) ? this.detail.handles : []
+      if (!handles.length) {
+        return [{
+          id: 'risk-empty',
+          action: '暂无处置留痕',
+          actor: '系统',
+          target: this.detail.statusLabel || this.detail.status || '',
+          reason: '处置动作发生后将写入真实 handle 记录',
+          result: '—'
+        }]
+      }
+      return handles.map((h) => ({
+        id: h.handleId,
+        action: h.action,
+        actor: h.operator || '系统',
+        target: `${h.fromStatus || '—'} → ${h.toStatus || '—'}`,
+        reason: h.content || '',
+        result: '成功',
+        time: h.occurredAt
+      }))
     }
   },
   mounted() {
@@ -183,6 +193,12 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    canAct(action) {
+      const acts = this.detail && Array.isArray(this.detail.allowedActions)
+        ? this.detail.allowedActions
+        : []
+      return acts.includes(action)
+    },
     async load() {
       this.loading = true
       this.errorMessage = ''

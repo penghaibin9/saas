@@ -12,10 +12,15 @@
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
       <AppSectionCard title="异常列表">
-        <div class="sa-toolbar">
-          <AppSelect v-model="filterStatus" class="sa-filter" :options="STATUS_OPTIONS" placeholder="" @change="load" />
+        <div v-if="statusFilterLabel" class="sa-student-filter">
+          <span>{{ statusFilterLabel }}</span>
+          <button type="button" class="mp-link" @click="clearStatusFilter">清除状态筛选</button>
         </div>
-        <DataTable v-if="items.length" :columns="exceptionColumns" :rows="items" row-key="exceptionId">
+        <div class="sa-toolbar">
+          <AppSelect v-model="filterStatus" class="sa-filter" :options="STATUS_OPTIONS" placeholder="" @change="onStatusChange" />
+        </div>
+        <DataTable v-if="items.length || pagination.total > 0" :columns="exceptionColumns" :rows="items" row-key="exceptionId"
+                   :pagination="pagination" @page-change="onPageChange">
           <template #cell-type="{ row }">{{ typeLabel(row.excType) }}</template>
           <template #cell-detail="{ row }">{{ row.detail || '—' }}</template>
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'HANDLED' ? 'success' : 'warning'" :label="row.status === 'HANDLED' ? '已处置' : '待处置'" /></template>
@@ -48,6 +53,7 @@ import {
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { resolveTodoStatus } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 
 
 const EXCEPTION_COLUMNS = [
@@ -75,11 +81,17 @@ export default {
       exceptionColumns: EXCEPTION_COLUMNS,
       STATUS_OPTIONS,
       loading: true, actioning: false, errorMessage: '', items: [], filterStatus: '',
+      pagination: { page: 1, pageSize: 20, total: 0 },
       dlg: { visible: false, exceptionId: '', excType: '', detail: '' }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    statusFilterLabel() {
+      if (!this.filterStatus) return ''
+      const hit = STATUS_OPTIONS.find((x) => x.value === this.filterStatus)
+      return hit ? `当前状态筛选：${hit.label}` : `当前状态筛选：${this.filterStatus}`
+    },
     metricCards() {
       const pending = this.items.filter((x) => x.status !== 'HANDLED').length
       const night = this.items.filter((x) => (x.excType || '').includes('NIGHT')).length
@@ -90,21 +102,64 @@ export default {
       ]
     }
   },
-  mounted() { this.load() },
+  mounted() {
+    this.applyRouteFilters()
+    this.load()
+  },
+  watch: {
+    '$route.query'() { this.applyRouteFilters(); this.load() }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyRouteFilters() {
+      const q = this.$route.query || {}
+      if (!q.status) return
+      const resolved = resolveTodoStatus('dormException', q.status)
+      this.filterStatus = resolved.activeKey === 'HANDLED' ? 'HANDLED' : 'PENDING_HANDLE'
+    },
+    clearStatusFilter() {
+      this.filterStatus = ''
+      const q = { ...this.$route.query }
+      delete q.status
+      this.$router.replace({ query: q }).catch(() => {})
+    },
+    onStatusChange() {
+      this.pagination.page = 1
+      const q = { ...this.$route.query }
+      if (!this.filterStatus) delete q.status
+      else q.status = this.filterStatus
+      this.$router.replace({ query: q }).catch(() => {})
+      this.load()
+    },
     async load() {
       this.loading = true; this.errorMessage = ''
-      try { this.items = (await studentAffairsApi.listDormExceptions({ status: this.filterStatus, pageSize: 100 })).data.items || [] }
+      try {
+        const status = this.filterStatus === 'PENDING_HANDLE' ? 'PENDING_HANDLE' : (this.filterStatus || undefined)
+        const res = await studentAffairsApi.listDormExceptions({
+          status, page: this.pagination.page, pageSize: this.pagination.pageSize
+        })
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total != null ? res.data.total : this.items.length
+      }
       catch (e) { this.errorMessage = e.message || '异常加载失败' } finally { this.loading = false }
     },
+    onPageChange(page) {
+      this.pagination.page = page
+      this.load()
+    },
     handle(x) {
-      this.dlg = { visible: true, exceptionId: x.exceptionId, excType: x.excType || '', detail: x.detail || '' }
+      this.dlg = {
+        visible: true,
+        exceptionId: x.exceptionId,
+        version: x.version,
+        excType: x.excType || '',
+        detail: x.detail || ''
+      }
     },
     async submitHandle({ reason }) {
       this.actioning = true; this.errorMessage = ''
       try {
-        await studentAffairsApi.handleDormException(this.dlg.exceptionId, reason.trim())
+        await studentAffairsApi.handleDormException(this.dlg.exceptionId, reason.trim(), this.dlg.version)
         await this.load()
         this.dlg.visible = false
       } catch (e) { this.errorMessage = e.message || '处置失败' } finally { this.actioning = false }
@@ -119,6 +174,12 @@ export default {
 .sa-toolbar { margin-bottom: var(--space-4); }
 .sa-toolbar select { min-width: 160px; border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-surface); padding: var(--space-2) var(--space-3); }
 .sa-filter { width: 160px; }
+.sa-student-filter {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a); font-size: var(--font-size-sm); color: var(--text-primary);
+}
 .sa-muted { color: var(--text-tertiary); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
