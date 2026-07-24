@@ -1,10 +1,12 @@
 """P0-E · 实习学生 Excel(.xlsx) 导入导出（正式交付格式，替代 CSV）。
 
 覆盖：模板下载 / 正常导入 / 学号缺失 / 学号不存在 / 企业不存在 / 日期格式错 / 错误行反馈 / 导出脱敏台账。
+本轮：导入/导出必须带 batchId。
 """
 from __future__ import annotations
 
 import io
+from uuid import uuid4
 
 TID = 1000000000000000001
 BASE = "/api/v1/internship/intern-students"
@@ -31,6 +33,18 @@ def _seed(db_mode):
         db.close()
 
 
+def _mk_running_batch(client):
+    h = _admin(client)
+    b = client.post("/api/v1/internship/batches", headers=h, json={
+        "batchName": f"xlsx批次-{uuid4().hex[:6]}", "batchNo": f"XLS-{uuid4().hex[:8]}",
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5,
+    }).json()
+    assert b["code"] == 0
+    bid = b["data"]["id"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=h).json()["code"] == 0
+    return bid
+
+
 def _make_xlsx(rows: list[dict]) -> bytes:
     """按 15 列模板表头构造上传用 .xlsx（sheet 名 = 导入模板，与 read_xlsx 对齐）。"""
     from openpyxl import Workbook
@@ -46,9 +60,11 @@ def _make_xlsx(rows: list[dict]) -> bytes:
     return buf.getvalue()
 
 
-def _upload(client, rows):
+def _upload(client, rows, batch_id=None):
     content = _make_xlsx(rows)
+    bid = batch_id or _mk_running_batch(client)
     return client.post(f"{BASE}/import/xlsx", headers=_admin(client),
+                       params={"batchId": bid},
                        files={"file": ("import.xlsx", content,
                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
 
@@ -57,7 +73,6 @@ def test_template_download(client, db_mode):
     r = client.get(f"{BASE}/import/template", headers=_admin(client))
     assert r.status_code == 200
     assert "spreadsheetml.sheet" in r.headers.get("content-type", "")
-    # 能被 openpyxl 打开且含 15 列表头
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(r.content))
     assert "导入模板" in wb.sheetnames
@@ -67,11 +82,13 @@ def test_template_download(client, db_mode):
 
 def test_import_valid(client, db_mode):
     _seed(db_mode)
-    body = _upload(client, [{"studentNo": "XLSX-001", "advisorName": "刘强",
+    # 不填顾问姓名：顾问为选填，填了则必须匹配唯一在职指导教师账号
+    body = _upload(client, [{"studentNo": "XLSX-001",
                              "enterpriseName": "真实科技有限公司", "startDate": "2026-03-02",
                              "endDate": "2026-08-28", "remark": "OK"}]).json()
-    assert body["code"] == 0
+    assert body["code"] == 0, body
     assert body["data"]["validRows"] == 1 and body["data"]["invalidRows"] == 0
+    assert body["data"].get("batchId")
 
 
 def test_import_missing_studentno(client, db_mode):
@@ -112,9 +129,11 @@ def test_import_errors_xlsx_download(client, db_mode):
 
 def test_export_xlsx(client, db_mode):
     _seed(db_mode)
-    body = client.post(f"{BASE}/export", headers=_admin(client)).json()
+    bid = _mk_running_batch(client)
+    body = client.post(f"{BASE}/export", headers=_admin(client), params={"batchId": bid}).json()
     assert body["code"] == 0
     d = body["data"]
     assert d["filename"].endswith(".xlsx")
     assert "spreadsheetml.sheet" in d["mediaType"]
     assert "contentBase64" in d and d["contentBase64"]
+    assert d.get("batchId") == str(bid)

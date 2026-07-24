@@ -214,40 +214,61 @@ def _row_of(db, r: InternshipRecord) -> dict:
 
 # ═══════════ 列表 / 详情 ═══════════
 
+def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status=None,
+                            risk_level=None, eligibility=None, destination=None,
+                            has_position=None, user=None) -> list[InternshipRecord]:
+    """列表 / 统计 / 导出共用过滤：tenant + batch_id(SQL) + 业务筛选 + 数据范围。
+
+    缺少或非法 batchId 一律拒绝，禁止静默回退到全历史。
+    """
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    batch = resolve_batch(db, batch_id, for_write=False)
+    q = select(InternshipRecord).where(
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.is_deleted.is_(False),
+        InternshipRecord.batch_id == batch.id,
+    )
+    if status:
+        q = q.where(InternshipRecord.status == status)
+    if risk_level:
+        q = q.where(InternshipRecord.risk_level == risk_level)
+    if eligibility:
+        q = q.where(InternshipRecord.eligibility_status == eligibility)
+    if destination:
+        q = q.where(InternshipRecord.destination_type == destination)
+    if has_position is True:
+        q = q.where(InternshipRecord.position_id.is_not(None))
+    elif has_position is False:
+        q = q.where(InternshipRecord.position_id.is_(None))
+    rows = db.scalars(q.order_by(InternshipRecord.id.desc())).all()
+    smap = _students_map(db, [r.student_id for r in rows])
+    scope = _current_scope(user)
+    kept = []
+    for r in rows:
+        stu = smap.get(r.student_id)
+        if keyword:
+            kw = keyword.strip()
+            if not stu or (kw not in (stu.real_name or "") and kw not in (stu.student_no or "")):
+                continue
+        if class_id and (not stu or str(stu.class_id) != str(class_id)):
+            continue
+        if not _rec_in_scope(scope, db, r, stu):
+            continue
+        kept.append(r)
+    return kept
+
+
 def list_students(page: int, page_size: int, keyword=None, class_id=None, status=None,
                   risk_level=None, eligibility=None, destination=None,
-                  has_position=None, user=None) -> tuple[list[dict], int]:
+                  has_position=None, batch_id=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
-        q = select(InternshipRecord).where(InternshipRecord.tenant_id == _tid(),
-                                           InternshipRecord.is_deleted.is_(False))
-        if status:
-            q = q.where(InternshipRecord.status == status)
-        if risk_level:
-            q = q.where(InternshipRecord.risk_level == risk_level)
-        if eligibility:
-            q = q.where(InternshipRecord.eligibility_status == eligibility)
-        if destination:
-            q = q.where(InternshipRecord.destination_type == destination)
-        if has_position is True:
-            q = q.where(InternshipRecord.position_id.is_not(None))
-        elif has_position is False:
-            q = q.where(InternshipRecord.position_id.is_(None))
-        rows = db.scalars(q.order_by(InternshipRecord.id.desc())).all()
-        smap = _students_map(db, [r.student_id for r in rows])
-        bmap = _batch_names(db, [r.batch_id for r in rows])
-        scope = _current_scope(user)
-        items = []
-        for r in rows:
-            stu = smap.get(r.student_id)
-            if keyword:
-                kw = keyword.strip()
-                if not stu or (kw not in (stu.real_name or "") and kw not in (stu.student_no or "")):
-                    continue
-            if class_id and (not stu or str(stu.class_id) != str(class_id)):
-                continue
-            if not _rec_in_scope(scope, db, r, stu):  # P0-D：教师只见本人指导/本院范围
-                continue
-            items.append(_row(r, stu, bmap.get(r.batch_id, "")))
+        kept = _collect_scoped_records(
+            db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
+            risk_level=risk_level, eligibility=eligibility, destination=destination,
+            has_position=has_position, user=user)
+        smap = _students_map(db, [r.student_id for r in kept])
+        bmap = _batch_names(db, [r.batch_id for r in kept])
+        items = [_row(r, smap.get(r.student_id), bmap.get(r.batch_id, "")) for r in kept]
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -295,6 +316,9 @@ def get_student(rec_id, user=None) -> dict:
 # ═══════════ 建档 / 编辑 ═══════════
 
 def create_student_record(body, user=None) -> dict:
+    from sqlalchemy.exc import IntegrityError
+
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     with session() as db:
         sid = int(getattr(body, "studentId"))
         stu = db.get(StudentProfile, sid)
@@ -302,7 +326,8 @@ def create_student_record(body, user=None) -> dict:
             raise not_found("学生不存在或不在当前数据范围内")
         from app.modules.internship.services.internship_service import assert_student_in_scope
         assert_student_in_scope(db, sid, user, "该学生不在你的数据范围内")
-        batch_id = int(body.batchId) if getattr(body, "batchId", None) else None
+        batch = resolve_batch(db, getattr(body, "batchId", None), for_write=True)
+        batch_id = batch.id
         dup = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
             InternshipRecord.batch_id == batch_id,
@@ -316,10 +341,14 @@ def create_student_record(body, user=None) -> dict:
             advisor_name=advisor.real_name if advisor else None, remark=getattr(body, "remark", None),
             status="PREPARING", eligibility_status="PENDING", destination_type="NONE", risk_level="NONE")
         db.add(r)
-        db.flush()
-        _trail(db, r.id, "CREATE", {"studentId": str(sid),
-                                      "advisorUserId": str(advisor.id) if advisor else ""})
-        db.commit()
+        try:
+            db.flush()
+            _trail(db, r.id, "CREATE", {"studentId": str(sid), "batchId": str(batch_id),
+                                          "advisorUserId": str(advisor.id) if advisor else ""})
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "该学生在此批次已有实习记录") from None
         return _row_of(db, r)
 
 
@@ -546,20 +575,27 @@ def set_destination(rec_id, destination: str, reason: str = "", user=None) -> di
 
 # ═══════════ 统计 ═══════════
 
-def student_stats() -> dict:
+def student_stats(batch_id=None, keyword=None, class_id=None, status=None,
+                  risk_level=None, eligibility=None, destination=None,
+                  has_position=None, user=None) -> dict:
+    """与 list_students / export_students 共用同一过滤条件，保证 total 一致。"""
     with session() as db:
-        base = [InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False)]
-        total = int(db.scalar(select(func.count()).select_from(InternshipRecord).where(*base)) or 0)
+        kept = _collect_scoped_records(
+            db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
+            risk_level=risk_level, eligibility=eligibility, destination=destination,
+            has_position=has_position, user=user)
+        total = len(kept)
         by_status = [{"status": s, "label": STATUS_LABEL[s],
-                      "count": int(db.scalar(select(func.count()).select_from(InternshipRecord).where(
-                          *base, InternshipRecord.status == s)) or 0)} for s in STATUS_LABEL]
-        assigned = int(db.scalar(select(func.count()).select_from(InternshipRecord).where(
-            *base, InternshipRecord.position_id.is_not(None))) or 0)
+                      "count": sum(1 for r in kept if r.status == s)} for s in STATUS_LABEL]
+        assigned = sum(1 for r in kept if r.position_id)
         unassigned = total - assigned
-        qualified = int(db.scalar(select(func.count()).select_from(InternshipRecord).where(
-            *base, InternshipRecord.eligibility_status == "QUALIFIED")) or 0)
+        qualified = sum(1 for r in kept if r.eligibility_status == "QUALIFIED")
+        from app.modules.internship.services.internship_batch_context import (
+            batch_public_fields, resolve_batch)
+        batch = resolve_batch(db, batch_id, for_write=False)
         return {"total": total, "byStatus": by_status, "assigned": assigned,
-                "unassigned": unassigned, "qualified": qualified}
+                "unassigned": unassigned, "qualified": qualified,
+                **batch_public_fields(batch)}
 
 
 # ═══════════ 导入 / 导出 ═══════════
@@ -577,21 +613,23 @@ def _parse_date(s):
     return False
 
 
-def import_dry_run(rows: list[dict]) -> dict:
-    """xlsx 逐行预校验：学生与指导教师均引用既有账号/主档，不隐式创建身份。"""
+def import_dry_run(rows: list[dict], batch_id=None) -> dict:
+    """xlsx 逐行预校验：学生与指导教师均引用既有账号/主档，不隐式创建身份。
+    批次来自页面上下文 batchId，不依赖 Excel 填写数据库 ID。
+    """
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch)
     with session() as db:
-        from app.models import InternshipBatch
+        batch = resolve_batch(db, batch_id, for_write=True)
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))).all()}
         existing_sids = {r.student_id for r in db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-            InternshipRecord.batch_id.is_(None))).all()}
+            InternshipRecord.batch_id == batch.id)).all()}
         companies = {(c.name or "").strip() for c in db.scalars(select(EmpCompany).where(
             EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()}
         positions = {(p.title or "").strip() for p in db.scalars(select(InternshipPosition).where(
             InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False))).all()}
-        batches = {(b.batch_name or "").strip() for b in db.scalars(select(InternshipBatch).where(
-            InternshipBatch.tenant_id == _tid(), InternshipBatch.is_deleted.is_(False))).all()}
         eligible_ids = _advisor_role_user_ids(db)
         advisors_by_name: dict[str, list[User]] = {}
         for teacher in db.scalars(select(User).where(
@@ -610,7 +648,8 @@ def import_dry_run(rows: list[dict]) -> dict:
                 errors.append({"rowNo": row_no, "field": "studentNo", "message": f"未匹配到学生：{no}"})
                 continue
             if stu.id in existing_sids or no in seen:
-                errors.append({"rowNo": row_no, "field": "studentNo", "message": f"该学生已建档：{no}"})
+                errors.append({"rowNo": row_no, "field": "studentNo",
+                               "message": f"该学生在本批次已有实习记录：{no}"})
                 continue
             ent = (r.get("enterpriseName") or "").strip()
             if ent and ent not in companies:
@@ -619,10 +658,6 @@ def import_dry_run(rows: list[dict]) -> dict:
             pos = (r.get("positionName") or "").strip()
             if pos and pos not in positions:
                 errors.append({"rowNo": row_no, "field": "positionName", "message": f"岗位不存在：{pos}"})
-                continue
-            bat = (r.get("batchName") or "").strip()
-            if bat and bat not in batches:
-                errors.append({"rowNo": row_no, "field": "batchName", "message": f"实习批次不存在：{bat}"})
                 continue
             advisor_name = (r.get("advisorName") or "").strip()
             if advisor_name and len(advisors_by_name.get(advisor_name, [])) != 1:
@@ -640,41 +675,67 @@ def import_dry_run(rows: list[dict]) -> dict:
             seen.add(no)
             valid += 1
         return {"total": len(rows or []), "validRows": valid,
-                "invalidRows": len(errors), "errors": errors}
+                "invalidRows": len(errors), "errors": errors,
+                **batch_public_fields(batch)}
 
 
-def import_confirm(rows: list[dict], user=None) -> dict:
+def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
+    from sqlalchemy.exc import IntegrityError
+
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch)
     from app.modules.internship.services.internship_service import assert_admin_tenant
     assert_admin_tenant(user, "实习学生批量导入")
-    pre = import_dry_run(rows)
+    # confirm 重新校验批次状态，不信任 dry-run 时的快照
+    pre = import_dry_run(rows, batch_id=batch_id)
     if pre["invalidRows"] > 0:
         raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")
     with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=True)
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))).all()}
-        created = 0
-        for r in rows or []:
-            stu = profiles.get((r.get("studentNo") or "").strip())
-            sd, ed = _parse_date(r.get("startDate")), _parse_date(r.get("endDate"))
-            advisor = _advisor(db, advisor_name=r.get("advisorName"))
-            rec = InternshipRecord(tenant_id=_tid(), student_id=stu.id,
-                                   advisor_user_id=advisor.id if advisor else None,
-                                   advisor_name=advisor.real_name if advisor else None,
-                                   intern_start_date=sd or None, intern_end_date=ed or None,
-                                   remark=(r.get("remark") or None),
-                                   status="PREPARING", eligibility_status="PENDING",
-                                   destination_type="NONE", risk_level="NONE")
-            db.add(rec)
-            db.flush()
-            _trail(db, rec.id, "IMPORT", {"studentNo": stu.student_no,
-                                          "advisorUserId": str(rec.advisor_user_id or ""),
-                                          "advisorName": rec.advisor_name or ""})
-            created += 1
-        db.commit()
-        return {"created": created}
+        created, skipped, failed = 0, 0, 0
+        try:
+            for r in rows or []:
+                stu = profiles.get((r.get("studentNo") or "").strip())
+                if not stu:
+                    failed += 1
+                    continue
+                # confirm 再次查重（防 dry-run 后并发写入）
+                dup = db.scalars(select(InternshipRecord).where(
+                    InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
+                    InternshipRecord.batch_id == batch.id,
+                    InternshipRecord.is_deleted.is_(False))).first()
+                if dup:
+                    skipped += 1
+                    continue
+                sd, ed = _parse_date(r.get("startDate")), _parse_date(r.get("endDate"))
+                advisor = _advisor(db, advisor_name=r.get("advisorName"))
+                rec = InternshipRecord(
+                    tenant_id=_tid(), student_id=stu.id, batch_id=batch.id,
+                    advisor_user_id=advisor.id if advisor else None,
+                    advisor_name=advisor.real_name if advisor else None,
+                    intern_start_date=sd or None, intern_end_date=ed or None,
+                    remark=(r.get("remark") or None),
+                    status="PREPARING", eligibility_status="PENDING",
+                    destination_type="NONE", risk_level="NONE")
+                db.add(rec)
+                db.flush()
+                _trail(db, rec.id, "IMPORT", {"studentNo": stu.student_no,
+                                              "batchId": str(batch.id),
+                                              "advisorUserId": str(rec.advisor_user_id or ""),
+                                              "advisorName": rec.advisor_name or ""})
+                created += 1
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "导入冲突：同一学生在本批次已有实习记录") from None
+        return {"created": created, "skipped": skipped, "failed": failed,
+                **batch_public_fields(batch)}
 
 
 # 导入模板 15 列（表头文字 → 行字段 key）。正式交付以 Excel/xlsx 为准（CLAUDE.md §38）。
+# 「实习批次」列仅作可读备注；真实归属以页面上下文 batchId 为准。
 IMPORT_HEADERS = ["学号", "姓名", "学院", "专业", "班级", "指导教师", "企业名称", "岗位名称",
                   "实习批次", "实习开始日期", "实习结束日期", "联系电话", "实习状态", "就业去向", "备注"]
 IMPORT_REQUIRED = ["学号"]
@@ -686,26 +747,42 @@ IMPORT_HEADER_MAP = {"学号": "studentNo", "姓名": "name", "学院": "college
 IMPORT_SAMPLE = ["2023115001", "赵一凡", "信息工程学院", "软件技术", "软件2301", "刘强",
                  "湖南智联科技有限公司", "前端开发实习生", "2026 春季顶岗实习",
                  "2026-03-02", "2026-08-28", "138****0001", "在岗中", "已分配岗位", ""]
-IMPORT_NOTES = ["学号必填，且必须是本校已有学生。", "企业/岗位/批次如填写，必须是系统中已存在的名称，否则该行报错。",
-                "日期格式：YYYY-MM-DD（如 2026-03-02）。", "联系电话仅登记，导出时脱敏。", "仅导入「导入模板」页。"]
+IMPORT_NOTES = ["学号必填，且必须是本校已有学生。",
+                "导入归属当前页面所选批次，Excel「实习批次」列仅作备注，不决定写入批次。",
+                "企业/岗位如填写，必须是系统中已存在的名称，否则该行报错。",
+                "日期格式：YYYY-MM-DD（如 2026-03-02）。", "联系电话仅登记，导出时脱敏。",
+                "仅导入「导入模板」页。"]
 
 
 def _row_values_for_error(r: dict) -> list:
     return [r.get(IMPORT_HEADER_MAP[h], "") for h in IMPORT_HEADERS]
 
 
-def export_students(keyword=None, status=None, eligibility=None, user=None) -> dict:
-    """导出实习学生台账（xlsx，正式交付格式）：经 list_students → 已按数据范围收敛；含水印 + 导出留痕。
-    敏感字段脱敏（本台账不含手机号明文；如需联系方式请走详情页脱敏查看+审计）。"""
+def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
+                    class_id=None, risk_level=None, destination=None, has_position=None,
+                    user=None) -> dict:
+    """导出实习学生台账（xlsx）：与 list_students 同过滤；文件名含水印含批次名；审计记 batchId。"""
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch)
     from app.services import xlsx_util
-    items, _ = list_students(1, 100000, keyword=keyword, status=status, eligibility=eligibility, user=user)
-    headers = ["学号", "姓名", "班级", "校内指导教师", "企业名称", "岗位名称",
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        batch_meta = batch_public_fields(batch)
+    items, _ = list_students(
+        1, 100000, keyword=keyword, status=status, eligibility=eligibility,
+        batch_id=batch_id, class_id=class_id, risk_level=risk_level,
+        destination=destination, has_position=has_position, user=user)
+    headers = ["学号", "姓名", "班级", "批次", "校内指导教师", "企业名称", "岗位名称",
                "实习状态", "实习资格", "实习去向", "风险"]
-    data_rows = [[it["studentNo"], it["name"], it["className"], it["advisorName"],
-                  it["enterpriseName"], it["positionName"], it["statusLabel"],
+    data_rows = [[it["studentNo"], it["name"], it["className"], batch_meta["batchName"],
+                  it["advisorName"], it["enterpriseName"], it["positionName"], it["statusLabel"],
                   it["eligibilityLabel"], it["destinationLabel"], it["riskLabel"]] for it in items]
-    user = get_current_user_ctx() or {}
-    wm = (f"岗位实习中心·实习学生台账 · 导出人：{user.get('realName', '-')} · "
+    user_ctx = get_current_user_ctx() or {}
+    bname = batch_meta["batchName"] or "未命名批次"
+    wm = (f"岗位实习中心·实习学生台账 · 批次：{bname} · 导出人：{user_ctx.get('realName', '-')} · "
           f"{datetime.now():%Y-%m-%d %H:%M} · 敏感字段已脱敏，导出留痕")
     content = xlsx_util.build_ledger_xlsx("实习学生台账", headers, data_rows, watermark=wm)
-    return xlsx_util.pack_xlsx_result(content, "实习学生台账.xlsx", len(items))
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in bname)[:40] or "batch"
+    packed = xlsx_util.pack_xlsx_result(content, f"实习学生台账_{safe_name}.xlsx", len(items))
+    packed.update(batch_meta)
+    return packed

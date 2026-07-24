@@ -31,8 +31,8 @@ export const statsApi = {
     return call(() => request(`${B}/overview`, { params }))
   },
 
-  getDimensions() {
-    return call(() => request(`${B}/dimensions`))
+  getDimensions(params = {}) {
+    return call(() => request(`${B}/dimensions`, { params }))
   },
 
   getTrends(params = {}) {

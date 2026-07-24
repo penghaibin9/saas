@@ -127,8 +127,8 @@ export const internshipApi = {
     })
   },
 
-  getDashboardSummary() {
-    return call(() => request('/internship/dashboard'))
+  getDashboardSummary(params = {}) {
+    return call(() => request('/internship/dashboard', { params }))
   },
 
   getBatches(params = {}) {

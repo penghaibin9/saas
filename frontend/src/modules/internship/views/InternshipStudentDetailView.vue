@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/internship/students')">← 返回实习学生</button>
+      <button class="mp-btn" @click="goBack">← 返回实习学生</button>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -147,6 +147,12 @@ export default {
   },
   created() { this.load() },
   methods: {
+    goBack() {
+      const q = {}
+      if (this.$route.query.batchId) q.batchId = this.$route.query.batchId
+      else if (this.detail?.batchId) q.batchId = this.detail.batchId
+      this.$router.push({ path: '/admin/internship/students', query: q })
+    },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     async load() {
       this.loading = true; this.error = ''

@@ -73,15 +73,14 @@
         <section id="idb-todos" class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">我的待办</span>
-            <button class="mp-link" @click="$router.push('/admin/internship/students')">实习学生 →</button>
+            <button class="mp-link" @click="goWithBatch('/admin/internship/students')">实习学生 →</button>
           </div>
           <div class="mp-card__body mp-stack">
-            <EmptyState v-if="!hero.todos.length" title="暂无待办" description="当前数据范围内没有待处理事项" />
+            <EmptyState v-if="!hero.todos.length" title="暂无待办" description="当前批次没有待处理事项" />
             <div v-for="t in hero.todos" :key="t.id" class="mp-kv idb-todo" :class="{ 'is-danger': t.tone === 'danger' }">
               <span class="mp-kv__k">
                 <AppStatusTag :type="t.tone === 'danger' ? 'danger' : 'warning'" dot>{{ t.count }}</AppStatusTag>
                 <span class="idb-todo-label">{{ t.label }}</span>
-                <span class="mp-note">（{{ t.hint }}）</span>
               </span>
               <button class="mp-link" @click="$router.push(t.route)">去处理</button>
             </div>
@@ -91,18 +90,17 @@
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">风险提醒</span>
-            <button class="mp-link" @click="$router.push('/admin/internship/risks')">风险学生 →</button>
+            <button class="mp-link" @click="goWithBatch('/admin/internship/risk-disposal')">风险处置 →</button>
           </div>
           <div class="mp-card__body">
             <EmptyState v-if="!hero.riskAlerts.length" title="暂无开放风险" description="系统预警与人工创建的风险单将在此展示" />
             <ul v-else class="mp-timeline idb-risk-list">
               <li v-for="r in hero.riskAlerts" :key="r.id" class="mp-timeline__item" :class="r.level === 'HIGH' ? 'is-danger' : 'is-warning'">
                 <div class="mp-timeline__title">
-                  {{ r.code }} · {{ r.title }}
+                  {{ r.studentName }} · {{ r.title }}
                   <AppRiskTag :level="r.level" />
                 </div>
-                <div class="mp-timeline__desc">{{ r.detail }}</div>
-                <div class="mp-timeline__time">{{ r.time }}</div>
+                <button class="mp-link" @click="$router.push(r.route || goRiskRoute(r))">去处置</button>
               </li>
             </ul>
           </div>
@@ -119,6 +117,7 @@
 import { ModulePageShell, ModuleHero, ModuleToolbar, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppRiskTag, AppMetricCard } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const PANEL_ANCHORS = {
   'batch-progress': 'idb-batch-progress',
@@ -134,14 +133,17 @@ export default {
     return { loading: true, error: '', hero: { stats: [], flow: [], todos: [], riskAlerts: [], batchName: '', batchRange: '', batchStatus: '', batchProgress: 0 } }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     workflowStages() {
+      const bid = this.batchStore.selectedBatchId
+      const q = bid ? `?batchId=${bid}` : ''
       return [
         { label: '批次建档', hint: '范围与名单', to: '/admin/internship/batches' },
-        { label: '岗位匹配', hint: '意向与落岗', to: '/admin/internship/match-assign' },
-        { label: '协议到岗', hint: '协议与签到', to: '/admin/internship/agreements' },
-        { label: '过程指导', hint: '周报与走访', to: '/admin/internship/reports' },
-        { label: '风险处置', hint: '预警与闭环', to: '/admin/internship/risks' },
-        { label: '评价归档', hint: '成绩与留档', to: '/admin/internship/scores' }
+        { label: '岗位匹配', hint: '意向与落岗', to: `/admin/internship/match-assign${q}` },
+        { label: '协议到岗', hint: '协议与签到', to: `/admin/internship/agreements${q}` },
+        { label: '过程指导', hint: '周报与走访', to: `/admin/internship/reports${q}` },
+        { label: '风险处置', hint: '预警与闭环', to: `/admin/internship/risk-disposal${q}` },
+        { label: '评价归档', hint: '成绩与留档', to: `/admin/internship/scores${q}` }
       ]
     },
     batchProgress() {
@@ -169,12 +171,22 @@ export default {
       handler(panel) {
         this.$nextTick(() => this.scrollToPanel(panel))
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.load()
     }
   },
   created() {
     this.load()
   },
   methods: {
+    goWithBatch(path) {
+      const q = this.batchStore.withBatchQuery({})
+      this.$router.push({ path, query: q })
+    },
+    goRiskRoute(r) {
+      return `/admin/internship/risk-disposal?id=${r.id}&batchId=${this.batchStore.selectedBatchId || ''}`
+    },
     scrollToPanel(panel) {
       const id = PANEL_ANCHORS[(panel || '').toString()]
       if (!id) return
@@ -182,9 +194,17 @@ export default {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = this.batchStore.needsExplicitSelect
+          ? '存在多个进行中批次，请先在顶部选择当前工作批次'
+          : '请先选择实习批次后再查看工作台'
+        this.hero = { stats: [], flow: [], todos: [], riskAlerts: [], batchName: '', batchRange: '', batchStatus: '', batchProgress: 0 }
+        return
+      }
       this.loading = true
       this.error = ''
-      const res = await internshipApi.getDashboardSummary()
+      const res = await internshipApi.getDashboardSummary({ batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) this.hero = res.data
       else this.error = res.message
       this.loading = false
@@ -198,7 +218,7 @@ export default {
         viewAuditLog: '/admin/system/logs'
       }
       const path = routes[key]
-      if (path) this.$router.push(path)
+      if (path) this.goWithBatch(path)
     }
   }
 }

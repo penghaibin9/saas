@@ -71,6 +71,7 @@
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppChartCard, AppG2Chart, AppMetricCard, AppExportButton, AppSelect, buildBarChartSpec } from '@/components/common'
 import { statsApi } from '@/modules/internship/api/stats.api'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -86,6 +87,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     collegeOptions() { return (this.dims.colleges || []).map((value) => ({ value, label: value })) },
     majorOptions() { return (this.dims.majors || []).map((value) => ({ value, label: value })) },
     classOptions() { return (this.dims.classes || []).map((value) => ({ value, label: value })) },
@@ -116,42 +118,59 @@ export default {
       }
     }
   },
+  watch: {
+    'batchStore.selectedBatchId'() { this.loadDims(); this.load() }
+  },
   created() { this.loadDims(); this.load() },
   methods: {
     metricTrend(m) {
       const base = `${m.numerator}/${m.denominator} · 阈值${m.threshold}%`
       return m.warn ? `预警 · ${base}` : base
     },
+    batchParams(extra = {}) {
+      return { ...extra, batchId: this.batchStore.selectedBatchId || undefined }
+    },
     async loadDims() {
-      const res = await statsApi.getDimensions()
+      if (!this.batchStore.selectedBatchId) { this.dims = { colleges: [], majors: [], classes: [] }; return }
+      const res = await statsApi.getDimensions(this.batchParams())
       if (res.code === 0) this.dims = res.data
     },
     onDimChange() { this.load() },
-    clearDim() { this.dim = { college: '', major: '', className: '' }; this.load() },
-    async load() {
-      this.loading = true; this.error = ''
-      const params = {}
-      if (this.dim.college) params.college = this.dim.college
-      if (this.dim.major) params.major = this.dim.major
-      if (this.dim.className) params.className = this.dim.className
-      const [res, trendRes] = await Promise.all([statsApi.getOverview(params), statsApi.getTrends(params)])
-      this.loading = false
-      if (res.code !== 0) { this.error = res.message || '加载失败'; return }
-      this.counters = res.data.counters || []
-      this.metrics = res.data.metrics || []
-      this.scoreDistribution = res.data.scoreDistribution || []
-      this.partial = res.data.partial || []
-      this.generatedAt = res.data.generatedAt || ''
-      this.trendSeries = trendRes.code === 0 ? (trendRes.data.series || []) : []
+    clearDim() {
+      this.dim = { college: '', major: '', className: '' }
+      this.load()
     },
     exportFn() {
-      const params = {}
-      if (this.dim.college) params.college = this.dim.college
-      if (this.dim.major) params.major = this.dim.major
-      if (this.dim.className) params.className = this.dim.className
-      return statsApi.exportStats(params)
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return statsApi.exportStats(this.batchParams({ ...this.dim }))
     },
-    onExported(data) { toast.success(`已导出 ${data.rowCount} 行（水印 + 导出留痕）`) }
+    onExported(data) { toast.success(`已导出 ${data.rowCount} 行`) },
+    async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = '请先选择实习批次'
+        this.counters = []; this.metrics = []; this.scoreDistribution = []; this.trendSeries = []
+        return
+      }
+      this.loading = true; this.error = ''
+      const params = this.batchParams({
+        college: this.dim.college || undefined,
+        major: this.dim.major || undefined,
+        className: this.dim.className || undefined
+      })
+      const [ov, tr] = await Promise.all([
+        statsApi.getOverview(params),
+        statsApi.getTrends({ ...params, months: 6 })
+      ])
+      this.loading = false
+      if (ov.code !== 0) { this.error = ov.message; return }
+      this.counters = ov.data.counters || []
+      this.metrics = ov.data.metrics || []
+      this.scoreDistribution = ov.data.scoreDistribution || []
+      this.partial = ov.data.partial || []
+      this.generatedAt = ov.data.generatedAt || ''
+      if (tr.code === 0) this.trendSeries = tr.data.series || []
+    }
   }
 }
 </script>

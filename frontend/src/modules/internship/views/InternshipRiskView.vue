@@ -47,12 +47,18 @@
           <AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/internship/students/' + row.internId)">查看学生</button>
+          <button class="mp-link" @click="goStudent(row)">查看学生</button>
+          <button
+            v-if="row.status !== 'CLOSED' && row.status !== 'RESOLVED'"
+            class="mp-link"
+            style="margin-left: var(--space-2)"
+            @click="goDispose(row)"
+          >处理</button>
           <button class="mp-link" style="margin-left: var(--space-2)" @click="remind(row)">提醒</button>
         </template>
       </DataTable>
 
-      <p class="mp-note">跟进 / 升级 / 关闭风险入口在学生实习详情的风险页签内；关闭为审慎操作：原因必填 + 二次确认 + 永久留痕。</p>
+      <p class="mp-note">跟进 / 升级 / 关闭请进入「风险处置」工作台完成；关闭为审慎操作：原因必填 + 二次确认 + 永久留痕。</p>
     </div>
   </ModulePageShell>
 </template>
@@ -67,6 +73,7 @@ import { AppStatusTag, AppRiskTag, AppExportButton } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { riskApi } from '@/modules/internship/api/leave-risk.api'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ level: '', status: '', riskCode: '' })
@@ -137,7 +144,8 @@ export default {
       const pa = this.ctx.permissionActions?.exportRiskList
       if (pa && typeof pa.allowed === 'boolean') return pa.allowed
       return false
-    }
+    },
+    batchStore() { return useInternshipBatchStore() }
   },
   watch: {
     '$route.query.panel': {
@@ -145,10 +153,17 @@ export default {
       handler(panel) {
         this.applyPanel((panel || 'board').toString())
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.pagination.page = 1
+      this.load()
     }
   },
   methods: {
-    exportFn() { return riskApi.exportRisks({ ...this.filters }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return riskApi.exportRisks({ ...this.filters, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.board
@@ -159,7 +174,22 @@ export default {
     },
     goPanel(panel) {
       if (this.activePanel === panel) return
-      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
+      this.$router.replace({
+        path: this.$route.path,
+        query: this.batchStore.withBatchQuery({ ...this.$route.query, panel })
+      })
+    },
+    goStudent(row) {
+      this.$router.push({
+        path: '/admin/internship/students/' + row.internId,
+        query: this.batchStore.withBatchQuery({})
+      })
+    },
+    goDispose(row) {
+      this.$router.push({
+        path: '/admin/internship/risk-disposal',
+        query: this.batchStore.withBatchQuery({ id: row.id })
+      })
     },
     isUrgent(d) {
       const day = (d || '').toString().slice(0, 10)
@@ -193,9 +223,21 @@ export default {
       })
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.rows = []
+        this.pagination.total = 0
+        this.error = '请先选择实习批次'
+        return
+      }
       this.loading = true
       this.error = ''
-      const res = await internshipApi.getRiskStudents({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const res = await internshipApi.getRiskStudents({
+        ...this.filters,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize,
+        batchId: this.batchStore.selectedBatchId
+      })
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total

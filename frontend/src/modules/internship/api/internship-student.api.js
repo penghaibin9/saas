@@ -76,11 +76,11 @@ export const internStudentApi = {
   assignAdvisor(id, { advisorUserId, reason = '' }) {
     return call(() => request(`${BASE}/${id}/advisor`, { method: 'POST', body: { advisorUserId, reason } }))
   },
-  importDryRun(rows) {
-    return call(() => request(`${BASE}/import/dry-run`, { method: 'POST', body: { rows } }))
+  importDryRun(rows, batchId) {
+    return call(() => request(`${BASE}/import/dry-run`, { method: 'POST', body: { rows, batchId } }))
   },
-  importConfirm(rows) {
-    return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows } }))
+  importConfirm(rows, batchId) {
+    return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows, batchId } }))
   },
   exportStudents(params = {}) {
     return call(() => request(`${BASE}/export`, { method: 'POST', params }))
@@ -94,9 +94,10 @@ export const internStudentApi = {
     a.click()
     URL.revokeObjectURL(url)
   },
-  async uploadImportXlsx(file) {
+  async uploadImportXlsx(file, batchId) {
     try {
-      return ok(await requestUpload(`${BASE}/import/xlsx`, file))
+      const q = batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''
+      return ok(await requestUpload(`${BASE}/import/xlsx${q}`, file))
     } catch (e) {
       return toErr(e)
     }
@@ -120,8 +121,8 @@ export const internStudentApi = {
       return toErr(e)
     }
   },
-  importConfirmRows(rows) {
-    return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows } }))
+  importConfirmRows(rows, batchId) {
+    return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows, batchId } }))
   },
   // 建档用：可选学生（学生主档）；分配用：已上架岗位
   getStudentOptions(keyword) {

@@ -27,8 +27,18 @@ def _student(client, h, no, name="测试学生"):
     return client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
 
 
-def _record(client, h, sid):
-    return client.post(IST, headers=h, json={"studentId": sid}).json()["data"]["id"]
+def _record(client, h, sid, batch_id=None):
+    if batch_id is None:
+        from uuid import uuid4
+        b = client.post("/api/v1/internship/batches", headers=h, json={
+            "batchName": f"学生测试批次-{uuid4().hex[:6]}",
+            "batchNo": f"STU-{uuid4().hex[:8]}",
+            "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5,
+        }).json()
+        assert b["code"] == 0, b
+        batch_id = b["data"]["id"]
+        assert client.post(f"/api/v1/internship/batches/{batch_id}/activate", headers=h).json()["code"] == 0
+    return client.post(IST, headers=h, json={"studentId": sid, "batchId": batch_id}).json()["data"]["id"]
 
 
 def _satisfy_onboard_prereqs(rid):
@@ -52,15 +62,26 @@ def _satisfy_onboard_prereqs(rid):
 
 
 def test_create_and_list(client, auth_headers, db_mode):
+    from uuid import uuid4
+    b = client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": f"列表批次-{uuid4().hex[:6]}", "batchNo": f"LST-{uuid4().hex[:8]}",
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5,
+    }).json()
+    assert b["code"] == 0
+    bid = b["data"]["id"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
     sid = _student(client, auth_headers, "S-IST-001")
-    r = client.post(IST, headers=auth_headers, json={"studentId": sid}).json()
+    r = client.post(IST, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()
     assert r["code"] == 0
     d = r["data"]
     assert d["status"] == "PREPARING" and d["eligibilityStatus"] == "PENDING"
     assert d["destinationType"] == "NONE" and d["positionId"] == ""
-    lst = client.get(IST, headers=auth_headers).json()
+    assert d["batchId"] == str(bid)
+    lst = client.get(IST, headers=auth_headers, params={"batchId": bid}).json()
     assert lst["code"] == 0 and lst["data"]["total"] >= 1
-    # 同学生重复建档(同批次空)拒绝
+    # 同学生重复建档(同批次)拒绝
+    assert client.post(IST, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()["code"] != 0
+    # 缺 batchId 拒绝
     assert client.post(IST, headers=auth_headers, json={"studentId": sid}).json()["code"] != 0
 
 
@@ -86,8 +107,16 @@ def test_advisor_assignment_binds_active_teacher_and_audits(client, auth_headers
     finally:
         db.close()
     sid = _student(client, auth_headers, "S-IST-ADVISOR")
+    from uuid import uuid4
+    b = client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": f"指导批次-{uuid4().hex[:6]}", "batchNo": f"ADV-{uuid4().hex[:8]}",
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5,
+    }).json()
+    assert b["code"] == 0
+    bid = b["data"]["id"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
     created = client.post(IST, headers=auth_headers,
-                          json={"studentId": sid, "advisorUserId": teacher_id}).json()
+                          json={"studentId": sid, "batchId": bid, "advisorUserId": teacher_id}).json()
     assert created["code"] == 0 and created["data"]["advisorUserId"] == teacher_id
     record_id = created["data"]["id"]
     advisors = client.get(f"{IST}/advisors", headers=auth_headers).json()["data"]
@@ -205,22 +234,43 @@ def test_destination(client, auth_headers, db_mode):
 
 
 def test_stats_and_export(client, auth_headers, db_mode):
-    _record(client, auth_headers, _student(client, auth_headers, "S-IST-090"))
-    s = client.get(f"{IST}/stats", headers=auth_headers).json()
+    from uuid import uuid4
+    b = client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": f"统计导出批次-{uuid4().hex[:6]}", "batchNo": f"SE-{uuid4().hex[:8]}",
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5,
+    }).json()
+    assert b["code"] == 0
+    bid = b["data"]["id"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
+    _record(client, auth_headers, _student(client, auth_headers, "S-IST-090"), batch_id=bid)
+    s = client.get(f"{IST}/stats", headers=auth_headers, params={"batchId": bid}).json()
     assert s["code"] == 0 and s["data"]["total"] >= 1
     assert any(x["status"] == "PREPARING" for x in s["data"]["byStatus"])
     # P0-E：导出已由 CSV 升级为正式 Excel(.xlsx)（base64 + xlsx mediaType）
-    ex = client.post(f"{IST}/export", headers=auth_headers).json()
+    ex = client.post(f"{IST}/export", headers=auth_headers, params={"batchId": bid}).json()
     assert ex["code"] == 0 and ex["data"]["rowCount"] >= 1
     assert ex["data"]["filename"].endswith(".xlsx") and "spreadsheetml.sheet" in ex["data"]["mediaType"]
     assert ex["data"].get("contentBase64")
+    assert ex["data"].get("batchId") == str(bid)
 
 
 def test_import(client, auth_headers, db_mode):
+    from uuid import uuid4
+    b = client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": f"导入批次-{uuid4().hex[:6]}", "batchNo": f"IMP-{uuid4().hex[:8]}",
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5,
+    }).json()
+    assert b["code"] == 0
+    bid = b["data"]["id"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
     _student(client, auth_headers, "S-IST-100", "导入学生甲")
     rows = [{"studentNo": "S-IST-100"}, {"studentNo": ""}, {"studentNo": "S-NOEXIST"}]
-    dry = client.post(f"{IST}/import/dry-run", headers=auth_headers, json={"rows": rows}).json()
+    dry = client.post(f"{IST}/import/dry-run", headers=auth_headers,
+                      json={"rows": rows, "batchId": bid}).json()
     assert dry["code"] == 0 and dry["data"]["validRows"] == 1 and dry["data"]["invalidRows"] == 2
-    assert client.post(f"{IST}/import/confirm", headers=auth_headers, json={"rows": rows}).json()["code"] != 0
-    ok = client.post(f"{IST}/import/confirm", headers=auth_headers, json={"rows": [rows[0]]}).json()
+    assert client.post(f"{IST}/import/confirm", headers=auth_headers,
+                       json={"rows": rows, "batchId": bid}).json()["code"] != 0
+    ok = client.post(f"{IST}/import/confirm", headers=auth_headers,
+                     json={"rows": [rows[0]], "batchId": bid}).json()
     assert ok["code"] == 0 and ok["data"]["created"] == 1
+    assert ok["data"].get("batchId") == str(bid)

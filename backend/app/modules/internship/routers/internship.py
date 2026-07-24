@@ -37,8 +37,8 @@ router = APIRouter(prefix="/internship", tags=["岗位实习"])
 
 
 @router.get("/dashboard", summary="实习中心看板")
-def dashboard(user=Depends(require_permission("internship.dashboard.view"))):
-    return success(svc.get_dashboard_summary(user=user))
+def dashboard(batchId: Optional[str] = None, user=Depends(require_permission("internship.dashboard.view"))):
+    return success(svc.get_dashboard_summary(user=user, batch_id=batchId))
 
 
 @router.get("/students", summary="实习学生列表（分页+筛选）")
@@ -280,10 +280,11 @@ def review_report(report_id: str, body: ReportReviewRequest, user=Depends(requir
 def risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
           level: Optional[str] = None, status: Optional[str] = None,
           keyword: Optional[str] = None, riskCode: Optional[str] = None,
+          batchId: Optional[str] = None,
           user=Depends(require_permission("internship.risk.view"))):
     items, total = svc.list_risk_students(
         page, pageSize, level=level, status=status,
-        keyword=keyword, risk_code=riskCode, user=user)
+        keyword=keyword, risk_code=riskCode, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 

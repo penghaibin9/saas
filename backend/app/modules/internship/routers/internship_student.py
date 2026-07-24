@@ -43,16 +43,25 @@ def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
                     keyword: Optional[str] = None, classId: Optional[str] = None,
                     status: Optional[str] = None, riskLevel: Optional[str] = None,
                     eligibility: Optional[str] = None, destination: Optional[str] = None,
-                    hasPosition: Optional[bool] = None, user=Depends(require_permission(_P_VIEW))):
+                    hasPosition: Optional[bool] = None, batchId: Optional[str] = None,
+                    user=Depends(require_permission(_P_VIEW))):
     items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
                                      status=status, risk_level=riskLevel, eligibility=eligibility,
-                                     destination=destination, has_position=hasPosition, user=user)
+                                     destination=destination, has_position=hasPosition,
+                                     batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/intern-students/stats", summary="实习学生统计（状态/是否分配/资格）")
-def intern_student_stats(user=Depends(require_permission(_P_VIEW))):
-    return success(svc.student_stats())
+def intern_student_stats(keyword: Optional[str] = None, classId: Optional[str] = None,
+                         status: Optional[str] = None, riskLevel: Optional[str] = None,
+                         eligibility: Optional[str] = None, destination: Optional[str] = None,
+                         hasPosition: Optional[bool] = None, batchId: Optional[str] = None,
+                         user=Depends(require_permission(_P_VIEW))):
+    return success(svc.student_stats(
+        batch_id=batchId, keyword=keyword, class_id=classId, status=status,
+        risk_level=riskLevel, eligibility=eligibility, destination=destination,
+        has_position=hasPosition, user=user))
 
 
 @router.get("/intern-students/advisors", summary="可分配的在职指导教师账号")
@@ -69,13 +78,15 @@ def assignment_logs(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
 
 @router.post("/intern-students/import/dry-run", summary="按学号建档·预校验（不写库）")
 def intern_import_dry_run(body: StudentImport, user=Depends(require_permission(_P_MANAGE))):
-    return success(svc.import_dry_run(body.rows))
+    return success(svc.import_dry_run(body.rows, batch_id=body.batchId))
 
 
 @router.post("/intern-students/import/confirm", summary="按学号建档·确认（整批事务）")
 def intern_import_confirm(body: StudentImport, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.import_confirm(body.rows, user=user)
-    audit_log.record("导入实习学生", "internship-student:import", detail=result)
+    result = svc.import_confirm(body.rows, batch_id=body.batchId, user=user)
+    audit_log.record("导入实习学生", "internship-student:import",
+                     detail={"rowCount": result.get("created"), "batchId": result.get("batchId"),
+                             "batchName": result.get("batchName")})
     return success(result, message="导入完成")
 
 
@@ -88,10 +99,11 @@ def intern_import_template(user=Depends(require_permission(_P_MANAGE))):
 
 
 @router.post("/intern-students/import/xlsx", summary="上传 Excel(.xlsx)·解析并预校验（不写库）")
-async def intern_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_P_MANAGE))):
+async def intern_import_xlsx(file: UploadFile = File(...), batchId: Optional[str] = Query(None),
+                             user=Depends(require_permission(_P_MANAGE))):
     content = await file.read()
     rows = xlsx_util.read_xlsx(content, svc.IMPORT_HEADER_MAP)
-    return success({**svc.import_dry_run(rows), "rows": rows})
+    return success({**svc.import_dry_run(rows, batch_id=batchId), "rows": rows})
 
 
 @router.post("/intern-students/import/errors-xlsx", summary="下载错误行 Excel(.xlsx)")
@@ -105,9 +117,17 @@ def intern_import_errors_xlsx(body: dict = Body(...), user=Depends(require_permi
 
 @router.post("/intern-students/export", summary="实习学生台账导出 Excel(.xlsx)（脱敏+水印，写审计）")
 def intern_export(keyword: Optional[str] = None, status: Optional[str] = None,
-                  eligibility: Optional[str] = None, user=Depends(require_permission(_P_EXPORT))):
-    data = svc.export_students(keyword=keyword, status=status, eligibility=eligibility, user=user)
-    audit_log.record("导出实习学生", "internship-student:export", detail={"rowCount": data["rowCount"]})
+                  eligibility: Optional[str] = None, batchId: Optional[str] = None,
+                  classId: Optional[str] = None, riskLevel: Optional[str] = None,
+                  destination: Optional[str] = None, hasPosition: Optional[bool] = None,
+                  user=Depends(require_permission(_P_EXPORT))):
+    data = svc.export_students(
+        keyword=keyword, status=status, eligibility=eligibility, batch_id=batchId,
+        class_id=classId, risk_level=riskLevel, destination=destination,
+        has_position=hasPosition, user=user)
+    audit_log.record("导出实习学生", "internship-student:export",
+                     detail={"rowCount": data["rowCount"], "batchId": data.get("batchId"),
+                             "batchName": data.get("batchName")})
     return success(data)
 
 

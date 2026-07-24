@@ -116,8 +116,8 @@
       :required-fields="['学号']"
       :preview-fields="['studentNo', 'advisorName', 'enterpriseName', 'batchName']"
       :download-template-fn="() => internStudentApi.downloadImportTemplate()"
-      :upload-fn="(file) => internStudentApi.uploadImportXlsx(file)"
-      :confirm-fn="({ rows }) => internStudentApi.importConfirmRows(rows)"
+      :upload-fn="(file) => internStudentApi.uploadImportXlsx(file, this.batchStore.selectedBatchId)"
+      :confirm-fn="({ rows }) => internStudentApi.importConfirmRows(rows, this.batchStore.selectedBatchId)"
       :download-errors-fn="({ rows, errors }) => internStudentApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />
@@ -142,6 +142,7 @@ import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { STUDENT_STATUS, ELIGIBILITY_STATUS, DESTINATION_TYPE } from '@/modules/internship/constants/internship-student.constants'
 import { canCode } from '@/modules/internship/composables/permission'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '' })
@@ -214,11 +215,21 @@ export default {
     canStudentManage() { return canCode(this.ctx, 'internship.student.manage') },
     canEligibility() { return canCode(this.ctx, 'internship.student.eligibility.review') },
     canInsuranceView() { return canCode(this.ctx, 'internship.insurance.view') },
+    batchStore() { return useInternshipBatchStore() },
+    canWriteBatch() { return this.batchStore.canWriteStudents },
     toolbarActions() {
       const denyManage = !this.canStudentManage
+      const denyBatch = !this.canWriteBatch
+      const batchReason = !this.batchStore.selectedBatchId
+        ? '请先选择实习批次'
+        : '当前批次已结束/归档/作废，禁止新增'
       return [
-        { key: 'create', label: '＋ 建档', variant: 'primary', disabled: denyManage, disabledReason: '无学生建档权限' },
-        { key: 'import', label: '导入 Excel', disabled: denyManage, disabledReason: '无学生导入权限' },
+        { key: 'create', label: '＋ 建档', variant: 'primary',
+          disabled: denyManage || denyBatch,
+          disabledReason: denyManage ? '无学生建档权限' : batchReason },
+        { key: 'import', label: '导入 Excel',
+          disabled: denyManage || denyBatch,
+          disabledReason: denyManage ? '无学生导入权限' : batchReason },
         { key: 'insurance', label: '保险核验', variant: 'ghost', disabled: !this.canInsuranceView, disabledReason: '无保险查看权限' }
       ]
     },
@@ -237,6 +248,10 @@ export default {
       handler(panel) {
         this.applyPanel((panel || 'roster').toString())
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.load()
     }
   },
   methods: {
@@ -249,15 +264,30 @@ export default {
     },
     goPanel(panel) {
       if (this.activePanel === panel) return
-      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
+      this.$router.replace({
+        path: this.$route.path,
+        query: this.batchStore.withBatchQuery({ ...this.$route.query, panel })
+      })
     },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
-    exportFn() { return internStudentApi.exportStudents({ ...this.filters }) },
+    exportFn() {
+      if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
+      return internStudentApi.exportStudents({ ...this.filters, batchId: this.batchStore.selectedBatchId })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 人（脱敏 + 水印，已写审计）`) },
     onImported(data) { toast.success(`已导入 ${data.created || 0} 人`); this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.rows = []
+        this.total = 0
+        this.error = this.batchStore.needsExplicitSelect
+          ? '存在多个进行中批次，请先选择当前工作批次'
+          : '请先选择实习批次'
+        return
+      }
       this.loading = true; this.error = ''
-      const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
+      const p = { ...this.filters, page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId }
       if (p.hasPosition === '') delete p.hasPosition
       const res = await internStudentApi.getStudents(p)
       if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
@@ -269,12 +299,14 @@ export default {
     async onToolbar(key) {
       if (key === 'insurance') {
         if (!this.canInsuranceView) return toast.error('无保险查看权限')
-        this.$router.push('/admin/internship/insurance')
+        this.$router.push({ path: '/admin/internship/insurance', query: this.batchStore.withBatchQuery({}) })
         return
       }
       if ((key === 'create' || key === 'import') && !this.canStudentManage) return toast.error('无学生管理权限')
+      if ((key === 'create' || key === 'import') && !this.canWriteBatch) {
+        return toast.error(!this.batchStore.selectedBatchId ? '请先选择实习批次' : '当前批次不可新增学生')
+      }
       if (key === 'create') {
-        // 学生候选改为选择器内按关键字远程搜索（后端裁定数据范围），不再一次性预载
         this.cform = { studentId: '', advisorUserId: '', remark: '' }; this.cError = ''
         this.createVisible = true
       }
@@ -283,9 +315,15 @@ export default {
     async submitCreate() {
       this.cError = ''
       if (!this.cform.studentId) { this.cError = '请选择学生'; return }
+      if (!this.batchStore.selectedBatchId) { this.cError = '请先选择实习批次'; return }
       this.submitting = true
       try {
-        const res = await internStudentApi.createStudent({ studentId: this.cform.studentId, advisorUserId: this.cform.advisorUserId || null, remark: this.cform.remark })
+        const res = await internStudentApi.createStudent({
+          studentId: this.cform.studentId,
+          batchId: this.batchStore.selectedBatchId,
+          advisorUserId: this.cform.advisorUserId || null,
+          remark: this.cform.remark
+        })
         if (res.code === 0) { toast.success('已建档'); this.createVisible = false; this.load() } else this.cError = res.message
       } finally { this.submitting = false }
     },
@@ -343,7 +381,12 @@ export default {
       return actions
     },
     onRowAction(key, row) {
-      if (key === 'detail') return this.$router.push('/admin/internship/students/' + row.id)
+      if (key === 'detail') {
+        return this.$router.push({
+          path: '/admin/internship/students/' + row.id,
+          query: this.batchStore.withBatchQuery({})
+        })
+      }
       if (key === 'assign') return this.openAssign(row)
       if (key === 'assignAdvisor') return this.openAssignAdvisor(row)
       if (key === 'eligibility') return this.askEligibility(row)

@@ -235,11 +235,21 @@ def student_help_report(user, body=None) -> dict:
                 "message": "求助已提交，指导教师将跟进"}
 
 
-def list_risks(page, page_size, level=None, status=None, keyword=None, user=None):
+def list_risks(page, page_size, level=None, status=None, keyword=None, user=None, batch_id=None):
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        q = select(RiskRecord).where(RiskRecord.tenant_id == _tid(),
-                                     RiskRecord.is_deleted.is_(False))
+        batch = resolve_batch(db, batch_id, for_write=False)
+        rec_ids = list(db.scalars(select(InternshipRecord.id).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
+        )).all()) or [0]
+        q = select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(),
+            RiskRecord.is_deleted.is_(False),
+            RiskRecord.internship_id.in_(rec_ids),
+        )
         if level:
             q = q.where(RiskRecord.risk_level == level)
         if status:

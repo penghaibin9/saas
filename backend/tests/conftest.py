@@ -133,8 +133,11 @@ def db_mode(tmp_path, request):
             # “waiting for handler commit”，即使没有外部事务也会拖慢甚至触发
             # 原生客户端崩溃；关闭外键后 DELETE 足以清理每个测试产生的少量数据，
             # 且不拿元数据 DDL 锁。
+            from sqlalchemy import inspect as sa_inspect
+            existing = set(sa_inspect(conn).get_table_names())
             for table in reversed(metadata.sorted_tables):
-                conn.execute(text(f"DELETE FROM `{table.name}`"))
+                if table.name in existing:
+                    conn.execute(text(f"DELETE FROM `{table.name}`"))
             conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     else:
         engine = get_engine()

@@ -757,10 +757,21 @@ def export_weekly_reports(status=None, keyword=None, user=None) -> dict:
 # ═══ 风险学生 ═══
 
 def list_risk_students(page, page_size, level=None, status=None, keyword=None,
-                       risk_code=None, user=None):
+                       risk_code=None, batch_id=None, user=None):
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     with session() as db:
-        q = select(RiskRecord).where(RiskRecord.tenant_id == _tid(),
-                                     RiskRecord.is_deleted.is_(False))
+        batch = resolve_batch(db, batch_id, for_write=False)
+        rec_ids = db.scalars(select(InternshipRecord.id).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
+        )).all()
+        scoped_rec_ids = list(rec_ids) or [0]
+        q = select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(),
+            RiskRecord.is_deleted.is_(False),
+            RiskRecord.internship_id.in_(scoped_rec_ids),
+        )
         if level:
             q = q.where(RiskRecord.risk_level == level)
         if status:
@@ -774,7 +785,7 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
         for k in rows:
             rec = db.get(InternshipRecord, k.internship_id)
             stu = db.get(StudentProfile, rec.student_id) if rec else None
-            if not _rec_in_scope(scope, db, rec, stu):  # P0-D
+            if not _rec_in_scope(scope, db, rec, stu):
                 continue
             if kw and kw not in (stu.real_name or "") and kw not in (stu.student_no or ""):
                 continue
@@ -792,6 +803,7 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
                 "lastFollow": k.last_follow_note or "—",
                 "lastFollowNote": k.last_follow_note or "",
                 "status": k.status, "statusLabel": RISK_STATUS_LABEL.get(k.status, k.status),
+                "batchId": str(batch.id),
             })
         total = len(items)
         start = (max(1, page) - 1) * page_size
@@ -844,21 +856,18 @@ def _batch_detail_row(db, b: InternshipBatch) -> dict:
 
 
 def _pick_current_batch(db):
-    """全模块页头「当前批次」口径（BUG-006）：
-    ① 进行中且今天落在起止区间内 → ② 任一进行中 → ③ 未作废/未归档的最新一条。
-    绝不返回已作废（VOIDED）/已归档（ARCHIVED）批次作为业务上下文。"""
+    """已废弃静默选批：多 RUNNING 时不得自动取第一条。
+    保留函数仅供内部诊断；业务入口必须显式传入 batchId。
+    返回：唯一 RUNNING → 该批次；0 个 RUNNING → None；多个 RUNNING → None。
+    """
     rows = db.scalars(select(InternshipBatch).where(
         InternshipBatch.tenant_id == _tid(),
         InternshipBatch.is_deleted.is_(False),
-        InternshipBatch.status.notin_(["VOIDED", "ARCHIVED"]),
+        InternshipBatch.status == "RUNNING",
     ).order_by(InternshipBatch.id.desc())).all()
-    if not rows:
-        return None
-    now = datetime.utcnow()
-    running = [b for b in rows if b.status == "RUNNING"]
-    in_window = [b for b in running
-                 if b.start_date and b.end_date and b.start_date <= now <= b.end_date]
-    return (in_window or running or rows)[0]
+    if len(rows) == 1:
+        return rows[0]
+    return None
 
 
 def _get_batch(db, bid) -> InternshipBatch:
@@ -1084,12 +1093,33 @@ def export_batches(keyword=None, status=None) -> dict:
 
 # ═══ 看板 ═══
 
-def get_dashboard_summary(user=None) -> dict:
+def get_dashboard_summary(user=None, batch_id=None) -> dict:
+    """工作台：标题与全部指标必须属于同一明确 batchId，禁止静默取第一条 RUNNING。"""
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch)
+
+    # permissionPatterns 简单匹配（与前端 matchPermission 同口径：* 通配）
+    def _match(code: str) -> bool:
+        patterns = list((user or {}).get("permissionPatterns") or [])
+        if not patterns:
+            return True
+        for p in patterns:
+            p = str(p)
+            if p == code or p == "*":
+                return True
+            if p.endswith(".*") and code.startswith(p[:-1]):
+                return True
+        return False
+
     with session() as db:
-        recs = db.scalars(select(InternshipRecord).where(
+        batch = resolve_batch(db, batch_id, for_write=False)
+        batch_meta = batch_public_fields(batch)
+        q = select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(),
-            InternshipRecord.is_deleted.is_(False))).all()
-        # P0-D：SCOPED（指导教师/学院负责人）只统计本范围；管理员/兜底看全租户。
+            InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
+        )
+        recs = db.scalars(q).all()
         scope = _current_scope(user)
         scoped = scope.get("mode") == "SCOPED"
         if scoped:
@@ -1099,42 +1129,86 @@ def get_dashboard_summary(user=None) -> dict:
         flow_map = {"PREPARING": 0, "READY": 0, "ONBOARD": 0, "ASSESSING": 0, "ARCHIVED": 0}
         for r in recs:
             flow_map[r.status] = flow_map.get(r.status, 0) + 1
+        preparing = flow_map["PREPARING"]
+        ready = flow_map["READY"]
+        onboard = flow_map["ONBOARD"]
+        total_students = len(recs)
 
         def _cnt(model, *conds):
-            q = select(func.count()).select_from(model).where(
-                model.tenant_id == _tid(), model.is_deleted.is_(False), *conds)
-            if scoped:
-                q = q.where(model.internship_id.in_(scoped_ids))
-            return db.scalar(q) or 0
+            q2 = select(func.count()).select_from(model).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False),
+                model.internship_id.in_(scoped_ids), *conds)
+            return db.scalar(q2) or 0
+
         pending_exc = _cnt(AttendanceException, AttendanceException.status == "PENDING_HANDLE")
         pending_rep = _cnt(WeeklyReport, WeeklyReport.status == "PENDING_REVIEW")
         risk_cnt = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
-        batch = _pick_current_batch(db)
+
+        # 真实开放风险提醒（同批次 + 数据范围），按等级与更新时间排序，最多 5 条
+        risk_rows = db.scalars(select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(), RiskRecord.is_deleted.is_(False),
+            RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]),
+            RiskRecord.internship_id.in_(scoped_ids),
+        )).all()
+        level_rank = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+        risk_rows = sorted(
+            risk_rows,
+            key=lambda k: (level_rank.get(k.risk_level, 9),
+                           -(k.updated_at.timestamp() if k.updated_at else 0)),
+        )[:5]
+        risk_alerts = []
+        for k in risk_rows:
+            rec = db.get(InternshipRecord, k.internship_id)
+            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            risk_alerts.append({
+                "id": str(k.id),
+                "internId": str(k.internship_id),
+                "studentName": stu.real_name if stu else "-",
+                "level": k.risk_level,
+                "title": k.risk_title or k.risk_code or "风险",
+                "status": k.status,
+                "route": f"/admin/internship/risk-disposal?id={k.id}&batchId={batch.id}",
+            })
+
+        todos = []
+        if pending_rep > 0 and _match("internship.report.review"):
+            todos.append({"id": "todo-report", "label": "待批阅周报", "count": pending_rep,
+                          "tone": "danger",
+                          "route": f"/admin/internship/reports?batchId={batch.id}"})
+        if pending_exc > 0 and _match("internship.attendance.review"):
+            todos.append({"id": "todo-exc", "label": "待核实打卡异常", "count": pending_exc,
+                          "tone": "warning",
+                          "route": f"/admin/internship/exceptions?batchId={batch.id}"})
+        if risk_cnt > 0 and _match("internship.risk.handle"):
+            todos.append({"id": "todo-risk", "label": "风险学生待跟进", "count": risk_cnt,
+                          "tone": "warning",
+                          "route": f"/admin/internship/risk-disposal?batchId={batch.id}"})
+
         return {
-            "batchName": batch.batch_name if batch else "实习批次",
-            "batchRange": (f"{_iso(batch.start_date)[:10]} ~ {_iso(batch.end_date)[:10]}"
-                           if batch and batch.start_date and batch.end_date else ""),
-            "batchStatus": "进行中" if batch and batch.status == "RUNNING" else "—",
-            # 口径与 stats_service.get_overview 的「实习在岗率」一致：ONBOARD / 全部未删记录。
-            "batchProgress": round(flow_map["ONBOARD"] / len(recs) * 100, 1) if recs else 0,
+            **batch_meta,
+            "batchStatus": "进行中" if batch.status == "RUNNING" else batch_meta.get("batchStatusLabel") or "—",
+            "batchProgress": round(onboard / total_students * 100, 1) if total_students else 0,
             "stats": [
-                {"label": "在岗学生", "value": str(flow_map["ONBOARD"]), "trend": "", "trendQuality": "neutral"},
+                {"label": "本批学生", "value": str(total_students), "trend": "", "trendQuality": "neutral",
+                 "route": f"/admin/internship/students?batchId={batch.id}"},
+                {"label": "在岗学生", "value": str(onboard), "trend": "", "trendQuality": "neutral",
+                 "route": f"/admin/internship/students?batchId={batch.id}&panel=status"},
+                {"label": "待落实", "value": str(preparing), "trend": "", "trendQuality": "neutral",
+                 "route": f"/admin/internship/students?batchId={batch.id}&panel=destination"},
+                {"label": "待上岗", "value": str(ready), "trend": "", "trendQuality": "neutral",
+                 "route": f"/admin/internship/students?batchId={batch.id}&status=READY"},
                 {"label": "待处理打卡异常", "value": str(pending_exc),
-                 "trend": f"待核实 {pending_exc}", "trendQuality": "bad" if pending_exc else "good"},
+                 "trend": f"待核实 {pending_exc}", "trendQuality": "bad" if pending_exc else "good",
+                 "route": f"/admin/internship/exceptions?batchId={batch.id}"},
                 {"label": "待批阅周报", "value": str(pending_rep),
-                 "trend": f"待批阅 {pending_rep}", "trendQuality": "bad" if pending_rep else "good"},
-                {"label": "风险学生", "value": str(risk_cnt),
-                 "trend": f"跟进中 {risk_cnt}", "trendQuality": "bad" if risk_cnt else "good"},
+                 "trend": f"待批阅 {pending_rep}", "trendQuality": "bad" if pending_rep else "good",
+                 "route": f"/admin/internship/reports?batchId={batch.id}"},
+                {"label": "开放风险", "value": str(risk_cnt),
+                 "trend": f"跟进中 {risk_cnt}", "trendQuality": "bad" if risk_cnt else "good",
+                 "route": f"/admin/internship/risk-disposal?batchId={batch.id}"},
             ],
             "flow": [{"label": lbl, "value": flow_map[k], "active": k == "ONBOARD"}
                      for k, lbl in STATUS_LABEL.items()],
-            "todos": [
-                {"id": "todo-1", "label": "待批阅周报", "count": pending_rep, "tone": "danger",
-                 "route": "/admin/internship/reports"},
-                {"id": "todo-2", "label": "待核实打卡异常", "count": pending_exc, "tone": "warning",
-                 "route": "/admin/internship/exceptions"},
-                {"id": "todo-3", "label": "风险学生待跟进", "count": risk_cnt, "tone": "warning",
-                 "route": "/admin/internship/risks"},
-            ],
-            "riskAlerts": [],
+            "todos": todos,
+            "riskAlerts": risk_alerts,
         }

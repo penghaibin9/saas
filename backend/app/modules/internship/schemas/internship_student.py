@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 class StudentRecordCreate(BaseModel):
     studentId: str = Field(..., description="t_student_profile.id")
-    batchId: Optional[str] = Field(None, description="预留·实习批次 id")
+    batchId: str = Field(..., description="实习批次 id（必填，禁止 NULL）")
     advisorName: Optional[str] = None
     advisorUserId: Optional[str] = None
     remark: Optional[str] = None
@@ -46,6 +46,7 @@ class DestinationRequest(BaseModel):
 
 
 class StudentImport(BaseModel):
+    batchId: str = Field(..., description="当前页面批次上下文（必填）")
     rows: list[dict] = Field(default_factory=list)
 
 

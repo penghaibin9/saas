@@ -130,6 +130,7 @@ import { AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermiss
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { riskApi, complaintApi } from '@/modules/internship/api/leave-risk.api'
 import { canCode } from '@/modules/internship/composables/permission'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
 const LEVEL_OPTIONS = [{ label: '高', value: 'HIGH' }, { label: '中', value: 'MEDIUM' }, { label: '低', value: 'LOW' }]
@@ -162,6 +163,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     /** 只渲染 getRiskDetail 真实返回字段（internship_risk_service._row） */
     summaryItems() {
       const d = this.detail || {}
@@ -222,6 +224,10 @@ export default {
           this.detailError = ''
         }
       }
+    },
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.load()
     }
   },
   methods: {
@@ -251,14 +257,29 @@ export default {
       this.queueDone = false
       this.load()
     },
-    exportFn() { return riskApi.exportRisks({ keyword: this.keyword }) },
+    exportFn() {
+      return riskApi.exportRisks({
+        keyword: this.keyword,
+        batchId: this.batchStore.selectedBatchId || undefined
+      })
+    },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     reload() { this.page = 1; this.queueDone = false; this.load() },
     onPageChange({ page }) { this.page = page; this.load() },
     async load() {
       if (this.complaintMode) return this.loadComplaints()
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.rows = []
+        this.total = 0
+        this.error = '请先选择实习批次'
+        return
+      }
       this.loading = true; this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = {
+        page: this.page, pageSize: this.pageSize, keyword: this.keyword,
+        batchId: this.batchStore.selectedBatchId
+      }
       if (this.levelFilter) params.level = this.levelFilter
       if (this.statusFilter) params.status = this.statusFilter
       if (this.riskCode) params.riskCode = this.riskCode
@@ -266,6 +287,11 @@ export default {
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
+      // URL 带 id 时，确保左侧队列也选中该项
+      const want = String(this.$route.query.id || this.selectedId || '')
+      if (want && this.rows.some((r) => String(r.id) === want)) {
+        this.selectedId = want
+      }
     },
     async loadComplaints() {
       this.loading = true; this.error = ''
@@ -305,22 +331,26 @@ export default {
       if (!row || row.id == null || row.id === '') return
       const id = String(row.id)
       if (id === String(this.selectedId || '')) return
-      // 先本地选中再同步路由：避免仅依赖 query 时，右侧仍停在「未选择」
       this.selectedId = id
       this.queueDone = false
       this.detailError = ''
       this.loadDetail(id)
       if (String(this.$route.query.id || '') !== id) {
-        this.$router.replace({ query: { ...this.$route.query, id } })
+        this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id }) })
       }
     },
     clearSelection() {
       const query = { ...this.$route.query }
       delete query.id
-      this.$router.replace({ query })
+      this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     goStudent() {
-      if (this.detail?.internId) this.$router.push(`/admin/internship/students/${this.detail.internId}`)
+      if (this.detail?.internId) {
+        this.$router.push({
+          path: `/admin/internship/students/${this.detail.internId}`,
+          query: this.batchStore.withBatchQuery({})
+        })
+      }
     },
     openAction(kind) {
       if (this.complaintMode) return

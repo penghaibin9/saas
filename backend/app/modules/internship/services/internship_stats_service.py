@@ -54,13 +54,18 @@ def _metric(key, label, num, den, threshold, note=""):
             "warn": rate is not None and rate < threshold, "note": note}
 
 
-def overview(user, college=None, major=None, class_name=None) -> dict:
+def overview(user, college=None, major=None, class_name=None, batch_id=None) -> dict:
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch)
     scope, in_scope = _scope_ctx(user)
     scoped = scope.get("mode") == "SCOPED"
     with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
         recs = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(),
-            InternshipRecord.is_deleted.is_(False))).all()
+            InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
+        )).all()
         cache = {}
         col_f = (college or "").strip()
         maj_f = (major or "").strip()
@@ -96,9 +101,6 @@ def overview(user, college=None, major=None, class_name=None) -> dict:
                 model.internship_id.in_(rec_ids), *conds)) or 0
 
         # ── 落实 / 匹配 / 协议 ──
-        # BUG-018：落实率原来把「状态已推进」也算作已落实，导致「在岗中 + 去向未落实」
-        # 的记录计入分子，出现落实率 100% 而匹配率仅 16.7% 的自相矛盾。
-        # 口径统一到学生台账「去向」字段：destination_type != NONE 才算落实。
         placed = sum(1 for r in kept if r.destination_type != "NONE")
         matched = sum(1 for r in kept if r.position_id or r.destination_type == "ASSIGNED")
         agr_signed = _distinct(InternshipAgreement, InternshipAgreement.status.in_(["EFFECTIVE", "ARCHIVED"]))
@@ -122,9 +124,10 @@ def overview(user, college=None, major=None, class_name=None) -> dict:
         ent_eval = _distinct(InternshipEnterpriseEval)
         stu_eval = _distinct(InternshipStudentEval, InternshipStudentEval.submit_status == "SUBMITTED")
         score_published = _cnt(InternshipFinalScore, InternshipFinalScore.status == "PUBLISHED")
-        score_base = assessing_arch or total
+        # 分母：仅考核中/已归档需要成绩；无人时空分母 → rate=None（禁止 or total 假分母）
+        score_base = assessing_arch
 
-        # ── 就业转化 / 帮扶 / 归档（对接就业台账 + 归档中心，不伪造）──
+        # ── 就业转化 / 帮扶 / 归档 ──
         cohort_ids = [r.student_id for r in kept if r.status in ("ASSESSING", "ARCHIVED")]
         cohort_n = len(cohort_ids)
         sid_filter = cohort_ids or [0]
@@ -149,13 +152,13 @@ def overview(user, college=None, major=None, class_name=None) -> dict:
             InternshipArchive.tenant_id == _tid(), InternshipArchive.is_deleted.is_(False),
             InternshipArchive.internship_id.in_(rec_ids),
             InternshipArchive.status == "ARCHIVED")) or 0
-        archive_base = sum(1 for r in kept if r.status in ("ASSESSING", "ARCHIVED")) or total
+        archive_base = assessing_arch  # 与成绩同口径，空分母不回退 total
 
         metrics = [
             _metric("placementRate", "实习落实率", placed, total, 95,
-                    "去向已落实（分配岗位/自主实习/免实习）学生 / 全部实习学生，与学生台账「去向」同口径"),
+                    "去向已落实（分配岗位/自主实习/免实习）学生 / 本批次全部实习学生"),
             _metric("matchRate", "岗位匹配率", matched, total, 90,
-                    "已分配岗位学生 / 全部实习学生"),
+                    "已分配岗位学生 / 本批次全部实习学生"),
             _metric("agreementSignRate", "协议签署率", agr_signed, total, 95),
             _metric("arrivalRate", "到岗率", arrived, onboard, 90, "有打卡学生/在岗学生"),
             _metric("checkinComplyRate", "打卡合规率", checkin_ok, checkin_total, 85),
@@ -167,22 +170,21 @@ def overview(user, college=None, major=None, class_name=None) -> dict:
             _metric("riskCloseRate", "风险闭环率", risk_closed, risk_total, 95),
             _metric("enterpriseEvalRate", "企业评价完成率", ent_eval, eval_base, 95),
             _metric("studentEvalRate", "学生自评完成率", stu_eval, eval_base, 95),
-            _metric("scorePublishRate", "成绩发布率", score_published, score_base, 100),
+            _metric("scorePublishRate", "成绩发布率", score_published, score_base, 100,
+                    "已发布成绩 / 考核中或已归档学生（空分母返回暂无数据）"),
             _metric("employmentRate", "就业转化率", employed, cohort_n, 85,
-                    "考核期/已归档学生中就业台账已落实（无台账时分母仍计）"),
+                    "考核期/已归档学生中就业台账已落实"),
             _metric("helpCoverRate", "未就业帮扶覆盖率", help_covered, unemployed, 90,
-                    "未就业台账学生中已分配就业老师（无未就业台账时分母为0）"),
+                    "未就业台账学生中已分配就业老师"),
             _metric("archiveRate", "归档完成率", archived_cnt, archive_base, 95,
                     "考核期/已归档学生中已执行实习归档"),
         ]
-        # 计数型（非比率）
         counters = [
             {"key": "totalStudents", "label": "实习学生数", "value": total},
             {"key": "onboardStudents", "label": "在岗学生数", "value": onboard},
             {"key": "riskStudents", "label": "风险学生数", "value": risk_students,
              "warn": risk_students > 0},
         ]
-        # 成绩分布（仅已发布）
         buckets = [("优(90-100)", 90, 101), ("良(80-89)", 80, 90), ("中(70-79)", 70, 80),
                    ("及格(60-69)", 60, 70), ("不及格(<60)", -1, 60)]
         dist = []
@@ -196,22 +198,26 @@ def overview(user, college=None, major=None, class_name=None) -> dict:
 
         return {
             "dimensions": {"college": col_f, "major": maj_f, "className": cls_f,
-                           "scopeMode": scope.get("mode")},
+                           "scopeMode": scope.get("mode"), **batch_public_fields(batch)},
             "counters": counters,
             "metrics": metrics,
             "scoreDistribution": dist,
             "partial": [],
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            **batch_public_fields(batch),
         }
 
 
-def dimension_options(user) -> dict:
-    """可选学院/专业/班级（限当前数据范围内出现过的组织）。"""
+def dimension_options(user, batch_id=None) -> dict:
+    """可选学院/专业/班级（限当前批次 + 数据范围内出现过的组织）。"""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     scope, in_scope = _scope_ctx(user)
     scoped = scope.get("mode") == "SCOPED"
     with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
         recs = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False))).all()
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id)).all()
         cache = {}
         colleges, majors, classes = set(), set(), set()
         for r in recs:
@@ -228,12 +234,9 @@ def dimension_options(user) -> dict:
         return {"colleges": sorted(colleges), "majors": sorted(majors), "classes": sorted(classes)}
 
 
-def trends(user, college=None, major=None, class_name=None, months=6) -> dict:
-    """Return auditable monthly activity counts for the visible internship cohort.
-
-    We deliberately use creation/submission timestamps only; this avoids presenting
-    mutable record ``updated_at`` as an invented "arrival" trend.
-    """
+def trends(user, college=None, major=None, class_name=None, months=6, batch_id=None) -> dict:
+    """Return auditable monthly activity counts for the visible internship cohort."""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     months = max(3, min(int(months or 6), 12))
     now = datetime.now()
     keys = []
@@ -248,8 +251,10 @@ def trends(user, college=None, major=None, class_name=None, months=6) -> dict:
     scope, in_scope = _scope_ctx(user)
     scoped = scope.get("mode") == "SCOPED"
     with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
         recs = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False))).all()
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id)).all()
         cache = {}
         kept = []
         for rec in recs:
@@ -290,12 +295,13 @@ def trends(user, college=None, major=None, class_name=None, months=6) -> dict:
                 {"key": "visits", "label": "巡访记录", "points": count_by_month(visits, "created_at")},
             ],
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            "batchId": str(batch.id),
         }
 
 
-def export_stats(user, college=None, major=None, class_name=None) -> dict:
+def export_stats(user, college=None, major=None, class_name=None, batch_id=None) -> dict:
     from app.services import xlsx_util
-    data = overview(user, college=college, major=major, class_name=class_name)
+    data = overview(user, college=college, major=major, class_name=class_name, batch_id=batch_id)
     headers = ["指标", "分子", "分母", "达成率(%)", "预警阈值(%)", "是否预警"]
     rows = [[m["label"], m["numerator"], m["denominator"],
              "—" if m["rate"] is None else m["rate"], m["threshold"], "是" if m["warn"] else "否"]
@@ -306,6 +312,8 @@ def export_stats(user, college=None, major=None, class_name=None) -> dict:
         rows.append([f"成绩分布·{d['bucket']}", "—", "—", d["count"], "—", "否"])
     op = (user or {}).get("realName") or "系统"
     dim = "/".join([x for x in [college, major, class_name] if x]) or "全部范围"
-    wm = f"岗位实习中心·统计报表（{dim}）· 导出人：{op} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    bname = data.get("batchName") or ""
+    wm = (f"岗位实习中心·统计报表（{bname}/{dim}）· 导出人：{op} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
     content = xlsx_util.build_ledger_xlsx("实习统计报表", headers, rows, watermark=wm)
     return xlsx_util.pack_xlsx_result(content, "实习统计报表.xlsx", len(rows))

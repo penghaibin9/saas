@@ -54,7 +54,9 @@ class InternshipRecord(PKMixin, TenantMixin, CommonMixin, Base):
 
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True,
                                             comment="= t_student_profile.id")
-    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    batch_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True,
+        comment="实习批次；应用层强制非空，历史 NULL 待人工映射后由迁移改 NOT NULL")
     enterprise_name: Mapped[str | None] = mapped_column(String(200), comment="实习单位（冗余展示）")
     position_name: Mapped[str | None] = mapped_column(String(100), comment="岗位（冗余展示）")
     advisor_name: Mapped[str | None] = mapped_column(String(100), comment="校内指导教师")
