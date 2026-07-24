@@ -19,6 +19,9 @@ from app.core.exceptions import AppException, no_permission, not_found
 from app.services.db_service import _iso, _tid, session
 
 _REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}  # 教务处终审/退回/归档超高危角色白名单
+# 脱离教学任务的特殊补录：仅教务处/学校/平台超管；学院管理员必须绑定教学任务
+_SUPPLEMENT_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}
+_GRADE_TASK_TT_UK = "uk_aa_grade_task_tt"
 _WF_SUBMIT = "AC_GRADE_REVIEW"
 _WF_CHANGE = "AC_GRADE_CHANGE"
 
@@ -196,6 +199,108 @@ def _scores_complete(t, usual, mid, final):
 
 # ═══════════ 成绩录入任务 ═══════════
 
+def _term_code_of(term) -> str:
+    """由正式 AaTerm 派生 term_code（禁止信任前端自由传入）。"""
+    yc = (getattr(term, "year_code", None) or "").strip()
+    tn = getattr(term, "term_no", None)
+    if yc and tn is not None:
+        return f"{yc}-{tn}"
+    return yc or ""
+
+
+def _find_existing_grade_task_by_teaching_task(db, teaching_task_id):
+    """终身唯一预检：不按状态/软删除过滤，与 uk_aa_grade_task_tt 口径一致。"""
+    from app.models import AaGradeTask
+    return db.scalars(select(AaGradeTask).where(
+        AaGradeTask.tenant_id == _tid(),
+        AaGradeTask.teaching_task_id == int(teaching_task_id),
+    ).order_by(AaGradeTask.id.asc())).first()
+
+
+def _raise_grade_task_tt_conflict(exist) -> None:
+    """已存在任意成绩任务时禁止再建；提示管理员定位原任务，勿暴露敏感内部细节。"""
+    raise AppException(
+        "DATA_CONFLICT",
+        (
+            f"该教学任务已存在成绩任务（ID={exist.id}，状态={exist.status}，"
+            f"已归档={'是' if exist.status == 'ARCHIVED' else '否'}，"
+            f"已删除={'是' if bool(exist.is_deleted) else '否'}）。"
+            "请勿重复创建；应进入原任务处理，或由管理员执行数据修复。"
+            "成绩错误请走成绩更正/复查/补考/重修，不得通过重建成绩任务解决。"
+        ),
+        http_status=409,
+    )
+
+
+def _is_grade_task_tt_uk_violation(exc) -> bool:
+    msg = str(getattr(exc, "orig", None) or exc)
+    return _GRADE_TASK_TT_UK in msg
+
+
+def _resolve_grade_task_term(db, teaching_task=None, requested_term_id=None, requested_term_code=None):
+    """解析权威学期 → 校验请求一致性 → 租户校验 → 归档写保护。
+
+    - 有教学任务：权威 term_id 优先教学任务自身 term_id（若有），否则经 batch_id → 批次 term_id。
+    - 无教学任务（特殊补录）：必须提供正式 termId，不接受仅 termCode。
+    """
+    from app.models import AaTeachingTaskBatch, AaTerm
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+
+    req_tid = None
+    if requested_term_id is not None and str(requested_term_id).strip() != "":
+        try:
+            req_tid = int(requested_term_id)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "termId 不合法")
+
+    authoritative_term_id = None
+    if teaching_task is not None:
+        authoritative_term_id = getattr(teaching_task, "term_id", None)
+        if not authoritative_term_id and getattr(teaching_task, "batch_id", None):
+            batch = db.get(AaTeachingTaskBatch, int(teaching_task.batch_id))
+            if (not batch or batch.is_deleted or batch.tenant_id != _tid()
+                    or not batch.term_id):
+                raise AppException(
+                    "VALIDATION_ERROR",
+                    "教学任务无法解析权威学期（批次缺失或未绑定学期），禁止创建成绩任务",
+                )
+            authoritative_term_id = batch.term_id
+        if not authoritative_term_id:
+            raise AppException(
+                "VALIDATION_ERROR",
+                "教学任务无法解析权威学期，禁止仅依赖 termCode 创建",
+            )
+        if req_tid is not None and int(req_tid) != int(authoritative_term_id):
+            raise AppException(
+                "DATA_CONFLICT",
+                "请求 termId 与教学任务所属学期不一致，禁止伪造学期绕过归档保护",
+                http_status=409,
+            )
+    else:
+        if req_tid is None:
+            raise AppException(
+                "VALIDATION_ERROR",
+                "特殊补录必须填写正式 termId，不接受仅 termCode",
+            )
+        authoritative_term_id = req_tid
+
+    term = db.get(AaTerm, int(authoritative_term_id))
+    if not term or term.is_deleted or term.tenant_id != _tid():
+        raise not_found("学期不存在或不在当前租户范围内")
+
+    guard_term_writable(db, term.id)
+
+    derived_code = _term_code_of(term)
+    req_code = (requested_term_code or "").strip()
+    if req_code and derived_code and req_code != derived_code:
+        raise AppException(
+            "DATA_CONFLICT",
+            "请求 termCode 与正式学期不一致",
+            http_status=409,
+        )
+    return int(term.id), derived_code
+
+
 def create_grade_task(body, user) -> dict:
     usual = int(getattr(body, "usualRatio", 30) or 30)
     final = int(getattr(body, "finalRatio", 70) or 70)
@@ -205,78 +310,106 @@ def create_grade_task(body, user) -> dict:
     if usual < 0 or midterm < 0 or final < 0 or usual > 100 or midterm > 100 or final > 100:
         raise AppException("VALIDATION_ERROR", "成绩占比须在 0-100 之间")
     role = (user.get("currentRoleCode") or "").upper()
-    is_admin = role in _REVIEW_ROLES or role == "COLLEGE_ADMIN" or user.get("userType") == "PLATFORM_SUPER_ADMIN"
+    is_platform = user.get("userType") == "PLATFORM_SUPER_ADMIN"
+    can_with_task = (
+        role in _REVIEW_ROLES or role == "COLLEGE_ADMIN" or is_platform
+    )
+    can_supplement = role in _SUPPLEMENT_ROLES or is_platform
     teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
     supplement = (getattr(body, "adminSupplementReason", None) or "").strip()
-    if not teaching_task_id and not is_admin:
+    if not teaching_task_id and not can_supplement:
+        if role == "COLLEGE_ADMIN":
+            raise AppException(
+                "NO_PERMISSION",
+                "学院管理员不可脱离教学任务创建成绩任务",
+                http_status=403,
+            )
         raise AppException("VALIDATION_ERROR", "普通教师必须关联真实教学任务创建成绩任务")
-    if not teaching_task_id and is_admin and len(supplement) < 5:
+    if not teaching_task_id and can_supplement and len(supplement) < 5:
         raise AppException("VALIDATION_ERROR", "管理员脱离教学任务补录必须填写原因（不少于5字）")
     with session() as db:
         from app.models import AaGradeTask, AaTeachingTask
-        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
-        guard_term_writable(db, getattr(body, "termId", None))  # 归档11卡§6.2：已归档学期不应新建成绩任务
+        from sqlalchemy.exc import IntegrityError
+
+        tt = None
         teacher_key = None
         inherit_class_id = None
         inherit_course_name = None
         inherit_credit = None
-        inherit_term_id = None
+
         if teaching_task_id:
-            # 租户隔离收口：教学任务必须属本租户，否则拒绝——此前 db.get 不校验 tenant_id，
-            # 传他租户 teachingTaskId 会把他租户 teacher_key 带进本租户新成绩任务。
+            # 租户隔离收口：教学任务必须属本租户
             tt = db.get(AaTeachingTask, teaching_task_id)
             if not tt or tt.is_deleted or tt.tenant_id != _tid():
                 raise not_found("教学任务不存在或不在当前数据范围内")
-            # 学院管理员：教学任务班级须在数据范围内
             if role == "COLLEGE_ADMIN":
                 from app.core.affairs_security import build_affairs_context
                 ctx = build_affairs_context(user, db)
                 allowed = ctx.allowed_class_ids(db)
                 if allowed is not None and tt.class_id and tt.class_id not in allowed:
                     raise AppException("NO_DATA_SCOPE", "该教学任务不在您的学院范围内")
-            # 任课教师：只能为自己负责的教学任务建成绩任务
-            if not is_admin:
+            if not can_with_task:
                 if not tt.teacher_key or tt.teacher_key not in _user_keys(user):
                     raise AppException("NO_DATA_SCOPE", "只能为自己负责的教学任务创建成绩任务")
-            # 幂等：同租户同教学任务已有有效成绩任务则直接返回（防双击/重试）
-            exist = db.scalars(select(AaGradeTask).where(
-                AaGradeTask.tenant_id == _tid(), AaGradeTask.teaching_task_id == teaching_task_id,
-                AaGradeTask.is_deleted.is_(False),
-                AaGradeTask.status.notin_(["ARCHIVED"]))
-            ).first()
+
+            # 权威学期：先解析教学任务/批次学期，再归档校验（禁止用请求 termId 抢先校验）
+            term_id, term_code = _resolve_grade_task_term(
+                db, teaching_task=tt,
+                requested_term_id=getattr(body, "termId", None),
+                requested_term_code=getattr(body, "termCode", None),
+            )
+
+            exist = _find_existing_grade_task_by_teaching_task(db, teaching_task_id)
             if exist:
-                raise AppException("DATA_CONFLICT", "该教学任务已存在成绩录入任务，请勿重复创建",
-                                   http_status=409)
+                _raise_grade_task_tt_conflict(exist)
+
             teacher_key = tt.teacher_key
             inherit_class_id = tt.class_id
             inherit_course_name = tt.course_name
             inherit_credit = getattr(tt, "credit", None)
-            inherit_term_id = getattr(tt, "term_id", None)
-        if not teacher_key:
-            teacher_key = next(iter(_user_keys(user)), None)
-        # 有教学任务时强制继承，禁止前端篡改班级/课程/学分
-        if teaching_task_id:
             class_id = inherit_class_id
             course_name = inherit_course_name
             credit = inherit_credit
-            term_id = inherit_term_id or (int(body.termId) if getattr(body, "termId", None) else None)
         else:
+            term_id, term_code = _resolve_grade_task_term(
+                db, teaching_task=None,
+                requested_term_id=getattr(body, "termId", None),
+                requested_term_code=getattr(body, "termCode", None),
+            )
             class_id = int(body.classId) if getattr(body, "classId", None) else None
             course_name = getattr(body, "courseName", None)
             credit = getattr(body, "credit", None)
-            term_id = int(body.termId) if getattr(body, "termId", None) else None
+
+        if not teacher_key:
+            teacher_key = next(iter(_user_keys(user)), None)
         if not (course_name or "").strip():
             raise AppException("VALIDATION_ERROR", "courseName 与 teachingTaskId 至少填一项（且教学任务须有课程名）")
-        t = AaGradeTask(tenant_id=_tid(), teaching_task_id=teaching_task_id,
-                        term_id=term_id,
-                        term_code=getattr(body, "termCode", None), course_name=course_name,
-                        class_id=class_id,
-                        teacher_key=teacher_key,
-                        credit=credit, usual_ratio=usual, midterm_ratio=midterm,
-                        final_ratio=final,
-                        pass_line=int(getattr(body, "passLine", 60) or 60), status="NOT_STARTED")
+
+        t = AaGradeTask(
+            tenant_id=_tid(), teaching_task_id=teaching_task_id,
+            term_id=term_id, term_code=term_code, course_name=course_name,
+            class_id=class_id, teacher_key=teacher_key, credit=credit,
+            usual_ratio=usual, midterm_ratio=midterm, final_ratio=final,
+            pass_line=int(getattr(body, "passLine", 60) or 60), status="NOT_STARTED",
+        )
         db.add(t)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as e:
+            db.rollback()
+            if teaching_task_id and _is_grade_task_tt_uk_violation(e):
+                # 并发窗口：预检通过后仍可能撞上唯一约束
+                exist = None
+                with session() as db2:
+                    exist = _find_existing_grade_task_by_teaching_task(db2, teaching_task_id)
+                if exist:
+                    _raise_grade_task_tt_conflict(exist)
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该教学任务已存在成绩任务，请勿重复创建",
+                    http_status=409,
+                ) from e
+            raise
         audit_detail = course_name or ""
         if supplement:
             audit_detail = f"{audit_detail}|ADMIN_SUPPLEMENT:{supplement}"
@@ -286,7 +419,8 @@ def create_grade_task(body, user) -> dict:
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "courseName": t.course_name or "", "usualRatio": t.usual_ratio,
                 "midtermRatio": t.midterm_ratio, "finalRatio": t.final_ratio, "status": t.status,
-                "classId": str(t.class_id or ""), "teachingTaskId": str(t.teaching_task_id or "")}
+                "classId": str(t.class_id or ""), "teachingTaskId": str(t.teaching_task_id or ""),
+                "termId": str(t.term_id or ""), "termCode": t.term_code or ""}
 
 
 def _task_row(t) -> dict:
@@ -850,7 +984,11 @@ def return_task(task_id, user, reason="") -> dict:
 
 
 def archive_task(task_id, user) -> dict:
-    """学期归档：仅 PUBLISHED 可归档。"""
+    """成绩任务归档：仅 PUBLISHED → ARCHIVED。
+
+    归档是历史事实冻结，不释放 teaching_task_id 唯一关系：不清空关联、不软删除。
+    同一教学任务终身仍不可再创建第二条成绩任务。
+    """
     _require_review_role(user)
     with session() as db:
         from app.models import AaGradeTask
@@ -860,10 +998,12 @@ def archive_task(task_id, user) -> dict:
         if t.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布任务可归档")
         t.status = "ARCHIVED"
+        # 明确保留 teaching_task_id，归档不释放终身唯一占用
         _audit(db, "AA_GRADE_TASK", t.id, "ARCHIVE")
         db.commit()
         db.refresh(t)
-        return {"gradeTaskId": str(t.id), "status": t.status}
+        return {"gradeTaskId": str(t.id), "status": t.status,
+                "teachingTaskId": str(t.teaching_task_id or "")}
 
 
 # ═══════════ 成绩更正（record 级，两级审：学院初审→教务处终审） ═══════════

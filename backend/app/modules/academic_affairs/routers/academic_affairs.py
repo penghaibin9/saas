@@ -1394,6 +1394,9 @@ class GradeTaskCreate(BaseModel):
     def _require_course_or_task(self):
         if not self.teachingTaskId and not (self.courseName or "").strip():
             raise ValueError("courseName 与 teachingTaskId 至少填一项")
+        # 特殊补录必须带正式 termId；仅 termCode 不足（权威学期写保护）
+        if not self.teachingTaskId and not (self.termId or "").strip():
+            raise ValueError("脱离教学任务补录必须填写正式 termId")
         return self
 
 
