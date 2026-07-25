@@ -4,8 +4,8 @@
     <template v-if="store.batchLoading">
       <span class="ibs__text">正在读取…</span>
     </template>
-    <template v-else-if="store.batchError && !store.availableBatches.length">
-      <span class="ibs__text ibs__text--err">{{ store.batchError }}</span>
+    <template v-else-if="store.batchLoadFailed">
+      <span class="ibs__text ibs__text--err">{{ store.batchError || '批次服务加载失败' }}</span>
       <button type="button" class="mp-link" @click="reload">重试</button>
     </template>
     <template v-else-if="!store.availableBatches.length">

@@ -15,7 +15,12 @@ import {
   statusOptions
 } from '@/modules/internship/constants/context.constants'
 import { allowByPatterns, isWriteCode } from '@/modules/internship/composables/permission'
-import { setPermissionPatterns } from '@/security/permissionGate'
+import {
+  setPermissionPatterns,
+  setModuleEntitlements,
+  setModuleAccessHealth,
+  setRbacLoadFailed
+} from '@/security/permissionGate'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
@@ -69,6 +74,10 @@ export const internshipApi = {
     // BUG-001：只读演示租户由后端下发，前端据此禁用全部写按钮（不再「点了才 403」）
     let readonlyTenant = false
     let readonlyReason = ''
+    let moduleEntitlements = null
+    let moduleAccessHealthy = true
+    let moduleAccessError = ''
+    let permissionServiceError = ''
     try {
       if (shouldTryReal()) {
         const me = await request('/auth/me')
@@ -77,6 +86,19 @@ export const internshipApi = {
         const realName = me?.realName || me?.user?.realName
         try {
           const rc = await request('/rbac/current-context')
+          setRbacLoadFailed(false)
+          if (rc && rc.moduleAccessHealthy === false) {
+            moduleAccessHealthy = false
+            moduleAccessError = rc.moduleAccessError || '模块授权计算失败'
+            setModuleAccessHealth(false, moduleAccessError)
+            setModuleEntitlements(null)
+          } else {
+            setModuleAccessHealth(true, '')
+            if (Array.isArray(rc?.moduleEntitlements)) {
+              moduleEntitlements = rc.moduleEntitlements
+              setModuleEntitlements(moduleEntitlements)
+            }
+          }
           if (rc && Array.isArray(rc.permissionPatterns)) {
             permissionPatterns = rc.permissionPatterns
             readonlyTenant = !!rc.readonlyTenant
@@ -88,8 +110,10 @@ export const internshipApi = {
             const tid = me?.tenantId || me?.user?.tenantId || ''
             ctxKey = `${tid}|${cr.contextId || ''}|${cr.permissionVersion || ''}`
           }
-        } catch {
-          /* current-context 不可用：投影与按钮态降级；后端接口仍是最终权限边界 */
+        } catch (e) {
+          permissionServiceError = e?.message || '权限服务加载失败'
+          setRbacLoadFailed(true, permissionServiceError)
+          /* current-context 不可用：不得伪装成无权限；布局展示服务错误 */
         }
         if (realName) roleName = `${realName} · ${roleName}`
         roleCtx = { ...roleCtx, roleName }
@@ -120,6 +144,10 @@ export const internshipApi = {
       dataScope: { ...dataScope, scopeName, name: scopeName },
       permissionActions: pa,
       permissionPatterns,
+      moduleEntitlements,
+      moduleAccessHealthy,
+      moduleAccessError,
+      permissionServiceError,
       readonlyTenant,
       readonlyReason: readonlyTenant ? roText : '',
       ctxKey,

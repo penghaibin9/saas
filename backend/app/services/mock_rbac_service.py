@@ -183,8 +183,10 @@ def get_current_context(user_ctx: dict) -> dict:
         "dataScope": {"scope": active["dataScope"], "scopeLabel": active.get("scopeLabel", ""),
                       "scopeName": active.get("scopeLabel", "")},
         "permissionPatterns": patterns,
-        "moduleEntitlements": access.get("moduleEntitlements") or [],
+        "moduleEntitlements": access.get("moduleEntitlements"),
         "moduleStates": access.get("moduleStates") or {},
+        "moduleAccessHealthy": access.get("moduleAccessHealthy", True),
+        "moduleAccessError": access.get("moduleAccessError") or "",
         "permissionActions": {
             "viewList": {"visible": True, "enabled": True},
             "export": {"visible": not is_platform, "enabled": not is_platform,

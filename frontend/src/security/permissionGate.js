@@ -11,7 +11,8 @@
  *   1. 拦截声明了 moduleCode∈GUARDED_MODULES 且带 permissionKey 的业务路由。
  *   2. patterns 未知时：守卫应先 await ensurePermissionPatterns；仍未知则正式环境 fail-closed。
  *   3. 缺少 permissionKey：正式环境 fail-closed；开发环境 warn 后放行。
- *   4. 后端仍是最终安全边界。
+ *   4. 权限服务加载失败：不得伪装成「无权限」——走 permission-service 原因页。
+ *   5. 后端仍是最终安全边界。
  */
 import { matchPermission } from '../config/navPlan.js'
 
@@ -30,7 +31,11 @@ export const GUARDED_MODULES = new Set([
 ])
 
 let _patterns = null // null=未知；数组=已知
-let _moduleEntitlements = null // null=未知；数组=已知
+let _moduleEntitlements = null // null=未知/未下发；数组=已知（含空数组=明确无授权）
+let _moduleAccessHealthy = true
+let _moduleAccessError = ''
+let _rbacLoadFailed = false
+let _rbacLoadError = ''
 let _ensurePromise = null
 
 function _isProd() {
@@ -63,32 +68,62 @@ export function getModuleEntitlements() {
   return _moduleEntitlements
 }
 
+export function setModuleAccessHealth(healthy, error = '') {
+  _moduleAccessHealthy = healthy !== false
+  _moduleAccessError = error || ''
+}
+
+export function getModuleAccessHealth() {
+  return { healthy: _moduleAccessHealthy, error: _moduleAccessError }
+}
+
+export function setRbacLoadFailed(failed, error = '') {
+  _rbacLoadFailed = !!failed
+  _rbacLoadError = failed ? (error || '权限服务加载失败') : ''
+}
+
+export function getRbacLoadFailed() {
+  return _rbacLoadFailed ? (_rbacLoadError || '权限服务加载失败') : ''
+}
+
 /** 登出 / 强制重算时清空。 */
 export function clearPermissionPatterns() {
   _patterns = null
   _moduleEntitlements = null
+  _moduleAccessHealthy = true
+  _moduleAccessError = ''
+  _rbacLoadFailed = false
+  _rbacLoadError = ''
   _ensurePromise = null
 }
 
 /**
  * 冷加载时拉取 /rbac/current-context 并落库 patterns，避免「先进页再 403」。
- * 失败时正式环境保持 patterns=null（随后 canEnterRoute fail-closed）。
+ * 失败时正式环境保持 patterns=null，并标记 rbacLoadFailed（不得伪装成无权限）。
  */
 export async function ensurePermissionPatterns(requestFn) {
-  if (Array.isArray(_patterns)) return _patterns
+  if (Array.isArray(_patterns) && !_rbacLoadFailed) return _patterns
   if (_ensurePromise) return _ensurePromise
   if (typeof requestFn !== 'function') return null
   _ensurePromise = (async () => {
     try {
       const ctx = await requestFn('/rbac/current-context')
+      setRbacLoadFailed(false)
+      if (ctx && ctx.moduleAccessHealthy === false) {
+        setModuleAccessHealth(false, ctx.moduleAccessError || '模块授权计算失败')
+        setModuleEntitlements(null)
+      } else {
+        setModuleAccessHealth(true, '')
+        if (Array.isArray(ctx?.moduleEntitlements)) {
+          setModuleEntitlements(ctx.moduleEntitlements)
+        }
+      }
       if (Array.isArray(ctx?.permissionPatterns)) {
         setPermissionPatterns(ctx.permissionPatterns)
       }
-      if (Array.isArray(ctx?.moduleEntitlements)) {
-        setModuleEntitlements(ctx.moduleEntitlements)
-      }
       return _patterns
-    } catch {
+    } catch (e) {
+      setRbacLoadFailed(true, e?.message || '权限服务加载失败')
       return null
     } finally {
       _ensurePromise = null
@@ -111,7 +146,9 @@ const MODULE_CODE_TO_KEYS = {
 }
 
 function moduleEntitled(moduleCode) {
-  if (!Array.isArray(_moduleEntitlements)) return true // 未下发时不在前端阻断（后端仍是边界）
+  // 授权计算失败：不得按「未购买」拦截；由布局展示服务错误，后端 require_module 仍是边界
+  if (!_moduleAccessHealthy) return true
+  if (!Array.isArray(_moduleEntitlements)) return true // 未下发时不在前端阻断
   if (_moduleEntitlements.includes('*')) return true
   const keys = MODULE_CODE_TO_KEYS[moduleCode] || [moduleCode, String(moduleCode || '').toLowerCase()]
   return keys.some((k) => _moduleEntitlements.includes(k))
@@ -120,12 +157,16 @@ function moduleEntitled(moduleCode) {
 /**
  * 路由守卫判定：是否允许进入该路由。
  * @param {object} meta 目标路由 to.meta（含 moduleCode / permissionKey）
- * @returns {boolean} false=拦截（跳 403）
+ * @returns {boolean} false=拦截（跳 403；若权限服务失败见 getRbacLoadFailed）
  */
 export function canEnterRoute(meta) {
   if (!meta || !GUARDED_MODULES.has(meta.moduleCode)) return true
   const key = meta.permissionKey
   const prod = _isProd()
+
+  if (_rbacLoadFailed) {
+    return false
+  }
 
   if (!moduleEntitled(meta.moduleCode)) {
     return false
@@ -133,7 +174,6 @@ export function canEnterRoute(meta) {
 
   if (!key) {
     if (prod) return false
-    // DEV only: missing key is not silently treated as authorized in production.
     return true
   }
 
@@ -151,6 +191,10 @@ export default {
   getPermissionPatterns,
   setModuleEntitlements,
   getModuleEntitlements,
+  setModuleAccessHealth,
+  getModuleAccessHealth,
+  setRbacLoadFailed,
+  getRbacLoadFailed,
   clearPermissionPatterns,
   ensurePermissionPatterns,
   canEnterRoute,

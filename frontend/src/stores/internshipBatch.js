@@ -22,6 +22,7 @@ function writeStoredBatchId(id) {
  * 岗位实习中心统一批次上下文。
  * 优先级：URL query.batchId → 本地上次选择 → 唯一 RUNNING → 多 RUNNING 须用户选。
  * 禁止把「查询结果第一条」当作永久当前批次。
+ * 禁止把接口失败伪装成「暂无批次」。
  */
 export const useInternshipBatchStore = defineStore('internshipBatch', {
   state: () => ({
@@ -34,6 +35,8 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
     availableBatches: [],
     batchLoading: false,
     batchError: '',
+    /** OK | EMPTY | ERROR | NO_PERMISSION | INVALID_URL */
+    batchLoadStatus: 'OK',
     needsExplicitSelect: false,
     invalidUrlBatch: false,
     initialized: false
@@ -41,6 +44,7 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
   getters: {
     hasBatch: (s) => !!s.selectedBatchId,
     selectedBatch: (s) => s.availableBatches.find((b) => String(b.id) === String(s.selectedBatchId)) || null,
+    batchLoadFailed: (s) => s.batchLoadStatus === 'ERROR' || s.batchLoadStatus === 'NO_PERMISSION',
     canWriteStudents: (s) => {
       const st = s.batchStatus
       return !!s.selectedBatchId && !['VOIDED', 'ARCHIVED', 'CLOSED'].includes(st)
@@ -74,12 +78,33 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
       this.batchLoading = true
       this.batchError = ''
       this.invalidUrlBatch = false
+      const prevId = this.selectedBatchId || readStoredBatchId()
+      const prevMeta = {
+        selectedBatchId: this.selectedBatchId,
+        selectedBatchName: this.selectedBatchName,
+        batchNo: this.batchNo,
+        batchStatus: this.batchStatus,
+        startDate: this.startDate,
+        endDate: this.endDate
+      }
       try {
         const res = await internshipApi.getBatches({ page: 1, pageSize: 200 })
         if (res.code !== 0) {
-          this.batchError = res.message || '批次列表加载失败'
-          this.availableBatches = []
-          this.applyBatch(null)
+          const msg = res.message || '批次列表加载失败'
+          const noPerm = Number(res.code) === 403001 || /无权限|403/.test(String(msg))
+          this.batchLoadStatus = noPerm ? 'NO_PERMISSION' : 'ERROR'
+          this.batchError = noPerm
+            ? (msg || '无权限查看实习批次')
+            : (msg || '批次服务暂不可用，请稍后重试')
+          // 失败不得伪装成空列表后清空当前批次
+          if (!this.selectedBatchId && prevId) {
+            this.selectedBatchId = String(prevId)
+            this.selectedBatchName = prevMeta.selectedBatchName || this.selectedBatchName
+            this.batchNo = prevMeta.batchNo || this.batchNo
+            this.batchStatus = prevMeta.batchStatus || this.batchStatus
+            this.startDate = prevMeta.startDate || this.startDate
+            this.endDate = prevMeta.endDate || this.endDate
+          }
           this.needsExplicitSelect = false
           return
         }
@@ -91,11 +116,13 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
 
         let chosen = null
         this.needsExplicitSelect = false
+        this.batchLoadStatus = this.availableBatches.length ? 'OK' : 'EMPTY'
 
         if (urlId) {
           chosen = this.availableBatches.find((b) => String(b.id) === urlId) || null
           if (!chosen) {
             this.invalidUrlBatch = true
+            this.batchLoadStatus = 'INVALID_URL'
             this.batchError = 'URL 中的批次无效或不属于当前租户，请重新选择'
             this.needsExplicitSelect = true
           }
@@ -119,9 +146,16 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
         this.applyBatch(chosen)
         this.initialized = true
       } catch (e) {
+        this.batchLoadStatus = 'ERROR'
         this.batchError = e?.message || '批次列表加载失败'
-        this.availableBatches = []
-        this.applyBatch(null)
+        if (!this.selectedBatchId && prevId) {
+          this.selectedBatchId = String(prevId)
+          this.selectedBatchName = prevMeta.selectedBatchName || ''
+          this.batchNo = prevMeta.batchNo || ''
+          this.batchStatus = prevMeta.batchStatus || ''
+          this.startDate = prevMeta.startDate || ''
+          this.endDate = prevMeta.endDate || ''
+        }
       } finally {
         this.batchLoading = false
       }
@@ -131,6 +165,7 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
       const batch = this.availableBatches.find((b) => String(b.id) === id) || null
       this.invalidUrlBatch = false
       this.batchError = ''
+      this.batchLoadStatus = this.availableBatches.length ? 'OK' : 'EMPTY'
       this.needsExplicitSelect = !batch && this.availableBatches.length > 1
       this.applyBatch(batch)
     },

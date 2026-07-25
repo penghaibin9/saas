@@ -5,9 +5,25 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
-    <InternshipBatchStrip v-if="ctx" />
-    <router-view v-if="ctx" :ctx="ctx" />
-    <LoadingState v-else text="正在加载岗位实习中心…" />
+    <div v-if="serviceBanner" class="ix-svc-banner" role="alert">
+      <span>{{ serviceBanner }}</span>
+      <button type="button" class="mp-link" @click="reloadContext">重试</button>
+    </div>
+    <InternshipBatchStrip v-if="ctx && !permissionServiceBlocked" />
+    <router-view v-if="ctx && !permissionServiceBlocked && !batchBlocked" :ctx="ctx" />
+    <ErrorState
+      v-else-if="permissionServiceBlocked"
+      title="权限服务加载失败"
+      :description="serviceBanner"
+      @retry="reloadContext"
+    />
+    <ErrorState
+      v-else-if="batchBlocked"
+      title="批次服务暂不可用"
+      :description="batchStore.batchError || '批次列表加载失败，已保留上次选择；恢复前请勿按全历史数据操作'"
+      @retry="reloadBatches"
+    />
+    <LoadingState v-else-if="!ctx" text="正在加载岗位实习中心…" />
   </BasePortalLayout>
 </template>
 
@@ -19,7 +35,7 @@
  * 批次条：统一写入 URL query.batchId，子页不得静默猜批次。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
+import { LoadingState, ErrorState } from '@/components/business'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { internshipPickerAdapters } from '@/modules/internship/pickerAdapters'
 import InternshipBatchStrip from './_shared/InternshipBatchStrip.vue'
@@ -28,7 +44,7 @@ import router from '@/router'
 
 export default {
   name: 'AdminInternshipLayout',
-  components: { BasePortalLayout, LoadingState, InternshipBatchStrip },
+  components: { BasePortalLayout, LoadingState, ErrorState, InternshipBatchStrip },
   provide() {
     return { appPickerAdapters: internshipPickerAdapters }
   },
@@ -42,31 +58,53 @@ export default {
     },
     batchStore() {
       return useInternshipBatchStore()
+    },
+    permissionServiceBlocked() {
+      return !!(this.ctx && this.ctx.permissionServiceError)
+    },
+    batchBlocked() {
+      return !!(this.ctx && this.batchStore.batchLoadFailed && !this.batchStore.hasBatch)
+    },
+    serviceBanner() {
+      if (!this.ctx) return ''
+      if (this.ctx.permissionServiceError) return this.ctx.permissionServiceError
+      if (this.ctx.moduleAccessHealthy === false) {
+        return this.ctx.moduleAccessError || '模块授权计算失败'
+      }
+      if (this.batchStore.batchLoadFailed) return this.batchStore.batchError
+      return ''
     }
   },
   watch: {
     '$route.query.batchId': {
       immediate: true,
       handler(id) {
-        if (!this.ctx) return
+        if (!this.ctx || this.permissionServiceBlocked) return
         this.batchStore.ensureLoaded({ batchIdFromUrl: id || '', force: !!id })
       }
     }
   },
   async created() {
-    const res = await internshipApi.getContext()
-    if (res.code === 0) this.ctx = res.data
-    await this.batchStore.ensureLoaded({
-      batchIdFromUrl: this.$route.query.batchId || '',
-      force: true
-    })
-    if (this.batchStore.selectedBatchId && !this.$route.query.batchId) {
-      this.$router.replace({
-        query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId }
-      }).catch(() => {})
-    }
+    await this.reloadContext()
   },
   methods: {
+    async reloadContext() {
+      const res = await internshipApi.getContext()
+      if (res.code === 0) this.ctx = res.data
+      if (this.permissionServiceBlocked) return
+      await this.reloadBatches()
+    },
+    async reloadBatches() {
+      await this.batchStore.ensureLoaded({
+        batchIdFromUrl: this.$route.query.batchId || '',
+        force: true
+      })
+      if (this.batchStore.selectedBatchId && !this.$route.query.batchId) {
+        this.$router.replace({
+          query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId }
+        }).catch(() => {})
+      }
+    },
     onMenuSelect(item) {
       if (!item?.path) return
       const batchQ = this.batchStore.withBatchQuery({})
@@ -84,3 +122,17 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.ix-svc-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 8px 16px;
+  background: #fef2f2;
+  color: #991b1b;
+  border-bottom: 1px solid #fecaca;
+  font-size: 13px;
+}
+</style>

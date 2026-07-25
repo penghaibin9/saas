@@ -391,6 +391,8 @@ def get_effective_access_context(user: dict) -> dict:
         pass
     module_states = {}
     entitlements: list[str] = []
+    module_access_healthy = True
+    module_access_error = ""
     if tenant_id:
         try:
             from app.core.module_registry import all_module_keys
@@ -402,17 +404,26 @@ def get_effective_access_context(user: dict) -> dict:
                     entitlements.append(mk)
                     if st.get("featureKey"):
                         entitlements.append(st["featureKey"])
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — 不得把计算失败伪装成「未购买任何模块」
+            import logging
+            logging.getLogger(__name__).exception(
+                "module entitlement calculation failed tenant_id=%s", tenant_id)
+            module_access_healthy = False
+            module_access_error = "模块授权计算失败，请稍后重试或联系管理员"
+            module_states = {}
+            entitlements = []  # 仅占位；下方以 healthy=false + entitlements=None 对外区分
     # permissionVersion：权限集变化即变，用于前端失效缓存；旧令牌对比失败则重新拉上下文
     import hashlib
-    blob = f"{role}|{'|'.join(patterns)}|{'|'.join(sorted(set(entitlements)))}"
+    blob = f"{role}|{'|'.join(patterns)}|{'|'.join(sorted(set(entitlements)))}|h={int(module_access_healthy)}"
     permission_version = hashlib.sha256(blob.encode()).hexdigest()[:16]
     return {
         "roleCode": role,
         "permissionPatterns": patterns,
-        "moduleEntitlements": sorted(set(entitlements)),
+        # 计算失败时返回 None，禁止用 [] 伪装成「明确无授权」
+        "moduleEntitlements": None if not module_access_healthy else sorted(set(entitlements)),
         "moduleStates": module_states,
+        "moduleAccessHealthy": module_access_healthy,
+        "moduleAccessError": module_access_error,
         "permissionVersion": permission_version,
         "dataScope": (user or {}).get("dataScope") or "ASSIGNED",
     }

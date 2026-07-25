@@ -5,6 +5,7 @@ import {
   ensurePermissionPatterns,
   GUARDED_MODULES,
   getPermissionPatterns,
+  getRbacLoadFailed,
 } from '@/security/permissionGate'
 
 /**
@@ -226,7 +227,14 @@ router.beforeEach(async (to, from, next) => {
     await ensurePermissionPatterns(request)
   }
   if (!canEnterRoute(to.meta)) {
-    next({ path: '/security/403', query: { from: to.fullPath } })
+    const svcErr = getRbacLoadFailed()
+    next({
+      path: '/security/403',
+      query: {
+        from: to.fullPath,
+        ...(svcErr ? { reason: 'permission-service', message: svcErr } : {})
+      }
+    })
     return
   }
   next()
