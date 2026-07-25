@@ -1287,8 +1287,20 @@ def _roster_import_business_validate(row: dict, row_no: int) -> str | None:
 
 
 def _persist_roster_rows(rows: list) -> dict:
-    from app.models import Major, SchoolClass, StudentProfile, StudentStageEvent
+    """学籍导入落库。
+
+    阶段 B：本函数不再是第二套主档创建器——建档统一交给
+    student_master_application_service，教务侧只负责「解析班级 + 决定初始学籍状态 +
+    写教务审计」。这样组织父链校验、学号永久唯一/作废复活、敏感字段加密口径
+    与其它三条建档链完全一致，不会各写一份而彼此漂移。
+    """
+    from app.core.context import get_current_user_ctx
+    from app.core.student_master_contract import SOURCE_ROSTER_IMPORT, StudentCreateCommand
+    from app.models import SchoolClass
+    from app.services import student_master_application_service as master
+
     created = 0
+    actor = get_current_user_ctx()
     with session() as db:
         for r in rows or []:
             class_name = (r.get("className") or "").strip()
@@ -1297,22 +1309,19 @@ def _persist_roster_rows(rows: list) -> dict:
                 SchoolClass.is_deleted.is_(False))).first()
             if not cls:
                 continue  # 已在预校验拦截，防御性跳过（理论不可达）
-            major = db.get(Major, cls.major_id) if cls.major_id else None
-            id_card = (r.get("idCard") or "").strip()
             init_status = (r.get("initialStatus") or "").strip() or "PENDING_REGISTER"
-            s = StudentProfile(
-                tenant_id=_tid(), student_no=(r.get("studentNo") or "").strip(),
-                real_name=(r.get("realName") or "").strip(), gender=(r.get("gender") or "").strip() or None,
-                id_card_encrypted=encrypt_sensitive(id_card, "id_card"),
-                id_card_hash=hash_sensitive(id_card, "id_card"),
-                college_id=(major.college_id if major else None), major_id=cls.major_id,
-                class_id=cls.id, grade=cls.grade, current_stage="ENROLLED",
-                student_status=init_status, status="ACTIVE")
-            db.add(s)
-            db.flush()
-            db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=None, to_stage=init_status,
-                                     reason="学籍导入建档", source_module="academic-affairs"))
-            _audit(db, "AA_ROSTER", s.id, "IMPORT", s.student_no)
+            cmd = StudentCreateCommand(
+                student_no=(r.get("studentNo") or "").strip(),
+                real_name=(r.get("realName") or "").strip(),
+                source=SOURCE_ROSTER_IMPORT,
+                gender=(r.get("gender") or "").strip() or None,
+                grade=cls.grade,
+                class_id=cls.id, major_id=cls.major_id,
+                id_card=(r.get("idCard") or "").strip() or None,
+                current_stage="ENROLLED", student_status=init_status)
+            result = master.create_student_in_session(
+                db, tenant_id=_tid(), cmd=cmd, actor=actor)
+            _audit(db, "AA_ROSTER", result.student_id, "IMPORT", result.student_no)
             created += 1
         db.commit()
     return {"created": created}

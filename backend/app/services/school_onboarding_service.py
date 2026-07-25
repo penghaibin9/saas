@@ -17,8 +17,10 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException
 from app.core.security import hash_password
 from app.core.student_lifecycle import ENROLLED, normalize_student_stage
+from app.core.student_master_contract import SOURCE_IDENTITY_IMPORT, StudentCreateCommand
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import audit_log
+from app.services import student_master_application_service as master
 from app.services.db_service import _tid
 from app.services.saas_role_templates import (BUILTIN_ROLE_TEMPLATES,
                                                ROLE_TEMPLATE_VERSION,
@@ -354,17 +356,20 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                         if maj and maj.college_id:
                             profile.college_id = maj.college_id
             else:
-                major_id = k.major_id if k else None
-                college_id = None
-                if major_id:
-                    maj = db.get(Major, major_id)
-                    college_id = maj.college_id if maj else None
-                db.add(StudentProfile(
-                    tenant_id=tenant_id, student_no=no, real_name=str(s.get("name")).strip(),
+                # 建档统一走 student_master_application_service（同事务，与账号/角色一起提交）：
+                # 组织父链由 student_org_validator 校验并反推补齐，不再本地 major→college 手推。
+                cmd = StudentCreateCommand(
+                    student_no=no, real_name=str(s.get("name")).strip(),
+                    source=SOURCE_IDENTITY_IMPORT,
                     gender=s.get("gender"), grade=s.get("grade"),
-                    class_id=k.id if k else None, major_id=major_id, college_id=college_id,
-                    current_stage=normalize_student_stage(s.get("stage") or ENROLLED),
-                    student_status="NORMAL", status="ACTIVE"))
+                    class_id=k.id if k else None,
+                    major_id=(k.major_id if k else None),
+                    current_stage=normalize_student_stage(s.get("stage") or ENROLLED))
+                # actor=None：本入口受 systemAdmin.user.import 保护（校级批量建校），
+                # 原实现亦无按操作者收敛的数据范围校验。此处保持既有行为，不在阶段 B
+                # 顺手收紧——若学校把该权限下放给学院管理员，需改为传真实 actor
+                # 让 student_org_validator 拦跨院导入（见历史欠账 阶段B）。
+                master.create_student_in_session(db, tenant_id=tenant_id, cmd=cmd, actor=None)
                 report["entities"]["students"]["created"] += 1
 
             if account:

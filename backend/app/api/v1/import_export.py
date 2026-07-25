@@ -115,6 +115,25 @@ def _limit_operation(user: dict, operation: str, *, user_limit: int, tenant_limi
         raise AppException("RATE_LIMITED", f"操作过于频繁（每分钟最多 {user_limit} 次），请稍后再试")
 
 
+# ── 学生导入入口收敛（学生主档统一整改 阶段 B）────────────────────────────
+# 学校批量创建学生身份与登录账号的正式入口是「系统管理 › 师生统一导入」
+# （/api/v1/system/identity-import/*），它在同一事务里建主档 + 账号 + STUDENT 角色。
+# 本组 /import/students/* 只建主档不建账号，保留为兼容入口：底层已与正式入口
+# 共用 student_master_application_service（规则完全一致），响应加 deprecated 标记
+# 引导迁移，待接入方清零后按补充审计 §4.6 下线。
+_CANONICAL_STUDENT_IMPORT = "/api/v1/system/identity-import"
+
+
+def _mark_deprecated(result: dict) -> dict:
+    """给兼容入口的响应打迁移标记，不改变原有字段。"""
+    out = dict(result or {})
+    out["deprecated"] = True
+    out["canonicalEntry"] = _CANONICAL_STUDENT_IMPORT
+    out["deprecationNote"] = ("本入口只建学生主档、不建登录账号；"
+                              "学校正式批量导入请用「系统管理 › 师生统一导入」。")
+    return out
+
+
 @import_router.post("/students/validate", summary="学生导入 · Dry-Run 校验（JSON 行）")
 def import_students_validate(body: ImportRowsRequest,
                              user=Depends(require_permission("student.import"))):
@@ -122,7 +141,7 @@ def import_students_validate(body: ImportRowsRequest,
     result = ie.dry_run(body.rows)
     audit_log.record("IMPORT", "student-dry-run",
                      detail={"batchNo": result["batchNo"], "total": result["totalRows"], "errors": result["errorRows"]})
-    return success(result, message="校验完成")
+    return success(_mark_deprecated(result), message="校验完成")
 
 
 @import_router.post("/students/validate-file", summary="学生导入 · Dry-Run 校验（上传 xlsx/csv）")
@@ -141,7 +160,7 @@ async def import_students_validate_file(file: UploadFile = File(...),
     result = ie.dry_run(rows)
     audit_log.record("IMPORT", "student-dry-run-file",
                      detail={"file": file.filename, "batchNo": result["batchNo"], "total": result["totalRows"]})
-    return success(result, message="文件解析并校验完成")
+    return success(_mark_deprecated(result), message="文件解析并校验完成")
 
 
 @import_router.post("/students/confirm", summary="学生导入 · 确认写入（整批一个事务，失败回滚）")
@@ -159,7 +178,7 @@ def import_students_confirm(body: ImportConfirmRequest,
     audit_log.record("IMPORT", "student-confirm",
                      detail={"batchNo": body.batchNo, "inserted": result["insertedRows"]})
     idempotency_finish(handle, result)
-    return success(result, message="导入完成")
+    return success(_mark_deprecated(result), message="导入完成")
 
 
 @import_router.post("/domain/{domain}/validate", summary="域白名单通用导入 Dry-Run 校验")

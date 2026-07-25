@@ -99,7 +99,11 @@ export async function createStudent(payload = {}) {
 export async function updateStudent(studentId, payload = {}) {
   const d = await request(`/students/${studentId}`, {
     method: 'PUT',
-    body: { realName: payload.name, gender: payload.gender, grade: payload.grade, phone: payload.phone }
+    // expectedVersion 必填：后端做原子 CAS，版本不匹配返回 409，防两人同时保存互相覆盖
+    body: {
+      expectedVersion: payload.expectedVersion,
+      realName: payload.name, gender: payload.gender, grade: payload.grade, phone: payload.phone
+    }
   })
   return envelope(studentRow(d))
 }

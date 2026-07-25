@@ -40,6 +40,13 @@ RE_BARE_HASH = re.compile(
     r"hashlib\.(?:sha256|md5|sha1)\s*\([^)]*"
     r"(?:phone|id_card|idCard|identity|student_no)\b", re.IGNORECASE)
 
+# ── 规则 5：主档唯一写入口（阶段 B）────────────────────────────────────────
+# StudentProfile 只能由 student_master_application_service 构造。四条建档链
+# （手工/公共导入/统一身份导入/教务学籍导入）此前各建各的，导致组织不校验、
+# 学号唯一规则与敏感字段口径各写一份。新增直接构造一律拦下。
+# 负向后行排除 `class StudentProfile(...)` 的模型定义本身
+RE_DIRECT_PROFILE_CREATE = re.compile(r"(?<!class )\bStudentProfile\s*\(")
+
 SKIP_DIR_PARTS = {"__pycache__", "node_modules", "dist", ".git", "alembic"}
 
 
@@ -74,6 +81,8 @@ def scan_backend(allow: set[str]) -> list[tuple[str, int, str, str]]:
         ("密文直接脱敏（应改用 mask_*_encrypted）", RE_MASK_CIPHERTEXT),
         ("明文写入 _encrypted 列（应经 encrypt_field/encrypt_sensitive）", RE_PLAINTEXT_TO_ENCRYPTED),
         ("敏感值裸哈希（应改用 hash_sensitive 的 HMAC）", RE_BARE_HASH),
+        ("直接构造 StudentProfile（须经 student_master_application_service）",
+         RE_DIRECT_PROFILE_CREATE),
     ]
     for path in _iter_py(BACKEND):
         rel = _rel(path)

@@ -447,7 +447,8 @@ export default {
       const d = this.editDrawer
       d.submitting = true
       d.error = ''
-      const res = await studentApi.updateStudent(this.detail.studentId, d.form)
+      const res = await studentApi.updateStudent(
+        this.detail.studentId, { ...d.form, expectedVersion: this.detail.version })
       d.submitting = false
       if (res.code === 0) {
         d.visible = false

@@ -1,9 +1,9 @@
 {
   "_readme": [
-    "学生敏感字段/权限码静态检查的迁移期豁免清单。",
+    "学生敏感字段/权限码/主档写入口静态检查的豁免清单。",
     "每条必须写明 reason 与 removeByPhase（对应《补充审计与执行修订》的 A/B/C/D 阶段），",
     "只有 path + anchor 而不写退出阶段的条目会让检查脚本直接报配置错误。",
-    "新增代码不得进入本清单——它只用于承接改造成本跨阶段的历史写法。"
+    "新增业务代码不得进入本清单——它只承接改造成本跨阶段的历史写法，以及唯一合法写入口本身。"
   ],
   "allow": [
     {
@@ -11,6 +11,36 @@
       "anchor": "hashlib.sha256(phone.strip().encode(\"utf-8\")).hexdigest()",
       "reason": "家长手机号检索哈希仍是裸 SHA256。改为 hash_sensitive 的 HMAC 会同时影响 guardian_service 的 4 处查询、token 内 guardianPhoneHash claim 与全部历史行，需配套登录态自愈或数据回填，属阶段 C（账号链接与全部外围）范围，阶段 A 不做半截改造。",
       "removeByPhase": "C"
+    },
+    {
+      "path": "backend/app/services/student_master_application_service.py",
+      "anchor": "s = StudentProfile(",
+      "reason": "学生主档的唯一合法构造点。四条建档链全部经本服务，规则 5 的存在就是为了保证这一点，故本行是规则的锚点而非违例。",
+      "removeByPhase": "NEVER"
+    },
+    {
+      "path": "backend/app/services/student_master_application_service.py",
+      "anchor": "教务学籍导入）此前各自 `StudentProfile(...)`",
+      "reason": "模块 docstring 中的说明文字，非可执行代码。",
+      "removeByPhase": "NEVER"
+    },
+    {
+      "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_service.py",
+      "anchor": "StudentProfile(发放名单",
+      "reason": "模块 docstring 中的复用说明，非可执行代码。",
+      "removeByPhase": "NEVER"
+    },
+    {
+      "path": "backend/app/services/platform_service.py",
+      "anchor": "s = StudentProfile(tenant_id=DEMO_TID",
+      "reason": "平台演示租户的 seed 数据生成，不是业务写入口，不面向学校真实数据；走统一服务反而会被组织校验与审计噪音干扰。",
+      "removeByPhase": "NEVER"
+    },
+    {
+      "path": "backend/app/services/sandbox_service.py",
+      "anchor": "sp = StudentProfile(tenant_id=SANDBOX_TID",
+      "reason": "销售沙箱租户的 seed 数据生成，同 platform_service，不是业务写入口。",
+      "removeByPhase": "NEVER"
     }
   ]
 }

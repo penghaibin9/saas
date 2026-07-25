@@ -10,7 +10,6 @@ from pathlib import Path
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.student_lifecycle import ADMITTED
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.file_service import upload_dir
 
@@ -151,21 +150,24 @@ def confirm(batch_no: str) -> dict:
         return payload
     inserted = 0
     from sqlalchemy import select
-    from app.models import StudentContact, StudentImportBatch, StudentProfile
+
+    from app.core.student_master_contract import SOURCE_BULK_IMPORT, StudentCreateCommand
+    from app.models import StudentImportBatch
+    from app.services import student_master_application_service as master
+    actor = get_current_user_ctx()
     db = get_sessionmaker()()
     try:
         try:
+            # 建档统一走 student_master_application_service：组织父链校验、学号永久唯一 +
+            # 作废复活、敏感字段加密、StudentStageEvent 与四条链完全一致，不在此另写一套。
             for r in payload["rows"]:
-                s = StudentProfile(tenant_id=_tid(), student_no=r["studentNo"], real_name=r["realName"],
-                                   gender=r.get("gender") or None, grade=r.get("grade") or None,
-                                   current_stage=ADMITTED, student_status="NORMAL", status="ACTIVE")
-                db.add(s)
-                db.flush()
-                if r.get("phone"):
-                    from app.core.field_crypto import encrypt_field
-                    db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
-                                          contact_value_encrypted=encrypt_field(r["phone"]), is_primary=True,
-                                          verified_status="UNVERIFIED"))
+                cmd = StudentCreateCommand(
+                    student_no=r["studentNo"], real_name=r["realName"],
+                    source=SOURCE_BULK_IMPORT,
+                    gender=r.get("gender") or None, grade=r.get("grade") or None,
+                    college_id=r.get("collegeId"), major_id=r.get("majorId"),
+                    class_id=r.get("classId"), phone=r.get("phone"))
+                master.create_student_in_session(db, tenant_id=_tid(), cmd=cmd, actor=actor)
                 inserted += 1
             b = db.scalars(select(StudentImportBatch).where(
                 StudentImportBatch.tenant_id == _tid(),

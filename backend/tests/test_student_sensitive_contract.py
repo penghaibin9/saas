@@ -63,16 +63,28 @@ def test_projection_exposes_in_session_variant():
 
 
 def test_master_write_path_uses_in_session_sync():
-    """db_service 的主档写入不得再在 commit 之后调独立事务版本。"""
+    """主档写路径的投影必须同事务，且不得在 commit 之后调独立事务版本。
+
+    阶段 B 后投影调用已下沉到 student_master_application_service：
+    db_service 只负责委托，实际同步在统一服务内完成。
+    """
     import inspect
 
     from app.services import db_service
+    from app.services import student_master_application_service as master
 
-    for fn in (db_service.update_student, db_service.create_student):
-        src = inspect.getsource(fn)
-        assert "sync_student_projections_in_session" in src, f"{fn.__name__} 应使用同事务投影"
-        assert "sync_student_projections(" not in src.replace(
-            "sync_student_projections_in_session(", ""), f"{fn.__name__} 仍在调独立事务投影"
+    # 统一服务：用 in_session 版本，且不碰独立事务版本
+    src = inspect.getsource(master._sync_projections)
+    assert "sync_student_projections_in_session" in src, "统一服务应使用同事务投影"
+    assert "sync_student_projections(" not in src.replace(
+        "sync_student_projections_in_session(", ""), "统一服务仍在调独立事务投影"
+
+    # db_service 的写路径已收敛为委托，不得自己再拼投影/ORM
+    for fn, expect in ((db_service.create_student, "create_student_in_session"),
+                       (db_service.update_student, "update_identity_in_session")):
+        fsrc = inspect.getsource(fn)
+        assert expect in fsrc, f"{fn.__name__} 应委托统一服务（{expect}）"
+        assert "sync_student_projections(" not in fsrc, f"{fn.__name__} 不应直接调独立事务投影"
 
 
 # ── 3 & 4. 教务证件链 ──────────────────────────────────────────────────────

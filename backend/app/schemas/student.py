@@ -19,13 +19,19 @@ class StudentCreateRequest(BaseModel):
 
 
 class StudentUpdateRequest(BaseModel):
+    # 并发保护：必须回传从详情/列表拿到的 version，服务端做原子 CAS，
+    # 版本不匹配返回 409，避免两个管理员同时保存时后写覆盖前写。
+    expectedVersion: Optional[int] = Field(
+        None, description="乐观锁版本号（必填，取自学生详情的 version 字段）")
     realName: Optional[str] = None
     gender: Optional[str] = None
+    # 以下三项保留字段仅为兼容旧客户端：传值会被显式拒绝并提示走学籍异动，
+    # 不再像以前那样静默忽略（用户以为改了、实际没改）。
     collegeId: Optional[str] = None
     majorId: Optional[str] = None
     classId: Optional[str] = None
     grade: Optional[str] = None
-    phone: Optional[str] = Field(None, description="脱敏响应；TODO 接库后走加密列")
+    phone: Optional[str] = Field(None, description="写入 StudentContact 密文列，响应脱敏")
     remark: Optional[str] = None
 
 

@@ -98,7 +98,9 @@ export default {
       formError: '',
       submitting: false,
       form: EMPTY_FORM(),
-      initial: EMPTY_FORM()
+      initial: EMPTY_FORM(),
+      /* 乐观锁版本：保存时回传，服务端版本已变则 409，提示刷新 */
+      loadedVersion: null
     }
   },
   computed: {
@@ -154,6 +156,7 @@ export default {
         if (row) {
           this.form = { name: row.name, studentNo: row.studentNo, gender: row.gender, classId: row.classId, phone: row.phone, idCard: row.idCard }
           this.initial = { ...this.form }
+          this.loadedVersion = row.version
           this.loaded = true
         }
       } catch (e) {
@@ -190,6 +193,7 @@ export default {
           toast.info('没有需要保存的变更')
           return
         }
+        payload.expectedVersion = this.loadedVersion
         res = await studentApi.updateStudent(String(this.$route.params.studentId), payload)
       }
       this.submitting = false

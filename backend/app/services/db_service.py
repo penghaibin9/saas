@@ -14,7 +14,6 @@ from sqlalchemy import and_, func, select
 from app.core.context import current_tenant_id, get_current_user_ctx, get_request_meta, get_trace_id
 from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import mask_id_card, mask_phone
-from app.core.student_lifecycle import ADMITTED
 from app.db.session import get_sessionmaker
 from app.models import (SecurityAuditLog, StudentContact, StudentProfile, StudentStageEvent,
                         UnifiedMessage, UnifiedTodo, WorkflowInstance, WorkflowTask)
@@ -230,133 +229,74 @@ def get_student(student_id) -> dict:
         }
 
 
-def _as_optional_id(v, field_label: str):
-    """建档可选外键（学院/专业/班级 ID）安全转换：非数字入参返回 400 校验错误，不再让 int() 打成 500。"""
-    if not v:
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", f"{field_label}格式非法：{v}") from None
-
-
 def create_student(body) -> dict:
-    """学号产品语义（已锁定）：租户内学号永久唯一，作废后同号只能「复活」同一主档 PK，禁止新建第二档。
+    """建档：统一走 student_master_application_service，本函数只做请求体→命令对象的转换。
 
-    uk_tenant_student_no 保持全表唯一（含软删行）；复活复用原 id，保证历史关联不断档。
+    学号产品语义（已锁定）：租户内学号永久唯一，作废后同号只能「复活」同一主档 PK，
+    禁止新建第二档；uk_tenant_student_no 全表唯一（含软删行），复活复用原 id，
+    保证历史关联不断档。该语义现由统一服务实现，四条建档链共用。
     """
     from sqlalchemy.exc import IntegrityError
 
+    from app.core.student_master_contract import SOURCE_MANUAL, StudentCreateCommand
+    from app.services import student_master_application_service as master
+
+    cmd = StudentCreateCommand(
+        student_no=body.studentNo, real_name=body.realName, source=SOURCE_MANUAL,
+        gender=body.gender, grade=body.grade,
+        college_id=body.collegeId, major_id=body.majorId, class_id=body.classId,
+        phone=body.phone)
     with session() as db:
-        active = db.scalars(select(StudentProfile).where(
-            StudentProfile.tenant_id == _tid(), StudentProfile.student_no == body.studentNo,
-            StudentProfile.is_deleted.is_(False))).first()
-        if active:
-            raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一，不可复用为新档）")
-
-        voided = db.scalars(select(StudentProfile).where(
-            StudentProfile.tenant_id == _tid(), StudentProfile.student_no == body.studentNo,
-            StudentProfile.is_deleted.is_(True))).first()
-        if voided:
-            voided.is_deleted = False
-            voided.real_name = body.realName
-            voided.gender = body.gender
-            voided.grade = body.grade
-            voided.college_id = _as_optional_id(body.collegeId, "学院ID")
-            voided.major_id = _as_optional_id(body.majorId, "专业ID")
-            voided.class_id = _as_optional_id(body.classId, "班级ID")
-            voided.student_status = "NORMAL"
-            voided.status = "ACTIVE"
-            voided.current_stage = ADMITTED
-            voided.remark = None
-            voided.version = int(voided.version or 0) + 1
-            db.add(StudentStageEvent(tenant_id=_tid(), student_id=voided.id, from_stage="RECYCLED",
-                                     to_stage=ADMITTED, reason="作废学号复活（复用原主档，非新建）",
-                                     source_module="student"))
-            if body.phone:
-                from app.core.field_crypto import encrypt_field
-                enc = encrypt_field(body.phone)
-                c = db.scalars(select(StudentContact).where(
-                    StudentContact.tenant_id == _tid(), StudentContact.student_id == voided.id,
-                    StudentContact.contact_type == "PHONE")).first()
-                if c:
-                    c.contact_value_encrypted = enc
-                else:
-                    db.add(StudentContact(tenant_id=_tid(), student_id=voided.id, contact_type="PHONE",
-                                          contact_value_encrypted=enc, is_primary=True,
-                                          verified_status="UNVERIFIED"))
-            # 投影与主档同事务：失败一起回滚，不让「主档已改但接口报错」发生
-            from app.services.student_projection_sync import sync_student_projections_in_session
-            sync_student_projections_in_session(db, voided)
-            try:
-                db.commit()
-            except IntegrityError as e:
-                db.rollback()
-                raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
-            db.refresh(voided)
-            row = _student_row(voided, body.phone)
-            row["restored"] = True
-            row["message"] = "已复活原学号主档（同一 studentId），非新建档案"
-            return row
-
-        s = StudentProfile(tenant_id=_tid(), student_no=body.studentNo, real_name=body.realName,
-                           gender=body.gender, grade=body.grade,
-                           college_id=_as_optional_id(body.collegeId, "学院ID"),
-                           major_id=_as_optional_id(body.majorId, "专业ID"),
-                           class_id=_as_optional_id(body.classId, "班级ID"),
-                           current_stage=ADMITTED, student_status="NORMAL", status="ACTIVE")
-        db.add(s)
-        try:
-            db.flush()
-        except IntegrityError as e:
-            db.rollback()
-            raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
-        if body.phone:
-            from app.core.field_crypto import encrypt_field
-            db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
-                                  contact_value_encrypted=encrypt_field(body.phone), is_primary=True,
-                                  verified_status="UNVERIFIED"))
-        db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=None,
-                                 to_stage=ADMITTED, reason="建档", source_module="student"))
+        result = master.create_student_in_session(
+            db, tenant_id=_tid(), cmd=cmd, actor=get_current_user_ctx())
         try:
             db.commit()
         except IntegrityError as e:
             db.rollback()
             raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
+        s = db.get(StudentProfile, result.student_id)
         db.refresh(s)
+        _org_names(db, [s])
         row = _student_row(s, body.phone)
-        row["restored"] = False
+        row["restored"] = result.restored
+        if result.restored:
+            row["message"] = "已复活原学号主档（同一 studentId），非新建档案"
         return row
 
 
 def update_student(student_id, body) -> dict:
+    """更正身份字段：统一走应用服务（含 expectedVersion 原子乐观锁）。
+
+    组织归属（学院/专业/班级）不在此处理——那必须走学籍异动，见补充审计 §4.3。
+    此前 Schema 声明允许传这三个字段但 Service 静默忽略，用户以为改了实际没改；
+    现在改为显式拒绝并指路，不再假装成功。
+    """
+    from app.core.student_master_contract import SOURCE_MANUAL, StudentIdentityUpdateCommand
+    from app.services import student_master_application_service as master
+
+    for f, label in (("collegeId", "学院"), ("majorId", "专业"), ("classId", "班级")):
+        if getattr(body, f, None):
+            raise AppException(
+                "VALIDATION_ERROR",
+                f"{label}调整不能在主档编辑里直接改，请走 教务中心 › 学籍异动"
+                "（转专业/转班需审批留痕）")
+
+    cmd = StudentIdentityUpdateCommand(
+        expected_version=getattr(body, "expectedVersion", None),
+        real_name=getattr(body, "realName", None),
+        gender=getattr(body, "gender", None),
+        grade=getattr(body, "grade", None),
+        phone=getattr(body, "phone", None),
+        remark=getattr(body, "remark", None),
+        source=SOURCE_MANUAL)
     with session() as db:
-        s = _get_profile(db, student_id)
-        for src, col in [("realName", "real_name"), ("gender", "gender"), ("grade", "grade"), ("remark", "remark")]:
-            v = getattr(body, src, None)
-            if v is not None:
-                setattr(s, col, v)
-        s.version += 1
-        phone = getattr(body, "phone", None)
-        if phone:
-            from app.core.field_crypto import encrypt_field
-            enc = encrypt_field(phone)
-            c = db.scalars(select(StudentContact).where(
-                StudentContact.tenant_id == _tid(), StudentContact.student_id == s.id,
-                StudentContact.contact_type == "PHONE")).first()
-            if c:
-                c.contact_value_encrypted = enc
-            else:
-                db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
-                                      contact_value_encrypted=enc, is_primary=True,
-                                      verified_status="UNVERIFIED"))
-        # 投影与主档同事务：失败一起回滚（历史实现在 commit 后同步，报错会造成假失败）
-        from app.services.student_projection_sync import sync_student_projections_in_session
-        sync_student_projections_in_session(db, s)
+        s = master.update_identity_in_session(
+            db, tenant_id=_tid(), student_id=_as_id(student_id), cmd=cmd,
+            actor=get_current_user_ctx())
         db.commit()
         db.refresh(s)
         _org_names(db, [s])
-        return _student_row(s, phone or _primary_phone(db, s.id))
+        return _student_row(s, cmd.phone or _primary_phone(db, s.id))
 
 
 def void_student(student_id, reason: str) -> dict:
