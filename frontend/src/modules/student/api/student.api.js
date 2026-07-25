@@ -28,9 +28,111 @@ import {
   auditLogs
 } from '@/mocks/student/student.mock'
 
+import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { MOCK_DELAY_MS } from '@/utils/mockDelay'
 
 const DELAY = MOCK_DELAY_MS
+
+/* ── 真实后端 ↔ 学生中心页面 字段适配 ──────────────────────────────────────
+ * 学生中心这几个页面早于后端落地，字段名与枚举和后端不同。页面签名冻结（见文件头），
+ * 故在此做映射，不改页面组件、也不在后端为前端造别名字段。 */
+
+/** 学籍异动记录 → 页面行。异动是审批流单据，`status` 表示审批进度而非学籍状态本身。 */
+function fromBackendStatusChange(x = {}) {
+  const AUDIT = { DRAFT: '草稿', SUBMITTED: '待审核', IN_REVIEW: '审核中',
+    EFFECTIVE: '已生效', REJECTED: '已驳回', CANCELLED: '已撤销' }
+  return {
+    id: x.changeId,
+    studentId: x.studentId,
+    studentName: x.realName || '',
+    className: x.toClassId ? `班级#${x.toClassId}` : '',
+    fromStatus: x.fromStatus || '',
+    toStatus: x.toStatus || '',
+    changeType: x.changeType,
+    changeTypeLabel: x.changeTypeLabel || x.changeType,
+    reason: x.reason || '',
+    // 审批未终结时不能显示成「已变更」，否则会让人误以为学籍已经改了
+    auditStatus: x.status,
+    auditStatusLabel: AUDIT[x.status] || x.status,
+    currentNode: x.currentNode || '',
+    effective: x.status === 'EFFECTIVE',
+    operatedAt: x.effectiveDate || '',
+    operator: '',
+    roleName: '',
+    attachment: '',
+    version: x.version
+  }
+}
+
+/** 风险来源枚举 → 中文（与学工中心 StudentAffairsRiskListView 同口径）。 */
+const RISK_SOURCE_LABEL = {
+  LEAVE_OVERDUE: '请假异常', ACADEMIC_WARNING: '学业预警', DORM: '宿舍', MENTAL: '心理',
+  DISCIPLINE: '违纪', INTERNSHIP: '实习', GRADUATION_DESIGN: '毕业设计',
+  EMPLOYMENT: '就业', FAMILY: '家庭', MANUAL: '人工创建'
+}
+
+/** 学工风险记录 → 学生中心「风险标签」行。 */
+function fromBackendRisk(x = {}) {
+  return {
+    id: x.riskId,
+    studentId: x.studentId,
+    studentName: x.realName || '',
+    studentNo: x.studentNo || '',
+    className: '',
+    tagType: x.source,
+    tagTypeLabel: RISK_SOURCE_LABEL[x.source] || x.source,
+    level: x.riskLevel,
+    title: x.title || '',
+    description: x.detail || '',
+    source: x.source,
+    sourceLabel: RISK_SOURCE_LABEL[x.source] || x.source,
+    status: x.status,
+    statusLabel: x.statusLabel || x.status,
+    owner: x.ownerName || '',
+    ownerId: x.ownerId || '',
+    mentalMasked: !!x.mentalMasked,
+    createdAt: x.createdAt || '',
+    voidReason: '',
+    // 处置留痕需按需拉 /handles，列表不预取，避免 N+1
+    followUps: [],
+    version: x.version
+  }
+}
+
+/** 更正状态：后端 PENDING/APPROVED/REJECTED ↔ 页面 PENDING_REVIEW/APPROVED/RETURNED */
+const CORRECTION_STATUS_TO_UI = { PENDING: 'PENDING_REVIEW', APPROVED: 'APPROVED', REJECTED: 'RETURNED' }
+const CORRECTION_STATUS_TO_API = { PENDING_REVIEW: 'PENDING', APPROVED: 'APPROVED', RETURNED: 'REJECTED' }
+
+function toBackendCorrectionStatus(uiStatus) {
+  return uiStatus ? (CORRECTION_STATUS_TO_API[uiStatus] || uiStatus) : ''
+}
+
+function fromBackendCorrection(r = {}) {
+  return {
+    id: r.correctionId,
+    studentId: r.studentId,
+    studentName: r.realName || '',
+    studentNo: r.studentNo || '',
+    className: r.className || '',
+    fieldKey: r.fieldKey,
+    fieldLabel: r.fieldLabel,
+    oldValue: r.oldValue,
+    newValue: r.newValue,
+    sensitive: !!r.sensitive,
+    reason: r.reason || '',
+    // 后端存的是文件对象 id，页面按附件名列表渲染；无文件名时以编号占位，不伪造名称
+    attachments: (r.materialFileIds || []).map((fid) => `附件#${fid}`),
+    materialFileIds: r.materialFileIds || [],
+    materialRequired: !!r.materialRequired,
+    channel: r.channel || '教务发起',
+    submitTime: r.createdAt || '',
+    status: CORRECTION_STATUS_TO_UI[r.status] || r.status,
+    reviewer: r.reviewerName || '',
+    reviewTime: r.reviewedAt || '',
+    reviewComment: r.reviewNote || ''
+  }
+}
 
 function ok(data) {
   return new Promise((resolve) => {
@@ -415,19 +517,43 @@ export const studentApi = {
 
   /* ================= 学籍状态管理 ================= */
 
-  getStatusRecords(params = {}) {
-    let list = statusChangeRecords.filter((r) => {
-      const s = findStudent(r.studentId)
-      return s && inScope(s)
+  /** 学籍异动台账（真实后端 t_aa_status_change）。
+   *  本页只读——发起异动是教务「学籍异动」模块的职责，不在此重复造入口
+   *  （同 navPlan 中 AaRosterChangeResultListView 的既定口径）。 */
+  async getStatusRecords(params = {}) {
+    if (!shouldTryReal()) {
+      let list = statusChangeRecords.filter((r) => {
+        const s = findStudent(r.studentId)
+        return s && inScope(s)
+      })
+      if (params.keyword) list = list.filter((r) => kw(r.studentName, params.keyword))
+      if (params.toStatus) list = list.filter((r) => r.toStatus === params.toStatus)
+      if (params.dateFrom) list = list.filter((r) => r.operatedAt >= params.dateFrom)
+      return ok(paginate(list, params))
+    }
+    const res = await academicAffairsApi.getStatusChanges({
+      dateFrom: params.dateFrom || '',
+      page: params.page || 1,
+      pageSize: params.pageSize || 20
     })
+    if (res.code !== 0) return res
+    let list = (res.data.list || []).map(fromBackendStatusChange)
     if (params.keyword) list = list.filter((r) => kw(r.studentName, params.keyword))
     if (params.toStatus) list = list.filter((r) => r.toStatus === params.toStatus)
-    if (params.dateFrom) list = list.filter((r) => r.operatedAt >= params.dateFrom)
-    return ok(paginate(list, params))
+    return ok({ list, total: res.data.total, page: res.data.page, pageSize: res.data.pageSize })
   },
 
-  /** 学籍状态变更（原因必填，留痕） */
+  /** 学籍状态变更（原因必填，留痕）。
+   *
+   *  真实后端不存在「一步直接改学籍状态」的能力，也不应存在：学籍状态唯一写入口是
+   *  change_student_status()，只能由教务「学籍异动」的多级审批（辅导员→学院→教务处）终审触发。
+   *  因此后端在线时本方法不再伪装成即时生效，而是明确拒绝并引导到教务发起页；
+   *  离线 mock 保留原行为供演示。 */
   changeStatus(studentId, { toStatus, reason, attachment } = {}) {
+    if (shouldTryReal()) {
+      return fail('学籍状态须经「学籍异动」审批生效，请到 教务中心 › 学籍异动 › 发起异动 提交申请'
+        + '（休学/复学/退学/保留学籍/留级/转班），审批通过后本页台账会同步显示。')
+    }
     const s = findStudent(studentId)
     if (!s || !inScope(s)) return fail('学生不存在或不在当前数据范围内')
     if (s.voided) return fail('已作废主档不可变更状态')
@@ -459,6 +585,10 @@ export const studentApi = {
   },
 
   batchChangeStatus(studentIds = [], { toStatus, reason } = {}) {
+    if (shouldTryReal()) {
+      return fail('批量变更学籍状态在真实环境不可用：每名学生的异动都需独立审批留痕，'
+        + '请到 教务中心 › 学籍异动 逐人发起。')
+    }
     if (!studentIds.length) return fail('请先选择学生')
     const r = String(reason || '').trim()
     if (r.length < 5) return fail('批量变更原因必填且不少于 5 个字')
@@ -480,7 +610,18 @@ export const studentApi = {
 
   /* ================= 身份核验 ================= */
 
+  /** 身份核验记录。
+   *
+   *  本页展示的是「公安实名比对 / 人脸识别相似度」，依赖学校采购的第三方核验服务；
+   *  本系统尚未接入任何此类服务，后端也无对应表与端点。真实环境下返回空台账并附说明，
+   *  绝不拿演示数据冒充核验结果——伪造的「已通过实名比对」会直接误导学籍审核。
+   *  （迎新的「新生信息核验」是另一条真实链路，在 数字迎新 › 信息核验 内。） */
   getIdentityRecords(params = {}) {
+    if (shouldTryReal()) {
+      return ok({ list: [], total: 0, page: params.page || 1, pageSize: params.pageSize || 20,
+        notice: '身份核验依赖第三方实名/人脸核验服务，当前环境未接入，故无真实记录。'
+          + '新生入学阶段的人工信息核验请见「数字迎新 › 信息核验」。' })
+    }
     let list = identityRecords.filter((r) => inScope(r) || inScope(findStudent(r.studentId) || {}))
     if (params.keyword) list = list.filter((r) => kw(r.studentName, params.keyword))
     if (params.status) list = list.filter((r) => r.status === params.status)
@@ -490,6 +631,10 @@ export const studentApi = {
 
   /** 人工复核：CONFIRM 确认通过 / RETURN 退回重验（退回原因必填） */
   reviewIdentityRecord(recordId, { action, comment } = {}) {
+    if (shouldTryReal()) {
+      return fail('身份核验服务未接入，无可复核的真实记录；'
+        + '新生信息核验请到「数字迎新 › 信息核验」办理。')
+    }
     const rec = identityRecords.find((r) => r.id === recordId)
     if (!rec) return fail('核验记录不存在')
     if (rec.status !== 'PENDING_REVIEW') return fail('该记录已复核，不可重复操作')
@@ -520,6 +665,10 @@ export const studentApi = {
   },
 
   markIdentityAbnormal(recordId, { reason } = {}) {
+    if (shouldTryReal()) {
+      return fail('身份核验服务未接入，无法标记核验异常；'
+        + '如需记录学生身份存疑，请在「学生风险标签」登记人工风险。')
+    }
     const rec = identityRecords.find((r) => r.id === recordId)
     if (!rec) return fail('核验记录不存在')
     if (rec.status === 'ABNORMAL') return fail('该记录已标记异常')
@@ -536,23 +685,54 @@ export const studentApi = {
   },
 
   /* ================= 信息更正审核 ================= */
+  /* 真实后端：教务「学籍信息更正」（t_aa_student_correction）。
+     本模块不另建一套更正流程——同一张表、同一套审核权限，只做字段适配。
+     离线/未登录时回退 mock，与本文件其它方法一致。 */
 
-  getCorrections(params = {}) {
-    let list = correctionRequests.filter((r) => inScope(r) || inScope(findStudent(r.studentId) || {}))
+  async getCorrections(params = {}) {
+    if (!shouldTryReal()) {
+      let list = correctionRequests.filter((r) => inScope(r) || inScope(findStudent(r.studentId) || {}))
+      if (params.keyword) list = list.filter((r) => kw(r.studentName, params.keyword) || kw(r.fieldLabel, params.keyword))
+      if (params.status) list = list.filter((r) => r.status === params.status)
+      if (params.channel) list = list.filter((r) => r.channel === params.channel)
+      return ok(paginate(list, params))
+    }
+    const res = await academicAffairsApi.getRosterCorrections({
+      status: toBackendCorrectionStatus(params.status),
+      page: params.page || 1,
+      pageSize: params.pageSize || 20
+    })
+    if (res.code !== 0) return res
+    let list = (res.data.list || []).map(fromBackendCorrection)
+    // 后端无关键字/渠道过滤，按页面既有语义在前端收敛
     if (params.keyword) list = list.filter((r) => kw(r.studentName, params.keyword) || kw(r.fieldLabel, params.keyword))
-    if (params.status) list = list.filter((r) => r.status === params.status)
     if (params.channel) list = list.filter((r) => r.channel === params.channel)
-    return ok(paginate(list, params))
+    return ok({ list, total: res.data.total, page: res.data.page, pageSize: res.data.pageSize })
   },
 
-  getCorrectionDetail(id) {
-    const rec = correctionRequests.find((r) => r.id === id)
-    if (!rec) return fail('更正申请不存在')
-    return ok(clone(rec))
+  async getCorrectionDetail(id) {
+    if (!shouldTryReal()) {
+      const rec = correctionRequests.find((r) => r.id === id)
+      if (!rec) return fail('更正申请不存在')
+      return ok(clone(rec))
+    }
+    // 后端无单条详情端点，从列表取（更正总量小，且列表已带全部展示字段）
+    const res = await academicAffairsApi.getRosterCorrections({ page: 1, pageSize: 200 })
+    if (res.code !== 0) return res
+    const hit = (res.data.list || []).map(fromBackendCorrection).find((r) => String(r.id) === String(id))
+    return hit ? ok(hit) : fail('更正申请不存在')
   },
 
-  /** 更正审核：APPROVE 通过（同步主档）/ RETURN 退回（原因必填） */
-  reviewCorrection(id, { action, reason } = {}) {
+  /** 更正审核：APPROVE 通过（后端同步主档）/ RETURN 退回（原因必填，映射后端 REJECT） */
+  async reviewCorrection(id, { action, reason } = {}) {
+    if (shouldTryReal()) {
+      const note = String(reason || '').trim()
+      if (action === 'RETURN' && note.length < 5) return fail('退回原因必填且不少于 5 个字')
+      if (action !== 'APPROVE' && action !== 'RETURN') return fail('非法的审核动作')
+      const res = await academicAffairsApi.reviewRosterCorrection(
+        id, action === 'APPROVE' ? 'APPROVE' : 'REJECT', note)
+      return res.code === 0 ? ok(fromBackendCorrection(res.data)) : res
+    }
     const rec = correctionRequests.find((r) => r.id === id)
     if (!rec) return fail('更正申请不存在')
     if (rec.status !== 'PENDING_REVIEW') return fail('该申请已审核，不可重复操作')
@@ -590,16 +770,47 @@ export const studentApi = {
 
   /* ================= 风险标签 ================= */
 
-  getRiskTags(params = {}) {
-    let list = riskTags.filter((t) => inScope(t) || inScope(findStudent(t.studentId) || {}))
-    if (params.keyword) list = list.filter((t) => kw(t.studentName, params.keyword) || kw(t.title, params.keyword))
-    if (params.tagType) list = list.filter((t) => t.tagType === params.tagType)
-    if (params.level) list = list.filter((t) => t.level === params.level)
-    if (params.status) list = list.filter((t) => t.status === params.status)
-    return ok(paginate(list, params))
+  /** 风险列表（真实后端：学工风险中枢 t_affairs_risk_record）。
+   *  学生中心与学工中心看同一份数据，不另建「学生风险标签」表。 */
+  async getRiskTags(params = {}) {
+    if (!shouldTryReal()) {
+      let list = riskTags.filter((t) => inScope(t) || inScope(findStudent(t.studentId) || {}))
+      if (params.keyword) list = list.filter((t) => kw(t.studentName, params.keyword) || kw(t.title, params.keyword))
+      if (params.tagType) list = list.filter((t) => t.tagType === params.tagType)
+      if (params.level) list = list.filter((t) => t.level === params.level)
+      if (params.status) list = list.filter((t) => t.status === params.status)
+      return ok(paginate(list, params))
+    }
+    const res = await studentAffairsApi.getRisks({
+      source: params.tagType || '',
+      status: params.status || '',
+      riskLevel: params.level || '',
+      page: params.page || 1,
+      pageSize: params.pageSize || 20
+    })
+    if (res.code !== 0) return res
+    const raw = res.data
+    const rows = (raw.items || raw.list || []).map(fromBackendRisk)
+    const list = params.keyword
+      ? rows.filter((t) => kw(t.studentName, params.keyword) || kw(t.title, params.keyword))
+      : rows
+    return ok({ list, total: raw.total ?? list.length, page: raw.page || 1, pageSize: raw.pageSize || 20 })
   },
 
-  createRiskTag(payload = {}) {
+  async createRiskTag(payload = {}) {
+    if (shouldTryReal()) {
+      const title = String(payload.title || '').trim()
+      if (title.length < 4) return fail('标签标题必填且不少于 4 个字')
+      if (!payload.tagType) return fail('请选择风险类型')
+      const res = await studentAffairsApi.createRisk({
+        studentId: String(payload.studentId),
+        source: payload.tagType,
+        riskLevel: payload.level || 'MEDIUM',
+        title,
+        detail: String(payload.description || '').trim()
+      })
+      return res.code === 0 ? ok(fromBackendRisk(res.data || {})) : res
+    }
     const s = findStudent(payload.studentId)
     if (!s || !inScope(s)) return fail('学生不存在或不在当前数据范围内')
     const title = String(payload.title || '').trim()
@@ -632,6 +843,11 @@ export const studentApi = {
   },
 
   updateRiskTag(id, payload = {}) {
+    if (shouldTryReal()) {
+      // 风险中枢的记录是处置台账，成立后内容不可改写（只能处置/跟进/升级/关闭），
+      // 否则处置留痕会与原始风险描述对不上。后端因此没有 update 端点，此处如实拒绝。
+      return fail('风险记录成立后不可编辑内容，请改用「跟进」补充说明，或关闭后重新登记。')
+    }
     const t = riskTags.find((x) => x.id === id)
     if (!t) return fail('风险标签不存在')
     if (t.status === 'VOIDED') return fail('已作废标签不可编辑')
@@ -647,7 +863,16 @@ export const studentApi = {
     return ok(clone(t))
   },
 
-  voidRiskTag(id, { reason } = {}) {
+  async voidRiskTag(id, { reason } = {}) {
+    if (shouldTryReal()) {
+      const conclusion = String(reason || '').trim()
+      if (conclusion.length < 5) return fail('关闭结论必填且不少于 5 个字')
+      // 后端语义是「关闭」（写结论、进学生360），不是物理作废
+      const cur = await studentAffairsApi.getRiskDetail(id)
+      if (cur.code !== 0) return cur
+      const res = await studentAffairsApi.closeRisk(id, conclusion, cur.data?.version)
+      return res.code === 0 ? ok(fromBackendRisk(res.data || {})) : res
+    }
     const t = riskTags.find((x) => x.id === id)
     if (!t) return fail('风险标签不存在')
     if (t.status === 'VOIDED') return fail('该标签已作废')
@@ -659,7 +884,15 @@ export const studentApi = {
     return ok(clone(t))
   },
 
-  addRiskFollowUp(id, { note } = {}) {
+  async addRiskFollowUp(id, { note } = {}) {
+    if (shouldTryReal()) {
+      const content = String(note || '').trim()
+      if (content.length < 5) return fail('跟进内容必填且不少于 5 个字')
+      const cur = await studentAffairsApi.getRiskDetail(id)
+      if (cur.code !== 0) return cur
+      const res = await studentAffairsApi.followRisk(id, content, cur.data?.version)
+      return res.code === 0 ? ok(fromBackendRisk(res.data || {})) : res
+    }
     const t = riskTags.find((x) => x.id === id)
     if (!t) return fail('风险标签不存在')
     if (t.status === 'VOIDED' || t.status === 'RESOLVED') return fail('已解除 / 已作废标签无需跟进')
@@ -673,6 +906,10 @@ export const studentApi = {
   },
 
   batchRemindRisk(ids = []) {
+    if (shouldTryReal()) {
+      // 后端无批量提醒端点，也没有对应的消息投递链路；不做假成功提示。
+      return fail('批量提醒暂未接入真实通知链路，请在风险详情内逐条分派责任人或转办。')
+    }
     if (!ids.length) return fail('请先勾选风险标签')
     pushAudit('风险批量提醒', 'RISK_TAG', `${ids.length} 条风险标签`, '已通知责任人与学生（站内信 + 小程序）')
     return ok({ count: ids.length })

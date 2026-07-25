@@ -48,6 +48,18 @@ function H(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'implemented', disabled: false, badge: '', hidden: true,
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
+/** 学生主档查看页的权限口径：两组角色后端都放行（完整字段 / 最小字段），菜单与路由必须同口径。
+ *  见 backend/app/api/v1/student.py::list_students 与 student.routes.js。 */
+const _STU_VIEW_ANY = ['student.profile.view', 'studentAffairs.student.view']
+
+/** 已接真实后端的三页，菜单口径与 student.routes.js / 后端端点三处一致。 */
+const _SC_VIEW_ANY = ['academicAffairs.statusChange.view',
+  'academicAffairs.statusChange.counselorReview',
+  'academicAffairs.statusChange.collegeReview',
+  'academicAffairs.statusChange.officeReview']
+const _CORRECTION_ANY = ['academicAffairs.roster.correction.view',
+  'academicAffairs.roster.correction.review']
+
 /** 二级模块：有 path=已实现入口，无 path=待施工入口。
  *  第 5 参 permissionKey：无子叶时用于整块过滤（如「我的待办」「领导驾驶舱」二级入口）。 */
 function mod(key, label, path, children, permissionKey) {
@@ -108,14 +120,19 @@ export const NAV_PLAN = [
       I('我的工作台', '/', 'workbench.home.view')
     ]),
     // 正式菜单只保留学生主档列表；学生360从主档详情进入；旧 /admin/student-affairs/profile 保留 redirect
+    // 菜单口径必须与 student.routes.js 的路由守卫一致，否则「菜单可见 → 点进去跳 403」。
+    // 主档查看页用 permissionAny：student.profile.view（学院/教务/学工管理员，返回完整字段）
+    // 或 studentAffairs.student.view（辅导员/心理/资助/团委，后端返回最小字段），
+    // 二者后端都放行（api/v1/student.py list_students），只写单键会把其中一组角色误挡。
     mod('sa-profile', '学生主档', '/admin/student/list', [
-      I('学生列表', '/admin/student/list', 'studentAffairs.student.view'),
-      I('学籍状态摘要', '/admin/student/status', 'studentAffairs.student.view'),
-      I('风险标签', '/admin/student/risk-tags', 'studentAffairs.student.view'),
-      I('信息更正审核', '/admin/student/corrections', 'studentAffairs.student.view'),
-      I('身份核验', '/admin/student/identity', 'studentAffairs.student.view'),
-      I('导入导出', '/admin/student/import-export', 'studentAffairs.student.view'),
-      H('学生360详情', '/admin/student-affairs/profile', 'studentAffairs.student.view', 'DETAIL')
+      I('学生列表', '/admin/student/list', null, null, { permissionAny: _STU_VIEW_ANY }),
+      I('学籍异动台账', '/admin/student/status', null, null, { permissionAny: _SC_VIEW_ANY }),
+      I('风险标签', '/admin/student/risk-tags', 'studentAffairs.risk.view'),
+      I('信息更正审核', '/admin/student/corrections', null, null, { permissionAny: _CORRECTION_ANY }),
+      I('身份核验', '/admin/student/identity', null, null, { permissionAny: _STU_VIEW_ANY }),
+      I('导入导出', '/admin/student/import-export', null, null,
+        { permissionAny: ['student.import', 'student.export'] }),
+      H('学生360详情', '/admin/student-affairs/profile', null, 'DETAIL', { permissionAny: _STU_VIEW_ANY })
     ]),
     // 班级列表/画像/材料原指向同一路由 → 收敛为「班级管理」；画像/材料从班级页内进入
     mod('sa-classes', '班级与辅导员', null, [
@@ -838,6 +855,10 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     if (!includePlanned && leaf.status === 'planned') return false
     if (!(includePlanned || leaf.status === 'implemented' || leaf.status === 'partial')) return false
     if (applyPerm && leaf.permissionKey && !matchPermission(permissionPatterns, leaf.permissionKey)) return false
+    // permissionAny：任一命中即可见（与 permissionGate.canEnterRoute 同语义，
+    // 用于一个页面被多个真实后端权限码共同覆盖的场景，如学生主档 view/picker 两组角色）
+    if (applyPerm && Array.isArray(leaf.permissionAny) && leaf.permissionAny.length
+        && !leaf.permissionAny.some((k) => matchPermission(permissionPatterns, k))) return false
     return true
   }
   const keepMod = (mod2) => {

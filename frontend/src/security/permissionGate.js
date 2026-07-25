@@ -18,6 +18,7 @@ import { matchPermission } from '../config/navPlan.js'
 
 /** 纳入本门拦截的业务中心 moduleCode（与路由 meta.moduleCode 对齐）。 */
 export const GUARDED_MODULES = new Set([
+  'STUDENT',
   'STUDENT_AFFAIRS',
   'INTERNSHIP',
   'GRADUATION',
@@ -133,6 +134,8 @@ export async function ensurePermissionPatterns(requestFn) {
 }
 
 const MODULE_CODE_TO_KEYS = {
+  // 对齐 shared/contracts/module-manifest.json 的 studentProfile（别名 student360）
+  STUDENT: ['studentProfile', 'student360', 'student', 'STUDENT'],
   STUDENT_AFFAIRS: ['studentAffairs', 'STUDENT_AFFAIRS'],
   INTERNSHIP: ['internship', 'INTERNSHIP'],
   GRADUATION: ['graduation', 'graduationDesign', 'GRADUATION'],
@@ -172,7 +175,12 @@ export function canEnterRoute(meta) {
     return false
   }
 
-  if (!key) {
+  // permissionAny：任一命中即可进入（如导入导出同页，有 import 或 export 之一即可）
+  // permissionAll：需全部命中。三者按 permissionKey → permissionAny → permissionAll 取第一个声明的。
+  const anyKeys = Array.isArray(meta.permissionAny) ? meta.permissionAny.filter(Boolean) : []
+  const allKeys = Array.isArray(meta.permissionAll) ? meta.permissionAll.filter(Boolean) : []
+
+  if (!key && !anyKeys.length && !allKeys.length) {
     if (prod) return false
     return true
   }
@@ -182,7 +190,9 @@ export function canEnterRoute(meta) {
     return true
   }
 
-  return matchPermission(_patterns, key)
+  if (key) return matchPermission(_patterns, key)
+  if (anyKeys.length) return anyKeys.some((k) => matchPermission(_patterns, k))
+  return allKeys.every((k) => matchPermission(_patterns, k))
 }
 
 export default {

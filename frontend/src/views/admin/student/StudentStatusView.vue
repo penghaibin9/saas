@@ -44,7 +44,9 @@
       </DataTable>
 
       <p class="mp-note">
-        学籍状态变更为高敏感操作：原因必填（≥5 字）、全程审计留痕；批量变更仅限「学籍老师」角色。
+        本页为学籍异动台账（只读）：学籍状态的唯一写入口是「学籍异动」多级审批，
+        审批终审通过后状态才真正变更并在此显示。发起休学/复学/退学/保留学籍/留级/转班请前往
+        <button class="mp-link" @click="goApply">教务中心 › 学籍异动 › 发起异动</button>。
       </p>
     </div>
 
@@ -117,7 +119,7 @@
       :visible="confirmDialog.visible"
       type="danger"
       title="确认变更学籍状态"
-      :message="'操作对象：' + confirmTargetText() + '。将变更为「' + statusLabel(drawer.toStatus) + '」，变更原因：' + drawer.reason + '。变更立即生效并写入审计与学生360，如需恢复须再次发起变更（不可自动撤销），请确认。'"
+      :message="'操作对象：' + confirmTargetText() + '。将申请变更为「' + statusLabel(drawer.toStatus) + '」，变更原因：' + drawer.reason + '。提交后进入学籍异动审批（辅导员→学院→教务处），终审通过才生效，请确认。'"
       confirm-text="确认变更"
       :submitting="confirmDialog.submitting"
       @update:visible="confirmDialog.visible = $event"
@@ -314,6 +316,9 @@ export default {
       const stu = this.candidates.find((c) => c.studentId === d.studentId)
       return stu ? `${stu.name}（${stu.className}，当前 ${this.statusLabel(stu.studentStatus)}）` : '所选学生'
     },
+    goApply() {
+      this.$router.push('/admin/academic-affairs/status-changes/new')
+    },
     async doSubmitChange() {
       const d = this.drawer
       this.confirmDialog.submitting = true
@@ -335,8 +340,8 @@ export default {
         d.visible = false
         toast.success(
           d.batch
-            ? '批量变更完成：成功 ' + res.data.success + ' 条，跳过 ' + res.data.skipped + ' 条（已留痕）'
-            : '学籍状态已变更并留痕'
+            ? '批量提交完成：成功 ' + res.data.success + ' 条，跳过 ' + res.data.skipped + ' 条（已留痕）'
+            : '学籍状态变更已登记并留痕'
         )
         this.load()
         this.loadCandidates()
