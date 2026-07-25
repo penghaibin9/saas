@@ -273,7 +273,9 @@ export default {
       if (this.confirmMode === 'activate') res = await internshipApi.activateBatch(d.id, { expectedVersion: d.version })
       else if (this.confirmMode === 'close') res = await internshipApi.closeBatch(d.id, { expectedVersion: d.version })
       else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(d.id, { expectedVersion: d.version })
-      else if (this.confirmMode === 'void') res = await internshipApi.voidBatch(d.id, reason)
+      else if (this.confirmMode === 'void') res = await internshipApi.voidBatch(d.id, {
+        reason, expectedVersion: d.version
+      })
       this.confirmSubmitting = false
       if (res && res.code === 0) {
         toast.success('操作成功')

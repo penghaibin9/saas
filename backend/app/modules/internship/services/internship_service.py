@@ -1308,22 +1308,38 @@ def _batch_readiness_report(db, batch_id: int) -> dict:
     }
 
 
-def void_batch(bid, reason: str, user=None) -> dict:
+def void_batch(bid, reason: str, user=None, *, expected_version=None) -> dict:
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+    from app.models import InternshipBatch
     assert_admin_tenant(user or get_current_user_ctx() or {}, "作废实习批次")
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
+    ver = extract_expected_version({"expectedVersion": expected_version})
     with session() as db:
         b = _get_batch(db, bid)
         if b.status != "DRAFT":
             raise AppException("INVALID_STATE", "仅草稿批次可作废；进行中/已结束请先按流程结束再归档")
-        b.previous_status, b.status = b.status, "VOIDED"
-        b.transition_reason = reason.strip()
-        b.last_transition_at = datetime.utcnow()
-        b.last_transition_by = _op_name()
-        b.version += 1
-        _trail(db, b.id, "BATCH", "VOID", {"reason": reason.strip()})
+        now = datetime.utcnow()
+        reason_s = reason.strip()
+        new_ver = versioned_update(
+            db, InternshipBatch, entity_id=b.id, tenant_id=_tid(),
+            expected_version=ver, expected_status="DRAFT",
+            values={
+                "previous_status": "DRAFT",
+                "status": "VOIDED",
+                "transition_reason": reason_s,
+                "last_transition_at": now,
+                "last_transition_by": _op_name(),
+            },
+        )
+        _trail(db, b.id, "BATCH", "VOID", {"reason": reason_s})
         db.commit()
-        return {"id": str(b.id), "status": b.status, "statusLabel": BATCH_STATUS_LABEL[b.status]}
+        return {
+            "id": str(b.id), "status": "VOIDED",
+            "statusLabel": BATCH_STATUS_LABEL["VOIDED"], "version": new_ver,
+        }
 
 
 def export_batches(keyword=None, status=None) -> dict:

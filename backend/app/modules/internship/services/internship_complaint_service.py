@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
@@ -115,10 +115,33 @@ def _complaint_in_scope(db, c, user) -> bool:
         return False
 
 
-def list_complaints(page, page_size, status=None, enterprise_id=None, severity=None, user=None):
+def list_complaints(page, page_size, status=None, enterprise_id=None, severity=None,
+                    batch_id=None, user=None):
+    from app.modules.internship.services.internship_batch_context import (
+        batch_record_ids, parse_required_batch_id,
+    )
     with session() as db:
+        bid = parse_required_batch_id(batch_id)
+        _, record_ids = batch_record_ids(db, batch_id)
+        student_ids: list[int] = []
+        if record_ids:
+            student_ids = list(db.scalars(
+                select(InternshipRecord.student_id).where(
+                    InternshipRecord.id.in_(record_ids),
+                    InternshipRecord.is_deleted.is_(False),
+                )).all())
+        # 明确挂本批，或未挂批次但学生属于本批实习记录（兼容历史未写 batch_id）
+        batch_scope = [InternshipComplaint.batch_id == bid]
+        if student_ids:
+            batch_scope.append(and_(
+                InternshipComplaint.batch_id.is_(None),
+                InternshipComplaint.student_id.in_(student_ids),
+            ))
         q = select(InternshipComplaint).where(
-            InternshipComplaint.tenant_id == _tid(), InternshipComplaint.is_deleted.is_(False))
+            InternshipComplaint.tenant_id == _tid(),
+            InternshipComplaint.is_deleted.is_(False),
+            or_(*batch_scope),
+        )
         if status:
             q = q.where(InternshipComplaint.status == status)
         if enterprise_id:

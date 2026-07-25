@@ -19,12 +19,14 @@ _P_VIEW = "internship.communication.view"
 _P_MANAGE = "internship.communication.manage"
 
 
-@router.get("", summary="企业沟通记录列表（按数据范围）")
+@router.get("", summary="企业沟通记录列表（按批次 + 数据范围）")
 def communications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                   batchId: Optional[str] = Query(None, description="实习批次（必填）"),
                    enterpriseId: Optional[str] = None, studentId: Optional[str] = None,
                    status: Optional[str] = None, user=Depends(require_permission(_P_VIEW))):
-    items, total = svc.list_communications(page, pageSize, enterprise_id=enterpriseId,
-                                           student_id=studentId, status=status, user=user)
+    items, total = svc.list_communications(
+        page, pageSize, enterprise_id=enterpriseId, student_id=studentId, status=status,
+        batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 

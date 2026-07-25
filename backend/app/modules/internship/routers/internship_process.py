@@ -60,11 +60,13 @@ def report_export(reportType: Optional[str] = None, status: Optional[str] = None
 
 
 # ── 实习变更 ──
-@router.get("/change-requests", summary="实习变更申请列表（教师/管理端，按数据范围）")
+@router.get("/change-requests", summary="实习变更申请列表（教师/管理端，按批次+数据范围）")
 def change_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                 status: Optional[str] = None, keyword: Optional[str] = None,
+                batchId: Optional[str] = None,
                 user=Depends(require_permission(_P_CHANGE_VIEW))):
-    items, total = change_svc.list_changes(page, pageSize, status=status, keyword=keyword, user=user)
+    items, total = change_svc.list_changes(
+        page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -76,4 +78,6 @@ def change_detail(change_id: int, user=Depends(require_permission(_P_CHANGE_VIEW
 @router.post("/change-requests/{change_id}/review", summary="审批实习变更（APPROVE/REJECT）")
 def change_review(change_id: int, body: dict = Body(...), user=Depends(require_permission(_P_CHANGE_REVIEW))):
     b = body or {}
-    return success(change_svc.review_change(change_id, b.get("action", ""), b.get("comment", ""), user=user))
+    return success(change_svc.review_change(
+        change_id, b.get("action", ""), b.get("comment", ""), user=user,
+        expected_version=b.get("expectedVersion", b.get("version"))))

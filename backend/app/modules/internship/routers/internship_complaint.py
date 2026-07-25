@@ -20,12 +20,14 @@ _P_VIEW = "internship.complaint.view"
 _P_INTAKE = "internship.complaint.intake"
 
 
-@router.get("", summary="企业投诉列表（联系方式按权限脱敏）")
+@router.get("", summary="企业投诉列表（按批次；联系方式按权限脱敏）")
 def complaints(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+               batchId: Optional[str] = Query(None, description="实习批次（必填）"),
                status: Optional[str] = None, enterpriseId: Optional[str] = None,
                severity: Optional[str] = None, user=Depends(require_permission(_P_VIEW))):
-    items, total = svc.list_complaints(page, pageSize, status=status, enterprise_id=enterpriseId,
-                                       severity=severity, user=user)
+    items, total = svc.list_complaints(
+        page, pageSize, status=status, enterprise_id=enterpriseId, severity=severity,
+        batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 

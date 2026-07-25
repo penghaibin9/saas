@@ -93,6 +93,7 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { REJECT_CHANGE } from '@/modules/internship/constants/presetPrompts'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 export default {
   name: 'ChangeRequestListView',
@@ -118,6 +119,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     canReview() { return canCode(this.ctx, 'internship.change.review') },
     detailItems() {
       const d = this.detail.data || {}
@@ -138,6 +140,11 @@ export default {
     }
   },
   watch: {
+    'batchStore.selectedBatchId'() {
+      this.pagination.page = 1
+      this.doneHint = false
+      this.load()
+    },
     '$route.query.panel': {
       immediate: true,
       handler(panel) {
@@ -171,10 +178,20 @@ export default {
       }
     },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = '请先选择实习批次'
+        this.rows = []
+        this.pagination.total = 0
+        return
+      }
       this.loading = true
       this.error = ''
       const res = await internshipApi.getChangeRequests({
-        status: this.filters.status, page: this.pagination.page, pageSize: this.pagination.pageSize
+        status: this.filters.status,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize,
+        batchId: this.batchStore.selectedBatchId
       })
       if (res.code === 0) {
         this.rows = res.data.list
@@ -217,7 +234,7 @@ export default {
     openReview(row, action) {
       if (!this.canReview) return toast.error('无实习变更审核权限')
       const ap = action === 'APPROVE'
-      this.pending = { id: row.id, action }
+      this.pending = { id: row.id, action, expectedVersion: row.version }
       this.cd = {
         visible: true,
         title: ap ? '通过变更申请' : '驳回变更申请',
@@ -227,8 +244,11 @@ export default {
     },
     async onConfirm({ reason }) {
       this.cd.submitting = true
+      const ver = this.pending.expectedVersion ?? this.detail.data?.version
       const res = await internshipApi.reviewChangeRequest(this.pending.id, {
-        action: this.pending.action, comment: reason || ''
+        action: this.pending.action,
+        comment: reason || '',
+        expectedVersion: ver
       })
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message)

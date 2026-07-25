@@ -627,6 +627,15 @@ export default {
         remark: f.remark || ''
       }
       if (!this.isEdit) body.batchNo = (f.batchNo || '').trim()
+      else {
+        // 后端 update_batch 强制乐观锁；版本来自进入编辑页时的详情
+        const ver = this.detail?.version
+        if (ver === undefined || ver === null || ver === '') {
+          toast.error('缺少批次版本号，请刷新后重试')
+          return
+        }
+        body.expectedVersion = Number(ver)
+      }
       if (this.advancedJson) {
         if (!this.stagesParsed.empty) body.stages = this.stagesParsed.data
         if (!this.rulesParsed.empty) body.rules = this.rulesParsed.data
@@ -652,6 +661,13 @@ export default {
           this.goBack()
         } else {
           toast.error(res.message || '保存失败')
+          // 版本冲突：只刷新 version，保留用户已填表单便于立刻再提交
+          if (this.isEdit && (Number(res.code) === 409001 || /刷新后重试|已被其他用户修改|DATA_CONFLICT/.test(String(res.message || '')))) {
+            const fres = await internshipApi.getBatchDetail(this.$route.params.id)
+            if (fres.code === 0 && fres.data && this.detail) {
+              this.detail = { ...this.detail, version: fres.data.version }
+            }
+          }
         }
       } finally {
         this.submitting = false

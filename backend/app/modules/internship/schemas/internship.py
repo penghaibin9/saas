@@ -125,6 +125,8 @@ class BatchUpdate(BaseModel):
 
 class VoidBatchRequest(BaseModel):
     reason: str = Field(..., min_length=1, description="作废原因（后端强制 ≥5 字）")
+    expectedVersion: Optional[int] = Field(None, ge=0, description="乐观锁期望版本")
+    version: Optional[int] = Field(None, ge=0, description="expectedVersion 别名")
 
 
 class ExceptionHandleRequest(BaseModel):

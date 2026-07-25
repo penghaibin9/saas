@@ -124,11 +124,18 @@ def withdraw(user, makeup_id) -> dict:
 
 # ═══════════ 指导教师 / 管理员（PC 管理端，owner + 数据范围） ═══════════
 
-def list_makeups(page, page_size, status=None, user=None) -> tuple[list[dict], int]:
+def list_makeups(page, page_size, status=None, batch_id=None, user=None) -> tuple[list[dict], int]:
+    from app.modules.internship.services.internship_batch_context import batch_record_ids
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
-        q = select(InternshipMakeup).where(InternshipMakeup.tenant_id == _tid(),
-                                           InternshipMakeup.is_deleted.is_(False))
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
+        q = select(InternshipMakeup).where(
+            InternshipMakeup.tenant_id == _tid(),
+            InternshipMakeup.is_deleted.is_(False),
+            InternshipMakeup.internship_id.in_(record_ids),
+        )
         if status:
             q = q.where(InternshipMakeup.status == status)
         rows = db.scalars(q.order_by(InternshipMakeup.id.desc())).all()
@@ -197,9 +204,9 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
         return {"id": str(m.id), "status": status, "statusLabel": STATUS_LABEL[status], "version": new_ver}
 
 
-def export_makeups(status=None, user=None) -> dict:
+def export_makeups(status=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_makeups(1, 100000, status=status, user=user)
+    items, _ = list_makeups(1, 100000, status=status, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "校内指导教师", "补卡日期", "补卡类型", "事由", "状态", "审批人", "审批意见"]
     data_rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["checkinDate"],
                   it["makeupTypeLabel"], it["reason"], it["statusLabel"], it["reviewBy"],

@@ -5,16 +5,17 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
+    <!-- 仅「模块授权计算失败」用横幅；权限/批次硬阻断由下方 ErrorState 独占，避免重复提示 -->
     <div v-if="serviceBanner" class="ix-svc-banner" role="alert">
       <span>{{ serviceBanner }}</span>
       <button type="button" class="mp-link" @click="reloadContext">重试</button>
     </div>
-    <InternshipBatchStrip v-if="ctx && !permissionServiceBlocked" />
+    <InternshipBatchStrip v-if="ctx && !permissionServiceBlocked && !batchBlocked" />
     <router-view v-if="ctx && !permissionServiceBlocked && !batchBlocked" :ctx="ctx" />
     <ErrorState
       v-else-if="permissionServiceBlocked"
       title="权限服务加载失败"
-      :description="serviceBanner"
+      :description="ctx.permissionServiceError || '权限服务加载失败'"
       @retry="reloadContext"
     />
     <ErrorState
@@ -67,11 +68,11 @@ export default {
     },
     serviceBanner() {
       if (!this.ctx) return ''
-      if (this.ctx.permissionServiceError) return this.ctx.permissionServiceError
+      // 硬阻断场景由 ErrorState 展示；批次软失败由批次条内联提示
+      if (this.permissionServiceBlocked || this.batchBlocked) return ''
       if (this.ctx.moduleAccessHealthy === false) {
         return this.ctx.moduleAccessError || '模块授权计算失败'
       }
-      if (this.batchStore.batchLoadFailed) return this.batchStore.batchError
       return ''
     }
   },

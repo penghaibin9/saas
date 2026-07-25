@@ -31,20 +31,25 @@ def _mentor(name="刘强"):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     try:
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name="过程变更批次", batch_no=f"PC-{datetime.utcnow().strftime('%H%M%S%f')}",
+            status="RUNNING", planned_count=10)
+        db.add(batch)
+        db.flush()
         s = StudentProfile(tenant_id=TID, student_no="PC-STU-01", real_name="过程学生",
                            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
         db.add(s)
         db.flush()
-        r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name="刘强",
+        r = InternshipRecord(tenant_id=TID, student_id=s.id, batch_id=batch.id, advisor_name="刘强",
                              enterprise_name="原企业", position_name="原岗位",
                              status="ONBOARD", risk_level="NONE")
         db.add(r)
         db.flush()
         db.commit()
-        return {"rec_id": r.id, "stu_id": s.id}
+        return {"rec_id": r.id, "stu_id": s.id, "batch_id": batch.id}
     finally:
         db.close()
 
@@ -57,33 +62,38 @@ def test_process_report_submit_and_review(client, db_mode):
                       headers=_student())
     assert sub.status_code == 200 and sub.json()["code"] == 0
     rid = sub.json()["data"]["id"]
-    lst = client.get(f"{INT}/process-reports", params={"reportType": "DAILY"},
+    lst = client.get(f"{INT}/process-reports",
+                     params={"reportType": "DAILY", "batchId": str(ids["batch_id"])},
                      headers=_mentor("刘强"))
     assert lst.status_code == 200 and lst.json()["data"]["total"] >= 1
     detail = client.get(f"{INT}/process-reports/{rid}", headers=_mentor("刘强"))
     assert detail.status_code == 200
     assert detail.json()["data"]["id"] == rid
     assert detail.json()["data"]["content"] == content
+    ver = int(detail.json()["data"].get("version") or 0)
     rev = client.post(f"{INT}/process-reports/{rid}/review",
-                      json={"action": "APPROVE", "comment": "良好"},
+                      json={"action": "APPROVE", "comment": "良好", "expectedVersion": ver},
                       headers=_mentor("刘强"))
     assert rev.status_code == 200 and rev.json()["data"]["status"] == "APPROVED"
 
 
 def test_change_request_apply_and_review(client, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     apply = client.post(f"{MOB}/internship/change-request",
                         json={"changeType": "CHANGE_ENTERPRISE", "reason": "企业搬迁需换单位",
                               "targetEnterpriseName": "新企业A", "targetPositionName": "新岗位B"},
                         headers=_student())
     assert apply.status_code == 200 and apply.json()["code"] == 0
     cid = apply.json()["data"]["id"]
-    lst = client.get(f"{INT}/change-requests", params={"status": "PENDING"},
+    ver = int(apply.json()["data"].get("version") or 0)
+    lst = client.get(f"{INT}/change-requests",
+                     params={"status": "PENDING", "batchId": str(ids["batch_id"])},
                      headers=_mentor("刘强"))
     assert lst.status_code == 200
     assert any(x["id"] == cid for x in lst.json()["data"]["items"])
+    assert client.get(f"{INT}/change-requests", headers=_mentor("刘强")).json()["code"] != 0
     rev = client.post(f"{INT}/change-requests/{cid}/review",
-                      json={"action": "APPROVE", "comment": "同意变更"},
+                      json={"action": "APPROVE", "comment": "同意变更", "expectedVersion": ver},
                       headers=_mentor("刘强"))
     assert rev.status_code == 200 and rev.json()["data"]["status"] == "APPROVED"
 

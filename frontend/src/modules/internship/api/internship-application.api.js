@@ -25,8 +25,11 @@ async function callList(params = {}) {
 export const internshipApplicationApi = {
   getApplications(params = {}) { return callList(params) },
   getDetail(id) { return call(() => request(`/internship/applications/${id}`)) },
-  review(id, { action, comment = '' }) {
-    return call(() => request(`/internship/applications/${id}/review`, { method: 'POST', body: { action, comment } }))
+  review(id, { action, comment = '', expectedVersion, version } = {}) {
+    return call(() => request(`/internship/applications/${id}/review`, {
+      method: 'POST',
+      body: { action, comment, expectedVersion: expectedVersion ?? version }
+    }))
   }
 }
 

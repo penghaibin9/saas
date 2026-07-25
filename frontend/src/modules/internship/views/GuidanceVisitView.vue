@@ -304,10 +304,20 @@ export default {
     goGuidancePlan() { this.$router.push({ path: '/admin/internship/guidance-plan', query: this.batchStore.withBatchQuery() }) },
     goCreate() {
       if (this.tab === 'communication') {
+        if (!this.batchStore.selectedBatchId) return toast.error('请先选择实习批次')
         const enterpriseId = window.prompt('企业 ID（必填）')
+        const internshipId = window.prompt('实习学生记录 ID（必填，须属于当前批次）')
         const summary = window.prompt('沟通摘要（不少于2字）')
-        if (!enterpriseId || !summary || summary.trim().length < 2) return toast.error('请填写企业 ID 与沟通摘要')
-        guidanceVisitApi.createCommunication({ enterpriseId, summary: summary.trim(), communicationType: 'PHONE' })
+        if (!enterpriseId || !internshipId || !summary || summary.trim().length < 2) {
+          return toast.error('请填写企业 ID、实习记录 ID 与沟通摘要')
+        }
+        guidanceVisitApi.createCommunication({
+          enterpriseId,
+          internshipId: String(internshipId).trim(),
+          batchId: this.batchStore.selectedBatchId,
+          summary: summary.trim(),
+          communicationType: 'PHONE'
+        })
           .then((res) => {
             if (res.code !== 0) return toast.error(res.message || '登记失败')
             toast.success('沟通已登记'); this.reload()

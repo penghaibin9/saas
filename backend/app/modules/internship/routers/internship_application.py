@@ -23,8 +23,10 @@ _P_REVIEW = "internship.application.review"
 @router.get("")
 def applications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                  status: Optional[str] = None, applicationType: Optional[str] = None,
-                 keyword: Optional[str] = None, user=Depends(require_permission(_P_VIEW))):
-    items, total = svc.list_applications(page, pageSize, status, applicationType, keyword, user)
+                 keyword: Optional[str] = None, batchId: Optional[str] = None,
+                 user=Depends(require_permission(_P_VIEW))):
+    items, total = svc.list_applications(
+        page, pageSize, status, applicationType, keyword, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -35,8 +37,10 @@ def application_detail(application_id: str, user=Depends(require_permission(_P_V
 
 @router.post("/{application_id}/review")
 def application_review(application_id: str, body: dict = Body(...), user=Depends(require_permission(_P_REVIEW))):
-    result = svc.review_application(application_id, (body or {}).get("action", ""),
-                                    (body or {}).get("comment", ""), user)
+    b = body or {}
+    result = svc.review_application(
+        application_id, b.get("action", ""), b.get("comment", ""), user,
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("审核实习申请", f"internship-application:{application_id}",
-                     detail={"action": (body or {}).get("action", "")})
+                     detail={"action": b.get("action", "")})
     return success(result, message="申请已处理")

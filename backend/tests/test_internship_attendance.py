@@ -34,15 +34,22 @@ def _student(sno):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import (AttendanceException, InternshipCheckin, InternshipRecord, StudentProfile)
+    from app.models import (AttendanceException, InternshipBatch, InternshipCheckin, InternshipRecord,
+                            StudentProfile)
     db = get_sessionmaker()()
     ids = {}
     try:
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name="补卡测试批次", batch_no=f"MK-{datetime.utcnow().strftime('%H%M%S%f')}",
+            status="RUNNING", planned_count=10)
+        db.add(batch)
+        db.flush()
+        ids["batch_id"] = batch.id
         for no, name, adv, key in [("STU-A", "甲", "刘强", "a"), ("STU-B", "乙", "王芳", "b")]:
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
-            r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
+            r = InternshipRecord(tenant_id=TID, student_id=s.id, batch_id=batch.id, advisor_name=adv,
                                  enterprise_name="测试企业", status="ONBOARD", risk_level="NONE")
             db.add(r); db.flush()
             db.add(InternshipCheckin(tenant_id=TID, internship_id=r.id, checkin_date="2026-03-05",
@@ -72,23 +79,30 @@ def _audit_count(target_type, target_id):
         db.close()
 
 
+def _makeup_params(ids):
+    return {"batchId": str(ids["batch_id"])}
+
+
 # ── 打卡台账 ──
 
 def test_checkin_ledger_scope(client, db_mode):
-    _seed(db_mode)
-    assert client.get(f"{INT}/checkins", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/checkins", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    ids = _seed(db_mode)
+    p = _makeup_params(ids)
+    assert client.get(f"{INT}/checkins", headers=_admin(client), params=p).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/checkins", headers=_mentor("刘强"), params=p).json()["data"]["total"] == 1
 
 
 def test_checkin_student_403(client, db_mode):
-    _seed(db_mode)
-    assert client.get(f"{INT}/checkins", headers=_student("STU-A")).status_code == 403
+    ids = _seed(db_mode)
+    assert client.get(f"{INT}/checkins", headers=_student("STU-A"),
+                      params=_makeup_params(ids)).status_code == 403
 
 
 def test_checkin_export_perm_and_audit(client, db_mode):
-    _seed(db_mode)
-    assert client.post(f"{INT}/checkins/export", headers=_student("STU-A")).status_code == 403
-    body = client.post(f"{INT}/checkins/export", headers=_admin(client)).json()
+    ids = _seed(db_mode)
+    p = _makeup_params(ids)
+    assert client.post(f"{INT}/checkins/export", headers=_student("STU-A"), params=p).status_code == 403
+    body = client.post(f"{INT}/checkins/export", headers=_admin(client), params=p).json()
     assert body["code"] == 0 and body["data"]["filename"].endswith(".xlsx")
 
 
@@ -96,7 +110,7 @@ def test_checkin_export_perm_and_audit(client, db_mode):
 
 def test_exception_handle_owner(client, db_mode):
     ids = _seed(db_mode)
-    payload = {"action": "REASONABLE", "comment": "已电话核实，属实合理"}
+    payload = {"action": "REASONABLE", "comment": "已电话核实，属实合理", "expectedVersion": 0}
     # 王芳 处理 甲(刘强指导) 的异常 → 403
     r = client.post(f"{INT}/exceptions/{ids['exc_a']}/handle", headers=_mentor("王芳"), json=payload)
     assert r.status_code == 403
@@ -110,33 +124,44 @@ def test_exception_handle_owner(client, db_mode):
 
 def test_makeup_apply_and_owner_review(client, db_mode):
     ids = _seed(db_mode)
+    p = _makeup_params(ids)
     # 学生 STU-A 本人申请补卡
     ap = client.post(f"{MB}/makeup", headers=_student("STU-A"),
                      json={"checkinDate": "2026-03-06", "reason": "当日网络故障未能打卡"}).json()
     assert ap["code"] == 0 and ap["data"]["status"] == "PENDING"
     mid = ap["data"]["id"]
+    # 缺 batchId 不得伪装成空列表
+    assert client.get(f"{INT}/makeups", headers=_admin(client)).json()["code"] != 0
     # 管理端台账：管理员见 1，王芳(非本人指导)见 0，刘强见 1
-    assert client.get(f"{INT}/makeups", headers=_admin(client)).json()["data"]["total"] == 1
-    assert client.get(f"{INT}/makeups", headers=_mentor("王芳")).json()["data"]["total"] == 0
-    assert client.get(f"{INT}/makeups", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/makeups", headers=_admin(client), params=p).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/makeups", headers=_mentor("王芳"), params=p).json()["data"]["total"] == 0
+    assert client.get(f"{INT}/makeups", headers=_mentor("刘强"), params=p).json()["data"]["total"] == 1
+    detail = client.get(f"{INT}/makeups/{mid}", headers=_mentor("刘强")).json()
+    assert detail["code"] == 0
+    ver = int(detail["data"].get("version") or 0)
     # 王芳 审批 → 403（owner）；刘强 审批通过 → 200 + 审计 + 补写打卡
-    assert client.post(f"{INT}/makeups/{mid}/approve", headers=_mentor("王芳"), json={}).status_code == 403
-    ok = client.post(f"{INT}/makeups/{mid}/approve", headers=_mentor("刘强"), json={}).json()
+    assert client.post(f"{INT}/makeups/{mid}/approve", headers=_mentor("王芳"),
+                       json={"expectedVersion": ver}).status_code == 403
+    ok = client.post(f"{INT}/makeups/{mid}/approve", headers=_mentor("刘强"),
+                     json={"expectedVersion": ver}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
     assert _audit_count("MAKEUP", mid) >= 1
     # 补写了 2026-03-06 的打卡（台账 total 由 1 变 2）
-    assert client.get(f"{INT}/checkins", headers=_mentor("刘强")).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/checkins", headers=_mentor("刘强"), params=p).json()["data"]["total"] == 2
 
 
 def test_makeup_reject_requires_reason(client, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     mid = client.post(f"{MB}/makeup", headers=_student("STU-A"),
                       json={"checkinDate": "2026-03-07", "reason": "漏打卡"}).json()["data"]["id"]
+    detail = client.get(f"{INT}/makeups/{mid}", headers=_mentor("刘强")).json()["data"]
+    ver = int(detail.get("version") or 0)
     # 驳回不填原因 → 422/校验错
-    bad = client.post(f"{INT}/makeups/{mid}/reject", headers=_mentor("刘强"), json={"comment": "x"})
+    bad = client.post(f"{INT}/makeups/{mid}/reject", headers=_mentor("刘强"),
+                      json={"comment": "x", "expectedVersion": ver})
     assert bad.status_code in (400, 422)
     ok = client.post(f"{INT}/makeups/{mid}/reject", headers=_mentor("刘强"),
-                     json={"comment": "无有效证明，驳回"}).json()
+                     json={"comment": "无有效证明，驳回", "expectedVersion": ver}).json()
     assert ok["data"]["status"] == "REJECTED"
 
 
@@ -151,6 +176,7 @@ def test_makeup_student_only_own(client, db_mode):
 
 
 def test_makeup_student_list_403_and_export(client, db_mode):
-    _seed(db_mode)
-    assert client.get(f"{INT}/makeups", headers=_student("STU-A")).status_code == 403
-    assert client.post(f"{INT}/makeups/export", headers=_admin(client)).json()["data"]["filename"].endswith(".xlsx")
+    ids = _seed(db_mode)
+    p = _makeup_params(ids)
+    assert client.get(f"{INT}/makeups", headers=_student("STU-A"), params=p).status_code == 403
+    assert client.post(f"{INT}/makeups/export", headers=_admin(client), params=p).json()["data"]["filename"].endswith(".xlsx")

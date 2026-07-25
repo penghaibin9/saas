@@ -48,7 +48,9 @@ def _mk_batch(client, h, *, status="RUNNING", name=None, no=None):
                                "forceReason": "测试环境强制结束空批次"}).json()
         assert cl["code"] == 0, cl
     elif status == "VOIDED":
-        assert client.post(f"{BATCH}/{bid}/void", headers=h, json={"reason": "测试作废原因足够长"}).json()["code"] == 0
+        assert client.post(f"{BATCH}/{bid}/void", headers=h, json={
+            "reason": "测试作废原因足够长", "expectedVersion": ver,
+        }).json()["code"] == 0
     return bid
 
 

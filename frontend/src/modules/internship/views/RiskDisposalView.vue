@@ -294,8 +294,17 @@ export default {
       }
     },
     async loadComplaints() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.rows = []
+        this.total = 0
+        this.error = '请先选择实习批次'
+        return
+      }
       this.loading = true; this.error = ''
-      const res = await complaintApi.getComplaints({ page: this.page, pageSize: this.pageSize })
+      const res = await complaintApi.getComplaints({
+        page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId
+      })
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '投诉加载失败'; this.rows = []; this.total = 0; return }
       this.rows = (res.data.list || []).map((c) => ({

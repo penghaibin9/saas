@@ -127,10 +127,11 @@ def handle_exception(exception_id: str, body: ExceptionHandleRequest,
 
 # ═══ 补卡审批（PC 管理端·owner+数据范围；学生申请/撤回在 /mobile/internship/makeup/*） ═══
 
-@router.get("/makeups", summary="补卡审批台账（按数据范围）")
+@router.get("/makeups", summary="补卡审批台账（按数据范围，必须指定批次）")
 def makeups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-            status: Optional[str] = None, user=Depends(require_permission("internship.makeup.view"))):
-    items, total = mk.list_makeups(page, pageSize, status=status, user=user)
+            status: Optional[str] = None, batchId: Optional[str] = None,
+            user=Depends(require_permission("internship.makeup.view"))):
+    items, total = mk.list_makeups(page, pageSize, status=status, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -156,10 +157,11 @@ def makeup_reject(makeup_id: str, body: dict = Body(...), user=Depends(require_p
 
 
 @router.post("/makeups/export", summary="补卡审批台账导出 Excel(.xlsx)")
-def makeups_export(status: Optional[str] = None, user=Depends(require_permission("internship.makeup.export"))):
-    data = mk.export_makeups(status=status, user=user)
+def makeups_export(status: Optional[str] = None, batchId: Optional[str] = None,
+                   user=Depends(require_permission("internship.makeup.export"))):
+    data = mk.export_makeups(status=status, batch_id=batchId, user=user)
     audit_log.record("导出补卡审批台账", "internship-makeup:export",
-                     detail={"rowCount": data["rowCount"]})
+                     detail={"rowCount": data["rowCount"], "batchId": batchId})
     return success(data)
 
 
@@ -757,9 +759,11 @@ def batch_readiness(bid: str, user=Depends(require_permission("internship.batch.
     return success(svc.batch_readiness(bid, user=user))
 
 
-@router.post("/batches/{bid}/void", summary="作废批次（仅草稿，原因≥5字）")
+@router.post("/batches/{bid}/void", summary="作废批次（仅草稿，原因≥5字，须带 expectedVersion）")
 def batch_void(bid: str, body: VoidBatchRequest, user=Depends(require_permission("internship.batch.manage"))):
-    result = svc.void_batch(bid, body.reason, user=user)
+    result = svc.void_batch(
+        bid, body.reason, user=user,
+        expected_version=body.expectedVersion if body.expectedVersion is not None else body.version)
     audit_log.record("作废实习批次", f"internship-batch:{bid}", detail={"reason": body.reason})
     return success(result, message="已作废")
 

@@ -193,8 +193,11 @@ export const internshipApi = {
     }))
   },
 
-  voidBatch(id, reason) {
-    return call(() => request(`/internship/batches/${id}/void`, { method: 'POST', body: { reason } }))
+  voidBatch(id, { reason, expectedVersion, version } = {}) {
+    return call(() => request(`/internship/batches/${id}/void`, {
+      method: 'POST',
+      body: { reason, expectedVersion: expectedVersion ?? version }
+    }))
   },
 
   exportBatches(params = {}) {
@@ -294,10 +297,14 @@ export const internshipApi = {
     return call(() => request(`/internship/change-requests/${id}`))
   },
 
-  reviewChangeRequest(id, { action, comment }) {
-    const mapped = action === 'APPROVE' ? 'APPROVE' : 'RETURN'
+  reviewChangeRequest(id, { action, comment, expectedVersion, version } = {}) {
     return call(() => request(`/internship/change-requests/${id}/review`, {
-      method: 'POST', body: { action: mapped, comment }
+      method: 'POST',
+      body: {
+        action: action === 'APPROVE' ? 'APPROVE' : 'REJECT',
+        comment,
+        expectedVersion: expectedVersion ?? version
+      }
     }))
   },
 

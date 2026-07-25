@@ -26,25 +26,35 @@ def _student():
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     try:
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name="投诉测试批次", batch_no="CPL-BATCH-01",
+            status="RUNNING", planned_count=10,
+        )
+        db.add(batch); db.flush()
         s = StudentProfile(tenant_id=TID, student_no="CPL-S", real_name="投诉学生",
                            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
         db.add(s); db.flush()
-        r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name="刘强",
+        r = InternshipRecord(tenant_id=TID, student_id=s.id, batch_id=batch.id, advisor_name="刘强",
                              enterprise_name="投诉企业", position_name="实习生", status="ONBOARD")
         db.add(r); db.flush()
         db.commit()
-        return {"student_id": s.id, "rec_id": r.id}
+        return {"student_id": s.id, "rec_id": r.id, "batch_id": batch.id}
     finally:
         db.close()
 
 
 def _mk(ids, contact="13800001111"):
     return {"source": "STUDENT", "targetType": "ENTERPRISE", "studentId": str(ids["student_id"]),
+            "batchId": str(ids["batch_id"]),
             "category": "拖欠实习补贴", "severity": "HIGH", "content": "企业未按约定发放实习补贴，多次沟通无果",
             "complainantContact": contact}
+
+
+def _batch_q(ids):
+    return {"batchId": str(ids["batch_id"])}
 
 
 def _bad(resp):
@@ -101,15 +111,23 @@ def test_invalid_transition(client, db_mode):
     assert _bad(client.post(f"{INT}/{cid}/transition", json={"action": "INVESTIGATE"}, headers=a))
 
 
+def test_list_requires_batch_id(client, db_mode):
+    _seed(db_mode)
+    miss = client.get(INT, headers=_admin(client)).json()
+    assert miss["code"] != 0
+    assert "batchId" in (miss.get("message") or "")
+
+
 def test_auditor_readonly_cannot_intake(client, db_mode):
     ids = _seed(db_mode)
     # 督导有 complaint.view 但无 intake → 列表可读、登记 403
-    assert client.get(INT, headers=_tok("SECURITY_AUDITOR")).status_code == 200
+    assert client.get(INT, headers=_tok("SECURITY_AUDITOR"), params=_batch_q(ids)).status_code == 200
     assert client.post(INT, json=_mk(ids), headers=_tok("SECURITY_AUDITOR")).status_code == 403
 
 
 def test_student_forbidden(client, db_mode):
-    assert client.get(INT, headers=_student()).status_code == 403
+    ids = _seed(db_mode)
+    assert client.get(INT, headers=_student(), params=_batch_q(ids)).status_code == 403
 
 
 def test_content_required(client, db_mode):

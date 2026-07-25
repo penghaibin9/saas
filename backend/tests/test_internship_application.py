@@ -61,7 +61,9 @@ def test_position_application_review_uses_real_assignment(client, auth_headers, 
     app_id = draft.json()["data"]["id"]
     submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student)
     assert submitted.status_code == 200 and submitted.json()["data"]["status"] == "PENDING_REVIEW"
-    review = client.post(f"{APP}/{app_id}/review", headers=auth_headers, json={"action": "APPROVE"})
+    ver = int(submitted.json()["data"].get("version") or 0)
+    review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
+                         json={"action": "APPROVE", "expectedVersion": ver})
     assert review.status_code == 200 and review.json()["data"]["status"] == "APPROVED"
     from app.db.session import get_sessionmaker
     from app.models import InternshipPosition, InternshipRecord
@@ -77,15 +79,6 @@ def test_position_application_review_uses_real_assignment(client, auth_headers, 
 
 def test_self_arranged_application_requires_evidence_and_is_audited(client, auth_headers, db_mode):
     _record(db_mode, "APP-SELF-001")
-    from app.db.session import get_sessionmaker
-    from app.models import FileObject
-    db = get_sessionmaker()()
-    try:
-        file = FileObject(tenant_id=TID, file_key="test/self-arranged.pdf", file_name="证明.pdf",
-                          ext="pdf", size_bytes=12, status="STORED")
-        db.add(file); db.commit(); file_id = str(file.id)
-    finally:
-        db.close()
     student = _student_header("APP-SELF-001")
     missing = client.put(f"{MOB}/internship/applications", headers=student, json={
         "applicationType": "SELF_ARRANGED", "companyName": "自主实习单位", "positionName": "技术员",
@@ -93,15 +86,89 @@ def test_self_arranged_application_requires_evidence_and_is_audited(client, auth
     assert missing.status_code == 200
     app_id = missing.json()["data"]["id"]
     assert client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).status_code == 400
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject
+    db = get_sessionmaker()()
+    try:
+        # 对象级授权：学生附件必须可被本人 meta 校验（biz_id=学号）
+        file = FileObject(
+            tenant_id=TID, file_key="test/self-arranged.pdf", file_name="证明.pdf",
+            ext="pdf", size_bytes=12, status="AVAILABLE", visibility="BIZ_SCOPED",
+            biz_type="INTERNSHIP_APPLICATION", biz_id="APP-SELF-001",
+        )
+        db.add(file); db.commit(); file_id = str(file.id)
+    finally:
+        db.close()
     draft = client.put(f"{MOB}/internship/applications", headers=student, json={
         "id": app_id, "applicationType": "SELF_ARRANGED", "companyName": "自主实习单位",
         "positionName": "技术员", "workAddress": "上海市浦东新区实习路1号", "contactName": "企业联系人",
         "contactPhone": "13800138000", "evidenceFileId": file_id,
     })
-    assert draft.status_code == 200
-    assert client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).json()["code"] == 0
-    review = client.post(f"{APP}/{app_id}/review", headers=auth_headers, json={"action": "APPROVE"})
-    assert review.status_code == 200 and review.json()["data"]["status"] == "APPROVED"
+    assert draft.status_code == 200, draft.json()
+    submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).json()
+    assert submitted["code"] == 0, submitted
+    ver = int(submitted["data"].get("version") or 0)
+    review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
+                         json={"action": "APPROVE", "expectedVersion": ver})
+    assert review.status_code == 200 and review.json()["data"]["status"] == "APPROVED", review.json()
     detail = client.get(f"{APP}/{app_id}", headers=auth_headers).json()["data"]
     assert detail["evidenceFileId"] == file_id
     assert {x["action"] for x in detail["auditTrail"]} >= {"SAVE_DRAFT", "SUBMIT", "APPROVE"}
+
+
+def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
+    """落岗失败不得留下「已通过但未落实」：申请应回到待审并记 APPROVE_ROLLBACK。"""
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile
+
+    company = client.post(ENT, headers=auth_headers, json={
+        "name": "满员回滚企业", "creditCode": "91310000APPFULL1X",
+    }).json()["data"]["id"]
+    assert client.post(f"{ENT}/{company}/review", headers=auth_headers, json={"action": "APPROVE"}).json()["code"] == 0
+    position = client.post(POS, headers=auth_headers, json={
+        "companyId": company, "title": "满员回滚岗位", "workLocation": "上海市浦东新区",
+        "headcount": 1,
+    }).json()["data"]["id"]
+    assert client.post(f"{POS}/{position}/status", headers=auth_headers, json={"action": "SUBMIT"}).json()["code"] == 0
+    assert client.post(f"{POS}/{position}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()["code"] == 0
+
+    # 先提交申请（此时仍有名额），再被人占满，审核落岗才应失败并回滚
+    _record(db_mode, "APP-FULL-002")
+    student = _student_header("APP-FULL-002")
+    draft = client.put(f"{MOB}/internship/applications", headers=student, json={
+        "applicationType": "POSITION", "volunteerNo": 1, "positionId": position,
+        "applicationNote": "希望申请该岗位",
+    }).json()
+    assert draft["code"] == 0, draft
+    app_id = draft["data"]["id"]
+    submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).json()
+    assert submitted["code"] == 0, submitted
+    ver = int(submitted["data"].get("version") or 0)
+
+    rec1 = _record(db_mode, "APP-FULL-001")
+    assign = client.post(
+        f"/api/v1/internship/intern-students/{rec1}/assign",
+        headers=auth_headers, json={"positionId": position},
+    ).json()
+    assert assign["code"] == 0, assign
+
+    review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
+                         json={"action": "APPROVE", "expectedVersion": ver})
+    body = review.json()
+    assert body["code"] != 0, body
+    detail = client.get(f"{APP}/{app_id}", headers=auth_headers).json()["data"]
+    assert detail["status"] == "PENDING_REVIEW"
+    assert "APPROVE_ROLLBACK" in {x["action"] for x in detail["auditTrail"]}
+
+    db = get_sessionmaker()()
+    try:
+        stu = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == TID, StudentProfile.student_no == "APP-FULL-002")).one()
+        rec = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == TID, InternshipRecord.student_id == stu.id)).one()
+        assert rec.position_id is None
+        assert (rec.destination_type or "NONE") in ("NONE", None, "")
+    finally:
+        db.close()

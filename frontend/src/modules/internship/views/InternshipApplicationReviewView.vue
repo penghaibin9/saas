@@ -111,6 +111,7 @@ import { internshipApplicationApi } from '@/modules/internship/api/internship-ap
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { REJECT_APPLICATION } from '@/modules/internship/constants/presetPrompts'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const TYPE_OPTIONS = [
   { value: '', label: '全部申请' },
@@ -154,6 +155,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
     drawerTitle() {
       const data = this.drawer.data
@@ -199,6 +201,10 @@ export default {
     }
   },
   watch: {
+    'batchStore.selectedBatchId'() {
+      this.page = 1
+      this.load()
+    },
     '$route.query.type': {
       immediate: true,
       handler(value) {
@@ -243,9 +249,21 @@ export default {
     reload() { this.page = 1; this.load() },
     onPageChange(page) { this.page = page; this.load() },
     async load() {
+      if (!this.batchStore.selectedBatchId) {
+        this.loading = false
+        this.error = '请先选择实习批次'
+        this.rows = []
+        this.total = 0
+        return
+      }
       this.loading = true
       this.error = ''
-      const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword }
+      const params = {
+        page: this.page,
+        pageSize: this.pageSize,
+        keyword: this.keyword,
+        batchId: this.batchStore.selectedBatchId
+      }
       if (this.applicationType) params.applicationType = this.applicationType
       if (this.status && this.status !== 'ALL') params.status = this.status
       const result = await internshipApplicationApi.getApplications(params)
@@ -308,7 +326,11 @@ export default {
       const data = this.drawer.data
       if (!data) return
       this.confirm.submitting = true
-      const result = await internshipApplicationApi.review(data.id, { action: this.confirm.action, comment: reason || '' })
+      const result = await internshipApplicationApi.review(data.id, {
+        action: this.confirm.action,
+        comment: reason || '',
+        expectedVersion: data.version
+      })
       this.confirm.submitting = false
       if (result.code !== 0) return toast.error(result.message || '审核失败')
       this.confirm.visible = false

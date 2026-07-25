@@ -67,15 +67,22 @@ def _row(c):
     }
 
 
-def list_communications(page, page_size, enterprise_id=None, student_id=None, status=None, user=None):
+def list_communications(page, page_size, enterprise_id=None, student_id=None, status=None,
+                        batch_id=None, user=None):
+    from app.modules.internship.services.internship_batch_context import batch_record_ids
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     scope = _current_scope(user)
     scoped = scope.get("mode") == "SCOPED"
     names = scope.get("advisorNames") or set()
     with session() as db:
+        _, record_ids = batch_record_ids(db, batch_id)
+        if not record_ids:
+            return [], 0
         q = select(InternshipCommunicationLog).where(
             InternshipCommunicationLog.tenant_id == _tid(),
-            InternshipCommunicationLog.is_deleted.is_(False))
+            InternshipCommunicationLog.is_deleted.is_(False),
+            InternshipCommunicationLog.internship_id.in_(record_ids),
+        )
         if enterprise_id:
             q = q.where(InternshipCommunicationLog.enterprise_id == int(enterprise_id))
         if student_id:
@@ -120,6 +127,9 @@ def create_communication(body, user=None):
     enterprise_id = body.get("enterpriseId")
     if not enterprise_id:
         raise AppException("VALIDATION_ERROR", "必须关联企业")
+    if not body.get("internshipId"):
+        # 列表按批次 internship_id 过滤；无关联记录会登记成功却永不进批次台账
+        raise AppException("VALIDATION_ERROR", "必须关联实习学生记录 internshipId")
     summary = (body.get("summary") or "").strip()
     if len(summary) < 2:
         raise AppException("VALIDATION_ERROR", "沟通摘要不少于 2 个字符")
@@ -131,17 +141,20 @@ def create_communication(body, user=None):
         company = db.get(EmpCompany, _as_id(enterprise_id))
         if not company or company.is_deleted or company.tenant_id != _tid():
             raise not_found("关联企业不存在或不在当前数据范围内")
-        internship_id = int(body["internshipId"]) if body.get("internshipId") else None
-        student_id = None
-        if internship_id:
-            rec = db.get(InternshipRecord, internship_id)
-            if not rec or rec.is_deleted or rec.tenant_id != _tid():
-                raise not_found("关联实习记录不存在")
-            student_id = rec.student_id
-            stu = db.get(StudentProfile, student_id)
-            from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
-            if not _rec_in_scope(_current_scope(user), db, rec, stu):
-                raise no_permission("关联学生不在当前数据范围内")
+        internship_id = int(body["internshipId"])
+        rec = db.get(InternshipRecord, internship_id)
+        if not rec or rec.is_deleted or rec.tenant_id != _tid():
+            raise not_found("关联实习记录不存在")
+        if body.get("batchId") is not None and str(body.get("batchId")).strip() != "":
+            from app.modules.internship.services.internship_batch_context import parse_required_batch_id
+            bid = parse_required_batch_id(body.get("batchId"))
+            if int(rec.batch_id or 0) != bid:
+                raise AppException("DATA_CONFLICT", "实习记录不属于当前批次")
+        student_id = rec.student_id
+        stu = db.get(StudentProfile, student_id)
+        from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):
+            raise no_permission("关联学生不在当前数据范围内")
         c = InternshipCommunicationLog(
             tenant_id=_tid(), enterprise_id=int(enterprise_id), internship_id=internship_id,
             student_id=student_id,

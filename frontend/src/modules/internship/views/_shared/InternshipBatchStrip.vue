@@ -4,7 +4,8 @@
     <template v-if="store.batchLoading">
       <span class="ibs__text">正在读取…</span>
     </template>
-    <template v-else-if="store.batchLoadFailed">
+    <!-- 失败且无缓存列表：纯错误态；有缓存列表时仍保留下拉，避免短暂故障后无法切批次 -->
+    <template v-else-if="store.batchLoadFailed && !store.availableBatches.length">
       <span class="ibs__text ibs__text--err">{{ store.batchError || '批次服务加载失败' }}</span>
       <button type="button" class="mp-link" @click="reload">重试</button>
     </template>
@@ -30,6 +31,10 @@
       <span v-if="runningCount > 1" class="ibs__meta">进行中 {{ runningCount }} 个</span>
       <span v-if="store.needsExplicitSelect && !store.selectedBatchId" class="ibs__text ibs__text--err">请明确选择当前工作批次</span>
       <span v-if="store.invalidUrlBatch" class="ibs__text ibs__text--err">{{ store.batchError }}</span>
+      <template v-if="store.batchLoadFailed">
+        <span class="ibs__text ibs__text--err">{{ store.batchError || '批次列表刷新失败，已保留上次列表' }}</span>
+        <button type="button" class="mp-link" @click="reload">重试</button>
+      </template>
     </template>
   </div>
 </template>

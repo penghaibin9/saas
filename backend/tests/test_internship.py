@@ -186,14 +186,15 @@ def test_batch_void_only_draft(client, auth_headers, db_mode):
     c = client.post("/api/v1/internship/batches", headers=auth_headers,
                     json={"batchName": "待作废批次", "batchNo": "INT-VOID-1"}).json()
     bid = c["data"]["id"]
+    ver = int(c["data"].get("version") or 0)
     bad = client.post(f"/api/v1/internship/batches/{bid}/void", headers=auth_headers,
-                      json={"reason": "x"}).json()
+                      json={"reason": "x", "expectedVersion": ver}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/internship/batches/{bid}/void", headers=auth_headers,
-                     json={"reason": "批次信息录入有误，作废重建"}).json()
+                     json={"reason": "批次信息录入有误，作废重建", "expectedVersion": ver}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "VOIDED"
     assert client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
-                      json={"remark": "x"}).json()["code"] != 0
+                      json={"remark": "x", "expectedVersion": ver + 1}).json()["code"] != 0
 
 
 def test_requires_login(client):
