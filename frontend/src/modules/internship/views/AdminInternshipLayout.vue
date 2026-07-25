@@ -10,7 +10,7 @@
       <button type="button" class="mp-link" @click="reloadContext">重试</button>
     </div>
     <InternshipBatchStrip v-if="ctx && !permissionServiceBlocked" />
-    <router-view v-if="ctx && !permissionServiceBlocked && !batchBlocked" :ctx="ctx" />
+    <router-view v-if="ctx && !permissionServiceBlocked && !batchBlocked && batchReady" :ctx="ctx" />
     <ErrorState
       v-else-if="permissionServiceBlocked"
       title="权限服务加载失败"
@@ -23,7 +23,7 @@
       :description="batchStore.batchError || '批次列表加载失败，已保留上次选择；恢复前请勿按全历史数据操作'"
       @retry="reloadBatches"
     />
-    <LoadingState v-else-if="!ctx" text="正在加载岗位实习中心…" />
+    <LoadingState v-else-if="!ctx || !batchReady" text="正在加载岗位实习中心…" />
   </BasePortalLayout>
 </template>
 
@@ -64,6 +64,13 @@ export default {
     },
     batchBlocked() {
       return !!(this.ctx && this.batchStore.batchLoadFailed && !this.batchStore.hasBatch)
+    },
+    batchReady() {
+      // 批次首轮已判定（成功/空/需显式选择/URL 无效）或加载失败已保留兜底，才允许子页渲染。
+      // 关键：F5 硬刷新时子页读取 batchStore.selectedBatchId 拉数据，若在批次判定完成前抢跑，
+      // 会用空 batchId 触发后端 400「必须指定实习批次 batchId」。此门确保子页拿到 URL/存储中的批次后再挂载。
+      const s = this.batchStore
+      return s.initialized || s.batchLoadFailed
     },
     serviceBanner() {
       if (!this.ctx) return ''

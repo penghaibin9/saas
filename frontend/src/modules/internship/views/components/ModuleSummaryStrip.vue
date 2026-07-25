@@ -45,13 +45,19 @@
 
 <script>
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
-/** 模块级缓存：同一次会话内 12 个模块主页共用一次批次概况请求 */
+/** 模块级缓存：同一次会话内 12 个模块主页共用一次批次概况请求（按批次缓存，切批次自动失效） */
 let _batchCache = null
-function fetchBatchSummary(force) {
-  if (force || !_batchCache) {
-    _batchCache = internshipApi.getDashboardSummary().catch((e) => {
+let _batchCacheKey = ''
+function fetchBatchSummary(force, batchId) {
+  const key = String(batchId || '')
+  if (force || !_batchCache || _batchCacheKey !== key) {
+    _batchCacheKey = key
+    // 批次上下文必需：无 batchId 时不打后端（岗位实习总览强制要求 batchId，空参会 400）
+    _batchCache = internshipApi.getDashboardSummary({ batchId: key }).catch((e) => {
       _batchCache = null
+      _batchCacheKey = ''
       throw e
     })
   }
@@ -84,8 +90,15 @@ export default {
     async loadBatch(force = false) {
       this.batchLoading = true
       this.batchError = false
+      const batchId = useInternshipBatchStore().selectedBatchId
+      // 未选定批次：不请求总览接口（避免空 batchId 触发 400），直接给出「去批次设置」引导
+      if (!batchId) {
+        this.batch = null
+        this.batchLoading = false
+        return
+      }
       try {
-        const res = await fetchBatchSummary(force)
+        const res = await fetchBatchSummary(force, batchId)
         if (res && res.code === 0 && res.data && res.data.batchName) {
           this.batch = res.data
         } else {

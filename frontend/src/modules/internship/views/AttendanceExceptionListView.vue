@@ -64,6 +64,7 @@ import {
 import { AppStatusTag, AppExportButton } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
@@ -96,6 +97,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     pendingCount() {
       return this.rows.filter((r) => r.status === 'PENDING_HANDLE').length
     },
@@ -152,7 +154,7 @@ export default {
       this.load()
     },
     exportFn() {
-      return attendanceApi.exportExceptions({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      return attendanceApi.exportExceptions({ ...this.filters, batchId: this.batchStore.selectedBatchId, page: this.pagination.page, pageSize: this.pagination.pageSize })
     },
     batchMark() {
       if (this.batchHasMock || !this.selected.length || this.batchSubmitting) return
@@ -188,7 +190,7 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await internshipApi.getAttendanceExceptions({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const res = await internshipApi.getAttendanceExceptions({ ...this.filters, batchId: this.batchStore.selectedBatchId, page: this.pagination.page, pageSize: this.pagination.pageSize })
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
