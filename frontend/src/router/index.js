@@ -184,7 +184,15 @@ const router = createRouter({
       ]
     },
     /* /admin/student/* 由 studentRoutes 提供（含 8 条子路由），并入 moduleRoutes 统一接入。 */
-    ...moduleRoutes
+    ...moduleRoutes,
+    {
+      /* 全局兜底：任何未匹配路由（旧书签 / 误输 URL / 已下线深链接）落到 404 页，
+         提供「返回首页」出口，避免 vue-router 无匹配时渲染空白页。必须放在所有路由之后。 */
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('../views/security/Error404View.vue'),
+      meta: { public: true, title: '页面不存在' }
+    }
   ]
 })
 
