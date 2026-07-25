@@ -2,11 +2,15 @@
 
 Revision ID: 0132_org_code_unique_expand
 Revises: 0131_internship_p2_compliance
+
+空编码策略：建索引前将 '' 规范为 NULL（多 NULL 不冲突）；不删除行、不合并编码。
+若本 revision 已在旧版（未规范空串）环境下执行过，请继续执行 0134_org_code_empty_to_null。
 """
 from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 revision = "0132_org_code_unique_expand"
@@ -36,24 +40,42 @@ def _assert_no_dups(bind, table: str, code_col: str, uk_name: str) -> None:
         )
 
 
+def _normalize_empty_to_null(bind, table: str, code_col: str) -> None:
+    """空串 → NULL，使唯一索引与「空编码不参与冲突」语义一致。不删行。"""
+    bind.execute(sa.text(
+        f"UPDATE `{table}` SET `{code_col}` = NULL "
+        f"WHERE `{code_col}` IS NOT NULL AND `{code_col}` = ''"
+    ))
+
+
+def _create_uk_if_missing(bind, table: str, name: str, cols: list[str]) -> None:
+    insp = inspect(bind)
+    existing = {i["name"] for i in insp.get_indexes(table)}
+    if name in existing:
+        return
+    op.create_index(name, table, cols, unique=True)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
-    # 前置只读检查：按租户+编码查重
-    for table, col, uk in (
-        ("t_college", "code", "uk_college_tenant_code"),
-        ("t_major", "code", "uk_major_tenant_code"),
-        ("t_class", "class_code", "uk_class_tenant_code"),
-    ):
+    specs = (
+        ("t_college", "code", "uk_college_tenant_code", ["tenant_id", "code"]),
+        ("t_major", "code", "uk_major_tenant_code", ["tenant_id", "code"]),
+        ("t_class", "class_code", "uk_class_tenant_code", ["tenant_id", "class_code"]),
+    )
+    for table, col, uk, cols in specs:
         _assert_no_dups(bind, table, col, uk)
-
-    # Expand：仅新增唯一索引；不删旧字段、不回填、不改空值策略
-    # MySQL 允许多个 NULL，空编码不参与冲突
-    op.create_index("uk_college_tenant_code", "t_college", ["tenant_id", "code"], unique=True)
-    op.create_index("uk_major_tenant_code", "t_major", ["tenant_id", "code"], unique=True)
-    op.create_index("uk_class_tenant_code", "t_class", ["tenant_id", "class_code"], unique=True)
+        _normalize_empty_to_null(bind, table, col)
+        _create_uk_if_missing(bind, table, uk, cols)
 
 
 def downgrade() -> None:
-    op.drop_index("uk_class_tenant_code", table_name="t_class")
-    op.drop_index("uk_major_tenant_code", table_name="t_major")
-    op.drop_index("uk_college_tenant_code", table_name="t_college")
+    bind = op.get_bind()
+    insp = inspect(bind)
+    for name, table in (
+        ("uk_class_tenant_code", "t_class"),
+        ("uk_major_tenant_code", "t_major"),
+        ("uk_college_tenant_code", "t_college"),
+    ):
+        if name in {i["name"] for i in insp.get_indexes(table)}:
+            op.drop_index(name, table_name=table)

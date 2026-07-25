@@ -468,6 +468,7 @@ def _resolve_split_class(db, major_id, grade, major) -> tuple:
             StudentProfile.is_deleted.is_(False)).count()
         if c.capacity is None or cnt < int(c.capacity):
             return int(c.id), False
+    # ORG_WRITE_BYPASS_ALLOWLIST: academic_affairs_major_split_service — 分流业务内建班
     major_name = (major.major_name if major else "专业")[:16]
     seq = len(classes) + 1
     name = f"{major_name}{grade or ''}分流{seq}班"

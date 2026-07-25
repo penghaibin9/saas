@@ -37,8 +37,14 @@ def _role_scope(role) -> str:
 
 def _set_role_scope(role, scope_code: str, *, target_json: dict | None = None, user: dict | None = None) -> None:
     """写入结构化数据范围；禁止再以 Role.remark 作为主链路。"""
+    import re
     from app.services.data_scope_service import save_role_scope
     save_role_scope(role, scope_code, target_json=target_json, actor=user)
+    # 同步调用方会话中的 role，避免外层 commit 用旧 remark 覆盖结构化标记
+    remark = str(getattr(role, "remark", "") or "")
+    remark = re.sub(r";scope=[^;]*", "", remark)
+    remark = re.sub(r";permMode=[^;]*", "", remark).rstrip(";")
+    role.remark = (remark + ";permMode=DB;scopeSource=RULE").lstrip(";")
 
 
 def _role_row(role, member_count: int) -> dict:

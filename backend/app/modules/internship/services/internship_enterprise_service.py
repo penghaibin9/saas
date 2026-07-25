@@ -16,6 +16,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.field_crypto import encrypt_field
 from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact
 from app.services import excel  # 公共 Excel 导入导出底座（V1.1）
 from app.services.db_service import _as_id, _iso, _mask_phone, _tid, session
@@ -181,8 +182,7 @@ def _apply(c: EmpCompany, body) -> None:
             setattr(c, col, v)
     phone = getattr(body, "contactPhone", None)
     if phone is not None:
-        # 演示环境：明文占位存入 *_encrypted 列（真实环境为密文，加解密在授权服务内完成）
-        c.contact_phone_encrypted = phone or None
+        c.contact_phone_encrypted = encrypt_field(phone)
 
 
 def create_enterprise(body) -> dict:
@@ -332,7 +332,7 @@ def add_contact(company_id, body) -> dict:
         t = InternshipEnterpriseContact(
             tenant_id=_tid(), company_id=c.id, contact_type=ctype, name=name,
             title=getattr(body, "title", None), email=getattr(body, "email", None),
-            phone_encrypted=getattr(body, "phone", None) or None,
+            phone_encrypted=encrypt_field(getattr(body, "phone", None)),
             is_primary=is_primary, remark=getattr(body, "remark", None), status="ACTIVE")
         db.add(t)
         db.flush()
@@ -369,7 +369,7 @@ def update_contact(company_id, contact_id, body) -> dict:
                 setattr(t, col, v)
         phone = getattr(body, "phone", None)
         if phone is not None:
-            t.phone_encrypted = phone or None
+            t.phone_encrypted = encrypt_field(phone)
         is_primary = getattr(body, "isPrimary", None)
         if is_primary:
             _unset_primary(db, c.id, t.contact_type)
@@ -456,7 +456,7 @@ def _persist_enterprises(rows: list[dict]) -> dict:
                 credit_code=(r.get("creditCode") or "").strip() or None,
                 industry=r.get("industry") or None, region=r.get("region") or None,
                 contact_person=r.get("contactPerson") or None,
-                contact_phone_encrypted=(r.get("contactPhone") or "").strip() or None,
+                contact_phone_encrypted=encrypt_field((r.get("contactPhone") or "").strip() or None),
                 remark=(r.get("remark") or "").strip() or None,
                 status="ACTIVE", coop_status="PENDING", qualification_status="UNREVIEWED",
                 source="SELF_BUILT")

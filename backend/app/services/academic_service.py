@@ -7,6 +7,7 @@ from sqlalchemy import and_, case, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.field_crypto import encrypt_field
 from app.models import (AcademicAuditTrail, AcademicGrade, AcademicIntervention, AcademicMakeup,
                         AcademicRetake, AcademicStudent, AcademicWarning)
 from app.services.db_service import _iso, _mask_phone, _tid, session
@@ -143,7 +144,7 @@ def create_student(body: dict) -> dict:
             raise AppException("DATA_CONFLICT", f"学号 {no} 已存在")
         s = AcademicStudent(tenant_id=_tid(), name=name, student_no=no, class_id=body.get("classId"),
                             class_name=body.get("className"), counselor=body.get("counselor"),
-                            phone_encrypted=body.get("phone"),
+                            phone_encrypted=encrypt_field(body.get("phone")),
                             obtained_credits=body.get("obtainedCredits") or 0,
                             required_credits=body.get("requiredCredits") or 120)
         db.add(s)

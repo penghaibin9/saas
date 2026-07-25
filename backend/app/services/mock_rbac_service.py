@@ -172,6 +172,20 @@ def get_current_context(user_ctx: dict) -> dict:
     from app.middleware.context import is_readonly_tenant
     tenant = get_tenant() or {}
     readonly_tenant = is_readonly_tenant(tenant)
+    # DB 开启时优先结构化范围，与 system._role_scope / auth._scope_from_role 对齐
+    scope_code = active.get("dataScope")
+    scope_label = active.get("scopeLabel", "")
+    try:
+        from app.core.config import settings
+        if settings.DB_ENABLED:
+            from app.services.data_scope_service import resolve_scope_by_role_code
+            tid = int(user_ctx.get("tenantId") or tenant.get("id") or 0)
+            coded = resolve_scope_by_role_code(tid, role) if tid else None
+            if coded:
+                scope_code = coded
+                scope_label = coded
+    except Exception:
+        pass
     return {
         "readonlyTenant": readonly_tenant,
         "readonlyReason": ("正式演示环境为只读，数据不可修改。需要动手体验请用沙箱账号登录"
@@ -180,8 +194,8 @@ def get_current_context(user_ctx: dict) -> dict:
                         "userName": user_ctx.get("realName", ""),
                         "contextId": active.get("contextId", ""),
                         "permissionVersion": access.get("permissionVersion") or f"{role}:{len(patterns)}"},
-        "dataScope": {"scope": active["dataScope"], "scopeLabel": active.get("scopeLabel", ""),
-                      "scopeName": active.get("scopeLabel", "")},
+        "dataScope": {"scope": scope_code, "scopeLabel": scope_label,
+                      "scopeName": scope_label},
         "permissionPatterns": patterns,
         "moduleEntitlements": access.get("moduleEntitlements"),
         "moduleStates": access.get("moduleStates") or {},

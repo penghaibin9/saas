@@ -194,8 +194,9 @@ def create_student(body: dict) -> dict:
     if not name or not no:
         raise AppException("VALIDATION_ERROR", "姓名与学号必填")
     with session() as db:
+        from app.core.field_crypto import encrypt_field
         s = EmpStudent(tenant_id=_tid(), name=name, student_no=no, class_id=body.get("classId"),
-                       class_name=body.get("className"), phone_encrypted=body.get("phone"),
+                       class_name=body.get("className"), phone_encrypted=encrypt_field(body.get("phone")),
                        destination_type=body.get("destinationType") or "UNEMPLOYED",
                        company_name=body.get("companyName"), sign_date=body.get("signDate"),
                        counselor=body.get("counselor"))
@@ -505,10 +506,11 @@ def create_company(body: dict) -> dict:
     if not name or not cc:
         raise AppException("VALIDATION_ERROR", "企业名称与统一社会信用代码必填")
     with session() as db:
+        from app.core.field_crypto import encrypt_field
         c = EmpCompany(tenant_id=_tid(), name=name, credit_code=cc, industry=body.get("industry"),
                        nature=body.get("nature"), city=body.get("city"),
                        contact_person=body.get("contactPerson"),
-                       contact_phone_encrypted=body.get("contactPhone"),
+                       contact_phone_encrypted=encrypt_field(body.get("contactPhone")),
                        cooperation_level=body.get("cooperationLevel") or "常规合作", status="ACTIVE")
         db.add(c)
         db.flush()

@@ -194,10 +194,12 @@ def create_student(body: dict) -> dict:
             OrientationStudent.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", f"录取编号 {adm} 已存在")
+        from app.core.field_crypto import encrypt_field
         s = OrientationStudent(
             tenant_id=_tid(), name=name, admission_no=adm, major_name=body.get("majorName"),
             class_id=body.get("classId"), class_name=body.get("className"),
-            phone_encrypted=body.get("phone"), id_card_encrypted=body.get("idCard"),
+            phone_encrypted=encrypt_field(body.get("phone")),
+            id_card_encrypted=encrypt_field(body.get("idCard")),
             origin=body.get("origin"), counselor=body.get("counselor"),
             stage="ADMITTED", report_status="NOT_REPORTED",
             steps_json=_default_steps_json())
@@ -237,7 +239,8 @@ def update_student(sid, body: dict) -> dict:
                 setattr(s, col, body[k])
         phone = body.get("phone")
         if phone is not None and phone.strip() and "*" not in phone:
-            s.phone_encrypted = phone.strip()
+            from app.core.field_crypto import encrypt_field
+            s.phone_encrypted = encrypt_field(phone.strip())
         s.version += 1
         _audit(db, "STUDENT", s.id, "编辑报到信息")
         db.commit()
@@ -469,7 +472,8 @@ def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
     with session() as db:
         s = _get_student(db, sid)
         if phone:
-            s.phone_encrypted = phone
+            from app.core.field_crypto import encrypt_field
+            s.phone_encrypted = encrypt_field(phone)
         if origin:
             s.origin = origin
         steps = _merged_steps_json(s.steps_json)

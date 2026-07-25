@@ -185,6 +185,7 @@ def seed_sandbox(db) -> dict:
                             role_id=role.id, status="ACTIVE"))
     out["accounts"] = "admin2/teacher2/student2"
 
+    # ORG_WRITE_BYPASS_ALLOWLIST: sandbox_service — 演示沙箱种子，非学校正式管理写入口
     k = db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == SANDBOX_TID)).first()
     if k is None:
         c = College(tenant_id=SANDBOX_TID, code="S01", college_name="体验学院", status="ACTIVE")

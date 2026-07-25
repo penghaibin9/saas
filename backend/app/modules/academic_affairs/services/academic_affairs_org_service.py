@@ -222,20 +222,17 @@ def bind_secretary(user, college_id, body) -> dict:
 
 
 def delete_college(user, college_id) -> dict:
-    from app.models import Major
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_college(db, college_id)
         _require_college_write(ctx, db, c.id)
-        child = db.scalar(select(func.count()).select_from(Major).where(
-            Major.tenant_id == _tid(), Major.is_deleted.is_(False), Major.college_id == c.id)) or 0
-        if child:
-            raise AppException("DATA_CONFLICT", f"该学院下仍有 {child} 个专业，请先处理专业")
-        c.is_deleted = True
-        c.status = "DISABLED"
-        _audit(db, "AA_ORG_COLLEGE", c.id, "DELETE", c.college_name)
+        name = c.college_name
+    from app.services.org_master_service import soft_delete_org_node
+    result = soft_delete_org_node(node_type="COLLEGE", node_id=int(college_id), actor=user, reason="教务删除学院")
+    with session() as db:
+        _audit(db, "AA_ORG_COLLEGE", int(college_id), "DELETE", name)
         db.commit()
-        return {"id": str(college_id), "deleted": True}
+    return result
 
 
 # ═══════════ 专业 ═══════════
@@ -355,21 +352,17 @@ def update_major(user, major_id, body) -> dict:
 
 
 def delete_major(user, major_id) -> dict:
-    from app.models import SchoolClass
     with session() as db:
         ctx = _ctx(user, db)
         m = _get_major(db, major_id)
         _require_college_write(ctx, db, m.college_id)
-        child = db.scalar(select(func.count()).select_from(SchoolClass).where(
-            SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False),
-            SchoolClass.major_id == m.id)) or 0
-        if child:
-            raise AppException("DATA_CONFLICT", f"该专业下仍有 {child} 个行政班，请先处理班级")
-        m.is_deleted = True
-        m.status = "DISABLED"
-        _audit(db, "AA_ORG_MAJOR", m.id, "DELETE", m.major_name)
+        name = m.major_name
+    from app.services.org_master_service import soft_delete_org_node
+    result = soft_delete_org_node(node_type="MAJOR", node_id=int(major_id), actor=user, reason="教务删除专业")
+    with session() as db:
+        _audit(db, "AA_ORG_MAJOR", int(major_id), "DELETE", name)
         db.commit()
-        return {"id": str(major_id), "deleted": True}
+    return result
 
 
 # ═══════════ 行政班 ═══════════
@@ -584,22 +577,17 @@ def update_class(user, class_id, body) -> dict:
 
 
 def delete_class(user, class_id) -> dict:
-    from app.models import StudentProfile
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_class(db, class_id)
         _require_college_write(ctx, db, _class_college_id(db, c.id))
-        stu = db.scalar(select(func.count()).select_from(StudentProfile).where(
-            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
-            StudentProfile.class_id == c.id)) or 0
-        if stu:
-            raise AppException("DATA_CONFLICT", f"该班仍有 {stu} 名学生，请先调整学生归属")
-        c.is_deleted = True
-        c.class_status = "DISBANDED"
-        c.status = "DISABLED"
-        _audit(db, "AA_ORG_CLASS", c.id, "DELETE", c.class_name)
+        name = c.class_name
+    from app.services.org_master_service import soft_delete_org_node
+    result = soft_delete_org_node(node_type="CLASS", node_id=int(class_id), actor=user, reason="教务删除班级")
+    with session() as db:
+        _audit(db, "AA_ORG_CLASS", int(class_id), "DELETE", name)
         db.commit()
-        return {"id": str(class_id), "deleted": True}
+    return result
 
 
 # ═══════════ 年级（聚合，非独立表）═══════════

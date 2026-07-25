@@ -68,10 +68,11 @@ def bind_guardian(user: dict, body: dict) -> dict:
             StudentParentLink.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", "该家长手机号已授权，请勿重复添加")
+        from app.core.field_crypto import encrypt_field
         row = StudentParentLink(
             tenant_id=_tid(), student_id=stu.id, student_no=stu.student_no,
             guardian_name=name, relation=relation,
-            guardian_phone_encrypted=phone, guardian_phone_hash=ph,
+            guardian_phone_encrypted=encrypt_field(phone), guardian_phone_hash=ph,
             visible_scopes=scopes, link_status="ACTIVE")
         db.add(row)
         db.flush()

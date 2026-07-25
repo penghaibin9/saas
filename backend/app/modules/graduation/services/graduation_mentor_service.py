@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.field_crypto import encrypt_field
 from app.models import (GraduationAuditTrail, GraduationMentor, GraduationMentorAssignment,
                         GraduationMentorEval, GraduationStudent)
 from app.services import excel
@@ -130,7 +131,7 @@ def create_mentor(body: dict) -> dict:
             mentor_type=body.get("mentorType") or "INTERNAL", title=body.get("title"),
             college_name=body.get("collegeName"), major_name=body.get("majorName"),
             research_direction=body.get("researchDirection"),
-            max_capacity=int(body.get("maxCapacity") or 8), phone_encrypted=body.get("phone"),
+            max_capacity=int(body.get("maxCapacity") or 8), phone_encrypted=encrypt_field(body.get("phone")),
             remark=body.get("remark"), qualification_status="PENDING_REVIEW")
         db.add(m)
         db.flush()

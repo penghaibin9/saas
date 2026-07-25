@@ -1,7 +1,11 @@
 """组织主数据唯一写入服务：学院 / 专业 / 班级。
 
-业务模块可保留入口，但写操作应调用本服务（或本服务的领域适配）。
+业务模块可保留入口，但写操作应调用本服务（或本服务的领域适配 apply_org_node_in_session）。
 Expand-only：强化校验与乐观锁，不强制非空历史字段、不批量回填、不删除旧字段。
+
+正式豁免（禁止再扩大，变更须改本清单并更新施工报告）：
+- sandbox_service：演示沙箱种子，非学校正式管理写入口
+- academic_affairs_major_split_service：专业分流业务内建班，已有分流业务校验
 """
 from __future__ import annotations
 
@@ -11,123 +15,147 @@ from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
 
+# 机器可读豁免清单：caller_key -> 原因。新增旁路必须先登记，禁止静默绕过。
+ORG_WRITE_BYPASS_ALLOWLIST: dict[str, str] = {
+    "sandbox_service": "演示沙箱种子，非学校正式管理写入口",
+    "academic_affairs_major_split_service": "专业分流业务内建班，已有分流业务校验与审计",
+}
+
 
 def _tid() -> int:
     return int(current_tenant_id() or 0)
 
 
-def save_org_node(*, node_type: str, name: str, code: str | None = "", parent_id=None,
-                  node_id: int | None = None, reason: str = "",
-                  expected_version: int | None = None, actor: dict | None = None,
-                  extras: dict | None = None) -> dict:
-    """统一写入。extras 用于领域扩展字段（学制、年级等），仍在同一服务会话内落库。"""
+def _norm_code(code: str | None) -> str | None:
+    """空串规范为 None，与 MySQL 唯一索引（多 NULL 合法）一致。"""
+    text = str(code or "").strip()
+    return text or None
+
+
+def apply_org_node_in_session(
+    db,
+    *,
+    node_type: str,
+    name: str,
+    code: str | None = "",
+    parent_id=None,
+    node_id: int | None = None,
+    reason: str = "",
+    expected_version: int | None = None,
+    extras: dict | None = None,
+    tenant_id: int | None = None,
+    actor: dict | None = None,
+    commit: bool = False,
+) -> dict:
+    """在外部会话内统一校验并写入；默认不 commit（供开局/实施批事务复用）。"""
     from app.models import College, Major, SchoolClass
 
     node_type = str(node_type or "").upper()
     name = str(name or "").strip()
-    code = str(code or "").strip()
+    code = _norm_code(code)
     extras = dict(extras or {})
     if node_type not in {"COLLEGE", "MAJOR", "CLASS"} or not name:
         raise AppException("VALIDATION_ERROR", "请填写名称，并选择学院/专业/班级类型")
     if node_id is not None and parent_id is not None and len(str(reason or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "调整组织归属须填写原因（≥5字）")
 
-    tenant_id = _tid()
+    tid = int(tenant_id or _tid() or 0)
+    if not tid:
+        raise AppException("VALIDATION_ERROR", "缺少租户上下文")
     model = {"COLLEGE": College, "MAJOR": Major, "CLASS": SchoolClass}[node_type]
-    db = get_sessionmaker()()
-    try:
-        row = None
-        if node_id:
-            row = db.scalars(select(model).where(
-                model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))).first()
-            if row is None:
-                raise AppException("DATA_NOT_FOUND", "组织节点不存在")
-            if expected_version is not None and int(getattr(row, "version", 0) or 0) != int(expected_version):
-                raise AppException("DATA_CONFLICT", "组织数据已被他人修改，请刷新后重试")
 
-        if node_type == "MAJOR":
-            pid = int(parent_id or getattr(row, "college_id", 0) or 0)
-            if not pid:
-                raise AppException("VALIDATION_ERROR", "专业必须归属学院")
-            parent = db.scalars(select(College).where(
-                College.id == pid, College.tenant_id == tenant_id, College.is_deleted.is_(False))).first()
-            if parent is None:
-                raise AppException("VALIDATION_ERROR", "学院不属于当前租户或不存在")
-            if str(parent.status or "").upper() == "DISABLED" and not row:
-                raise AppException("VALIDATION_ERROR", "父级学院已停用，禁止新建专业")
-        if node_type == "CLASS":
-            pid = int(parent_id or getattr(row, "major_id", 0) or 0)
-            if not pid:
-                raise AppException("VALIDATION_ERROR", "班级必须归属专业")
-            parent = db.scalars(select(Major).where(
-                Major.id == pid, Major.tenant_id == tenant_id, Major.is_deleted.is_(False))).first()
-            if parent is None:
-                raise AppException("VALIDATION_ERROR", "专业不属于当前租户或不存在")
-            if str(parent.status or "").upper() == "DISABLED" and not row:
-                raise AppException("VALIDATION_ERROR", "父级专业已停用，禁止新建班级")
+    row = None
+    if node_id:
+        row = db.scalars(select(model).where(
+            model.id == node_id, model.tenant_id == tid, model.is_deleted.is_(False))).first()
+        if row is None:
+            raise AppException("DATA_NOT_FOUND", "组织节点不存在")
+        if expected_version is not None and int(getattr(row, "version", 0) or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "组织数据已被他人修改，请刷新后重试")
 
-        if code:
-            if node_type == "COLLEGE":
-                clash = db.scalars(select(College).where(
-                    College.tenant_id == tenant_id, College.code == code, College.is_deleted.is_(False),
-                    College.id != (node_id or 0))).first()
-                if clash:
-                    raise AppException("VALIDATION_ERROR", f"学院编码已存在：{code}")
-            elif node_type == "MAJOR":
-                clash = db.scalars(select(Major).where(
-                    Major.tenant_id == tenant_id, Major.code == code, Major.is_deleted.is_(False),
-                    Major.id != (node_id or 0))).first()
-                if clash:
-                    raise AppException("VALIDATION_ERROR", f"专业编码已存在：{code}")
-            else:
-                clash = db.scalars(select(SchoolClass).where(
-                    SchoolClass.tenant_id == tenant_id, SchoolClass.class_code == code,
-                    SchoolClass.is_deleted.is_(False), SchoolClass.id != (node_id or 0))).first()
-                if clash:
-                    raise AppException("VALIDATION_ERROR", f"班级编码已存在：{code}")
+    if node_type == "MAJOR":
+        pid = int(parent_id or getattr(row, "college_id", 0) or 0)
+        if not pid:
+            raise AppException("VALIDATION_ERROR", "专业必须归属学院")
+        parent = db.scalars(select(College).where(
+            College.id == pid, College.tenant_id == tid, College.is_deleted.is_(False))).first()
+        if parent is None:
+            raise AppException("VALIDATION_ERROR", "学院不属于当前租户或不存在")
+        if str(parent.status or "").upper() == "DISABLED" and not row:
+            raise AppException("VALIDATION_ERROR", "父级学院已停用，禁止新建专业")
+    if node_type == "CLASS":
+        pid = int(parent_id or getattr(row, "major_id", 0) or 0)
+        if not pid:
+            raise AppException("VALIDATION_ERROR", "班级必须归属专业")
+        parent = db.scalars(select(Major).where(
+            Major.id == pid, Major.tenant_id == tid, Major.is_deleted.is_(False))).first()
+        if parent is None:
+            raise AppException("VALIDATION_ERROR", "专业不属于当前租户或不存在")
+        if str(parent.status or "").upper() == "DISABLED" and not row:
+            raise AppException("VALIDATION_ERROR", "父级专业已停用，禁止新建班级")
 
-        before = None
-        if not row:
-            if node_type == "COLLEGE":
-                row = College(tenant_id=tenant_id, college_name=name, code=code or None, status="ACTIVE")
-            elif node_type == "MAJOR":
-                row = Major(tenant_id=tenant_id, college_id=int(parent_id), major_name=name,
-                            code=code or None, status="ACTIVE")
-            else:
-                row = SchoolClass(tenant_id=tenant_id, major_id=int(parent_id), class_name=name,
-                                  class_code=code or None, status="ACTIVE")
-            db.add(row)
+    if code:
+        if node_type == "COLLEGE":
+            clash = db.scalars(select(College).where(
+                College.tenant_id == tid, College.code == code, College.is_deleted.is_(False),
+                College.id != (node_id or 0))).first()
+            if clash:
+                raise AppException("VALIDATION_ERROR", f"学院编码已存在：{code}")
+        elif node_type == "MAJOR":
+            clash = db.scalars(select(Major).where(
+                Major.tenant_id == tid, Major.code == code, Major.is_deleted.is_(False),
+                Major.id != (node_id or 0))).first()
+            if clash:
+                raise AppException("VALIDATION_ERROR", f"专业编码已存在：{code}")
         else:
-            before = {
-                "name": getattr(row, "college_name", None) or getattr(row, "major_name", None)
-                or getattr(row, "class_name", None),
-                "code": getattr(row, "code", None) or getattr(row, "class_code", None),
-                "parentId": getattr(row, "college_id", None) or getattr(row, "major_id", None),
-                "version": getattr(row, "version", None),
-            }
-            if node_type == "COLLEGE":
-                row.college_name = name
-                if code or code == "":
-                    row.code = code or None
-            elif node_type == "MAJOR":
-                row.major_name = name
-                if code or code == "":
-                    row.code = code or None
-                if parent_id is not None:
-                    row.college_id = int(parent_id)
-            else:
-                row.class_name = name
-                if code or code == "":
-                    row.class_code = code or None
-                if parent_id is not None:
-                    row.major_id = int(parent_id)
-            row.version = int(getattr(row, "version", 0) or 0) + 1
+            clash = db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == tid, SchoolClass.class_code == code,
+                SchoolClass.is_deleted.is_(False), SchoolClass.id != (node_id or 0))).first()
+            if clash:
+                raise AppException("VALIDATION_ERROR", f"班级编码已存在：{code}")
 
-        # 领域扩展字段：仅写入 extras 中显式给出的键（允许 None 清字段）
-        for attr, val in extras.items():
-            if hasattr(row, attr):
-                setattr(row, attr, val)
+    before = None
+    created = False
+    if not row:
+        created = True
+        if node_type == "COLLEGE":
+            row = College(tenant_id=tid, college_name=name, code=code, status="ACTIVE")
+        elif node_type == "MAJOR":
+            row = Major(tenant_id=tid, college_id=int(parent_id), major_name=name,
+                        code=code, status="ACTIVE")
+        else:
+            row = SchoolClass(tenant_id=tid, major_id=int(parent_id), class_name=name,
+                              class_code=code, status="ACTIVE")
+        db.add(row)
+        db.flush()
+    else:
+        before = {
+            "name": getattr(row, "college_name", None) or getattr(row, "major_name", None)
+            or getattr(row, "class_name", None),
+            "code": getattr(row, "code", None) or getattr(row, "class_code", None),
+            "parentId": getattr(row, "college_id", None) or getattr(row, "major_id", None),
+            "version": getattr(row, "version", None),
+        }
+        if node_type == "COLLEGE":
+            row.college_name = name
+            row.code = code
+        elif node_type == "MAJOR":
+            row.major_name = name
+            row.code = code
+            if parent_id is not None:
+                row.college_id = int(parent_id)
+        else:
+            row.class_name = name
+            row.class_code = code
+            if parent_id is not None:
+                row.major_id = int(parent_id)
+        row.version = int(getattr(row, "version", 0) or 0) + 1
 
+    for attr, val in extras.items():
+        if hasattr(row, attr):
+            setattr(row, attr, val)
+
+    if commit:
         db.commit()
         db.refresh(row)
         from app.services import audit_log
@@ -137,7 +165,90 @@ def save_org_node(*, node_type: str, name: str, code: str | None = "", parent_id
                     "moduleCode": "systemAdmin", "actor": (actor or {}).get("userId"),
                     "extras": {k: extras[k] for k in list(extras)[:20]}},
         )
-        return {"id": str(row.id), "version": int(getattr(row, "version", 0) or 0), "row": row}
+    return {
+        "id": str(row.id),
+        "version": int(getattr(row, "version", 0) or 0),
+        "row": row,
+        "created": created,
+    }
+
+
+def save_org_node(*, node_type: str, name: str, code: str | None = "", parent_id=None,
+                  node_id: int | None = None, reason: str = "",
+                  expected_version: int | None = None, actor: dict | None = None,
+                  extras: dict | None = None) -> dict:
+    """独立会话写入（管理端单条保存）。"""
+    db = get_sessionmaker()()
+    try:
+        return apply_org_node_in_session(
+            db, node_type=node_type, name=name, code=code, parent_id=parent_id,
+            node_id=node_id, reason=reason, expected_version=expected_version,
+            extras=extras, actor=actor, commit=True,
+        )
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def soft_delete_org_node(*, node_type: str, node_id: int, actor: dict | None = None,
+                         reason: str = "软删除") -> dict:
+    """统一软删：校验子级/学生后标记 is_deleted + DISABLED。"""
+    from app.models import College, Major, SchoolClass, StudentProfile
+
+    node_type = str(node_type or "").upper()
+    tenant_id = _tid()
+    model = {"COLLEGE": College, "MAJOR": Major, "CLASS": SchoolClass}[node_type]
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(model).where(
+            model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))).first()
+        if row is None:
+            raise AppException("DATA_NOT_FOUND", "组织节点不存在")
+
+        if node_type == "COLLEGE":
+            child = db.scalar(select(func.count()).select_from(Major).where(
+                Major.tenant_id == tenant_id, Major.is_deleted.is_(False),
+                Major.college_id == node_id)) or 0
+            if child:
+                raise AppException("DATA_CONFLICT", f"该学院下仍有 {child} 个专业，请先处理专业")
+            students = db.scalar(select(func.count()).select_from(StudentProfile).where(
+                StudentProfile.tenant_id == tenant_id, StudentProfile.college_id == node_id,
+                StudentProfile.is_deleted.is_(False))) or 0
+            if students:
+                raise AppException("DATA_CONFLICT", f"该学院下仍有 {students} 名学生，请先处理")
+        elif node_type == "MAJOR":
+            child = db.scalar(select(func.count()).select_from(SchoolClass).where(
+                SchoolClass.tenant_id == tenant_id, SchoolClass.is_deleted.is_(False),
+                SchoolClass.major_id == node_id)) or 0
+            if child:
+                raise AppException("DATA_CONFLICT", f"该专业下仍有 {child} 个班级，请先处理班级")
+            students = db.scalar(select(func.count()).select_from(StudentProfile).where(
+                StudentProfile.tenant_id == tenant_id, StudentProfile.major_id == node_id,
+                StudentProfile.is_deleted.is_(False))) or 0
+            if students:
+                raise AppException("DATA_CONFLICT", f"该专业下仍有 {students} 名学生，请先处理")
+        else:
+            students = db.scalar(select(func.count()).select_from(StudentProfile).where(
+                StudentProfile.tenant_id == tenant_id, StudentProfile.class_id == node_id,
+                StudentProfile.is_deleted.is_(False))) or 0
+            if students:
+                raise AppException("DATA_CONFLICT", f"该班级下仍有 {students} 名学生，请先处理")
+
+        row.is_deleted = True
+        row.status = "DISABLED"
+        if node_type == "CLASS" and hasattr(row, "class_status"):
+            row.class_status = "DISBANDED"
+        row.version = int(getattr(row, "version", 0) or 0) + 1
+        db.commit()
+        from app.services import audit_log
+        audit_log.record(
+            "ORG_NODE_DELETE", f"{node_type}:{node_id}",
+            detail={"reason": reason, "moduleCode": "systemAdmin",
+                    "actor": (actor or {}).get("userId")},
+        )
+        return {"id": str(node_id), "deleted": True}
     except Exception:
         db.rollback()
         raise

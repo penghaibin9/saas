@@ -97,6 +97,71 @@ def test_phone_update_uses_encrypt():
     assert "account.phone_encrypted = phone\n" not in text
 
 
+def test_module_phone_writes_use_encrypt_field():
+    """敏感字段写入收口：关键模块不得再明文赋给 *_encrypted。"""
+    samples = [
+        ROOT / "backend/app/services/orientation_service.py",
+        ROOT / "backend/app/modules/employment/services/employment_service.py",
+        ROOT / "backend/app/services/academic_service.py",
+        ROOT / "backend/app/modules/internship/services/internship_enterprise_service.py",
+        ROOT / "backend/app/modules/graduation/services/graduation_mentor_service.py",
+        ROOT / "backend/app/student_portal/services/parent_link_service.py",
+    ]
+    for path in samples:
+        text = path.read_text(encoding="utf-8")
+        assert "encrypt_field" in text, path.name
+        # 禁止典型明文直写（允许 decrypt/encrypt 调用行）
+        assert "phone_encrypted=body.get(\"phone\")" not in text
+        assert "phone_encrypted=body.get('phone')" not in text
+        assert "guardian_phone_encrypted=phone," not in text
+
+
+def test_auth_scope_prefers_structured_rule():
+    """登录上下文与 system._role_scope 对齐：优先 resolve_role_scope_code。"""
+    import inspect
+    from app.services import auth_service_db as auth
+    src = inspect.getsource(auth._scope_from_role)
+    assert "resolve_role_scope_code" in src
+
+
+def test_data_scope_survives_relogin(client, monkeypatch):
+    """改范围后，auth 与 HTTP current-context 均优先读结构化规则（不依赖全库 DDL）。"""
+    from app.core import config as cfg
+    from app.services import auth_service_db as auth
+    from app.services import data_scope_service as dss
+
+    class Role:
+        id = 9
+        tenant_id = 1000000000000000001
+        role_code = "SCHOOL_ADMIN"
+        role_name = "学校管理员"
+        version = 0
+        remark = ";scope=TENANT;permMode=DB"
+
+    # 模拟已写入 DataScopeRule=COLLEGE 后的读取
+    monkeypatch.setattr(dss, "resolve_role_scope_code", lambda role: "COLLEGE")
+    monkeypatch.setattr(dss, "resolve_scope_by_role_code", lambda tid, code: "COLLEGE")
+    monkeypatch.setattr(cfg.settings, "DB_ENABLED", True)
+
+    assert auth._scope_from_role(Role()) == "COLLEGE"
+
+    login = client.post("/api/v1/auth/mock-login",
+                        json={"loginName": "school_admin01", "password": "any"}).json()["data"]
+    headers = {"Authorization": f"Bearer {login['accessToken']}"}
+    resp = client.get("/api/v1/rbac/current-context", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json().get("data") or {}
+    scope_obj = data.get("dataScope") or {}
+    scope = scope_obj.get("scope") if isinstance(scope_obj, dict) else scope_obj
+    assert scope == "COLLEGE", f"HTTP context scope={scope!r}"
+
+
+def test_org_bypass_allowlist_documented():
+    from app.services.org_master_service import ORG_WRITE_BYPASS_ALLOWLIST
+    assert "sandbox_service" in ORG_WRITE_BYPASS_ALLOWLIST
+    assert "academic_affairs_major_split_service" in ORG_WRITE_BYPASS_ALLOWLIST
+
+
 def test_system_catalog_nine_workspaces():
     # 通过读取前端目录源文件统计二级工作区
     text = (ROOT / "frontend" / "src" / "modules" / "system" / "systemManagementCatalog.js").read_text(encoding="utf-8")

@@ -99,6 +99,14 @@ def _scope_for(role_code: str) -> tuple[str, str]:
 
 
 def _scope_from_role(role) -> str | None:
+    """与 system._role_scope 对齐：优先结构化 DataScopeRule，历史 remark 仅回落。"""
+    try:
+        from app.services.data_scope_service import resolve_role_scope_code
+        coded = resolve_role_scope_code(role)
+        if coded:
+            return coded
+    except Exception:
+        pass
     marker = str(getattr(role, "remark", "") or "")
     prefix = ";scope="
     return marker.split(prefix, 1)[1].split(";", 1)[0] if prefix in marker else None

@@ -120,7 +120,7 @@ async function main() {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
   const { NAV_PLAN, PLATFORM_PLAN } = await loadNav()
   const routeIndex = buildRouteIndex()
-  // 同步落盘 route-index 供 CI / 报告
+  // 同步落盘完整 route-index（含 exact/patterns/redirects/aliases），禁止只写统计壳
   const routeIndexOut = path.join(ROOT, 'shared/generated/route-index.json')
   fs.writeFileSync(routeIndexOut, JSON.stringify({
     generatedAt: new Date().toISOString(),
@@ -128,6 +128,10 @@ async function main() {
     patternCount: routeIndex.patterns.length,
     redirectCount: routeIndex.redirects.length,
     aliasCount: routeIndex.aliases.length,
+    exact: [...routeIndex.exact].sort(),
+    patterns: routeIndex.patterns,
+    redirects: routeIndex.redirects,
+    aliases: routeIndex.aliases,
   }, null, 2) + '\n', 'utf8')
 
   const capabilities = []

@@ -44,21 +44,34 @@ def resolve_role_scope_code(role) -> str | None:
     try:
         from app.models import DataScopeRule
         tid = int(getattr(role, "tenant_id", 0) or current_tenant_id() or 0)
-        db = get_sessionmaker()()
-        try:
-            row = db.scalars(select(DataScopeRule).where(
-                DataScopeRule.tenant_id == tid,
-                DataScopeRule.role_code == role.role_code,
-                DataScopeRule.status == "ACTIVE",
-                DataScopeRule.is_deleted.is_(False),
-            ).order_by(DataScopeRule.id.desc())).first()
-            if row is None:
-                return None
-            return normalize_scope(row.scope_type)
-        finally:
-            db.close()
+        code = getattr(role, "role_code", None)
+        if not tid or not code:
+            return None
+        return resolve_scope_by_role_code(tid, code)
     except Exception:
         return None
+
+
+def resolve_scope_by_role_code(tenant_id: int, role_code: str) -> str | None:
+    """按租户+角色编码读取结构化范围。供 auth / mock_rbac 共用。"""
+    from app.models import DataScopeRule
+    tid = int(tenant_id or 0)
+    code = str(role_code or "").strip()
+    if not tid or not code:
+        return None
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(DataScopeRule).where(
+            DataScopeRule.tenant_id == tid,
+            DataScopeRule.role_code == code,
+            DataScopeRule.status == "ACTIVE",
+            DataScopeRule.is_deleted.is_(False),
+        ).order_by(DataScopeRule.id.desc())).first()
+        if row is None:
+            return None
+        return normalize_scope(row.scope_type)
+    finally:
+        db.close()
 
 
 def save_role_scope(role, scope_code: str, *, target_json: dict | None = None,
@@ -106,11 +119,16 @@ def save_role_scope(role, scope_code: str, *, target_json: dict | None = None,
             row.target_json = targets or None
             row.status = "ACTIVE"
             row.version = int(row.version or 0) + 1
-        # 历史 remark 仅保留兼容标记，不再作为主写入
-        remark = str(role.remark or "")
-        remark = re.sub(r";scope=[^;]*", "", remark)
-        remark = re.sub(r";permMode=[^;]*", "", remark).rstrip(";")
-        role.remark = (remark + ";permMode=DB;scopeSource=RULE").lstrip(";")
+        # 历史 remark 仅保留兼容标记，不再作为主写入（在本会话内更新 Role）
+        from app.models import Role as RoleModel
+        role_row = db.scalars(select(RoleModel).where(
+            RoleModel.tenant_id == tid, RoleModel.role_code == role.role_code,
+            RoleModel.is_deleted.is_(False))).first()
+        if role_row is not None:
+            remark = str(role_row.remark or "")
+            remark = re.sub(r";scope=[^;]*", "", remark)
+            remark = re.sub(r";permMode=[^;]*", "", remark).rstrip(";")
+            role_row.remark = (remark + ";permMode=DB;scopeSource=RULE").lstrip(";")
         db.commit()
         db.refresh(row)
         from app.services import audit_log

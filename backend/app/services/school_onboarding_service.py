@@ -266,13 +266,17 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             return db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == tenant_id,
                               SchoolClass.class_name == name, SchoolClass.is_deleted.is_(False))).first()
 
-        # 院系
+        # 院系（统一走组织主数据校验，复用本事务会话）
+        from app.services.org_master_service import apply_org_node_in_session
         for c in (body.get("colleges") or []):
             nm = str(c.get("name")).strip()
             if col(nm):
                 report["entities"]["colleges"]["skipped"] += 1
                 continue
-            db.add(College(tenant_id=tenant_id, college_name=nm, code=c.get("code")))
+            apply_org_node_in_session(
+                db, node_type="COLLEGE", name=nm, code=c.get("code"),
+                tenant_id=tenant_id, commit=False,
+            )
             report["entities"]["colleges"]["created"] += 1
         db.flush()
         # 专业
@@ -287,7 +291,10 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             if maj(nm):
                 report["entities"]["majors"]["skipped"] += 1
                 continue
-            db.add(Major(tenant_id=tenant_id, college_id=cg.id, major_name=nm, code=m.get("code")))
+            apply_org_node_in_session(
+                db, node_type="MAJOR", name=nm, code=m.get("code"), parent_id=cg.id,
+                tenant_id=tenant_id, commit=False,
+            )
             report["entities"]["majors"]["created"] += 1
         db.flush()
         # 班级
@@ -302,8 +309,11 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             if cls(nm):
                 report["entities"]["classes"]["skipped"] += 1
                 continue
-            db.add(SchoolClass(tenant_id=tenant_id, major_id=mj.id, class_name=nm,
-                               grade=k.get("grade")))
+            apply_org_node_in_session(
+                db, node_type="CLASS", name=nm, parent_id=mj.id,
+                tenant_id=tenant_id, commit=False,
+                extras={"grade": k.get("grade")},
+            )
             report["entities"]["classes"]["created"] += 1
         db.flush()
         # 学生

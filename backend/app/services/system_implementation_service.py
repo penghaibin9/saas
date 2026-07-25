@@ -583,6 +583,7 @@ def apply_mapping(user: dict, project_id: int, body: dict) -> dict:
         created = {"colleges": 0, "majors": 0, "classes": 0}
         resolved_colleges = {}; resolved_majors = {}
         role_report = ensure_builtin_roles(db, tenant_id)
+        from app.services.org_master_service import apply_org_node_in_session
 
         for decision in config["organizationDecisions"]:
             candidate = candidates[decision["candidateId"]]
@@ -595,9 +596,17 @@ def apply_mapping(user: dict, project_id: int, body: dict) -> dict:
                 matches = db.scalars(select(College).where(College.tenant_id == tenant_id,
                     College.college_name == candidate["name"], College.is_deleted.is_(False))).all()
                 if len(matches) > 1: raise AppException("DATA_CONFLICT", f"学院/部门同名冲突：{candidate['name']}")
-                target = matches[0] if matches else College(tenant_id=tenant_id, college_name=candidate["name"],
-                    code=_org_code("ORG", candidate["name"]), status="ACTIVE", created_by=actor, updated_by=actor)
-                if not matches: db.add(target); db.flush(); created["colleges"] += 1
+                if matches:
+                    target = matches[0]
+                else:
+                    result = apply_org_node_in_session(
+                        db, node_type="COLLEGE", name=candidate["name"],
+                        code=_org_code("ORG", candidate["name"]),
+                        tenant_id=tenant_id, commit=False,
+                        extras={"created_by": actor, "updated_by": actor},
+                    )
+                    target = result["row"]
+                    created["colleges"] += 1
             resolved_colleges[_norm(candidate["name"])] = target.id
 
         for decision in config["organizationDecisions"]:
@@ -617,10 +626,17 @@ def apply_mapping(user: dict, project_id: int, body: dict) -> dict:
                 matches = db.scalars(select(Major).where(Major.tenant_id == tenant_id, Major.college_id == parent_id,
                     Major.major_name == candidate["name"], Major.is_deleted.is_(False))).all()
                 if len(matches) > 1: raise AppException("DATA_CONFLICT", f"同学院专业重名：{candidate['name']}")
-                target = matches[0] if matches else Major(tenant_id=tenant_id, college_id=parent_id,
-                    major_name=candidate["name"], code=_org_code("MAJ", candidate["name"], candidate["parentName"]),
-                    status="ACTIVE", created_by=actor, updated_by=actor)
-                if not matches: db.add(target); db.flush(); created["majors"] += 1
+                if matches:
+                    target = matches[0]
+                else:
+                    result = apply_org_node_in_session(
+                        db, node_type="MAJOR", name=candidate["name"], parent_id=parent_id,
+                        code=_org_code("MAJ", candidate["name"], candidate["parentName"]),
+                        tenant_id=tenant_id, commit=False,
+                        extras={"created_by": actor, "updated_by": actor},
+                    )
+                    target = result["row"]
+                    created["majors"] += 1
             resolved_majors[(_norm(candidate.get("collegeName")), _norm(candidate["name"]))] = target.id
 
         for decision in config["organizationDecisions"]:
@@ -641,11 +657,21 @@ def apply_mapping(user: dict, project_id: int, body: dict) -> dict:
                     SchoolClass.major_id == parent_id, SchoolClass.class_name == candidate["name"],
                     SchoolClass.is_deleted.is_(False))).all()
                 if len(matches) > 1: raise AppException("DATA_CONFLICT", f"同专业班级重名：{candidate['name']}")
-                target = matches[0] if matches else SchoolClass(tenant_id=tenant_id, major_id=parent_id,
-                    class_name=candidate["name"], class_code=_org_code("CLS", candidate["name"], candidate["parentName"]),
-                    grade=candidate.get("grade") or None, status="ACTIVE", class_status="NORMAL",
-                    created_by=actor, updated_by=actor)
-                if not matches: db.add(target); db.flush(); created["classes"] += 1
+                if matches:
+                    target = matches[0]
+                else:
+                    result = apply_org_node_in_session(
+                        db, node_type="CLASS", name=candidate["name"], parent_id=parent_id,
+                        code=_org_code("CLS", candidate["name"], candidate["parentName"]),
+                        tenant_id=tenant_id, commit=False,
+                        extras={
+                            "grade": candidate.get("grade") or None,
+                            "class_status": "NORMAL",
+                            "created_by": actor, "updated_by": actor,
+                        },
+                    )
+                    target = result["row"]
+                    created["classes"] += 1
 
         config["status"] = "APPLIED"; config["appliedSummary"] = {"created": created, "roles": role_report}
         section_config["mapping"] = config
