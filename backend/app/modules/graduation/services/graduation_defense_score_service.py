@@ -76,7 +76,7 @@ def _active_round_no(db, gd_student_id: int) -> int:
 def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None) -> tuple[str, int | None]:
     """防伪造：评委仅能以本人名义录入；有 manage 代录权限时须落在答辩组名单内。
 
-    返回 (judge_name_snapshot, judge_mentor_id)。有组内 mentor_id 时优先比 ID。
+    返回 (judge_name_snapshot, judge_mentor_id)。席位有 ID 比 ID；仅姓名席位允许姓名。
     """
     from app.modules.graduation.services import graduation_identity as gid
     u = get_current_user_ctx() or {}
@@ -88,53 +88,47 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None) -> t
         or has_permission(u, "graduationDesign.defense.manage")
     )
     group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
-    panel_names = _panel_judge_names(group)
-    panel_ids = _panel_judge_ids(group)
+    seats = gid.judge_panel_seats(group)
     me = gid.current_user_mentor(db)
 
     if role == "GD_DEFENSE_EXPERT" or (
         has_permission(u, "graduationDesign.defense.score") and not can_proxy
     ):
-        if panel_ids:
-            if not me or int(me.id) not in panel_ids:
-                raise no_permission("你不在该生答辩组评委名单中")
-            if requested_name and requested_name != (me.teacher_name or "").strip() and requested_name != real_name:
-                raise no_permission("答辩评委只能以本人名义录入评分")
-            return (me.teacher_name or "").strip() or real_name, int(me.id)
-        if not real_name:
-            raise AppException("VALIDATION_ERROR", "当前账号缺少真实姓名，无法录入评分")
-        if requested_name and requested_name != real_name:
-            raise no_permission("答辩评委只能以本人名义录入评分")
-        if panel_names and real_name not in panel_names:
+        if not seats:
+            raise AppException("VALIDATION_ERROR", "该生尚未绑定答辩组评委名单")
+        if not gid.user_on_judge_panel(group, mentor=me, real_name=real_name):
             raise no_permission("你不在该生答辩组评委名单中")
-        mid = int(me.id) if me else None
-        return real_name, mid
+        # 解析本人对应席位
+        my_seat = next(
+            (s for s in seats if gid.user_matches_judge_seat(s, mentor=me, real_name=real_name)),
+            None,
+        )
+        snap_name = (me.teacher_name if me else None) or real_name
+        if requested_name and requested_name not in {snap_name, real_name, (my_seat or {}).get("name")}:
+            raise no_permission("答辩评委只能以本人名义录入评分")
+        mid = int(my_seat["mentorId"]) if my_seat and my_seat.get("mentorId") else (int(me.id) if me else None)
+        return (my_seat or {}).get("name") or snap_name or real_name, mid
 
-    # 代录：优先按姓名在组内解析 mentorId
+    # 代录：按姓名/ID 落在席位上
     judge_name = requested_name or real_name
     if not judge_name:
         raise AppException("VALIDATION_ERROR", "评委姓名必填")
-    if panel_ids:
-        # 代录时若请求名能唯一匹配组成员，写入对应 mentor_id
-        matched = None
-        if group:
-            if (group.chair or "").strip() == judge_name and group.chair_mentor_id:
-                matched = int(group.chair_mentor_id)
-            else:
-                for raw in (group.members_json or []):
-                    item = gid.normalize_member(raw)
-                    if item.get("name") == judge_name and item.get("mentorId"):
-                        matched = int(item["mentorId"])
-                        break
-        if matched is None or matched not in panel_ids:
-            # 允许用当前操作者本人 ID 若在面板
-            if me and int(me.id) in panel_ids and (not requested_name or requested_name == (me.teacher_name or "").strip()):
-                return (me.teacher_name or "").strip() or judge_name, int(me.id)
-            raise AppException("VALIDATION_ERROR", f"评委「{judge_name}」不在该生答辩组名单中")
-        return judge_name, matched
-    if panel_names and judge_name not in panel_names:
+    if not seats:
+        return judge_name, int(me.id) if me and (me.teacher_name or "").strip() == judge_name else None
+    matched = None
+    for seat in seats:
+        if seat.get("mentorId") and me and int(me.id) == int(seat["mentorId"]) and (
+            not requested_name or requested_name in {(me.teacher_name or "").strip(), real_name, seat.get("name")}
+        ):
+            matched = seat
+            break
+        if (seat.get("name") or "") == judge_name:
+            matched = seat
+            break
+    if not matched:
         raise AppException("VALIDATION_ERROR", f"评委「{judge_name}」不在该生答辩组名单中")
-    return judge_name, int(me.id) if me and (me.teacher_name or "").strip() == judge_name else None
+    mid = int(matched["mentorId"]) if matched.get("mentorId") else None
+    return matched.get("name") or judge_name, mid
 
 
 def _row(d: GraduationDefenseScore, stu=None) -> dict:
@@ -245,7 +239,14 @@ def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent
             GraduationDefenseScore.round_no == latest_round,
             GraduationDefenseScore.is_deleted.is_(False))
         if judge_mid:
-            dup_q = dup_q.where(GraduationDefenseScore.judge_mentor_id == judge_mid)
+            # ID 席位：命中 mentor_id，或历史仅姓名快照同名行（回填前录入）
+            dup_q = dup_q.where(or_(
+                GraduationDefenseScore.judge_mentor_id == judge_mid,
+                (
+                    GraduationDefenseScore.judge_mentor_id.is_(None)
+                    & (GraduationDefenseScore.judge_name == judge_name)
+                ),
+            ))
         else:
             dup_q = dup_q.where(
                 GraduationDefenseScore.judge_name == judge_name,
@@ -295,19 +296,17 @@ def confirm_scores(gd_student_id) -> dict:
         if pending:
             raise AppException("DATA_CONFLICT", "仍有评委未完成评分")
         group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
-        expected_ids = _panel_judge_ids(group)
-        if expected_ids:
-            done_ids = {int(d.judge_mentor_id) for d in rows
-                        if d.judge_mentor_id and d.status in ("SCORED", "CONFIRMED")}
-            missing_ids = expected_ids - done_ids
-            if missing_ids:
-                names = []
-                for mid in missing_ids:
-                    m = gid.get_mentor(db, mid)
-                    names.append((m.teacher_name if m else None) or str(mid))
+        seats = gid.judge_panel_seats(group)
+        if seats:
+            missing = [
+                (s.get("name") or str(s.get("mentorId") or "评委"))
+                for s in seats
+                if not any(gid.score_row_covers_seat(d, s) for d in rows)
+            ]
+            if missing:
                 raise AppException(
                     "DATA_CONFLICT",
-                    f"答辩组评委尚未全部评分：{('、'.join(names))}",
+                    f"答辩组评委尚未全部评分：{('、'.join(missing))}",
                 )
         else:
             expected = _panel_judge_names(group)
@@ -401,9 +400,9 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
                 "pendingJudges": [n for n, _ in uniq]}
 
 
-def defense_score_stats() -> dict:
+def defense_score_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.is_deleted.is_(False),
                 GraduationDefenseScore.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationDefenseScore).where(*base)) or 0)
@@ -413,4 +412,5 @@ def defense_score_stats() -> dict:
             *base, GraduationDefenseScore.absent.is_(True))) or 0)
         second_round = int(db.scalar(select(func.count()).select_from(GraduationDefenseScore).where(
             *base, GraduationDefenseScore.round_no > 1)) or 0)
-        return {"total": total, "confirmed": confirmed, "absent": absent, "secondRoundCount": second_round}
+        return {"total": total, "confirmed": confirmed, "absent": absent, "secondRoundCount": second_round,
+                "batchId": str(batch_id) if batch_id else None}

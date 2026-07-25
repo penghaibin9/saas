@@ -16,8 +16,9 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-成绩评定"])
 
 
 @router.get("/gd-grades/stats", summary="成绩统计")
-def gd_grade_stats(user=Depends(get_current_user)):
-    return success(svc.grade_stats())
+def gd_grade_stats(batchId: int | None = Query(default=None, ge=1),
+                   user=Depends(get_current_user)):
+    return success(svc.grade_stats(batch_id=batchId))
 
 
 @router.get("/gd-grades", summary="成绩列表（分页+筛选）")

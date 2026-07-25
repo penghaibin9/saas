@@ -827,16 +827,26 @@ def _can_access_defense_group(db, group: GraduationDefenseGroup) -> bool:
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
     real_name = (user.get("realName") or "").strip()
     from app.modules.graduation.services import graduation_identity as gid
+    from app.modules.graduation.services.graduation_scope_service import _name_is_ambiguous
     me = gid.current_user_mentor(db, group.tenant_id)
     if role == "GD_DEFENSE_SECRETARY":
+        if not gid.user_is_secretary(group, mentor=me, real_name=real_name):
+            return False
         if getattr(group, "secretary_mentor_id", None):
-            return bool(me and int(me.id) == int(group.secretary_mentor_id))
-        return real_name == (group.secretary or "").strip()
+            return True
+        return not _name_is_ambiguous(db, group.tenant_id, real_name)
     if role == "GD_DEFENSE_EXPERT":
-        panel_ids = gid.judge_panel_mentor_ids(group)
-        if panel_ids:
-            return bool(me and int(me.id) in panel_ids)
-        return real_name in gid.judge_panel_names(group)
+        if not gid.user_on_judge_panel(group, mentor=me, real_name=real_name):
+            return False
+        matched_by_id = bool(
+            me and any(
+                s.get("mentorId") is not None and int(me.id) == int(s["mentorId"])
+                for s in gid.judge_panel_seats(group)
+            )
+        )
+        if matched_by_id:
+            return True
+        return not _name_is_ambiguous(db, group.tenant_id, real_name)
     return any(can_access_student(db, student) for student in _assigned_students(db, group.id))
 
 
@@ -896,15 +906,31 @@ def _require_defense_batch(db, batch_id) -> GraduationBatch:
 
 
 def _apply_defense_people(db, g, *, chair=None, secretary=None, members=None,
-                          chair_mentor_id=None, secretary_mentor_id=None, member_mentor_ids=None):
+                          chair_mentor_id=None, secretary_mentor_id=None, member_mentor_ids=None,
+                          preserve_existing: bool = False):
+    """写主席/秘书/评委。update 时 preserve_existing=True：未传 ID 且未传姓名则保留原快照。"""
     from app.modules.graduation.services import graduation_identity as gid
-    cid, cname = gid.resolve_chair_secretary(db, mentor_id=chair_mentor_id, name=chair)
-    sid, sname = gid.resolve_chair_secretary(db, mentor_id=secretary_mentor_id, name=secretary)
+    cid, cname = gid.merge_person_fields(
+        existing_mentor_id=getattr(g, "chair_mentor_id", None),
+        existing_name=getattr(g, "chair", None),
+        mentor_id=chair_mentor_id, name=chair, preserve_existing=preserve_existing, db=db,
+    )
+    sid, sname = gid.merge_person_fields(
+        existing_mentor_id=getattr(g, "secretary_mentor_id", None),
+        existing_name=getattr(g, "secretary", None),
+        mentor_id=secretary_mentor_id, name=secretary, preserve_existing=preserve_existing, db=db,
+    )
     g.chair_mentor_id = cid
-    g.chair = cname or None
+    g.chair = cname
     g.secretary_mentor_id = sid
-    g.secretary = sname or None
-    g.members_json = gid.build_members_from_ids(db, member_mentor_ids, members)
+    g.secretary = sname
+    g.members_json = gid.merge_members_fields(
+        db,
+        existing_members=getattr(g, "members_json", None),
+        member_ids=member_mentor_ids,
+        legacy_members=members,
+        preserve_existing=preserve_existing,
+    )
 
 
 def create_defense_group(group_name, defense_date=None, location=None, chair=None,
@@ -966,7 +992,7 @@ def update_defense_group(gid, group_name=None, defense_date=None, location=None,
         _apply_defense_people(
             db, g, chair=chair, secretary=secretary, members=members,
             chair_mentor_id=chair_mentor_id, secretary_mentor_id=secretary_mentor_id,
-            member_mentor_ids=member_mentor_ids)
+            member_mentor_ids=member_mentor_ids, preserve_existing=True)
         was_published = g.published
         g.published = False  # 编辑后须重新发布，学生端重新通知
         _recompute_defense(db, g)

@@ -15,8 +15,9 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-答辩评分"])
 
 
 @router.get("/gd-defense-scores/stats", summary="答辩评分统计")
-def gd_defense_score_stats(user=Depends(get_current_user)):
-    return success(svc.defense_score_stats())
+def gd_defense_score_stats(batchId: int | None = Query(default=None, ge=1),
+                           user=Depends(get_current_user)):
+    return success(svc.defense_score_stats(batch_id=batchId))
 
 
 @router.get("/gd-defense-scores", summary="答辩评分列表")

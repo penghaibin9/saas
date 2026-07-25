@@ -20,8 +20,9 @@ def peer_list(gdStudentId: Optional[str] = None, status: Optional[str] = None, u
 
 
 @router.get("/gd-peer-reviews/stats", summary="互查统计")
-def peer_stats(user=Depends(get_current_user)):
-    return success(svc.peer_stats())
+def peer_stats(batchId: int | None = Query(default=None, ge=1),
+               user=Depends(get_current_user)):
+    return success(svc.peer_stats(batch_id=batchId))
 
 
 @router.post("/gd-peer-reviews/assign", summary="分配互查（互查学生≠本人）")

@@ -240,18 +240,28 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         from app.modules.graduation.services import graduation_identity as gid
         me = gid.mentor_by_teacher_no(db, _login_name(), student.tenant_id) if _login_name() else None
         if role == "GD_DEFENSE_SECRETARY":
+            if not gid.user_is_secretary(group, mentor=me, real_name=real_name):
+                return False
+            # 有秘书 ID 时已比 ID；仅姓名快照时重名 fail-closed
             if getattr(group, "secretary_mentor_id", None):
-                return bool(me and int(me.id) == int(group.secretary_mentor_id))
-        else:
-            panel_ids = gid.judge_panel_mentor_ids(group)
-            if panel_ids:
-                return bool(me and int(me.id) in panel_ids)
-        # 无稳定 ID：姓名兜底，重名 fail-closed
+                return True
+            if _name_is_ambiguous(db, student.tenant_id, real_name):
+                return False
+            return True
+        # 评委：部分席位有 ID / 部分仅姓名 → ID∪姓名双通道（有 ID 席位不可被同名冒充）
+        if not gid.user_on_judge_panel(group, mentor=me, real_name=real_name):
+            return False
+        matched_by_id = bool(
+            me and any(
+                s.get("mentorId") is not None and int(me.id) == int(s["mentorId"])
+                for s in gid.judge_panel_seats(group)
+            )
+        )
+        if matched_by_id:
+            return True
         if _name_is_ambiguous(db, student.tenant_id, real_name):
             return False
-        if role == "GD_DEFENSE_SECRETARY":
-            return (group.secretary or "").strip() == real_name
-        return real_name in gid.judge_panel_names(group)
+        return True
 
     if role in {"GD_MENTOR", "COUNSELOR", "GD_REVIEWER"}:
         login_name = _login_name()

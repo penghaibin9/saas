@@ -103,6 +103,156 @@ def build_members_from_ids(db, member_ids: list | None, legacy_members: list | N
     return out
 
 
+def merge_person_fields(
+    *,
+    existing_mentor_id=None,
+    existing_name: str | None = None,
+    mentor_id=None,
+    name: str | None = None,
+    preserve_existing: bool = False,
+    db=None,
+) -> tuple[int | None, str | None]:
+    """合并主席/秘书字段：有 ID 用 ID；仅姓名则写快照；都空且 preserve 则保留原值。"""
+    if mentor_id not in (None, ""):
+        if db is None:
+            raise ValueError("db required when resolving mentor_id")
+        m = require_mentor(db, mentor_id)
+        return int(m.id), (m.teacher_name or "").strip() or None
+    nm = (name or "").strip()
+    if nm:
+        # 仅姓名：若与原姓名相同则保留原 mentor_id，避免无意清掉已回填 ID
+        if preserve_existing and existing_mentor_id and (existing_name or "").strip() == nm:
+            return int(existing_mentor_id), nm
+        return None, nm
+    if preserve_existing:
+        return (
+            int(existing_mentor_id) if existing_mentor_id else None,
+            (existing_name or "").strip() or None,
+        )
+    return None, None
+
+
+def merge_members_fields(
+    db,
+    *,
+    existing_members: list | None,
+    member_ids: list | None = None,
+    legacy_members: list | None = None,
+    preserve_existing: bool = False,
+) -> list:
+    """成员合并：有 ID 列表优先；preserve 时保留未被 ID 覆盖的仅姓名席位。"""
+    if member_ids:
+        built = build_members_from_ids(db, member_ids, None)
+        if not preserve_existing:
+            return built
+        # 显式传了 legacy_members 用它；未传则从 existing 抽出仅姓名席位
+        if legacy_members is not None:
+            name_only_raw = legacy_members
+        else:
+            name_only_raw = []
+            for raw in (existing_members or []):
+                item = normalize_member(raw)
+                if item.get("mentorId"):
+                    continue
+                if item.get("name"):
+                    name_only_raw.append(item.get("name"))
+        covered_names = {(m.get("name") or "").strip() for m in built if m.get("name")}
+        covered_ids = {str(m.get("mentorId")) for m in built if m.get("mentorId")}
+        for raw in name_only_raw:
+            item = normalize_member(raw)
+            if item.get("mentorId") and str(item["mentorId"]) in covered_ids:
+                continue
+            nm = (item.get("name") or "").strip()
+            if not nm or nm in covered_names:
+                continue
+            if item.get("mentorId"):
+                # legacy 里偶发带 ID：并入
+                m = get_mentor(db, item["mentorId"])
+                if m:
+                    snap = member_snapshot(m)
+                    built.append(snap)
+                    covered_ids.add(str(snap["mentorId"]))
+                    covered_names.add(snap["name"])
+                    continue
+            built.append({"mentorId": None, "name": nm, "teacherNo": ""})
+            covered_names.add(nm)
+        return built
+    if legacy_members:
+        return build_members_from_ids(db, None, legacy_members)
+    if preserve_existing and member_ids is None and legacy_members is None:
+        return list(existing_members or [])
+    if preserve_existing and member_ids == [] and not legacy_members:
+        # 前端未选出任何 ID、也未传姓名时，视为未改成员而非清空
+        return list(existing_members or [])
+    return []
+
+
+def judge_panel_seats(group) -> list[dict]:
+    """应评分评委席位：[{mentorId, name}]，主席 + 成员（不含秘书）。"""
+    seats: list[dict] = []
+    if not group:
+        return seats
+    chair = (getattr(group, "chair", None) or "").strip()
+    cid = getattr(group, "chair_mentor_id", None)
+    if cid or chair:
+        seats.append({
+            "mentorId": int(cid) if cid else None,
+            "name": chair,
+        })
+    for raw in (getattr(group, "members_json", None) or []):
+        item = normalize_member(raw)
+        mid = int(item["mentorId"]) if item.get("mentorId") else None
+        name = item.get("name") or ""
+        if mid or name:
+            seats.append({"mentorId": mid, "name": name})
+    return seats
+
+
+def user_matches_judge_seat(seat: dict, *, mentor=None, real_name: str = "") -> bool:
+    """单席位匹配：有 mentorId 的席位必须比 ID；无 ID 的席位允许姓名。"""
+    seat_id = seat.get("mentorId")
+    seat_name = (seat.get("name") or "").strip()
+    rn = (real_name or "").strip()
+    if mentor is not None and seat_id is not None and int(mentor.id) == int(seat_id):
+        return True
+    if seat_id is None and rn and seat_name and rn == seat_name:
+        return True
+    return False
+
+
+def user_on_judge_panel(group, *, mentor=None, real_name: str = "") -> bool:
+    """部分席位有 ID、部分仅姓名时：ID∪姓名双通道（有 ID 席位不可被同名冒充）。"""
+    return any(
+        user_matches_judge_seat(seat, mentor=mentor, real_name=real_name)
+        for seat in judge_panel_seats(group)
+    )
+
+
+def user_is_secretary(group, *, mentor=None, real_name: str = "") -> bool:
+    sid = getattr(group, "secretary_mentor_id", None)
+    sname = (getattr(group, "secretary", None) or "").strip()
+    rn = (real_name or "").strip()
+    if sid is not None:
+        return bool(mentor and int(mentor.id) == int(sid))
+    return bool(rn and sname and rn == sname)
+
+
+def score_row_covers_seat(row, seat: dict) -> bool:
+    """评分行是否覆盖某席位：ID 对齐，或（席位/行缺 ID 时）姓名对齐。"""
+    if getattr(row, "status", None) not in ("SCORED", "CONFIRMED"):
+        return False
+    seat_id = seat.get("mentorId")
+    seat_name = (seat.get("name") or "").strip()
+    row_id = getattr(row, "judge_mentor_id", None)
+    row_name = (getattr(row, "judge_name", None) or "").strip()
+    if seat_id is not None and row_id is not None and int(seat_id) == int(row_id):
+        return True
+    if seat_name and row_name and seat_name == row_name:
+        if seat_id is None or row_id is None or int(seat_id) == int(row_id):
+            return True
+    return False
+
+
 def resolve_chair_secretary(db, *, mentor_id=None, name: str | None = None) -> tuple[int | None, str]:
     """写路径：有 mentorId 则解析姓名快照；仅姓名时不伪造 ID。"""
     if mentor_id not in (None, ""):

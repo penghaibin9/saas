@@ -17,8 +17,10 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-指导过程"])
 
 
 @router.get("/gd-guidances/stats", summary="指导频次统计（GD-R06 指导不足预警口径）")
-def gd_guidance_stats(threshold: int = Query(3, ge=1, le=50), user=Depends(get_current_user)):
-    return success(svc.guidance_stats(threshold))
+def gd_guidance_stats(threshold: int = Query(3, ge=1, le=50),
+                      batchId: int | None = Query(default=None, ge=1),
+                      user=Depends(get_current_user)):
+    return success(svc.guidance_stats(threshold, batch_id=batchId))
 
 
 @router.get("/gd-guidances", summary="指导记录列表（按学生/关键词筛选）")

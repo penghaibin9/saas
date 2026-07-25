@@ -190,9 +190,9 @@ def review_dispute(pid, action: str, comment: str = None) -> dict:
         return _plag_row(p, db.get(GraduationStudent, p.gd_student_id))
 
 
-def plagiarism_stats() -> dict:
+def plagiarism_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationPlagiarismCheck.tenant_id == _tid(), GraduationPlagiarismCheck.is_deleted.is_(False),
                 GraduationPlagiarismCheck.gd_student_id.in_(scope_ids or [-1])]
         total = int(db.scalar(select(func.count()).select_from(GraduationPlagiarismCheck).where(*base)) or 0)
@@ -200,7 +200,8 @@ def plagiarism_stats() -> dict:
             *base, GraduationPlagiarismCheck.over_threshold.is_(True))) or 0)
         checking = int(db.scalar(select(func.count()).select_from(GraduationPlagiarismCheck).where(
             *base, GraduationPlagiarismCheck.status == "CHECKING")) or 0)
-        return {"total": total, "overThresholdCount": over, "checkingCount": checking}
+        return {"total": total, "overThresholdCount": over, "checkingCount": checking,
+                "batchId": str(batch_id) if batch_id else None}
 
 
 # ═══════════ 教师评阅 ═══════════

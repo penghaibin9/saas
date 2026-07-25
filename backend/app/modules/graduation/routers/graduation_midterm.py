@@ -18,8 +18,9 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-中期检查"])
 
 
 @router.get("/gd-midterms/stats", summary="中期检查统计")
-def gd_midterm_stats(user=Depends(get_current_user)):
-    return success(svc.midterm_stats())
+def gd_midterm_stats(batchId: int | None = Query(default=None, ge=1),
+                     user=Depends(get_current_user)):
+    return success(svc.midterm_stats(batch_id=batchId))
 
 
 @router.get("/gd-midterms", summary="中期检查列表（分页+筛选）")

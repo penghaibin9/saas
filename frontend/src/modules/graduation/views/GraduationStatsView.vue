@@ -59,14 +59,14 @@ export default {
       loading: true,
       blocks: [
         { key: 'proposal', title: '开题统计', fn: 'getProposalStats', withBatch: true, data: null },
-        { key: 'guidance', title: '指导频次统计', fn: 'getGuidanceStats', data: null },
-        { key: 'midterm', title: '中期检查统计', fn: 'getMidtermStats', data: null },
+        { key: 'guidance', title: '指导频次统计', fn: 'getGuidanceStats', withBatch: true, data: null },
+        { key: 'midterm', title: '中期检查统计', fn: 'getMidtermStats', withBatch: true, data: null },
         { key: 'final', title: '成果提交统计', fn: 'getFinalStats', withBatch: true, data: null },
-        { key: 'plagiarism', title: '查重统计', fn: 'getPlagiarismStats', data: null },
-        { key: 'review', title: '教师评阅统计', fn: 'getReviewStats', data: null },
-        { key: 'peer', title: '成果互查统计', fn: 'getPeerStats', data: null },
-        { key: 'defense', title: '答辩评分统计', fn: 'getDefenseScoreStats', data: null },
-        { key: 'grade', title: '成绩评定统计', fn: 'getGradeStats', data: null }
+        { key: 'plagiarism', title: '查重统计', fn: 'getPlagiarismStats', withBatch: true, data: null },
+        { key: 'review', title: '教师评阅统计', fn: 'getReviewStats', withBatch: true, data: null },
+        { key: 'peer', title: '成果互查统计', fn: 'getPeerStats', withBatch: true, data: null },
+        { key: 'defense', title: '答辩评分统计', fn: 'getDefenseScoreStats', withBatch: true, data: null },
+        { key: 'grade', title: '成绩评定统计', fn: 'getGradeStats', withBatch: true, data: null }
       ]
     }
   },

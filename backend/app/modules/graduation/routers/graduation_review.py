@@ -21,8 +21,9 @@ router = APIRouter(prefix="/graduation", tags=["毕业设计-查重与评阅"])
 # ═══ 查重 ═══
 
 @router.get("/gd-plagiarism/stats", summary="查重统计")
-def gd_plagiarism_stats(user=Depends(get_current_user)):
-    return success(svc.plagiarism_stats())
+def gd_plagiarism_stats(batchId: int | None = Query(default=None, ge=1),
+                        user=Depends(get_current_user)):
+    return success(svc.plagiarism_stats(batch_id=batchId))
 
 
 @router.get("/gd-plagiarism", summary="查重记录列表")
@@ -64,8 +65,9 @@ def gd_plagiarism_dispute_review(pid: str, body: PlagiarismDisputeReview, user=D
 # ═══ 教师评阅 ═══
 
 @router.get("/gd-reviews/stats", summary="评阅统计")
-def gd_review_stats(user=Depends(get_current_user)):
-    return success(svc.review_stats())
+def gd_review_stats(batchId: int | None = Query(default=None, ge=1),
+                    user=Depends(get_current_user)):
+    return success(svc.review_stats(batch_id=batchId))
 
 
 @router.get("/gd-reviews", summary="评阅任务列表")

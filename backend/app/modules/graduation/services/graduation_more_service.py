@@ -119,9 +119,9 @@ def list_peer(gd_student_id=None, status=None) -> list:
         return [_peer_row(db, p) for p in db.scalars(q.order_by(GraduationPeerReview.id.desc())).all()]
 
 
-def peer_stats() -> dict:
+def peer_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         base = [GraduationPeerReview.tenant_id == _tid(), GraduationPeerReview.is_deleted.is_(False),
                 or_(GraduationPeerReview.gd_student_id.in_(scope_ids or [-1]),
                     GraduationPeerReview.reviewer_gd_student_id.in_(scope_ids or [-1]))]
@@ -129,7 +129,8 @@ def peer_stats() -> dict:
         by_status = [{"status": s, "label": PEER_LABEL[s],
                      "count": int(db.scalar(select(func.count()).select_from(GraduationPeerReview).where(
                          *base, GraduationPeerReview.status == s)) or 0)} for s in PEER_LABEL]
-        return {"total": total, "byStatus": by_status}
+        return {"total": total, "byStatus": by_status,
+                "batchId": str(batch_id) if batch_id else None}
 
 
 # ═══════════ 答辩专家库 ═══════════

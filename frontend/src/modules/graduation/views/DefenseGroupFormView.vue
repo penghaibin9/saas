@@ -14,12 +14,15 @@
       <label class="ie-fld"><span class="ie-lbl">答辩地点</span><input v-model.trim="form.location" class="ie-in" placeholder="如 实训楼 A301" /></label>
       <div class="ie-fld"><span class="ie-lbl">答辩组长（副高+）</span>
         <AppGraduationMentorPicker v-model="form.chairMentorId" :query="{ valueMode: 'id' }" placeholder="按姓名 / 工号搜索组长" />
+        <p v-if="!form.chairMentorId && form.chairName" class="ie-hint">当前快照：{{ form.chairName }}（请重新选择以绑定工号身份）</p>
       </div>
       <div class="ie-fld"><span class="ie-lbl">答辩秘书</span>
         <AppGraduationMentorPicker v-model="form.secretaryMentorId" :query="{ valueMode: 'id' }" placeholder="按姓名 / 工号搜索秘书" />
+        <p v-if="!form.secretaryMentorId && form.secretaryName" class="ie-hint">当前快照：{{ form.secretaryName }}（请重新选择以绑定工号身份）</p>
       </div>
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">评委名单（建议≥5人，可搜索添加）</span>
         <AppGraduationMentorPicker v-model="form.memberMentorIds" multiple :query="{ valueMode: 'id' }" placeholder="按姓名 / 工号搜索并添加评委" />
+        <p v-if="form.legacyMemberNames.length" class="ie-hint">历史评委快照（未绑 ID）：{{ form.legacyMemberNames.join('、') }} · 请在上方重新选择以绑定身份，保存时会保留未改动的快照</p>
       </div>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
@@ -84,7 +87,12 @@ export default {
       GROUP_NAME_CHIPS,
       batchStore: useGraduationBatchStore(),
       groupId: null, submitting: false,
-      form: { groupName: '', defenseDate: '', location: '', chairMentorId: '', secretaryMentorId: '', memberMentorIds: [] },
+      form: {
+        groupName: '', defenseDate: '', location: '',
+        chairMentorId: '', chairName: '',
+        secretaryMentorId: '', secretaryName: '',
+        memberMentorIds: [], legacyMemberNames: []
+      },
       formError: '',
       assigned: [], eligible: [], picked: [], eligKeyword: ''
     }
@@ -104,14 +112,10 @@ export default {
       const res = await graduationApi.getDefenseGroupDetail(id)
       if (res.code === 0 && res.data) {
         const row = res.data
-        this.form = {
-          groupName: row.groupName === '待指定' ? '' : row.groupName,
-          defenseDate: row.date === '待定' ? '' : toDateTimeInputValue(row.date),
-          location: row.location === '待定' ? '' : row.location,
-          chairMentorId: row.chairMentorId || '',
-          secretaryMentorId: row.secretaryMentorId || '',
-          memberMentorIds: (row.members || []).map((m) => (typeof m === 'object' ? m.mentorId : null)).filter(Boolean)
-        }
+        this.form.groupName = row.groupName === '待指定' ? '' : row.groupName
+        this.form.defenseDate = row.date === '待定' ? '' : toDateTimeInputValue(row.date)
+        this.form.location = row.location === '待定' ? '' : row.location
+        this._applyGroupPeople(row)
       }
       await this.reloadDetail()
       await this.loadEligible()
@@ -119,7 +123,9 @@ export default {
       this.form = {
         groupName: '',
         defenseDate: toDateTimeInputValue(addDays(new Date(), 7)),
-        location: '', chairMentorId: '', secretaryMentorId: '', memberMentorIds: []
+        location: '', chairMentorId: '', chairName: '',
+        secretaryMentorId: '', secretaryName: '',
+        memberMentorIds: [], legacyMemberNames: []
       }
     }
   },
@@ -131,10 +137,38 @@ export default {
         location: this.form.location,
         chairMentorId: this.form.chairMentorId ? Number(this.form.chairMentorId) : null,
         secretaryMentorId: this.form.secretaryMentorId ? Number(this.form.secretaryMentorId) : null,
-        memberMentorIds: (this.form.memberMentorIds || []).map((x) => Number(x)).filter(Boolean)
+        // 有 ID 时传 ID；无 ID 时传姓名快照，避免后端清空历史名单
+        chair: this.form.chairMentorId ? undefined : (this.form.chairName || undefined),
+        secretary: this.form.secretaryMentorId ? undefined : (this.form.secretaryName || undefined)
       }
+      const mids = (this.form.memberMentorIds || []).map((x) => Number(x)).filter(Boolean)
+      const legacy = (this.form.legacyMemberNames || []).filter((n) => n && String(n).trim())
+      if (mids.length) {
+        body.memberMentorIds = mids
+        // 混合面板：ID 评委 + 仍未绑 ID 的姓名快照一并提交，避免保存时丢掉仅姓名席位
+        if (legacy.length) body.members = legacy
+      } else if (legacy.length) {
+        body.members = legacy
+      }
+      // 都不传 → 后端 preserve 保留原成员
       if (!this.groupId) body.batchId = this.batchStore.selectedBatchId
       return body
+    },
+    _applyGroupPeople(row) {
+      const members = row.members || []
+      const memberIds = []
+      const legacyNames = []
+      members.forEach((m) => {
+        if (m && typeof m === 'object' && m.mentorId) memberIds.push(m.mentorId)
+        else if (typeof m === 'string' && m.trim()) legacyNames.push(m.trim())
+        else if (m && typeof m === 'object' && m.name && !m.mentorId) legacyNames.push(String(m.name).trim())
+      })
+      this.form.chairMentorId = row.chairMentorId || ''
+      this.form.chairName = row.chair === '待指定' ? '' : (row.chair || '')
+      this.form.secretaryMentorId = row.secretaryMentorId || ''
+      this.form.secretaryName = row.secretary === '待指定' ? '' : (row.secretary || '')
+      this.form.memberMentorIds = memberIds
+      this.form.legacyMemberNames = legacyNames
     },
     async reloadDetail() {
       const res = await graduationApi.getDefenseGroupDetail(this.groupId)
@@ -171,6 +205,7 @@ export default {
           await this.loadEligible()
         } else {
           this.assigned = res.data.students || []
+          this._applyGroupPeople(res.data)
         }
       } else {
         this.formError = res.message || '保存失败'
@@ -220,4 +255,5 @@ export default {
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .mp-link { color: var(--pri, #2563eb); background: none; border: none; cursor: pointer; font-size: 13px; }
 .mp-link--danger { color: var(--danger, #dc2626); }
+.ie-hint { margin: 6px 0 0; font-size: 12px; color: var(--t3, #64748b); line-height: 1.4; }
 </style>

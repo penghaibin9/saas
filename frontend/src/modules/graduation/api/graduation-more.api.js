@@ -18,13 +18,13 @@ export const graduationMoreApi = {
   stat(path, params = {}) { return call(() => request(path, { params })) },
   getProposalStats(params = {}) { return this.stat(`${G}/proposals/stats`, params) },
   getFinalStats(params = {}) { return this.stat(`${G}/finals/stats`, params) },
-  getGuidanceStats() { return this.stat(`${G}/gd-guidances/stats`) },
-  getMidtermStats() { return this.stat(`${G}/gd-midterms/stats`) },
-  getPlagiarismStats() { return this.stat(`${G}/gd-plagiarism/stats`) },
-  getReviewStats() { return this.stat(`${G}/gd-reviews/stats`) },
-  getDefenseScoreStats() { return this.stat(`${G}/gd-defense-scores/stats`) },
-  getGradeStats() { return this.stat(`${G}/gd-grades/stats`) },
-  getPeerStats() { return this.stat(`${G}/gd-peer-reviews/stats`) },
+  getGuidanceStats(params = {}) { return this.stat(`${G}/gd-guidances/stats`, params) },
+  getMidtermStats(params = {}) { return this.stat(`${G}/gd-midterms/stats`, params) },
+  getPlagiarismStats(params = {}) { return this.stat(`${G}/gd-plagiarism/stats`, params) },
+  getReviewStats(params = {}) { return this.stat(`${G}/gd-reviews/stats`, params) },
+  getDefenseScoreStats(params = {}) { return this.stat(`${G}/gd-defense-scores/stats`, params) },
+  getGradeStats(params = {}) { return this.stat(`${G}/gd-grades/stats`, params) },
+  getPeerStats(params = {}) { return this.stat(`${G}/gd-peer-reviews/stats`, params) },
 
   // ── 开题答辩（现场）──
   holdProposalDefense(pid, result, comment) {
