@@ -19,7 +19,8 @@ from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefense
                         GraduationStudent, GraduationTopic, StudentContact, StudentProfile)
 from app.services import excel
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.core.field_crypto import mask_phone_encrypted
+from app.services.db_service import _iso, _tid, session
 
 STAGE_LABEL = {
     "TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
@@ -157,7 +158,7 @@ def _row(s: GraduationStudent, batch: GraduationBatch | None = None, material: d
         "gradQualLabel": GRAD_QUAL_LABEL.get(getattr(s, "grad_qual_status", "UNKNOWN") or "UNKNOWN", "未联动"),
         "gradQualTone": GRAD_QUAL_TONE.get(getattr(s, "grad_qual_status", "UNKNOWN") or "UNKNOWN", "default"),
         "gradQualNote": getattr(s, "grad_qual_note", None) or "",
-        "phone": _mask_phone(s.phone_encrypted), "recordStatus": s.record_status,
+        "phone": mask_phone_encrypted(s.phone_encrypted), "recordStatus": s.record_status,
         "updatedAt": _iso(s.updated_at),
     }
 

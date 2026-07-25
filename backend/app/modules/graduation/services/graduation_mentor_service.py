@@ -15,11 +15,11 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.field_crypto import encrypt_field
+from app.core.field_crypto import encrypt_field, mask_phone_encrypted
 from app.models import (GraduationAuditTrail, GraduationMentor, GraduationMentorAssignment,
                         GraduationMentorEval, GraduationStudent)
 from app.services import excel
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 QUAL_LABEL = {"PENDING_REVIEW": "待审核", "QUALIFIED": "已认证", "REJECTED": "已驳回",
@@ -58,7 +58,7 @@ def _mentor_row(m: GraduationMentor) -> dict:
         "currentCount": m.current_count,
         "capacityText": f"{m.current_count}/{m.max_capacity}",
         "capacityFull": m.current_count >= m.max_capacity,
-        "phone": _mask_phone(m.phone_encrypted),
+        "phone": mask_phone_encrypted(m.phone_encrypted),
         "qualificationStatus": m.qualification_status,
         "qualificationLabel": QUAL_LABEL.get(m.qualification_status, m.qualification_status),
         "qualificationTone": QUAL_TONE.get(m.qualification_status, "default"),

@@ -12,7 +12,8 @@ from app.models import (AttendanceException, InternshipAuditTrail, InternshipBat
                         InternshipCheckin, InternshipRecord, RiskRecord, StudentContact,
                         StudentProfile, WeeklyReport)
 from app.modules.internship.schemas.internship import RulesConfig, StageItem
-from app.services.db_service import _as_id, _iso, _mask_phone, _tid, session
+from app.core.field_crypto import mask_phone_encrypted
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在岗中",
                 "ASSESSING": "考核中", "ARCHIVED": "已归档"}
@@ -323,7 +324,7 @@ def get_internship_student_detail(record_id, user=None) -> dict:
             InternshipAuditTrail.id.desc()).limit(8)).all()
         base = _record_row(r, stu)
         base.update({
-            "phone": _mask_phone(phone.contact_value_encrypted if phone else None),
+            "phone": mask_phone_encrypted(phone.contact_value_encrypted if phone else None),
             "insurance": r.insurance_info or "", "agreement": r.agreement_info or "",
             "checkins": [{"id": str(c.id), "date": _iso(c.exception_date)[:16] if c.exception_date else "",
                           "result": EXC_TYPE_LABEL.get(c.exception_type, c.exception_type),

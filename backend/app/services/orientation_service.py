@@ -11,7 +11,8 @@ from app.models import (GreenChannelApplication, OrientationArchive, Orientation
                         OrientationBatch, OrientationCheckinPoint, OrientationException,
                         OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
                         OrientationNoticeTask, OrientationStudent)
-from app.services.db_service import _iso, _mask_id_card, _mask_phone, _tid, session
+from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
+from app.services.db_service import _iso, _tid, session
 
 L_STAGE = {"ADMITTED": "已录取", "PRE_STUDENT_VERIFIED": "预报到已核验",
            "REGISTERED_PENDING_ENROLLMENT": "已报到待注册", "ENROLLED": "已入学",
@@ -99,8 +100,8 @@ def _stu_row(s: OrientationStudent, *, detail: bool = False) -> dict:
         "name": s.name,
         "admissionNo": s.admission_no, "gender": s.gender or "", "collegeName": s.college_name or "",
         "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
-        "grade": s.grade or "", "phone": _mask_phone(s.phone_encrypted),
-        "idCard": _mask_id_card(s.id_card_encrypted), "origin": s.origin or "",
+        "grade": s.grade or "", "phone": mask_phone_encrypted(s.phone_encrypted),
+        "idCard": mask_id_card_encrypted(s.id_card_encrypted), "origin": s.origin or "",
         "stage": s.stage, "stageLabel": L_STAGE.get(s.stage, s.stage),
         "reportStatus": s.report_status, "reportStatusLabel": L_REPORT.get(s.report_status, s.report_status),
         "paymentStatus": s.payment_status, "paymentStatusLabel": L_PAY.get(s.payment_status, s.payment_status),
@@ -373,7 +374,7 @@ def list_payments(page, page_size, keyword=None, payment_status=None):
         items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
                   "payableAmount": f"¥{_amt(r.payable_amount):.0f}", "paidAmount": f"¥{_amt(r.paid_amount):.0f}",
                   "paymentStatus": r.payment_status, "paymentStatusLabel": L_PAY.get(r.payment_status, r.payment_status),
-                  "phone": _mask_phone(r.phone_encrypted)} for r in rows]
+                  "phone": mask_phone_encrypted(r.phone_encrypted)} for r in rows]
         return items, total
 
 
@@ -656,7 +657,7 @@ def list_dorms(page, page_size, keyword=None, dorm_status=None, building=None):
                   "building": r.building or "", "room": r.room or "",
                   "dormStatus": r.dorm_status, "dormStatusLabel": L_DORM.get(r.dorm_status, r.dorm_status),
                   "checkinTime": _iso(r.checkin_time) or "", "exceptionNote": r.exception_note or "",
-                  "phone": _mask_phone(r.phone_encrypted)} for r in rows]
+                  "phone": mask_phone_encrypted(r.phone_encrypted)} for r in rows]
         return items, total
 
 

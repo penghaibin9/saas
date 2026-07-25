@@ -22,7 +22,8 @@ from sqlalchemy import func, select
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.services.db_service import _mask_phone, _tid, session
+from app.core.field_crypto import mask_phone_encrypted
+from app.services.db_service import _tid, session
 
 _MAJOR_ENROLL = {"ENROLLING", "STOPPED"}
 _CLASS_STATUS = {"NORMAL", "GRADUATED", "DISBANDED"}
@@ -686,7 +687,7 @@ def list_class_students(user, class_id, keyword=None, page=1, page_size=50):
             pmap.setdefault(ctc.student_id, ctc.contact_value_encrypted or "")
         items = [{"id": str(s.id), "studentId": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
                   "gender": s.gender or "", "studentStatus": s.student_status or "",
-                  "phoneMasked": _mask_phone(pmap.get(s.id, "")),
+                  "phoneMasked": mask_phone_encrypted(pmap.get(s.id, "")),
                   "classId": str(s.class_id) if s.class_id else None} for s in rows]
         return items, total
 

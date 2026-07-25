@@ -28,7 +28,8 @@ from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.core.field_crypto import mask_phone_encrypted
+from app.services.db_service import _iso, _tid, session
 
 _SOURCE = "EXAM_FAIL"
 TODO_TYPE = "ACAD_WARNING_HANDLE"
@@ -629,7 +630,7 @@ def get_warning_detail(user, warning_id) -> dict:
                         "collegeName": a.college_name or "", "gpa": float(a.gpa or 0),
                         "failedCount": a.failed_count or 0, "obtainedCredits": float(a.obtained_credits or 0),
                         "requiredCredits": float(a.required_credits or 0), "counselor": a.counselor or "",
-                        "phone": _mask_phone(a.phone_encrypted) if a.phone_encrypted else ""}
+                        "phone": mask_phone_encrypted(a.phone_encrypted)}
                        if a else None),
             "interventions": [{"id": str(i.id), "time": _iso(i.follow_time), "way": i.way,
                               "content": i.content or "", "result": i.result or "",

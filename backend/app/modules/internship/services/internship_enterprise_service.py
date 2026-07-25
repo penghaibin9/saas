@@ -16,10 +16,10 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.field_crypto import encrypt_field
+from app.core.field_crypto import encrypt_field, mask_phone_encrypted
 from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact
 from app.services import excel  # 公共 Excel 导入导出底座（V1.1）
-from app.services.db_service import _as_id, _iso, _mask_phone, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 # 统一社会信用代码：宽松校验——纯字母数字、8~20 位（拦截含空格/冒号/标签/纯符号的脏值）。
 # 注：真实标准为 18 位固定字符集，待演示数据统一为真实码后可收紧为 ^[0-9A-HJ-NPQRTUWXY]{18}$。
@@ -90,7 +90,7 @@ def _row(c: EmpCompany) -> dict:
         "region": c.region or "", "city": c.city or "", "address": c.address or "",
         "source": c.source or "", "sourceLabel": SOURCE_LABEL.get(c.source, c.source or "—"),
         "contactPerson": c.contact_person or "",
-        "contactPhoneMasked": _mask_phone(c.contact_phone_encrypted) if c.contact_phone_encrypted else "",
+        "contactPhoneMasked": mask_phone_encrypted(c.contact_phone_encrypted),
         "cooperationLevel": c.cooperation_level or "",
         "coopStatus": c.coop_status, "coopStatusLabel": COOP_LABEL.get(c.coop_status, c.coop_status),
         "coopStatusTone": COOP_TONE.get(c.coop_status, "default"),
@@ -110,7 +110,7 @@ def _contact_row(t: InternshipEnterpriseContact) -> dict:
         "id": str(t.id), "companyId": str(t.company_id),
         "contactType": t.contact_type, "contactTypeLabel": CONTACT_TYPE_LABEL.get(t.contact_type, t.contact_type),
         "name": t.name, "title": t.title or "",
-        "phoneMasked": _mask_phone(t.phone_encrypted) if t.phone_encrypted else "",
+        "phoneMasked": mask_phone_encrypted(t.phone_encrypted),
         "email": t.email or "", "isPrimary": bool(t.is_primary),
         "remark": t.remark or "", "status": t.status,
     }

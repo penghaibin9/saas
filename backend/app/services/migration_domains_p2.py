@@ -18,6 +18,8 @@ import json
 import re
 from datetime import datetime
 
+from app.core.field_crypto import encrypt_field
+
 
 # ═══════════ 中文 → 枚举映射 ═══════════
 
@@ -360,13 +362,16 @@ def persist_family_contact(db, rows):
             StudentContact.remark == r["relation"],
             StudentContact.is_deleted.is_(False))).first()
         if hit:
-            # OVERWRITE：联系方式以最新导入为准（口径同现有链路：值落 *_encrypted 列，出口恒脱敏）
-            hit.contact_value_encrypted, hit.contact_name = r["phone"], r["contactName"]
+            # OVERWRITE：联系方式以最新导入为准。必须经 encrypt_field 落密文列——
+            # 此前直接写 r["phone"]，明文入库，出口脱敏只是把明文遮住，掩盖了裸存问题。
+            hit.contact_value_encrypted = encrypt_field(r["phone"])
+            hit.contact_name = r["contactName"]
             hit.version = (hit.version or 0) + 1
             updated += 1
         else:
             db.add(StudentContact(tenant_id=tid, student_id=r["studentId"], contact_type=r["contactType"],
-                                  contact_value_encrypted=r["phone"], contact_name=r["contactName"],
+                                  contact_value_encrypted=encrypt_field(r["phone"]),
+                                  contact_name=r["contactName"],
                                   remark=r["relation"], verified_status="UNVERIFIED"))
             created += 1
     return {"created": created, "updated": updated}

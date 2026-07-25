@@ -9,8 +9,8 @@ from app.core.exceptions import AppException
 from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled
 from app.services import audit_log
-from app.services.db_service import (_iso, _mask_id_card, _mask_phone, _org_names,
-                                     _primary_phone)
+from app.core.field_crypto import mask_id_card_encrypted
+from app.services.db_service import _iso, _mask_phone, _org_names, _primary_phone
 from app.services.mobile_student_service import (_require_student, _session,
                                                  resolve_student)
 
@@ -46,7 +46,7 @@ def enrollment(user: dict) -> dict:
             "stageLabel": student_stage_label(stu.current_stage),
             "status": stu.status,
             "phoneMasked": _mask_phone(phone_plain) if phone_plain else "",
-            "idCardMasked": _mask_id_card(stu.id_card_encrypted) if stu.id_card_encrypted else "",
+            "idCardMasked": mask_id_card_encrypted(stu.id_card_encrypted),
             "sensitiveViewable": sensitive_viewable,
         }
 

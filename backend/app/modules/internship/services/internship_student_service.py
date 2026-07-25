@@ -17,7 +17,8 @@ from app.core.exceptions import AppException, not_found
 from app.models import (EmpCompany, InternshipAgreement, InternshipAuditTrail, InternshipBatch,
                         InternshipInsurance, InternshipPosition, InternshipRecord,
                         Role, StudentContact, StudentProfile, User, UserRole)
-from app.services.db_service import _as_id, _iso, _mask_phone, _tid, session
+from app.core.field_crypto import mask_phone_encrypted
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在岗中",
                 "ASSESSING": "考核中", "ARCHIVED": "已归档"}
@@ -352,7 +353,7 @@ def get_student(rec_id, user=None) -> dict:
             InternshipAuditTrail.occurred_at.desc()).limit(20)).all()
         return {
             **_row(r, stu),
-            "phone": _mask_phone(phone.contact_value_encrypted if phone else None),
+            "phone": mask_phone_encrypted(phone.contact_value_encrypted if phone else None),
             "insurance": r.insurance_info or "", "agreement": r.agreement_info or "",
             "remark": r.remark or "", "company": company, "position": position,
             "auditTrail": [{"action": a.action, "operator": a.operator_name or "",

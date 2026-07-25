@@ -13,6 +13,7 @@ import hashlib
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
+from app.core.field_crypto import mask_phone_encrypted
 from app.db.session import db_enabled
 from app.services import audit_log
 from app.services.db_service import _iso, _mask_phone, _tid
@@ -25,6 +26,9 @@ RELATIONS = {"FATHER", "MOTHER", "GUARDIAN", "PARENT", "OTHER"}
 
 
 def _phone_hash(phone: str) -> str:
+    # 欠账（阶段 C 一并处理）：裸 SHA256 对 11 位手机号可被穷举反查，应改为
+    # hash_sensitive() 的 HMAC。改算法会同时影响 guardian_service 的 4 处查询、
+    # token 内的 guardianPhoneHash claim 和历史行，需配套自愈/回填，不在阶段 A 范围内。
     return hashlib.sha256(phone.strip().encode("utf-8")).hexdigest()
 
 
@@ -101,7 +105,7 @@ def list_guardians(user: dict) -> dict:
         ).order_by(StudentParentLink.id.desc())).all()
         items = [{
             "id": str(r.id), "guardianName": r.guardian_name, "relation": r.relation,
-            "guardianPhone": _mask_phone(r.guardian_phone_encrypted),
+            "guardianPhone": mask_phone_encrypted(r.guardian_phone_encrypted),
             "visibleScopes": r.visible_scopes or [], "status": r.link_status,
             "createdAt": _iso(r.created_at),
         } for r in rows]

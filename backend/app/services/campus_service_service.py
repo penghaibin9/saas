@@ -7,11 +7,11 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.field_crypto import decrypt_field, encrypt_field
+from app.core.field_crypto import encrypt_field, mask_id_card_encrypted, mask_phone_encrypted
 from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
 from app.models import (CsAuditTrail, CsDiscipline, CsDormException, CsDormRecord, CsGrant, CsLeave,
                         CsMentalRecord, CsServiceStudent, CsWorkOrder)
-from app.services.db_service import _iso, _mask_id_card, _mask_phone, _tid, session
+from app.services.db_service import _iso, _tid, session
 
 L_LEAVE_T = {"SICK": "病假", "PERSONAL": "事假", "GOOUT": "外出报备"}
 L_LEAVE_S = {"PENDING_REVIEW": "待审批", "APPROVED": "已通过", "RETURNED": "已退回", "CANCELLED": "已销假"}
@@ -118,8 +118,8 @@ def _stu_row(s: CsServiceStudent) -> dict:
     return {"id": str(s.id), "studentId": str(s.student_id or s.id), "name": s.name,
             "studentNo": s.student_no or "", "gender": s.gender or "", "collegeName": s.college_name or "",
             "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
-            "grade": s.grade or "", "phone": _mask_phone(decrypt_field(s.phone_encrypted)),
-            "idCard": _mask_id_card(decrypt_field(s.id_card_encrypted)), "counselor": s.counselor or "",
+            "grade": s.grade or "", "phone": mask_phone_encrypted(s.phone_encrypted),
+            "idCard": mask_id_card_encrypted(s.id_card_encrypted), "counselor": s.counselor or "",
             "building": s.building or "", "room": s.room or "",
             "careLevel": s.care_level, "careLevelLabel": L_CARE.get(s.care_level, s.care_level),
             "riskLevel": s.risk_level, "riskLabel": L_RISK.get(s.risk_level, s.risk_level),

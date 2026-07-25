@@ -12,7 +12,8 @@ from app.core.exceptions import AppException
 from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import audit_log
-from app.services.db_service import _iso, _mask_id_card, _mask_phone, _org_names, _primary_phone, _tid
+from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
+from app.services.db_service import _iso, _mask_phone, _org_names, _primary_phone, _tid
 
 
 def _require_student(user: dict | None):
@@ -94,7 +95,7 @@ def _orientation_payload(o) -> dict:
             "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
             "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
-            "phoneMasked": _mask_phone(o.phone_encrypted) if o.phone_encrypted else ""}
+            "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}
 
 
 # ─────────── 我的首页 overview ───────────
@@ -1411,7 +1412,7 @@ def my_profile(user: dict) -> dict:
                 "className": getattr(stu, "_class_name", "") or "",
                 "grade": stu.grade or "",
                 "phoneMasked": _mask_phone(phone_plain) if phone_plain else "",
-                "idCardMasked": _mask_id_card(stu.id_card_encrypted) if stu.id_card_encrypted else "",
+                "idCardMasked": mask_id_card_encrypted(stu.id_card_encrypted),
                 # 家庭住址属敏感，移动端不返回明文，也不回脱敏串（最小化）
                 "status": stu.student_status, "stage": stu.current_stage}
 

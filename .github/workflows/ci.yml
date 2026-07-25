@@ -30,6 +30,8 @@ jobs:
         run: node scripts/check/generate-capability-registry.mjs
       - name: 控制面合同检查
         run: python scripts/check/check-control-plane-contracts.py
+      - name: 学生敏感字段与权限码合同检查
+        run: python scripts/check/check-student-sensitive-contracts.py
 
   internship-production-gates:
     name: 岗位实习生产闸门

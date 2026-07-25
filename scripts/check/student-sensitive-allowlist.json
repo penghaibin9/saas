@@ -1,0 +1,16 @@
+{
+  "_readme": [
+    "学生敏感字段/权限码静态检查的迁移期豁免清单。",
+    "每条必须写明 reason 与 removeByPhase（对应《补充审计与执行修订》的 A/B/C/D 阶段），",
+    "只有 path + anchor 而不写退出阶段的条目会让检查脚本直接报配置错误。",
+    "新增代码不得进入本清单——它只用于承接改造成本跨阶段的历史写法。"
+  ],
+  "allow": [
+    {
+      "path": "backend/app/student_portal/services/parent_link_service.py",
+      "anchor": "hashlib.sha256(phone.strip().encode(\"utf-8\")).hexdigest()",
+      "reason": "家长手机号检索哈希仍是裸 SHA256。改为 hash_sensitive 的 HMAC 会同时影响 guardian_service 的 4 处查询、token 内 guardianPhoneHash claim 与全部历史行，需配套登录态自愈或数据回填，属阶段 C（账号链接与全部外围）范围，阶段 A 不做半截改造。",
+      "removeByPhase": "C"
+    }
+  ]
+}

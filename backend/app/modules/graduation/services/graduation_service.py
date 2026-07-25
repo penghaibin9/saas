@@ -13,7 +13,8 @@ from app.modules.graduation.services import graduation_student_service as gd_stu
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, can_access_student, has_full_scope,
 )
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.core.field_crypto import mask_phone_encrypted
+from app.services.db_service import _iso, _tid, session
 
 # 学生阶段中文名。COMPLETED 由 graduation_grade_service.publish() 真实写入（该文件 L276），
 # 此前本表漏登记，导致：① 学生列表 stageLabel 回落显示英文 "COMPLETED"；② 看板流程条按 L_STAGE
@@ -184,7 +185,7 @@ def _stu_row(s: GraduationStudent) -> dict:
             "plagiarismRate": s.plagiarism_rate or "—",
             "plagiarismTone": "danger" if (s.plagiarism_rate and _rate_over(s.plagiarism_rate)) else "success",
             "riskLevel": s.risk_level, "riskLabel": L_RISK.get(s.risk_level, s.risk_level),
-            "phone": _mask_phone(s.phone_encrypted), "recordStatus": s.record_status,
+            "phone": mask_phone_encrypted(s.phone_encrypted), "recordStatus": s.record_status,
             "updateTime": _iso(s.updated_at)}
 
 

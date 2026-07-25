@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob, EmpMaterial, EmpStudent)
-from app.services.db_service import _iso, _mask_id_card, _mask_phone, _tid, session
+from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
+from app.services.db_service import _iso, _tid, session
 
 L_DEST = {"SIGNED": "签约就业", "FLEXIBLE": "灵活就业", "FURTHER_STUDY": "升学", "ENLISTED": "入伍",
           "STARTUP": "自主创业", "FREELANCE": "自由职业", "UNEMPLOYED": "待就业"}
@@ -136,7 +137,7 @@ def _stu_row(s: EmpStudent) -> dict:
             "studentNo": s.student_no or "", "gender": s.gender or "", "grade": s.grade or "",
             "collegeName": s.college_name or "", "majorName": s.major_name or "",
             "classId": s.class_id or "", "className": s.class_name or "",
-            "phone": _mask_phone(s.phone_encrypted), "idCard": _mask_id_card(s.id_card_encrypted),
+            "phone": mask_phone_encrypted(s.phone_encrypted), "idCard": mask_id_card_encrypted(s.id_card_encrypted),
             "destinationType": s.destination_type, "destinationLabel": L_DEST.get(s.destination_type, s.destination_type),
             "companyName": s.company_name or "", "jobTitle": s.job_title or "",
             "salaryRange": _salary_mask(s.salary_range), "signDate": s.sign_date or "",
@@ -475,7 +476,7 @@ def void_followup(fid, reason) -> dict:
 def _comp_row(c: EmpCompany) -> dict:
     return {"id": str(c.id), "name": c.name, "creditCode": c.credit_code or "", "industry": c.industry or "",
             "nature": c.nature or "", "city": c.city or "", "contactPerson": c.contact_person or "",
-            "contactPhone": _mask_phone(c.contact_phone_encrypted),
+            "contactPhone": mask_phone_encrypted(c.contact_phone_encrypted),
             "cooperationLevel": c.cooperation_level or "", "status": c.status,
             "statusLabel": L_COMP.get(c.status, c.status), "disableReason": c.disable_reason or "",
             "hiredCount": c.hired_count}

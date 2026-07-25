@@ -15,7 +15,8 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException, check_version, not_found
 from app.services.affairs_dashboard_service import (_allowed_class_ids, _audit,
                                                     _class_in_scope_or_403)
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.core.field_crypto import mask_phone_encrypted
+from app.services.db_service import _iso, _tid, session
 
 MATERIAL_TYPES = {"CLASS_MEETING": "班会记录", "THEME_ACTIVITY": "主题活动", "EVALUATION": "评优材料",
                   "ATTENDANCE": "考勤台账", "SUMMARY": "班级总结", "OTHER": "其他"}
@@ -177,12 +178,20 @@ def class_profile(class_id, user) -> dict:
 
 
 def class_students(class_id, user, keyword=None, page=1, page_size=20):
-    from app.models import StudentProfile
+    from app.models import StudentContact, StudentProfile
     with session() as db:
         _class_in_scope_or_403(db, class_id, user)
         rows = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
             StudentProfile.class_id == int(class_id)).order_by(StudentProfile.student_no)).all()
+        # 手机号在 StudentContact，StudentProfile 上没有 phone 属性（旧写法 getattr 恒取空）
+        pmap: dict[int, str] = {}
+        for ctc in db.scalars(select(StudentContact).where(
+                StudentContact.tenant_id == _tid(),
+                StudentContact.student_id.in_([s.id for s in rows] or [0]),
+                StudentContact.contact_type == "PHONE",
+                StudentContact.is_deleted.is_(False))).all():
+            pmap.setdefault(ctc.student_id, ctc.contact_value_encrypted or "")
         out = []
         for s in rows:
             if keyword and keyword not in (s.real_name or "") and keyword not in (s.student_no or ""):
@@ -190,7 +199,7 @@ def class_students(class_id, user, keyword=None, page=1, page_size=20):
             out.append({
                 "studentId": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
                 "gender": s.gender or "", "studentStatus": s.student_status or "",
-                "phoneMasked": _mask_phone(getattr(s, "phone", "") or ""),
+                "phoneMasked": mask_phone_encrypted(pmap.get(s.id, "")),
             })
         total = len(out)
         start = (max(1, page) - 1) * page_size

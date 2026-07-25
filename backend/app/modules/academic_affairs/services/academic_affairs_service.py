@@ -14,9 +14,11 @@ from sqlalchemy import and_, func, or_, select
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.field_crypto import (decrypt_sensitive, encrypt_sensitive, hash_sensitive,
+                                   mask_id_card, mask_id_card_encrypted)
 from app.modules.academic_affairs.services.academic_affairs_status_service import (audit_status_change,
                                                           change_student_status)
-from app.services.db_service import _iso, _mask_id_card, _tid, session
+from app.services.db_service import _iso, _tid, session
 
 
 def _op():
@@ -791,7 +793,7 @@ def roster(user, keyword=None, status=None, page=1, page_size=20):
             out.append({"studentId": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
                         "className": str(s.class_id or ""), "studentStatus": s.student_status,
                         "enrolled": is_enrolled(s.student_status),
-                        "idCardMasked": _mask_id_card(s.id_card_encrypted)})
+                        "idCardMasked": mask_id_card_encrypted(s.id_card_encrypted)})
         total = len(out)
         start = (max(1, page) - 1) * page_size
         return out[start:start + page_size], total
@@ -852,7 +854,7 @@ def roster_detail(student_id, user) -> dict:
             "classId": str(s.class_id or ""), "className": class_name, "grade": s.grade or "",
             "studentStatus": s.student_status, "statusLabel": _STATUS_LABEL.get(s.student_status, s.student_status),
             "currentStage": s.current_stage, "enrolled": is_enrolled(s.student_status),
-            "idCardMasked": _mask_id_card(s.id_card_encrypted),
+            "idCardMasked": mask_id_card_encrypted(s.id_card_encrypted),
             "enrollDate": _iso(s.enroll_date), "remark": s.remark or "",
             "statusHistory": history,
         }
@@ -875,7 +877,8 @@ def reveal_roster_sensitive(student_id, user, reason="") -> dict:
             raise no_permission("无学籍证件号完整查看权限")
         audit_insert("SENSITIVE_VIEW", "student_profile",
                      {"studentId": str(student_id), "reason": reason, "granted": True}, "SUCCESS")
-        return {"studentId": str(s.id), "idCard": s.id_card_encrypted or ""}
+        # 必须解密后返回；直接回传密文列会让页面显示 Fernet 串而不是证件号
+        return {"studentId": str(s.id), "idCard": decrypt_sensitive(s.id_card_encrypted, "id_card") or ""}
 
 
 def roster_status_summary(user) -> dict:
@@ -937,9 +940,35 @@ _CORRECTION_FIELD_LABEL = {"STUDENT_NO": "学号", "REAL_NAME": "姓名", "GENDE
 _CORRECTION_MATERIAL_REQUIRED = {"REAL_NAME", "GENDER", "ID_CARD"}
 
 
+# 更正流程中需要加密落库的敏感字段（old_value / new_value 列不得存明文证件号）
+_CORRECTION_SENSITIVE_FIELDS = {"ID_CARD"}
+
+
 def _correction_current_value(s, field_key):
-    return {"STUDENT_NO": s.student_no or "", "REAL_NAME": s.real_name or "", "GENDER": s.gender or "",
-            "ID_CARD": s.id_card_encrypted or "", "GRADE": s.grade or ""}.get(field_key, "")
+    """主档当前值，统一**明文口径**（证件号解密后返回），仅供比较与再加密，禁止直接落库或写审计。"""
+    if field_key == "ID_CARD":
+        return decrypt_sensitive(s.id_card_encrypted, "id_card") or ""
+    return {"STUDENT_NO": s.student_no or "", "REAL_NAME": s.real_name or "",
+            "GENDER": s.gender or "", "GRADE": s.grade or ""}.get(field_key, "")
+
+
+def _correction_store_value(field_key, plain):
+    """落库值：敏感字段加密后存，非敏感字段原样。"""
+    if field_key in _CORRECTION_SENSITIVE_FIELDS:
+        return encrypt_sensitive(plain, "id_card")
+    return plain
+
+
+def _correction_plain_value(field_key, stored):
+    """读回明文。历史行可能是明文或密文，decrypt_field 对两者都兼容。"""
+    if field_key in _CORRECTION_SENSITIVE_FIELDS:
+        return decrypt_sensitive(stored, "id_card") or ""
+    return stored or ""
+
+
+def _correction_audit_value(field_key, plain):
+    """审计 detail 只能出现脱敏值，禁止完整证件号入库。"""
+    return mask_id_card(plain) if field_key in _CORRECTION_SENSITIVE_FIELDS else (plain or "")
 
 
 def _correction_clean_value(field_key, new_value):
@@ -959,11 +988,31 @@ def _correction_clean_value(field_key, new_value):
     return v
 
 
-def _correction_row(c, s=None, reveal=False) -> dict:
+def _correction_extras(db, rows, profiles) -> dict:
+    """批量取更正列表的展示补充字段：班级名 + 审核人姓名（一次查询，避免逐行 N+1）。"""
+    from app.models import SchoolClass, User
+
+    class_ids = {p.class_id for p in profiles.values() if getattr(p, "class_id", None)}
+    reviewer_ids = {c.reviewed_by for c in rows if getattr(c, "reviewed_by", None)}
+    class_names, reviewer_names = {}, {}
+    if class_ids:
+        class_names = {c.id: c.class_name for c in db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(list(class_ids)))).all()}
+    if reviewer_ids:
+        reviewer_names = {u.id: (u.real_name or u.login_name or "") for u in db.scalars(
+            select(User).where(User.tenant_id == _tid(), User.id.in_(list(reviewer_ids)))).all()}
+    return {"classNames": class_names, "reviewerNames": reviewer_names}
+
+
+def _correction_row(c, s=None, reveal=False, extras=None) -> dict:
     import json
     old_v, new_v = c.old_value or "", c.new_value or ""
-    if c.field_key == "ID_CARD" and not reveal:
-        old_v, new_v = _mask_id_card(old_v), _mask_id_card(new_v)
+    if c.field_key == "ID_CARD":
+        # 列内存的是密文（历史行可能是明文，decrypt 兼容）；先还原明文再按权限决定明文/脱敏
+        old_v = _correction_plain_value(c.field_key, old_v)
+        new_v = _correction_plain_value(c.field_key, new_v)
+        if not reveal:
+            old_v, new_v = mask_id_card(old_v), mask_id_card(new_v)
     file_ids = []
     if c.material_file_ids:
         try:
@@ -976,7 +1025,14 @@ def _correction_row(c, s=None, reveal=False) -> dict:
             "oldValue": old_v, "newValue": new_v, "sensitive": c.field_key == "ID_CARD",
             "reason": c.reason or "", "status": c.status, "reviewNote": c.review_note or "",
             "materialFileIds": file_ids, "materialRequired": c.field_key in _CORRECTION_MATERIAL_REQUIRED,
-            "reviewedAt": _iso(c.reviewed_at), "createdAt": _iso(c.created_at)}
+            "reviewedAt": _iso(c.reviewed_at), "createdAt": _iso(c.created_at),
+            # 展示补充：班级名与审核人姓名（列表页需要，缺失时为空串而非假值）
+            "className": ((extras or {}).get("classNames") or {}).get(
+                getattr(s, "class_id", None), "") if s else "",
+            "reviewerName": ((extras or {}).get("reviewerNames") or {}).get(
+                getattr(c, "reviewed_by", None), ""),
+            # 本端点只对教务员/学院教务开放，来源恒为教务发起（非学生自助渠道）
+            "channel": "教务发起"}
 
 
 def _correction_material_ids(db, field_key, material_file_ids):
@@ -1032,16 +1088,20 @@ def create_roster_correction(user, student_id, field_key, new_value, reason,
         if dup:
             raise AppException("DATA_CONFLICT", "该学生该字段已有待审核的更正申请，不可重复发起", http_status=409)
         c = AaStudentCorrection(tenant_id=_tid(), student_id=s.id, field_key=field_key,
-                                old_value=current, new_value=clean_value, reason=reason,
+                                old_value=_correction_store_value(field_key, current),
+                                new_value=_correction_store_value(field_key, clean_value),
+                                reason=reason,
                                 material_file_ids=material_json, status="PENDING")
         db.add(c)
         db.flush()
         _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPLY",
-              f"{s.real_name} · {_CORRECTION_FIELD_LABEL[field_key]}更正：{current} → {clean_value}")
+              f"{s.real_name} · {_CORRECTION_FIELD_LABEL[field_key]}更正："
+              f"{_correction_audit_value(field_key, current)} → "
+              f"{_correction_audit_value(field_key, clean_value)}")
         db.commit()
         db.refresh(c)
         reveal = has_permission(user, "academicAffairs.roster.viewSensitive")
-        return _correction_row(c, s, reveal)
+        return _correction_row(c, s, reveal, _correction_extras(db, [c], {s.id: s}))
 
 
 def list_roster_corrections(user, status=None, student_id=None, field_key=None, page=1, page_size=20):
@@ -1071,7 +1131,8 @@ def list_roster_corrections(user, status=None, student_id=None, field_key=None, 
         prof = {p.id: p for p in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_([c.student_id for c in page_rows] or [-1]))).all()}
         reveal = has_permission(user, "academicAffairs.roster.viewSensitive")
-        return [_correction_row(c, prof.get(c.student_id), reveal) for c in page_rows], total
+        extras = _correction_extras(db, page_rows, prof)
+        return [_correction_row(c, prof.get(c.student_id), reveal, extras) for c in page_rows], total
 
 
 def review_roster_correction(correction_id, user, action, note=None) -> dict:
@@ -1094,32 +1155,44 @@ def review_roster_correction(correction_id, user, action, note=None) -> dict:
             raise AppException("DATA_CONFLICT", "该更正申请已处理", http_status=409)
         _n, _r, uid = _op()
         if action == "APPROVE":
+            # 一律按明文口径比较：证件号列是密文，且 Fernet 每次加密结果不同，
+            # 直接比密文会恒不相等，导致证件号更正永远卡 409。
             current = _correction_current_value(s, c.field_key)
-            if current != (c.old_value or ""):
+            old_plain = _correction_plain_value(c.field_key, c.old_value)
+            new_plain = _correction_plain_value(c.field_key, c.new_value)
+            if current != old_plain:
                 raise AppException("DATA_CONFLICT",
                                    "该字段自发起更正后已被其它操作变更，请驳回后重新发起", http_status=409)
             if c.field_key == "STUDENT_NO":
+                # 学号租户内永久唯一（含软删行，与 db_service.create_student 的复活规则一致），
+                # 查重不能排除 is_deleted，否则审核通过时会撞 uk_tenant_student_no。
                 dup = db.scalar(select(StudentProfile.id).where(
-                    StudentProfile.tenant_id == _tid(), StudentProfile.student_no == c.new_value,
-                    StudentProfile.id != s.id, StudentProfile.is_deleted.is_(False)))
+                    StudentProfile.tenant_id == _tid(), StudentProfile.student_no == new_plain,
+                    StudentProfile.id != s.id))
                 if dup:
-                    raise AppException("DATA_CONFLICT", f"学号 {c.new_value} 已被占用", http_status=409)
-                s.student_no = c.new_value
+                    raise AppException("DATA_CONFLICT", f"学号 {new_plain} 已被占用（含已作废档案）",
+                                       http_status=409)
+                s.student_no = new_plain
             elif c.field_key == "REAL_NAME":
-                s.real_name = c.new_value
+                s.real_name = new_plain
             elif c.field_key == "GENDER":
-                s.gender = c.new_value
+                s.gender = new_plain
             elif c.field_key == "ID_CARD":
-                import hashlib
-                s.id_card_encrypted = c.new_value
-                s.id_card_hash = hashlib.sha256(c.new_value.encode()).hexdigest()
+                s.id_card_encrypted = encrypt_sensitive(new_plain, "id_card")
+                s.id_card_hash = hash_sensitive(new_plain, "id_card")
             elif c.field_key == "GRADE":
-                s.grade = c.new_value
+                s.grade = new_plain
             s.version = (s.version or 0) + 1
             c.status = "APPROVED"
             c.review_note = note or "审核通过，主档已同步更新"
             _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPROVE",
-                  f"{s.real_name} · {_CORRECTION_FIELD_LABEL.get(c.field_key)}：{c.old_value} → {c.new_value}")
+                  f"{s.real_name} · {_CORRECTION_FIELD_LABEL.get(c.field_key)}："
+                  f"{_correction_audit_value(c.field_key, old_plain)} → "
+                  f"{_correction_audit_value(c.field_key, new_plain)}")
+            # 姓名/学号变更需刷新在校服务、毕设投影，与主档同事务
+            if c.field_key in ("STUDENT_NO", "REAL_NAME"):
+                from app.services.student_projection_sync import sync_student_projections_in_session
+                sync_student_projections_in_session(db, s)
         else:
             c.status = "REJECTED"
             c.review_note = note
@@ -1129,7 +1202,7 @@ def review_roster_correction(correction_id, user, action, note=None) -> dict:
         db.commit()
         db.refresh(c)
         reveal = has_permission(user, "academicAffairs.roster.viewSensitive")
-        return _correction_row(c, s, reveal)
+        return _correction_row(c, s, reveal, _correction_extras(db, [c], {s.id: s}))
 
 
 # ═══════════ 学籍导入导出（Tier1 R2：批量建档 + 台账导出）═══════════
@@ -1214,8 +1287,6 @@ def _roster_import_business_validate(row: dict, row_no: int) -> str | None:
 
 
 def _persist_roster_rows(rows: list) -> dict:
-    import hashlib
-
     from app.models import Major, SchoolClass, StudentProfile, StudentStageEvent
     created = 0
     with session() as db:
@@ -1232,8 +1303,8 @@ def _persist_roster_rows(rows: list) -> dict:
             s = StudentProfile(
                 tenant_id=_tid(), student_no=(r.get("studentNo") or "").strip(),
                 real_name=(r.get("realName") or "").strip(), gender=(r.get("gender") or "").strip() or None,
-                id_card_encrypted=(id_card or None),
-                id_card_hash=(hashlib.sha256(id_card.encode()).hexdigest() if id_card else None),
+                id_card_encrypted=encrypt_sensitive(id_card, "id_card"),
+                id_card_hash=hash_sensitive(id_card, "id_card"),
                 college_id=(major.college_id if major else None), major_id=cls.major_id,
                 class_id=cls.id, grade=cls.grade, current_stage="ENROLLED",
                 student_status=init_status, status="ACTIVE")

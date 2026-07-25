@@ -13,6 +13,7 @@ from sqlalchemy import and_, func, select
 
 from app.core.context import current_tenant_id, get_current_user_ctx, get_request_meta, get_trace_id
 from app.core.exceptions import AppException, not_found
+from app.core.field_crypto import mask_id_card, mask_phone
 from app.core.student_lifecycle import ADMITTED
 from app.db.session import get_sessionmaker
 from app.models import (SecurityAuditLog, StudentContact, StudentProfile, StudentStageEvent,
@@ -48,14 +49,10 @@ def _iso(v) -> str | None:
     return str(v) if v else None
 
 
-def _mask_phone(v: str | None) -> str:
-    v = v or ""
-    return v[:3] + "****" + v[-4:] if len(v) >= 7 else ("***" if v else "")
-
-
-def _mask_id_card(v: str | None) -> str:
-    v = v or ""
-    return v[:3] + "*" * max(len(v) - 7, 4) + v[-4:] if len(v) >= 8 else ("***" if v else "")
+# 脱敏实现统一收口到 core.field_crypto，避免多份副本行为漂移。
+# 这两个别名只接受**明文**；`_encrypted` 列必须用 mask_phone_encrypted / mask_id_card_encrypted。
+_mask_phone = mask_phone
+_mask_id_card = mask_id_card
 
 
 def session():
@@ -288,14 +285,15 @@ def create_student(body) -> dict:
                     db.add(StudentContact(tenant_id=_tid(), student_id=voided.id, contact_type="PHONE",
                                           contact_value_encrypted=enc, is_primary=True,
                                           verified_status="UNVERIFIED"))
+            # 投影与主档同事务：失败一起回滚，不让「主档已改但接口报错」发生
+            from app.services.student_projection_sync import sync_student_projections_in_session
+            sync_student_projections_in_session(db, voided)
             try:
                 db.commit()
             except IntegrityError as e:
                 db.rollback()
                 raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
             db.refresh(voided)
-            from app.services.student_projection_sync import sync_student_projections
-            sync_student_projections(voided.id)
             row = _student_row(voided, body.phone)
             row["restored"] = True
             row["message"] = "已复活原学号主档（同一 studentId），非新建档案"
@@ -352,11 +350,12 @@ def update_student(student_id, body) -> dict:
                 db.add(StudentContact(tenant_id=_tid(), student_id=s.id, contact_type="PHONE",
                                       contact_value_encrypted=enc, is_primary=True,
                                       verified_status="UNVERIFIED"))
+        # 投影与主档同事务：失败一起回滚（历史实现在 commit 后同步，报错会造成假失败）
+        from app.services.student_projection_sync import sync_student_projections_in_session
+        sync_student_projections_in_session(db, s)
         db.commit()
         db.refresh(s)
         _org_names(db, [s])
-        from app.services.student_projection_sync import sync_student_projections
-        sync_student_projections(s.id)
         return _student_row(s, phone or _primary_phone(db, s.id))
 
 

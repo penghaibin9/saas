@@ -7,10 +7,10 @@ from sqlalchemy import and_, case, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.field_crypto import encrypt_field
+from app.core.field_crypto import encrypt_field, mask_phone_encrypted
 from app.models import (AcademicAuditTrail, AcademicGrade, AcademicIntervention, AcademicMakeup,
                         AcademicRetake, AcademicStudent, AcademicWarning)
-from app.services.db_service import _iso, _mask_phone, _tid, session
+from app.services.db_service import _iso, _tid, session
 
 L_WARN_T = {"MULTI_FAIL": "多门挂科", "CREDIT_GAP": "学分不足", "GRADE_DROP": "成绩持续下滑",
             "ATTENDANCE": "出勤异常", "GRAD_RISK": "毕业资格风险"}
@@ -76,7 +76,7 @@ def _stu_row(s: AcademicStudent) -> dict:
     return {"id": str(s.id), "studentId": str(s.student_id or s.id), "studentNo": s.student_no or "",
             "name": s.name, "classId": s.class_id or "", "className": s.class_name or "",
             "collegeName": s.college_name or "", "majorName": s.major_name or "", "grade": s.grade or "",
-            "phone": _mask_phone(s.phone_encrypted), "counselor": s.counselor or "",
+            "phone": mask_phone_encrypted(s.phone_encrypted), "counselor": s.counselor or "",
             "gpa": _num(s.gpa), "avgScore": s.avg_score, "failedCount": s.failed_count,
             "obtainedCredits": _num(s.obtained_credits), "requiredCredits": _num(s.required_credits),
             "makeupCount": s.makeup_count, "retakeCount": s.retake_count,
