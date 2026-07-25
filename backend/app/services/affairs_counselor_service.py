@@ -1,4 +1,8 @@
-"""班级辅导员责任关系：真实用户绑定、交接、历史与工作量汇总。"""
+"""班级辅导员责任关系：真实用户绑定、交接、历史与工作量汇总。
+
+与 TeacherStudentScope 同源：PRIMARY 生效/结束/交接同步 CLASS scope；
+TEMP 到期写路径结束；交接/主责变更迁移班级学生相关待办与风险责任人。
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -72,12 +76,163 @@ def _visible_classes(db, user):
     return allowed, scope
 
 
+def _sync_primary_scope(db, class_row, old_counselor_id, new_counselor_id) -> str:
+    """PRIMARY 变更后同步 t_teacher_student_scope（与教务班级改绑口径一致）。
+
+    teacher_key=登录名、role_code=COUNSELOR、scope_type=CLASS、ref_value=班级名。
+    撤旧兼容 teacher_key=登录名或 userId；新辅导员不存在时不写 scope。
+    """
+    from app.models import TeacherStudentScope, User
+    notes = []
+    if old_counselor_id:
+        old_u = db.get(User, int(old_counselor_id))
+        old_keys = [str(old_counselor_id)] + ([old_u.login_name] if old_u and old_u.login_name else [])
+        for row in db.scalars(select(TeacherStudentScope).where(
+                TeacherStudentScope.tenant_id == _tid(),
+                TeacherStudentScope.teacher_key.in_(old_keys),
+                TeacherStudentScope.role_code == "COUNSELOR",
+                TeacherStudentScope.scope_type == "CLASS",
+                TeacherStudentScope.ref_value == class_row.class_name,
+                TeacherStudentScope.status == "ACTIVE",
+                TeacherStudentScope.is_deleted.is_(False))).all():
+            row.status = "INACTIVE"
+            row.version = int(row.version or 0) + 1
+            notes.append(f"撤旧scope:{row.teacher_key}")
+    if new_counselor_id:
+        new_u = db.get(User, int(new_counselor_id))
+        if new_u and not new_u.is_deleted and new_u.tenant_id == _tid() and new_u.login_name:
+            existing = db.scalars(select(TeacherStudentScope).where(
+                TeacherStudentScope.tenant_id == _tid(),
+                TeacherStudentScope.teacher_key == new_u.login_name,
+                TeacherStudentScope.role_code == "COUNSELOR",
+                TeacherStudentScope.scope_type == "CLASS",
+                TeacherStudentScope.ref_value == class_row.class_name)).first()
+            if existing:
+                existing.is_deleted, existing.status = False, "ACTIVE"
+                existing.teacher_name = new_u.real_name
+                existing.version = int(existing.version or 0) + 1
+            else:
+                db.add(TeacherStudentScope(
+                    tenant_id=_tid(), teacher_key=new_u.login_name,
+                    teacher_name=new_u.real_name, role_code="COUNSELOR",
+                    scope_type="CLASS", ref_value=class_row.class_name, status="ACTIVE"))
+            notes.append(f"立新scope:{new_u.login_name}")
+        else:
+            notes.append(f"新辅导员user_id={new_counselor_id}不存在,未写scope")
+    return ";".join(notes)
+
+
+def _class_student_ids(db, class_id) -> set[int]:
+    from app.models import StudentProfile
+    return set(db.scalars(select(StudentProfile.id).where(
+        StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(class_id),
+        StudentProfile.is_deleted.is_(False))).all())
+
+
+def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> dict:
+    """将班级学生相关 PENDING 待办/审批任务/风险责任人从原辅导迁到新辅导。"""
+    from app.models import AffairsRiskRecord, UnifiedTodo, WorkflowTask
+
+    from_uid, to_uid = int(from_user_id), int(to_user_id)
+    if from_uid == to_uid:
+        return {"todos": 0, "workflowTasks": 0, "risks": 0}
+    student_ids = _class_student_ids(db, class_id)
+    if not student_ids:
+        return {"todos": 0, "workflowTasks": 0, "risks": 0}
+
+    moved_todos = 0
+    todos = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.assignee_id == from_uid,
+        UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
+        UnifiedTodo.student_id.in_(student_ids))).all()
+    for todo in todos:
+        clash = db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == _tid(),
+            UnifiedTodo.source_module == todo.source_module,
+            UnifiedTodo.source_biz_id == todo.source_biz_id,
+            UnifiedTodo.todo_type == todo.todo_type,
+            UnifiedTodo.assignee_id == to_uid,
+            UnifiedTodo.is_deleted.is_(False))).first()
+        if clash:
+            if clash.status != "PENDING":
+                clash.status = "PENDING"
+            clash.title = todo.title
+            clash.version = int(clash.version or 0) + 1
+            todo.status = "CANCELLED"
+            todo.remark = (todo.remark or "")[:400] + f"|交接取消→{to_uid}"
+            todo.version = int(todo.version or 0) + 1
+        else:
+            todo.assignee_id = to_uid
+            todo.remark = ((todo.remark or "") + f"|交接自{from_uid}:{reason}")[:500]
+            todo.version = int(todo.version or 0) + 1
+        moved_todos += 1
+
+    moved_tasks = 0
+    from app.models import CsLeave, WorkflowInstance
+    leave_ids = set(db.scalars(select(CsLeave.id).where(
+        CsLeave.tenant_id == _tid(),
+        CsLeave.student_id.in_(student_ids),
+        CsLeave.is_deleted.is_(False))).all())
+    if leave_ids:
+        for task in db.scalars(select(WorkflowTask).where(
+                WorkflowTask.tenant_id == _tid(), WorkflowTask.assignee_id == from_uid,
+                WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False))).all():
+            inst = db.get(WorkflowInstance, int(task.instance_id)) if task.instance_id else None
+            if not inst or (inst.source_module or "").replace("_", "-") != "student-affairs":
+                continue
+            if int(inst.source_biz_id or 0) not in leave_ids:
+                continue
+            task.assignee_id = to_uid
+            task.version = int(task.version or 0) + 1
+            moved_tasks += 1
+
+    moved_risks = 0
+    for risk in db.scalars(select(AffairsRiskRecord).where(
+            AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.owner_id == from_uid,
+            AffairsRiskRecord.student_id.in_(student_ids),
+            AffairsRiskRecord.status.notin_(["CLOSED"]),
+            AffairsRiskRecord.is_deleted.is_(False))).all():
+        risk.owner_id = to_uid
+        risk.version = int(risk.version or 0) + 1
+        moved_risks += 1
+
+    return {"todos": moved_todos, "workflowTasks": moved_tasks, "risks": moved_risks}
+
+
+def _expire_due_temps(db, *, now: datetime | None = None, actor_id: int | None = None) -> int:
+    """将已过 effective_to 的 TEMP ACTIVE 关系写为 ENDED。"""
+    from app.models import AffairsCounselorAssignment
+    now = now or datetime.utcnow()
+    rows = db.scalars(select(AffairsCounselorAssignment).where(
+        AffairsCounselorAssignment.tenant_id == _tid(),
+        AffairsCounselorAssignment.is_deleted.is_(False),
+        AffairsCounselorAssignment.status == "ACTIVE",
+        AffairsCounselorAssignment.duty_type == "TEMP",
+        AffairsCounselorAssignment.effective_to.is_not(None),
+        AffairsCounselorAssignment.effective_to <= now)).all()
+    for x in rows:
+        _end(db, x, "临时代班到期自动结束", actor_id)
+        _audit(db, "COUNSELOR_ASSIGN", x.id, "TEMP_EXPIRE", f"class={x.class_id},user={x.user_id}")
+    return len(rows)
+
+
+def scan_expired_temps() -> dict:
+    """定时/手动扫描到期临时代班。"""
+    with session() as db:
+        n = _expire_due_temps(db)
+        db.commit()
+        return {"ended": n}
+
+
 def list_assignments(user, class_id=None, user_id=None, status=None, vacancy_only=False,
                      page=1, page_size=20):
     from app.models import AffairsCounselorAssignment, SchoolClass, StudentProfile, User
     if status and status not in _STATUSES:
         raise AppException("VALIDATION_ERROR", "状态仅支持 ACTIVE 或 ENDED")
     with session() as db:
+        ended = _expire_due_temps(db, actor_id=_actor_id(user))
+        if ended:
+            db.commit()
         allowed, _ = _visible_classes(db, user)
         if class_id:
             _class_in_scope_or_403(db, class_id, user)
@@ -133,6 +288,9 @@ def _vacancy_rows(db, allowed, page, page_size):
 
 def vacancies(user):
     with session() as db:
+        ended = _expire_due_temps(db, actor_id=_actor_id(user))
+        if ended:
+            db.commit()
         allowed, _ = _visible_classes(db, user)
         items, total = _vacancy_rows(db, allowed, 1, 10000)
         return {"items": items, "total": total}
@@ -141,6 +299,9 @@ def vacancies(user):
 def list_counselor_ledger(user, page=1, page_size=20):
     from app.models import AffairsCounselorAssignment, StudentProfile, User
     with session() as db:
+        ended = _expire_due_temps(db, actor_id=_actor_id(user))
+        if ended:
+            db.commit()
         allowed, _ = _visible_classes(db, user)
         q = select(AffairsCounselorAssignment).where(
             AffairsCounselorAssignment.tenant_id == _tid(), AffairsCounselorAssignment.is_deleted.is_(False),
@@ -173,7 +334,10 @@ def list_counselor_ledger(user, page=1, page_size=20):
 
 
 def _end(db, assignment, reason, actor_id):
-    assignment.status, assignment.effective_to = "ENDED", datetime.utcnow()
+    assignment.status = "ENDED"
+    # TEMP 已有截止日时保留原值，便于台账核对；其余结束时刻写 effective_to
+    if not assignment.effective_to or assignment.effective_to > datetime.utcnow():
+        assignment.effective_to = datetime.utcnow()
     assignment.reason = reason or assignment.reason
     assignment.updated_by, assignment.version = actor_id, assignment.version + 1
 
@@ -189,22 +353,45 @@ def assign(user, class_id, user_id, duty_type, effective_from=None, effective_to
     if end and end < start:
         raise AppException("VALIDATION_ERROR", "有效截止时间不能早于开始时间")
     with session() as db:
+        _expire_due_temps(db, actor_id=_actor_id(user))
         c = _class_in_scope_or_403(db, class_id, user)
         _active_user(db, user_id)
         actor = _actor_id(user)
+        migrated = {"todos": 0, "workflowTasks": 0, "risks": 0}
+        scope_note = ""
         if duty_type == "PRIMARY":
+            old_counselor_id = c.counselor_id
             old = db.scalars(select(AffairsCounselorAssignment).where(
                 AffairsCounselorAssignment.tenant_id == _tid(), AffairsCounselorAssignment.class_id == c.id,
                 AffairsCounselorAssignment.duty_type == "PRIMARY", AffairsCounselorAssignment.status == "ACTIVE",
                 AffairsCounselorAssignment.is_deleted.is_(False))).all()
+            old_user_ids = {int(item.user_id) for item in old}
             for item in old:
                 _end(db, item, reason or "主辅导员调整", actor)
             c.counselor_id, c.updated_by = int(user_id), actor
+            scope_note = _sync_primary_scope(db, c, old_counselor_id, int(user_id))
+            migrate_from = set(old_user_ids)
+            if old_counselor_id:
+                migrate_from.add(int(old_counselor_id))
+            migrate_from.discard(int(user_id))
+            for from_uid in migrate_from:
+                part = _migrate_class_work(
+                    db, c.id, from_uid, user_id, reason or "主辅导员调整")
+                for k in migrated:
+                    migrated[k] += part.get(k, 0)
         x = AffairsCounselorAssignment(tenant_id=_tid(), class_id=c.id, user_id=int(user_id),
             duty_type=duty_type, status="ACTIVE", effective_from=start, effective_to=end,
             reason=(reason or None), created_by=actor, updated_by=actor)
         db.add(x); db.flush()
-        _audit(db, "COUNSELOR_ASSIGN", x.id, "ASSIGN", f"class={c.id},user={user_id},duty={duty_type}")
+        # 创建时已过期的临时代班立即结束，避免短暂 ACTIVE 脏数据
+        if duty_type == "TEMP" and end and end <= datetime.utcnow():
+            _end(db, x, "临时代班创建时已过期", actor)
+        detail = f"class={c.id},user={user_id},duty={duty_type},status={x.status}"
+        if scope_note:
+            detail += f";{scope_note}"
+        if migrated.get("todos") or migrated.get("workflowTasks") or migrated.get("risks"):
+            detail += f";migrate={migrated}"
+        _audit(db, "COUNSELOR_ASSIGN", x.id, "ASSIGN", detail)
         db.commit(); db.refresh(x)
         return _row(db, x)
 
@@ -216,6 +403,7 @@ def handover(user, class_id, from_user_id, to_user_id, reason, version):
     if int(from_user_id) == int(to_user_id):
         raise AppException("VALIDATION_ERROR", "交接双方不能是同一辅导员")
     with session() as db:
+        _expire_due_temps(db, actor_id=_actor_id(user))
         c = _class_in_scope_or_403(db, class_id, user)
         _active_user(db, to_user_id)
         from_rows = db.scalars(select(AffairsCounselorAssignment).where(
@@ -228,6 +416,7 @@ def handover(user, class_id, from_user_id, to_user_id, reason, version):
         current = next((x for x in from_rows if x.duty_type == "PRIMARY"), from_rows[0])
         check_version(current.version, version)
         actor = _actor_id(user)
+        old_counselor_id = c.counselor_id
         for x in from_rows:
             _end(db, x, reason, actor)
         for x in db.scalars(select(AffairsCounselorAssignment).where(
@@ -241,17 +430,21 @@ def handover(user, class_id, from_user_id, to_user_id, reason, version):
             handover_from_user_id=int(from_user_id), created_by=actor, updated_by=actor)
         c.counselor_id, c.updated_by = int(to_user_id), actor
         db.add(x); db.flush()
+        scope_note = _sync_primary_scope(db, c, old_counselor_id or from_user_id, int(to_user_id))
+        migrated = _migrate_class_work(db, c.id, from_user_id, to_user_id, reason.strip())
         _audit(db, "COUNSELOR_ASSIGN", x.id, "HANDOVER",
-               f"class={c.id},from={from_user_id},to={to_user_id},reason={reason.strip()}")
+               f"class={c.id},from={from_user_id},to={to_user_id},reason={reason.strip()};"
+               f"{scope_note};migrate={migrated}")
         db.commit(); db.refresh(x)
         return _row(db, x)
 
 
 def end_assignment(user, assignment_id, reason, version):
-    from app.models import AffairsCounselorAssignment, SchoolClass
+    from app.models import AffairsCounselorAssignment
     if not (reason or "").strip():
         raise AppException("VALIDATION_ERROR", "结束责任关系必须填写原因")
     with session() as db:
+        _expire_due_temps(db, actor_id=_actor_id(user))
         x = db.get(AffairsCounselorAssignment, int(assignment_id))
         if not x or x.tenant_id != _tid() or x.is_deleted:
             raise not_found("辅导员责任关系不存在")
@@ -259,9 +452,17 @@ def end_assignment(user, assignment_id, reason, version):
         if x.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "责任关系已结束")
         check_version(x.version, version)
-        _end(db, x, reason.strip(), _actor_id(user))
-        if x.duty_type == "PRIMARY" and c.counselor_id == x.user_id:
-            c.counselor_id, c.updated_by = None, _actor_id(user)
-        _audit(db, "COUNSELOR_ASSIGN", x.id, "END", reason.strip())
+        actor = _actor_id(user)
+        was_primary = x.duty_type == "PRIMARY"
+        old_counselor_id = x.user_id if was_primary else None
+        _end(db, x, reason.strip(), actor)
+        scope_note = ""
+        if was_primary and c.counselor_id == x.user_id:
+            c.counselor_id, c.updated_by = None, actor
+            scope_note = _sync_primary_scope(db, c, old_counselor_id, None)
+        detail = reason.strip()
+        if scope_note:
+            detail = f"{detail};{scope_note}"
+        _audit(db, "COUNSELOR_ASSIGN", x.id, "END", detail)
         db.commit(); db.refresh(x)
         return _row(db, x)

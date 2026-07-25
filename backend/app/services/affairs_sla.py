@@ -8,10 +8,10 @@ from math import isfinite
 from app.core.config import settings
 
 RISK_SLA_DEFAULTS = {
-    "CRITICAL": {"assignHours": 1, "processHours": 24},
-    "HIGH": {"assignHours": 2, "processHours": 48},
-    "MEDIUM": {"assignHours": 4, "processHours": 72},
-    "LOW": {"assignHours": 8, "processHours": 120},
+    "CRITICAL": {"assignHours": 1, "processHours": 24, "followHours": 24},
+    "HIGH": {"assignHours": 2, "processHours": 48, "followHours": 48},
+    "MEDIUM": {"assignHours": 4, "processHours": 72, "followHours": 72},
+    "LOW": {"assignHours": 8, "processHours": 120, "followHours": 120},
 }
 LEAVE_SLA_DEFAULTS = {
     "approvalHours": 24,
@@ -19,6 +19,8 @@ LEAVE_SLA_DEFAULTS = {
     "cancelHours": 24,
     "extensionApprovalHours": 24,
 }
+
+_OPEN_HANDLE_STATUSES = frozenset({"PROCESSING", "FOLLOWING"})
 
 
 def _positive_number(value, fallback):
@@ -38,11 +40,13 @@ def _json_object(value) -> dict:
 
 
 def _risk_unknown_fallback() -> dict:
+    process = _positive_number(
+        getattr(settings, "AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS", 72), 72)
     return {
         "assignHours": _positive_number(
             getattr(settings, "AFFAIRS_RISK_NEW_ASSIGN_HOURS", 4), 4),
-        "processHours": _positive_number(
-            getattr(settings, "AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS", 72), 72),
+        "processHours": process,
+        "followHours": process,
     }
 
 
@@ -52,9 +56,12 @@ def get_risk_sla(level: str | None) -> dict:
     defaults = RISK_SLA_DEFAULTS.get(code, _risk_unknown_fallback())
     configured = _json_object(getattr(settings, "AFFAIRS_RISK_SLA_JSON", "")).get(code, {})
     configured = configured if isinstance(configured, dict) else {}
+    process = _positive_number(configured.get("processHours"), defaults["processHours"])
     return {
         "assignHours": _positive_number(configured.get("assignHours"), defaults["assignHours"]),
-        "processHours": _positive_number(configured.get("processHours"), defaults["processHours"]),
+        "processHours": process,
+        "followHours": _positive_number(
+            configured.get("followHours"), defaults.get("followHours", process)),
     }
 
 
@@ -67,13 +74,21 @@ def get_leave_sla() -> dict:
 
 
 def risk_due_at(record) -> datetime | None:
-    """按当前风险状态返回当前阶段截止时间。"""
+    """按当前风险状态返回当前阶段截止时间。
+
+    NEW → 分派时限；ASSIGNED → 首次处置时限；
+    PROCESSING/FOLLOWING → 自最近更新起的跟进/办结时限（卡住无更新则超时升级）。
+    """
     sla = get_risk_sla(getattr(record, "risk_level", None))
     status = getattr(record, "status", None)
     if status == "NEW" and getattr(record, "created_at", None):
         return record.created_at + timedelta(hours=sla["assignHours"])
     if status == "ASSIGNED" and getattr(record, "assigned_at", None):
         return record.assigned_at + timedelta(hours=sla["processHours"])
+    if status in _OPEN_HANDLE_STATUSES:
+        start = getattr(record, "updated_at", None) or getattr(record, "assigned_at", None)
+        if start:
+            return start + timedelta(hours=sla["followHours"])
     return None
 
 

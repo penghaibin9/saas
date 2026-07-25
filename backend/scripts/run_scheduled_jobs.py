@@ -212,6 +212,22 @@ def job_risk_timeout() -> None:
             set_tenant(None)
 
 
+def job_counselor_temp_expire() -> None:
+    """按租户结束到期临时代班。"""
+    if not settings.AFFAIRS_COUNSELOR_TEMP_AUTO_SCAN:
+        return
+
+    from app.services import affairs_counselor_service
+    for tenant_id in _schedulable_tenant_ids():
+        set_tenant({"tenantId": str(tenant_id)})
+        try:
+            _run_isolated(
+                f"affairs_counselor_temp:{tenant_id}",
+                lambda: affairs_counselor_service.scan_expired_temps())
+        finally:
+            set_tenant(None)
+
+
 def job_stats_reconcile() -> None:
     from app.services import message_ops_service as ops_svc
     for tenant_id in _schedulable_tenant_ids():
@@ -274,6 +290,7 @@ def main() -> int:
         _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge),
         _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue),
         _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_risk_timeout),
+        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_counselor_temp_expire),
         _Ticker(INTERVAL_STATS, now0, job_stats_reconcile),
         _Ticker(INTERVAL_CLEANUP, now0, lambda: _run_isolated("cleanup", cleanup_import_batches)),
     ]

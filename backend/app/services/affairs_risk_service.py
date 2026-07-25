@@ -586,17 +586,19 @@ def scan_timeout() -> dict:
             _audit(db, x.id, "AUTO_ASSIGN", str(counselor_id))
             assigned += 1
 
-        # 处置超时：ASSIGNED 超过处置时限、无处置且未升级过 → ESCALATED
+        # 处置/跟进超时：ASSIGNED/PROCESSING/FOLLOWING 超阶段时限且未升级过 → ESCALATED
         rows = db.scalars(select(AffairsRiskRecord).where(
-            AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.status == "ASSIGNED",
-            AffairsRiskRecord.assigned_at.is_not(None), AffairsRiskRecord.escalated_at.is_(None),
+            AffairsRiskRecord.tenant_id == _tid(),
+            AffairsRiskRecord.status.in_(("ASSIGNED", "PROCESSING", "FOLLOWING")),
+            AffairsRiskRecord.escalated_at.is_(None),
             AffairsRiskRecord.is_deleted.is_(False))).all()
         escalated = 0
         for x in rows:
             if risk_is_overdue(x, now):
+                frm = x.status
                 x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
                 x.status, x.escalated_at, x.version = "ESCALATED", now, x.version + 1
-                _handle(db, x.id, "ESCALATE", "处置超时自动升级", "ASSIGNED", "ESCALATED")
+                _handle(db, x.id, "ESCALATE", "处置/跟进超时自动升级", frm, "ESCALATED")
                 _notify_risk_handlers(db, x, "风险处置超时升级",
                                       f"风险#{x.id} 处置超时已自动升级至 {x.risk_level}")
                 _audit(db, x.id, "AUTO_ESCALATE")
@@ -728,6 +730,16 @@ def _risk_stats_sql(db, base_conds, allowed) -> dict:
                 | ((AffairsRiskRecord.status == "ASSIGNED")
                    & AffairsRiskRecord.assigned_at.is_not(None)
                    & (AffairsRiskRecord.assigned_at <= now - timedelta(hours=sla["processHours"])))
+                | ((AffairsRiskRecord.status.in_(("PROCESSING", "FOLLOWING")))
+                   & (
+                       (AffairsRiskRecord.updated_at.is_not(None)
+                        & (AffairsRiskRecord.updated_at
+                           <= now - timedelta(hours=sla["followHours"])))
+                       | (AffairsRiskRecord.updated_at.is_(None)
+                          & AffairsRiskRecord.assigned_at.is_not(None)
+                          & (AffairsRiskRecord.assigned_at
+                             <= now - timedelta(hours=sla["followHours"])))
+                   ))
             )
         )
     stmt = _risk_scope_join(

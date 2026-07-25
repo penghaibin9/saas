@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
     AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN: bool = True
     AFFAIRS_RISK_TIMEOUT_AUTO_SCAN: bool = True
+    AFFAIRS_COUNSELOR_TEMP_AUTO_SCAN: bool = True
     AFFAIRS_RISK_NEW_ASSIGN_HOURS: float = 4
     AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS: float = 72
     # 学工 SLA JSON 覆盖；解析失败或字段非法时由 affairs_sla 回退内置默认。

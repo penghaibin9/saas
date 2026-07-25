@@ -182,6 +182,11 @@ def counselor_vacancies(user=Depends(require_permission("studentAffairs.class.vi
     return success(counselor_svc.vacancies(user))
 
 
+@router.post("/counselor-assignments/scan-expired", summary="临时代班到期扫描（定时/手动，幂等）")
+def counselor_scan_expired(user=Depends(require_permission("studentAffairs.class.create"))):
+    return success(counselor_svc.scan_expired_temps())
+
+
 @router.post("/counselor-assignments", summary="分配主辅导员/协同辅导员/临时代班")
 def counselor_assignment_create(body: CounselorAssignmentCreate,
                                 user=Depends(require_permission("studentAffairs.class.create"))):

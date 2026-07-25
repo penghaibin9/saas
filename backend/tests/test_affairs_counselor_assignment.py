@@ -1,6 +1,8 @@
 """班级辅导员真实责任关系：MySQL db_mode 下的主责、交接、空缺、范围与乐观锁。"""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -51,6 +53,24 @@ def _assign(client, hdr, class_id, user_id, duty="PRIMARY", **extra):
         "classId": class_id, "userId": user_id, "dutyType": duty, **extra})
 
 
+def _active_scopes(class_name):
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models import TeacherStudentScope
+    db = get_sessionmaker()()
+    rows = db.scalars(select(TeacherStudentScope).where(
+        TeacherStudentScope.tenant_id == TID,
+        TeacherStudentScope.scope_type == "CLASS",
+        TeacherStudentScope.ref_value == class_name,
+        TeacherStudentScope.role_code == "COUNSELOR",
+        TeacherStudentScope.status == "ACTIVE",
+        TeacherStudentScope.is_deleted.is_(False))).all()
+    keys = {r.teacher_key for r in rows}
+    db.close()
+    return keys
+
+
 def test_primary_unique_and_workload_ledger(client, db_mode):
     ids, hdr = _seed(db_mode), _hdr(client, "school_admin01")
     first = _assign(client, hdr, ids["a"], ids["u1"]).json()["data"]
@@ -66,6 +86,16 @@ def test_primary_unique_and_workload_ledger(client, db_mode):
     assert second["userId"] == str(ids["u3"])
 
 
+def test_primary_assign_syncs_teacher_student_scope(client, db_mode):
+    ids, hdr = _seed(db_mode), _hdr(client, "school_admin01")
+    _assign(client, hdr, ids["a"], ids["u1"]).raise_for_status()
+    assert "ca_counselor_1" in _active_scopes("责任2601")
+    _assign(client, hdr, ids["a"], ids["u2"]).raise_for_status()
+    keys = _active_scopes("责任2601")
+    assert "ca_counselor_2" in keys
+    assert "ca_counselor_1" not in keys
+
+
 def test_handover_ends_old_primary_and_preserves_history(client, db_mode):
     ids, hdr = _seed(db_mode), _hdr(client, "school_admin01")
     original = _assign(client, hdr, ids["a"], ids["u1"]).json()["data"]
@@ -75,6 +105,46 @@ def test_handover_ends_old_primary_and_preserves_history(client, db_mode):
     rows = client.get(f"{BASE}/counselor-assignments?classId={ids['a']}", headers=hdr).json()["data"]["items"]
     old = next(x for x in rows if x["id"] == original["id"])
     assert old["status"] == "ENDED" and old["reason"] == "调岗交接"
+    keys = _active_scopes("责任2601")
+    assert "ca_counselor_2" in keys and "ca_counselor_1" not in keys
+
+
+def test_handover_migrates_pending_todos_and_risk_owner(client, db_mode):
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsRiskRecord, StudentProfile, UnifiedTodo
+
+    ids, hdr = _seed(db_mode), _hdr(client, "school_admin01")
+    original = _assign(client, hdr, ids["a"], ids["u1"]).json()["data"]
+    db = get_sessionmaker()()
+    student_id = db.scalars(select(StudentProfile.id).where(
+        StudentProfile.tenant_id == TID, StudentProfile.class_id == ids["a"])).first()
+    db.add(UnifiedTodo(
+        tenant_id=TID, source_module="student-affairs", source_biz_type="LEAVE",
+        source_biz_id=900001, todo_type="LEAVE_APPROVAL", assignee_id=ids["u1"],
+        student_id=student_id, title="请假待审", status="PENDING"))
+    risk = AffairsRiskRecord(
+        tenant_id=TID, student_id=student_id, source="TEST_HANDOVER", source_ref_id=1,
+        risk_level="MEDIUM", title="交接风险", owner_id=ids["u1"], status="ASSIGNED")
+    db.add(risk)
+    db.commit()
+    risk_id = risk.id
+    db.close()
+
+    client.post(f"{BASE}/classes/{ids['a']}/counselor-handover", headers=hdr, json={
+        "fromUserId": ids["u1"], "toUserId": ids["u2"], "reason": "调岗交接待办",
+        "version": original["version"]}).raise_for_status()
+
+    db = get_sessionmaker()()
+    todos = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == TID, UnifiedTodo.source_biz_id == 900001,
+        UnifiedTodo.todo_type == "LEAVE_APPROVAL", UnifiedTodo.is_deleted.is_(False))).all()
+    assert any(t.assignee_id == ids["u2"] and t.status == "PENDING" for t in todos)
+    assert not any(t.assignee_id == ids["u1"] and t.status == "PENDING" for t in todos)
+    risk2 = db.get(AffairsRiskRecord, risk_id)
+    assert risk2.owner_id == ids["u2"]
+    db.close()
 
 
 def test_temp_requires_end_and_vacancy_after_primary_end(client, db_mode):
@@ -86,6 +156,29 @@ def test_temp_requires_end_and_vacancy_after_primary_end(client, db_mode):
     assert ended.status_code == 200
     vacant = client.get(f"{BASE}/counselor-vacancies", headers=hdr).json()["data"]["items"]
     assert str(ids["a"]) in {x["classId"] for x in vacant}
+    assert "ca_counselor_1" not in _active_scopes("责任2601")
+
+
+def test_temp_expired_auto_ends_on_list_and_scan(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsCounselorAssignment
+
+    ids, hdr = _seed(db_mode), _hdr(client, "school_admin01")
+    past = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
+    start = (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S")
+    created = _assign(client, hdr, ids["a"], ids["u1"], "TEMP",
+                      effectiveFrom=start, effectiveTo=past).json()["data"]
+    assert created["status"] == "ENDED"
+    rows = client.get(
+        f"{BASE}/counselor-assignments?classId={ids['a']}&status=ACTIVE", headers=hdr
+    ).json()["data"]["items"]
+    assert str(created["id"]) not in {x["id"] for x in rows}
+    db = get_sessionmaker()()
+    row = db.get(AffairsCounselorAssignment, int(created["id"]))
+    assert row.status == "ENDED"
+    db.close()
+    r = client.post(f"{BASE}/counselor-assignments/scan-expired", headers=hdr)
+    assert r.status_code == 200 and r.json()["data"]["ended"] == 0
 
 
 def test_counselor_cannot_change_out_of_scope_class_and_stale_version_conflicts(client, db_mode):

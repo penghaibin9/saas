@@ -226,6 +226,44 @@ async def lifespan(app: FastAPI):
 
         tasks.append(asyncio.create_task(_affairs_risk_loop(), name="affairs-risk-timeout-scan"))
 
+    if settings.AFFAIRS_COUNSELOR_TEMP_AUTO_SCAN and db_enabled():
+        def _counselor_temp_once():
+            from sqlalchemy import select
+
+            from app.core.context import set_tenant
+            from app.db.session import get_sessionmaker
+            from app.models import Tenant
+            from app.services import affairs_counselor_service
+            db = get_sessionmaker()()
+            try:
+                tenant_ids = list(db.scalars(select(Tenant.id).where(Tenant.status == "ACTIVE")))
+            finally:
+                db.close()
+            for tenant_id in tenant_ids:
+                try:
+                    set_tenant({"tenantId": str(tenant_id)})
+                    affairs_counselor_service.scan_expired_temps()
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception(
+                        "affairs counselor temp expire scan failed tenant=%s", tenant_id)
+                finally:
+                    set_tenant(None)
+
+        async def _counselor_temp_loop():
+            from anyio import to_thread
+            while True:
+                try:
+                    await to_thread.run_sync(_counselor_temp_once)
+                    await asyncio.sleep(6 * 60 * 60)
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception(
+                        "affairs counselor temp expire scheduler failed")
+                    await asyncio.sleep(5 * 60)
+
+        tasks.append(asyncio.create_task(_counselor_temp_loop(), name="affairs-counselor-temp-scan"))
+
     try:
         yield
     finally:
