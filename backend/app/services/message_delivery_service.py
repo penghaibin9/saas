@@ -134,16 +134,19 @@ def deliver_campaign_all(campaign_id: int, user_ids: list[int]) -> dict:
 
 def enqueue_campaign_delivery_in_db(db, camp, user_ids: list[int], *,
                                     batch_size: int = _BATCH) -> dict:
-    """在调用方事务内创建投递作业（不 commit）。用于发布状态与作业同事务。"""
+    """在调用方事务内创建投递作业（不 commit、不自增 version）。
+
+    状态/version 由调用方负责；本函数只负责落 DeliveryJob，保证可恢复。
+    """
     from app.models import MessageDeliveryJob
     from sqlalchemy import func
 
     ids = [int(x) for x in (user_ids or []) if x]
-    camp.status = "PUBLISHING"
     camp.recipient_count = len(ids)
-    camp.delivery_mode = "ASYNC" if ids else (camp.delivery_mode or "ASYNC")
+    camp.delivery_mode = "ASYNC"
     camp.published_at = camp.published_at or _utc_now()
-    camp.version = int(camp.version or 0) + 1
+    if camp.status not in ("PUBLISHING", "PUBLISHED"):
+        camp.status = "PUBLISHING"
     if not ids:
         camp.status = "PUBLISHED"
         return {"ok": True, "jobCount": 0, "recipientCount": 0, "async": True}
@@ -176,7 +179,7 @@ def enqueue_campaign_delivery_in_db(db, camp, user_ids: list[int], *,
 
 def enqueue_campaign_delivery(campaign_id: int, user_ids: list[int], *,
                               batch_size: int = _BATCH) -> dict:
-    """切片写入投递作业；HTTP 立即返回受理。"""
+    """切片写入投递作业；独立会话入口（会 bump version 一次）。"""
     from app.models import MessageCampaign
 
     ids = [int(x) for x in (user_ids or []) if x]
@@ -188,6 +191,9 @@ def enqueue_campaign_delivery(campaign_id: int, user_ids: list[int], *,
         ))
         if not camp:
             return {"ok": False, "jobCount": 0}
+        if camp.status not in ("PUBLISHING", "PUBLISHED"):
+            camp.status = "PUBLISHING"
+            camp.version = int(camp.version or 0) + 1
         result = enqueue_campaign_delivery_in_db(db, camp, ids, batch_size=batch_size)
         db.commit()
         return result
@@ -202,28 +208,24 @@ def should_async(user_ids: list[int], *, force: bool = False) -> bool:
 def accept_and_deliver(campaign_id: int, user_ids: list[int], *,
                        force_async: bool = False,
                        already_enqueued: bool = False) -> dict:
-    """统一入口：大名单/全校范围异步，小名单同步。
-    already_enqueued=True：调用方已在同事务创建作业，此处只做尽力内联消费。"""
-    if already_enqueued or should_async(user_ids, force=force_async):
-        if not already_enqueued:
-            enq = enqueue_campaign_delivery(campaign_id, user_ids)
-        else:
-            enq = {"ok": True, "jobCount": None, "recipientCount": len(user_ids), "async": True}
-        processed = claim_and_process_delivery_jobs(limit=5, worker_id="inline-publish")
-        return {
-            "status": "PUBLISHING",
-            "async": True,
-            "jobCount": enq.get("jobCount"),
-            "recipientCount": len(user_ids),
-            "deliveredCount": 0,
-            "inlineProcessed": processed,
-        }
-    result = deliver_campaign_all(campaign_id, user_ids)
+    """统一入口：必须先有 DeliveryJob，再尽力内联消费。
+
+    already_enqueued=True：调用方已同事务落作业；此处只 claim，失败不影响已提交受理。
+    force_async 保留兼容；同步路径也一律落作业，禁止 commit-then-deliver。
+    """
+    _ = force_async
+    if already_enqueued:
+        enq = {"ok": True, "jobCount": None, "recipientCount": len(user_ids or []), "async": True}
+    else:
+        enq = enqueue_campaign_delivery(campaign_id, user_ids)
+    processed = claim_and_process_delivery_jobs(limit=5, worker_id="inline-publish")
     return {
-        "status": result.get("status") or "PUBLISHED",
-        "async": False,
-        "recipientCount": len(user_ids),
-        "deliveredCount": result.get("written") or result.get("deliveredCount") or 0,
+        "status": "PUBLISHING",
+        "async": True,
+        "jobCount": enq.get("jobCount"),
+        "recipientCount": len(user_ids or []),
+        "deliveredCount": 0,
+        "inlineProcessed": processed,
     }
 
 

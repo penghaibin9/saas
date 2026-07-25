@@ -244,7 +244,10 @@ def _as_optional_id(v, field_label: str):
 
 
 def create_student(body) -> dict:
-    """学号租户内不可重用：若存在软删除同号则恢复；否则新建。IntegrityError → DATA_CONFLICT。"""
+    """学号产品语义（已锁定）：租户内学号永久唯一，作废后同号只能「复活」同一主档 PK，禁止新建第二档。
+
+    uk_tenant_student_no 保持全表唯一（含软删行）；复活复用原 id，保证历史关联不断档。
+    """
     from sqlalchemy.exc import IntegrityError
 
     with session() as db:
@@ -252,7 +255,7 @@ def create_student(body) -> dict:
             StudentProfile.tenant_id == _tid(), StudentProfile.student_no == body.studentNo,
             StudentProfile.is_deleted.is_(False))).first()
         if active:
-            raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）")
+            raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一，不可复用为新档）")
 
         voided = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.student_no == body.studentNo,
@@ -271,7 +274,7 @@ def create_student(body) -> dict:
             voided.remark = None
             voided.version = int(voided.version or 0) + 1
             db.add(StudentStageEvent(tenant_id=_tid(), student_id=voided.id, from_stage="RECYCLED",
-                                     to_stage=ADMITTED, reason="软删除后重建档（恢复）",
+                                     to_stage=ADMITTED, reason="作废学号复活（复用原主档，非新建）",
                                      source_module="student"))
             if body.phone:
                 from app.core.field_crypto import encrypt_field
@@ -293,7 +296,10 @@ def create_student(body) -> dict:
             db.refresh(voided)
             from app.services.student_projection_sync import sync_student_projections
             sync_student_projections(voided.id)
-            return _student_row(voided, body.phone)
+            row = _student_row(voided, body.phone)
+            row["restored"] = True
+            row["message"] = "已复活原学号主档（同一 studentId），非新建档案"
+            return row
 
         s = StudentProfile(tenant_id=_tid(), student_no=body.studentNo, real_name=body.realName,
                            gender=body.gender, grade=body.grade,
@@ -320,7 +326,9 @@ def create_student(body) -> dict:
             db.rollback()
             raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
         db.refresh(s)
-        return _student_row(s, body.phone)
+        row = _student_row(s, body.phone)
+        row["restored"] = False
+        return row
 
 
 def update_student(student_id, body) -> dict:
@@ -360,6 +368,11 @@ def void_student(student_id, reason: str) -> dict:
         s.remark = f"VOID:{reason}"
         db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=s.current_stage,
                                  to_stage="RECYCLED", reason=reason, source_module="student"))
+        # 高危审计同事务：失败则回滚作废
+        audit_insert_in_session(
+            db, "作废学生", "student",
+            {"reason": reason, "studentNo": s.student_no}, "SUCCESS",
+            resource_id=str(s.id))
         db.commit()
         return {"studentId": str(s.id), "studentStatus": "RECYCLED", "isDeleted": True, "physicalDelete": False}
 
@@ -472,9 +485,12 @@ def get_task(task_id, user: dict | None = None) -> dict:
 
 def act_task(task_id, action: str, reason: str | None = None, target: str | None = None,
              user: dict | None = None, version=None) -> dict:
+    """审批动作与消息副作用、高危审计同事务；副作用失败则整体回滚，禁止假成功。"""
     from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
+    from app.services import mock_audit_service as audit
     require_expected_version(version)
     msg_campaign_id = None
+    delivery_hint = None
     result = {}
     with session() as db:
         t = db.scalars(select(WorkflowTask).where(
@@ -501,12 +517,6 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
             inst.status = action
         if inst and (inst.source_biz_type or "") == "MESSAGE_CAMPAIGN" and action in ("APPROVED", "REJECTED"):
             msg_campaign_id = int(inst.source_biz_id or 0)
-        db.commit()
-        result = {"taskId": str(task_id), "status": action, "actedAt": _iso(datetime.utcnow()),
-                  "instanceStatus": inst.status if inst else "RUNNING",
-                  "version": int(version) + 1}
-    if msg_campaign_id:
-        try:
             from app.core.context import get_current_user_ctx
             from app.services import message_campaign_service as camp_svc
             actor = dict(user or get_current_user_ctx() or {})
@@ -514,14 +524,39 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
                 actor["userId"] = "0"
             if not actor.get("realName"):
                 actor["realName"] = "审批中心"
-            camp_svc.apply_workflow_decision(
-                actor, campaign_id=msg_campaign_id,
-                approved=(action == "APPROVED"), comment=reason)
+            # 同事务副作用：失败即抛错，外层不 commit
+            delivery_hint = camp_svc.apply_workflow_decision_in_db(
+                db, actor, campaign_id=msg_campaign_id,
+                approved=(action == "APPROVED"), comment=reason,
+                skip_workflow_close=True)
+        if action in ("APPROVED", "REJECTED"):
+            audit.record_critical(
+                "审批通过" if action == "APPROVED" else "审批驳回",
+                method="POST",
+                path=f"/api/v1/approvals/tasks/{task_id}/"
+                     f"{'approve' if action == 'APPROVED' else 'reject'}",
+                status_code=200, target_type="approval", target_id=str(task_id),
+                detail={"action": action, "reason": reason,
+                        "messageCampaignId": str(msg_campaign_id) if msg_campaign_id else None},
+                db=db)
+        db.commit()
+        result = {"taskId": str(task_id), "status": action, "actedAt": _iso(datetime.utcnow()),
+                  "instanceStatus": inst.status if inst else "RUNNING",
+                  "version": int(version) + 1}
+        if msg_campaign_id:
             result["messageCampaignId"] = str(msg_campaign_id)
+    # 提交后尽力内联消费作业；作业已落库，失败不回滚审批
+    if (delivery_hint and isinstance(delivery_hint, dict)
+            and delivery_hint.get("alreadyEnqueued") and msg_campaign_id):
+        try:
+            from app.services import message_delivery_service as delivery_svc
+            delivery_svc.accept_and_deliver(
+                int(msg_campaign_id), delivery_hint.get("userIds") or [],
+                force_async=True, already_enqueued=True)
         except Exception:  # noqa: BLE001
             import logging
             logging.getLogger("app.approval").exception(
-                "MESSAGE_CAMPAIGN workflow side-effect failed campaign=%s", msg_campaign_id)
+                "MESSAGE_CAMPAIGN post-commit claim failed campaign=%s", msg_campaign_id)
     return result
 
 

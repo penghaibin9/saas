@@ -118,9 +118,25 @@ def create_student(body) -> dict:
         from app.services import db_service
         return db_service.create_student(body)
     if any(r["studentNo"] == body.studentNo for r in _visible(_MOCK_STUDENTS)):
-        raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）")
+        raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一，不可复用为新档）")
+    tid = current_tenant_id() or "1000000000000000001"
+    voided = next((r for r in _MOCK_STUDENTS
+                   if r["tenantId"] == tid and r["studentNo"] == body.studentNo and r["isDeleted"]), None)
+    if voided:
+        voided["isDeleted"] = False
+        voided["realName"] = body.realName
+        voided["gender"] = body.gender or voided.get("gender") or ""
+        voided["grade"] = body.grade or voided.get("grade") or ""
+        voided["studentStatus"] = "NORMAL"
+        voided["currentStage"] = "ORIENTATION"
+        voided["phoneMasked"] = _mask_phone(body.phone or "")
+        voided["updatedAt"] = _now()
+        voided["version"] = int(voided.get("version") or 0) + 1
+        voided["restored"] = True
+        return voided
     row = _mk(body.studentNo, body.realName, body.gender or "", "", "", "", body.grade or "",
               "ORIENTATION", "NORMAL", "NONE", body.phone or "", body.idCard or "")
+    row["restored"] = False
     _MOCK_STUDENTS.append(row)
     return row
 

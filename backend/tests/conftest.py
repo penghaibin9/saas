@@ -114,74 +114,76 @@ def db_mode(tmp_path, request):
     old_enabled, old_url = settings.DB_ENABLED, settings.DATABASE_URL
     settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
     reset_state()
-    from app.db.base import metadata
-    from sqlalchemy import text
-    # 共享测试库可能同时被其他本地工作树使用；把 MySQL 元数据锁等待
-    # 限制在短窗口内，交给下面的 DDL 重试逻辑处理，避免 pytest 无限挂起。
-    from sqlalchemy import event
-    from app.db.session import get_engine, get_sessionmaker
-    fast_schema = os.environ.get("FAST_TEST_SCHEMA") == "1" and not is_sqlite
-    if fast_schema:
-        request.getfixturevalue("_session_mysql_schema")
-        reset_state()
-        settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
-        engine = get_engine()
-        with engine.begin() as conn:
-            conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-            # FAST 模式只用于本地回归：用 DELETE 清理数据而不是逐表 TRUNCATE。
-            # MySQL 在 Windows 本地实例上对大量 TRUNCATE 会频繁进入
-            # “waiting for handler commit”，即使没有外部事务也会拖慢甚至触发
-            # 原生客户端崩溃；关闭外键后 DELETE 足以清理每个测试产生的少量数据，
-            # 且不拿元数据 DDL 锁。
-            from sqlalchemy import inspect as sa_inspect
-            existing = set(sa_inspect(conn).get_table_names())
-            for table in reversed(metadata.sorted_tables):
-                if table.name in existing:
-                    conn.execute(text(f"DELETE FROM `{table.name}`"))
-            conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
-    else:
-        engine = get_engine()
-        def _set_ddl_lock_timeout(dbapi_connection, _connection_record):
-            cursor = dbapi_connection.cursor()
-            try:
-                cursor.execute("SET SESSION lock_wait_timeout=15")
-            finally:
-                cursor.close()
-        event.listen(engine, "connect", _set_ddl_lock_timeout)
-        if not is_sqlite:
-            _ddl_with_retry(lambda: metadata.drop_all(bind=engine))
-            _ddl_with_retry(lambda: metadata.create_all(bind=engine))
+    try:
+        from app.db.base import metadata
+        from sqlalchemy import text
+        # 共享测试库可能同时被其他本地工作树使用；把 MySQL 元数据锁等待
+        # 限制在短窗口内，交给下面的 DDL 重试逻辑处理，避免 pytest 无限挂起。
+        from sqlalchemy import event
+        from app.db.session import get_engine, get_sessionmaker
+        fast_schema = os.environ.get("FAST_TEST_SCHEMA") == "1" and not is_sqlite
+        if fast_schema:
+            request.getfixturevalue("_session_mysql_schema")
+            reset_state()
+            settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
+            engine = get_engine()
+            with engine.begin() as conn:
+                conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+                # FAST 模式只用于本地回归：用 DELETE 清理数据而不是逐表 TRUNCATE。
+                # MySQL 在 Windows 本地实例上对大量 TRUNCATE 会频繁进入
+                # “waiting for handler commit”，即使没有外部事务也会拖慢甚至触发
+                # 原生客户端崩溃；关闭外键后 DELETE 足以清理每个测试产生的少量数据，
+                # 且不拿元数据 DDL 锁。
+                from sqlalchemy import inspect as sa_inspect
+                existing = set(sa_inspect(conn).get_table_names())
+                for table in reversed(metadata.sorted_tables):
+                    if table.name in existing:
+                        conn.execute(text(f"DELETE FROM `{table.name}`"))
+                conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
         else:
-            metadata.create_all(bind=engine)
-    # 最小种子
-    from datetime import datetime, timedelta
-    from app.models import (StudentContact, StudentProfile, UnifiedMessage, UnifiedTodo,
-                            WorkflowInstance, WorkflowTask)
-    TID = 1000000000000000001
-    db = get_sessionmaker()()
-    s = StudentProfile(tenant_id=TID, student_no="2023115001", real_name="赵一凡",
-                       current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
-    db.add(s); db.flush()
-    db.add(StudentContact(tenant_id=TID, student_id=s.id, contact_type="PHONE",
-                          contact_value_encrypted="13812340001", is_primary=True,
-                          verified_status="VERIFIED"))
-    inst = WorkflowInstance(tenant_id=TID, workflow_code="wf_student", source_module="student",
-                            source_biz_type="PROFILE_CORRECTION", source_biz_id=s.id,
-                            applicant_id=1, title="赵一凡 · 学籍信息变更", status="RUNNING",
-                            remark="赵一凡")
-    db.add(inst); db.flush()
-    task = WorkflowTask(tenant_id=TID, instance_id=inst.id, node_code="COUNSELOR_REVIEW",
-                        assignee_id=1, status="PENDING",
-                        deadline_at=datetime.utcnow() + timedelta(days=2))
-    db.add(task)
-    db.add(UnifiedTodo(tenant_id=TID, source_module="student", source_biz_id=1, todo_type="APPROVAL",
-                       assignee_id=1, title="处理学籍变更审批", status="PENDING"))
-    db.add(UnifiedMessage(tenant_id=TID, receiver_id=1, title="测试消息", status="UNREAD"))
-    db.commit()
-    ids = {"student": s.id, "task": task.id}
-    db.close()
-    yield ids
-    if not fast_schema:
+            engine = get_engine()
+            def _set_ddl_lock_timeout(dbapi_connection, _connection_record):
+                cursor = dbapi_connection.cursor()
+                try:
+                    cursor.execute("SET SESSION lock_wait_timeout=15")
+                finally:
+                    cursor.close()
+            event.listen(engine, "connect", _set_ddl_lock_timeout)
+            if not is_sqlite:
+                _ddl_with_retry(lambda: metadata.drop_all(bind=engine))
+                _ddl_with_retry(lambda: metadata.create_all(bind=engine))
+            else:
+                metadata.create_all(bind=engine)
+        # 最小种子
+        from datetime import datetime, timedelta
+        from app.models import (StudentContact, StudentProfile, UnifiedMessage, UnifiedTodo,
+                                WorkflowInstance, WorkflowTask)
+        TID = 1000000000000000001
+        db = get_sessionmaker()()
+        s = StudentProfile(tenant_id=TID, student_no="2023115001", real_name="赵一凡",
+                           current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+        db.add(s); db.flush()
+        db.add(StudentContact(tenant_id=TID, student_id=s.id, contact_type="PHONE",
+                              contact_value_encrypted="13812340001", is_primary=True,
+                              verified_status="VERIFIED"))
+        inst = WorkflowInstance(tenant_id=TID, workflow_code="wf_student", source_module="student",
+                                source_biz_type="PROFILE_CORRECTION", source_biz_id=s.id,
+                                applicant_id=1, title="赵一凡 · 学籍信息变更", status="RUNNING",
+                                remark="赵一凡")
+        db.add(inst); db.flush()
+        task = WorkflowTask(tenant_id=TID, instance_id=inst.id, node_code="COUNSELOR_REVIEW",
+                            assignee_id=1, status="PENDING",
+                            deadline_at=datetime.utcnow() + timedelta(days=2))
+        db.add(task)
+        db.add(UnifiedTodo(tenant_id=TID, source_module="student", source_biz_id=1, todo_type="APPROVAL",
+                           assignee_id=1, title="处理学籍变更审批", status="PENDING"))
+        db.add(UnifiedMessage(tenant_id=TID, receiver_id=1, title="测试消息", status="UNREAD"))
+        db.commit()
+        ids = {"student": s.id, "task": task.id}
+        db.close()
+        yield ids
+    finally:
+        # setup 失败也必须还原，避免污染后续 mock 测试（503 / 误走真库）
         settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
         reset_state()
 

@@ -500,92 +500,74 @@ def publish_campaign(user: dict, campaign_id: str, *,
             {str(a.get("type") or "").upper() for a in rules}
             & {"ALL_STUDENT", "ALL_STAFF", "ALL_USERS"}
         )
-        # 同事务：状态迁移 + 投递作业；HTTP 只受理
-        use_async = delivery_svc.should_async(user_ids, force=school_scope)
-        enq = {"jobCount": 0, "async": False}
-        if use_async:
-            enq = delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
-        else:
-            camp.delivery_mode = "SYNC"
+        # 同事务：状态迁移 + 投递作业（同步/异步一律落作业，禁止 commit-then-deliver）
+        _ = school_scope
+        enq = delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
         db.commit()
 
-    if use_async:
-        result = delivery_svc.accept_and_deliver(
-            int(campaign_id), user_ids, force_async=True, already_enqueued=True)
-    else:
-        result = delivery_svc.deliver_campaign_all(int(campaign_id), user_ids)
-        result = {
-            "status": result.get("status") or "PUBLISHED",
-            "async": False,
-            "recipientCount": len(user_ids),
-            "deliveredCount": result.get("written") or result.get("deliveredCount") or 0,
-            "jobCount": 0,
-        }
+    result = delivery_svc.accept_and_deliver(
+        int(campaign_id), user_ids, force_async=True, already_enqueued=True)
     return {
         "campaignId": str(campaign_id),
         "status": result.get("status") or "PUBLISHING",
         "acceptedAt": _iso(_utc_now()),
         "recipientCount": len(user_ids),
         "deliveredCount": result.get("deliveredCount") or 0,
-        "async": bool(result.get("async")),
+        "async": True,
         "jobCount": result.get("jobCount") if result.get("jobCount") is not None else enq.get("jobCount"),
     }
 
 
-def approve_campaign(user: dict, campaign_id: str, *, version: int,
-                     comment: str | None = None, from_workflow: bool = False) -> dict:
-    """紧急/全校审核通过后进入投递。审核人不得与发布人为同一人。"""
+def approve_campaign_in_db(db, user: dict, campaign_id: str, *, version: int,
+                           comment: str | None = None, from_workflow: bool = False,
+                           skip_workflow_close: bool = False, commit: bool = False) -> dict:
+    """审核通过：状态 + 投递作业同会话。commit=False 时由调用方统一提交。"""
     if not from_workflow and not has_permission(user, "workbench.message.emergency.approve"):
         raise no_permission("无紧急/全校消息审核权限")
     from app.models import MessageCampaign
 
-    with session() as db:
-        try:
-            cid = int(campaign_id)
-        except (TypeError, ValueError):
-            raise not_found("发布单不存在")
-        camp = db.scalar(select(MessageCampaign).where(
-            MessageCampaign.id == cid,
-            MessageCampaign.tenant_id == _tid(),
-            MessageCampaign.is_deleted.is_(False),
-        ))
-        if not camp:
-            raise not_found("发布单不存在")
-        if camp.status != "PENDING_REVIEW":
-            raise AppException("DATA_CONFLICT", "当前状态不可审核通过",
-                               details={"reason": "INVALID_STATUS"})
-        if int(camp.version or 0) != int(version):
-            raise AppException("DATA_CONFLICT", "版本冲突", details={"reason": "VERSION_CONFLICT"})
-        if int(camp.sender_user_id or 0) == _uid(user):
-            raise AppException("NO_PERMISSION", "发布人与审核人不得为同一人",
-                               details={"reason": "REVIEWER_SAME_AS_SENDER"})
+    try:
+        cid = int(campaign_id)
+    except (TypeError, ValueError):
+        raise not_found("发布单不存在")
+    camp = db.scalar(select(MessageCampaign).where(
+        MessageCampaign.id == cid,
+        MessageCampaign.tenant_id == _tid(),
+        MessageCampaign.is_deleted.is_(False),
+    ))
+    if not camp:
+        raise not_found("发布单不存在")
+    if camp.status != "PENDING_REVIEW":
+        raise AppException("DATA_CONFLICT", "当前状态不可审核通过",
+                           details={"reason": "INVALID_STATUS"})
+    if int(camp.version or 0) != int(version):
+        raise AppException("DATA_CONFLICT", "版本冲突", details={"reason": "VERSION_CONFLICT"})
+    if int(camp.sender_user_id or 0) == _uid(user):
+        raise AppException("NO_PERMISSION", "发布人与审核人不得为同一人",
+                           details={"reason": "REVIEWER_SAME_AS_SENDER"})
 
-        rules = audience_svc.audiences_from_campaign_rules(db, camp.id)
-        resolve_user = user
-        if from_workflow:
-            resolve_user = {
-                **user,
-                "currentRoleCode": "SCHOOL_ADMIN",
-                "userType": "TEACHER",
-            }
-        resolved = audience_svc.resolve_audience(resolve_user, rules)
-        if camp.audience_fingerprint and resolved["audienceFingerprint"] != camp.audience_fingerprint:
-            raise AppException("DATA_CONFLICT", "受众已变化，请退回后由发布人重新预览提交",
-                               details={"reason": "MESSAGE_AUDIENCE_CHANGED",
-                                        "recipientCount": resolved["recipientCount"]})
+    rules = audience_svc.audiences_from_campaign_rules(db, camp.id)
+    resolve_user = user
+    if from_workflow:
+        resolve_user = {
+            **user,
+            "currentRoleCode": "SCHOOL_ADMIN",
+            "userType": "TEACHER",
+        }
+    resolved = audience_svc.resolve_audience(resolve_user, rules)
+    if camp.audience_fingerprint and resolved["audienceFingerprint"] != camp.audience_fingerprint:
+        raise AppException("DATA_CONFLICT", "受众已变化，请退回后由发布人重新预览提交",
+                           details={"reason": "MESSAGE_AUDIENCE_CHANGED",
+                                    "recipientCount": resolved["recipientCount"]})
 
-        user_ids = resolved["userIds"]
-        camp.status = "PUBLISHING"
-        camp.recipient_count = len(user_ids)
-        camp.published_at = _utc_now()
-        camp.remark = ((camp.remark or "") + f"\n审核通过：{comment or ''}")[:500]
-        camp.version = int(camp.version or 0) + 1
-        school_scope = bool(
-            {str(a.get("type") or "").upper() for a in rules}
-            & {"ALL_STUDENT", "ALL_STAFF", "ALL_USERS"}
-        )
-        # 关闭审批待办
-        from app.models import UnifiedTodo, WorkflowInstance, WorkflowTask
+    user_ids = resolved["userIds"]
+    camp.status = "PUBLISHING"
+    camp.recipient_count = len(user_ids)
+    camp.published_at = _utc_now()
+    camp.remark = ((camp.remark or "") + f"\n审核通过：{comment or ''}")[:500]
+    camp.version = int(camp.version or 0) + 1
+    from app.models import UnifiedTodo, WorkflowInstance, WorkflowTask
+    if not skip_workflow_close:
         if camp.workflow_instance_id:
             inst = db.get(WorkflowInstance, int(camp.workflow_instance_id))
             if inst:
@@ -607,64 +589,71 @@ def approve_campaign(user: dict, campaign_id: str, *, version: int,
         )).all():
             todo.status = "DONE"
             todo.version = int(todo.version or 0) + 1
-        use_async = delivery_svc.should_async(user_ids, force=school_scope)
-        if use_async:
-            delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
-        else:
-            camp.delivery_mode = "SYNC"
+    enq = delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
+    if commit:
         db.commit()
-
-    if use_async:
-        result = delivery_svc.accept_and_deliver(
-            int(campaign_id), user_ids, force_async=True, already_enqueued=True)
-    else:
-        raw = delivery_svc.deliver_campaign_all(int(campaign_id), user_ids)
-        result = {
-            "status": raw.get("status") or "PUBLISHED",
-            "async": False,
-            "deliveredCount": raw.get("written") or raw.get("deliveredCount") or 0,
-        }
     return {
-        "campaignId": str(campaign_id),
-        "status": result.get("status") or "PUBLISHED",
+        "campaignId": str(camp.id),
+        "userIds": user_ids,
+        "jobCount": enq.get("jobCount"),
         "recipientCount": len(user_ids),
-        "deliveredCount": result.get("deliveredCount") or 0,
-        "async": bool(result.get("async")),
+        "alreadyEnqueued": True,
     }
 
 
-def return_campaign(user: dict, campaign_id: str, *, version: int, reason: str,
-                    from_workflow: bool = False) -> dict:
+def approve_campaign(user: dict, campaign_id: str, *, version: int,
+                     comment: str | None = None, from_workflow: bool = False) -> dict:
+    """紧急/全校审核通过后进入投递。审核人不得与发布人为同一人。"""
+    with session() as db:
+        hint = approve_campaign_in_db(
+            db, user, campaign_id, version=version, comment=comment,
+            from_workflow=from_workflow, skip_workflow_close=False, commit=True)
+    result = delivery_svc.accept_and_deliver(
+        int(campaign_id), hint["userIds"], force_async=True, already_enqueued=True)
+    return {
+        "campaignId": str(campaign_id),
+        "status": result.get("status") or "PUBLISHED",
+        "recipientCount": len(hint["userIds"]),
+        "deliveredCount": result.get("deliveredCount") or 0,
+        "async": True,
+        "jobCount": result.get("jobCount") if result.get("jobCount") is not None else hint.get("jobCount"),
+    }
+
+
+def return_campaign_in_db(db, user: dict, campaign_id: str, *, version: int, reason: str,
+                          from_workflow: bool = False, skip_workflow_close: bool = False,
+                          commit: bool = False) -> dict:
+    """审核退回：与调用方同会话。"""
     if not from_workflow and not has_permission(user, "workbench.message.emergency.approve"):
         raise no_permission("无审核权限")
     reason = (reason or "").strip()
     if len(reason) < 2:
         raise AppException("VALIDATION_ERROR", "退回原因必填", http_status=422)
     from app.models import MessageCampaign
-    with session() as db:
-        try:
-            cid = int(campaign_id)
-        except (TypeError, ValueError):
-            raise not_found("发布单不存在")
-        camp = db.scalar(select(MessageCampaign).where(
-            MessageCampaign.id == cid,
-            MessageCampaign.tenant_id == _tid(),
-            MessageCampaign.is_deleted.is_(False),
-        ))
-        if not camp:
-            raise not_found("发布单不存在")
-        if camp.status != "PENDING_REVIEW":
-            raise AppException("DATA_CONFLICT", "当前状态不可退回",
-                               details={"reason": "INVALID_STATUS"})
-        if int(camp.version or 0) != int(version):
-            raise AppException("DATA_CONFLICT", "版本冲突", details={"reason": "VERSION_CONFLICT"})
-        if int(camp.sender_user_id or 0) == _uid(user):
-            raise AppException("NO_PERMISSION", "发布人与审核人不得为同一人",
-                               details={"reason": "REVIEWER_SAME_AS_SENDER"})
-        camp.status = "RETURNED"
-        camp.remark = reason[:500]
-        camp.version = int(camp.version or 0) + 1
-        from app.models import UnifiedTodo, WorkflowInstance, WorkflowTask
+    try:
+        cid = int(campaign_id)
+    except (TypeError, ValueError):
+        raise not_found("发布单不存在")
+    camp = db.scalar(select(MessageCampaign).where(
+        MessageCampaign.id == cid,
+        MessageCampaign.tenant_id == _tid(),
+        MessageCampaign.is_deleted.is_(False),
+    ))
+    if not camp:
+        raise not_found("发布单不存在")
+    if camp.status != "PENDING_REVIEW":
+        raise AppException("DATA_CONFLICT", "当前状态不可退回",
+                           details={"reason": "INVALID_STATUS"})
+    if int(camp.version or 0) != int(version):
+        raise AppException("DATA_CONFLICT", "版本冲突", details={"reason": "VERSION_CONFLICT"})
+    if int(camp.sender_user_id or 0) == _uid(user):
+        raise AppException("NO_PERMISSION", "发布人与审核人不得为同一人",
+                           details={"reason": "REVIEWER_SAME_AS_SENDER"})
+    camp.status = "RETURNED"
+    camp.remark = reason[:500]
+    camp.version = int(camp.version or 0) + 1
+    from app.models import UnifiedTodo, WorkflowInstance, WorkflowTask
+    if not skip_workflow_close:
         if camp.workflow_instance_id:
             inst = db.get(WorkflowInstance, int(camp.workflow_instance_id))
             if inst:
@@ -686,8 +675,17 @@ def return_campaign(user: dict, campaign_id: str, *, version: int, reason: str,
         )).all():
             todo.status = "DONE"
             todo.version = int(todo.version or 0) + 1
+    if commit:
         db.commit()
-        return _campaign_dict(camp)
+    return _campaign_dict(camp)
+
+
+def return_campaign(user: dict, campaign_id: str, *, version: int, reason: str,
+                    from_workflow: bool = False) -> dict:
+    with session() as db:
+        return return_campaign_in_db(
+            db, user, campaign_id, version=version, reason=reason,
+            from_workflow=from_workflow, skip_workflow_close=False, commit=True)
 
 
 def withdraw_campaign(user: dict, campaign_id: str, *, reason: str, version: int) -> dict:
@@ -785,24 +783,14 @@ def process_scheduled_campaigns(limit: int = 20) -> int:
                 db.commit()
                 continue
             user_ids = resolved.get("userIds") or []
-            school_scope = bool(
-                {str(a.get("type") or "").upper() for a in rules}
-                & {"ALL_STUDENT", "ALL_STAFF", "ALL_USERS"}
-            )
             camp.status = "PUBLISHING"
             camp.recipient_count = len(user_ids)
             camp.published_at = now
             camp.version = int(camp.version or 0) + 1
-            use_async = delivery_svc.should_async(user_ids, force=school_scope)
-            if use_async:
-                delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
-            else:
-                camp.delivery_mode = "SYNC"
+            # 同事务落作业；禁止 commit-then-deliver
+            delivery_svc.enqueue_campaign_delivery_in_db(db, camp, user_ids)
             db.commit()
-        if use_async:
-            delivery_svc.accept_and_deliver(cid, user_ids, force_async=True, already_enqueued=True)
-        else:
-            delivery_svc.deliver_campaign_all(cid, user_ids)
+        delivery_svc.accept_and_deliver(cid, user_ids, force_async=True, already_enqueued=True)
         done += 1
     return done
 
@@ -1044,24 +1032,42 @@ def export_campaign_recipients(user: dict, campaign_id: str, *,
     return build_export(spec, items, operator_name=str(user.get("realName") or ""))
 
 
+def apply_workflow_decision_in_db(db, user: dict, *, campaign_id: int, approved: bool,
+                                  comment: str | None = None,
+                                  skip_workflow_close: bool = True) -> dict:
+    """审批副作用：与调用方同会话；失败由调用方 rollback，禁止假成功。"""
+    from app.models import MessageCampaign
+    camp = db.scalar(select(MessageCampaign).where(
+        MessageCampaign.id == int(campaign_id),
+        MessageCampaign.tenant_id == _tid(),
+        MessageCampaign.is_deleted.is_(False),
+    ))
+    if not camp:
+        raise not_found("发布单不存在")
+    version = int(camp.version or 0)
+    if approved:
+        return approve_campaign_in_db(
+            db, user, str(campaign_id), version=version, comment=comment,
+            from_workflow=True, skip_workflow_close=skip_workflow_close, commit=False)
+    return return_campaign_in_db(
+        db, user, str(campaign_id), version=version,
+        reason=comment or "审批中心退回", from_workflow=True,
+        skip_workflow_close=skip_workflow_close, commit=False)
+
+
 def apply_workflow_decision(user: dict, *, campaign_id: int, approved: bool,
                             comment: str | None = None) -> dict:
+    """独立入口（非审批同事务场景）；通过后尽力内联消费作业。"""
     with session() as db:
-        from app.models import MessageCampaign
-        camp = db.scalar(select(MessageCampaign).where(
-            MessageCampaign.id == int(campaign_id),
-            MessageCampaign.tenant_id == _tid(),
-            MessageCampaign.is_deleted.is_(False),
-        ))
-        if not camp:
-            raise not_found("发布单不存在")
-        version = int(camp.version or 0)
-    if approved:
-        return approve_campaign(
-            user, str(campaign_id), version=version, comment=comment, from_workflow=True)
-    return return_campaign(
-        user, str(campaign_id), version=version,
-        reason=comment or "审批中心退回", from_workflow=True)
+        hint = apply_workflow_decision_in_db(
+            db, user, campaign_id=campaign_id, approved=approved,
+            comment=comment, skip_workflow_close=False)
+        db.commit()
+    if approved and isinstance(hint, dict) and hint.get("alreadyEnqueued"):
+        delivery_svc.accept_and_deliver(
+            int(campaign_id), hint.get("userIds") or [],
+            force_async=True, already_enqueued=True)
+    return hint if isinstance(hint, dict) else {"campaignId": str(campaign_id)}
 
 
 def list_dead_letters(user: dict, *, page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:

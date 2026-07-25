@@ -125,9 +125,12 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
              dependencies=[Depends(require_permission("student.profile.manage"))])
 def create_student(body: StudentCreateRequest, user=Depends(require_staff)):
     row = svc.create_student(body)
-    audit.record("新增学生", method="POST", path="/api/v1/students", status_code=200,
-                 target_type="student", target_id=row["id"])
-    return success(row, message="建档成功")
+    audit.record("新增学生" if not row.get("restored") else "复活学生",
+                 method="POST", path="/api/v1/students", status_code=200,
+                 target_type="student", target_id=row["id"],
+                 detail={"restored": bool(row.get("restored"))})
+    msg = "已复活原学号主档" if row.get("restored") else "建档成功"
+    return success(row, message=msg)
 
 
 @router.put("/{student_id}", summary="更新学生主档",
@@ -144,10 +147,15 @@ def update_student(student_id: str, body: StudentUpdateRequest, user=Depends(req
              dependencies=[Depends(require_permission("student.profile.manage"))])
 def void_student(student_id: str, body: StudentVoidRequest, user=Depends(require_staff)):
     _check_target_scope(student_id, user)
+    # DB 模式：作废与高危审计同事务；mock 模式仍走 record_critical
+    from app.db.session import db_enabled
     result = svc.void_student(student_id, body.reason)
-    audit.record("作废学生", method="POST", path=f"/api/v1/students/{student_id}/void", status_code=200,
-                 target_type="student", target_id=student_id)
-    return success(result, message="已作废（逻辑删除，档案保留可追溯）")
+    if not db_enabled():
+        audit.record_critical(
+            "作废学生", method="POST", path=f"/api/v1/students/{student_id}/void",
+            status_code=200, target_type="student", target_id=student_id,
+            detail={"reason": body.reason})
+    return success(result, message="已作废（逻辑删除，档案保留可追溯；同号仅可复活）")
 
 
 @router.get("/{student_id}/timeline", summary="学生成长时间线")

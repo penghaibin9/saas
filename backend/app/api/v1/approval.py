@@ -31,17 +31,24 @@ def get_task(task_id: str, user=Depends(require_staff)):
 
 @router.post("/tasks/{task_id}/approve", summary="通过（写审计，返回任务与实例状态）")
 def approve(task_id: str, body: ApprovalActionRequest, user=Depends(require_staff)):
+    # DB：act_task 同事务 record_critical；mock：此处强制落审计
+    from app.db.session import db_enabled
     result = svc.approve(task_id, body.comment, user=user, version=body.version)
-    audit.record("审批通过", method="POST", path=f"/api/v1/approvals/tasks/{task_id}/approve",
-                 status_code=200, target_type="approval", target_id=task_id)
+    if not db_enabled():
+        audit.record_critical(
+            "审批通过", method="POST", path=f"/api/v1/approvals/tasks/{task_id}/approve",
+            status_code=200, target_type="approval", target_id=task_id)
     return success(result, message="已通过")
 
 
 @router.post("/tasks/{task_id}/reject", summary="驳回（reason 必填 ≥5 字，写审计）")
 def reject(task_id: str, body: ApprovalRejectRequest, user=Depends(require_staff)):
+    from app.db.session import db_enabled
     result = svc.reject(task_id, body.reason, user=user, version=body.version)
-    audit.record("审批驳回", method="POST", path=f"/api/v1/approvals/tasks/{task_id}/reject",
-                 status_code=200, target_type="approval", target_id=task_id)
+    if not db_enabled():
+        audit.record_critical(
+            "审批驳回", method="POST", path=f"/api/v1/approvals/tasks/{task_id}/reject",
+            status_code=200, target_type="approval", target_id=task_id)
     return success(result, message="已驳回")
 
 

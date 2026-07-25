@@ -41,3 +41,23 @@ def test_void_requires_reason(client, auth_headers):
     sid = client.get("/api/v1/students", headers=auth_headers).json()["data"]["items"][0]["id"]
     resp = client.post(f"/api/v1/students/{sid}/void", headers=auth_headers, json={"reason": "短"})
     assert resp.json()["code"] in (400001, 422001)
+
+
+def test_void_then_create_restores_same_id(client, auth_headers):
+    no = "2099777888"
+    created = client.post("/api/v1/students", headers=auth_headers, json={
+        "studentNo": no, "realName": "复活甲", "phone": "13900001111",
+    }).json()
+    assert created["code"] == 0
+    sid = created["data"]["id"]
+    voided = client.post(f"/api/v1/students/{sid}/void", headers=auth_headers, json={
+        "reason": "测试作废后复活原档",
+    }).json()
+    assert voided["code"] == 0 and voided["data"]["isDeleted"] is True
+    again = client.post("/api/v1/students", headers=auth_headers, json={
+        "studentNo": no, "realName": "复活乙", "phone": "13900002222",
+    }).json()
+    assert again["code"] == 0
+    assert again["data"]["id"] == sid
+    assert again["data"].get("restored") is True
+    assert again["data"]["realName"] == "复活乙"

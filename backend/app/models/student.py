@@ -12,7 +12,11 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
 
 class StudentProfile(PKMixin, TenantMixin, CommonMixin, Base):
-    """t_student_profile 学生主档——全平台唯一学生身份，id 即 student_id。"""
+    """t_student_profile 学生主档——全平台唯一学生身份，id 即 student_id。
+
+    学号语义（产品锁定）：uk_tenant_student_no 全表唯一（含软删）。
+    作废后同号只能复活原行（复用 PK），禁止新建第二档。
+    """
     __tablename__ = "t_student_profile"
     __table_args__ = (
         UniqueConstraint("tenant_id", "student_no", name="uk_tenant_student_no"),
@@ -22,7 +26,9 @@ class StudentProfile(PKMixin, TenantMixin, CommonMixin, Base):
         Index("ix_student_tenant_major_active_id", "tenant_id", "major_id", "is_deleted", "id"),
     )
 
-    student_no: Mapped[str] = mapped_column(String(50), nullable=False, comment="学号")
+    student_no: Mapped[str] = mapped_column(
+        String(50), nullable=False,
+        comment="学号（租户内永久唯一；作废后同号仅可复活原主档）")
     real_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True,
                                             comment="姓名（冻结册：非敏感）；建索引:审批/巡访/迁移期姓名兜底查询消全表扫描")
     gender: Mapped[str | None] = mapped_column(String(10))

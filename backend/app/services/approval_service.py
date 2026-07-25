@@ -20,6 +20,12 @@ _TASKS: list[dict] = [
      "nodeCode": "COUNSELOR_REVIEW", "nodeName": "辅导员审核",
      "status": "PENDING", "submittedAt": "2026-07-01 09:32", "stayHours": 26,
      "urgency": "NEAR_DEADLINE", "version": 0},
+    {"taskId": "at-1003", "instanceId": "wi-2003", "tenantId": "1000000000000000001",
+     "assigneeId": 0, "title": "李二 · 请假延期", "sourceModule": "student",
+     "sourceBizType": "LEAVE", "applicantName": "李二",
+     "nodeCode": "COUNSELOR_REVIEW", "nodeName": "辅导员审核",
+     "status": "PENDING", "submittedAt": "2026-07-02 10:00", "stayHours": 12,
+     "urgency": "NORMAL", "version": 0},
 ]
 _PROCESSED: list[dict] = []
 _CC: list[dict] = [
