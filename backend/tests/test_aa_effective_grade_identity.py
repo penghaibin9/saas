@@ -1,4 +1,4 @@
-"""有效成绩不得再按课程名称取最高分。"""
+"""有效成绩不得再按课程名称取最高分，学业汇总必须消费同一规则。"""
 from types import SimpleNamespace
 
 
@@ -18,6 +18,8 @@ def _grade(
 ):
     return SimpleNamespace(
         id=row_id,
+        tenant_id=1,
+        is_deleted=False,
         acad_student_id=student,
         course_name=name,
         credit_value=credit,
@@ -88,3 +90,37 @@ def test_inactive_row_cannot_override_active_row():
     selected = effective_grade_rows([active, voided])
 
     assert selected[0].id == 1
+
+
+def test_aggregate_uses_same_policy_instead_of_old_high_score(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_grade_facade as service
+
+    class _Db:
+        def scalars(self, _query):
+            return SimpleNamespace(all=lambda: [
+                _grade(1, 95, credit=4),
+                _grade(2, 61, credit=4),
+            ])
+
+    monkeypatch.setattr(service._legacy, "_tid", lambda: 1)
+    academic_student = SimpleNamespace(
+        id=1,
+        avg_score=None,
+        failed_count=None,
+        obtained_credits=None,
+        gpa=None,
+    )
+
+    service.refresh_academic_aggregates(_Db(), academic_student)
+
+    assert academic_student.avg_score == 61
+    assert academic_student.failed_count == 0
+    assert academic_student.obtained_credits == 4
+    assert academic_student.gpa == 1.1
+
+
+def test_legacy_module_globals_are_patched_to_unified_policy():
+    from app.modules.academic_affairs.services import academic_affairs_grade_facade as service
+
+    assert service._legacy.effective_grade_rows is service.effective_grade_rows
+    assert service._legacy._refresh_aggregates is service.refresh_academic_aggregates
