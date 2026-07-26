@@ -94,6 +94,9 @@ test('teacher high-risk actions require evidence and confirmation', () => {
   assert.match(review, /allowedActions/)
   assert.match(review, /选择等级并通过/)
   assert.match(review, /确认关闭风险/)
+  assert.match(review, /const DISC_TYPES/)
+  assert.match(review, /item\.value !== x\.discType/)
+  assert.match(review, /revisedDiscType/)
 })
 
 test('student failure paths preserve editable content', () => {
