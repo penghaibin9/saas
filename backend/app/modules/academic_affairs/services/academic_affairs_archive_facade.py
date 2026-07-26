@@ -1,7 +1,7 @@
 """教务归档兼容入口。
 
 保留既有归档批次、导出、解冻和写保护实现，只接管语义完整性检查：
-- 成绩复查使用真实字段 ``review_status``，并通过 ``AcademicGrade.term`` 限定到当前学期；
+- 成绩复查使用当前模型真实字段 ``status``，并通过 ``AcademicGrade.term`` 限定到当前学期；
 - 毕业审核批次当前没有 ``term_id``，仅使用创建/生成时间落在学期区间内的批次，禁止
   拿租户全部历史毕业批次阻断任意学期；无法可靠归属时明确登记兼容欠账，但不伪造缺失。
 
@@ -28,9 +28,8 @@ export_batch_item = _legacy.export_batch_item
 export_batch_all = _legacy.export_batch_all
 list_download_log = _legacy.list_download_log
 
-_ACTIVE_RECHECK_STATUSES = {
-    "SUBMITTED", "TEACHER_REVIEW", "COLLEGE_REVIEW", "ACADEMIC_REVIEW",
-}
+# 当前 AaGradeRecheck 状态机只有 SUBMITTED 为在途，其余 UPHELD/ADJUSTED/REJECTED 均为终态。
+_ACTIVE_RECHECK_STATUSES = {"SUBMITTED"}
 
 
 def _day_start(value):
@@ -74,7 +73,7 @@ def _evaluate_grade(db, term_code):
     ).filter(
         AaGradeRecheck.tenant_id == _tid(),
         AaGradeRecheck.is_deleted.is_(False),
-        AaGradeRecheck.review_status.in_(sorted(_ACTIVE_RECHECK_STATUSES)),
+        AaGradeRecheck.status.in_(sorted(_ACTIVE_RECHECK_STATUSES)),
         AcademicGrade.tenant_id == _tid(),
         AcademicGrade.is_deleted.is_(False),
     )
