@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
@@ -17,6 +18,8 @@ from fastapi import Depends, Header
 from app.core.config import settings
 from app.core.context import set_current_user
 from app.core.exceptions import no_permission, unauthorized
+
+log = logging.getLogger("app.security")
 
 
 def assert_secret_safe() -> None:
@@ -104,6 +107,43 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
     return authorization[7:] if authorization.startswith("Bearer ") else authorization
 
 
+def _refresh_current_student_identity(user: dict) -> dict:
+    """用稳定 studentId 校准本次请求中的最新学号。
+
+    学号允许走正式更正流程，而访问令牌可能仍处于有效期内。若只信任 JWT 中签发时的
+    ``studentNo``，尚未完成迁移的旧业务服务会在改号后找不到本人。这里仅针对真实学生账号，
+    用带租户条件的主键查询刷新当前请求字典；查询失败记录告警但不让认证主链整体瘫痪。
+    """
+    if (user.get("userType") or "").upper() != "STUDENT":
+        return user
+    raw_sid = str(user.get("studentId") or "")
+    raw_tid = str(user.get("tenantId") or "")
+    if not raw_sid.isdigit() or not raw_tid.isdigit():
+        return user
+    try:
+        from sqlalchemy import select
+        from app.db.session import db_enabled, get_sessionmaker
+        if not db_enabled():
+            return user
+        from app.models import StudentProfile
+        db = get_sessionmaker()()
+        try:
+            student = db.scalars(select(StudentProfile).where(
+                StudentProfile.id == int(raw_sid),
+                StudentProfile.tenant_id == int(raw_tid),
+                StudentProfile.is_deleted.is_(False),
+            )).first()
+            if student is not None:
+                user["studentId"] = str(student.id)
+                user["studentNo"] = student.student_no
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001 - 身份校准读失败不能扩大为全体学生无法登录
+        log.warning("student_identity_refresh_failed tenant=%s student=%s err=%s",
+                    raw_tid, raw_sid, type(exc).__name__)
+    return user
+
+
 def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
     """FastAPI 依赖：要求登录，返回当前用户上下文并写入 contextvar。
 
@@ -144,6 +184,7 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     if str(user.get("userId") or "").startswith("db-"):
         from app.services.auth_service_db import validate_token_subject
         user = validate_token_subject(user) or user
+        user = _refresh_current_student_identity(user)
     # Redis 可用时所有 worker 共享限流；不可用时 token_store 自动退回进程内保护，
     # 不因缓存故障阻断正常鉴权。租户与用户双层桶避免单校/单账号挤占全部资源。
     tenant_id = str(user.get("tenantId") or "")
