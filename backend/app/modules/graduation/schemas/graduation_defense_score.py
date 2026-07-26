@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 class DefenseScoreEntryRequest(BaseModel):
     gdStudentId: str
     judgeName: str = Field(..., min_length=1)
+    expertId: Optional[str] = None
     score: Optional[int] = Field(None, ge=0, le=100)
     comment: Optional[str] = None
     absent: bool = Field(default=False)

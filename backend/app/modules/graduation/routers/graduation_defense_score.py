@@ -33,7 +33,7 @@ def gd_defense_score_list(page: int = Query(1, ge=1), pageSize: int = Query(20, 
 @router.post("/gd-defense-scores/entry", summary="录入/更新评委评分（缺席须填原因）")
 def gd_defense_score_entry(body: DefenseScoreEntryRequest, user=Depends(get_current_user)):
     result = svc.enter_score(body.gdStudentId, body.judgeName, body.score, body.comment, body.absent,
-                             body.absentReason)
+                             body.absentReason, expert_id=body.expertId)
     audit_log.record("录入答辩评分", f"graduation-defense-score:{result['id']}")
     return success(result, message="已保存")
 

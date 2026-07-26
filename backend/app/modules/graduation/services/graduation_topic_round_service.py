@@ -192,13 +192,22 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
     if not choices:
         raise AppException("VALIDATION_ERROR", "请至少选择一个志愿")
     with session() as db:
-        r = _get_round(db, round_id)
-        allowed = ("OPEN",) if not admin_import else ("OPEN", "CLOSED")
-        if r.status not in allowed:
-            raise AppException("DATA_CONFLICT", "仅进行中的轮次可提交志愿" if not admin_import else "仅进行中或已关闭轮次可导入志愿")
+        r = db.scalars(select(GraduationTopicRound).where(
+            GraduationTopicRound.id == int(round_id),
+            GraduationTopicRound.tenant_id == _tid(),
+            GraduationTopicRound.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not r:
+            raise not_found("选题轮次不存在")
+        if r.status != "OPEN":
+            raise AppException("DATA_CONFLICT", "仅进行中的轮次可提交或导入志愿")
         if len(choices) > int(r.max_choices or 3):
             raise AppException("VALIDATION_ERROR", f"最多 {r.max_choices} 个志愿")
-        stu = db.get(GraduationStudent, int(gd_student_id))
+        stu = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生不存在")
         assert_student_access(db, stu, "topic.choice.submit")
@@ -244,6 +253,7 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
                 ex.topic_id = int(ch.get("topicId") or ch.get("topic_id"))
                 ex.status = "PENDING"
                 ex.is_deleted = False
+                ex.submission_version = int(ex.submission_version or 0) + 1
             else:
                 db.add(GraduationTopicChoice(
                     tenant_id=_tid(), round_id=int(round_id), gd_student_id=int(gd_student_id),
@@ -374,8 +384,8 @@ def match_round(round_id) -> dict:
         ).with_for_update()).first()
         if not r:
             raise not_found("选题轮次不存在")
-        if r.status not in ("OPEN", "CLOSED"):
-            raise AppException("DATA_CONFLICT", "仅进行中或已关闭轮次可执行匹配")
+        if r.status != "CLOSED":
+            raise AppException("DATA_CONFLICT", "仅已关闭轮次可执行匹配")
         pending = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
             GraduationTopicChoice.is_deleted.is_(False), GraduationTopicChoice.status == "PENDING")
@@ -393,24 +403,18 @@ def match_round(round_id) -> dict:
         winners = plan_topic_matches(payload, remaining)
         matched = 0
         success_ids: set[int] = set()
-        errors: list[str] = []
         for w in winners:
-            try:
-                gd_stu_svc.assign_topic_in_session(
-                    db, str(w["gd_student_id"]), str(w["topic_id"]), relationship_authorized=True
-                )
-                matched += 1
-                success_ids.add(int(w["id"]))
-            except AppException as e:
-                errors.append(str(e.message if hasattr(e, "message") else e))
-            except Exception as e:
-                errors.append(str(e))
+            gd_stu_svc.assign_topic_in_session(
+                db, str(w["gd_student_id"]), str(w["topic_id"]), relationship_authorized=True
+            )
+            matched += 1
+            success_ids.add(int(w["id"]))
         for c in pending:
             c.status = "MATCHED" if int(c.id) in success_ids else "UNMATCHED"
         r.status = "MATCHED"
         _audit(db, round_id, "MATCH", f"匹配成功 {matched} 人")
         db.commit()
-        return {"matched": matched, "totalChoices": len(payload), "errors": errors}
+        return {"matched": matched, "totalChoices": len(payload), "errors": []}
 
 
 # ═══════════ 退选重选 / 容量冲突复核 / 统计 / 归档（Batch 3） ═══════════
@@ -419,21 +423,31 @@ def withdraw_choices(round_id, gd_student_id) -> dict:
     """学生退选：撤回本轮全部待处理志愿（仅进行中轮次；已确认/已匹配的须走变更流程，不可自助退选）。
     退选后学生可重新提交志愿（submit_choices 覆盖语义）。"""
     with session() as db:
-        r = _get_round(db, round_id)
+        r = db.scalars(select(GraduationTopicRound).where(
+            GraduationTopicRound.id == int(round_id),
+            GraduationTopicRound.tenant_id == _tid(),
+            GraduationTopicRound.is_deleted.is_(False),
+        ).with_for_update()).first()
         if r.status != "OPEN":
             raise AppException("DATA_CONFLICT", "仅进行中的轮次可退选")
-        stu = db.get(GraduationStudent, int(gd_student_id))
+        stu = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
         assert_student_access(db, stu, "topic.choice.withdraw")
         chs = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
             GraduationTopicChoice.gd_student_id == int(gd_student_id),
-            GraduationTopicChoice.is_deleted.is_(False))).all()
+            GraduationTopicChoice.is_deleted.is_(False)).with_for_update()).all()
         if not chs:
             raise not_found("当前没有可退选的志愿")
         if any(c.status in ("CONFIRMED", "MATCHED") for c in chs):
             raise AppException("DATA_CONFLICT", "已被确认/匹配的选题不可自助退选，请走「课题变更」流程")
         for c in chs:
-            c.is_deleted = True
+            c.status = "WITHDRAWN"
+            c.is_deleted = False
+            c.submission_version = int(c.submission_version or 0) + 1
         _audit(db, round_id, "WITHDRAW_CHOICES", f"学生 {stu.name if stu else gd_student_id} 退选 {len(chs)} 个志愿")
         db.commit()
         return {"withdrawn": len(chs)}

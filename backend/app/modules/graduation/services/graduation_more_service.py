@@ -52,8 +52,18 @@ def assign_peer(gd_student_id, reviewer_gd_student_id) -> dict:
     if str(gd_student_id) == str(reviewer_gd_student_id):
         raise AppException("VALIDATION_ERROR", "互查学生不能是本人")
     with session() as db:
-        s = _stu(db, gd_student_id)
-        _stu(db, reviewer_gd_student_id)
+        students = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.id.in_((int(gd_student_id), int(reviewer_gd_student_id))),
+            GraduationStudent.is_deleted.is_(False),
+        ).order_by(GraduationStudent.id).with_for_update()).all()
+        by_id = {int(row.id): row for row in students}
+        s = by_id.get(int(gd_student_id))
+        reviewer_student = by_id.get(int(reviewer_gd_student_id))
+        if not s or not reviewer_student:
+            raise not_found("毕设学生不存在")
+        if int(s.batch_id or 0) != int(reviewer_student.batch_id or 0):
+            raise AppException("DATA_CONFLICT", "互查双方必须属于同一毕设批次")
         dup = db.scalar(select(func.count()).select_from(GraduationPeerReview).where(
             GraduationPeerReview.tenant_id == _tid(),
             GraduationPeerReview.gd_student_id == int(gd_student_id),
@@ -74,7 +84,11 @@ def submit_peer(pid, opinion) -> dict:
     if not opinion or len(opinion.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "互查意见必填且不少于 5 字")
     with session() as db:
-        p = db.get(GraduationPeerReview, int(pid))
+        p = db.scalars(select(GraduationPeerReview).where(
+            GraduationPeerReview.id == int(pid),
+            GraduationPeerReview.tenant_id == _tid(),
+            GraduationPeerReview.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("互查记录不存在")
         assert_student_access(db, db.get(GraduationStudent, p.reviewer_gd_student_id), "peer.review.submit")
@@ -92,7 +106,11 @@ def rectify_peer(pid, note) -> dict:
     if not note or len(note.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "整改说明必填且不少于 5 字")
     with session() as db:
-        p = db.get(GraduationPeerReview, int(pid))
+        p = db.scalars(select(GraduationPeerReview).where(
+            GraduationPeerReview.id == int(pid),
+            GraduationPeerReview.tenant_id == _tid(),
+            GraduationPeerReview.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("互查记录不存在")
         assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "peer.rectify")
@@ -202,10 +220,16 @@ def create_appeal(gd_student_id, reason) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "申诉理由必填且不少于 5 字")
     with session() as db:
-        s = _stu(db, gd_student_id)
+        s = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not s:
+            raise not_found("毕设学生不存在")
         grade = db.scalars(select(GraduationGrade).where(
             GraduationGrade.tenant_id == _tid(), GraduationGrade.gd_student_id == s.id,
-            GraduationGrade.is_deleted.is_(False))).first()
+            GraduationGrade.is_deleted.is_(False)).with_for_update()).first()
         if not grade or grade.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "成绩未发布，暂不可申诉")
         pending = db.scalar(select(func.count()).select_from(GraduationGradeAppeal).where(
@@ -214,7 +238,8 @@ def create_appeal(gd_student_id, reason) -> dict:
             GraduationGradeAppeal.is_deleted.is_(False))) or 0
         if pending:
             raise AppException("DATA_CONFLICT", "已有待复核的申诉，请等待处理")
-        a = GraduationGradeAppeal(tenant_id=_tid(), gd_student_id=s.id, reason=reason.strip(), status="PENDING")
+        a = GraduationGradeAppeal(tenant_id=_tid(), gd_student_id=s.id, reason=reason.strip(),
+                                  status="PENDING", active_key=f"pending:{s.id}")
         db.add(a)
         db.flush()
         _audit(db, "GRADE_APPEAL", a.id, "提交成绩申诉", s.name)
@@ -240,7 +265,11 @@ def review_appeal(aid, action, comment=None) -> dict:
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回申诉理由必填且不少于 5 字")
     with session() as db:
-        a = db.get(GraduationGradeAppeal, int(aid))
+        a = db.scalars(select(GraduationGradeAppeal).where(
+            GraduationGradeAppeal.id == int(aid),
+            GraduationGradeAppeal.tenant_id == _tid(),
+            GraduationGradeAppeal.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not a or a.is_deleted or a.tenant_id != _tid():
             raise not_found("申诉不存在")
         assert_student_access(db, db.get(GraduationStudent, a.gd_student_id), "grade.appeal.review")
@@ -248,13 +277,14 @@ def review_appeal(aid, action, comment=None) -> dict:
             raise AppException("DATA_CONFLICT", "该申诉已复核")
         n, _ = _op()
         a.status = "APPROVED" if action == "APPROVE" else "REJECTED"
+        a.active_key = None
         a.review_comment = (comment or "").strip() or None
         a.reviewed_by = n
         a.reviewed_at = datetime.now(timezone.utc)
         if action == "APPROVE":
             grade = db.scalars(select(GraduationGrade).where(
                 GraduationGrade.tenant_id == _tid(), GraduationGrade.gd_student_id == a.gd_student_id,
-                GraduationGrade.is_deleted.is_(False))).first()
+                GraduationGrade.is_deleted.is_(False)).with_for_update()).first()
             if grade and grade.status == "PUBLISHED":
                 grade.status = "WITHDRAWN"  # 受理申诉后撤回成绩，走重新核算
         _audit(db, "GRADE_APPEAL", a.id, "复核申诉-" + ("受理" if action == "APPROVE" else "驳回"),

@@ -159,6 +159,7 @@ class GraduationTopicChoice(PKMixin, TenantMixin, CommonMixin, Base):
     choice_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING",
                                         comment="PENDING/MATCHED/UNMATCHED/CONFIRMED/REJECTED")
+    submission_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class GraduationTopicChangeRequest(PKMixin, TenantMixin, CommonMixin, Base):
@@ -291,6 +292,10 @@ class GraduationMidterm(PKMixin, TenantMixin, CommonMixin, Base):
 
 class GraduationProposal(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_gd_proposal"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "gd_student_id", "version", name="uk_gd_proposal_student_version"),
+        UniqueConstraint("tenant_id", "active_key", name="uk_gd_proposal_active"),
+    )
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     version: Mapped[str | None] = mapped_column(String(20))
     is_resubmit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -300,6 +305,7 @@ class GraduationProposal(PKMixin, TenantMixin, CommonMixin, Base):
     outcome: Mapped[str | None] = mapped_column(String(2000))
     attachments_json: Mapped[list | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_REVIEW")
+    active_key: Mapped[str | None] = mapped_column(String(100), comment="pending:<gd_student_id>；非待审为空")
     reviewer: Mapped[str | None] = mapped_column(String(100))
     review_comment: Mapped[str | None] = mapped_column(String(500))
     review_time: Mapped[datetime | None] = mapped_column(DateTime)
@@ -312,6 +318,9 @@ class GraduationProposal(PKMixin, TenantMixin, CommonMixin, Base):
 class GraduationFinal(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_gd_final"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "gd_student_id", "final_type", "version",
+                         name="uk_gd_final_student_type_version"),
+        UniqueConstraint("tenant_id", "active_key", name="uk_gd_final_active"),
         Index("ix_gd_final_tenant_student_status", "tenant_id", "gd_student_id", "status", "is_deleted"),
     )
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -321,6 +330,7 @@ class GraduationFinal(PKMixin, TenantMixin, CommonMixin, Base):
     plagiarism_rate: Mapped[str | None] = mapped_column(String(20))
     plagiarism_status: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_REVIEW")
+    active_key: Mapped[str | None] = mapped_column(String(100), comment="pending:<gd_student_id>；非待审为空")
     reviewer: Mapped[str | None] = mapped_column(String(100))
     review_comment: Mapped[str | None] = mapped_column(String(500))
     review_time: Mapped[datetime | None] = mapped_column(DateTime)
@@ -351,6 +361,7 @@ class GraduationPlagiarismCheck(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_plagiarism 查重记录（对齐老系统 0检测中/1完成/2失败 + 复查申请）。"""
     __tablename__ = "t_gd_plagiarism"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "active_key", name="uk_gd_plagiarism_active"),
         Index("ix_gd_plag_tenant_final_status", "tenant_id", "gd_final_id", "status", "is_deleted"),
     )
 
@@ -359,6 +370,7 @@ class GraduationPlagiarismCheck(PKMixin, TenantMixin, CommonMixin, Base):
     submit_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="CHECKING",
                                         comment="CHECKING检测中/DONE完成/FAILED失败")
+    active_key: Mapped[str | None] = mapped_column(String(100), comment="checking:<gd_final_id>；非检测中为空")
     rate: Mapped[str | None] = mapped_column(String(20), comment="重复率，如 12.5%")
     report_url: Mapped[str | None] = mapped_column(String(500))
     threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
@@ -372,6 +384,7 @@ class GraduationReview(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_review 教师评阅（独立评阅角色，SoD：评阅人≠该生指导教师）。"""
     __tablename__ = "t_gd_review"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "gd_final_id", "reviewer_mentor_id", name="uk_gd_review_final_reviewer"),
         Index("ix_gd_review_tenant_student_status", "tenant_id", "gd_student_id", "status", "is_deleted"),
     )
 
@@ -391,11 +404,18 @@ class GraduationReview(PKMixin, TenantMixin, CommonMixin, Base):
 class GraduationDefenseScore(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_defense_score 答辩评分（每评委对每学生一条；缺席/二次答辩留痕）。"""
     __tablename__ = "t_gd_defense_score"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "gd_student_id", "defense_group_id", "round_no",
+                         "judge_identity", name="uk_gd_defense_score_judge"),
+    )
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     defense_group_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     judge_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="评委姓名快照")
     judge_mentor_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="评委→t_gd_mentor.id")
+    expert_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="校外专家稳定ID")
+    judge_identity: Mapped[str | None] = mapped_column(String(100),
+                                                       comment="MENTOR:<id>/EXPERT:<id>")
     score: Mapped[int | None] = mapped_column(Integer)
     comment: Mapped[str | None] = mapped_column(String(1000))
     absent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -418,7 +438,7 @@ class GraduationGrade(PKMixin, TenantMixin, CommonMixin, Base):
     total_score: Mapped[int | None] = mapped_column(Integer)
     grade_level: Mapped[str | None] = mapped_column(String(20), comment="优秀/良好/中等/及格/不及格")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT",
-                                        comment="DRAFT/CALCULATED/PENDING_REVIEW/PUBLISHED/WITHDRAWN")
+                                        comment="DRAFT/CALCULATED/REVIEWED/PUBLISHED/WITHDRAWN")
     remark: Mapped[str | None] = mapped_column(String(500))
     calculated_at: Mapped[datetime | None] = mapped_column(DateTime)
     reviewed_by: Mapped[str | None] = mapped_column(String(100))
@@ -532,10 +552,15 @@ class GraduationMentorEval(PKMixin, TenantMixin, CommonMixin, Base):
 class GraduationPeerReview(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_peer_review 成果互查整改（学生互评+被评学生整改）。"""
     __tablename__ = "t_gd_peer_review"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "gd_student_id", "reviewer_gd_student_id", "task_version",
+                         name="uk_gd_peer_review_task"),
+    )
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="被评学生")
     reviewer_gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="互查学生")
     gd_final_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    task_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     opinion: Mapped[str | None] = mapped_column(String(1000), comment="互查意见")
     rectify_note: Mapped[str | None] = mapped_column(String(1000), comment="整改说明")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ASSIGNED",
@@ -559,11 +584,15 @@ class GraduationDefenseExpert(PKMixin, TenantMixin, CommonMixin, Base):
 class GraduationGradeAppeal(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_grade_appeal 成绩更正申诉（学生对已发布成绩申诉→复核）。"""
     __tablename__ = "t_gd_grade_appeal"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "active_key", name="uk_gd_grade_appeal_active"),
+    )
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     reason: Mapped[str] = mapped_column(String(1000), nullable=False, comment="申诉理由")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING",
                                         comment="PENDING待复核/APPROVED受理/REJECTED驳回")
+    active_key: Mapped[str | None] = mapped_column(String(100), comment="pending:<gd_student_id>；非待审为空")
     review_comment: Mapped[str | None] = mapped_column(String(1000))
     reviewed_by: Mapped[str | None] = mapped_column(String(100))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)

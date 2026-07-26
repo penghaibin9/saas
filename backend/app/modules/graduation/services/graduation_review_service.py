@@ -102,7 +102,8 @@ def submit_plagiarism(gd_student_id, gd_final_id=None, threshold: int = 30) -> d
             return _plag_row(active, stu)
         p = GraduationPlagiarismCheck(tenant_id=_tid(), gd_student_id=stu.id,
                                       gd_final_id=final.id,
-                                      submit_at=datetime.now(timezone.utc), status="CHECKING", threshold=threshold)
+                                      submit_at=datetime.now(timezone.utc), status="CHECKING",
+                                      active_key=f"checking:{final.id}", threshold=threshold)
         db.add(p)
         db.flush()
         _audit(db, "PLAGIARISM", p.id, "发起查重")
@@ -142,6 +143,7 @@ def set_plagiarism_result(pid, rate: str, report_url: str = None) -> dict:
         p.rate = f"{rate_val}%"
         p.report_url = report_url
         p.status = "DONE"
+        p.active_key = None
         p.over_threshold = rate_val > p.threshold
         if final:
             final.plagiarism_rate = p.rate
@@ -162,7 +164,11 @@ def dispute_plagiarism(pid, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "复查理由必填且不少于 5 字")
     with session() as db:
-        p = db.get(GraduationPlagiarismCheck, int(pid))
+        p = db.scalars(select(GraduationPlagiarismCheck).where(
+            GraduationPlagiarismCheck.id == int(pid),
+            GraduationPlagiarismCheck.tenant_id == _tid(),
+            GraduationPlagiarismCheck.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("查重记录不存在")
         assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "plagiarism.dispute")
@@ -179,7 +185,11 @@ def review_dispute(pid, action: str, comment: str = None) -> dict:
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
     with session() as db:
-        p = db.get(GraduationPlagiarismCheck, int(pid))
+        p = db.scalars(select(GraduationPlagiarismCheck).where(
+            GraduationPlagiarismCheck.id == int(pid),
+            GraduationPlagiarismCheck.tenant_id == _tid(),
+            GraduationPlagiarismCheck.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("查重记录不存在")
         assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "plagiarism.dispute.review")
@@ -256,8 +266,8 @@ def assign_review(gd_student_id, reviewer_name: str | None = None, gd_final_id=N
             m = gid.require_mentor(db, reviewer_mentor_id)
             mid = int(m.id)
             reviewer = (m.teacher_name or "").strip()
-        if not reviewer:
-            raise AppException("VALIDATION_ERROR", "评阅人必填（请选择导师台账或填写姓名）")
+        if not reviewer or not mid:
+            raise AppException("VALIDATION_ERROR", "评阅任务必须选择已绑定导师台账的评阅人")
         if gid.sod_conflict_with_advisor(db, stu, reviewer_mentor_id=mid, reviewer_name=reviewer):
             raise AppException("VALIDATION_ERROR", "评阅人不得是该生指导教师（SoD 冲突）")
         # 评阅任务必须绑定权威定稿；调用方不得通过传空或旧版本改变核算来源。
@@ -350,9 +360,13 @@ def return_review(rid, reason: str) -> dict:
             return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status != "COMPLETED":
             raise AppException("DATA_CONFLICT", "仅「已完成」评阅可退回重评")
+        history_snapshot = (
+            f"reason={reason.strip()}; previousVersion={r.version}; "
+            f"score={r.score}; opinion={r.opinion or ''}"
+        )
         r.status = "RETURNED"
         r.version += 1
-        _audit(db, "REVIEW", r.id, "退回重评", reason.strip())
+        _audit(db, "REVIEW", r.id, "退回重评", history_snapshot)
         db.commit()
         return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
 

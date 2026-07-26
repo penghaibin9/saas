@@ -315,7 +315,11 @@ def _not_submitted_proposals(db, keyword=None, batch_id=None) -> list:
 
 def get_proposal_detail(pid) -> dict:
     with session() as db:
-        p = db.get(GraduationProposal, int(pid))
+        p = db.scalars(select(GraduationProposal).where(
+            GraduationProposal.id == int(pid),
+            GraduationProposal.tenant_id == _tid(),
+            GraduationProposal.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
         stu = _stu_of(db, p.gd_student_id)
@@ -362,6 +366,7 @@ def review_proposal(pid, action, comment=None) -> dict:
         n, _ = _op()
         target = "APPROVED" if action == "APPROVE" else "REJECTED"
         p.status = target
+        p.active_key = None
         p.reviewer = n
         p.review_comment = (comment or "").strip()
         p.review_time = datetime.now(timezone.utc)
@@ -426,7 +431,11 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
     if not (plan and plan.strip()):
         raise AppException("VALIDATION_ERROR", "研究方案与进度不能为空")
     with session() as db:
-        stu = _stu_of(db, int(gd_student_id))
+        stu = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
         if not stu.topic_id:
@@ -444,9 +453,19 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == stu.id,
-            GraduationProposal.is_deleted.is_(False)).order_by(GraduationProposal.id.desc())).all()
+            GraduationProposal.is_deleted.is_(False)).order_by(
+                GraduationProposal.id.desc()).with_for_update()).all()
         latest = existing[0] if existing else None
         if latest and latest.status == "PENDING_REVIEW":
+            same = (
+                (latest.background or "") == background.strip()
+                and (latest.plan or "") == plan.strip()
+                and (latest.outcome or "") == (outcome or "").strip()
+                and (latest.attachments_json or []) == attachment_ids
+            )
+            if same:
+                return {"id": str(latest.id), "version": latest.version,
+                        "isResubmit": latest.is_resubmit, "status": latest.status}
             raise AppException("DATA_CONFLICT", "已有待审阅的开题报告，请等待指导教师批阅")
         if latest and latest.status == "APPROVED":
             raise AppException("DATA_CONFLICT", "开题报告已通过，无需重复提交")
@@ -455,7 +474,8 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         p = GraduationProposal(
             tenant_id=_tid(), gd_student_id=stu.id, version=version, is_resubmit=is_resubmit,
             submit_at=datetime.now(timezone.utc), background=background.strip(), plan=plan.strip(),
-            outcome=(outcome or "").strip(), attachments_json=attachment_ids, status="PENDING_REVIEW")
+            outcome=(outcome or "").strip(), attachments_json=attachment_ids, status="PENDING_REVIEW",
+            active_key=f"pending:{stu.id}")
         db.add(p)
         db.flush()
         _audit(db, "PROPOSAL", p.id, "提交开题报告-" + ("重交" if is_resubmit else "首次"),
@@ -492,7 +512,11 @@ def hold_proposal_defense(pid, result, comment=None) -> dict:
 def remind_proposal(gd_student_id, channel="站内消息") -> dict:
     """开题催交（GD-R04 联动）：对已过选题但未提交开题的学生留痕催办。真实写审计，不 mock 冒充。"""
     with session() as db:
-        stu = _stu_of(db, int(gd_student_id))
+        stu = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             raise not_found("毕设学生档案不存在")
         done = db.scalar(select(func.count()).select_from(GraduationProposal).where(
@@ -652,7 +676,8 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         _mark_material_files(db, attachment_ids)
         existing = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,
-            GraduationFinal.is_deleted.is_(False)).order_by(GraduationFinal.id.desc())).all()
+            GraduationFinal.is_deleted.is_(False)).order_by(
+                GraduationFinal.id.desc()).with_for_update()).all()
         if any(f.status == "PENDING_REVIEW" for f in existing):
             raise AppException("DATA_CONFLICT", "已有待审阅的成果，请等待指导教师批阅")
         if final_type == "定稿":
@@ -668,7 +693,7 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
                             plagiarism_rate=None,
                             plagiarism_status="未检测",
                             attachments_json=attachment_ids,
-                            status="PENDING_REVIEW")
+                            status="PENDING_REVIEW", active_key=f"pending:{stu.id}")
         db.add(f)
         db.flush()
         _audit(db, "FINAL", f.id, f"提交成果-{final_type}", f"{stu.name} {final_type} {version}",
@@ -715,6 +740,7 @@ def review_final(fid, action, comment=None) -> dict:
         n, _ = _op()
         target = "APPROVED" if action == "APPROVE" else "REJECTED"
         f.status = target
+        f.active_key = None
         f.reviewer = n
         f.review_comment = (comment or "").strip()
         f.review_time = datetime.now(timezone.utc)

@@ -20,8 +20,14 @@ from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefense
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
-STATUS_LABEL = {"DRAFT": "待核算", "CALCULATED": "已核算", "PUBLISHED": "已发布", "WITHDRAWN": "已撤回待重发"}
-STATUS_TONE = {"DRAFT": "default", "CALCULATED": "warning", "PUBLISHED": "success", "WITHDRAWN": "danger"}
+STATUS_LABEL = {
+    "DRAFT": "待核算", "CALCULATED": "已核算", "REVIEWED": "已复核",
+    "PUBLISHED": "已发布", "WITHDRAWN": "已撤回待重发",
+}
+STATUS_TONE = {
+    "DRAFT": "default", "CALCULATED": "warning", "REVIEWED": "primary",
+    "PUBLISHED": "success", "WITHDRAWN": "danger",
+}
 DEFAULT_WEIGHTS = {"advisorWeight": 0.4, "reviewerWeight": 0.3, "defenseWeight": 0.3}
 
 
@@ -199,7 +205,7 @@ def get_grade(gd_student_id) -> dict:
             "studentNo": stu.student_no or "", "advisorName": stu.advisor_name or "",
             "advisorScore": None, "reviewerScore": None, "defenseScore": None,
             "totalScore": None, "gradeLevel": None, "status": "DRAFT",
-            "statusLabel": GRADE_LABEL.get("DRAFT", "草稿"), "reviewedAt": None,
+            "statusLabel": STATUS_LABEL.get("DRAFT", "草稿"), "reviewedAt": None,
             "publishedAt": None, "withdrawReason": None, "exists": False,
             "sourceScores": _source_scores(db, stu),
         }
@@ -252,12 +258,13 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
         g = _get_or_create(db, stu, for_update=True)
-        if action == "APPROVE" and g.status == "CALCULATED" and g.reviewed_at:
+        if action == "APPROVE" and g.status == "REVIEWED":
             return _row(g, stu)
         if g.status != "CALCULATED":
             raise AppException("DATA_CONFLICT", "仅「已核算」成绩可复核")
         n, _ = _op()
         if action == "APPROVE":
+            g.status = "REVIEWED"
             g.reviewed_by = n
             g.reviewed_at = datetime.now(timezone.utc)
             g.remark = comment
@@ -279,7 +286,7 @@ def publish_grade(gd_student_id) -> dict:
         g = _get_or_create(db, stu, for_update=True)
         if g.status == "PUBLISHED":
             return _row(g, stu)
-        if g.status != "CALCULATED" or not g.reviewed_at:
+        if g.status != "REVIEWED" or not g.reviewed_at:
             raise AppException("DATA_CONFLICT", "仅「复核通过」成绩可发布")
         current_sources = _source_scores(db, stu)
         if not g.source_snapshot_hash or g.source_snapshot_hash != current_sources["sourceSnapshotHash"]:
