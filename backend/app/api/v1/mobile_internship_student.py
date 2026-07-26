@@ -12,6 +12,7 @@ from app.modules.internship.services import internship_student_compliance_servic
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_dashboard_service as dashboard
 from app.modules.internship.services import internship_student_leave_context_service as leaves
+from app.modules.internship.services import internship_student_makeup_context_service as makeups
 
 router = APIRouter(
     prefix="/mobile/internship",
@@ -131,3 +132,26 @@ def return_selected_leave(
     user=Depends(get_current_user),
 ):
     return success(leaves.return_my(user, leave_id, body or {}), message="销假已提交")
+
+
+@router.get("/context/makeups", summary="本人所选批次补卡申请列表")
+def my_selected_makeups(user=Depends(get_current_user)):
+    return success(makeups.list_my(user))
+
+
+@router.post("/context/makeups", summary="本人发起合规补卡申请")
+def apply_selected_makeup(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(makeups.apply(user, body or {}), message="补卡申请已提交")
+
+
+@router.post("/context/makeups/{makeup_id}/withdraw", summary="按版本撤回本人待审核补卡")
+def withdraw_selected_makeup(
+    makeup_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(makeups.withdraw(
+        user, makeup_id, (body or {}).get("expectedVersion")), message="补卡已撤回")
