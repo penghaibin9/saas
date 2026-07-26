@@ -12,13 +12,33 @@
       @retry="loadAll"
       @back="$router.push('/admin/student-affairs/discipline')"
     >
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">当前处理重点</span>
+          <h2 class="sa-summary-strip__title">
+            {{ pendingAppealCount === '—' ? '正在核对处分送达与申诉待办' : `待复核申诉 ${pendingAppealCount} 件，本页待送达 ${pageUndelivered} 件` }}
+          </h2>
+          <p class="sa-summary-strip__text">
+            先完成处分决定送达，再受理学生申诉。复核时必须核对原处分、学生理由和证据；选择“变更处分”后会真实更新处分及有效投影。
+          </p>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="处分送达与申诉流程">
+        <div class="sa-workflow-step" data-step="1"><strong>处分已生效</strong><br>确认当前处分类型与决定内容</div>
+        <div class="sa-workflow-step" data-step="2"><strong>登记送达</strong><br>记录送达方式、时间和操作人</div>
+        <div class="sa-workflow-step" data-step="3"><strong>学生申诉</strong><br>完整陈述事实、理由与诉求</div>
+        <div class="sa-workflow-step" data-step="4"><strong>复核结论</strong><br>维持、真实变更或撤销并通知学生</div>
+      </div>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard title="已生效处分" :value="casePagination.total" accent="primary" />
         <AppMetricCard title="本页待送达" :value="pageUndelivered" accent="warning" />
         <AppMetricCard title="待复核申诉" :value="pendingAppealCount" accent="warning" />
       </div>
 
-      <AppSectionCard title="已生效处分 · 送达 / 发起申诉">
+      <AppSectionCard title="已生效处分 · 送达与申诉入口">
+        <p class="ap-section-hint">先核对学生、处分类型和送达状态。未送达记录优先完成正式送达；允许申诉的记录可直接进入申诉流程。</p>
         <p v-if="caseError" class="ap-error">{{ caseError }} <button type="button" @click="loadCases">重试</button></p>
         <DataTable
           v-else-if="effectiveCases.length || casePagination.total > 0"
@@ -32,9 +52,11 @@
             <span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span>
             <div class="mp-cell-sub">{{ row.studentNo || '' }}</div>
           </template>
-          <template #cell-discType="{ row }">{{ discLabel(row.discType) }}</template>
+          <template #cell-discType="{ row }"><strong>{{ discLabel(row.discType) }}</strong></template>
           <template #cell-delivered="{ row }">
-            {{ row.deliveredAt ? (deliveryLabel(row.deliveryMethod) + ' · ' + row.deliveredAt.slice(0, 10)) : '未送达' }}
+            <span :class="row.deliveredAt ? 'ap-delivered' : 'ap-undelivered'">
+              {{ row.deliveredAt ? (deliveryLabel(row.deliveryMethod) + ' · ' + row.deliveredAt.slice(0, 10)) : '未送达' }}
+            </span>
           </template>
           <template #cell-actions="{ row }">
             <div class="ap-ops">
@@ -56,15 +78,16 @@
                 :loading="acting === row.caseId"
                 @click="appeal(row)"
               >发起申诉</AppPermissionButton>
-              <span v-if="!canDeliver(row) && !canAppeal(row)" class="ap-dash">—</span>
+              <span v-if="!canDeliver(row) && !canAppeal(row)" class="ap-dash">无需处理</span>
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前数据范围内暂无已生效处分</p>
+        <p v-else class="sa-empty">当前数据范围内暂无已生效处分。处分生效后，送达与申诉入口会在这里出现。</p>
       </AppSectionCard>
 
       <AppSectionCard title="申诉复核">
-        <div class="ap-filters">
+        <p class="ap-section-hint">优先处理“待复核”。复核意见将保留审计并同步结果通知；长理由和复核意见可在表格内完整换行查看。</p>
+        <div class="ap-filters sa-filter-bar">
           <button
             v-for="filter in appealFilters"
             :key="filter.key"
@@ -87,11 +110,11 @@
             <span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span>
             <div class="mp-cell-sub">{{ row.studentNo || '' }}</div>
           </template>
-          <template #cell-reason="{ row }"><span class="ap-reason">{{ row.reason }}</span></template>
+          <template #cell-reason="{ row }"><span class="ap-reason sa-cell-wrap">{{ row.reason }}</span></template>
           <template #cell-status="{ row }">
             <StatusTag :type="appealType(row.status)" :label="row.statusLabel || row.status" dot />
           </template>
-          <template #cell-opinion="{ row }"><span class="ap-opinion">{{ row.reviewOpinion || '—' }}</span></template>
+          <template #cell-opinion="{ row }"><span class="ap-opinion sa-cell-wrap">{{ row.reviewOpinion || '—' }}</span></template>
           <template #cell-actions="{ row }">
             <AppPermissionButton
               v-if="canReview(row)"
@@ -102,10 +125,10 @@
               :disabled="!hasVersion(row)"
               @click="review(row)"
             >复核</AppPermissionButton>
-            <span v-else class="ap-dash">—</span>
+            <span v-else class="ap-dash">已处理</span>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前筛选下暂无申诉</p>
+        <p v-else class="sa-empty">当前筛选下暂无申诉。可切换状态查看已维持、已变更或已撤销记录。</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -369,17 +392,19 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.ap-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .ap-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
-.ap-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
+.ap-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 5px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .ap-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-.ap-error { margin: 0; padding: var(--space-3); color: var(--danger-700); background: var(--danger-50); border-radius: var(--radius-md); }
+.ap-error { margin: 0; padding: var(--space-3); color: var(--danger-700); background: var(--danger-50); border: 1px solid var(--danger-100, #fee2e2); border-radius: var(--radius-md); }
 .ap-error button { margin-left: var(--space-2); border: 0; background: transparent; color: inherit; font-weight: 600; cursor: pointer; }
-.ap-reason, .ap-opinion { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 260px; }
+.ap-reason, .ap-opinion { color: var(--text-secondary); font-size: var(--font-size-sm); }
 .ap-ops { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.ap-dash { color: var(--text-tertiary); }
-.ap-hint { margin: var(--space-2) 0 0; color: var(--warning-700); font-size: var(--font-size-sm); }
+.ap-dash { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.ap-hint { margin: var(--space-2) 0 0; color: var(--warning-700); font-size: var(--font-size-sm); line-height: 1.6; }
+.ap-delivered { color: var(--success-700, #15803d); font-weight: 600; }
+.ap-undelivered { color: var(--warning-700, #b45309); font-weight: 600; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 </style>
