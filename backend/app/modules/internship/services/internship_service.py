@@ -1129,6 +1129,40 @@ def activate_batch(bid, user=None, *, expected_version=None) -> dict:
                 "version": new_ver}
 
 
+def _batch_compliance_report(db, batch_id, user) -> dict:
+    from collections import defaultdict
+    from app.modules.internship.services.internship_compliance_service import (
+        evaluate_internship_compliance)
+    records = db.scalars(select(InternshipRecord).where(
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.batch_id == _as_id(batch_id),
+        InternshipRecord.is_deleted.is_(False))).all()
+    missing = defaultdict(list)
+    blocked_students = []
+    rule_version = None
+    for rec in records:
+        result = evaluate_internship_compliance(
+            rec.id, "BATCH_CLOSE", user=user, db=db)
+        rule_version = rule_version or result["ruleVersion"]
+        codes = []
+        for item in result["blockers"]:
+            missing[item["code"]].append(str(rec.id))
+            codes.append(item["code"])
+        if codes:
+            blocked_students.append({
+                "internshipId": str(rec.id), "studentId": str(rec.student_id),
+                "codes": codes})
+    return {
+        "total": len(records), "blocked": len(blocked_students),
+        "passed": len(records) - len(blocked_students),
+        "missingByCode": {code: {"count": len(ids), "internshipIds": ids}
+                          for code, ids in missing.items()},
+        "blockedStudents": blocked_students,
+        "ruleVersion": rule_version,
+        "evaluatedAt": datetime.utcnow().isoformat() + "Z",
+    }
+
+
 def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "",
                 expected_version=None) -> dict:
     """结束批次：先生成就绪报告；存在阻断项时拒绝，除非管理员强制结束并写审计。"""
@@ -1142,13 +1176,12 @@ def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "",
         b = _get_batch(db, bid)
         if b.status != "RUNNING":
             raise AppException("INVALID_STATE", "仅进行中批次可结束")
-        report = _batch_readiness_report(db, b.id)
-        blockers = [x for x in report["checks"] if x.get("blocking") and x.get("count", 0) > 0]
-        if blockers and not force:
+        report = _batch_compliance_report(db, b.id, user)
+        if report["blocked"] and not force:
             raise AppException(
                 "DATA_CONFLICT",
                 "批次结束前置检查未通过，请先处理阻断项或使用强制结束",
-                details={"readiness": report, "blockers": blockers},
+                details={"compliance": report},
             )
         reason = ""
         if force:
@@ -1165,7 +1198,7 @@ def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "",
         new_ver = versioned_update(
             db, InternshipBatch, entity_id=b.id, tenant_id=_tid(), expected_version=ver,
             values=values, expected_status="RUNNING")
-        detail = {"before": "RUNNING", "after": "CLOSED", "readiness": report}
+        detail = {"before": "RUNNING", "after": "CLOSED", "compliance": report}
         if force:
             detail["force"] = True
             detail["forceReason"] = reason
@@ -1173,7 +1206,7 @@ def close_batch(bid, user=None, *, force: bool = False, force_reason: str = "",
         db.commit()
         return {
             "id": str(b.id), "status": "CLOSED", "statusLabel": BATCH_STATUS_LABEL["CLOSED"],
-            "readiness": report, "forced": bool(force), "version": new_ver,
+            "compliance": report, "forced": bool(force), "version": new_ver,
         }
 
 
@@ -1189,14 +1222,16 @@ def archive_batch(bid, user=None, *, force: bool = False, force_reason: str = ""
         b = _get_batch(db, bid)
         if b.status != "CLOSED":
             raise AppException("INVALID_STATE", "仅已结束批次可归档")
-        report = _batch_readiness_report(db, b.id)
-        # 归档要求学生全部 ARCHIVED，或强制
-        not_archived = next((x for x in report["checks"] if x["key"] == "notArchived"), None)
-        if not_archived and not_archived["count"] > 0 and not force:
+        report = _batch_compliance_report(db, b.id, user)
+        not_archived_ids = [str(x.id) for x in db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.batch_id == b.id,
+            InternshipRecord.status != "ARCHIVED",
+            InternshipRecord.is_deleted.is_(False))).all()]
+        if (report["blocked"] or not_archived_ids) and not force:
             raise AppException(
                 "DATA_CONFLICT",
                 "仍有学生未完成归档，请先完成学生归档或强制归档批次",
-                details={"readiness": report},
+                details={"compliance": report, "notArchivedIds": not_archived_ids},
             )
         reason = ""
         if force:
@@ -1215,7 +1250,8 @@ def archive_batch(bid, user=None, *, force: bool = False, force_reason: str = ""
         new_ver = versioned_update(
             db, InternshipBatch, entity_id=b.id, tenant_id=_tid(), expected_version=ver,
             values=values, expected_status="CLOSED")
-        detail = {"before": "CLOSED", "after": "ARCHIVED", "readiness": report}
+        detail = {"before": "CLOSED", "after": "ARCHIVED",
+                  "compliance": report, "notArchivedIds": not_archived_ids}
         if force:
             detail["force"] = True
             detail["forceReason"] = reason
@@ -1223,7 +1259,8 @@ def archive_batch(bid, user=None, *, force: bool = False, force_reason: str = ""
         db.commit()
         return {
             "id": str(b.id), "status": "ARCHIVED", "statusLabel": BATCH_STATUS_LABEL["ARCHIVED"],
-            "readiness": report, "forced": bool(force), "version": new_ver,
+            "compliance": report, "notArchivedIds": not_archived_ids,
+            "forced": bool(force), "version": new_ver,
         }
 
 
@@ -1231,7 +1268,7 @@ def batch_readiness(bid, user=None) -> dict:
     """只读：批次结束/归档前置检查报告。"""
     with session() as db:
         b = _get_batch(db, bid)
-        report = _batch_readiness_report(db, b.id)
+        report = _batch_compliance_report(db, b.id, user)
         report["batchId"] = str(b.id)
         report["batchStatus"] = b.status
         return report

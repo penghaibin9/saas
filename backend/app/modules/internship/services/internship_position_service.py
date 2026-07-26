@@ -17,7 +17,8 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact,
-                        InternshipPosition)
+                        InternshipPosition, InternshipBatch, InternshipRecord,
+                        InternshipSpecialFiling)
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"DRAFT": "草稿", "PENDING": "待审核", "PUBLISHED": "已上架", "OFFLINE": "已下架",
@@ -67,8 +68,8 @@ def _get(db, pos_id) -> InternshipPosition:
     return p
 
 
-def _row(p: InternshipPosition) -> dict:
-    return {
+def _row(p: InternshipPosition, db=None) -> dict:
+    out = {
         "id": str(p.id), "companyId": str(p.company_id), "companyName": p.company_name or "",
         "batchId": str(p.batch_id) if p.batch_id else "",
         "title": p.title, "category": p.category or "",
@@ -81,12 +82,43 @@ def _row(p: InternshipPosition) -> dict:
         "mentorContactId": str(p.mentor_contact_id) if p.mentor_contact_id else "",
         "mentorName": p.mentor_name or "",
         "riskFlag": bool(p.risk_flag), "riskNote": p.risk_note or "",
+        "workContent": p.work_content,
+        "workAddress": p.work_address or p.work_location,
+        "dailyHours": p.daily_hours, "weeklyHours": p.weekly_hours,
+        "shiftType": p.shift_type, "nightShift": p.night_shift,
+        "overtimeAllowed": p.overtime_allowed,
+        "restDaysPerWeek": p.rest_days_per_week,
+        "remunerationType": p.remuneration_type,
+        "remunerationAmount": p.remuneration_amount,
+        "remunerationCycle": p.remuneration_cycle,
+        "accommodationProvided": p.accommodation_provided,
+        "mealProvided": p.meal_provided, "hazardousFlag": p.hazardous_flag,
+        "specialEquipment": p.special_equipment,
+        "prohibitedReason": p.prohibited_reason,
+        "rightsStatus": p.rights_status or "UNKNOWN",
+        "rightsCheckedAt": _iso(p.rights_checked_at),
+        "rightsRuleVersion": p.rights_rule_version,
         "status": p.status, "statusLabel": STATUS_LABEL.get(p.status, p.status),
         "statusTone": STATUS_TONE.get(p.status, "default"),
         "remark": p.remark or "", "publishAt": _iso(p.publish_at),
         "archivedAt": _iso(p.archived_at), "archivedBy": p.archived_by or "",
-        "updatedAt": _iso(p.updated_at),
+        "updatedAt": _iso(p.updated_at), "version": int(p.version or 0),
     }
+    if db is not None:
+        from app.modules.internship.services.internship_position_rights import (
+            evaluate_position_publishability)
+        company = db.get(EmpCompany, p.company_id)
+        batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+        result = evaluate_position_publishability(p, company, batch, db=db)
+        out.update({
+            "publishable": result["passed"],
+            "complianceBlockerCount": len(result["blockers"]),
+            "complianceWarningCount": len(result["warnings"]),
+            "complianceUnknownCount": len(result["unknowns"]),
+            "complianceRuleVersion": result["ruleVersion"],
+            "compliance": result,
+        })
+    return out
 
 
 # ═══════════ 列表 / 详情 ═══════════
@@ -114,7 +146,7 @@ def list_positions(page: int, page_size: int, keyword=None, status=None,
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(InternshipPosition.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        return [_row(p) for p in rows], total
+        return [_row(p, db) for p in rows], total
 
 
 def get_position(pos_id) -> dict:
@@ -143,7 +175,7 @@ def get_position(pos_id) -> dict:
                      "studentNo": (smap.get(r.student_id).student_no if smap.get(r.student_id) else "-"),
                      "status": r.status} for r in recs]
         return {
-            **_row(p),
+            **_row(p, db),
             "company": company,
             "assignedStudents": assigned,
             "assignedCount": len(assigned),
@@ -191,6 +223,22 @@ def create_position(body) -> dict:
             geofence_lng=getattr(body, "geofenceLng", None),
             geofence_radius_m=getattr(body, "geofenceRadiusM", None),
             salary_range=getattr(body, "salaryRange", None), subsidy=getattr(body, "subsidy", None),
+            work_content=(getattr(body, "workContent", None) or "").strip() or None,
+            work_address=getattr(body, "workAddress", None),
+            daily_hours=getattr(body, "dailyHours", None),
+            weekly_hours=getattr(body, "weeklyHours", None),
+            shift_type=getattr(body, "shiftType", None),
+            night_shift=getattr(body, "nightShift", None),
+            overtime_allowed=getattr(body, "overtimeAllowed", None),
+            rest_days_per_week=getattr(body, "restDaysPerWeek", None),
+            remuneration_type=getattr(body, "remunerationType", None),
+            remuneration_amount=getattr(body, "remunerationAmount", None),
+            remuneration_cycle=getattr(body, "remunerationCycle", None),
+            accommodation_provided=getattr(body, "accommodationProvided", None),
+            meal_provided=getattr(body, "mealProvided", None),
+            hazardous_flag=getattr(body, "hazardousFlag", None),
+            special_equipment=getattr(body, "specialEquipment", None),
+            prohibited_reason=getattr(body, "prohibitedReason", None),
             headcount=getattr(body, "headcount", 1) or 1,
             mentor_contact_id=mentor_id, mentor_name=mentor_name,
             remark=getattr(body, "remark", None), status="DRAFT")
@@ -199,12 +247,24 @@ def create_position(body) -> dict:
         _trail(db, p.id, "CREATE", {"title": title, "companyId": str(c.id)})
         db.commit()
         db.refresh(p)
-        return _row(p)
+        return _row(p, db)
 
 
 def update_position(pos_id, body) -> dict:
     with session() as db:
-        p = _get(db, pos_id)
+        p = db.scalar(select(InternshipPosition).where(
+            InternshipPosition.id == _as_id(pos_id),
+            InternshipPosition.tenant_id == _tid(),
+            InternshipPosition.is_deleted.is_(False)).with_for_update())
+        if not p:
+            raise not_found("岗位不存在或不在当前数据范围内")
+        if int(p.version or 0) != int(body.expectedVersion):
+            raise AppException("DATA_CONFLICT", "岗位已被其他用户修改，请刷新后重试")
+        before = {name: getattr(p, name) for name in (
+            "work_content", "work_address", "daily_hours", "weekly_hours", "shift_type",
+            "night_shift", "overtime_allowed", "rest_days_per_week", "remuneration_type",
+            "remuneration_amount", "remuneration_cycle", "accommodation_provided",
+            "meal_provided", "hazardous_flag", "special_equipment", "prohibited_reason")}
         lat, lng, radius = (getattr(body, "geofenceLat", None), getattr(body, "geofenceLng", None),
                             getattr(body, "geofenceRadiusM", None))
         if any(v is not None for v in (lat, lng, radius)):
@@ -219,10 +279,22 @@ def update_position(pos_id, body) -> dict:
                          ("workLocation", "work_location"), ("salaryRange", "salary_range"),
                          ("geofenceLat", "geofence_lat"), ("geofenceLng", "geofence_lng"),
                          ("geofenceRadiusM", "geofence_radius_m"),
-                         ("subsidy", "subsidy"), ("remark", "remark")]:
-            v = getattr(body, src, None)
-            if v is not None:
-                setattr(p, col, v)
+                         ("subsidy", "subsidy"), ("remark", "remark"),
+                         ("workContent", "work_content"), ("workAddress", "work_address"),
+                         ("dailyHours", "daily_hours"), ("weeklyHours", "weekly_hours"),
+                         ("shiftType", "shift_type"), ("nightShift", "night_shift"),
+                         ("overtimeAllowed", "overtime_allowed"),
+                         ("restDaysPerWeek", "rest_days_per_week"),
+                         ("remunerationType", "remuneration_type"),
+                         ("remunerationAmount", "remuneration_amount"),
+                         ("remunerationCycle", "remuneration_cycle"),
+                         ("accommodationProvided", "accommodation_provided"),
+                         ("mealProvided", "meal_provided"),
+                         ("hazardousFlag", "hazardous_flag"),
+                         ("specialEquipment", "special_equipment"),
+                         ("prohibitedReason", "prohibited_reason")]:
+            if src in body.model_fields_set:
+                setattr(p, col, getattr(body, src))
         hc = getattr(body, "headcount", None)
         if hc is not None:
             if hc < p.allocated_count:
@@ -234,11 +306,32 @@ def update_position(pos_id, body) -> dict:
         mc = getattr(body, "mentorContactId", None)
         if mc is not None:
             p.mentor_contact_id, p.mentor_name = _resolve_mentor(db, p.company_id, mc) if mc else (None, None)
-        p.version += 1
-        _trail(db, p.id, "UPDATE", {"title": p.title})
+        after = {name: getattr(p, name) for name in before}
+        changed = [name for name in before if before[name] != after[name]]
+        rec_ids = db.scalars(select(InternshipRecord.id).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.position_id == p.id,
+            InternshipRecord.is_deleted.is_(False))).all() if changed else []
+        if changed and rec_ids:
+            from app.modules.internship.services.internship_consent_service import supersede_for_major_change
+            for rec_id in rec_ids:
+                supersede_for_major_change(db, rec_id)
+                for filing in db.scalars(select(InternshipSpecialFiling).where(
+                    InternshipSpecialFiling.tenant_id == _tid(),
+                    InternshipSpecialFiling.internship_id == rec_id,
+                    InternshipSpecialFiling.status == "APPROVED",
+                    InternshipSpecialFiling.is_deleted.is_(False)).with_for_update()).all():
+                    filing.status = "SUPERSEDED"
+                    filing.version = int(filing.version or 0) + 1
+            p.rights_status = "UNKNOWN"
+            p.rights_checked_at = None
+            p.rights_rule_version = None
+        p.version = int(p.version or 0) + 1
+        _trail(db, p.id, "UPDATE", {"before": before, "after": after,
+                                     "majorChangedFields": changed})
         db.commit()
         db.refresh(p)
-        return _row(p)
+        return _row(p, db)
 
 
 # ═══════════ 状态机 ═══════════
@@ -257,13 +350,17 @@ def set_status(pos_id, action: str, reason: str = "") -> dict:
             if p.status not in ("PENDING", "OFFLINE", "SUSPENDED"):
                 raise AppException("DATA_CONFLICT", "仅待审核/已下架/已暂停岗位可上架")
             c = _company(db, p.company_id)
-            if c.blacklist or c.coop_status == "BLACKLIST":
-                raise AppException("DATA_CONFLICT", "黑名单企业不能发布岗位")
-            if c.coop_status != "ACTIVE":
-                raise AppException("DATA_CONFLICT",
-                                   f"仅「合作中」企业可上架岗位（当前企业：{COOP_LABEL.get(c.coop_status)}）")
-            if p.allocated_count >= p.headcount:
-                raise AppException("DATA_CONFLICT", "岗位已满员，不能上架")
+            batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+            from app.modules.internship.services.internship_position_rights import (
+                evaluate_position_publishability)
+            rights = evaluate_position_publishability(
+                p, c, batch, operation="PUBLISH", db=db)
+            p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"
+            p.rights_checked_at = datetime.utcnow()
+            p.rights_rule_version = rights["ruleVersion"]
+            if not rights["passed"]:
+                reasons = [x["reason"] for x in rights["blockers"] + rights["unknowns"]]
+                raise AppException("DATA_CONFLICT", "岗位发布检查未通过：" + "；".join(reasons))
             p.status = "PUBLISHED"
             p.publish_at = datetime.utcnow()
         elif action == "OFFLINE":
@@ -283,7 +380,7 @@ def set_status(pos_id, action: str, reason: str = "") -> dict:
         _trail(db, p.id, f"STATUS_{action}", {"reason": reason, "to": p.status})
         db.commit()
         db.refresh(p)
-        return _row(p)
+        return _row(p, db)
 
 
 def mark_risk(pos_id, on: bool, note: str = "") -> dict:
@@ -304,7 +401,7 @@ def mark_risk(pos_id, on: bool, note: str = "") -> dict:
         _trail(db, p.id, "RISK_ON" if on else "RISK_OFF", {"note": note})
         db.commit()
         db.refresh(p)
-        return _row(p)
+        return _row(p, db)
 
 
 # ═══════════ 统计 ═══════════
@@ -382,9 +479,22 @@ def _company_import_block(c) -> str | None:
     return None
 
 
-def import_dry_run(rows: list[dict]) -> dict:
+def _nullable_bool(value):
+    if value is None or str(value).strip() == "":
+        return None
+    text = str(value).strip().lower()
+    if text in ("是", "true", "1", "y", "yes"):
+        return True
+    if text in ("否", "false", "0", "n", "no"):
+        return False
+    raise ValueError("须填写是/否")
+
+
+def import_dry_run(rows: list[dict], template_version=None) -> dict:
     """逐行预校验：title/company 必填；企业须存在且合作中；容量为正整数；批内+库内去重。"""
     with session() as db:
+        if template_version != "POSITION_IMPORT_V2":
+            raise AppException("VALIDATION_ERROR", "仅支持 POSITION_IMPORT_V2 模板")
         companies = db.scalars(select(EmpCompany).where(
             EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()
         existing = {(p.company_id, (p.title or "").strip().lower()) for p in db.scalars(
@@ -394,6 +504,10 @@ def import_dry_run(rows: list[dict]) -> dict:
         errors, seen, valid = [], set(), 0
         for i, r in enumerate(rows or []):
             row_no = i + 1
+            if (r.get("templateVersion") or "").strip() != "POSITION_IMPORT_V2":
+                errors.append({"rowNo": row_no, "field": "templateVersion",
+                               "message": "模板版本必须为 POSITION_IMPORT_V2"})
+                continue
             title = (r.get("title") or "").strip()
             key = (r.get("company") or "").strip()
             if not title:
@@ -410,6 +524,30 @@ def import_dry_run(rows: list[dict]) -> dict:
             blk = _company_import_block(c)
             if blk:
                 errors.append({"rowNo": row_no, "field": "company", "message": blk})
+                continue
+            batch_no = (r.get("batchNo") or "").strip()
+            batch = db.scalars(select(InternshipBatch).where(
+                InternshipBatch.tenant_id == _tid(), InternshipBatch.batch_no == batch_no,
+                InternshipBatch.is_deleted.is_(False))).first()
+            if not batch:
+                errors.append({"rowNo": row_no, "field": "batchNo", "message": "实习批次编号不存在"})
+                continue
+            for field in ("workContent", "dailyHours", "weeklyHours", "nightShift",
+                          "overtimeAllowed", "restDaysPerWeek", "remunerationType",
+                          "accommodationProvided", "mealProvided", "hazardousFlag"):
+                if r.get(field) is None or str(r.get(field)).strip() == "":
+                    errors.append({"rowNo": row_no, "field": field,
+                                   "message": f"{field} 为发布规则必填事实，不能留空"})
+            try:
+                for field in ("nightShift", "overtimeAllowed", "accommodationProvided",
+                              "mealProvided", "hazardousFlag"):
+                    _nullable_bool(r.get(field))
+                if float(r.get("dailyHours")) > 24 or float(r.get("weeklyHours")) > 168:
+                    raise ValueError("工时超出DTO范围")
+            except (TypeError, ValueError) as exc:
+                errors.append({"rowNo": row_no, "field": "rights",
+                               "message": f"劳动权益字段格式错误：{exc}"})
+            if any(x["rowNo"] == row_no for x in errors):
                 continue
             hc_raw = (r.get("headcount") or "1").strip() if isinstance(r.get("headcount"), str) else r.get("headcount")
             try:
@@ -432,8 +570,8 @@ def import_dry_run(rows: list[dict]) -> dict:
                 "invalidRows": len(errors), "errors": errors}
 
 
-def import_confirm(rows: list[dict]) -> dict:
-    pre = import_dry_run(rows)
+def import_confirm(rows: list[dict], template_version=None) -> dict:
+    pre = import_dry_run(rows, template_version)
     if pre["invalidRows"] > 0:
         raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")
     with session() as db:
@@ -441,22 +579,51 @@ def import_confirm(rows: list[dict]) -> dict:
             EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()
         created = 0
         for r in rows or []:
+            if (r.get("templateVersion") or "").strip() != "POSITION_IMPORT_V2":
+                raise AppException("DATA_CONFLICT", "确认导入时模板版本不匹配")
             key = (r.get("company") or "").strip()
             c = _resolve_company(companies, key)
+            if not c or _company_import_block(c):
+                raise AppException("DATA_CONFLICT", "确认导入时企业状态已变化")
+            batch = db.scalars(select(InternshipBatch).where(
+                InternshipBatch.tenant_id == _tid(),
+                InternshipBatch.batch_no == (r.get("batchNo") or "").strip(),
+                InternshipBatch.is_deleted.is_(False))).first()
+            if not batch:
+                raise AppException("DATA_CONFLICT", "确认导入时批次不存在")
+            duplicate = db.scalars(select(InternshipPosition.id).where(
+                InternshipPosition.tenant_id == _tid(),
+                InternshipPosition.company_id == c.id,
+                func.lower(InternshipPosition.title) == (r.get("title") or "").strip().lower(),
+                InternshipPosition.is_deleted.is_(False)).with_for_update()).first()
+            if duplicate:
+                raise AppException("DATA_CONFLICT", "确认导入时发现重复岗位")
             hc_raw = r.get("headcount") or 1
             hc = int(hc_raw) if str(hc_raw).isdigit() else 1
-            risk_on = str(r.get("riskFlag") or r.get("risk") or "").strip() in ("是", "true", "True", "1", "Y")
             p = InternshipPosition(
                 tenant_id=_tid(), company_id=c.id, company_name=c.name,
+                batch_id=batch.id,
                 title=(r.get("title") or "").strip(),
-                category=r.get("category") or None,
                 major_requirement=r.get("major") or None,
                 grade_requirement=r.get("grade") or None,
-                work_location=r.get("location") or None,
-                salary_range=r.get("salary") or None,
+                work_content=r.get("workContent") or None,
+                work_address=r.get("workAddress") or None,
+                work_location=r.get("workAddress") or None,
+                daily_hours=float(r["dailyHours"]), weekly_hours=float(r["weeklyHours"]),
+                shift_type=r.get("shiftType") or None,
+                night_shift=_nullable_bool(r.get("nightShift")),
+                overtime_allowed=_nullable_bool(r.get("overtimeAllowed")),
+                rest_days_per_week=float(r["restDaysPerWeek"]),
+                remuneration_type=r.get("remunerationType") or None,
+                remuneration_amount=float(r["remunerationAmount"]) if str(r.get("remunerationAmount") or "").strip() else None,
+                remuneration_cycle=r.get("remunerationCycle") or None,
+                accommodation_provided=_nullable_bool(r.get("accommodationProvided")),
+                meal_provided=_nullable_bool(r.get("mealProvided")),
+                hazardous_flag=_nullable_bool(r.get("hazardousFlag")),
+                special_equipment=r.get("specialEquipment") or None,
+                prohibited_reason=r.get("prohibitedReason") or None,
                 headcount=max(1, hc), status="DRAFT",
                 mentor_name=r.get("mentor") or None,
-                risk_flag=risk_on,
                 remark=r.get("remark") or None)
             db.add(p)
             db.flush()
@@ -466,20 +633,27 @@ def import_confirm(rows: list[dict]) -> dict:
         return {"created": created}
 
 
-def export_positions(keyword=None, status=None, company_id=None) -> dict:
+def export_positions(keyword=None, status=None, company_id=None, batch_id=None) -> dict:
     from app.services import xlsx_util
 
-    items, _ = list_positions(1, 100000, keyword=keyword, status=status, company_id=company_id)
-    headers = ["岗位名称", "关联企业", "岗位类型", "专业要求", "年级要求", "工作地点",
-               "容量", "薪资/补贴", "企业导师", "状态", "风险标记", "备注"]
+    items, _ = list_positions(1, 100000, keyword=keyword, status=status,
+                              company_id=company_id, batch_id=batch_id)
+    headers = ["批次ID", "岗位名称", "关联企业", "工作内容", "工作地址", "每日工时",
+               "每周工时", "班次", "是否夜班", "是否允许加班", "每周休息天数",
+               "报酬类型", "报酬金额", "发放周期", "是否住宿", "是否供餐",
+               "是否危险岗位", "特殊设备", "禁止安排原因", "容量", "专业要求",
+               "年级要求", "企业导师", "状态", "权益状态", "规则版本", "备注"]
     data_rows = []
     for it in items:
-        sal = it["salaryRange"] or it.get("subsidy") or ""
         data_rows.append([
-            it["title"], it["companyName"], it.get("category") or "",
-            it["majorRequirement"], it["gradeRequirement"], it["workLocation"],
-            it["headcount"], sal, it["mentorName"], it["statusLabel"],
-            "是" if it["riskFlag"] else "否", it.get("remark") or ""])
+            it["batchId"], it["title"], it["companyName"], it["workContent"] or "",
+            it["workAddress"] or "", it["dailyHours"], it["weeklyHours"], it["shiftType"] or "",
+            it["nightShift"], it["overtimeAllowed"], it["restDaysPerWeek"],
+            it["remunerationType"] or "", it["remunerationAmount"], it["remunerationCycle"] or "",
+            it["accommodationProvided"], it["mealProvided"], it["hazardousFlag"],
+            it["specialEquipment"] or "", it["prohibitedReason"] or "", it["headcount"],
+            it["majorRequirement"], it["gradeRequirement"], it["mentorName"], it["statusLabel"],
+            it["rightsStatus"], it["rightsRuleVersion"] or "", it.get("remark") or ""])
     user = get_current_user_ctx() or {}
     wm = (f"岗位实习中心·岗位库台账 · 导出人：{user.get('realName', '-')} · "
           f"{datetime.now():%Y-%m-%d %H:%M}")

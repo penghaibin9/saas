@@ -74,15 +74,21 @@ def _archive_row(db, rec_id):
         InternshipArchive.is_deleted.is_(False))).first()
 
 
-def _row(db, r, stu):
+def _row(db, r, stu, user=None):
     mats = _materials(db, r.id)
-    pct, missing = _completeness(mats)
+    from app.modules.internship.services.internship_compliance_service import (
+        evaluate_internship_compliance)
+    evaluation = evaluate_internship_compliance(r.id, "ARCHIVE", user=user, db=db)
+    pct = round(float(evaluation["completeness"]["ratio"]) * 100)
+    missing = [item["label"] for item in evaluation["blockers"]]
     arch = _archive_row(db, r.id)
     return {
         "id": str(r.id), "studentName": stu.real_name if stu else "-",
         "studentNo": stu.student_no if stu else "-", "advisorName": r.advisor_name or "",
         "enterpriseName": r.enterprise_name or "", "recordStatus": r.status,
         "completeness": pct, "missing": missing, "materials": mats,
+        "quantityFacts": evaluation.get("quantityFacts"),
+        "archivePassed": evaluation["passed"], "ruleVersion": evaluation["ruleVersion"],
         "archived": bool(arch and arch.status == "ARCHIVED"),
         "archivedAt": _iso(arch.archived_at) if arch else "",
         "packageReady": bool(arch and arch.package_file_id),
@@ -118,7 +124,7 @@ def list_by_student(page, page_size, keyword=None, batch_id=None, only_incomplet
         for r, stu in pairs:
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
                 continue
-            row = _row(db, r, stu)
+            row = _row(db, r, stu, user)
             if only_incomplete and row["completeness"] >= 100:
                 continue
             items.append(row)
@@ -136,7 +142,7 @@ def get_archive(internship_id, user=None) -> dict:
         stu = db.get(StudentProfile, r.student_id)
         if not in_scope(scope, db, r, stu):
             raise no_permission("该学生不在你的数据范围内")
-        row = _row(db, r, stu)
+        row = _row(db, r, stu, user)
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "ARCHIVE",
             InternshipAuditTrail.target_id == r.id).order_by(InternshipAuditTrail.id)).all()
@@ -173,33 +179,25 @@ def archive_student(user, internship_id, force=False, expected_version=None,
             raise no_permission("只能归档本人数据范围内的学生")
         mats = _materials(db, r.id)
         pct, missing = _completeness(mats)
-        if pct < 100 and not force:
-            raise AppException("DATA_CONFLICT", f"材料不完整（缺：{'、'.join(missing)}），"
-                               f"如需带缺失归档请确认强制归档")
-        # P0-11：开放高风险 / 待批周报阻断普通归档
-        open_high = db.scalar(select(func.count()).select_from(RiskRecord).where(
-            RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == r.id,
-            RiskRecord.is_deleted.is_(False), RiskRecord.risk_level == "HIGH",
-            RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")))) or 0
-        if open_high and not force:
-            raise AppException("DATA_CONFLICT", "存在未关闭的高风险，请先处置后再归档（或强制归档）")
-        pending_wr = db.scalar(select(func.count()).select_from(WeeklyReport).where(
-            WeeklyReport.tenant_id == _tid(), WeeklyReport.internship_id == r.id,
-            WeeklyReport.is_deleted.is_(False), WeeklyReport.status == "PENDING_REVIEW")) or 0
-        if pending_wr and not force:
-            raise AppException("DATA_CONFLICT", "存在待批周报，请先批阅后再归档（或强制归档）")
-        bypassed = []
-        if pct < 100:
-            bypassed.extend([f"材料缺失:{item}" for item in missing])
-        if open_high:
-            bypassed.append(f"未关闭高风险:{int(open_high)}")
-        if pending_wr:
-            bypassed.append(f"待批周报:{int(pending_wr)}")
-        from app.modules.internship.services.internship_compliance_rules import rule_version_label
-        batch = db.get(InternshipBatch, r.batch_id) if r.batch_id else None
+        from app.modules.internship.services.internship_compliance_service import (
+            evaluate_internship_compliance)
+        evaluation = evaluate_internship_compliance(
+            r.id, "ARCHIVE", user=user, db=db)
+        pct = round(float(evaluation["completeness"]["ratio"]) * 100)
+        missing = [item["label"] for item in evaluation["blockers"]]
+        if not evaluation["passed"] and not force:
+            raise AppException(
+                "DATA_CONFLICT", "归档合规检查未通过",
+                details={"blockers": evaluation["blockers"],
+                         "ruleVersion": evaluation["ruleVersion"],
+                         "quantityFacts": evaluation.get("quantityFacts")})
+        bypassed = [{
+            "code": item["code"], "label": item["label"],
+            "status": item["status"], "reason": item["reason"],
+        } for item in evaluation["blockers"]]
         force_meta = {
             "force_bypassed_items": bypassed if force else None,
-            "force_rule_version": rule_version_label(batch) if force else None,
+            "force_rule_version": evaluation["ruleVersion"] if force else None,
             "force_approved_role": ((user or {}).get("currentRoleCode") or "") if force else None,
             "force_approved_by": _op_name(user) if force else None,
         }
@@ -247,7 +245,13 @@ def archive_student(user, internship_id, force=False, expected_version=None,
             for key, value in force_meta.items():
                 setattr(arch, key, value)
         db.flush()
+        snapshot = {**mats, "quantityFacts": evaluation.get("quantityFacts"),
+                    "ruleVersion": evaluation["ruleVersion"],
+                    "items": evaluation["items"]}
+        arch.material_snapshot = snapshot
         _trail(db, r.id, "ARCHIVE", {"completeness": pct, "missing": missing, "force": force,
+                                     "ruleVersion": evaluation["ruleVersion"],
+                                     "blockers": bypassed,
                                      "forceReason": (force_reason or "").strip(),
                                      "evidenceFileIds": evidence_file_ids or []},
                operator=_op_name(user))

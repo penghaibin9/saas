@@ -22,19 +22,21 @@ from app.services import audit_log
 from app.modules.internship.services import internship_position_service as pos
 from app.services import xlsx_util
 
-_POS_XLSX_HEADERS = ["岗位名称", "关联企业", "岗位类型", "专业要求", "年级要求", "工作地点",
-                     "容量", "薪资/补贴", "企业导师", "状态", "风险标记", "备注"]
-_POS_XLSX_MAP = {"岗位名称": "title", "关联企业": "company", "岗位类型": "category",
-                 "专业要求": "major", "年级要求": "grade", "工作地点": "location",
-                 "容量": "headcount", "薪资/补贴": "salary", "企业导师": "mentor",
-                 "状态": "status", "风险标记": "riskFlag", "备注": "remark"}
+_POS_XLSX_HEADERS = [
+    "模板版本", "实习批次编号", "岗位名称", "企业信用代码/企业名称", "工作内容", "工作地址",
+    "每日工时", "每周工时", "班次", "是否夜班", "是否允许加班", "每周休息天数",
+    "报酬类型", "报酬金额", "发放周期", "是否住宿", "是否供餐", "是否危险岗位",
+    "特殊设备", "禁止安排原因", "容量", "专业要求", "年级要求", "企业导师", "备注"]
+_POS_XLSX_MAP = dict(zip(_POS_XLSX_HEADERS, [
+    "templateVersion", "batchNo", "title", "company", "workContent", "workAddress",
+    "dailyHours", "weeklyHours", "shiftType", "nightShift", "overtimeAllowed",
+    "restDaysPerWeek", "remunerationType", "remunerationAmount", "remunerationCycle",
+    "accommodationProvided", "mealProvided", "hazardousFlag", "specialEquipment",
+    "prohibitedReason", "headcount", "major", "grade", "mentor", "remark"]))
 
 
 def _pos_row_values(r: dict) -> list:
-    return [r.get("title", ""), r.get("company", ""), r.get("category", ""),
-            r.get("major", ""), r.get("grade", ""), r.get("location", ""),
-            r.get("headcount", ""), r.get("salary", ""), r.get("mentor", ""),
-            r.get("status", ""), r.get("riskFlag", ""), r.get("remark", "")]
+    return [r.get(key, "") for key in _POS_XLSX_MAP.values()]
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-岗位库"])
 
@@ -61,19 +63,24 @@ def position_stats(user=Depends(require_permission(_P_VIEW))):
 
 @router.post("/positions/import/dry-run", summary="岗位导入·预校验（高级粘贴/Excel 共用，不写库）")
 def position_import_dry_run(body: PositionImport, user=Depends(require_permission(_P_MANAGE))):
-    return success(pos.import_dry_run(body.rows))
+    return success(pos.import_dry_run(body.rows, body.templateVersion))
 
 
 @router.get("/positions/import/template", summary="岗位库导入·下载 Excel 模板(.xlsx)")
 def position_import_template(user=Depends(require_permission(_P_MANAGE))):
     data = xlsx_util.build_template_xlsx(
         _POS_XLSX_HEADERS,
-        required=["岗位名称", "关联企业"],
+        required=["模板版本", "实习批次编号", "岗位名称", "企业信用代码/企业名称",
+                  "工作内容", "每日工时", "每周工时", "是否夜班", "是否允许加班",
+                  "每周休息天数", "报酬类型", "是否住宿", "是否供餐", "是否危险岗位", "容量"],
         samples=[
-            ["前端开发实习生", "华信智能科技有限公司", "技术岗", "软件技术", "2024级", "上海浦东", "3", "3k-4k", "李导师", "草稿", "否", ""],
+            ["POSITION_IMPORT_V2", "2026-SPRING", "前端开发实习生", "华信智能科技有限公司",
+             "参与前端功能开发与测试", "上海浦东", "8", "40", "DAY", "否", "否", "2",
+             "MONTHLY", "3500", "MONTHLY", "否", "是", "否", "", "", "3",
+             "软件技术", "2024级", "李导师", ""],
         ],
         notes=[
-            "1. 只导入「导入模板」页；关联企业填企业全称或统一社会信用代码（须已在企业库且合作中）。",
+            "1. 模板版本固定 POSITION_IMPORT_V2；旧模板不会被静默导入。",
             "2. 黑名单/停用企业不能导入岗位；容量须为正整数。",
             "3. 导入后岗位默认为草稿态，须走审核上架流程。",
         ])
@@ -87,8 +94,8 @@ def position_import_template(user=Depends(require_permission(_P_MANAGE))):
 async def position_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_P_MANAGE))):
     content = await file.read()
     rows = xlsx_util.read_xlsx(content, _POS_XLSX_MAP)
-    dry = pos.import_dry_run(rows)
-    return success({"rows": rows, **dry})
+    dry = pos.import_dry_run(rows, "POSITION_IMPORT_V2")
+    return success({"templateVersion": "POSITION_IMPORT_V2", "rows": rows, **dry})
 
 
 @router.post("/positions/import/errors-xlsx", summary="岗位库导入·下载错误行 Excel")
@@ -101,15 +108,17 @@ def position_import_errors_xlsx(body: PositionImportErrors, user=Depends(require
 
 @router.post("/positions/import/confirm", summary="岗位导入·确认（整批事务，预校验须全通过）")
 def position_import_confirm(body: PositionImport, user=Depends(require_permission(_P_MANAGE))):
-    result = pos.import_confirm(body.rows)
+    result = pos.import_confirm(body.rows, body.templateVersion)
     audit_log.record("导入岗位库", "internship-position:import", detail=result)
     return success(result, message="导入完成")
 
 
 @router.post("/positions/export", summary="岗位库导出 Excel 台账（写审计）")
 def position_export(keyword: Optional[str] = None, status: Optional[str] = None,
-                    companyId: Optional[str] = None, user=Depends(require_permission(_P_EXPORT))):
-    data = pos.export_positions(keyword=keyword, status=status, company_id=companyId)
+                    companyId: Optional[str] = None, batchId: Optional[str] = None,
+                    user=Depends(require_permission(_P_EXPORT))):
+    data = pos.export_positions(keyword=keyword, status=status, company_id=companyId,
+                                batch_id=batchId)
     audit_log.record("导出岗位库", "internship-position:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 

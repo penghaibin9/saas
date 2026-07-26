@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from contextlib import nullcontext
 
 from sqlalchemy import func, select
 
@@ -10,7 +11,8 @@ from app.models import (
     InternshipAgreement, InternshipBatch, InternshipComplianceExemption, InternshipConsent,
     InternshipEmergencyPlan, InternshipInsurance, InternshipPosition, InternshipRecord,
     InternshipSafetyCompletion, InternshipSpecialFiling, InternshipIncident,
-    StudentProfile,
+    StudentProfile, EmpCompany, RiskRecord, InternshipEnterpriseEval,
+    InternshipStudentEval, InternshipFinalScore,
 )
 from app.modules.internship.services.internship_compliance_rules import (
     get_batch_compliance_rules, rule_version_label,
@@ -18,7 +20,7 @@ from app.modules.internship.services.internship_compliance_rules import (
 from app.modules.internship.services.internship_enterprise_inspection_service import (
     is_enterprise_access_valid,
 )
-from app.modules.internship.services.internship_position_rights import evaluate_position_compliance
+from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
 from app.services.db_service import _as_id, _tid, session
 
 
@@ -32,7 +34,7 @@ def _pick(rows, statuses):
     return None
 
 
-def _item(code, cfg, status, reason="", evidence=None, route=""):
+def _item(code, cfg, status, reason="", evidence=None, route="", evidence_version=None):
     required = bool(cfg.get("required"))
     applicable = status != "NOT_APPLICABLE"
     return {
@@ -43,14 +45,18 @@ def _item(code, cfg, status, reason="", evidence=None, route=""):
         "severity": cfg.get("severity", "WARN"),
         "status": status,
         "evidenceId": str(evidence) if evidence else None,
-        "evidenceVersion": None,
+        "evidenceVersion": evidence_version,
         "reason": reason,
         "route": route,
     }
 
 
-def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None):
-    with session() as db:
+def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None, db=None):
+    operation = str(operation or "").upper()
+    allowed = {"ONBOARD", "CONTINUE", "ASSESS", "ARCHIVE", "BATCH_CLOSE"}
+    if operation not in allowed:
+        raise AppException("VALIDATION_ERROR", "operation 必须为 ONBOARD/CONTINUE/ASSESS/ARCHIVE/BATCH_CLOSE")
+    with (session() if db is None else nullcontext(db)) as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
         rec = assert_internship_record_scope(db, internship_id, user, "合规评估")
         batch = db.get(InternshipBatch, rec.batch_id) if rec.batch_id else None
@@ -68,8 +74,22 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
                 InternshipComplianceExemption.is_deleted.is_(False),
             )).first()
             if ex and (not ex.valid_until or ex.valid_until >= datetime.utcnow()):
-                return "VALID", "已获有效豁免", ex.id
+                return "EXEMPTED", "已获有效豁免", ex.id
             return status, reason, evidence
+
+        base_cfg = {"required": True, "severity": "BLOCK"}
+        items.append(_item(
+            "eligibility", {**base_cfg, "label": "实习资格"},
+            "VALID" if rec.eligibility_status == "QUALIFIED" else "MISSING",
+            "" if rec.eligibility_status == "QUALIFIED" else "实习资格未认定合格"))
+        items.append(_item(
+            "enterprise", {**base_cfg, "label": "实习企业"},
+            "VALID" if rec.enterprise_id else "MISSING",
+            "" if rec.enterprise_id else "未落实实习企业"))
+        items.append(_item(
+            "position", {**base_cfg, "label": "实习岗位"},
+            "VALID" if rec.position_id else "MISSING",
+            "" if rec.position_id else "未分配实习岗位"))
 
         # 1 企业准入
         cfg = rules["enterpriseAccess"]
@@ -227,9 +247,13 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
                                "NOT_APPLICABLE" if not pos or not cfg.get("required") else "MISSING",
                                "未分配岗位" if not pos else "规则未要求"))
         else:
-            rights = evaluate_position_compliance(pos, stu, rules)
+            company = db.get(EmpCompany, pos.company_id) if pos else None
+            rights = evaluate_position_publishability(
+                pos, company, batch, stu, operation=operation, db=db)
             status = "VALID" if rights.get("passed") else "REJECTED"
-            reason = "；".join(rights.get("blockers") or [])
+            reason = "；".join(
+                x["reason"] for x in
+                (rights.get("blockers") or []) + (rights.get("unknowns") or []))
             status, reason, evid = apply_exemption("workRights", status, reason, None)
             items.append(_item("workRights", cfg, status, reason, evid))
 
@@ -259,17 +283,67 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
             status, reason, evid = apply_exemption("advisor", status, reason, evid)
             items.append(_item("advisor", cfg, status, reason, evid))
 
+        quantities = None
+        if operation in ("ASSESS", "ARCHIVE", "BATCH_CLOSE"):
+            from app.modules.internship.services.internship_compliance_facts import (
+                material_quantity_facts)
+            quantities = material_quantity_facts(db, rec, batch)
+            for code, label in (
+                ("weekly", "周报要求"), ("checkin", "打卡要求"),
+                ("guidance", "指导次数"), ("visit", "巡访次数"),
+            ):
+                fact = quantities[code]
+                items.append(_item(
+                    code, {"label": label, "required": True, "severity": "BLOCK"},
+                    fact["status"],
+                    "" if fact["status"] == "VALID"
+                    else f"应有 {fact['expected']}，有效 {fact['actual']}，缺 {fact['missing']}"))
+            open_incidents = int(db.scalar(select(func.count()).select_from(InternshipIncident).where(
+                InternshipIncident.tenant_id == _tid(),
+                InternshipIncident.internship_id == rec.id,
+                InternshipIncident.status != "CLOSED",
+                InternshipIncident.is_deleted.is_(False))) or 0)
+            items.append(_item(
+                "openIncident", {"label": "开放事故", "required": True, "severity": "BLOCK"},
+                "VALID" if open_incidents == 0 else "MISSING",
+                "" if open_incidents == 0 else f"存在 {open_incidents} 个未关闭事故"))
+            open_high = int(db.scalar(select(func.count()).select_from(RiskRecord).where(
+                RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == rec.id,
+                RiskRecord.risk_level == "HIGH",
+                RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
+                RiskRecord.is_deleted.is_(False))) or 0)
+            items.append(_item(
+                "openHighRisk", {"label": "开放高风险", "required": True, "severity": "BLOCK"},
+                "VALID" if open_high == 0 else "MISSING",
+                "" if open_high == 0 else f"存在 {open_high} 个开放高风险"))
+        if operation in ("ARCHIVE", "BATCH_CLOSE"):
+            checks = (
+                ("enterpriseEval", "企业评价", InternshipEnterpriseEval,
+                 InternshipEnterpriseEval.school_review_status == "APPROVED"),
+                ("studentEval", "学生自评", InternshipStudentEval,
+                 InternshipStudentEval.submit_status == "SUBMITTED"),
+                ("score", "实习成绩", InternshipFinalScore,
+                 InternshipFinalScore.status == "PUBLISHED"),
+            )
+            for code, label, model, condition in checks:
+                count = int(db.scalar(select(func.count()).select_from(model).where(
+                    model.tenant_id == _tid(), model.internship_id == rec.id,
+                    condition, model.is_deleted.is_(False))) or 0)
+                items.append(_item(
+                    code, {"label": label, "required": True, "severity": "BLOCK"},
+                    "VALID" if count else "MISSING", "" if count else f"缺少{label}"))
+
         blockers = [
             x for x in items
             if x["required"] and x["applicable"] and x["severity"] == "BLOCK"
-            and x["status"] not in ("VALID", "NOT_APPLICABLE")
+            and x["status"] not in ("VALID", "EXEMPTED", "NOT_APPLICABLE")
         ]
         warnings = [
             x for x in items
-            if x["applicable"] and x["status"] not in ("VALID", "NOT_APPLICABLE") and x not in blockers
+            if x["applicable"] and x["status"] not in ("VALID", "EXEMPTED", "NOT_APPLICABLE") and x not in blockers
         ]
         applicable = [x for x in items if x["applicable"] and x["required"]]
-        done = [x for x in applicable if x["status"] == "VALID"]
+        done = [x for x in applicable if x["status"] in ("VALID", "EXEMPTED")]
         return {
             "passed": not blockers,
             "score": None,
@@ -284,6 +358,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
             "ruleVersion": version,
             "evaluatedAt": datetime.utcnow().isoformat() + "Z",
             "operation": operation,
+            "quantityFacts": quantities,
         }
 
 
@@ -382,23 +457,75 @@ def batch_compliance_stats(batch_id, user=None):
             InternshipRecord.is_deleted.is_(False),
         )
         rows = db.scalars(apply_internship_record_scope(query, user)).all()
-        ids = [r.id for r in rows]
-    results = [evaluate_internship_compliance(i, "BATCH_CLOSE", user) for i in ids]
-    blocked_ids = [str(i) for i, r in zip(ids, results) if not r["passed"]]
-    missing = {}
-    for r in results:
-        for it in r["blockers"]:
-            missing[it["code"]] = missing.get(it["code"], 0) + 1
-    return {
-        "batchId": str(batch_id),
-        "total": len(results),
-        "canOnboard": sum(1 for x in results if x["passed"]),
-        "blocked": len(blocked_ids),
-        "blockedInternshipIds": blocked_ids[:100],
-        "missingByCode": missing,
-        "ruleVersion": results[0]["ruleVersion"] if results else None,
-        "workflowCounts": _workflow_counts(batch_id, ids, user),
-    }
+        evaluated_at = datetime.utcnow().isoformat() + "Z"
+        entries, by_code = [], {}
+        for rec in rows:
+            onboard = evaluate_internship_compliance(rec.id, "ONBOARD", user=user, db=db)
+            archive = evaluate_internship_compliance(rec.id, "ARCHIVE", user=user, db=db)
+            stu = db.get(StudentProfile, rec.student_id)
+            codes = sorted({x["code"] for x in onboard["blockers"]})
+            archive_codes = sorted({x["code"] for x in archive["blockers"]})
+            entry = {
+                "internshipId": str(rec.id), "studentId": str(rec.student_id),
+                "studentNo": stu.student_no if stu else "", "studentName": stu.real_name if stu else "",
+                "classId": str(stu.class_id or "") if stu else "",
+                "advisorName": rec.advisor_name or "", "recordStatus": rec.status,
+                "onboardPassed": onboard["passed"], "archivePassed": archive["passed"],
+                "blockerCodes": codes, "archiveBlockerCodes": archive_codes,
+                "blockers": onboard["blockers"], "route": f"/admin/internship/students/{rec.id}",
+            }
+            entries.append(entry)
+            for code in set(codes + archive_codes):
+                by_code.setdefault(code, []).append(entry)
+        labels = {
+            "enterpriseAccess": "缺企业准入", "studentConsent": "缺学生知情",
+            "guardianConsent": "缺监护人确认", "safetyEducation": "缺安全教育",
+            "agreement": "缺协议", "insurance": "缺保险",
+            "specialFiling": "缺特殊备案", "workRights": "岗位权益不合规",
+            "emergency": "缺应急预案", "openIncident": "开放事故",
+            "openHighRisk": "开放高风险",
+        }
+        metrics = [
+            {"metricCode": "TOTAL", "metricLabel": "批次总人数", "count": len(entries),
+             "drilldownFilter": "ALL"},
+            {"metricCode": "ONBOARD_READY", "metricLabel": "可上岗",
+             "count": sum(1 for x in entries if x["onboardPassed"]),
+             "drilldownFilter": "ONBOARD_READY"},
+            {"metricCode": "BLOCKED", "metricLabel": "被阻断",
+             "count": sum(1 for x in entries if not x["onboardPassed"]),
+             "drilldownFilter": "BLOCKED"},
+        ]
+        metrics.extend({
+            "metricCode": code, "metricLabel": label, "count": len(by_code.get(code, [])),
+            "drilldownFilter": code,
+        } for code, label in labels.items())
+        metrics.extend([
+            {"metricCode": "ARCHIVE_READY", "metricLabel": "可归档",
+             "count": sum(1 for x in entries if x["archivePassed"]),
+             "drilldownFilter": "ARCHIVE_READY"},
+            {"metricCode": "ARCHIVE_BLOCKED", "metricLabel": "不可归档",
+             "count": sum(1 for x in entries if not x["archivePassed"]),
+             "drilldownFilter": "ARCHIVE_BLOCKED"},
+        ])
+        version = (evaluate_internship_compliance(
+            rows[0].id, "ONBOARD", user=user, db=db)["ruleVersion"] if rows else None)
+        for metric in metrics:
+            metric["ruleVersion"] = version
+            metric["evaluatedAt"] = evaluated_at
+        drilldowns = {
+            "ALL": entries,
+            "ONBOARD_READY": [x for x in entries if x["onboardPassed"]],
+            "BLOCKED": [x for x in entries if not x["onboardPassed"]],
+            "ARCHIVE_READY": [x for x in entries if x["archivePassed"]],
+            "ARCHIVE_BLOCKED": [x for x in entries if not x["archivePassed"]],
+            **by_code,
+        }
+        return {
+            "batchId": str(batch_id), "total": len(entries),
+            "metrics": metrics, "drilldowns": drilldowns,
+            "missingByCode": {code: len(values) for code, values in by_code.items()},
+            "ruleVersion": version, "evaluatedAt": evaluated_at,
+        }
 
 
 def _workflow_counts(batch_id, scoped_ids, user=None):

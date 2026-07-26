@@ -64,11 +64,15 @@ export const positionApi = {
   },
 
   importPositionsDryRun(rows) {
-    return call(() => request('/internship/positions/import/dry-run', { method: 'POST', body: { rows } }))
+    return call(() => request('/internship/positions/import/dry-run', {
+      method: 'POST', body: { templateVersion: 'POSITION_IMPORT_V2', rows }
+    }))
   },
 
   importPositionsConfirm(rows) {
-    return call(() => request('/internship/positions/import/confirm', { method: 'POST', body: { rows } }))
+    return call(() => request('/internship/positions/import/confirm', {
+      method: 'POST', body: { templateVersion: 'POSITION_IMPORT_V2', rows }
+    }))
   },
 
   exportPositions(params = {}) {

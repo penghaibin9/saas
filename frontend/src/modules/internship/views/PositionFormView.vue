@@ -82,9 +82,36 @@
 
         <!-- 待遇信息 -->
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">待遇信息</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">工作内容与地址</span></div>
+          <div class="mp-card__body pf-grid">
+            <AppFormItem class="pf-grid__full" label="工作内容" prop="workContent" required>
+              <AppTextarea v-model="form.workContent" :rows="4" :disabled="readonly" />
+            </AppFormItem>
+            <AppFormItem class="pf-grid__full" label="工作地址"><AppTextInput v-model="form.workAddress" :disabled="readonly" /></AppFormItem>
+          </div>
+        </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head"><span class="mp-card__title">工时与班次</span></div>
+          <div class="mp-card__body pf-grid">
+            <AppFormItem label="每日工时"><AppNumberInput v-model="form.dailyHours" :min="0" :max="24" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="每周工时"><AppNumberInput v-model="form.weeklyHours" :min="0" :max="168" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="班次"><AppTextInput v-model="form.shiftType" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="每周休息"><AppNumberInput v-model="form.restDaysPerWeek" :min="0" :max="7" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="是否夜班"><AppRadioGroup v-model="form.nightShift" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="允许加班"><AppRadioGroup v-model="form.overtimeAllowed" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
+          </div>
+        </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head"><span class="mp-card__title">报酬与食宿条件</span></div>
           <div class="mp-card__body">
             <div class="pf-grid">
+              <AppFormItem label="报酬类型"><AppSelect v-model="form.remunerationType" :options="remunerationOptions" :disabled="readonly" /></AppFormItem>
+              <AppFormItem label="报酬金额"><AppNumberInput v-model="form.remunerationAmount" :min="0" :disabled="readonly" /></AppFormItem>
+              <AppFormItem label="发放周期"><AppSelect v-model="form.remunerationCycle" :options="cycleOptions" :disabled="readonly" /></AppFormItem>
+              <AppFormItem label="提供住宿"><AppRadioGroup v-model="form.accommodationProvided" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
+              <AppFormItem label="提供餐食"><AppRadioGroup v-model="form.mealProvided" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
               <AppFormItem label="工作地点" prop="workLocation">
                 <AppTextInput v-model="form.workLocation" :disabled="readonly" placeholder="如：深圳市南山区科技园" />
               </AppFormItem>
@@ -104,6 +131,22 @@
             </div>
           </div>
         </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head"><span class="mp-card__title">风险与特殊设备</span></div>
+          <div class="mp-card__body pf-grid">
+            <AppFormItem label="危险岗位"><AppRadioGroup v-model="form.hazardousFlag" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="特殊设备"><AppTextInput v-model="form.specialEquipment" :disabled="readonly" /></AppFormItem>
+            <AppFormItem class="pf-grid__full" label="禁止安排说明"><AppTextarea v-model="form.prohibitedReason" :rows="2" :disabled="readonly" /></AppFormItem>
+          </div>
+        </section>
+
+        <AppInlineAlert
+          v-if="detail?.compliance"
+          :type="detail.publishable ? 'success' : 'warning'"
+          :title="detail.publishable ? '当前岗位可发布' : '当前岗位不可发布'"
+          :description="complianceDescription"
+        />
 
         <!-- 企业导师（仅新建：沿用原抽屉口径，编辑态隐藏导师字段） -->
         <section v-if="!isEdit" class="mp-card">
@@ -161,15 +204,22 @@ import { ModulePageShell, LoadingState, ErrorState } from '@/components/business
 import { AppButton } from '@/components/ui'
 import {
   AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-  AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips
+  AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips,
+  AppSelect, AppRadioGroup
 } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const blankForm = () => ({
   companyId: '', title: '', majorRequirement: '', gradeRequirement: '',
-  workLocation: '', salaryRange: '', subsidy: '', headcount: 1, mentorContactId: '', remark: ''
+  workLocation: '', salaryRange: '', subsidy: '', headcount: 1, mentorContactId: '', remark: '',
+  workContent: '', workAddress: '', dailyHours: null, weeklyHours: null, shiftType: '',
+  nightShift: null, overtimeAllowed: null, restDaysPerWeek: null,
+  remunerationType: '', remunerationAmount: null, remunerationCycle: '',
+  accommodationProvided: null, mealProvided: null, hazardousFlag: null,
+  specialEquipment: '', prohibitedReason: ''
 })
 
 // 岗位福利快捷标签（20-岗位实习预设便捷字段与提示词.md §5），点击追加进「补贴」字段
@@ -183,7 +233,8 @@ export default {
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
-    AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips
+    AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips,
+    AppSelect, AppRadioGroup
   },
   data() {
     return {
@@ -212,6 +263,20 @@ export default {
     readonly() {
       return this.isEdit && !!this.detail && this.detail.status === 'ARCHIVED'
     },
+    batchStore() { return useInternshipBatchStore() },
+    triStateOptions() {
+      return [{ label: '未知', value: null }, { label: '是', value: true }, { label: '否', value: false }]
+    },
+    remunerationOptions() {
+      return ['HOURLY', 'MONTHLY', 'DAILY', 'ALLOWANCE', 'UNPAID', 'OTHER'].map((value) => ({ label: value, value }))
+    },
+    cycleOptions() {
+      return ['MONTHLY', 'WEEKLY', 'DAILY', 'ON_COMPLETION', 'OTHER'].map((value) => ({ label: value, value }))
+    },
+    complianceDescription() {
+      const c = this.detail?.compliance || {}
+      return `阻断 ${c.blockers?.length || 0} 项，未知 ${c.unknowns?.length || 0} 项，警告 ${c.warnings?.length || 0} 项；规则 ${c.ruleVersion || '-'}。保存成功不代表已合规。`
+    },
     companyPresetOpts() {
       // 编辑态回显：把当前岗位所属企业预置进选择器本地选项缓存（合法本地预置，不是一次性全量加载）
       if (!this.isEdit || !this.detail || !this.detail.companyId) return []
@@ -229,6 +294,7 @@ export default {
     formRules() {
       const rules = {
         title: [{ required: true, message: '岗位名称必填' }],
+        workContent: [{ required: true, message: '工作内容必填' }],
         headcount: [
           { required: true, message: '容量至少 1' },
           { validator: (v) => (Number(v) >= 1 ? true : '容量至少 1') }
@@ -299,6 +365,14 @@ export default {
         headcount: d.headcount || 1,
         mentorContactId: '', // 编辑态隐藏导师字段（口径同原抽屉），不回填不提交
         remark: d.remark || ''
+        ,workContent: d.workContent || '', workAddress: d.workAddress || '',
+        dailyHours: d.dailyHours, weeklyHours: d.weeklyHours, shiftType: d.shiftType || '',
+        nightShift: d.nightShift, overtimeAllowed: d.overtimeAllowed,
+        restDaysPerWeek: d.restDaysPerWeek, remunerationType: d.remunerationType || '',
+        remunerationAmount: d.remunerationAmount, remunerationCycle: d.remunerationCycle || '',
+        accommodationProvided: d.accommodationProvided, mealProvided: d.mealProvided,
+        hazardousFlag: d.hazardousFlag, specialEquipment: d.specialEquipment || '',
+        prohibitedReason: d.prohibitedReason || ''
       }
     },
     async onCompanyChange() {
@@ -320,7 +394,17 @@ export default {
         subsidy: (f.subsidy || '').trim(),
         headcount: Number(f.headcount || 1),
         remark: (f.remark || '').trim()
+        ,workContent: (f.workContent || '').trim(), workAddress: (f.workAddress || '').trim() || null,
+        dailyHours: f.dailyHours, weeklyHours: f.weeklyHours, shiftType: (f.shiftType || '').trim() || null,
+        nightShift: f.nightShift, overtimeAllowed: f.overtimeAllowed,
+        restDaysPerWeek: f.restDaysPerWeek, remunerationType: f.remunerationType || null,
+        remunerationAmount: f.remunerationAmount, remunerationCycle: f.remunerationCycle || null,
+        accommodationProvided: f.accommodationProvided, mealProvided: f.mealProvided,
+        hazardousFlag: f.hazardousFlag, specialEquipment: (f.specialEquipment || '').trim() || null,
+        prohibitedReason: (f.prohibitedReason || '').trim() || null
       }
+      body.batchId = this.detail?.batchId || this.batchStore.selectedBatchId || null
+      if (this.isEdit) body.expectedVersion = this.detail.version
       if (!this.isEdit) {
         body.companyId = f.companyId
         body.mentorContactId = f.mentorContactId || null
@@ -331,7 +415,7 @@ export default {
           ? await positionApi.updatePosition(this.$route.params.id, body)
           : await positionApi.createPosition(body)
         if (res.code === 0) {
-          toast.success(this.isEdit ? '已保存并写入留痕' : '已新增岗位（草稿态）并写入留痕')
+          toast.success(this.isEdit ? '已保存；权益字段将重新评估，保存不代表已合规' : '已新增岗位草稿；保存不代表可发布')
           this.goBack()
         } else {
           toast.error(res.message || '保存失败')

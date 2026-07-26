@@ -486,23 +486,14 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
         raise not_found("岗位所属企业不存在")
     if c.blacklist or c.coop_status == "BLACKLIST":
         raise AppException("DATA_CONFLICT", "黑名单企业岗位不可分配学生")
-    from app.modules.internship.services.internship_compliance_rules import get_batch_compliance_rules
-    from app.modules.internship.services.internship_enterprise_inspection_service import is_enterprise_access_valid
-    from app.modules.internship.services.internship_position_rights import evaluate_position_compliance
+    from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
     batch = db.get(InternshipBatch, r.batch_id) if r.batch_id else None
-    compliance_rules = get_batch_compliance_rules(db, batch)
-    ea = compliance_rules.get("enterpriseAccess") or {}
-    if ea.get("required"):
-        access_ok, access_reason = is_enterprise_access_valid(db, c.id, compliance_rules)
-        if not access_ok:
-            raise AppException("DATA_CONFLICT", f"企业准入未通过：{access_reason}")
-    wr = compliance_rules.get("workRights") or {}
-    if wr.get("required"):
-        rights = evaluate_position_compliance(p, None, compliance_rules)
-        if rights["blockers"]:
-            raise AppException("DATA_CONFLICT", "岗位劳动权益不合规：" + "；".join(rights["blockers"]))
-    elif p.prohibited_reason:
-        raise AppException("DATA_CONFLICT", f"岗位禁止安排：{p.prohibited_reason}")
+    stu = db.get(StudentProfile, r.student_id)
+    rights = evaluate_position_publishability(
+        p, c, batch, stu, operation="ASSIGN", db=db)
+    if not rights["passed"]:
+        reasons = [x["reason"] for x in rights["blockers"] + rights["unknowns"]]
+        raise AppException("DATA_CONFLICT", "岗位劳动权益不合规：" + "；".join(reasons))
     old_id = r.position_id
     for lid in sorted({i for i in (old_id, p.id) if i}):
         db.execute(text(
@@ -590,18 +581,23 @@ def _onboard_rules(db, r: InternshipRecord) -> dict:
     return values
 
 
-def _onboard_blockers(db, r: InternshipRecord) -> list[str]:
+def _operation_evaluation(db, r: InternshipRecord, operation: str, user=None) -> dict:
+    from app.modules.internship.services.internship_compliance_service import (
+        evaluate_internship_compliance)
+    return evaluate_internship_compliance(r.id, operation, user=user, db=db)
+
+
+def _onboard_blockers(db, r: InternshipRecord, user=None) -> tuple[list[str], dict]:
     """上岗前置：岗位硬门槛 + 统一合规评估（含协议/保险/知情/安全/备案等）。"""
     missing: list[str] = []
     if not r.position_id:
         missing.append("未分配岗位")
-    from app.modules.internship.services.internship_compliance_service import evaluate_internship_compliance
-    result = evaluate_internship_compliance(r.id, "ONBOARD")
+    result = _operation_evaluation(db, r, "ONBOARD", user)
     for item in result.get("blockers") or []:
         tip = item.get("label") or item.get("code")
         reason = item.get("reason") or item.get("status")
         missing.append(f"{tip}：{reason}")
-    return missing
+    return missing, result
 
 
 def get_onboard_checklist(rec_id, user=None) -> dict:
@@ -609,9 +605,10 @@ def get_onboard_checklist(rec_id, user=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
-        blockers = _onboard_blockers(db, r)
+        blockers, result = _onboard_blockers(db, r, user)
         return {"internshipId": str(r.id), "canOnboard": not blockers and r.status == "READY",
-                "statusReady": r.status == "READY", "blockers": blockers}
+                "statusReady": r.status == "READY", "blockers": blockers,
+                "ruleVersion": result["ruleVersion"], "evaluation": result}
 
 
 def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
@@ -628,7 +625,7 @@ def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
         elif action == "ONBOARD":
             if r.status != "READY":
                 raise AppException("DATA_CONFLICT", "仅「待上岗」可上岗")
-            missing = _onboard_blockers(db, r)
+            missing, evaluation = _onboard_blockers(db, r, user)
             if missing:
                 raise AppException("DATA_CONFLICT", "上岗前置未完成：" + "；".join(missing))
             r.status = "ONBOARD"
@@ -637,10 +634,24 @@ def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
         elif action == "ASSESS":
             if r.status != "ONBOARD":
                 raise AppException("DATA_CONFLICT", "仅「在岗中」可进入考核")
+            evaluation = _operation_evaluation(db, r, "ASSESS", user)
+            if not evaluation["passed"]:
+                raise AppException(
+                    "DATA_CONFLICT", "进入考核前置未完成",
+                    details={"blockers": evaluation["blockers"],
+                             "ruleVersion": evaluation["ruleVersion"]})
             r.status = "ASSESSING"
         else:
             raise AppException("VALIDATION_ERROR", "非法状态动作")
-        _trail(db, r.id, f"STATUS_{action}", {"reason": reason, "to": r.status})
+        detail = {"reason": reason, "to": r.status}
+        if action in ("ONBOARD", "ASSESS"):
+            detail.update({
+                "ruleVersion": evaluation["ruleVersion"],
+                "blockers": [{
+                    "code": x["code"], "status": x["status"], "reason": x["reason"]}
+                    for x in evaluation["blockers"]],
+            })
+        _trail(db, r.id, f"STATUS_{action}", detail)
         db.commit()
         return _row_of(db, r)
 

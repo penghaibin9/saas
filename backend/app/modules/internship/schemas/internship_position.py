@@ -1,7 +1,7 @@
 """岗位实习中心 · 岗位库请求 DTO（独立文件，与批次/实习域 schema 隔离）。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -22,9 +22,26 @@ class PositionCreate(BaseModel):
     headcount: int = Field(1, ge=1, le=9999, description="岗位容量")
     mentorContactId: Optional[str] = Field(None, description="企业导师 t_internship_enterprise_contact.id")
     remark: Optional[str] = None
+    workContent: str = Field(..., min_length=1)
+    workAddress: Optional[str] = None
+    dailyHours: Optional[float] = Field(None, ge=0, le=24)
+    weeklyHours: Optional[float] = Field(None, ge=0, le=168)
+    shiftType: Optional[str] = None
+    nightShift: Optional[bool] = None
+    overtimeAllowed: Optional[bool] = None
+    restDaysPerWeek: Optional[float] = Field(None, ge=0, le=7)
+    remunerationType: Optional[Literal["HOURLY", "MONTHLY", "DAILY", "ALLOWANCE", "UNPAID", "OTHER"]] = None
+    remunerationAmount: Optional[float] = Field(None, ge=0)
+    remunerationCycle: Optional[Literal["MONTHLY", "WEEKLY", "DAILY", "ON_COMPLETION", "OTHER"]] = None
+    accommodationProvided: Optional[bool] = None
+    mealProvided: Optional[bool] = None
+    hazardousFlag: Optional[bool] = None
+    specialEquipment: Optional[str] = None
+    prohibitedReason: Optional[str] = None
 
 
 class PositionUpdate(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
     title: Optional[str] = None
     category: Optional[str] = None
     majorRequirement: Optional[str] = None
@@ -39,6 +56,22 @@ class PositionUpdate(BaseModel):
     mentorContactId: Optional[str] = None
     batchId: Optional[str] = None
     remark: Optional[str] = None
+    workContent: Optional[str] = None
+    workAddress: Optional[str] = None
+    dailyHours: Optional[float] = Field(None, ge=0, le=24)
+    weeklyHours: Optional[float] = Field(None, ge=0, le=168)
+    shiftType: Optional[str] = None
+    nightShift: Optional[bool] = None
+    overtimeAllowed: Optional[bool] = None
+    restDaysPerWeek: Optional[float] = Field(None, ge=0, le=7)
+    remunerationType: Optional[Literal["HOURLY", "MONTHLY", "DAILY", "ALLOWANCE", "UNPAID", "OTHER"]] = None
+    remunerationAmount: Optional[float] = Field(None, ge=0)
+    remunerationCycle: Optional[Literal["MONTHLY", "WEEKLY", "DAILY", "ON_COMPLETION", "OTHER"]] = None
+    accommodationProvided: Optional[bool] = None
+    mealProvided: Optional[bool] = None
+    hazardousFlag: Optional[bool] = None
+    specialEquipment: Optional[str] = None
+    prohibitedReason: Optional[str] = None
 
 
 class PositionStatusAction(BaseModel):
@@ -52,6 +85,7 @@ class PositionRiskRequest(BaseModel):
 
 
 class PositionImport(BaseModel):
+    templateVersion: Literal["POSITION_IMPORT_V2"]
     rows: list[dict] = Field(default_factory=list)
 
 
