@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 
-const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+// 本文件位于 frontend/tests；仓库根目录需向上两级。
+const read = (path) => fs.readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
 test('teacher miniapp approves the version visible in the list', () => {
   const source = read('miniapp/src/pages/teacher/affairs-review/index.vue')
@@ -34,4 +35,22 @@ test('student returned applications preserve version through edit and resubmit',
   assert.match(funding, /version/)
   assert.match(aid, /resubmit/)
   assert.match(funding, /resubmit/)
+})
+
+test('student portal request serializes pagination query parameters', () => {
+  const request = read('student-portal/src/services/request.js')
+  const affairs = read('student-portal/src/services/affairsFourEndApi.js')
+  assert.match(request, /function withQuery\(path, params\)/)
+  assert.match(request, /params \|\| query/)
+  assert.match(affairs, /myCreditAppeals: \(page = 1, pageSize = 100\)/)
+})
+
+test('both student clients reject empty or non-positive credit claims', () => {
+  const mini = read('miniapp/src/services/affairsAppealApi.js')
+  const portal = read('student-portal/src/services/affairsFourEndApi.js')
+  for (const source of [mini, portal]) {
+    assert.match(source, /Number\.isFinite\(value\)/)
+    assert.match(source, /value <= 0/)
+    assert.match(source, /最多保留2位小数/)
+  }
 })
