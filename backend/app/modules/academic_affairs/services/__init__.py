@@ -22,7 +22,7 @@ from . import academic_affairs_schedule_facade as academic_affairs_schedule_serv
 from . import academic_affairs_selection_facade as academic_affairs_selection_service
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
-from . import academic_affairs_task_program_gate_facade as academic_affairs_task_service
+from . import academic_affairs_task_teaching_class_facade as academic_affairs_task_service
 from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
@@ -49,7 +49,7 @@ sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_
 sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
 # 选课轮次新建、开关轮和摇号全部执行所属学期写保护。
 sys.modules[f"{__name__}.academic_affairs_selection_round_service"] = academic_affairs_selection_round_service
-# 教学任务生成须通过已启用方案质量门禁；其它工作台动作继续沿用最终安全范围与状态机。
+# 教学任务生成/教师分配/合拆班在旧事务成功后投影教学班，质量门禁与安全工作台链保持不变。
 sys.modules[f"{__name__}.academic_affairs_task_service"] = academic_affairs_task_service
 # 教学任务生成运行时完整路径导入统计范围函数；统一切到空范围fail-closed版本。
 sys.modules[f"{__name__}.academic_affairs_stats_service"] = academic_affairs_stats_service
