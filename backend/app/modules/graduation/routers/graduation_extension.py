@@ -70,7 +70,7 @@ def gd_defense_delays(
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
     user=Depends(require_permission("graduationDesign.defense.view")),
 ):
-    items, total = svc.list_delays(
+    items, total = safety_svc.list_delays(
         batch_id=batchId, status=status, page=page, page_size=pageSize,
     )
     return success(paginate(items, total, page, pageSize))
