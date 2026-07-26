@@ -25,6 +25,7 @@ from app.services.affairs_appeal_repair_service import install as install_appeal
 from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
 from app.services.affairs_archive_file_guard import install as install_archive_file_guard
 from app.services.affairs_archive_guard import install as install_archive_guard
+from app.services.affairs_batch_job_guard import install as install_batch_job_guard
 from app.services.affairs_counselor_eval_guard import install as install_counselor_eval_guard
 from app.services.affairs_counselor_handover_guard import install as install_counselor_handover_guard
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
@@ -80,8 +81,9 @@ install_counselor_handover_guard()
 install_risk_evidence_guard()
 install_counselor_eval_guard()
 install_funding_ext_guard()
-# 公示批次与扫描在归档/统计之前统一为正式期限和MySQL行锁。
+# 公示和批处理扫描统一在归档/统计之前使用正式期限、数据范围和MySQL行锁。
 install_publicity_guard()
+install_batch_job_guard()
 install_archive_guard()
 install_archive_file_guard()
 install_talk_guard()
