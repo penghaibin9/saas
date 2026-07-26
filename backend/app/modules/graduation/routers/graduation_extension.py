@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.graduation.services import graduation_extension_query_service as query_svc
+from app.modules.graduation.services import graduation_extension_safety_service as safety_svc
 from app.modules.graduation.services import graduation_extension_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-优秀成果与延期答辩"])
@@ -110,6 +111,6 @@ def gd_defense_delay_schedule(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.defense.groupManage")),
 ):
-    return success(svc.schedule_delay(
+    return success(safety_svc.schedule_delay(
         record_id, body.get("defenseGroupId"), body.get("plannedDefenseDate") or "",
-    ), message="延期答辩已重新排期，答辩组需重新发布")
+    ), message="延期答辩已重新排期，原答辩组与新答辩组均需重新发布")
