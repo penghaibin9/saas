@@ -1,4 +1,4 @@
-"""V2-02 教学班名单版本并发安全最终层。"""
+"""V2-02 教学班名单版本并发与权威一致性最终层。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,6 +9,7 @@ from app.services.db_service import _tid
 from . import academic_affairs_teaching_class_service as _base
 
 _original_ensure_teaching_class = _base.ensure_teaching_class_for_task
+_original_resolve_roster = _base.resolve_teaching_task_roster
 
 
 def __getattr__(name):
@@ -16,7 +17,7 @@ def __getattr__(name):
 
 
 def create_roster_version(db, teaching_class, student_ids, *, source_type: str, source_id=None,
-                          member_source_ids=None, reason=""):
+                           member_source_ids=None, reason=""):
     from app.models import (
         AaTeachingClass, AaTeachingClassMember,
         AaTeachingClassRosterVersion, AaTeachingTask,
@@ -115,6 +116,44 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
     return teaching_class
 
 
+def resolve_teaching_task_roster(db, teaching_task_id: int) -> dict:
+    """选课正式事实必须与当前教学班版本的批次和成员完全一致。"""
+    result = _original_resolve_roster(db, int(teaching_task_id))
+    if not result.get("ready") or result.get("source") != "SELECTION_LOCK":
+        return result
+
+    authoritative = _base._legacy_resolve_roster(db, int(teaching_task_id))
+    if not authoritative.get("ready"):
+        return authoritative
+    if authoritative.get("source") != "SELECTION_LOCKED":
+        return result
+
+    current_batches = sorted(str(value) for value in (result.get("batchIds") or []))
+    authoritative_batches = sorted(str(value) for value in (authoritative.get("batchIds") or []))
+    current_students = sorted({int(value) for value in (result.get("studentIds") or [])})
+    authoritative_students = sorted({int(value) for value in (authoritative.get("studentIds") or [])})
+    if current_batches == authoritative_batches and current_students == authoritative_students:
+        return result
+
+    return {
+        "ready": False,
+        "source": "TEACHING_CLASS_PROJECTION_STALE",
+        "studentIds": [],
+        "items": [],
+        "batchIds": authoritative_batches,
+        "teachingClassId": result.get("teachingClassId"),
+        "rosterVersionId": result.get("rosterVersionId"),
+        "rosterVersionNo": result.get("rosterVersionNo"),
+        "note": "教学班当前名单版本与最新已锁定选课批次不一致，请重新执行选课名单投影后再开展考勤、考务或成绩业务",
+        "details": {
+            "currentBatchIds": current_batches,
+            "authoritativeBatchIds": authoritative_batches,
+            "currentMemberCount": len(current_students),
+            "authoritativeMemberCount": len(authoritative_students),
+        },
+    }
+
+
 def project_selection_batch_locked(db, batch_id: int) -> dict:
     from app.models import AaSelectionCourse, AaSelectionRecord
 
@@ -191,8 +230,10 @@ def sync_batch_teaching_classes(db, batch_id: int) -> dict:
     }
 
 
-# 基础服务中的ensure/backfill/apply函数运行时读取这些globals，直接替换即可覆盖所有消费者。
+# 基础服务和原名单模块同时替换，保证后续消费者及完整路径导入命中同一最终策略。
 _base.create_roster_version = create_roster_version
 _base.ensure_teaching_class_for_task = ensure_teaching_class_for_task
+_base.resolve_teaching_task_roster = resolve_teaching_task_roster
 _base.project_selection_batch_locked = project_selection_batch_locked
 _base.sync_batch_teaching_classes = sync_batch_teaching_classes
+_base._roster_base.resolve_teaching_task_roster = resolve_teaching_task_roster
