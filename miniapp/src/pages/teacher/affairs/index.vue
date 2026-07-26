@@ -11,10 +11,7 @@
         <view class="stack">
           <view v-for="c in data.cards" :key="c.todoType" class="ta__card" @click="openCard(c)">
             <text class="ta__label">{{ c.label }}</text>
-            <view class="ta__right">
-              <text class="ta__count">{{ c.count }}</text>
-              <text class="ta__go">›</text>
-            </view>
+            <view class="ta__right"><text class="ta__count">{{ c.count }}</text><text class="ta__go">›</text></view>
           </view>
         </view>
 
@@ -55,10 +52,8 @@ import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 const ROUTES = {
-  LEAVE_APPROVAL: '/pages/teacher/affairs-leave/index',
-  LEAVE_CANCEL: '/pages/teacher/affairs-leave/index',
-  LEAVE_OVERDUE: '/pages/teacher/affairs-leave/index',
-  LEAVE_EXTENSION: '/pages/teacher/affairs-leave/index',
+  LEAVE_APPROVAL: '/pages/teacher/affairs-leave/index', LEAVE_CANCEL: '/pages/teacher/affairs-leave/index',
+  LEAVE_OVERDUE: '/pages/teacher/affairs-leave/index', LEAVE_EXTENSION: '/pages/teacher/affairs-leave/index',
   AID_APPROVAL: '/pages/teacher/affairs-review/index?type=AID_APPROVAL',
   AID_ADJUST: '/pages/teacher/affairs-review/index?type=AID_ADJUST',
   FUNDING_APPROVAL: '/pages/teacher/affairs-review/index?type=FUNDING_APPROVAL',
@@ -66,54 +61,39 @@ const ROUTES = {
   DISCIPLINE_REMOVE: '/pages/teacher/affairs-review/index?type=DISCIPLINE_REMOVE',
   RISK_HANDLE: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
   DORM_TRANSFER: '/pages/teacher/dorm-review/index?tab=transfer',
-  DORM_EXCEPTION: '/pages/teacher/dorm-review/index?tab=exception'
+  DORM_EXCEPTION: '/pages/teacher/dorm-review/index?tab=exception',
+  AID_OBJECTION_REVIEW: '/pages/teacher/affairs-review/index?type=AID_OBJECTION_REVIEW',
+  FUNDING_APPEAL_REVIEW: '/pages/teacher/affairs-review/index?type=FUNDING_APPEAL_REVIEW',
+  DISCIPLINE_APPEAL_REVIEW: '/pages/teacher/affairs-review/index?type=DISCIPLINE_APPEAL_REVIEW',
+  SECOND_CLASS_APPEAL_REVIEW: '/pages/teacher/affairs-review/index?type=SECOND_CLASS_APPEAL_REVIEW'
 }
 
 export default {
-  data() {
-    return {
-      data: null, state: 'loading', activities: [], activityVisible: true,
-      activityError: '', codeData: null, codeLoading: ''
-    }
-  },
+  data() { return { data: null, state: 'loading', activities: [], activityVisible: true, activityError: '', codeData: null, codeLoading: '' } },
   onLoad() { this.load() },
   onShow() { if (this.state === 'ready') this.load() },
   methods: {
     load() {
-      this.state = 'loading'
-      this.activityError = ''
-      teacherApi.getAffairs().then((d) => {
-        this.data = d
-        this.state = 'ready'
-      }).catch((e) => {
-        this.state = 'error'
-        toast(normalizeError(e).text || '学工待办加载失败')
-      })
-      affairsContractApi.getOngoingActivities().then((d) => {
-        this.activities = (d && d.items) || []
-        this.activityVisible = true
-      }).catch((e) => {
-        const n = normalizeError(e)
-        if (n.kind === 'forbidden') {
-          this.activityVisible = false
-          this.activities = []
-        } else {
-          this.activityVisible = true
-          this.activityError = n.text || '活动数据加载失败，请稍后重试'
-        }
-      })
+      this.state = 'loading'; this.activityError = ''
+      teacherApi.getAffairs().then((d) => { this.data = d; this.state = 'ready' })
+        .catch((e) => { this.state = 'error'; toast(normalizeError(e).text || '学工待办加载失败') })
+      affairsContractApi.getOngoingActivities().then((d) => { this.activities = (d && d.items) || []; this.activityVisible = true })
+        .catch((e) => {
+          const n = normalizeError(e)
+          if (n.kind === 'forbidden') { this.activityVisible = false; this.activities = [] }
+          else { this.activityVisible = true; this.activityError = n.text || '活动数据加载失败，请稍后重试' }
+        })
     },
     openCard(c) {
       const url = ROUTES[c.todoType]
-      if (!url) { toast('该类型请在 PC 学工模块处理'); return }
+      if (!url) { toast('该待办类型尚未配置移动端处理入口'); return }
       uni.navigateTo({ url })
     },
     showCode(a) {
       if (this.codeLoading) return
       this.codeLoading = a.activityId
-      affairsContractApi.getActivityCheckinToken(a.activityId).then((d) => {
-        this.codeData = d
-      }).catch((e) => toast(normalizeError(e).text || '签到码生成失败'))
+      affairsContractApi.getActivityCheckinToken(a.activityId).then((d) => { this.codeData = d })
+        .catch((e) => toast(normalizeError(e).text || '签到码生成失败'))
         .finally(() => { this.codeLoading = '' })
     }
   }
