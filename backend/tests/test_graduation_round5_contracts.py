@@ -7,12 +7,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from app.core.exceptions import AppException
 from app.modules.graduation.schemas.graduation_defense_score import (
     DefenseAbsenceRequest,
     DefenseScoreEntryRequest,
 )
 from app.modules.graduation.services.graduation_audit_consistency import _db_id
 from app.modules.graduation.services.graduation_contract_bridge import _normalize_members
+from app.modules.graduation.services.graduation_taskbook_confirmation_service import _required_version
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -27,6 +29,7 @@ def test_all_round5_modules_import_without_cycles():
         "app.modules.graduation.services.graduation_audit_consistency",
         "app.modules.graduation.services.graduation_batch_context",
         "app.modules.graduation.services.graduation_topic_change_consistency",
+        "app.modules.graduation.services.graduation_topic_import_consistency",
         "app.modules.graduation.services.graduation_material_consistency",
         "app.modules.graduation.services.graduation_defense_group_consistency",
         "app.modules.graduation.services.graduation_process_consistency",
@@ -100,6 +103,14 @@ def test_sensitive_routes_require_batch_and_precede_legacy_routes():
     assert sensitive.count("batchId: int = Query(..., ge=1)") >= 15
 
 
+def test_route_batch_guard_is_read_only_and_services_own_locks():
+    guard = text("backend/app/modules/graduation/services/graduation_batch_context.py")
+    assert "query.with_for_update()" not in guard
+    assert "真正写锁必须留在" in guard
+    consistency = text("backend/app/modules/graduation/services/graduation_consistency_install.py")
+    assert consistency.count("with_for_update()") >= 8
+
+
 def test_exact_routes_have_action_permissions_and_no_manage_fallback():
     extensions = text("backend/app/modules/graduation/services/graduation_permission_extensions.py")
     assert '"graduationDesign.defense.notify", "defense_notify"' in extensions
@@ -153,17 +164,28 @@ def test_teacher_mobile_uses_stable_ids_not_same_name_blockade():
     assert "advisor_name ==" not in bridge
 
 
-def test_topic_change_and_material_submissions_are_serialized():
+def test_topic_change_material_and_withdrawal_are_serialized():
     topic = text("backend/app/modules/graduation/services/graduation_topic_change_consistency.py")
     consistency = text("backend/app/modules/graduation/services/graduation_consistency_install.py")
     defense = text("backend/app/modules/graduation/services/graduation_defense_group_consistency.py")
     assert topic.count("with_for_update()") >= 4
     assert "install_topic_change_consistency()" in consistency
     assert "install_defense_group_consistency()" in consistency
+    assert "rounds.withdraw_choices = _conflict_guard(_locked_withdraw_choices)" in consistency
+    assert "选题轮次不存在" in consistency and "alreadyWithdrawn" in consistency
     assert "GraduationProposal" in consistency and "with_for_update()" in consistency
-    assert "GraduationFinal" in consistency and "active_key=f\"pending:{student.id}\"" in consistency
+    assert "GraduationFinal" in consistency and 'active_key=f"pending:{student.id}"' in consistency
     assert defense.count("with_for_update()") >= 5
     assert '"queued": len(rows)' in defense and '"delivered": delivered' in defense
+
+
+def test_topic_choice_import_preview_and_confirm_share_open_round_rule():
+    installer = text("backend/app/modules/graduation/services/graduation_topic_import_consistency.py")
+    runtime = text("backend/app/modules/graduation/services/graduation_runtime_settings.py")
+    assert "仅进行中的选题轮次可导入志愿" in installer
+    assert "v2-open-round-only" in installer
+    assert "spec.business_validate" in installer
+    assert "install_topic_import_consistency()" in runtime
 
 
 def test_grade_and_midterm_gets_remain_read_only():
@@ -182,6 +204,48 @@ def test_grade_and_midterm_gets_remain_read_only():
     assert "db.commit()" not in midterm_body
     assert "db.add(" not in midterm_body
     assert '"exists": False' in midterm_body
+
+
+def test_grade_publish_rechecks_authoritative_source_hash():
+    grade = text("backend/app/modules/graduation/services/graduation_grade_service.py")
+    start = grade.index("def publish_grade(")
+    end = grade.index("\ndef withdraw_grade(", start)
+    body = grade[start:end]
+    assert "current_sources = _source_scores" in body
+    assert "source_snapshot_hash" in body
+    assert "APPROVAL_VERSION_CONFLICT" in body
+
+
+def test_taskbook_confirmation_requires_rendered_version_on_both_student_clients():
+    assert _required_version("2") == 2
+    with pytest.raises(AppException):
+        _required_version(None)
+    with pytest.raises(AppException):
+        _required_version("0")
+
+    shared = text("backend/app/modules/graduation/services/graduation_taskbook_confirmation_service.py")
+    assert "expected = _required_version(expected_version)" in shared
+    assert shared.count("with_for_update()") >= 3
+    assert "任务书版本已变化" in shared
+
+    mini_api = text("miniapp/src/services/studentApi.js")
+    mini_page = text("miniapp/src/pages/student/graduation/taskbook/index.vue")
+    portal_api = text("student-portal/src/services/portalApi.js")
+    assert "confirmGraduationTaskbook: (taskbookVersion)" in mini_api
+    assert "confirmGraduationTaskbook(this.t.taskbookVersion)" in mini_page
+    assert "renderedGraduationTaskbookVersion" in portal_api
+    assert "body: { confirm: true, taskbookVersion }" in portal_api
+
+
+def test_staff_taskbook_confirmation_is_serialized_and_separate_from_student_evidence():
+    taskbook = text("backend/app/modules/graduation/services/graduation_taskbook_consistency.py")
+    assert "svc.confirm_taskbook = confirm_taskbook" in taskbook
+    start = taskbook.index("def confirm_taskbook(")
+    end = taskbook.index("\ndef confirm_taskbook_in_session", start)
+    body = taskbook[start:end]
+    assert body.count("with_for_update()") >= 2
+    assert "confirmOnBehalf" in body
+    assert "学生本人须通过带版本校验" in body
 
 
 def test_taskbook_legacy_state_and_mvp_wording_are_closed():
