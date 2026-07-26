@@ -4,7 +4,8 @@
 - 安装选题志愿 Excel 的统一模板、预校验与确认规则；
 - 安装毕业设计材料专用的业务对象下载授权链；
 - 对毕业设计新旧 XLSX 导出统一做公式注入净化；
-- 将“二次答辩”严格限制为唯一第二轮。
+- 将“二次答辩”严格限制为唯一第二轮；
+- 成绩申诉受理与成绩撤回、学生阶段回退和通知保持原子一致。
 """
 from __future__ import annotations
 
@@ -36,6 +37,9 @@ def install_runtime_settings() -> None:
     from app.modules.graduation.services.graduation_export_security import (
         install_graduation_export_security,
     )
+    from app.modules.graduation.services.graduation_grade_appeal_consistency import (
+        install_grade_appeal_consistency,
+    )
     from app.modules.graduation.services.graduation_material_access_consistency import (
         install_material_access_consistency,
     )
@@ -46,3 +50,4 @@ def install_runtime_settings() -> None:
     install_topic_import_consistency()
     install_graduation_export_security()
     install_defense_round_consistency()
+    install_grade_appeal_consistency()
