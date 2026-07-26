@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from app.core.affairs_security import build_affairs_context, no_data_scope, _derive_keys
+from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_evaluation_service as _legacy
@@ -18,11 +18,16 @@ def list_appeals(user, status=None, page=1, page_size=50):
     """申诉理由按真实业务范围返回。
 
     - TENANT_ALL：教务处/学校管理员查看全校；
-    - COLLEGE：只看本学院教学任务对应的申诉；
+    - COLLEGE：通过教学任务批次学院归属，只看本学院申诉；
     - COURSE：只看本人评价结果申诉；
     - 其它范围：默认拒绝。
     """
-    from app.models import AaEvaluationAppeal, AaEvaluationResult, AaTeachingTask
+    from app.models import (
+        AaEvaluationAppeal,
+        AaEvaluationResult,
+        AaTeachingTask,
+        AaTeachingTaskBatch,
+    )
 
     with session() as db:
         ctx = build_affairs_context(user, db)
@@ -32,6 +37,9 @@ def list_appeals(user, status=None, page=1, page_size=50):
         ).outerjoin(
             AaTeachingTask,
             AaTeachingTask.id == AaEvaluationResult.teaching_task_id,
+        ).outerjoin(
+            AaTeachingTaskBatch,
+            AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
         ).filter(
             AaEvaluationAppeal.tenant_id == _tid(),
             AaEvaluationAppeal.is_deleted.is_(False),
@@ -44,7 +52,10 @@ def list_appeals(user, status=None, page=1, page_size=50):
             college_ids = [int(x) for x in (ctx.college_ids or [])]
             if not college_ids:
                 raise no_data_scope("当前学院身份未配置可管理学院范围")
-            query = query.filter(AaTeachingTask.college_id.in_(college_ids))
+            query = query.filter(
+                AaTeachingTaskBatch.tenant_id == _tid(),
+                AaTeachingTaskBatch.college_id.in_(college_ids),
+            )
         elif ctx.scope_type == "COURSE":
             keys = list(_derive_keys(user))
             if not keys:
