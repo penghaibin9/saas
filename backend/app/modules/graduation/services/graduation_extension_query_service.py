@@ -41,9 +41,15 @@ def list_candidates(*, batch_id: int, page: int = 1, page_size: int = 20):
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.execute(q.order_by(GraduationGrade.total_score.desc(), GraduationStudent.id)
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+
+        from app.modules.graduation.services import graduation_identity as gid
+        mentor = gid.current_user_mentor(db)
+        mentor_id = int(mentor.id) if mentor else None
+
         return [{
             "gdStudentId": str(student.id), "studentName": student.name,
             "studentNo": student.student_no or "", "className": student.class_name or "",
             "topicTitle": student.topic_title or "", "advisorName": student.advisor_name or "",
             "totalScore": grade.total_score, "gradeLevel": grade.grade_level,
+            "canNominate": bool(mentor_id and student.mentor_id and int(student.mentor_id) == mentor_id),
         } for student, grade in rows], total
