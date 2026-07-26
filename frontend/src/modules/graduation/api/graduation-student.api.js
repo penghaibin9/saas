@@ -1,10 +1,11 @@
 /**
- * 毕业设计中心 · 毕设学生 API（生产级：仅走真实后端，不回退 mock）。
- * 端点 /graduation/gd-students/*。Excel 台账导出经 base64 返回。
+ * 毕业设计中心 · 毕设学生 API（真实后端）。
+ * 学校端列表、统计、导出均绑定当前批次；跨批操作由后端二次校验。
  */
 import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -15,9 +16,15 @@ function toErr(e) {
 async function call(fn) {
   try { return ok(await fn()) } catch (e) { return toErr(e) }
 }
-async function callList(path, params = {}) {
+function withBatch(params = {}, required = true) {
+  const store = useGraduationBatchStore()
+  const batchId = params.batchId || store.selectedBatchId
+  if (required && !batchId) throw new Error('请先选择毕业设计批次')
+  return batchId ? { ...params, batchId: String(batchId) } : { ...params }
+}
+async function callList(path, params = {}, required = true) {
   try {
-    const d = await request(path, { params })
+    const d = await request(path, { params: withBatch(params, required) })
     return ok({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 })
   } catch (e) { return toErr(e) }
 }
@@ -25,18 +32,10 @@ async function callList(path, params = {}) {
 const BASE = '/graduation/gd-students'
 
 export const gdStudentApi = {
-  getStudents(params = {}) {
-    return callList(BASE, params)
-  },
-  getStudentDetail(id) {
-    return call(() => request(`${BASE}/${id}`))
-  },
-  createStudent(body) {
-    return call(() => request(BASE, { method: 'POST', body }))
-  },
-  updateStudent(id, body) {
-    return call(() => request(`${BASE}/${id}`, { method: 'PUT', body }))
-  },
+  getStudents(params = {}) { return callList(BASE, params) },
+  getStudentDetail(id) { return call(() => request(`${BASE}/${id}`)) },
+  createStudent(body) { return call(() => request(BASE, { method: 'POST', body })) },
+  updateStudent(id, body) { return call(() => request(`${BASE}/${id}`, { method: 'PUT', body })) },
   assignTopic(id, { topicId }) {
     return call(() => request(`${BASE}/${id}/assign-topic`, { method: 'POST', body: { topicId } }))
   },
@@ -70,11 +69,9 @@ export const gdStudentApi = {
   batchArchive({ recordIds, reason }) {
     return call(() => request(`${BASE}/batch-archive`, { method: 'POST', body: { recordIds, reason } }))
   },
-  getStudentGroups() {
-    return call(() => request(`${BASE}/groups`))
-  },
-  getStats() {
-    return call(() => request(`${BASE}/stats`))
+  getStudentGroups() { return call(() => request(`${BASE}/groups`)) },
+  getStats(params = {}) {
+    return call(() => request(`${BASE}/stats`, { params: withBatch(params) }))
   },
   importDryRun(rows) {
     return call(() => request(`${BASE}/import/dry-run`, { method: 'POST', body: { rows } }))
@@ -89,11 +86,7 @@ export const gdStudentApi = {
     URL.revokeObjectURL(url)
   },
   async uploadImportXlsx(file) {
-    try {
-      return ok(await requestUpload(`${BASE}/import/xlsx`, file))
-    } catch (e) {
-      return toErr(e)
-    }
+    try { return ok(await requestUpload(`${BASE}/import/xlsx`, file)) } catch (e) { return toErr(e) }
   },
   downloadImportErrors(rows, errors) {
     return call(() => request(`${BASE}/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
@@ -102,7 +95,7 @@ export const gdStudentApi = {
     return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows, previewToken } }))
   },
   exportStudents(params = {}) {
-    return call(() => request(`${BASE}/export`, { method: 'POST', params }))
+    return call(() => request(`${BASE}/export`, { method: 'POST', params: withBatch(params) }))
   },
   async downloadExport(params = {}) {
     const res = await this.exportStudents(params)
@@ -127,9 +120,7 @@ export const gdStudentApi = {
       )
     )
   },
-  getConfirmedTopics() {
-    return gdTopicApi.getAssignableTopics()
-  },
+  getConfirmedTopics() { return gdTopicApi.getAssignableTopics() },
   getDefenseGroups() {
     return call(() =>
       request('/graduation/defense-groups', { params: { page: 1, pageSize: 200 } }).then((d) =>
