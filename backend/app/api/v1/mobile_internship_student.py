@@ -11,6 +11,7 @@ from app.modules.internship.services import internship_student_application_conte
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_dashboard_service as dashboard
+from app.modules.internship.services import internship_student_leave_context_service as leaves
 
 router = APIRouter(
     prefix="/mobile/internship",
@@ -98,3 +99,35 @@ def withdraw_selected_application(
     return success(applications.withdraw(
         user, application_id, (body or {}).get("expectedVersion")),
         message="申请已撤回")
+
+
+@router.get("/context/leaves", summary="本人所选批次实习请假列表")
+def my_selected_leaves(user=Depends(get_current_user)):
+    return success(leaves.list_my(user))
+
+
+@router.post("/context/leaves", summary="本人发起实习请假")
+def apply_selected_leave(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(leaves.apply(user, body or {}), message="请假申请已提交")
+
+
+@router.post("/context/leaves/{leave_id}/withdraw", summary="按版本撤回本人待审批请假")
+def withdraw_selected_leave(
+    leave_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(leaves.withdraw(
+        user, leave_id, (body or {}).get("expectedVersion")), message="请假已撤回")
+
+
+@router.post("/context/leaves/{leave_id}/return", summary="按版本办理本人销假")
+def return_selected_leave(
+    leave_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(leaves.return_my(user, leave_id, body or {}), message="销假已提交")
