@@ -78,7 +78,6 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(internship_agreement_template.router, dependencies=d)
     api_router.include_router(internship_student.router, dependencies=d)
     api_router.include_router(internship_match.router, dependencies=d)
-    # 批次参与人（组织范围选人，替代反复导 Excel 名单）
     api_router.include_router(internship_participant.router, dependencies=d)
     api_router.include_router(internship_application.router, dependencies=d)
     api_router.include_router(internship_archive.router, dependencies=d)
@@ -146,14 +145,17 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
 def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
         audit, dashboard, feedback, implementation, import_export,
-        migration, mobile, mobile_export, mobile_orientation_teacher,
-        national_standards, notification, onboarding, org_directory, platform, stats, system,
-        transfer, user_preference,
+        migration, mobile, mobile_export, mobile_internship_context,
+        mobile_orientation_teacher, national_standards, notification, onboarding,
+        org_directory, platform, stats, system, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
     from app.api.v1 import message_center as message_center_api
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
+    from app.core.mobile_internship_permission_gate import (
+        enforce_teacher_internship_mobile_permission,
+    )
     from app.student_portal.router import router as student_portal_router
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -174,7 +176,11 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(stats.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
-    api_router.include_router(mobile.router)
+    api_router.include_router(
+        mobile.router,
+        dependencies=[Depends(enforce_teacher_internship_mobile_permission)],
+    )
+    api_router.include_router(mobile_internship_context.router)
     api_router.include_router(student_portal_router)
     from app.api.v1 import student_portal_admin
     api_router.include_router(student_portal_admin.router)
@@ -186,7 +192,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(user_preference.router)
     api_router.include_router(feedback.router)
     api_router.include_router(system.router, tags=["system"])
-    # 组织目录：选人场景（实习/毕设批次、评奖）共用的组织树与年级源，按本人数据范围裁剪
     api_router.include_router(org_directory.router)
 
 
