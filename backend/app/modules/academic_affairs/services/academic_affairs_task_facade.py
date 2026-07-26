@@ -1,12 +1,17 @@
 """教学任务服务兼容入口。
 
-仅覆盖批次生成：教学周优先读取 AaTerm.teaching_weeks，其次使用考试周起始、校历教学事件、
-学期日期推算；只有历史学期完全缺配置时才回退18周并记录告警。其余任务状态机委托原服务。
+覆盖批次生成：
+- 教学周优先读取 AaTerm.teaching_weeks，其次使用考试周起始、校历教学事件、学期日期推算；
+- 根据班级入学年级 + 当前学年学期解析培养方案第几学期，只生成本学期应开课程；
+- 无法解析的历史数据停止猜测生成，返回明确欠账；
+- 只有历史学期完全缺周次配置时才回退18周并记录告警。
+其余任务状态机委托原服务。
 """
 from __future__ import annotations
 
 import logging
 import math
+import re
 from datetime import datetime
 
 from sqlalchemy import select
@@ -20,6 +25,7 @@ _LOG = logging.getLogger(__name__)
 _FALLBACK_WEEKS = 18
 _MIN_WEEKS = 1
 _MAX_WEEKS = 30
+_MAX_PROGRAM_TERM = 20
 
 
 def __getattr__(name):
@@ -32,6 +38,25 @@ def _bounded(value):
     except (TypeError, ValueError):
         return None
     return number if _MIN_WEEKS <= number <= _MAX_WEEKS else None
+
+
+def _year_number(value):
+    match = re.search(r"(19|20)\d{2}", str(value or ""))
+    return int(match.group(0)) if match else None
+
+
+def resolve_class_semester(term, school_class):
+    """班级入学年级与学年起始年换算培养方案学期序号。"""
+    academic_year = _year_number(getattr(term, "year_code", None))
+    admission_year = _year_number(getattr(school_class, "grade", None))
+    try:
+        term_no = int(getattr(term, "term_no", None))
+    except (TypeError, ValueError):
+        return None
+    if academic_year is None or admission_year is None or term_no not in {1, 2}:
+        return None
+    semester = (academic_year - admission_year) * 2 + term_no
+    return semester if 1 <= semester <= _MAX_PROGRAM_TERM else None
 
 
 def resolve_teaching_weeks(db, term_id):
@@ -82,7 +107,7 @@ def resolve_teaching_weeks(db, term_id):
 
 
 def generate_batch(body, user) -> dict:
-    """按已发布方案生成任务，教学周由学期时间轴决定。"""
+    """按已发布方案生成当前学期应开课程，教学周由学期时间轴决定。"""
     term_id = int(body.termId)
     college_id = int(body.collegeId) if getattr(body, "collegeId", None) else None
 
@@ -94,6 +119,7 @@ def generate_batch(body, user) -> dict:
             AaProgramCourse,
             AaTeachingTask,
             AaTeachingTaskBatch,
+            AaTerm,
             SchoolClass,
         )
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
@@ -103,6 +129,9 @@ def generate_batch(body, user) -> dict:
         )
 
         guard_term_writable(db, term_id)
+        term = db.get(AaTerm, term_id)
+        if not term or term.is_deleted or term.tenant_id != _tid():
+            raise AppException("VALIDATION_ERROR", "学期不存在，无法生成教学任务")
         teaching_weeks, week_source = resolve_teaching_weeks(db, term_id)
         scope = _resolve_scope(user, db)
         _validate_college_param(scope, college_id)
@@ -134,6 +163,9 @@ def generate_batch(body, user) -> dict:
             db.flush()
 
         made = 0
+        unresolved_classes = 0
+        unresolved_program_courses = 0
+        out_of_term_courses = 0
         programs = db.scalars(select(AaProgram).where(
             AaProgram.tenant_id == _tid(),
             AaProgram.status == "ENABLED",
@@ -175,9 +207,24 @@ def generate_batch(body, user) -> dict:
                     if not scope.all and scope.class_ids and school_class.id not in scope.class_ids:
                         continue
 
+                    current_semester = resolve_class_semester(term, school_class)
+                    if current_semester is None:
+                        unresolved_classes += 1
+                        continue
+
                     for program_course in courses:
-                        if not program_course.course_id:
+                        try:
+                            open_term_no = int(program_course.open_term_no)
+                        except (TypeError, ValueError):
+                            unresolved_program_courses += 1
                             continue
+                        if open_term_no != current_semester:
+                            out_of_term_courses += 1
+                            continue
+                        if not program_course.course_id:
+                            unresolved_program_courses += 1
+                            continue
+
                         existing = db.scalars(select(AaTeachingTask).where(
                             AaTeachingTask.tenant_id == _tid(),
                             AaTeachingTask.batch_id == batch.id,
@@ -189,9 +236,12 @@ def generate_batch(body, user) -> dict:
                             continue
 
                         course = db.get(AaCourse, int(program_course.course_id))
-                        total_hours = int(course.hours_total or 0) if course else 0
-                        course_code = course.course_code if course else ""
-                        course_name = course.course_name if course else ""
+                        if not course or course.is_deleted or course.tenant_id != _tid():
+                            unresolved_program_courses += 1
+                            continue
+                        total_hours = int(course.hours_total or 0)
+                        course_code = course.course_code or ""
+                        course_name = course.course_name or ""
                         weekly_hours = math.ceil(total_hours / teaching_weeks) if total_hours else None
                         db.add(AaTeachingTask(
                             tenant_id=_tid(),
@@ -212,13 +262,13 @@ def generate_batch(body, user) -> dict:
                         ))
                         made += 1
 
-        _legacy._audit(
-            db,
-            "AA_TASK_BATCH",
-            batch.id,
-            "GENERATE",
-            f"+{made};teachingWeeks={teaching_weeks};source={week_source}",
+        audit_detail = (
+            f"+{made};teachingWeeks={teaching_weeks};source={week_source};"
+            f"unresolvedClasses={unresolved_classes};"
+            f"unresolvedProgramCourses={unresolved_program_courses};"
+            f"outOfTermSkipped={out_of_term_courses}"
         )
+        _legacy._audit(db, "AA_TASK_BATCH", batch.id, "GENERATE", audit_detail)
         db.commit()
         db.refresh(batch)
         return {
@@ -228,4 +278,7 @@ def generate_batch(body, user) -> dict:
             "tasksGenerated": made,
             "teachingWeeks": teaching_weeks,
             "teachingWeeksSource": week_source,
+            "unresolvedClasses": unresolved_classes,
+            "unresolvedProgramCourses": unresolved_program_courses,
+            "outOfTermCoursesSkipped": out_of_term_courses,
         }
