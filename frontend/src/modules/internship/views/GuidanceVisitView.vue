@@ -93,6 +93,42 @@
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="true"
       :reason-label="cd.reasonLabel" :submitting="cd.submitting" @confirm="onConfirm" />
+
+    <AppDrawer :visible="commDlg.visible" title="登记企业沟通" @update:visible="commDlg.visible = $event">
+      <AppFormItem label="企业" required>
+        <AppInternshipEnterprisePicker v-model="commForm.enterpriseId" placeholder="按企业名称搜索" />
+      </AppFormItem>
+      <AppFormItem label="实习学生" required>
+        <AppInternshipStudentPicker v-model="commForm.internshipId" placeholder="按姓名 / 学号搜索"
+          data-scope-hint="指导教师仅本人指导学生；管理员按数据范围" />
+      </AppFormItem>
+      <AppFormItem label="沟通方式">
+        <AppSelect v-model="commForm.communicationType" :options="commTypeOptions" />
+      </AppFormItem>
+      <AppFormItem label="沟通摘要" required>
+        <AppTextarea v-model="commForm.summary" placeholder="不少于 2 字，写清沟通事项与结论" :maxlength="500" />
+      </AppFormItem>
+      <p v-if="commDlg.error" class="gv-form-error">{{ commDlg.error }}</p>
+      <template #footer>
+        <AppButton variant="text" @click="commDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="commDlg.submitting" @click="submitCommunication">登记</AppButton>
+      </template>
+    </AppDrawer>
+
+    <AppDrawer :visible="planDlg.visible" title="新建巡访计划" @update:visible="planDlg.visible = $event">
+      <AppFormItem label="巡访企业">
+        <AppInternshipEnterprisePicker v-model="planForm.enterpriseId" placeholder="按企业名称搜索（可留空）"
+          @change="onPlanEnterpriseChange" />
+      </AppFormItem>
+      <AppFormItem label="巡访目标">
+        <AppTextarea v-model="planForm.objective" placeholder="不少于 2 字；与企业至少填一项" :maxlength="500" />
+      </AppFormItem>
+      <p v-if="planDlg.error" class="gv-form-error">{{ planDlg.error }}</p>
+      <template #footer>
+        <AppButton variant="text" @click="planDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="planDlg.submitting" @click="submitVisitPlan">创建</AppButton>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
@@ -103,9 +139,11 @@
  * 选中记录写入 query.id，刷新可恢复；新增记录走独立录入页 /admin/internship/guidance/new。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppButton } from '@/components/ui'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination,
+  AppFormItem, AppSelect, AppTextarea,
+  AppInternshipEnterprisePicker, AppInternshipStudentPicker } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
@@ -155,10 +193,20 @@ export default {
   name: 'GuidanceVisitView',
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
-    AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination },
+    AppDrawer, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination,
+    AppFormItem, AppSelect, AppTextarea,
+    AppInternshipEnterprisePicker, AppInternshipStudentPicker },
   data() {
     return {
+      commDlg: { visible: false, submitting: false, error: '' },
+      commForm: { enterpriseId: '', internshipId: '', summary: '', communicationType: 'PHONE' },
+      commTypeOptions: [
+        { value: 'PHONE', label: '电话沟通' }, { value: 'ONSITE', label: '实地走访' },
+        { value: 'ONLINE', label: '线上会议' }, { value: 'OTHER', label: '其他' }
+      ],
+      planDlg: { visible: false, submitting: false, error: '' },
+      planForm: { enterpriseId: '', enterpriseName: '', objective: '' },
       tab: 'guidance',
       tabs: [
         { key: 'guidance', label: '指导记录' },
@@ -302,37 +350,49 @@ export default {
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     goGuidancePlan() { this.$router.push({ path: '/admin/internship/guidance-plan', query: this.batchStore.withBatchQuery() }) },
+    onPlanEnterpriseChange(_value, item) {
+      // 企业名称随选中项带出：后端建计划时按名称落库，不接受前端随手输的名字
+      this.planForm.enterpriseName = item?.label || ''
+    },
+    async submitCommunication() {
+      const f = this.commForm
+      if (!f.enterpriseId || !f.internshipId) { this.commDlg.error = '请选择企业与实习学生'; return }
+      if ((f.summary || '').trim().length < 2) { this.commDlg.error = '沟通摘要不少于 2 字'; return }
+      this.commDlg.submitting = true; this.commDlg.error = ''
+      const res = await guidanceVisitApi.createCommunication({
+        enterpriseId: String(f.enterpriseId),
+        internshipId: String(f.internshipId),
+        batchId: this.batchStore.selectedBatchId,
+        summary: f.summary.trim(),
+        communicationType: f.communicationType || 'PHONE'
+      })
+      this.commDlg.submitting = false
+      if (res.code !== 0) { this.commDlg.error = res.message || '登记失败'; return }
+      this.commDlg.visible = false; toast.success('沟通已登记'); this.reload()
+    },
+    async submitVisitPlan() {
+      const f = this.planForm
+      const objective = (f.objective || '').trim()
+      const name = (f.enterpriseName || '').trim()
+      if (objective.length < 2 && !name) { this.planDlg.error = '请至少选择企业或填写巡访目标'; return }
+      this.planDlg.submitting = true; this.planDlg.error = ''
+      const res = await guidanceVisitApi.createVisitPlan({
+        enterpriseName: name, objective: objective || name
+      })
+      this.planDlg.submitting = false
+      if (res.code !== 0) { this.planDlg.error = res.message || '创建失败'; return }
+      this.planDlg.visible = false; toast.success('巡访计划已创建'); this.reload()
+    },
     goCreate() {
       if (this.tab === 'communication') {
         if (!this.batchStore.selectedBatchId) return toast.error('请先选择实习批次')
-        const enterpriseId = window.prompt('企业 ID（必填）')
-        const internshipId = window.prompt('实习学生记录 ID（必填，须属于当前批次）')
-        const summary = window.prompt('沟通摘要（不少于2字）')
-        if (!enterpriseId || !internshipId || !summary || summary.trim().length < 2) {
-          return toast.error('请填写企业 ID、实习记录 ID 与沟通摘要')
-        }
-        guidanceVisitApi.createCommunication({
-          enterpriseId,
-          internshipId: String(internshipId).trim(),
-          batchId: this.batchStore.selectedBatchId,
-          summary: summary.trim(),
-          communicationType: 'PHONE'
-        })
-          .then((res) => {
-            if (res.code !== 0) return toast.error(res.message || '登记失败')
-            toast.success('沟通已登记'); this.reload()
-          })
+        this.commForm = { enterpriseId: '', internshipId: '', summary: '', communicationType: 'PHONE' }
+        this.commDlg = { visible: true, submitting: false, error: '' }
         return
       }
       if (this.tab === 'visit-plan') {
-        const enterpriseName = window.prompt('巡访企业名称（或留空）') || ''
-        const objective = window.prompt('巡访目标（不少于2字，可与企业二选一）') || ''
-        if (objective.trim().length < 2 && !enterpriseName.trim()) return toast.error('请至少填写企业或目标')
-        guidanceVisitApi.createVisitPlan({ enterpriseName: enterpriseName.trim(), objective: objective.trim() || enterpriseName.trim() })
-          .then((res) => {
-            if (res.code !== 0) return toast.error(res.message || '创建失败')
-            toast.success('巡访计划已创建'); this.reload()
-          })
+        this.planForm = { enterpriseId: '', enterpriseName: '', objective: '' }
+        this.planDlg = { visible: true, submitting: false, error: '' }
         return
       }
       this.$router.push({ path: '/admin/internship/guidance/new', query: this.batchStore.withBatchQuery({ type: this.tab }) })
@@ -426,6 +486,7 @@ export default {
 </script>
 
 <style scoped>
+.gv-form-error { color: var(--danger-600, #d92d20); margin: var(--space-2) 0 0; }
 @import '@/styles/module-page.css';
 
 .tabs { display: flex; gap: var(--space-2); border-bottom: 1px solid var(--border-light); }

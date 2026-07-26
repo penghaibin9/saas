@@ -131,6 +131,36 @@ const gradeAdapter = {
 }
 
 /**
+ * 教职工目录适配器（AppTeacherPicker）。数据源 `GET /directory/teachers`。
+ * 很多页面要选"某位老师"（辅导员、责任人、导师），此前只能让用户手填用户 ID。
+ * query.roleCode 可限定角色，例如只在持辅导员角色的人里选。
+ */
+export function createTeacherPickerAdapter() {
+  const fetchTeachers = async (keyword = '', query = {}) => {
+    const params = new URLSearchParams()
+    if (keyword) params.set('keyword', keyword)
+    if (query?.roleCode) params.set('roleCode', query.roleCode)
+    const qs = params.toString()
+    const data = await request(`/directory/teachers${qs ? `?${qs}` : ''}`)
+    return (Array.isArray(data) ? data : data?.items || []).map((t) => ({
+      value: String(t.value ?? t.id),
+      label: String(t.label ?? t.name ?? ''),
+      desc: t.loginName || ''
+    }))
+  }
+  return {
+    search: fetchTeachers,
+    async resolve(value, query = {}) {
+      const values = Array.isArray(value) ? value : [value]
+      // 按 id 回显：先按空关键字取一页，取不到再不强求（选择器会退回显示原值）
+      const options = await fetchTeachers('', query)
+      const hit = values.map((v) => options.find((o) => String(o.value) === String(v))).filter(Boolean)
+      return Array.isArray(value) ? hit : hit[0]
+    }
+  }
+}
+
+/**
  * 生成组织类选择器适配器。key 与 entityPickers.js 中各 Picker 的 presets.key 对齐：
  * college / major / class / grade / orgCascade。
  */

@@ -179,7 +179,63 @@ def test_tenant_isolation(client, auth_headers, org):
     assert "外校学院" not in _labels(_tree(client, auth_headers))
 
 
-# ── 3. 年级 ────────────────────────────────────────────────────────────────
+# ── 3. 教职工目录 ──────────────────────────────────────────────────────────
+
+def test_teachers_exclude_students_and_hide_contacts(client, auth_headers, org):
+    """教职工目录不含学生，且不回手机号/邮箱——选择器不需要这些。"""
+    from app.core.security import hash_password
+    from app.db.session import get_sessionmaker
+    from app.models import User
+
+    db = get_sessionmaker()()
+    try:
+        db.add(User(tenant_id=TID, login_name="od_teacher01", real_name="目录教师甲",
+                    password_hash=hash_password("Test@123456"), user_type="TEACHER",
+                    status="ACTIVE"))
+        db.add(User(tenant_id=TID, login_name="od_stu01", real_name="目录学生甲",
+                    password_hash=hash_password("Test@123456"), user_type="STUDENT",
+                    status="ACTIVE"))
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/api/v1/directory/teachers", headers=auth_headers).json()
+    assert r["code"] == 0
+    labels = [x["label"] for x in r["data"]["items"]]
+    assert "目录教师甲" in labels
+    assert "目录学生甲" not in labels, "学生不属于教职工目录"
+    for item in r["data"]["items"]:
+        assert not any(k in item for k in ("phone", "email", "idCard"))
+
+
+def test_teachers_keyword_filter(client, auth_headers, org):
+    from app.core.security import hash_password
+    from app.db.session import get_sessionmaker
+    from app.models import User
+
+    db = get_sessionmaker()()
+    try:
+        db.add(User(tenant_id=TID, login_name="od_kw_zhang", real_name="张搜索",
+                    password_hash=hash_password("Test@123456"), user_type="TEACHER",
+                    status="ACTIVE"))
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/api/v1/directory/teachers?keyword=张搜索", headers=auth_headers).json()
+    assert [x["label"] for x in r["data"]["items"]] == ["张搜索"]
+
+
+def test_teachers_reject_student_side():
+    from app.api.v1 import org_directory as od
+    from app.core.exceptions import AppException
+
+    with pytest.raises(AppException) as ei:
+        od._reject_student_side({"userId": "s1", "userType": "STUDENT"})
+    assert ei.value.code == "NO_PERMISSION"
+
+
+# ── 4. 年级 ────────────────────────────────────────────────────────────────
 
 def test_grades_are_distinct_with_counts(client, auth_headers, org):
     """年级来自主档去重，带人数，倒序（新年级在前）。"""

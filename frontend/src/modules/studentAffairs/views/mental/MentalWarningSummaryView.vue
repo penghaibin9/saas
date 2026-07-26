@@ -27,7 +27,8 @@
 
       <AppSectionCard title="按学生查预警摘要（无明细）">
         <div class="sa-toolbar">
-          <AppSearchBox v-model="queryStudentId" class="sa-input" placeholder="输入学生 ID 查询摘要" :debounce="0" @search="querySummary" />
+          <AppStudentPicker v-model="queryStudentId" class="sa-input" placeholder="按学号 / 姓名选择学生"
+            data-scope-hint="仅显示你数据范围内的学生" @change="querySummary" />
           <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" :loading="actioning" @click="querySummary">
             查询摘要
           </AppPermissionButton>
@@ -62,7 +63,7 @@ import {
   AppMetricCard,
   AppPageShell,
   AppPermissionButton,
-  AppSearchBox,
+  AppStudentPicker,
   AppSectionCard,
   AppStatusTag
 } from '@/components/common'
@@ -80,7 +81,7 @@ const LEVELS = [
 
 export default {
   name: 'MentalWarningSummaryView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSearchBox, AppSectionCard, AppStatusTag, DataTable },
+  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppStudentPicker, AppSectionCard, AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return { levelColumns: LEVEL_COLUMNS, loading: true, actioning: false, errorMessage: '', stats: null, queryStudentId: '', summary: null }
@@ -129,7 +130,7 @@ export default {
       this.actioning = true
       this.summary = null
       try {
-        const res = await studentAffairsApi.getMentalSummary(this.queryStudentId.trim())
+        const res = await studentAffairsApi.getMentalSummary(String(this.queryStudentId).trim())
         this.summary = res.data
       } catch (e) {
         this.errorMessage = e.message || '查询学生摘要失败'

@@ -68,7 +68,9 @@ def _row(db, x, classes=None, users=None, student_counts=None):
     )
     return {
         "id": str(x.id), "classId": str(x.class_id), "className": c.class_name if c else "",
+        # loginName 供列表副标题显示（同名老师靠工号区分）；页面不再展示裸用户 ID
         "userId": str(x.user_id), "counselorName": u.real_name if u else "",
+        "loginName": (u.login_name or "") if u else "",
         "studentCount": count, "dutyType": x.duty_type,
         "status": "ENDED" if is_expired_temp else x.status,
         "effectiveFrom": _iso(x.effective_from), "effectiveTo": _iso(x.effective_to),

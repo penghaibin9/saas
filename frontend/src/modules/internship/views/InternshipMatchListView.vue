@@ -140,8 +140,16 @@
 
     <AppDrawer v-model:visible="batchVisible" title="批量匹配">
       <div class="ie-form">
-        <p class="ie-hint">每行：实习学生记录ID,岗位ID（可从实习学生/岗位库复制）</p>
-        <textarea v-model="batchText" class="ie-in" rows="6" placeholder="recordId,positionId" />
+        <p class="ie-hint">逐行选择「学生 → 岗位」，可一次提交多条；数据范围与单条匹配一致。</p>
+        <div v-for="(row, i) in batchRows" :key="i" class="ie-batch-row">
+          <AppUnassignedInternshipStudentPicker v-model="row.recordId" placeholder="选择实习学生"
+            search-placeholder="按姓名 / 学号搜索" data-scope-hint="仅显示你数据范围内未落实岗位的实习学生" />
+          <AppInternshipPositionPicker v-model="row.positionId" placeholder="选择岗位"
+            search-placeholder="按岗位名称 / 企业搜索" data-scope-hint="仅已上架岗位可选" />
+          <button type="button" class="mp-link danger ie-batch-del" :disabled="batchRows.length <= 1"
+            @click="removeBatchRow(i)">删除</button>
+        </div>
+        <button type="button" class="mp-btn ie-batch-add" @click="addBatchRow">＋ 再加一行</button>
         <p v-if="formError" class="ie-err">{{ formError }}</p>
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="batchVisible = false">取消</button>
@@ -218,7 +226,7 @@ export default {
       matchStats: null,
       intentionVisible: false, intentionForm: { recordId: '', preferredCity: '', preferredIndustry: '', preferredCompanyId: '', intentionNote: '' },
       manualVisible: false, manualForm: { recordId: '', positionId: '', remark: '' },
-      batchVisible: false, batchText: '',
+      batchVisible: false, batchRows: [{ recordId: '', positionId: '' }],
       importVisible: false,
       formError: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
@@ -440,7 +448,7 @@ export default {
         this.manualForm = { recordId: '', positionId: '', remark: '' }
         this.manualVisible = true
       }
-      if (key === 'batch') { this.batchText = ''; this.batchVisible = true }
+      if (key === 'batch') { this.batchRows = [{ recordId: '', positionId: '' }]; this.formError = ''; this.batchVisible = true }
       if (key === 'refreshStats') this.load()
     },
     async submitIntentionForm() {
@@ -473,13 +481,16 @@ export default {
         else this.formError = res.message
       } finally { this.submitting = false }
     },
+    addBatchRow() { this.batchRows.push({ recordId: '', positionId: '' }) },
+    removeBatchRow(i) { if (this.batchRows.length > 1) this.batchRows.splice(i, 1) },
     async submitBatch() {
       this.formError = ''
-      const pairs = (this.batchText || '').split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-        const [recordId, positionId] = line.split(/[,，\t]/).map((x) => x.trim())
-        return { recordId, positionId }
-      }).filter((p) => p.recordId && p.positionId)
-      if (!pairs.length) { this.formError = '请填写至少一行 recordId,positionId'; return }
+      const pairs = this.batchRows
+        .map((r) => ({ recordId: String(r.recordId || ''), positionId: String(r.positionId || '') }))
+        .filter((p) => p.recordId && p.positionId)
+      if (!pairs.length) { this.formError = '请至少完整选择一行「学生 + 岗位」'; return }
+      const dup = pairs.map((p) => p.recordId).filter((v, i, a) => a.indexOf(v) !== i)
+      if (dup.length) { this.formError = '同一名学生在本次提交里出现多次，请先删掉重复行'; return }
       this.submitting = true
       try {
         const res = await matchApi.batchMatch(pairs)
@@ -558,6 +569,10 @@ export default {
 </script>
 
 <style scoped>
+.ie-batch-row { display:flex; gap:var(--space-2); align-items:center; margin-bottom:var(--space-2); }
+.ie-batch-row > *:first-child, .ie-batch-row > *:nth-child(2) { flex:1; min-width:0; }
+.ie-batch-del { white-space:nowrap; }
+.ie-batch-add { margin-bottom:var(--space-2); }
 .im-stages { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--card-b, #e5e7eb); border-radius: 12px; background: var(--card, #fff); box-shadow: var(--s1); overflow-x: auto; }
 .im-stages__title { flex: 0 0 auto; padding: 0 8px 0 2px; color: var(--t2, #475569); font-size: 12px; font-weight: var(--font-weight-semibold); }
 .im-stages__item { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2, #475569); cursor: pointer; font-size: 12px; transition: .16s ease; }

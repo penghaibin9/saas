@@ -7,7 +7,8 @@
           type="button" @click="switchTab(item.key)">{{ item.label }}</button>
       </div>
       <div class="toolbar">
-        <AppSearchBox v-if="tab === 'assignments'" v-model="filters.classId" placeholder="班级 ID（可选）" @search="load" />
+        <AppClassPicker v-if="tab === 'assignments'" v-model="filters.classId" placeholder="全部班级"
+          class="sa-filter-picker" @change="load" />
         <select v-if="tab === 'assignments'" v-model="filters.status" @change="load">
           <option value="">全部状态</option><option value="ACTIVE">有效</option><option value="ENDED">已结束</option>
         </select>
@@ -20,7 +21,7 @@
       <DataTable v-else :columns="columns" :rows="rows" :row-key="rowKey" :pagination="pagination" @page-change="onPageChange">
         <template #cell-counselor="{ row }">
           <div class="mp-cell-main">{{ row.counselorName || row.name || '—' }}</div>
-          <div v-if="row.userId" class="mp-cell-sub">用户 ID：{{ row.userId }}</div>
+          <div v-if="row.loginName" class="mp-cell-sub">{{ row.loginName }}</div>
         </template>
         <template #cell-dutyType="{ row }"><AppStatusTag :status="row.dutyType" /></template>
         <template #cell-status="{ row }"><AppStatusTag :status="row.status" /></template>
@@ -36,15 +37,15 @@
       <form class="dialog" @submit.prevent="submitDialog">
         <h3>{{ dialog.title }}</h3>
         <template v-if="dialog.mode === 'assign'">
-          <label>班级 ID<input v-model.number="form.classId" required min="1" type="number"></label>
-          <label>辅导员用户 ID<input v-model.number="form.userId" required min="1" type="number"></label>
+          <label>班级<AppClassPicker v-model="form.classId" placeholder="搜索班级名称" /></label>
+          <label>辅导员<AppTeacherPicker v-model="form.userId" placeholder="按姓名 / 工号搜索" /></label>
           <label>责任类型<select v-model="form.dutyType"><option value="PRIMARY">主辅导员</option><option value="CO">协同辅导员</option><option value="TEMP">临时代班</option></select></label>
           <label>开始日期<input v-model="form.effectiveFrom" type="date"></label>
           <label>截止日期（临时代班必填）<input v-model="form.effectiveTo" type="date"></label>
         </template>
         <template v-else-if="dialog.mode === 'handover'">
-          <label>原辅导员<input :value="dialog.row.counselorName + '（' + dialog.row.userId + '）'" disabled></label>
-          <label>新主辅导员用户 ID<input v-model.number="form.toUserId" required min="1" type="number"></label>
+          <label>原辅导员<input :value="dialog.row.counselorName || dialog.row.name || '—'" disabled></label>
+          <label>新主辅导员<AppTeacherPicker v-model="form.toUserId" placeholder="按姓名 / 工号搜索" /></label>
           <label>当前版本<input :value="dialog.row.version" disabled type="number"></label>
         </template>
         <template v-else><p>结束后保留历史记录；若这是主辅导员，该班级会进入空缺台账。</p></template>
@@ -58,7 +59,7 @@
 
 <script>
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSearchBox, AppStatusTag, AppPermissionButton } from '@/components/common'
+import { AppStatusTag, AppPermissionButton, AppClassPicker, AppTeacherPicker } from '@/components/common'
 import { counselorAssignmentApi } from '@/modules/studentAffairs/api/class.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
@@ -71,7 +72,7 @@ const COLS = {
 const emptyForm = () => ({ classId: null, userId: null, dutyType: 'PRIMARY', effectiveFrom: '', effectiveTo: '', toUserId: null, reason: '' })
 export default {
   name: 'CounselorAssignmentView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppPermissionButton, AppSearchBox },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppPermissionButton, AppClassPicker, AppTeacherPicker },
   props: { ctx: { type: Object, default: null } },
   data: () => ({ tabs: TABS, tab: 'ledger', rows: [], loading: true, error: '', filters: { classId: '', status: '' }, pagination: { page: 1, pageSize: 20, total: 0 }, dialog: { visible: false, mode: '', title: '', row: null }, form: emptyForm(), dialogError: '', submitting: false }),
   computed: {
@@ -100,9 +101,21 @@ export default {
     openHandover(row) { this.form = emptyForm(); this.dialogError = ''; this.dialog = { visible: true, mode: 'handover', title: '辅导员交接', row } },
     openEnd(row) { this.form = emptyForm(); this.dialogError = ''; this.dialog = { visible: true, mode: 'end', title: '结束责任关系', row } },
     async submitDialog() {
+      // 选择器回传的是字符串 id；后端要求整数，且原来的 required 校验随 input 一起去掉了，
+      // 这里显式补上，避免"没选班级就点确认"变成一条看不懂的后端报错
+      if (this.dialog.mode === 'assign' && !(this.form.classId && this.form.userId)) {
+        this.dialogError = '请选择班级与辅导员'; return
+      }
+      if (this.dialog.mode === 'handover' && !this.form.toUserId) {
+        this.dialogError = '请选择新主辅导员'; return
+      }
       this.submitting = true; this.dialogError = ''; let res
-      if (this.dialog.mode === 'assign') res = await counselorAssignmentApi.assign(this.form)
-      if (this.dialog.mode === 'handover') res = await counselorAssignmentApi.handover(this.dialog.row.classId, { fromUserId: Number(this.dialog.row.userId), toUserId: this.form.toUserId, reason: this.form.reason, version: this.dialog.row.version })
+      if (this.dialog.mode === 'assign') {
+        res = await counselorAssignmentApi.assign({
+          ...this.form, classId: Number(this.form.classId), userId: Number(this.form.userId)
+        })
+      }
+      if (this.dialog.mode === 'handover') res = await counselorAssignmentApi.handover(this.dialog.row.classId, { fromUserId: Number(this.dialog.row.userId), toUserId: Number(this.form.toUserId), reason: this.form.reason, version: this.dialog.row.version })
       if (this.dialog.mode === 'end') res = await counselorAssignmentApi.end(this.dialog.row.id, { reason: this.form.reason, version: this.dialog.row.version })
       this.submitting = false
       if (res.code !== 0) { this.dialogError = res.message || '提交失败'; return }

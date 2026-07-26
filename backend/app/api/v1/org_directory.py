@@ -135,6 +135,38 @@ def org_tree(user=Depends(get_current_user)):
         db.close()
 
 
+@router.get("/teachers", summary="教职工目录（供辅导员/导师/责任人等选择器使用）")
+def teachers(keyword: str | None = None, roleCode: str | None = None,
+             limit: int = 50, user=Depends(get_current_user)):
+    """选人之外的另一半：很多页面要选"某位老师"，此前只能让用户手填用户 ID。
+
+    只回姓名与登录名，不回手机号/邮箱等联系方式——选择器不需要，回了就是多余暴露。
+    """
+    from app.models import Role, User, UserRole
+
+    _reject_student_side(user)
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        conds = [User.tenant_id == tenant_id, User.is_deleted.is_(False),
+                 User.status == "ACTIVE", User.user_type != "STUDENT"]
+        kw = (keyword or "").strip()
+        if kw:
+            conds.append(User.real_name.contains(kw) | User.login_name.contains(kw))
+        if roleCode:
+            sub = select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(
+                Role.tenant_id == tenant_id, Role.role_code == roleCode,
+                UserRole.is_deleted.is_(False))
+            conds.append(User.id.in_(sub))
+        rows = db.scalars(select(User).where(*conds)
+                          .order_by(User.real_name).limit(max(1, min(int(limit or 50), 200)))).all()
+        return success({"items": [{"value": str(u.id), "label": u.real_name or u.login_name,
+                                   "loginName": u.login_name or "",
+                                   "userType": u.user_type or ""} for u in rows]})
+    finally:
+        db.close()
+
+
 @router.get("/grades", summary="年级列表（按本人数据范围裁剪）")
 def grades(user=Depends(get_current_user)):
     """年级没有独立实体表，是主档上的字符串；这里给去重后的可选项，供普通下拉使用。"""
