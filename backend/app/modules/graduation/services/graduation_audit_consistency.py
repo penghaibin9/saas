@@ -54,11 +54,12 @@ def _before_insert(_mapper, _connection, target: GraduationAuditTrail) -> None:
     if not target.permission_code:
         target.permission_code = get_current_permission_code()
     if not target.request_id:
-        target.request_id = get_trace_id()
+        trace = get_trace_id()
+        target.request_id = trace if trace and trace != "-" else None
     if not target.request_path:
         target.request_path = request.get("path")
     if not target.client_ip:
-        target.client_ip = request.get("clientIp")
+        target.client_ip = request.get("ip") or request.get("clientIp")
     if target.data_scope_snapshot is None:
         target.data_scope_snapshot = {
             "dataScope": user.get("dataScope"),
@@ -73,4 +74,4 @@ def install_audit_consistency() -> None:
     if _INSTALLED:
         return
     _INSTALLED = True
-    event.listen(GraduationAuditTrail, "before_insert", _before_insert, propagate=True)
+    event.listen(GraduationAuditTrail, "before_insert", _before_insert)
