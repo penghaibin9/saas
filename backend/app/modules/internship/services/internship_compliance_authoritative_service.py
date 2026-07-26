@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from datetime import datetime
 
 from app.models import InternshipRecord
 from app.modules.internship.services import internship_compliance_service as base
@@ -15,7 +16,6 @@ from app.modules.internship.services.internship_safety_compliance_service import
 )
 from app.services.db_service import _as_id, session
 
-# 保存原始实现，避免兼容回挂后递归调用自身。
 _legacy_evaluate = base.evaluate_internship_compliance
 
 
@@ -82,56 +82,113 @@ def evaluate_internship_compliance(
 
 
 def batch_compliance_stats(batch_id, user=None):
-    """批次统计逐学生使用权威评估器，避免旧统计与学生端不一致。"""
-    from app.models import InternshipRecord, StudentProfile
-    from app.modules.internship.services.internship_batch_context import resolve_batch
-    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
-    from app.services.db_service import _tid
+    """保持原PC契约，所有指标和下钻使用权威上岗/归档评估。"""
     from sqlalchemy import select
+    from app.models import StudentProfile
+    from app.modules.internship.services.internship_scope import (
+        apply_internship_record_scope,
+    )
+    from app.services.db_service import _tid
 
     with session() as db:
-        batch = resolve_batch(db, batch_id)
-        records = db.scalars(select(InternshipRecord).where(
+        query = select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(),
-            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.batch_id == _as_id(batch_id),
             InternshipRecord.is_deleted.is_(False),
-        ).order_by(InternshipRecord.id.asc())).all()
-        scope = _current_scope(user)
-        rows = []
+        )
+        records = db.scalars(apply_internship_record_scope(query, user)).all()
+        evaluated_at = datetime.utcnow().isoformat() + "Z"
+        entries = []
         by_code = {}
-        passed = 0
+        rule_version = None
         for record in records:
+            onboard = evaluate_internship_compliance(
+                record.id, "ONBOARD", user=user, db=db)
+            archive = evaluate_internship_compliance(
+                record.id, "ARCHIVE", user=user, db=db)
+            rule_version = rule_version or onboard.get("ruleVersion")
             student = db.get(StudentProfile, record.student_id)
-            if not student or not _rec_in_scope(scope, db, record, student):
-                continue
-            result = evaluate_internship_compliance(
-                record.id, operation="ONBOARD", user=user, db=db)
-            if result.get("passed"):
-                passed += 1
-            blockers = result.get("blockers") or []
-            for item in blockers:
-                by_code[item["code"]] = by_code.get(item["code"], 0) + 1
-            rows.append({
+            codes = sorted({item["code"] for item in onboard["blockers"]})
+            archive_codes = sorted({item["code"] for item in archive["blockers"]})
+            entry = {
                 "internshipId": str(record.id),
                 "studentId": str(record.student_id),
-                "studentNo": student.student_no,
-                "studentName": student.real_name,
+                "studentNo": student.student_no if student else "",
+                "studentName": student.real_name if student else "",
+                "classId": str(student.class_id or "") if student else "",
                 "advisorName": record.advisor_name or "",
-                "passed": bool(result.get("passed")),
-                "blockers": blockers,
-                "warnings": result.get("warnings") or [],
-                "ruleVersion": result.get("ruleVersion"),
-            })
-        total = len(rows)
+                "recordStatus": record.status,
+                "onboardPassed": bool(onboard["passed"]),
+                "archivePassed": bool(archive["passed"]),
+                "blockerCodes": codes,
+                "archiveBlockerCodes": archive_codes,
+                "blockers": onboard["blockers"],
+                "archiveBlockers": archive["blockers"],
+                "route": f"/admin/internship/students/{record.id}",
+            }
+            entries.append(entry)
+            for code in set(codes + archive_codes):
+                by_code.setdefault(code, []).append(entry)
+
+        labels = {
+            "enterpriseAccess": "缺企业准入",
+            "studentConsent": "缺学生知情",
+            "guardianConsent": "缺监护人确认",
+            "safetyEducation": "缺安全教育",
+            "agreement": "缺协议",
+            "insurance": "缺保险",
+            "specialFiling": "缺特殊备案",
+            "workRights": "岗位权益不合规",
+            "emergency": "缺应急预案",
+            "openIncident": "开放事故",
+            "openHighRisk": "开放高风险",
+        }
+        metrics = [
+            {"metricCode": "TOTAL", "metricLabel": "批次总人数",
+             "count": len(entries), "drilldownFilter": "ALL"},
+            {"metricCode": "ONBOARD_READY", "metricLabel": "可上岗",
+             "count": sum(1 for item in entries if item["onboardPassed"]),
+             "drilldownFilter": "ONBOARD_READY"},
+            {"metricCode": "BLOCKED", "metricLabel": "被阻断",
+             "count": sum(1 for item in entries if not item["onboardPassed"]),
+             "drilldownFilter": "BLOCKED"},
+        ]
+        metrics.extend({
+            "metricCode": code, "metricLabel": label,
+            "count": len(by_code.get(code, [])), "drilldownFilter": code,
+        } for code, label in labels.items())
+        metrics.extend([
+            {"metricCode": "ARCHIVE_READY", "metricLabel": "可归档",
+             "count": sum(1 for item in entries if item["archivePassed"]),
+             "drilldownFilter": "ARCHIVE_READY"},
+            {"metricCode": "ARCHIVE_BLOCKED", "metricLabel": "不可归档",
+             "count": sum(1 for item in entries if not item["archivePassed"]),
+             "drilldownFilter": "ARCHIVE_BLOCKED"},
+        ])
+        for metric in metrics:
+            metric["ruleVersion"] = rule_version
+            metric["evaluatedAt"] = evaluated_at
+        drilldowns = {
+            "ALL": entries,
+            "ONBOARD_READY": [item for item in entries if item["onboardPassed"]],
+            "BLOCKED": [item for item in entries if not item["onboardPassed"]],
+            "ARCHIVE_READY": [item for item in entries if item["archivePassed"]],
+            "ARCHIVE_BLOCKED": [item for item in entries if not item["archivePassed"]],
+            **by_code,
+        }
         return {
-            "batchId": str(batch.id), "batchName": batch.batch_name,
-            "total": total, "passed": passed, "blocked": total - passed,
-            "missingByCode": by_code, "students": rows,
-            "ruleVersion": rows[0].get("ruleVersion") if rows else "",
+            "batchId": str(batch_id), "total": len(entries),
+            "passed": sum(1 for item in entries if item["onboardPassed"]),
+            "blocked": sum(1 for item in entries if not item["onboardPassed"]),
+            "metrics": metrics, "drilldowns": drilldowns,
+            "missingByCode": {
+                code: len(values) for code, values in by_code.items()
+            },
+            "students": entries,
+            "ruleVersion": rule_version,
+            "evaluatedAt": evaluated_at,
         }
 
 
-# 兼容历史调用点：应用启动加载本模块后，旧模块公开函数统一落到权威实现。
-# 旧模块内部 grant/review_exemption 等其它能力不受影响。
 base.evaluate_internship_compliance = evaluate_internship_compliance
 base.batch_compliance_stats = batch_compliance_stats
