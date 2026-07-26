@@ -1,9 +1,4 @@
-"""岗位实习 · 企业评价：纸质材料代录、退回重交与学校独立审核。
-
-企业评价分只来自企业盖章原始材料。学校/教师可按数据范围代录，审核仅限学校
-或学院授权角色；录入人与审核人必须分离。退回后复用同一记录按版本修改重交，
-旧评分、附件、退回意见和经办人进入 append-only 审计，禁止新增重复评价绕过链路。
-"""
+"""岗位实习企业评价：纸质材料代录、独立审核、退回重交和完整版本链。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -59,14 +54,14 @@ def _is_review_admin(user) -> bool:
     return is_super_admin(user or {}) or _role_code(user) in _REVIEW_ROLES
 
 
-def _trail(db, eval_id, action, detail=None, operator="系统"):
+def _trail(db, target_id, action, detail=None, operator="系统"):
     db.add(InternshipAuditTrail(
-        tenant_id=_tid(), target_id=eval_id, target_type="ENT_EVAL",
+        tenant_id=_tid(), target_id=target_id, target_type="ENT_EVAL",
         action=action, operator_name=operator, detail_json=detail or {},
         occurred_at=datetime.utcnow()))
 
 
-def _get(db, eval_id, *, lock=False) -> InternshipEnterpriseEval:
+def _get(db, eval_id, *, lock=False):
     query = select(InternshipEnterpriseEval).where(
         InternshipEnterpriseEval.id == _as_id(eval_id),
         InternshipEnterpriseEval.tenant_id == _tid(),
@@ -79,9 +74,7 @@ def _get(db, eval_id, *, lock=False) -> InternshipEnterpriseEval:
 
 
 def _ctx(db, row):
-    record = db.get(InternshipRecord, row.internship_id)
-    student = db.get(StudentProfile, row.student_id)
-    return record, student
+    return db.get(InternshipRecord, row.internship_id), db.get(StudentProfile, row.student_id)
 
 
 def _scope_ctx(user):
@@ -90,35 +83,28 @@ def _scope_ctx(user):
 
 
 def _assert_scope(db, row, user, message):
-    scope, in_scope = _scope_ctx(user)
     record, student = _ctx(db, row)
-    if not record or record.tenant_id != _tid() or record.is_deleted:
-        raise not_found("关联实习记录不存在")
+    scope, in_scope = _scope_ctx(user)
     if not in_scope(scope, db, record, student):
         raise no_permission(message)
     return record, student
 
 
-def _total(row) -> int:
-    return sum(int(getattr(row, attr) or 0) for _, attr, _ in SCORE_FIELDS)
+def _total(row):
+    return sum(int(getattr(row, attr) or 0) for _json, attr, _label in SCORE_FIELDS)
 
 
-def _snapshot(row) -> dict:
+def _snapshot(row):
     return {
         "mentorName": row.mentor_name or "",
-        "scores": {json_key: int(getattr(row, attr) or 0) for json_key, attr, _ in SCORE_FIELDS},
-        "avgScore": round(_total(row) / 5, 1),
+        "scores": {json_key: int(getattr(row, attr) or 0)
+                   for json_key, attr, _ in SCORE_FIELDS},
         "overallComment": row.overall_comment or "",
         "recommendHire": bool(row.recommend_hire),
-        "sourceType": row.source_type or row.source,
-        "sourceFileId": row.source_file_id or row.file_id,
-        "recordedByUserId": str(row.recorded_by_user_id or ""),
-        "recordedByName": row.recorded_by_name or "",
-        "recordedAt": _iso(row.recorded_at),
+        "sourceFileId": row.source_file_id or row.file_id or "",
         "reviewStatus": row.school_review_status,
         "reviewComment": row.school_review_comment or "",
-        "reviewedByName": row.reviewed_by_name or "",
-        "reviewedAt": _iso(row.reviewed_at),
+        "recordedByUserId": str(row.recorded_by_user_id or ""),
         "version": int(row.version or 0),
     }
 
@@ -126,21 +112,18 @@ def _snapshot(row) -> dict:
 def _row(row, record, student):
     return {
         "id": str(row.id), "internId": str(row.internship_id),
-        "internshipId": str(row.internship_id), "batchId": str(row.batch_id or ""),
         "studentName": student.real_name if student else "-",
         "studentNo": student.student_no if student else "-",
         "advisorName": record.advisor_name if record else "",
         "positionName": row.position_name or (record.position_name if record else ""),
         "mentorName": row.mentor_name or "",
         "attendanceScore": row.attendance_score, "skillScore": row.skill_score,
-        "attitudeScore": row.attitude_score,
-        "collaborationScore": row.collaboration_score,
-        "safetyScore": row.safety_score,
-        "avgScore": round(_total(row) / 5, 1),
+        "attitudeScore": row.attitude_score, "collaborationScore": row.collaboration_score,
+        "safetyScore": row.safety_score, "avgScore": round(_total(row) / 5, 1),
         "overallComment": row.overall_comment or "",
         "recommendHire": bool(row.recommend_hire),
-        "source": row.source_type or row.source,
-        "sourceLabel": SOURCE_LABEL.get(row.source_type or row.source, "历史来源未知"),
+        "source": row.source_type or row.source or "LEGACY_UNKNOWN",
+        "sourceLabel": SOURCE_LABEL.get(row.source_type or row.source or "LEGACY_UNKNOWN", "历史来源未知"),
         "sourceFileId": row.source_file_id or row.file_id or "",
         "reviewStatus": row.school_review_status,
         "reviewStatusLabel": REVIEW_LABEL.get(row.school_review_status, row.school_review_status),
@@ -310,13 +293,15 @@ def review(user, eval_id, action: str, comment: str = "", expected_version=None)
     reason = str(comment or "").strip()
     if normalized == "RETURN" and len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+    if expected_version is None:
+        raise AppException("DATA_CONFLICT", "审核必须携带当前企业评价版本")
     _assert_review_authority(user)
     with session() as db:
         row = _get(db, eval_id, lock=True)
         _assert_scope(db, row, user, "只能审核本人数据范围内的企业评价")
         if row.school_review_status != "PENDING":
             raise AppException("DATA_CONFLICT", "该评价已被处理，请刷新")
-        if expected_version is not None and int(expected_version) != int(row.version or 0):
+        if int(expected_version) != int(row.version or 0):
             raise AppException("DATA_CONFLICT", "企业评价版本已变化，请刷新后重试")
         actor_id = _user_id(user)
         if actor_id and str(row.recorded_by_user_id or "") == actor_id:
