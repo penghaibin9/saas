@@ -1,6 +1,8 @@
 """学工统计口径安全门：列表、首页、驾驶舱使用同一租户与数据范围。"""
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import func, select
 
 from app.services.db_service import _iso, _tid, session
@@ -14,12 +16,14 @@ def install() -> None:
         return
     from app.models import (
         AffairsActivity, AffairsActivityCredit, AffairsActivitySignup, ArchiveBatch,
-        ArchivePackage, FamilyContactLog, SchoolClass, StudentProfile, WorkStudyRecord,
+        ArchivePackage, FamilyContactLog, FundingDisbursement, SchoolClass, StudentProfile,
+        WorkStudyRecord,
     )
     from app.services import affairs_activity_reliability_service as activity_scope
     from app.services import affairs_activity_service as activity
     from app.services import affairs_cockpit_service as cockpit
     from app.services import affairs_dashboard_service as dashboard
+    from app.services import affairs_funding_service as funding
 
     old_dashboard = dashboard.get_dashboard
     old_safe_domain = cockpit._safe_domain
@@ -122,6 +126,33 @@ def install() -> None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         return allowed, conds
 
+    def disbursement_stats(user):
+        with session() as db:
+            _allowed, student_conds = _scoped_student_conds(db, user)
+            rows = db.scalars(select(FundingDisbursement).join(
+                StudentProfile, StudentProfile.id == FundingDisbursement.student_id,
+            ).where(
+                FundingDisbursement.tenant_id == _tid(),
+                FundingDisbursement.is_deleted.is_(False),
+                *student_conds,
+            )).all()
+        by_status: dict[str, int] = {}
+        issued_total = Decimal("0.00")
+        for row in rows:
+            by_status[row.bank_status] = by_status.get(row.bank_status, 0) + 1
+            if row.bank_status == "ISSUED":
+                issued_total += Decimal(str(row.amount or 0))
+        result = {
+            "total": len(rows),
+            "byStatus": [
+                {"key": key, "label": funding._L_BANK.get(key, key), "count": value}
+                for key, value in by_status.items()
+            ],
+        }
+        if (user or {}).get("currentRoleCode") in funding._AMOUNT_ROLES:
+            result["issuedAmountTotal"] = format(issued_total.quantize(Decimal("0.01")), ".2f")
+        return result
+
     def _replace_domain(result: dict, domain: dict) -> None:
         domains = result.get("domains") or []
         replaced = False
@@ -198,6 +229,7 @@ def install() -> None:
 
     dashboard.get_dashboard = get_dashboard
     activity.activity_stats = activity_stats
+    funding.disbursement_stats = disbursement_stats
     cockpit._safe_domain = safe_domain
     cockpit.cockpit = cockpit_view
     _INSTALLED = True
