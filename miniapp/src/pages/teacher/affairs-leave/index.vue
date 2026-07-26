@@ -14,7 +14,6 @@
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
-      <!-- 待审批 -->
       <view class="page-pad" v-if="tab === 'pending'">
         <MobileGlobalState v-if="!pending || !pending.length" state="empty" title="暂无待审批请假"
           description="轮到你审批的请假会出现在这里。" />
@@ -30,15 +29,14 @@
             <view class="al__row"><text class="al__row-k">时间</text><text class="flex-1 t-sm">{{ fmt(x.startTime) }} ~ {{ fmt(x.endTime) }}（{{ x.days }}天）</text></view>
             <view class="al__row" v-if="x.reason"><text class="al__row-k">事由</text><text class="flex-1 t-sm">{{ x.reason }}</text></view>
             <view class="al__actions">
-              <button class="al__reject flex-1" :disabled="acting" @click="doReturn(x)">退回</button>
-              <button class="al__reject flex-1" :disabled="acting" @click="doReject(x)">驳回</button>
-              <button class="al__approve flex-1" :disabled="acting" @click="doApprove(x)">通过</button>
+              <button v-if="can(x, 'RETURN')" class="al__reject flex-1" :disabled="acting" @click="doReturn(x)">退回</button>
+              <button v-if="can(x, 'REJECT')" class="al__reject flex-1" :disabled="acting" @click="doReject(x)">驳回</button>
+              <button v-if="can(x, 'APPROVE')" class="al__approve flex-1" :disabled="acting" @click="doApprove(x)">通过</button>
             </view>
           </view>
         </view>
       </view>
 
-      <!-- 后续处理 -->
       <view class="page-pad" v-if="tab === 'followup'">
         <MobileGlobalState v-if="!followup || !followup.length" state="empty" title="暂无后续处理事项"
           description="已通过/续假中/待销假/逾期的请假会出现在这里。" />
@@ -53,18 +51,18 @@
             </view>
             <view class="al__row"><text class="al__row-k">时间</text><text class="flex-1 t-sm">{{ fmt(x.startTime) }} ~ {{ fmt(x.endTime) }}（{{ x.days }}天）</text></view>
 
-            <view class="al__actions" v-if="x.affairsStatus === 'APPROVED'">
+            <view class="al__actions" v-if="can(x, 'PROXY_CANCEL')">
               <button class="btn btn-ghost flex-1" :disabled="acting" @click="doProxyCancel(x)">代登记销假</button>
             </view>
-            <view class="al__actions" v-else-if="x.affairsStatus === 'WAIT_CANCEL_LEAVE'">
+            <view class="al__actions" v-else-if="can(x, 'CONFIRM_CANCEL')">
               <button class="al__reject flex-1" :disabled="acting" @click="doCancelReturn(x)">销假退回</button>
               <button class="al__approve flex-1" :disabled="acting" @click="doCancelConfirm(x)">确认销假</button>
             </view>
-            <view class="al__actions" v-else-if="x.affairsStatus === 'EXTENSION_REVIEW'">
+            <view class="al__actions" v-else-if="can(x, 'APPROVE_EXTENSION')">
               <button class="al__reject flex-1" :disabled="acting" @click="doExtension(x, 'REJECT')">续假驳回</button>
               <button class="al__approve flex-1" :disabled="acting" @click="doExtension(x, 'APPROVE')">续假通过</button>
             </view>
-            <view class="al__actions" v-else-if="x.affairsStatus === 'OVERDUE'">
+            <view class="al__actions" v-else-if="can(x, 'HANDLE_OVERDUE')">
               <button class="btn btn-ghost flex-1" :disabled="acting" @click="doOverdue(x)">逾期处置</button>
             </view>
           </view>
@@ -76,6 +74,8 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { affairsContractApi } from '@/services/affairsContractApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 const OVERDUE_TYPES = [
@@ -92,6 +92,9 @@ export default {
   },
   methods: {
     fmt(v) { return (v || '').slice(0, 16).replace('T', ' ') },
+    can(x, action) {
+      return Array.isArray(x.allowedActions) && x.allowedActions.includes(action)
+    },
     followupTone(s) {
       return s === 'OVERDUE' ? 'danger' : s === 'WAIT_CANCEL_LEAVE' ? 'warning' : 'default'
     },
@@ -103,115 +106,104 @@ export default {
     load(done) {
       this.state = 'loading'
       Promise.all([
-        teacherApi.getAffairsLeavePending().catch(() => ({ list: [] })),
-        teacherApi.getAffairsLeaveFollowup().catch(() => ({ list: [] }))
+        teacherApi.getAffairsLeavePending(),
+        teacherApi.getAffairsLeaveFollowup()
       ]).then(([p, f]) => {
         this.pending = (p && p.list) || []
         this.followup = (f && f.list) || []
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
+      }).catch((e) => {
+        this.state = 'error'
+        this._err(e, '加载')
+      }).finally(() => { if (done) done() })
     },
     _err(e, label) {
-      const code = e && String(e.code)
-      if (code === 'APPROVAL_VERSION_CONFLICT' || code === 'DATA_CONFLICT') { toast((e && e.message) || '状态已变化，正在刷新'); this.load() }
-      else if (code && code.startsWith('403')) toast((e && e.message) || '无权处理该记录')
-      else toast((e && e.message) || label + '失败，请重试')
+      const n = normalizeError(e)
+      toast(n.text || (e && e.message) || label + '失败，请重试')
+      if (n.kind === 'conflict') this.load()
+    },
+    run(task, successText, label) {
+      if (this.acting) return
+      this.acting = true
+      task().then(() => {
+        toast(successText)
+        this.load()
+      }).catch((e) => this._err(e, label))
+        .finally(() => { this.acting = false })
     },
     doApprove(x) {
-      if (this.acting) return
       uni.showModal({
         title: '通过请假', editable: true, placeholderText: '可填写审批意见（可选）', content: '',
         success: (r) => {
           if (!r.confirm) return
-          this.acting = true
-          teacherApi.approveAffairsLeave(x.id, r.content || '')
-            .then(() => { toast('已通过'); this.load() })
-            .catch((e) => this._err(e, '审批'))
-            .finally(() => { this.acting = false })
+          this.run(() => affairsContractApi.approveLeave(x.id, r.content || '', x.version), '已通过', '审批')
         }
       })
     },
     doReject(x) {
-      if (this.acting) return
       uni.showModal({
         title: '驳回请假', editable: true, placeholderText: '请填写驳回原因（≥5 字）', content: '',
         success: (r) => {
           if (!r.confirm) return
           const reason = (r.content || '').trim()
-          if (reason.length < 5) { toast('驳回原因至少 5 个字'); return }
-          this.acting = true
-          teacherApi.rejectAffairsLeave(x.id, reason)
-            .then(() => { toast('已驳回'); this.load() })
-            .catch((e) => this._err(e, '驳回'))
-            .finally(() => { this.acting = false })
+          if (reason.length < 5) return toast('驳回原因至少 5 个字')
+          this.run(() => affairsContractApi.rejectLeave(x.id, reason, x.version), '已驳回', '驳回')
         }
       })
     },
     doReturn(x) {
-      if (this.acting) return
       uni.showModal({
-        title: '退回申请人重提', editable: true, placeholderText: '请填写退回原因（≥5 字）', content: '',
+        title: '退回申请人修改', editable: true, placeholderText: '请明确填写需要修改的内容（≥5 字）', content: '',
         success: (r) => {
           if (!r.confirm) return
           const reason = (r.content || '').trim()
-          if (reason.length < 5) { toast('退回原因至少 5 个字'); return }
-          this.acting = true
-          teacherApi.returnAffairsLeave(x.id, reason)
-            .then(() => { toast('已退回'); this.load() })
-            .catch((e) => this._err(e, '退回'))
-            .finally(() => { this.acting = false })
+          if (reason.length < 5) return toast('退回原因至少 5 个字')
+          this.run(() => affairsContractApi.returnLeave(x.id, reason, x.version), '已退回申请人修改', '退回')
         }
       })
     },
     doCancelConfirm(x) {
-      if (this.acting) return
       uni.showModal({
         title: '确认销假', editable: true, placeholderText: '可填写备注（可选）', content: '',
         success: (r) => {
           if (!r.confirm) return
-          this.acting = true
-          teacherApi.cancelConfirmAffairsLeave(x.id, 'CONFIRM', { note: r.content || '' })
-            .then(() => { toast('已确认销假'); this.load() })
-            .catch((e) => this._err(e, '销假确认'))
-            .finally(() => { this.acting = false })
+          this.run(
+            () => affairsContractApi.confirmCancelLeave(x.id, 'CONFIRM', { note: r.content || '' }, x.version),
+            '已确认销假', '销假确认'
+          )
         }
       })
     },
     doCancelReturn(x) {
-      if (this.acting) return
       uni.showModal({
-        title: '销假退回', editable: true, placeholderText: '请填写退回原因（≥5 字，如返校证明与实际不符）', content: '',
+        title: '销假退回', editable: true, placeholderText: '请填写退回原因（≥5 字）', content: '',
         success: (r) => {
           if (!r.confirm) return
           const reason = (r.content || '').trim()
-          if (reason.length < 5) { toast('退回原因至少 5 个字'); return }
-          this.acting = true
-          teacherApi.cancelConfirmAffairsLeave(x.id, 'RETURN', { reason })
-            .then(() => { toast('已退回'); this.load() })
-            .catch((e) => this._err(e, '销假退回'))
-            .finally(() => { this.acting = false })
+          if (reason.length < 5) return toast('退回原因至少 5 个字')
+          this.run(
+            () => affairsContractApi.confirmCancelLeave(x.id, 'RETURN', { reason }, x.version),
+            '销假申请已退回', '销假退回'
+          )
         }
       })
     },
     doProxyCancel(x) {
-      if (this.acting) return
       uni.showModal({
         title: '代登记销假', editable: true,
-        placeholderText: '请填写实际返校时间（如 2026-03-05 08:30），可附备注', content: '',
+        placeholderText: '填写实际返校时间，如 2026-03-05 08:30', content: '',
         success: (r) => {
           if (!r.confirm) return
-          const v = (r.content || '').trim()
-          if (!v) { toast('请填写实际返校时间'); return }
-          this.acting = true
-          teacherApi.proxyCancelAffairsLeave(x.id, v, '')
-            .then(() => { toast('已登记'); this.load() })
-            .catch((e) => this._err(e, '代登记销假'))
-            .finally(() => { this.acting = false })
+          const value = (r.content || '').trim()
+          if (!value) return toast('请填写实际返校时间')
+          this.run(
+            () => affairsContractApi.proxyCancelLeave(x.id, value, '', x.version),
+            '已代登记销假', '代登记销假'
+          )
         }
       })
     },
     doExtension(x, action) {
-      if (this.acting) return
       const reject = action === 'REJECT'
       uni.showModal({
         title: reject ? '续假驳回' : '续假通过',
@@ -220,17 +212,15 @@ export default {
         success: (r) => {
           if (!r.confirm) return
           const reason = (r.content || '').trim()
-          if (reject && reason.length < 5) { toast('驳回原因至少 5 个字'); return }
-          this.acting = true
-          teacherApi.extensionApproveAffairsLeave(x.id, action, reason)
-            .then(() => { toast(reject ? '已驳回' : '已通过'); this.load() })
-            .catch((e) => this._err(e, '续假审批'))
-            .finally(() => { this.acting = false })
+          if (reject && reason.length < 5) return toast('驳回原因至少 5 个字')
+          this.run(
+            () => affairsContractApi.reviewLeaveExtension(x.id, action, reason, x.version),
+            reject ? '已驳回' : '已通过', '续假审批'
+          )
         }
       })
     },
     doOverdue(x) {
-      if (this.acting) return
       uni.showActionSheet({
         itemList: OVERDUE_TYPES.map((t) => t.label),
         success: (res) => {
@@ -240,12 +230,11 @@ export default {
             success: (r) => {
               if (!r.confirm) return
               const note = (r.content || '').trim()
-              if (note.length < 5) { toast('处置说明至少 5 个字'); return }
-              this.acting = true
-              teacherApi.overdueHandleAffairsLeave(x.id, type.key, note)
-                .then(() => { toast('已登记'); this.load() })
-                .catch((e) => this._err(e, '逾期处置'))
-                .finally(() => { this.acting = false })
+              if (note.length < 5) return toast('处置说明至少 5 个字')
+              this.run(
+                () => affairsContractApi.handleLeaveOverdue(x.id, type.key, note, x.version),
+                '已登记', '逾期处置'
+              )
             }
           })
         }
