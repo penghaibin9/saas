@@ -8,6 +8,8 @@ from app.services.db_service import _tid
 
 from . import academic_affairs_teaching_class_service as _base
 
+_original_ensure_teaching_class = _base.ensure_teaching_class_for_task
+
 
 def __getattr__(name):
     return getattr(_base, name)
@@ -84,6 +86,35 @@ def create_roster_version(db, teaching_class, student_ids, *, source_type: str, 
     return version, True
 
 
+def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=True):
+    """选课关系一旦建立，行政班名单只作历史来源，不再自动伪装成当前锁定版本。"""
+    from app.models import AaSelectionCourse
+
+    teaching_class = _original_ensure_teaching_class(
+        db, int(task_id), initialize_admin_roster=False,
+    )
+    if (
+        initialize_admin_roster
+        and not teaching_class.current_roster_version_id
+        and teaching_class.status == "ACTIVE"
+    ):
+        selection_exists = db.query(AaSelectionCourse.id).filter(
+            AaSelectionCourse.tenant_id == _tid(),
+            AaSelectionCourse.teaching_task_id == int(task_id),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).first() is not None
+        if not selection_exists:
+            task, _batch = _base._task_and_batch(db, int(task_id))
+            student_ids = _base._administrative_roster(db, task)
+            if student_ids:
+                create_roster_version(
+                    db, teaching_class, student_ids,
+                    source_type="ADMIN_CLASS", source_id=task.class_id,
+                    reason="由教学任务行政班/合班快照初始化",
+                )
+    return teaching_class
+
+
 def project_selection_batch_locked(db, batch_id: int) -> dict:
     from app.models import AaSelectionCourse, AaSelectionRecord
 
@@ -108,7 +139,7 @@ def project_selection_batch_locked(db, batch_id: int) -> dict:
         if not student_ids:
             continue
         source_ids = {int(row.student_id): int(row.id) for row in records}
-        teaching_class = _base.ensure_teaching_class_for_task(
+        teaching_class = ensure_teaching_class_for_task(
             db, int(course.teaching_task_id), initialize_admin_roster=False,
         )
         if course.capacity is not None:
@@ -147,7 +178,7 @@ def sync_batch_teaching_classes(db, batch_id: int) -> dict:
     for task_id in task_ids:
         try:
             with db.begin_nested():
-                row = _base.ensure_teaching_class_for_task(db, task_id)
+                row = ensure_teaching_class_for_task(db, task_id)
                 db.flush()
             projected.append(str(row.id))
         except Exception as exc:
@@ -162,5 +193,6 @@ def sync_batch_teaching_classes(db, batch_id: int) -> dict:
 
 # 基础服务中的ensure/backfill/apply函数运行时读取这些globals，直接替换即可覆盖所有消费者。
 _base.create_roster_version = create_roster_version
+_base.ensure_teaching_class_for_task = ensure_teaching_class_for_task
 _base.project_selection_batch_locked = project_selection_batch_locked
 _base.sync_batch_teaching_classes = sync_batch_teaching_classes
