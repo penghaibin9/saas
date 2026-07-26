@@ -90,8 +90,7 @@ def teacher_batch_enterprise_evals(
     user=Depends(require_permission("internship.eval.enterprise.view")),
 ):
     from app.modules.internship.services import internship_enterprise_eval_service as evaluations
-    items, total = evaluations.list_evals(
-        1, 200, batch_id=batchId, user=user)
+    items, total = evaluations.list_evals(1, 200, batch_id=batchId, user=user)
     return success({"list": items, "total": total, "batchId": str(batchId)})
 
 
@@ -126,3 +125,46 @@ def teacher_batch_enterprise_eval_review(
         user, eval_id, str(payload.get("action") or "").upper(),
         payload.get("comment") or "", expected_version=payload.get("expectedVersion")),
         message="企业评价审核完成")
+
+
+@router.get("/student-evals", summary="教师当前批次学生鉴定列表")
+def teacher_batch_student_evals(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.eval.self.view")),
+):
+    from app.modules.internship.services import internship_student_eval_service as evaluations
+    items, total = evaluations.list_evals(1, 200, batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.get("/student-evals/{eval_id}", summary="教师查看学生鉴定详情")
+def teacher_batch_student_eval_detail(
+    eval_id: str,
+    user=Depends(require_permission("internship.eval.self.view")),
+):
+    from app.modules.internship.services import internship_student_eval_service as evaluations
+    return success(evaluations.get_eval(eval_id, user=user))
+
+
+@router.post("/student-evals/{eval_id}/advisor-comment", summary="指导教师按版本填写鉴定意见")
+def teacher_batch_student_eval_advisor_comment(
+    eval_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.advisor.manage")),
+):
+    from app.modules.internship.services import internship_student_eval_service as evaluations
+    return success(evaluations.advisor_comment(user, eval_id, body or {}), message="指导意见已保存")
+
+
+@router.post("/student-evals/{eval_id}/review", summary="学校或学院授权角色独立审核学生鉴定")
+def teacher_batch_student_eval_review(
+    eval_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.self.review")),
+):
+    from app.modules.internship.services import internship_student_eval_service as evaluations
+    payload = body or {}
+    return success(evaluations.review(
+        user, eval_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", expected_version=payload.get("expectedVersion")),
+        message="学生鉴定审核完成")
