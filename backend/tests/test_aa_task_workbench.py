@@ -64,11 +64,19 @@ def test_next_action_preserves_college_then_academic_review_chain():
     assert "教务终审" in college_confirmed["label"]
 
 
-def test_public_task_service_points_to_workbench_facade():
+def test_empty_task_management_scope_is_fail_closed():
+    from app.modules.academic_affairs.services.academic_affairs_task_security_facade import _TaskManageScope
+
+    assert _TaskManageScope(role="ACADEMIC_TEACHER").blocked is True
+    assert _TaskManageScope(class_ids={10}, role="COLLEGE_ADMIN").blocked is False
+    assert _TaskManageScope(all=True, role="ACADEMIC_ADMIN").blocked is False
+
+
+def test_public_task_service_points_to_final_security_facade():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_task_service.__name__.endswith(
-        "academic_affairs_task_workbench_facade"
+        "academic_affairs_task_security_facade"
     )
     assert services.academic_affairs_task_service.get_batch_workbench.__module__.endswith(
         "academic_affairs_task_workbench_facade"
