@@ -2,7 +2,6 @@
   <view class="page-wrap">
     <MobileNavBar variant="teacher" :title="active ? '考勤详情' : '课堂考勤'" show-back />
     <MobileGlobalState :state="state" @retry="load">
-      <!-- 场次列表 -->
       <view class="page-pad" v-if="!active && loaded">
         <view class="section-head">
           <text class="section-head__title">我的考勤场次</text>
@@ -32,17 +31,16 @@
 
         <MobileGlobalState v-if="!sessions.length" state="empty" title="暂无考勤场次" description="点击右上角新建场次。" />
         <view class="list-group" v-else>
-          <view v-for="s in sessions" :key="s.sessionId" class="list-row" @click="openSession(s)">
+          <view v-for="session in sessions" :key="session.sessionId" class="list-row" @click="openSession(session)">
             <view class="flex-1">
-              <text class="t-md">{{ s.courseName || '（未命名课程）' }}</text>
-              <text class="at__sub">{{ s.sessionDate }}{{ s.slotNo ? ' 第' + s.slotNo + '节' : '' }} · 出勤 {{ s.presentCount }}/{{ s.totalCount }}</text>
+              <text class="t-md">{{ session.courseName || '（未命名课程）' }}</text>
+              <text class="at__sub">{{ session.sessionDate }}{{ session.slotNo ? ' 第' + session.slotNo + '节' : '' }} · 出勤 {{ session.presentCount }}/{{ session.totalCount }}</text>
             </view>
-            <MobileStatusTag :status="s.status" />
+            <MobileStatusTag :status="session.status" />
           </view>
         </view>
       </view>
 
-      <!-- 场次详情 + 逐生标记 -->
       <view class="page-pad" v-if="active">
         <text class="at__back" @click="active = null">‹ 返回场次列表</text>
         <view class="card row-between">
@@ -50,17 +48,17 @@
           <MobileStatusTag :status="active.status" />
         </view>
         <view class="list-group">
-          <view v-for="it in items" :key="it.studentId" class="list-row at__row">
+          <view v-for="item in items" :key="item.studentId" class="list-row at__row">
             <view class="flex-1">
-              <text class="t-md">{{ it.realName }}</text>
-              <text class="at__sub">{{ it.studentNo }}</text>
+              <text class="t-md">{{ item.realName }}</text>
+              <text class="at__sub">{{ item.studentNo }}</text>
             </view>
             <view class="at__seg">
               <text
-                v-for="opt in STATUS_OPTS" :key="opt.value"
-                class="at__seg-item" :class="{ 'is-active': it.status === opt.value }"
-                @click="active.status === 'DRAFT' && mark(it, opt.value)"
-              >{{ opt.label }}</text>
+                v-for="option in STATUS_OPTS" :key="option.value"
+                class="at__seg-item" :class="{ 'is-active': item.status === option.value }"
+                @click="active.status === 'DRAFT' && mark(item, option.value)"
+              >{{ option.label }}</text>
             </view>
           </view>
         </view>
@@ -86,6 +84,7 @@ const STATUS_OPTS = [
   { value: 'ABSENT', label: '缺勤' },
   { value: 'LEAVE', label: '请假' }
 ]
+const ALLOWED_TASK_STATUSES = new Set(['TEACHER_CONFIRMED', 'COLLEGE_REVIEW', 'APPROVED'])
 
 export default {
   data() {
@@ -107,19 +106,20 @@ export default {
   },
   onLoad() { this.load(); this.loadTasks() },
   methods: {
-    onDateChange(e) { this.form.sessionDate = e.detail.value },
-    onTypeChange(e) { this.form.sessionType = this.sessionTypes[Number(e.detail.value)] || '' },
+    onDateChange(event) { this.form.sessionDate = event.detail.value },
+    onTypeChange(event) { this.form.sessionType = this.sessionTypes[Number(event.detail.value)] || '' },
     applyTask(task) {
       this.form.teachingTaskId = task ? task.teachingTaskId : ''
       this.form.classId = task ? task.classId : ''
     },
-    onTaskPick(e) {
-      this.taskIndex = Number(e.detail.value)
+    onTaskPick(event) {
+      this.taskIndex = Number(event.detail.value)
       this.applyTask(this.taskOptions[this.taskIndex])
     },
     loadTasks() {
       teacherApi.getAttendanceClassOptions().then((data) => {
-        this.taskOptions = (data && data.items) || []
+        this.taskOptions = ((data && data.items) || []).filter((task) =>
+          ALLOWED_TASK_STATUSES.has(String(task.taskStatus || '').toUpperCase()))
         this.taskIndex = 0
         this.applyTask(this.taskOptions[0])
       }).catch(() => {
@@ -129,8 +129,8 @@ export default {
     },
     load() {
       this.state = 'loading'
-      teacherApi.getAttendanceSessions().then((d) => {
-        this.sessions = (d && d.items) || []
+      teacherApi.getAttendanceSessions().then((data) => {
+        this.sessions = (data && data.items) || []
         this.loaded = true
         this.state = 'ready'
       }).catch(() => { this.state = 'error' })
@@ -152,26 +152,26 @@ export default {
         this.form.sessionType = ''
         this.applyTask(this.taskOptions[this.taskIndex])
         this.load()
-      }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '创建失败，请稍后重试'))
+      }).catch((error) => toast(error && error.biz ? normalizeError(error).text : '创建失败，请稍后重试'))
         .finally(() => { this.creating = false })
     },
-    openSession(s) {
-      this.active = s
-      teacherApi.getAttendanceDetail(s.sessionId).then((d) => {
-        this.active = d
-        this.items = d.items || []
+    openSession(session) {
+      this.active = session
+      teacherApi.getAttendanceDetail(session.sessionId).then((data) => {
+        this.active = data
+        this.items = data.items || []
       }).catch(() => toast('加载失败'))
     },
-    mark(it, status) {
-      if (it.status === status) return
-      const prev = it.status
-      it.status = status
-      teacherApi.markAttendance(this.active.sessionId, it.studentId, status).then((d) => {
-        this.active.presentCount = d.presentCount
-        this.active.absentCount = d.absentCount
-      }).catch((e) => {
-        it.status = prev
-        toast(e && e.biz ? normalizeError(e).text : '标记失败，请稍后重试')
+    mark(item, status) {
+      if (item.status === status) return
+      const previous = item.status
+      item.status = status
+      teacherApi.markAttendance(this.active.sessionId, item.studentId, status).then((data) => {
+        this.active.presentCount = data.presentCount
+        this.active.absentCount = data.absentCount
+      }).catch((error) => {
+        item.status = previous
+        toast(error && error.biz ? normalizeError(error).text : '标记失败，请稍后重试')
       })
     },
     submitSession() {
@@ -181,7 +181,7 @@ export default {
         uni.showToast({ title: '考勤已提交', icon: 'success' })
         this.active = null
         this.load()
-      }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试'))
+      }).catch((error) => toast(error && error.biz ? normalizeError(error).text : '提交失败，请稍后重试'))
         .finally(() => { this.submitting = false })
     }
   }
