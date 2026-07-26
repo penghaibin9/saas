@@ -15,8 +15,8 @@ export const GRADUATION_WORKSPACES = [
     path: '/admin/graduation',
     children: [
       { label: '毕设总览', path: '/admin/graduation', permissionKey: 'graduationDesign.dashboard.view', entryType: 'WORKBENCH' },
-      { label: '待评阅开题', path: '/admin/graduation/proposals?status=PENDING_REVIEW', permissionKey: 'graduationDesign.proposal.view', entryType: 'TASK_QUEUE' },
-      { label: '待评阅成果', path: '/admin/graduation/finals?status=PENDING_REVIEW', permissionKey: 'graduationDesign.final.view', entryType: 'TASK_QUEUE' },
+      { label: '待评阅开题', path: '/admin/graduation/proposals?tab=PENDING_REVIEW', permissionKey: 'graduationDesign.proposal.view', entryType: 'TASK_QUEUE' },
+      { label: '待评阅成果', path: '/admin/graduation/finals?tab=PENDING_REVIEW', permissionKey: 'graduationDesign.final.view', entryType: 'TASK_QUEUE' },
       { label: '我的答辩评分', path: '/admin/graduation/defense-scoring', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
       { label: '毕设统计报表', path: '/admin/graduation/stats-report', permissionKey: 'graduationDesign.stats.view', entryType: 'ANALYTICS_VIEW' },
       { label: '毕设操作日志', path: '/admin/graduation/audit-logs', permissionKey: 'graduationDesign.audit.view', entryType: 'CONFIG_VIEW' }
@@ -33,7 +33,7 @@ export const GRADUATION_WORKSPACES = [
       { label: '学生名单', path: '/admin/graduation/students?panel=roster', permissionKey: 'graduationDesign.student.view', entryType: 'TASK_QUEUE' },
       { label: '学生进度', path: '/admin/graduation/students?panel=progress', permissionKey: 'graduationDesign.student.view', entryType: 'TASK_QUEUE' },
       { label: '未选题学生', path: '/admin/graduation/students?panel=topic', permissionKey: 'graduationDesign.student.view', entryType: 'TASK_QUEUE' },
-      { label: '毕设资格认定', path: '/admin/graduation/students?panel=eligibility', permissionKey: 'graduationDesign.student.view', entryType: 'TASK_QUEUE' },
+      { label: '毕设资格认定', path: '/admin/graduation/students?panel=eligibility', permissionKey: 'graduationDesign.student.manage', entryType: 'TASK_QUEUE' },
       { label: '导师名单', path: '/admin/graduation/mentors?panel=list', permissionKey: 'graduationDesign.mentor.manage', entryType: 'TASK_QUEUE' },
       { label: '学生分配', path: '/admin/graduation/mentors?panel=assign', permissionKey: 'graduationDesign.mentor.manage', entryType: 'TASK_QUEUE' },
       { label: '分配冲突检测', path: '/admin/graduation/mentors/conflicts', permissionKey: 'graduationDesign.mentor.manage', entryType: 'TASK_QUEUE' }
@@ -44,9 +44,9 @@ export const GRADUATION_WORKSPACES = [
     label: '题目与选题',
     path: '/admin/graduation/topic-lib',
     children: [
-      { label: '题目列表', path: '/admin/graduation/topic-lib?panel=list', permissionKey: 'graduationDesign.topic.view', entryType: 'TASK_QUEUE' },
-      { label: '待审核题目', path: '/admin/graduation/topic-lib?panel=pending', permissionKey: 'graduationDesign.topic.review', entryType: 'TASK_QUEUE' },
-      { label: '学生选题结果', path: '/admin/graduation/topics', permissionKey: 'graduationDesign.topic.assign', entryType: 'TASK_QUEUE' },
+      { label: '题目列表', path: '/admin/graduation/topic-lib?panel=list', permissionKey: 'graduationDesign.topic.lib', entryType: 'TASK_QUEUE' },
+      { label: '待审核题目', path: '/admin/graduation/topic-lib?panel=pending', permissionKey: 'graduationDesign.topic.lib', entryType: 'TASK_QUEUE' },
+      { label: '学生选题结果', path: '/admin/graduation/topics', permissionKey: 'graduationDesign.topic.manage', entryType: 'TASK_QUEUE' },
       { label: '选题轮次', path: '/admin/graduation/topic-rounds?panel=rounds', permissionKey: 'graduationDesign.topic.round', entryType: 'TASK_QUEUE' },
       { label: '学生志愿与确认', path: '/admin/graduation/topic-rounds?panel=choices', permissionKey: 'graduationDesign.topic.round', entryType: 'TASK_QUEUE' },
       { label: '匹配结果', path: '/admin/graduation/topic-rounds?panel=match', permissionKey: 'graduationDesign.topic.round', entryType: 'TASK_QUEUE' },
@@ -85,7 +85,7 @@ export const GRADUATION_WORKSPACES = [
     label: '答辩与成绩',
     path: '/admin/graduation/defense',
     children: [
-      { label: '答辩安排', path: '/admin/graduation/defense', permissionKey: 'graduationDesign.defense.groupManage', entryType: 'TASK_QUEUE' },
+      { label: '答辩安排', path: '/admin/graduation/defense', permissionKey: 'graduationDesign.defense.view', entryType: 'TASK_QUEUE' },
       { label: '答辩评分', path: '/admin/graduation/defense-scoring', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
       { label: '答辩秘书确认', path: '/admin/graduation/defense-confirmation', permissionKey: 'graduationDesign.defense.scoreConfirm', entryType: 'TASK_QUEUE' },
       { label: '成绩台账', path: '/admin/graduation/grade-ledger', permissionKey: 'graduationDesign.grade.view', entryType: 'TASK_QUEUE' },
@@ -97,11 +97,10 @@ export const GRADUATION_WORKSPACES = [
     key: 'gd-risk-archive',
     label: '风险与归档',
     path: '/admin/graduation/risk-archive?panel=risk',
-    permissionKey: 'graduationDesign.riskArchive.manage',
     children: [
       { label: '问题预警', path: '/admin/graduation/risk-archive?panel=risk', permissionKey: 'graduationDesign.riskArchive.manage', entryType: 'TASK_QUEUE' },
       { label: '毕设材料归档', path: '/admin/graduation/risk-archive?panel=archive', permissionKey: 'graduationDesign.riskArchive.manage', entryType: 'TASK_QUEUE' },
-      { label: '毕设统计', path: '/admin/graduation/risk-archive?panel=stats', permissionKey: 'graduationDesign.stats.view', entryType: 'ANALYTICS_VIEW' }
+      { label: '毕设统计', path: '/admin/graduation/stats-report', permissionKey: 'graduationDesign.stats.view', entryType: 'ANALYTICS_VIEW' }
     ]
   },
   {
