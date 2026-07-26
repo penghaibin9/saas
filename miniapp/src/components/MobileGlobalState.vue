@@ -2,6 +2,8 @@
   <view class="mobile-global-state">
     <!-- 组件均会按当前 route 自行决定是否启用。 -->
     <MobileGraduationBatchContext />
+    <MobileGraduationDelayQueue />
+    <MobileGraduationExtensionPanel />
     <MobileGraduationSectionErrors />
     <MobileGraduationTempFileJanitor />
 
@@ -55,9 +57,7 @@ export default {
     loadingText: { type: String, default: '正在加载…' }
   },
   emits: ['retry', 'back', 'contact'],
-  computed: {
-    meta() { return STATE_META[this.state] || STATE_META.error }
-  }
+  computed: { meta() { return STATE_META[this.state] || STATE_META.error } }
 }
 </script>
 
@@ -65,21 +65,6 @@ export default {
 .mobile-global-state { width: 100%; }
 .mgs-panel { display:flex; flex-direction:column; align-items:center; padding:var(--space-6) var(--page-padding-mobile); background:var(--bg-card); border-radius:var(--radius-lg); text-align:center; }
 .mgs-icon { width:52px; height:52px; border-radius:var(--radius-full); display:flex; align-items:center; justify-content:center; font-size:var(--font-size-2xl); margin-bottom:var(--space-3); }
-.mgs-icon--empty { background:var(--gray-100); color:var(--gray-400); }
-.mgs-icon--error { background:var(--danger-50); color:var(--danger-600); }
-.mgs-icon--forbidden { background:var(--warning-50); color:var(--warning-600); }
-.mgs-icon--offline { background:var(--gray-100); color:var(--gray-500); }
-.mgs-icon--readonly { background:var(--info-50); color:var(--info-600); font-size:var(--font-size-lg); }
-.mgs-icon--noLicense { background:var(--primary-50); color:var(--primary-600); }
-.mgs-title { font-size:var(--font-size-lg); font-weight:var(--font-weight-medium); color:var(--text-primary); margin-bottom:var(--space-2); }
-.mgs-desc { font-size:var(--font-size-base); color:var(--text-secondary); line-height:var(--line-height-base); }
-.mgs-code { margin-top:var(--space-2); font-size:var(--font-size-xs); color:var(--text-tertiary); }
-.mgs-actions { display:flex; gap:var(--space-3); margin-top:var(--space-4); }
-.mgs-btn { min-height:var(--touch-target-min); line-height:var(--touch-target-min); padding:0 var(--space-5); border-radius:var(--radius-md); border:1px solid var(--border-base); background:var(--bg-card); color:var(--text-secondary); font-size:var(--font-size-md); }
-.mgs-btn--primary { background:var(--primary-600); border-color:var(--primary-600); color:var(--text-inverse); }
-.mgs-loading { align-items:stretch; text-align:left; gap:var(--space-3); }
-.mgs-skeleton { height:14px; border-radius:var(--radius-sm); background:var(--gray-100); }
-.mgs-skeleton--title { width:45%; height:18px; }
-.mgs-skeleton--short { width:60%; }
-.mgs-loading__text { margin-top:var(--space-2); font-size:var(--font-size-sm); color:var(--text-tertiary); text-align:center; }
+.mgs-icon--empty { background:var(--gray-100); color:var(--gray-400); }.mgs-icon--error { background:var(--danger-50); color:var(--danger-600); }.mgs-icon--forbidden { background:var(--warning-50); color:var(--warning-600); }.mgs-icon--offline { background:var(--gray-100); color:var(--gray-500); }.mgs-icon--readonly { background:var(--info-50); color:var(--info-600); font-size:var(--font-size-lg); }.mgs-icon--noLicense { background:var(--primary-50); color:var(--primary-600); }
+.mgs-title { font-size:var(--font-size-lg); font-weight:var(--font-weight-medium); color:var(--text-primary); margin-bottom:var(--space-2); }.mgs-desc { font-size:var(--font-size-base); color:var(--text-secondary); line-height:var(--line-height-base); }.mgs-code { margin-top:var(--space-2); font-size:var(--font-size-xs); color:var(--text-tertiary); }.mgs-actions { display:flex; gap:var(--space-3); margin-top:var(--space-4); }.mgs-btn { min-height:var(--touch-target-min); line-height:var(--touch-target-min); padding:0 var(--space-5); border-radius:var(--radius-md); border:1px solid var(--border-base); background:var(--bg-card); color:var(--text-secondary); font-size:var(--font-size-md); }.mgs-btn--primary { background:var(--primary-600); border-color:var(--primary-600); color:var(--text-inverse); }.mgs-loading { align-items:stretch; text-align:left; gap:var(--space-3); }.mgs-skeleton { height:14px; border-radius:var(--radius-sm); background:var(--gray-100); }.mgs-skeleton--title { width:45%; height:18px; }.mgs-skeleton--short { width:60%; }.mgs-loading__text { margin-top:var(--space-2); font-size:var(--font-size-sm); color:var(--text-tertiary); text-align:center; }
 </style>
