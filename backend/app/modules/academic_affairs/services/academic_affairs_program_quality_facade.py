@@ -9,7 +9,7 @@ from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_program_service as _legacy
-from .academic_affairs_program_quality_final_service import validate_program_db
+from .academic_affairs_program_binding_quality_service import validate_program_db
 
 
 def __getattr__(name):
