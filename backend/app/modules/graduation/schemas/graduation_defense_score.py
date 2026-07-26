@@ -29,3 +29,7 @@ class DefenseScoreEntryRequest(BaseModel):
 
 class SecondDefenseRequest(BaseModel):
     reason: str = Field(..., min_length=5, description="二次答辩原因，至少 5 字")
+
+
+class DefenseConfirmationRevokeRequest(BaseModel):
+    reason: str = Field(..., min_length=5, description="撤回答辩确认原因，至少 5 字")

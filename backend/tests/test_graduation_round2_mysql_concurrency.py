@@ -110,3 +110,27 @@ def test_services_keep_required_row_locks_and_closed_match_contract():
         source = (root / filename).read_text(encoding="utf-8")
         for token in tokens:
             assert token in source, f"{filename} 缺少并发契约 {token}"
+
+
+def test_followup_workflows_preserve_original_results_and_require_correction_reason():
+    from pathlib import Path
+    from pydantic import ValidationError
+
+    from app.modules.graduation.schemas.graduation_defense_score import (
+        DefenseConfirmationRevokeRequest,
+    )
+
+    with pytest.raises(ValidationError):
+        DefenseConfirmationRevokeRequest(reason="短")
+    assert DefenseConfirmationRevokeRequest(reason="并发更正原因充分").reason == "并发更正原因充分"
+
+    service_root = Path(__file__).parents[1] / "app" / "modules" / "graduation" / "services"
+    plagiarism_source = (service_root / "graduation_review_service.py").read_text(encoding="utf-8")
+    defense_source = (service_root / "graduation_defense_score_service.py").read_text(encoding="utf-8")
+    assert "recheck_of_id=p.id" in plagiarism_source
+    assert 'status="CHECKING"' in plagiarism_source
+    assert "p.rate =" not in plagiarism_source[
+        plagiarism_source.index("def review_dispute"):plagiarism_source.index("def plagiarism_stats")
+    ]
+    assert "def revoke_confirmation" in defense_source
+    assert 'before="CONFIRMED", after="SCORED"' in defense_source

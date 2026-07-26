@@ -47,6 +47,8 @@ def _stu(db, sid) -> GraduationStudent:
 
 def _plag_row(p: GraduationPlagiarismCheck, stu=None) -> dict:
     return {"id": str(p.id), "gdStudentId": str(p.gd_student_id), "gdFinalId": str(p.gd_final_id or ""),
+            "recheckOfId": str(p.recheck_of_id) if getattr(p, "recheck_of_id", None) else None,
+            "isRecheck": bool(getattr(p, "recheck_of_id", None)),
             "studentName": stu.name if stu else "", "studentNo": stu.student_no if stu else "",
             "submitAt": _iso(p.submit_at), "status": p.status,
             "statusLabel": PLAG_STATUS_LABEL.get(p.status, p.status),
@@ -197,11 +199,38 @@ def review_dispute(pid, action: str, comment: str = None) -> dict:
             raise AppException("DATA_CONFLICT", "无待处理的复查申请")
         p.dispute_status = "APPROVED" if action == "APPROVE" else "REJECTED"
         p.dispute_comment = (comment or "").strip()
-        # A successful dispute is an approved exception, not a rewrite of the objective result.
+        recheck = None
+        if action == "APPROVE":
+            if not p.gd_final_id:
+                raise AppException("DATA_CONFLICT", "原查重任务未绑定成果，无法创建复查任务")
+            final = db.scalars(select(GraduationFinal).where(
+                GraduationFinal.id == p.gd_final_id,
+                GraduationFinal.tenant_id == _tid(),
+                GraduationFinal.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if not final:
+                raise AppException("DATA_CONFLICT", "原成果不存在，无法创建复查任务")
+            active = db.scalars(select(GraduationPlagiarismCheck).where(
+                GraduationPlagiarismCheck.tenant_id == _tid(),
+                GraduationPlagiarismCheck.gd_final_id == final.id,
+                GraduationPlagiarismCheck.status == "CHECKING",
+                GraduationPlagiarismCheck.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if active:
+                raise AppException("DATA_CONFLICT", "该成果已有进行中的查重或复查任务")
+            recheck = GraduationPlagiarismCheck(
+                tenant_id=_tid(), gd_student_id=p.gd_student_id, gd_final_id=final.id,
+                recheck_of_id=p.id, submit_at=datetime.now(timezone.utc),
+                status="CHECKING", active_key=f"checking:{final.id}", threshold=p.threshold,
+            )
+            db.add(recheck)
+            db.flush()
         _audit(db, "PLAGIARISM", p.id, "复查审核-" + ("通过" if action == "APPROVE" else "驳回"),
-               (comment or "").strip())
+               f"{(comment or '').strip()};recheckTaskId={recheck.id if recheck else ''}")
         db.commit()
-        return _plag_row(p, db.get(GraduationStudent, p.gd_student_id))
+        result = _plag_row(p, db.get(GraduationStudent, p.gd_student_id))
+        result["recheckTaskId"] = str(recheck.id) if recheck else None
+        return result
 
 
 def plagiarism_stats(batch_id=None) -> dict:

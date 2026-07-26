@@ -299,6 +299,7 @@ def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent
             dup.absent = absent
             dup.absent_reason = absent_reason
             dup.status = "SCORED"
+            dup.version = int(dup.version or 0) + 1
             if judge_mid and not dup.judge_mentor_id:
                 dup.judge_mentor_id = judge_mid
             dup.expert_id = judge_expert_id
@@ -371,11 +372,54 @@ def confirm_scores(gd_student_id) -> dict:
         for d in rows:
             d.status = "CONFIRMED"
             d.confirmed_at = now
+            d.version = int(d.version or 0) + 1
         scored = [d.score for d in rows if not d.absent and d.score is not None]
         avg = round(sum(scored) / len(scored), 1) if scored else None
         _audit(db, stu.id, "确认答辩成绩", detail=f"avg={avg}")
         db.commit()
         return {"gdStudentId": str(stu.id), "roundNo": latest_round, "average": avg, "judgeCount": len(rows)}
+
+
+def revoke_confirmation(gd_student_id, reason: str) -> dict:
+    """管理员撤回本轮确认，保留原评分内容并以版本号、域审计记录更正起点。"""
+    if not reason or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "撤回确认原因必填且不少于 5 字")
+    with session() as db:
+        stu = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not stu:
+            raise not_found("毕设学生不存在")
+        assert_student_access(db, stu, "defense.score.revoke")
+        latest_round = _active_round_no(db, stu.id)
+        rows = db.scalars(select(GraduationDefenseScore).where(
+            GraduationDefenseScore.tenant_id == _tid(),
+            GraduationDefenseScore.gd_student_id == stu.id,
+            GraduationDefenseScore.round_no == latest_round,
+            GraduationDefenseScore.is_deleted.is_(False),
+        ).order_by(GraduationDefenseScore.id).with_for_update()).all()
+        if not rows or any(row.status != "CONFIRMED" for row in rows):
+            raise AppException("DATA_CONFLICT", "仅已全部确认的当前轮次可撤回确认")
+        snapshot = ";".join(
+            f"{row.judge_identity or row.judge_name}:score={row.score},absent={int(row.absent)}"
+            for row in rows
+        )
+        for row in rows:
+            row.status = "SCORED"
+            row.confirmed_at = None
+            row.version = int(row.version or 0) + 1
+        _audit(
+            db, stu.id, "撤回答辩确认",
+            detail=f"round={latest_round};reason={reason.strip()};snapshot={snapshot}",
+            before="CONFIRMED", after="SCORED",
+        )
+        db.commit()
+        return {
+            "gdStudentId": str(stu.id), "roundNo": latest_round,
+            "status": "SCORED", "reason": reason.strip(),
+        }
 
 
 def create_second_defense(gd_student_id, reason: str) -> dict:
@@ -466,6 +510,8 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
         for row in pending_rows:
             gd_todo.push_defense_score_todo(db, row, stu)
         _audit(db, stu.id, "创建二次答辩", reason.strip(), after=str(new_round))
+        stu.stage = "DEFENSE"
+        stu.version = int(stu.version or 0) + 1
         db.commit()
         return {"gdStudentId": str(stu.id), "newRound": new_round,
                 "pendingJudges": [n for n, _, _ in uniq]}

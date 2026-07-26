@@ -367,6 +367,7 @@ class GraduationPlagiarismCheck(PKMixin, TenantMixin, CommonMixin, Base):
 
     gd_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     gd_final_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联成果 t_gd_final.id")
+    recheck_of_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="复查来源查重任务ID")
     submit_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="CHECKING",
                                         comment="CHECKING检测中/DONE完成/FAILED失败")

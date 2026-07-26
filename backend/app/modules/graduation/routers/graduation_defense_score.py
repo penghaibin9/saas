@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.modules.graduation.schemas.graduation_defense_score import DefenseScoreEntryRequest, SecondDefenseRequest
+from app.modules.graduation.schemas.graduation_defense_score import (
+    DefenseConfirmationRevokeRequest, DefenseScoreEntryRequest, SecondDefenseRequest,
+)
 from app.services import audit_log
 from app.modules.graduation.services import graduation_defense_score_service as svc
 
@@ -43,6 +45,19 @@ def gd_defense_score_confirm(gd_student_id: str, user=Depends(get_current_user))
     result = svc.confirm_scores(gd_student_id)
     audit_log.record("确认答辩成绩", f"graduation-defense-score:{gd_student_id}")
     return success(result, message="已确认")
+
+
+@router.post("/gd-defense-scores/{gd_student_id}/revoke-confirmation",
+             summary="撤回本轮答辩成绩确认后更正（原因≥5字）")
+def gd_defense_score_revoke_confirmation(
+    gd_student_id: str,
+    body: DefenseConfirmationRevokeRequest,
+    user=Depends(get_current_user),
+):
+    result = svc.revoke_confirmation(gd_student_id, body.reason)
+    audit_log.record("撤回答辩成绩确认", f"graduation-defense-score:{gd_student_id}",
+                     detail={"reason": body.reason})
+    return success(result, message="已撤回确认，可进入更正")
 
 
 @router.post("/gd-defense-scores/{gd_student_id}/second-defense", summary="创建二次答辩（原因≥5字）")
