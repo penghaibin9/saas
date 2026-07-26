@@ -10,6 +10,8 @@ from app.services.db_service import _tid
 from . import academic_affairs_archive_policy_facade as _base
 
 _legacy = _base._legacy
+_archive_executor = _base._base
+_previous_evaluate_domains = _archive_executor._evaluate_domains
 
 
 def __getattr__(name):
@@ -84,8 +86,9 @@ def _evaluate_selection(db, term_id):
     ).all()
     missing_task_courses = sum(1 for course in courses if not course.teaching_task_id)
     count_mismatches = 0
+    batch_by_id = {int(batch.id): batch for batch in batches}
     for course in courses:
-        batch = next((item for item in batches if int(item.id) == int(course.batch_id)), None)
+        batch = batch_by_id.get(int(course.batch_id))
         if not batch or str(batch.status or "").upper() not in {"LOCKED", "ARCHIVED"}:
             continue
         locked_count = db.query(AaSelectionRecord).filter(
@@ -106,7 +109,7 @@ def _evaluate_selection(db, term_id):
 
 
 def _evaluate_domains(db, term_id, term_code, college_ids=None):
-    results = _base._evaluate_domains(db, term_id, term_code, college_ids)
+    results = _previous_evaluate_domains(db, term_id, term_code, college_ids)
     try:
         results["SELECTION"] = _evaluate_selection(db, term_id)
     except Exception as exc:
@@ -117,5 +120,5 @@ def _evaluate_domains(db, term_id, term_code, college_ids=None):
 if not any(code == "SELECTION" for code, _label in _legacy._DOMAINS):
     _legacy._DOMAINS.append(("SELECTION", "选课名单"))
 
-# base run_check/precheck 在自身globals中找 _evaluate_domains，替换后第10域参与检查和落库。
-_base._evaluate_domains = _evaluate_domains
+# 真正执行run_check/precheck的是archive_facade函数，其globals属于_archive_executor；必须改这里。
+_archive_executor._evaluate_domains = _evaluate_domains
