@@ -41,11 +41,15 @@ def _require_batch(batch_id: int | None) -> int:
     return int(batch_id)
 
 
-def _student(db, gd_student_id: Any, batch_id: int) -> GraduationStudent:
+def _as_int(value: Any, message: str) -> int:
     try:
-        sid = int(gd_student_id)
+        return int(value)
     except (TypeError, ValueError):
-        raise not_found("毕设学生不存在") from None
+        raise not_found(message) from None
+
+
+def _student(db, gd_student_id: Any, batch_id: int) -> GraduationStudent:
+    sid = _as_int(gd_student_id, "毕设学生不存在")
     row = db.scalars(select(GraduationStudent).where(
         GraduationStudent.id == sid,
         GraduationStudent.tenant_id == _tid(),
@@ -62,22 +66,23 @@ def _student_id_from_row(row: dict) -> str:
 
 
 def _filter_rows(rows: list | None, batch_id: int, *, page: int = 1, page_size: int = 20) -> dict:
+    """按 GraduationStudent 稳定 id 批量裁剪，避免逐行查询和跨批混入。"""
     page, page_size = _page(page, page_size)
-    values = []
+    normalized = [raw for raw in (rows or []) if isinstance(raw, dict)]
+    candidate_ids = {
+        int(sid) for sid in (_student_id_from_row(row) for row in normalized) if sid.isdigit()
+    }
+    if not candidate_ids:
+        return {"items": [], "total": 0, "page": page, "pageSize": page_size, "hasMore": False}
     with session() as db:
-        for raw in rows or []:
-            row = raw if isinstance(raw, dict) else {}
-            sid = _student_id_from_row(row)
-            if not sid.isdigit():
-                continue
-            found = db.scalars(select(GraduationStudent.id).where(
-                GraduationStudent.id == int(sid),
-                GraduationStudent.tenant_id == _tid(),
-                GraduationStudent.batch_id == int(batch_id),
-                GraduationStudent.is_deleted.is_(False),
-            ).limit(1)).first()
-            if found is not None:
-                values.append(row)
+        valid_ids = {int(value) for value in db.scalars(select(GraduationStudent.id).where(
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.batch_id == int(batch_id),
+            GraduationStudent.id.in_(candidate_ids),
+            GraduationStudent.is_deleted.is_(False),
+        )).all()}
+    values = [row for row in normalized if _student_id_from_row(row).isdigit()
+              and int(_student_id_from_row(row)) in valid_ids]
     total = len(values)
     start = (page - 1) * page_size
     items = values[start:start + page_size]
@@ -92,10 +97,7 @@ def _filter_rows(rows: list | None, batch_id: int, *, page: int = 1, page_size: 
 
 def _material_student(model, record_id: str, batch_id: int) -> GraduationStudent:
     with session() as db:
-        try:
-            rid = int(record_id)
-        except (TypeError, ValueError):
-            raise not_found("毕业设计材料不存在") from None
+        rid = _as_int(record_id, "毕业设计材料不存在")
         record = db.scalars(select(model).where(
             model.id == rid,
             model.tenant_id == _tid(),
@@ -109,7 +111,7 @@ def _material_student(model, record_id: str, batch_id: int) -> GraduationStudent
 def _review_student(review_id: str, batch_id: int) -> GraduationStudent:
     with session() as db:
         row = db.scalars(select(GraduationReview).where(
-            GraduationReview.id == int(review_id),
+            GraduationReview.id == _as_int(review_id, "评阅任务不存在"),
             GraduationReview.tenant_id == _tid(),
             GraduationReview.is_deleted.is_(False),
         )).first()
@@ -121,7 +123,7 @@ def _review_student(review_id: str, batch_id: int) -> GraduationStudent:
 def _choice_student(choice_id: str, batch_id: int) -> GraduationStudent:
     with session() as db:
         row = db.scalars(select(GraduationTopicChoice).where(
-            GraduationTopicChoice.id == int(choice_id),
+            GraduationTopicChoice.id == _as_int(choice_id, "志愿不存在"),
             GraduationTopicChoice.tenant_id == _tid(),
             GraduationTopicChoice.is_deleted.is_(False),
         )).first()
@@ -133,7 +135,7 @@ def _choice_student(choice_id: str, batch_id: int) -> GraduationStudent:
 def _change_student(request_id: str, batch_id: int) -> GraduationStudent:
     with session() as db:
         row = db.scalars(select(GraduationTopicChangeRequest).where(
-            GraduationTopicChangeRequest.id == int(request_id),
+            GraduationTopicChangeRequest.id == _as_int(request_id, "变更申请不存在"),
             GraduationTopicChangeRequest.tenant_id == _tid(),
             GraduationTopicChangeRequest.is_deleted.is_(False),
         )).first()
@@ -163,7 +165,10 @@ def teacher_graduation_batches(user=Depends(get_current_user)):
             GraduationBatch.id.in_(batch_ids or [-1]),
             GraduationBatch.is_deleted.is_(False),
             GraduationBatch.status.in_(("DRAFT", "RUNNING", "CLOSED")),
-        ).order_by(GraduationBatch.status == "RUNNING" desc(), GraduationBatch.id.desc())).all()
+        ).order_by(
+            (GraduationBatch.status == "RUNNING").desc(),
+            GraduationBatch.id.desc(),
+        )).all()
         items = [{
             "id": str(row.id),
             "batchNo": row.batch_no,
@@ -238,19 +243,22 @@ def teacher_midterm_queue(batchId: int = Query(..., ge=1), page: int = Query(1, 
 
 @router.get("/midterm/{gd_student_id}")
 def teacher_midterm_detail(gd_student_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_midterm_detail(user, gd_student_id))
 
 
 @router.post("/midterm/{gd_student_id}/check")
 def teacher_midterm_check(gd_student_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_midterm_check(user, gd_student_id, body.get("conclusion") or "", body.get("comment") or "", body.get("rectifyDeadline")), message="已提交中期结论")
 
 
 @router.post("/midterm/{gd_student_id}/rectify-review")
 def teacher_midterm_rectify_review(gd_student_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_midterm_rectify_review(user, gd_student_id, body.get("action") or "", body.get("comment") or ""), message="复核完成")
 
 
@@ -277,13 +285,15 @@ def teacher_grade_queue(batchId: int = Query(..., ge=1), page: int = Query(1, ge
 
 @router.get("/grade/{gd_student_id}")
 def teacher_grade_detail(gd_student_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_grade_detail(user, gd_student_id))
 
 
 @router.post("/grade/{gd_student_id}/review")
 def teacher_grade_review(gd_student_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_grade_review(user, gd_student_id, body.get("action") or "", body.get("comment") or ""), message="复核完成")
 
 
@@ -311,7 +321,8 @@ def teacher_graduation_change_request_review(request_id: str, body: dict = Body(
 
 @router.post("/{gd_student_id}/guidance")
 def teacher_graduation_guidance_create(gd_student_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_guidance_create(user, gd_student_id, body), message="已记录")
 
 
@@ -322,13 +333,15 @@ def teacher_graduation_taskbook_list(batchId: int = Query(..., ge=1), page: int 
 
 @router.post("/taskbooks/{gd_student_id}/issue")
 def teacher_graduation_taskbook_issue(gd_student_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_taskbook_issue(user, gd_student_id, body), message="任务书已下达")
 
 
 @router.post("/taskbooks/{gd_student_id}/change")
 def teacher_graduation_taskbook_change(gd_student_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_taskbook_change(user, gd_student_id, body), message="已提交变更")
 
 
@@ -339,5 +352,6 @@ def teacher_graduation_defense_score_pending(batchId: int = Query(..., ge=1), pa
 
 @router.post("/defense/{gd_student_id}/score")
 def teacher_graduation_defense_score_entry(gd_student_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    with session() as db: _student(db, gd_student_id, batchId)
+    with session() as db:
+        _student(db, gd_student_id, batchId)
     return success(tea.graduation_defense_score_entry(user, gd_student_id, body), message="已保存")
