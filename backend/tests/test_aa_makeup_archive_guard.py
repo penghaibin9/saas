@@ -1,4 +1,4 @@
-"""补考/清考/重修/免修termCode写保护和归档域回归。"""
+"""补考/清考/重修/免修termCode写保护、身份保护和归档域回归。"""
 from types import SimpleNamespace
 
 
@@ -77,6 +77,18 @@ def test_batch_write_context_guards_and_backfills_batch_term(monkeypatch):
     assert batch.term_id == 9
 
 
+def test_missing_student_profile_fails_closed(monkeypatch):
+    import pytest
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_makeup_identity_facade as service
+
+    monkeypatch.setattr(service, "_original_student", lambda _db: None)
+    with pytest.raises(AppException) as exc:
+        service._required_student(object())
+
+    assert "学生档案不存在" in exc.value.message
+
+
 def test_makeup_archive_gate_blocks_unfinished_business():
     from app.modules.academic_affairs.services.academic_affairs_archive_makeup_facade import (
         _makeup_gate_result,
@@ -114,11 +126,14 @@ def test_public_makeup_and_archive_services_point_to_final_layers():
         for code, _label in services.academic_affairs_archive_service._legacy._DOMAINS
     )
     assert services.academic_affairs_makeup_service.__name__.endswith(
-        "academic_affairs_makeup_term_facade"
+        "academic_affairs_makeup_identity_facade"
     )
     assert services.academic_affairs_makeup_service.create_makeup_batch.__module__.endswith(
         "academic_affairs_makeup_term_facade"
     )
     assert services.academic_affairs_makeup_service.retake_apply.__module__.endswith(
         "academic_affairs_makeup_term_facade"
+    )
+    assert services.academic_affairs_makeup_service._legacy._student.__module__.endswith(
+        "academic_affairs_makeup_identity_facade"
     )
