@@ -10,16 +10,22 @@
 
 <script>
 function pageStack() { return typeof getCurrentPages === 'function' ? getCurrentPages() : [] }
+let owner = null
 export default {
   name: 'MobileGraduationSectionErrors',
-  data() { return { visible: false, errors: [], timer: null } },
+  data() { return { visible: false, errors: [], timer: null, owns: false } },
   mounted() {
     const pages = pageStack(); const page = pages[pages.length - 1]
-    const route = (page && (page.route || page.__route__)) || ''
-    this.visible = route === 'pages/student/graduation/index'
-    if (this.visible) { this.sync(); this.timer = setInterval(this.sync, 500) }
+    const match = ((page && (page.route || page.__route__)) || '') === 'pages/student/graduation/index'
+    if (match && owner == null) {
+      owner = this._uid; this.owns = true; this.visible = true
+      this.sync(); this.timer = setInterval(this.sync, 500)
+    }
   },
-  beforeUnmount() { if (this.timer) clearInterval(this.timer) },
+  beforeUnmount() {
+    if (this.timer) clearInterval(this.timer)
+    if (this.owns && owner === this._uid) owner = null
+  },
   methods: {
     currentVm() { const pages = pageStack(); const page = pages[pages.length - 1]; return page && page.$vm },
     sync() { const vm = this.currentVm(); this.errors = Array.isArray(vm && vm.processErrors) ? [...vm.processErrors] : [] },
