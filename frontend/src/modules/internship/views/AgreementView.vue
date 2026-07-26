@@ -37,8 +37,8 @@
       <template #cell-schoolConfirm="{ row }"><AppStatusTag :type="confirmTone(row.schoolConfirm)">{{ row.schoolConfirmLabel }}</AppStatusTag></template>
       <template #cell-status="{ row }"><AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag></template>
       <template #cell-esignStatus="{ row }">
-        <AppStatusTag :type="row.esignStatus === 'SIGNED' ? 'success' : row.esignStatus === 'PENDING' ? 'warning' : 'default'">
-          {{ row.esignStatus === 'SIGNED' ? '已签' : row.esignStatus === 'PENDING' ? '签署中' : '未发起' }}
+        <AppStatusTag :type="row.esignStatus === 'INTERNAL_CONFIRMED' ? 'success' : row.esignStatus === 'PENDING' ? 'warning' : 'default'">
+          {{ row.esignStatus === 'INTERNAL_CONFIRMED' ? '内部确认完成' : row.esignStatus === 'PENDING' ? '确认中' : '未发起' }}
         </AppStatusTag>
       </template>
       <template #cell-actions="{ row }">
@@ -92,7 +92,7 @@ const COLUMNS = [
   { key: 'studentNo', title: '学号', width: '100px' }, { key: 'studentName', title: '姓名' },
   { key: 'enterpriseName', title: '企业' }, { key: 'positionName', title: '岗位' },
   { key: 'studentConfirm', title: '学生' }, { key: 'enterpriseConfirm', title: '企业' },
-  { key: 'schoolConfirm', title: '学校' }, { key: 'esignStatus', title: '电子签' },
+  { key: 'schoolConfirm', title: '学校' }, { key: 'esignStatus', title: '内部确认' },
   { key: 'status', title: '协议状态' },
   { key: 'actions', title: '操作', width: '280px' }
 ]

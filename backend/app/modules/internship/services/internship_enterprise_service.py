@@ -548,7 +548,9 @@ def import_confirm(rows: list[dict]) -> dict:
 
 def export_enterprises(keyword=None, coop_status=None, industry=None, region=None) -> dict:
     """导出 Excel 台账（走底座；联系电话已在列表层脱敏，黑名单列由底座 mask 转「是/否」）。"""
-    items, _ = list_enterprises(1, 100000, keyword=keyword, coop_status=coop_status,
-                                industry=industry, region=region)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_enterprises, keyword=keyword, coop_status=coop_status,
+        industry=industry, region=region)
     user = get_current_user_ctx() or {}
     return excel.build_export(build_export_spec(), items, operator_name=user.get("realName", "-"))

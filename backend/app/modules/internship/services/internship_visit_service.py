@@ -172,7 +172,8 @@ def get_visit(vid, user=None) -> dict:
 
 
 def visit_stats(batch_id=None, user=None) -> dict:
-    items, _ = list_visits(1, 100000, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(list_visits, batch_id=batch_id, user=user)
     return {"totalVisits": len(items),
             "pendingRectify": sum(1 for item in items if item["rectifyStatus"] == "PENDING"),
             "doneRectify": sum(1 for item in items if item["rectifyStatus"] == "DONE"),
@@ -181,7 +182,9 @@ def visit_stats(batch_id=None, user=None) -> dict:
 
 def export_visits(keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_visits(1, 100000, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_visits, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "巡访教师", "企业", "巡访时间", "方式", "安全隐患", "整改要求",
                "整改截止", "整改状态"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],

@@ -864,12 +864,12 @@ def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
         batch_meta = batch_public_fields(batch)
-    items, total = list_students(
-        1, 100000, keyword=keyword, status=status, eligibility=eligibility,
+    from app.modules.internship.services.internship_export_util import (
+        load_export_rows, pack_export_meta)
+    items, total = load_export_rows(
+        list_students, keyword=keyword, status=status, eligibility=eligibility,
         batch_id=batch_id, class_id=class_id, risk_level=risk_level,
         destination=destination, has_position=has_position, user=user)
-    from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
-    require_exportable(total)
     headers = ["学号", "姓名", "班级", "批次", "校内指导教师", "企业名称", "岗位名称",
                "实习状态", "实习资格", "实习去向", "风险"]
     data_rows = [[it["studentNo"], it["name"], it["className"], batch_meta["batchName"],

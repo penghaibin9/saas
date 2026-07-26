@@ -362,8 +362,10 @@ def remind(user, risk_id, channel="站内消息") -> dict:
 
 def export_risks(keyword=None, user=None, batch_id=None, level=None, status=None) -> dict:
     from app.services import xlsx_util
-    items, total = list_risks(1, 100000, keyword=keyword, user=user, batch_id=batch_id,
-                          level=level, status=status)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, total = load_export_rows(
+        list_risks, keyword=keyword, user=user, batch_id=batch_id,
+        level=level, status=status)
     from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
     require_exportable(total)
     headers = ["学号", "姓名", "指导教师", "企业", "风险编码", "风险标题", "等级", "来源",

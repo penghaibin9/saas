@@ -206,7 +206,9 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
 
 def export_makeups(status=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_makeups(1, 100000, status=status, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_makeups, status=status, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "校内指导教师", "补卡日期", "补卡类型", "事由", "状态", "审批人", "审批意见"]
     data_rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["checkinDate"],
                   it["makeupTypeLabel"], it["reason"], it["statusLabel"], it["reviewBy"],

@@ -378,7 +378,9 @@ def refresh_overdue(reference_date: date | None = None, user=None, system: bool 
 
 def export_leaves(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_leaves(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_leaves, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "校内指导教师", "请假类型", "开始", "结束", "天数", "事由",
                "状态", "审批人", "审批意见"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["leaveTypeLabel"],

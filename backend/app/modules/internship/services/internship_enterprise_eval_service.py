@@ -221,7 +221,10 @@ def get_eval(eid, user=None) -> dict:
 
 def export_evals(review_status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_evals(1, 100000, review_status=review_status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_evals, review_status=review_status, keyword=keyword,
+        batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "岗位", "企业导师", "出勤", "技能", "态度", "协作", "安全纪律",
                "均分", "建议录用", "来源", "审核状态"]
     rows = [[it["studentNo"], it["studentName"], it["positionName"], it["mentorName"],

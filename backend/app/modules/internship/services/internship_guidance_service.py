@@ -249,7 +249,9 @@ def guidance_stats(threshold=2, batch_id=None, user=None) -> dict:
         threshold = max(0, int(threshold))
     except (TypeError, ValueError):
         threshold = 2
-    items, _ = list_guidance_plans(1, 100000, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_guidance_plans, batch_id=batch_id, user=user)
     total_count = sum(int(item["termCount"]) for item in items)
     return {"studentCount": len(items), "totalCount": total_count,
             "avgCount": round(total_count / len(items), 1) if items else 0,
@@ -259,7 +261,9 @@ def guidance_stats(threshold=2, batch_id=None, user=None) -> dict:
 
 def export_guidance_plans(keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_guidance_plans(1, 100000, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_guidance_plans, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "企业", "批次", "月最低", "本月次数",
                "学期最低", "学期次数", "下次跟进", "计划状态"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
@@ -288,7 +292,9 @@ def get_guidance(gid, user=None) -> dict:
 
 def export_guidances(keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_guidances(1, 100000, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_guidances, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "企业", "指导方式", "主题", "问题类型", "处理建议",
                "下次跟进", "是否形成风险"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],

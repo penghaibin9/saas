@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
@@ -362,7 +362,7 @@ _ESIGN_PARTIES = ("STUDENT", "ENTERPRISE", "SCHOOL")
 
 
 def esign_start(user, aid) -> dict:
-    """发起电子签：记录发起人/时间，esign_status → PENDING。协议须处于三方确认流转中。"""
+    """Start an internal confirmation timeline; this is not a legal e-signature."""
     with session() as db:
         a = _get(db, aid)
         _owner_or_403(db, a, user, "只能对本人指导学生的协议发起电子签")
@@ -374,12 +374,12 @@ def esign_start(user, aid) -> dict:
         a.version += 1
         _trail(db, a.id, "ESIGN_START", {"provider": a.esign_provider}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status}
+        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status,
+                "semantic": "INTERNAL_CONFIRMATION_TIMELINE"}
 
 
 def esign_sign(user, aid, party: str) -> dict:
-    """某一方电子签署。STUDENT 由学生本人(mobile)；ENTERPRISE/SCHOOL 由教师/管理员(PC，owner)。
-    三方齐签 → esign_status SIGNED + 协议 EFFECTIVE。"""
+    """Record an internal student/school confirmation; enterprise evidence is a signed scan."""
     party = (party or "").upper()
     if party not in _ESIGN_PARTIES:
         raise AppException("VALIDATION_ERROR", "签署方无效（STUDENT/ENTERPRISE/SCHOOL）")
@@ -405,40 +405,47 @@ def esign_sign(user, aid, party: str) -> dict:
             a.school_confirm_status = "CONFIRMED"
             a.school_confirm_at = a.school_confirm_at or datetime.utcnow()
             a.school_confirm_by = _op_name(user)
-        all_signed = bool(a.esign_student_at and a.esign_enterprise_at and a.esign_school_at)
+        all_signed = bool(
+            a.student_confirm_status == "CONFIRMED"
+            and a.enterprise_confirm_status == "CONFIRMED"
+            and a.school_confirm_status == "CONFIRMED"
+            and a.file_id
+        )
         if all_signed:
-            a.esign_status = "SIGNED"
+            a.esign_status = "INTERNAL_CONFIRMED"
             a.status = "EFFECTIVE"
         a.version += 1
         _trail(db, a.id, "ESIGN_SIGN", {"party": party, "allSigned": all_signed}, operator=_op_name(user))
         db.commit()
-        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status, "party": party}
+        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status,
+                "party": party, "semantic": "INTERNAL_CONFIRMATION_TIMELINE"}
 
 
 def list_agreements(page, page_size, status=None, keyword=None, batch_id=None, user=None):
-    scope, in_scope = _scope_ctx(user)
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(InternshipAgreement).where(InternshipAgreement.tenant_id == _tid(),
-                                              InternshipAgreement.is_deleted.is_(False),
-                                              InternshipAgreement.internship_id.in_(record_ids))
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+        batch = resolve_batch(db, batch_id)
+        scoped_records = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        q = select(InternshipAgreement, InternshipRecord, StudentProfile).join(
+            InternshipRecord, InternshipRecord.id == InternshipAgreement.internship_id
+        ).join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            InternshipAgreement.tenant_id == _tid(),
+            InternshipAgreement.is_deleted.is_(False),
+            InternshipAgreement.internship_id.in_(select(scoped_records.c.id)),
+            StudentProfile.is_deleted.is_(False))
         if status:
             q = q.where(InternshipAgreement.status == status)
-        rows = db.scalars(q.order_by(InternshipAgreement.id.desc())).all()
-        items = []
-        for a in rows:
-            rec, stu = _ctx(db, a)
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
-                continue
-            if not in_scope(scope, db, rec, stu):
-                continue
-            items.append(_row(db, a, rec, stu))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        if keyword:
+            q = q.where(StudentProfile.real_name.like(f"%{keyword.strip()}%"))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.execute(q.order_by(InternshipAgreement.id.desc()).offset(
+            (max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_row(db, agreement, rec, stu) for agreement, rec, stu in rows], total
 
 
 def get_agreement(aid, user=None) -> dict:
@@ -481,7 +488,10 @@ def get_student_agreement(user, aid) -> dict:
 
 def export_agreements(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_agreements(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import require_exportable
+    _, total = list_agreements(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    require_exportable(total)
+    items, _ = list_agreements(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "企业", "岗位", "学生确认", "企业确认", "学校确认", "协议状态"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
              it["positionName"], it["studentConfirmLabel"], it["enterpriseConfirmLabel"],

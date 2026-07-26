@@ -1,8 +1,10 @@
 """岗位实习 P2 合规、准入与证据包 API。"""
 from fastapi import APIRouter, Body, Depends
+from fastapi.responses import FileResponse
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.internship.services import internship_compliance_template_service as tpl, internship_enterprise_inspection_service as insp, internship_consent_service as consent, internship_safety_service as safety, internship_special_filing_service as filing, internship_incident_service as incident, internship_compliance_service as compliance, internship_compliance_notice_service as notice, internship_evidence_package_service as evidence
+from app.modules.internship.services import internship_audit_service as internship_audit
 router=APIRouter(prefix="/internship/compliance",tags=["岗位实习·合规"])
 @router.get("/templates")
 def templates(user=Depends(require_permission("internship.compliance.view"))):return success(tpl.list_templates())
@@ -65,3 +67,14 @@ def notice_receipts(message_id:str,user=Depends(require_permission("internship.c
 def notice_ack(message_id:str,user=Depends(require_permission("internship.consent.manage"))):return success(notice.ack_message(message_id,user))
 @router.post("/evidence-packages/{package_type}/{target_id}")
 def package(package_type:str,target_id:str,user=Depends(require_permission("internship.evidence.export"))):return success(evidence.generate(package_type,target_id,user))
+
+
+@router.get("/evidence-packages/{package_id}/download")
+def package_download(package_id: str, user=Depends(require_permission("internship.evidence.export"))):
+    path, filename = evidence.resolve_package_download(package_id, user)
+    return FileResponse(path, filename=filename, media_type="application/zip")
+
+
+@router.get("/audit-outbox/health")
+def audit_outbox_health(user=Depends(require_permission("internship.compliance.view"))):
+    return success(internship_audit.health_status())

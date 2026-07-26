@@ -68,9 +68,9 @@
               <AppStatusTag :type="confirmTone(detail.schoolConfirm)">{{ detail.schoolConfirmLabel }}</AppStatusTag>
             </div>
             <div class="agd-step">
-              <span class="agd-step__lbl">电子签</span>
-              <AppStatusTag :type="detail.esignStatus === 'SIGNED' ? 'success' : detail.esignStatus === 'PENDING' ? 'warning' : 'default'">
-                {{ detail.esignStatus === 'SIGNED' ? '已签' : detail.esignStatus === 'PENDING' ? '签署中' : '未发起' }}
+              <span class="agd-step__lbl">内部确认时间线</span>
+              <AppStatusTag :type="detail.esignStatus === 'INTERNAL_CONFIRMED' ? 'success' : detail.esignStatus === 'PENDING' ? 'warning' : 'default'">
+                {{ detail.esignStatus === 'INTERNAL_CONFIRMED' ? '内部确认完成' : detail.esignStatus === 'PENDING' ? '确认中' : '未发起' }}
               </AppStatusTag>
             </div>
           </div>
@@ -98,10 +98,10 @@
               <AppPermissionButton v-if="detail.status === 'DRAFT'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" @click="confirmAct('issue')">下发给学生确认</AppPermissionButton>
               <AppPermissionButton v-if="detail.esignStatus === 'NONE' && canVoid" code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')"
-                variant="ghost" @click="startEsign">发起电子签</AppPermissionButton>
+                variant="ghost" @click="startEsign">发起内部确认</AppPermissionButton>
               <!-- 企业方禁止教师代签电子签；正式路径为上方纸质扫描件确认（对标企业真签） -->
               <AppPermissionButton v-if="detail.esignStatus === 'PENDING' && detail.status === 'PENDING_SCHOOL'"
-                code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')" variant="ghost" @click="esignParty('SCHOOL')">学校电子签</AppPermissionButton>
+                code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')" variant="ghost" @click="esignParty('SCHOOL')">学校内部确认</AppPermissionButton>
               <AppPermissionButton v-if="detail.status === 'PENDING_ENTERPRISE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" :disabled="!entForm.fileId" :loading="entSubmitting"
                 @click="submitEnterprise">确认企业已签署</AppPermissionButton>
@@ -277,13 +277,13 @@ export default {
     async startEsign() {
       const res = await agreementApi.startEsign(this.detail.id)
       if (res.code !== 0) return toast.error(res.message)
-      toast.success(res.data.message || '已发起电子签')
+      toast.success(res.data.message || '已发起内部确认时间线')
       this.load()
     },
     async esignParty(party) {
       const res = await agreementApi.esignSign(this.detail.id, { party })
       if (res.code !== 0) return toast.error(res.message)
-      toast.success(`${party === 'SCHOOL' ? '学校' : '企业'}电子签完成`)
+      toast.success(`${party === 'SCHOOL' ? '学校' : '企业'}内部确认完成`)
       this.load()
     }
   }

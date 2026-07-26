@@ -118,7 +118,23 @@ def _scoped_records(db, user, batch_id=None, enterprise=None):
 def list_by_student(page, page_size, keyword=None, batch_id=None, only_incomplete=False, user=None):
     with session() as db:
         from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
         batch = resolve_batch(db, batch_id)
+        if not only_incomplete:
+            query = select(InternshipRecord, StudentProfile).join(
+                StudentProfile, StudentProfile.id == InternshipRecord.student_id
+            ).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False),
+                StudentProfile.is_deleted.is_(False))
+            query = apply_internship_record_scope(query, user)
+            if keyword:
+                query = query.where(StudentProfile.real_name.like(f"%{keyword.strip()}%"))
+            total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+            pairs = db.execute(query.order_by(InternshipRecord.id.desc()).offset(
+                (max(1, page) - 1) * page_size).limit(page_size)).all()
+            return [_row(db, rec, stu, user) for rec, stu in pairs], total
         pairs = _scoped_records(db, user, batch_id=batch.id)
         items = []
         for r, stu in pairs:
@@ -245,10 +261,19 @@ def archive_student(user, internship_id, force=False, expected_version=None,
             for key, value in force_meta.items():
                 setattr(arch, key, value)
         db.flush()
-        snapshot = {**mats, "quantityFacts": evaluation.get("quantityFacts"),
-                    "ruleVersion": evaluation["ruleVersion"],
-                    "items": evaluation["items"]}
+        from app.modules.internship.services.internship_evidence_package_service import (
+            capture_archive_snapshot)
+        snapshot = capture_archive_snapshot(db, r, evaluation, user)
+        snapshot["legacyMaterialFlags"] = mats
+        snapshot["missingItems"] = missing
+        snapshot["forced"] = bool(force)
+        snapshot["forceReason"] = (force_reason or "").strip() or None
+        snapshot["forceEvidenceFileIds"] = evidence_file_ids or []
+        snapshot["exemptedItems"] = [
+            item for item in evaluation["items"] if item["status"] == "EXEMPTED"
+        ]
         arch.material_snapshot = snapshot
+        arch.snapshot_version = int(arch.snapshot_version or 0) + 1
         _trail(db, r.id, "ARCHIVE", {"completeness": pct, "missing": missing, "force": force,
                                      "ruleVersion": evaluation["ruleVersion"],
                                      "blockers": bypassed,
@@ -260,7 +285,10 @@ def archive_student(user, internship_id, force=False, expected_version=None,
                 "version": archive_ver, "recordVersion": new_record_ver}
 
 
-def build_package(user, internship_id) -> dict:
+def _build_package_legacy(user, internship_id) -> dict:
+    raise AppException(
+        "INVALID_STATE",
+        "旧版实时数据归档打包入口已永久禁用，必须使用冻结快照版本包")
     """生成归档 zip（manifest + 材料清单 + 已有扫描件），落文件中心并写 package_file_id。"""
     import io
     import json
@@ -327,6 +355,85 @@ def build_package(user, internship_id) -> dict:
                 "sizeBytes": meta["sizeBytes"], "packageReady": True}
 
 
+def build_package(user, internship_id) -> dict:
+    """Build a versioned package only from the immutable archive snapshot."""
+    from sqlalchemy.exc import IntegrityError
+    from app.models import InternshipEvidencePackage
+    from app.services import file_service
+    from app.modules.internship.services.internship_evidence_package_service import (
+        archive_zip_from_snapshot)
+
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        r = db.get(InternshipRecord, _as_id(internship_id))
+        if not r or r.is_deleted or r.tenant_id != _tid():
+            raise not_found("实习记录不存在")
+        stu = db.get(StudentProfile, r.student_id)
+        if not in_scope(scope, db, r, stu):
+            raise no_permission("该学生不在你的数据范围内")
+        arch = _archive_row(db, r.id)
+        if not arch or arch.status != "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "仅已归档学生可生成归档包")
+        snapshot = arch.material_snapshot or {}
+        if snapshot.get("snapshotSchemaVersion") != "INTERNSHIP_ARCHIVE_SNAPSHOT_V2":
+            raise AppException("DATA_CONFLICT", "历史归档缺少完整冻结快照，不能冒充完整归档包")
+        latest = int(db.scalar(select(func.max(InternshipEvidencePackage.package_version)).where(
+            InternshipEvidencePackage.tenant_id == _tid(),
+            InternshipEvidencePackage.package_type == "ARCHIVE",
+            InternshipEvidencePackage.target_id == r.id)) or 0)
+        package = InternshipEvidencePackage(
+            tenant_id=_tid(), package_type="ARCHIVE", batch_id=r.batch_id,
+            target_id=r.id, package_version=latest + 1, status="FAILED",
+            generated_by_name=_op_name(user), generated_at=datetime.utcnow(),
+            row_count=1, source_module="system")
+        db.add(package)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            raise AppException("DATA_CONFLICT", "归档包正在生成，请稍后重试") from exc
+        package_manifest = {
+            "packageId": str(package.id), "packageType": "ARCHIVE",
+            "packageVersion": package.package_version, "tenantId": str(_tid()),
+            "batchId": str(r.batch_id or ""), "targetId": str(r.id),
+            "generatedAt": datetime.utcnow().isoformat() + "Z",
+            "generatedByUserId": str((user or {}).get("userId") or ""),
+            "generatedByName": _op_name(user),
+        }
+        zip_bytes, manifest = archive_zip_from_snapshot(
+            snapshot, user, db, package_manifest)
+        sname = (stu.real_name if stu else "学生").replace("/", "_")
+        meta = file_service.store_bytes(
+            zip_bytes, f"实习归档_{sname}_v{package.package_version}.zip",
+            biz_type="ARCHIVE_PACKAGE", biz_id=f"ARCHIVE:{r.id}",
+            mime_type="application/zip", user=user, visibility="BIZ_SCOPED",
+            security_level="SENSITIVE")
+        manifest["packageSha256"] = meta["sha256"]
+        manifest["totalSizeBytes"] = meta["sizeBytes"]
+        package.package_file_id = meta["fileId"]
+        package.package_sha256 = meta["sha256"]
+        package.package_size_bytes = meta["sizeBytes"]
+        package.manifest_json = manifest
+        package.included_items = manifest["includedItems"]
+        package.missing_items = manifest["missingItems"]
+        package.rule_version = snapshot.get("ruleVersion")
+        package.metric_version = "archive-snapshot-v2"
+        package.status = manifest["packageStatus"]
+        package.file_count = len(manifest["includedItems"])
+        arch.package_file_id = meta["fileId"]
+        _trail(db, r.id, "PACKAGE", {
+            "fileId": meta["fileId"], "fileName": meta["fileName"],
+            "packageVersion": package.package_version, "status": package.status,
+            "sha256": meta["sha256"]}, operator=_op_name(user))
+        db.commit()
+        return {
+            "fileId": meta["fileId"], "fileName": meta["fileName"],
+            "sizeBytes": meta["sizeBytes"], "sha256": meta["sha256"],
+            "packageVersion": package.package_version, "status": package.status,
+            "packageReady": package.status == "READY",
+            "missingItems": manifest["missingItems"],
+        }
+
+
 def revoke_archive(user, internship_id, reason="", expected_version=None,
                    record_expected_version=None) -> dict:
     from app.core.permissions import is_super_admin
@@ -365,11 +472,49 @@ def revoke_archive(user, internship_id, reason="", expected_version=None,
                     "package_invalidated_at": datetime.utcnow() if arch.package_file_id else None})
         r.status = restore_status
         r.version = record_ver + 1
+        from app.models import InternshipEvidencePackage
+        packages = db.scalars(select(InternshipEvidencePackage).where(
+            InternshipEvidencePackage.tenant_id == _tid(),
+            InternshipEvidencePackage.package_type == "ARCHIVE",
+            InternshipEvidencePackage.target_id == r.id,
+            InternshipEvidencePackage.status.in_(("READY", "READY_WITH_MISSING")),
+            InternshipEvidencePackage.is_deleted.is_(False)).with_for_update()).all()
+        for package in packages:
+            package.status = "INVALIDATED"
+            package.invalidated_at = datetime.utcnow()
+            package.invalidated_by_name = _op_name(user)
+            package.invalidation_reason = reason.strip()
         _trail(db, r.id, "REVOKE", {"reason": reason.strip()}, operator=_op_name(user))
         db.commit()
         return {"id": str(r.id), "archived": False, "version": new_ver,
                 "recordVersion": r.version, "recordStatus": restore_status,
-                "packageInvalidated": bool(arch.package_file_id)}
+                "packageInvalidated": bool(arch.package_file_id),
+                "invalidatedPackageCount": len(packages)}
+
+
+def resolve_archive_package_download(package_id, user=None):
+    """Resolve an archive package only after internship object-scope validation."""
+    from app.models import InternshipEvidencePackage
+    from app.services import file_service
+    with session() as db:
+        package = db.scalar(select(InternshipEvidencePackage).where(
+            InternshipEvidencePackage.id == _as_id(package_id),
+            InternshipEvidencePackage.tenant_id == _tid(),
+            InternshipEvidencePackage.package_type == "ARCHIVE",
+            InternshipEvidencePackage.is_deleted.is_(False)))
+        if not package or package.status == "INVALIDATED" or not package.package_file_id:
+            raise not_found("归档包不存在或不可下载")
+        from app.modules.internship.services.internship_scope import (
+            assert_internship_record_scope)
+        assert_internship_record_scope(db, package.target_id, user, "下载归档包")
+        resolved = file_service.resolve_download(package.package_file_id, user=user)
+        if not resolved:
+            raise not_found("归档包不存在或不可下载")
+        _trail(db, package.target_id, "PACKAGE_DOWNLOAD", {
+            "packageId": str(package.id), "packageVersion": package.package_version,
+            "sha256": package.package_sha256}, operator=_op_name(user))
+        db.commit()
+        return resolved
 
 
 def _aggregate(pairs, db, group_key):
@@ -416,7 +561,10 @@ def by_enterprise(user=None, batch_id=None):
 
 def export_archives(user=None, keyword=None, batch_id=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_by_student(1, 100000, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import require_exportable
+    _, total = list_by_student(1, 0, keyword=keyword, batch_id=batch_id, user=user)
+    require_exportable(total)
+    items, _ = list_by_student(1, total, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "企业", "完整度(%)", "缺失材料", "是否已归档", "归档时间"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
              it["completeness"], "、".join(it["missing"]) or "无", "是" if it["archived"] else "否",

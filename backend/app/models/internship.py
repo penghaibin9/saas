@@ -465,6 +465,7 @@ class InternshipArchive(PKMixin, TenantMixin, CommonMixin, Base):
     completeness: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="材料完整度 0-100")
     missing_items: Mapped[str | None] = mapped_column(String(500), comment="缺失材料清单")
     material_snapshot: Mapped[dict | None] = mapped_column(JSON, comment="归档材料快照")
+    snapshot_version: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ARCHIVED",
                                         comment="ARCHIVED/REVOKED")
     package_file_id: Mapped[str | None] = mapped_column(String(64), comment="归档包 file_id")

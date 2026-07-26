@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, InternshipFinalScore,
@@ -346,29 +346,30 @@ def _row(s, rec, stu):
 
 
 def list_scores(page, page_size, status=None, keyword=None, batch_id=None, user=None):
-    scope, in_scope = _scope_ctx(user)
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(InternshipFinalScore).where(InternshipFinalScore.tenant_id == _tid(),
-                                               InternshipFinalScore.is_deleted.is_(False),
-                                               InternshipFinalScore.internship_id.in_(record_ids))
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+        batch = resolve_batch(db, batch_id)
+        scoped_records = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        q = select(InternshipFinalScore, InternshipRecord, StudentProfile).join(
+            InternshipRecord, InternshipRecord.id == InternshipFinalScore.internship_id
+        ).join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            InternshipFinalScore.tenant_id == _tid(),
+            InternshipFinalScore.is_deleted.is_(False),
+            InternshipFinalScore.internship_id.in_(select(scoped_records.c.id)),
+            StudentProfile.is_deleted.is_(False))
         if status:
             q = q.where(InternshipFinalScore.status == status)
-        rows = db.scalars(q.order_by(InternshipFinalScore.id.desc())).all()
-        items = []
-        for s in rows:
-            rec, stu = _ctx(db, s)
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
-                continue
-            if not in_scope(scope, db, rec, stu):
-                continue
-            items.append(_row(s, rec, stu))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        if keyword:
+            q = q.where(StudentProfile.real_name.like(f"%{keyword.strip()}%"))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.execute(q.order_by(InternshipFinalScore.id.desc()).offset(
+            (max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_row(score, rec, stu) for score, rec, stu in rows], total
 
 
 def get_score(sid, user=None) -> dict:
@@ -391,7 +392,10 @@ def get_score(sid, user=None) -> dict:
 
 def export_scores(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_scores(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import require_exportable
+    _, total = list_scores(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    require_exportable(total)
+    items, _ = list_scores(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "指导教师", "打卡", "周报", "月报总结", "企业评价", "学校评价",
                "总分", "及格线", "是否及格", "缺项", "状态"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["checkinScore"], it["weeklyScore"],

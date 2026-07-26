@@ -425,7 +425,9 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
 
 def export_checkins(result=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, total = list_checkins(1, 100000, result=result, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, total = load_export_rows(
+        list_checkins, result=result, keyword=keyword, batch_id=batch_id, user=user)
     from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
     require_exportable(total)
     headers = ["学号", "姓名", "校内指导教师", "企业", "打卡日期", "打卡时间", "结果", "地址", "备注"]
@@ -441,8 +443,10 @@ def export_checkins(result=None, keyword=None, batch_id=None, user=None) -> dict
 
 def export_exceptions(type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, _ = list_attendance_exceptions(
-        1, 100000, type=type, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_attendance_exceptions, type=type, status=status, keyword=keyword,
+        batch_id=batch_id, user=user)
     headers = ["姓名", "班级", "企业", "异常类型", "异常时间", "距离", "连续", "设备", "处理状态"]
     data_rows = [[it["studentName"], it["className"], it["enterpriseName"], it["typeLabel"],
                   it["date"], it["distance"], it["streak"], it["deviceRisk"], it["statusLabel"]]
@@ -806,7 +810,9 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
 
 def export_weekly_reports(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
-    items, total = list_weekly_reports(1, 100000, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, total = load_export_rows(
+        list_weekly_reports, status=status, keyword=keyword, batch_id=batch_id, user=user)
     from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
     require_exportable(total)
     headers = ["学生", "班级", "企业", "周次", "提交时间", "版本", "字数", "风险", "状态"]

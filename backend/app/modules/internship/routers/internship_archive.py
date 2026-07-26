@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Query
+from fastapi.responses import FileResponse
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -70,6 +71,12 @@ def archive_do(internship_id: int, body: Optional[dict] = Body(None), user=Depen
 @router.post("/archive/{internship_id}/package", summary="生成归档包（zip，落文件中心）")
 def archive_package(internship_id: int, user=Depends(require_permission(_P_PACKAGE))):
     return success(svc.build_package(user, internship_id))
+
+
+@router.get("/archive-packages/{package_id}/download", summary="下载对象范围内的有效归档包")
+def archive_package_download(package_id: int, user=Depends(require_permission(_P_PACKAGE))):
+    path, filename = svc.resolve_archive_package_download(package_id, user)
+    return FileResponse(path, filename=filename, media_type="application/zip")
 
 
 @router.post("/archive/{internship_id}/revoke", summary="撤销归档（需原因，≥5 字）")

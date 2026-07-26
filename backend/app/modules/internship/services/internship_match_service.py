@@ -720,7 +720,10 @@ def match_stats(batch_id=None) -> dict:
 
 
 def export_matches(keyword=None, status=None, match_type=None, batch_id=None) -> dict:
-    items, total = list_matches(1, 100000, keyword=keyword, status=status, match_type=match_type, batch_id=batch_id)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, total = load_export_rows(
+        list_matches, keyword=keyword, status=status,
+        match_type=match_type, batch_id=batch_id)
     from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
     require_exportable(total)
     headers = ["学号", "姓名", "专业", "岗位", "企业", "匹配方式", "得分", "专业命中",

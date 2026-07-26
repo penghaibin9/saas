@@ -635,8 +635,28 @@ def import_confirm(rows: list[dict], template_version=None) -> dict:
 
 def export_positions(keyword=None, status=None, company_id=None, batch_id=None) -> dict:
     from app.services import xlsx_util
-
-    items, _ = list_positions(1, 100000, keyword=keyword, status=status,
+    from app.modules.internship.services.internship_export_util import require_exportable
+    with session() as db:
+        count_query = select(func.count()).select_from(InternshipPosition).where(
+            InternshipPosition.tenant_id == _tid(),
+            InternshipPosition.is_deleted.is_(False))
+        if keyword:
+            like = f"%{keyword.strip()}%"
+            count_query = count_query.where(or_(
+                InternshipPosition.title.like(like),
+                InternshipPosition.company_name.like(like),
+                InternshipPosition.major_requirement.like(like)))
+        if status:
+            count_query = count_query.where(InternshipPosition.status == status)
+        if company_id:
+            count_query = count_query.where(
+                InternshipPosition.company_id == _opt_int(company_id, "企业"))
+        if batch_id:
+            count_query = count_query.where(
+                InternshipPosition.batch_id == _opt_int(batch_id, "批次"))
+        total = int(db.scalar(count_query) or 0)
+        require_exportable(total)
+    items, _ = list_positions(1, total, keyword=keyword, status=status,
                               company_id=company_id, batch_id=batch_id)
     headers = ["批次ID", "岗位名称", "关联企业", "工作内容", "工作地址", "每日工时",
                "每周工时", "班次", "是否夜班", "是否允许加班", "每周休息天数",

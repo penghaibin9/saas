@@ -321,15 +321,19 @@ class InternshipEvidencePackage(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_internship_evidence_package"
     __table_args__ = (
         Index("ix_ix_evpkg_target", "tenant_id", "package_type", "target_id", "is_deleted"),
+        UniqueConstraint("tenant_id", "package_type", "target_id", "package_version",
+                         name="uk_ix_evpkg_target_version"),
     )
 
     package_type: Mapped[str] = mapped_column(String(20), nullable=False,
-                                              comment="STUDENT/BATCH/ENTERPRISE")
+                                              comment="STUDENT/BATCH/ENTERPRISE/ARCHIVE")
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     target_id: Mapped[int] = mapped_column(BigInteger, nullable=False,
                                            comment="internshipId/batchId/companyId")
     package_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     package_file_id: Mapped[str | None] = mapped_column(String(64))
+    package_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    package_size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     manifest_json: Mapped[dict | None] = mapped_column(JSON)
     included_items: Mapped[list | None] = mapped_column(JSON)
     missing_items: Mapped[list | None] = mapped_column(JSON)
@@ -337,7 +341,11 @@ class InternshipEvidencePackage(PKMixin, TenantMixin, CommonMixin, Base):
     metric_version: Mapped[str | None] = mapped_column(String(64))
     generated_by_name: Mapped[str | None] = mapped_column(String(100))
     generated_at: Mapped[datetime | None] = mapped_column(DateTime)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="READY",
-                                        comment="READY/FAILED")
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="READY_WITH_MISSING",
+        comment="READY/READY_WITH_MISSING/FAILED/INVALIDATED/LEGACY_SUMMARY")
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    invalidated_by_name: Mapped[str | None] = mapped_column(String(100))
+    invalidation_reason: Mapped[str | None] = mapped_column(String(500))
     row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

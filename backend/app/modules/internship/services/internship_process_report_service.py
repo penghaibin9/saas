@@ -212,8 +212,10 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
 
 
 def export_reports(report_type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
-    items, _ = list_reports(
-        1, 100000, report_type=report_type, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_reports, report_type=report_type, status=status, keyword=keyword,
+        batch_id=batch_id, user=user)
     label = TYPE_LABEL.get((report_type or "").upper(), "过程报告")
     rows = [[it["studentNo"], it["studentName"], it["enterpriseName"], it["periodKey"],
              it["wordCount"], it["submitAt"], it["statusLabel"]] for it in items]
