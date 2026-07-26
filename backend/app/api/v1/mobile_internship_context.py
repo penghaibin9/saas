@@ -218,6 +218,41 @@ def teacher_batch_leave_review(
         message="请假审批完成")
 
 
+@router.get("/process-reports", summary="教师当前批次过程报告待批阅队列")
+def teacher_batch_process_reports(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.report.view")),
+):
+    from app.modules.internship.services import internship_process_report_service as reports
+    items, total = reports.list_reports(
+        1, 200, status="PENDING_REVIEW", batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.get("/process-reports/{report_id}", summary="教师查看过程报告详情")
+def teacher_batch_process_report_detail(
+    report_id: str,
+    user=Depends(require_permission("internship.report.view")),
+):
+    from app.modules.internship.services import internship_process_report_service as reports
+    return success(reports.get_report(report_id, user=user))
+
+
+@router.post("/process-reports/{report_id}/review", summary="教师按版本批阅过程报告")
+def teacher_batch_process_report_review(
+    report_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.report.review")),
+):
+    from app.modules.internship.services import internship_process_report_service as reports
+    payload = body or {}
+    return success(reports.review_report(
+        report_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", user=user,
+        expected_version=payload.get("expectedVersion")),
+        message="过程报告批阅完成")
+
+
 @router.get("/plan-tasks", summary="教师当前批次计划任务待确认队列")
 def teacher_batch_plan_tasks(
     batchId: str = Query(..., min_length=1),
