@@ -148,21 +148,12 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - name: 禁止 PC 产物携带固定演示凭据
-        id: pc_credentials
         run: |
-          MATCHES=$(grep -R -n -E '密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password["'"'"':= ]+123456' dist || true)
-          printf '%s\n' "$MATCHES" | tee /tmp/pc-credential-matches.txt
-          if [ -n "$MATCHES" ]; then
+          if grep -R -E '密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password["'"'"':= ]+123456' dist; then
             echo "❌ PC 生产包包含固定演示凭据"
             exit 1
           fi
           echo "✅ PC 生产包未发现固定演示凭据"
-      - name: 上传 PC 凭据闸门失败明细
-        if: failure() && steps.pc_credentials.conclusion == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pc-credential-failure-log
-          path: /tmp/pc-credential-matches.txt
 
   miniapp:
     name: 小程序生产 build
@@ -178,17 +169,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: miniapp/package-lock.json
       - run: npm ci
-      - name: Run npm run build:h5
-        id: miniapp_h5
-        run: |
-          set -o pipefail
-          npm run build:h5 2>&1 | tee /tmp/miniapp-h5.log
-      - name: 上传 H5 构建失败日志
-        if: failure() && steps.miniapp_h5.conclusion == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: miniapp-h5-failure-log
-          path: /tmp/miniapp-h5.log
+      - run: npm run build:h5
       - run: npm run build:mp-weixin
       - name: 禁止生产包携带固定演示凭据
         run: |
