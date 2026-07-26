@@ -27,7 +27,7 @@ class IncidentResolveBody(BaseModel):
 def resolve_exam_incident(
     body: IncidentResolveBody,
     incidentId: int = Path(...),
-    user=Depends(require_permission("academicAffairs.exam.abnormal")),
+    user=Depends(require_permission("academicAffairs.exam.recordAbnormal")),
 ):
     return success(
         service.resolve_incident(
