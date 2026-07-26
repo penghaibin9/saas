@@ -8,7 +8,7 @@ import sys
 
 # 必须先加载官方名单最终策略，再导入考勤/考务/成绩/选课消费者；否则 from-import 会缓存旧函数对象。
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
-from . import academic_affairs_archive_selection_facade as academic_affairs_archive_service
+from . import academic_affairs_archive_term_guard_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
 from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
@@ -21,7 +21,7 @@ from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_security_facade as academic_affairs_task_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
-# 归档路由和业务模块的完整路径导入统一进入最终叠加策略层（含第10域选课名单）。
+# 归档路由和业务模块统一进入最终叠加策略层（含第10域选课名单和termCode唯一解析）。
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
 # 普通教师创建考勤必须选择当前学期本人教学任务。
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
