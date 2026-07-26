@@ -1,6 +1,4 @@
-/**
- * 岗位实习 P2 合规证据链 API（合规模板 / 考察 / 知情 / 安全 / 备案 / 事故 / 评估 / 证据包）。
- */
+/** 岗位实习合规工作台统一 API。 */
 import { request } from '@/services/http/client'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
@@ -16,6 +14,7 @@ async function call(fn) {
 const B = '/internship/compliance'
 
 export const complianceApi = {
+  workbench(batchId) { return call(() => request(`${B}/workbench/${batchId}`)) },
   listTemplates() { return call(() => request(`${B}/templates`)) },
   createTemplate(body) { return call(() => request(`${B}/templates`, { method: 'POST', body })) },
   activateTemplate(id, body = {}) {
@@ -30,6 +29,9 @@ export const complianceApi = {
     return call(() => request(`${B}/inspections/${id}/${action}`, { method: 'POST', body }))
   },
   createConsent(body) { return call(() => request(`${B}/consents`, { method: 'POST', body })) },
+  revokeConsent(id, body) {
+    return call(() => request(`${B}/consents/${id}/revoke`, { method: 'POST', body }))
+  },
   listSafetyCourses(batchId) { return call(() => request(`${B}/safety/${batchId}`)) },
   createSafetyCourse(body) { return call(() => request(`${B}/safety`, { method: 'POST', body })) },
   ensureSafetyCompletion(body) {
@@ -49,8 +51,8 @@ export const complianceApi = {
   createEmergencyPlan(body) {
     return call(() => request(`${B}/emergency-plans`, { method: 'POST', body }))
   },
-  reviewEmergencyPlan(id, action) {
-    return call(() => request(`${B}/emergency-plans/${id}/${action}`, { method: 'POST', body: {} }))
+  reviewEmergencyPlan(id, action, body = {}) {
+    return call(() => request(`${B}/emergency-plans/${id}/${action}`, { method: 'POST', body }))
   },
   evaluate(internshipId, operation = 'ONBOARD') {
     return call(() => request(`${B}/evaluate/${internshipId}`, { params: { operation } }))
@@ -60,9 +62,23 @@ export const complianceApi = {
   reviewExemption(id, body) {
     return call(() => request(`${B}/exemptions/${id}/review`, { method: 'POST', body }))
   },
+  reviewEnterpriseEval(id, body) {
+    return call(() => request(`${B}/workbench/enterprise-evals/${id}/review`, { method: 'POST', body }))
+  },
+  saveStudentEvalAdvisor(id, body) {
+    return call(() => request(`${B}/workbench/student-evals/${id}/advisor-comment`, { method: 'POST', body }))
+  },
+  reviewStudentEval(id, body) {
+    return call(() => request(`${B}/workbench/student-evals/${id}/review`, { method: 'POST', body }))
+  },
+  verifyInsurance(id, body) {
+    return call(() => request(`${B}/workbench/insurances/${id}/verify`, { method: 'POST', body }))
+  },
   generateEvidencePackage(packageType, targetId) {
     return call(() => request(`${B}/evidence-packages/${packageType}/${targetId}`, { method: 'POST' }))
-  }
+  },
+  evidenceDownloadUrl(packageId) { return `${B}/evidence-packages/${packageId}/download` },
+  auditHealth() { return call(() => request(`${B}/audit-outbox/health`)) }
 }
 
 export default complianceApi
