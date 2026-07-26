@@ -42,7 +42,6 @@ def hold_proposal_defense(proposal_id, result, comment=None) -> dict:
         proposal.defense_result = result
         proposal.defense_comment = str(comment or "").strip() or None
         proposal.defense_at = datetime.now(timezone.utc)
-        proposal.version = int(proposal.version.lstrip("v") or 1) if str(proposal.version or "").startswith("v") else proposal.version
         svc._audit(db, "PROPOSAL", proposal.id,
                    "开题答辩-" + ("通过" if result == "PASS" else "不通过"),
                    str(comment or "").strip(), "", result)
