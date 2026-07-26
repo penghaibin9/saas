@@ -84,12 +84,12 @@ def test_current_model_fields_used_by_facades_exist():
         AaTextbookDistributionBatch: {"order_batch_id", "status"},
         AaTextbookDistributionRecord: {"batch_id", "status"},
         AaTextbookFeeLedger: {"distribution_record_id", "status", "paid_amount"},
-        SchoolClass: {"class_name", "class_status", "status"},
+        SchoolClass: {"class_name", "class_status"},
     }
-    # CommonMixin provides status only where the concrete model declares it; inspect mapper attrs rather than __dict__.
+    # CommonMixin明确不提供status；只有具体模型自己声明时才存在。
     for model, fields in required.items():
         attrs = set(model.__mapper__.attrs.keys())
-        # AaGradeRecord has no business status column; its row state is carried by task + exception/pass flags.
+        # AaGradeRecord没有行级工作流status，状态由任务和异常/通过字段共同表达。
         expected = fields - ({"status"} if model is AaGradeRecord else set())
         assert expected <= attrs, f"{model.__name__} missing {sorted(expected - attrs)}"
 
