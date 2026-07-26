@@ -1,0 +1,119 @@
+name: Internship one-shot branch patch
+
+on:
+  push:
+    branches:
+      - agent/internship-four-surface-hardening
+    paths:
+      - .github/workflows/internship-one-shot-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/internship-four-surface-hardening
+          fetch-depth: 0
+
+      - name: Register pages and remove stale API wrappers
+        shell: python
+        run: |
+          from pathlib import Path
+          import json
+
+          pages = Path('miniapp/src/pages.json')
+          text = pages.read_text(encoding='utf-8')
+          if 'pages/student/internship/consent/index' not in text:
+              anchor = '''    {
+                "path": "pages/student/internship/checkin/index",'''
+              block = '''    {
+                "path": "pages/student/internship/consent/index",
+                "style": {
+                  "navigationBarTitleText": "知情确认",
+                  "navigationStyle": "custom"
+                }
+              },
+              {
+                "path": "pages/student/internship/consent/detail",
+                "style": {
+                  "navigationBarTitleText": "知情书正文",
+                  "navigationStyle": "custom"
+                }
+              },
+              {
+                "path": "pages/student/internship/safety/index",
+                "style": {
+                  "navigationBarTitleText": "岗前安全教育",
+                  "navigationStyle": "custom"
+                }
+              },
+              {
+                "path": "pages/student/internship/safety/course",
+                "style": {
+                  "navigationBarTitleText": "安全教育课程",
+                  "navigationStyle": "custom"
+                }
+              },
+          '''
+              if anchor not in text:
+                  raise SystemExit('pages.json internship checkin anchor not found')
+              text = text.replace(anchor, block + anchor, 1)
+              pages.write_text(text, encoding='utf-8')
+          json.loads(pages.read_text(encoding='utf-8'))
+
+          teacher = Path('miniapp/src/services/teacherApi.js')
+          text = teacher.read_text(encoding='utf-8')
+          text = text.replace(
+              "  getInternshipMyStudents: () => real.teacherInternshipMyStudents(),\n", "")
+          text = text.replace(
+              "  // 实习成绩：教师端列表 + 核算(五项加权) + 发布（owner 校验，真实接口，无 mock 兜底）\n",
+              "  // 实习成绩：教师端列表 + 核算；最终发布归学校授权角色\n")
+          text = text.replace(
+              "  publishInternshipScore: (scoreId) => real.teacherInternshipScorePublish(scoreId),\n", "")
+          text = text.replace(
+              "  // 三方协议：待学校确认队列 + 学校确认生效（owner 校验，真实接口，无 mock 兜底）\n",
+              "  // 三方协议：指导教师仅查看待学校终审进度\n")
+          text = text.replace(
+              "  confirmAgreementSchool: (agreementId) => real.teacherAgreementSchoolConfirm(agreementId),\n", "")
+          teacher.write_text(text, encoding='utf-8')
+
+          real = Path('miniapp/src/services/realApi.js')
+          text = real.read_text(encoding='utf-8')
+          text = text.replace(
+              "/** 指导教师·本人指导实习学生名单（供新增指导记录选学生用） / 新增指导记录（owner 校验，真实接口，无 mock 兜底） */\nexport const teacherInternshipMyStudents = () => realRequest('/mobile/teacher/internship/my-students')\n",
+              "/** 新增指导记录（学生名单改走带 batchId 的 internshipApi） */\n")
+          text = text.replace(
+              "/** 实习成绩：教师端列表 / 核算(五项加权) / 发布（owner 校验，真实接口，无 mock 兜底） */\n",
+              "/** 实习成绩：教师端列表 / 核算；最终发布归学校授权角色 */\n")
+          text = text.replace(
+              "export const teacherInternshipScorePublish = (scoreId) =>\n  realRequest(`/mobile/teacher/internship/scores/${scoreId}/publish`, { method: 'POST' })\n", "")
+          text = text.replace(
+              "/** 三方协议：待学校确认队列 / 学校确认生效（owner 校验，真实接口，无 mock 兜底） */\n",
+              "/** 三方协议：指导教师查看待学校终审进度 */\n")
+          text = text.replace(
+              "export const teacherAgreementSchoolConfirm = (agreementId) =>\n  realRequest(`/mobile/teacher/internship/agreements/${agreementId}/school-confirm`, { method: 'POST' })\n", "")
+          real.write_text(text, encoding='utf-8')
+
+          stale = [
+              'teacherInternshipScorePublish',
+              'teacherAgreementSchoolConfirm',
+              "realRequest('/mobile/teacher/internship/my-students')",
+          ]
+          merged = teacher.read_text(encoding='utf-8') + real.read_text(encoding='utf-8')
+          remaining = [x for x in stale if x in merged]
+          if remaining:
+              raise SystemExit('stale wrappers remain: ' + ', '.join(remaining))
+
+      - name: Commit controlled changes
+        run: |
+          git config user.name "OpenAI Internship Hardening"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/internship-one-shot-patch.yml
+          git add miniapp/src/pages.json miniapp/src/services/teacherApi.js miniapp/src/services/realApi.js
+          git diff --cached --check
+          git commit -m "chore(internship): register student workflows"
+          git push origin HEAD:agent/internship-four-surface-hardening
