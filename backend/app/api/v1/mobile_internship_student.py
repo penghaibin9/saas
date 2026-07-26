@@ -8,6 +8,7 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_compliance_service as compliance
+from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_dashboard_service as dashboard
 
 router = APIRouter(
@@ -32,6 +33,14 @@ def my_compliance(
     user=Depends(get_current_user),
 ):
     return success(compliance.evaluate_my(user, operation=operation, batch_id=batchId))
+
+
+@router.get("/context/consents", summary="本人所选批次知情确认任务")
+def my_selected_consents(
+    batchId: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(consent_context.list_my(user, batch_id=batchId))
 
 
 @router.get("/context/safety/courses", summary="本人所选批次安全教育课程")
