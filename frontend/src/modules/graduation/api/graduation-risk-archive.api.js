@@ -69,20 +69,26 @@ export const graduationRiskArchiveApi = {
       }))
     } catch (e) { return toErr(e) }
   },
-  previewBatchFile(params = {}) {
-    return call(() => request(`${ARCHIVE}/batch-file/preview`, { method: 'POST', params: withBatch(params) }))
+  previewBatchFile(params = {}, body = {}) {
+    return call(() => request(`${ARCHIVE}/batch-file/preview`, {
+      method: 'POST', params: withBatch(params), body: { archiveBatchNo: body.archiveBatchNo || undefined },
+    }))
   },
   async batchFileArchive(params = {}, body = {}) {
     const scoped = withBatch(params)
     try {
       let previewToken = body.previewToken
+      let archiveBatchNo = body.archiveBatchNo
       if (!previewToken) {
-        const preview = await request(`${ARCHIVE}/batch-file/preview`, { method: 'POST', params: scoped })
+        const preview = await request(`${ARCHIVE}/batch-file/preview`, {
+          method: 'POST', params: scoped, body: { archiveBatchNo: archiveBatchNo || undefined },
+        })
         previewToken = preview.previewToken
+        archiveBatchNo = preview.archiveBatchNo
       }
-      if (!previewToken) return fail('归档预览未生成执行凭证，请重新预览', 409)
+      if (!previewToken || !archiveBatchNo) return fail('备案预览未生成完整执行凭证，请重新预览', 409)
       return ok(await request(`${ARCHIVE}/batch-file`, {
-        method: 'POST', params: scoped, body: { ...body, previewToken },
+        method: 'POST', params: scoped, body: { ...body, archiveBatchNo, previewToken },
       }))
     } catch (e) { return toErr(e) }
   },
