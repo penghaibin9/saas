@@ -4,3 +4,4 @@
 """
 
 from . import academic_affairs_archive_facade as academic_affairs_archive_service
+from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
