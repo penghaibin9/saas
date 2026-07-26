@@ -37,6 +37,8 @@ from app.services.affairs_four_end_contract import install as install_affairs_fo
 from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
 from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
 from app.services.affairs_funding_ext_guard import install as install_funding_ext_guard
+from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
+from app.services.affairs_history_import_guard import install as install_history_import_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
 from app.services.affairs_self_scope_guard import install as install_self_scope_guard
@@ -84,6 +86,9 @@ install_activity_accounting_guard()
 install_activity_authority_guard()
 install_student_ledger_guard()
 install_discipline_integrity_guard()
+# 历史导入先安装共享存储/完整副作用，再安装“错行整批失败”修正层。
+install_history_import_guard()
+install_history_dry_run_guard()
 install_stats_integrity_guard()
 # 先安装通用版本/移动权限门，再以节点级调宿授权覆盖旧的楼栋一刀切。
 install_affairs_four_end_review_guard()
