@@ -1,6 +1,7 @@
 """毕业设计运行时兼容安装。
 
 - 归档预览令牌使用系统 JWT 强密钥签名；
+- 安装真实文件归档证据链与批量预览/执行一致性；
 - 安装选题志愿 Excel 的统一模板、预校验与确认规则；
 - 安装毕业设计材料专用的业务对象下载授权链；
 - 对毕业设计新旧 XLSX 导出统一做公式注入净化；
@@ -32,6 +33,12 @@ def install_runtime_settings() -> None:
     if not hasattr(cls, "jwt_secret"):
         setattr(cls, "jwt_secret", property(lambda _self: signing_secret()))
 
+    from app.modules.graduation.services.graduation_archive_consistency import (
+        install_archive_consistency,
+    )
+    from app.modules.graduation.services.graduation_archive_batch_consistency import (
+        install_archive_batch_consistency,
+    )
     from app.modules.graduation.services.graduation_defense_round_consistency import (
         install_defense_round_consistency,
     )
@@ -50,6 +57,8 @@ def install_runtime_settings() -> None:
     from app.modules.graduation.services.graduation_topic_import_consistency import (
         install_topic_import_consistency,
     )
+    install_archive_consistency()
+    install_archive_batch_consistency()
     install_material_access_consistency()
     install_topic_import_consistency()
     install_graduation_export_security()
