@@ -14,7 +14,10 @@ def test_public_service_aliases_point_to_final_layers():
         "academic_affairs_makeup_term_facade"
     )
     assert services.academic_affairs_textbook_service.__name__.endswith(
-        "academic_affairs_textbook_final_facade"
+        "academic_affairs_textbook_roster_facade"
+    )
+    assert services.academic_affairs_textbook_service.generate_distribution.__module__.endswith(
+        "academic_affairs_textbook_roster_facade"
     )
     assert services.academic_affairs_exam_service.__name__.endswith(
         "academic_affairs_exam_term_facade"
@@ -59,6 +62,7 @@ def test_current_model_fields_used_by_facades_exist():
         AaTextbookDistributionRecord,
         AaTextbookFeeLedger,
         AaTextbookOrderBatch,
+        SchoolClass,
     )
 
     required = {
@@ -74,6 +78,7 @@ def test_current_model_fields_used_by_facades_exist():
         AaTextbookDistributionBatch: {"order_batch_id", "status"},
         AaTextbookDistributionRecord: {"batch_id", "status"},
         AaTextbookFeeLedger: {"distribution_record_id", "status", "paid_amount"},
+        SchoolClass: {"class_name", "class_status", "status"},
     }
     # CommonMixin provides status only where the concrete model declares it; inspect mapper attrs rather than __dict__.
     for model, fields in required.items():
