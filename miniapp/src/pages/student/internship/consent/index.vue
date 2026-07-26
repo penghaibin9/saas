@@ -1,11 +1,11 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar title="知情确认" subtitle="本人知情书与监护人确认进度" show-back />
+    <MobileNavBar title="知情确认" subtitle="当前所选实习批次" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="state === 'ready'">
-        <MobileInlineAlert type="info" description="学生知情书须本人打开正文后确认；监护人任务仅展示进度，不会向学生端暴露确认链接或手机号。" />
+        <MobileInlineAlert type="info" description="学生确认必须阅读正文；监护人确认仅展示进度，完整联系方式和确认令牌不会向学生端暴露。" />
         <MobileGlobalState v-if="!items.length" state="empty" title="暂无知情确认任务"
-          description="学校下发知情书后会显示在这里。" />
+          description="当前所选批次没有待办理或历史知情确认任务。" />
         <view v-for="item in items" :key="item.id" class="card cs" @click="open(item)">
           <view class="row-between">
             <view class="flex-1">
@@ -27,28 +27,29 @@
 </template>
 
 <script>
-import { studentApi } from '@/services/studentApi'
+import { studentInternshipConsents } from '@/services/internshipApi'
 import { go } from '@/utils/nav'
 
 export default {
-  data() { return { state: 'loading', items: [] } },
-  onLoad() { this.load() },
+  data() { return { state: 'loading', items: [], batchId: '' } },
+  onLoad(options) { this.batchId = String(options?.batchId || ''); this.load() },
   onShow() { if (this.state === 'ready') this.load() },
   onPullDownRefresh() { this.load(() => uni.stopPullDownRefresh()) },
   methods: {
     async load(done) {
       this.state = 'loading'
       try {
-        const data = await studentApi.getInternshipConsents()
+        const data = await studentInternshipConsents(this.batchId)
         this.items = Array.isArray(data) ? data : (data?.items || [])
         this.state = 'ready'
-      } catch (e) {
-        this.state = 'error'
-      } finally { done && done() }
+      } catch (e) { this.state = 'error' }
+      finally { done && done() }
     },
     open(item) {
       if (item.consentType !== 'STUDENT') return
-      go(`/pages/student/internship/consent/detail?id=${encodeURIComponent(item.id)}`)
+      const query = [`id=${encodeURIComponent(item.id)}`]
+      if (this.batchId) query.push(`batchId=${encodeURIComponent(this.batchId)}`)
+      go(`/pages/student/internship/consent/detail?${query.join('&')}`)
     },
     statusLabel(status) {
       return ({ PENDING: '待确认', VALID: '已确认', REJECTED: '已拒绝', REVOKED: '已作废',
