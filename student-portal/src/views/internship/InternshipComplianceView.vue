@@ -4,8 +4,11 @@
     <StateBlock v-else-if="error" type="error" :text="error" />
     <template v-else>
       <section v-if="!compliance.hasData" class="sp-notice">
-        <strong>暂无可办理的实习记录</strong>
-        <p class="sp-muted">{{ compliance.message || '学校建档后，这里会显示知情确认、安全教育和上岗阻断项。' }}</p>
+        <div>
+          <strong>暂无可办理的实习记录</strong>
+          <p class="sp-muted">{{ compliance.message || '学校建档后，这里会显示知情确认、安全教育和上岗阻断项。' }}</p>
+        </div>
+        <button class="sp-btn sp-btn--ghost" @click="load">重新加载</button>
       </section>
       <template v-else>
         <section class="sp-card hero">
@@ -70,7 +73,7 @@
 
             <section class="sp-card">
               <div class="sp-panel__head">正文与办理</div>
-              <StateBlock v-if="!selectedConsent" type="empty" text="请选择学生知情确认任务" />
+              <StateBlock v-if="!selectedConsent" type="empty" text="请选择知情确认任务" />
               <template v-else-if="selectedConsent.consentType === 'GUARDIAN'">
                 <p class="sp-muted">监护人任务只展示进度。确认链接、完整手机号和身份校验信息不会向学生门户暴露。</p>
                 <dl class="kv">
@@ -121,16 +124,20 @@
                 <article class="doc">{{ courseDetail.contentSnapshot || '课程正文为空，请联系学校管理员。' }}</article>
                 <div v-if="courseDetail.requireCommitment" class="commitment">
                   <strong>安全承诺</strong>
-                  <p>本人已阅读课程正文，承诺遵守岗位安全操作规程，发现风险立即停止作业并报告。</p>
-                  <button v-if="completion && !completion.commitmentConfirmed" class="sp-btn sp-btn--ghost" :disabled="busy" @click="commitSafety">确认安全承诺</button>
-                  <StatusTag v-else :text="completion?.commitmentConfirmed ? '已确认' : '待开始课程'" :tone="completion?.commitmentConfirmed ? 'success' : 'warn'" />
+                  <p>本人已阅读当前课程版本正文，承诺遵守岗位安全操作规程，发现风险立即停止作业并报告。</p>
+                  <button v-if="completion?.status === 'IN_PROGRESS' && !completion.commitmentConfirmed" class="sp-btn sp-btn--ghost" :disabled="busy" @click="commitSafety">确认安全承诺</button>
+                  <StatusTag v-else-if="completion?.commitmentConfirmed" text="已确认" tone="success" />
+                  <StatusTag v-else text="开始本次学习后确认" tone="warn" />
                 </div>
+                <p v-if="completion?.status === 'FAILED'" class="retry-note">本次审核未通过。重新学习会重置本次学习时长和承诺，旧结果仍保留在审计记录中。</p>
                 <div class="actions">
-                  <button v-if="!completion" class="sp-btn" :disabled="busy" @click="startSafety">开始学习</button>
-                  <button v-else-if="!['PASSED','PENDING_REVIEW'].includes(completion.status)" class="sp-btn" :disabled="busy || !canSubmitSafety" @click="submitSafety">
+                  <button v-if="safetyNeedsStart" class="sp-btn" :disabled="busy || safetyNoAttempts" @click="startSafety">
+                    {{ completion?.status === 'FAILED' ? (safetyNoAttempts ? '已无剩余尝试次数' : '重新学习') : '开始学习' }}
+                  </button>
+                  <button v-else-if="completion?.status === 'IN_PROGRESS'" class="sp-btn" :disabled="busy || !canSubmitSafety" @click="submitSafety">
                     {{ canSubmitSafety ? '提交学习结果' : '完成学习时长和承诺后提交' }}
                   </button>
-                  <StatusTag v-else :text="safetyStatus(completion.status)" :tone="toneSafety(completion.status)" />
+                  <StatusTag v-else :text="safetyStatus(completion?.status)" :tone="toneSafety(completion?.status)" />
                 </div>
               </template>
             </section>
@@ -171,14 +178,16 @@ let timer
 
 const visibleItems = computed(() => (compliance.value.items || []).filter((x) => x.required || x.status !== 'NOT_APPLICABLE'))
 const completion = computed(() => courseDetail.value?.completion || null)
+const safetyNeedsStart = computed(() => !completion.value || ['NOT_STARTED', 'FAILED'].includes(completion.value.status))
+const safetyNoAttempts = computed(() => completion.value?.status === 'FAILED' && Number(courseDetail.value?.remainingAttempts || 0) <= 0)
 const trustedMinutes = computed(() => {
   const stored = Number(completion.value?.studiedMinutes || courseDetail.value?.studiedMinutes || 0)
-  if (!completion.value?.startedAt) return stored
+  if (completion.value?.status !== 'IN_PROGRESS' || !completion.value?.startedAt) return stored
   const start = new Date(completion.value.startedAt).getTime()
   return Number.isFinite(start) ? Math.max(stored, Math.floor((now.value - start) / 60000)) : stored
 })
 const canSubmitSafety = computed(() => {
-  if (!completion.value || !courseDetail.value) return false
+  if (!completion.value || !courseDetail.value || completion.value.status !== 'IN_PROGRESS') return false
   if (courseDetail.value.requireCommitment && !completion.value.commitmentConfirmed) return false
   return trustedMinutes.value >= Number(courseDetail.value.requiredMinutes || 0)
 })
@@ -198,10 +207,15 @@ function safetyStatus(status) {
   return ({ NOT_STARTED: '未开始', IN_PROGRESS: '学习中', PENDING_REVIEW: '待审核', PASSED: '已通过', FAILED: '未通过' })[status] || status || '未开始'
 }
 function toneSafety(status) { return status === 'PASSED' ? 'success' : status === 'FAILED' ? 'danger' : 'warn' }
-function deviceDigest() { return [navigator.platform, navigator.userAgent, screen.width, screen.height].join('|') }
+function deviceDigest() {
+  try {
+    return [window.navigator?.platform, window.navigator?.userAgent, window.screen?.width, window.screen?.height].filter(Boolean).join('|') || 'student-portal'
+  } catch (e) { return 'student-portal' }
+}
 
 async function load() {
-  loading.value = true; error.value = ''
+  loading.value = true
+  error.value = ''
   try {
     const [c, cs, courses, completions] = await Promise.all([
       portalApi.internshipCompliance('ONBOARD'),
@@ -215,8 +229,12 @@ async function load() {
     const cmap = Object.fromEntries(safetyCompletions.value.map((x) => [String(x.courseId), x]))
     safetyCourses.value = (Array.isArray(courses) ? courses : (courses?.items || [])).map((x) => ({
       ...x,
-      completionStatus: cmap[String(x.id)]?.status || x.completionStatus || 'NOT_STARTED'
+      completionStatus: x.completionStatus || cmap[String(x.id)]?.status || 'NOT_STARTED'
     }))
+    if (selectedCourse.value) {
+      const current = safetyCourses.value.find((x) => String(x.id) === String(selectedCourse.value.id))
+      if (current) await selectCourse(current)
+    }
   } catch (e) {
     error.value = e?.message || '上岗合规状态加载失败'
   } finally { loading.value = false }
@@ -232,6 +250,14 @@ async function selectConsent(item) {
     consentDetail.value = detail
   } catch (e) { ui.notify(e?.message || '知情书加载失败') }
 }
+async function refreshConsentAfterConflict() {
+  const item = consents.value.find((x) => String(x.id) === String(consentDetail.value?.id || selectedConsent.value?.id))
+  await load()
+  if (item) {
+    const latest = consents.value.find((x) => String(x.id) === String(item.id))
+    if (latest) await selectConsent(latest)
+  }
+}
 async function confirmConsent() {
   if (!consentDetail.value || busy.value) return
   if (!window.confirm(`确认已阅读正文版本 ${consentDetail.value.contentVersion} 并同意按学校实习要求执行？`)) return
@@ -243,9 +269,14 @@ async function confirmConsent() {
       contentHash: consentDetail.value.contentHash,
       deviceDigest: deviceDigest()
     })
-    ui.notify('知情确认已完成'); await load(); selectedConsent.value = null; consentDetail.value = null
-  } catch (e) { ui.notify(e?.message || '确认失败，请刷新后重试') }
-  finally { busy.value = false }
+    ui.notify('知情确认已完成')
+    await load()
+    selectedConsent.value = null
+    consentDetail.value = null
+  } catch (e) {
+    ui.notify(e?.message || '确认失败，请刷新后重试')
+    if (String(e?.code || '').includes('CONFLICT')) await refreshConsentAfterConflict()
+  } finally { busy.value = false }
 }
 async function rejectConsent() {
   if (!consentDetail.value || busy.value) return
@@ -254,9 +285,14 @@ async function rejectConsent() {
   busy.value = true
   try {
     await portalApi.internshipConsentReject(consentDetail.value.id, { expectedVersion: consentDetail.value.version, reason })
-    ui.notify('拒绝原因已提交'); await load(); selectedConsent.value = null; consentDetail.value = null
-  } catch (e) { ui.notify(e?.message || '提交失败，请重试') }
-  finally { busy.value = false }
+    ui.notify('拒绝原因已提交')
+    await load()
+    selectedConsent.value = null
+    consentDetail.value = null
+  } catch (e) {
+    ui.notify(e?.message || '提交失败，请重试')
+    if (String(e?.code || '').includes('CONFLICT')) await refreshConsentAfterConflict()
+  } finally { busy.value = false }
 }
 
 async function selectCourse(course) {
@@ -266,15 +302,19 @@ async function selectCourse(course) {
   catch (e) { ui.notify(e?.message || '课程详情加载失败') }
 }
 async function startSafety() {
-  if (!selectedCourse.value || busy.value) return
+  if (!selectedCourse.value || busy.value || safetyNoAttempts.value) return
+  const retrying = completion.value?.status === 'FAILED'
   busy.value = true
-  try { await portalApi.internshipSafetyStart(selectedCourse.value.id); ui.notify('课程学习已开始'); await selectCourse(selectedCourse.value) }
-  catch (e) { ui.notify(e?.message || '开始失败') }
+  try {
+    await portalApi.internshipSafetyStart(selectedCourse.value.id)
+    ui.notify(retrying ? '已重新开始学习' : '课程学习已开始')
+    await selectCourse(selectedCourse.value)
+  } catch (e) { ui.notify(e?.message || '开始失败') }
   finally { busy.value = false }
 }
 async function commitSafety() {
-  if (!completion.value || busy.value) return
-  if (!window.confirm('确认本人已阅读课程正文并承诺遵守岗位安全规程？')) return
+  if (!completion.value || completion.value.status !== 'IN_PROGRESS' || busy.value) return
+  if (!window.confirm('确认本人已阅读当前课程版本正文并承诺遵守岗位安全规程？')) return
   busy.value = true
   try {
     await portalApi.internshipSafetyCommit(completion.value.id, {
@@ -282,9 +322,12 @@ async function commitSafety() {
       contentHash: courseDetail.value.contentHash,
       deviceDigest: deviceDigest()
     })
-    ui.notify('安全承诺已确认'); await selectCourse(selectedCourse.value)
-  } catch (e) { ui.notify(e?.message || '确认失败，请刷新后重试') }
-  finally { busy.value = false }
+    ui.notify('安全承诺已确认')
+    await selectCourse(selectedCourse.value)
+  } catch (e) {
+    ui.notify(e?.message || '确认失败，请刷新后重试')
+    if (String(e?.code || '').includes('CONFLICT')) await selectCourse(selectedCourse.value)
+  } finally { busy.value = false }
 }
 async function submitSafety() {
   if (!canSubmitSafety.value || busy.value) return
@@ -295,9 +338,13 @@ async function submitSafety() {
       studiedMinutes: trustedMinutes.value,
       answers: { readAndUnderstood: true }
     })
-    ui.notify('学习结果已提交审核'); await selectCourse(selectedCourse.value); await load()
-  } catch (e) { ui.notify(e?.message || '提交失败，请重试') }
-  finally { busy.value = false }
+    ui.notify('学习结果已提交审核')
+    await selectCourse(selectedCourse.value)
+    await load()
+  } catch (e) {
+    ui.notify(e?.message || '提交失败，请重试')
+    if (String(e?.code || '').includes('CONFLICT')) await selectCourse(selectedCourse.value)
+  } finally { busy.value = false }
 }
 
 onMounted(() => { load(); timer = window.setInterval(() => { now.value = Date.now() }, 15000) })
@@ -336,5 +383,6 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 .course-meta { display:flex;gap:18px;color:var(--t3);font-size:12px;margin-bottom:12px; }
 .commitment { margin-top:14px;padding:14px;border:1px solid #FFD591;background:#FFFBE6;border-radius:10px; }
 .commitment p { color:#8B5C00;line-height:1.6; }
+.retry-note { margin-top:12px;padding:10px 12px;border-radius:8px;background:#FFF2F0;color:#A8071A;font-size:13px;line-height:1.6; }
 @media (max-width:1100px) { .compliance-grid { grid-template-columns:1fr 1fr; }.two{grid-template-columns:1fr;} }
 </style>
