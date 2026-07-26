@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import select
 
@@ -21,6 +23,40 @@ def _self_student(db, user):
     if not student:
         raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
     return student
+
+
+def _payload_sha256(payload: dict) -> str:
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _optional_non_negative_decimal(value, field_name: str):
+    if value in (None, ""):
+        return None
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise AppException("VALIDATION_ERROR", f"{field_name}格式非法") from exc
+    if result < 0:
+        raise AppException("VALIDATION_ERROR", f"{field_name}不能小于0")
+    if result.as_tuple().exponent < -2:
+        raise AppException("VALIDATION_ERROR", f"{field_name}最多保留2位小数")
+    return result
+
+
+def _bounded_list(value, field_name: str, limit: int) -> list:
+    rows = value or []
+    if not isinstance(rows, list):
+        raise AppException("VALIDATION_ERROR", f"{field_name}格式非法")
+    if len(rows) > limit:
+        raise AppException("VALIDATION_ERROR", f"{field_name}最多填写{limit}项")
+    return rows
 
 
 def aid_apply(user: dict, body: dict) -> dict:
@@ -39,6 +75,19 @@ def aid_apply(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "困难情况说明需 10-500 字")
     if not bool(body.get("confirm")):
         raise AppException("VALIDATION_ERROR", "请先阅读并勾选确认承诺书")
+
+    member_count = body.get("memberCount")
+    if member_count not in (None, ""):
+        try:
+            member_count = int(member_count)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "家庭成员数格式非法") from exc
+        if member_count < 1 or member_count > 30:
+            raise AppException("VALIDATION_ERROR", "家庭成员数应为1-30人")
+    annual_income = _optional_non_negative_decimal(body.get("annualIncome"), "家庭年收入")
+    debt = _optional_non_negative_decimal(body.get("debt"), "家庭债务")
+    family_members = _bounded_list(body.get("familyMembers"), "家庭成员", 30)
+    special_tags = _bounded_list(body.get("specialTags"), "特殊情况标签", 30)
 
     with session() as db:
         student = _self_student(db, user)
@@ -65,11 +114,11 @@ def aid_apply(user: dict, body: dict) -> dict:
         db.flush()
         family = AidFamilyEconomy(
             tenant_id=_tid(), apply_id=application.id, student_id=student.id,
-            member_count=body.get("memberCount"),
-            income_encrypted=aid.encrypt_field(body.get("annualIncome")),
-            debt_encrypted=aid.encrypt_field(body.get("debt")),
-            family_members_json=json.dumps(body.get("familyMembers") or [], ensure_ascii=False),
-            special_flags_json=json.dumps(body.get("specialTags") or [], ensure_ascii=False),
+            member_count=member_count,
+            income_encrypted=aid.encrypt_field(str(annual_income) if annual_income is not None else None),
+            debt_encrypted=aid.encrypt_field(str(debt) if debt is not None else None),
+            family_members_json=json.dumps(family_members, ensure_ascii=False),
+            special_flags_json=json.dumps(special_tags, ensure_ascii=False),
         )
         db.add(family)
         assignee = aid._assignee_for(db, first, student.id)
@@ -82,12 +131,24 @@ def aid_apply(user: dict, body: dict) -> dict:
             db, application.id, assignee, student.id,
             f"困难认定待评议：{student.real_name}",
         )
+        payload_hash = _payload_sha256({
+            "bizType": "DIFFICULTY_COMMIT",
+            "studentId": int(student.id),
+            "batchId": int(batch.id),
+            "applyLevel": level,
+            "statement": statement,
+            "memberCount": member_count,
+            "annualIncome": str(annual_income) if annual_income is not None else None,
+            "debt": str(debt) if debt is not None else None,
+            "familyMembers": family_members,
+            "specialTags": special_tags,
+        })
         confirmation = common.create_sign_record_in_session(db, user, {
             "bizType": "DIFFICULTY_COMMIT",
             "bizId": str(application.id),
             "content": (
                 f"困难认定本人确认 student={student.id} batch={batch.id} "
-                f"level={level} statementHashOnly=true"
+                f"payloadSha256={payload_hash}"
             ),
             "confirm": True,
         }, student)
@@ -98,6 +159,7 @@ def aid_apply(user: dict, body: dict) -> dict:
         db.refresh(family)
         result = aid._apply_row(application, student, family)
         result["confirmation"] = confirmation
+        result["payloadSha256"] = payload_hash
         return result
 
 
@@ -107,8 +169,12 @@ def funding_apply(user: dict, body: dict) -> dict:
 
     body = body or {}
     batch_id = str(body.get("batchId") or "").strip()
+    statement = str(body.get("statement") or "").strip()
+    amount = _optional_non_negative_decimal(body.get("amount"), "申请金额")
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "资助批次（batchId）必填")
+    if not 5 <= len(statement) <= 1000:
+        raise AppException("VALIDATION_ERROR", "申请理由需5-1000字")
     if not bool(body.get("confirm")):
         raise AppException("VALIDATION_ERROR", "请先阅读并勾选确认承诺书")
 
@@ -139,7 +205,7 @@ def funding_apply(user: dict, body: dict) -> dict:
         application = FundingApplication(
             tenant_id=_tid(), batch_id=batch.id, student_id=student.id,
             apply_source="SELF", project_type=batch.project_type,
-            amount=body.get("amount"), statement=str(body.get("statement") or ""),
+            amount=amount, statement=statement,
             check_snapshot_json=json.dumps(snapshot, ensure_ascii=False), status=first,
         )
         db.add(application)
@@ -154,12 +220,21 @@ def funding_apply(user: dict, body: dict) -> dict:
             db, application.id, assignee, student.id,
             f"资助申请待审：{student.real_name}",
         )
+        payload_hash = _payload_sha256({
+            "bizType": "FUNDING_COMMIT",
+            "studentId": int(student.id),
+            "batchId": int(batch.id),
+            "projectType": batch.project_type,
+            "amount": str(amount) if amount is not None else None,
+            "statement": statement,
+            "checkSnapshot": snapshot,
+        })
         confirmation = common.create_sign_record_in_session(db, user, {
             "bizType": "FUNDING_COMMIT",
             "bizId": str(application.id),
             "content": (
                 f"资助申请本人确认 student={student.id} batch={batch.id} "
-                f"projectType={batch.project_type} statementHashOnly=true"
+                f"projectType={batch.project_type} payloadSha256={payload_hash}"
             ),
             "confirm": True,
         }, student)
@@ -172,6 +247,7 @@ def funding_apply(user: dict, body: dict) -> dict:
         db.refresh(application)
         result = funding._app_row(application, user, student)
         result["confirmation"] = confirmation
+        result["payloadSha256"] = payload_hash
         return result
 
 
