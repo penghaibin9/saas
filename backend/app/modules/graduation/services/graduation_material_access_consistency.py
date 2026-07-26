@@ -1,14 +1,25 @@
 """毕业设计材料下载的业务对象授权链。
 
-专用下载路由先验证“附件确实绑定到开题/成果 + 当前角色可访问该学生”，
-通过后仅按当前租户、文件状态和毕业设计业务类型解析存储对象。通用裸文件下载
-仍保留原有对象权限，不在这里放宽。
+专用下载路由验证“附件确实绑定到开题/成果 + 当前角色拥有明确业务关系”：
+- 学生本人只能访问自己的材料；
+- 被分配的互查学生只能访问任务绑定的那一份正式定稿；
+- 教师/管理员继续按导师、评阅、答辩或组织数据范围访问。
+通用裸文件下载仍保留原有对象权限，不在这里放宽。
 """
 from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.models import FileObject, GraduationFinal, GraduationProposal, GraduationStudent
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import no_permission
+from app.models import (
+    FileObject,
+    GraduationFinal,
+    GraduationPeerReview,
+    GraduationProposal,
+    GraduationStudent,
+)
+from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _tid, session
 from app.services.file_content_security import is_downloadable_status
@@ -23,8 +34,9 @@ def _attachment_id(raw) -> str:
     return str(raw or "")
 
 
-def _bound_student_id(db, file_id: str) -> int | None:
-    for model in (GraduationProposal, GraduationFinal):
+def _binding(db, file_id: str):
+    """返回 (kind, material_id, gd_student_id)，仅限当前租户有效绑定。"""
+    for kind, model in (("PROPOSAL", GraduationProposal), ("FINAL", GraduationFinal)):
         rows = db.scalars(select(model).where(
             model.tenant_id == _tid(),
             model.is_deleted.is_(False),
@@ -32,8 +44,37 @@ def _bound_student_id(db, file_id: str) -> int | None:
         )).all()
         for row in rows:
             if file_id in {_attachment_id(item) for item in (row.attachments_json or [])}:
-                return int(row.gd_student_id)
+                return kind, int(row.id), int(row.gd_student_id)
     return None
+
+
+def _authorize_binding(db, binding) -> None:
+    kind, material_id, gd_student_id = binding
+    student = db.scalars(select(GraduationStudent).where(
+        GraduationStudent.id == gd_student_id,
+        GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.is_deleted.is_(False),
+    )).first()
+    user = get_current_user_ctx() or {}
+    role = str(user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
+    if role == "STUDENT":
+        current = resolve_current_gd_student(db, user)
+        if not current:
+            raise no_permission("无法确认当前毕业设计学生身份")
+        if int(current.id) == gd_student_id:
+            return
+        if kind == "FINAL":
+            peer = db.scalars(select(GraduationPeerReview.id).where(
+                GraduationPeerReview.tenant_id == _tid(),
+                GraduationPeerReview.gd_final_id == material_id,
+                GraduationPeerReview.reviewer_gd_student_id == int(current.id),
+                GraduationPeerReview.is_deleted.is_(False),
+                GraduationPeerReview.status.in_(("ASSIGNED", "REVIEWED", "RECTIFIED")),
+            ).limit(1)).first()
+            if peer is not None:
+                return
+        raise no_permission("该材料不属于本人，也未分配给本人互查")
+    assert_student_access(db, student, "graduation.material.download")
 
 
 def resolve_material_download(file_id: str):
@@ -50,15 +91,10 @@ def resolve_material_download(file_id: str):
         if not file_row or not is_downloadable_status(file_row.status):
             return None
 
-        gd_student_id = _bound_student_id(db, str(file_id))
-        if gd_student_id is None:
+        binding = _binding(db, str(file_id))
+        if binding is None:
             return None
-        student = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.id == gd_student_id,
-            GraduationStudent.tenant_id == _tid(),
-            GraduationStudent.is_deleted.is_(False),
-        )).first()
-        assert_student_access(db, student, "graduation.material.download")
+        _authorize_binding(db, binding)
         file_key = file_row.file_key
         filename = file_row.file_name
 
