@@ -1,5 +1,5 @@
-<template><ApprovalCore /></template>
+<template><InternshipApprovalCore /></template>
 <script>
-import ApprovalCore from './ApprovalCore.vue'
-export default { components: { ApprovalCore } }
+import InternshipApprovalCore from './ApprovalCore.vue'
+export default { components: { InternshipApprovalCore } }
 </script>
