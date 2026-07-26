@@ -36,8 +36,7 @@ class Settings(BaseSettings):
     TIMEZONE_OFFSET_HOURS: int = 8
     TENANT_TIMEZONE: str = "Asia/Shanghai"
     APP_VERSION: str = "1.0.0"
-    # 家长门户公网根地址，例如 https://school.example.com；岗位实习监护人确认短信用。
-    # 生产未配置时不会伪装成已发送，任务保持待送达并在管理工作台明确提示。
+    # 家长门户公网根地址，例如 https://school.example.com；监护人确认短信使用。
     GUARDIAN_PORTAL_BASE_URL: str = ""
 
     # ── 认证 ──
@@ -171,7 +170,7 @@ class Settings(BaseSettings):
     def _normalize_scheduler(cls, v):
         raw = (str(v or "web")).strip().lower() or "web"
         if raw not in ("web", "external"):
-            raise ValueError("SCHEDULER_MODE 仅允许 web/external")
+            raise ValueError(f"SCHEDULER_MODE 非法：{v}；允许 web/external")
         return raw
 
     @model_validator(mode="after")
@@ -183,18 +182,26 @@ class Settings(BaseSettings):
             norm = _APP_ENV_ALIASES.get(raw, raw)
             if norm not in _ALLOWED_APP_ENV:
                 raise ValueError(f"{legacy_name} 非法：{legacy_val}")
-            if self.APP_ENV not in ("development", norm):
-                raise ValueError(f"APP_ENV 与 {legacy_name} 冲突")
-            self.APP_ENV = norm
+            if norm != self.APP_ENV:
+                raise ValueError(
+                    f"{legacy_name}={legacy_val} 与 APP_ENV={self.APP_ENV} 冲突，请统一后启动")
+        if (self.JWT_SECRET_KEY or "").strip() and (self.JWT_SECRET or "").strip():
+            if self.JWT_SECRET_KEY.strip() != self.JWT_SECRET.strip():
+                raise ValueError("JWT_SECRET 与 JWT_SECRET_KEY 同时存在且值冲突")
+        if (self.JWT_ALGORITHM or "").strip() and (self.JWT_ALG or "").strip():
+            if self.JWT_ALGORITHM.strip() != self.JWT_ALG.strip():
+                raise ValueError("JWT_ALG 与 JWT_ALGORITHM 同时存在且值冲突")
         if self.DEPLOYMENT_MODE == "production" and self.APP_ENV != "production":
-            raise ValueError("DEPLOYMENT_MODE=production 时 APP_ENV 必须为 production")
-        if self.APP_ENV == "production" and self.DEPLOYMENT_MODE != "production":
-            raise ValueError("APP_ENV=production 时 DEPLOYMENT_MODE 必须为 production")
+            raise ValueError("DEPLOYMENT_MODE=production 时必须 APP_ENV=production")
+        if self.DEPLOYMENT_MODE == "production" and self.SCHEDULER_MODE == "web":
+            object.__setattr__(self, "SCHEDULER_MODE", "external")
         return self
 
     @property
     def is_prod(self) -> bool:
-        return self.APP_ENV == "production" or self.DEPLOYMENT_MODE == "production"
+        if self.DEPLOYMENT_MODE == "production":
+            return True
+        return self.APP_ENV == "production"
 
     @property
     def db_enabled(self) -> bool:
@@ -202,17 +209,73 @@ class Settings(BaseSettings):
 
     @property
     def mock_login_enabled(self) -> bool:
-        raw = (self.MOCK_LOGIN_ENABLED or "").strip().lower()
-        if raw:
-            return raw in ("true", "1", "yes", "on")
+        value = (self.MOCK_LOGIN_ENABLED or "").strip().lower()
+        if value in ("true", "1", "yes", "on"):
+            return True
+        if value in ("false", "0", "no", "off"):
+            return False
         return not self.is_prod
 
     @property
     def demo_tenant_readonly(self) -> bool:
-        raw = (self.DEMO_TENANT_READONLY or "").strip().lower()
-        if raw:
-            return raw in ("true", "1", "yes", "on")
-        return self.is_prod
+        return (self.DEMO_TENANT_READONLY or "").strip().lower() not in (
+            "false", "0", "no", "off")
+
+    @property
+    def sandbox_auto_reset(self) -> bool:
+        return (self.SANDBOX_AUTO_RESET or "").strip().lower() not in (
+            "false", "0", "no", "off")
+
+    @property
+    def field_encryption_key(self) -> str:
+        return self.FIELD_ENCRYPTION_KEY
+
+    @property
+    def jwt_secret(self) -> str:
+        return (self.JWT_SECRET_KEY or self.JWT_SECRET or "").strip()
+
+    @property
+    def jwt_algorithm(self) -> str:
+        return (self.JWT_ALGORITHM or self.JWT_ALG or "HS256").strip()
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        if not self.CORS_ORIGINS.strip():
+            return ["*"]
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def effective_database_url(self) -> str:
+        if self.DATABASE_URL.strip():
+            return self.DATABASE_URL.strip()
+        driver = (self.DB_DRIVER or "sqlite").strip().lower()
+        if driver in ("mysql", "mariadb"):
+            from urllib.parse import quote_plus
+            password = quote_plus(self.DB_PASSWORD or "")
+            user = quote_plus(self.DB_USER or "root")
+            return (f"mysql+pymysql://{user}:{password}@{self.DB_HOST}:{self.DB_PORT}"
+                    f"/{self.DB_NAME}?charset=utf8mb4")
+        if driver in ("postgresql", "postgres", "pg"):
+            from urllib.parse import quote_plus
+            password = quote_plus(self.DB_PASSWORD or "")
+            user = quote_plus(self.DB_USER or "postgres")
+            return (f"postgresql+psycopg://{user}:{password}@{self.DB_HOST}:{self.DB_PORT}"
+                    f"/{self.DB_NAME}")
+        return f"sqlite+pysqlite:///{self.DB_SQLITE_PATH}"
+
+    @property
+    def db_dialect(self) -> str:
+        url = self.effective_database_url
+        head = url.split(":", 1)[0].lower() if url else ""
+        if head.startswith("mysql") or head.startswith("mariadb"):
+            return "mysql"
+        if head.startswith("postgresql") or head.startswith("postgres"):
+            return "postgresql"
+        return "sqlite"
+
+    @property
+    def support_contact_display(self) -> str:
+        return (self.SUPPORT_CONTACT or "").strip() or "平台运营"
 
 
 @lru_cache
