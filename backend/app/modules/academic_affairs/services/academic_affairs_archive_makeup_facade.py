@@ -1,12 +1,13 @@
 """教务归档第11域：补考/清考/重修/免修。
 
-学期归档前：
-- 本学期补考/清考批次必须 FINISHED；
-- 重修申请 SUBMITTED/ACADEMIC_REVIEW/APPROVED 仍在途，ENROLLED/FINISHED/REJECTED 视为申请流程终态；
-- 免修申请须 APPROVED/REJECTED/CANCELLED；
-- 无相关业务时不阻断。
+当前真实模型口径：
+- AaMakeupBatch 同时存在 term_id/term_code，兼容历史数据；
+- 免修模型名为 AaExemption；
+- 重修 ENROLLED/FINISHED/REJECTED、免修 APPROVED/REJECTED/CANCELLED 为申请流程终态。
 """
 from __future__ import annotations
+
+from sqlalchemy import or_
 
 from app.services.db_service import _tid
 
@@ -49,14 +50,19 @@ def _makeup_gate_result(
     )
 
 
-def _evaluate_makeup(db, term_code):
-    from app.models import AaExemptionApply, AaMakeupBatch, AaRetakeApply
+def _evaluate_makeup(db, term_id, term_code):
+    from app.models import AaExemption, AaMakeupBatch, AaRetakeApply
 
-    if not term_code:
+    if not term_id and not term_code:
         return _legacy._result(0, False, "未指定学期，无法核验补考重修免修")
+    batch_term_conditions = []
+    if term_id:
+        batch_term_conditions.append(AaMakeupBatch.term_id == int(term_id))
+    if term_code:
+        batch_term_conditions.append(AaMakeupBatch.term_code == term_code)
     batches = db.query(AaMakeupBatch).filter(
         AaMakeupBatch.tenant_id == _tid(),
-        AaMakeupBatch.term_code == term_code,
+        or_(*batch_term_conditions),
         AaMakeupBatch.is_deleted.is_(False),
     ).all()
     active_retakes = db.query(AaRetakeApply).filter(
@@ -64,13 +70,13 @@ def _evaluate_makeup(db, term_code):
         AaRetakeApply.term_code == term_code,
         AaRetakeApply.status.in_(["SUBMITTED", "ACADEMIC_REVIEW", "APPROVED"]),
         AaRetakeApply.is_deleted.is_(False),
-    ).count()
-    active_exemptions = db.query(AaExemptionApply).filter(
-        AaExemptionApply.tenant_id == _tid(),
-        AaExemptionApply.term_code == term_code,
-        AaExemptionApply.status.notin_(["APPROVED", "REJECTED", "CANCELLED"]),
-        AaExemptionApply.is_deleted.is_(False),
-    ).count()
+    ).count() if term_code else 0
+    active_exemptions = db.query(AaExemption).filter(
+        AaExemption.tenant_id == _tid(),
+        AaExemption.term_code == term_code,
+        AaExemption.status.notin_(["APPROVED", "REJECTED", "CANCELLED"]),
+        AaExemption.is_deleted.is_(False),
+    ).count() if term_code else 0
     return _makeup_gate_result(
         batches,
         active_retakes=int(active_retakes or 0),
@@ -81,7 +87,7 @@ def _evaluate_makeup(db, term_code):
 def _evaluate_domains(db, term_id, term_code, college_ids=None):
     results = _previous_evaluate_domains(db, term_id, term_code, college_ids)
     try:
-        results["MAKEUP"] = _evaluate_makeup(db, term_code)
+        results["MAKEUP"] = _evaluate_makeup(db, term_id, term_code)
     except Exception as exc:
         results["MAKEUP"] = _legacy._result(0, False, f"该域语义检查失败：{type(exc).__name__}")
     return results
