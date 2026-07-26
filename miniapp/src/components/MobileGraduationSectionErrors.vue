@@ -9,46 +9,27 @@
 </template>
 
 <script>
+function pageStack() { return typeof getCurrentPages === 'function' ? getCurrentPages() : [] }
 export default {
   name: 'MobileGraduationSectionErrors',
-  data() {
-    return { visible: false, errors: [], timer: null }
-  },
+  data() { return { visible: false, errors: [], timer: null } },
   mounted() {
-    const pages = getCurrentPages ? getCurrentPages() : []
-    const page = pages[pages.length - 1]
+    const pages = pageStack(); const page = pages[pages.length - 1]
     const route = (page && (page.route || page.__route__)) || ''
     this.visible = route === 'pages/student/graduation/index'
-    if (this.visible) {
-      this.sync()
-      this.timer = setInterval(this.sync, 500)
-    }
+    if (this.visible) { this.sync(); this.timer = setInterval(this.sync, 500) }
   },
-  beforeUnmount() {
-    if (this.timer) clearInterval(this.timer)
-  },
+  beforeUnmount() { if (this.timer) clearInterval(this.timer) },
   methods: {
-    currentVm() {
-      const pages = getCurrentPages ? getCurrentPages() : []
-      const page = pages[pages.length - 1]
-      return page && page.$vm
-    },
-    sync() {
-      const vm = this.currentVm()
-      this.errors = Array.isArray(vm && vm.processErrors) ? [...vm.processErrors] : []
-    },
-    retry() {
-      const vm = this.currentVm()
-      if (vm && typeof vm.loadProcess === 'function') vm.loadProcess()
-    }
+    currentVm() { const pages = pageStack(); const page = pages[pages.length - 1]; return page && page.$vm },
+    sync() { const vm = this.currentVm(); this.errors = Array.isArray(vm && vm.processErrors) ? [...vm.processErrors] : [] },
+    retry() { const vm = this.currentVm(); if (vm && typeof vm.loadProcess === 'function') vm.loadProcess() }
   }
 }
 </script>
 
 <style scoped>
 .gdse { margin:0 var(--page-padding-mobile) var(--space-3); padding:var(--space-3); display:flex; align-items:flex-start; gap:var(--space-3); border:1px solid var(--danger-100); border-radius:var(--radius-lg); background:var(--danger-50); }
-.gdse__body { flex:1; min-width:0; }
-.gdse__title { display:block; font-size:var(--font-size-base); font-weight:var(--font-weight-medium); color:var(--danger-700); }
-.gdse__desc { display:block; margin-top:4px; font-size:var(--font-size-sm); line-height:1.5; color:var(--danger-600); }
-.gdse__retry { flex:none; margin:0; min-height:34px; line-height:34px; padding:0 var(--space-3); font-size:var(--font-size-sm); color:var(--danger-700); background:var(--bg-card); border:1px solid var(--danger-200); }
+.gdse__body { flex:1; min-width:0; }.gdse__title { display:block; font-size:var(--font-size-base); font-weight:var(--font-weight-medium); color:var(--danger-700); }
+.gdse__desc { display:block; margin-top:4px; font-size:var(--font-size-sm); line-height:1.5; color:var(--danger-600); }.gdse__retry { flex:none; margin:0; min-height:34px; line-height:34px; padding:0 var(--space-3); font-size:var(--font-size-sm); color:var(--danger-700); background:var(--bg-card); border:1px solid var(--danger-200); }
 </style>
