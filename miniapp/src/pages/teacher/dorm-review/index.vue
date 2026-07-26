@@ -8,12 +8,8 @@
           <button class="seg__btn" :class="{ on: tab === 'exception' }" @click="tab = 'exception'">异常待处置 ({{ exceptions.length }})</button>
         </view>
 
-        <MobileGlobalState
-          v-if="tab === 'transfer' && !transfers.length"
-          state="empty"
-          title="暂无调宿待审"
-          description="有学生调宿进入辅导员/宿管节点时会出现在这里。"
-        />
+        <MobileGlobalState v-if="tab === 'transfer' && !transfers.length" state="empty" title="暂无调宿待审"
+          description="有学生调宿进入辅导员/宿管节点时会出现在这里。" />
         <view class="stack" v-else-if="tab === 'transfer'">
           <view v-for="x in transfers" :key="x.transferId" class="card ar">
             <view class="row-between">
@@ -31,12 +27,8 @@
           </view>
         </view>
 
-        <MobileGlobalState
-          v-if="tab === 'exception' && !exceptions.length"
-          state="empty"
-          title="暂无宿舍异常"
-          description="查寝异常、夜不归宿等待处置记录会显示在这里。"
-        />
+        <MobileGlobalState v-if="tab === 'exception' && !exceptions.length" state="empty" title="暂无宿舍异常"
+          description="查寝异常、夜不归宿等待处置记录会显示在这里。" />
         <view class="stack" v-else-if="tab === 'exception'">
           <view v-for="x in exceptions" :key="x.exceptionId" class="card ar">
             <view class="row-between">
@@ -57,14 +49,13 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { affairsContractApi } from '@/services/affairsContractApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 export default {
   data() {
-    return {
-      state: 'loading', acting: false, tab: 'transfer',
-      transfers: [], exceptions: []
-    }
+    return { state: 'loading', acting: false, tab: 'transfer', transfers: [], exceptions: [] }
   },
   onLoad(q) {
     if (q && q.tab === 'exception') this.tab = 'exception'
@@ -78,23 +69,39 @@ export default {
         this.transfers = (d && d.transfers) || []
         this.exceptions = (d && d.exceptions) || []
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+      }).catch((e) => {
+        this.state = 'error'
+        this.showError(e, '宿舍待办加载失败')
+      })
+    },
+    showError(e, fallback) {
+      const n = normalizeError(e)
+      toast(n.text || (e && e.message) || fallback)
+      if (n.kind === 'conflict') this.load()
+    },
+    versionOf(x) {
+      if (x.version === undefined || x.version === null || x.version === '') {
+        toast('记录缺少版本号，请刷新后重试')
+        this.load()
+        return null
+      }
+      return x.version
     },
     reviewTransfer(x, action) {
+      if (this.acting) return
       const run = (reason) => {
+        const version = this.versionOf(x)
+        if (version === null) return
         this.acting = true
-        teacherApi.reviewAffairsDormTransfer(x.transferId, { action, reason }).then(() => {
+        affairsContractApi.reviewDormTransfer(x.transferId, action, reason, version).then(() => {
           toast(action === 'APPROVE' ? '已通过' : '已驳回')
           this.load()
-        }).catch((e) => {
-          toast((e && e.message) || '处理失败')
-        }).finally(() => { this.acting = false })
+        }).catch((e) => this.showError(e, '调宿处理失败'))
+          .finally(() => { this.acting = false })
       }
       if (action === 'REJECT') {
         uni.showModal({
-          title: '驳回调宿',
-          editable: true,
-          placeholderText: '驳回原因不少于5字',
+          title: '驳回调宿', editable: true, placeholderText: '驳回原因不少于5字',
           success: (r) => {
             if (!r.confirm) return
             const reason = (r.content || '').trim()
@@ -102,26 +109,24 @@ export default {
             run(reason)
           }
         })
-      } else {
-        run('')
-      }
+      } else run('')
     },
     handleException(x) {
+      if (this.acting) return
       uni.showModal({
-        title: '处置说明',
-        editable: true,
-        placeholderText: '处置说明不少于5字',
+        title: '处置说明', editable: true, placeholderText: '处置说明不少于5字',
         success: (r) => {
           if (!r.confirm) return
           const note = (r.content || '').trim()
           if (note.length < 5) return toast('处置说明至少5字')
+          const version = this.versionOf(x)
+          if (version === null) return
           this.acting = true
-          teacherApi.handleAffairsDormException(x.exceptionId, note).then(() => {
+          affairsContractApi.handleDormException(x.exceptionId, note, version).then(() => {
             toast('已处置')
             this.load()
-          }).catch((e) => {
-            toast((e && e.message) || '处置失败')
-          }).finally(() => { this.acting = false })
+          }).catch((e) => this.showError(e, '异常处置失败'))
+            .finally(() => { this.acting = false })
         }
       })
     }
