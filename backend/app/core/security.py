@@ -105,7 +105,12 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
 
 
 def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
-    """FastAPI 依赖：要求登录，返回当前用户上下文并写入 contextvar。"""
+    """FastAPI 依赖：要求登录，返回当前用户上下文并写入 contextvar。
+
+    ``studentId`` 是学生账号与学生主档之间的稳定身份键。登录服务早已把它写入 JWT，
+    鉴权层必须原样带入请求上下文；否则下游会退回 ``studentNo`` 匹配，学号更正后出现
+    “部分页面正常、部分申请找不到本人”的四端隐蔽故障。
+    """
     token = _extract_bearer(authorization)
     if not token:
         raise unauthorized("未提供认证令牌")
@@ -125,6 +130,7 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
+        "studentId": claims.get("studentId"),
         "studentNo": claims.get("studentNo"),
         "collegeId": claims.get("collegeId"),
         "collegeIds": claims.get("collegeIds"),
@@ -137,7 +143,7 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     # DB 账号逐请求复核角色归属。mock 账号不接库，保持原有演示链路。
     if str(user.get("userId") or "").startswith("db-"):
         from app.services.auth_service_db import validate_token_subject
-        validate_token_subject(user)
+        user = validate_token_subject(user) or user
     # Redis 可用时所有 worker 共享限流；不可用时 token_store 自动退回进程内保护，
     # 不因缓存故障阻断正常鉴权。租户与用户双层桶避免单校/单账号挤占全部资源。
     tenant_id = str(user.get("tenantId") or "")
