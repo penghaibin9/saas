@@ -4,23 +4,23 @@
       <div>
         <div class="schedule-hero__eyebrow">教务学业 · 我的课表</div>
         <h1>本学期课程安排</h1>
-        <p>{{ schedule.note || '仅展示教务处已发布的有效课表，选课锁定课程会自动并入。' }}</p>
+        <p>{{ schedule.note || currentWeekHint }}</p>
       </div>
       <div class="schedule-hero__actions">
         <button class="sp-btn sp-btn--ghost" @click="goAll">全部教务服务</button>
-        <button class="sp-btn" :disabled="printing || loading || !items.length" @click="printSchedule">
-          {{ printing ? '生成中…' : '打印个人课表' }}
+        <button class="sp-btn" :disabled="printing || loading || !filteredItems.length" @click="printSchedule">
+          {{ printing ? '生成中…' : '打印当前课表视图' }}
         </button>
       </div>
     </section>
 
     <section class="schedule-toolbar sp-card">
       <div>
-        <div class="schedule-toolbar__label">查看周次</div>
+        <div class="schedule-toolbar__label">查看周次 · {{ currentWeekHint }}</div>
         <div class="week-filter">
           <button :class="{ active: selectedWeek === null }" @click="selectedWeek = null">全部周次</button>
-          <button v-for="w in weekOptions" :key="w" :class="{ active: selectedWeek === w }" @click="selectedWeek = w">
-            第{{ w }}周
+          <button v-for="week in weekOptions" :key="week" :class="{ active: selectedWeek === week }" @click="selectedWeek = week">
+            第{{ week }}周
           </button>
         </div>
       </div>
@@ -90,12 +90,22 @@ const days = [
 ]
 
 const items = computed(() => Array.isArray(schedule.value.items) ? schedule.value.items : [])
-const maxWeek = computed(() => Math.max(1, ...items.value.map((x) => Number(x.endWeek) || 0)))
-const weekOptions = computed(() => Array.from({ length: Math.min(maxWeek.value, 30) }, (_, i) => i + 1))
+const maxWeek = computed(() => Math.max(
+  1,
+  Number(schedule.value.teachingWeeks || 0),
+  ...items.value.map((item) => Number(item.endWeek) || 0)
+))
+const weekOptions = computed(() => Array.from({ length: Math.min(maxWeek.value, 30) }, (_, index) => index + 1))
 const filteredItems = computed(() => selectedWeek.value == null
   ? items.value
   : items.value.filter((item) => occursInWeek(item, selectedWeek.value)))
-const courseCount = computed(() => new Set(filteredItems.value.map((x) => `${x.courseName || ''}|${x.teacherName || ''}`)).size)
+const courseCount = computed(() => new Set(filteredItems.value.map((item) => `${item.courseName || ''}|${item.teacherName || ''}`)).size)
+const currentWeekHint = computed(() => {
+  const week = schedule.value.currentWeek
+  if (week == null) return '校历周次尚未确认，当前展示全部周次'
+  if (Number(week) === 0) return '学期尚未开始，当前展示全部周次'
+  return `当前第${week}周`
+})
 
 function occursInWeek(item, week) {
   const start = Number(item.startWeek) || 1
@@ -108,7 +118,7 @@ function occursInWeek(item, week) {
 
 function dayItems(weekday) {
   return filteredItems.value
-    .filter((x) => Number(x.weekday) === weekday)
+    .filter((item) => Number(item.weekday) === weekday)
     .sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0)
       || Number(a.startWeek || 0) - Number(b.startWeek || 0))
 }
@@ -135,68 +145,74 @@ async function load() {
   error.value = ''
   try {
     schedule.value = await portalApi.academicSchedule() || { items: [] }
-  } catch (e) {
-    error.value = e?.message || '课表读取失败，请稍后重试'
+    const currentWeek = Number(schedule.value.currentWeek)
+    selectedWeek.value = Number.isFinite(currentWeek) && currentWeek >= 1 && currentWeek <= maxWeek.value
+      ? currentWeek
+      : null
+  } catch (exception) {
+    error.value = exception?.message || '课表读取失败，请稍后重试'
   } finally {
     loading.value = false
   }
 }
 
 function appendText(parent, tag, text) {
-  const el = parent.ownerDocument.createElement(tag)
-  el.textContent = text
-  parent.appendChild(el)
-  return el
+  const element = parent.ownerDocument.createElement(tag)
+  element.textContent = text
+  parent.appendChild(element)
+  return element
 }
 
 async function printSchedule() {
-  if (printing.value || !items.value.length) return
-  const win = window.open('', '_blank')
-  if (!win) {
+  if (printing.value || !filteredItems.value.length) return
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) {
     ui.notify('浏览器阻止了打印窗口，请允许弹出窗口后重试')
     return
   }
-  win.opener = null
-  win.document.title = '个人课表生成中'
-  appendText(win.document.body, 'p', '正在生成带留痕的个人课表，请稍候…')
+  printWindow.opener = null
+  printWindow.document.title = '个人课表生成中'
+  appendText(printWindow.document.body, 'p', '正在生成带留痕的个人课表，请稍候…')
   printing.value = true
   try {
-    const audit = await portalApi.academicSchedulePrint({ reason: '个人课表' })
-    const doc = win.document
-    doc.head.textContent = ''
-    doc.body.textContent = ''
-    doc.title = '个人课表'
-    const style = doc.createElement('style')
+    const audit = await portalApi.academicSchedulePrint({
+      reason: selectedWeek.value ? `个人课表-第${selectedWeek.value}周` : '个人课表-全部周次'
+    })
+    const documentRef = printWindow.document
+    documentRef.head.textContent = ''
+    documentRef.body.textContent = ''
+    documentRef.title = selectedWeek.value ? `个人课表-第${selectedWeek.value}周` : '个人课表'
+    const style = documentRef.createElement('style')
     style.textContent = 'body{font-family:Segoe UI,Microsoft YaHei,sans-serif;padding:24px;color:#111}h1{font-size:20px;margin:0 0 8px}.meta{color:#666;font-size:12px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #ddd;padding:7px 8px;text-align:left}th{background:#f5f7fa}.wm{position:fixed;inset:28% 8%;font-size:38px;color:rgba(0,0,0,.07);transform:rotate(-24deg);pointer-events:none;text-align:center}'
-    doc.head.appendChild(style)
-    const body = doc.body
-    const wm = appendText(body, 'div', audit?.watermark || '')
-    wm.className = 'wm'
-    appendText(body, 'h1', '个人课表')
+    documentRef.head.appendChild(style)
+    const body = documentRef.body
+    const watermark = appendText(body, 'div', audit?.watermark || '')
+    watermark.className = 'wm'
+    appendText(body, 'h1', selectedWeek.value ? `个人课表 · 第${selectedWeek.value}周` : '个人课表 · 全部周次')
     const meta = appendText(body, 'div', `留痕时间：${audit?.loggedAt || '—'} · 仅供本人查询使用`)
     meta.className = 'meta'
-    const table = doc.createElement('table')
-    const thead = doc.createElement('thead')
-    const hr = doc.createElement('tr')
-    ;['星期', '节次', '课程', '教室', '教师', '周次'].forEach((text) => appendText(hr, 'th', text))
-    thead.appendChild(hr)
-    table.appendChild(thead)
-    const tbody = doc.createElement('tbody')
-    items.value.slice().sort((a, b) => Number(a.weekday) - Number(b.weekday) || Number(a.slotNo) - Number(b.slotNo)).forEach((item) => {
-      const row = doc.createElement('tr')
-      const day = days.find((d) => d.value === Number(item.weekday))
+    const table = documentRef.createElement('table')
+    const tableHead = documentRef.createElement('thead')
+    const headerRow = documentRef.createElement('tr')
+    ;['星期', '节次', '课程', '教室', '教师', '周次'].forEach((text) => appendText(headerRow, 'th', text))
+    tableHead.appendChild(headerRow)
+    table.appendChild(tableHead)
+    const tableBody = documentRef.createElement('tbody')
+    filteredItems.value.slice().sort((a, b) => Number(a.weekday) - Number(b.weekday) || Number(a.slotNo) - Number(b.slotNo)).forEach((item) => {
+      const row = documentRef.createElement('tr')
+      const day = days.find((entry) => entry.value === Number(item.weekday))
       ;[day?.label || `周${item.weekday}`, `第${item.slotNo}节`, item.courseName || '—', item.classroom || '—', item.teacherName || '—', weekLabel(item)]
         .forEach((text) => appendText(row, 'td', String(text)))
-      tbody.appendChild(row)
+      tableBody.appendChild(row)
     })
-    table.appendChild(tbody)
+    table.appendChild(tableBody)
     body.appendChild(table)
-    win.focus()
-    win.print()
+    printWindow.focus()
+    printWindow.print()
     ui.notify('课表打印留痕已记录')
-  } catch (e) {
-    if (!win.closed) win.close()
-    ui.notify(e?.message || '打印失败')
+  } catch (exception) {
+    if (!printWindow.closed) printWindow.close()
+    ui.notify(exception?.message || '打印失败')
   } finally {
     printing.value = false
   }
