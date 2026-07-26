@@ -6,7 +6,7 @@
 1. 服务函数已经显式收到 version 时，请求上下文不得偷换成数据库最新或其他值；
 2. 教师移动端新增写接口未登记 permissionCode 时默认拒绝；
 3. 心理统计、个体名单、个体明细权限严格分离；
-4. 学生身份只在明确的本人宿舍房源 GET 路径中放开房源读取。
+4. 学生身份只在明确的本人宿舍房源 GET 与首次自选 POST 路径中放开房源读取。
 """
 from __future__ import annotations
 
@@ -117,9 +117,15 @@ def _install_student_dorm_guard(contract) -> None:
             return original(db, user)
         path = contract.request_path()
         method = contract._REQUEST_METHOD.get()
-        if method == "GET" and any(path.startswith(prefix) for prefix in allowed_get_prefixes):
+        allowed_read = method == "GET" and any(path.startswith(prefix) for prefix in allowed_get_prefixes)
+        allowed_first_checkin = (
+            method == "POST"
+            and path.startswith("/api/v1/mobile/affairs/dorm/beds/")
+            and path.endswith("/self-select")
+        )
+        if allowed_read or allowed_first_checkin:
             return None
-        raise no_permission("学生身份无权通过该入口读取宿舍管理范围")
+        raise no_permission("学生身份无权通过该入口读取或修改宿舍管理范围")
 
     dorm._dorm_scope_building_ids = dorm_scope_building_ids
 
