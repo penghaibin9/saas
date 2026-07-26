@@ -154,13 +154,14 @@ def archive_student(user, internship_id, force=False, expected_version=None,
     """归档：快照材料完整性并锁定。默认要求 100% 完整；force=True 允许带缺失归档（记 missing）。"""
     scope, in_scope = _scope_ctx(user)
     if force:
+        import re
         from app.core.permissions import enforce_permission, is_super_admin
         enforce_permission(user or {}, "internship.archive.force")
         role = ((user or {}).get("currentRoleCode") or (user or {}).get("userType") or "").upper()
         if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
             raise no_permission("仅学校管理员可执行强制归档")
-        if len((force_reason or "").strip()) < 10:
-            raise AppException("VALIDATION_ERROR", "强制归档原因必填且不少于 10 字")
+        if len(re.findall(r"[\u4e00-\u9fff]", (force_reason or "").strip())) < 10:
+            raise AppException("VALIDATION_ERROR", "强制归档原因必填且不少于 10 个汉字")
         if not evidence_file_ids:
             raise AppException("VALIDATION_ERROR", "强制归档必须提供依据文件")
     with session() as db:
@@ -187,6 +188,21 @@ def archive_student(user, internship_id, force=False, expected_version=None,
             WeeklyReport.is_deleted.is_(False), WeeklyReport.status == "PENDING_REVIEW")) or 0
         if pending_wr and not force:
             raise AppException("DATA_CONFLICT", "存在待批周报，请先批阅后再归档（或强制归档）")
+        bypassed = []
+        if pct < 100:
+            bypassed.extend([f"材料缺失:{item}" for item in missing])
+        if open_high:
+            bypassed.append(f"未关闭高风险:{int(open_high)}")
+        if pending_wr:
+            bypassed.append(f"待批周报:{int(pending_wr)}")
+        from app.modules.internship.services.internship_compliance_rules import rule_version_label
+        batch = db.get(InternshipBatch, r.batch_id) if r.batch_id else None
+        force_meta = {
+            "force_bypassed_items": bypassed if force else None,
+            "force_rule_version": rule_version_label(batch) if force else None,
+            "force_approved_role": ((user or {}).get("currentRoleCode") or "") if force else None,
+            "force_approved_by": _op_name(user) if force else None,
+        }
         arch = _archive_row(db, r.id)
         new = arch is None
         previous_status = r.status
@@ -207,6 +223,8 @@ def archive_student(user, internship_id, force=False, expected_version=None,
             arch.archived_at = datetime.utcnow()
             arch.force_reason = (force_reason or "").strip() or None
             arch.force_evidence_file_ids = evidence_file_ids or None
+            for key, value in force_meta.items():
+                setattr(arch, key, value)
             arch.version = (arch.version or 0) + 1
             archive_ver = arch.version
         else:
@@ -226,6 +244,8 @@ def archive_student(user, internship_id, force=False, expected_version=None,
                         "previous_record_status": previous_status,
                         "force_reason": (force_reason or "").strip() or None,
                         "force_evidence_file_ids": evidence_file_ids or None})
+            for key, value in force_meta.items():
+                setattr(arch, key, value)
         db.flush()
         _trail(db, r.id, "ARCHIVE", {"completeness": pct, "missing": missing, "force": force,
                                      "forceReason": (force_reason or "").strip(),
@@ -309,8 +329,9 @@ def revoke_archive(user, internship_id, reason="", expected_version=None,
     role = ((user or {}).get("currentRoleCode") or (user or {}).get("userType") or "").upper()
     if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
         raise no_permission("仅学校管理员可撤销归档")
-    if not (reason or "").strip() or len(reason.strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "撤销归档原因必填且不少于 5 字")
+    import re
+    if len(re.findall(r"[\u4e00-\u9fff]", (reason or "").strip())) < 10:
+        raise AppException("VALIDATION_ERROR", "撤销归档原因必填且不少于 10 个汉字")
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         r = db.scalar(select(InternshipRecord).where(

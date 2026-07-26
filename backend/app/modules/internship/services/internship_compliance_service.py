@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.models import (
     InternshipAgreement, InternshipBatch, InternshipComplianceExemption, InternshipConsent,
     InternshipEmergencyPlan, InternshipInsurance, InternshipPosition, InternshipRecord,
-    InternshipSafetyCompletion, InternshipSpecialFiling, StudentProfile,
+    InternshipSafetyCompletion, InternshipSpecialFiling, InternshipIncident,
+    StudentProfile,
 )
 from app.modules.internship.services.internship_compliance_rules import (
     get_batch_compliance_rules, rule_version_label,
@@ -63,7 +64,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
                 InternshipComplianceExemption.tenant_id == _tid(),
                 InternshipComplianceExemption.internship_id == rec.id,
                 InternshipComplianceExemption.check_code == code,
-                InternshipComplianceExemption.status == "ACTIVE",
+                InternshipComplianceExemption.status == "APPROVED",
                 InternshipComplianceExemption.is_deleted.is_(False),
             )).first()
             if ex and (not ex.valid_until or ex.valid_until >= datetime.utcnow()):
@@ -294,7 +295,8 @@ def grant_exemption(body, user=None):
     if not b.get("checkCode") or not b.get("internshipId"):
         raise AppException("VALIDATION_ERROR", "缺少 internshipId/checkCode")
     from app.modules.internship.services.internship_version import extract_expected_version
-    # expectedVersion on internship record optional for exemption create
+    if not b.get("validUntil"):
+        raise AppException("VALIDATION_ERROR", "豁免必须设置有效期")
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
         rec = assert_internship_record_scope(db, b["internshipId"], user, "合规豁免")
@@ -306,36 +308,81 @@ def grant_exemption(body, user=None):
             check_code=b["checkCode"], reason=reason,
             evidence_file_ids=b.get("evidenceFileIds") or b.get("fileIds"),
             valid_from=datetime.utcnow(),
-            valid_until=None,
-            status="ACTIVE",
-            approved_by_name=(user or {}).get("realName") or "系统",
-            approved_at=datetime.utcnow(),
+            valid_until=None, status="PENDING_REVIEW",
+            requested_by_name=(user or {}).get("realName") or "系统",
+            requested_by_user_id=str((user or {}).get("userId") or ""),
             rule_version=rule_version_label(db.get(InternshipBatch, rec.batch_id) if rec.batch_id else None),
         )
         if b.get("validUntil"):
             raw = b["validUntil"]
             x.valid_until = datetime.fromisoformat(str(raw).replace("Z", "")) if isinstance(raw, str) else raw
         db.add(x)
+        if x.valid_until <= datetime.utcnow():
+            raise AppException("VALIDATION_ERROR", "豁免有效期必须晚于当前时间")
         db.add(InternshipAuditTrail(
             tenant_id=_tid(), target_id=rec.id, target_type="COMPLIANCE_EXEMPT",
-            action="GRANT", operator_name=(user or {}).get("realName") or "系统",
+            action="REQUEST", operator_name=(user or {}).get("realName") or "系统",
             detail_json={"checkCode": b["checkCode"], "reason": reason},
             occurred_at=datetime.utcnow()))
         db.commit()
         return {"id": str(x.id), "status": x.status, "checkCode": x.check_code, "version": int(x.version or 0)}
 
 
+def review_exemption(exemption_id, body, user=None):
+    from app.core.permissions import enforce_permission, is_super_admin
+    enforce_permission(user or {}, "internship.compliance.exempt.approve")
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
+        from app.core.exceptions import no_permission
+        raise no_permission("仅学校管理员可批准合规豁免")
+    b = body or {}
+    action = (b.get("action") or "").upper()
+    if action not in ("APPROVE", "REJECT"):
+        raise AppException("VALIDATION_ERROR", "action 必须为 APPROVE/REJECT")
+    with session() as db:
+        x = db.scalar(select(InternshipComplianceExemption).where(
+            InternshipComplianceExemption.id == _as_id(exemption_id),
+            InternshipComplianceExemption.tenant_id == _tid(),
+            InternshipComplianceExemption.is_deleted.is_(False)).with_for_update())
+        if not x:
+            raise not_found("合规豁免不存在")
+        if b.get("expectedVersion") is None or int(b["expectedVersion"]) != int(x.version or 0):
+            raise AppException("DATA_CONFLICT", "豁免申请版本已变化")
+        if x.status != "PENDING_REVIEW":
+            raise AppException("DATA_CONFLICT", "仅待审核豁免可处理")
+        if action == "APPROVE":
+            if not x.valid_until or x.valid_until <= datetime.utcnow():
+                raise AppException("DATA_CONFLICT", "豁免有效期无效")
+            if not x.evidence_file_ids:
+                raise AppException("VALIDATION_ERROR", "BLOCK级豁免批准必须绑定依据文件")
+            x.status = "APPROVED"
+            x.approved_by_name = (user or {}).get("realName") or "系统"
+            x.approved_at = datetime.utcnow()
+        else:
+            x.status = "REJECTED"
+        x.reviewed_by_name = (user or {}).get("realName") or "系统"
+        x.reviewed_at = datetime.utcnow()
+        x.version = int(x.version or 0) + 1
+        db.add(InternshipAuditTrail(
+            tenant_id=_tid(), target_id=x.internship_id, target_type="COMPLIANCE_EXEMPT",
+            action=action, operator_name=x.reviewed_by_name,
+            detail_json={"exemptionId": str(x.id), "checkCode": x.check_code,
+                         "comment": b.get("comment") or ""},
+            occurred_at=datetime.utcnow()))
+        db.commit()
+        return {"id": str(x.id), "status": x.status, "version": x.version}
+
+
 def batch_compliance_stats(batch_id, user=None):
     with session() as db:
-        rows = db.scalars(select(InternshipRecord).where(
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+        query = select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.batch_id == _as_id(batch_id),
             InternshipRecord.is_deleted.is_(False),
-        )).all()
-        from app.modules.internship.services.internship_student_service import _current_scope, _rec_in_scope
-        scope = _current_scope(user)
-        ids = [r.id for r in rows if _rec_in_scope(
-            scope, db, r, db.get(StudentProfile, r.student_id))]
+        )
+        rows = db.scalars(apply_internship_record_scope(query, user)).all()
+        ids = [r.id for r in rows]
     results = [evaluate_internship_compliance(i, "BATCH_CLOSE", user) for i in ids]
     blocked_ids = [str(i) for i, r in zip(ids, results) if not r["passed"]]
     missing = {}
@@ -350,7 +397,47 @@ def batch_compliance_stats(batch_id, user=None):
         "blockedInternshipIds": blocked_ids[:100],
         "missingByCode": missing,
         "ruleVersion": results[0]["ruleVersion"] if results else None,
+        "workflowCounts": _workflow_counts(batch_id, ids, user),
     }
+
+
+def _workflow_counts(batch_id, scoped_ids, user=None):
+    ids = scoped_ids or [0]
+    with session() as db:
+        return {
+            "studentConsentPending": int(db.scalar(select(func.count()).select_from(
+                InternshipConsent).where(
+                InternshipConsent.tenant_id == _tid(),
+                InternshipConsent.internship_id.in_(ids),
+                InternshipConsent.consent_type == "STUDENT",
+                InternshipConsent.status == "PENDING",
+                InternshipConsent.is_deleted.is_(False))) or 0),
+            "guardianConsentPending": int(db.scalar(select(func.count()).select_from(
+                InternshipConsent).where(
+                InternshipConsent.tenant_id == _tid(),
+                InternshipConsent.internship_id.in_(ids),
+                InternshipConsent.consent_type == "GUARDIAN",
+                InternshipConsent.status == "PENDING",
+                InternshipConsent.is_deleted.is_(False))) or 0),
+            "safetyPending": int(db.scalar(select(func.count()).select_from(
+                InternshipSafetyCompletion).where(
+                InternshipSafetyCompletion.tenant_id == _tid(),
+                InternshipSafetyCompletion.internship_id.in_(ids),
+                InternshipSafetyCompletion.status.in_(("NOT_STARTED", "IN_PROGRESS", "PENDING_REVIEW", "FAILED")),
+                InternshipSafetyCompletion.is_deleted.is_(False))) or 0),
+            "exemptionPending": int(db.scalar(select(func.count()).select_from(
+                InternshipComplianceExemption).where(
+                InternshipComplianceExemption.tenant_id == _tid(),
+                InternshipComplianceExemption.internship_id.in_(ids),
+                InternshipComplianceExemption.status == "PENDING_REVIEW",
+                InternshipComplianceExemption.is_deleted.is_(False))) or 0),
+            "incidentPending": int(db.scalar(select(func.count()).select_from(
+                InternshipIncident).where(
+                InternshipIncident.tenant_id == _tid(),
+                InternshipIncident.internship_id.in_(ids),
+                InternshipIncident.status != "CLOSED",
+                InternshipIncident.is_deleted.is_(False))) or 0),
+        }
 
 
 def list_batch_compliance_summary(batch_id, user=None):

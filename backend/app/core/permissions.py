@@ -47,6 +47,48 @@ _WORKBENCH_MESSAGE_SELF = {
 }
 _WORKBENCH_SELF = {"workbench.home.view", "approval.todo.view", *_WORKBENCH_MESSAGE_SELF}
 
+_COLLEGE_INTERNSHIP = {
+    "internship.dashboard.view",
+    "internship.student.view", "internship.student.manage", "internship.student.export",
+    "internship.student.eligibility.review",
+    "internship.batch.view", "internship.batch.manage", "internship.batch.export",
+    "internship.enterprise.view", "internship.enterprise.manage", "internship.enterprise.export",
+    "internship.position.view", "internship.position.manage", "internship.position.export",
+    "internship.application.view", "internship.application.review",
+    "internship.match.batch", "internship.match.manual", "internship.match.export",
+    "internship.match.intention.view", "internship.match.intention.manage",
+    "internship.match.result.view", "internship.match.conflict.view", "internship.match.log.view",
+    "internship.attendance.view", "internship.attendance.review", "internship.attendance.export",
+    "internship.leave.view", "internship.leave.review", "internship.leave.export",
+    "internship.report.view", "internship.report.review", "internship.report.export",
+    "internship.risk.view", "internship.risk.handle", "internship.risk.export",
+    "internship.guidance.view", "internship.guidance.manage", "internship.guidance.export",
+    "internship.visit.view", "internship.visit.manage", "internship.visit.export",
+    "internship.visit.plan.view", "internship.visit.plan.manage",
+    "internship.communication.view", "internship.communication.manage",
+    "internship.complaint.view", "internship.complaint.intake",
+    "internship.change.view", "internship.change.review",
+    "internship.insurance.view", "internship.insurance.verify",
+    "internship.plan.view", "internship.plan.manage",
+    "internship.task.view", "internship.task.review",
+    "internship.makeup.view", "internship.makeup.review", "internship.makeup.export",
+    "internship.eval.advisor.manage",
+    "internship.eval.enterprise.view", "internship.eval.enterprise.manage",
+    "internship.eval.enterprise.review", "internship.eval.enterprise.export",
+    "internship.eval.self.view", "internship.eval.self.review", "internship.eval.self.export",
+    "internship.score.view", "internship.score.manage", "internship.score.export",
+    "internship.agreement.view", "internship.agreement.manage", "internship.agreement.export",
+    "internship.agreement.template.manage",
+    "internship.archive.view", "internship.archive.manage",
+    "internship.archive.execute", "internship.archive.package",
+    "internship.consent.manage", "internship.safety.view", "internship.safety.manage",
+    "internship.filing.view", "internship.filing.review",
+    "internship.incident.view", "internship.incident.report", "internship.incident.handle",
+    "internship.compliance.view", "internship.compliance.review",
+    "internship.compliance.exempt.request",
+    "internship.stats.view", "internship.stats.export",
+}
+
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PLATFORM_SUPER_ADMIN": {"*"},
     "SCHOOL_ADMIN": {"*"},                       # 学校管理员：本校全权（接库后再按需收敛）
@@ -61,7 +103,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                          *_WORKBENCH_SELF, "dataCenter.*"},
     "LEADER": {"audit.view", "*.view", "*.stat", *_WORKBENCH_SELF},  # 校/院领导：只读驾驶舱；显式补工作台自助权限
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
-                      "internship.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
+                      *_COLLEGE_INTERNSHIP, "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
                       "student.profile.view", "student.profile.manage",
                       # 学籍维护：可补录 / 维护 / 恢复，但仅限本学院——
                       # 范围由后端 assert_student_org_scope 强制，不依赖前端筛选
@@ -261,10 +303,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "internship.eval.enterprise.view", "internship.eval.enterprise.manage", "internship.eval.enterprise.review",
         "internship.eval.advisor.manage",
         # 成绩：导师核算/发布/撤回本人指导学生实习成绩；权重配置(score.config)与台账导出(score.export)归学校/学院
-        "internship.score.view", "internship.score.manage", "internship.score.publish",
+        "internship.score.view", "internship.score.manage",
         "internship.application.view", "internship.application.review",
         # 三方协议：导师对本人指导学生生成/下发/记录企业签署/学校确认/驳回/作废/归档/电子签（跨学生由 service 拦 403）
-        "internship.agreement.view", "internship.agreement.manage", "internship.agreement.sign",
+        "internship.agreement.view", "internship.agreement.manage",
         "internship.enterprise.view", "internship.position.view",
         "internship.match.intention.view", "internship.match.recommend.view", "internship.match.result.view",
         "internship.stats.view",
@@ -277,7 +319,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "internship.safety.view", "internship.safety.manage",
         "internship.filing.view",
         "internship.enterprise.inspection.view",
-        "internship.incident.view", "internship.incident.handle",
+        "internship.incident.view", "internship.incident.report", "internship.incident.handle",
     },
     # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
     "EMPLOYMENT_TEACHER": {
@@ -296,10 +338,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 # 2026-07-19：ACADEMIC_TEACHER 已完成 156 个权限点全量审计并改为上方显式清单
 # （审计范围=主 router 152 + 学业过程域 process.view/export/manage + roster.viewSensitive），
 # 本表随之清空。回归锁见 tests/test_permissions_deny_unit.py。
-ROLE_PERMISSION_DENY: dict[str, set[str]] = {
-    # 强制归档与撤销归档只允许学校管理员；学院管理员仍可普通归档。
-    "COLLEGE_ADMIN": {"internship.archive.force", "internship.archive.revoke"},
-}
+# 职责分离通过显式授予清单实现；禁止用事后 deny 表掩盖通配授权。
+ROLE_PERMISSION_DENY: dict[str, set[str]] = {}
 
 
 def _role_of(user: dict) -> str:

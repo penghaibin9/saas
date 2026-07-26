@@ -5,7 +5,7 @@
 所有接口鉴权；查不到本人档案返回空态（hasData=false），不 500。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path, Request
 
 from app.core.permissions import require_module, require_permission
 from app.core.response import success
@@ -201,10 +201,24 @@ def internship_my_consent(consent_id: str, user=Depends(get_current_user)):
 
 
 @internship_mobile.post("/consents/{consent_id}/confirm", summary="学生本人确认知情书")
-def internship_confirm_consent(consent_id: str, body: dict = Body(default={}),
+def internship_confirm_consent(consent_id: str, request: Request, body: dict = Body(default={}),
                                user=Depends(get_current_user)):
     from app.modules.internship.services import internship_consent_service as consent
-    return success(consent.confirm(consent_id, body or {}, user))
+    return success(consent.confirm(
+        consent_id, body or {}, user, request.client.host if request.client else None))
+
+
+@internship_mobile.post("/consents/{consent_id}/view", summary="学生本人标记已查看知情书")
+def internship_view_consent(consent_id: str, user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.mark_viewed(consent_id, user))
+
+
+@internship_mobile.post("/consents/{consent_id}/reject", summary="学生本人拒绝知情书")
+def internship_reject_consent(consent_id: str, body: dict = Body(...),
+                              user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.reject(consent_id, body or {}, user))
 
 
 @internship_mobile.get("/agreements/{agreement_id}", summary="本人三方协议详情（含渲染正文）")
@@ -333,6 +347,38 @@ def internship_my_insurance(user=Depends(get_current_user)):
 def internship_insurance_submit(body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_insurance_service as ins
     return success(ins.student_submit(user, body or {}), message="保险信息已提交，待学校核验")
+
+
+@internship_mobile.get("/safety/courses", summary="本人当前批次安全教育课程")
+def internship_safety_courses(user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_safety_service as safety
+    return success(safety.list_my_courses(user))
+
+
+@internship_mobile.get("/safety/completions", summary="本人安全教育完成记录")
+def internship_safety_completions(user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_safety_service as safety
+    return success(safety.list_my_completions(user))
+
+
+@internship_mobile.post("/safety/courses/{course_id}/start", summary="开始本人当前批次安全课程")
+def internship_safety_start(course_id: str, user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_safety_service as safety
+    return success(safety.start_my_course(course_id, user))
+
+
+@internship_mobile.post("/safety/courses/{course_id}/submit", summary="提交本人安全课程学习结果")
+def internship_safety_submit(course_id: str, body: dict = Body(default={}),
+                             user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_safety_service as safety
+    return success(safety.submit_my_course(course_id, body or {}, user))
+
+
+@internship_mobile.post("/safety/completions/{completion_id}/commit", summary="确认本人安全承诺")
+def internship_safety_commit(completion_id: str, body: dict = Body(...),
+                             user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_safety_service as safety
+    return success(safety.commit_my_completion(completion_id, body or {}, user))
 
 
 @internship_mobile.post("/agreements/{agreement_id}/esign/sign", summary="学生电子签签署")
@@ -1214,20 +1260,9 @@ def teacher_internship_score_compute(body: dict = Body(...), user=Depends(get_cu
     return success(tea.internship_score_compute(user, body), message="核算完成")
 
 
-@internship_teacher_mobile.post("/scores/{score_id}/publish", summary="指导教师·实习成绩发布（owner 校验，缺项不可发布）")
-def teacher_internship_score_publish(score_id: str, user=Depends(get_current_user)):
-    return success(tea.internship_score_publish(user, score_id), message="已发布")
-
-
 @internship_teacher_mobile.get("/agreements/pending-school", summary="指导教师·三方协议待学校确认队列（范围校验）")
 def teacher_agreement_pending_school(user=Depends(get_current_user)):
     return success(tea.agreement_pending_school(user))
-
-
-@internship_teacher_mobile.post("/agreements/{agreement_id}/school-confirm",
-             summary="指导教师·三方协议学校确认生效（owner 校验）")
-def teacher_agreement_school_confirm(agreement_id: str, user=Depends(get_current_user)):
-    return success(tea.agreement_school_confirm(user, agreement_id), message="已确认生效")
 
 
 @internship_teacher_mobile.get("/process-reports", summary="指导教师·过程报告(日报/月报/总结)待批阅队列（范围校验）")

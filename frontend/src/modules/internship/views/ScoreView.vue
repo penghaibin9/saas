@@ -17,7 +17,7 @@
         </div>
         <div class="cfg__item"><span>及格线</span><AppNumberInput v-model="cfg.passLine" :min="0" :max="100" size="sm" /></div>
         <span class="cfg__sum" :class="{ 'is-bad': weightSum !== 100 }">合计 {{ weightSum }}/100</span>
-        <AppPermissionButton code="internship.score.config" :allowed="canBtn('internship.score.config')" variant="secondary" size="sm" :loading="savingCfg" @click="saveConfig">保存配置</AppPermissionButton>
+        <AppPermissionButton code="internship.score.config.manage" :allowed="canBtn('internship.score.config.manage')" variant="secondary" size="sm" :loading="savingCfg" @click="saveConfig">保存配置</AppPermissionButton>
       </div>
 
       <!-- 快捷筛选行：状态（后端过滤）+ 仅看缺项（当前页内前端过滤） -->

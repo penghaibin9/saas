@@ -44,11 +44,32 @@ def transition(iid,status,body=None,user=None):
         if x.internship_id:
             from app.modules.internship.services.internship_scope import assert_internship_record_scope
             assert_internship_record_scope(db,x.internship_id,user,"事故处置")
-        if status not in allowed.get(x.status,set()):raise AppException("DATA_CONFLICT",f"不允许 {x.status}→{status}")
         b=body or {}
-        for k,a in (("investigationConclusion","investigation_conclusion"),("rectificationPlan","rectification_plan"),("fileIds","file_ids")):
+        if b.get("expectedVersion") is None or int(b["expectedVersion"]) != int(x.version or 0):
+            raise AppException("DATA_CONFLICT","事故记录版本已变化，请刷新后重试")
+        old_status=x.status
+        if status not in allowed.get(old_status,set()):raise AppException("DATA_CONFLICT",f"不允许 {old_status}→{status}")
+        for k,a in (("investigationConclusion","investigation_conclusion"),
+                    ("rectificationPlan","rectification_plan"),
+                    ("responsibilityConclusion","responsibility_conclusion"),
+                    ("fileIds","file_ids")):
             if k in b:setattr(x,a,b[k])
-        if status=="CLOSED" and (not x.investigation_conclusion or not x.rectification_plan or not x.file_ids):raise AppException("VALIDATION_ERROR","关闭须具备调查结论、整改方案和附件")
+        if status=="CLOSED":
+            from app.core.permissions import enforce_permission, is_super_admin
+            enforce_permission(user or {}, "internship.incident.close")
+            role=((user or {}).get("currentRoleCode") or "").upper()
+            if x.severity in ("HIGH","CRITICAL") and role!="SCHOOL_ADMIN" and not is_super_admin(user or {}):
+                raise AppException("NO_PERMISSION","HIGH/CRITICAL事故只能由学校管理员关闭")
+            if (not x.investigation_conclusion or not x.rectification_plan or
+                    not x.responsibility_conclusion or not x.file_ids):
+                raise AppException("VALIDATION_ERROR","关闭须具备调查结论、整改方案、复核意见和附件")
         x.status=status
         if status=="CLOSED":x.closed_at=datetime.utcnow();x.closed_by_name=_op(user)
-        db.commit();return {"id":str(x.id),"status":x.status}
+        x.version=int(x.version or 0)+1
+        from app.models import InternshipAuditTrail
+        db.add(InternshipAuditTrail(
+            tenant_id=_tid(),target_id=x.id,target_type="INTERNSHIP_INCIDENT",
+            action=f"TRANSITION_{status}",operator_name=_op(user),
+            detail_json={"from":old_status,"to":status,
+                         "severity":x.severity},occurred_at=datetime.utcnow()))
+        db.commit();return {"id":str(x.id),"status":x.status,"version":x.version}

@@ -228,6 +228,11 @@ def compute(user, body) -> dict:
 
 
 def publish(user, sid, expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission, is_super_admin
+    enforce_permission(user or {}, "internship.score.publish")
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
+        raise no_permission("仅学校管理员可最终发布实习成绩")
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         s = _get(db, sid)

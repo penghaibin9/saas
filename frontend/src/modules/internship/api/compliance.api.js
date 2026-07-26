@@ -30,9 +30,6 @@ export const complianceApi = {
     return call(() => request(`${B}/inspections/${id}/${action}`, { method: 'POST', body }))
   },
   createConsent(body) { return call(() => request(`${B}/consents`, { method: 'POST', body })) },
-  confirmConsent(id, body) {
-    return call(() => request(`${B}/consents/${id}/confirm`, { method: 'POST', body }))
-  },
   listSafetyCourses(batchId) { return call(() => request(`${B}/safety/${batchId}`)) },
   createSafetyCourse(body) { return call(() => request(`${B}/safety`, { method: 'POST', body })) },
   ensureSafetyCompletion(body) {
@@ -60,6 +57,9 @@ export const complianceApi = {
   },
   batchStats(batchId) { return call(() => request(`${B}/batches/${batchId}/stats`)) },
   grantExemption(body) { return call(() => request(`${B}/exemptions`, { method: 'POST', body })) },
+  reviewExemption(id, body) {
+    return call(() => request(`${B}/exemptions/${id}/review`, { method: 'POST', body }))
+  },
   generateEvidencePackage(packageType, targetId) {
     return call(() => request(`${B}/evidence-packages/${packageType}/${targetId}`, { method: 'POST' }))
   }

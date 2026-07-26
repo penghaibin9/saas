@@ -53,6 +53,28 @@
         <view class="section-head"><text class="section-head__title">实习流程</text></view>
         <view class="card"><MobileTimeline :nodes="i.timeline" /></view>
 
+        <view class="section-head"><text class="section-head__title">上岗合规</text></view>
+        <view class="card">
+          <view class="in__compliance-row">
+            <text>我的知情确认</text>
+            <text>{{ compliance.studentConsent }}</text>
+          </view>
+          <view class="in__compliance-row">
+            <text>我的监护人确认状态</text>
+            <text>{{ compliance.guardianConsent }}</text>
+          </view>
+          <view class="in__compliance-row">
+            <text>我的安全教育</text>
+            <text>{{ compliance.safety }}</text>
+          </view>
+          <MobileInlineAlert
+            v-if="compliance.blockingReason"
+            type="warning"
+            title="上岗阻断原因"
+            :description="compliance.blockingReason"
+          />
+        </view>
+
         <!-- 自助服务入口 -->
         <view class="section-head"><text class="section-head__title">自助服务</text></view>
         <view class="in__nav card">
@@ -77,6 +99,7 @@ import { studentApi } from '@/services/studentApi'
 import { toast, go } from '@/utils/nav'
 export default {
   data() { return { i: null, state: 'loading',
+    compliance: { studentConsent: '加载中', guardianConsent: '加载中', safety: '加载中', blockingReason: '' },
     navItems: [
       { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯' },
       { label: '正式申请', path: '/pages/student/internship/application/index', icon: '📋' },
@@ -104,6 +127,30 @@ export default {
     load() {
       this.state = 'loading'
       studentApi.getInternship().then((d) => { this.i = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      Promise.all([
+        studentApi.getInternshipConsents(),
+        studentApi.getInternshipSafetyCourses(),
+        studentApi.getInternshipSafetyCompletions()
+      ]).then(([consents, courses, completions]) => {
+        const rows = Array.isArray(consents) ? consents : []
+        const student = rows.find((x) => x.consentType === 'STUDENT')
+        const guardian = rows.find((x) => x.consentType === 'GUARDIAN')
+        const courseRows = Array.isArray(courses) ? courses : (courses?.items || [])
+        const completionRows = Array.isArray(completions) ? completions : (completions?.items || [])
+        const safetyDone = completionRows.some((x) => x.status === 'PASSED')
+        const reasons = []
+        if (!student || student.status !== 'VALID') reasons.push('学生知情确认未完成')
+        if (guardian && guardian.status !== 'VALID') reasons.push('监护人确认未完成')
+        if (courseRows.length && !safetyDone) reasons.push('安全教育未通过')
+        this.compliance = {
+          studentConsent: student?.status || '暂无任务',
+          guardianConsent: guardian?.status || '无需确认',
+          safety: courseRows.length ? (safetyDone ? '已通过' : '待完成') : '暂无课程',
+          blockingReason: reasons.join('；')
+        }
+      }).catch(() => {
+        this.compliance = { studentConsent: '暂不可用', guardianConsent: '暂不可用', safety: '暂不可用', blockingReason: '' }
+      })
     },
     weekly() {
       if (this.i.weekly && this.i.weekly.submitted) {
@@ -134,6 +181,7 @@ export default {
 .in__status-grid { display: flex; flex-wrap: wrap; }
 .in__status-item { width: 33.33%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: var(--space-2) 0; }
 .in__status-k { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.in__compliance-row { display: flex; justify-content: space-between; padding: var(--space-2) 0; color: var(--text-secondary); }
 .in__nav { display: flex; flex-wrap: wrap; }
 .in__nav-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--space-3) 0; }
 .in__nav-icon { font-size: 26px; line-height: 1; }

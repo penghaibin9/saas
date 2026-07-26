@@ -227,6 +227,14 @@ class InternshipAgreement(PKMixin, TenantMixin, CommonMixin, Base):
                                                 "EFFECTIVE/REJECTED/VOIDED/ARCHIVED")
     reject_reason: Mapped[str | None] = mapped_column(String(500))
     file_id: Mapped[str | None] = mapped_column(String(64), comment="签署扫描件 file_id（文件中心）")
+    source_type: Mapped[str | None] = mapped_column(
+        String(30), comment="ENTERPRISE_ONLINE/SCHOOL_RECORDED/FILE_EVIDENCE/IMPORTED/SYSTEM_GENERATED/LEGACY_UNKNOWN")
+    recorded_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    recorded_by_name: Mapped[str | None] = mapped_column(String(100))
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    source_file_id: Mapped[str | None] = mapped_column(String(64))
+    enterprise_contact_id: Mapped[int | None] = mapped_column(BigInteger)
+    source_remark: Mapped[str | None] = mapped_column(String(500))
     esign_status: Mapped[str] = mapped_column(String(20), nullable=False, default="NONE",
                                               comment="电子签章预留 NONE/PENDING/SIGNED")
     # ── 模板渲染正文快照（0036）──
@@ -263,6 +271,14 @@ class InternshipEnterpriseEval(PKMixin, TenantMixin, CommonMixin, Base):
     recommend_hire: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否建议录用")
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="SCHOOL_RECORDED",
                                         comment="ENTERPRISE/SCHOOL_RECORDED")
+    source_type: Mapped[str | None] = mapped_column(
+        String(30), comment="ENTERPRISE_ONLINE/SCHOOL_RECORDED/FILE_EVIDENCE/IMPORTED/SYSTEM_GENERATED/LEGACY_UNKNOWN")
+    recorded_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    recorded_by_name: Mapped[str | None] = mapped_column(String(100))
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    source_file_id: Mapped[str | None] = mapped_column(String(64))
+    enterprise_contact_id: Mapped[int | None] = mapped_column(BigInteger)
+    source_remark: Mapped[str | None] = mapped_column(String(500))
     submit_status: Mapped[str] = mapped_column(String(20), nullable=False, default="SUBMITTED",
                                                comment="DRAFT/SUBMITTED")
     school_review_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
@@ -461,6 +477,10 @@ class InternshipArchive(PKMixin, TenantMixin, CommonMixin, Base):
     revoke_reason: Mapped[str | None] = mapped_column(String(500))
     force_reason: Mapped[str | None] = mapped_column(String(500))
     force_evidence_file_ids: Mapped[list | None] = mapped_column(JSON)
+    force_bypassed_items: Mapped[list | None] = mapped_column(JSON)
+    force_rule_version: Mapped[str | None] = mapped_column(String(64))
+    force_approved_role: Mapped[str | None] = mapped_column(String(50))
+    force_approved_by: Mapped[str | None] = mapped_column(String(100))
     archived_by_name: Mapped[str | None] = mapped_column(String(50))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime)
     remark: Mapped[str | None] = mapped_column(String(500))

@@ -18,7 +18,14 @@ from app.services.db_service import _as_id, _iso, _tid, session
 
 REVIEW_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "RETURNED": "已退回"}
 # 四端统一口径：「学校录入」= 教师代录企业纸质评价，不得展示为「企业已评」
-SOURCE_LABEL = {"ENTERPRISE": "企业导师提交", "SCHOOL_RECORDED": "学校录入"}
+SOURCE_LABEL = {
+    "ENTERPRISE_ONLINE": "企业在线提交",
+    "SCHOOL_RECORDED": "学校根据企业纸质材料录入",
+    "FILE_EVIDENCE": "企业盖章材料",
+    "IMPORTED": "Excel导入",
+    "SYSTEM_GENERATED": "系统生成",
+    "LEGACY_UNKNOWN": "历史来源未知",
+}
 SCORE_FIELDS = [("attendanceScore", "attendance_score", "出勤"), ("skillScore", "skill_score", "技能"),
                 ("attitudeScore", "attitude_score", "态度"), ("collaborationScore", "collaboration_score", "协作"),
                 ("safetyScore", "safety_score", "安全纪律")]
@@ -65,7 +72,8 @@ def _row(e, rec, stu):
         "mentorName": e.mentor_name or "", "attendanceScore": e.attendance_score, "skillScore": e.skill_score,
         "attitudeScore": e.attitude_score, "collaborationScore": e.collaboration_score, "safetyScore": e.safety_score,
         "avgScore": round(_total(e) / 5, 1), "recommendHire": bool(e.recommend_hire),
-        "source": e.source, "sourceLabel": SOURCE_LABEL.get(e.source, e.source),
+        "source": e.source_type or e.source,
+        "sourceLabel": SOURCE_LABEL.get(e.source_type or e.source, "历史来源未知"),
         "reviewStatus": e.school_review_status, "reviewStatusLabel": REVIEW_LABEL.get(e.school_review_status),
         "createdAt": _iso(e.created_at) or "",
     }
@@ -105,9 +113,12 @@ def create(user, body) -> dict:
     if not (b.get("mentorName") or "").strip():
         raise AppException("VALIDATION_ERROR", "企业导师姓名必填（评价来源可追溯）")
     scores = _validate_scores(b)
-    file_id = _validate_file(b.get("fileId"))
-    role = (user or {}).get("currentRoleCode") or ""
-    source = "ENTERPRISE" if role in _ENTERPRISE_ROLES else "SCHOOL_RECORDED"
+    file_id = _validate_file(b.get("sourceFileId") or b.get("fileId"))
+    if not file_id:
+        raise AppException("VALIDATION_ERROR", "学校代录企业评价必须绑定企业纸质评价扫描件")
+    source = "SCHOOL_RECORDED"
+    if (b.get("sourceType") or source) == "ENTERPRISE_ONLINE":
+        raise AppException("NO_PERMISSION", "当前未接入企业独立账号，不能标记为企业在线提交")
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         rec = db.get(InternshipRecord, _as_id(iid))
@@ -125,10 +136,15 @@ def create(user, body) -> dict:
             tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id, batch_id=rec.batch_id,
             position_name=rec.position_name, mentor_name=(b.get("mentorName") or "").strip(),
             overall_comment=b.get("overallComment"), recommend_hire=bool(b.get("recommendHire")),
-            source=source, submit_status="SUBMITTED", school_review_status="PENDING",
-            file_id=file_id, **scores)
+            source=source, source_type=source, submit_status="SUBMITTED",
+            school_review_status="PENDING", file_id=file_id, source_file_id=file_id,
+            recorded_by_user_id=str((user or {}).get("userId") or ""),
+            recorded_by_name=_op_name(user), recorded_at=datetime.utcnow(),
+            enterprise_contact_id=_as_id(b["enterpriseContactId"]) if b.get("enterpriseContactId") else None,
+            source_remark=(b.get("sourceRemark") or "").strip() or None, **scores)
         db.add(e); db.flush()
-        _trail(db, e.id, "CREATE", {"source": source, "mentor": e.mentor_name, "avg": round(_total(e) / 5, 1)},
+        _trail(db, e.id, "CREATE", {"sourceType": source, "sourceFileId": file_id,
+                                    "mentor": e.mentor_name, "avg": round(_total(e) / 5, 1)},
                operator=_op_name(user))
         db.commit()
         return {"id": str(e.id), "source": source}

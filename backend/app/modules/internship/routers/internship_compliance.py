@@ -18,6 +18,8 @@ def inspection_create(body:dict=Body(...),user=Depends(require_permission("inter
 def inspection_action(iid:str,action:str,body:dict=Body(default={}),user=Depends(require_permission("internship.enterprise.inspection.manage"))):return success(insp.submit(iid,user) if action=="submit" else insp.review(iid,action.upper(),body.get("comment",""),body.get("validUntil"),user))
 @router.post("/consents")
 def consent_create(body:dict=Body(...),user=Depends(require_permission("internship.consent.manage"))):return success(consent.create_pending(body,user))
+@router.post("/consents/{iid}/revoke")
+def consent_revoke(iid:str,body:dict=Body(...),user=Depends(require_permission("internship.consent.manage"))):return success(consent.revoke_task(iid,body,user))
 @router.get("/safety/{batch_id}")
 def safety_courses(batch_id:str,user=Depends(require_permission("internship.safety.view"))):return success(safety.list_courses(batch_id))
 @router.post("/safety")
@@ -30,7 +32,8 @@ def safety_ensure(body: dict = Body(...), user=Depends(require_permission("inter
 @router.post("/safety/completions/{iid}/review")
 def safety_review(iid: str, body: dict = Body(...), user=Depends(require_permission("internship.safety.manage"))):
     return success(safety.teacher_review_completion(
-        iid, body.get("score"), body.get("studiedMinutes"), body.get("commitment"), user))
+        iid, score=body.get("score"), action=body.get("action"),
+        comment=body.get("comment"), expected_version=body.get("expectedVersion"), user=user))
 
 
 @router.get("/batches/{batch_id}/stats")
@@ -41,9 +44,9 @@ def filing_create(body:dict=Body(...),user=Depends(require_permission("internshi
 @router.post("/filings/{iid}/{level}/{action}")
 def filing_action(iid:str,level:str,action:str,body:dict=Body(default={}),user=Depends(require_permission("internship.filing.review"))):return success(filing.submit(iid,user) if action=="submit" else filing.review(iid,level.upper(),action.upper(),body.get("comment",""),user))
 @router.post("/incidents")
-def incident_report(body:dict=Body(...),user=Depends(require_permission("internship.incident.handle"))):return success(incident.report_incident(body,user))
+def incident_report(body:dict=Body(...),user=Depends(require_permission("internship.incident.report"))):return success(incident.report_incident(body,user))
 @router.post("/incidents/{iid}/transition")
-def incident_transition(iid:str,body:dict=Body(...),user=Depends(require_permission("internship.incident.close"))):return success(incident.transition(iid,body.get("status",""),body,user))
+def incident_transition(iid:str,body:dict=Body(...),user=Depends(require_permission("internship.incident.handle"))):return success(incident.transition(iid,body.get("status",""),body,user))
 @router.post("/emergency-plans")
 def emergency_create(body:dict=Body(...),user=Depends(require_permission("internship.incident.handle"))):return success(incident.create_plan(body))
 @router.post("/emergency-plans/{iid}/{action}")
@@ -51,7 +54,9 @@ def emergency_action(iid:str,action:str,user=Depends(require_permission("interns
 @router.get("/evaluate/{internship_id}")
 def evaluate(internship_id:str,operation:str="ONBOARD",user=Depends(require_permission("internship.compliance.view"))):return success(compliance.evaluate_internship_compliance(internship_id,operation,user))
 @router.post("/exemptions")
-def exemption(body:dict=Body(...),user=Depends(require_permission("internship.compliance.exempt"))):return success(compliance.grant_exemption(body,user))
+def exemption(body:dict=Body(...),user=Depends(require_permission("internship.compliance.exempt.request"))):return success(compliance.grant_exemption(body,user))
+@router.post("/exemptions/{exemption_id}/review")
+def exemption_review(exemption_id:str,body:dict=Body(...),user=Depends(require_permission("internship.compliance.exempt.approve"))):return success(compliance.review_exemption(exemption_id,body,user))
 @router.post("/notices")
 def notice_send(body:dict=Body(...),user=Depends(require_permission("internship.consent.manage"))):return success(notice.send_compliance_notice(body["receiverUserId"],body.get("title") or "实习合规提醒",body.get("content") or "",body.get("consentId"),user))
 @router.get("/notices/{message_id}/receipts")

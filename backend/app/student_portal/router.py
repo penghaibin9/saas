@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query, Request
 
 from app.core.response import success
 from app.core.security import get_current_user
@@ -740,3 +740,24 @@ def guardian_students(user=Depends(get_current_user)):
 @router.get("/guardian/students/{link_id}/overview", summary="家长查看被授权学生四范围只读概览（本人授权范围内）")
 def guardian_student_overview(link_id: str, user=Depends(get_current_user)):
     return success(guardian.student_overview(user, link_id))
+
+
+@router.get("/guardian/internship/consents", summary="已验证监护人查看实习知情确认任务")
+def guardian_internship_consents(user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.list_guardian(user))
+
+
+@router.get("/guardian/internship/consents/{consent_id}", summary="已验证监护人查看实习知情确认正文")
+def guardian_internship_consent(consent_id: str, token: str, user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.get_guardian(consent_id, user, token))
+
+
+@router.post("/guardian/internship/consents/{consent_id}/confirm", summary="已验证监护人确认实习知情书")
+def guardian_confirm_internship_consent(
+        consent_id: str, request: Request, body: dict = Body(...),
+        user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.guardian_confirm(
+        consent_id, body or {}, user, request.client.host if request.client else None))

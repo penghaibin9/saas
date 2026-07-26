@@ -20,6 +20,13 @@
       <LoadingState v-else-if="loading" />
 
       <template v-else>
+        <div class="sa-grid sa-grid--metrics">
+          <button v-for="card in workflowCards" :key="card.key" type="button" class="mp-card metric-card"
+                  @click="openLedger(card)">
+            <span class="mp-note">{{ card.label }}</span>
+            <strong>{{ card.value }}</strong>
+          </button>
+        </div>
         <div v-if="tab === 'evaluate'" class="mp-card">
           <p class="mp-note">输入实习记录 ID，执行统一上岗/归档合规检查（同一规则版本）。</p>
           <div class="bar">
@@ -79,11 +86,22 @@ export default {
       error: '',
       internshipId: '',
       evalResult: '',
-      templates: []
+      templates: [],
+      workflowCounts: {}
     }
   },
   computed: {
-    batchStore() { return useInternshipBatchStore() }
+    batchStore() { return useInternshipBatchStore() },
+    workflowCards() {
+      const c = this.workflowCounts || {}
+      return [
+        { key: 'studentConsentPending', label: '学生知情待确认', value: c.studentConsentPending || 0, tab: 'guide' },
+        { key: 'guardianConsentPending', label: '监护人待确认', value: c.guardianConsentPending || 0, tab: 'guide' },
+        { key: 'safetyPending', label: '安全教育待办', value: c.safetyPending || 0, tab: 'guide' },
+        { key: 'exemptionPending', label: '豁免待审', value: c.exemptionPending || 0, tab: 'guide' },
+        { key: 'incidentPending', label: '事故待处理', value: c.incidentPending || 0, tab: 'guide' }
+      ]
+    }
   },
   mounted() {
     this.load()
@@ -124,6 +142,7 @@ export default {
       const res = await complianceApi.evaluate(this.internshipId, 'ONBOARD')
       if (res.code !== 0) return toast.error(res.message || '检查失败')
       this.evalResult = JSON.stringify(res.data, null, 2)
+      this.workflowCounts = res.data?.workflowCounts || {}
     },
     async runBatchStats() {
       const bid = this.batchStore.selectedBatchId
@@ -137,6 +156,10 @@ export default {
       if (res.code !== 0) return toast.error(res.message || '生成失败')
       toast.success(`证据包已生成 v${res.data.version}，缺失项 ${ (res.data.missingItems || []).length }`)
       this.evalResult = JSON.stringify(res.data, null, 2)
+    },
+    openLedger(card) {
+      this.tab = card.tab
+      toast.info(`${card.label}：${card.value}，请在对应业务台账处理`)
     }
   },
   watch: {

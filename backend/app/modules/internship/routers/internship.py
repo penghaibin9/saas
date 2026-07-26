@@ -480,7 +480,7 @@ def agreement_enterprise_confirm(agreement_id: str, body: dict = Body(...), user
 
 @router.post("/agreements/{agreement_id}/school-confirm", summary="学校确认（待学校确认→已生效）")
 def agreement_school_confirm(agreement_id: str, body: dict | None = Body(default=None),
-                             user=Depends(require_permission("internship.agreement.manage"))):
+                             user=Depends(require_permission("internship.agreement.schoolConfirm"))):
     result = agr.school_confirm(user, agreement_id, body)
     audit_log.record("学校确认三方协议生效", f"internship-agreement:{agreement_id}", detail=result)
     return success(result, message="协议已生效")
@@ -610,7 +610,7 @@ def score_config_get(user=Depends(require_permission("internship.score.view"))):
 
 
 @router.post("/scores/config", summary="保存成绩权重配置（校验权重和=100）")
-def score_config_save(body: dict = Body(...), user=Depends(require_permission("internship.score.config"))):
+def score_config_save(body: dict = Body(...), user=Depends(require_permission("internship.score.config.manage"))):
     result = score.save_config(user, body)
     audit_log.record("保存实习成绩权重配置", "internship-score:config", detail=body)
     return success(result, message="配置已保存")

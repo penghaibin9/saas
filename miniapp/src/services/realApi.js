@@ -759,6 +759,9 @@ export const internshipPlanTasksMy = () => realRequest('/mobile/internship/plan/
 export const submitInternshipPlanTask = (sortOrder, body) =>
   realRequest(`/mobile/internship/plan/tasks/${sortOrder}/submit`, { method: 'POST', data: body })
 export const internshipInsuranceMy = () => realRequest('/mobile/internship/insurance')
+export const internshipConsentsMy = () => realRequest('/mobile/internship/consents')
+export const internshipSafetyCoursesMy = () => realRequest('/mobile/internship/safety/courses')
+export const internshipSafetyCompletionsMy = () => realRequest('/mobile/internship/safety/completions')
 export const signInternshipAgreementEsign = (id) =>
   realRequest(`/mobile/internship/agreements/${id}/esign/sign`, { method: 'POST' })
 

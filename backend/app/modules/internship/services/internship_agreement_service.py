@@ -173,6 +173,12 @@ def _row(db, a, rec, stu):
         "status": a.status, "statusLabel": STATUS_LABEL.get(a.status, a.status),
         "version": int(a.version or 0),
         "esignStatus": a.esign_status, "hasFile": bool(a.file_id),
+        "sourceType": a.source_type or "LEGACY_UNKNOWN",
+        "sourceLabel": {
+            "ENTERPRISE_ONLINE": "企业在线提交", "SCHOOL_RECORDED": "学校根据企业纸质材料录入",
+            "FILE_EVIDENCE": "企业盖章材料", "IMPORTED": "Excel导入",
+            "SYSTEM_GENERATED": "系统生成", "LEGACY_UNKNOWN": "历史来源未知",
+        }.get(a.source_type or "LEGACY_UNKNOWN", "历史来源未知"),
         "createdAt": _iso(a.created_at) or "",
         # 历史协议（本次修复前生成）rendered_body 为空时按结构化字段兜底渲染，不写库、只读时补齐
         # BUG-011：历史快照里遗留的 ISO 时间戳（2026-03-02T00:00:00）在展示/打印时规范为中文日期
@@ -222,7 +228,10 @@ def generate(user, body) -> dict:
         a = InternshipAgreement(
             tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
             template_id=int(tpl_id) if tpl_id else None, batch_id=rec.batch_id,
-            enterprise_name=rec.enterprise_name, position_name=rec.position_name, status="DRAFT")
+            enterprise_name=rec.enterprise_name, position_name=rec.position_name, status="DRAFT",
+            source_type="SYSTEM_GENERATED",
+            recorded_by_user_id=str((user or {}).get("userId") or ""),
+            recorded_by_name=_op_name(user), recorded_at=datetime.utcnow())
         a.rendered_body = _render_body(db, tpl, rec, stu, a)
         db.add(a); db.flush()
         _trail(db, a.id, "GENERATE", {"templateId": str(tpl_id) if tpl_id else ""}, operator=_op_name(user))
@@ -261,8 +270,15 @@ def enterprise_confirm(user, aid, body) -> dict:
             expected_version=extract_expected_version(b), expected_status="PENDING_ENTERPRISE",
             values={"enterprise_confirm_status": "CONFIRMED", "enterprise_confirm_at": confirmed_at,
                     "enterprise_confirm_by": (b.get("confirmBy") or "").strip() or None,
-                    "file_id": file_id, "status": "PENDING_SCHOOL"})
-        _trail(db, a.id, "ENTERPRISE_CONFIRM", {"confirmBy": a.enterprise_confirm_by, "hasFile": True},
+                    "file_id": file_id, "source_file_id": file_id,
+                    "source_type": "FILE_EVIDENCE",
+                    "recorded_by_user_id": str((user or {}).get("userId") or ""),
+                    "recorded_by_name": _op_name(user), "recorded_at": confirmed_at,
+                    "source_remark": (b.get("sourceRemark") or "学校根据企业签署扫描件登记").strip(),
+                    "status": "PENDING_SCHOOL"})
+        _trail(db, a.id, "ENTERPRISE_CONFIRM", {
+            "confirmBy": a.enterprise_confirm_by, "hasFile": True,
+            "sourceType": "FILE_EVIDENCE", "sourceFileId": file_id},
                operator=_op_name(user))
         db.commit()
         return {"id": str(a.id), "status": "PENDING_SCHOOL", "statusLabel": STATUS_LABEL["PENDING_SCHOOL"],
@@ -271,6 +287,11 @@ def enterprise_confirm(user, aid, body) -> dict:
 
 def school_confirm(user, aid, body=None) -> dict:
     """学校确认：PENDING_SCHOOL → EFFECTIVE。"""
+    from app.core.permissions import enforce_permission, is_super_admin
+    enforce_permission(user or {}, "internship.agreement.schoolConfirm")
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
+        raise no_permission("仅学校管理员可执行学校方协议确认")
     with session() as db:
         a = _get(db, aid)
         _owner_or_403(db, a, user, "只能确认本人指导学生的协议")
