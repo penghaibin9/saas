@@ -16,36 +16,25 @@ from app.models import (
     GraduationProposal,
     GraduationStudent,
 )
-from app.modules.graduation.schemas.graduation import (
-    AssignStudentsBody,
-    DefenseGroupBody,
-    RemindBody,
-    ReviewBody,
-)
+from app.modules.graduation.schemas.graduation import AssignStudentsBody, DefenseGroupBody, RemindBody, ReviewBody
 from app.modules.graduation.schemas.graduation_extra import ProposalDefenseBody
 from app.modules.graduation.services import graduation_service as svc
 from app.modules.graduation.services import graduation_student_service as student_svc
-from app.modules.graduation.services.graduation_batch_context import (
-    assert_student_batch,
-    load_student_in_batch,
-    require_batch_id,
-)
+from app.modules.graduation.services.graduation_batch_context import assert_student_batch, load_student_in_batch, require_batch_id
 from app.modules.graduation.services.graduation_contract_bridge import _normalize_members
 from app.modules.graduation.services.graduation_material_consistency import install_material_consistency
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services.db_service import _iso, _tid, session
 
 install_material_consistency()
 router = APIRouter(prefix="/graduation", tags=["毕业设计-材料与答辩批次安全"])
 
 
-def _record_student(model, record_id, batch_id, *, lock=False) -> GraduationStudent:
+def _record_student(model, record_id, batch_id) -> GraduationStudent:
     with session() as db:
-        query = select(model).where(
+        record = db.scalars(select(model).where(
             model.id == int(record_id), model.tenant_id == _tid(), model.is_deleted.is_(False),
-        )
-        if lock:
-            query = query.with_for_update()
-        record = db.scalars(query).first()
+        )).first()
         if not record:
             raise not_found("毕业设计材料不存在")
         student = db.get(GraduationStudent, int(record.gd_student_id))
@@ -53,16 +42,13 @@ def _record_student(model, record_id, batch_id, *, lock=False) -> GraduationStud
         return student
 
 
-def _group(group_id, batch_id, *, lock=False) -> GraduationDefenseGroup:
+def _group(group_id, batch_id) -> GraduationDefenseGroup:
     with session() as db:
-        query = select(GraduationDefenseGroup).where(
+        group = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.id == int(group_id),
             GraduationDefenseGroup.tenant_id == _tid(),
             GraduationDefenseGroup.is_deleted.is_(False),
-        )
-        if lock:
-            query = query.with_for_update()
-        group = db.scalars(query).first()
+        )).first()
         if not group:
             raise not_found("答辩组不存在")
         if int(group.batch_id or 0) != require_batch_id(batch_id):
@@ -97,27 +83,13 @@ def legacy_students(
 
 @router.get("/students/{student_id}", summary="毕业设计学生详情（当前批次）")
 def legacy_student_detail(
-    student_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
-):
-    load_student_in_batch(session().__enter__(), student_id, batchId)  # pragma: no cover - replaced below
-
-
-# 上面的上下文管理器不能跨函数返回，重新绑定成显式安全实现。
-router.routes.pop()
-
-
-@router.get("/students/{student_id}", summary="毕业设计学生详情（当前批次）")
-def legacy_student_detail_safe(
-    student_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    student_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     with session() as db:
         load_student_in_batch(db, student_id, batchId)
     return success(svc.get_student_detail(student_id))
 
 
-# ── 开题 ──
 @router.get("/proposals/stats")
 def proposal_stats(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
     return success(svc.proposal_stats(batch_id=batchId))
@@ -135,8 +107,7 @@ def proposals(
 
 @router.get("/proposals/{proposal_id}")
 def proposal_detail(
-    proposal_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    proposal_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     _record_student(GraduationProposal, proposal_id, batchId)
     return success(svc.get_proposal_detail(proposal_id))
@@ -144,29 +115,28 @@ def proposal_detail(
 
 @router.post("/proposals/{proposal_id}/review")
 def proposal_review(
-    proposal_id: str, body: ReviewBody,
-    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+    proposal_id: str, body: ReviewBody, batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
 ):
-    _record_student(GraduationProposal, proposal_id, batchId, lock=True)
+    _record_student(GraduationProposal, proposal_id, batchId)
     return success(svc.review_proposal(proposal_id, body.action, body.comment), message="已批阅")
 
 
 @router.post("/proposals/{proposal_id}/defense")
 def proposal_defense(
-    proposal_id: str, body: ProposalDefenseBody,
-    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+    proposal_id: str, body: ProposalDefenseBody, batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
 ):
-    _record_student(GraduationProposal, proposal_id, batchId, lock=True)
+    _record_student(GraduationProposal, proposal_id, batchId)
     return success(svc.hold_proposal_defense(proposal_id, body.result, body.comment), message="开题答辩结果已保存")
 
 
 @router.post("/proposals/remind")
 def proposal_remind(
-    body: RemindBody, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    body: RemindBody, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     with session() as db:
-        load_student_in_batch(db, body.gdStudentId, batchId, for_update=True)
+        load_student_in_batch(db, body.gdStudentId, batchId)
     result = svc.remind_proposal(body.gdStudentId, body.channel or "站内消息")
     return success(result, message="真实站内消息已创建")
 
@@ -179,7 +149,6 @@ def proposal_export(
     return success(svc.export_proposals_xlsx(status=status, keyword=keyword, batch_id=batchId))
 
 
-# ── 成果 ──
 @router.get("/finals/stats")
 def final_stats(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
     return success(svc.final_stats(batch_id=batchId))
@@ -197,8 +166,7 @@ def finals(
 
 @router.get("/finals/{final_id}")
 def final_detail(
-    final_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    final_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     _record_student(GraduationFinal, final_id, batchId)
     return success(svc.get_final_detail(final_id))
@@ -206,20 +174,19 @@ def final_detail(
 
 @router.post("/finals/{final_id}/review")
 def final_review(
-    final_id: str, body: ReviewBody,
-    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+    final_id: str, body: ReviewBody, batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
 ):
-    _record_student(GraduationFinal, final_id, batchId, lock=True)
+    _record_student(GraduationFinal, final_id, batchId)
     return success(svc.review_final(final_id, body.action, body.comment), message="已批阅")
 
 
 @router.post("/finals/remind")
 def final_remind(
-    body: RemindBody, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    body: RemindBody, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     with session() as db:
-        load_student_in_batch(db, body.gdStudentId, batchId, for_update=True)
+        load_student_in_batch(db, body.gdStudentId, batchId)
     result = svc.remind_final(body.gdStudentId, body.channel or "站内消息")
     return success(result, message="真实站内消息已创建")
 
@@ -232,7 +199,6 @@ def final_export(
     return success(svc.export_finals_xlsx(status=status, keyword=keyword, batch_id=batchId))
 
 
-# ── 答辩组 ──
 @router.get("/defense-groups")
 def defense_groups(
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
@@ -245,8 +211,7 @@ def defense_groups(
 
 @router.post("/defense-groups")
 def defense_create(
-    body: DefenseGroupBody, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    body: DefenseGroupBody, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     expected = require_batch_id(batchId)
     if body.batchId not in (None, expected):
@@ -264,17 +229,44 @@ def defense_eligible(
     gid: Optional[str] = None, keyword: Optional[str] = None,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    if gid:
-        _group(gid, batchId)
-    rows = svc.list_defense_eligible_students(gid=gid, keyword=keyword)
-    # gid 为空时仍限制当前批次，禁止候选人跨批出现。
-    return success([row for row in rows if str(row.get("batchId") or batchId) == str(batchId)])
+    batch_id = require_batch_id(batchId)
+    group_id = int(gid) if gid else None
+    if group_id:
+        _group(group_id, batch_id)
+    with session() as db:
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        query = select(GraduationStudent).where(
+            GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == batch_id,
+            GraduationStudent.id.in_(scope_ids or [-1]), GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.stage.in_(("FINAL_CHECK", "DEFENSE", "COMPLETED")),
+        ).order_by(GraduationStudent.id)
+        rows = db.scalars(query).all()
+        result = []
+        for student in rows:
+            if keyword and keyword.strip() not in (student.name or ""):
+                continue
+            approved_final = db.scalars(select(GraduationFinal.id).where(
+                GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == student.id,
+                GraduationFinal.final_type == "定稿", GraduationFinal.status == "APPROVED",
+                GraduationFinal.is_deleted.is_(False),
+            ).limit(1)).first()
+            if not approved_final:
+                continue
+            result.append({
+                "id": str(student.id), "name": student.name,
+                "className": student.class_name or "", "topicTitle": student.topic_title or "",
+                "advisorName": student.advisor_name or "", "batchId": str(student.batch_id),
+                "currentGroup": student.defense_group or "",
+                "assignedHere": student.defense_group_id == group_id if group_id else False,
+                "assignedElsewhere": bool(student.defense_group_id) and student.defense_group_id != group_id,
+            })
+        return success(result)
 
 
 @router.get("/defense-groups/{group_id}")
 def defense_detail(
-    group_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    group_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     _group(group_id, batchId)
     return success(_normalize_group(svc.get_defense_group_detail(group_id)))
@@ -282,10 +274,10 @@ def defense_detail(
 
 @router.put("/defense-groups/{group_id}")
 def defense_update(
-    group_id: str, body: DefenseGroupBody,
-    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+    group_id: str, body: DefenseGroupBody, batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
 ):
-    _group(group_id, batchId, lock=True)
+    _group(group_id, batchId)
     result = svc.update_defense_group(
         group_id, body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary,
@@ -297,10 +289,10 @@ def defense_update(
 
 @router.post("/defense-groups/{group_id}/assign")
 def defense_assign(
-    group_id: str, body: AssignStudentsBody,
-    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+    group_id: str, body: AssignStudentsBody, batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
 ):
-    _group(group_id, batchId, lock=True)
+    _group(group_id, batchId)
     return success(_normalize_group(svc.assign_defense_students(
         group_id, body.studentIds, batch_id=batchId,
     )), message="已分配")
@@ -308,10 +300,10 @@ def defense_assign(
 
 @router.post("/defense-groups/{group_id}/unassign")
 def defense_unassign(
-    group_id: str, body: AssignStudentsBody,
-    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+    group_id: str, body: AssignStudentsBody, batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
 ):
-    _group(group_id, batchId, lock=True)
+    _group(group_id, batchId)
     return success(_normalize_group(svc.unassign_defense_students(
         group_id, body.studentIds, batch_id=batchId,
     )), message="已移出")
@@ -319,19 +311,17 @@ def defense_unassign(
 
 @router.post("/defense-groups/{group_id}/publish")
 def defense_publish(
-    group_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    group_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    _group(group_id, batchId, lock=True)
+    _group(group_id, batchId)
     return success(svc.publish_defense(group_id, batch_id=batchId), message="已发布")
 
 
 @router.post("/defense-groups/{group_id}/notify")
 def defense_notify(
-    group_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    group_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    _group(group_id, batchId, lock=True)
+    _group(group_id, batchId)
     result = svc.notify_defense_group(group_id, user=user, batch_id=batchId)
     return success(result, message=result.get("message") or "通知已进入发送队列")
 
@@ -343,7 +333,6 @@ def defense_export(
     return success(svc.export_defense_xlsx(batch_id=batchId))
 
 
-# ── 审计：按批次筛选，不再将同一学生跨届操作混在一起 ──
 @router.get("/audit-logs")
 def audit_logs(
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
