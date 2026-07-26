@@ -69,6 +69,31 @@ def test_latest_official_attempt_wins_even_when_score_is_lower():
     assert selected[0].score == 61
 
 
+def test_makeup_supersedes_original_publish_without_comparing_score():
+    from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
+
+    original = _grade(1, 59, source="PUBLISH")
+    makeup = _grade(2, 55, source="MAKEUP")
+
+    selected = effective_grade_rows([original, makeup])
+
+    assert selected[0].source == "MAKEUP"
+    assert selected[0].score == 55
+
+
+def test_clearance_supersedes_makeup_and_original():
+    from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
+
+    original = _grade(1, 58, source="PUBLISH")
+    makeup = _grade(2, 59, source="MAKEUP")
+    clearance = _grade(3, 60, source="CLEARANCE")
+
+    selected = effective_grade_rows([clearance, original, makeup])
+
+    assert selected[0].source == "CLEARANCE"
+    assert selected[0].score == 60
+
+
 def test_formal_recheck_source_beats_plain_publish_without_comparing_score():
     from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
 
