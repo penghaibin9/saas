@@ -104,6 +104,25 @@ def test_final_validator_counts_practice_credit_in_total(monkeypatch):
     assert not any(item["ruleCode"] == "TOTAL_CREDIT_INSUFFICIENT" for item in result["issues"])
 
 
+def test_opening_summary_counts_full_scope_before_filter():
+    from app.modules.academic_affairs.services.academic_affairs_program_quality_ui_service import _summary
+
+    items = [
+        {"status": "READY"},
+        {"status": "READY"},
+        {"status": "MISSING_TASK"},
+        {"status": "NO_CLASS"},
+        {"status": "OVER_OPENED"},
+    ]
+    result = _summary(items)
+
+    assert result["total"] == 5
+    assert result["ready"] == 2
+    assert result["missingTask"] == 1
+    assert result["unresolved"] == 1
+    assert result["overOpened"] == 1
+
+
 def test_public_program_services_use_final_quality_layers():
     from app.modules.academic_affairs import services
 
@@ -114,9 +133,12 @@ def test_public_program_services_use_final_quality_layers():
         "academic_affairs_program_quality_facade"
     )
     assert services.academic_affairs_program_quality_service.__name__.endswith(
+        "academic_affairs_program_quality_ui_service"
+    )
+    assert services.academic_affairs_program_quality_service._security.__name__.endswith(
         "academic_affairs_program_quality_security_service"
     )
-    assert services.academic_affairs_program_quality_service._base.__name__.endswith(
+    assert services.academic_affairs_program_quality_service._final.__name__.endswith(
         "academic_affairs_program_quality_final_service"
     )
 
