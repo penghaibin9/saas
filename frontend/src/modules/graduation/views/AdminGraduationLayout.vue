@@ -27,7 +27,20 @@
       class="gd-scope-alert"
     />
     <GraduationBatchStrip v-if="ctx" class="gd-batch-bar" />
-    <router-view v-if="canRenderBusiness" :key="businessViewKey" :ctx="businessCtx" />
+    <div
+      v-if="canRenderBusiness"
+      class="gd-business-view"
+      :class="{ 'gd-student-readonly': isStudentList && !canManageStudents }"
+    >
+      <AppInlineAlert
+        v-if="isStudentList && !canManageStudents"
+        type="info"
+        title="当前为只读名单视图"
+        description="你可以查看本数据范围内的毕设学生、进度和材料状态；建档、导师分配、选题、资格认定、分组、答辩组分配与归档仅对具有学生管理权限的角色开放。"
+        class="gd-scope-alert"
+      />
+      <router-view :key="businessViewKey" :ctx="businessCtx" />
+    </div>
     <LoadingState v-else-if="loading" text="正在加载毕业设计中心…" />
     <EmptyState
       v-else-if="!scopeReady && ctx"
@@ -51,6 +64,7 @@
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, EmptyState } from '@/components/business'
 import { AppInlineAlert } from '@/components/common'
+import { matchPermission } from '@/config/navPlan'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationPickerAdapters } from '@/modules/graduation/pickerAdapters'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
@@ -83,6 +97,13 @@ export default {
     canRenderBusiness() {
       return !!(this.ctx && this.permissionReady && this.scopeReady)
     },
+    isStudentList() {
+      return this.$route.name === 'graduation-students'
+    },
+    canManageStudents() {
+      const patterns = this.ctx?.permissionPatterns
+      return Array.isArray(patterns) && matchPermission(patterns, 'graduationDesign.student.manage')
+    },
     /**
      * 查重/评阅/答辩/成绩多个路由复用同一个 Vue 组件。
      * 以 route name + defaultPanel 做 key，避免地址和菜单已切换但旧组件状态仍停在上一个业务页签。
@@ -93,11 +114,12 @@ export default {
     },
     businessCtx() {
       if (!this.ctx) return null
+      const studentListWrite = !this.isStudentList || this.canManageStudents
       return {
         ...this.ctx,
         permissionReady: this.permissionReady,
         scopeReady: this.scopeReady,
-        writeEnabled: this.permissionReady && !this.ctx.readonlyTenant,
+        writeEnabled: this.permissionReady && !this.ctx.readonlyTenant && studentListWrite,
         contextError: this.contextError
       }
     }
@@ -189,4 +211,8 @@ export default {
 .gd-batch-bar {
   margin: 0 0 var(--space-3);
 }
+/* 学生列表历史页面没有逐个消费动作权限：只读角色仅保留每行首个“详情”入口。 */
+.gd-student-readonly :deep(.mp-link + .mp-link) { display: none !important; }
+/* 最终毕业资格由教务中心统一重算；隐藏旧的人工联动页签。 */
+.gd-business-view :deep(.mp-tabs .mp-tab:nth-child(8)) { display: none !important; }
 </style>
