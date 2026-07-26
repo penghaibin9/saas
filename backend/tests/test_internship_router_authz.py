@@ -19,11 +19,27 @@ def _tok(role, user_type="TEACHER", client_type="PC"):
         "currentRoleCode": role, "clientType": client_type})}
 
 
+def _batch_id(db_mode):
+    """dashboard/risks 等看板类接口现已要求显式 batchId，直接建库省一次 HTTP 往返。"""
+    from uuid import uuid4
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipBatch
+    db = get_sessionmaker()()
+    try:
+        b = InternshipBatch(tenant_id=TID, batch_name="路由权限测试批次",
+                            batch_no=f"AUTHZB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.commit()
+        return b.id
+    finally:
+        db.close()
+
+
 def test_counselor_read_only(client, db_mode):
     """辅导员：本班实习学生只读协同（看板/周报/风险可读），不得处理/批阅/导出/核算。"""
     c = _tok("COUNSELOR")
-    assert client.get(f"{BASE}/dashboard", headers=c).status_code == 200          # dashboard.view
-    assert client.get(f"{BASE}/reports", headers=c).status_code == 200            # report.view
+    bid = _batch_id(db_mode)
+    assert client.get(f"{BASE}/dashboard", headers=c, params={"batchId": bid}).status_code == 200  # dashboard.view
+    assert client.get(f"{BASE}/reports", headers=c, params={"batchId": bid}).status_code == 200  # report.view
     # 写/处理/导出/成绩：辅导员无权
     assert client.post(f"{BASE}/exceptions/x/handle", headers=c,
                        json={"action": "REASONABLE", "comment": "已核实"}).status_code == 403  # attendance.review
@@ -47,7 +63,8 @@ def test_mentor_management_boundaries(client, db_mode):
 def test_security_auditor_read_only(client, db_mode):
     """实习督导/审计：只读监督，不授予任何写操作。"""
     a = _tok("SECURITY_AUDITOR")
-    assert client.get(f"{BASE}/risks", headers=a).status_code == 200                       # risk.view
+    bid = _batch_id(db_mode)
+    assert client.get(f"{BASE}/risks", headers=a, params={"batchId": bid}).status_code == 200  # risk.view
     assert client.post(f"{BASE}/risks/x/handle", headers=a,
                        json={"comment": "越权受理"}).status_code == 403                     # risk.handle
     assert client.post(f"{BASE}/scores/x/publish", headers=a).status_code == 403           # score.publish

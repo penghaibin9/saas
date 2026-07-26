@@ -71,4 +71,5 @@ def test_grade_level_on_score_row():
 
 def test_school_recorded_source_label():
     from app.modules.internship.services.internship_enterprise_eval_service import SOURCE_LABEL
-    assert SOURCE_LABEL["SCHOOL_RECORDED"] == "学校录入"
+    # 口径收紧后完整表述来源（避免误读成"企业已评"），语义不变，字面已更新
+    assert SOURCE_LABEL["SCHOOL_RECORDED"] == "学校根据企业纸质材料录入"

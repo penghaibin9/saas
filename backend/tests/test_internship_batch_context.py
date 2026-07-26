@@ -54,9 +54,33 @@ def _mk_batch(client, h, *, status="RUNNING", name=None, no=None):
     return bid
 
 
+TID = 1000000000000000001
+
+
+def _org_class():
+    """建档必须挂真实学院/专业/班级，见 tests/test_student.py::org_class。"""
+    from app.db.session import get_sessionmaker
+    from app.models.org import College, Major, SchoolClass
+    db = get_sessionmaker()()
+    try:
+        col = College(tenant_id=TID, college_name=_uniq("学院"), status="ACTIVE")
+        db.add(col); db.flush()
+        maj = Major(tenant_id=TID, college_id=col.id, major_name=_uniq("专业"), status="ACTIVE")
+        db.add(maj); db.flush()
+        cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name=_uniq("班级"),
+                          grade="2026", status="ACTIVE", class_status="NORMAL")
+        db.add(cls); db.flush()
+        cid = cls.id
+        db.commit()
+        return str(cid)
+    finally:
+        db.close()
+
+
 def _mk_student(client, h, no=None):
     sno = no or _uniq("S")
-    r = client.post(STU, headers=h, json={"studentNo": sno, "realName": f"学生{sno[-4:]}"}).json()
+    r = client.post(STU, headers=h, json={"studentNo": sno, "realName": f"学生{sno[-4:]}",
+                                          "classId": _org_class()}).json()
     assert r["code"] == 0, r
     return r["data"]["id"], sno
 

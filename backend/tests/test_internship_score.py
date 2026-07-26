@@ -110,6 +110,13 @@ def test_config_weight_sum_and_snapshot(client, db_mode):
     assert bad.status_code == 400
     first = _config(client).json()["data"]
     assert first["configId"]
+
+    # 保留 main 的配置读取断言，避免只验证写入而未验证读取契约。
+    current = client.get(f"{INT}/scores/config", headers=_admin(client)).json()["data"]
+    assert current["enterpriseWeight"] == 30
+    assert current["passLine"] == 60
+    assert current["configId"] == first["configId"]
+
     denied = client.post(
         f"{INT}/scores/config",
         json={"checkinWeight": 20, "weeklyWeight": 20, "monthlyWeight": 10,
@@ -216,6 +223,11 @@ def test_scope_student_forbidden_withdraw_and_export(client, db_mode):
                       headers=_mentor("刘强")).json()["data"]["total"] == 1
     assert client.get(f"{INT}/scores", params=params,
                       headers=_student("SC-A")).status_code == 403
+    assert client.post(
+        f"{INT}/scores/compute",
+        json={"internshipId": str(ids["rec_a"]), "checkinScore": 80,
+              "weeklyScore": 80, "monthlyScore": 80, "schoolScore": 80},
+        headers=_student("SC-A")).status_code == 403
 
     published = client.post(
         f"{INT}/scores/{score_a['id']}/publish",

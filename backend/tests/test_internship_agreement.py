@@ -157,7 +157,26 @@ def test_student_reject_and_legacy_route_is_disabled(client, db_mode):
 def test_owner_scope_and_school_confirm_boundary(client, db_mode):
     ids = _seed(db_mode)
     mentor_b = _mentor("王芳")
-    agreement_id, version = _generate_and_issue(client, ids["rec_b"], mentor_b)
+    created = client.post(
+        f"{INT}/agreements",
+        json={"internshipId": str(ids["rec_b"])},
+        headers=mentor_b)
+    assert created.status_code == 200
+    agreement = created.json()["data"]
+    agreement_id = agreement["id"]
+
+    # 非本人指导学生不得下发协议；保留 main 的 owner 负向断言。
+    assert client.post(
+        f"{INT}/agreements/{agreement_id}/issue",
+        json={"expectedVersion": agreement["version"]},
+        headers=_mentor("刘强")).status_code == 403
+
+    issued = client.post(
+        f"{INT}/agreements/{agreement_id}/issue",
+        json={"expectedVersion": agreement["version"]},
+        headers=mentor_b)
+    assert issued.status_code == 200
+    version = issued.json()["data"]["version"]
 
     assert client.post(
         f"{INT}/agreements/{agreement_id}/reject",
@@ -192,6 +211,10 @@ def test_student_forbidden_on_pc_and_export_is_batch_scoped(client, db_mode):
     student_headers = _student("AG-A", ids["batch"])
     assert client.get(f"{INT}/agreements", params={"batchId": ids["batch"]},
                       headers=student_headers).status_code == 403
+    assert client.post(
+        f"{INT}/agreements",
+        json={"internshipId": str(ids["rec_a"])},
+        headers=student_headers).status_code == 403
     client.post(f"{INT}/agreements", json={"internshipId": str(ids["rec_a"])},
                 headers=_mentor("刘强"))
     exported = client.post(
