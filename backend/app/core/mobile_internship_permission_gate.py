@@ -1,7 +1,8 @@
-"""教师小程序岗位实习接口权限前置门。
+"""移动端岗位实习前置门。
 
-所有 `/mobile/teacher/internship/*` 路由必须逐项登记；未登记默认拒绝。
-对象归属仍由业务服务校验，本层解决辅导员等其他教师角色直接调用写接口的问题。
+- 教师小程序 `/mobile/teacher/internship/*` 必须逐项登记权限，未登记默认拒绝；
+- 学生旧版正式申请无版本写入口默认拒绝，强制迁移到 `/context/applications` 乐观锁契约；
+- 对象归属仍由业务服务校验。
 """
 from __future__ import annotations
 
@@ -10,11 +11,12 @@ from typing import Optional
 
 from fastapi import Header, Request
 
-from app.core.exceptions import no_permission, unauthorized
+from app.core.exceptions import AppException, no_permission, unauthorized
 from app.core.permissions import enforce_permission
 from app.core.security import decode_token
 
-_MARKER = "/mobile/teacher/internship"
+_TEACHER_MARKER = "/mobile/teacher/internship"
+_STUDENT_APPLICATION_MARKER = "/mobile/internship/applications"
 
 _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^$"), "internship.dashboard.view"),
@@ -61,10 +63,27 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
 )
 
 
+def _reject_legacy_student_application_write(method: str, path: str) -> None:
+    """旧 GET 仅作读取兼容；无 expectedVersion 的写入口全部 fail closed。"""
+    if not path.startswith(_STUDENT_APPLICATION_MARKER):
+        return
+    verb = str(method or "").upper()
+    suffix = path[len(_STUDENT_APPLICATION_MARKER):].strip("/")
+    legacy_write = (
+        (verb == "PUT" and not suffix)
+        or (verb == "POST" and re.fullmatch(r"[^/]+/(submit|withdraw)", suffix or ""))
+    )
+    if legacy_write:
+        raise AppException(
+            "DATA_CONFLICT",
+            "旧版正式实习申请写入口已停用，请刷新客户端后通过当前批次版本化入口办理",
+        )
+
+
 def resolve_teacher_internship_permission(method: str, path: str) -> str | None:
-    if _MARKER not in path:
+    if _TEACHER_MARKER not in path:
         return None
-    suffix = path.split(_MARKER, 1)[1].strip("/")
+    suffix = path.split(_TEACHER_MARKER, 1)[1].strip("/")
     verb = (method or "").upper()
     for expected_method, pattern, permission in _RULES:
         if verb == expected_method and pattern.fullmatch(suffix):
@@ -105,6 +124,7 @@ def enforce_teacher_internship_mobile_permission(
     request: Request,
     authorization: Optional[str] = Header(default=None),
 ):
+    _reject_legacy_student_application_write(request.method, request.url.path)
     permission = resolve_teacher_internship_permission(request.method, request.url.path)
     if permission is None:
         return None
