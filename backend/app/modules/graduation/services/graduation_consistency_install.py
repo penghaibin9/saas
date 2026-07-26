@@ -1,9 +1,11 @@
 """毕业设计剩余事务一致性与并发冲突安装器。
 
-不复制已经正确的状态机，只替换两处仍不一致的旧实现：
+不复制已经正确的状态机，只替换仍不一致的旧实现：
 - 开题批阅必须锁定开题行；
-- 成果提交必须先锁定学生，再锁定该生全部成果。
-并把数据库唯一约束竞争统一转换为可理解的 409，而不是裸 500。
+- 成果提交必须先锁定学生，再锁定该生全部成果；
+- 选题变更锁定学生、申请与题目容量；
+- 关键审计补齐稳定 actor；
+- 数据库唯一约束竞争统一转换为 409，而不是裸 500。
 """
 from __future__ import annotations
 
@@ -169,6 +171,14 @@ def install_consistency_guards() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
+
+    from app.modules.graduation.services.graduation_runtime_settings import install_runtime_settings
+    from app.modules.graduation.services.graduation_audit_consistency import install_audit_consistency
+    from app.modules.graduation.services.graduation_topic_change_consistency import install_topic_change_consistency
+
+    install_runtime_settings()
+    install_audit_consistency()
+    install_topic_change_consistency()
     _INSTALLED = True
 
     from app.modules.graduation.services import (
