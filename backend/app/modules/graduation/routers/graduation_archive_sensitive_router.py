@@ -14,6 +14,10 @@ from app.services.db_service import session
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-归档批次安全"])
 
+# 任务书安全 Router 不设 prefix，由此挂入同一 /graduation 前缀并优先于旧 Router。
+from app.modules.graduation.routers import graduation_taskbook_sensitive_router
+router.include_router(graduation_taskbook_sensitive_router.router)
+
 
 def _guard(student_id, batch_id, *, lock=False):
     with session() as db:
