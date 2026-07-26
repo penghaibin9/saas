@@ -25,6 +25,7 @@ from app.services.affairs_dorm_projection_service import install as install_dorm
 from app.services.affairs_dorm_reliability_service import install as install_dorm_reliability
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
 from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
+from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
@@ -49,3 +50,5 @@ install_appeal_todo_reconciliation()
 install_appeal_repair()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
+# 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动写权限登记。
+install_affairs_four_end_terminal_guard(api_router)
