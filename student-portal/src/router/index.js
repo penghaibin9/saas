@@ -16,7 +16,10 @@ const routes = [
       { path: 'module-disabled/:module', name: 'module-disabled', component: () => import('../components/ModuleDisabledView.vue') },
       // 各二级模块专用工作台（消费 /portal/* 重活接口）。meta.modulePath 供守卫做模块开关门禁。
       { path: 'profile', name: 'profile', meta: { modulePath: 'profile' }, component: () => import('../views/profile/ProfileView.vue') },
-      { path: 'academic', name: 'academic', meta: { modulePath: 'academic' }, component: () => import('../views/academic/AcademicView.vue') },
+      // 教务首页先进入可靠的独立课表工作区；旧19项综合页保留在 /academic/all，避免删功能或破坏历史成果。
+      { path: 'academic', redirect: '/academic/schedule' },
+      { path: 'academic/schedule', name: 'academic-schedule', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentScheduleView.vue') },
+      { path: 'academic/all', name: 'academic-all', meta: { modulePath: 'academic' }, component: () => import('../views/academic/AcademicView.vue') },
       { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsView.vue') },
       { path: 'internship', name: 'internship', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipView.vue') },
       { path: 'employment', name: 'employment', meta: { modulePath: 'employment' }, component: () => import('../views/employment/EmploymentView.vue') },
