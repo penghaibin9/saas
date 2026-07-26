@@ -157,7 +157,7 @@ export default {
       if (res.code === 0) { toast.success('已任命'); this.apForm.visible = false; this.select(this.sel) } else toast.error(res.message || '任命失败')
     },
     async dismiss(p) {
-      const res = await studentAffairsApi.dismissOrgPosition(p.positionId)
+      const res = await studentAffairsApi.dismissOrgPosition(p.positionId, p.version)
       if (res.code === 0) { toast.success('已卸任'); this.select(this.sel) } else toast.error(res.message || '卸任失败')
     }
   }

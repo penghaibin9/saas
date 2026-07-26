@@ -3,7 +3,8 @@
 数据留痕走 AffairsAuditTrail(biz_type=CLUB)；社团为组织级台账（非学生 PII 敏感域），
 按租户可见，团委/学工处管理，college_id 供院级筛选。成员唯一活跃约束防重复入社。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -116,7 +117,7 @@ def review_club(club_id, user, action="APPROVE", reason="", expected_version=Non
         c = _load(db, club_id)
         if c.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待审批社团可审批")
-        check_version(c.version, expected_version)
+        atomic_claim_version(db, c, expected_version)
         if action == "APPROVE":
             c.status, c.established_at = "ACTIVE", datetime.utcnow()
             _audit(db, c.id, "CLUB_APPROVE", "")
@@ -137,7 +138,7 @@ def disband_club(club_id, user, reason="", expected_version=None) -> dict:
             raise AppException("DATA_CONFLICT", "社团已注销")
         if len((reason or "").strip()) < 5:
             raise AppException("VALIDATION_ERROR", "注销原因至少 5 字")
-        check_version(c.version, expected_version)
+        atomic_claim_version(db, c, expected_version)
         c.status, c.reject_reason, c.version = "DISBANDED", reason.strip(), c.version + 1
         _audit(db, c.id, "CLUB_DISBAND", reason.strip())
         db.commit(); db.refresh(c)

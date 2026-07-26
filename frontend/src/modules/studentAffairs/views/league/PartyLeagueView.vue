@@ -203,12 +203,12 @@ export default {
     },
     async advance() {
       if (!this.advStage) return
-      const res = await studentAffairsApi.advanceLeagueStage(this.sel.devId, { toStage: this.advStage })
+      const res = await studentAffairsApi.advanceLeagueStage(this.sel.devId, { toStage: this.advStage, version: this.sel.version })
       if (res.code === 0) { toast.success('已推进'); this.sel = res.data; this.advStage = ''; this.select(res.data); this.load() } else toast.error(res.message || '推进失败')
     },
     terminate() { this.terDlg.visible = true },
     async submitTerminate({ reason }) {
-      const res = await studentAffairsApi.terminateLeagueDev(this.sel.devId, reason.trim())
+      const res = await studentAffairsApi.terminateLeagueDev(this.sel.devId, reason.trim(), this.sel.version)
       if (res.code === 0) {
         this.terDlg.visible = false
         toast.success('已终止')

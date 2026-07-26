@@ -129,22 +129,22 @@ export default {
       if (res.code === 0) { toast.success('已提交'); this.formVisible = false; this.form = this.blank(); this.load() } else f.error = res.message || '提交失败'
     },
     async review(x, action) {
-      if (action === 'REJECT') { this.rejDlg = { visible: true, feeId: x.feeId }; return }
+      if (action === 'REJECT') { this.rejDlg = { visible: true, feeId: x.feeId, version: x.version }; return }
       this.acting = x.feeId
-      const res = await studentAffairsApi.reviewFeeReduction(x.feeId, action, '')
+      const res = await studentAffairsApi.reviewFeeReduction(x.feeId, action, '', x.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
     },
     async submitReject({ reason }) {
       const d = this.rejDlg
       this.acting = d.feeId
-      const res = await studentAffairsApi.reviewFeeReduction(d.feeId, 'REJECT', reason.trim())
+      const res = await studentAffairsApi.reviewFeeReduction(d.feeId, 'REJECT', reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
     },
     async issue(x) {
       this.acting = x.feeId
-      const res = await studentAffairsApi.issueFeeReduction(x.feeId)
+      const res = await studentAffairsApi.issueFeeReduction(x.feeId, x.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已发放'); this.load() } else toast.error(res.message || '发放失败')
     },

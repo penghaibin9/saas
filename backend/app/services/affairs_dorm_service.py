@@ -4,12 +4,13 @@
 生成器：给「层数×每层房数×每间床位」一键铺满整栋。入住/退宿/调宿事务内回写 t_cs_dorm_record。
 学生选床级联：选楼(按性别过滤)→选层/房(带空床数)→选空床→入住。检查异常→回写 t_cs_dorm_exception+生成风险(DORM)。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 import json
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
@@ -175,6 +176,14 @@ def _dorm_scope_building_ids(db, user):
     None=全部可见（学工处/学院/超管等非宿管角色）；set()=宿管未分配楼栋（看不到任何楼）。
     键派生与 resolve_teacher_scope 一致（mock u_dorm01→dorm01 / ctx_<login> / 姓名兜底），匹配 DormBuilding.manager_teacher_key。
     另兼容 loginName / 工号（师生导入后常见把楼栋绑到工号）。"""
+    from app.core.affairs_security import build_affairs_context
+    scope_ctx = build_affairs_context(user, db)
+    if scope_ctx.scope_type == "TENANT_ALL":
+        return None
+    if scope_ctx.scope_type == "DORM_BUILDING":
+        return set(scope_ctx.dorm_building_ids)
+    return set()
+
     from app.core.permissions import is_super_admin
     from app.models import DormBuilding
     u = user or {}
@@ -382,12 +391,27 @@ def checkin(bed_id, user, student_id) -> dict:
         b = db.get(DormBuilding, int(bed.building_id))
         if b and not _gender_ok(b.gender_limit, s.gender):
             raise AppException("DATA_CONFLICT", "学生性别与楼栋限制不符")
-        _release_student_beds(db, s.id)  # 换床：先释放原床
+        # Claim the target before releasing the old bed. The version/status
+        # predicate makes two simultaneous check-ins mutually exclusive.
+        claimed = db.execute(update(DormBed).where(
+            DormBed.id == bed.id,
+            DormBed.tenant_id == _tid(),
+            DormBed.status == "VACANT",
+            DormBed.student_id.is_(None),
+            DormBed.version == bed.version,
+            DormBed.is_deleted.is_(False),
+        ).values(
+            student_id=s.id, status="OCCUPIED", occupied_at=datetime.utcnow(),
+            version=DormBed.version + 1,
+        ))
+        if (claimed.rowcount or 0) != 1:
+            raise AppException("DATA_CONFLICT", "该床位刚刚已被其他人占用，请刷新后重试")
+        db.refresh(bed)
+        _release_student_beds(db, s.id, exclude_bed_id=bed.id)
         room = db.get(DormRoom, int(bed.room_id))
         rec_id = _writeback_dorm_record(db, s.id, b.building_name if b else "",
                                         room.room_no if room else "", bed.bed_no)
-        bed.student_id, bed.status, bed.occupied_at = s.id, "OCCUPIED", datetime.utcnow()
-        bed.cs_dorm_record_id, bed.version = rec_id, bed.version + 1
+        bed.cs_dorm_record_id = rec_id
         _audit(db, "DORM_BED", bed.id, "CHECKIN", f"student={s.id}")
         db.commit()
         return {"bedId": str(bed.id), "bedNo": bed.bed_no, "studentId": str(s.id),
@@ -510,7 +534,7 @@ def review_transfer(transfer_id, user, action, reason="", expected_version=None)
                 _require_dorm_scope(db, to_bed_for_scope.building_id, user)
         if t.status not in TRANSFER_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该调宿当前状态不可审批")
-        check_version(t.version, expected_version)
+        atomic_claim_version(db, t, expected_version)
         from app.models import StudentProfile
         stu = db.get(StudentProfile, int(t.student_id)) if t.student_id else None
         stu_name = (stu.real_name if stu else "") or ""
@@ -916,7 +940,7 @@ def handle_exception(exception_id, user, note="", expected_version=None):
         _require_dorm_scope(db, building_id, user)
         if x.status == "HANDLED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该异常已处置")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.status = "HANDLED"
         _todo_done(db, x.id, TODO_EXCEPTION)
         _audit(db, "DORM_EXCEPTION", x.id, "HANDLE", note.strip()[:100])

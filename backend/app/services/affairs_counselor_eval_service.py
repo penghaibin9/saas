@@ -5,7 +5,8 @@ weighted_total_score = 按指标 weight 的加权平均 Σscore×weight/Σweight
 留痕 AuditTrail(biz_type=COUNSELOR_EVAL)。
 考评为管理端配置数据，按租户可见（学工处/学院管理），不含学生 PII。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -206,7 +207,7 @@ def publish_eval(eval_id, user, expected_version=None) -> dict:
         e = _load(db, eval_id)
         if e.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布")
-        check_version(e.version, expected_version)
+        atomic_claim_version(db, e, expected_version)
         e.status, e.published_at, e.version = "PUBLISHED", datetime.utcnow(), e.version + 1
         _audit(db, e.id, "EVAL_PUBLISH", "")
         db.commit(); db.refresh(e)
@@ -245,7 +246,7 @@ def review_eval_appeal(eval_id, body, user) -> dict:
         e = _load(db, eval_id)
         if e.appeal_status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "无待复核申诉")
-        check_version(e.version, getattr(body, "version", None))
+        atomic_claim_version(db, e, getattr(body, "version", None))
         e.appeal_status, e.appeal_result, e.appeal_opinion = "REVIEWED", result, opinion
         new_scores = getattr(body, "scores", None)
         if result == "ADJUSTED" and isinstance(new_scores, dict) and new_scores:

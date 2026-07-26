@@ -5,7 +5,8 @@ CONFIRMED 唯一出口生成 t_affairs_activity_credit（(student,activity,type)
 数据范围复用 _allowed_class_ids；业务留痕复用 AffairsAuditTrail；进360 复用 StudentStageEvent。
 依据中青联发〔2018〕5号《第二课堂成绩单》记录评价/价值应用体系（已核验原文）。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -154,7 +155,7 @@ def update_activity(activity_id, body, user) -> dict:
 def publish_activity(activity_id, user, action="PUBLISH", reason="", expected_version=None) -> dict:
     with session() as db:
         a = _load(db, activity_id)
-        check_version(a.version, expected_version)
+        atomic_claim_version(db, a, expected_version)
         if action == "PUBLISH":
             if a.status != "DRAFT":
                 raise AppException("DATA_CONFLICT", "仅草稿可发布")
@@ -187,7 +188,7 @@ def transition_activity(activity_id, user, action, expected_version=None) -> dic
         a = _load(db, activity_id)
         if a.status != need:
             raise AppException("DATA_CONFLICT", f"当前状态不可{action}")
-        check_version(a.version, expected_version)
+        atomic_claim_version(db, a, expected_version)
         a.status = nxt; a.version += 1
         _audit(db, a.id, f"ACTIVITY_{action}")
         db.commit(); db.refresh(a)
@@ -201,7 +202,7 @@ def confirm_activity(activity_id, user, expected_version=None) -> dict:
         a = _load(db, activity_id)
         if a.status != "FINISHED":
             raise AppException("DATA_CONFLICT", "仅已结束活动可确认")
-        check_version(a.version, expected_version)
+        atomic_claim_version(db, a, expected_version)
         signups = db.scalars(select(AffairsActivitySignup).where(
             AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == a.id,
             AffairsActivitySignup.signup_status == "CHECKED_IN",
@@ -243,7 +244,7 @@ def unconfirm_activity(activity_id, user, reason="", expected_version=None) -> d
         a = _load(db, activity_id)
         if a.status != "CONFIRMED":
             raise AppException("DATA_CONFLICT", "仅已确认活动可撤销")
-        check_version(a.version, expected_version)
+        atomic_claim_version(db, a, expected_version)
         for c in db.scalars(select(AffairsActivityCredit).where(
                 AffairsActivityCredit.tenant_id == _tid(), AffairsActivityCredit.activity_id == a.id)).all():
             db.delete(c)
@@ -262,7 +263,7 @@ def archive_activity(activity_id, user, expected_version=None) -> dict:
         a = _load(db, activity_id)
         if a.status != "CONFIRMED":
             raise AppException("DATA_CONFLICT", "仅已确认活动可归档")
-        check_version(a.version, expected_version)
+        atomic_claim_version(db, a, expected_version)
         a.status = "ARCHIVED"; a.version += 1
         _audit(db, a.id, "ACTIVITY_ARCHIVE")
         db.commit(); db.refresh(a)
@@ -628,7 +629,7 @@ def confirm_volunteer(record_id, user, expected_version=None) -> dict:
         _vol_scope_or_403(db, r.student_id, user)
         if r.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待认定记录可认定")
-        check_version(r.version, expected_version)
+        atomic_claim_version(db, r, expected_version)
         credit = AffairsActivityCredit(tenant_id=_tid(), student_id=r.student_id, activity_id=r.activity_id,
                                        credit_type="VOLUNTEER_HOUR", credit_value=r.hours,
                                        category_code=VOL_CATEGORY, source="VOLUNTEER_RECORD",
@@ -657,7 +658,7 @@ def reject_volunteer(record_id, user, reason="", expected_version=None) -> dict:
         _vol_scope_or_403(db, r.student_id, user)
         if r.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待认定记录可驳回")
-        check_version(r.version, expected_version)
+        atomic_claim_version(db, r, expected_version)
         r.status, r.reject_reason, r.version = "REJECTED", reason.strip(), r.version + 1
         _audit(db, r.id, "VOLUNTEER_REJECT", reason.strip())
         db.commit(); db.refresh(r)
@@ -754,7 +755,7 @@ def review_credit_appeal(appeal_id, body, user) -> dict:
             raise not_found("申诉不存在")
         if a.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该申诉已审核")
-        check_version(a.version, getattr(body, "version", None))
+        atomic_claim_version(db, a, getattr(body, "version", None))
         if action == "APPROVE":
             val = float(a.claim_value or 0)
             if val <= 0:

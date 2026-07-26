@@ -3,7 +3,8 @@
 金额按角色脱敏（复用 funding 的 _amount_view）；不落银行卡全号。留痕 AuditTrail(biz_type=FUNDING_EXT)。
 数据范围复用 _allowed_class_ids（辅导员限本班）。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -166,7 +167,7 @@ def act_work_study(record_id, action, user, reason="", *, expected_version=None)
     with session() as db:
         r = _load_ws(db, record_id)
         _scope_or_403(db, r.student_id, user)
-        check_version(r.version, expected_version)
+        atomic_claim_version(db, r, expected_version)
         if action == "APPROVE":
             if r.status != "APPLIED":
                 raise AppException("DATA_CONFLICT", "仅待审核可录用")
@@ -248,7 +249,7 @@ def advance_loan(loan_id, user, *, expected_version=None) -> dict:
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("贷款记录不存在")
         _scope_or_403(db, x.student_id, user)
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         nxt = _LOAN_NEXT.get(x.status)
         if not nxt:
             raise AppException("DATA_CONFLICT", "已确认，无需再推进")
@@ -316,7 +317,7 @@ def review_reduction(fee_id, body, user) -> dict:
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("记录不存在")
         _scope_or_403(db, x.student_id, user)
-        check_version(x.version, getattr(body, "version", None))
+        atomic_claim_version(db, x, getattr(body, "version", None))
         if x.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅待审核可处理")
         if action == "APPROVE":
@@ -341,7 +342,7 @@ def issue_reduction(fee_id, user, *, expected_version=None) -> dict:
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("记录不存在")
         _scope_or_403(db, x.student_id, user)
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         if x.status != "APPROVED":
             raise AppException("DATA_CONFLICT", "仅已批准可发放")
         x.status, x.issued_at, x.version = "ISSUED", datetime.utcnow(), x.version + 1

@@ -2,7 +2,8 @@
 
 班级班干部复用既有 AffairsClassCadre（t_affairs_class_cadre）。留痕 AffairsAuditTrail(biz_type=ORG)。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -150,7 +151,7 @@ def dismiss(position_id, user, *, expected_version=None) -> dict:
             raise not_found("任职记录不存在")
         if p.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "该任职已卸任")
-        check_version(p.version, expected_version)
+        atomic_claim_version(db, p, expected_version)
         p.status, p.removed_at, p.version = "REMOVED", datetime.utcnow(), p.version + 1
         _audit(db, p.org_id, "ORG_DISMISS", f"position={position_id}")
         db.commit()

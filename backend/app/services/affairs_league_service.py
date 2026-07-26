@@ -4,7 +4,8 @@
 不写死各校时限/审批权限（属校本制度，见历史欠账）。材料仅存 file_id 脱敏，列表/时间线不返回明文。
 政治面貌回写学生主档为跨域集成，本波次不做（见历史欠账）。留痕 AffairsAuditTrail(biz_type=LEAGUE)。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -132,7 +133,7 @@ def advance_stage(dev_id, body, user) -> dict:
         d = _load(db, dev_id)
         if d.status != "ONGOING":
             raise AppException("DATA_CONFLICT", "该台账非发展中，不可推进")
-        check_version(d.version, getattr(body, "version", None))
+        atomic_claim_version(db, d, getattr(body, "version", None))
         cur_i = PARTY_STAGES.index(d.current_stage) if d.current_stage in PARTY_STAGES else -1
         to_i = PARTY_STAGES.index(to_stage)
         if to_i <= cur_i:
@@ -162,7 +163,7 @@ def terminate_dev(dev_id, user, reason="", expected_version=None) -> dict:
         d = _load(db, dev_id)
         if d.status != "ONGOING":
             raise AppException("DATA_CONFLICT", "仅发展中台账可终止")
-        check_version(d.version, expected_version)
+        atomic_claim_version(db, d, expected_version)
         d.status, d.version = "TERMINATED", d.version + 1
         db.add(AffairsLeagueDevStage(tenant_id=_tid(), dev_id=d.id, from_stage=d.current_stage,
                                      to_stage=d.current_stage, operator=_op()[0],

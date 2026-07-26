@@ -161,16 +161,16 @@ export default {
       else { d.error = res.message || '申请失败' }
     },
     async act(r, action) {
-      if (action === 'TERMINATE') { this.terDlg = { visible: true, recordId: r.recordId }; return }
+      if (action === 'TERMINATE') { this.terDlg = { visible: true, recordId: r.recordId, version: r.version }; return }
       this.acting = r.recordId
-      const res = await studentAffairsApi.actWorkStudy(r.recordId, action, '')
+      const res = await studentAffairsApi.actWorkStudy(r.recordId, action, '', r.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
     },
     async submitTerminate({ reason }) {
       const d = this.terDlg
       this.acting = d.recordId
-      const res = await studentAffairsApi.actWorkStudy(d.recordId, 'TERMINATE', reason.trim())
+      const res = await studentAffairsApi.actWorkStudy(d.recordId, 'TERMINATE', reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
     },

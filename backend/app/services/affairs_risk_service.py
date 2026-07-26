@@ -4,7 +4,8 @@
 NEW→ASSIGNED→PROCESSING→(FOLLOWING)→CLOSED；转办/升级/接管/重开；超时扫描(分派/升级)幂等。
 心理(MENTAL)来源明细仅授权角色可见，普通教师仅见"需关注"标记。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime, timedelta
 
@@ -72,7 +73,7 @@ def list_owner_candidates(keyword: str | None = None) -> list[dict]:
                  "userType": u.user_type} for u in rows]
 
 
-def _validate_owner(db, owner_id) -> int:
+def _validate_owner(db, owner_id, student_id=None) -> int:
     """责任人校验：必须是存在、同租户、在职、且可处置风险的真实账号。"""
     from app.models import User
     raw = str(owner_id or "").strip()
@@ -83,6 +84,31 @@ def _validate_owner(db, owner_id) -> int:
         raise AppException("VALIDATION_ERROR", "责任人不存在或已停用")
     if u.id not in _owner_role_user_ids(db):
         raise AppException("VALIDATION_ERROR", "该账号无学工风险处置权限，不能作为责任人")
+    if student_id is not None:
+        from app.core.affairs_security import build_affairs_context
+        from app.models import Role, UserRole
+        roles = db.scalars(select(Role).join(UserRole, UserRole.role_id == Role.id).where(
+            UserRole.tenant_id == _tid(), UserRole.user_id == u.id,
+            UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+            Role.tenant_id == _tid(), Role.status == "ACTIVE", Role.is_deleted.is_(False),
+        )).all()
+        covered = False
+        for role in roles:
+            candidate = {
+                "userId": str(u.id), "loginName": u.login_name,
+                "currentRoleCode": role.role_code, "tenantId": str(_tid()),
+                "activeContextId": f"role:{role.id}",
+            }
+            if not has_permission(candidate, "studentAffairs.risk.handle"):
+                continue
+            try:
+                build_affairs_context(candidate, db).require_student(db, student_id)
+                covered = True
+                break
+            except AppException:
+                continue
+        if not covered:
+            raise AppException("VALIDATION_ERROR", "责任人的数据范围不覆盖该学生，不能分派")
     return int(u.id)
 
 L_RISK = {
@@ -388,8 +414,8 @@ def assign(risk_id, user, owner_id, expected_version=None) -> dict:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
         to_status = _transition_or_conflict(x, "ASSIGN")
-        check_version(x.version, expected_version)
-        valid_owner_id = _validate_owner(db, owner_id)
+        atomic_claim_version(db, x, expected_version)
+        valid_owner_id = _validate_owner(db, owner_id, x.student_id)
         frm = x.status
         x.owner_id, x.status, x.assigned_at, x.escalated_at, x.version = \
             valid_owner_id, to_status, datetime.utcnow(), None, x.version + 1
@@ -415,7 +441,7 @@ def process(risk_id, user, content="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="填写处置")
         to_status = _transition_or_conflict(x, "PROCESS")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         frm = x.status
         x.status, x.version = to_status, x.version + 1
         _handle(db, x.id, "PROCESS", content.strip(), frm, to_status)
@@ -432,7 +458,7 @@ def follow(risk_id, user, content="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="转跟进")
         to_status = _transition_or_conflict(x, "FOLLOW")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         frm = x.status
         x.status, x.version = to_status, x.version + 1
         _handle(db, x.id, "FOLLOW", (content or "").strip(), frm, to_status)
@@ -449,8 +475,8 @@ def transfer(risk_id, user, new_owner_id, reason="", expected_version=None) -> d
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="转办")
         to_status = _transition_or_conflict(x, "TRANSFER")
-        check_version(x.version, expected_version)
-        valid_owner_id = _validate_owner(db, new_owner_id)
+        atomic_claim_version(db, x, expected_version)
+        valid_owner_id = _validate_owner(db, new_owner_id, x.student_id)
         frm = x.status
         _handle(db, x.id, "TRANSFER", f"转办：{reason}", frm, to_status)
         x.owner_id, x.status, x.assigned_at, x.version = \
@@ -473,7 +499,7 @@ def escalate(risk_id, user, reason="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="升级")
         to_status = _transition_or_conflict(x, "ESCALATE")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         frm = x.status
         x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
         x.status, x.escalated_at, x.version = to_status, datetime.utcnow(), x.version + 1
@@ -493,7 +519,7 @@ def takeover(risk_id, user, content="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         _require_takeover_authority(db, user)
         to_status = _transition_or_conflict(x, "TAKEOVER")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         frm = x.status
         uid = _uid_int(user)
         x.status, x.version = to_status, x.version + 1
@@ -517,7 +543,7 @@ def close(risk_id, user, conclusion="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         _require_owner_or_admin(db, x, user, label="关闭")
         to_status = _transition_or_conflict(x, "CLOSE")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         if _handle_count(db, x.id) == 0:
             raise AppException("DATA_CONFLICT", "关闭前须至少一条处置记录")
         frm = x.status
@@ -541,7 +567,7 @@ def reopen(risk_id, user, reason="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         _require_takeover_authority(db, user)  # 重开属上级动作，防同班互改
         to_status = _transition_or_conflict(x, "REOPEN")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.status, x.version = to_status, x.version + 1
         _handle(db, x.id, "REOPEN", (reason or "复发重开").strip(), "CLOSED", to_status)
         _msg(db, x.owner_id, "风险重开", reason or "风险复发已重开", "RISK_ALERT", x.id)

@@ -163,12 +163,12 @@ export default {
       if (res.code === 0) { d.visible = false; toast.success('申诉已提交'); this.load() } else toast.error(res.message || '提交失败')
     },
     openReview(o) {
-      this.revDlg = { visible: true, appealId: o.appealId, result: 'OVERRULED' }
+      this.revDlg = { visible: true, appealId: o.appealId, result: 'OVERRULED', version: o.version }
     },
     async submitReview({ reason }) {
       const d = this.revDlg
       this.acting = d.appealId
-      const res = await studentAffairsApi.reviewFundingAppeal(d.appealId, d.result, reason.trim())
+      const res = await studentAffairsApi.reviewFundingAppeal(d.appealId, d.result, reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
     },

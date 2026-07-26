@@ -163,16 +163,16 @@ export default {
       if (res.code === 0) { toast.success('申诉已提交'); this.formVisible = false; this.load() } else m.error = res.message || '提交失败'
     },
     async review(a, action) {
-      if (action === 'REJECT') { this.rejDlg = { visible: true, appealId: a.appealId }; return }
+      if (action === 'REJECT') { this.rejDlg = { visible: true, appealId: a.appealId, version: a.version }; return }
       this.acting = a.appealId
-      const res = await studentAffairsApi.reviewCreditAppeal(a.appealId, action, '')
+      const res = await studentAffairsApi.reviewCreditAppeal(a.appealId, action, '', a.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已通过并补记'); this.load() } else toast.error(res.message || '审核失败')
     },
     async submitReject({ reason }) {
       const d = this.rejDlg
       this.acting = d.appealId
-      const res = await studentAffairsApi.reviewCreditAppeal(d.appealId, 'REJECT', reason.trim())
+      const res = await studentAffairsApi.reviewCreditAppeal(d.appealId, 'REJECT', reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已驳回'); this.load() } else toast.error(res.message || '审核失败')
     },

@@ -524,8 +524,8 @@ export const studentAffairsApi = {
   applyWorkStudy(postId, studentId) {
     return callStrict(() => request(`/student-affairs/work-study/posts/${postId}/apply`, { method: 'POST', body: { studentId } }))
   },
-  actWorkStudy(recordId, action, reason = '') {
-    return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/action`, { method: 'POST', body: { action, reason } }))
+  actWorkStudy(recordId, action, reason = '', version) {
+    return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/action`, { method: 'POST', body: { action, reason, version } }))
   },
   getWorkStudyMonthly(recordId) {
     return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/monthly`))
@@ -541,8 +541,8 @@ export const studentAffairsApi = {
   registerLoan(body) {
     return callStrict(() => request('/student-affairs/loans', { method: 'POST', body }))
   },
-  advanceLoan(loanId) {
-    return callStrict(() => request(`/student-affairs/loans/${loanId}/advance`, { method: 'POST', body: {} }))
+  advanceLoan(loanId, version) {
+    return callStrict(() => request(`/student-affairs/loans/${loanId}/advance`, { method: 'POST', body: { version } }))
   },
   getFeeReductions({ itemType = '', status = '' } = {}) {
     const params = {}; if (itemType) params.itemType = itemType; if (status) params.status = status
@@ -551,11 +551,11 @@ export const studentAffairsApi = {
   submitFeeReduction(body) {
     return callStrict(() => request('/student-affairs/fee-reductions', { method: 'POST', body }))
   },
-  reviewFeeReduction(feeId, action, opinion = '') {
-    return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/review`, { method: 'POST', body: { action, opinion } }))
+  reviewFeeReduction(feeId, action, opinion = '', version) {
+    return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/review`, { method: 'POST', body: { action, opinion, version } }))
   },
-  issueFeeReduction(feeId) {
-    return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/issue`, { method: 'POST', body: {} }))
+  issueFeeReduction(feeId, version) {
+    return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/issue`, { method: 'POST', body: { version } }))
   },
 
   /** 违纪处分统计（按类型/状态聚合 + 投影对账）。 */
@@ -710,8 +710,8 @@ export const studentAffairsApi = {
   },
 
   /** 复核资助申诉。result: SUSTAINED / OVERRULED。 */
-  reviewFundingAppeal(appealId, result, opinion) {
-    return callStrict(() => request(`/student-affairs/funding/appeals/${appealId}/review`, { method: 'POST', body: { result, opinion } }))
+  reviewFundingAppeal(appealId, result, opinion, version) {
+    return callStrict(() => request(`/student-affairs/funding/appeals/${appealId}/review`, { method: 'POST', body: { result, opinion, version } }))
   },
 
   // ─────────────── 家校联系（P6 · /student-affairs/students/{id}/family-contacts） ───────────────
@@ -948,8 +948,8 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/second-class/appeals', { method: 'POST', body }))
   },
   /** 积分申诉审核。action: APPROVE/REJECT。 */
-  reviewCreditAppeal(appealId, action, opinion = '') {
-    return callStrict(() => request(`/student-affairs/second-class/appeals/${appealId}/review`, { method: 'POST', body: { action, opinion } }))
+  reviewCreditAppeal(appealId, action, opinion = '', version) {
+    return callStrict(() => request(`/student-affairs/second-class/appeals/${appealId}/review`, { method: 'POST', body: { action, opinion, version } }))
   },
   /** 志愿时长补录列表。 */
   getVolunteerRecords({ status = '', page = 1, pageSize = 100 } = {}) {
@@ -1025,8 +1025,8 @@ export const studentAffairsApi = {
   appointOrgPosition(orgId, body) {
     return callStrict(() => request(`/student-affairs/organizations/${orgId}/positions`, { method: 'POST', body }))
   },
-  dismissOrgPosition(positionId) {
-    return callStrict(() => request(`/student-affairs/organizations/positions/${positionId}/dismiss`, { method: 'POST', body: {} }))
+  dismissOrgPosition(positionId, version) {
+    return callStrict(() => request(`/student-affairs/organizations/positions/${positionId}/dismiss`, { method: 'POST', body: { version } }))
   },
   /** 学生干部履历（组织任职+班级班干部）。 */
   getCadreResume(studentId) {
@@ -1049,8 +1049,8 @@ export const studentAffairsApi = {
   advanceLeagueStage(devId, body) {
     return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/advance`, { method: 'POST', body }))
   },
-  terminateLeagueDev(devId, reason) {
-    return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/terminate`, { method: 'POST', body: { reason } }))
+  terminateLeagueDev(devId, reason, version) {
+    return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/terminate`, { method: 'POST', body: { reason, version } }))
   },
   getLeagueStages(devId) {
     return callStrict(() => request(`/student-affairs/party-league/dev/${devId}/stages`))

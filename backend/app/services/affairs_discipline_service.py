@@ -4,7 +4,8 @@
 解除：EFFECTIVE→REMOVE_REVIEW(辅→院→处三节点)→REMOVED(更新投影 record_status,进360,历史保留)。
 硬约束：EFFECTIVE case 数 == ACTIVE 投影行数（对账口径）；EFFECTIVE 不可编辑(409)。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -260,7 +261,7 @@ def submit(case_id, user, expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("REGISTERED", "RETURNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅登记/退回的处分可提交")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.status, x.version = "COLLEGE_REVIEW", x.version + 1
         assignee = _assignee_for(db, "COLLEGE_REVIEW", x.student_id)
         if not x.workflow_instance_id:
@@ -281,7 +282,7 @@ def cancel(case_id, user, expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("REGISTERED", "RETURNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅登记/退回的处分可撤销")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.status, x.version = "CANCELLED", x.version + 1
         _todo_done(db, x.id)
         _audit(db, x.id, "CANCELLED")
@@ -334,7 +335,7 @@ def review(case_id, user, action, reason="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该处分当前状态不可审批，请刷新")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         _check_disc_node(db, x.status, user, workflow_instance_id=x.workflow_instance_id)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
@@ -389,7 +390,7 @@ def submit_remove(case_id, user, reason="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "处分未生效或已解除，不可发起解除")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         # 在途解除申请查重 → 409
         dup = db.scalars(select(DisciplineRemoveApply).where(
             DisciplineRemoveApply.tenant_id == _tid(), DisciplineRemoveApply.case_id == x.id,
@@ -425,7 +426,7 @@ def review_remove(case_id, user, action, reason="", expected_version=None) -> di
         _scope_or_403(db, x.student_id, user)
         if x.status != "REMOVE_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该处分不在解除审批状态")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         ra = db.scalars(select(DisciplineRemoveApply).where(
             DisciplineRemoveApply.tenant_id == _tid(), DisciplineRemoveApply.case_id == x.id,
             DisciplineRemoveApply.status.notin_(["APPROVED", "REJECTED"]),
@@ -609,7 +610,7 @@ def deliver_case(case_id, body, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效处分可登记送达")
-        check_version(x.version, getattr(body, "version", None))
+        atomic_claim_version(db, x, getattr(body, "version", None))
         x.delivered_at, x.delivery_method = datetime.utcnow(), method
         x.delivery_remark, x.version = getattr(body, "remark", None), x.version + 1
         _audit(db, x.id, "DISCIPLINE_DELIVER", method)
@@ -694,7 +695,7 @@ def review_appeal(appeal_id, body, user) -> dict:
         _scope_or_403(db, a.student_id, user)
         if a.status not in ("SUBMITTED", "REVIEWING"):
             raise AppException("DATA_CONFLICT", "该申诉已结案")
-        check_version(a.version, getattr(body, "version", None))
+        atomic_claim_version(db, a, getattr(body, "version", None))
         status_map = {"UPHELD": "UPHELD", "REVISED": "REVISED", "REVOKED": "REVOKED"}
         a.status, a.result = status_map[result], result
         a.review_opinion, a.reviewer = opinion, _op()[0]

@@ -148,7 +148,13 @@ class StudentAffairsSecurityContext:
         return int(building_id) in self.dorm_building_ids if building_id is not None else False
 
     def has_sensitive(self, code: str) -> bool:
-        return code in self.sensitive_permissions
+        if "*" in self.permission_codes:
+            return True
+        return any(
+            pattern == code
+            or (pattern.endswith(".*") and code.startswith(pattern[:-1]))
+            for pattern in self.permission_codes
+        )
 
 
 # ── 学生主档目录数据范围（/students 公共选择器 + 学生主档；fail-closed）──
@@ -204,7 +210,15 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
     ctx = StudentAffairsSecurityContext(
         user_id=str(u.get("userId") or ""), login_name=u.get("loginName") or "",
         tenant_id=tenant_id, role_codes={role} if role else set(),
-        permission_codes=granted, sensitive_permissions=granted & _SENSITIVE_CODES,
+        permission_codes=granted,
+        sensitive_permissions={
+            code for code in _SENSITIVE_CODES
+            if "*" in granted or any(
+                pattern == code
+                or (pattern.endswith(".*") and code.startswith(pattern[:-1]))
+                for pattern in granted
+            )
+        },
         scope_type="NONE")
 
     # 学生 → SELF
@@ -271,8 +285,9 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
                 StudentProfile.tenant_id == tenant_id, StudentProfile.student_no.in_(list(psy_nos)))).all()
             ctx.psychology_student_ids = {s.id for s in studs}
 
-        # 宿管楼栋（按 manager_teacher_key）
-        if role in _DORM_ROLES:
+        # Explicit DORM_BUILDING scope applies to tenant-defined roles too.
+        has_dorm_scope = any((r.scope_type or "").upper() == "DORM_BUILDING" for r in rows)
+        if role in _DORM_ROLES or has_dorm_scope:
             blds = db.scalars(select(DormBuilding).where(
                 DormBuilding.tenant_id == tenant_id, DormBuilding.is_deleted.is_(False),
                 DormBuilding.manager_teacher_key.in_(list(keys)))).all()
@@ -282,15 +297,15 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             cm.__exit__(None, None, None)
 
     # scope_type 裁决
-    if role in _DORM_ROLES:
+    if role in _DORM_ROLES or has_dorm_scope:
         ctx.scope_type = "DORM_BUILDING"
         ctx.is_scope_configured = bool(ctx.dorm_building_ids)
         ctx.scope_source = "SCOPE_TABLE_DORM"
-    elif role in _PSY_ROLES:
+    elif ctx.psychology_student_ids:
         ctx.scope_type = "STUDENT"
         ctx.is_scope_configured = bool(ctx.psychology_student_ids)
         ctx.scope_source = "SCOPE_TABLE_PSY"
-    elif role in _COLLEGE_ROLES:
+    elif ctx.college_ids:
         ctx.scope_type = "COLLEGE"
         ctx.is_scope_configured = bool(ctx.college_ids)
         ctx.scope_source = "SCOPE_TABLE_COLLEGE"

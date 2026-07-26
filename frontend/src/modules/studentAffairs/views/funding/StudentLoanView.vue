@@ -107,7 +107,7 @@ export default {
     },
     async advance(l) {
       this.acting = l.loanId
-      const res = await studentAffairsApi.advanceLoan(l.loanId)
+      const res = await studentAffairsApi.advanceLoan(l.loanId, l.version)
       this.acting = ''
       if (res.code === 0) { toast.success('已推进'); this.load() } else toast.error(res.message || '操作失败')
     },

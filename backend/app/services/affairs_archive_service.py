@@ -3,7 +3,8 @@
 批次：DRAFT→COLLECTING→COLLEGE_REVIEW→SA_CONFIRM→ARCHIVED。
 档案包：每生一行，缺项清单；确认归档时登记 t_export_task（水印包 sha256），不建归档文件表。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 import json
 from datetime import datetime
@@ -84,7 +85,7 @@ def collect(batch_id, user, student_ids, expected_version=None) -> dict:
             raise not_found("归档批次不存在")
         if b.status not in ("DRAFT", "COLLECTING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次不可再收集")
-        check_version(b.version, expected_version)
+        atomic_claim_version(db, b, expected_version)
         made = 0
         for sid in sids:
             s = db.get(StudentProfile, sid)
@@ -115,7 +116,7 @@ def advance(batch_id, user, action="APPROVE", expected_version=None) -> dict:
             raise not_found("归档批次不存在")
         if b.status not in ("COLLECTING", "COLLEGE_REVIEW", "SA_CONFIRM"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次当前状态不可流转")
-        check_version(b.version, expected_version)
+        atomic_claim_version(db, b, expected_version)
         i = BATCH_FLOW.index(b.status)
         nxt = BATCH_FLOW[i + 1]
         b.status, b.version = nxt, b.version + 1

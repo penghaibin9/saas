@@ -9,7 +9,8 @@
 - 系统不做任何自动诊断：等级/事由均人工登记。
 业务流转 → t_affairs_audit_trail；敏感明细查看 → t_security_audit_log(SENSITIVE_VIEW)。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -225,7 +226,7 @@ def follow_referral(user, ref_id, content="", expected_version=None) -> dict:
         _scope_or_403(user, psy_scope_ids(db, user), x.student_id)
         if x.status not in ("REFERRED", "FOLLOWING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可回访")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.status, x.last_follow_time, x.version = "FOLLOWING", datetime.utcnow(), x.version + 1
         _biz_audit(db, x.id, "FOLLOW", content.strip()[:100])
         db.commit(); db.refresh(x)
@@ -244,7 +245,7 @@ def escalate_crisis(user, ref_id, content="", expected_version=None) -> dict:
         if x.risk_id:
             db.refresh(x)
             return _ref_row(x, _stu(db, x.student_id), reveal=True)
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         r = AffairsRiskRecord(tenant_id=_tid(), student_id=int(x.student_id), source="MENTAL",
                               source_ref_id=int(x.id), risk_level="CRITICAL",
                               title="心理危机升级", detail="[心理危机·明细受限]", status="NEW")
@@ -264,7 +265,7 @@ def close_referral(user, ref_id, conclusion="", expected_version=None) -> dict:
         _scope_or_403(user, psy_scope_ids(db, user), x.student_id)
         if x.status == "CLOSED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该转介已关闭")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.status, x.closed_reason, x.version = "CLOSED", conclusion.strip(), x.version + 1
         _biz_audit(db, x.id, "CLOSE", conclusion.strip()[:100])
         db.commit(); db.refresh(x)

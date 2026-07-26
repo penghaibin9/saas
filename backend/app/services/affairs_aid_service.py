@@ -6,7 +6,8 @@ PUBLICITY/APPROVED/REJECTED/ADJUST_REVIEW/ARCHIVED（NOT_STARTED 为批次前置
 公示期满(可配 0 天快测)→APPROVED，写 level_history 进困难库 + StageEvent 进 360。
 家庭经济：列表/详情默认脱敏，income_encrypted 永不出列表；查看完整走 reveal（sensitiveView 鉴权 + SENSITIVE_VIEW 审计）。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 import json
 from datetime import datetime, timedelta
@@ -448,7 +449,7 @@ def review(apply_id, user, action, level=None, reason="", expected_version=None)
         _scope_or_403(db, x.student_id, user)
         if x.status not in AID_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         _check_node_authority(user, x)
         _check_aid_assignee(db, x, user)
         if action == "APPROVE":
@@ -512,7 +513,7 @@ def resubmit(apply_id, user, expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "DRAFT":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅被退回的申请可重新提交")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         first = AID_NODES[0]
         x.status, x.return_reason, x.version = first, None, x.version + 1
         inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
@@ -587,8 +588,13 @@ def confirm_publicity(apply_id, user, expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在公示状态")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         _assert_no_open_objection(db, x.id)
+        from app.models import AidBatch
+        batch = db.get(AidBatch, int(x.batch_id))
+        days = batch.publicity_days if batch and batch.publicity_days is not None else 5
+        if not x.publicity_at or x.publicity_at + timedelta(days=max(1, days)) > datetime.utcnow():
+            raise AppException("DATA_CONFLICT", "公示期尚未结束，不能提前确认")
         _confirm_one(db, x)
         db.commit()
         _drain_message_outbox()
@@ -608,7 +614,7 @@ def adjust(apply_id, user, target_level, reason="", expected_version=None) -> di
         _scope_or_403(db, x.student_id, user)
         if x.status != "APPROVED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过的认定可发起动态调整")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.status, x.suggest_level, x.version = "ADJUST_REVIEW", target_level, x.version + 1
         assignee = _assignee_for(db, "COUNSELOR_REVIEW", x.student_id)
         _todo_upsert(db, x.id, assignee, x.student_id, f"困难等级调整待审：{s.real_name if s else ''}",
@@ -631,7 +637,7 @@ def approve_adjust(apply_id, user, action="APPROVE", expected_version=None) -> d
         _scope_or_403(db, x.student_id, user)
         if x.status != "ADJUST_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在调整审批状态")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         _check_aid_assignee(db, x, user, todo_type="AID_ADJUST")
         if (action or "").upper() == "APPROVE":
             old = x.final_level
@@ -930,7 +936,7 @@ def review_objection(objection_id, body, user) -> dict:
             raise not_found("异议不存在")
         _scope_or_403(db, o.student_id, user)
         expected_version = body.get("version") if isinstance(body, dict) else getattr(body, "version", None)
-        check_version(o.version, expected_version)
+        atomic_claim_version(db, o, expected_version)
         if o.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该异议已复核")
         o.status, o.result = "CLOSED", result

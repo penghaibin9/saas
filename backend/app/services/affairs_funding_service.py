@@ -6,7 +6,8 @@ GRANTED/REJECTED/RETURNED/CANCELLED/ARCHIVED（勤工 ON_POST/TERMINATED、贷�
 管理端 apply 直达 COUNSELOR_REVIEW 并建 workflow；SCHOOL_REVIEW 通过→PUBLICITY；
 公示期满(可配 0 天)→GRANTED，写 StageEvent 进 360。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 import json
 from datetime import datetime, timedelta
@@ -464,7 +465,7 @@ def review(app_id, user, action, reason="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in FUND_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         _check_fund_review_node(db, x, user)
         if action == "APPROVE":
             inst = _act_task(db, x, "APPROVED", reason or "")
@@ -562,8 +563,13 @@ def confirm_publicity(app_id, user, expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在公示状态")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         _assert_no_open_appeal(db, x.id)
+        from app.models import FundingBatch
+        batch = db.get(FundingBatch, int(x.batch_id))
+        days = batch.publicity_days if batch and batch.publicity_days is not None else 5
+        if not x.publicity_at or x.publicity_at + timedelta(days=max(1, days)) > datetime.utcnow():
+            raise AppException("DATA_CONFLICT", "公示期尚未结束，不能提前确认")
         _grant_one(db, x)
         db.commit()
         _drain_message_outbox()
@@ -680,7 +686,8 @@ def _disb_row(d, user, s=None) -> dict:
             "projectType": d.project_type, "amount": _amount_view(d.amount, user),
             "disburseNo": d.disburse_no or "", "bankLast4": d.bank_last4 or "",
             "bankStatus": d.bank_status, "bankStatusLabel": _L_BANK.get(d.bank_status, d.bank_status),
-            "issuedAt": _iso(d.issued_at), "failReason": d.fail_reason or ""}
+            "issuedAt": _iso(d.issued_at), "failReason": d.fail_reason or "",
+            "version": int(d.version or 0)}
 
 
 def generate_disbursements(batch_id, user) -> dict:
@@ -759,7 +766,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
         _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放，不可重复")
-        check_version(d.version, getattr(body, "version", None))
+        atomic_claim_version(db, d, getattr(body, "version", None))
         d.bank_status, d.issued_at, d.fail_reason = "ISSUED", datetime.utcnow(), None
         d.disburse_no = getattr(body, "disburseNo", None) or d.disburse_no
         last4 = getattr(body, "bankLast4", None)
@@ -783,7 +790,7 @@ def fail_disbursement(disbursement_id, user, reason="", expected_version=None) -
         _scope_or_403(db, d.student_id, user)
         if d.bank_status == "ISSUED":
             raise AppException("DATA_CONFLICT", "已发放不可置失败")
-        check_version(d.version, expected_version)
+        atomic_claim_version(db, d, expected_version)
         d.bank_status, d.fail_reason, d.version = "FAILED", reason.strip(), d.version + 1
         _audit(db, d.id, "FUNDING_DISBURSE_FAIL", reason.strip())
         db.commit(); db.refresh(d)
@@ -918,7 +925,7 @@ def review_appeal(appeal_id, body, user) -> dict:
             raise not_found("申诉不存在")
         _scope_or_403(db, o.student_id, user)
         expected_version = body.get("version") if isinstance(body, dict) else getattr(body, "version", None)
-        check_version(o.version, expected_version)
+        atomic_claim_version(db, o, expected_version)
         if o.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该申诉已复核")
         o.status, o.result = "CLOSED", result

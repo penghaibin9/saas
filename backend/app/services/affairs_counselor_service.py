@@ -3,7 +3,8 @@
 与 TeacherStudentScope 同源：PRIMARY 生效/结束/交接同步 CLASS scope；
 TEMP 到期写路径结束；交接/主责变更迁移班级学生相关待办与风险责任人。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
@@ -179,6 +180,8 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
                 WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False))).all():
             inst = db.get(WorkflowInstance, int(task.instance_id)) if task.instance_id else None
             if not inst or (inst.source_module or "").replace("_", "-") != "student-affairs":
+                continue
+            if (inst.source_biz_type or "").upper() != "LEAVE":
                 continue
             if int(inst.source_biz_id or 0) not in leave_ids:
                 continue
@@ -414,7 +417,7 @@ def handover(user, class_id, from_user_id, to_user_id, reason, version):
         if not from_rows:
             raise not_found("原辅导员没有有效责任关系")
         current = next((x for x in from_rows if x.duty_type == "PRIMARY"), from_rows[0])
-        check_version(current.version, version)
+        atomic_claim_version(db, current, version)
         actor = _actor_id(user)
         old_counselor_id = c.counselor_id
         for x in from_rows:
@@ -451,7 +454,7 @@ def end_assignment(user, assignment_id, reason, version):
         c = _class_in_scope_or_403(db, x.class_id, user)
         if x.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "责任关系已结束")
-        check_version(x.version, version)
+        atomic_claim_version(db, x, version)
         actor = _actor_id(user)
         was_primary = x.duty_type == "PRIMARY"
         old_counselor_id = x.user_id if was_primary else None

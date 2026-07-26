@@ -55,6 +55,35 @@ def _row(a) -> dict:
             "uploadedAt": _iso(a.created_at)}
 
 
+def _require_biz_scope(db, biz_type: str, biz_id, user) -> None:
+    """Resolve the business owner and enforce the caller's student scope."""
+    from app.core.affairs_security import build_affairs_context
+    from app.models import (
+        AffairsLeagueDev, DisciplineAppeal, DisciplineCase, FamilyContactLog,
+        FeeReduction, FundingApplication, StudentLoan,
+    )
+    mappings = {
+        "DISCIPLINE": (DisciplineCase, "student_id"),
+        "DISCIPLINE_APPEAL": (DisciplineAppeal, "student_id"),
+        "LEAGUE": (AffairsLeagueDev, "student_id"),
+        "FUNDING": (FundingApplication, "student_id"),
+        "REDUCTION": (FeeReduction, "student_id"),
+        "LOAN": (StudentLoan, "student_id"),
+        "HOME_SCHOOL": (FamilyContactLog, "student_id"),
+    }
+    mapping = mappings.get(biz_type)
+    if mapping is None:
+        return
+    model, student_attr = mapping
+    obj = db.get(model, int(biz_id))
+    if not obj or getattr(obj, "is_deleted", False) or obj.tenant_id != _tid():
+        raise not_found("业务记录不存在")
+    student_id = getattr(obj, student_attr, None)
+    if not student_id:
+        raise not_found("业务记录未关联学生")
+    build_affairs_context(user, db).require_student(db, student_id)
+
+
 def link_attachment(biz_type, biz_id, file_id, note, user) -> dict:
     """把已上传文件(file_id)关联到业务记录。需 biz 管理权限；file 必须属当前租户。"""
     bt = _norm_biz(biz_type)
@@ -64,6 +93,7 @@ def link_attachment(biz_type, biz_id, file_id, note, user) -> dict:
         raise not_found("文件不存在或无权访问")
     from app.models import AffairsAttachment
     with session() as db:
+        _require_biz_scope(db, bt, biz_id, user)
         a = AffairsAttachment(tenant_id=_tid(), biz_type=bt, biz_id=int(biz_id),
                               file_id=int(meta["fileId"]), file_name=meta.get("fileName"),
                               note=(note or "").strip() or None)
@@ -83,6 +113,7 @@ def list_attachments(biz_type, biz_id, user) -> list[dict]:
     enforce_permission(user, _BIZ_VIEW[bt])
     from app.models import AffairsAttachment
     with session() as db:
+        _require_biz_scope(db, bt, biz_id, user)
         rows = db.scalars(select(AffairsAttachment).where(
             AffairsAttachment.tenant_id == _tid(), AffairsAttachment.biz_type == bt,
             AffairsAttachment.biz_id == int(biz_id),
@@ -103,6 +134,7 @@ def download_attachment(attachment_id, user):
     未授权在 enforce_permission 抛 403 前即拦截；文件丢失返回 None 由端点转 404。"""
     with session() as db:
         a = _load(db, attachment_id)
+        _require_biz_scope(db, a.biz_type, a.biz_id, user)
         bt, fid, fname = a.biz_type, str(a.file_id), a.file_name
     enforce_permission(user, _BIZ_VIEW.get(bt, "studentAffairs.dashboard.view"))
     resolved = file_service.resolve_download(fid, user=user)

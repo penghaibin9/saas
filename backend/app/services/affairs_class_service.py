@@ -5,7 +5,8 @@
 不新建教师账号体系；辅导员/班主任来自 t_class.counselor_id/head_teacher_id（读 t_user 取姓名）。
 辅导员绑定调整（#12，需院/处角色 + scope 同步）本轮不做，见历史欠账。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 import json
 from datetime import datetime
@@ -361,7 +362,7 @@ def collect_assessments(period_id, user, expected_version=None) -> dict:
             raise not_found("考评周期不存在")
         if p.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "考评已发布，不可重新生成")
-        check_version(p.version, expected_version)
+        atomic_claim_version(db, p, expected_version)
         allowed, _ = _allowed_class_ids(db, user)
         q = select(SchoolClass).where(SchoolClass.tenant_id == _tid(),
                                       SchoolClass.is_deleted.is_(False),
@@ -462,7 +463,7 @@ def score_assessment(assessment_id, user, college_score, expected_version=None) 
         p = db.get(AffairsCounselorAssessmentPeriod, int(a.period_id))
         if p and p.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "考评已发布，不可再评分")
-        check_version(a.version, expected_version)
+        atomic_claim_version(db, a, expected_version)
         from app.core.context import get_current_user_ctx
         a.college_score = cs
         a.total_score = round(float(a.auto_score or 0) * 0.6 + cs * 0.4, 1)
@@ -488,7 +489,7 @@ def publish_period(period_id, user, expected_version=None) -> dict:
             raise not_found("考评周期不存在")
         if p.status not in ("COLLECTED", "SCORING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已生成/评分中的考评可发布")
-        check_version(p.version, expected_version)
+        atomic_claim_version(db, p, expected_version)
         p.status = "PUBLISHED"
         p.version += 1
         _recompute_ranks(db, int(period_id))

@@ -3,7 +3,8 @@
 谈话：建计划(批量生成 record)→填记录(→COMPLETED,进360)→跟进/办结/转风险/转家校；
 心理(PSYCHOLOGY)类内容仅授权角色可见全文。家校：联系记录 append-only,查看完整号码必填原因+审计。
 """
-from __future__ import annotations
+
+from app.core.optimistic_lock import atomic_claim_version
 
 import json
 from datetime import datetime
@@ -140,7 +141,7 @@ def record_talk(talk_id, user, content, result="", need_follow=False, expected_v
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("PLANNED", "SCHEDULED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该谈话已记录，不可重复填写")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         x.content, x.result, x.need_follow = content.strip(), result, bool(need_follow)
         x.talk_at = x.talk_at or datetime.utcnow()
         x.status, x.version = ("FOLLOW_UP" if need_follow else "COMPLETED"), x.version + 1
@@ -163,7 +164,7 @@ def follow_up(talk_id, user, action, content="", expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("COMPLETED", "FOLLOW_UP"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已完成/跟进中的谈话可操作")
-        check_version(x.version, expected_version)
+        atomic_claim_version(db, x, expected_version)
         if action == "FOLLOW":
             x.status, x.version = "FOLLOW_UP", x.version + 1
             _audit(db, "TALK", x.id, "FOLLOW", content or "")

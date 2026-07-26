@@ -148,8 +148,8 @@ def db_mode(tmp_path, request):
                     cursor.execute("SET SESSION lock_wait_timeout=15")
                 finally:
                     cursor.close()
-            event.listen(engine, "connect", _set_ddl_lock_timeout)
             if not is_sqlite:
+                event.listen(engine, "connect", _set_ddl_lock_timeout)
                 _ddl_with_retry(lambda: metadata.drop_all(bind=engine))
                 _ddl_with_retry(lambda: metadata.create_all(bind=engine))
             else:

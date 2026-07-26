@@ -101,10 +101,13 @@ def test_m4_transfer_executes(client, db_mode):
     _, beds2 = _first_bed(client, hdr, bid, floor=2)
     old_bed, new_bed = beds1[0]["bedId"], beds2[0]["bedId"]
     client.post(f"{BASE}/dorm/beds/{old_bed}/checkin", headers=hdr, json={"studentId": str(ids["sm"])})
-    tid = client.post(f"{BASE}/dorm/transfers", headers=hdr, json={
-        "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "调宿"}).json()["data"]["transferId"]
-    client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={"action": "APPROVE"})  # 辅导员
-    r = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={"action": "APPROVE"}).json()  # 宿管→执行
+    transfer = client.post(f"{BASE}/dorm/transfers", headers=hdr, json={
+        "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "调宿"}).json()["data"]
+    tid = transfer["transferId"]
+    first = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={
+        "action": "APPROVE", "version": transfer["version"]}).json()["data"]  # 辅导员
+    r = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={
+        "action": "APPROVE", "version": first["version"]}).json()  # 宿管→执行
     assert r["data"]["status"] == "EXECUTED"
     # 原床释放、新床占用
     from app.db.session import get_sessionmaker
