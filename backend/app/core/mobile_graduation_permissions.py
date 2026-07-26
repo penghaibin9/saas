@@ -42,6 +42,7 @@ MOBILE_GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
 }
 
 _STABLE_MENTOR_REQUIRED = {
+    "graduationDesign.dashboard.view",
     "graduationDesign.proposal.view", "graduationDesign.proposal.review",
     "graduationDesign.final.view", "graduationDesign.final.review",
     "graduationDesign.midterm.review", "graduationDesign.review.view",
@@ -97,9 +98,6 @@ def require_mobile_graduation_request_permission(
                 )) or 0)
         if not mentor and not is_external_expert:
             raise no_permission("当前账号未绑定稳定毕设导师/评委身份，已拒绝按姓名授权；请管理员按工号完成绑定。")
-        # Legacy mobile services still contain name-based filters. Until those
-        # queries are fully rewritten to mentor_id, duplicate names must fail
-        # closed; otherwise two teachers named 张伟 can see each other's tasks.
         if mentor and same_name_count > 1:
             raise no_permission("当前学校存在同名毕设教师，移动端已停止按姓名授权；请使用 PC 端或完成稳定 ID 链路升级。")
     return checked
