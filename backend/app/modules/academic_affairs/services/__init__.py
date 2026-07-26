@@ -17,7 +17,7 @@ from . import academic_affairs_makeup_facade as academic_affairs_makeup_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
 from . import academic_affairs_selection_facade as academic_affairs_selection_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
-from . import academic_affairs_task_workbench_facade as academic_affairs_task_service
+from . import academic_affairs_task_security_facade as academic_affairs_task_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
 # 归档路由和业务模块的完整路径导入统一进入最终叠加策略层（含第10域选课名单）。
@@ -36,7 +36,7 @@ sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_
 sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
 # 教学任务生成运行时完整路径导入统计范围函数；统一切到空范围fail-closed版本。
 sys.modules[f"{__name__}.academic_affairs_stats_service"] = academic_affairs_stats_service
-# 教学任务批次、明细、确认链和首屏阻断项统一进入最终工作台facade。
+# 教学任务批次、明细、确认链和管理数据范围统一进入最终安全工作台facade。
 sys.modules[f"{__name__}.academic_affairs_task_service"] = academic_affairs_task_service
 # 移动聚合路由和后续完整路径导入统一去掉教师姓名授权。
 sys.modules[f"{__name__}.mobile_academic_affairs_service"] = mobile_academic_affairs_service
