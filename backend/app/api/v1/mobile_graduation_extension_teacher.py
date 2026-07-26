@@ -8,6 +8,7 @@ from app.core.exceptions import AppException, not_found
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.models.graduation_extension import GraduationDefenseDelay
+from app.modules.graduation.services import graduation_extension_action_service as action_svc
 from app.modules.graduation.services import graduation_extension_safety_service as safety_svc
 from app.services.db_service import _tid, session
 
@@ -44,6 +45,6 @@ def teacher_graduation_delay_review(
         )).first()
         if not row:
             raise AppException("DATA_CONFLICT", "该延期答辩申请不属于当前批次，请刷新批次上下文")
-    return success(safety_svc.advisor_review_delay(
-        record_id, body.get("action") or "", body.get("comment") or "",
+    return success(action_svc.advisor_review_delay(
+        record_id, body.get("action"), body.get("comment"),
     ), message="导师审核完成")
