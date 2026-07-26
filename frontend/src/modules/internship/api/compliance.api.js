@@ -14,6 +14,15 @@ async function call(fn) {
 
 const B = '/internship/compliance'
 
+async function parseEnvelope(response, fallback) {
+  let payload = null
+  try { payload = await response.json() } catch { payload = null }
+  if (!response.ok || !payload || payload.code !== 0) {
+    throw new Error(payload?.message || fallback)
+  }
+  return payload.data
+}
+
 async function downloadZip(path, fallbackName) {
   const token = getToken()
   const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
@@ -33,6 +42,18 @@ async function downloadZip(path, fallbackName) {
   anchor.click()
   anchor.remove()
   URL.revokeObjectURL(url)
+}
+
+async function uploadEvidence(file, bizType) {
+  if (!file) throw new Error('请选择需要上传的文件')
+  const token = getToken()
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(
+    `${API_BASE_URL}${API_PREFIX}/files/upload?bizType=${encodeURIComponent(bizType)}`,
+    { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form }
+  )
+  return parseEnvelope(response, '材料上传失败，请重试')
 }
 
 export const complianceApi = {
@@ -96,6 +117,7 @@ export const complianceApi = {
   verifyInsurance(id, body) {
     return call(() => request(`${B}/workbench/insurances/${id}/verify`, { method: 'POST', body }))
   },
+  uploadEvidence(file, bizType) { return call(() => uploadEvidence(file, bizType)) },
   generateEvidencePackage(packageType, targetId) {
     return call(() => request(`${B}/evidence-packages/${packageType}/${targetId}`, { method: 'POST' }))
   },
