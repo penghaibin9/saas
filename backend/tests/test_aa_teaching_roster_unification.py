@@ -57,16 +57,16 @@ def _task_batch():
     return SimpleNamespace(id=20, tenant_id=1, is_deleted=False, term_id=9, status="APPROVED")
 
 
-def _course():
+def _course(batch_id=40, course_id=50):
     return SimpleNamespace(
-        id=50, tenant_id=1, is_deleted=False, teaching_task_id=30,
-        batch_id=40, status="OPEN",
+        id=course_id, tenant_id=1, is_deleted=False, teaching_task_id=30,
+        batch_id=batch_id, status="OPEN",
     )
 
 
-def _selection_batch(status):
+def _selection_batch(status, batch_id=40):
     return SimpleNamespace(
-        id=40, tenant_id=1, is_deleted=False, term_id=9, status=status,
+        id=batch_id, tenant_id=1, is_deleted=False, term_id=9, status=status,
     )
 
 
@@ -77,10 +77,17 @@ def _student(student_id=1, student_no="S001", class_id=10):
     )
 
 
-def test_selection_relation_without_locked_batch_fails_closed(monkeypatch):
+def _patch_tid(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_teaching_roster_policy as policy
     from app.modules.academic_affairs.services import academic_affairs_teaching_roster_service as service
 
     monkeypatch.setattr(service, "_tid", lambda: 1)
+    monkeypatch.setattr(policy, "_tid", lambda: 1)
+    return service
+
+
+def test_selection_relation_without_locked_batch_fails_closed(monkeypatch):
+    service = _patch_tid(monkeypatch)
     db = _Db(
         task=_task(), task_batch=_task_batch(),
         selection_courses=[_course()], selection_batches=[_selection_batch("CLOSED")],
@@ -94,10 +101,25 @@ def test_selection_relation_without_locked_batch_fails_closed(monkeypatch):
     assert "尚未锁定" in result["note"]
 
 
-def test_locked_selection_roster_overrides_administrative_class(monkeypatch):
-    from app.modules.academic_affairs.services import academic_affairs_teaching_roster_service as service
+def test_latest_pending_batch_overrides_old_locked_roster(monkeypatch):
+    service = _patch_tid(monkeypatch)
+    db = _Db(
+        task=_task(), task_batch=_task_batch(),
+        selection_courses=[_course(40, 50), _course(41, 51)],
+        selection_batches=[_selection_batch("LOCKED", 40), _selection_batch("CLOSED", 41)],
+        profiles=[_student()],
+    )
 
-    monkeypatch.setattr(service, "_tid", lambda: 1)
+    result = service.resolve_teaching_task_roster(db, 30)
+
+    assert result["ready"] is False
+    assert result["source"] == "SELECTION_PENDING"
+    assert result["batchIds"] == ["41"]
+    assert "旧批次名单不再作为当前事实" in result["note"]
+
+
+def test_locked_selection_roster_overrides_administrative_class(monkeypatch):
+    service = _patch_tid(monkeypatch)
     selected = _student(2, "S002", class_id=99)
     administrative = _student(1, "S001", class_id=10)
     record = SimpleNamespace(
@@ -118,10 +140,22 @@ def test_locked_selection_roster_overrides_administrative_class(monkeypatch):
     assert result["items"][0]["studentNo"] == "S002"
 
 
-def test_administrative_class_is_used_only_when_no_selection_relation(monkeypatch):
-    from app.modules.academic_affairs.services import academic_affairs_teaching_roster_service as service
+def test_locked_selection_with_empty_roster_is_not_ready(monkeypatch):
+    service = _patch_tid(monkeypatch)
+    db = _Db(
+        task=_task(), task_batch=_task_batch(),
+        selection_courses=[_course()], selection_batches=[_selection_batch("LOCKED")],
+        selection_records=[], profiles=[_student()],
+    )
 
-    monkeypatch.setattr(service, "_tid", lambda: 1)
+    result = service.resolve_teaching_task_roster(db, 30)
+
+    assert result["ready"] is False
+    assert result["source"] == "SELECTION_EMPTY"
+
+
+def test_administrative_class_is_used_only_when_no_selection_relation(monkeypatch):
+    service = _patch_tid(monkeypatch)
     db = _Db(
         task=_task(), task_batch=_task_batch(), profiles=[_student(1), _student(2, "S002")],
     )
