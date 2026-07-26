@@ -127,7 +127,8 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
 def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
         audit, dashboard, feedback, implementation, import_export,
-        migration, mobile, mobile_export, mobile_graduation_guard, mobile_orientation_teacher,
+        migration, mobile, mobile_export, mobile_graduation_guard,
+        mobile_graduation_teacher_context, mobile_orientation_teacher,
         national_standards, notification, onboarding, org_directory, platform, stats,
         student_portal_graduation_guard, system, transfer, user_preference,
     )
@@ -160,6 +161,15 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
     install_mobile_resolver()
     install_mobile_stable_bridge()
+    # 精确教师毕设 Router 必须在历史聚合 Router 之前注册，确保 batchId/分页/跨批门禁先命中。
+    api_router.include_router(
+        mobile_graduation_teacher_context.router,
+        dependencies=[
+            Depends(require_staff),
+            Depends(require_module("graduation")),
+            Depends(require_mobile_graduation_request_permission),
+        ],
+    )
     api_router.include_router(mobile_graduation_guard.router)
     api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
     api_router.include_router(student_portal_graduation_guard.router)
