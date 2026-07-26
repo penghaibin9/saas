@@ -4,7 +4,10 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,3 +82,28 @@ def test_mental_allowed_actions_are_centralized_and_match_backend_transitions():
     assert ':pagination="pagination"' in pc
     assert 'Array.isArray(row.allowedActions)' in pc
     assert "ESCALATED: ['CLOSE']" in pc
+
+
+def test_date_only_leave_range_is_inclusive_and_same_day_is_valid():
+    from app.core.exceptions import AppException
+    from app.services.affairs_leave_date_contract import normalize_range
+
+    start, end = normalize_range("2026-08-01", "2026-08-01")
+    assert start == datetime(2026, 8, 1, 0, 0, 0)
+    assert end == datetime(2026, 8, 1, 23, 59, 59)
+    assert end > start
+
+    with pytest.raises(AppException):
+        normalize_range("2026-08-02", "2026-08-01")
+    with pytest.raises(AppException):
+        normalize_range("not-a-date", "2026-08-01")
+
+
+def test_all_leave_entrypoints_install_the_same_date_contract():
+    date_contract = _read("backend/app/services/affairs_leave_date_contract.py")
+    four_end = _read("backend/app/api/v1/affairs_four_end.py")
+    assert "service.apply_leave = wrapped" in date_contract
+    assert "install_leave_date_contract()" in four_end
+    assert "normalize_range(" in four_end
+    assert "normalize_reason(" in four_end
+    assert 'pattern=r"^\\d{6}$"' in four_end
