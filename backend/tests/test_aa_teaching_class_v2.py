@@ -27,6 +27,35 @@ def test_teaching_class_models_have_required_version_fields():
     } <= set(AaTeachingClassMember.__mapper__.attrs.keys())
 
 
+def test_teaching_class_model_indexes_match_0127_names():
+    from app.models import (
+        AaTeachingClass, AaTeachingClassMember,
+        AaTeachingClassRosterVersion, AaTeachingClassTeacher,
+    )
+
+    class_indexes = {index.name for index in AaTeachingClass.__table__.indexes}
+    teacher_indexes = {index.name for index in AaTeachingClassTeacher.__table__.indexes}
+    version_indexes = {index.name for index in AaTeachingClassRosterVersion.__table__.indexes}
+    member_indexes = {index.name for index in AaTeachingClassMember.__table__.indexes}
+
+    assert {
+        "ix_t_aa_teaching_class_tenant_id", "ix_aa_tc_term_id", "ix_aa_tc_course_id",
+        "ix_aa_tc_current_roster", "ix_aa_tc_term_course", "ix_aa_tc_status",
+    } <= class_indexes
+    assert {
+        "ix_t_aa_teaching_class_teacher_tenant_id", "ix_aa_tc_teacher_class", "ix_aa_tc_teacher_key",
+    } <= teacher_indexes
+    assert {
+        "ix_t_aa_teaching_class_roster_version_tenant_id", "ix_aa_tc_roster_class",
+        "ix_aa_tc_roster_status", "ix_aa_tc_roster_hash",
+    } <= version_indexes
+    assert {
+        "ix_t_aa_teaching_class_member_tenant_id", "ix_aa_tc_member_teaching_class",
+        "ix_aa_tc_member_roster_version", "ix_aa_tc_member_student_id",
+        "ix_aa_tc_member_student", "ix_aa_tc_member_class",
+    } <= member_indexes
+
+
 def test_roster_hash_is_order_independent_and_deduplicated():
     from app.modules.academic_affairs.services.academic_affairs_teaching_class_service import _roster_hash
 
@@ -90,17 +119,26 @@ def test_selection_managed_class_cannot_be_overwritten_manually():
     assert _manual_mode(False, "ADMIN", "MANUAL")["canManualChange"] is True
 
 
-def test_atomic_backfill_report_exposes_blocked_count():
+def test_atomic_backfill_report_exposes_existing_skip_and_blocked_counts():
     from app.modules.academic_affairs.services.academic_affairs_teaching_class_admin_service import _public_report
 
     result = _public_report(3, True, [
-        {"legacyReady": True, "studentIds": [1], "batchIds": []},
-        {"legacyReady": False, "studentIds": [], "batchIds": [], "note": "选课未锁定"},
+        {
+            "legacyReady": True, "readyForBackfill": True, "existingProjected": True,
+            "studentIds": [1], "batchIds": [], "note": "已有一致正式版本",
+        },
+        {
+            "legacyReady": False, "readyForBackfill": False, "existingProjected": False,
+            "studentIds": [], "batchIds": [], "note": "选课未锁定",
+        },
     ])
     assert result["taskCount"] == 2
     assert result["readyCount"] == 1
     assert result["blockedCount"] == 1
+    assert result["alreadyProjectedCount"] == 1
+    assert result["toCreateCount"] == 0
     assert "studentIds" not in result["items"][0]
+    assert "batchIds" not in result["items"][0]
 
 
 def test_final_change_scope_is_applied_to_preview_and_create():
@@ -146,6 +184,22 @@ def test_teaching_class_router_exposes_list_detail_backfill_and_version_flow():
     assert "/academic-affairs/teaching-classes/{teaching_class_id}/roster/versions" in paths
 
 
+def test_teaching_class_list_keeps_items_and_list_compatibility():
+    from app.modules.academic_affairs.routers.teaching_class_router import teaching_class_list
+    from app.modules.academic_affairs.routers import teaching_class_router as module
+
+    original = module.query_service.list_teaching_classes
+    module.query_service.list_teaching_classes = lambda *_args, **_kwargs: ([{"teachingClassId": "1"}], 1)
+    try:
+        response = teaching_class_list(page=1, pageSize=30, user={})
+    finally:
+        module.query_service.list_teaching_classes = original
+
+    assert response["data"]["items"] == [{"teachingClassId": "1"}]
+    assert response["data"]["list"] == response["data"]["items"]
+    assert response["data"]["total"] == 1
+
+
 def test_academic_affairs_main_router_mounts_teaching_class_routes():
     from app.modules.academic_affairs.routers import academic_affairs
 
@@ -157,7 +211,7 @@ def test_academic_affairs_main_router_mounts_teaching_class_routes():
     assert "/academic-affairs/teaching-classes/{teaching_class_id}/roster/versions" in paths
 
 
-def test_0127_migration_is_single_line_successor():
+def test_0127_migration_is_single_line_successor_and_idempotent():
     migration_path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0127_aa_teaching_class_roster.py"
     spec = util.spec_from_file_location("aa_migration_0127", migration_path)
     assert spec and spec.loader
@@ -166,3 +220,5 @@ def test_0127_migration_is_single_line_successor():
 
     assert migration.revision == "0127_aa_teaching_class_roster"
     assert migration.down_revision == "0126_aa_grade_task_uniqueness_guard"
+    assert callable(migration._ensure_index)
+    assert callable(migration._ensure_unique)
