@@ -2,10 +2,12 @@
 
 保留既有归档批次、导出、解冻和写保护实现，只接管语义完整性检查：
 - 成绩复查使用当前模型真实字段 ``status``，并通过 ``AcademicGrade.term`` 限定到当前学期；
+- 学籍异动只把真实在途状态 DRAFT/SUBMITTED/IN_REVIEW 作为阻断，并用 term_code 或学期日期
+  收敛历史未回填 term_code 的记录；
 - 毕业审核批次当前没有 ``term_id``，仅使用创建/生成时间落在学期区间内的批次，禁止
   拿租户全部历史毕业批次阻断任意学期；无法可靠归属时明确登记兼容欠账，但不伪造缺失。
 
-待毕业审核批次补齐强 ``term_id`` 后，应把本兼容入口合并回主 service。
+待异动与毕业审核批次补齐强 ``term_id`` 后，应把本兼容入口合并回主 service。
 """
 from __future__ import annotations
 
@@ -30,6 +32,8 @@ list_download_log = _legacy.list_download_log
 
 # 当前 AaGradeRecheck 状态机只有 SUBMITTED 为在途，其余 UPHELD/ADJUSTED/REJECTED 均为终态。
 _ACTIVE_RECHECK_STATUSES = {"SUBMITTED"}
+# academic_affairs_change_service._ACTIVE 的真实业务口径。RETURNED/REJECTED/EFFECTIVE均为终态。
+_ACTIVE_STATUS_CHANGE_STATUSES = {"DRAFT", "SUBMITTED", "IN_REVIEW"}
 
 
 def _day_start(value):
@@ -88,6 +92,59 @@ def _evaluate_grade(db, term_code):
         else f"未发布/未归档成绩任务 {len(unfinished)} 个，本学期在途复查 {active_rechecks} 条"
     )
     return _legacy._result(len(rows), passed, remark)
+
+
+def _evaluate_status_change(db, term_id, term_code):
+    """只阻断当前学期真实在途异动；终态退回/驳回/生效不阻断。"""
+    from app.models import AaStatusChange, AaTerm
+
+    term = None
+    if term_id:
+        term = db.query(AaTerm).filter(
+            AaTerm.id == int(term_id),
+            AaTerm.tenant_id == _tid(),
+            AaTerm.is_deleted.is_(False),
+        ).first()
+    start_at = _day_start(getattr(term, "start_date", None)) if term else None
+    end_at = _day_end(getattr(term, "end_date", None)) if term else None
+
+    all_rows = db.query(AaStatusChange).filter(
+        AaStatusChange.tenant_id == _tid(),
+        AaStatusChange.is_deleted.is_(False),
+    ).all()
+    scoped_rows = []
+    unresolved_legacy = 0
+    for row in all_rows:
+        row_term = str(getattr(row, "term_code", None) or "").strip()
+        if term_code and row_term:
+            if row_term == term_code:
+                scoped_rows.append(row)
+            continue
+
+        occurred_at = (
+            getattr(row, "effective_date", None)
+            or getattr(row, "created_at", None)
+            or getattr(row, "updated_at", None)
+        )
+        if start_at and end_at and occurred_at:
+            if start_at <= occurred_at <= end_at:
+                scoped_rows.append(row)
+        elif not row_term:
+            unresolved_legacy += 1
+
+    active = [
+        row for row in scoped_rows
+        if str(getattr(row, "status", None) or "").upper() in _ACTIVE_STATUS_CHANGE_STATUSES
+    ]
+    passed = not active
+    remark = (
+        "本学期无在途学籍异动"
+        if passed
+        else f"本学期仍有 {len(active)} 条学籍异动处于草稿/审批中"
+    )
+    if unresolved_legacy:
+        remark += f"；另有 {unresolved_legacy} 条历史异动缺少学期与可用日期，待迁移补齐"
+    return _legacy._result(len(scoped_rows), passed, remark)
 
 
 def _evaluate_graduation(db, term_id):
@@ -149,7 +206,7 @@ def _evaluate_domains(db, term_id, term_code, college_ids=None):
     checks = {
         "STUDENT_STATUS": lambda: _legacy._evaluate_student_status(db, college_ids),
         "REGISTRATION": lambda: _legacy._evaluate_registration(db, term_id),
-        "STATUS_CHANGE": lambda: _legacy._evaluate_status_change(db, term_code),
+        "STATUS_CHANGE": lambda: _evaluate_status_change(db, term_id, term_code),
         "PROGRAM": lambda: _legacy._evaluate_program(db),
         "TEACHING_TASK": lambda: _legacy._evaluate_teaching_task(db, term_id, college_ids),
         "SCHEDULE": lambda: _legacy._evaluate_schedule(db, term_id, college_ids),
