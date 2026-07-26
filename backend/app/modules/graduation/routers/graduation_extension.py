@@ -5,9 +5,9 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
+from app.modules.graduation.services import graduation_extension_action_service as action_svc
 from app.modules.graduation.services import graduation_extension_query_service as query_svc
 from app.modules.graduation.services import graduation_extension_safety_service as safety_svc
-from app.modules.graduation.services import graduation_extension_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-优秀成果与延期答辩"])
 
@@ -39,8 +39,8 @@ def gd_excellent_outcome_nominate(
     gd_student_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.grade.view")),
 ):
-    return success(safety_svc.nominate_excellent(
-        gd_student_id, body.get("reason") or "", body.get("evidence") or [],
+    return success(action_svc.nominate_excellent(
+        gd_student_id, body.get("reason"), body.get("evidence"),
     ), message="优秀成果已提名，等待专业复核")
 
 
@@ -49,8 +49,8 @@ def gd_excellent_outcome_major_review(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.grade.review")),
 ):
-    return success(svc.major_review_excellent(
-        record_id, body.get("action") or "", body.get("comment") or "",
+    return success(action_svc.major_review_excellent(
+        record_id, body.get("action"), body.get("comment"),
     ), message="专业复核完成")
 
 
@@ -59,8 +59,8 @@ def gd_excellent_outcome_college_review(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.grade.publish")),
 ):
-    return success(svc.college_review_excellent(
-        record_id, body.get("action") or "", body.get("comment") or "",
+    return success(action_svc.college_review_excellent(
+        record_id, body.get("action"), body.get("comment"),
     ), message="学院终审完成")
 
 
@@ -81,8 +81,8 @@ def gd_defense_delay_advisor_review(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.defense.view")),
 ):
-    return success(safety_svc.advisor_review_delay(
-        record_id, body.get("action") or "", body.get("comment") or "",
+    return success(action_svc.advisor_review_delay(
+        record_id, body.get("action"), body.get("comment"),
     ), message="导师审核完成")
 
 
@@ -91,8 +91,8 @@ def gd_defense_delay_major_review(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.defense.groupManage")),
 ):
-    return success(svc.major_review_delay(
-        record_id, body.get("action") or "", body.get("comment") or "",
+    return success(action_svc.major_review_delay(
+        record_id, body.get("action"), body.get("comment"),
     ), message="专业复核完成")
 
 
@@ -101,8 +101,8 @@ def gd_defense_delay_college_review(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.defense.groupManage")),
 ):
-    return success(svc.college_review_delay(
-        record_id, body.get("action") or "", body.get("comment") or "",
+    return success(action_svc.college_review_delay(
+        record_id, body.get("action"), body.get("comment"),
     ), message="学院审批完成")
 
 
@@ -111,6 +111,6 @@ def gd_defense_delay_schedule(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.defense.groupManage")),
 ):
-    return success(safety_svc.schedule_delay(
-        record_id, body.get("defenseGroupId"), body.get("plannedDefenseDate") or "",
+    return success(action_svc.schedule_delay(
+        record_id, body.get("defenseGroupId"), body.get("plannedDefenseDate"),
     ), message="延期答辩已重新排期，原答辩组与新答辩组均需重新发布")
