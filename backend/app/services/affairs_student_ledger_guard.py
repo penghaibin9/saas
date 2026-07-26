@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException
 from app.services.db_service import _tid, session
 
 _INSTALLED = False
@@ -23,12 +23,9 @@ def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
-    from app.models import (
-        CsAuditTrail, CsDiscipline, CsGrant, CsLeave, CsServiceStudent, CsWorkOrder,
-        StudentProfile,
-    )
-    from app.services import campus_service_service as service
+    from app.models import CsAuditTrail, CsDiscipline, CsGrant, CsLeave, CsServiceStudent, CsWorkOrder
     from app.services import affairs_four_end_contract as contract
+    from app.services import campus_service_service as service
     from app.services import shadow_student_service as shadow
     from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
 
@@ -50,7 +47,8 @@ def install() -> None:
         if not ids:
             return {}
         records = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.id.in_(ids),
+            CsServiceStudent.tenant_id == _tid(),
+            CsServiceStudent.id.in_(ids),
             CsServiceStudent.is_deleted.is_(False),
         )).all()
         return {int(row.id): row for row in records}
@@ -58,21 +56,24 @@ def install() -> None:
     def create_student(body: dict):
         with session() as db:
             profile = shadow.resolve_profile_for_shadow(
-                db, _tid(), domain_label="在校服务台账",
+                db,
+                _tid(),
+                domain_label="在校服务台账",
                 student_id=body.get("studentId") or body.get("profileStudentId"),
                 student_no=body.get("studentNo"),
             )
             from app.core.affairs_security import build_affairs_context
+
             build_affairs_context(get_current_user_ctx() or {}, db).require_student(db, int(profile.id))
         care = str(body.get("careLevel") or "NORMAL").upper()
         if care not in service.L_CARE:
             raise AppException("VALIDATION_ERROR", "关怀等级非法")
-        body = dict(body)
-        body["careLevel"] = care
-        body["building"] = _text(body.get("building"), "楼栋", 100)
-        body["room"] = _text(body.get("room"), "房间", 100)
-        body["counselor"] = _text(body.get("counselor"), "辅导员", 100)
-        result = old_create(body)
+        payload = dict(body)
+        payload["careLevel"] = care
+        payload["building"] = _text(payload.get("building"), "楼栋", 100)
+        payload["room"] = _text(payload.get("room"), "房间", 100)
+        payload["counselor"] = _text(payload.get("counselor"), "辅导员", 100)
+        result = old_create(payload)
         with session() as db:
             row = service._get_stu(db, result["id"])
             result["version"] = int(row.version or 0)
@@ -82,13 +83,8 @@ def install() -> None:
         expected = require_expected_version(contract.request_version())
         with session() as db:
             row = service._get_stu(db, student_id)
+            # 允许前端把未修改的只读字段原样回传；真正修改由统一主档比较器拒绝。
             shadow.assert_identity_immutable(db, row, body, "在校服务台账")
-            forbidden = [key for key in (
-                "name", "studentNo", "studentId", "classId", "className",
-                "collegeName", "majorName", "grade", "gender",
-            ) if body.get(key) not in (None, "")]
-            if forbidden:
-                raise AppException("VALIDATION_ERROR", "姓名、学号、学院、专业、班级等身份组织字段只能在学生主档维护")
             values = {}
             if body.get("careLevel") is not None:
                 care = str(body["careLevel"]).upper()
@@ -104,8 +100,13 @@ def install() -> None:
             if not values:
                 raise AppException("VALIDATION_ERROR", "没有可保存的服务字段")
             atomic_versioned_update(
-                db, CsServiceStudent, entity_id=int(row.id), tenant_id=_tid(),
-                expected_version=expected, values=values, expected_status=None,
+                db,
+                CsServiceStudent,
+                entity_id=int(row.id),
+                tenant_id=_tid(),
+                expected_version=expected,
+                values=values,
+                expected_status=None,
             )
             service._audit(db, "RECORD", row.id, "编辑服务记录", after=str(sorted(values)))
             db.commit()
@@ -119,7 +120,10 @@ def install() -> None:
         with session() as db:
             row = service._get_stu(db, student_id)
             atomic_versioned_update(
-                db, CsServiceStudent, entity_id=int(row.id), tenant_id=_tid(),
+                db,
+                CsServiceStudent,
+                entity_id=int(row.id),
+                tenant_id=_tid(),
                 expected_version=expected,
                 values={"record_status": "VOIDED", "void_reason": text, "is_deleted": True},
                 expected_status=None,
@@ -131,16 +135,21 @@ def install() -> None:
     def get_student_detail(student_id):
         with session() as db:
             row = service._get_stu(db, student_id)
-            common = lambda model: [
-                model.tenant_id == _tid(), model.cs_student_id == row.id,
-                model.is_deleted.is_(False),
-            ]
+
+            def common(model):
+                return [
+                    model.tenant_id == _tid(),
+                    model.cs_student_id == row.id,
+                    model.is_deleted.is_(False),
+                ]
+
             leaves = db.scalars(select(CsLeave).where(*common(CsLeave)).order_by(CsLeave.id.desc())).all()
             grants = db.scalars(select(CsGrant).where(*common(CsGrant)).order_by(CsGrant.id.desc())).all()
             disciplines = db.scalars(select(CsDiscipline).where(*common(CsDiscipline)).order_by(CsDiscipline.id.desc())).all()
             orders = db.scalars(select(CsWorkOrder).where(*common(CsWorkOrder)).order_by(CsWorkOrder.id.desc())).all()
             logs = db.scalars(select(CsAuditTrail).where(
-                CsAuditTrail.tenant_id == _tid(), CsAuditTrail.biz_id == str(row.id),
+                CsAuditTrail.tenant_id == _tid(),
+                CsAuditTrail.biz_id == str(row.id),
             ).order_by(CsAuditTrail.id.desc()).limit(20)).all()
             profiles = shadow.load_profiles(db, [row])
             return {
