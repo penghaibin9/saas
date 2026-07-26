@@ -17,6 +17,8 @@ export const useInternshipContextStore = defineStore('internshipContext', {
     loaded: false,
     loading: false,
     error: '',
+    moduleAccessHealthy: true,
+    moduleAccessError: '',
     roleCode: '',
     permissionPatterns: [],
     permissionVersion: '',
@@ -28,7 +30,7 @@ export const useInternshipContextStore = defineStore('internshipContext', {
   },
   actions: {
     can(code) {
-      return matches(code, this.permissionPatterns)
+      return this.moduleAccessHealthy && matches(code, this.permissionPatterns)
     },
     persist() {
       try {
@@ -54,8 +56,20 @@ export const useInternshipContextStore = defineStore('internshipContext', {
       if (this.loaded && !force) return this.selectedBatchId
       this.loading = true
       this.error = ''
+      this.moduleAccessError = ''
       try {
         const data = await teacherInternshipContext()
+        const healthy = data.moduleAccessHealthy !== false
+        this.moduleAccessHealthy = healthy
+        this.moduleAccessError = data.moduleAccessError || ''
+        if (!healthy) {
+          this.loaded = false
+          this.permissionPatterns = []
+          this.batches = []
+          this.selectedBatchId = ''
+          this.error = this.moduleAccessError || '权限服务加载失败，已停止显示岗位实习操作'
+          throw { code: 'PERMISSION_SERVICE_UNHEALTHY', biz: true, message: this.error }
+        }
         const oldRole = this.roleCode
         this.roleCode = data.roleCode || ''
         this.permissionPatterns = data.permissionPatterns || []
@@ -70,13 +84,15 @@ export const useInternshipContextStore = defineStore('internshipContext', {
         return this.selectedBatchId
       } catch (e) {
         this.loaded = false
-        this.error = (e && e.message) || '实习批次加载失败'
+        this.permissionPatterns = []
+        if (!this.error) this.error = (e && e.message) || '实习权限或批次加载失败'
         throw e
       } finally {
         this.loading = false
       }
     },
     selectBatch(batchId) {
+      if (!this.moduleAccessHealthy) return false
       const value = String(batchId || '')
       if (value && !this.batches.some((b) => String(b.id) === value)) return false
       this.selectedBatchId = value
@@ -87,6 +103,8 @@ export const useInternshipContextStore = defineStore('internshipContext', {
       this.loaded = false
       this.loading = false
       this.error = ''
+      this.moduleAccessHealthy = true
+      this.moduleAccessError = ''
       this.roleCode = ''
       this.permissionPatterns = []
       this.permissionVersion = ''
