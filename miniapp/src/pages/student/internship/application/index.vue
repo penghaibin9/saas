@@ -59,6 +59,12 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import {
+  studentInternshipApplications,
+  studentInternshipApplicationSave,
+  studentInternshipApplicationSubmit,
+  studentInternshipApplicationWithdraw
+} from '@/services/internshipApi'
 import { chooseSingleFile, uploadBusinessFile } from '@/services/fileApi'
 import { toast } from '@/utils/nav'
 
@@ -90,7 +96,7 @@ export default {
       this.pageState = 'loading'
       try {
         const [rows, library, dashboard] = await Promise.all([
-          studentApi.getInternshipApplications(), studentApi.getInternshipEnterprises(), studentApi.getInternship()
+          studentInternshipApplications(), studentApi.getInternshipEnterprises(), studentApi.getInternship()
         ])
         this.history = Array.isArray(rows) ? rows : rows?.items || []
         this.positions = (library?.items || []).filter((x) => Number(x.remaining || 0) > 0)
@@ -155,10 +161,9 @@ export default {
       if (this.submitting) return
       this.submitting = true
       try {
-        const result = await studentApi.saveInternshipApplication(this.payload())
+        await studentInternshipApplicationSave(this.payload())
         toast('草稿已保存')
         await this.load()
-        this.editableApplication = this.history.find((x) => x.id === result.id) || result
       } catch (e) {
         if (String(e?.code || '').includes('409') || e?.code === 'DATA_CONFLICT') { toast('申请版本已变化，正在刷新'); await this.load() }
         else toast(e?.message || '保存失败')
@@ -170,8 +175,8 @@ export default {
       if (error) return toast(error)
       this.submitting = true
       try {
-        const saved = await studentApi.saveInternshipApplication(this.payload())
-        await studentApi.submitInternshipApplication(saved.id, saved.version)
+        const saved = await studentInternshipApplicationSave(this.payload())
+        await studentInternshipApplicationSubmit(saved.id, saved.version)
         toast('申请已提交审核')
         await this.load()
       } catch (e) {
@@ -185,7 +190,7 @@ export default {
         success: async (result) => {
           if (!result.confirm) return
           this.submitting = true
-          try { await studentApi.withdrawInternshipApplication(item.id, item.version); toast('已撤回'); await this.load() }
+          try { await studentInternshipApplicationWithdraw(item.id, item.version); toast('已撤回'); await this.load() }
           catch (e) { toast(e?.message || '撤回失败'); await this.load() }
           finally { this.submitting = false }
         }
