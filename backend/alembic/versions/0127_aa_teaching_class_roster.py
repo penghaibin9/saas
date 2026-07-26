@@ -22,6 +22,28 @@ def _tables(bind):
     return set(inspect(bind).get_table_names())
 
 
+def _indexes(bind, table):
+    if table not in _tables(bind):
+        return set()
+    return {row["name"] for row in inspect(bind).get_indexes(table)}
+
+
+def _uniques(bind, table):
+    if table not in _tables(bind):
+        return set()
+    return {row["name"] for row in inspect(bind).get_unique_constraints(table)}
+
+
+def _ensure_index(bind, table, name, columns):
+    if table in _tables(bind) and name not in _indexes(bind, table):
+        op.create_index(name, table, columns)
+
+
+def _ensure_unique(bind, table, name, columns):
+    if table in _tables(bind) and name not in _uniques(bind, table) and name not in _indexes(bind, table):
+        op.create_unique_constraint(name, table, columns)
+
+
 def _common_columns():
     return [
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
@@ -60,11 +82,6 @@ def upgrade() -> None:
             sa.UniqueConstraint("tenant_id", "teaching_task_id", name="uk_aa_tc_task"),
             sa.UniqueConstraint("tenant_id", "term_id", "class_code", name="uk_aa_tc_term_code"),
         )
-        op.create_index("ix_aa_tc_term_id", "t_aa_teaching_class", ["term_id"])
-        op.create_index("ix_aa_tc_course_id", "t_aa_teaching_class", ["course_id"])
-        op.create_index("ix_aa_tc_current_roster", "t_aa_teaching_class", ["current_roster_version_id"])
-        op.create_index("ix_aa_tc_term_course", "t_aa_teaching_class", ["tenant_id", "term_id", "course_id"])
-        op.create_index("ix_aa_tc_status", "t_aa_teaching_class", ["tenant_id", "status"])
 
     if "t_aa_teaching_class_teacher" not in tables:
         op.create_table(
@@ -80,8 +97,6 @@ def upgrade() -> None:
             sa.Column("status", sa.String(length=24), nullable=False, server_default="ACTIVE"),
             sa.UniqueConstraint("tenant_id", "teaching_class_id", "teacher_key", "role_type", name="uk_aa_tc_teacher"),
         )
-        op.create_index("ix_aa_tc_teacher_class", "t_aa_teaching_class_teacher", ["teaching_class_id"])
-        op.create_index("ix_aa_tc_teacher_key", "t_aa_teaching_class_teacher", ["tenant_id", "teacher_key", "status"])
 
     if "t_aa_teaching_class_roster_version" not in tables:
         op.create_table(
@@ -99,9 +114,6 @@ def upgrade() -> None:
             sa.Column("locked_by", sa.String(length=100), nullable=True),
             sa.UniqueConstraint("tenant_id", "teaching_class_id", "version_no", name="uk_aa_tc_roster_version"),
         )
-        op.create_index("ix_aa_tc_roster_class", "t_aa_teaching_class_roster_version", ["teaching_class_id"])
-        op.create_index("ix_aa_tc_roster_status", "t_aa_teaching_class_roster_version", ["tenant_id", "teaching_class_id", "status"])
-        op.create_index("ix_aa_tc_roster_hash", "t_aa_teaching_class_roster_version", ["tenant_id", "teaching_class_id", "roster_hash"])
 
     if "t_aa_teaching_class_member" not in tables:
         op.create_table(
@@ -117,11 +129,35 @@ def upgrade() -> None:
             sa.Column("removed_at", sa.DateTime(), nullable=True),
             sa.UniqueConstraint("tenant_id", "roster_version_id", "student_id", name="uk_aa_tc_member_version_student"),
         )
-        op.create_index("ix_aa_tc_member_teaching_class", "t_aa_teaching_class_member", ["teaching_class_id"])
-        op.create_index("ix_aa_tc_member_roster_version", "t_aa_teaching_class_member", ["roster_version_id"])
-        op.create_index("ix_aa_tc_member_student_id", "t_aa_teaching_class_member", ["student_id"])
-        op.create_index("ix_aa_tc_member_student", "t_aa_teaching_class_member", ["tenant_id", "student_id", "status"])
-        op.create_index("ix_aa_tc_member_class", "t_aa_teaching_class_member", ["tenant_id", "teaching_class_id", "roster_version_id"])
+
+    _ensure_unique(bind, "t_aa_teaching_class", "uk_aa_tc_task", ["tenant_id", "teaching_task_id"])
+    _ensure_unique(bind, "t_aa_teaching_class", "uk_aa_tc_term_code", ["tenant_id", "term_id", "class_code"])
+    _ensure_unique(bind, "t_aa_teaching_class_teacher", "uk_aa_tc_teacher", ["tenant_id", "teaching_class_id", "teacher_key", "role_type"])
+    _ensure_unique(bind, "t_aa_teaching_class_roster_version", "uk_aa_tc_roster_version", ["tenant_id", "teaching_class_id", "version_no"])
+    _ensure_unique(bind, "t_aa_teaching_class_member", "uk_aa_tc_member_version_student", ["tenant_id", "roster_version_id", "student_id"])
+
+    for table, name, columns in (
+        ("t_aa_teaching_class", "ix_t_aa_teaching_class_tenant_id", ["tenant_id"]),
+        ("t_aa_teaching_class", "ix_aa_tc_term_id", ["term_id"]),
+        ("t_aa_teaching_class", "ix_aa_tc_course_id", ["course_id"]),
+        ("t_aa_teaching_class", "ix_aa_tc_current_roster", ["current_roster_version_id"]),
+        ("t_aa_teaching_class", "ix_aa_tc_term_course", ["tenant_id", "term_id", "course_id"]),
+        ("t_aa_teaching_class", "ix_aa_tc_status", ["tenant_id", "status"]),
+        ("t_aa_teaching_class_teacher", "ix_t_aa_teaching_class_teacher_tenant_id", ["tenant_id"]),
+        ("t_aa_teaching_class_teacher", "ix_aa_tc_teacher_class", ["teaching_class_id"]),
+        ("t_aa_teaching_class_teacher", "ix_aa_tc_teacher_key", ["tenant_id", "teacher_key", "status"]),
+        ("t_aa_teaching_class_roster_version", "ix_t_aa_teaching_class_roster_version_tenant_id", ["tenant_id"]),
+        ("t_aa_teaching_class_roster_version", "ix_aa_tc_roster_class", ["teaching_class_id"]),
+        ("t_aa_teaching_class_roster_version", "ix_aa_tc_roster_status", ["tenant_id", "teaching_class_id", "status"]),
+        ("t_aa_teaching_class_roster_version", "ix_aa_tc_roster_hash", ["tenant_id", "teaching_class_id", "roster_hash"]),
+        ("t_aa_teaching_class_member", "ix_t_aa_teaching_class_member_tenant_id", ["tenant_id"]),
+        ("t_aa_teaching_class_member", "ix_aa_tc_member_teaching_class", ["teaching_class_id"]),
+        ("t_aa_teaching_class_member", "ix_aa_tc_member_roster_version", ["roster_version_id"]),
+        ("t_aa_teaching_class_member", "ix_aa_tc_member_student_id", ["student_id"]),
+        ("t_aa_teaching_class_member", "ix_aa_tc_member_student", ["tenant_id", "student_id", "status"]),
+        ("t_aa_teaching_class_member", "ix_aa_tc_member_class", ["tenant_id", "teaching_class_id", "roster_version_id"]),
+    ):
+        _ensure_index(bind, table, name, columns)
 
 
 def downgrade() -> None:
