@@ -1,8 +1,8 @@
 """二次答辩严格状态机。
 
-只能在第一轮评分全部确认后创建一次第二轮；禁止第三轮及以上，禁止在成绩已发布后
-继续创建答辩轮次。若学校未来需要延期答辩/多轮补答辩，应另建明确业务类型，不能
-复用“二次答辩”按钮无限递增轮次。
+只能在第一轮评分全部确认后创建一次第二轮；禁止第三轮及以上，禁止在成绩已经
+核算、复核或发布后继续创建答辩轮次。若学校未来需要延期答辩/多轮补答辩，应另建
+明确业务类型，不能复用“二次答辩”按钮无限递增轮次。
 """
 from __future__ import annotations
 
@@ -47,8 +47,11 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
             GraduationGrade.gd_student_id == student.id,
             GraduationGrade.is_deleted.is_(False),
         ).with_for_update()).first()
-        if grade and grade.status == "PUBLISHED":
-            raise AppException("DATA_CONFLICT", "成绩已发布，须先撤回成绩后才能创建二次答辩")
+        if grade and grade.status in ("CALCULATED", "REVIEWED", "PUBLISHED"):
+            raise AppException(
+                "DATA_CONFLICT",
+                "成绩已经核算、复核或发布，须先按成绩退回/撤回流程恢复到答辩阶段后再创建二次答辩",
+            )
 
         all_rows = db.scalars(select(GraduationDefenseScore).where(
             GraduationDefenseScore.tenant_id == _tid(),
