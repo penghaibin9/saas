@@ -36,6 +36,27 @@ def test_all_teacher_affairs_mobile_writes_have_explicit_permission(client):
     assert failures == []
 
 
+def test_mental_statistics_permission_cannot_open_individual_detail():
+    from app.services import affairs_four_end_contract as contract
+
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/mental-stats", "GET"
+    ) == ("studentAffairs.stats.view",)
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/mental/123", "GET"
+    ) == ("studentAffairs.risk.psyDetail.view",)
+
+
+def test_mental_detail_requires_explicit_permission_even_with_student_scope(monkeypatch):
+    from app.services.affairs_sensitive_audit_guard import explicit_detail_permission
+
+    monkeypatch.setattr(
+        "app.services.affairs_sensitive_audit_guard.has_permission",
+        lambda _user, _code: False,
+    )
+    assert explicit_detail_permission({}, 1, {1}) is False
+
+
 def test_explicit_version_can_never_be_replaced_by_request_context():
     from app.core.exceptions import AppException
     from app.services import affairs_four_end_contract as contract
@@ -94,6 +115,16 @@ def test_appeal_dashboard_read_path_does_not_reconcile_or_write():
     source = inspect.getsource(service.install)
     assert "reconcile_teacher_todos" not in source
     assert "teacher_affairs =" not in source
+
+
+def test_appeal_repair_reentry_is_noop():
+    from app.services import affairs_appeal_repair_service as repair
+
+    token = repair._REPAIRING.set(True)
+    try:
+        assert repair.repair_pending(5) == {"claimed": 0, "repaired": 0, "failed": 0}
+    finally:
+        repair._REPAIRING.reset(token)
 
 
 def test_credit_appeal_invalid_value_rejected_before_insert(db_mode):
