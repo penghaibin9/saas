@@ -36,10 +36,14 @@ test('dynamic activity code preserves six digits including leading zero', () => 
 test('credit claims are required, bounded, decimal-safe and server paginated', () => {
   const portal = read('student-portal/src/views/affairs/AffairsFourEndView.vue')
   const mini = read('miniapp/src/pages/student/affairs/activity.vue')
+  const miniApi = read('miniapp/src/services/affairsAppealApi.js')
   const pc = read('frontend/src/modules/studentAffairs/views/activity/CreditAppealView.vue')
+  for (const source of [portal, mini, miniApi, pc]) {
+    assert.match(source, /Math\.abs\(Math\.round\(value \* 100\) - value \* 100\) > 1e-8/)
+    assert.match(source, /最多保留2位小数/)
+  }
   for (const source of [portal, mini, pc]) {
     assert.match(source, /9999\.99/)
-    assert.match(source, /最多保留2位小数/)
     assert.doesNotMatch(source, /主张数值（选填）/)
   }
   assert.match(pc, /status: this\.activeStatus/)
