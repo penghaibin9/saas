@@ -250,47 +250,123 @@ async function reload() {
   loading.value = false
 }
 
-async function run(task, success, fallback) { busy.value = true; try { await task(); ui.notify(success); await reload() } catch (e) { notifyError(e, fallback) } finally { busy.value = false } }
-async function applyLeave() { await run(() => portalApi.affairsServiceApply({ serviceKey: 'LEAVE', ...leaveForm }), '请假已提交', '请假提交失败'); leaveForm.reason = '' }
+async function run(task, success, fallback) {
+  busy.value = true
+  try {
+    const data = await task()
+    ui.notify(success)
+    await reload()
+    return { ok: true, data }
+  } catch (e) {
+    notifyError(e, fallback)
+    return { ok: false, error: e }
+  } finally {
+    busy.value = false
+  }
+}
+
+async function applyLeave() {
+  const result = await run(() => portalApi.affairsServiceApply({ serviceKey: 'LEAVE', ...leaveForm }), '请假已提交', '请假提交失败')
+  if (result.ok) leaveForm.reason = ''
+}
 async function cancelLeave(item) { await run(() => affairsFourEndApi.cancelLeave(item.leaveId, item.version, '学生本人申请销假'), '销假申请已提交', '销假提交失败') }
 function openExtend(item) { extendId.value = item.leaveId; extendForm.newEndTime = fmt(item.endTime); extendForm.reason = '' }
-async function submitExtend(item) { await run(() => affairsFourEndApi.extendLeave(item.leaveId, item.version, extendForm.newEndTime, extendForm.reason), '续假申请已提交', '续假提交失败'); extendId.value = '' }
+async function submitExtend(item) {
+  const result = await run(() => affairsFourEndApi.extendLeave(item.leaveId, item.version, extendForm.newEndTime, extendForm.reason), '续假申请已提交', '续假提交失败')
+  if (result.ok) extendId.value = ''
+}
 async function editLeave(item) { busy.value = true; try { const data = await affairsFourEndApi.getReturnedLeave(item.leaveId); Object.assign(modal, { type: 'leave', title: '修改退回请假', notice: data.returnReason || item.returnReason, item: data, form: { leaveType: data.leaveType, startTime: fmt(data.startTime), endTime: fmt(data.endTime), reason: data.reason || '' } }) } catch (e) { notifyError(e, '加载失败') } finally { busy.value = false } }
 
-async function submitAid() { const body = { batchId: aidForm.batchId, applyLevel: aidForm.applyLevel, memberCount: aidForm.memberCount, annualIncome: aidForm.annualIncome, debt: aidForm.debt, specialTags: aidForm.specialTags.split(/[,，]/).map((x) => x.trim()).filter(Boolean), statement: aidForm.statement, confirm: true }; await run(() => portalApi.affairsAidApply(body), '困难认定申请已提交', '提交失败'); aidForm.statement = ''; aidForm.confirm = false }
+async function submitAid() {
+  const body = { batchId: aidForm.batchId, applyLevel: aidForm.applyLevel, memberCount: aidForm.memberCount, annualIncome: aidForm.annualIncome, debt: aidForm.debt, specialTags: aidForm.specialTags.split(/[,，]/).map((x) => x.trim()).filter(Boolean), statement: aidForm.statement, confirm: true }
+  const result = await run(() => portalApi.affairsAidApply(body), '困难认定申请已提交', '提交失败')
+  if (result.ok) { aidForm.statement = ''; aidForm.confirm = false }
+}
 async function editAid(item) { busy.value = true; try { const data = await affairsFourEndApi.getReturnedAid(item.applyId); Object.assign(modal, { type: 'aid', title: '修改退回认定申请', notice: item.returnReason, item: data, form: { applyLevel: data.applyLevel, memberCount: data.memberCount, annualIncome: data.annualIncome, debt: data.debt, statement: data.statement || '' } }) } catch (e) { notifyError(e, '加载失败') } finally { busy.value = false } }
-async function submitAidObjection(item) { await run(() => portalApi.affairsAidObjection({ applyId: item.applyId, reason: aidObjections[item.applyId] }), '异议已提交并进入老师待办', '异议提交失败'); aidObjections[item.applyId] = '' }
+async function submitAidObjection(item) {
+  const result = await run(() => portalApi.affairsAidObjection({ applyId: item.applyId, reason: aidObjections[item.applyId] }), '异议已提交并进入老师待办', '异议提交失败')
+  if (result.ok) aidObjections[item.applyId] = ''
+}
 
-async function submitFunding() { await run(() => portalApi.affairsFundingApply({ batchId: fundForm.batchId, statement: fundForm.statement, confirm: true }), '奖助申请已提交', '提交失败'); fundForm.statement = ''; fundForm.confirm = false }
+async function submitFunding() {
+  const result = await run(() => portalApi.affairsFundingApply({ batchId: fundForm.batchId, statement: fundForm.statement, confirm: true }), '奖助申请已提交', '提交失败')
+  if (result.ok) { fundForm.statement = ''; fundForm.confirm = false }
+}
 async function editFunding(item) { busy.value = true; try { const data = await affairsFourEndApi.getReturnedFunding(item.applicationId); Object.assign(modal, { type: 'funding', title: '修改退回奖助申请', notice: item.returnReason, item: data, form: { statement: data.statement || '' } }) } catch (e) { notifyError(e, '加载失败') } finally { busy.value = false } }
-async function submitFundingAppeal(item) { await run(() => portalApi.affairsFundingAppeal({ applicationId: item.applicationId, reason: fundAppeals[item.applicationId] }), '申诉已提交并进入老师待办', '申诉提交失败'); fundAppeals[item.applicationId] = '' }
+async function submitFundingAppeal(item) {
+  const result = await run(() => portalApi.affairsFundingAppeal({ applicationId: item.applicationId, reason: fundAppeals[item.applicationId] }), '申诉已提交并进入老师待办', '申诉提交失败')
+  if (result.ok) fundAppeals[item.applicationId] = ''
+}
 
 async function loadDormOptions() { busy.value = true; try { const data = await affairsFourEndApi.dormTransferOptions(); dormBuildings.value = data.items || []; dormForm.visible = true } catch (e) { notifyError(e, '调宿选项加载失败') } finally { busy.value = false } }
 async function loadRooms() { dormForm.roomId = ''; dormForm.bedId = ''; dormRooms.value = []; dormBeds.value = []; if (!dormForm.buildingId) return; try { const data = await affairsFourEndApi.dormTransferRooms(dormForm.buildingId); dormRooms.value = data.items || [] } catch (e) { notifyError(e, '房间加载失败') } }
 async function loadBeds() { dormForm.bedId = ''; dormBeds.value = []; if (!dormForm.roomId) return; try { const data = await affairsFourEndApi.dormTransferBeds(dormForm.roomId); dormBeds.value = data.items || [] } catch (e) { notifyError(e, '床位加载失败') } }
-async function submitDormTransfer() { await run(() => affairsFourEndApi.submitDormTransfer(dormForm.bedId, dormForm.reason), '调宿申请已提交', '调宿提交失败'); Object.assign(dormForm, { visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }) }
+async function submitDormTransfer() {
+  const result = await run(() => affairsFourEndApi.submitDormTransfer(dormForm.bedId, dormForm.reason), '调宿申请已提交', '调宿提交失败')
+  if (result.ok) Object.assign(dormForm, { visible: false, buildingId: '', roomId: '', bedId: '', reason: '' })
+}
 
-async function submitDisciplineAppeal(item) { await run(() => portalApi.affairsDisciplineAppeal({ caseId: item.caseId, reason: disciplineAppeals[item.caseId] }), '处分申诉已提交', '申诉提交失败'); disciplineAppeals[item.caseId] = '' }
+async function submitDisciplineAppeal(item) {
+  const result = await run(() => portalApi.affairsDisciplineAppeal({ caseId: item.caseId, reason: disciplineAppeals[item.caseId] }), '处分申诉已提交', '申诉提交失败')
+  if (result.ok) disciplineAppeals[item.caseId] = ''
+}
 async function submitPsy() { const answers = (psy.value.questions || []).map((q) => ({ qKey: q.key, score: psyAnswers[q.key] })); await run(() => portalApi.affairsPsySubmit({ answers }), '心理自评已提交', '自评提交失败') }
 async function enroll(item) { await run(() => portalApi.affairsActivityEnroll(item.activityId), '报名成功', '报名失败') }
 function openCreditAppeal(item) { Object.assign(modal, { type: 'credit', title: item ? '第二课堂记错申诉' : '第二课堂缺记申诉', notice: '', item, form: { appealType: item ? 'WRONG' : 'MISSING', activityId: item?.activityId || '', activityName: item?.remark || '', claimCreditType: item?.creditType || 'SECOND_CLASS', claimValue: item?.creditValue ?? null, reason: '' } }) }
 
 function closeModal() { if (!busy.value) Object.assign(modal, { type: '', title: '', notice: '', item: null, form: {} }) }
+
+async function submitUpdatedAndResubmit({ update, resubmit, success }) {
+  busy.value = true
+  try {
+    const updated = await update()
+    modal.item = { ...(modal.item || {}), ...(updated || {}), version: updated?.version ?? modal.item?.version }
+    try {
+      await resubmit(modal.item.version)
+    } catch (e) {
+      modal.notice = `修改已保存，但重新提交失败：${e?.message || '请保留当前内容后重试'}`
+      notifyError(e, '重新提交失败')
+      return false
+    }
+    ui.notify(success)
+    closeModal()
+    await reload()
+    return true
+  } catch (e) {
+    notifyError(e, '保存修改失败')
+    return false
+  } finally {
+    busy.value = false
+  }
+}
+
 async function submitModal() {
   if (modal.type === 'leave') {
-    const updated = await affairsFourEndApi.updateReturnedLeave(modal.item.leaveId || modal.item.id, { ...modal.form, version: modal.item.version })
-    await run(() => affairsFourEndApi.resubmitLeave(modal.item.leaveId || modal.item.id, updated.version), '请假已修改并重新提交', '重新提交失败')
+    const id = modal.item.leaveId || modal.item.id
+    await submitUpdatedAndResubmit({
+      update: () => affairsFourEndApi.updateReturnedLeave(id, { ...modal.form, version: modal.item.version }),
+      resubmit: (version) => affairsFourEndApi.resubmitLeave(id, version),
+      success: '请假已修改并重新提交'
+    })
   } else if (modal.type === 'aid') {
-    const updated = await affairsFourEndApi.updateReturnedAid(modal.item.applyId, { ...modal.form, version: modal.item.version })
-    await run(() => affairsFourEndApi.resubmitAid(modal.item.applyId, updated.version), '认定申请已修改并重新提交', '重新提交失败')
+    const id = modal.item.applyId
+    await submitUpdatedAndResubmit({
+      update: () => affairsFourEndApi.updateReturnedAid(id, { ...modal.form, version: modal.item.version }),
+      resubmit: (version) => affairsFourEndApi.resubmitAid(id, version),
+      success: '认定申请已修改并重新提交'
+    })
   } else if (modal.type === 'funding') {
-    const updated = await affairsFourEndApi.updateReturnedFunding(modal.item.applicationId, { ...modal.form, version: modal.item.version })
-    await run(() => affairsFourEndApi.resubmitFunding(modal.item.applicationId, updated.version), '奖助申请已修改并重新提交', '重新提交失败')
+    const id = modal.item.applicationId
+    await submitUpdatedAndResubmit({
+      update: () => affairsFourEndApi.updateReturnedFunding(id, { ...modal.form, version: modal.item.version }),
+      resubmit: (version) => affairsFourEndApi.resubmitFunding(id, version),
+      success: '奖助申请已修改并重新提交'
+    })
   } else if (modal.type === 'credit') {
     if ((modal.form.reason || '').length < 5) return ui.notify('申诉理由至少5字')
-    await run(() => affairsFourEndApi.submitCreditAppeal(modal.form), '积分申诉已提交', '申诉提交失败')
+    const result = await run(() => affairsFourEndApi.submitCreditAppeal(modal.form), '积分申诉已提交', '申诉提交失败')
+    if (result.ok) closeModal()
   }
-  closeModal()
 }
 
 onMounted(reload)
