@@ -1,10 +1,13 @@
 import { realRequest } from '@/services/request'
 
 /**
- * 学工四端专用写契约。
+ * 学工四端专用契约。
  * 所有状态变更必须显式携带页面当前 version；禁止服务层替调用方查询最新版本。
  */
 export const affairsContractApi = {
+  getStudentCandidates: (purpose = 'TALK') =>
+    realRequest(`/mobile/teacher/affairs/student-candidates?purpose=${encodeURIComponent(purpose)}`),
+
   // 学生请假
   getReturnedLeave: (leaveId) => realRequest(`/mobile/affairs/leave/${leaveId}/editable`),
   updateReturnedLeave: (leaveId, data) => realRequest(`/mobile/affairs/leave/${leaveId}/returned`, {
