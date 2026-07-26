@@ -73,6 +73,11 @@ jobs:
           pytest -q
           tests/test_aa_archive_semantic_gates.py
           tests/test_aa_archive_status_change_gate.py
+          tests/test_aa_archive_workflow_policy.py
+          tests/test_aa_archive_selection_gate.py
+          tests/test_aa_exam_closure.py
+          tests/test_aa_teaching_roster_unification.py
+          tests/test_aa_facade_contracts.py
           tests/test_aa_evaluation_appeal_scope.py
           tests/test_aa_attendance_teacher_identity.py
           tests/test_aa_attendance_task_binding.py
