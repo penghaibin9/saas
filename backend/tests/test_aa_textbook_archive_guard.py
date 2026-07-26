@@ -107,11 +107,11 @@ def test_public_textbook_and_archive_services_point_to_final_layers():
 
     assert textbook.__name__.endswith("academic_affairs_textbook_roster_facade")
     assert textbook.generate_distribution.__module__.endswith("academic_affairs_textbook_roster_facade")
+    assert textbook.mark_fee.__module__.endswith("academic_affairs_textbook_roster_facade")
     assert textbook.create_order_batch.__module__.endswith("academic_affairs_textbook_final_facade")
     assert textbook.record_arrival.__module__.endswith("academic_affairs_textbook_final_facade")
     assert textbook.cancel_order_batch.__module__.endswith("academic_affairs_textbook_term_facade")
     assert textbook.return_distribution.__module__.endswith("academic_affairs_textbook_final_facade")
-    assert textbook.mark_fee.__module__.endswith("academic_affairs_textbook_term_facade")
     assert textbook._legacy._apply_receipt.__module__.endswith("academic_affairs_textbook_final_facade")
     # 教材目录是跨学期主数据，仍由原服务维护，不应被学期写保护包装。
     assert textbook.create_textbook.__module__.endswith("academic_affairs_textbook_service")
