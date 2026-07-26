@@ -1,45 +1,84 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="实习申请审核" subtitle="按批次审核正式实习申请" show-back />
+    <MobileNavBar variant="teacher" title="实习申请审核" subtitle="核对去向、材料与学生记录版本" show-back />
 
-    <view class="page-pad">
+    <view class="page-pad ap__context">
       <view class="card ap__batch" v-if="batches.length">
-        <text class="ap__label">实习批次</text>
+        <view class="ap__batch-copy">
+          <text class="ap__eyebrow">当前审核批次</text>
+          <text class="ap__batch-name">{{ batches[batchIndex]?.name || '请选择批次' }}</text>
+        </view>
         <picker class="ap__picker" mode="selector" :range="batchLabels" :value="batchIndex" :disabled="!!actingId" @change="onBatch">
-          <view class="ap__pick-val">{{ batchLabels[batchIndex] || '请选择批次' }}<text class="ap__arrow">▾</text></view>
+          <view class="ap__pick-val">切换批次 <text class="ap__arrow">▾</text></view>
         </picker>
       </view>
-      <MobileInlineAlert type="warning" description="通过后会在同一事务内落实岗位或自主实习去向。请核对企业、岗位、联系人、证明材料及学生记录版本后再操作。" />
+
+      <view v-if="batches.length && list" class="card ap__summary">
+        <view class="ap__summary-main">
+          <text class="ap__summary-label">待审核申请</text>
+          <view class="ap__summary-value"><text>{{ list.length }}</text><text>条</text></view>
+          <text class="ap__summary-note">{{ summaryConclusion }}</text>
+        </view>
+        <view class="ap__summary-metrics">
+          <view class="ap__metric"><text>{{ assignedCount }}</text><text>学校安排</text></view>
+          <view class="ap__metric"><text>{{ selfArrangedCount }}</text><text>自主实习</text></view>
+          <view class="ap__metric is-danger"><text>{{ missingEvidenceCount }}</text><text>材料缺失</text></view>
+        </view>
+      </view>
+
+      <MobileInlineAlert type="warning" description="通过会落实岗位或自主实习去向。请先核对企业、岗位、联系人、证明材料及学生记录版本，再执行审批。" />
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
-      <view class="page-pad" v-if="list">
+      <view class="page-pad ap__list" v-if="list">
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
           description="当前身份的数据范围内没有可审核的岗位实习批次。" />
-        <MobileGlobalState v-else-if="!list.length" state="empty" title="暂无待审申请"
-          description="当前批次学生提交正式实习申请后会出现在这里。" />
+        <MobileGlobalState v-else-if="!list.length" state="empty" title="当前批次没有待审申请"
+          description="学生提交正式实习申请后会出现在这里。" />
         <view class="stack" v-else>
           <view v-for="a in list" :key="a.id" class="card ap">
-            <view class="row-between">
-              <view class="flex-1">
+            <view class="row-between ap__head">
+              <view class="flex-1 ap__identity">
                 <text class="t-md t-bold">{{ a.studentName || '—' }}</text>
                 <text class="ap__sub">{{ a.studentNo || '' }} · {{ a.applicationTypeLabel }}</text>
               </view>
               <MobileStatusTag :label="a.statusLabel" type="warning" />
             </view>
-            <view class="ap__row"><text class="ap__row-k">企业/岗位</text><text class="flex-1 t-sm">{{ a.companyName || '—' }} · {{ a.positionName || '—' }}</text></view>
-            <view class="ap__row" v-if="a.workAddress"><text class="ap__row-k">工作地点</text><text class="flex-1 t-sm">{{ a.workAddress }}</text></view>
-            <view class="ap__row" v-if="a.contactName"><text class="ap__row-k">联系人</text><text class="flex-1 t-sm">{{ a.contactName }} {{ a.contactPhone || '' }}</text></view>
-            <view class="ap__row" v-if="a.applicationNote"><text class="ap__row-k">申请说明</text><text class="flex-1 t-sm">{{ a.applicationNote }}</text></view>
+
+            <view class="ap__business">
+              <view class="ap__row"><text class="ap__row-k">企业</text><text class="ap__row-v">{{ a.companyName || '—' }}</text></view>
+              <view class="ap__row"><text class="ap__row-k">岗位</text><text class="ap__row-v">{{ a.positionName || '—' }}</text></view>
+              <view class="ap__row" v-if="a.workAddress"><text class="ap__row-k">地点</text><text class="ap__row-v">{{ a.workAddress }}</text></view>
+              <view class="ap__row" v-if="a.contactName"><text class="ap__row-k">联系人</text><text class="ap__row-v">{{ a.contactName }} {{ a.contactPhone || '' }}</text></view>
+            </view>
+
+            <view v-if="a.applicationNote" class="ap__note">
+              <text class="ap__section-label">申请说明</text>
+              <text class="ap__note-text">{{ a.applicationNote }}</text>
+            </view>
 
             <button v-if="a.evidenceFileId" class="ap__evidence" :disabled="previewingId === a.id" @click="previewEvidence(a)">
-              {{ previewingId === a.id ? '正在打开证明材料…' : '查看自主实习证明材料' }}
+              <view class="ap__evidence-copy">
+                <text class="ap__evidence-title">自主实习证明材料</text>
+                <text class="ap__evidence-hint">点击查看原始文件后再决定是否通过</text>
+              </view>
+              <text class="ap__evidence-action">{{ previewingId === a.id ? '打开中…' : '查看 ›' }}</text>
             </button>
-            <view v-else-if="a.applicationType === 'SELF_ARRANGED'" class="ap__danger">自主实习申请缺少证明材料，不能通过</view>
+            <view v-else-if="a.applicationType === 'SELF_ARRANGED'" class="ap__danger">
+              <text class="ap__danger-title">缺少自主实习证明材料</text>
+              <text class="ap__danger-text">当前申请不能通过，应驳回学生补充材料。</text>
+            </view>
 
-            <view class="ap__row"><text class="ap__row-k">申请版本</text><text class="flex-1 t-sm">v{{ a.version }}</text></view>
-            <view class="ap__row"><text class="ap__row-k">学生记录</text><text class="flex-1 t-sm">{{ a.recordVersion == null ? '版本缺失，请刷新' : `v${a.recordVersion}` }}</text></view>
-            <text class="ap__time" v-if="a.submittedAt">提交于 {{ fmt(a.submittedAt) }}</text>
+            <view class="ap__versions" :class="{ 'has-error': a.recordVersion == null || a.version == null }">
+              <view><text>申请版本</text><text>v{{ a.version == null ? '—' : a.version }}</text></view>
+              <view><text>学生记录</text><text>{{ a.recordVersion == null ? '版本缺失' : `v${a.recordVersion}` }}</text></view>
+              <view><text>提交时间</text><text>{{ fmt(a.submittedAt) }}</text></view>
+            </view>
+
+            <view class="ap__next" :class="{ 'is-danger': !canApprove(a) }">
+              <text class="ap__next-label">下一步</text>
+              <text class="ap__next-text">{{ nextStepText(a) }}</text>
+            </view>
 
             <view class="ap__actions" v-if="canReview">
               <button class="ap__reject flex-1" :disabled="actingId === a.id" @click="review(a, 'REJECT')">驳回修改</button>
@@ -65,7 +104,15 @@ export default {
   },
   computed: {
     batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
-    canReview() { return useInternshipContextStore().can('internship.application.review') }
+    canReview() { return useInternshipContextStore().can('internship.application.review') },
+    selfArrangedCount() { return (this.list || []).filter((item) => item.applicationType === 'SELF_ARRANGED').length },
+    assignedCount() { return (this.list || []).length - this.selfArrangedCount },
+    missingEvidenceCount() { return (this.list || []).filter((item) => item.applicationType === 'SELF_ARRANGED' && !item.evidenceFileId).length },
+    summaryConclusion() {
+      if (!this.list?.length) return '当前没有需要审核的正式实习申请。'
+      if (this.missingEvidenceCount) return `优先驳回 ${this.missingEvidenceCount} 条缺少自主实习证明的申请。`
+      return '材料与版本信息齐全，可逐条核对企业和岗位后审批。'
+    }
   },
   onLoad() { this.load() },
   onPullDownRefresh() {
@@ -78,6 +125,11 @@ export default {
     canApprove(a) {
       const evidenceOk = a.applicationType !== 'SELF_ARRANGED' || !!a.evidenceFileId
       return evidenceOk && a.recordVersion != null && a.version != null
+    },
+    nextStepText(a) {
+      if (a.applicationType === 'SELF_ARRANGED' && !a.evidenceFileId) return '驳回学生补充自主实习证明材料。'
+      if (a.recordVersion == null || a.version == null) return '刷新页面获取最新申请与学生记录版本。'
+      return a.applicationType === 'SELF_ARRANGED' ? '查看证明材料，核实企业信息后确认自主实习。' : '核对企业与岗位信息后，通过并落实岗位。'
     },
     async load(done) {
       this.state = 'loading'
@@ -157,23 +209,5 @@ export default {
 </script>
 
 <style scoped>
-.ap__batch { display:flex;align-items:center;min-height:48px;margin-bottom:var(--space-3);padding:0 var(--space-3); }
-.ap__label { width:88px;flex-shrink:0;font-size:var(--font-size-base);color:var(--text-secondary); }
-.ap__picker { flex:1; }
-.ap__pick-val { text-align:right;color:var(--text-primary);font-size:var(--font-size-base); }
-.ap__arrow { margin-left:4px;color:var(--text-tertiary); }
-.ap { display:flex;flex-direction:column;gap:var(--space-2); }
-.ap__sub { display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:2px; }
-.ap__row { display:flex;gap:var(--space-3); }
-.ap__row-k { font-size:var(--font-size-sm);color:var(--text-tertiary);width:68px;flex-shrink:0; }
-.ap__evidence { min-height:40px;padding:0 var(--space-3);border:1px solid var(--success-500);border-radius:var(--radius-md);background:var(--success-50);color:var(--success-700);font-size:var(--font-size-sm);text-align:left; }
-.ap__evidence::after { border:none; }
-.ap__danger { padding:var(--space-2);border-radius:var(--radius-md);background:var(--danger-50);color:var(--danger-600);font-size:var(--font-size-xs); }
-.ap__time { font-size:var(--font-size-xs);color:var(--text-tertiary); }
-.ap__actions { display:flex;gap:var(--space-2);margin-top:var(--space-1); }
-.ap__reject,.ap__approve { min-height:var(--touch-target-min);border-radius:var(--radius-md);font-size:var(--font-size-md); }
-.ap__reject { border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600); }
-.ap__approve { border:none;background:var(--teacher-600);color:#fff; }
-.ap__approve[disabled],.ap__reject[disabled],.ap__evidence[disabled] { opacity:.45; }
-.ap__reject::after,.ap__approve::after { border:none; }
+.ap__context{display:flex;flex-direction:column;gap:var(--space-3)}.ap__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3)}.ap__batch-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.ap__eyebrow{font-size:var(--font-size-xs);color:var(--text-tertiary)}.ap__batch-name{font-size:var(--font-size-md);font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ap__picker{flex-shrink:0}.ap__pick-val{color:var(--teacher-700);font-size:var(--font-size-sm);white-space:nowrap}.ap__arrow{margin-left:4px;color:var(--text-tertiary)}.ap__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.ap__summary-main{flex:1;min-width:0}.ap__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ap__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.ap__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.ap__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.ap__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ap__summary-metrics{width:48%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.ap__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 4px;border-left:1px solid var(--border-light);text-align:center}.ap__metric:first-child{border-left:0}.ap__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary)}.ap__metric.is-danger text:first-child{color:var(--danger-600)}.ap__metric text:last-child{font-size:10px;line-height:1.3;color:var(--text-tertiary)}.ap__list{padding-top:0}.ap{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.ap__head{align-items:flex-start}.ap__identity{min-width:0}.ap__sub{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:3px;word-break:break-word}.ap__business{display:flex;flex-direction:column;gap:8px;padding:var(--space-2) var(--space-3);background:var(--gray-50);border-radius:var(--radius-md)}.ap__row{display:flex;gap:var(--space-3);min-width:0}.ap__row-k{font-size:var(--font-size-xs);color:var(--text-tertiary);width:42px;flex-shrink:0}.ap__row-v{min-width:0;flex:1;font-size:var(--font-size-sm);line-height:1.5;color:var(--text-primary);word-break:break-word}.ap__note{padding:var(--space-2) var(--space-3);border:1px solid var(--border-light);border-radius:var(--radius-md)}.ap__section-label{display:block;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.ap__note-text{display:block;margin-top:5px;font-size:var(--font-size-sm);line-height:1.6;color:var(--text-primary);white-space:pre-wrap;word-break:break-word}.ap__evidence{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);min-height:58px;padding:10px var(--space-3);border:1px solid var(--success-300,#86efac);border-radius:var(--radius-md);background:var(--success-50);text-align:left}.ap__evidence::after{border:none}.ap__evidence-copy{min-width:0}.ap__evidence-title{display:block;font-size:var(--font-size-sm);font-weight:600;color:var(--success-800,#166534)}.ap__evidence-hint{display:block;margin-top:3px;font-size:var(--font-size-xs);color:var(--success-700)}.ap__evidence-action{flex-shrink:0;font-size:var(--font-size-sm);color:var(--success-700)}.ap__danger{padding:var(--space-2) var(--space-3);border:1px solid var(--danger-200,#fecaca);border-radius:var(--radius-md);background:var(--danger-50)}.ap__danger-title{display:block;font-size:var(--font-size-sm);font-weight:600;color:var(--danger-700)}.ap__danger-text{display:block;margin-top:3px;font-size:var(--font-size-xs);line-height:1.5;color:var(--danger-600)}.ap__versions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:var(--space-2);border-radius:var(--radius-md);background:var(--gray-50)}.ap__versions.has-error{background:var(--warning-50,#fff7ed)}.ap__versions>view{min-width:0;display:flex;flex-direction:column;gap:3px}.ap__versions>view text:first-child{font-size:10px;color:var(--text-tertiary)}.ap__versions>view text:last-child{font-size:var(--font-size-xs);font-weight:600;color:var(--text-primary);word-break:break-word}.ap__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.ap__next.is-danger{background:var(--warning-50,#fff7ed)}.ap__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.ap__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ap__actions{display:flex;gap:var(--space-2)}.ap__reject,.ap__approve{min-height:var(--touch-target-min);border-radius:var(--radius-md);font-size:var(--font-size-md)}.ap__reject{border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600)}.ap__approve{border:none;background:var(--teacher-600);color:#fff}.ap__approve[disabled],.ap__reject[disabled],.ap__evidence[disabled]{opacity:.45}.ap__reject::after,.ap__approve::after{border:none}@media(max-width:360px){.ap__summary{flex-direction:column}.ap__summary-metrics{width:100%}.ap__versions{grid-template-columns:1fr}.ap__batch{align-items:flex-start}}
 </style>
