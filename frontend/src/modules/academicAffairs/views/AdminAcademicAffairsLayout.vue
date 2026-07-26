@@ -58,6 +58,11 @@ export default {
         if (!res || res.code !== 0 || !res.data) {
           throw new Error((res && res.message) || '无法读取当前角色、权限和数据范围')
         }
+        // 正式环境必须取得后端真实权限集；null 不是“无权限”，而是权限上下文加载失败。
+        // 若继续把它交给 navPlan，侧栏会退化为未投影的完整能力目录，因此这里必须 fail-closed。
+        if (import.meta.env && import.meta.env.PROD && !Array.isArray(res.data.permissionPatterns)) {
+          throw new Error('权限上下文读取失败。为保护学校数据，教务菜单已停止加载，请重新登录后再试。')
+        }
         this.ctx = res.data
       } catch (err) {
         this.error = (err && err.message) || '请检查网络或重新登录后再试'
