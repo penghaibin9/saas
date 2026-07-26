@@ -18,20 +18,23 @@ class AaTeachingClass(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "teaching_task_id", name="uk_aa_tc_task"),
         UniqueConstraint("tenant_id", "term_id", "class_code", name="uk_aa_tc_term_code"),
+        Index("ix_aa_tc_term_id", "term_id"),
+        Index("ix_aa_tc_course_id", "course_id"),
+        Index("ix_aa_tc_current_roster", "current_roster_version_id"),
         Index("ix_aa_tc_term_course", "tenant_id", "term_id", "course_id"),
         Index("ix_aa_tc_status", "tenant_id", "status"),
     )
 
     teaching_task_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="兼容来源教学任务ID")
-    term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    course_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    term_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    course_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     class_code: Mapped[str] = mapped_column(String(80), nullable=False)
     class_name: Mapped[str] = mapped_column(String(160), nullable=False)
     class_type: Mapped[str] = mapped_column(String(24), nullable=False, default="ADMIN", comment="ADMIN/SELECTION/MERGED/RETAKE/LAYERED")
     source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="TEACHING_TASK")
     source_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    current_roster_version_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    current_roster_version_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     current_roster_version_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     roster_status: Mapped[str] = mapped_column(String(24), nullable=False, default="DRAFT", comment="DRAFT/LOCKED")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="ACTIVE", comment="ACTIVE/ARCHIVED")
@@ -42,10 +45,11 @@ class AaTeachingClassTeacher(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_teaching_class_teacher"
     __table_args__ = (
         UniqueConstraint("tenant_id", "teaching_class_id", "teacher_key", "role_type", name="uk_aa_tc_teacher"),
+        Index("ix_aa_tc_teacher_class", "teaching_class_id"),
         Index("ix_aa_tc_teacher_key", "tenant_id", "teacher_key", "status"),
     )
 
-    teaching_class_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teaching_class_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     teacher_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     teacher_key: Mapped[str] = mapped_column(String(100), nullable=False)
     teacher_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -59,11 +63,12 @@ class AaTeachingClassRosterVersion(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_teaching_class_roster_version"
     __table_args__ = (
         UniqueConstraint("tenant_id", "teaching_class_id", "version_no", name="uk_aa_tc_roster_version"),
+        Index("ix_aa_tc_roster_class", "teaching_class_id"),
         Index("ix_aa_tc_roster_status", "tenant_id", "teaching_class_id", "status"),
         Index("ix_aa_tc_roster_hash", "tenant_id", "teaching_class_id", "roster_hash"),
     )
 
-    teaching_class_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teaching_class_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False, comment="ADMIN_CLASS/SELECTION_LOCK/MANUAL/RETAKE")
     source_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -79,13 +84,16 @@ class AaTeachingClassMember(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_teaching_class_member"
     __table_args__ = (
         UniqueConstraint("tenant_id", "roster_version_id", "student_id", name="uk_aa_tc_member_version_student"),
+        Index("ix_aa_tc_member_teaching_class", "teaching_class_id"),
+        Index("ix_aa_tc_member_roster_version", "roster_version_id"),
+        Index("ix_aa_tc_member_student_id", "student_id"),
         Index("ix_aa_tc_member_student", "tenant_id", "student_id", "status"),
         Index("ix_aa_tc_member_class", "tenant_id", "teaching_class_id", "roster_version_id"),
     )
 
-    teaching_class_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    roster_version_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teaching_class_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    roster_version_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="ACTIVE")
