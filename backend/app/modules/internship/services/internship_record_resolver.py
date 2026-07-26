@@ -1,13 +1,7 @@
-"""学生本人实习记录唯一解析器（P0-1）。
+"""学生本人实习记录唯一解析器。
 
-全仓库学生本人读/写业务必须经本模块解析，禁止「按 studentId 查询后直接 .first()」。
-
-规则：
-- 显式传入 batchId 时严格校验归属；
-- 仅一条进行中记录时可自动选择；
-- 多条进行中记录时必须让学生选择（NEED_SELECT）；
-- 无进行中记录时仅允许历史只读模式；
-- 写操作禁止落到历史批次（CLOSED/ARCHIVED/VOIDED）或已归档学生记录。
+全仓库学生本人读/写业务必须经本模块解析，禁止按 studentId 查询后直接 `.first()`。
+显式参数优先；未显式传入时读取请求级 X-Internship-Batch-Id 上下文。
 """
 from __future__ import annotations
 
@@ -15,6 +9,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
+from app.core.context import get_current_internship_batch_id
 from app.core.exceptions import AppException, not_found
 from app.models import InternshipBatch, InternshipRecord, StudentProfile
 from app.modules.internship.services.internship_batch_context import (
@@ -23,17 +18,15 @@ from app.modules.internship.services.internship_batch_context import (
 )
 from app.services.db_service import _tid
 
-# 进行中（非归档）学生实习状态
 ACTIVE_RECORD_STATUSES = frozenset({"PREPARING", "READY", "ONBOARD", "ASSESSING"})
 
 
 @dataclass
 class StudentInternshipContext:
-    """解析结果。"""
     student: StudentProfile | None = None
     record: InternshipRecord | None = None
     batch: InternshipBatch | None = None
-    mode: str = "empty"  # active | history | need_select | empty
+    mode: str = "empty"
     candidates: list = field(default_factory=list)
     message: str = ""
 
@@ -67,17 +60,19 @@ def _records_for_student(db, student_id: int) -> list[InternshipRecord]:
 
 
 def _is_active_record(rec: InternshipRecord, batch: InternshipBatch | None) -> bool:
-    if rec.status == "ARCHIVED":
-        return False
-    if rec.status not in ACTIVE_RECORD_STATUSES:
+    if rec.status == "ARCHIVED" or rec.status not in ACTIVE_RECORD_STATUSES:
         return False
     if batch is None:
-        # 无批次元数据时，仅按学生记录状态视为进行中（历史脏数据人工映射前）
         return True
     if batch.is_deleted or batch.tenant_id != _tid():
         return False
-    # 批次已结束/归档/作废 → 不可作为写操作目标；读时可进 history
     return batch.status == "RUNNING"
+
+
+def _effective_batch_id(batch_id):
+    if batch_id is not None and str(batch_id).strip() != "":
+        return batch_id
+    return get_current_internship_batch_id()
 
 
 def resolve_student_internship_context(
@@ -89,11 +84,6 @@ def resolve_student_internship_context(
     batch_id=None,
     for_write: bool = False,
 ) -> StudentInternshipContext:
-    """解析学生当前应操作的实习记录。
-
-    for_write=True：必须落到唯一进行中记录，且批次 RUNNING；否则抛错。
-    for_write=False：可返回历史只读记录（单条历史时自动选最近一条）。
-    """
     stu = _load_student(db, student=student, student_id=student_id, student_no=student_no)
     if not stu:
         if for_write:
@@ -109,91 +99,91 @@ def resolve_student_internship_context(
     batch_map: dict[int, InternshipBatch] = {}
     bids = [r.batch_id for r in rows if r.batch_id]
     if bids:
-        for b in db.scalars(select(InternshipBatch).where(InternshipBatch.id.in_(bids))).all():
-            batch_map[b.id] = b
+        for batch in db.scalars(select(InternshipBatch).where(
+                InternshipBatch.id.in_(bids))).all():
+            batch_map[batch.id] = batch
 
-    # 显式批次：严格校验
-    if batch_id is not None and str(batch_id).strip() != "":
-        bid = parse_required_batch_id(batch_id)
-        matched = [r for r in rows if r.batch_id == bid]
+    selected_batch_id = _effective_batch_id(batch_id)
+    if selected_batch_id is not None and str(selected_batch_id).strip() != "":
+        bid = parse_required_batch_id(selected_batch_id)
+        matched = [row for row in rows if row.batch_id == bid]
         if not matched:
             raise not_found("该批次下无你的实习记录")
-        rec = matched[0]
+        record = matched[0]
         batch = batch_map.get(bid) or db.get(InternshipBatch, bid)
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("实习批次不存在或不在当前数据范围内")
         if for_write:
-            if rec.status == "ARCHIVED":
+            if record.status == "ARCHIVED":
                 raise AppException("DATA_CONFLICT", "已归档实习记录禁止业务写入")
             if batch.status in WRITE_FORBIDDEN_STATUSES:
                 raise AppException(
                     "DATA_CONFLICT",
                     f"批次状态为「{batch.status}」，禁止请假/打卡/周报/求助等写操作",
                 )
-            if rec.status not in ACTIVE_RECORD_STATUSES:
-                raise AppException("DATA_CONFLICT", f"当前实习状态「{rec.status}」不允许业务写入")
-        mode = "active" if _is_active_record(rec, batch) else "history"
+            if record.status not in ACTIVE_RECORD_STATUSES:
+                raise AppException(
+                    "DATA_CONFLICT", f"当前实习状态「{record.status}」不允许业务写入")
+        mode = "active" if _is_active_record(record, batch) else "history"
         if for_write and mode != "active":
             raise AppException("DATA_CONFLICT", "写操作只能针对进行中的实习批次")
         return StudentInternshipContext(
-            student=stu, record=rec, batch=batch, mode=mode,
+            student=stu, record=record, batch=batch, mode=mode,
             message="" if mode == "active" else "当前为历史实习记录（只读）",
         )
 
     active = []
     history = []
-    for r in rows:
-        b = batch_map.get(r.batch_id) if r.batch_id else None
-        if _is_active_record(r, b):
-            active.append((r, b))
+    for record in rows:
+        batch = batch_map.get(record.batch_id) if record.batch_id else None
+        if _is_active_record(record, batch):
+            active.append((record, batch))
         else:
-            history.append((r, b))
+            history.append((record, batch))
 
     if len(active) > 1:
-        cands = [
+        candidates = [
             {
-                "recordId": str(r.id),
-                "batchId": str(r.batch_id or ""),
-                "batchName": (b.batch_name if b else "") or "",
-                "status": r.status,
+                "recordId": str(record.id),
+                "batchId": str(record.batch_id or ""),
+                "batchName": (batch.batch_name if batch else "") or "",
+                "status": record.status,
             }
-            for r, b in active
+            for record, batch in active
         ]
         if for_write:
             raise AppException(
                 "NEED_SELECT",
                 "你有多条进行中的实习记录，请先选择批次后再操作",
-                details={"candidates": cands},
+                details={"candidates": candidates},
             )
         return StudentInternshipContext(
-            student=stu, mode="need_select", candidates=cands,
+            student=stu, mode="need_select", candidates=candidates,
             message="你有多条进行中的实习记录，请选择批次",
         )
 
     if len(active) == 1:
-        rec, batch = active[0]
+        record, batch = active[0]
         return StudentInternshipContext(
-            student=stu, record=rec, batch=batch, mode="active",
-        )
+            student=stu, record=record, batch=batch, mode="active")
 
-    # 无进行中：历史只读
     if for_write:
         raise AppException(
             "DATA_CONFLICT",
             "当前没有进行中的实习批次，无法发起请假/打卡/周报/求助等写操作",
         )
     if history:
-        rec, batch = history[0]  # 已按 id desc
+        record, batch = history[0]
         return StudentInternshipContext(
-            student=stu, record=rec, batch=batch, mode="history",
+            student=stu, record=record, batch=batch, mode="history",
             candidates=[
                 {
-                    "recordId": str(r.id),
-                    "batchId": str(r.batch_id or ""),
-                    "batchName": (b.batch_name if b else "") or "",
-                    "status": r.status,
+                    "recordId": str(item.id),
+                    "batchId": str(item.batch_id or ""),
+                    "batchName": (item_batch.batch_name if item_batch else "") or "",
+                    "status": item.status,
                 }
-                for r, b in history
+                for item, item_batch in history
             ],
             message="当前为历史实习记录（只读）",
         )
@@ -202,7 +192,6 @@ def resolve_student_internship_context(
 
 def require_active_student_record(db, user=None, *, batch_id=None, student_no=None,
                                   student_id=None, student=None):
-    """学生写操作便捷入口：返回 (record, student)，失败抛错。"""
     sno = student_no or (user or {}).get("studentNo")
     ctx = resolve_student_internship_context(
         db, student=student, student_id=student_id, student_no=sno,
@@ -213,7 +202,6 @@ def require_active_student_record(db, user=None, *, batch_id=None, student_no=No
 
 def resolve_optional_student_record(db, user=None, *, batch_id=None, student_no=None,
                                     student=None, student_id=None):
-    """学生读操作便捷入口：返回 (record, student, ctx)，不强制抛错。"""
     sno = student_no or (user or {}).get("studentNo")
     ctx = resolve_student_internship_context(
         db, student=student, student_id=student_id, student_no=sno,
