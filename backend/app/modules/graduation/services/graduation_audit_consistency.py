@@ -41,9 +41,10 @@ _STUDENT_TABLES = {
     "FINAL": "t_gd_final",
     "PLAGIARISM": "t_gd_plagiarism",
     "REVIEW": "t_gd_review",
+    "DEFENSE": "t_gd_defense_score",
     "DEFENSE_SCORE": "t_gd_defense_score",
     "GRADE": "t_gd_grade",
-    "RISK": "t_gd_risk",
+    "RISK": "t_gd_risk_case",
     "ARCHIVE": "t_gd_archive_record",
     "GRADE_APPEAL": "t_gd_grade_appeal",
     "PEER": "t_gd_peer_review",
@@ -59,12 +60,11 @@ def _infer_batch_id(connection, target: GraduationAuditTrail) -> int | None:
         return None
     biz_type = str(target.biz_type or "").upper()
     if biz_type in _DIRECT_BATCH:
-        table = _DIRECT_BATCH[biz_type]
-        column = "id" if biz_type == "BATCH" else "batch_id"
         if biz_type == "BATCH":
             return biz_id
+        table = _DIRECT_BATCH[biz_type]
         return connection.execute(text(
-            f"SELECT {column} FROM {table} WHERE id=:id AND tenant_id=:tenant LIMIT 1"
+            f"SELECT batch_id FROM {table} WHERE id=:id AND tenant_id=:tenant LIMIT 1"
         ), {"id": biz_id, "tenant": target.tenant_id}).scalar()
     table = _STUDENT_TABLES.get(biz_type)
     if not table:
