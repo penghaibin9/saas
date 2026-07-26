@@ -1,8 +1,51 @@
-/** 学生端数据服务：真实后端优先（主链：首页/档案/消息），其余仍 mock；失败自动回退。 */
+/** 学生端数据服务：关键业务走真实接口，岗位实习禁止回落 mock 假状态。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
 import * as real from './realApi'
 import * as internship from './internshipApi'
 import * as M from '@/mock'
+
+function mapInternshipDashboard(r) {
+  if (!r || !r.hasData) {
+    return {
+      hasBatch: false,
+      needSelect: !!r?.needSelect,
+      candidates: r?.candidates || [],
+      message: r?.message || '暂无实习记录',
+      _real: true,
+      company: '', post: '', schoolMentor: '', companyMentor: '', batch: '', batchId: '',
+      timeline: [], weekly: { week: '第 1 周', submitted: false, lastFeedback: '' },
+      checkin: { done: false, time: '', totalDays: 0, place: '', note: '仅在点击时采集定位，不后台定位' },
+      status: { todayCheckin: 'PENDING', weekly: 'PENDING_SUBMIT', agreement: 'PENDING', insurance: 'PENDING', onboard: 'PENDING', leave: 'NONE' }
+    }
+  }
+  return {
+    hasBatch: true, needSelect: false, candidates: r.candidates || [],
+    historyMode: !!r.historyMode, recordId: r.recordId || '', batchId: r.batchId || '',
+    batch: r.batchName || '实习批次', company: r.enterpriseName || '', post: r.positionName || '',
+    schoolMentor: r.advisorName || '待分配', companyMentor: r.enterpriseMentor || '待分配',
+    statusText: r.recordStatus || '', timeline: r.timeline || [], _real: true,
+    weekly: {
+      week: `第 ${Number(r.weekly?.weekNumber || 1)} 周`,
+      submitted: !!r.weekly?.submitted,
+      lastFeedback: r.weekly?.lastFeedback || ''
+    },
+    checkin: {
+      done: !!r.todayCheckin?.done,
+      time: r.todayCheckin?.time || '',
+      totalDays: Number(r.todayCheckin?.totalDays || 0),
+      place: r.workLocation || r.enterpriseName || '实习地点待定',
+      note: '仅在点击时采集定位，不后台定位'
+    },
+    status: {
+      todayCheckin: r.todayCheckin?.done ? 'COMPLETED' : 'PENDING',
+      weekly: r.weekly?.submitted ? 'COMPLETED' : 'PENDING_SUBMIT',
+      agreement: r.agreementStatus || 'PENDING',
+      insurance: r.insuranceStatus || 'PENDING',
+      onboard: r.recordStatus || 'PENDING',
+      leave: r.leaveStatus || 'NONE'
+    }
+  }
+}
 
 export const studentApi = {
   getHome: () =>
@@ -28,15 +71,15 @@ export const studentApi = {
     realFirstStrict('student.academic',
       () => real.enrichAcademic(M.studentAcademic),
       () => mockRequest(M.studentAcademic)),
-  getInternship: () => real.enrichInternship(),
+  getInternship: (batchId) => internship.studentInternshipDashboard(batchId).then(mapInternshipDashboard),
   getInternshipCompliance: (operation, batchId) => internship.studentInternshipCompliance(operation, batchId),
   getInternshipConsents: () => internship.studentInternshipConsents(),
   getInternshipConsentDetail: (id) => internship.studentInternshipConsentDetail(id),
   viewInternshipConsent: (id) => internship.studentInternshipConsentView(id),
   confirmInternshipConsent: (id, body) => internship.studentInternshipConsentConfirm(id, body),
   rejectInternshipConsent: (id, body) => internship.studentInternshipConsentReject(id, body),
-  getInternshipSafetyCourses: () => internship.studentInternshipSafetyCourses(),
-  getInternshipSafetyCompletions: () => internship.studentInternshipSafetyCompletions(),
+  getInternshipSafetyCourses: (batchId) => internship.studentInternshipSafetyCourses(batchId),
+  getInternshipSafetyCompletions: (batchId) => internship.studentInternshipSafetyCompletions(batchId),
   getInternshipSafetyCourseDetail: (id) => internship.studentInternshipSafetyCourseDetail(id),
   startInternshipSafetyCourse: (id) => internship.studentInternshipSafetyStart(id),
   submitInternshipSafetyCourse: (id, body) => internship.studentInternshipSafetySubmit(id, body),
