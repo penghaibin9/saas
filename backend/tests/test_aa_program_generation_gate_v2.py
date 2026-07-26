@@ -80,7 +80,7 @@ def test_generate_batch_calls_original_once_and_returns_validation_summary(monke
     assert result["programValidation"] == {
         "programCount": 2,
         "warningCount": 1,
-        "conclusion": "已启用方案结构校验通过",
+        "conclusion": "已启用方案结构与绑定校验通过",
     }
 
 
