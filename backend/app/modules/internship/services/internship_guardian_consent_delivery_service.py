@@ -13,7 +13,7 @@ from urllib.parse import quote
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.exceptions import AppException, no_permission, not_found
+from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import decrypt_field
 from app.models import (
     InternshipConsent, InternshipRecord, StudentParentLink, StudentProfile,
@@ -121,16 +121,17 @@ def _send(row: InternshipConsent, token: str, user=None) -> dict:
 
 
 def create_and_deliver(body: dict, user=None) -> dict:
-    result = consent.create_pending(body, user)
+    payload = body or {}
+    consent_type = str(payload.get("consentType") or "").upper()
+    result = consent.create_pending(payload, user)
     token = result.pop("guardianConfirmToken", None)
-    if str(result.get("consentType") or "").upper() != "GUARDIAN":
+    if consent_type != "GUARDIAN":
         return result
     if not token:
         raise AppException("SYSTEM_ERROR", "监护人确认token生成失败")
     row = InternshipConsent(id=_as_id(result["id"]))
     delivery = _send(row, token, user)
-    result.update(delivery)
-    # delivery写回会增加版本，返回最终版本而不是创建时旧版本。
+    result.update({"consentType": "GUARDIAN", **delivery})
     with session() as db:
         saved = db.get(InternshipConsent, _as_id(result["id"]))
         result["version"] = int(saved.version or 0) if saved else result.get("version", 0)
