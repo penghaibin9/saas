@@ -5,9 +5,20 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
+from app.modules.graduation.services import graduation_extension_query_service as query_svc
 from app.modules.graduation.services import graduation_extension_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-优秀成果与延期答辩"])
+
+
+@router.get("/gd-excellent-outcomes/candidates", summary="优秀成果可提名候选")
+def gd_excellent_outcome_candidates(
+    batchId: int = Query(..., ge=1), page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    user=Depends(require_permission("graduationDesign.grade.view")),
+):
+    items, total = query_svc.list_candidates(batch_id=batchId, page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/gd-excellent-outcomes", summary="优秀成果认定台账")
