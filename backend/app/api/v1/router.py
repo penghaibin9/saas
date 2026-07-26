@@ -12,11 +12,13 @@ register_all_routes(api_router)
 # version/permission/scope 绑定，不改任何其他业务域状态机。
 from app.api.v1.affairs_activity_mobile import router as affairs_activity_mobile_router
 from app.api.v1.affairs_appeal_mobile import router as affairs_appeal_mobile_router
+from app.api.v1.affairs_appeal_repair_api import router as affairs_appeal_repair_router
 from app.api.v1.affairs_four_end import router as affairs_four_end_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_activity_reliability_service import install as install_activity_reliability
+from app.services.affairs_appeal_repair_service import install as install_appeal_repair
 from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
 from app.services.affairs_dorm_projection_service import install as install_dorm_projection
@@ -31,6 +33,7 @@ api_router.include_router(affairs_four_end_router)
 api_router.include_router(affairs_student_dorm_router)
 api_router.include_router(affairs_activity_mobile_router)
 api_router.include_router(affairs_appeal_mobile_router)
+api_router.include_router(affairs_appeal_repair_router)
 api_router.include_router(affairs_student_returned_router)
 install_affairs_four_end_contract()
 install_sensitive_audit_guard()
@@ -43,5 +46,6 @@ install_dorm_projection()
 install_atomic_student_applications()
 # 必须在核心申诉实现完成后安装，包装具体受理人待办和结果消息。
 install_appeal_todo_reconciliation()
+install_appeal_repair()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
