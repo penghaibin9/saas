@@ -16,11 +16,36 @@
     </template>
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载调宿申请..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
+      <div class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">调宿审批工作区</span>
+          <h3 class="sa-summary-strip__title">先核对“原床 → 目标床”和申请事由，再处理当前审批节点</h3>
+          <p class="sa-summary-strip__text">审批完成前学生原床保持不变。辅导员审核学生情况，宿管审核目标楼栋与床位。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton
+            :allowed="canBtn('studentAffairs.dorm.transfer.create')"
+            code="studentAffairs.dorm.transfer.create"
+            variant="secondary"
+            :loading="actioning"
+            @click="openTransfer"
+          >发起调宿</AppPermissionButton>
+        </div>
+      </div>
+
+      <div class="sa-workflow-strip" aria-label="调宿审批流程">
+        <div class="sa-workflow-step" data-step="1">选择学生、目标空床并填写真实事由</div>
+        <div class="sa-workflow-step" data-step="2">辅导员核对学生情况和调宿必要性</div>
+        <div class="sa-workflow-step" data-step="3">宿管核对楼栋、房间和床位可用性</div>
+        <div class="sa-workflow-step" data-step="4">终审通过后执行床位切换</div>
+      </div>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
 
       <AppSectionCard title="调宿申请">
+        <p class="dr-section-hint">操作前请确认学生、原床、目标床、申请事由和当前节点。床位信息不完整时页面会禁止通过。</p>
         <div v-if="studentFilterLabel" class="sa-student-filter"><span>{{ studentFilterLabel }}</span><button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button></div>
         <AppInlineAlert v-if="items.some((x) => isPending(x.status) && (!x.fromBedLabel || !x.toBedLabel))" type="warning" description="部分待审批记录缺少可读床位信息，已禁止通过。请刷新或联系宿舍管理员核对房源数据。" />
 
@@ -40,12 +65,13 @@
             <span v-else class="sa-muted">当前节点无操作</span>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无调宿申请</p>
+        <p v-else class="sa-empty">当前范围暂无调宿申请。需要办理时，可从页面右上角发起调宿。</p>
       </AppSectionCard>
     </AppGlobalState>
 
     <AppDrawer :visible="dlg.visible" title="发起调宿" @close="closeTransfer">
       <div class="dr-form">
+        <p class="dr-workspace-intro">按“学生 → 楼栋 → 房间 → 空床”顺序选择，提交后进入辅导员和宿管两级审批。</p>
         <AppFormItem label="调宿学生" required><AppStudentPicker v-model="dlg.studentId" placeholder="按姓名 / 学号搜索" :disabled="actioning" /></AppFormItem>
         <AppFormItem label="目标楼栋" required><AppDormBuildingPicker v-model="dlg.buildingId" :options="buildingOptions" placeholder="选择楼栋" :disabled="actioning" @change="onBuildingChange" /></AppFormItem>
         <AppFormItem label="目标房间" required><AppDormRoomPicker v-model="dlg.roomId" :options="roomOptions" :query="{ buildingId: dlg.buildingId }" :disabled="actioning || !dlg.buildingId" :placeholder="dlg.buildingId ? '选择房间' : '请先选楼栋'" @change="onRoomChange" /></AppFormItem>
@@ -253,7 +279,21 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-4);margin-bottom:var(--space-4) }.sa-student-filter { display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);margin-bottom:var(--space-3);padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);background:var(--warning-50,#fffbeb);border:1px solid var(--warning-200,#fde68a);font-size:var(--font-size-sm);color:var(--text-primary) }.sa-actions { display:flex;flex-wrap:wrap;gap:var(--space-2) }.sa-muted { color:var(--text-tertiary) }.sa-empty { color:var(--text-tertiary);padding:var(--space-4);text-align:center }.route-cell { display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px }.route-from { color:var(--text-secondary) }.route-arrow { color:var(--text-tertiary) }.route-to { color:var(--success-700,#15803d) }.reason-cell { display:block;max-width:220px;white-space:normal;line-height:1.5 }.dr-form { display:flex;flex-direction:column;gap:var(--space-4) }.dr-hint,.char-count { margin:0;color:var(--text-tertiary);font-size:var(--font-size-sm) }.char-count { text-align:right;margin-top:-12px }.target-preview { padding:10px 12px;border-radius:var(--radius-md);background:var(--primary-50,#eff6ff) }.target-preview span,.target-preview strong { display:block }.target-preview span { color:var(--text-tertiary);font-size:12px }.target-preview strong { margin-top:3px;color:var(--primary-700,#1d4ed8) }
-@media (max-width:960px){.sa-grid--metrics{grid-template-columns:1fr 1fr}}
+.dr-section-hint,
+.dr-workspace-intro { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.sa-student-filter { display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);margin-bottom:var(--space-3);padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);background:var(--warning-50,#fffbeb);border:1px solid var(--warning-200,#fde68a);font-size:var(--font-size-sm);color:var(--text-primary) }
+.route-cell { display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px;line-height:1.5 }
+.route-from { color:var(--text-secondary) }
+.route-arrow { color:var(--text-tertiary);font-weight:700 }
+.route-to { color:var(--success-700,#15803d) }
+.reason-cell { display:block;max-width:240px;white-space:normal;line-height:1.55;overflow-wrap:anywhere }
+.dr-form { display:flex;flex-direction:column;gap:var(--space-4) }
+.dr-hint,.char-count { margin:0;color:var(--text-tertiary);font-size:var(--font-size-sm) }
+.char-count { text-align:right;margin-top:-12px }
+.target-preview { padding:10px 12px;border-radius:var(--radius-md);background:var(--primary-50,#eff6ff);border:1px solid var(--primary-100,#dbeafe) }
+.target-preview span,.target-preview strong { display:block }
+.target-preview span { color:var(--text-tertiary);font-size:12px }
+.target-preview strong { margin-top:3px;color:var(--primary-700,#1d4ed8) }
+@media (max-width:960px){.route-cell{align-items:flex-start;flex-direction:column}.route-arrow{transform:rotate(90deg)}}
 @import '@/styles/module-page.css';
 </style>
