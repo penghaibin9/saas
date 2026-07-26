@@ -1,4 +1,4 @@
-"""教师移动端超期销假批次化权威接口。"""
+"""教师移动端请假/补卡材料查看与超期销假批次化权威接口。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Query
@@ -9,9 +9,33 @@ from app.modules.internship.services import internship_student_leave_context_ser
 
 router = APIRouter(
     prefix="/mobile/teacher/internship/context",
-    tags=["教师移动端-实习请假版本化"],
+    tags=["教师移动端-实习请假补卡版本化"],
     dependencies=[Depends(require_module("internship"))],
 )
+
+
+@router.post("/makeups/{makeup_id}/evidence-viewed", summary="教师查看补卡证据并写审计留痕")
+def teacher_makeup_evidence_viewed(
+    makeup_id: str,
+    user=Depends(require_permission("internship.makeup.view")),
+):
+    from app.modules.internship.services import internship_makeup_service as makeups
+    return success(
+        makeups.mark_evidence_viewed(user, makeup_id),
+        message="补卡证据查看已留痕",
+    )
+
+
+@router.post("/leaves/{leave_id}/evidence-viewed", summary="教师查看请假证明并写审计留痕")
+def teacher_leave_evidence_viewed(
+    leave_id: str,
+    user=Depends(require_permission("internship.leave.view")),
+):
+    from app.modules.internship.services import internship_leave_service as leave_service
+    return success(
+        leave_service.mark_evidence_viewed(user, leave_id),
+        message="请假证明查看已留痕",
+    )
 
 
 @router.get("/leaves/overdue", summary="教师当前批次超期或已销假待办结记录")
