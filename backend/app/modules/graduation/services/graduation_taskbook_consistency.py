@@ -5,8 +5,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException, no_permission, not_found
 from app.models import GraduationStudent, GraduationTaskBook, GraduationTemplate
+from app.modules.graduation.policies import taskbook_policy
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 from app.services.db_service import _iso, _tid, session
 
@@ -118,10 +120,63 @@ def change_taskbook(gd_student_id, body: dict) -> dict:
         return svc._row(row, student)
 
 
+def confirm_taskbook(gd_student_id, proxy_reason: str | None = None) -> dict:
+    """学校端代确认：鉴权、原因、学生与任务书锁、状态推进均在同一事务。"""
+    from app.modules.graduation.services import graduation_taskbook_service as svc
+
+    user = get_current_user_ctx() or {}
+    role = str(user.get("currentRoleCode") or "").strip().upper()
+    user_type = str(user.get("userType") or "").strip().upper()
+    if user_type == "STUDENT" or role == "STUDENT":
+        raise no_permission("学生本人须通过带版本校验的电子确认入口")
+    reason = str(proxy_reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "管理员代确认须填写原因（不少于 5 字）")
+
+    with session() as db:
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+        ).with_for_update()).first()
+        if not student:
+            raise not_found("毕设学生不存在")
+        assert_student_access(db, student, "taskbook.confirmOnBehalf")
+        taskbook_policy.authorize(db, student, "confirmOnBehalf")
+        row = db.scalars(select(GraduationTaskBook).where(
+            GraduationTaskBook.tenant_id == _tid(),
+            GraduationTaskBook.gd_student_id == student.id,
+            GraduationTaskBook.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not row:
+            raise not_found("尚未下达任务书")
+        if row.status == "CONFIRMED":
+            return svc._row(row, student)
+        if row.status not in ("PENDING_CONFIRM", "CHANGE_PENDING"):
+            raise AppException("DATA_CONFLICT", "当前任务书状态不允许代确认")
+        before = row.status
+        row.status = "CONFIRMED"
+        row.confirmed_at = datetime.now(timezone.utc)
+        if student.stage == "TASKBOOK_CONFIRM":
+            student.stage = "GUIDING"
+            student.version = int(student.version or 0) + 1
+        svc._audit(db, row.id, "管理员代确认任务书", reason, before, "CONFIRMED")
+        from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
+        notify_risk_rescan(db, student.id)
+        db.commit()
+        return svc._row(row, student)
+
+
 def confirm_taskbook_in_session(db, gd_student_id) -> dict:
     from app.modules.graduation.services import graduation_taskbook_service as svc
-    student = db.get(GraduationStudent, int(gd_student_id))
-    if not student or student.is_deleted or student.tenant_id != _tid():
+    student = db.scalars(select(GraduationStudent).where(
+        GraduationStudent.id == int(gd_student_id),
+        GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.is_deleted.is_(False),
+        GraduationStudent.record_status == "ACTIVE",
+    ).with_for_update()).first()
+    if not student:
         raise not_found("毕设学生不存在")
     assert_student_access(db, student, "taskbook.confirm")
     row = db.scalars(select(GraduationTaskBook).where(
@@ -140,6 +195,7 @@ def confirm_taskbook_in_session(db, gd_student_id) -> dict:
     row.confirmed_at = datetime.now(timezone.utc)
     if student.stage == "TASKBOOK_CONFIRM":
         student.stage = "GUIDING"
+        student.version = int(student.version or 0) + 1
     svc._audit(db, row.id, "学生确认任务书", before=before, after="CONFIRMED")
     db.flush()
     return svc._row(row, student)
@@ -201,5 +257,6 @@ def install_taskbook_consistency() -> None:
     svc.taskbook_stats = taskbook_stats
     svc.issue_taskbook = issue_taskbook
     svc.change_taskbook = change_taskbook
+    svc.confirm_taskbook = confirm_taskbook
     svc.confirm_taskbook_in_session = confirm_taskbook_in_session
     svc.export_taskbook_pdf = export_taskbook_pdf
