@@ -29,7 +29,8 @@ from app.models.file import FileObject  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAgreement,  # noqa: F401
                                     InternshipArchive, InternshipAuditTrail, InternshipBatch,
-                                    InternshipBatchPlan, InternshipChangeRequest,
+                                    InternshipBatchParticipant, InternshipBatchPlan,
+                                    InternshipBatchScopeRule, InternshipChangeRequest,
                                     InternshipCheckin, InternshipEnterpriseEval,
                                     InternshipFinalScore, InternshipGuidance, InternshipInsurance,
                                     InternshipLeave, InternshipMakeup, InternshipPlanAck,

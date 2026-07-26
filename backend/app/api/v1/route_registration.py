@@ -63,6 +63,7 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_compliance,
         internship_insurance,
         internship_match,
+        internship_participant,
         internship_plan,
         internship_position,
         internship_process,
@@ -77,6 +78,8 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(internship_agreement_template.router, dependencies=d)
     api_router.include_router(internship_student.router, dependencies=d)
     api_router.include_router(internship_match.router, dependencies=d)
+    # 批次参与人（组织范围选人，替代反复导 Excel 名单）
+    api_router.include_router(internship_participant.router, dependencies=d)
     api_router.include_router(internship_application.router, dependencies=d)
     api_router.include_router(internship_archive.router, dependencies=d)
     api_router.include_router(internship_stats.router, dependencies=d)

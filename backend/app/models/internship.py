@@ -689,3 +689,52 @@ class InternshipComplaint(PKMixin, TenantMixin, CommonMixin, Base):
     conclusion: Mapped[str | None] = mapped_column(Text, comment="结论/处理意见")
     followup_result: Mapped[str | None] = mapped_column(Text, comment="回访结果")
     risk_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="转风险单 → t_risk_record")
+
+
+class InternshipBatchScopeRule(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_batch_scope_rule 批次选人规则（一批次一条，可反复改到冻结为止）。
+
+    替代"每开一个批次导一次 Excel 名单"：这里只存"要哪些人"的规则
+    （学院/专业/班级/年级/点名 - 排除项），真正的名单由 student_scope_resolver 现算，
+    冻结时才落成 participant 快照。学生转班后，未冻结批次的预览会自动跟着变。
+    """
+    __tablename__ = "t_internship_batch_scope_rule"
+    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", name="uk_intern_scope_batch"),)
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    rule_json: Mapped[dict | None] = mapped_column(
+        JSON, comment="ScopeRule.to_dict()：collegeIds/majorIds/classIds/studentIds/grades + exclude*")
+    last_preview_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0,
+                                                    comment="最近一次预览命中人数（仅供页面显示）")
+    last_preview_at: Mapped[datetime | None] = mapped_column(DateTime)
+    frozen_at: Mapped[datetime | None] = mapped_column(DateTime, comment="冻结时间；非空表示名单已生成")
+    frozen_by: Mapped[str | None] = mapped_column(String(100))
+
+
+class InternshipBatchParticipant(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_internship_batch_participant 批次参与人（冻结后的正式名单）。
+
+    冻结即快照：学生此后转班、改名都不会把人从已冻结的批次里挪走或挪进来——
+    实习名单是有法律与考核意义的，不能随组织变动漂移。展示姓名仍走主档双读。
+    """
+    __tablename__ = "t_internship_batch_participant"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_id", "student_id", name="uk_intern_participant"),
+        Index("ix_intern_participant_batch", "tenant_id", "batch_id", "is_deleted"),
+    )
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True,
+                                            comment="= t_student_profile.id")
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="SCOPE",
+                                        comment="SCOPE 规则圈定 / MANUAL 人工补录")
+    # 冻结当时的组织快照：用于"当时属于哪个班"的追溯与统计，不作为身份真相
+    snapshot_student_no: Mapped[str | None] = mapped_column(String(50))
+    snapshot_name: Mapped[str | None] = mapped_column(String(100))
+    snapshot_class_name: Mapped[str | None] = mapped_column(String(100))
+    snapshot_college_name: Mapped[str | None] = mapped_column(String(100))
+    internship_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                      comment="冻结时创建/命中的 t_internship_record.id")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE",
+                                        comment="ACTIVE 在册 / REMOVED 已移出（保留行以便追溯）")
+    remove_reason: Mapped[str | None] = mapped_column(String(500))

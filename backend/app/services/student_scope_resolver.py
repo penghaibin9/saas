@@ -229,35 +229,35 @@ def resolve(db, tenant_id: int, rule: ScopeRule, *, user: dict | None = None,
     return result
 
 
+def org_names(db, profile, cache: dict | None = None) -> tuple[str, str, str]:
+    """主档组织 id → (学院名, 专业名, 班级名)。
+
+    实现只此一份（shadow_student_service 里那份是同一个），本模块转出来给调用方用，
+    避免"选人页显示的班级名"和"旧域双读显示的班级名"两套逻辑各写各的、慢慢跑偏。
+    """
+    from app.services.shadow_student_service import org_names as _impl
+    return _impl(db, profile, cache)
+
+
 def preview_rows(db, students, tenant_id: int) -> list[dict]:
     """把学生列表渲染成预览表格行。只出非敏感字段——选人页不需要手机号/身份证。"""
-    from app.models.org import College, Major, SchoolClass
-
     cache: dict = {}
-
-    def _name(model, oid):
-        if not oid:
-            return ""
-        key = (model.__name__, int(oid))
-        if key not in cache:
-            row = db.get(model, oid)
-            cache[key] = "" if row is None else (
-                getattr(row, "college_name", None) or getattr(row, "major_name", None)
-                or getattr(row, "class_name", None) or "")
-        return cache[key]
-
-    return [{
-        "studentId": str(s.id),
-        "studentNo": s.student_no or "",
-        "name": s.real_name,
-        "gender": s.gender or "",
-        "grade": s.grade or "",
-        "collegeName": _name(College, s.college_id),
-        "majorName": _name(Major, s.major_id),
-        "className": _name(SchoolClass, s.class_id),
-        "currentStage": s.current_stage,
-        "studentStatus": s.student_status,
-    } for s in students]
+    out = []
+    for s in students:
+        college_name, major_name, class_name = org_names(db, s, cache)
+        out.append({
+            "studentId": str(s.id),
+            "studentNo": s.student_no or "",
+            "name": s.real_name,
+            "gender": s.gender or "",
+            "grade": s.grade or "",
+            "collegeName": college_name,
+            "majorName": major_name,
+            "className": class_name,
+            "currentStage": s.current_stage,
+            "studentStatus": s.student_status,
+        })
+    return out
 
 
 def resolve_preview(db, tenant_id: int, body: dict | None, *, user: dict | None = None) -> dict:
