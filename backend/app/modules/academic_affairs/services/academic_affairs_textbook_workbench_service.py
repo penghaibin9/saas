@@ -1,6 +1,6 @@
 """教材PC工作台只读聚合。
 
-只提供页面所需的当前学期候选与发放批次结论；不新建业务事实、不绕过教材最终写facade。
+只提供页面所需的当前学期候选、发放批次和学生明细；不新建业务事实、不绕过教材最终写facade。
 """
 from __future__ import annotations
 
@@ -143,3 +143,76 @@ def list_distribution_batches(user, term_id=None, page=1, page_size=50):
                 ),
             })
         return items, total
+
+
+def list_distribution_records(user, batch_id, page=1, page_size=100):
+    """发放批次学生明细，包含姓名、学号与费用状态，供独立处理页。"""
+    from app.models import (
+        AaTextbookDistributionBatch,
+        AaTextbookDistributionRecord,
+        AaTextbookFeeLedger,
+        AaTextbookOrderBatch,
+        StudentProfile,
+    )
+
+    with session() as db:
+        _require_school(user, db)
+        batch = db.query(AaTextbookDistributionBatch).filter(
+            AaTextbookDistributionBatch.id == int(batch_id),
+            AaTextbookDistributionBatch.tenant_id == _tid(),
+            AaTextbookDistributionBatch.is_deleted.is_(False),
+        ).first()
+        if not batch:
+            raise not_found("教材发放批次不存在")
+        order = db.query(AaTextbookOrderBatch).filter(
+            AaTextbookOrderBatch.id == batch.order_batch_id,
+            AaTextbookOrderBatch.tenant_id == _tid(),
+            AaTextbookOrderBatch.is_deleted.is_(False),
+        ).first()
+        if not order:
+            raise AppException("DATA_CONFLICT", "发放批次未关联有效征订批次", http_status=409)
+        query = db.query(AaTextbookDistributionRecord, StudentProfile).join(
+            StudentProfile,
+            StudentProfile.id == AaTextbookDistributionRecord.student_id,
+        ).filter(
+            AaTextbookDistributionRecord.tenant_id == _tid(),
+            AaTextbookDistributionRecord.batch_id == batch.id,
+            AaTextbookDistributionRecord.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
+        total = query.count()
+        rows = query.order_by(
+            StudentProfile.student_no,
+            AaTextbookDistributionRecord.textbook_name,
+        ).offset((max(1, int(page)) - 1) * int(page_size)).limit(int(page_size)).all()
+        record_ids = [int(record.id) for record, _student in rows]
+        fees = {}
+        if record_ids:
+            fees = {
+                int(fee.distribution_record_id): fee
+                for fee in db.query(AaTextbookFeeLedger).filter(
+                    AaTextbookFeeLedger.tenant_id == _tid(),
+                    AaTextbookFeeLedger.distribution_record_id.in_(record_ids),
+                    AaTextbookFeeLedger.is_deleted.is_(False),
+                ).all()
+            }
+        return [{
+            "recordId": str(record.id),
+            "studentId": str(record.student_id),
+            "studentNo": student.student_no,
+            "studentName": student.real_name,
+            "textbookName": record.textbook_name,
+            "qty": record.qty,
+            "status": record.status,
+            "feeStatus": fees.get(int(record.id)).status if fees.get(int(record.id)) else None,
+            "amount": float(fees.get(int(record.id)).amount) if fees.get(int(record.id)) else None,
+            "paidAmount": float(fees.get(int(record.id)).paid_amount) if fees.get(int(record.id)) else None,
+        } for record, student in rows], total, {
+            "distributionBatchId": str(batch.id),
+            "orderBatchId": str(order.id),
+            "orderBatchName": order.batch_name,
+            "classId": str(batch.class_id) if batch.class_id else None,
+            "className": batch.class_name,
+            "status": batch.status,
+        }
