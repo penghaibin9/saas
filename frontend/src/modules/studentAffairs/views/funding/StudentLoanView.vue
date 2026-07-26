@@ -101,7 +101,7 @@ export default {
       const f = this.form
       if (!f.studentId) { toast.error('请选择学生'); return }
       this.acting = 'reg'
-      const res = await studentAffairsApi.registerLoan({ studentId: Number(f.studentId), loanType: f.loanType, bankName: (f.bankName || '').trim() || undefined, bankLast4: (f.bankLast4 || '').trim() || undefined, yearCode: (f.yearCode || '').trim() || undefined, amount: f.amount != null ? Number(f.amount) : undefined })
+      const res = await studentAffairsApi.registerLoan({ studentId: Number(f.studentId), loanType: f.loanType, bankName: (f.bankName || '').trim() || undefined, bankLast4: (f.bankLast4 || '').trim() || undefined, yearCode: (f.yearCode || '').trim() || undefined, amount: f.amount != null ? String(f.amount) : undefined })
       this.acting = ''
       if (res.code === 0) { toast.success('已登记'); this.formVisible = false; this.form = this.blank(); this.load() } else toast.error(res.message || '登记失败')
     },

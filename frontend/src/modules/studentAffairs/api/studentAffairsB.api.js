@@ -43,14 +43,14 @@ export function normalizeStudent(row = {}) {
 
 function normalizeAudit(row = {}) {
   return {
-    id: row.id || row.auditId || row.eventId || `${row.action || 'audit'}-${row.at || row.time || Math.random()}`,
-    action: row.action || row.title || '查看记录',
-    actor: row.actor || row.operator || row.who || '系统',
+    id: row.id || row.auditId || row.eventId || '',
+    action: row.action || row.title || '未记录',
+    actor: row.actor || row.operator || row.who || '未记录',
     actorRole: row.actorRole || row.roleName || row.currentRole || '',
     target: row.target || row.resource || row.module || '',
     reason: row.reason || row.detail || row.summary || '',
     at: (row.at || row.time || row.occurredAt || row.createdAt || '').replace('T', ' ').slice(0, 19),
-    result: row.result || '成功'
+    result: row.result || '未记录'
   }
 }
 

@@ -98,12 +98,10 @@ def link_attachment(biz_type, biz_id, file_id, note, user) -> dict:
                               file_id=int(meta["fileId"]), file_name=meta.get("fileName"),
                               note=(note or "").strip() or None)
         db.add(a)
+        db.flush()
+        file_service.bind_file_biz(str(meta["fileId"]), bt, str(biz_id), user=user, db=db)
         db.commit()
         db.refresh(a)
-        try:
-            file_service.bind_file_biz(str(meta["fileId"]), bt, str(biz_id), user=user)
-        except Exception:
-            pass
         return _row(a)
 
 
@@ -132,13 +130,26 @@ def _load(db, attachment_id):
 def download_attachment(attachment_id, user):
     """授权下载：校验 biz 查看权限 → 写 SENSITIVE_EXPORT 审计 → 返回 (磁盘路径, 文件名)。
     未授权在 enforce_permission 抛 403 前即拦截；文件丢失返回 None 由端点转 404。"""
-    with session() as db:
-        a = _load(db, attachment_id)
-        _require_biz_scope(db, a.biz_type, a.biz_id, user)
-        bt, fid, fname = a.biz_type, str(a.file_id), a.file_name
-    enforce_permission(user, _BIZ_VIEW.get(bt, "studentAffairs.dashboard.view"))
-    resolved = file_service.resolve_download(fid, user=user)
-    audit_insert("SENSITIVE_EXPORT", f"affairs_attachment:{bt}",
-                 {"attachmentId": str(attachment_id), "fileId": fid, "bizType": bt,
-                  "fileName": fname, "hit": bool(resolved)}, "SUCCESS")
-    return resolved
+    bt, fid, fname = "UNKNOWN", "", ""
+    detail = {"attachmentId": str(attachment_id)}
+    try:
+        with session() as db:
+            a = _load(db, attachment_id)
+            _require_biz_scope(db, a.biz_type, a.biz_id, user)
+            bt, fid, fname = a.biz_type, str(a.file_id), a.file_name
+        detail.update({"fileId": fid, "bizType": bt, "fileName": fname})
+        enforce_permission(user, _BIZ_VIEW.get(bt, "studentAffairs.dashboard.view"))
+        resolved = file_service.resolve_download(fid, user=user)
+        detail["hit"] = bool(resolved)
+        audit_insert("SENSITIVE_EXPORT", f"affairs_attachment:{bt}", detail,
+                     "SUCCESS" if resolved else "NOT_FOUND")
+        return resolved
+    except AppException as exc:
+        detail["errorCode"] = exc.code
+        audit_insert("SENSITIVE_EXPORT", f"affairs_attachment:{bt}", detail,
+                     "DENIED" if exc.code in {"NO_PERMISSION", "NO_DATA_SCOPE"} else "NOT_FOUND")
+        raise
+    except Exception as exc:
+        detail["errorType"] = type(exc).__name__
+        audit_insert("SENSITIVE_EXPORT", f"affairs_attachment:{bt}", detail, "FAILED")
+        raise

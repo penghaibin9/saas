@@ -55,6 +55,11 @@ DOMAIN_AUTH: dict[str, DomainAuth] = {
         "employment.import", "employment.export", "employment.export",
         "EMPLOYMENT",
     ),
+    "student-affairs": DomainAuth(
+        "student-affairs", "studentAffairs",
+        "studentAffairs.import", "studentAffairs.export", "studentAffairs.export",
+        "STUDENT_AFFAIRS_HISTORY",
+    ),
 }
 
 IMPORT_DOMAINS = {k for k, v in DOMAIN_AUTH.items() if v.import_perm}

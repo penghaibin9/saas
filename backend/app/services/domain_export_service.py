@@ -13,6 +13,10 @@ from app.services.import_export_service import upload_dir
 
 # 域 → (标题, 列表函数路径, [(表头, 字段名)])
 DOMAINS = {
+    "student-affairs": ("学工历史迁移对账", "affairs_history_export_service.list_history",
+                        [("业务类型", "bizType"), ("历史编号", "historyNo"),
+                         ("入库记录ID", "recordId"), ("操作人", "operator"),
+                         ("导入时间", "importedAt")]),
     "internship": ("岗位实习学生", "internship_service.list_internship_students",
                    [("姓名", "name"), ("学号", "studentNo"), ("班级", "className"),
                     ("实习单位", "enterpriseName"), ("岗位", "positionName"), ("状态", "statusLabel"),

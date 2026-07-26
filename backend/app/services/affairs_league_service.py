@@ -136,8 +136,8 @@ def advance_stage(dev_id, body, user) -> dict:
         atomic_claim_version(db, d, getattr(body, "version", None))
         cur_i = PARTY_STAGES.index(d.current_stage) if d.current_stage in PARTY_STAGES else -1
         to_i = PARTY_STAGES.index(to_stage)
-        if to_i <= cur_i:
-            raise AppException("DATA_CONFLICT", "目标阶段须晚于当前阶段")
+        if to_i != cur_i + 1:
+            raise AppException("DATA_CONFLICT", "正常推进只能进入下一阶段；历史补录请使用独立迁移流程")
         from_stage = d.current_stage
         d.current_stage, d.version = to_stage, d.version + 1
         if to_stage == "FULL_MEMBER":

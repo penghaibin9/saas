@@ -124,7 +124,7 @@ export default {
       const reason = (f.reason || '').trim()
       if (!f.studentId || !reason || reason.length < 5) { f.error = '学生与理由(≥5字)必填'; return }
       f.error = ''; this.acting = 'sub'
-      const res = await studentAffairsApi.submitFeeReduction({ studentId: Number(f.studentId), itemType: f.itemType, amount: f.amount != null ? Number(f.amount) : undefined, reason })
+      const res = await studentAffairsApi.submitFeeReduction({ studentId: Number(f.studentId), itemType: f.itemType, amount: f.amount != null ? String(f.amount) : undefined, reason })
       this.acting = ''
       if (res.code === 0) { toast.success('已提交'); this.formVisible = false; this.form = this.blank(); this.load() } else f.error = res.message || '提交失败'
     },

@@ -9,7 +9,7 @@ from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -581,46 +581,95 @@ def reopen(risk_id, user, reason="", expected_version=None) -> dict:
 # ═══════════ 超时扫描（幂等） ═══════════
 
 def scan_timeout() -> dict:
-    """按当前配置自动分派 NEW 风险，并升级超时未处置的 ASSIGNED 风险。"""
+    """按 200 条批次原子领取到期风险；每批独立事务，支持多实例 SKIP LOCKED。"""
     from app.models import AffairsRiskRecord, SchoolClass, StudentProfile
     now = datetime.utcnow()
-    with session() as db:
-        assigned = 0
-        # NEW 超过分派时限未分派 → 尝试分给班级辅导员
-        new_rows = db.scalars(select(AffairsRiskRecord).where(
-            AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.status == "NEW",
-            AffairsRiskRecord.created_at.is_not(None),
-            AffairsRiskRecord.is_deleted.is_(False))).all()
-        eligible_owners = _owner_role_user_ids(db)
-        for x in new_rows:
-            if not x.created_at or not risk_is_overdue(x, now):
-                continue
-            counselor_id = None
-            if x.student_id:
-                s = db.get(StudentProfile, int(x.student_id))
-                if s and s.class_id:
-                    c = db.get(SchoolClass, int(s.class_id))
-                    if c and c.counselor_id and int(c.counselor_id) in eligible_owners:
-                        counselor_id = int(c.counselor_id)
-            if not counselor_id:
-                continue
-            x.owner_id, x.status, x.assigned_at, x.version = \
-                counselor_id, "ASSIGNED", now, x.version + 1
-            _handle(db, x.id, "ASSIGN", f"超时自动分派辅导员 {counselor_id}", "NEW", "ASSIGNED")
-            _todo_upsert(db, x.id, counselor_id, x.student_id, "风险待处置（超时自动分派）")
-            _msg(db, counselor_id, "风险待处置", f"风险#{x.id} 已超时自动分派给你", "RISK_ALERT", x.id)
-            _audit(db, x.id, "AUTO_ASSIGN", str(counselor_id))
-            assigned += 1
+    batch_size = 200
 
-        # 处置/跟进超时：ASSIGNED/PROCESSING/FOLLOWING 超阶段时限且未升级过 → ESCALATED
-        rows = db.scalars(select(AffairsRiskRecord).where(
-            AffairsRiskRecord.tenant_id == _tid(),
-            AffairsRiskRecord.status.in_(("ASSIGNED", "PROCESSING", "FOLLOWING")),
-            AffairsRiskRecord.escalated_at.is_(None),
-            AffairsRiskRecord.is_deleted.is_(False))).all()
-        escalated = 0
-        for x in rows:
-            if risk_is_overdue(x, now):
+    def due_level_clause(status: str):
+        time_col = (AffairsRiskRecord.created_at if status == "NEW"
+                    else AffairsRiskRecord.assigned_at if status == "ASSIGNED"
+                    else func.coalesce(AffairsRiskRecord.updated_at, AffairsRiskRecord.assigned_at))
+        sla_key = "assignHours" if status == "NEW" else (
+            "processHours" if status == "ASSIGNED" else "followHours")
+        clauses = [
+            and_(
+                AffairsRiskRecord.risk_level == level,
+                time_col <= now - timedelta(hours=get_risk_sla(level)[sla_key]),
+            )
+            for level in LEVELS
+        ]
+        fallback = get_risk_sla(None)[sla_key]
+        clauses.append(and_(
+            or_(AffairsRiskRecord.risk_level.notin_(LEVELS),
+                AffairsRiskRecord.risk_level.is_(None)),
+            time_col <= now - timedelta(hours=fallback),
+        ))
+        return or_(*clauses)
+
+    assigned = 0
+    cursor = 0
+    while True:
+        with session() as db:
+            new_rows = db.scalars(
+                select(AffairsRiskRecord).where(
+                    AffairsRiskRecord.tenant_id == _tid(),
+                    AffairsRiskRecord.id > cursor,
+                    AffairsRiskRecord.status == "NEW",
+                    AffairsRiskRecord.created_at.is_not(None),
+                    AffairsRiskRecord.is_deleted.is_(False),
+                    due_level_clause("NEW"),
+                ).order_by(AffairsRiskRecord.id)
+                .with_for_update(skip_locked=True)
+                .limit(batch_size)
+            ).all()
+            if not new_rows:
+                break
+            cursor = int(new_rows[-1].id)
+            eligible_owners = _owner_role_user_ids(db)
+            for x in new_rows:
+                counselor_id = None
+                if x.student_id:
+                    s = db.get(StudentProfile, int(x.student_id))
+                    if s and s.class_id:
+                        c = db.get(SchoolClass, int(s.class_id))
+                        if c and c.counselor_id and int(c.counselor_id) in eligible_owners:
+                            counselor_id = int(c.counselor_id)
+                if not counselor_id:
+                    continue
+                x.owner_id, x.status, x.assigned_at, x.version = \
+                    counselor_id, "ASSIGNED", now, x.version + 1
+                _handle(db, x.id, "ASSIGN", f"超时自动分派辅导员 {counselor_id}", "NEW", "ASSIGNED")
+                _todo_upsert(db, x.id, counselor_id, x.student_id, "风险待处置（超时自动分派）")
+                _msg(db, counselor_id, "风险待处置", f"风险#{x.id} 已超时自动分派给你", "RISK_ALERT", x.id)
+                _audit(db, x.id, "AUTO_ASSIGN", str(counselor_id))
+                assigned += 1
+            db.commit()
+
+    escalated = 0
+    cursor = 0
+    while True:
+        with session() as db:
+            rows = db.scalars(
+                select(AffairsRiskRecord).where(
+                    AffairsRiskRecord.tenant_id == _tid(),
+                    AffairsRiskRecord.id > cursor,
+                    AffairsRiskRecord.status.in_(("ASSIGNED", "PROCESSING", "FOLLOWING")),
+                    AffairsRiskRecord.escalated_at.is_(None),
+                    AffairsRiskRecord.is_deleted.is_(False),
+                    or_(
+                        and_(AffairsRiskRecord.status == "ASSIGNED", due_level_clause("ASSIGNED")),
+                        and_(AffairsRiskRecord.status == "PROCESSING", due_level_clause("PROCESSING")),
+                        and_(AffairsRiskRecord.status == "FOLLOWING", due_level_clause("FOLLOWING")),
+                    ),
+                ).order_by(AffairsRiskRecord.id)
+                .with_for_update(skip_locked=True)
+                .limit(batch_size)
+            ).all()
+            if not rows:
+                break
+            cursor = int(rows[-1].id)
+            for x in rows:
                 frm = x.status
                 x.risk_level = _LEVEL_UP.get(x.risk_level, x.risk_level)
                 x.status, x.escalated_at, x.version = "ESCALATED", now, x.version + 1
@@ -629,9 +678,9 @@ def scan_timeout() -> dict:
                                       f"风险#{x.id} 处置超时已自动升级至 {x.risk_level}")
                 _audit(db, x.id, "AUTO_ESCALATE")
                 escalated += 1
-        db.commit()
-        _drain_message_outbox()
-        return {"escalated": escalated, "assigned": assigned}
+            db.commit()
+    _drain_message_outbox()
+    return {"escalated": escalated, "assigned": assigned}
 
 
 # ═══════════ 查询 ═══════════

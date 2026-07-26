@@ -142,7 +142,7 @@ export default {
       const postName = (f.postName || '').trim()
       if (!deptName || !postName) { toast.error('部门与岗位名称必填'); return }
       this.acting = 'post'
-      const res = await studentAffairsApi.createWorkStudyPost({ deptName, postName, salary: f.salary != null ? Number(f.salary) : undefined })
+      const res = await studentAffairsApi.createWorkStudyPost({ deptName, postName, salary: f.salary != null ? String(f.salary) : undefined })
       this.acting = ''
       if (res.code === 0) { toast.success('已发岗'); this.postForm = { deptName: '', postName: '', salary: null }; this.load() } else toast.error(res.message || '发岗失败')
     },
@@ -187,7 +187,7 @@ export default {
       const monthCode = (f.monthCode || '').trim()
       if (!monthCode) { toast.error('考核月必填'); return }
       this.acting = 'mon'
-      const res = await studentAffairsApi.addWorkStudyMonthly(this.mm.recordId, { monthCode, rating: f.rating, workHours: f.workHours != null ? Number(f.workHours) : undefined, subsidyAmount: f.subsidyAmount != null ? Number(f.subsidyAmount) : undefined })
+      const res = await studentAffairsApi.addWorkStudyMonthly(this.mm.recordId, { monthCode, rating: f.rating, workHours: f.workHours != null ? Number(f.workHours) : undefined, subsidyAmount: f.subsidyAmount != null ? String(f.subsidyAmount) : undefined })
       this.acting = ''
       if (res.code === 0) {
         toast.success('已录入'); this.mm.form = this.blankMonthly()

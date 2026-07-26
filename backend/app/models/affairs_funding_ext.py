@@ -8,6 +8,7 @@ V1 冻结解除后补建（原属 P2「编码已冻结」）。金额按角色�
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import BigInteger, DateTime, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -21,7 +22,7 @@ class WorkStudyPost(PKMixin, TenantMixin, CommonMixin, Base):
 
     dept_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="用人部门")
     post_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="岗位名称")
-    salary: Mapped[float | None] = mapped_column(Numeric(10, 2), comment="月薪酬(元)")
+    salary: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="月薪酬(元)")
     headcount: Mapped[int | None] = mapped_column(Integer, comment="需求人数")
     requirement: Mapped[str | None] = mapped_column(String(1000), comment="岗位要求")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ENABLED", index=True)
@@ -36,7 +37,7 @@ class WorkStudyRecord(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="APPLIED", index=True)
     onboard_at: Mapped[datetime | None] = mapped_column(DateTime)
     terminated_at: Mapped[datetime | None] = mapped_column(DateTime)
-    subsidy_total: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0, comment="累计补贴")
+    subsidy_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=Decimal("0.00"), comment="累计补贴")
     remark: Mapped[str | None] = mapped_column(String(500))
 
     __table_args__ = (UniqueConstraint("tenant_id", "post_id", "student_id", "status",
@@ -53,7 +54,7 @@ class WorkStudyMonthly(PKMixin, TenantMixin, CommonMixin, Base):
     work_hours: Mapped[float | None] = mapped_column(Numeric(6, 2), comment="工时")
     rating: Mapped[str] = mapped_column(String(20), nullable=False, default="PASS",
                                         comment="GOOD/PASS/FAIL")
-    subsidy_amount: Mapped[float | None] = mapped_column(Numeric(10, 2), comment="当月补贴")
+    subsidy_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="当月补贴")
     remark: Mapped[str | None] = mapped_column(String(500))
 
     __table_args__ = (UniqueConstraint("tenant_id", "record_id", "month_code",
@@ -71,7 +72,7 @@ class StudentLoan(PKMixin, TenantMixin, CommonMixin, Base):
     bank_name: Mapped[str | None] = mapped_column(String(200))
     bank_last4: Mapped[str | None] = mapped_column(String(10))
     year_code: Mapped[str | None] = mapped_column(String(50), comment="贷款学年")
-    amount: Mapped[float | None] = mapped_column(Numeric(12, 2), comment="贷款金额(脱敏)")
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="贷款金额(脱敏)")
     receipt_file_id: Mapped[int | None] = mapped_column(BigInteger, comment="回执附件")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="REGISTERED", index=True)
     remark: Mapped[str | None] = mapped_column(String(500))
@@ -85,7 +86,7 @@ class FeeReduction(PKMixin, TenantMixin, CommonMixin, Base):
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     item_type: Mapped[str] = mapped_column(String(30), nullable=False, default="REDUCTION",
                                            comment="REDUCTION/TEMP_AID")
-    amount: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     reason: Mapped[str | None] = mapped_column(String(1000))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED", index=True)
     review_opinion: Mapped[str | None] = mapped_column(String(1000))

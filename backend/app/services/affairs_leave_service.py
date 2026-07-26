@@ -112,21 +112,16 @@ def _audit(db, biz_id, action, detail="", before="", after=""):
 # ── workflow / 待办 / 消息 helper（范式复用点）──
 
 def _assignee_for(db, node: str, student_id) -> int:
-    """节点审批人。P2 简化：COUNSELOR_REVIEW→班级 counselor_id；其余节点未建映射→0（待办池）。"""
-    if node == "COUNSELOR_REVIEW" and student_id:
-        from app.models import SchoolClass, StudentProfile
-        s = db.get(StudentProfile, int(student_id))
-        if s and s.class_id:
-            c = db.get(SchoolClass, int(s.class_id))
-            if c and c.counselor_id:
-                return int(c.counselor_id)
-    return 0
+    from app.services.affairs_assignee_service import require_assignee_id
+    return require_assignee_id(db, node, student_id=student_id)
 
 
 def _open_wf(db, wf_code, leave_id, applicant_id, title, first_node, assignee_id):
     from app.models import WorkflowInstance, WorkflowTask
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
     ensure_workflow_enabled(db, _tid(), wf_code)
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", f"未配置受理人：{first_node}")
     inst = WorkflowInstance(tenant_id=_tid(), workflow_code=wf_code, source_module="student-affairs",
                             source_biz_type="LEAVE", source_biz_id=int(leave_id),
                             applicant_id=int(applicant_id or 0), title=title, status="RUNNING",
@@ -149,6 +144,8 @@ def _cur_task(db, inst_id, node):
 def _todo_upsert(db, leave_id, assignee_id, student_id, title, todo_type="LEAVE_APPROVAL"):
     """一张请假一条活待办；随节点推进更新受理人/标题（避免 uk_todo_dedup 冲突）。"""
     from app.models import UnifiedTodo
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", "请假待办没有具体受理人")
     row = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
         UnifiedTodo.source_biz_id == int(leave_id), UnifiedTodo.todo_type == todo_type,
@@ -1040,11 +1037,12 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
 
 
 def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
-                  date_start=None, date_end=None, student_id=None) -> dict:
+                  date_start=None, date_end=None, followup_only=False, student_id=None) -> dict:
     """请假台账导出（xlsx，水印 + 导出留痕）。契约 §16.2 affairs_leave 导出。"""
     from app.services import excel
     items_all, _ = list_leaves(user, status, leave_type, class_id, keyword,
-                               date_start, date_end, page=1, page_size=1_000_000,
+                               date_start, date_end, followup_only=followup_only,
+                               page=1, page_size=1_000_000,
                                student_id=student_id)
     export_items = [{
         "studentNo": it.get("studentNo", ""),
@@ -1086,7 +1084,9 @@ def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=Non
     audit_insert("SENSITIVE_EXPORT", "leave_ledger",
                  {"rows": packed.get("rowCount", len(export_items)),
                   "filters": {"status": status, "leaveType": leave_type, "classId": class_id,
-                              "keyword": keyword}}, "SUCCESS")
+                              "studentId": student_id, "keyword": keyword,
+                              "dateStart": date_start, "dateEnd": date_end,
+                              "followupOnly": bool(followup_only)}}, "SUCCESS")
     return packed
 
 

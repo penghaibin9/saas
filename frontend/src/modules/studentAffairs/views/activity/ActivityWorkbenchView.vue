@@ -39,6 +39,8 @@
 
       <AppSectionCard title="活动列表">
         <div class="af-filters">
+          <AppSelect v-model="activeType" :options="activityTypeFilters" placeholder="全部类型"
+                     @change="setType" />
           <button v-for="f in statusFilters" :key="f.key" type="button" class="af-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}<em>{{ statusCount(f.key) }}</em></button>
         </div>
@@ -64,6 +66,8 @@
           </template>
         </DataTable>
         <p v-else class="sa-empty">暂无活动，点右上「建活动」</p>
+        <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                       :total="pagination.total" @change="load" />
       </AppSectionCard>
 
       <AppDrawer :visible="pv.visible" :title="pv.name + ' · 名单（' + pv.list.length + '）'" @update:visible="pv.visible = $event">
@@ -85,7 +89,7 @@
 <script>
 import {
   AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
-  AppSectionCard, AppSelect, AppStatusTag, AppTextInput
+  AppPagination, AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
@@ -123,7 +127,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: {
     AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable, AppButton, AppDrawer
+    AppPagination, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable, AppButton, AppDrawer
   },
   data() {
     return {
@@ -131,6 +135,8 @@ export default {
       participantColumns: PARTICIPANT_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], statusCounts: null, categories: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
+      activeType: '', activityTypeFilters: [{ value: '', label: '全部类型' }, ...TYPE_OPTIONS],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: this.blankForm(),
       pv: { visible: false, name: '', list: [] }
     }
@@ -162,12 +168,16 @@ export default {
       this.loading = true; this.errorMessage = ''
       this.statusCounts = null
       const [res, cat] = await Promise.all([
-        studentAffairsApi.getActivities({ status: this.activeStatus, pageSize: 200 }),
+        studentAffairsApi.getActivities({
+          status: this.activeStatus, activityType: this.activeType,
+          page: this.pagination.page, pageSize: this.pagination.pageSize
+        }),
         studentAffairsApi.getCreditCategories()
       ])
       if (res.code === 0 && res.data) {
         this.all = res.data.items || []
         this.items = this.all
+        this.pagination.total = Number(res.data.total || 0)
         this.statusCounts = res.data.statusCounts || null
         this.categories = (cat.code === 0 && cat.data) ? (cat.data.items || []) : []
       } else {
@@ -175,7 +185,8 @@ export default {
       }
       this.loading = false
     },
-    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
+    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.pagination.page = 1; this.load() },
+    setType() { this.pagination.page = 1; this.load() },
     statusCount(key) {
       if (this.statusCounts === null) return '—'
       return this.statusCounts[key || 'ALL'] || 0

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from datetime import datetime
 
 from sqlalchemy import (BigInteger, DateTime, Integer, Numeric, String,
@@ -111,7 +112,7 @@ class FundingProject(PKMixin, TenantMixin, CommonMixin, Base):
     project_name: Mapped[str] = mapped_column(String(200), nullable=False)
     project_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True,
                                               comment="SCHOLARSHIP/GRANT/WORK_STUDY/LOAN/TUITION_REDUCTION/TEMPORARY_AID/GREEN_CHANNEL")
-    amount: Mapped[float | None] = mapped_column(Numeric(12, 2), comment="金额(元)")
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="金额(元)")
     quota: Mapped[int | None] = mapped_column(Integer, comment="名额")
     condition_json: Mapped[str | None] = mapped_column(String(2000), comment="申请条件 JSON(绩点/挂科门槛/准入等级)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENABLED", comment="ENABLED/DISABLED")
@@ -139,7 +140,7 @@ class FundingApplication(PKMixin, TenantMixin, CommonMixin, Base):
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     apply_source: Mapped[str] = mapped_column(String(20), nullable=False, default="SELF", comment="SELF/RECOMMEND")
     project_type: Mapped[str | None] = mapped_column(String(50), index=True)
-    amount: Mapped[float | None] = mapped_column(Numeric(12, 2), comment="金额(脱敏按角色)")
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="金额(脱敏按角色)")
     statement: Mapped[str | None] = mapped_column(String(1000), comment="申请理由")
     check_snapshot_json: Mapped[str | None] = mapped_column(String(2000), comment="资格校验快照(学籍/处分/成绩/困难库)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
@@ -161,7 +162,7 @@ class FundingDisbursement(PKMixin, TenantMixin, CommonMixin, Base):
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     project_type: Mapped[str | None] = mapped_column(String(50))
-    amount: Mapped[float | None] = mapped_column(Numeric(12, 2), comment="发放金额(脱敏按角色)")
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="发放金额(脱敏按角色)")
     disburse_no: Mapped[str | None] = mapped_column(String(100), comment="发放批次号")
     bank_last4: Mapped[str | None] = mapped_column(String(10), comment="银行卡后4位(不落全号)")
     bank_status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING", index=True)

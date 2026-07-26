@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, condecimal
 
 from app.core.response import success, paginate
 from app.core.permissions import require_any_permission, require_permission
@@ -28,6 +28,8 @@ from app.services import affairs_leave_service as leave_svc
 from app.services import affairs_mental_service as mental_svc
 from app.services import affairs_profile_service as profile_svc
 from app.services import affairs_risk_service as risk_svc
+
+Money = condecimal(max_digits=14, decimal_places=2, ge=0)
 from app.services import affairs_sla as sla_svc
 from app.services import affairs_talk_service as talk_svc
 
@@ -335,9 +337,11 @@ def leave_export(status: Optional[str] = None, leaveType: Optional[str] = None,
                  classId: Optional[str] = None, keyword: Optional[str] = None,
                  studentId: Optional[str] = None,
                  dateStart: Optional[str] = None, dateEnd: Optional[str] = None,
+                 followupOnly: bool = False,
                  user=Depends(require_permission("studentAffairs.leave.export"))):
     return success(leave_svc.export_leaves(user, status, leaveType, classId, keyword,
-                                           dateStart, dateEnd, student_id=studentId))
+                                           dateStart, dateEnd, followup_only=followupOnly,
+                                           student_id=studentId))
 
 
 @router.get("/leave/{leaveId}", summary="请假详情（含销假/续假记录 + 审批留痕）")
@@ -582,7 +586,7 @@ def aid_reveal(body: AidRevealBody = AidRevealBody(), applyId: int = Path(...),
 class FundingProjectCreate(BaseModel):
     projectName: str = Field(..., min_length=1)
     projectType: str = Field(..., description="SCHOLARSHIP/GRANT")
-    amount: Optional[float] = None
+    amount: Optional[Money] = None
     quota: Optional[int] = None
     conditions: Optional[dict] = Field(default_factory=dict)
 
@@ -601,7 +605,7 @@ class FundingApplyBody(BaseModel):
     batchId: str = Field(..., min_length=1)
     studentId: str = Field(..., min_length=1)
     applySource: Optional[str] = Field("SELF", description="SELF/RECOMMEND")
-    amount: Optional[float] = None
+    amount: Optional[Money] = None
     statement: Optional[str] = Field("", max_length=1000)
 
 
@@ -756,7 +760,7 @@ def funding_disbursement_stats(user=Depends(require_permission("studentAffairs.s
 class WsPostBody(BaseModel):
     deptName: str = Field(..., min_length=1)
     postName: str = Field(..., min_length=1)
-    salary: Optional[float] = None
+    salary: Optional[Money] = None
     headcount: Optional[int] = None
     requirement: Optional[str] = None
 
@@ -777,7 +781,7 @@ class LoanBody(BaseModel):
     bankName: Optional[str] = None
     bankLast4: Optional[str] = None
     yearCode: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[Money] = None
     remark: Optional[str] = None
 
 
@@ -788,7 +792,7 @@ class VersionOnlyBody(BaseModel):
 class FeeBody(BaseModel):
     studentId: int = Field(...)
     itemType: Optional[str] = Field("REDUCTION", description="REDUCTION/TEMP_AID")
-    amount: Optional[float] = None
+    amount: Optional[Money] = None
     reason: str = Field(..., min_length=5)
 
 
@@ -832,7 +836,7 @@ class WsMonthlyBody(BaseModel):
     monthCode: str = Field(..., min_length=1, description="考核月，如 2025-10")
     workHours: Optional[float] = None
     rating: Optional[str] = Field("PASS", description="GOOD/PASS/FAIL")
-    subsidyAmount: Optional[float] = None
+    subsidyAmount: Optional[Money] = None
     remark: Optional[str] = None
 
 

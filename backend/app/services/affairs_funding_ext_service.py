@@ -75,7 +75,7 @@ _L_WS = {"APPLIED": "待审核", "APPROVED": "已录用", "ONBOARD": "在岗", "
 
 def _post_row(p) -> dict:
     return {"postId": str(p.id), "deptName": p.dept_name, "postName": p.post_name,
-            "salary": float(p.salary) if p.salary is not None else None, "headcount": p.headcount,
+            "salary": format(p.salary, ".2f") if p.salary is not None else None, "headcount": p.headcount,
             "requirement": p.requirement or "", "status": p.status}
 
 
@@ -382,15 +382,16 @@ def add_monthly(record_id, body, user) -> dict:
             WorkStudyMonthly.month_code == month, WorkStudyMonthly.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", "该月已考核")
-        amt = float(getattr(body, "subsidyAmount", 0) or 0)
+        from decimal import Decimal
+        amt = Decimal(str(getattr(body, "subsidyAmount", 0) or 0)).quantize(Decimal("0.01"))
         if rating == "FAIL":
-            amt = 0.0
+            amt = Decimal("0.00")
         m = WorkStudyMonthly(tenant_id=_tid(), record_id=int(record_id), student_id=r.student_id,
                              month_code=month, work_hours=getattr(body, "workHours", None),
                              rating=rating, subsidy_amount=amt, remark=getattr(body, "remark", None),
                              created_by=_uid(user))
         db.add(m); db.flush()
-        r.subsidy_total = round(float(r.subsidy_total or 0) + amt, 2)
+        r.subsidy_total = (Decimal(str(r.subsidy_total or 0)) + amt).quantize(Decimal("0.01"))
         r.version += 1
         _audit(db, r.id, "WS_MONTHLY", f"{month}:{rating}:{amt}")
         db.commit(); db.refresh(m)

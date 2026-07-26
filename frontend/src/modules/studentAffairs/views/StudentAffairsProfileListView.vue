@@ -9,7 +9,11 @@
       <AppPermissionButton :allowed="canBtn('studentAffairs.student.view')" code="studentAffairs.student.view" variant="secondary" @click="load">
         刷新
       </AppPermissionButton>
-      <AppExportButton :export-fn="exportLedger" :has-permission="true" />
+      <AppExportButton
+        :export-fn="exportLedger"
+        :has-permission="canBtn('student.export')"
+        title="导出全校学生主档（不受本页画像筛选影响）"
+      />
     </template>
 
     <AppSectionCard title="筛选">
@@ -171,7 +175,7 @@ export default {
       this.load()
     },
     exportLedger() {
-      return studentAffairsApi.exportProfileLedger({ purpose: '学工学生画像台账导出' })
+      return studentAffairsApi.exportProfileLedger({ purpose: '导出全校学生主档（非当前画像筛选）' })
     }
   }
 }

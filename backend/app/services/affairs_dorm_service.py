@@ -90,11 +90,11 @@ def _dorm_manager_assignee_ids(db, building_id) -> list[int]:
 
 def _todo_upsert(db, biz_id, assignee_id, student_id, title, todo_type, *,
                  biz_type="DORM", allow_pool: bool = False) -> bool:
-    """幂等写待办。assignee_id<=0 时默认跳过；宿管节点无法解析时 allow_pool=True 写池待办。"""
+    """幂等写待办；禁止用 assignee_id=0 隐藏责任人配置错误。"""
     from app.models import UnifiedTodo
     aid = int(assignee_id or 0)
-    if aid <= 0 and not allow_pool:
-        return False
+    if aid <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", f"未配置受理人：{todo_type}")
     if not biz_id:
         return False
     bid = int(biz_id)
@@ -133,14 +133,13 @@ def _todo_done(db, biz_id, todo_type) -> int:
 
 def _push_dorm_manager_todos(db, *, biz_id, building_id, student_id, title, todo_type,
                              biz_type="DORM_TRANSFER") -> None:
-    """为楼栋宿管写待办；解析不到 User 时写 assignee_id=0 池待办（student_id 供范围过滤）。"""
+    """为楼栋宿管写待办；解析失败时显式阻断并暴露配置异常。"""
     aids = _dorm_manager_assignee_ids(db, building_id)
     if aids:
         for aid in aids:
             _todo_upsert(db, biz_id, aid, student_id, title, todo_type, biz_type=biz_type)
     else:
-        _todo_upsert(db, biz_id, 0, student_id, title, todo_type, biz_type=biz_type,
-                     allow_pool=True)
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", f"楼栋 {building_id} 未配置有效宿管")
 
 
 def _require_dorm_scope(db, building_id, user):

@@ -63,23 +63,16 @@ def _audit(db, biz_id, action, detail=""):
 
 
 def _assignee_for(db, node, student_id):
-    """解析审批人：班级/辅导员节点→班级辅导员；学院/学工节点无单人映射时返回 0（技能池/角色池）。
-    assignee=0 时审批校验仅靠节点权限+数据范围（成熟产品如 Xurrent skill pool / Nintex first-response）。
-    后续可演进为「首人认领后改写 assignee」以杜绝池内互批，当前按池化设计保留。"""
-    if node in ("COLLEGE_REVIEW", "COUNSELOR_REVIEW") and student_id:
-        from app.models import SchoolClass, StudentProfile
-        s = db.get(StudentProfile, int(student_id))
-        if s and s.class_id:
-            c = db.get(SchoolClass, int(s.class_id))
-            if c and c.counselor_id:
-                return int(c.counselor_id)
-    return 0
+    from app.services.affairs_assignee_service import require_assignee_id
+    return require_assignee_id(db, node, student_id=student_id)
 
 
 def _open_wf(db, wf_code, biz_type, biz_id, applicant_id, title, first_node, assignee_id):
     from app.models import WorkflowInstance, WorkflowTask
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
     ensure_workflow_enabled(db, _tid(), wf_code)
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", f"未配置受理人：{first_node}")
     inst = WorkflowInstance(tenant_id=_tid(), workflow_code=wf_code, source_module="student-affairs",
                             source_biz_type=biz_type, source_biz_id=int(biz_id),
                             applicant_id=int(applicant_id or 0), title=title, status="RUNNING",
@@ -93,6 +86,8 @@ def _open_wf(db, wf_code, biz_type, biz_id, applicant_id, title, first_node, ass
 
 def _todo_upsert(db, biz_id, assignee_id, student_id, title, todo_type="DISCIPLINE_APPROVAL"):
     from app.models import UnifiedTodo
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", "处分待办没有具体受理人")
     row = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
         UnifiedTodo.source_biz_id == int(biz_id), UnifiedTodo.todo_type == todo_type,

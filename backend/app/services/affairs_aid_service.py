@@ -73,21 +73,16 @@ def _audit(db, biz_id, action, detail="", before="", after=""):
 # ── workflow / 待办 / 消息 helper（复用请假范式）──
 
 def _assignee_for(db, node, student_id):
-    """班级评议/辅导员初审→辅导员；学院/学校节点无单人映射返回 0（角色池，见处分同口径）。"""
-    if node in ("CLASS_REVIEW", "COUNSELOR_REVIEW") and student_id:
-        from app.models import SchoolClass, StudentProfile
-        s = db.get(StudentProfile, int(student_id))
-        if s and s.class_id:
-            c = db.get(SchoolClass, int(s.class_id))
-            if c and c.counselor_id:
-                return int(c.counselor_id)
-    return 0
+    from app.services.affairs_assignee_service import require_assignee_id
+    return require_assignee_id(db, node, student_id=student_id)
 
 
 def _open_wf(db, apply_id, applicant_id, title, first_node, assignee_id):
     from app.models import WorkflowInstance, WorkflowTask
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
     ensure_workflow_enabled(db, _tid(), "AFFAIRS_AID_IDENTIFY")
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", f"未配置受理人：{first_node}")
     inst = WorkflowInstance(tenant_id=_tid(), workflow_code="AFFAIRS_AID_IDENTIFY",
                             source_module="student-affairs", source_biz_type="AID",
                             source_biz_id=int(apply_id), applicant_id=int(applicant_id or 0),
@@ -109,6 +104,8 @@ def _cur_task(db, inst_id, node):
 
 def _todo_upsert(db, apply_id, assignee_id, student_id, title, todo_type="AID_APPROVAL"):
     from app.models import UnifiedTodo
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", "困难认定待办没有具体受理人")
     row = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
         UnifiedTodo.source_biz_id == int(apply_id), UnifiedTodo.todo_type == todo_type,

@@ -539,7 +539,9 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
                     MessageEventOutbox.next_retry_at.is_(None),
                     MessageEventOutbox.next_retry_at <= now,
                 ),
-            ).order_by(MessageEventOutbox.id.asc()).limit(limit)
+            ).order_by(MessageEventOutbox.id.asc())
+            .with_for_update(skip_locked=True)
+            .limit(limit)
         ).all()
         claimed = []
         for row in rows:
@@ -558,7 +560,14 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
     for row_id in [r.id for r in claimed]:
         with session() as db:
             row = db.get(MessageEventOutbox, row_id)
-            if not row or row.status != "PROCESSING":
+            now = _utc_now()
+            if (
+                not row
+                or row.status != "PROCESSING"
+                or row.locked_by != worker_id
+                or not row.lease_expires_at
+                or row.lease_expires_at <= now
+            ):
                 continue
             try:
                 _deliver_outbox_row(db, row)
@@ -568,7 +577,7 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
                 db.rollback()
                 with session() as db2:
                     row2 = db2.get(MessageEventOutbox, row_id)
-                    if not row2:
+                    if not row2 or row2.locked_by != worker_id:
                         continue
                     attempt = int(row2.attempt_count or 1)
                     row2.last_error_code = (type(exc).__name__)[:80]

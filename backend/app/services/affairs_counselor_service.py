@@ -8,7 +8,7 @@ from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException, check_version, not_found
 from app.services.affairs_dashboard_service import _allowed_class_ids, _audit, _class_in_scope_or_403
@@ -62,10 +62,15 @@ def _row(db, x, classes=None, users=None, student_counts=None):
         count = db.scalar(select(func.count()).select_from(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.class_id == x.class_id,
             StudentProfile.is_deleted.is_(False))) or 0
+    is_expired_temp = (
+        x.status == "ACTIVE" and x.duty_type == "TEMP"
+        and x.effective_to is not None and x.effective_to <= datetime.utcnow()
+    )
     return {
         "id": str(x.id), "classId": str(x.class_id), "className": c.class_name if c else "",
         "userId": str(x.user_id), "counselorName": u.real_name if u else "",
-        "studentCount": count, "dutyType": x.duty_type, "status": x.status,
+        "studentCount": count, "dutyType": x.duty_type,
+        "status": "ENDED" if is_expired_temp else x.status,
         "effectiveFrom": _iso(x.effective_from), "effectiveTo": _iso(x.effective_to),
         "reason": x.reason or "", "handoverFromUserId": str(x.handover_from_user_id or ""),
         "version": x.version, "createdAt": _iso(x.created_at), "updatedAt": _iso(x.updated_at),
@@ -233,9 +238,6 @@ def list_assignments(user, class_id=None, user_id=None, status=None, vacancy_onl
     if status and status not in _STATUSES:
         raise AppException("VALIDATION_ERROR", "状态仅支持 ACTIVE 或 ENDED")
     with session() as db:
-        ended = _expire_due_temps(db, actor_id=_actor_id(user))
-        if ended:
-            db.commit()
         allowed, _ = _visible_classes(db, user)
         if class_id:
             _class_in_scope_or_403(db, class_id, user)
@@ -250,8 +252,22 @@ def list_assignments(user, class_id=None, user_id=None, status=None, vacancy_onl
             q = q.where(AffairsCounselorAssignment.class_id == int(class_id))
         if user_id:
             q = q.where(AffairsCounselorAssignment.user_id == int(user_id))
-        if status:
-            q = q.where(AffairsCounselorAssignment.status == status)
+        expired_temp = and_(
+            AffairsCounselorAssignment.status == "ACTIVE",
+            AffairsCounselorAssignment.duty_type == "TEMP",
+            AffairsCounselorAssignment.effective_to.is_not(None),
+            AffairsCounselorAssignment.effective_to <= datetime.utcnow(),
+        )
+        if status == "ACTIVE":
+            q = q.where(
+                AffairsCounselorAssignment.status == "ACTIVE",
+                ~expired_temp,
+            )
+        elif status == "ENDED":
+            q = q.where(or_(
+                AffairsCounselorAssignment.status == "ENDED",
+                expired_temp,
+            ))
         rows = db.scalars(q.order_by(AffairsCounselorAssignment.class_id,
                                      AffairsCounselorAssignment.status,
                                      AffairsCounselorAssignment.id.desc())).all()
@@ -291,9 +307,6 @@ def _vacancy_rows(db, allowed, page, page_size):
 
 def vacancies(user):
     with session() as db:
-        ended = _expire_due_temps(db, actor_id=_actor_id(user))
-        if ended:
-            db.commit()
         allowed, _ = _visible_classes(db, user)
         items, total = _vacancy_rows(db, allowed, 1, 10000)
         return {"items": items, "total": total}
@@ -302,13 +315,15 @@ def vacancies(user):
 def list_counselor_ledger(user, page=1, page_size=20):
     from app.models import AffairsCounselorAssignment, StudentProfile, User
     with session() as db:
-        ended = _expire_due_temps(db, actor_id=_actor_id(user))
-        if ended:
-            db.commit()
         allowed, _ = _visible_classes(db, user)
         q = select(AffairsCounselorAssignment).where(
             AffairsCounselorAssignment.tenant_id == _tid(), AffairsCounselorAssignment.is_deleted.is_(False),
-            AffairsCounselorAssignment.status == "ACTIVE")
+            AffairsCounselorAssignment.status == "ACTIVE",
+            or_(
+                AffairsCounselorAssignment.duty_type != "TEMP",
+                AffairsCounselorAssignment.effective_to.is_(None),
+                AffairsCounselorAssignment.effective_to > datetime.utcnow(),
+            ))
         if allowed is not None:
             q = q.where(AffairsCounselorAssignment.class_id.in_(allowed or {-1}))
         assignments = db.scalars(q).all()

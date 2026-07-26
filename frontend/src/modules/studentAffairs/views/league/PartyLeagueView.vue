@@ -32,6 +32,10 @@
       <div class="lg-layout">
         <AppSectionCard title="发展台账" class="lg-list">
           <div class="lg-filters">
+            <AppSelect v-model="activeType" :options="devTypeFilters" placeholder="全部类型"
+                       @change="setType" />
+            <AppSelect v-model="activeStatus" :options="statusFilters" placeholder="全部状态"
+                       @change="setStatus" />
             <button v-for="f in stageFilters" :key="f.key" type="button" class="lg-chip"
                     :class="{ 'is-on': activeStage === f.key }" @click="setStage(f.key)">{{ f.label }}</button>
           </div>
@@ -43,6 +47,8 @@
             </li>
             <li v-if="!items.length" class="lg-empty">暂无发展台账</li>
           </ul>
+          <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                         :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.realName + ' · 发展阶段时间线') : '阶段详情'" class="lg-detail">
@@ -101,7 +107,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -121,12 +127,17 @@ export default {
   name: 'PartyLeagueView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   data() {
     return {
       loading: true, saving: false, errorMessage: '', items: [], statusCounts: null, activeStage: '', stageFilters: STAGE_FILTERS,
+      activeType: '', activeStatus: '',
+      devTypeFilters: [{ value: '', label: '全部类型' }, ...DEV_TYPE_OPTIONS],
+      statusFilters: [{ value: '', label: '全部状态' }, { value: 'ONGOING', label: '发展中' },
+        { value: 'COMPLETED', label: '已完成' }, { value: 'TERMINATED', label: '已终止' }],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: { studentId: null, devType: 'PARTY', branchName: '', error: '' },
       sel: null, stages: [], advStage: '', attachments: [], uploading: false,
       terDlg: { visible: false }
@@ -144,7 +155,7 @@ export default {
     nextStages() {
       if (!this.sel) return []
       const i = STAGES.findIndex((s) => s.key === this.sel.currentStage)
-      return STAGES.slice(i + 1)
+      return i >= 0 && i + 1 < STAGES.length ? [STAGES[i + 1]] : []
     },
     DEV_TYPE_OPTIONS: () => DEV_TYPE_OPTIONS,
     nextStageOptions() {
@@ -156,16 +167,21 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      // 待服务端全量统计：工作台仅加载 API 单页上限。
-      const res = await studentAffairsApi.getLeagueDev({ stage: this.activeStage, pageSize: 200 })
+      const res = await studentAffairsApi.getLeagueDev({
+        stage: this.activeStage, devType: this.activeType, status: this.activeStatus,
+        page: this.pagination.page, pageSize: this.pagination.pageSize
+      })
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
+        this.pagination.total = Number(res.data.total || 0)
         this.statusCounts = res.data.statusCounts || null
       }
       else this.errorMessage = res.message || '发展台账加载失败'
       this.loading = false
     },
-    setStage(k) { if (this.activeStage === k) return; this.activeStage = k; this.load() },
+    setStage(k) { if (this.activeStage === k) return; this.activeStage = k; this.pagination.page = 1; this.load() },
+    setType() { this.pagination.page = 1; this.load() },
+    setStatus() { this.pagination.page = 1; this.load() },
     openForm() { this.form = { studentId: '', devType: 'PARTY', branchName: '', error: '' }; this.formVisible = true },
     async save() {
       const m = this.form

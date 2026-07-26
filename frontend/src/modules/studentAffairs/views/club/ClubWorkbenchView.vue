@@ -32,6 +32,8 @@
       <div class="cf-layout">
         <AppSectionCard title="社团列表" class="cf-list">
           <div class="cf-filters">
+            <AppSelect v-model="activeType" :options="clubTypeFilters" placeholder="全部类型"
+                       @change="setType" />
             <button v-for="f in statusFilters" :key="f.key" type="button" class="cf-chip"
                     :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}<em>{{ statusCount(f.key) }}</em></button>
           </div>
@@ -48,6 +50,8 @@
             </li>
             <li v-if="!items.length" class="cf-empty">暂无社团，点右上「建社团」</li>
           </ul>
+          <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                         :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.clubName + ' · 成员与年审') : '社团详情'" class="cf-detail">
@@ -109,7 +113,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -146,7 +150,7 @@ export default {
   name: 'ClubWorkbenchView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
@@ -155,6 +159,8 @@ export default {
       reviewColumns: REVIEW_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], statusCounts: null,
       activeStatus: '', statusFilters: STATUS_FILTERS, TYPES, ROLES,
+      activeType: '', clubTypeFilters: [{ value: '', label: '全部类型' }, ...TYPE_OPTIONS],
+      pagination: { page: 1, pageSize: 20, total: 0 },
       rejDlg: { visible: false, clubId: '' },
       disDlg: { visible: false, clubId: '', clubName: '' },
       formVisible: false, form: { clubName: '', clubType: 'INTEREST', advisorName: '', error: '' },
@@ -183,18 +189,22 @@ export default {
     async load() {
       this.loading = true; this.errorMessage = ''
       this.statusCounts = null
-      // 待服务端全量统计：工作台仅加载 API 单页上限。
-      const res = await studentAffairsApi.getClubs({ pageSize: 200 })
+      const res = await studentAffairsApi.getClubs({
+        status: this.activeStatus, clubType: this.activeType,
+        page: this.pagination.page, pageSize: this.pagination.pageSize
+      })
       if (res.code === 0 && res.data) {
         this.all = res.data.items || []
+        this.pagination.total = Number(res.data.total || 0)
         this.statusCounts = res.data.statusCounts || null
         this.applyFilter()
       }
       else this.errorMessage = res.message || '社团加载失败'
       this.loading = false
     },
-    applyFilter() { this.items = this.activeStatus ? this.all.filter((c) => c.status === this.activeStatus) : this.all },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    applyFilter() { this.items = this.all },
+    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.pagination.page = 1; this.load() },
+    setType() { this.pagination.page = 1; this.load() },
     statusCount(key) {
       if (this.statusCounts === null) return '—'
       return this.statusCounts[key || 'ALL'] || 0

@@ -394,27 +394,32 @@ def resolve_download(file_id: str, *, allow_graduation_material: bool = False, u
     return None
 
 
-def bind_file_biz(file_id: str, biz_type: str, biz_id: str, user: dict | None = None) -> None:
+def bind_file_biz(file_id: str, biz_type: str, biz_id: str, user: dict | None = None, db=None) -> None:
     """业务服务在关联附件时回写 biz 绑定，便于后续对象级授权。"""
     user = user or get_current_user_ctx() or {}
     if db_enabled() and str(file_id).isdigit():
         from sqlalchemy import select
         from app.models import FileObject
         tid = int(current_tenant_id() or 0)
-        db = get_sessionmaker()()
+        own_session = db is None
+        db = db or get_sessionmaker()()
         try:
             row = db.scalars(select(FileObject).where(
                 FileObject.id == int(file_id), FileObject.tenant_id == tid)).first()
             if not row:
-                return
+                raise not_found("文件不存在")
             if not authorize_file_access(user, row, "bind"):
-                return
+                raise AppException("NO_PERMISSION", "无权绑定该文件")
             row.biz_type = (biz_type or row.biz_type or "").upper() or row.biz_type
             row.biz_id = str(biz_id)
             row.visibility = "BIZ_SCOPED"
-            db.commit()
+            if own_session:
+                db.commit()
+            else:
+                db.flush()
         finally:
-            db.close()
+            if own_session:
+                db.close()
         return
     if file_id in _MEM_META_EXTRA:
         _MEM_META_EXTRA[file_id]["biz_type"] = (biz_type or "").upper()

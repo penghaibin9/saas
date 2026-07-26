@@ -37,6 +37,7 @@ DOMAINS = {
                  "academic_service.list_students", "学号"),
     "employment": ("studentNo", "employment_service.create_student",
                    "employment_service.list_students", "学号"),
+    "student-affairs": ("studentNo", "", "", "学号"),
 }
 
 _MEM: dict[str, dict] = {}
@@ -90,7 +91,7 @@ def _master_student_nos(domain: str) -> set[str] | None:
     """
     if domain not in _REQUIRE_MASTER_PROFILE or not db_enabled():
         return None
-    from app.models import StudentProfile
+    from app.models import AffairsAuditTrail, StudentProfile
     db = get_sessionmaker()()
     try:
         return {str(v) for v in db.scalars(select(StudentProfile.student_no).where(
@@ -108,6 +109,8 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
     if len(rows) > MAX_IMPORT_ROWS:
         raise AppException("VALIDATION_ERROR",
                            f"单次导入不能超过 {MAX_IMPORT_ROWS} 行，当前 {len(rows)} 行，请拆分后重试")
+    if domain == "student-affairs":
+        return _dry_run_student_affairs(rows, namespace=namespace, user=user)
     key_field, _, list_path, key_label = DOMAINS[domain]
     existing = _existing_keys(domain, list_path, key_field)
     known_master = _master_student_nos(domain)
@@ -168,6 +171,10 @@ def confirm(batch_no: str) -> dict:
         raise not_found("导入批次不存在或已过期，请重新校验")
     if batch["status"] != "DRY_RUN_PASSED":
         raise AppException("VALIDATION_ERROR", "该批次未通过 Dry-Run 校验，禁止确认导入")
+    if batch["domain"] == "student-affairs":
+        result = _confirm_student_affairs(batch["rows"])
+        batch["status"] = "SUCCESS"
+        return {"batchNo": batch_no, "status": "SUCCESS", **result}
     create = _svc(DOMAINS[batch["domain"]][1])
     inserted = 0
     for r in batch["rows"]:
@@ -175,3 +182,143 @@ def confirm(batch_no: str) -> dict:
         inserted += 1
     batch["status"] = "SUCCESS"
     return {"batchNo": batch_no, "status": "SUCCESS", "insertedRows": inserted}
+
+
+_AFFAIRS_HISTORY_TYPES = {
+    "DIFFICULT", "FUNDING", "DISCIPLINE", "DORM",
+    "ORG_CADRE", "LEAGUE",
+}
+
+
+def _dry_run_student_affairs(rows, *, namespace=None, user=None):
+    from app.models import StudentProfile
+    if len(rows) > MAX_IMPORT_ROWS:
+        raise AppException("VALIDATION_ERROR", f"单次导入不能超过 {MAX_IMPORT_ROWS} 行")
+    db = get_sessionmaker()()
+    try:
+        students = {str(no): int(sid) for no, sid in db.execute(select(
+            StudentProfile.student_no, StudentProfile.id
+        ).where(
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )).all()}
+        imported = set(db.scalars(select(AffairsAuditTrail.detail).where(
+            AffairsAuditTrail.tenant_id == _tid(),
+            AffairsAuditTrail.biz_type.like("HISTORY_IMPORT_%"),
+            AffairsAuditTrail.action == "IMPORT",
+            AffairsAuditTrail.is_deleted.is_(False),
+        )).all())
+    finally:
+        db.close()
+    ok_rows, errors, seen = [], [], set()
+    for index, raw in enumerate(rows, start=2):
+        row = dict(raw or {})
+        student_no = str(row.get("studentNo") or row.get("学号") or "").strip()
+        biz_type = str(row.get("bizType") or row.get("业务类型") or "").strip().upper()
+        natural_key = str(row.get("historyNo") or row.get("历史编号") or "").strip()
+        if biz_type not in _AFFAIRS_HISTORY_TYPES:
+            errors.append({"rowIndex": index, "field": "bizType", "rawValue": biz_type,
+                           "message": f"业务类型须为 {sorted(_AFFAIRS_HISTORY_TYPES)}"})
+            continue
+        if student_no not in students:
+            errors.append({"rowIndex": index, "field": "studentNo", "rawValue": student_no,
+                           "message": "学号没有学籍主档"})
+            continue
+        if not natural_key:
+            errors.append({"rowIndex": index, "field": "historyNo", "rawValue": "",
+                           "message": "历史编号必填（用于导入幂等与对账）"})
+            continue
+        if f"historyNo={natural_key}" in imported:
+            errors.append({"rowIndex": index, "field": "historyNo", "rawValue": natural_key,
+                           "message": "该历史编号已成功导入"})
+            continue
+        dedup = (biz_type, natural_key)
+        if dedup in seen:
+            errors.append({"rowIndex": index, "field": "historyNo", "rawValue": natural_key,
+                           "message": "文件内历史编号重复"})
+            continue
+        required = {
+            "DIFFICULT": "batchId", "FUNDING": "batchId", "DORM": "bedId",
+            "ORG_CADRE": "orgId",
+        }.get(biz_type)
+        if required and not row.get(required):
+            errors.append({"rowIndex": index, "field": required, "rawValue": "",
+                           "message": f"{biz_type} 历史迁移必须提供 {required}"})
+            continue
+        seen.add(dedup)
+        row.update({"studentNo": student_no, "studentId": students[student_no],
+                    "bizType": biz_type, "historyNo": natural_key})
+        ok_rows.append(row)
+    batch_no = f"IMP{uuid.uuid4().hex[:10]}"
+    status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
+    actor = user or get_current_user_ctx() or {}
+    _MEM[batch_no] = {"domain": "student-affairs", "rows": ok_rows, "status": status,
+                      "tenantId": _tid(), "createdBy": str(actor.get("userId") or ""),
+                      "namespace": namespace or "STUDENT_AFFAIRS_HISTORY"}
+    return {"batchNo": batch_no, "status": status, "totalRows": len(rows),
+            "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50],
+            "reconciliation": {"acceptedHistoryNos": [r["historyNo"] for r in ok_rows]}}
+
+
+def _confirm_student_affairs(rows):
+    """Write the whole history batch in one transaction; any row failure rolls all rows back."""
+    from datetime import datetime
+    from app.models import (AffairsAuditTrail, AffairsLeagueDev, AffairsLeagueDevStage,
+                            AffairsOrgPosition, AidApply, DisciplineCase, DormBed,
+                            FundingApplication)
+
+    db = get_sessionmaker()()
+    inserted, ids = 0, []
+    try:
+        for row in rows:
+            raw_actor = str((get_current_user_ctx() or {}).get("userId") or "").removeprefix("db-")
+            common = {"tenant_id": _tid(), "created_by": int(raw_actor) if raw_actor.isdigit() else None}
+            kind, sid = row["bizType"], int(row["studentId"])
+            if kind == "DIFFICULT":
+                obj = AidApply(**common, batch_id=int(row["batchId"]), student_id=sid,
+                               apply_level=row.get("level"), final_level=row.get("level"),
+                               statement=row.get("remark"), status=row.get("status") or "APPROVED")
+            elif kind == "FUNDING":
+                obj = FundingApplication(**common, batch_id=int(row["batchId"]), student_id=sid,
+                                         project_type=row.get("projectType"),
+                                         amount=row.get("amount"), statement=row.get("remark"),
+                                         status=row.get("status") or "GRANTED")
+            elif kind == "DISCIPLINE":
+                obj = DisciplineCase(**common, student_id=sid, disc_type=row.get("discType") or "WARNING",
+                                     reason=row.get("reason"), doc_no=row.get("docNo"),
+                                     status=row.get("status") or "EFFECTIVE")
+            elif kind == "DORM":
+                obj = db.get(DormBed, int(row["bedId"]))
+                if not obj or obj.tenant_id != _tid() or obj.is_deleted or (obj.student_id and obj.student_id != sid):
+                    raise AppException("DATA_CONFLICT", f"床位 {row['bedId']} 不存在或已占用")
+                obj.student_id, obj.status, obj.occupied_at = sid, "OCCUPIED", datetime.utcnow()
+            elif kind == "ORG_CADRE":
+                obj = AffairsOrgPosition(**common, org_id=int(row["orgId"]), student_id=sid,
+                                         position=str(row.get("position") or "成员"),
+                                         term_code=row.get("termCode"),
+                                         status=row.get("status") or "ACTIVE")
+            else:
+                obj = AffairsLeagueDev(**common, student_id=sid, dev_type=row.get("devType") or "PARTY",
+                                       current_stage=row.get("stage") or "APPLICANT",
+                                       branch_name=row.get("branchName"),
+                                       status=row.get("status") or "ONGOING")
+            if kind != "DORM":
+                db.add(obj)
+            db.flush()
+            if kind == "LEAGUE":
+                db.add(AffairsLeagueDevStage(
+                    tenant_id=_tid(), dev_id=obj.id, to_stage=obj.current_stage,
+                    operator="历史迁移", remark=f"historyNo={row['historyNo']}"))
+            db.add(AffairsAuditTrail(
+                tenant_id=_tid(), biz_type=f"HISTORY_IMPORT_{kind}", biz_id=obj.id,
+                action="IMPORT", operator=str((get_current_user_ctx() or {}).get("realName") or "未记录"),
+                detail=f"historyNo={row['historyNo']}", occurred_at=datetime.utcnow()))
+            ids.append({"historyNo": row["historyNo"], "bizType": kind, "recordId": str(obj.id)})
+            inserted += 1
+        db.commit()
+        return {"insertedRows": inserted, "reconciliation": {"records": ids}}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

@@ -73,20 +73,16 @@ def _wf_code(ptype):
 
 
 def _assignee_for(db, node, student_id):
-    if node == "COUNSELOR_REVIEW" and student_id:
-        from app.models import SchoolClass, StudentProfile
-        s = db.get(StudentProfile, int(student_id))
-        if s and s.class_id:
-            c = db.get(SchoolClass, int(s.class_id))
-            if c and c.counselor_id:
-                return int(c.counselor_id)
-    return 0
+    from app.services.affairs_assignee_service import require_assignee_id
+    return require_assignee_id(db, node, student_id=student_id)
 
 
 def _open_wf(db, app_id, ptype, applicant_id, title, first_node, assignee_id):
     from app.models import WorkflowInstance, WorkflowTask
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
     ensure_workflow_enabled(db, _tid(), _wf_code(ptype))
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", f"未配置受理人：{first_node}")
     inst = WorkflowInstance(tenant_id=_tid(), workflow_code=_wf_code(ptype),
                             source_module="student-affairs", source_biz_type="FUNDING",
                             source_biz_id=int(app_id), applicant_id=int(applicant_id or 0),
@@ -108,6 +104,8 @@ def _cur_task(db, inst_id, node):
 
 def _todo_upsert(db, app_id, assignee_id, student_id, title):
     from app.models import UnifiedTodo
+    if int(assignee_id or 0) <= 0:
+        raise AppException("ASSIGNEE_NOT_CONFIGURED", "资助待办没有具体受理人")
     row = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
         UnifiedTodo.source_biz_id == int(app_id), UnifiedTodo.todo_type == "FUNDING_APPROVAL",
@@ -265,8 +263,8 @@ def _amount_view(amount, user):
         return None
     role = (user or {}).get("currentRoleCode")
     if role in _AMOUNT_ROLES:
-        return float(amount)
-    n = float(amount)
+        return format(amount, ".2f")
+    n = amount
     if n < 2000:
         return "2000以下"
     if n < 5000:
@@ -276,7 +274,7 @@ def _amount_view(amount, user):
 
 def _project_row(p) -> dict:
     return {"projectId": str(p.id), "projectType": p.project_type, "projectName": p.project_name,
-            "amount": float(p.amount) if p.amount is not None else None,
+            "amount": format(p.amount, ".2f") if p.amount is not None else None,
             "quota": p.quota, "status": p.status}
 
 
@@ -807,16 +805,17 @@ def disbursement_stats(user) -> dict:
             FundingDisbursement.tenant_id == _tid(),
             FundingDisbursement.is_deleted.is_(False))).all()
         by_status = {}
-        issued_total = 0.0
+        from decimal import Decimal
+        issued_total = Decimal("0.00")
         role = (user or {}).get("currentRoleCode")
         for d in rows:
             by_status[d.bank_status] = by_status.get(d.bank_status, 0) + 1
             if d.bank_status == "ISSUED":
-                issued_total += float(d.amount or 0)
+                issued_total += Decimal(str(d.amount or 0))
         out = {"total": len(rows),
                "byStatus": [{"key": k, "label": _L_BANK.get(k, k), "count": v} for k, v in by_status.items()]}
         if role in _AMOUNT_ROLES:
-            out["issuedAmountTotal"] = round(issued_total, 2)
+            out["issuedAmountTotal"] = format(issued_total.quantize(Decimal("0.01")), ".2f")
         return out
 
 

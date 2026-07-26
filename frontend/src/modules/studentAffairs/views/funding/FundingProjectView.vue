@@ -140,7 +140,7 @@ export default {
       this.drawer.errorMessage = ''
       this.saving = true
       const body = { projectName: f.projectName, projectType: f.projectType }
-      if (f.amount != null && f.amount !== '') body.amount = Number(f.amount)
+      if (f.amount != null && f.amount !== '') body.amount = String(f.amount)
       if (f.quota != null && f.quota !== '') body.quota = Number(f.quota)
       const res = await studentAffairsApi.createFundingProject(body)
       if (res.code === 0) {

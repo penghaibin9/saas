@@ -41,6 +41,8 @@
             </li>
             <li v-if="!items.length" class="og-empty">暂无学生组织，点右上「建组织」</li>
           </ul>
+          <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
+                         :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.orgName + ' · 在任成员') : '组织详情'" class="og-detail">
@@ -74,7 +76,7 @@
 
 <script>
 import {
-  AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect,
+  AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
   AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -97,13 +99,14 @@ export default {
   name: 'StudentOrgView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect,
+    AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
     StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
       positionColumns: POSITION_COLUMNS,
       loading: true, saving: false, errorMessage: '', items: [], TYPES,
+      pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: { orgName: '', orgType: 'STUDENT_UNION', level: 'SCHOOL', advisorName: '', error: '' },
       sel: null, positions: [], apForm: { visible: false, studentId: null, position: '', termCode: '' }
     }
@@ -127,9 +130,13 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      // 待服务端全量统计：工作台仅加载 API 单页上限。
-      const res = await studentAffairsApi.getOrganizations({ pageSize: 200 })
-      if (res.code === 0 && res.data) this.items = res.data.items || []
+      const res = await studentAffairsApi.getOrganizations({
+        page: this.pagination.page, pageSize: this.pagination.pageSize
+      })
+      if (res.code === 0 && res.data) {
+        this.items = res.data.items || []
+        this.pagination.total = Number(res.data.total || 0)
+      }
       else this.errorMessage = res.message || '学生组织加载失败'
       this.loading = false
     },
