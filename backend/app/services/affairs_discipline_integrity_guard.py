@@ -61,7 +61,10 @@ def install() -> None:
             tenant_id=_tid(), student_id=int(profile.id),
             record_status="ACTIVE", care_level="NORMAL",
             risk_level="LOW", mental_flag=False,
-            **{key: value for key, value in snapshot.items() if value is not None},
+            **{
+                key: value for key, value in snapshot.items()
+                if key != "student_id" and value is not None
+            },
         )
         db.add(record); db.flush()
         return int(record.id)
