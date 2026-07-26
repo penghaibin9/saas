@@ -33,12 +33,49 @@ def test_get_current_user_preserves_student_id(monkeypatch):
         return ctx
 
     monkeypatch.setattr(auth_service_db, "validate_token_subject", validate)
+    monkeypatch.setattr(security, "_refresh_current_student_identity", lambda ctx: ctx)
 
     user = security.get_current_user("Bearer fake-token")
 
     assert user["studentId"] == "9001"
     assert user["studentNo"] == "20260001"
     assert seen["studentId"] == "9001"
+
+
+def test_student_identity_refresh_result_reaches_downstream(monkeypatch):
+    from app.core import security
+    from app.core import token_store
+    from app.services import auth_service_db
+
+    claims = {
+        "userId": "db-42",
+        "loginName": "20260001",
+        "realName": "测试学生",
+        "userType": "STUDENT",
+        "tenantId": "7",
+        "studentId": "9001",
+        "studentNo": "OLD-NO",
+        "activeContextId": "role:8",
+        "currentRoleCode": "STUDENT",
+        "permissionVersion": "u1|STUDENT:1",
+        "jti": "jti-test-refresh",
+        "exp": 4102444800,
+    }
+    monkeypatch.setattr(security, "decode_token", lambda token: dict(claims))
+    monkeypatch.setattr(token_store, "jti_blocked", lambda jti: False)
+    monkeypatch.setattr(token_store, "rate_limit", lambda *args, **kwargs: True)
+    monkeypatch.setattr(auth_service_db, "validate_token_subject", lambda ctx: ctx)
+
+    def refresh(ctx):
+        ctx["studentNo"] = "NEW-NO"
+        return ctx
+
+    monkeypatch.setattr(security, "_refresh_current_student_identity", refresh)
+
+    user = security.get_current_user("Bearer fake-token")
+
+    assert user["studentId"] == "9001"
+    assert user["studentNo"] == "NEW-NO"
 
 
 def test_get_current_user_does_not_invent_student_id(monkeypatch):
