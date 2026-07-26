@@ -3,8 +3,16 @@
     <MobileNavBar variant="teacher" title="新增指导记录" subtitle="对本人指导学生的过程指导留痕" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="state === 'ready'">
-        <MobileGlobalState v-if="!students.length" state="empty" title="暂无可记录学生"
-          description="仅可对本人指导的实习学生新增指导记录。" />
+        <view class="card ig__batch" v-if="batches.length">
+          <text class="ig__label">实习批次</text>
+          <picker class="ig__picker" mode="selector" :range="batchLabels" :value="batchIndex" @change="onBatch">
+            <view class="ig__pick-val">{{ batchLabels[batchIndex] || '请选择批次' }}<text class="ig__arrow">▾</text></view>
+          </picker>
+        </view>
+        <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
+          description="当前身份的数据范围内没有可办理的实习批次。" />
+        <MobileGlobalState v-else-if="!students.length" state="empty" title="暂无可记录学生"
+          description="当前批次仅可对本人指导的实习学生新增指导记录。" />
         <view class="card ig__form" v-else>
           <view class="ig__row">
             <text class="ig__label">指导学生</text>
@@ -59,6 +67,8 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { teacherInternshipMyStudents } from '@/services/internshipApi'
+import { useInternshipContextStore } from '@/stores/internshipContext'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
@@ -72,6 +82,7 @@ export default {
   data() {
     return {
       state: 'loading', students: [], studentIndex: 0,
+      batches: [], batchId: '', batchIndex: 0,
       methodLabels: METHODS.map((m) => m.label), methodIndex: 0,
       topic: '', content: '', suggestion: '', nextFollowDate: '',
       toRisk: false, notifyCounselor: false, submitting: false
@@ -79,14 +90,48 @@ export default {
   },
   onLoad() { this.load() },
   computed: {
-    studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未落实企业'}`) }
+    studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未落实企业'}`) },
+    batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) }
   },
   methods: {
-    load() {
+    async load() {
       this.state = 'loading'
-      teacherApi.getInternshipMyStudents()
-        .then((d) => { this.students = (d && d.list) || []; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+      try {
+        const context = useInternshipContextStore()
+        context.restore()
+        const selected = await context.load(true)
+        this.batches = context.batches || []
+        this.batchId = selected || ''
+        this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
+        if (!this.batchId) {
+          this.students = []
+          this.state = 'ready'
+          return
+        }
+        const data = await teacherInternshipMyStudents(this.batchId)
+        this.students = (data && data.list) || []
+        this.studentIndex = 0
+        this.state = 'ready'
+      } catch (e) {
+        this.state = 'error'
+      }
+    },
+    async onBatch(e) {
+      this.batchIndex = Number(e.detail.value)
+      const batch = this.batches[this.batchIndex]
+      const context = useInternshipContextStore()
+      context.selectBatch(batch && batch.id)
+      this.batchId = context.selectedBatchId
+      this.students = []
+      this.state = 'loading'
+      try {
+        const data = await teacherInternshipMyStudents(this.batchId)
+        this.students = (data && data.list) || []
+        this.studentIndex = 0
+        this.state = 'ready'
+      } catch (err) {
+        this.state = 'error'
+      }
     },
     onStudent(e) { this.studentIndex = Number(e.detail.value) },
     onMethod(e) { this.methodIndex = Number(e.detail.value) },
@@ -98,7 +143,7 @@ export default {
       if (this.content.trim().length < 2) { toast('指导内容至少 2 个字'); return }
       this.submitting = true
       submitLock.run(() => teacherApi.createInternshipGuidance({
-        internshipId: stu.id, method: METHODS[this.methodIndex].key,
+        internshipId: stu.id, batchId: this.batchId, method: METHODS[this.methodIndex].key,
         topic: this.topic.trim(), content: this.content.trim(), suggestion: this.suggestion.trim(),
         nextFollowDate: this.nextFollowDate, toRisk: this.toRisk, notifyCounselor: this.notifyCounselor
       })).then((r) => {
@@ -115,6 +160,7 @@ export default {
 </script>
 
 <style scoped>
+.ig__batch { display: flex; align-items: center; min-height: 48px; margin-bottom: var(--space-3); padding: 0 var(--space-3); }
 .ig__form { display: flex; flex-direction: column; }
 .ig__row { display: flex; align-items: center; min-height: 48px; border-bottom: 1px solid var(--border-light); }
 .ig__row--top { align-items: flex-start; padding-top: var(--space-3); border-bottom: none; }
