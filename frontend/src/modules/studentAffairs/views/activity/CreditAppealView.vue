@@ -27,7 +27,7 @@
 
       <AppSectionCard title="申诉记录">
         <div class="ca-filters"><button v-for="f in statusFilters" :key="f.key" type="button" class="ca-chip" :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button></div>
-        <DataTable v-if="items.length" :columns="appealColumns" :rows="items" row-key="appealId">
+        <DataTable v-if="items.length || pagination.total > 0" :columns="appealColumns" :rows="items" row-key="appealId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo || '' }}</div></template>
           <template #cell-appealType="{ row }">{{ row.appealType === 'MISSING' ? '缺记' : '记错' }}</template>
           <template #cell-claim="{ row }"><strong>{{ ctypeLabel(row.claimCreditType) }} {{ row.claimValue != null ? row.claimValue : '—' }}</strong></template>
@@ -97,7 +97,8 @@ export default {
   data() {
     return {
       appealColumns: APPEAL_COLUMNS,
-      loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], statusCounts: null,
+      loading: true, saving: false, acting: '', errorMessage: '', items: [], statusCounts: null,
+      pagination: { page: 1, pageSize: 50, total: 0 },
       activeStatus: '', statusFilters: STATUS_FILTERS, formVisible: false, form: this.blankForm(),
       approveDlg: { visible: false, appealId: '', version: null, message: '' },
       rejDlg: { visible: false, appealId: '', version: null }
@@ -137,14 +138,16 @@ export default {
     async load() {
       this.loading = true; this.errorMessage = ''; this.statusCounts = null
       try {
-        const res = await studentAffairsApi.getCreditAppeals({ pageSize: 200 })
+        const res = await studentAffairsApi.getCreditAppeals({ status: this.activeStatus, page: this.pagination.page, pageSize: this.pagination.pageSize })
         if (res.code !== 0 || !res.data) throw new Error(res.message || '申诉加载失败')
-        this.all = res.data.items || []; this.statusCounts = res.data.statusCounts || null; this.applyFilter()
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total != null ? res.data.total : this.items.length
+        this.statusCounts = res.data.statusCounts || null
       } catch (e) { this.errorMessage = e.message || '申诉加载失败' }
       finally { this.loading = false }
     },
-    applyFilter() { this.items = this.activeStatus ? this.all.filter((a) => a.status === this.activeStatus) : this.all },
-    setStatus(k) { this.activeStatus = k; this.applyFilter() },
+    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.pagination.page = 1; this.load() },
+    onPageChange(page) { this.pagination.page = page; this.load() },
     openForm() { this.form = this.blankForm(); this.formVisible = true },
     closeForm() { if (!this.saving) this.formVisible = false },
     async save() {
@@ -159,7 +162,7 @@ export default {
           claimValue: Number(m.claimValue), reason
         })
         if (res.code !== 0) throw new Error(res.message || '提交失败')
-        toast.success('申诉已提交'); this.formVisible = false; await this.load()
+        toast.success('申诉已提交'); this.formVisible = false; this.pagination.page = 1; await this.load()
       } catch (e) { m.error = e.message || '提交失败' }
       finally { this.saving = false }
     },
