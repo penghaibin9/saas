@@ -14,10 +14,31 @@ def _company(client, h, approve=True, cc="91310000POS0001XA", name="岗位测试
     return cid
 
 
+def _batch(client, h):
+    """岗位上架要求挂在有效批次上（合规规则 BATCH_UNKNOWN），这里备一个可复用的批次。"""
+    from uuid import uuid4
+    r = client.post("/api/v1/internship/batches", headers=h, json={
+        "batchName": f"岗位测试批次-{uuid4().hex[:6]}", "batchNo": f"POSB-{uuid4().hex[:8]}",
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 10}).json()
+    return r["data"]["id"]
+
+
+# 上架前必须录全的劳动权益事实（见 internship_position_rights.field_map）：
+# 缺任何一项都会被判 REQUIRED_UNKNOWN——"未录入不能解释为安全"
+_RIGHTS_FACTS = {
+    "workContent": "参与前端页面开发与联调", "dailyHours": 8, "weeklyHours": 40,
+    "nightShift": False, "overtimeAllowed": False, "restDaysPerWeek": 2,
+    "remunerationType": "MONTHLY", "accommodationProvided": True,
+    "mealProvided": True, "hazardousFlag": False,
+    # 有报酬岗位还必须写清金额与发放周期，否则判 REMUNERATION_*_UNKNOWN
+    "remunerationAmount": 2000, "remunerationCycle": "MONTHLY",
+}
+
+
 def _mk(client, h, cid, **over):
     body = {"companyId": cid, "title": "前端开发实习生", "majorRequirement": "软件技术",
             "gradeRequirement": "2024级", "workLocation": "上海浦东", "salaryRange": "3k-4k",
-            "headcount": 5}
+            "headcount": 5, **_RIGHTS_FACTS}
     body.update(over)
     return client.post(POS, headers=h, json=body).json()
 
@@ -52,13 +73,16 @@ def test_list_filter_by_batch(client, auth_headers, db_mode):
 
 def test_status_machine_publish(client, auth_headers, db_mode):
     cid = _company(client, auth_headers)  # 已审核 → 合作中
-    pid = _mk(client, auth_headers, cid)["data"]["id"]
+    bid = _batch(client, auth_headers)
+    pid = _mk(client, auth_headers, cid, batchId=str(bid))["data"]["id"]
     # 草稿直接上架 → 非法（须先提交/或从待审核）
     assert client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()["code"] != 0
     # 提交 → 待审核
     assert client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "SUBMIT"}).json()["data"]["status"] == "PENDING"
     # 上架 → 已上架
-    assert client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()["data"]["status"] == "PUBLISHED"
+    pub = client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()
+    assert pub["code"] == 0, f"上架被拒：{pub.get('message')}"
+    assert pub["data"]["status"] == "PUBLISHED"
     # 暂停 → 已暂停
     assert client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "SUSPEND"}).json()["data"]["status"] == "SUSPENDED"
     # 下架 → 已下架
@@ -102,9 +126,11 @@ def test_risk_mark(client, auth_headers, db_mode):
 
 def test_headcount_not_below_allocated(client, auth_headers, db_mode):
     cid = _company(client, auth_headers, cc="91310000POSCAP1XA")
-    pid = _mk(client, auth_headers, cid, headcount=3)["data"]["id"]
-    # 容量可正常改大
-    assert client.put(f"{POS}/{pid}", headers=auth_headers, json={"headcount": 10}).json()["data"]["headcount"] == 10
+    created = _mk(client, auth_headers, cid, headcount=3)["data"]
+    pid = created["id"]
+    # 容量可正常改大（expectedVersion 已是必填，防并发覆盖）
+    assert client.put(f"{POS}/{pid}", headers=auth_headers, json={
+        "headcount": 10, "expectedVersion": created.get("version", 0)}).json()["data"]["headcount"] == 10
 
 
 def test_stats(client, auth_headers, db_mode):
@@ -115,16 +141,35 @@ def test_stats(client, auth_headers, db_mode):
     assert any(x["status"] == "DRAFT" for x in s["data"]["byStatus"])
 
 
+# 导入行的劳动权益事实同样必填（服务层逐字段校验"不能留空"），且必须指到已存在的批次编号
+_IMPORT_FACTS = {
+    "templateVersion": "POSITION_IMPORT_V2",
+    "workContent": "运维值班与巡检", "dailyHours": "8", "weeklyHours": "40",
+    "nightShift": "否", "overtimeAllowed": "否", "restDaysPerWeek": "2",
+    "remunerationType": "MONTHLY", "accommodationProvided": "是",
+    "mealProvided": "是", "hazardousFlag": "否",
+}
+
+
 def test_import_dry_run_and_confirm(client, auth_headers, db_mode):
+    from uuid import uuid4
     _company(client, auth_headers, cc="91310000POSIMP1XA", name="导入匹配企业")
-    rows = [{"title": "运维实习生", "company": "导入匹配企业", "major": "计算机网络", "headcount": "2"},
-            {"title": "", "company": "导入匹配企业"},          # 缺岗位名
-            {"title": "测试实习生", "company": "查无此企业"}]   # 企业匹配不到
-    dry = client.post(f"{POS}/import/dry-run", headers=auth_headers, json={"rows": rows}).json()
+    batch_no = f"POSIMP-{uuid4().hex[:8]}"
+    client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": "导入用批次", "batchNo": batch_no,
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5})
+    rows = [{"title": "运维实习生", "company": "导入匹配企业", "major": "计算机网络",
+             "headcount": "2", "batchNo": batch_no, **_IMPORT_FACTS},
+            {"title": "", "company": "导入匹配企业", "batchNo": batch_no, **_IMPORT_FACTS},   # 缺岗位名
+            {"title": "测试实习生", "company": "查无此企业", "batchNo": batch_no, **_IMPORT_FACTS}]  # 企业匹配不到
+    dry = client.post(f"{POS}/import/dry-run", headers=auth_headers,
+                      json={"rows": rows, "templateVersion": "POSITION_IMPORT_V2"}).json()
     assert dry["code"] == 0 and dry["data"]["validRows"] == 1 and dry["data"]["invalidRows"] == 2
     # 含错行 → 确认被拒
-    assert client.post(f"{POS}/import/confirm", headers=auth_headers, json={"rows": rows}).json()["code"] != 0
-    ok = client.post(f"{POS}/import/confirm", headers=auth_headers, json={"rows": [rows[0]]}).json()
+    assert client.post(f"{POS}/import/confirm", headers=auth_headers,
+                       json={"rows": rows, "templateVersion": "POSITION_IMPORT_V2"}).json()["code"] != 0
+    ok = client.post(f"{POS}/import/confirm", headers=auth_headers,
+                     json={"rows": [rows[0]], "templateVersion": "POSITION_IMPORT_V2"}).json()
     assert ok["code"] == 0 and ok["data"]["created"] == 1
 
 
@@ -161,18 +206,32 @@ def test_position_xlsx_import_template_and_upload(client, auth_headers, db_mode)
     _company(client, auth_headers, cc="91310000POSXLS1XA", name="Excel导入企业")
     tpl = client.get(f"{POS}/import/template", headers=auth_headers)
     assert tpl.status_code == 200 and tpl.content[:2] == b"PK"
+    from uuid import uuid4
+    batch_no = f"POSXLS-{uuid4().hex[:8]}"
+    client.post("/api/v1/internship/batches", headers=auth_headers, json={
+        "batchName": "Excel导入批次", "batchNo": batch_no,
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 5})
     wb = Workbook()
     ws = wb.active
-    ws.append(["岗位名称", "关联企业", "岗位类型", "专业要求", "年级要求", "工作地点", "容量"])
-    ws.append(["测试岗位X", "Excel导入企业", "技术岗", "软件技术", "2024级", "上海", "2"])
+    # 表头必须与后端模板一致（_POS_XLSX_HEADERS）：含模板版本、批次编号与全部劳动权益事实
+    ws.append(["模板版本", "实习批次编号", "岗位名称", "企业信用代码/企业名称", "工作内容", "工作地址",
+               "每日工时", "每周工时", "班次", "是否夜班", "是否允许加班", "每周休息天数",
+               "报酬类型", "报酬金额", "发放周期", "是否住宿", "是否供餐", "是否危险岗位",
+               "特殊设备", "禁止安排原因", "容量", "专业要求", "年级要求", "企业导师", "备注"])
+    ws.append(["POSITION_IMPORT_V2", batch_no, "测试岗位X", "Excel导入企业", "运维值班与巡检", "上海浦东",
+               "8", "40", "白班", "否", "否", "2",
+               "MONTHLY", "2000", "MONTHLY", "是", "是", "否",
+               "", "", "2", "软件技术", "2024级", "", ""])
     buf = io.BytesIO()
     wb.save(buf)
     up = client.post(f"{POS}/import/xlsx", headers=auth_headers,
                      files={"file": ("p.xlsx", buf.getvalue(),
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}).json()
-    assert up["code"] == 0 and up["data"]["validRows"] == 1
+    assert up["code"] == 0, f"上传预检失败：{up.get('message')}"
+    assert up["data"]["validRows"] == 1, up["data"].get("errors")
     assert client.post(f"{POS}/import/confirm", headers=auth_headers,
-                       json={"rows": up["data"]["rows"]}).json()["code"] == 0
+                       json={"rows": up["data"]["rows"],
+                             "templateVersion": "POSITION_IMPORT_V2"}).json()["code"] == 0
 
 
 def test_reverse_fill_enterprise_position_summary(client, auth_headers, db_mode):

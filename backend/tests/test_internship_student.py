@@ -37,7 +37,7 @@ def _record(client, h, sid, batch_id=None):
         }).json()
         assert b["code"] == 0, b
         batch_id = b["data"]["id"]
-        assert client.post(f"/api/v1/internship/batches/{batch_id}/activate", headers=h).json()["code"] == 0
+        assert client.post(f"/api/v1/internship/batches/{batch_id}/activate", headers=h, json={"expectedVersion": 0}).json()["code"] == 0
     return client.post(IST, headers=h, json={"studentId": sid, "batchId": batch_id}).json()["data"]["id"]
 
 
@@ -69,7 +69,7 @@ def test_create_and_list(client, auth_headers, db_mode):
     }).json()
     assert b["code"] == 0
     bid = b["data"]["id"]
-    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers, json={"expectedVersion": 0}).json()["code"] == 0
     sid = _student(client, auth_headers, "S-IST-001")
     r = client.post(IST, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()
     assert r["code"] == 0
@@ -114,7 +114,7 @@ def test_advisor_assignment_binds_active_teacher_and_audits(client, auth_headers
     }).json()
     assert b["code"] == 0
     bid = b["data"]["id"]
-    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers, json={"expectedVersion": 0}).json()["code"] == 0
     created = client.post(IST, headers=auth_headers,
                           json={"studentId": sid, "batchId": bid, "advisorUserId": teacher_id}).json()
     assert created["code"] == 0 and created["data"]["advisorUserId"] == teacher_id
@@ -241,7 +241,7 @@ def test_stats_and_export(client, auth_headers, db_mode):
     }).json()
     assert b["code"] == 0
     bid = b["data"]["id"]
-    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers, json={"expectedVersion": 0}).json()["code"] == 0
     _record(client, auth_headers, _student(client, auth_headers, "S-IST-090"), batch_id=bid)
     s = client.get(f"{IST}/stats", headers=auth_headers, params={"batchId": bid}).json()
     assert s["code"] == 0 and s["data"]["total"] >= 1
@@ -262,7 +262,7 @@ def test_import(client, auth_headers, db_mode):
     }).json()
     assert b["code"] == 0
     bid = b["data"]["id"]
-    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] == 0
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers, json={"expectedVersion": 0}).json()["code"] == 0
     _student(client, auth_headers, "S-IST-100", "导入学生甲")
     rows = [{"studentNo": "S-IST-100"}, {"studentNo": ""}, {"studentNo": "S-NOEXIST"}]
     dry = client.post(f"{IST}/import/dry-run", headers=auth_headers,
