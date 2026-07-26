@@ -48,6 +48,7 @@ export const graduationMoreApi = {
   getAppeals(params = {}) { return callList(`${G}/gd-grade-appeals`, params) },
   reviewAppeal(aid, action, comment) { return call(() => request(`${G}/gd-grade-appeals/${aid}/review`, { method: 'POST', body: { action, comment } })) },
 
+  getExcellentCandidates(params = {}) { return callList(`${G}/gd-excellent-outcomes/candidates`, withBatch(params)) },
   getExcellentOutcomes(params = {}) { return callList(`${G}/gd-excellent-outcomes`, withBatch(params)) },
   nominateExcellent(gdStudentId, reason, evidence = []) {
     return call(() => request(`${G}/gd-excellent-outcomes/${gdStudentId}/nominate`, { method: 'POST', body: { reason, evidence } }))
