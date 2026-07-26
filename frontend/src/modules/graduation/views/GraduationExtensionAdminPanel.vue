@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <div class="ext-hero">
+      <section class="ext-hero">
         <div class="ext-hero__main">
           <span class="ext-eyebrow">当前批次</span>
           <strong>{{ batchStore.selectedBatchName || '请先选择毕业设计批次' }}</strong>
@@ -15,9 +15,9 @@
         <div class="ext-kpis">
           <div><span>台账总数</span><b>{{ total }}</b></div>
           <div><span>当前页待处理</span><b>{{ actionableCount }}</b></div>
-          <div><span>{{ activePanel === 'excellent' ? '可提名候选' : '可用答辩组' }}</span><b>{{ activePanel === 'excellent' ? candidates.length : groups.length }}</b></div>
+          <div><span>{{ activePanel === 'excellent' ? '本人可提名' : '可用答辩组' }}</span><b>{{ activePanel === 'excellent' ? nominatableCount : groups.length }}</b></div>
         </div>
-      </div>
+      </section>
 
       <div class="mp-tabs ext-main-tabs">
         <button class="mp-tab" :class="{ 'is-active': activePanel === 'excellent' }" @click="switchPanel('excellent')">优秀成果认定</button>
@@ -42,7 +42,7 @@
           <div class="mp-card__head">
             <div>
               <span class="mp-card__title">可提名候选</span>
-              <p class="mp-note">成绩“优秀”只是候选条件；只有该生稳定绑定导师会看到提名按钮，之后仍须专业复核、学院终审。</p>
+              <p class="mp-note">成绩“优秀”只是候选条件；只有该生稳定绑定导师可提名，之后仍须专业复核、学院终审。</p>
             </div>
           </div>
           <div v-if="supportError" class="ext-inline-error">候选加载失败：{{ supportError }}</div>
@@ -52,8 +52,8 @@
               <div class="ext-card__head"><strong>{{ row.studentName }}</strong><span>{{ row.studentNo }} · {{ row.className }}</span></div>
               <p>{{ row.topicTitle || '未填写课题' }}</p>
               <div class="ext-meta"><span>导师 {{ row.advisorName || '—' }}</span><b>{{ row.totalScore }} 分 · 优秀</b></div>
-              <button v-if="canNominate && row.canNominate" class="mp-btn mp-btn--primary" @click="askNominate(row)">导师提名</button>
-              <span v-else class="ext-muted">仅该生指导教师可提名</span>
+              <button v-if="row.canNominate" class="mp-btn mp-btn--primary" @click="askNominate(row)">导师提名</button>
+              <span v-else class="ext-muted">仅该生当前指导教师可提名</span>
             </article>
           </div>
         </section>
@@ -68,15 +68,15 @@
                 <tr v-for="row in rows" :key="row.id">
                   <td data-label="学生 / 课题"><strong>{{ row.studentName }}</strong><small>{{ row.studentNo }} · {{ row.topicTitle || '未填写课题' }}</small></td>
                   <td data-label="提名理由">{{ row.nominationReason }}</td>
-                  <td data-label="成绩快照">{{ row.gradeSnapshot.totalScore ?? '—' }} · {{ row.gradeSnapshot.gradeLevel || '—' }}</td>
-                  <td data-label="状态"><StatusTag :status="row.status" :label="row.statusLabel" /></td>
+                  <td data-label="成绩快照">{{ row.gradeSnapshot.totalScore == null ? '—' : row.gradeSnapshot.totalScore }} · {{ row.gradeSnapshot.gradeLevel || '—' }}</td>
+                  <td data-label="状态"><StatusTag :type="statusTone(row.status)" :label="row.statusLabel" dot /></td>
                   <td data-label="审核留痕"><small>提名：{{ row.nominatedBy || '—' }}</small><small>专业：{{ row.majorReviewedBy || '待处理' }}</small><small>学院：{{ row.collegeReviewedBy || '待处理' }}</small></td>
                   <td data-label="下一步操作" class="ext-actions">
-                    <template v-if="row.status === 'PENDING_MAJOR' && canMajorReview">
+                    <template v-if="can(row, 'majorReview')">
                       <button class="mp-link" @click="askReview('excellent-major', row, 'APPROVE')">专业通过</button>
                       <button class="mp-link ext-danger" @click="askReview('excellent-major', row, 'REJECT')">驳回</button>
                     </template>
-                    <template v-else-if="row.status === 'PENDING_COLLEGE' && canCollegeExcellent">
+                    <template v-else-if="can(row, 'collegeReview')">
                       <button class="mp-link" @click="askReview('excellent-college', row, 'APPROVE')">学院发布</button>
                       <button class="mp-link ext-danger" @click="askReview('excellent-college', row, 'REJECT')">驳回</button>
                     </template>
@@ -106,10 +106,10 @@
                 <tr v-for="row in rows" :key="row.id">
                   <td data-label="学生 / 课题"><strong>{{ row.studentName }}</strong><small>{{ row.studentNo }} · {{ row.topicTitle || '未填写课题' }}</small></td>
                   <td data-label="申请理由">{{ row.reason }}</td>
-                  <td data-label="状态"><StatusTag :status="row.status" :label="row.statusLabel" /></td>
+                  <td data-label="状态"><StatusTag :type="statusTone(row.status)" :label="row.statusLabel" dot /></td>
                   <td data-label="审核留痕"><small>导师：{{ row.advisorReviewedBy || '待处理' }}</small><small>专业：{{ row.majorReviewedBy || '待处理' }}</small><small>学院：{{ row.collegeReviewedBy || '待处理' }}</small></td>
                   <td data-label="排期">
-                    <template v-if="row.allowedActions?.schedule">
+                    <template v-if="can(row, 'schedule')">
                       <select v-model="scheduleDraft(row).groupId" class="ext-input" @change="onGroupChange(row)">
                         <option value="">选择延期答辩组</option>
                         <option v-for="g in groups" :key="g.id" :value="g.id">
@@ -121,20 +121,20 @@
                     <template v-else>{{ row.plannedDefenseDate || '—' }}<small>{{ row.defenseGroupName || '' }}</small></template>
                   </td>
                   <td data-label="下一步操作" class="ext-actions">
-                    <template v-if="row.allowedActions?.advisorReview">
+                    <template v-if="can(row, 'advisorReview')">
                       <button class="mp-link" @click="askReview('delay-advisor', row, 'APPROVE')">导师通过</button>
                       <button class="mp-link ext-danger" @click="askReview('delay-advisor', row, 'REJECT')">驳回</button>
                     </template>
-                    <template v-else-if="row.allowedActions?.majorReview">
+                    <template v-else-if="can(row, 'majorReview')">
                       <button class="mp-link" @click="askReview('delay-major', row, 'APPROVE')">专业通过</button>
                       <button class="mp-link ext-danger" @click="askReview('delay-major', row, 'REJECT')">驳回</button>
                     </template>
-                    <template v-else-if="row.allowedActions?.collegeReview">
+                    <template v-else-if="can(row, 'collegeReview')">
                       <button class="mp-link" @click="askReview('delay-college', row, 'APPROVE')">学院批准</button>
                       <button class="mp-link ext-danger" @click="askReview('delay-college', row, 'REJECT')">驳回</button>
                     </template>
                     <button
-                      v-else-if="row.allowedActions?.schedule"
+                      v-else-if="can(row, 'schedule')"
                       class="mp-btn mp-btn--primary"
                       :disabled="!scheduleDraft(row).date || !scheduleDraft(row).groupId || !!supportError"
                       @click="askSchedule(row)"
@@ -169,7 +169,6 @@
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppPagination } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { matchPermission } from '@/config/navPlan'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
@@ -199,23 +198,18 @@ export default {
   },
   computed: {
     activePanel() { return this.$route.query.extension === 'delay' ? 'delay' : 'excellent' },
-    patterns() { return this.ctx.permissionPatterns || [] },
-    canNominate() { return matchPermission(this.patterns, 'graduationDesign.grade.view') },
-    canMajorReview() { return matchPermission(this.patterns, 'graduationDesign.grade.review') },
-    canCollegeExcellent() { return matchPermission(this.patterns, 'graduationDesign.grade.publish') },
     statusOptions() { return this.activePanel === 'excellent' ? EXCELLENT_STATUS : DELAY_STATUS },
+    nominatableCount() { return this.candidates.filter((row) => row.canNominate).length },
     actionableCount() {
-      if (this.activePanel === 'excellent') {
-        return this.rows.filter((row) => (row.status === 'PENDING_MAJOR' && this.canMajorReview) || (row.status === 'PENDING_COLLEGE' && this.canCollegeExcellent)).length
-      }
-      return this.rows.filter((row) => Object.values(row.allowedActions || {}).some(Boolean)).length
+      const rowActions = this.rows.filter((row) => Object.values(row.allowedActions || {}).some(Boolean)).length
+      return this.activePanel === 'excellent' ? rowActions + this.nominatableCount : rowActions
     },
     nextStepText() {
       if (!this.batchStore.selectedBatchId) return '先选择批次，系统才会加载对应届别的候选、审批台账和答辩组。'
       if (this.loading) return '正在读取当前批次真实台账。'
       if (this.error) return '主台账加载失败，请先重试，不要把故障当成暂无业务。'
-      if (this.actionableCount > 0) return `当前页有 ${this.actionableCount} 条需要你处理，完成后会自动进入下一角色队列。`
-      return this.activePanel === 'excellent' ? '当前页没有需要你处理的认定，继续关注候选和后续审核。' : '当前页没有需要你处理的延期申请，继续关注学生申请或答辩组重新发布。'
+      if (this.actionableCount > 0) return `当前页有 ${this.actionableCount} 项需要你处理，完成后会自动进入下一角色队列。`
+      return this.activePanel === 'excellent' ? '当前没有需要你处理的认定，继续关注候选和后续审核。' : '当前没有需要你处理的延期申请，继续关注学生申请或答辩组重新发布。'
     },
     subtitle() {
       const batch = this.batchStore.selectedBatchName || '当前批次'
@@ -230,10 +224,19 @@ export default {
   },
   created() { this.load() },
   methods: {
+    can(row, action) { return !!(row && row.allowedActions && row.allowedActions[action]) },
+    statusTone(status) {
+      if (['PUBLISHED', 'SCHEDULED'].includes(status)) return 'success'
+      if (status === 'REJECTED') return 'danger'
+      return 'warning'
+    },
     switchPanel(panel) { this.$router.replace({ query: { ...this.$route.query, extension: panel } }) },
     changeStatus(status) { this.statusFilter = status; this.page = 1; this.load() },
     turnPage(page) { this.page = page; this.load() },
-    scheduleDraft(row) { return this.schedules[row.id] || { date: '', groupId: '' } },
+    scheduleDraft(row) {
+      if (!this.schedules[row.id]) this.schedules[row.id] = { date: row.plannedDefenseDate || '', groupId: row.defenseGroupId || '' }
+      return this.schedules[row.id]
+    },
     primeSchedules(rows) {
       const next = {}
       rows.forEach((row) => { next[row.id] = { date: row.plannedDefenseDate || '', groupId: row.defenseGroupId || '' } })
@@ -276,19 +279,21 @@ export default {
       return map[row.status] || '查看记录'
     },
     askNominate(row) {
-      this.confirm = { visible: true, title: '提名优秀成果', message: `确认提名「${row.studentName}」的毕业设计为优秀成果候选？`, type: 'primary', confirmText: '提交提名', requireReason: true, reasonLabel: '提名理由（不少于10字）', action: 'NOMINATE', row, decision: '' }
+      this.confirm = { visible: true, title: '提名优秀成果', message: `确认提名「${row.studentName}」的毕业设计为优秀成果候选？`, type: 'primary', confirmText: '提交提名', requireReason: true, reasonLabel: '提名理由（10—1000字）', action: 'NOMINATE', row, decision: '' }
     },
     askReview(action, row, decision) {
       const reject = decision === 'REJECT'
-      this.confirm = { visible: true, title: reject ? '驳回申请' : '审核通过', message: `处理「${row.studentName}」：${row.statusLabel}`, type: reject ? 'danger' : 'primary', confirmText: reject ? '确认驳回' : '确认通过', requireReason: true, reasonLabel: reject ? '驳回理由（不少于5字）' : '审核意见', action, row, decision }
+      this.confirm = { visible: true, title: reject ? '驳回申请' : '审核通过', message: `处理「${row.studentName}」：${row.statusLabel}`, type: reject ? 'danger' : 'primary', confirmText: reject ? '确认驳回' : '确认通过', requireReason: true, reasonLabel: reject ? '驳回理由（5—1000字）' : '审核意见（最多1000字）', action, row, decision }
     },
     askSchedule(row) {
       const draft = this.scheduleDraft(row)
       const group = this.groups.find((item) => String(item.id) === String(draft.groupId))
-      this.confirm = { visible: true, title: '确认延期答辩排期', message: `将「${row.studentName}」安排到「${group?.groupName || '所选答辩组'}」并设置日期 ${draft.date}。原组和新组发布状态都会撤回，需重新核对评委回避后发布。`, type: 'primary', confirmText: '确认排期', requireReason: false, reasonLabel: '', action: 'SCHEDULE', row, decision: '' }
+      const groupName = group ? group.groupName : '所选答辩组'
+      this.confirm = { visible: true, title: '确认延期答辩排期', message: `将「${row.studentName}」安排到「${groupName}」并设置日期 ${draft.date}。原组和新组发布状态都会撤回，需重新核对评委回避后发布。`, type: 'primary', confirmText: '确认排期', requireReason: false, reasonLabel: '', action: 'SCHEDULE', row, decision: '' }
     },
     async onConfirm({ reason } = {}) {
       const c = this.confirm; const text = (reason || '').trim()
+      if (text.length > 1000) return toast.error('填写内容不能超过 1000 字')
       if (c.action === 'NOMINATE' && text.length < 10) return toast.error('提名理由不少于 10 字')
       if (c.decision === 'REJECT' && text.length < 5) return toast.error('驳回理由不少于 5 字')
       this.submitting = true
@@ -305,7 +310,7 @@ export default {
       }
       this.submitting = false
       if (res && res.code === 0) { toast.success(c.action === 'SCHEDULE' ? '延期答辩已排期，相关答辩组待重新发布' : '处理完成并写入审核留痕'); this.confirm.visible = false; this.load() }
-      else toast.error(res?.message || '处理失败')
+      else toast.error(res && res.message ? res.message : '处理失败')
     }
   }
 }
