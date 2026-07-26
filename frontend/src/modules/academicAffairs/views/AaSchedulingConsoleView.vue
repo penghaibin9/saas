@@ -62,7 +62,10 @@
         </div>
       </AppSectionCard>
 
-      <AppSectionCard v-if="editorVisible" :title="editingRuleId ? '修改排课规则' : '新增排课规则'">
+      <ErrorState v-if="catalogError" :description="catalogError" @retry="loadCatalog" />
+      <ErrorState v-else-if="termError" :description="termError" @retry="onTermChange" />
+
+      <AppSectionCard v-if="editorVisible && !catalogError && !termError" :title="editingRuleId ? '修改排课规则' : '新增排课规则'">
         <div class="aasg-editor">
           <label class="aasg-field">
             <span>业务参数</span>
@@ -156,7 +159,7 @@
 
       <ErrorState v-if="ruleError" :description="ruleError" @retry="loadRules" />
       <LoadingState v-else-if="ruleLoading || catalogLoading" />
-      <template v-else>
+      <template v-else-if="!catalogError && !termError">
         <EmptyState
           v-if="!rules.length"
           title="该学期尚未配置排课规则"
@@ -189,7 +192,7 @@
         </DataTable>
       </template>
 
-      <AppSectionCard v-if="catalog.length" title="学校未配置时采用的安全默认值">
+      <AppSectionCard v-if="catalog.length && !catalogError" title="学校未配置时采用的安全默认值">
         <div class="aasg-default-grid">
           <div v-for="meta in catalog" :key="meta.ruleKey">
             <strong>{{ meta.label }}</strong>
@@ -312,7 +315,7 @@ export default {
       tabs: [{ key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }],
       termId: '', termInfo: null,
       rules: [], catalog: [], timeSlots: [],
-      ruleLoading: false, catalogLoading: false, ruleError: '', slotLoadWarning: '',
+      ruleLoading: false, catalogLoading: false, ruleError: '', catalogError: '', termError: '', slotLoadWarning: '',
       editorVisible: false, editingRuleId: '', saving: false, formError: '',
       ruleForm: { ruleKey: '', scopeType: 'TERM', batchId: '', value: null, remark: '' },
       avails: [], conflictBatchId: '', conflict: null,
@@ -331,7 +334,12 @@ export default {
   computed: {
     canManageRules() { return MANAGE_ROLES.has(String(this.ctx.currentRole.roleCode || '').toUpperCase()) },
     termArchived() { return String(this.termInfo?.status || '').toUpperCase() === 'ARCHIVED' },
-    canWriteRules() { return Boolean(this.canManageRules && this.termId && !this.termArchived) },
+    canWriteRules() {
+      return Boolean(
+        this.canManageRules && this.termId && this.termInfo
+        && !this.termArchived && !this.catalogError && !this.termError
+      )
+    },
     catalogByKey() { return Object.fromEntries(this.catalog.map(item => [item.ruleKey, item])) },
     selectedMeta() { return this.catalogByKey[this.ruleForm.ruleKey] || null },
     weekdayOptions() { return this.selectedMeta?.options?.length ? this.selectedMeta.options : DEFAULT_DAYS },
@@ -363,16 +371,20 @@ export default {
     await this.onTermChange()
   },
   methods: {
+    cloneValue(value) {
+      if (value == null) return value
+      return JSON.parse(JSON.stringify(value))
+    },
     async loadContext() {
       const response = await academicAffairsApi.getContext()
       if (response.code === 0) this.ctx = response.data
     },
     async loadCatalog() {
-      this.catalogLoading = true
+      this.catalogLoading = true; this.catalogError = ''
       const response = await api.ruleCatalog()
       this.catalogLoading = false
       if (response.code === 0) this.catalog = response.data.items || []
-      else this.ruleError = response.message || '排课规则目录加载失败'
+      else { this.catalog = []; this.catalogError = response.message || '排课规则目录加载失败' }
     },
     async loadTimeSlots() {
       const response = await academicAffairsApi.getTimeSlots(false)
@@ -385,17 +397,21 @@ export default {
         this.slotLoadWarning = '暂时无法读取学校作息，将显示第1—8节作为只读兜底；保存时后端仍会按真实启用节次校验。'
       }
     },
-    async onTermChange() {
-      this.closeRuleEditor()
-      this.termInfo = null
-      if (!this.termId) { this.rules = []; this.ruleError = '请选择学期后查看排课规则'; return }
+    async onTermChange(value) {
+      if (value !== undefined && value !== null) this.termId = value ? String(value) : ''
+      this.closeRuleEditor(); this.termInfo = null; this.termError = ''; this.ruleError = ''
+      if (!this.termId) { this.rules = []; this.termError = '请选择学期后查看排课规则'; return }
       const detail = await academicAffairsApi.getTermDetail(this.termId)
-      if (detail.code === 0) this.termInfo = detail.data
-      else this.ruleError = detail.message || '学期状态加载失败'
+      if (detail.code !== 0) {
+        this.rules = []
+        this.termError = detail.message || '学期状态加载失败，已禁止修改排课规则'
+        return
+      }
+      this.termInfo = detail.data
       await this.loadRules()
     },
     async loadRules() {
-      if (!this.termId || this.ruleLoading) return
+      if (!this.termId || this.ruleLoading || this.termError) return
       this.ruleLoading = true; this.ruleError = ''
       const response = await api.listRules({ termId: this.termId })
       this.ruleLoading = false
@@ -413,7 +429,7 @@ export default {
     },
     onRuleKeyChange() {
       const meta = this.selectedMeta
-      this.ruleForm.value = meta ? structuredClone(meta.defaultValue) : null
+      this.ruleForm.value = meta ? this.cloneValue(meta.defaultValue) : null
       this.formError = ''
     },
     onScopeChange() {
@@ -427,7 +443,7 @@ export default {
         ruleKey: row.ruleKey,
         scopeType: row.batchId ? 'BATCH' : 'TERM',
         batchId: row.batchId || '',
-        value: structuredClone(row.ruleValue ?? this.catalogByKey[row.ruleKey].defaultValue),
+        value: this.cloneValue(row.ruleValue ?? this.catalogByKey[row.ruleKey].defaultValue),
         remark: row.remark || ''
       }
       this.formError = ''; this.editorVisible = true
@@ -435,7 +451,7 @@ export default {
     },
     localRuleError() {
       const meta = this.selectedMeta
-      if (!this.termId) return '请选择规则所属学期'
+      if (!this.termId || !this.termInfo) return '学期状态尚未确认，不能保存规则'
       if (!meta) return '请选择业务参数'
       if (this.ruleForm.scopeType === 'BATCH' && !this.ruleForm.batchId) return '请选择课表批次'
       const value = this.ruleForm.value
@@ -462,7 +478,7 @@ export default {
         ruleKey: this.ruleForm.ruleKey,
         termId: this.termId,
         batchId: this.ruleForm.scopeType === 'BATCH' ? this.ruleForm.batchId : undefined,
-        ruleValue: structuredClone(this.ruleForm.value),
+        ruleValue: this.cloneValue(this.ruleForm.value),
         remark: this.ruleForm.remark || undefined
       })
       this.saving = false
