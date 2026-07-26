@@ -10,22 +10,25 @@
               <text class="t-md">{{ typeText(x.leaveType) }}</text>
               <text class="lv__time">{{ (x.startTime || '').slice(0, 10) }} 至 {{ (x.endTime || '').slice(0, 10) }} · {{ x.days }} 天</text>
               <text class="lv__reason" v-if="x.reason">{{ x.reason }}</text>
-              <text class="lv__reason" v-if="x.returnReason || x.rejectReason">意见：{{ x.returnReason || x.rejectReason }}</text>
+              <text class="lv__reason lv__opinion" v-if="x.returnReason || x.rejectReason">处理意见：{{ x.returnReason || x.rejectReason }}</text>
             </view>
             <MobileStatusTag :label="statusText(x.status)" :type="badgeType(x.status)" />
             <button
               v-if="x.canResubmit"
               class="btn btn-ghost lv__resubmit"
-              @click="resubmit(x)"
-            >重新提交</button>
+              :disabled="submitting"
+              @click="editReturned(x)"
+            >修改后重提</button>
             <button
               v-if="x.canCancel"
               class="btn btn-ghost lv__resubmit"
+              :disabled="submitting"
               @click="cancelLeave(x)"
             >申请销假</button>
             <button
               v-if="x.canExtend"
               class="btn btn-ghost lv__resubmit"
+              :disabled="submitting"
               @click="openExtend(x)"
             >申请续假</button>
           </view>
@@ -34,12 +37,18 @@
     </MobileGlobalState>
 
     <MobileSafeAreaBar>
-      <button class="btn btn-primary flex-1" @click="openApply">新建请假</button>
+      <button class="btn btn-primary flex-1" :disabled="submitting" @click="openApply">新建请假</button>
     </MobileSafeAreaBar>
 
-    <view v-if="formVisible" class="lv__mask" @click.self="formVisible = false">
+    <view v-if="formVisible" class="lv__mask" @click.self="closeForm">
       <view class="lv__sheet card">
-        <text class="card-title">请假申请</text>
+        <text class="card-title">{{ editTarget ? '修改退回申请' : '请假申请' }}</text>
+        <MobileInlineAlert
+          v-if="editTarget"
+          type="warning"
+          title="请按退回意见修改"
+          :description="editTarget.returnReason || '修改后将重新进入辅导员审批。'"
+        />
         <view class="lv__field">
           <text class="lv__label">请假类型 <text class="lv__req">*</text></text>
           <picker mode="selector" :range="typeOptions" range-key="label" :value="typeIndex" @change="onType">
@@ -63,11 +72,14 @@
           <textarea v-model="form.reason" class="lv__textarea" maxlength="300" placeholder="说明请假原因（不少于5字）" />
         </view>
         <view class="lv__actions">
-          <button class="btn btn-ghost flex-1" :disabled="submitting" @click="formVisible = false">取消</button>
-          <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交申请' }}</button>
+          <button class="btn btn-ghost flex-1" :disabled="submitting" @click="closeForm">取消</button>
+          <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">
+            {{ submitting ? '提交中…' : (editTarget ? '保存并重新提交' : '提交申请') }}
+          </button>
         </view>
       </view>
     </view>
+
     <view v-if="extendVisible" class="lv__mask" @click.self="extendVisible = false">
       <view class="lv__sheet card">
         <text class="card-title">续假申请</text>
@@ -93,15 +105,18 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { createSubmitLock, normalizeError } from '@/services/request'
+import { affairsContractApi } from '@/services/affairsContractApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
-const submitLock = createSubmitLock(1500)
-const TYPE = { SICK: '病假', PERSONAL: '事假', GOOUT: '外出', OTHER: '其他' }
+const TYPE = {
+  SICK: '病假', PERSONAL: '事假', HOME: '探亲假',
+  HOSPITAL: '住院假', GOOUT: '外出', OTHER: '其他'
+}
 const STATUS = {
   COUNSELOR_REVIEW: '辅导员审批', COLLEGE_REVIEW: '学院审批', STUDENT_AFFAIRS_REVIEW: '学工处审批',
-  APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', WAIT_CANCEL_LEAVE: '待销假', CLOSED: '已销假',
-  OVERDUE: '已逾期', EXTENSION_REVIEW: '续假审批中', PENDING_REVIEW: '待审批'
+  APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', WAIT_CANCEL_LEAVE: '待销假',
+  CLOSED: '已销假', OVERDUE: '已逾期', EXTENSION_REVIEW: '续假审批中', PENDING_REVIEW: '待审批'
 }
 
 export default {
@@ -110,6 +125,7 @@ export default {
       items: null,
       state: 'loading',
       formVisible: false,
+      editTarget: null,
       extendVisible: false,
       extendTarget: {},
       extendForm: { newEndTime: '', reason: '' },
@@ -118,7 +134,10 @@ export default {
       typeOptions: [
         { label: '事假', value: 'PERSONAL' },
         { label: '病假', value: 'SICK' },
-        { label: '外出', value: 'GOOUT' }
+        { label: '探亲假', value: 'HOME' },
+        { label: '住院假', value: 'HOSPITAL' },
+        { label: '外出', value: 'GOOUT' },
+        { label: '其他', value: 'OTHER' }
       ],
       form: { startTime: '', endTime: '', reason: '' }
     }
@@ -132,70 +151,96 @@ export default {
         this.state = 'ready'
       }).catch(() => { this.state = 'error' })
     },
-    openApply() {
+    today() {
       const d = new Date()
       const pad = (n) => (n < 10 ? '0' + n : '' + n)
-      const today = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    },
+    openApply() {
+      this.editTarget = null
       this.typeIndex = 0
+      const today = this.today()
       this.form = { startTime: today, endTime: today, reason: '' }
       this.formVisible = true
     },
+    closeForm() {
+      if (this.submitting) return
+      this.formVisible = false
+      this.editTarget = null
+    },
+    editReturned(item) {
+      if (this.submitting) return
+      this.submitting = true
+      affairsContractApi.getReturnedLeave(item.leaveId).then((d) => {
+        this.editTarget = { ...item, ...d }
+        const idx = this.typeOptions.findIndex((x) => x.value === d.leaveType)
+        this.typeIndex = idx >= 0 ? idx : 0
+        this.form = {
+          startTime: (d.startTime || '').slice(0, 10),
+          endTime: (d.endTime || '').slice(0, 10),
+          reason: d.reason || ''
+        }
+        this.formVisible = true
+      }).catch((e) => this.showError(e, '加载退回申请失败'))
+        .finally(() => { this.submitting = false })
+    },
     openExtend(item) {
-      const end = (item.endTime || '').slice(0, 10)
       this.extendTarget = item
-      this.extendForm = { newEndTime: end, reason: '' }
+      this.extendForm = { newEndTime: (item.endTime || '').slice(0, 10), reason: '' }
       this.extendVisible = true
     },
     onType(e) { this.typeIndex = Number(e.detail.value) },
     onStart(e) { this.form.startTime = e.detail.value },
     onEnd(e) { this.form.endTime = e.detail.value },
     onExtendEnd(e) { this.extendForm.newEndTime = e.detail.value },
+    showError(e, fallback) {
+      const n = normalizeError(e)
+      toast(n.text || (e && e.message) || fallback)
+      if (n.kind === 'conflict') this.load()
+    },
     submit() {
-      if (this.submitting || !submitLock.acquire()) return
+      if (this.submitting) return
       if (!this.form.startTime || !this.form.endTime || this.form.reason.trim().length < 5) {
-        submitLock.release()
         return toast('请填写起止日期与事由（不少于5字）')
       }
       this.submitting = true
-      studentApi.submitServiceApply({
-        serviceKey: 'LEAVE',
+      const payload = {
         leaveType: this.typeOptions[this.typeIndex].value,
         startTime: this.form.startTime,
         endTime: this.form.endTime,
         reason: this.form.reason.trim()
-      }).then(() => {
-        toast('请假已提交，等待辅导员审批')
+      }
+      const task = this.editTarget
+        ? affairsContractApi.updateReturnedLeave(this.editTarget.leaveId, {
+            ...payload, version: this.editTarget.version
+          }).then((updated) => affairsContractApi.resubmitLeave(updated.id || this.editTarget.leaveId, updated.version))
+        : studentApi.submitServiceApply({ serviceKey: 'LEAVE', ...payload })
+
+      task.then(() => {
+        toast(this.editTarget ? '已修改并重新提交' : '请假已提交，等待辅导员审批')
         this.formVisible = false
+        this.editTarget = null
         this.load()
-      }).catch((e) => {
-        const n = normalizeError(e)
-        toast(n.text || (e && e.message) || '提交失败')
-      }).finally(() => {
-        this.submitting = false
-        submitLock.release()
-      })
+      }).catch((e) => this.showError(e, '提交失败'))
+        .finally(() => { this.submitting = false })
     },
     submitExtend() {
-      if (this.submitting || !submitLock.acquire()) return
+      if (this.submitting) return
       if (!this.extendForm.newEndTime || this.extendForm.reason.trim().length < 5) {
-        submitLock.release()
         return toast('请填写新结束日期与续假事由（不少于5字）')
       }
       this.submitting = true
-      studentApi.extendLeave(this.extendTarget.leaveId, {
-        newEndTime: this.extendForm.newEndTime,
-        reason: this.extendForm.reason.trim()
-      }).then(() => {
+      affairsContractApi.extendLeave(
+        this.extendTarget.leaveId,
+        this.extendForm.newEndTime,
+        this.extendForm.reason.trim(),
+        this.extendTarget.version
+      ).then(() => {
         toast('续假已提交，等待辅导员审批')
         this.extendVisible = false
         this.load()
-      }).catch((e) => {
-        const n = normalizeError(e)
-        toast(n.text || (e && e.message) || '续假失败')
-      }).finally(() => {
-        this.submitting = false
-        submitLock.release()
-      })
+      }).catch((e) => this.showError(e, '续假失败'))
+        .finally(() => { this.submitting = false })
     },
     typeText(t) { return TYPE[t] || t },
     statusText(s) { return STATUS[s] || s },
@@ -204,35 +249,14 @@ export default {
       if (['REJECTED', 'OVERDUE'].includes(s)) return 'danger'
       return 'warning'
     },
-    resubmit(item) {
-      if (this.submitting || !submitLock.acquire()) return
-      this.submitting = true
-      studentApi.resubmitLeave(item.leaveId, {
-        reason: (item.reason || '') + '（已按退回意见补充说明）'
-      }).then(() => {
-        toast('已重新提交，等待辅导员审批')
-        this.load()
-      }).catch((e) => {
-        const n = normalizeError(e)
-        toast(n.text || (e && e.message) || '重新提交失败')
-      }).finally(() => {
-        this.submitting = false
-        submitLock.release()
-      })
-    },
     cancelLeave(item) {
-      if (this.submitting || !submitLock.acquire()) return
+      if (this.submitting) return
       this.submitting = true
-      studentApi.cancelLeave(item.leaveId, { proofNote: '学生本人申请销假' }).then(() => {
+      affairsContractApi.cancelLeave(item.leaveId, '学生本人申请销假', item.version).then(() => {
         toast('销假已提交，等待辅导员确认')
         this.load()
-      }).catch((e) => {
-        const n = normalizeError(e)
-        toast(n.text || (e && e.message) || '销假失败')
-      }).finally(() => {
-        this.submitting = false
-        submitLock.release()
-      })
+      }).catch((e) => this.showError(e, '销假失败'))
+        .finally(() => { this.submitting = false })
     }
   }
 }
@@ -242,11 +266,12 @@ export default {
 .lv__row { align-items: flex-start; }
 .lv__time { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px; }
 .lv__reason { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 4px; }
+.lv__opinion { color: var(--danger-600, #dc2626); }
 .lv__mask {
   position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);
   display: flex; align-items: flex-end; z-index: 1000;
 }
-.lv__sheet { width: 100%; border-radius: 16px 16px 0 0; padding: 16px; }
+.lv__sheet { width: 100%; border-radius: 16px 16px 0 0; padding: 16px; max-height: 86vh; overflow-y: auto; }
 .lv__field { margin-top: 12px; }
 .lv__label { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: 6px; }
 .lv__req { color: #dc2626; }
