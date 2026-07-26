@@ -1,15 +1,7 @@
-"""Teacher mini-program internship permission gate.
+"""教师小程序岗位实习接口权限前置门。
 
-The legacy mobile router authenticates every endpoint but many teacher internship
-handlers only performed object-scope checks.  That allowed another teacher role
-that happened to own the same student (for example a counselor) to call a write
-endpoint directly.  This preflight dependency mirrors the PC permission codes
-for every `/mobile/teacher/internship/*` route and fails closed for an unmapped
-route.
-
-It intentionally parses the token without invoking ``get_current_user`` so the
-endpoint's normal dependency remains the single place that applies rate limits
-and binds the request user context.
+所有 `/mobile/teacher/internship/*` 路由必须逐项登记；未登记默认拒绝。
+对象归属仍由业务服务校验，本层解决辅导员等其他教师角色直接调用写接口的问题。
 """
 from __future__ import annotations
 
@@ -26,6 +18,11 @@ _MARKER = "/mobile/teacher/internship"
 
 _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^$"), "internship.dashboard.view"),
+    ("GET", re.compile(r"^context$"), "internship.dashboard.view"),
+    ("GET", re.compile(r"^context/scores$"), "internship.score.view"),
+    ("GET", re.compile(r"^context/enterprise-evals$"), "internship.eval.enterprise.view"),
+    ("POST", re.compile(r"^context/enterprise-evals$"), "internship.eval.enterprise.manage"),
+    ("POST", re.compile(r"^context/enterprise-evals/[^/]+/review$"), "internship.eval.enterprise.review"),
     ("GET", re.compile(r"^visit-plans$"), "internship.visit.view"),
     ("POST", re.compile(r"^visit-plans/record$"), "internship.visit.manage"),
     ("POST", re.compile(r"^weekly/[^/]+/(review|remind)$"), "internship.report.review"),
@@ -83,21 +80,15 @@ def _preflight_user(authorization: Optional[str]) -> dict:
     if jti_blocked(claims.get("jti")):
         raise unauthorized("令牌已登出失效，请重新登录")
     user = {
-        "userId": claims.get("userId"),
-        "loginName": claims.get("loginName") or claims.get("username"),
-        "realName": claims.get("realName"),
-        "userType": claims.get("userType"),
-        "tenantCode": claims.get("tid"),
-        "tenantId": claims.get("tenantId"),
+        "userId": claims.get("userId"), "loginName": claims.get("loginName") or claims.get("username"),
+        "realName": claims.get("realName"), "userType": claims.get("userType"),
+        "tenantCode": claims.get("tid"), "tenantId": claims.get("tenantId"),
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
-        "studentNo": claims.get("studentNo"),
-        "collegeId": claims.get("collegeId"),
-        "collegeIds": claims.get("collegeIds"),
-        "majorId": claims.get("majorId"),
-        "majorIds": claims.get("majorIds"),
-        "tokenJti": claims.get("jti"),
+        "studentNo": claims.get("studentNo"), "collegeId": claims.get("collegeId"),
+        "collegeIds": claims.get("collegeIds"), "majorId": claims.get("majorId"),
+        "majorIds": claims.get("majorIds"), "tokenJti": claims.get("jti"),
         "tokenExp": claims.get("exp"),
     }
     if str(user.get("userId") or "").startswith("db-"):
