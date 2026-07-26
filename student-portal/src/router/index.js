@@ -17,7 +17,7 @@ const routes = [
       // 各二级模块专用工作台（消费 /portal/* 重活接口）。meta.modulePath 供守卫做模块开关门禁。
       { path: 'profile', name: 'profile', meta: { modulePath: 'profile' }, component: () => import('../views/profile/ProfileView.vue') },
       { path: 'academic', name: 'academic', meta: { modulePath: 'academic' }, component: () => import('../views/academic/AcademicView.vue') },
-      { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsView.vue') },
+      { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsFourEndView.vue') },
       { path: 'internship', name: 'internship', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipView.vue') },
       { path: 'employment', name: 'employment', meta: { modulePath: 'employment' }, component: () => import('../views/employment/EmploymentView.vue') },
       { path: 'orientation', name: 'orientation', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
