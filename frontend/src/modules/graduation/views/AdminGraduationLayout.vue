@@ -16,7 +16,7 @@
       v-else-if="ctx && !permissionReady"
       type="warning"
       title="权限尚未就绪"
-      description="真实权限未加载成功前，写操作已禁用。请检查网络后重试，或联系管理员确认角色授权。"
+      description="真实权限未加载成功前，写操作暂不可用。请检查网络后重试，或联系管理员确认角色授权。"
       class="gd-scope-alert"
     />
     <AppInlineAlert
@@ -37,6 +37,13 @@
         type="info"
         title="当前为只读名单视图"
         description="你可以查看本数据范围内的毕设学生、进度和材料状态；建档、导师分配、选题、资格认定、分组、答辩组分配与归档仅对具有学生管理权限的角色开放。"
+        class="gd-scope-alert"
+      />
+      <AppInlineAlert
+        v-if="isReminderWorkspace"
+        type="info"
+        title="催交会发送真实站内消息"
+        description="点击催交后，系统会向该学生创建真实站内消息并写入催办留痕；请勿因旧页面缓存而重复电话或微信催办。"
         class="gd-scope-alert"
       />
       <router-view :key="businessViewKey" :ctx="businessCtx" />
@@ -100,6 +107,9 @@ export default {
     isStudentList() {
       return this.$route.name === 'graduation-students'
     },
+    isReminderWorkspace() {
+      return ['graduation-proposals', 'graduation-finals'].includes(this.$route.name)
+    },
     canManageStudents() {
       const patterns = this.ctx?.permissionPatterns
       return Array.isArray(patterns) && matchPermission(patterns, 'graduationDesign.student.manage')
@@ -145,7 +155,24 @@ export default {
   async created() {
     await this.loadContext()
   },
+  mounted() {
+    this.normalizeReminderCopy()
+  },
+  updated() {
+    this.normalizeReminderCopy()
+  },
   methods: {
+    normalizeReminderCopy() {
+      if (!this.isReminderWorkspace || typeof document === 'undefined') return
+      this.$nextTick(() => {
+        document.querySelectorAll('.gd-business-view .mp-note').forEach((node) => {
+          const text = String(node.textContent || '')
+          if (text.includes('当前仅记录线下催办留痕') || text.includes('不代表站内消息已送达')) {
+            node.textContent = '本操作会创建真实站内消息并写入催办留痕；学生提交后将进入对应待审队列。'
+          }
+        })
+      })
+    },
     async loadContext() {
       this.loading = true
       this.contextError = ''
@@ -205,12 +232,8 @@ export default {
 </script>
 
 <style scoped>
-.gd-scope-alert {
-  margin: 0 0 var(--space-4);
-}
-.gd-batch-bar {
-  margin: 0 0 var(--space-3);
-}
+.gd-scope-alert { margin: 0 0 var(--space-4); }
+.gd-batch-bar { margin: 0 0 var(--space-3); }
 /* 学生列表历史页面没有逐个消费动作权限：只读角色仅保留每行首个“详情”入口。 */
 .gd-student-readonly :deep(.mp-link + .mp-link) { display: none !important; }
 /* 最终毕业资格由教务中心统一重算；隐藏旧的人工联动页签。 */
