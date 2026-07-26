@@ -1,7 +1,7 @@
 """V2-02 教学班管理写动作最终层。
 
 正式回填采用单事务全有或全无：先完成当前数据范围内全部教学任务名单对账，存在任何未就绪项时
-零写入；全部通过后才投影教学班、创建名单版本并写审计。dry-run 始终只读。
+零写入；已有正式版本成员一致则幂等跳过，成员不一致则阻断，绝不覆盖人工或选课版本。
 """
 from __future__ import annotations
 
@@ -57,31 +57,82 @@ def _scoped_tasks(db, user, term_id: int):
 
 
 def _preview_rows(db, tasks):
+    from app.models import AaTeachingClass
+
     report = []
     for task in tasks:
         legacy = _teaching_class._legacy_resolve_roster(db, int(task.id))
+        legacy_ids = sorted({int(value) for value in (legacy.get("studentIds") or [])})
+        teaching_class = db.query(AaTeachingClass).filter(
+            AaTeachingClass.tenant_id == _tid(),
+            AaTeachingClass.teaching_task_id == int(task.id),
+            AaTeachingClass.is_deleted.is_(False),
+        ).first()
+        current = (
+            _teaching_class._new_roster_dto(db, teaching_class)
+            if teaching_class and teaching_class.current_roster_version_id
+            else None
+        )
+        authoritative = (
+            _teaching_class.resolve_teaching_task_roster(db, int(task.id))
+            if teaching_class and teaching_class.current_roster_version_id
+            else None
+        )
+
+        existing_projected = bool(current and current.get("ready"))
+        projection_match = None
+        blocked_reason = ""
+        if teaching_class and teaching_class.current_roster_version_id:
+            if not current or not current.get("ready"):
+                blocked_reason = "已有教学班当前名单版本无效，禁止回填覆盖"
+            elif not authoritative or not authoritative.get("ready") or not authoritative.get("rosterVersionId"):
+                blocked_reason = authoritative.get("note") if authoritative else "已有名单版本不是当前权威事实"
+            elif legacy.get("ready") and set(legacy_ids) != set(current.get("studentIds") or []):
+                projection_match = False
+                blocked_reason = "已有正式名单与兼容事实源成员不一致，必须人工核对，禁止自动覆盖"
+            else:
+                projection_match = True if legacy.get("ready") else None
+        elif not legacy.get("ready") or not legacy_ids:
+            blocked_reason = legacy.get("note") or "兼容名单尚未就绪"
+
+        ready_for_backfill = bool(
+            not blocked_reason
+            and (
+                existing_projected
+                or (legacy.get("ready") and legacy_ids)
+            )
+        )
         report.append({
             "teachingTaskId": str(task.id),
             "courseName": task.course_name or "",
             "className": task.teaching_class_name or task.class_name or "",
             "legacyReady": bool(legacy.get("ready")),
             "legacySource": legacy.get("source") or "",
-            "legacyMemberCount": len(legacy.get("studentIds") or []),
-            "note": legacy.get("note") or "",
-            "studentIds": [int(value) for value in (legacy.get("studentIds") or [])],
+            "legacyMemberCount": len(legacy_ids),
+            "note": blocked_reason or legacy.get("note") or "",
+            "readyForBackfill": ready_for_backfill,
+            "existingProjected": existing_projected,
+            "existingVersionNo": int(teaching_class.current_roster_version_no or 0) if teaching_class else 0,
+            "projectionMatch": projection_match,
+            "studentIds": legacy_ids,
             "batchIds": [str(value) for value in (legacy.get("batchIds") or [])],
         })
     return report
 
 
 def _public_report(term_id: int, dry_run: bool, rows):
-    items = [{key: value for key, value in row.items() if key not in {"studentIds", "batchIds"}} for row in rows]
+    private_keys = {"studentIds", "batchIds"}
+    items = [{key: value for key, value in row.items() if key not in private_keys} for row in rows]
+    ready_count = sum(1 for row in items if row["readyForBackfill"])
+    existing_count = sum(1 for row in items if row["existingProjected"] and row["readyForBackfill"])
     return {
         "termId": str(term_id),
         "dryRun": bool(dry_run),
         "taskCount": len(items),
-        "readyCount": sum(1 for row in items if row["legacyReady"]),
-        "blockedCount": sum(1 for row in items if not row["legacyReady"]),
+        "readyCount": ready_count,
+        "blockedCount": len(items) - ready_count,
+        "alreadyProjectedCount": existing_count,
+        "toCreateCount": ready_count - existing_count,
         "items": items,
     }
 
@@ -100,18 +151,26 @@ def backfill_teaching_classes(user, term_id: int, dry_run=True, reason=""):
         if dry_run:
             db.rollback()
             return result
+        if not tasks:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "当前学期和数据范围没有可回填的教学任务", http_status=409)
 
-        blocked = [row for row in report_rows if not row["legacyReady"] or not row["studentIds"]]
+        blocked = [row for row in report_rows if not row["readyForBackfill"]]
         if blocked:
             db.rollback()
             raise AppException(
                 "DATA_CONFLICT",
-                f"仍有 {len(blocked)} 条教学任务名单未就绪，已取消本次回填，未写入任何教学班版本",
+                f"仍有 {len(blocked)} 条教学任务名单未就绪或与现有版本冲突，已取消本次回填，未写入任何数据",
                 details=_public_report(int(term_id), True, report_rows),
                 http_status=409,
             )
 
+        created_count = 0
+        skipped_count = 0
         for task, row in zip(tasks, report_rows):
+            if row["existingProjected"]:
+                skipped_count += 1
+                continue
             teaching_class = _teaching_class.ensure_teaching_class_for_task(
                 db, int(task.id), initialize_admin_roster=False,
             )
@@ -125,6 +184,7 @@ def backfill_teaching_classes(user, term_id: int, dry_run=True, reason=""):
                 source_id=source_id,
                 reason=f"V2-02存量回填：{reason_text}",
             )
+            created_count += 1
 
         ctx = get_current_user_ctx() or {}
         db.add(AffairsAuditTrail(
@@ -135,12 +195,14 @@ def backfill_teaching_classes(user, term_id: int, dry_run=True, reason=""):
             operator=str(ctx.get("userId") or ctx.get("loginName") or ""),
             role_name=str(ctx.get("currentRoleCode") or ""),
             detail=(
-                f"termId={term_id};taskCount={result['taskCount']};"
-                f"readyCount={result['readyCount']};reason={reason_text}"
+                f"termId={term_id};taskCount={result['taskCount']};created={created_count};"
+                f"skipped={skipped_count};reason={reason_text}"
             )[:990],
         ))
         db.commit()
         result["dryRun"] = False
+        result["createdCount"] = created_count
+        result["skippedCount"] = skipped_count
         result["reason"] = reason_text
         result["audited"] = True
         return result
