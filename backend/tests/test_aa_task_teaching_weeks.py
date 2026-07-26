@@ -1,4 +1,4 @@
-"""教学任务周次必须读取学期/校历，18周只能作为显式历史兜底。"""
+"""教学任务周次与应开学期必须读取学期/校历，禁止固定18周或全方案一次生成。"""
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -38,6 +38,8 @@ def _term(**overrides):
     data = {
         "id": 1,
         "tenant_id": 1,
+        "year_code": "2026-2027",
+        "term_no": 1,
         "teaching_weeks": None,
         "exam_week_start": None,
         "start_date": None,
@@ -119,6 +121,41 @@ def test_missing_term_is_rejected(monkeypatch):
     monkeypatch.setattr(service, "_tid", lambda: 1)
     with pytest.raises(AppException):
         service.resolve_teaching_weeks(_Db(None), 999)
+
+
+def test_class_semester_is_derived_from_academic_year_and_admission_grade():
+    from app.modules.academic_affairs.services import academic_affairs_task_facade as service
+
+    school_class = SimpleNamespace(grade="2024")
+
+    assert service.resolve_class_semester(_term(year_code="2026-2027", term_no=1), school_class) == 5
+    assert service.resolve_class_semester(_term(year_code="2026-2027", term_no=2), school_class) == 6
+
+
+def test_class_semester_accepts_grade_label_but_not_ambiguous_data():
+    from app.modules.academic_affairs.services import academic_affairs_task_facade as service
+
+    assert service.resolve_class_semester(
+        _term(year_code="2025-2026", term_no=2),
+        SimpleNamespace(grade="2024级"),
+    ) == 4
+    assert service.resolve_class_semester(
+        _term(year_code="未知", term_no=2),
+        SimpleNamespace(grade="2024级"),
+    ) is None
+    assert service.resolve_class_semester(
+        _term(year_code="2025-2026", term_no=3),
+        SimpleNamespace(grade="2024级"),
+    ) is None
+
+
+def test_future_class_is_not_guessed_into_current_term():
+    from app.modules.academic_affairs.services import academic_affairs_task_facade as service
+
+    assert service.resolve_class_semester(
+        _term(year_code="2025-2026", term_no=1),
+        SimpleNamespace(grade="2026"),
+    ) is None
 
 
 def test_public_task_service_points_to_calendar_facade():
