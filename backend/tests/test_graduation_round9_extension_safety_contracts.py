@@ -16,6 +16,7 @@ def read(path: str) -> str:
 
 def test_extension_python_sources_parse():
     for path in (
+        "backend/app/modules/graduation/services/graduation_extension_action_service.py",
         "backend/app/modules/graduation/services/graduation_extension_safety_service.py",
         "backend/app/modules/graduation/services/graduation_extension_query_service.py",
         "backend/app/modules/graduation/routers/graduation_extension.py",
@@ -28,26 +29,46 @@ def test_extension_python_sources_parse():
 
 def test_advisor_nodes_use_stable_binding_and_no_admin_substitution():
     safety = read("backend/app/modules/graduation/services/graduation_extension_safety_service.py")
+    action = read("backend/app/modules/graduation/services/graduation_extension_action_service.py")
     router = read("backend/app/modules/graduation/routers/graduation_extension.py")
     teacher = read("backend/app/api/v1/mobile_graduation_extension_teacher.py")
     assert "def _assert_bound_advisor" in safety
     assert "current_user_mentor" in safety
     assert "student.mentor_id" in safety
     assert "任何管理员身份都不能代替" in safety
-    assert "safety_svc.nominate_excellent" in router
-    assert "safety_svc.advisor_review_delay" in router
-    assert "safety_svc.advisor_review_delay" in teacher
+    assert "safety.nominate_excellent" in action
+    assert "safety.advisor_review_delay" in action
+    assert "action_svc.nominate_excellent" in router
+    assert "action_svc.advisor_review_delay" in router
+    assert "action_svc.advisor_review_delay" in teacher
 
 
 def test_duplicate_submissions_are_business_conflicts():
     safety = read("backend/app/modules/graduation/services/graduation_extension_safety_service.py")
+    action = read("backend/app/modules/graduation/services/graduation_extension_action_service.py")
     student_mobile = read("backend/app/api/v1/mobile_graduation_guard.py")
     student_portal = read("backend/app/api/v1/student_portal_graduation_guard.py")
     assert "IntegrityError" in safety
     assert "优秀成果提名已被其他请求提交" in safety
     assert "延期答辩申请已被其他请求提交" in safety
-    assert "extension_safety_svc.apply_delay" in student_mobile
-    assert "extension_safety_svc.apply_delay" in student_portal
+    assert "safety.apply_delay" in action
+    assert "extension_action_svc.apply_delay" in student_mobile
+    assert "extension_action_svc.apply_delay" in student_portal
+
+
+def test_write_payloads_are_bounded_and_auditable():
+    action = read("backend/app/modules/graduation/services/graduation_extension_action_service.py")
+    router = read("backend/app/modules/graduation/routers/graduation_extension.py")
+    assert "maximum: int = 1000" in action
+    assert "附件证据最多 20 项" in action
+    assert "date.fromisoformat" in action
+    assert "延期答辩日期必须为 YYYY-MM-DD" in action
+    assert "graduation_extension_action_service as action_svc" in router
+    for fn in (
+        "nominate_excellent", "major_review_excellent", "college_review_excellent",
+        "advisor_review_delay", "major_review_delay", "college_review_delay", "schedule_delay",
+    ):
+        assert f"action_svc.{fn}" in router
 
 
 def test_delay_reapply_uses_real_active_key_not_latest_history_only():
@@ -92,7 +113,10 @@ def test_school_ui_uses_row_actions_and_surfaces_partial_failures():
     assert '"canNominate"' in query
     assert '"allowedActions"' in safety
     assert "row.canNominate" in ui
-    assert "row.allowedActions" in ui
+    assert "can(row, 'majorReview')" in ui
+    assert "can(row, 'collegeReview')" in ui
+    assert "can(row, 'advisorReview')" in ui
+    assert "can(row, 'schedule')" in ui
     assert "supportError" in ui
     assert "候选加载失败" in ui
     assert "答辩组加载失败" in ui
@@ -106,6 +130,14 @@ def test_defense_group_picker_is_batch_bound_and_accepts_canonical_date_dto():
     assert "params: withBatch({ page: 1, pageSize: 200, ...params })" in api
     assert "defenseDate: g.date || g.defenseDate" in api
     assert "withBatch({ page: 1, pageSize: 200, ...params })" in more_api
+
+
+def test_main_workflow_precedes_low_frequency_extensions():
+    portal_app = read("student-portal/src/App.vue")
+    mobile_shell = read("miniapp/src/components/MobileGlobalState.vue")
+    assert portal_app.index("<router-view />") < portal_app.index("<GraduationExtensionPanel")
+    assert mobile_shell.index('<slot v-if="state === \'ready\'"') < mobile_shell.index("<MobileGraduationExtensionPanel")
+    assert "route.name === 'graduation-workbench'" in portal_app
 
 
 def test_student_panels_have_first_screen_state_and_mobile_overflow_guards():
