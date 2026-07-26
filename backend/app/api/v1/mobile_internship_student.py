@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
+from app.modules.internship.services import internship_agreement_service as agreements
 from app.modules.internship.services import internship_plan_service as plans
 from app.modules.internship.services import internship_plan_task_service as plan_tasks
 from app.modules.internship.services import internship_safety_service as safety
@@ -187,3 +188,28 @@ def submit_selected_plan_task(
         plan_tasks.student_submit_task(user, sort_order, body or {}),
         message="任务已提交，等待指导教师确认",
     )
+
+
+@router.get("/context/agreements", summary="本人所选批次三方协议列表")
+def my_selected_agreements(user=Depends(get_current_user)):
+    return success(agreements.my_agreements(user))
+
+
+@router.get("/context/agreements/{agreement_id}", summary="本人三方协议详情与当前版本")
+def my_selected_agreement_detail(
+    agreement_id: str,
+    user=Depends(get_current_user),
+):
+    return success(agreements.get_student_agreement(user, agreement_id))
+
+
+@router.post("/context/agreements/{agreement_id}/confirm", summary="按版本确认或驳回本人三方协议")
+def confirm_selected_agreement(
+    agreement_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    payload = body or {}
+    return success(agreements.student_confirm(
+        user, agreement_id, str(payload.get("action") or "").upper(),
+        payload.get("reason") or "", body=payload), message="协议办理完成")
