@@ -8,34 +8,45 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载活动统计..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">活动运营结论</span>
+          <h2 class="sa-summary-strip__title">活动 {{ stats.totalActivities || 0 }} 场，报名 {{ stats.totalSignups || 0 }} 人次，签到 {{ stats.totalCheckins || 0 }} 人次，获学分学生 {{ stats.creditStudents || 0 }} 人</h2>
+          <p class="sa-summary-strip__text">先看活动状态判断待确认积压，再对比报名与签到人次，最后查看第二课堂学时、德育积分和志愿时长产出。</p>
+        </div>
+      </section>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
 
       <div class="as-cols">
-        <AppSectionCard title="按活动类型">
+        <AppSectionCard title="按活动类型分布">
+          <p class="activity-stats-hint">了解活动、志愿服务、讲座、竞赛和社会实践的数量结构。</p>
           <DataTable v-if="byType.length" :columns="typeColumns" :rows="byType" row-key="key">
             <template #cell-label="{ row }">{{ typeLabel(row.key) }}</template>
-            <template #cell-count="{ row }">{{ row.count }}</template>
+            <template #cell-count="{ row }"><strong class="activity-stat-number">{{ row.count }}</strong></template>
           </DataTable>
-          <p v-else class="sa-empty">暂无数据</p>
+          <p v-else class="sa-empty">当前范围暂无活动类型数据。</p>
         </AppSectionCard>
 
-        <AppSectionCard title="按活动状态">
+        <AppSectionCard title="按活动状态分布">
+          <p class="activity-stats-hint">重点关注报名中、进行中和待确认活动，避免活动结束后名单长期未确认。</p>
           <DataTable v-if="byStatus.length" :columns="statusColumns" :rows="byStatus" row-key="key">
             <template #cell-label="{ row }">{{ statusLabel(row.key) }}</template>
-            <template #cell-count="{ row }">{{ row.count }}</template>
+            <template #cell-count="{ row }"><strong class="activity-stat-number">{{ row.count }}</strong></template>
           </DataTable>
-          <p v-else class="sa-empty">暂无数据</p>
+          <p v-else class="sa-empty">当前范围暂无活动状态数据。</p>
         </AppSectionCard>
       </div>
 
-      <AppSectionCard title="第二课堂学分产出（按类型）">
+      <AppSectionCard title="第二课堂产出（按类型）">
+        <p class="activity-stats-hint">展示已确认活动产生的第二课堂学时、德育积分和志愿时长聚合，不替代学生个人成绩单。</p>
         <DataTable v-if="creditByType.length" :columns="creditColumns" :rows="creditByType" row-key="key">
           <template #cell-label="{ row }">{{ creditTypeLabel(row.key) }}</template>
-          <template #cell-value="{ row }">{{ row.value }}</template>
+          <template #cell-value="{ row }"><strong class="activity-credit-value">{{ row.value }}</strong></template>
         </DataTable>
-        <p v-else class="sa-empty">暂无学分产出</p>
+        <p v-else class="sa-empty">当前范围暂无已确认的第二课堂产出。</p>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -92,9 +103,12 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .as-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+.activity-stats-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.activity-stat-number { color: var(--primary-700); font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
+.activity-credit-value { color: var(--success-700, #15803d); font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .as-cols { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 </style>
