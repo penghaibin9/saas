@@ -16,7 +16,7 @@ from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
 from . import academic_affairs_grade_term_facade as academic_affairs_grade_service
 from . import academic_affairs_makeup_identity_facade as academic_affairs_makeup_service
 from . import academic_affairs_program_quality_facade as academic_affairs_program_service
-from . import academic_affairs_program_quality_security_service as academic_affairs_program_quality_service
+from . import academic_affairs_program_quality_ui_service as academic_affairs_program_quality_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
 from . import academic_affairs_selection_facade as academic_affairs_selection_service
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
@@ -37,7 +37,7 @@ sys.modules[f"{__name__}.academic_affairs_exam_service"] = academic_affairs_exam
 sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_grade_service
 # 补考、清考、重修和免修统一执行学期写保护；学生主档缺失时fail-closed。
 sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_makeup_service
-# 培养方案提交必须通过V2-01结构化质量校验；管理型质量读模型按学院/班级范围fail-closed。
+# 培养方案提交必须通过V2-01结构化质量校验；管理型质量读模型按范围并保持全局摘要稳定。
 sys.modules[f"{__name__}.academic_affairs_program_service"] = academic_affairs_program_service
 sys.modules[f"{__name__}.academic_affairs_program_quality_service"] = academic_affairs_program_quality_service
 # 学生课表等完整路径导入统一使用“同一发布批次内合并LOCKED选课”的安全读侧。
