@@ -10,11 +10,13 @@
         </view>
 
         <view class="card stack-sm" v-if="showForm">
-          <picker mode="selector" :range="classLabels" :value="classIndex" @change="onClassPick">
-            <view class="at__input at__date">{{ classLabels[classIndex] || '选择行政班（必填）' }}</view>
+          <picker mode="selector" :range="taskLabels" :value="taskIndex" @change="onTaskPick">
+            <view class="at__input at__date">{{ taskLabels[taskIndex] || '选择当前教学任务（必填）' }}</view>
           </picker>
-          <input class="at__input" v-model="form.courseName" placeholder="课程名称" placeholder-class="at__ph" />
-          <input class="at__input" v-model="form.termCode" placeholder="学期（选填）" placeholder-class="at__ph" />
+          <view v-if="selectedTask" class="at__task-note">
+            <text>{{ selectedTask.courseName || '未命名课程' }}</text>
+            <text>{{ selectedTask.className || '未关联班级' }} · {{ selectedTask.termCode || '当前学期' }}</text>
+          </view>
           <picker mode="date" :value="form.sessionDate" @change="onDateChange">
             <view class="at__input at__date">{{ form.sessionDate || '选择考勤日期（必填）' }}</view>
           </picker>
@@ -22,10 +24,10 @@
           <picker mode="selector" :range="sessionTypes" @change="onTypeChange">
             <view class="at__input at__date">点名类别：{{ form.sessionType || '常规' }}</view>
           </picker>
-          <button class="btn btn-primary" :disabled="!form.classId || !form.sessionDate || creating" @click="createSession">
-            {{ creating ? '创建中…' : '按行政班圈定名单并新建' }}
+          <button class="btn btn-primary" :disabled="!form.teachingTaskId || !form.sessionDate || creating" @click="createSession">
+            {{ creating ? '创建中…' : '按教学任务圈定名单并新建' }}
           </button>
-          <text v-if="!classOptions.length" class="at__sub">暂无可选班级：请确认已绑定教学任务或辅导员/班主任班级。</text>
+          <text v-if="!taskOptions.length" class="at__sub">暂无可用教学任务：请确认当前学期教学任务已分配到本人并完成教师确认。</text>
         </view>
 
         <MobileGlobalState v-if="!sessions.length" state="empty" title="暂无考勤场次" description="点击右上角新建场次。" />
@@ -90,33 +92,40 @@ export default {
     return {
       sessions: [], loaded: false, state: 'loading', showForm: false, creating: false,
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
-      classOptions: [], classIndex: 0,
-      form: { classId: '', courseName: '', termCode: '', sessionDate: '', slotNo: '', sessionType: '' },
+      taskOptions: [], taskIndex: 0,
+      form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', sessionType: '' },
       active: null, items: [], submitting: false, STATUS_OPTS
     }
   },
   computed: {
-    classLabels() {
-      return (this.classOptions || []).map((c) => `${c.className || '未命名班'}${c.grade ? ' · ' + c.grade : ''}`)
+    taskLabels() {
+      return (this.taskOptions || []).map((task) => `${task.courseName || '未命名课程'} · ${task.className || '未关联班级'}`)
+    },
+    selectedTask() {
+      return (this.taskOptions || [])[this.taskIndex] || null
     }
   },
-  onLoad() { this.load(); this.loadClasses() },
+  onLoad() { this.load(); this.loadTasks() },
   methods: {
     onDateChange(e) { this.form.sessionDate = e.detail.value },
     onTypeChange(e) { this.form.sessionType = this.sessionTypes[Number(e.detail.value)] || '' },
-    onClassPick(e) {
-      this.classIndex = Number(e.detail.value)
-      const c = this.classOptions[this.classIndex]
-      this.form.classId = c ? c.classId : ''
+    applyTask(task) {
+      this.form.teachingTaskId = task ? task.teachingTaskId : ''
+      this.form.classId = task ? task.classId : ''
     },
-    loadClasses() {
-      teacherApi.getAttendanceClassOptions().then((d) => {
-        this.classOptions = (d && d.items) || []
-        if (this.classOptions.length) {
-          this.classIndex = 0
-          this.form.classId = this.classOptions[0].classId
-        }
-      }).catch(() => { this.classOptions = [] })
+    onTaskPick(e) {
+      this.taskIndex = Number(e.detail.value)
+      this.applyTask(this.taskOptions[this.taskIndex])
+    },
+    loadTasks() {
+      teacherApi.getAttendanceClassOptions().then((data) => {
+        this.taskOptions = (data && data.items) || []
+        this.taskIndex = 0
+        this.applyTask(this.taskOptions[0])
+      }).catch(() => {
+        this.taskOptions = []
+        this.applyTask(null)
+      })
     },
     load() {
       this.state = 'loading'
@@ -127,18 +136,21 @@ export default {
       }).catch(() => { this.state = 'error' })
     },
     createSession() {
-      if (this.creating || !this.form.classId || !this.form.sessionDate) return
+      if (this.creating || !this.form.teachingTaskId || !this.form.sessionDate) return
       this.creating = true
       teacherApi.createAttendanceSession({
-        classId: Number(this.form.classId), courseName: this.form.courseName.trim() || undefined,
-        termCode: this.form.termCode.trim() || undefined, sessionDate: this.form.sessionDate,
+        teachingTaskId: Number(this.form.teachingTaskId),
+        classId: Number(this.form.classId),
+        sessionDate: this.form.sessionDate,
         slotNo: this.form.slotNo ? Number(this.form.slotNo) : undefined,
         sessionType: this.form.sessionType || undefined
       }).then(() => {
         uni.showToast({ title: '考勤场次已创建', icon: 'success' })
         this.showForm = false
-        this.form = { classId: this.classOptions[0] ? this.classOptions[0].classId : '', courseName: '', termCode: '', sessionDate: '', slotNo: '', sessionType: '' }
-        this.classIndex = 0
+        this.form.sessionDate = ''
+        this.form.slotNo = ''
+        this.form.sessionType = ''
+        this.applyTask(this.taskOptions[this.taskIndex])
         this.load()
       }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '创建失败，请稍后重试'))
         .finally(() => { this.creating = false })
@@ -180,6 +192,8 @@ export default {
 .at__input { width: 100%; height: 40px; line-height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }
 .at__date { color: var(--text-primary); }
 .at__ph { color: var(--text-tertiary); }
+.at__task-note { display: flex; flex-direction: column; gap: 3px; padding: var(--space-3); border-radius: var(--radius-md); background: var(--teacher-50); color: var(--text-secondary); font-size: var(--font-size-xs); }
+.at__task-note text:first-child { color: var(--teacher-700); font-size: var(--font-size-sm); font-weight: 600; }
 .at__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .at__back { display: inline-block; font-size: var(--font-size-sm); color: var(--brand-primary); margin-bottom: var(--space-3); }
 .at__row { align-items: center; }
