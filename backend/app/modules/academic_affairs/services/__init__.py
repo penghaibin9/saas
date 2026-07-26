@@ -8,7 +8,8 @@ import sys
 
 # 必须先加载官方名单最终策略，再导入考勤/考务/成绩/选课消费者；否则 from-import 会缓存旧函数对象。
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
-from . import academic_affairs_archive_term_guard_facade as academic_affairs_archive_service
+# 最终归档链：旧9域 + 选课 + 补考重修免修 + 评教 + 教材，共13域。
+from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
 from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
@@ -19,9 +20,10 @@ from . import academic_affairs_selection_facade as academic_affairs_selection_se
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_security_facade as academic_affairs_task_service
+from . import academic_affairs_textbook_term_facade as academic_affairs_textbook_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
-# 归档路由和业务模块统一进入最终叠加策略层（含第10域选课名单和termCode唯一解析）。
+# 归档路由和业务模块统一进入最终13域叠加策略层。
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
 # 普通教师创建考勤必须选择当前学期本人教学任务。
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
@@ -41,5 +43,7 @@ sys.modules[f"{__name__}.academic_affairs_selection_round_service"] = academic_a
 sys.modules[f"{__name__}.academic_affairs_stats_service"] = academic_affairs_stats_service
 # 教学任务批次、明细、确认链和管理数据范围统一进入最终安全工作台facade。
 sys.modules[f"{__name__}.academic_affairs_task_service"] = academic_affairs_task_service
+# 教材选用、审核、征订、发放、退领和费用全部回链所属学期；目录/库存主数据保持跨学期可维护。
+sys.modules[f"{__name__}.academic_affairs_textbook_service"] = academic_affairs_textbook_service
 # 移动聚合路由和后续完整路径导入统一去掉教师姓名授权。
 sys.modules[f"{__name__}.mobile_academic_affairs_service"] = mobile_academic_affairs_service
