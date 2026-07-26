@@ -73,6 +73,29 @@ def sign(user: dict, body: dict) -> dict:
             "legalEffect": provider != "reliable_log"}
 
 
+def create_sign_record_in_session(db, user: dict, body: dict, student) -> dict:
+    """供需要业务原子性的流程复用；只 flush，由调用方统一提交或回滚。"""
+    body = body or {}
+    biz_type = str(body.get("bizType") or "").strip()
+    biz_id = str(body.get("bizId") or "").strip()
+    content = str(body.get("content") or "")
+    if not biz_type or not content or not bool(body.get("confirm")):
+        raise AppException("VALIDATION_ERROR", "签署类型、内容与确认状态必须完整")
+    provider = _resolve_provider(body.get("provider"))
+    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    from app.models import PortalSignRecord
+    signed_at = datetime.utcnow()
+    rec = PortalSignRecord(
+        tenant_id=_tid(), student_id=student.id, biz_type=biz_type,
+        biz_id=biz_id or None, content_hash=content_hash, provider=provider,
+        signer_name=student.real_name, signed_at=signed_at)
+    db.add(rec)
+    db.flush()
+    return {"signId": str(rec.id), "contentHash": content_hash, "provider": provider,
+            "signerName": user.get("realName") or "", "signedAt": _iso(signed_at),
+            "legalEffect": provider != "reliable_log"}
+
+
 def print_log(user: dict, body: dict) -> dict:
     """打印留痕（审计 PORTAL_PRINT + 水印）。"""
     u = _require_student(user)

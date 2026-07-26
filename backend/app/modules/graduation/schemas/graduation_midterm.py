@@ -1,7 +1,7 @@
 """毕业设计中心 · 中期检查请求 DTO。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -17,5 +17,5 @@ class MidtermRectifySubmit(BaseModel):
 
 
 class MidtermRectifyReview(BaseModel):
-    action: str = Field(..., description="PASS/FAIL")
+    action: Literal["PASS", "FAIL"]
     comment: Optional[str] = None

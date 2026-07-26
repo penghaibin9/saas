@@ -1,7 +1,7 @@
 """毕业设计中心 · 毕设学生请求 DTO（独立文件，与批次/毕设域其它 schema 隔离）。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,7 @@ class AssignAdvisorRequest(BaseModel):
 
 
 class GdStudentStageRequest(BaseModel):
-    action: str = Field(..., description="ADVANCE / ARCHIVE")
+    action: Literal["ADVANCE", "ARCHIVE"]
     reason: Optional[str] = ""
 
 

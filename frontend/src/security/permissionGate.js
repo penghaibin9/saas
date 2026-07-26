@@ -176,7 +176,7 @@ export function canEnterRoute(meta) {
   }
 
   // permissionAny：任一命中即可进入（如导入导出同页，有 import 或 export 之一即可）
-  // permissionAll：需全部命中。三者按 permissionKey → permissionAny → permissionAll 取第一个声明的。
+  // permissionAny 优先于展示/索引用 permissionKey；permissionAll 仅在前两者均未声明时生效。
   const anyKeys = Array.isArray(meta.permissionAny) ? meta.permissionAny.filter(Boolean) : []
   const allKeys = Array.isArray(meta.permissionAll) ? meta.permissionAll.filter(Boolean) : []
 
@@ -190,8 +190,8 @@ export function canEnterRoute(meta) {
     return true
   }
 
-  if (key) return matchPermission(_patterns, key)
   if (anyKeys.length) return anyKeys.some((k) => matchPermission(_patterns, k))
+  if (key) return matchPermission(_patterns, key)
   return allKeys.every((k) => matchPermission(_patterns, k))
 }
 

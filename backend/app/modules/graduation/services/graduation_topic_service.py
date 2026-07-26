@@ -243,6 +243,12 @@ def create_topic(body) -> dict:
             source=_source_label(st), review_status="DRAFT", status="PENDING_CONFIRM",
             capacity=int(data.get("capacity") or 1), selected=0)
         _apply_body(t, data, create=True)
+        if st == "TEACHER":
+            from app.modules.graduation.services import graduation_identity as gid
+            owner = gid.current_user_mentor(db)
+            if owner:
+                t.advisor_mentor_id = int(owner.id)
+                t.advisor_name = owner.teacher_name
         db.add(t)
         db.flush()
         _audit(db, t.id, "CREATE", t.title)

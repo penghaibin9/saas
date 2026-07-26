@@ -172,11 +172,13 @@ def list_experts(status=None, keyword=None) -> list:
 
 
 def set_expert_status(eid, action) -> dict:
+    if action not in ("ENABLE", "DISABLE"):
+        raise AppException("VALIDATION_ERROR", "action 必须是 ENABLE 或 DISABLE")
     with session() as db:
         e = db.get(GraduationDefenseExpert, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("专家不存在")
-        e.status = "DISABLED" if action == "DISABLE" else "ACTIVE"
+        e.status = {"DISABLE": "DISABLED", "ENABLE": "ACTIVE"}[action]
         _audit(db, "DEFENSE_EXPERT", e.id, "停用专家" if action == "DISABLE" else "启用专家")
         db.commit()
         return _expert_row(e)

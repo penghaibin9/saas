@@ -145,6 +145,30 @@ def confirm_taskbook(gd_student_id, proxy_reason: str | None = None) -> dict:
         return _row(t, stu)
 
 
+def confirm_taskbook_in_session(db, gd_student_id) -> dict:
+    """学生电子签署专用：在调用方事务内锁定并确认，不自行提交。"""
+    stu = _stu(db, gd_student_id)
+    t = db.scalars(select(GraduationTaskBook).where(
+        GraduationTaskBook.tenant_id == _tid(),
+        GraduationTaskBook.gd_student_id == stu.id,
+        GraduationTaskBook.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if not t:
+        raise not_found("尚未下达任务书")
+    if t.status == "CONFIRMED":
+        return _row(t, stu)
+    if t.status not in ("ISSUED", "CHANGE_PENDING"):
+        raise AppException("DATA_CONFLICT", "当前任务书状态不允许确认")
+    before = t.status
+    t.status = "CONFIRMED"
+    t.confirmed_at = datetime.now(timezone.utc)
+    if stu.stage == "TASKBOOK_CONFIRM":
+        stu.stage = "GUIDING"
+    _audit(db, t.id, "学生确认任务书", before=before, after="CONFIRMED")
+    db.flush()
+    return _row(t, stu)
+
+
 def change_taskbook(gd_student_id, body: dict) -> dict:
     reason = (body.get("reason") or "").strip()
     if len(reason) < 5:

@@ -29,9 +29,32 @@ def taskbook_sign(user: dict, body: dict) -> dict:
     # 以任务书快照为签署内容（防篡改：确认时内容与日后比对一致）
     content = json.dumps(detail, sort_keys=True, ensure_ascii=False, default=str)
     biz_id = str(detail.get("gdStudentId") or detail.get("id") or "")
-    sign = common.sign(user, {"bizType": "GRADUATION_TASKBOOK", "bizId": biz_id,
-                              "content": content, "confirm": True})
-    confirmed = stu.graduation_taskbook_confirm(user)  # 置任务书确认态
+    from app.modules.graduation.services import graduation_taskbook_service as tb_svc
+    from app.services.mobile_student_service import _session, resolve_student
+    with _session() as db:
+        master = resolve_student(db, user)
+        if not master:
+            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法签署")
+        confirmed = tb_svc.confirm_taskbook_in_session(db, biz_id)
+        from sqlalchemy import select
+        from app.models import PortalSignRecord
+        from app.services.db_service import _tid
+        existing = db.scalars(select(PortalSignRecord).where(
+            PortalSignRecord.tenant_id == _tid(),
+            PortalSignRecord.student_id == master.id,
+            PortalSignRecord.biz_type == "GRADUATION_TASKBOOK",
+            PortalSignRecord.biz_id == biz_id,
+        ).order_by(PortalSignRecord.id.desc())).first()
+        if existing and confirmed.get("status") == "CONFIRMED":
+            return {"signId": str(existing.id), "contentHash": existing.content_hash,
+                    "provider": existing.provider, "signedAt": str(existing.signed_at),
+                    "legalEffect": existing.provider != "reliable_log", "taskbook": confirmed}
+        if str(confirmed.get("taskbookVersion")) != str(detail.get("taskbookVersion")):
+            raise AppException("DATA_CONFLICT", "任务书版本已变化，请刷新后重新确认")
+        sign = common.create_sign_record_in_session(
+            db, user, {"bizType": "GRADUATION_TASKBOOK", "bizId": biz_id,
+                       "content": content, "confirm": True}, master)
+        db.commit()
     return {"signId": sign["signId"], "contentHash": sign["contentHash"],
             "provider": sign["provider"], "signedAt": sign["signedAt"],
             "legalEffect": sign["legalEffect"], "taskbook": confirmed}

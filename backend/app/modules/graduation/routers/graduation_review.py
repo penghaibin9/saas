@@ -29,8 +29,9 @@ def gd_plagiarism_stats(batchId: int | None = Query(default=None, ge=1),
 @router.get("/gd-plagiarism", summary="查重记录列表")
 def gd_plagiarism_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                        gdStudentId: Optional[str] = None, status: Optional[str] = None,
+                       batchId: Optional[str] = None,
                        user=Depends(get_current_user)):
-    items, total = svc.list_plagiarism(page, pageSize, gd_student_id=gdStudentId, status=status)
+    items, total = svc.list_plagiarism(page, pageSize, gd_student_id=gdStudentId, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -73,9 +74,10 @@ def gd_review_stats(batchId: int | None = Query(default=None, ge=1),
 @router.get("/gd-reviews", summary="评阅任务列表")
 def gd_review_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                    gdStudentId: Optional[str] = None, reviewerName: Optional[str] = None,
-                   status: Optional[str] = None, user=Depends(get_current_user)):
+                   status: Optional[str] = None, batchId: Optional[str] = None,
+                   user=Depends(get_current_user)):
     items, total = svc.list_reviews(page, pageSize, gd_student_id=gdStudentId,
-                                    reviewer_name=reviewerName, status=status)
+                                    reviewer_name=reviewerName, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

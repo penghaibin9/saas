@@ -34,14 +34,13 @@ export const graduationDefenseGradeApi = {
   reviewDispute(pid, action, comment) { return call(() => request(`${PLAG}/${pid}/dispute/review`, { method: 'POST', body: { action, comment } })) },
 
   getReviewList(params = {}) { return callList(REVIEW, params) },
-  assignReview(gdStudentId, reviewerName, gdFinalId, reviewerMentorId) {
+  assignReview(gdStudentId, reviewerName, reviewerMentorId) {
     return call(() => request(`${REVIEW}/assign`, {
       method: 'POST',
       body: {
         gdStudentId,
         reviewerName: reviewerName || undefined,
         reviewerMentorId: reviewerMentorId ? Number(reviewerMentorId) : undefined,
-        gdFinalId: gdFinalId || undefined,
       },
     }))
   },

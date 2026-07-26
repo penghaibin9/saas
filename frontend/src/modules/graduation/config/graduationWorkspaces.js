@@ -75,8 +75,8 @@ export const GRADUATION_WORKSPACES = [
     children: [
       { label: '开题报告批阅', path: '/admin/graduation/proposals', permissionKey: 'graduationDesign.proposal.view', entryType: 'TASK_QUEUE' },
       { label: '成果提交与批阅', path: '/admin/graduation/finals', permissionKey: 'graduationDesign.final.view', entryType: 'TASK_QUEUE' },
-      { label: '查重记录', path: '/admin/graduation/defense-grade?panel=plagiarism', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
-      { label: '教师评阅', path: '/admin/graduation/defense-grade?panel=review', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
+      { label: '查重记录', path: '/admin/graduation/defense-grade?panel=plagiarism', permissionKey: 'graduationDesign.plagiarism.result', entryType: 'TASK_QUEUE' },
+      { label: '教师评阅', path: '/admin/graduation/defense-grade?panel=review', permissionKey: 'graduationDesign.final.review', entryType: 'TASK_QUEUE' },
       { label: '成果互查整改', path: '/admin/graduation/more?panel=peer', permissionKey: 'graduationDesign.more.manage', entryType: 'TASK_QUEUE' }
     ]
   },
@@ -87,7 +87,7 @@ export const GRADUATION_WORKSPACES = [
     children: [
       { label: '答辩安排', path: '/admin/graduation/defense', permissionKey: 'graduationDesign.defense.manage', entryType: 'TASK_QUEUE' },
       { label: '答辩评分', path: '/admin/graduation/defense-grade?panel=defense', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
-      { label: '成绩评定', path: '/admin/graduation/defense-grade?panel=grade', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
+      { label: '成绩评定', path: '/admin/graduation/defense-grade?panel=grade', permissionKey: 'graduationDesign.manage', entryType: 'TASK_QUEUE' },
       { label: '答辩专家库', path: '/admin/graduation/more?panel=experts', permissionKey: 'graduationDesign.more.manage', entryType: 'CONFIG_VIEW' },
       { label: '成绩更正申诉', path: '/admin/graduation/more?panel=appeals', permissionKey: 'graduationDesign.more.manage', entryType: 'TASK_QUEUE' }
     ]

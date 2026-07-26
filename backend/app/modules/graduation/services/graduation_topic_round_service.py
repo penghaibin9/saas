@@ -59,10 +59,13 @@ def _assert_choice_decision_access(db, choice: GraduationTopicChoice, action: st
         return
     user = get_current_user_ctx() or {}
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
-    real_name = (user.get("realName") or "").strip()
     topic = db.get(GraduationTopic, choice.topic_id)
-    if (role == "GD_MENTOR" and real_name and topic and not topic.is_deleted
-            and topic.tenant_id == _tid() and (topic.advisor_name or "").strip() == real_name):
+    from app.modules.graduation.services import graduation_identity as gid
+    me = gid.current_user_mentor(db)
+    if (role == "GD_MENTOR" and me and topic and not topic.is_deleted
+            and topic.tenant_id == _tid()
+            and getattr(topic, "advisor_mentor_id", None)
+            and int(topic.advisor_mentor_id) == int(me.id)):
         return
     raise no_permission(f"Choice is outside the current graduation-design scope ({action})")
 
@@ -229,16 +232,27 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
                 raise AppException("DATA_CONFLICT", "学生批次与选题轮次不一致，不可填报志愿")
         existing = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
-            GraduationTopicChoice.gd_student_id == int(gd_student_id),
-            GraduationTopicChoice.is_deleted.is_(False))).all()
-        for ex in existing:
-            ex.is_deleted = True
+            GraduationTopicChoice.gd_student_id == int(gd_student_id))
+            .with_for_update()).all()
+        by_order = {int(ex.choice_order): ex for ex in existing}
+        requested_orders = set()
         for ch in choices:
-            db.add(GraduationTopicChoice(
-                tenant_id=_tid(), round_id=int(round_id), gd_student_id=int(gd_student_id),
-                topic_id=int(ch.get("topicId") or ch.get("topic_id")),
-                choice_order=int(ch.get("choiceOrder") or ch.get("choice_order")),
-                status="PENDING"))
+            order = int(ch.get("choiceOrder") or ch.get("choice_order"))
+            requested_orders.add(order)
+            ex = by_order.get(order)
+            if ex:
+                ex.topic_id = int(ch.get("topicId") or ch.get("topic_id"))
+                ex.status = "PENDING"
+                ex.is_deleted = False
+            else:
+                db.add(GraduationTopicChoice(
+                    tenant_id=_tid(), round_id=int(round_id), gd_student_id=int(gd_student_id),
+                    topic_id=int(ch.get("topicId") or ch.get("topic_id")),
+                    choice_order=order, status="PENDING"))
+        for order, ex in by_order.items():
+            if order not in requested_orders:
+                ex.status = "WITHDRAWN"
+                ex.is_deleted = False
         _audit(db, round_id, "SUBMIT_CHOICES", f"学生 {stu.name} 提交 {len(choices)} 个志愿")
         db.commit()
         return {"submitted": len(choices)}
@@ -265,13 +279,18 @@ def list_pending_choices_for_advisor(advisor_name: str) -> list[dict]:
     if not has_full_scope():
         user = get_current_user_ctx() or {}
         role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
-        real_name = (user.get("realName") or "").strip()
-        if role != "GD_MENTOR" or not real_name or real_name != advisor_name.strip():
+        if role != "GD_MENTOR":
             raise no_permission("Cannot query pending choices for another advisor")
     with session() as db:
+        from app.modules.graduation.services import graduation_identity as gid
+        me = gid.current_user_mentor(db)
+        if not has_full_scope() and not me:
+            raise no_permission("当前账号未绑定毕设导师台账")
+        owner_filter = (GraduationTopic.advisor_mentor_id == int(me.id)) if me else (
+            GraduationTopic.advisor_name == advisor_name)
         topic_ids = [t.id for t in db.scalars(select(GraduationTopic).where(
             GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False),
-            GraduationTopic.advisor_name == advisor_name)).all()]
+            owner_filter)).all()]
         if not topic_ids:
             return []
         choices = db.scalars(select(GraduationTopicChoice).where(

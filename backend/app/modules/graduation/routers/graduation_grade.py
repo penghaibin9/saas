@@ -23,9 +23,9 @@ def gd_grade_stats(batchId: int | None = Query(default=None, ge=1),
 
 @router.get("/gd-grades", summary="成绩列表（分页+筛选）")
 def gd_grades(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, status: Optional[str] = None,
+             keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[str] = None,
              user=Depends(get_current_user)):
-    items, total = svc.list_grades(page, pageSize, keyword=keyword, status=status)
+    items, total = svc.list_grades(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

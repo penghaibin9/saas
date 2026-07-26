@@ -77,15 +77,15 @@
 
           <!-- 查重 -->
           <div v-if="tab === 'plagiarism'" class="gp-panel">
-            <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" @click="doSubmitPlagiarism">发起查重</button></div>
+            <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" :disabled="!canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</button></div>
             <ul class="gp-timeline">
               <li v-for="p in plagiarismList" :key="p.id" class="gp-timeline-item">
                 <div class="mp-cell-main"><AppDateDisplay :value="p.submitAt" mode="datetime" /> · <StatusTag :type="p.overThreshold ? 'danger' : 'success'" :label="p.status === 'DONE' ? (p.rate || '—') : p.statusLabel" dot /></div>
-                <div v-if="p.status === 'CHECKING'" class="mp-cell-sub"><button class="mp-link" @click="fillResult(p)">回填结果</button></div>
+                <div v-if="p.status === 'CHECKING'" class="mp-cell-sub"><button class="mp-link" :disabled="!canAction('setPlagiarismResult')" :title="actionReason('setPlagiarismResult')" @click="fillResult(p)">回填结果</button></div>
                 <div v-if="p.overThreshold && !p.disputeStatus" class="mp-cell-sub"><button class="mp-link" @click="doDispute(p)">申请复查</button></div>
                 <div v-if="p.disputeStatus === 'PENDING'" class="mp-cell-sub">复查申请：{{ p.disputeReason }}
-                  <button class="mp-link" @click="doDisputeReview(p, 'APPROVE')">通过</button>
-                  <button class="mp-link mp-link--danger" @click="doDisputeReview(p, 'REJECT')">驳回</button>
+                  <button class="mp-link" :disabled="!canAction('reviewPlagiarismDispute')" :title="actionReason('reviewPlagiarismDispute')" @click="doDisputeReview(p, 'APPROVE')">通过</button>
+                  <button class="mp-link mp-link--danger" :disabled="!canAction('reviewPlagiarismDispute')" :title="actionReason('reviewPlagiarismDispute')" @click="doDisputeReview(p, 'REJECT')">驳回</button>
                 </div>
               </li>
             </ul>
@@ -101,15 +101,15 @@
                 placeholder="搜索评阅教师（自动回避该生导师）"
                 style="width: 260px"
               />
-              <button class="mp-btn mp-btn--primary" @click="doAssignReview">分配评阅</button>
+              <button class="mp-btn mp-btn--primary" :disabled="!canAction('assignReview')" :title="actionReason('assignReview')" @click="doAssignReview">分配评阅</button>
             </div>
             <ul class="gp-timeline">
               <li v-for="r in reviewList" :key="r.id" class="gp-timeline-item">
                 <div class="mp-cell-main">{{ r.reviewerName }} · <StatusTag :type="r.statusTone" :label="r.statusLabel" dot /></div>
                 <div v-if="r.opinion" class="mp-cell-sub">评分 {{ r.score }} · {{ r.opinion }}</div>
                 <div class="ie-actions" style="justify-content:flex-start;margin-top:4px">
-                  <button v-if="['ASSIGNED', 'REVIEWING', 'RETURNED'].includes(r.status)" class="mp-link" @click="openReviewSubmit(r)">提交评阅</button>
-                  <button v-if="r.status === 'COMPLETED'" class="mp-link" @click="openReviewReturn(r)">退回重评</button>
+                  <button v-if="['ASSIGNED', 'REVIEWING', 'RETURNED'].includes(r.status)" class="mp-link" :disabled="!canAction('submitReview')" :title="actionReason('submitReview')" @click="openReviewSubmit(r)">提交评阅</button>
+                  <button v-if="r.status === 'COMPLETED'" class="mp-link" :disabled="!canAction('returnReview')" :title="actionReason('returnReview')" @click="openReviewReturn(r)">退回重评</button>
                 </div>
               </li>
             </ul>
@@ -168,6 +168,7 @@ import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-d
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { AppGraduationMentorPicker } from '@/components/common'
 import { toast } from '@/utils/toast'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 export default {
   name: 'GraduationDefenseGradeView',
@@ -175,6 +176,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      batchStore: useGraduationBatchStore(),
       studentKeyword: '', studentOptions: [], current: null, tab: 'plagiarism',
       mode: 'single',
       batch: { loading: false, error: '', rows: [], total: 0, page: 1, pageSize: 20, keyword: '', status: '', missingOnly: false, loaded: false },
@@ -256,9 +258,24 @@ export default {
     // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
     '$route.query.panel'(p) {
       if (['plagiarism', 'review', 'defense', 'grade'].includes(p) && p !== this.tab) this.tab = p
+    },
+    'batchStore.selectedBatchId'() {
+      this.current = null
+      this.studentOptions = []
+      this.batch.loaded = false
+      this.searchStudents()
+      if (this.mode === 'batch') this.loadGrades()
     }
   },
   methods: {
+    canAction(key) {
+      const pa = this.ctx.permissionActions[key]
+      return !!(pa && pa.allowed)
+    },
+    actionReason(key) {
+      const pa = this.ctx.permissionActions[key]
+      return pa && !pa.allowed ? (pa.reason || '无此操作权限') : ''
+    },
     setMode(m) {
       this.mode = m
       const q = { ...this.$route.query, view: m === 'batch' ? 'batch' : undefined }
@@ -268,7 +285,8 @@ export default {
     async loadGrades() {
       const B = this.batch
       B.loading = true; B.error = ''
-      const res = await graduationDefenseGradeApi.getGrades({ keyword: B.keyword, status: B.status || undefined, page: B.page, pageSize: B.pageSize })
+      if (!this.batchStore.selectedBatchId) { B.rows = []; B.total = 0; B.loading = false; return }
+      const res = await graduationDefenseGradeApi.getGrades({ keyword: B.keyword, status: B.status || undefined, batchId: this.batchStore.selectedBatchId, page: B.page, pageSize: B.pageSize })
       if (res.code === 0) { B.rows = res.data.list; B.total = res.data.total; B.loaded = true } else { B.rows = []; B.error = res.message || '加载失败' }
       B.loading = false
     },
@@ -287,7 +305,8 @@ export default {
     },
     async searchStudents() {
       this.sideError = ''
-      const res = await gdStudentApi.getStudents({ keyword: this.studentKeyword, pageSize: 20 })
+      if (!this.batchStore.selectedBatchId) { this.studentOptions = []; return }
+      const res = await gdStudentApi.getStudents({ keyword: this.studentKeyword, batchId: this.batchStore.selectedBatchId, pageSize: 20 })
       if (res.code === 0) { this.studentOptions = res.data.list } else { this.studentOptions = []; this.sideError = res.message || '学生列表加载失败' }
     },
     selectStudent(s) { this.current = s; this.loadAll() },
@@ -296,15 +315,15 @@ export default {
       await Promise.all([this.loadPlagiarism(), this.loadReview(), this.loadScores(), this.loadGrade()])
     },
     async loadPlagiarism() {
-      const res = await graduationDefenseGradeApi.getPlagiarismList({ gdStudentId: this.current.id, pageSize: 50 })
+      const res = await graduationDefenseGradeApi.getPlagiarismList({ gdStudentId: this.current.id, batchId: this.batchStore.selectedBatchId, pageSize: 50 })
       if (res.code === 0) { this.plagiarismList = res.data.list } else { this.plagiarismList = []; this.loadError = res.message || '查重记录加载失败' }
     },
     async loadReview() {
-      const res = await graduationDefenseGradeApi.getReviewList({ gdStudentId: this.current.id, pageSize: 50 })
+      const res = await graduationDefenseGradeApi.getReviewList({ gdStudentId: this.current.id, batchId: this.batchStore.selectedBatchId, pageSize: 50 })
       if (res.code === 0) { this.reviewList = res.data.list } else { this.reviewList = []; this.loadError = res.message || '评阅记录加载失败' }
     },
     async loadScores() {
-      const res = await graduationDefenseGradeApi.getScoreList({ gdStudentId: this.current.id, pageSize: 50 })
+      const res = await graduationDefenseGradeApi.getScoreList({ gdStudentId: this.current.id, batchId: this.batchStore.selectedBatchId, pageSize: 50 })
       if (res.code === 0) { this.scoreList = res.data.list } else { this.scoreList = []; this.loadError = res.message || '评分记录加载失败' }
     },
     async loadGrade() {
@@ -320,12 +339,13 @@ export default {
     openForm(formKey, recordId = '') {
       if (!this.current) return
       this.$router.push({
-        path: '/admin/graduation/defense-grade/form',
+        name: 'graduation-defense-grade-student-form',
+        params: { studentId: String(this.current.id) },
         query: {
           formKey,
           recordId: recordId || undefined,
-          studentId: this.current.id,
-          panel: this.tab
+          panel: this.tab,
+          batchId: this.batchStore.selectedBatchId
         }
       })
     },
@@ -341,7 +361,7 @@ export default {
     },
     async doAssignReview() {
       if (!this.reviewerMentorId) return toast.error('请选择评阅教师')
-      const res = await graduationDefenseGradeApi.assignReview(this.current.id, null, null, this.reviewerMentorId)
+      const res = await graduationDefenseGradeApi.assignReview(this.current.id, null, this.reviewerMentorId)
       if (res.code === 0) { toast.success('已分配'); this.reviewerMentorId = ''; this.loadReview() } else toast.error(res.message)
     },
     openReviewSubmit(r) {

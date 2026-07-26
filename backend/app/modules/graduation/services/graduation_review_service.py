@@ -56,7 +56,7 @@ def _plag_row(p: GraduationPlagiarismCheck, stu=None) -> dict:
             "updatedAt": _iso(p.updated_at)}
 
 
-def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None) -> tuple[list[dict], int]:
+def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationPlagiarismCheck).where(GraduationPlagiarismCheck.tenant_id == _tid(),
@@ -64,6 +64,10 @@ def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None) 
                                                      GraduationPlagiarismCheck.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationPlagiarismCheck.gd_student_id == int(gd_student_id))
+        if batch_id:
+            q = q.where(GraduationPlagiarismCheck.gd_student_id.in_(select(GraduationStudent.id).where(
+                GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
+                GraduationStudent.is_deleted.is_(False))))
         if status:
             q = q.where(GraduationPlagiarismCheck.status == status)
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
@@ -218,7 +222,7 @@ def _review_row(r: GraduationReview, stu=None) -> dict:
 
 
 def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=None,
-                 status=None) -> tuple[list[dict], int]:
+                 status=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationReview).where(GraduationReview.tenant_id == _tid(),
@@ -226,6 +230,10 @@ def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=No
                                            GraduationReview.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationReview.gd_student_id == int(gd_student_id))
+        if batch_id:
+            q = q.where(GraduationReview.gd_student_id.in_(select(GraduationStudent.id).where(
+                GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
+                GraduationStudent.is_deleted.is_(False))))
         if reviewer_name:
             q = q.where(GraduationReview.reviewer_name == reviewer_name)
         if status:
@@ -252,16 +260,17 @@ def assign_review(gd_student_id, reviewer_name: str | None = None, gd_final_id=N
             raise AppException("VALIDATION_ERROR", "评阅人必填（请选择导师台账或填写姓名）")
         if gid.sod_conflict_with_advisor(db, stu, reviewer_mentor_id=mid, reviewer_name=reviewer):
             raise AppException("VALIDATION_ERROR", "评阅人不得是该生指导教师（SoD 冲突）")
-        final_id = int(gd_final_id) if gd_final_id else None
-        if final_id:
-            final = db.scalars(select(GraduationFinal).where(
-                GraduationFinal.id == final_id,
-                GraduationFinal.tenant_id == _tid(),
-                GraduationFinal.gd_student_id == stu.id,
-                GraduationFinal.is_deleted.is_(False),
-            ).with_for_update()).first()
-            if not final:
-                raise AppException("VALIDATION_ERROR", "Review target does not belong to this student")
+        # 评阅任务必须绑定权威定稿；调用方不得通过传空或旧版本改变核算来源。
+        final = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(),
+            GraduationFinal.gd_student_id == stu.id,
+            GraduationFinal.final_type == "定稿",
+            GraduationFinal.status == "APPROVED",
+            GraduationFinal.is_deleted.is_(False),
+        ).order_by(GraduationFinal.id.desc()).with_for_update()).first()
+        if not final:
+            raise AppException("DATA_CONFLICT", "请先完成并通过正式定稿，再分配评阅任务")
+        final_id = int(final.id)
         existing_q = select(GraduationReview).where(
             GraduationReview.tenant_id == _tid(),
             GraduationReview.gd_student_id == stu.id,

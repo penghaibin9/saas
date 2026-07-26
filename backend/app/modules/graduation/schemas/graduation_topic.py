@@ -1,7 +1,7 @@
 """毕业设计中心 · 题目库请求 DTO。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -45,7 +45,7 @@ class GdTopicUpdate(BaseModel):
 
 
 class GdTopicReviewRequest(BaseModel):
-    action: str = Field(..., description="APPROVE / REJECT")
+    action: Literal["APPROVE", "REJECT"]
     comment: Optional[str] = ""
 
 

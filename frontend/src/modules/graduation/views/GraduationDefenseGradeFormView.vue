@@ -11,6 +11,7 @@
       <template v-for="f in formFields" :key="f.key">
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ f.label }} <i v-if="f.required">*</i></span>
           <textarea v-if="f.type === 'textarea'" v-model.trim="form[f.key]" class="ie-in" rows="2" />
+          <input v-else-if="f.type === 'checkbox'" v-model="form[f.key]" type="checkbox" class="ie-check" />
           <input v-else v-model="form[f.key]" class="ie-in" :readonly="f.readonly" />
           <AppTemplateChips v-if="f.chips" :options="f.chips" @pick="(v) => onPickChip(f, v)" />
         </label>
@@ -64,7 +65,13 @@ const FORM_PRESETS = {
   },
   scoreEntry: {
     title: '录入评委评分',
-    fields: [{ key: 'judgeName', label: '评委姓名', required: true }, { key: 'score', label: '评分(0-100)' }, { key: 'comment', label: '评语', type: 'textarea', chips: DEFENSE_COMMENT_CHIPS }]
+    fields: [
+      { key: 'judgeName', label: '评委姓名', required: true },
+      { key: 'absent', label: '评委缺席', type: 'checkbox' },
+      { key: 'absentReason', label: '缺席原因（缺席时必填）' },
+      { key: 'score', label: '评分(0-100，缺席时留空)' },
+      { key: 'comment', label: '评语', type: 'textarea', chips: DEFENSE_COMMENT_CHIPS }
+    ]
   },
   secondDefense: {
     title: '创建二次答辩',
@@ -100,10 +107,11 @@ export default {
     }
   },
   computed: {
-    studentId() { return this.$route.params.studentId },
+    studentId() { return this.$route.params.studentId || this.$route.query.studentId },
     backTo() {
       const panel = this.$route.query.panel || 'plagiarism'
-      return `/admin/graduation/defense-grade?panel=${panel}`
+      const batch = this.$route.query.batchId ? `&batchId=${encodeURIComponent(this.$route.query.batchId)}` : ''
+      return `/admin/graduation/defense-grade?panel=${panel}${batch}`
     }
   },
   created() { this.init() },
@@ -118,12 +126,13 @@ export default {
       this.error = ''
       this.formKey = this.$route.query.formKey || ''
       this.recordId = this.$route.query.recordId || ''
+      if (!this.studentId) { this.error = '缺少学生标识，请返回后重新选择学生'; this.loading = false; return }
       const preset = FORM_PRESETS[this.formKey]
       if (!preset) { this.error = '无效的表单类型'; this.loading = false; return }
       this.formTitle = preset.title
       this.formFields = preset.fields
       this.form = {}
-      preset.fields.forEach((f) => { this.form[f.key] = '' })
+      preset.fields.forEach((f) => { this.form[f.key] = f.type === 'checkbox' ? false : '' })
       const s = await gdStudentApi.getStudentDetail(this.studentId)
       if (s.code !== 0) { this.error = s.message; this.loading = false; return }
       this.student = s.data
@@ -156,9 +165,18 @@ export default {
         } else if (this.formKey === 'reviewReturn') {
           res = await graduationDefenseGradeApi.returnReview(this.recordId, f.reason)
         } else if (this.formKey === 'scoreEntry') {
+          if (f.absent && !String(f.absentReason || '').trim()) {
+            this.formError = '评委缺席时必须填写缺席原因'
+            return
+          }
+          if (!f.absent && (f.score === '' || f.score == null)) {
+            this.formError = '非缺席评委必须填写评分'
+            return
+          }
           res = await graduationDefenseGradeApi.enterScore({
             gdStudentId: sid, judgeName: f.judgeName,
-            score: f.score ? Number(f.score) : undefined, comment: f.comment
+            score: f.absent ? undefined : Number(f.score), comment: f.comment,
+            absent: !!f.absent, absentReason: f.absent ? f.absentReason : undefined
           })
         } else if (this.formKey === 'secondDefense') {
           res = await graduationDefenseGradeApi.createSecondDefense(sid, f.reason)

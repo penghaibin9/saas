@@ -103,6 +103,8 @@ class GraduationTopic(PKMixin, TenantMixin, CommonMixin, Base):
     source_type: Mapped[str] = mapped_column(String(30), nullable=False, default="TEACHER",
                                             comment="TEACHER/ENTERPRISE/STUDENT/ADMIN")
     advisor_name: Mapped[str | None] = mapped_column(String(100))
+    advisor_mentor_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="题目归属导师 t_gd_mentor.id；姓名仅作快照")
     college_id: Mapped[str | None] = mapped_column(String(50))
     major_id: Mapped[str | None] = mapped_column(String(50))
     major_name: Mapped[str | None] = mapped_column(String(100))

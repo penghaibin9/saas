@@ -268,9 +268,7 @@ def verify_and_file(gd_student_id, archive_batch_no: str = None) -> dict:
         if stu.stage != "ARCHIVED":
             stu.stage = "ARCHIVED"
             stu.version += 1
-        # 归档成功后联动毕业资格：材料与风险闭环后置为 PASS（不覆盖已有 FAIL）
-        if getattr(stu, "grad_qual_status", None) not in ("FAIL", "PASS"):
-            stu.grad_qual_status = "PASS"
+        # 毕设归档只更新毕设生命周期；毕业资格由教务综合规则独立裁决。
         _audit(db, a.id, "核验归档", detail=a.archive_batch_no)
         from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
         notify_risk_rescan(db, stu.id)
@@ -449,8 +447,6 @@ def batch_file(archive_batch_no: str = None, batch_id=None) -> dict:
             if stu.stage != "ARCHIVED":
                 stu.stage = "ARCHIVED"
                 stu.version += 1
-            if getattr(stu, "grad_qual_status", None) not in ("FAIL", "PASS"):
-                stu.grad_qual_status = "PASS"
             _audit(db, a.id, "批量核验归档",
                    detail=f"batchId={batch.id} batchName={batch.batch_name} no={batch_no}")
             filed += 1

@@ -22,6 +22,7 @@ export function getRouteSecurityMeta(route) {
     isPublic: meta.public === true,
     requiresAuth: meta.requiresAuth !== false && meta.public !== true, // 默认需要登录
     permissionKey: meta.permissionKey || '',
+    permissionAny: Array.isArray(meta.permissionAny) ? meta.permissionAny.filter(Boolean) : [],
     allowedRoles: Array.isArray(meta.allowedRoles) ? meta.allowedRoles : [],
     moduleCode: meta.moduleCode || ''
   }
@@ -44,10 +45,11 @@ export function checkRouteAccess(route) {
     return { allowed: false, failure: 'FORBIDDEN', reason: '角色不允许访问该路由' }
   }
 
-  if (meta.permissionKey) {
+  if (meta.permissionKey || meta.permissionAny.length) {
     const ctx = getCurrentPermissionContext()
-    const res = checkRoutePermission({ permissionKey: meta.permissionKey }, ctx)
-    if (!res.allowed) return { allowed: false, failure: 'FORBIDDEN', reason: res.reason }
+    const keys = meta.permissionAny.length ? meta.permissionAny : [meta.permissionKey]
+    const allowed = keys.some((permissionKey) => checkRoutePermission({ permissionKey }, ctx).allowed)
+    if (!allowed) return { allowed: false, failure: 'FORBIDDEN', reason: '缺少进入该工作台所需的任一业务权限' }
   }
 
   return { allowed: true, failure: '', reason: '' }

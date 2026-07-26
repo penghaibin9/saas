@@ -1,7 +1,7 @@
 """毕业设计中心 · 查重记录 / 教师评阅 请求 DTO。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,7 +20,7 @@ class PlagiarismDisputeRequest(BaseModel):
 
 
 class PlagiarismDisputeReview(BaseModel):
-    action: str = Field(..., description="APPROVE/REJECT")
+    action: Literal["APPROVE", "REJECT"]
     comment: Optional[str] = None
 
 

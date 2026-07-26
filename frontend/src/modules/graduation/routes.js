@@ -318,16 +318,22 @@ const graduationRoutes = {
     },
     // ── 答辩与成绩 ──
     {
+      path: 'defense-grade/:studentId/form',
+      name: 'graduation-defense-grade-student-form',
+      component: () => import('@/modules/graduation/views/GraduationDefenseGradeFormView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.view', permissionAny: ['graduationDesign.plagiarism.submit', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.dispute.review', 'graduationDesign.final.review', 'graduationDesign.defense.score', 'graduationDesign.defense.manage', 'graduationDesign.manage', 'graduationDesign.grade.publish'] }
+    },
+    {
       path: 'defense-grade/form',
       name: 'graduation-defense-grade-form',
       component: () => import('@/modules/graduation/views/GraduationDefenseGradeFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.defense.score' }
+      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.view', permissionAny: ['graduationDesign.plagiarism.submit', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.dispute.review', 'graduationDesign.final.review', 'graduationDesign.defense.score', 'graduationDesign.defense.manage', 'graduationDesign.manage', 'graduationDesign.grade.publish'] }
     },
     {
       path: 'defense-grade',
       name: 'graduation-defense-grade',
       component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩（查重/评阅/答辩评分/成绩评定）', requiresAuth: true, permissionKey: 'graduationDesign.defense.score' }
+      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩（查重/评阅/答辩评分/成绩评定）', requiresAuth: true, permissionKey: 'graduationDesign.view', permissionAny: ['graduationDesign.plagiarism.submit', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.dispute.review', 'graduationDesign.final.review', 'graduationDesign.defense.score', 'graduationDesign.defense.manage', 'graduationDesign.manage', 'graduationDesign.grade.publish'] }
     },
     {
       path: 'audit-logs',

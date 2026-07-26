@@ -1,7 +1,7 @@
 """毕业设计中心 · 导师管理 / 导师分配请求 DTO（独立文件，与毕业设计域其它 schema 隔离）。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,7 @@ class MentorUpdate(BaseModel):
 
 
 class MentorReviewRequest(BaseModel):
-    action: str = Field(..., description="APPROVE/REJECT")
+    action: Literal["APPROVE", "REJECT"]
     comment: Optional[str] = None
 
 

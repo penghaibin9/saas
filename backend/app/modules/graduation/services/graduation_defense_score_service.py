@@ -142,7 +142,7 @@ def _row(d: GraduationDefenseScore, stu=None) -> dict:
 
 
 def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
-                round_no=None) -> tuple[list[dict], int]:
+                round_no=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationDefenseScore).where(GraduationDefenseScore.tenant_id == _tid(),
@@ -150,6 +150,10 @@ def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
                                                   GraduationDefenseScore.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
             q = q.where(GraduationDefenseScore.gd_student_id == int(gd_student_id))
+        if batch_id:
+            q = q.where(GraduationDefenseScore.gd_student_id.in_(select(GraduationStudent.id).where(
+                GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
+                GraduationStudent.is_deleted.is_(False))))
         if judge_name:
             q = q.where(GraduationDefenseScore.judge_name == judge_name)
         if round_no:

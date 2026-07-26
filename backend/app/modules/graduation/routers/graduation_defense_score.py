@@ -23,9 +23,10 @@ def gd_defense_score_stats(batchId: int | None = Query(default=None, ge=1),
 @router.get("/gd-defense-scores", summary="答辩评分列表")
 def gd_defense_score_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                           gdStudentId: Optional[str] = None, judgeName: Optional[str] = None,
-                          roundNo: Optional[int] = None, user=Depends(get_current_user)):
+                          roundNo: Optional[int] = None, batchId: Optional[str] = None,
+                          user=Depends(get_current_user)):
     items, total = svc.list_scores(page, pageSize, gd_student_id=gdStudentId, judge_name=judgeName,
-                                   round_no=roundNo)
+                                   round_no=roundNo, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

@@ -160,7 +160,7 @@ def _row(g: GraduationGrade, stu=None) -> dict:
             "updatedAt": _iso(g.updated_at), "version": g.version}
 
 
-def list_grades(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
+def list_grades(page: int, page_size: int, keyword=None, status=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationGrade).where(GraduationGrade.tenant_id == _tid(),
@@ -168,6 +168,10 @@ def list_grades(page: int, page_size: int, keyword=None, status=None) -> tuple[l
                                            GraduationGrade.gd_student_id.in_(scope_ids or [-1]))
         if status:
             q = q.where(GraduationGrade.status == status)
+        if batch_id:
+            q = q.where(GraduationGrade.gd_student_id.in_(select(GraduationStudent.id).where(
+                GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
+                GraduationStudent.is_deleted.is_(False))))
         rows = db.scalars(q.order_by(GraduationGrade.id.desc())).all()
         items = []
         for g in rows:
@@ -183,9 +187,22 @@ def list_grades(page: int, page_size: int, keyword=None, status=None) -> tuple[l
 def get_grade(gd_student_id) -> dict:
     with session() as db:
         stu = _stu(db, gd_student_id)
-        g = _get_or_create(db, stu)
-        db.commit()
-        return {**_row(g, stu), "sourceScores": _source_scores(db, stu)}
+        g = db.scalars(select(GraduationGrade).where(
+            GraduationGrade.tenant_id == _tid(),
+            GraduationGrade.gd_student_id == stu.id,
+            GraduationGrade.is_deleted.is_(False),
+        )).first()
+        if g:
+            return {**_row(g, stu), "exists": True, "sourceScores": _source_scores(db, stu)}
+        return {
+            "id": "", "gdStudentId": str(stu.id), "studentName": stu.name,
+            "studentNo": stu.student_no or "", "advisorName": stu.advisor_name or "",
+            "advisorScore": None, "reviewerScore": None, "defenseScore": None,
+            "totalScore": None, "gradeLevel": None, "status": "DRAFT",
+            "statusLabel": GRADE_LABEL.get("DRAFT", "草稿"), "reviewedAt": None,
+            "publishedAt": None, "withdrawReason": None, "exists": False,
+            "sourceScores": _source_scores(db, stu),
+        }
 
 
 def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defense_score=None) -> dict:

@@ -270,7 +270,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "internship.stats.view",
         # 保险查看、任务完成度审核、调岗退岗初审（§3 投影：导师查本人学生保险、审任务、初审变更）
         "internship.insurance.*", "internship.task.review", "internship.change.view", "internship.change.review",
-        "internship.archive.*",  # 材料检查与归档（§3.12 导师参与归档，service scope 收敛到本人指导学生）
+        "internship.archive.view", "internship.archive.prepare",
         # P2 合规：查看与本人指导相关的确认/安全/备案/事故处置；豁免与证据包导出归学校/学院
         "internship.compliance.view",
         "internship.consent.view", "internship.consent.manage",
@@ -283,7 +283,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "EMPLOYMENT_TEACHER": {
         *_WORKBENCH_SELF,
         "employment.*", "internship.dashboard.view",
-        "internship.employment.view", "internship.archive.*",
+        "internship.employment.view", "internship.archive.view", "internship.archive.package",
         "internship.stats.view", "internship.stats.enterprise.view",
         "internship.stats.position.view", "internship.stats.score.view",
     },
@@ -296,7 +296,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 # 2026-07-19：ACADEMIC_TEACHER 已完成 156 个权限点全量审计并改为上方显式清单
 # （审计范围=主 router 152 + 学业过程域 process.view/export/manage + roster.viewSensitive），
 # 本表随之清空。回归锁见 tests/test_permissions_deny_unit.py。
-ROLE_PERMISSION_DENY: dict[str, set[str]] = {}
+ROLE_PERMISSION_DENY: dict[str, set[str]] = {
+    # 强制归档与撤销归档只允许学校管理员；学院管理员仍可普通归档。
+    "COLLEGE_ADMIN": {"internship.archive.force", "internship.archive.revoke"},
+}
 
 
 def _role_of(user: dict) -> str:

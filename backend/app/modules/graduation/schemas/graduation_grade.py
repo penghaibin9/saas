@@ -1,7 +1,7 @@
 """毕业设计中心 · 成绩评定请求 DTO。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,7 +13,7 @@ class GradeCalculateRequest(BaseModel):
 
 
 class GradeReviewRequest(BaseModel):
-    action: str = Field(..., description="APPROVE/RETURN")
+    action: Literal["APPROVE", "RETURN"]
     comment: Optional[str] = None
 
 

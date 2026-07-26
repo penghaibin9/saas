@@ -504,7 +504,8 @@ def remind_proposal(gd_student_id, channel="站内消息") -> dict:
         _audit(db, "PROPOSAL", f"remind-{stu.id}", "开题催交",
                f"催办 {stu.name} 提交开题报告（{channel}）")
         db.commit()
-        return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True}
+        return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True,
+                "deliveryStatus": "RECORDED_ONLY", "messageId": None, "todoId": None}
 
 
 def export_proposals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
@@ -762,7 +763,8 @@ def remind_final(gd_student_id, channel="站内消息") -> dict:
             raise AppException("DATA_CONFLICT", "该生已提交成果，无需催交")
         _audit(db, "FINAL", f"remind-{stu.id}", "成果催交", f"催办 {stu.name} 提交论文成果（{channel}）")
         db.commit()
-        return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True}
+        return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True,
+                "deliveryStatus": "RECORDED_ONLY", "messageId": None, "todoId": None}
 
 
 def export_finals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
