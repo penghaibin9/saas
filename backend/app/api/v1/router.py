@@ -42,6 +42,7 @@ from app.services.affairs_sensitive_audit_guard import install as install_sensit
 from app.services.affairs_stats_integrity_guard import install as install_stats_integrity_guard
 from app.services.affairs_student_application_lock import install as install_student_application_lock
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
+from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
 
 api_router.include_router(affairs_four_end_router)
@@ -79,6 +80,7 @@ install_archive_file_guard()
 install_talk_guard()
 install_activity_accounting_guard()
 install_activity_authority_guard()
+install_student_ledger_guard()
 install_stats_integrity_guard()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
