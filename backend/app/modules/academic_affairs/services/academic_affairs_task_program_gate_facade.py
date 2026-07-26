@@ -9,7 +9,7 @@ from app.core.exceptions import AppException
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_task_security_facade as _base
-from .academic_affairs_program_quality_final_service import validate_program_db
+from .academic_affairs_program_binding_quality_service import validate_program_db
 from .academic_affairs_program_quality_security_service import _allowed_major_ids
 
 _original_generate_batch = _base.generate_batch
@@ -96,7 +96,7 @@ def generate_batch(body, user) -> dict:
     result["programValidation"] = {
         "programCount": precheck["programCount"],
         "warningCount": precheck["warningCount"],
-        "conclusion": "已启用方案结构校验通过",
+        "conclusion": "已启用方案结构与绑定校验通过",
     }
     return result
 
