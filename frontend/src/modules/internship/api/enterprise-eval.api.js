@@ -28,9 +28,17 @@ export const enterpriseEvalApi = {
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
   create(body) { return call(() => request(B, { method: 'POST', body })) },
   review(id, { action, comment, expectedVersion }) {
-    return call(() => request(`${B}/${id}/review-versioned`, {
-      method: 'POST', body: { action, comment, expectedVersion }
-    }))
+    return call(async () => {
+      let version = expectedVersion
+      if (version == null) {
+        const detail = await request(`${B}/${id}`)
+        version = detail?.version
+      }
+      if (version == null) throw { biz: true, code: 'DATA_CONFLICT', message: '企业评价版本缺失，请刷新后重试' }
+      return request(`${B}/${id}/review-versioned`, {
+        method: 'POST', body: { action, comment, expectedVersion: version }
+      })
+    })
   },
   exportEvals(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) }
 }
