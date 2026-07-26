@@ -1,15 +1,15 @@
-"""教材发放名单最终安全层。
+"""教材发放名单与费用终态最终安全层。
 
-当前组织模型的真实行政班类为 ``SchoolClass``。本层仅替换发放名单生成：
-- 必须选择真实班级；
-- 学生必须全部属于该班；
-- 学生ID去重且不存在的ID直接拒绝；
-- 同征订批次+班级重复请求，名单完全相同时幂等，不同时409；
-- 其余征订、到货、价格快照、签收、退领和费用逻辑复用下层facade。
+当前组织模型的真实行政班类为 ``SchoolClass``。本层收口：
+- 发放必须选择真实班级，学生必须全部属于该班；
+- 学生ID去重，重复请求名单一致时幂等、不一致时409；
+- 费用 ``PAID/WAIVED`` 终态不可逆；部分收款只允许 ``UNPAID/PARTIAL``；
+- 其余征订、到货、价格快照、签收和退领逻辑复用下层facade。
 """
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from app.core.exceptions import AppException, not_found
 
@@ -91,10 +91,7 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
                 AaTextbookDistributionRecord.batch_id == existing.id,
                 AaTextbookDistributionRecord.is_deleted.is_(False),
             ).distinct().all()
-            existing_student_ids = {
-                int(row[0] if isinstance(row, tuple) else row.student_id)
-                for row in existing_rows
-            }
+            existing_student_ids = {int(row[0]) for row in existing_rows}
             if existing_student_ids != set(requested_ids):
                 raise AppException(
                     "DATA_CONFLICT",
@@ -151,4 +148,74 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
         }
 
 
+def mark_fee(user, fee_id, action, amount=None, waive_reason=""):
+    """教材费用终态不可逆；不提供无退款流水的反向冲销。"""
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        fee, _record, _distribution, _order = _term_layer._fee_chain(db, fee_id)
+        action = str(action or "").upper()
+        status = str(fee.status or "UNPAID").upper()
+        due = Decimal(str(fee.amount or 0))
+        paid = Decimal(str(fee.paid_amount or 0))
+
+        if status == "PAID":
+            if action == "PAID":
+                return {
+                    "feeId": str(fee.id), "status": fee.status,
+                    "paidAmount": float(paid), "amount": float(due), "idempotent": True,
+                }
+            raise _legacy._invalid("费用已结清，不可改为部分收款或减免；退款须走独立冲正流程")
+        if status == "WAIVED":
+            if action in {"WAIVE", "WAIVED"}:
+                return {
+                    "feeId": str(fee.id), "status": fee.status,
+                    "paidAmount": float(paid), "amount": float(due), "idempotent": True,
+                }
+            raise _legacy._invalid("费用已减免，不可重新标记收款")
+
+        if action == "PAID":
+            fee.paid_amount = due
+            fee.status = "PAID"
+            fee.paid_at = datetime.utcnow()
+        elif action == "PARTIAL":
+            if status not in {"UNPAID", "PARTIAL"}:
+                raise _legacy._invalid("当前费用状态不可部分收款")
+            value = Decimal(str(amount or 0))
+            if value <= 0:
+                raise _legacy._bad("部分收款金额须大于0")
+            new_paid = paid + value
+            if new_paid > due:
+                raise _legacy._bad(f"累计已收 {new_paid} 超过应收 {due}")
+            fee.paid_amount = new_paid
+            if new_paid == due:
+                fee.status = "PAID"
+                fee.paid_at = datetime.utcnow()
+            else:
+                fee.status = "PARTIAL"
+        elif action in {"WAIVE", "WAIVED"}:
+            reason = (waive_reason or "").strip()
+            if len(reason) < 5:
+                raise _legacy._bad("减免原因必填且不少于5字")
+            if paid > 0 or status == "PARTIAL":
+                raise _legacy._invalid("费用已有实收金额，不能直接减免；须先完成退款/冲正")
+            fee.status = "WAIVED"
+            fee.waive_reason = reason
+        else:
+            raise _legacy._bad("非法操作")
+
+        _legacy._audit(
+            db, "AA_TEXTBOOK_FEE", fee.id, "TEXTBOOK_FEE_MARK",
+            f"{status}->{fee.status};本次={amount or ''}",
+        )
+        db.commit()
+        return {
+            "feeId": str(fee.id),
+            "status": fee.status,
+            "paidAmount": float(fee.paid_amount or 0),
+            "amount": float(due),
+            "idempotent": False,
+        }
+
+
 _legacy.generate_distribution = generate_distribution
+_legacy.mark_fee = mark_fee
