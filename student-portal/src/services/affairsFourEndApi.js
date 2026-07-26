@@ -2,6 +2,13 @@ import { request } from './request'
 
 const enc = encodeURIComponent
 
+function creditAppealBody(body = {}) {
+  const value = Number(body.claimValue)
+  if (!Number.isFinite(value) || value <= 0) throw new Error('主张数值必填且必须大于0')
+  if (Math.round(value * 100) !== value * 100) throw new Error('主张数值最多保留2位小数')
+  return { ...body, claimValue: value }
+}
+
 export const affairsFourEndApi = {
   // 请假 version / 退回编辑
   getReturnedLeave: (id) => request(`/mobile/affairs/leave/${enc(id)}/editable`),
@@ -27,8 +34,8 @@ export const affairsFourEndApi = {
 
   // 正式第二课堂成绩单与申诉
   secondClassReport: () => request('/mobile/affairs/second-class/report'),
-  myCreditAppeals: () => request('/mobile/affairs/second-class/appeals/my'),
-  submitCreditAppeal: (body) => request('/mobile/affairs/second-class/appeals', { method: 'POST', body })
+  myCreditAppeals: (page = 1, pageSize = 100) => request('/mobile/affairs/second-class/appeals/my', { params: { page, pageSize } }),
+  submitCreditAppeal: (body) => request('/mobile/affairs/second-class/appeals', { method: 'POST', body: creditAppealBody(body) })
 }
 
 export default affairsFourEndApi
