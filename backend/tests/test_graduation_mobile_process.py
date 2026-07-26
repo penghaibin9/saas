@@ -3,6 +3,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_MENTOR = "/api/v1/graduation/gd-mentors"
 GD_ASSIGN = "/api/v1/graduation/gd-mentor-assignments"
 GD_TASKBOOK = "/api/v1/graduation/gd-taskbooks"
@@ -31,7 +33,7 @@ def _teacher_token(real_name):
 def test_student_taskbook_midterm_grade_and_teacher_guidance(client, auth_headers, db_mode):
     h = auth_headers
     student_no, student_name = "MB001", "移动测试生"
-    sid = client.post(STU, headers=h, json={"studentNo": student_no, "realName": student_name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": student_no, "realName": student_name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     mid = client.post(GD_MENTOR, headers=h, json={"teacherNo": "MBT1", "teacherName": "移动导师"}).json()["data"]["id"]
     client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})

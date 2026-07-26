@@ -1,6 +1,8 @@
 """第5批：风险案重开生命周期 + 扫描聚合（无学生级 N+1）。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 import uuid
 
 from sqlalchemy import event, select
@@ -27,7 +29,7 @@ def _batch(client, h):
 
 def _gd_student(client, h, bid, stage="TOPIC_SELECTING"):
     sid = client.post(STU, headers=h, json={
-        "studentNo": _uniq("S"), "realName": _uniq("生"),
+        "studentNo": _uniq("S"), "realName": _uniq("生"), "classId": make_org_class(),
     }).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()

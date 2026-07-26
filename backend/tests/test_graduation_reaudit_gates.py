@@ -1,6 +1,8 @@
 """毕业设计复审缺口回归：任务书/阶段门禁、答辩确认权限、资格归档锁。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 from app.core.graduation_permissions import graduation_permission_for
 
 
@@ -26,7 +28,7 @@ def test_midterm_allows_final_submit_ignores_lone_conclusion():
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 

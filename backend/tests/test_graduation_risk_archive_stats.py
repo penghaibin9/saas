@@ -3,6 +3,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_RISK = "/api/v1/graduation/gd-risks"
 GD_ARCHIVE = "/api/v1/graduation/gd-archives"
 GD_STATS = "/api/v1/graduation/gd-stats"
@@ -11,7 +13,7 @@ STU = "/api/v1/students"
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
@@ -20,7 +22,7 @@ def test_risk_scan_accept_process_close(client, auth_headers, db_mode):
     bid = client.post("/api/v1/graduation/batches", headers=h, json={
         "batchName": "风险扫描批", "batchNo": "GD-RK-SCAN-1", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    sid = client.post(STU, headers=h, json={"studentNo": "RK001", "realName": "预警测试生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "RK001", "realName": "预警测试生", "classId": make_org_class()}).json()["data"]["id"]
     client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid})  # stage=TOPIC_SELECTING, no topic → GD-R01
 
     scan = client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": bid})
@@ -146,8 +148,8 @@ def test_risk_list_filter_by_student(client, auth_headers, db_mode):
     bid = client.post("/api/v1/graduation/batches", headers=h, json={
         "batchName": "风险过滤批", "batchNo": "GD-RK-FLT-1", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    sid_a = client.post(STU, headers=h, json={"studentNo": "RKF01", "realName": "过滤生甲"}).json()["data"]["id"]
-    sid_b = client.post(STU, headers=h, json={"studentNo": "RKF02", "realName": "过滤生乙"}).json()["data"]["id"]
+    sid_a = client.post(STU, headers=h, json={"studentNo": "RKF01", "realName": "过滤生甲", "classId": make_org_class()}).json()["data"]["id"]
+    sid_b = client.post(STU, headers=h, json={"studentNo": "RKF02", "realName": "过滤生乙", "classId": make_org_class()}).json()["data"]["id"]
     gid_a = client.post(GD_STU, headers=h, json={"studentId": sid_a, "batchId": bid}).json()["data"]["id"]
     gid_b = client.post(GD_STU, headers=h, json={"studentId": sid_b, "batchId": bid}).json()["data"]["id"]
     scan = client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": bid})

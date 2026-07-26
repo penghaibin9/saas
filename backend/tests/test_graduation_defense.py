@@ -4,6 +4,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 from sqlalchemy import select
 
 GD_STU = "/api/v1/graduation/gd-students"
@@ -42,7 +44,7 @@ def _force_final_check(name):
 
 
 def _student_with_advisor(client, h, no, name, advisor, bid):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
@@ -55,20 +57,20 @@ def _student_with_advisor(client, h, no, name, advisor, bid):
 def test_create_and_duplicate(client, auth_headers, db_mode):
     h = auth_headers
     bid = _batch(client, h, "GD-DF-DUP")
-    ok = client.post(DG, headers=h, json={"groupName": "答辩组甲", "batchId": bid, "chair": "组长A",
+    ok = client.post(DG, headers=h, params={"batchId": bid}, json={"groupName": "答辩组甲", "batchId": bid, "chair": "组长A",
                                           "location": "A301", "members": ["评委1", "评委2"], "secretary": "秘书A"})
     assert ok.json()["code"] == 0
     assert ok.json()["data"]["groupName"] == "答辩组甲"
     assert ok.json()["data"]["batchId"] == str(bid)
 
-    dup = client.post(DG, headers=h, json={"groupName": "答辩组甲", "batchId": bid})
+    dup = client.post(DG, headers=h, params={"batchId": bid}, json={"groupName": "答辩组甲", "batchId": bid})
     assert dup.json()["code"] != 0
 
 
 def test_assign_conflict_then_resolve_and_publish(client, auth_headers, db_mode):
     h = auth_headers
     bid = _batch(client, h, "GD-DF-CF")
-    grp = client.post(DG, headers=h, json={"groupName": "答辩组乙", "batchId": bid, "chair": "组长B",
+    grp = client.post(DG, headers=h, params={"batchId": bid}, json={"groupName": "答辩组乙", "batchId": bid, "chair": "组长B",
                                            "location": "B201", "members": ["张导师", "评委X"],
                                            "secretary": "秘书B"}).json()["data"]
     gid = grp["id"]
@@ -98,7 +100,7 @@ def test_assign_conflict_then_resolve_and_publish(client, auth_headers, db_mode)
 def test_publish_requires_students(client, auth_headers, db_mode):
     h = auth_headers
     bid = _batch(client, h, "GD-DF-NS")
-    grp = client.post(DG, headers=h, json={"groupName": "答辩组丙", "batchId": bid, "chair": "组长C",
+    grp = client.post(DG, headers=h, params={"batchId": bid}, json={"groupName": "答辩组丙", "batchId": bid, "chair": "组长C",
                                            "location": "C101", "members": ["评委M"], "secretary": "秘书C"}).json()["data"]
     no_stu = client.post(f"{DG}/{grp['id']}/publish", headers=h)
     assert no_stu.json()["code"] != 0
@@ -107,7 +109,7 @@ def test_publish_requires_students(client, auth_headers, db_mode):
 def test_export_and_student_view(client, auth_headers, db_mode):
     h = auth_headers
     bid = _batch(client, h, "GD-DF-EX")
-    grp = client.post(DG, headers=h, json={"groupName": "答辩组丁", "batchId": bid, "chair": "组长D",
+    grp = client.post(DG, headers=h, params={"batchId": bid}, json={"groupName": "答辩组丁", "batchId": bid, "chair": "组长D",
                                            "location": "D505", "members": ["评委甲", "评委乙"],
                                            "secretary": "秘书D"}).json()["data"]
     gid = grp["id"]

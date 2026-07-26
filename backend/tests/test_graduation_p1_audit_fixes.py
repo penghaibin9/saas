@@ -1,6 +1,8 @@
 """毕业设计中心 · 全模块 P1 审计修复回归。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 from datetime import datetime
 
 from sqlalchemy import select
@@ -14,7 +16,7 @@ TID = 1000000000000000001
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 

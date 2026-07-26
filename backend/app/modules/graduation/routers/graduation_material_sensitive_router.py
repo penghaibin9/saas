@@ -211,7 +211,7 @@ def defense_groups(
 
 @router.post("/defense-groups")
 def defense_create(
-    body: DefenseGroupBody, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+    body: DefenseGroupBody, batchId: int | None = Query(default=None), user=Depends(get_current_user),
 ):
     expected = require_batch_id(batchId)
     if body.batchId not in (None, expected):

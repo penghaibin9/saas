@@ -1,6 +1,8 @@
 """毕业设计域测试：学生/选题/开题批阅闭环/成果批阅/答辩发布（冲突拒绝）+ 看板 + 审计。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 from datetime import datetime
 
 MAIN_TID = 1000000000000000001
@@ -108,7 +110,7 @@ def test_defense_publish_conflict(client, auth_headers, db_mode):
     assert bad["code"] == 422001 and "冲突" in bad["message"]
     # gok：分入无导师冲突的学生（advisor 不在 gok 名单）→ 完整组可发布
     sid = client.post("/api/v1/students", headers=h,
-                      json={"studentNo": "DPOK1", "realName": "正常答辩生"}).json()["data"]["id"]
+                      json={"studentNo": "DPOK1", "realName": "正常答辩生", "classId": make_org_class()}).json()["data"]["id"]
     g2 = client.post("/api/v1/graduation/gd-students", headers=h,
                      json={"studentId": sid, "batchId": ids["batch"]}).json()["data"]["id"]
     from app.db.session import get_sessionmaker

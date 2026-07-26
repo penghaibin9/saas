@@ -2,6 +2,8 @@
 全部走真库(db_mode)，验证真实处理闭环 + 范围校验（SCOPED 越权 403）+ SoD 回避。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 STU = "/api/v1/students"
@@ -27,7 +29,7 @@ def _teacher_token(real_name):
 
 
 def _gd_student_with_topic(client, h, no, name, advisor):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
@@ -111,7 +113,7 @@ def test_defense_arrangement_readonly(client, auth_headers, db_mode):
     bid = client.post("/api/v1/graduation/batches", headers=h, json={
         "batchName": "移动答辩批", "batchNo": "GD-MOB-DF", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    sid = client.post(STU, headers=h, json={"studentNo": "DF001", "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "DF001", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
@@ -130,7 +132,7 @@ def test_defense_arrangement_readonly(client, auth_headers, db_mode):
         db.close()
 
     # 建组（评委不含导师，避免回避冲突）→ 分配 → 发布
-    grp = client.post(DG, headers=h, json={
+    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": "移动答辩组", "batchId": bid, "chair": "答辩组长", "location": "M301",
         "members": ["评委甲", "评委乙"], "secretary": "答辩秘书", "defenseDate": "2026-06-01 09:00"}).json()["data"]
     gpid = grp["id"]

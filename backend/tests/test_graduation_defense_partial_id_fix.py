@@ -1,6 +1,8 @@
 """答辩组部分 ID 回填修复：update 保留姓名快照；ID∪姓名双通道；confirm 兼容；stats 传 batchId。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 import uuid
 
 from app.core.context import set_current_user
@@ -42,7 +44,7 @@ def test_update_without_ids_preserves_name_snapshots(client, auth_headers, db_mo
     """编辑时未传 mentorId：保留原姓名快照，不清空。"""
     h = auth_headers
     bid = _batch(client, h)
-    created = client.post(DG, headers=h, json={
+    created = client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("名组"), "batchId": bid, "location": "C101",
         "chair": "历史主席", "secretary": "历史秘书", "members": ["历史评委甲", "历史评委乙"],
     }).json()
@@ -71,7 +73,7 @@ def test_partial_id_panel_name_only_chair_can_access(client, auth_headers, db_mo
     bid = _batch(client, h)
     no_m = _uniq("TM")
     mid = _mentor(client, h, no_m, "有ID评委")
-    grp = client.post(DG, headers=h, json={
+    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("混组"), "batchId": bid, "location": "D1",
         "chair": "仅姓名主席", "memberMentorIds": [int(mid)],
         "secretary": "秘书快照",
@@ -80,7 +82,7 @@ def test_partial_id_panel_name_only_chair_can_access(client, auth_headers, db_mo
     assert grp["chairMentorId"] in (None, "")
     assert any(str(m.get("mentorId")) == str(mid) for m in grp["members"])
 
-    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "混组生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "混组生", "classId": make_org_class()}).json()["data"]["id"]
     gsid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     try:
@@ -118,11 +120,11 @@ def test_confirm_accepts_name_only_score_rows_on_partial_id_panel(client, auth_h
     h = auth_headers
     bid = _batch(client, h)
     mid = _mentor(client, h, _uniq("TJ"), "ID评委")
-    grp = client.post(DG, headers=h, json={
+    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("确认组"), "batchId": bid,
         "chair": "姓名主席", "memberMentorIds": [int(mid)],
     }).json()["data"]
-    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "确认生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "确认生", "classId": make_org_class()}).json()["data"]["id"]
     gsid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
 
     db = get_sessionmaker()()
@@ -154,7 +156,7 @@ def test_mixed_panel_update_keeps_name_only_members(client, auth_headers, db_mod
     h = auth_headers
     bid = _batch(client, h)
     mid = _mentor(client, h, _uniq("TMIX"), "ID评委")
-    created = client.post(DG, headers=h, json={
+    created = client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("混存组"), "batchId": bid,
         "chair": "混存主席",
         "members": ["仅姓名评委", {"mentorId": int(mid), "name": "ID评委"}],

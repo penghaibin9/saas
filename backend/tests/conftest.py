@@ -43,6 +43,30 @@ def auth_headers(client: TestClient) -> dict:
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+MAIN_TENANT_ID = 1000000000000000001
+
+
+def make_org_class(tenant_id: int = MAIN_TENANT_ID) -> str:
+    """建档必须挂真实学院/专业/班级。返回 classId 字符串。"""
+    from uuid import uuid4
+    from app.db.session import get_sessionmaker
+    from app.models.org import College, Major, SchoolClass
+    db = get_sessionmaker()()
+    try:
+        col = College(tenant_id=tenant_id, college_name=f"学院-{uuid4().hex[:6]}", status="ACTIVE")
+        db.add(col); db.flush()
+        maj = Major(tenant_id=tenant_id, college_id=col.id, major_name=f"专业-{uuid4().hex[:6]}", status="ACTIVE")
+        db.add(maj); db.flush()
+        cls = SchoolClass(tenant_id=tenant_id, major_id=maj.id, class_name=f"班级-{uuid4().hex[:6]}",
+                          grade="2026", status="ACTIVE", class_status="NORMAL")
+        db.add(cls); db.flush()
+        cid = cls.id
+        db.commit()
+        return str(cid)
+    finally:
+        db.close()
+
+
 @pytest.fixture(autouse=True)
 def _reset_security_state():
     from app.core.token_store import reset_all_for_tests

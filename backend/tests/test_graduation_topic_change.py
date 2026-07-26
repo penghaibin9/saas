@@ -4,6 +4,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_ROUND = "/api/v1/graduation/gd-topic-rounds"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 GD_BATCH = "/api/v1/graduation/batches"
@@ -46,7 +48,7 @@ def _approved_topic(client, h, title, advisor="王老师", capacity=1):
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "QUALIFIED", "reason": "E2E测试认定合格",
@@ -230,7 +232,7 @@ def test_mobile_student_browse_submit_and_request_change(client, auth_headers, d
     bid = _batch(client, auth_headers, "GD-CHG-M1")
     t1 = _approved_topic(client, auth_headers, "学生浏览题1", advisor="张导师")
     t2 = _approved_topic(client, auth_headers, "学生浏览题2", advisor="张导师")
-    sid = client.post(STU, headers=auth_headers, json={"studentNo": "S-CHG-M1", "realName": "移动测学生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=auth_headers, json={"studentNo": "S-CHG-M1", "realName": "移动测学生", "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=auth_headers, json={"studentId": sid}).json()["data"]["id"]
     client.post(f"{GD_STU}/{gid}/eligibility", headers=auth_headers, json={
         "status": "QUALIFIED", "reason": "E2E测试认定合格",

@@ -2,6 +2,8 @@
 （selected 收口）+ 满员/未确认拒绝 + 退选 + 节点状态机 + 风险 + 统计 + Excel 导入导出。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 import base64
 
 GD_STU = "/api/v1/graduation/gd-students"
@@ -11,7 +13,7 @@ STU = "/api/v1/students"
 
 
 def _student(client, h, no, name="毕设测试学生"):
-    return client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    return client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
 
 
 def _batch(client, h, no="GD-STU-B1"):

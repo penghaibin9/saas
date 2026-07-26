@@ -1,13 +1,15 @@
 """毕业设计 P0：学生列表与导出筛选一致；按 batchId/材料/答辩组/资格/风险导出。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_STU = "/api/v1/graduation/gd-students"
 GD_BATCH = "/api/v1/graduation/batches"
 STU = "/api/v1/students"
 
 
 def _student(client, h, no, name="导出一致学生"):
-    return client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    return client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
 
 
 def _batch(client, h, no):

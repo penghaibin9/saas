@@ -3,6 +3,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 STU = "/api/v1/students"
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
@@ -36,7 +38,7 @@ def test_risk_scan_new_codes(client, auth_headers, db_mode):
 
     # 学生 A：选题后无任务书 → GD-R03
     name_a = "风险补齐生A"
-    sid_a = client.post(STU, headers=h, json={"studentNo": "R9A", "realName": name_a}).json()["data"]["id"]
+    sid_a = client.post(STU, headers=h, json={"studentNo": "R9A", "realName": name_a, "classId": make_org_class()}).json()["data"]["id"]
     gid_a = client.post(GD_STU, headers=h, json={"studentId": sid_a, "batchId": bid}).json()["data"]["id"]
     tid_a = client.post(GD_TOPIC, headers=h, json={"title": f"{name_a}题", "sourceType": "TEACHER",
                        "advisorName": "李老师", "capacity": 1, "submitReview": True, "batchId": bid}).json()["data"]["id"]
@@ -46,7 +48,7 @@ def test_risk_scan_new_codes(client, auth_headers, db_mode):
     # 学生 B：选题 + 导师 + 任务书确认 + 开题驳回 → GD-R05
     name_b = "风险补齐生B"
     sno_b = "R9B"
-    sid_b = client.post(STU, headers=h, json={"studentNo": sno_b, "realName": name_b}).json()["data"]["id"]
+    sid_b = client.post(STU, headers=h, json={"studentNo": sno_b, "realName": name_b, "classId": make_org_class()}).json()["data"]["id"]
     gid_b = client.post(GD_STU, headers=h, json={"studentId": sid_b, "batchId": bid}).json()["data"]["id"]
     tid_b = client.post(GD_TOPIC, headers=h, json={"title": f"{name_b}题", "sourceType": "TEACHER",
                        "advisorName": "李老师", "capacity": 1, "submitReview": True, "batchId": bid}).json()["data"]["id"]
@@ -55,11 +57,11 @@ def test_risk_scan_new_codes(client, auth_headers, db_mode):
     mid = client.post(GD_MENTOR, headers=h, json={"teacherNo": "R9M1", "teacherName": "导师R9"}).json()["data"]["id"]
     client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})
     client.post(f"{GD_ASSIGN}/assign", headers=h, json={"gdStudentId": gid_b, "mentorId": mid})
-    issue = client.post(f"{GD_TASKBOOK}/{gid_b}/issue", headers=h,
+    issue = client.post(f"{GD_TASKBOOK}/{gid_b}/issue", headers=h, params={"batchId": bid},
                         json={"objective": "完成系统设计文档", "content": "完成系统详细设计"})
     assert issue.json()["code"] == 0, issue.json()
     # 管理端路由挂 require_staff，学生须走门户/mobile；此处用管理员代确认即可满足开题前置
-    confirm = client.post(f"{GD_TASKBOOK}/{gid_b}/confirm", headers=h,
+    confirm = client.post(f"{GD_TASKBOOK}/{gid_b}/confirm", headers=h, params={"batchId": bid},
                           json={"proxyReason": "代确认任务书用于风险扫描回归"})
     assert confirm.json()["code"] == 0, confirm.json()
     sh = _stu_token(name_b, sno_b)
@@ -69,7 +71,8 @@ def test_risk_scan_new_codes(client, auth_headers, db_mode):
     pid = next(r for r in client.get(PROP, headers=h, params={
         "status": "PENDING_REVIEW", "batchId": bid}).json()["data"]["items"]
                if r["studentName"] == name_b)["id"]
-    client.post(f"{PROP}/{pid}/review", headers=h, json={"action": "REJECT", "comment": "方案需细化再交"})
+    client.post(f"{PROP}/{pid}/review", headers=h, params={"batchId": bid},
+                json={"action": "REJECT", "comment": "方案需细化再交"})
 
     scan = client.post(f"{RISK}/scan", headers=h, params={"batchId": bid})
     assert scan.json()["code"] == 0, scan.json()
@@ -88,14 +91,20 @@ def test_batch_archive_operations(client, auth_headers, db_mode):
     }).json()["data"]["id"]
     # 造几个无材料学生 → 批量生成提交应全部跳过（缺材料）
     for i in range(2):
-        sid = client.post(STU, headers=h, json={"studentNo": f"R9B{i}", "realName": f"归档生{i}"}).json()["data"]["id"]
+        sid = client.post(STU, headers=h, json={"studentNo": f"R9B{i}", "realName": f"归档生{i}", "classId": make_org_class()}).json()["data"]["id"]
         client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid})
 
-    gen = client.post(f"{ARCH}/batch-generate", headers=h, params={"batchId": bid})
-    assert gen.json()["code"] == 0
+    prev = client.post(f"{ARCH}/batch-generate/preview", headers=h, params={"batchId": bid}).json()
+    assert prev["code"] == 0, prev
+    gen = client.post(f"{ARCH}/batch-generate", headers=h, params={"batchId": bid},
+                      json={"previewToken": prev["data"]["previewToken"]})
+    assert gen.json()["code"] == 0, gen.json()
     assert gen.json()["data"]["skipped"] >= 2  # 缺材料被跳过
 
     # 无已提交记录 → 一键核验备案返回 0
-    fil = client.post(f"{ARCH}/batch-file", headers=h, params={"batchId": bid}, json={})
-    assert fil.json()["code"] == 0
+    prev_f = client.post(f"{ARCH}/batch-file/preview", headers=h, params={"batchId": bid}).json()
+    assert prev_f["code"] == 0, prev_f
+    fil = client.post(f"{ARCH}/batch-file", headers=h, params={"batchId": bid},
+                      json={"previewToken": prev_f["data"]["previewToken"]})
+    assert fil.json()["code"] == 0, fil.json()
     assert fil.json()["data"]["filed"] >= 0

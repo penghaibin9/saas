@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from conftest import make_org_class
+
 
 def _upload_pdf(client, headers, name="thesis.pdf"):
     files = {"file": (name, b"%PDF-1.4 test", "application/pdf")}
@@ -35,7 +37,7 @@ STU = "/api/v1/students"
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
@@ -186,7 +188,7 @@ def test_open_risk_skips_batch_archive_generate_and_file(client, auth_headers, d
     bid = client.post(GD_BATCH, headers=h, json={
         "batchName": "E2E批量风险批", "batchNo": "E2E-RISK-BATCH-B", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    sid = client.post(STU, headers=h, json={"studentNo": "E2E-RISK-BATCH-01", "realName": "批量风险归档生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "E2E-RISK-BATCH-01", "realName": "批量风险归档生", "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     _seed_archive_ready(db, int(gid), with_open_risk=True)
@@ -390,7 +392,7 @@ def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(client, auth
     h = auth_headers
     name = "摘要一致生"
     sno = "MT-MY-01"
-    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     old_row = db.get(GraduationStudent, int(old))
@@ -438,7 +440,7 @@ def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_head
     h = auth_headers
     name = "多批次命中生"
     sno = "MT-MULTI-01"
-    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     # 业务接口对同生重复建档会 409；用第二行模拟历史多批次并存

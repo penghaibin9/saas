@@ -3,6 +3,8 @@
 答辩专家库(新增/停用) + 成绩申诉守卫(未发布不可申诉)。全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 STU = "/api/v1/students"
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
@@ -21,12 +23,12 @@ def _stu_token(name):
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
 def _approved_proposal(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={"title": f"{name}题", "sourceType": "TEACHER",
                      "advisorName": "李老师", "capacity": 1, "submitReview": True}).json()["data"]["id"]
@@ -59,7 +61,7 @@ def test_proposal_defense_and_stats(client, auth_headers, db_mode):
 
 def test_proposal_defense_requires_approved(client, auth_headers, db_mode):
     h = auth_headers
-    sid = client.post(STU, headers=h, json={"studentNo": "PD2", "realName": "未批开题生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "PD2", "realName": "未批开题生", "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     sh = _stu_token("未批开题生")
     client.post(f"{MOBILE}/graduation/proposal", headers=sh, json={"background": "背景足够长", "plan": "方案足够长"})
