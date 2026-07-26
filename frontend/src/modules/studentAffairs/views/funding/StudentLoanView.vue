@@ -2,28 +2,46 @@
   <AppPageShell title="助学贷款" subtitle="生源地/校园地贷款登记 → 回执 → 核对 → 确认。所有推进动作由后端状态机与当前版本共同裁定。"
     role-name="学工处 / 资助老师" data-scope-name="资助范围（辅导员限本班）" watermark-purpose="助学贷款台账">
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载助学贷款台账..." @retry="load" @back="$router.push('/admin/student-affairs/funding')">
+      <div class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">贷款办理台账</span>
+          <h3 class="sa-summary-strip__title">先核对回执与学生信息，再按顺序推进到确认</h3>
+          <p class="sa-summary-strip__text">页面只显示当前数据范围内记录。操作列展示当前状态允许的下一步，不需要老师猜流程。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" :loading="acting === 'reg'" @click="formVisible = true">登记贷款</AppPermissionButton>
+        </div>
+      </div>
+
+      <div class="sa-workflow-strip" aria-label="贷款办理流程">
+        <div class="sa-workflow-step" data-step="1">登记学生、类型、学年和金额</div>
+        <div class="sa-workflow-step" data-step="2">收到回执后核对银行和学生信息</div>
+        <div class="sa-workflow-step" data-step="3">确认无误后完成贷款台账</div>
+      </div>
+
       <div class="sa-toolbar">
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
         </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" :loading="acting === 'reg'" @click="formVisible = true">登记贷款</AppPermissionButton>
       </div>
 
-      <AppSectionCard v-if="formVisible" title="登记助学贷款">
+      <AppSectionCard v-if="formVisible" class="sa-inline-workspace" title="登记助学贷款">
+        <p class="ln-intro">请按正式贷款材料填写。银行卡只录入后4位，避免保存完整敏感卡号。</p>
         <div class="ln-grid">
           <div class="ln-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="ln-field"><span>类型 *</span><AppSelect v-model="form.loanType" :options="LOAN_TYPE_OPTIONS" /></label>
-          <label class="ln-field"><span>银行</span><AppTextInput v-model="form.bankName" :maxlength="100" /></label>
-          <label class="ln-field"><span>银行卡后4位</span><AppTextInput v-model="form.bankLast4" :maxlength="4" placeholder="仅填写4位数字" /></label>
           <label class="ln-field"><span>学年 *</span><AppTextInput v-model="form.yearCode" :maxlength="9" placeholder="2025-2026" /></label>
           <label class="ln-field"><span>金额 *</span><AppNumberInput v-model="form.amount" :min="0.01" :max="999999999999.99" :precision="2" /></label>
+          <label class="ln-field"><span>银行</span><AppTextInput v-model="form.bankName" :maxlength="100" placeholder="贷款经办银行" /></label>
+          <label class="ln-field"><span>银行卡后4位</span><AppTextInput v-model="form.bankLast4" :maxlength="4" placeholder="仅填写4位数字" /></label>
         </div>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
         <div class="ln-actions"><button type="button" class="ln-btn" @click="formVisible = false">取消</button>
           <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" :loading="acting === 'reg'" @click="register">登记</AppPermissionButton></div>
       </AppSectionCard>
 
-      <AppSectionCard title="贷款台账">
+      <AppSectionCard title="贷款办理台账">
+        <p class="ln-section-hint">推进前请核对学生、贷款类型、学年和回执材料；已确认记录只保留查看。</p>
         <DataTable v-if="loans.length" :columns="loanColumns" :rows="loans" row-key="loanId">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo || '' }}</div></template>
           <template #cell-loanType="{ row }">{{ row.loanType === 'ORIGIN' ? '生源地' : '校园地' }}</template>
@@ -36,7 +54,7 @@
             <span v-else class="ln-muted">{{ row.status === 'CONFIRMED' ? '已确认' : '—' }}</span>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前范围暂无贷款记录</p>
+        <p v-else class="sa-empty">当前范围暂无贷款记录。需要办理时，可从页面上方登记学生贷款。</p>
         <AppPagination v-if="pagination.total > pagination.pageSize" v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
@@ -147,14 +165,16 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 300px; }
+.sa-toolbar { align-items: stretch; }
+.ln-intro,
+.ln-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .ln-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
-.ln-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
-.ln-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+.ln-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: var(--font-size-sm); }
+.ln-field > span { color: var(--text-secondary); font-weight: var(--font-weight-medium); }
+.ln-actions { display: flex; gap: var(--space-3); justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--border-light); }
 .ln-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ln-muted { color: var(--text-tertiary); }
-@media (max-width: 960px) { .sa-grid--metrics, .ln-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .ln-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 720px) { .ln-grid { grid-template-columns: 1fr; } .ln-actions { justify-content: stretch; } .ln-actions > * { flex: 1; } }
 @import '@/styles/module-page.css';
 </style>
