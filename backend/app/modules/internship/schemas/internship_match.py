@@ -45,3 +45,5 @@ class BatchMatchBody(BaseModel):
 
 class MatchActionBody(BaseModel):
     reason: Optional[str] = None
+    expectedVersion: Optional[int] = Field(None, ge=0)
+    recordExpectedVersion: Optional[int] = Field(None, ge=0)

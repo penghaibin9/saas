@@ -18,6 +18,8 @@ def teacher_review_completion(completion_id, score=None, studied_minutes=None, c
     with session() as db:
         x=db.get(InternshipSafetyCompletion,_as_id(completion_id))
         if not x or x.tenant_id!=_tid():raise not_found("安全教育完成记录不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        assert_internship_record_scope(db, x.internship_id, user, "安全教育审核")
         c=db.get(InternshipSafetyCourse,x.course_id)
         if not c:raise not_found("安全教育课程不存在")
         if x.attempt_count >= c.max_attempts:raise AppException("DATA_CONFLICT","已超过最大尝试次数")
@@ -32,10 +34,9 @@ def ensure_completion(body, user=None):
         raise AppException("VALIDATION_ERROR", "internshipId 与 courseId 必填")
     from app.models import InternshipRecord
     with session() as db:
-        rec = db.get(InternshipRecord, _as_id(b["internshipId"]))
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        rec = assert_internship_record_scope(db, b["internshipId"], user, "创建安全教育记录")
         course = db.get(InternshipSafetyCourse, _as_id(b["courseId"]))
-        if not rec or rec.tenant_id != _tid():
-            raise not_found("实习记录不存在")
         if not course or course.tenant_id != _tid() or course.status != "ACTIVE":
             raise not_found("安全教育课程不可用")
         exist = db.scalars(select(InternshipSafetyCompletion).where(

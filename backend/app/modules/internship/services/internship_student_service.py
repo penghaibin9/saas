@@ -194,6 +194,7 @@ def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "",
         "internRange": (f"{_iso(r.intern_start_date)[:10]} ~ {_iso(r.intern_end_date)[:10]}"
                         if r.intern_start_date and r.intern_end_date else ""),
         "updatedAt": _iso(r.updated_at),
+        "version": int(r.version or 0),
     }
 
 
@@ -462,76 +463,96 @@ _CLAIM_SQL = (
 )
 
 
-def assign_position(rec_id, position_id, user=None) -> dict:
-    """分配/调岗：先原子占用新岗位，成功后再释放旧岗位，避免新岗失败时丢旧岗。"""
+def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_version, user=None) -> InternshipRecord:
+    """事务内唯一落岗入口；调用方负责提交，学生行须已在本事务中加锁。"""
     from sqlalchemy import text
+    from app.modules.internship.services.internship_version import extract_expected_version
+    r = record
+    ver = extract_expected_version({"expectedVersion": expected_version})
+    if int(r.version or 0) != ver:
+        raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
+    _assert_write_scope(db, r, user)
+    if r.status == "ARCHIVED":
+        raise AppException("DATA_CONFLICT", "已归档记录不可分配岗位")
+    p = db.get(InternshipPosition, _as_id(position_id))
+    if not p or p.is_deleted or p.tenant_id != _tid():
+        raise not_found("岗位不存在或不在当前数据范围内")
+    if r.position_id == p.id:
+        raise AppException("DATA_CONFLICT", "该学生已分配到此岗位")
+    if p.status != "PUBLISHED":
+        raise AppException("DATA_CONFLICT", f"仅「已上架」岗位可分配（当前：{p.status}）")
+    c = db.get(EmpCompany, p.company_id)
+    if not c or c.is_deleted:
+        raise not_found("岗位所属企业不存在")
+    if c.blacklist or c.coop_status == "BLACKLIST":
+        raise AppException("DATA_CONFLICT", "黑名单企业岗位不可分配学生")
+    from app.modules.internship.services.internship_compliance_rules import get_batch_compliance_rules
+    from app.modules.internship.services.internship_enterprise_inspection_service import is_enterprise_access_valid
+    from app.modules.internship.services.internship_position_rights import evaluate_position_compliance
+    batch = db.get(InternshipBatch, r.batch_id) if r.batch_id else None
+    compliance_rules = get_batch_compliance_rules(db, batch)
+    ea = compliance_rules.get("enterpriseAccess") or {}
+    if ea.get("required"):
+        access_ok, access_reason = is_enterprise_access_valid(db, c.id, compliance_rules)
+        if not access_ok:
+            raise AppException("DATA_CONFLICT", f"企业准入未通过：{access_reason}")
+    wr = compliance_rules.get("workRights") or {}
+    if wr.get("required"):
+        rights = evaluate_position_compliance(p, None, compliance_rules)
+        if rights["blockers"]:
+            raise AppException("DATA_CONFLICT", "岗位劳动权益不合规：" + "；".join(rights["blockers"]))
+    elif p.prohibited_reason:
+        raise AppException("DATA_CONFLICT", f"岗位禁止安排：{p.prohibited_reason}")
+    old_id = r.position_id
+    for lid in sorted({i for i in (old_id, p.id) if i}):
+        db.execute(text(
+            "SELECT id FROM t_internship_position WHERE id = :pid AND tenant_id = :tid "
+            "AND is_deleted = 0 FOR UPDATE"
+        ), {"pid": lid, "tid": _tid()})
+    claimed = db.execute(text(_CLAIM_SQL), {"pid": p.id, "tid": _tid()}).rowcount
+    if claimed != 1:
+        raise AppException("DATA_CONFLICT", "该岗位已满员或状态已变化，不能再分配")
+    if old_id:
+        db.execute(text(_RELEASE_SQL), {"pid": old_id, "tid": _tid()})
+    db.refresh(p)
+    r.position_id, r.enterprise_id, r.mentor_contact_id = p.id, c.id, p.mentor_contact_id
+    r.position_name, r.enterprise_name = p.title, c.name
+    r.enterprise_mentor_name, r.destination_type = p.mentor_name, "ASSIGNED"
+    r.version = ver + 1
+    _trail(db, r.id, "ASSIGN_POSITION", {
+        "positionId": str(p.id), "title": p.title, "fromPositionId": str(old_id or ""),
+        "recordVersion": r.version,
+    })
+    return r
+
+
+def assign_position(rec_id, position_id, expected_version=None, user=None) -> dict:
+    """锁学生记录后，在一个事务中完成岗位占用、释放、主档更新和审计。"""
     with session() as db:
-        r = _get(db, rec_id)
-        _assert_write_scope(db, r, user)
-        if r.status == "ARCHIVED":
-            raise AppException("DATA_CONFLICT", "已归档记录不可分配岗位")
-        p = db.get(InternshipPosition, _as_id(position_id))
-        if not p or p.is_deleted or p.tenant_id != _tid():
-            raise not_found("岗位不存在或不在当前数据范围内")
-        if r.position_id == p.id:
-            raise AppException("DATA_CONFLICT", "该学生已分配到此岗位")
-        if p.status != "PUBLISHED":
-            raise AppException("DATA_CONFLICT", f"仅「已上架」岗位可分配（当前：{p.status}）")
-        c = db.get(EmpCompany, p.company_id)
-        if not c or c.is_deleted:
-            raise not_found("岗位所属企业不存在")
-        if c.blacklist or c.coop_status == "BLACKLIST":
-            raise AppException("DATA_CONFLICT", "黑名单企业岗位不可分配学生")
-        from app.modules.internship.services.internship_compliance_rules import get_batch_compliance_rules
-        from app.modules.internship.services.internship_enterprise_inspection_service import is_enterprise_access_valid
-        from app.modules.internship.services.internship_position_rights import evaluate_position_compliance
-        batch = db.get(InternshipBatch, r.batch_id) if r.batch_id else None
-        compliance_rules = get_batch_compliance_rules(db, batch)
-        ea = compliance_rules.get("enterpriseAccess") or {}
-        if ea.get("required"):
-            access_ok, access_reason = is_enterprise_access_valid(db, c.id, compliance_rules)
-            if not access_ok:
-                raise AppException("DATA_CONFLICT", f"企业准入未通过：{access_reason}")
-        wr = compliance_rules.get("workRights") or {}
-        if wr.get("required"):
-            rights = evaluate_position_compliance(p, None, compliance_rules)
-            if rights["blockers"]:
-                raise AppException("DATA_CONFLICT", "岗位劳动权益不合规：" + "；".join(rights["blockers"]))
-        elif p.prohibited_reason:
-            raise AppException("DATA_CONFLICT", f"岗位禁止安排：{p.prohibited_reason}")
-        old_id = r.position_id
-        # 为降低死锁：同时涉及两岗时按 id 升序加行锁，再 claim 新岗 / release 旧岗
-        lock_ids = sorted({i for i in (old_id, p.id) if i})
-        for lid in lock_ids:
-            db.execute(text(
-                "SELECT id FROM t_internship_position WHERE id = :pid AND tenant_id = :tid "
-                "AND is_deleted = 0 FOR UPDATE"
-            ), {"pid": lid, "tid": _tid()})
-        claimed = db.execute(text(_CLAIM_SQL), {"pid": p.id, "tid": _tid()}).rowcount
-        if claimed != 1:
-            raise AppException("DATA_CONFLICT", "该岗位已满员或状态已变化，不能再分配")
-        if old_id:
-            db.execute(text(_RELEASE_SQL), {"pid": old_id, "tid": _tid()})
-        db.refresh(p)
-        r.position_id = p.id
-        r.enterprise_id = c.id
-        r.mentor_contact_id = p.mentor_contact_id
-        r.position_name = p.title
-        r.enterprise_name = c.name
-        r.enterprise_mentor_name = p.mentor_name
-        r.destination_type = "ASSIGNED"
-        _trail(db, r.id, "ASSIGN_POSITION", {
-            "positionId": str(p.id), "title": p.title,
-            "fromPositionId": str(old_id or ""),
-        })
+        r = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == _as_id(rec_id),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False),
+        ).with_for_update())
+        if not r:
+            raise not_found("实习学生记录不存在或不在当前数据范围内")
+        assign_position_in_tx(db, r, position_id, expected_version, user)
         db.commit()
         return _row_of(db, r)
 
 
-def unassign_position(rec_id, reason: str = "", user=None) -> dict:
+def unassign_position(rec_id, reason: str = "", expected_version=None, user=None) -> dict:
     from sqlalchemy import text
+    from app.modules.internship.services.internship_version import extract_expected_version
     with session() as db:
-        r = _get(db, rec_id)
+        r = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == _as_id(rec_id), InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False)).with_for_update())
+        if not r:
+            raise not_found("实习学生记录不存在或不在当前数据范围内")
+        ver = extract_expected_version({"expectedVersion": expected_version})
+        if int(r.version or 0) != ver:
+            raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
         _assert_write_scope(db, r, user)
         if not r.position_id:
             raise AppException("DATA_CONFLICT", "该学生未分配岗位")
@@ -548,6 +569,7 @@ def unassign_position(rec_id, reason: str = "", user=None) -> dict:
         r.enterprise_name = None
         r.enterprise_mentor_name = None
         r.destination_type = "NONE"
+        r.version = ver + 1
         _trail(db, r.id, "UNASSIGN_POSITION", {"reason": reason})
         db.commit()
         return _row_of(db, r)
@@ -593,7 +615,7 @@ def get_onboard_checklist(rec_id, user=None) -> dict:
 
 
 def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
-    """READY / ONBOARD / ASSESS / ARCHIVE。上岗需已合格 + 已分配岗位。"""
+    """普通状态流转仅 READY / ONBOARD / ASSESS；归档必须走 archive_student。"""
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
@@ -616,10 +638,6 @@ def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
             if r.status != "ONBOARD":
                 raise AppException("DATA_CONFLICT", "仅「在岗中」可进入考核")
             r.status = "ASSESSING"
-        elif action == "ARCHIVE":
-            if r.status not in ("ASSESSING", "ONBOARD"):
-                raise AppException("DATA_CONFLICT", "仅在岗/考核中可归档")
-            r.status = "ARCHIVED"
         else:
             raise AppException("VALIDATION_ERROR", "非法状态动作")
         _trail(db, r.id, f"STATUS_{action}", {"reason": reason, "to": r.status})

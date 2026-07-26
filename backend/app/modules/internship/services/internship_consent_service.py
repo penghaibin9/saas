@@ -19,8 +19,8 @@ def evaluate_applicability(student, consent_type):
 def create_pending(body,user=None):
     b=body or {}; typ=(b.get("consentType") or "STUDENT").upper()
     with session() as db:
-        rec=db.get(InternshipRecord,_as_id(b.get("internshipId")))
-        if not rec or rec.tenant_id!=_tid(): raise not_found("实习记录不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        rec=assert_internship_record_scope(db,b.get("internshipId"),user,"创建知情确认任务")
         stu=db.get(StudentProfile,rec.student_id); applicable, state=evaluate_applicability(stu,typ)
         x=InternshipConsent(tenant_id=_tid(),internship_id=rec.id,batch_id=rec.batch_id,student_id=rec.student_id,consent_type=typ,
             applicable=bool(applicable),participant_name=b.get("participantName"),participant_relation=b.get("participantRelation"),
@@ -37,7 +37,9 @@ def confirm(cid,body,user=None):
     with session() as db:
         x=db.get(InternshipConsent,_as_id(cid))
         if not x or x.tenant_id!=_tid(): raise not_found("知情确认不存在")
-        if x.consent_type=="STUDENT" and str((user or {}).get("studentId") or "") not in ("",str(x.student_id)): raise AppException("NO_PERMISSION","仅学生本人可确认学生知情书")
+        actor_student_id = str((user or {}).get("studentId") or "")
+        if x.consent_type != "STUDENT" or not actor_student_id or actor_student_id != str(x.student_id):
+            raise AppException("NO_PERMISSION","学校端不得代确认；仅当前登录学生本人可确认学生知情书")
         if not (b.get("contentSnapshot") or x.content_snapshot): raise AppException("VALIDATION_ERROR","确认必须固化正文快照")
         if x.status == "VALID":
             return {"id": str(x.id), "status": x.status}  # 幂等：已确认不重复改写
@@ -50,6 +52,37 @@ def confirm(cid,body,user=None):
         x.status = "VALID"
         db.commit()
         return {"id": str(x.id), "status": x.status}
+
+
+def list_my(user):
+    student_id = (user or {}).get("studentId")
+    if not student_id:
+        raise AppException("NO_PERMISSION", "仅学生本人可访问知情确认")
+    with session() as db:
+        rows = db.scalars(select(InternshipConsent).where(
+            InternshipConsent.tenant_id == _tid(),
+            InternshipConsent.student_id == _as_id(student_id),
+            InternshipConsent.consent_type == "STUDENT",
+            InternshipConsent.is_deleted.is_(False),
+        ).order_by(InternshipConsent.id.desc())).all()
+        return [{"id": str(x.id), "status": x.status, "contentVersion": x.content_version,
+                 "viewedAt": x.viewed_at, "confirmedAt": x.confirmed_at} for x in rows]
+
+
+def get_my(cid, user):
+    student_id = (user or {}).get("studentId")
+    if not student_id:
+        raise AppException("NO_PERMISSION", "仅学生本人可访问知情确认")
+    with session() as db:
+        x = db.get(InternshipConsent, _as_id(cid))
+        if not x or x.tenant_id != _tid() or x.student_id != _as_id(student_id):
+            raise not_found("知情确认不存在")
+        if not x.viewed_at:
+            x.viewed_at = datetime.utcnow()
+            db.commit()
+        return {"id": str(x.id), "status": x.status, "contentVersion": x.content_version,
+                "contentSnapshot": x.content_snapshot, "viewedAt": x.viewed_at,
+                "confirmedAt": x.confirmed_at}
 def supersede_for_major_change(db, internship_id, consent_type=None):
     q=select(InternshipConsent).where(InternshipConsent.tenant_id==_tid(),InternshipConsent.internship_id==_as_id(internship_id),InternshipConsent.status=="VALID")
     if consent_type:q=q.where(InternshipConsent.consent_type==consent_type)

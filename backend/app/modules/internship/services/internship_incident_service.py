@@ -23,6 +23,11 @@ def report_incident(body,user=None):
     b=body or {}; key=(b.get("idempotencyKey") or "").strip()
     if not key:raise AppException("VALIDATION_ERROR","idempotencyKey 必填")
     with session() as db:
+        if b.get("internshipId"):
+            from app.modules.internship.services.internship_scope import assert_internship_record_scope
+            rec = assert_internship_record_scope(db, b["internshipId"], user, "事故上报")
+            b["studentId"], b["batchId"], b["companyId"] = (
+                rec.student_id, rec.batch_id, rec.enterprise_id)
         existing=db.scalars(select(InternshipIncident).where(InternshipIncident.tenant_id==_tid(),InternshipIncident.idempotency_key==key,InternshipIncident.is_deleted.is_(False))).first()
         if existing:return {"id":str(existing.id),"status":existing.status,"idempotent":True}
         no=f"INC-{datetime.utcnow():%Y%m%d%H%M%S%f}"
@@ -36,6 +41,9 @@ def transition(iid,status,body=None,user=None):
     with session() as db:
         x=db.get(InternshipIncident,_as_id(iid))
         if not x or x.tenant_id!=_tid():raise not_found("事故不存在")
+        if x.internship_id:
+            from app.modules.internship.services.internship_scope import assert_internship_record_scope
+            assert_internship_record_scope(db,x.internship_id,user,"事故处置")
         if status not in allowed.get(x.status,set()):raise AppException("DATA_CONFLICT",f"不允许 {x.status}→{status}")
         b=body or {}
         for k,a in (("investigationConclusion","investigation_conclusion"),("rectificationPlan","rectification_plan"),("fileIds","file_ids")):

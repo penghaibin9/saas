@@ -14,14 +14,16 @@ def evaluate_triggers(position, student=None, school_region=None):
 def create(body,user=None):
     b=body or {}
     with session() as db:
-        rec=db.get(InternshipRecord,_as_id(b.get("internshipId")))
-        if not rec or rec.tenant_id!=_tid():raise not_found("实习记录不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        rec=assert_internship_record_scope(db,b.get("internshipId"),user,"创建特殊备案")
         x=InternshipSpecialFiling(tenant_id=_tid(),internship_id=rec.id,batch_id=rec.batch_id,student_id=rec.student_id,filing_type=b.get("filingType") or "OTHER",trigger_reason=b.get("triggerReason"),destination_region=b.get("destinationRegion"),work_address=b.get("workAddress"),risk_description=b.get("riskDescription"),student_application=b.get("studentApplication"),guardian_consent_required=bool(b.get("guardianConsentRequired")),file_ids=b.get("fileIds"),status="DRAFT")
         db.add(x);db.commit();return {"id":str(x.id),"status":x.status}
-def submit(fid):
+def submit(fid,user=None):
     with session() as db:
         x=db.get(InternshipSpecialFiling,_as_id(fid))
         if not x or x.tenant_id!=_tid():raise not_found("特殊备案不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        assert_internship_record_scope(db,x.internship_id,user,"提交特殊备案")
         if x.status!="DRAFT":raise AppException("DATA_CONFLICT","仅草稿可提交")
         x.status="PENDING_COLLEGE";db.commit();return {"id":str(x.id),"status":x.status}
 def review(fid,level,action,comment="",user=None):
@@ -29,6 +31,8 @@ def review(fid,level,action,comment="",user=None):
     with session() as db:
         x=db.get(InternshipSpecialFiling,_as_id(fid))
         if not x or x.tenant_id!=_tid():raise not_found("特殊备案不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        assert_internship_record_scope(db,x.internship_id,user,"审核特殊备案")
         expected="PENDING_"+level
         if x.status!=expected:raise AppException("DATA_CONFLICT","当前备案不在该审核环节")
         n=(user or {}).get("realName") or "系统"

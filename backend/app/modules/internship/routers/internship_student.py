@@ -152,7 +152,8 @@ def update_intern_student(record_id: str, body: StudentRecordUpdate, user=Depend
 
 @router.post("/intern-students/{record_id}/assign", summary="分配岗位（校验上架/黑名单/满员；回填 allocated_count）")
 def assign_position(record_id: str, body: AssignPositionRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.assign_position(record_id, body.positionId, user=user)
+    result = svc.assign_position(
+        record_id, body.positionId, expected_version=body.expectedVersion, user=user)
     audit_log.record("分配实习岗位", f"internship-student:{record_id}", detail={"positionId": body.positionId})
     return success(result, message="已分配")
 
@@ -167,7 +168,8 @@ def assign_advisor(record_id: str, body: AdvisorAssignmentRequest, user=Depends(
 
 @router.post("/intern-students/{record_id}/unassign", summary="退岗（释放岗位名额）")
 def unassign_position(record_id: str, body: UnassignRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = svc.unassign_position(record_id, body.reason or "", user=user)
+    result = svc.unassign_position(
+        record_id, body.reason or "", expected_version=body.expectedVersion, user=user)
     audit_log.record("实习退岗", f"internship-student:{record_id}")
     return success(result, message="已退岗")
 

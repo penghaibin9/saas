@@ -170,6 +170,8 @@ def _match_row(db, m: InternshipMatch) -> dict:
         "assignedPositionId": str(rec.position_id) if rec and rec.position_id else "",
         "confirmedBy": m.confirmed_by or "", "confirmedAt": _iso(m.confirmed_at),
         "remark": m.remark or "", "updatedAt": _iso(m.updated_at),
+        "version": int(m.version or 0),
+        "recordVersion": int(rec.version or 0) if rec else None,
     }
 
 
@@ -621,26 +623,36 @@ def list_conflicts(page: int, page_size: int, keyword=None, batch_id=None, user=
     return list_matches(page, page_size, keyword=keyword, conflict_only=True, batch_id=batch_id, user=user)
 
 
-def confirm_match(mid, user=None) -> dict:
-    """确认匹配 → 调用已有 assign_position 落岗。"""
+def confirm_match(mid, user=None, *, expected_version=None, record_expected_version=None) -> dict:
+    """在一个事务中确认匹配、落岗并取消同学生其他匹配。"""
+    from app.modules.internship.services.internship_version import extract_expected_version
     with session() as db:
-        m = _get_match(db, mid)
+        m = db.scalar(select(InternshipMatch).where(
+            InternshipMatch.id == _as_id(mid), InternshipMatch.tenant_id == _tid(),
+            InternshipMatch.is_deleted.is_(False)).with_for_update())
+        if not m:
+            raise not_found("匹配记录不存在")
+        match_ver = extract_expected_version({"expectedVersion": expected_version})
+        if int(m.version or 0) != match_ver:
+            raise AppException("DATA_CONFLICT", "匹配记录已被其他用户修改，请刷新后重试")
         if m.status not in ("RECOMMENDED", "PENDING_CONFIRM", "CONFLICT"):
             raise AppException("DATA_CONFLICT", f"当前状态不可确认（{m.status}）")
         if m.conflict_flag and m.status == "CONFLICT":
             # 允许人工确认冲突项，但岗位满员/非上架仍由 assign 拦截
             pass
-        record_id, position_id = m.record_id, m.position_id
-        match_id = m.id
-    # assign 使用独立 session；成功后再更新 match（数据范围校验在 assign_position 内部执行）
-    student_svc.assign_position(record_id, position_id, user=user)
-    with session() as db:
-        m = _get_match(db, match_id)
+        rec = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == m.record_id, InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False)).with_for_update())
+        if not rec:
+            raise not_found("实习学生记录不存在")
+        student_svc.assign_position_in_tx(
+            db, rec, m.position_id, record_expected_version, user=user)
         m.status = "CONFIRMED"
         m.conflict_flag = False
         m.conflict_reason = None
         m.confirmed_by = _op_name()
         m.confirmed_at = datetime.utcnow()
+        m.version = match_ver + 1
         # 取消同学生其他待确认
         others = db.scalars(select(InternshipMatch).where(
             InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False),

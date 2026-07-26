@@ -515,7 +515,10 @@ export default {
       this.submitting = true
       try {
         if (action === 'CONFIRM') {
-          const res = await matchApi.confirmMatch(row.id)
+          const res = await matchApi.confirmMatch(row.id, {
+            expectedVersion: row.version,
+            recordExpectedVersion: row.recordVersion
+          })
           if (res.code === 0) { toast.success('已确认并分配岗位'); this.confirm.visible = false; this.load() }
           else toast.error(res.message)
         }

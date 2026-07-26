@@ -354,7 +354,10 @@ export default {
       this.assignError = ''
       this.submitting = true
       try {
-        const res = await internStudentApi.assignPosition(this.assignRow.id, { positionId: this.assignPositionId })
+        const res = await internStudentApi.assignPosition(this.assignRow.id, {
+          positionId: this.assignPositionId,
+          expectedVersion: this.assignRow.version
+        })
         if (res.code === 0) { toast.success('已分配岗位（岗位库名额已回填）'); this.assignVisible = false; this.load() } else this.assignError = res.message
       } finally { this.submitting = false }
     },

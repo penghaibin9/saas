@@ -329,7 +329,8 @@ export default {
       const result = await internshipApplicationApi.review(data.id, {
         action: this.confirm.action,
         comment: reason || '',
-        expectedVersion: data.version
+        expectedVersion: data.version,
+        recordExpectedVersion: data.recordVersion
       })
       this.confirm.submitting = false
       if (result.code !== 0) return toast.error(result.message || '审核失败')

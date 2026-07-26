@@ -299,7 +299,10 @@ export default {
         danger: r.completeness < 100, confirmText: '归档', requireReason: false, submitting: false }
     },
     doRevoke(r) {
-      this.pending = { id: r.id, kind: 'revoke', expectedVersion: r.version }
+      this.pending = {
+        id: r.id, kind: 'revoke', expectedVersion: r.version,
+        recordExpectedVersion: r.recordVersion
+      }
       this.cd = { visible: true, title: '撤销归档', content: `撤销「${r.studentName}」的归档，原因将写审计。`,
         danger: true, confirmText: '撤销归档', requireReason: true, submitting: false }
     },
@@ -308,7 +311,10 @@ export default {
       this.cd.submitting = true
       const res = p.kind === 'archive'
         ? await archiveApi.archive(p.id, { force: !p.complete, expectedVersion: p.expectedVersion })
-        : await archiveApi.revoke(p.id, { reason, expectedVersion: p.expectedVersion })
+        : await archiveApi.revoke(p.id, {
+            reason, expectedVersion: p.expectedVersion,
+            recordExpectedVersion: p.recordExpectedVersion
+          })
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false; toast.success('操作成功，已写审计')

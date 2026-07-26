@@ -120,8 +120,10 @@ export const matchApi = {
   getStats(params = {}) {
     return call(() => request(`${BASE}/stats`, { params }))
   },
-  confirmMatch(id) {
-    return call(() => request(`${BASE}/${id}/confirm`, { method: 'POST' }))
+  confirmMatch(id, { expectedVersion, recordExpectedVersion } = {}) {
+    return call(() => request(`${BASE}/${id}/confirm`, {
+      method: 'POST', body: { expectedVersion, recordExpectedVersion }
+    }))
   },
   rejectMatch(id, reason = '') {
     return call(() => request(`${BASE}/${id}/reject`, { method: 'POST', body: { reason } }))

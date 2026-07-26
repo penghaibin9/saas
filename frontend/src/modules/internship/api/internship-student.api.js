@@ -45,11 +45,15 @@ export const internStudentApi = {
   updateStudent(id, body) {
     return call(() => request(`${BASE}/${id}`, { method: 'PUT', body }))
   },
-  assignPosition(id, { positionId }) {
-    return call(() => request(`${BASE}/${id}/assign`, { method: 'POST', body: { positionId } }))
+  assignPosition(id, { positionId, expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/assign`, {
+      method: 'POST', body: { positionId, expectedVersion }
+    }))
   },
-  unassignPosition(id, { reason }) {
-    return call(() => request(`${BASE}/${id}/unassign`, { method: 'POST', body: { reason } }))
+  unassignPosition(id, { reason, expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/unassign`, {
+      method: 'POST', body: { reason, expectedVersion }
+    }))
   },
   setStatus(id, { action, reason }) {
     return call(() => request(`${BASE}/${id}/status`, { method: 'POST', body: { action, reason } }))

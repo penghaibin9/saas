@@ -25,6 +25,15 @@ router = APIRouter(prefix="/mobile", tags=["移动端聚合"])
 gd = APIRouter(prefix="/graduation", tags=["移动端聚合"],
                dependencies=[Depends(require_module("graduation"))])
 
+# 岗位实习移动端统一模块购买授权门禁。
+internship_mobile = APIRouter(
+    prefix="/internship", tags=["移动端-岗位实习"],
+    dependencies=[Depends(require_module("internship"))],
+)
+internship_teacher_mobile = APIRouter(
+    prefix="/teacher/internship", tags=["教师移动端-岗位实习"],
+    dependencies=[Depends(require_module("internship"))],
+)
 
 # ── 学生端·我的 ──
 @router.get("/me/overview", summary="学生首页总览（本人）")
@@ -101,37 +110,37 @@ def campus_service_apply(body: dict = Body(...), user=Depends(get_current_user))
     return success(stu.campus_service_apply(user, body))
 
 
-@router.post("/internship/weekly", summary="提交实习周报（本人）")
+@internship_mobile.post("/weekly", summary="提交实习周报（本人）")
 def internship_weekly(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_weekly_submit(user, body))
 
 
-@router.post("/internship/checkin", summary="实习每日打卡（本人，一天一次，真实落库）")
+@internship_mobile.post("/checkin", summary="实习每日打卡（本人，一天一次，真实落库）")
 def internship_checkin(body: dict = Body(default={}), user=Depends(get_current_user)):
     return success(stu.internship_checkin(user, body))
 
 
-@router.get("/internship/checkin/week", summary="本周打卡记录（本人）")
+@internship_mobile.get("/checkin/week", summary="本周打卡记录（本人）")
 def internship_checkin_week(user=Depends(get_current_user)):
     return success(stu.internship_checkin_week(user))
 
 
-@router.get("/internship/enterprises", summary="企业岗位库（本人可浏览，城市筛选）")
+@internship_mobile.get("/enterprises", summary="企业岗位库（本人可浏览，城市筛选）")
 def internship_enterprises(city: str = "", user=Depends(get_current_user)):
     return success(stu.internship_enterprises(user, city))
 
 
-@router.post("/internship/exceptions/{exception_id}/appeal", summary="本人对未处理打卡异常提交凭证申诉")
+@internship_mobile.post("/exceptions/{exception_id}/appeal", summary="本人对未处理打卡异常提交凭证申诉")
 def internship_exception_appeal(exception_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_exception_appeal(user, exception_id, body), message="申诉已提交")
 
 
-@router.get("/internship/makeup", summary="本人补卡申请列表")
+@internship_mobile.get("/makeup", summary="本人补卡申请列表")
 def internship_makeup_list(user=Depends(get_current_user)):
     return success(mk.my_makeups(user))
 
 
-@router.post("/internship/makeup", summary="补卡申请（本人某日缺卡，待指导教师审批）")
+@internship_mobile.post("/makeup", summary="补卡申请（本人某日缺卡，待指导教师审批）")
 def internship_makeup_apply(body: dict = Body(...), user=Depends(get_current_user)):
     b = body or {}
     return success(mk.apply(user, checkin_date=b.get("checkinDate") or b.get("date") or "",
@@ -139,53 +148,72 @@ def internship_makeup_apply(body: dict = Body(...), user=Depends(get_current_use
                    message="补卡申请已提交")
 
 
-@router.post("/internship/makeup/{makeup_id}/withdraw", summary="撤回本人补卡申请")
+@internship_mobile.post("/makeup/{makeup_id}/withdraw", summary="撤回本人补卡申请")
 def internship_makeup_withdraw(makeup_id: str, user=Depends(get_current_user)):
     return success(mk.withdraw(user, makeup_id), message="已撤回")
 
 
-@router.get("/internship/leaves", summary="本人实习请假列表")
+@internship_mobile.get("/leaves", summary="本人实习请假列表")
 def internship_my_leaves(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.my_leaves(user))
 
 
-@router.post("/internship/leave", summary="实习请假申请（本人，待指导教师审批）")
+@internship_mobile.post("/leave", summary="实习请假申请（本人，待指导教师审批）")
 def internship_leave_apply(body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.apply(user, body or {}), message="请假申请已提交")
 
 
-@router.post("/internship/leave/{leave_id}/withdraw", summary="撤回本人请假申请")
+@internship_mobile.post("/leave/{leave_id}/withdraw", summary="撤回本人请假申请")
 def internship_leave_withdraw(leave_id: str, user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.withdraw(user, leave_id), message="已撤回")
 
 
-@router.post("/internship/leave/{leave_id}/return", summary="本人实习请假销假")
+@internship_mobile.post("/leave/{leave_id}/return", summary="本人实习请假销假")
 def internship_leave_return(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.return_my(user, leave_id, body or {}), message="销假已登记")
 
 
-@router.post("/internship/help", summary="本人实习求助/风险上报（轻量，进指导教师风险台）")
+@internship_mobile.post("/help", summary="本人实习求助/风险上报（轻量，进指导教师风险台）")
 def internship_help_report(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_help_report(user, body or {}), message="求助已提交")
 
 
-@router.get("/internship/agreements", summary="本人三方协议列表")
+@internship_mobile.get("/agreements", summary="本人三方协议列表")
 def internship_my_agreements(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.my_agreements(user))
 
 
-@router.get("/internship/agreements/{agreement_id}", summary="本人三方协议详情（含渲染正文）")
+@internship_mobile.get("/consents", summary="本人知情确认任务")
+def internship_my_consents(user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.list_my(user))
+
+
+@internship_mobile.get("/consents/{consent_id}", summary="本人知情确认正文")
+def internship_my_consent(consent_id: str, user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.get_my(consent_id, user))
+
+
+@internship_mobile.post("/consents/{consent_id}/confirm", summary="学生本人确认知情书")
+def internship_confirm_consent(consent_id: str, body: dict = Body(default={}),
+                               user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_consent_service as consent
+    return success(consent.confirm(consent_id, body or {}, user))
+
+
+@internship_mobile.get("/agreements/{agreement_id}", summary="本人三方协议详情（含渲染正文）")
 def internship_agreement_detail(agreement_id: str, user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.get_student_agreement(user, agreement_id))
 
 
-@router.post("/internship/agreements/{agreement_id}/confirm", summary="本人确认/驳回三方协议")
+@internship_mobile.post("/agreements/{agreement_id}/confirm", summary="本人确认/驳回三方协议")
 def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
     b = body or {}
@@ -193,121 +221,121 @@ def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user
                                        b.get("reason") or ""), message="已提交")
 
 
-@router.get("/internship/self-eval", summary="本人实习自评/鉴定")
+@internship_mobile.get("/self-eval", summary="本人实习自评/鉴定")
 def internship_my_self_eval(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_student_eval_service as se
     return success(se.my_eval(user))
 
 
-@router.post("/internship/self-eval", summary="提交/重交本人实习自评（总结/收获/问题）")
+@internship_mobile.post("/self-eval", summary="提交/重交本人实习自评（总结/收获/问题）")
 def internship_submit_self_eval(body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_student_eval_service as se
     return success(se.student_submit(user, body or {}), message="自评已提交")
 
 
-@router.get("/internship/intention", summary="本人实习意向（含可选岗位列表）")
+@internship_mobile.get("/intention", summary="本人实习意向（含可选岗位列表）")
 def internship_intention_my(user=Depends(get_current_user)):
     return success(stu.internship_intention_my(user))
 
 
-@router.put("/internship/intention", summary="保存本人实习意向（草稿）")
+@internship_mobile.put("/intention", summary="保存本人实习意向（草稿）")
 def internship_intention_save(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_intention_save(user, body or {}), message="意向已保存")
 
 
-@router.post("/internship/intention/submit", summary="提交本人实习意向")
+@internship_mobile.post("/intention/submit", summary="提交本人实习意向")
 def internship_intention_submit(user=Depends(get_current_user)):
     return success(stu.internship_intention_submit(user), message="意向已提交")
 
 
-@router.post("/internship/intention/withdraw", summary="撤回本人实习意向")
+@internship_mobile.post("/intention/withdraw", summary="撤回本人实习意向")
 def internship_intention_withdraw(user=Depends(get_current_user)):
     return success(stu.internship_intention_withdraw(user), message="意向已撤回")
 
 
-@router.get("/internship/applications", summary="本人正式实习申请列表")
+@internship_mobile.get("/applications", summary="本人正式实习申请列表")
 def internship_application_list(user=Depends(get_current_user)):
     return success(stu.internship_application_list(user))
 
 
-@router.put("/internship/applications", summary="保存本人正式实习申请草稿")
+@internship_mobile.put("/applications", summary="保存本人正式实习申请草稿")
 def internship_application_save(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_application_save(user, body or {}), message="申请草稿已保存")
 
 
-@router.post("/internship/applications/{application_id}/submit", summary="提交本人正式实习申请")
+@internship_mobile.post("/applications/{application_id}/submit", summary="提交本人正式实习申请")
 def internship_application_submit(application_id: str, user=Depends(get_current_user)):
     return success(stu.internship_application_submit(user, application_id), message="申请已提交审核")
 
 
-@router.post("/internship/applications/{application_id}/withdraw", summary="撤回本人待审核实习申请")
+@internship_mobile.post("/applications/{application_id}/withdraw", summary="撤回本人待审核实习申请")
 def internship_application_withdraw(application_id: str, user=Depends(get_current_user)):
     return success(stu.internship_application_withdraw(user, application_id), message="申请已撤回")
 
 
-@router.post("/internship/process-report", summary="提交日报/月报/实习总结（本人）")
+@internship_mobile.post("/process-report", summary="提交日报/月报/实习总结（本人）")
 def internship_process_report(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_process_report_submit(user, body or {}))
 
 
-@router.get("/internship/process-reports", summary="本人日报/月报/实习总结列表（含批阅意见）")
+@internship_mobile.get("/process-reports", summary="本人日报/月报/实习总结列表（含批阅意见）")
 def internship_my_process_reports(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_process_report_service as pr
     return success(pr.my_reports(user))
 
 
-@router.get("/internship/change-requests", summary="本人实习变更申请列表")
+@internship_mobile.get("/change-requests", summary="本人实习变更申请列表")
 def internship_my_change_requests(user=Depends(get_current_user)):
     return success(stu.internship_change_list(user))
 
 
-@router.post("/internship/change-request", summary="发起实习变更申请（换岗/换单位/自主实习）")
+@internship_mobile.post("/change-request", summary="发起实习变更申请（换岗/换单位/自主实习）")
 def internship_change_apply(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_change_apply(user, body or {}), message="变更申请已提交")
 
 
-@router.post("/internship/change-request/{change_id}/withdraw", summary="撤回本人待审核变更申请")
+@internship_mobile.post("/change-request/{change_id}/withdraw", summary="撤回本人待审核变更申请")
 def internship_change_withdraw(change_id: str, user=Depends(get_current_user)):
     return success(stu.internship_change_withdraw(user, change_id), message="已撤回")
 
 
-@router.get("/internship/plan", summary="本人实习计划书（已发布）")
+@internship_mobile.get("/plan", summary="本人实习计划书（已发布）")
 def internship_my_plan(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_service as plan
     return success(plan.student_my_plan(user))
 
 
-@router.post("/internship/plan/acknowledge", summary="确认本人实习计划书")
+@internship_mobile.post("/plan/acknowledge", summary="确认本人实习计划书")
 def internship_plan_ack(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_service as plan
     return success(plan.student_acknowledge(user), message="已确认实习计划")
 
 
-@router.get("/internship/plan/tasks", summary="本人实习计划任务及完成度")
+@internship_mobile.get("/plan/tasks", summary="本人实习计划任务及完成度")
 def internship_plan_tasks(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_task_service as pt
     return success(pt.student_tasks(user))
 
 
-@router.post("/internship/plan/tasks/{sort_order}/submit", summary="提交任务完成")
+@internship_mobile.post("/plan/tasks/{sort_order}/submit", summary="提交任务完成")
 def internship_plan_task_submit(sort_order: int, body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_task_service as pt
     return success(pt.student_submit_task(user, sort_order, body or {}), message="已提交，待指导教师确认")
 
 
-@router.get("/internship/insurance", summary="本人实习保险")
+@internship_mobile.get("/insurance", summary="本人实习保险")
 def internship_my_insurance(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_insurance_service as ins
     return success(ins.student_my_insurance(user))
 
 
-@router.post("/internship/insurance", summary="提交本人实习保险信息")
+@internship_mobile.post("/insurance", summary="提交本人实习保险信息")
 def internship_insurance_submit(body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_insurance_service as ins
     return success(ins.student_submit(user, body or {}), message="保险信息已提交，待学校核验")
 
 
-@router.post("/internship/agreements/{agreement_id}/esign/sign", summary="学生电子签签署")
+@internship_mobile.post("/agreements/{agreement_id}/esign/sign", summary="学生电子签签署")
 def internship_agreement_esign_sign(agreement_id: str, user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.esign_sign(user, agreement_id, "STUDENT"), message="电子签已完成")
@@ -358,7 +386,7 @@ def academic_my(user=Depends(get_current_user)):
     return success(stu.academic_my(user))
 
 
-@router.get("/internship/my", summary="我的岗位实习")
+@internship_mobile.get("/my", summary="我的岗位实习")
 def internship_my(user=Depends(get_current_user)):
     return success(stu.internship_my(user))
 
@@ -545,12 +573,12 @@ def teacher_orientation_dashboard(user=Depends(get_current_user)):
     return success(tea.orientation_dashboard(user))
 
 
-@router.get("/teacher/internship/visit-plans", summary="指导巡访·本月巡访计划学生列表")
+@internship_teacher_mobile.get("/visit-plans", summary="指导巡访·本月巡访计划学生列表")
 def teacher_internship_visit_plans(user=Depends(get_current_user)):
     return success(tea.internship_visit_plans(user))
 
 
-@router.post("/teacher/internship/visit-plans/record", summary="记录巡访（按学生实习记录ID，范围校验+审计）")
+@internship_teacher_mobile.post("/visit-plans/record", summary="记录巡访（按学生实习记录ID，范围校验+审计）")
 def teacher_internship_visit_record(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.internship_visit_record(user, body.get("internshipId") or ""), message="已记录巡访")
 
@@ -565,7 +593,7 @@ def teacher_academic(user=Depends(get_current_user)):
     return success(tea.academic(user))
 
 
-@router.get("/teacher/internship", summary="教师·实习待批")
+@internship_teacher_mobile.get("", summary="教师·实习待批")
 def teacher_internship(user=Depends(get_current_user)):
     return success(tea.internship(user))
 
@@ -1011,7 +1039,7 @@ def teacher_approval_reject(task_id: str, body: dict = Body(default={}),
                    message="已驳回")
 
 
-@router.post("/teacher/internship/weekly/{report_id}/review",
+@internship_teacher_mobile.post("/weekly/{report_id}/review",
              summary="教师·实习周报批阅（APPROVE/RETURN，范围校验+审计）")
 def teacher_weekly_review(report_id: str, body: dict = Body(...),
                           user=Depends(get_current_user)):
@@ -1019,14 +1047,14 @@ def teacher_weekly_review(report_id: str, body: dict = Body(...),
                                      body.get("comment") or ""), message="批阅完成")
 
 
-@router.post("/teacher/internship/weekly/{report_id}/remind",
+@internship_teacher_mobile.post("/weekly/{report_id}/remind",
              summary="教师·逾期未交周报催交（范围校验+站内信+审计）")
 def teacher_weekly_remind(report_id: str, user=Depends(get_current_user)):
     from app.modules.internship.services import internship_service as svc
     return success(svc.remind_weekly_report(report_id, user=user), message="已催交")
 
 
-@router.post("/teacher/internship/exception/{exception_id}/handle",
+@internship_teacher_mobile.post("/exception/{exception_id}/handle",
              summary="教师·打卡异常处理（REASONABLE/ABNORMAL/TO_RISK，审计）")
 def teacher_exception_handle(exception_id: str, body: dict = Body(...),
                              user=Depends(get_current_user)):
@@ -1034,12 +1062,12 @@ def teacher_exception_handle(exception_id: str, body: dict = Body(...),
                                         body.get("comment") or ""), message="处理完成")
 
 
-@router.get("/teacher/internship/makeups/pending", summary="教师·补卡审批待处理队列（范围校验）")
+@internship_teacher_mobile.get("/makeups/pending", summary="教师·补卡审批待处理队列（范围校验）")
 def teacher_makeup_pending(user=Depends(get_current_user)):
     return success(tea.makeup_pending(user))
 
 
-@router.post("/teacher/internship/makeups/{makeup_id}/review",
+@internship_teacher_mobile.post("/makeups/{makeup_id}/review",
              summary="教师·补卡审批（APPROVE/REJECT，owner+范围校验，通过真实补写打卡）")
 def teacher_makeup_review(makeup_id: str, body: dict = Body(...),
                           user=Depends(get_current_user)):
@@ -1047,12 +1075,12 @@ def teacher_makeup_review(makeup_id: str, body: dict = Body(...),
                                      body.get("comment") or ""), message="处理完成")
 
 
-@router.get("/teacher/internship/leaves/pending", summary="教师·实习请假审批待处理队列（范围校验）")
+@internship_teacher_mobile.get("/leaves/pending", summary="教师·实习请假审批待处理队列（范围校验）")
 def teacher_leave_pending(user=Depends(get_current_user)):
     return success(tea.leave_pending(user))
 
 
-@router.post("/teacher/internship/leaves/{leave_id}/review",
+@internship_teacher_mobile.post("/leaves/{leave_id}/review",
              summary="教师·实习请假审批（APPROVE/REJECT，owner+范围校验）")
 def teacher_leave_review(leave_id: str, body: dict = Body(...),
                          user=Depends(get_current_user)):
@@ -1060,12 +1088,12 @@ def teacher_leave_review(leave_id: str, body: dict = Body(...),
                                     body.get("comment") or ""), message="处理完成")
 
 
-@router.get("/teacher/internship/leaves/overdue", summary="教师·超期未销假/已销假待办结队列")
+@internship_teacher_mobile.get("/leaves/overdue", summary="教师·超期未销假/已销假待办结队列")
 def teacher_leave_overdue(user=Depends(get_current_user)):
     return success(tea.leave_overdue(user))
 
 
-@router.post("/teacher/internship/leaves/{leave_id}/ack-return",
+@internship_teacher_mobile.post("/leaves/{leave_id}/ack-return",
              summary="教师·确认销假办结（关闭 INT-R06 超期风险）")
 def teacher_leave_ack_return(leave_id: str, body: dict = Body(default={}),
                              user=Depends(get_current_user)):
@@ -1073,58 +1101,58 @@ def teacher_leave_ack_return(leave_id: str, body: dict = Body(default={}),
                    message="已办结")
 
 
-@router.get("/teacher/internship/risks", summary="教师·实习风险待办（含学生求助，范围校验）")
+@internship_teacher_mobile.get("/risks", summary="教师·实习风险待办（含学生求助，范围校验）")
 def teacher_internship_risks(user=Depends(get_current_user)):
     return success(tea.internship_risks_pending(user))
 
 
-@router.post("/teacher/internship/risks/{risk_id}/handle", summary="教师·受理实习风险")
+@internship_teacher_mobile.post("/risks/{risk_id}/handle", summary="教师·受理实习风险")
 def teacher_internship_risk_handle(risk_id: str, body: dict = Body(...),
                                    user=Depends(get_current_user)):
     return success(tea.internship_risk_handle(user, risk_id, body or {}), message="已受理")
 
 
-@router.post("/teacher/internship/risks/{risk_id}/follow", summary="教师·跟进实习风险")
+@internship_teacher_mobile.post("/risks/{risk_id}/follow", summary="教师·跟进实习风险")
 def teacher_internship_risk_follow(risk_id: str, body: dict = Body(...),
                                    user=Depends(get_current_user)):
     return success(tea.internship_risk_follow(user, risk_id, (body or {}).get("note") or "", body or {}),
                    message="已跟进")
 
 
-@router.post("/teacher/internship/risks/{risk_id}/close", summary="教师·关闭实习风险")
+@internship_teacher_mobile.post("/risks/{risk_id}/close", summary="教师·关闭实习风险")
 def teacher_internship_risk_close(risk_id: str, body: dict = Body(...),
                                   user=Depends(get_current_user)):
     return success(tea.internship_risk_close(user, risk_id, body or {}), message="已关闭")
 
 
-@router.get("/teacher/internship/my-students", summary="指导教师·本人指导实习学生名单（范围校验，供选择记指导记录）")
+@internship_teacher_mobile.get("/my-students", summary="指导教师·本人指导实习学生名单（范围校验，供选择记指导记录）")
 def teacher_internship_my_students(batchId: str | None = None, user=Depends(get_current_user)):
     return success(tea.internship_my_students(user, batch_id=batchId))
 
 
-@router.post("/teacher/internship/guidance", summary="指导教师·新增指导记录（owner 校验，可联动转风险/通知辅导员）")
+@internship_teacher_mobile.post("/guidance", summary="指导教师·新增指导记录（owner 校验，可联动转风险/通知辅导员）")
 def teacher_internship_guidance_create(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.internship_guidance_create(user, body), message="指导记录已保存")
 
 
-@router.get("/teacher/internship/student-evals", summary="指导教师·学生实习鉴定队列（范围校验）")
+@internship_teacher_mobile.get("/student-evals", summary="指导教师·学生实习鉴定队列（范围校验）")
 def teacher_student_eval_pending(user=Depends(get_current_user)):
     return success(tea.student_eval_pending(user))
 
 
-@router.get("/teacher/internship/student-evals/{eval_id}", summary="指导教师·学生实习鉴定详情（自评/意见/审核留痕，范围校验）")
+@internship_teacher_mobile.get("/student-evals/{eval_id}", summary="指导教师·学生实习鉴定详情（自评/意见/审核留痕，范围校验）")
 def teacher_student_eval_detail(eval_id: str, user=Depends(get_current_user)):
     return success(tea.student_eval_detail(user, eval_id))
 
 
-@router.post("/teacher/internship/student-evals/{eval_id}/advisor-comment",
+@internship_teacher_mobile.post("/student-evals/{eval_id}/advisor-comment",
              summary="指导教师·填写学生鉴定意见（owner 校验）")
 def teacher_student_eval_advisor_comment(eval_id: str, body: dict = Body(...),
                                          user=Depends(get_current_user)):
     return success(tea.student_eval_advisor_comment(user, eval_id, body), message="已保存意见")
 
 
-@router.post("/teacher/internship/student-evals/{eval_id}/review",
+@internship_teacher_mobile.post("/student-evals/{eval_id}/review",
              summary="指导教师·审核学生实习鉴定（APPROVE/RETURN，owner 校验）")
 def teacher_student_eval_review(eval_id: str, body: dict = Body(...),
                                 user=Depends(get_current_user)):
@@ -1132,17 +1160,17 @@ def teacher_student_eval_review(eval_id: str, body: dict = Body(...),
                                            body.get("comment") or ""), message="审核完成")
 
 
-@router.get("/teacher/internship/enterprise-evals", summary="指导教师·企业评价列表（范围校验）")
+@internship_teacher_mobile.get("/enterprise-evals", summary="指导教师·企业评价列表（范围校验）")
 def teacher_enterprise_eval_pending(user=Depends(get_current_user)):
     return success(tea.enterprise_eval_pending(user))
 
 
-@router.post("/teacher/internship/enterprise-evals", summary="指导教师·录入企业评价（学校录入企业纸质评价，五维评分，owner 校验）")
+@internship_teacher_mobile.post("/enterprise-evals", summary="指导教师·录入企业评价（学校录入企业纸质评价，五维评分，owner 校验）")
 def teacher_enterprise_eval_create(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.enterprise_eval_create(user, body), message="已录入企业评价")
 
 
-@router.post("/teacher/internship/enterprise-evals/{eval_id}/review",
+@internship_teacher_mobile.post("/enterprise-evals/{eval_id}/review",
              summary="指导教师·审核企业评价（APPROVE/RETURN，owner 校验）")
 def teacher_enterprise_eval_review(eval_id: str, body: dict = Body(...),
                                    user=Depends(get_current_user)):
@@ -1150,12 +1178,12 @@ def teacher_enterprise_eval_review(eval_id: str, body: dict = Body(...),
                                               body.get("comment") or ""), message="审核完成")
 
 
-@router.get("/teacher/internship/insurances/pending", summary="指导教师·实习保险待核验队列（范围校验）")
+@internship_teacher_mobile.get("/insurances/pending", summary="指导教师·实习保险待核验队列（范围校验）")
 def teacher_insurance_pending(user=Depends(get_current_user)):
     return success(tea.insurance_pending(user))
 
 
-@router.post("/teacher/internship/insurances/{insurance_id}/verify",
+@internship_teacher_mobile.post("/insurances/{insurance_id}/verify",
              summary="指导教师·实习保险核验（APPROVE/REJECT，owner 校验）")
 def teacher_insurance_verify(insurance_id: str, body: dict = Body(...),
                              user=Depends(get_current_user)):
@@ -1163,12 +1191,12 @@ def teacher_insurance_verify(insurance_id: str, body: dict = Body(...),
                                         body.get("comment") or ""), message="核验完成")
 
 
-@router.get("/teacher/internship/change-requests/pending", summary="指导教师·调岗退岗初审待处理队列（范围校验）")
+@internship_teacher_mobile.get("/change-requests/pending", summary="指导教师·调岗退岗初审待处理队列（范围校验）")
 def teacher_internship_change_pending(user=Depends(get_current_user)):
     return success(tea.internship_change_pending(user))
 
 
-@router.post("/teacher/internship/change-requests/{change_id}/review",
+@internship_teacher_mobile.post("/change-requests/{change_id}/review",
              summary="指导教师·调岗退岗初审（APPROVE/REJECT，owner 校验）")
 def teacher_internship_change_review(change_id: str, body: dict = Body(...),
                                      user=Depends(get_current_user)):
@@ -1176,43 +1204,43 @@ def teacher_internship_change_review(change_id: str, body: dict = Body(...),
                                                 body.get("comment") or ""), message="审核完成")
 
 
-@router.get("/teacher/internship/scores", summary="指导教师·实习成绩列表（范围校验）")
+@internship_teacher_mobile.get("/scores", summary="指导教师·实习成绩列表（范围校验）")
 def teacher_internship_score_list(user=Depends(get_current_user)):
     return success(tea.internship_score_list(user))
 
 
-@router.post("/teacher/internship/scores/compute", summary="指导教师·实习成绩核算（五项加权，owner 校验）")
+@internship_teacher_mobile.post("/scores/compute", summary="指导教师·实习成绩核算（五项加权，owner 校验）")
 def teacher_internship_score_compute(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.internship_score_compute(user, body), message="核算完成")
 
 
-@router.post("/teacher/internship/scores/{score_id}/publish", summary="指导教师·实习成绩发布（owner 校验，缺项不可发布）")
+@internship_teacher_mobile.post("/scores/{score_id}/publish", summary="指导教师·实习成绩发布（owner 校验，缺项不可发布）")
 def teacher_internship_score_publish(score_id: str, user=Depends(get_current_user)):
     return success(tea.internship_score_publish(user, score_id), message="已发布")
 
 
-@router.get("/teacher/internship/agreements/pending-school", summary="指导教师·三方协议待学校确认队列（范围校验）")
+@internship_teacher_mobile.get("/agreements/pending-school", summary="指导教师·三方协议待学校确认队列（范围校验）")
 def teacher_agreement_pending_school(user=Depends(get_current_user)):
     return success(tea.agreement_pending_school(user))
 
 
-@router.post("/teacher/internship/agreements/{agreement_id}/school-confirm",
+@internship_teacher_mobile.post("/agreements/{agreement_id}/school-confirm",
              summary="指导教师·三方协议学校确认生效（owner 校验）")
 def teacher_agreement_school_confirm(agreement_id: str, user=Depends(get_current_user)):
     return success(tea.agreement_school_confirm(user, agreement_id), message="已确认生效")
 
 
-@router.get("/teacher/internship/process-reports", summary="指导教师·过程报告(日报/月报/总结)待批阅队列（范围校验）")
+@internship_teacher_mobile.get("/process-reports", summary="指导教师·过程报告(日报/月报/总结)待批阅队列（范围校验）")
 def teacher_process_report_pending(user=Depends(get_current_user)):
     return success(tea.process_report_pending(user))
 
 
-@router.get("/teacher/internship/process-reports/{report_id}", summary="指导教师·过程报告详情（含正文，范围校验）")
+@internship_teacher_mobile.get("/process-reports/{report_id}", summary="指导教师·过程报告详情（含正文，范围校验）")
 def teacher_process_report_detail(report_id: str, user=Depends(get_current_user)):
     return success(tea.process_report_detail(user, report_id))
 
 
-@router.post("/teacher/internship/process-reports/{report_id}/review",
+@internship_teacher_mobile.post("/process-reports/{report_id}/review",
              summary="指导教师·过程报告批阅（APPROVE/RETURN，owner 校验）")
 def teacher_process_report_review(report_id: str, body: dict = Body(...),
                                   user=Depends(get_current_user)):
@@ -1220,12 +1248,12 @@ def teacher_process_report_review(report_id: str, body: dict = Body(...),
                                              body.get("comment") or ""), message="批阅完成")
 
 
-@router.get("/teacher/internship/plan-tasks/pending", summary="指导教师·实习计划任务完成度待确认队列（范围校验）")
+@internship_teacher_mobile.get("/plan-tasks/pending", summary="指导教师·实习计划任务完成度待确认队列（范围校验）")
 def teacher_plan_task_pending(user=Depends(get_current_user)):
     return success(tea.plan_task_pending(user))
 
 
-@router.post("/teacher/internship/plan-tasks/{progress_id}/review",
+@internship_teacher_mobile.post("/plan-tasks/{progress_id}/review",
              summary="指导教师·实习计划任务完成度确认（APPROVE/REJECT，owner 校验）")
 def teacher_plan_task_review(progress_id: str, body: dict = Body(...),
                              user=Depends(get_current_user)):
@@ -1233,12 +1261,12 @@ def teacher_plan_task_review(progress_id: str, body: dict = Body(...),
                                         body.get("comment") or ""), message="处理完成")
 
 
-@router.get("/teacher/internship/applications/pending", summary="指导教师·实习申请待审核队列（范围校验）")
+@internship_teacher_mobile.get("/applications/pending", summary="指导教师·实习申请待审核队列（范围校验）")
 def teacher_internship_application_pending(user=Depends(get_current_user)):
     return success(tea.internship_application_pending(user))
 
 
-@router.post("/teacher/internship/applications/{application_id}/review",
+@internship_teacher_mobile.post("/applications/{application_id}/review",
              summary="指导教师·实习申请审核（APPROVE/REJECT，owner 校验，通过后落岗）")
 def teacher_internship_application_review(application_id: str, body: dict = Body(...),
                                           user=Depends(get_current_user)):
@@ -1938,3 +1966,5 @@ def teacher_workload_submit(body: dict = Body(...), user=Depends(get_current_use
 
 
 router.include_router(gd)
+router.include_router(internship_mobile)
+router.include_router(internship_teacher_mobile)

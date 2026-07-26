@@ -169,7 +169,10 @@ export default {
     async submitAssign() {
       this.assignError = ''; this.submitting = true
       try {
-        const res = await internStudentApi.assignPosition(this.detail.id, { positionId: this.assignPositionId })
+        const res = await internStudentApi.assignPosition(this.detail.id, {
+          positionId: this.assignPositionId,
+          expectedVersion: this.detail.version
+        })
         if (res.code === 0) { toast.success('已分配岗位'); this.assignVisible = false; this.load() } else this.assignError = res.message
       } finally { this.submitting = false }
     },
@@ -201,7 +204,9 @@ export default {
       try {
         let res
         if (action === 'ELIG') res = await internStudentApi.setEligibility(this.detail.id, { status: 'QUALIFIED', reason: reason || '' })
-        else if (action === 'UNASSIGN') res = await internStudentApi.unassignPosition(this.detail.id, { reason: reason || '' })
+        else if (action === 'UNASSIGN') res = await internStudentApi.unassignPosition(this.detail.id, {
+          reason: reason || '', expectedVersion: this.detail.version
+        })
         else if (action === 'STATUS') res = await internStudentApi.setStatus(this.detail.id, { action: extra, reason: reason || '' })
         else if (action === 'DEST') res = await internStudentApi.setDestination(this.detail.id, { destination: extra, reason: reason || '' })
         if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; this.load() } else if (res) toast.error(res.message)

@@ -20,7 +20,10 @@ from app.modules.internship.services import internship_archive_service as svc
 router = APIRouter(prefix="/internship", tags=["岗位实习-实习归档"])
 
 _P_VIEW = "internship.archive.view"
-_P_MANAGE = "internship.archive.manage"
+_P_EXECUTE = "internship.archive.execute"
+_P_FORCE = "internship.archive.force"
+_P_REVOKE = "internship.archive.revoke"
+_P_PACKAGE = "internship.archive.package"
 
 
 @router.get("/archive", summary="归档台账列表（材料完整度/缺失，按数据范围）")
@@ -44,7 +47,7 @@ def archive_by_batch(batchId: Optional[str] = None, user=Depends(require_permiss
 
 @router.post("/archive/export", summary="导出归档台账（xlsx）")
 def archive_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
-                   user=Depends(require_permission(_P_MANAGE))):
+                   user=Depends(require_permission(_P_PACKAGE))):
     return success(svc.export_archives(user=user, keyword=keyword, batch_id=batchId))
 
 
@@ -54,21 +57,25 @@ def archive_detail(internship_id: int, user=Depends(require_permission(_P_VIEW))
 
 
 @router.post("/archive/{internship_id}/archive", summary="归档学生（完整→直接；缺失需 force）")
-def archive_do(internship_id: int, body: Optional[dict] = Body(None), user=Depends(require_permission(_P_MANAGE))):
+def archive_do(internship_id: int, body: Optional[dict] = Body(None), user=Depends(require_permission(_P_EXECUTE))):
     force = bool((body or {}).get("force", False))
     return success(svc.archive_student(
         user, internship_id, force=force,
-        expected_version=(body or {}).get("expectedVersion", (body or {}).get("version"))))
+        force_reason=(body or {}).get("forceReason", ""),
+        evidence_file_ids=(body or {}).get("evidenceFileIds") or [],
+        expected_version=(body or {}).get("expectedVersion", (body or {}).get("version")),
+        record_expected_version=(body or {}).get("recordExpectedVersion")))
 
 
 @router.post("/archive/{internship_id}/package", summary="生成归档包（zip，落文件中心）")
-def archive_package(internship_id: int, user=Depends(require_permission(_P_MANAGE))):
+def archive_package(internship_id: int, user=Depends(require_permission(_P_PACKAGE))):
     return success(svc.build_package(user, internship_id))
 
 
 @router.post("/archive/{internship_id}/revoke", summary="撤销归档（需原因，≥5 字）")
-def archive_revoke(internship_id: int, body: Optional[dict] = Body(None), user=Depends(require_permission(_P_MANAGE))):
+def archive_revoke(internship_id: int, body: Optional[dict] = Body(None), user=Depends(require_permission(_P_REVOKE))):
     reason = (body or {}).get("reason", "")
     return success(svc.revoke_archive(
         user, internship_id, reason=reason,
-        expected_version=(body or {}).get("expectedVersion", (body or {}).get("version"))))
+        expected_version=(body or {}).get("expectedVersion", (body or {}).get("version")),
+        record_expected_version=(body or {}).get("recordExpectedVersion")))

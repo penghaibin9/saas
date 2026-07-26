@@ -50,9 +50,8 @@ def _item(code, cfg, status, reason="", evidence=None, route=""):
 
 def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None):
     with session() as db:
-        rec = db.get(InternshipRecord, _as_id(internship_id))
-        if not rec or rec.is_deleted or rec.tenant_id != _tid():
-            raise not_found("实习记录不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        rec = assert_internship_record_scope(db, internship_id, user, "合规评估")
         batch = db.get(InternshipBatch, rec.batch_id) if rec.batch_id else None
         rules = get_batch_compliance_rules(db, batch)
         version = rule_version_label(batch)
@@ -297,9 +296,8 @@ def grant_exemption(body, user=None):
     from app.modules.internship.services.internship_version import extract_expected_version
     # expectedVersion on internship record optional for exemption create
     with session() as db:
-        rec = db.get(InternshipRecord, _as_id(b["internshipId"]))
-        if not rec or rec.tenant_id != _tid():
-            raise not_found("实习记录不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        rec = assert_internship_record_scope(db, b["internshipId"], user, "合规豁免")
         if b.get("expectedVersion") is not None:
             extract_expected_version(b)
         from app.models import InternshipComplianceExemption, InternshipAuditTrail
@@ -334,7 +332,10 @@ def batch_compliance_stats(batch_id, user=None):
             InternshipRecord.batch_id == _as_id(batch_id),
             InternshipRecord.is_deleted.is_(False),
         )).all()
-        ids = [r.id for r in rows]
+        from app.modules.internship.services.internship_student_service import _current_scope, _rec_in_scope
+        scope = _current_scope(user)
+        ids = [r.id for r in rows if _rec_in_scope(
+            scope, db, r, db.get(StudentProfile, r.student_id))]
     results = [evaluate_internship_compliance(i, "BATCH_CLOSE", user) for i in ids]
     blocked_ids = [str(i) for i, r in zip(ids, results) if not r["passed"]]
     missing = {}

@@ -124,6 +124,7 @@ def _row(db, app: InternshipApplication, rec=None, stu=None) -> dict:
         "submittedAt": _iso(app.submitted_at) or "", "reviewedBy": app.reviewed_by_name or "",
         "reviewedAt": _iso(app.reviewed_at) or "", "reviewComment": app.review_comment or "",
         "version": int(app.version or 0),
+        "recordVersion": int(rec.version or 0) if rec else None,
         "createdAt": _iso(app.created_at) or "",
     }
 
@@ -350,7 +351,7 @@ def _rollback_approved_application(app_id, cancelled_siblings, user: dict | None
 
 
 def review_application(app_id, action: str, comment: str = "", user: dict | None = None,
-                       *, expected_version=None) -> dict:
+                       *, expected_version=None, record_expected_version=None) -> dict:
     from app.modules.internship.services.internship_version import (
         extract_expected_version, versioned_update,
     )
@@ -361,10 +362,18 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
     if action == "REJECT" and len(comment) < 5:
         raise AppException("VALIDATION_ERROR", "驳回原因不少于 5 个字符")
     ver = extract_expected_version({"expectedVersion": expected_version})
-    cancelled_siblings: list[dict] = []
     with session() as db:
-        app = _get(db, app_id)
-        rec, stu = db.get(InternshipRecord, app.record_id), db.get(StudentProfile, app.student_id)
+        app = db.scalar(select(InternshipApplication).where(
+            InternshipApplication.id == _as_id(app_id),
+            InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.is_deleted.is_(False)).with_for_update())
+        if not app:
+            raise not_found("实习申请不存在")
+        rec = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == app.record_id,
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False)).with_for_update())
+        stu = db.get(StudentProfile, app.student_id)
         _scope_check(db, rec, stu, user)
         if app.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待审核申请可处理")
@@ -385,9 +394,18 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             out = _row(db, app, rec, stu)
             out["version"] = new_ver
             return out
-        record_id, position_id, app_type = app.record_id, app.position_id, app.application_type
-        self_company, self_position = app.company_name, app.position_name
-        # 先原子领取审核权，再做落岗；避免双审并发都去分配名额
+        # 申请、学生记录、岗位名额、其他志愿、审计全部留在同一事务。
+        if app.application_type == "POSITION":
+            student_svc.assign_position_in_tx(
+                db, rec, app.position_id, record_expected_version, user=user)
+        else:
+            record_ver = extract_expected_version({"expectedVersion": record_expected_version})
+            if int(rec.version or 0) != record_ver:
+                raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
+            rec.destination_type = "SELF_ARRANGED"
+            rec.enterprise_name = app.company_name
+            rec.position_name = app.position_name
+            rec.version = record_ver + 1
         new_ver = versioned_update(
             db, InternshipApplication, entity_id=app.id, tenant_id=_tid(),
             expected_version=ver, expected_status="PENDING_REVIEW",
@@ -403,43 +421,12 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             InternshipApplication.id != app.id, InternshipApplication.status.in_(_ACTIVE),
             InternshipApplication.is_deleted.is_(False))).all()
         for other in others:
-            cancelled_siblings.append({
-                "id": other.id,
-                "status": other.status,
-                "review_comment": other.review_comment,
-                "reviewed_by_name": other.reviewed_by_name,
-                "reviewed_at": other.reviewed_at,
-            })
             other.status = "CANCELLED"
             other.review_comment = _CANCEL_SIBLING_COMMENT
             other.reviewed_by_name, other.reviewed_at = _op_name(user), datetime.utcnow()
             other.version = int(other.version or 0) + 1
         _trail(db, app.id, "APPROVE", {"applicationType": app.application_type}, user)
         db.commit()
-    # Existing assignment is the only authoritative capacity write path.
-    try:
-        if app_type == "POSITION":
-            student_svc.assign_position(record_id, position_id, user=user)
-        else:
-            student_svc.set_destination(record_id, "SELF_ARRANGED", "审核通过自主实习申请", user=user)
-            try:
-                with session() as db:
-                    rec = db.get(InternshipRecord, record_id)
-                    if rec:
-                        rec.enterprise_name = self_company
-                        rec.position_name = self_position
-                        db.commit()
-            except Exception:
-                try:
-                    student_svc.set_destination(record_id, "NONE", "审核落岗失败回滚", user=user)
-                except Exception:  # noqa: BLE001 — 尽力补偿
-                    pass
-                raise
-    except Exception as exc:
-        _rollback_approved_application(
-            app_id, cancelled_siblings, user=user, reason=_exc_reason(exc))
-        raise
-    with session() as db:
         app = _get(db, app_id)
         rec, stu = db.get(InternshipRecord, app.record_id), db.get(StudentProfile, app.student_id)
         out = _row(db, app, rec, stu)

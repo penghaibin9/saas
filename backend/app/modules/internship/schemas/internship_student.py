@@ -24,14 +24,17 @@ class StudentRecordUpdate(BaseModel):
 
 class AssignPositionRequest(BaseModel):
     positionId: str = Field(..., description="岗位库 t_internship_position.id（须已上架、企业非黑名单、未满员）")
+    expectedVersion: int = Field(..., ge=0, description="实习学生记录乐观锁版本")
 
 
 class UnassignRequest(BaseModel):
     reason: Optional[str] = ""
+    expectedVersion: int = Field(..., ge=0, description="实习学生记录乐观锁版本")
 
 
 class StudentStatusRequest(BaseModel):
-    action: str = Field(..., description="READY / ONBOARD / ASSESS / ARCHIVE")
+    action: str = Field(..., pattern="^(READY|ONBOARD|ASSESS)$",
+                        description="READY / ONBOARD / ASSESS；归档只能走正式归档接口")
     reason: Optional[str] = ""
 
 

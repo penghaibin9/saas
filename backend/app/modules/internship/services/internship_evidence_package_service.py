@@ -20,6 +20,11 @@ def generate(package_type, target_id, user=None):
         elif typ=="ENTERPRISE":
             records=db.scalars(select(InternshipRecord).where(InternshipRecord.tenant_id==_tid(),InternshipRecord.enterprise_id==_as_id(target_id),InternshipRecord.is_deleted.is_(False))).all();batch_id=None
         else:raise AppException("VALIDATION_ERROR","packageType 必须为 STUDENT/BATCH/ENTERPRISE")
+        from app.modules.internship.services.internship_student_service import _current_scope, _rec_in_scope
+        from app.models import StudentProfile
+        scope = _current_scope(user)
+        records = [rec for rec in records if _rec_in_scope(
+            scope, db, rec, db.get(StudentProfile, rec.student_id))]
         if len(records)>MAX_STUDENTS:raise AppException("VALIDATION_ERROR",f"单次证据包最多 {MAX_STUDENTS} 名学生")
         results=[evaluate_internship_compliance(x.id,"ARCHIVE",user) for x in records]
         missing=[{"internshipId":str(x.id),"items":[i["code"] for i in r["blockers"]]} for x,r in zip(records,results) if r["blockers"]]

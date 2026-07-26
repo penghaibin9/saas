@@ -52,19 +52,24 @@ export const archiveApi = {
     return call(() => request(`${B}/by-enterprise`, { params }))
   },
 
-  archive(id, { force, expectedVersion, version, recordVersion } = {}) {
+  archive(id, { force, forceReason, evidenceFileIds, expectedVersion, version, recordVersion,
+                recordExpectedVersion } = {}) {
     return call(() => request(`${B}/${id}/archive`, {
       method: 'POST',
       body: {
-        force: !!force,
-        expectedVersion: expectedVersion ?? version ?? recordVersion
+        force: !!force, forceReason, evidenceFileIds,
+        expectedVersion: expectedVersion ?? version ?? recordVersion,
+        recordExpectedVersion: recordExpectedVersion ?? recordVersion
       }
     }))
   },
 
-  revoke(id, { reason, expectedVersion, version }) {
+  revoke(id, { reason, expectedVersion, version, recordExpectedVersion, recordVersion }) {
     return call(() => request(`${B}/${id}/revoke`, {
-      method: 'POST', body: { reason, expectedVersion: expectedVersion ?? version }
+      method: 'POST', body: {
+        reason, expectedVersion: expectedVersion ?? version,
+        recordExpectedVersion: recordExpectedVersion ?? recordVersion
+      }
     }))
   },
 

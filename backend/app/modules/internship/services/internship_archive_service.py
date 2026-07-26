@@ -148,9 +148,21 @@ def get_archive(internship_id, user=None) -> dict:
         return row
 
 
-def archive_student(user, internship_id, force=False, expected_version=None) -> dict:
+def archive_student(user, internship_id, force=False, expected_version=None,
+                    force_reason="", evidence_file_ids=None,
+                    record_expected_version=None) -> dict:
     """归档：快照材料完整性并锁定。默认要求 100% 完整；force=True 允许带缺失归档（记 missing）。"""
     scope, in_scope = _scope_ctx(user)
+    if force:
+        from app.core.permissions import enforce_permission, is_super_admin
+        enforce_permission(user or {}, "internship.archive.force")
+        role = ((user or {}).get("currentRoleCode") or (user or {}).get("userType") or "").upper()
+        if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
+            raise no_permission("仅学校管理员可执行强制归档")
+        if len((force_reason or "").strip()) < 10:
+            raise AppException("VALIDATION_ERROR", "强制归档原因必填且不少于 10 字")
+        if not evidence_file_ids:
+            raise AppException("VALIDATION_ERROR", "强制归档必须提供依据文件")
     with session() as db:
         r = db.get(InternshipRecord, _as_id(internship_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
@@ -177,13 +189,15 @@ def archive_student(user, internship_id, force=False, expected_version=None) -> 
             raise AppException("DATA_CONFLICT", "存在待批周报，请先批阅后再归档（或强制归档）")
         arch = _archive_row(db, r.id)
         new = arch is None
+        previous_status = r.status
         if new:
             record_ver = extract_expected_version({"expectedVersion": expected_version})
             new_record_ver = versioned_update(
                 db, InternshipRecord, entity_id=r.id, tenant_id=_tid(), expected_version=record_ver,
                 expected_status=r.status, values={"status": "ARCHIVED"})
-            arch = InternshipArchive(tenant_id=_tid(), internship_id=r.id, student_id=r.student_id,
-                                     batch_id=r.batch_id)
+            arch = InternshipArchive(
+                tenant_id=_tid(), internship_id=r.id, student_id=r.student_id,
+                batch_id=r.batch_id, previous_record_status=previous_status)
             db.add(arch)
             arch.completeness = pct
             arch.missing_items = "、".join(missing) or None
@@ -191,19 +205,31 @@ def archive_student(user, internship_id, force=False, expected_version=None) -> 
             arch.status = "ARCHIVED"
             arch.archived_by_name = _op_name(user)
             arch.archived_at = datetime.utcnow()
+            arch.force_reason = (force_reason or "").strip() or None
+            arch.force_evidence_file_ids = evidence_file_ids or None
             arch.version = (arch.version or 0) + 1
             archive_ver = arch.version
         else:
-            new_record_ver = int(r.version or 0)
+            record_ver = extract_expected_version(
+                {"expectedVersion": record_expected_version})
+            new_record_ver = versioned_update(
+                db, InternshipRecord, entity_id=r.id, tenant_id=_tid(),
+                expected_version=record_ver, expected_status=r.status,
+                values={"status": "ARCHIVED"})
             archive_ver = versioned_update(
                 db, InternshipArchive, entity_id=arch.id, tenant_id=_tid(),
                 expected_version=extract_expected_version({"expectedVersion": expected_version}),
                 expected_status=arch.status,
                 values={"completeness": pct, "missing_items": "、".join(missing) or None,
                         "material_snapshot": mats, "status": "ARCHIVED",
-                        "archived_by_name": _op_name(user), "archived_at": datetime.utcnow()})
+                        "archived_by_name": _op_name(user), "archived_at": datetime.utcnow(),
+                        "previous_record_status": previous_status,
+                        "force_reason": (force_reason or "").strip() or None,
+                        "force_evidence_file_ids": evidence_file_ids or None})
         db.flush()
-        _trail(db, r.id, "ARCHIVE", {"completeness": pct, "missing": missing, "force": force},
+        _trail(db, r.id, "ARCHIVE", {"completeness": pct, "missing": missing, "force": force,
+                                     "forceReason": (force_reason or "").strip(),
+                                     "evidenceFileIds": evidence_file_ids or []},
                operator=_op_name(user))
         db.commit()
         return {"id": str(r.id), "completeness": pct, "missing": missing, "archived": True,
@@ -277,12 +303,20 @@ def build_package(user, internship_id) -> dict:
                 "sizeBytes": meta["sizeBytes"], "packageReady": True}
 
 
-def revoke_archive(user, internship_id, reason="", expected_version=None) -> dict:
+def revoke_archive(user, internship_id, reason="", expected_version=None,
+                   record_expected_version=None) -> dict:
+    from app.core.permissions import is_super_admin
+    role = ((user or {}).get("currentRoleCode") or (user or {}).get("userType") or "").upper()
+    if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
+        raise no_permission("仅学校管理员可撤销归档")
     if not (reason or "").strip() or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "撤销归档原因必填且不少于 5 字")
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        r = db.get(InternshipRecord, _as_id(internship_id))
+        r = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == _as_id(internship_id),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False)).with_for_update())
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, r.student_id)
@@ -291,13 +325,26 @@ def revoke_archive(user, internship_id, reason="", expected_version=None) -> dic
         arch = _archive_row(db, r.id)
         if not arch or arch.status != "ARCHIVED":
             raise AppException("DATA_CONFLICT", "该学生未归档")
+        archive_ver = extract_expected_version({"expectedVersion": expected_version})
+        record_ver = extract_expected_version({"expectedVersion": record_expected_version})
+        if int(r.version or 0) != record_ver:
+            raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
+        restore_status = arch.previous_record_status or "ASSESSING"
+        if restore_status == "ARCHIVED":
+            restore_status = "ASSESSING"
         new_ver = versioned_update(
             db, InternshipArchive, entity_id=arch.id, tenant_id=_tid(),
-            expected_version=extract_expected_version({"expectedVersion": expected_version}),
-            expected_status="ARCHIVED", values={"status": "REVOKED"})
+            expected_version=archive_ver, expected_status="ARCHIVED",
+            values={"status": "REVOKED", "revoked_by_name": _op_name(user),
+                    "revoked_at": datetime.utcnow(), "revoke_reason": reason.strip(),
+                    "package_invalidated_at": datetime.utcnow() if arch.package_file_id else None})
+        r.status = restore_status
+        r.version = record_ver + 1
         _trail(db, r.id, "REVOKE", {"reason": reason.strip()}, operator=_op_name(user))
         db.commit()
-        return {"id": str(r.id), "archived": False, "version": new_ver}
+        return {"id": str(r.id), "archived": False, "version": new_ver,
+                "recordVersion": r.version, "recordStatus": restore_status,
+                "packageInvalidated": bool(arch.package_file_id)}
 
 
 def _aggregate(pairs, db, group_key):

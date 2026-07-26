@@ -452,6 +452,15 @@ class InternshipArchive(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ARCHIVED",
                                         comment="ARCHIVED/REVOKED")
     package_file_id: Mapped[str | None] = mapped_column(String(64), comment="归档包 file_id")
+    previous_record_status: Mapped[str | None] = mapped_column(
+        String(20), comment="归档前实习记录状态，撤销时恢复")
+    package_invalidated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, comment="撤销归档时标记既有归档包失效")
+    revoked_by_name: Mapped[str | None] = mapped_column(String(50))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoke_reason: Mapped[str | None] = mapped_column(String(500))
+    force_reason: Mapped[str | None] = mapped_column(String(500))
+    force_evidence_file_ids: Mapped[list | None] = mapped_column(JSON)
     archived_by_name: Mapped[str | None] = mapped_column(String(50))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime)
     remark: Mapped[str | None] = mapped_column(String(500))
