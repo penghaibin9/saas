@@ -1,8 +1,6 @@
 """移动端岗位实习前置门。
 
-- 教师小程序 `/mobile/teacher/internship/*` 必须逐项登记权限，未登记默认拒绝；
-- 学生旧版正式申请、请假撤回/销假无版本写入口默认拒绝；
-- 对象归属仍由业务服务校验。
+教师接口逐项登记权限；学生与教师已迁移流程的旧无版本写入口默认拒绝。
 """
 from __future__ import annotations
 
@@ -17,7 +15,10 @@ from app.core.security import decode_token
 
 _TEACHER_MARKER = "/mobile/teacher/internship"
 _STUDENT_APPLICATION_MARKER = "/mobile/internship/applications"
-_STUDENT_LEAVE_MARKER = "/mobile/internship/leaves"
+_STUDENT_LEAVE_MARKER = "/mobile/internship/leave"
+_STUDENT_MAKEUP_MARKER = "/mobile/internship/makeup"
+_STUDENT_PLAN_MARKER = "/mobile/internship/plan"
+_STUDENT_AGREEMENT_MARKER = "/mobile/internship/agreements"
 
 _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^$"), "internship.dashboard.view"),
@@ -30,6 +31,14 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^context/student-evals(?:/[^/]+)?$"), "internship.eval.self.view"),
     ("POST", re.compile(r"^context/student-evals/[^/]+/advisor-comment$"), "internship.eval.advisor.manage"),
     ("POST", re.compile(r"^context/student-evals/[^/]+/review$"), "internship.eval.self.review"),
+    ("GET", re.compile(r"^context/makeups$"), "internship.makeup.view"),
+    ("POST", re.compile(r"^context/makeups/[^/]+/review$"), "internship.makeup.review"),
+    ("GET", re.compile(r"^context/leaves$"), "internship.leave.view"),
+    ("POST", re.compile(r"^context/leaves/[^/]+/review$"), "internship.leave.review"),
+    ("GET", re.compile(r"^context/plan-tasks$"), "internship.task.view"),
+    ("POST", re.compile(r"^context/plan-tasks/[^/]+/review$"), "internship.task.review"),
+    ("GET", re.compile(r"^context/applications$"), "internship.application.view"),
+    ("POST", re.compile(r"^context/applications/[^/]+/review$"), "internship.application.review"),
     ("GET", re.compile(r"^visit-plans$"), "internship.visit.view"),
     ("POST", re.compile(r"^visit-plans/record$"), "internship.visit.manage"),
     ("POST", re.compile(r"^weekly/[^/]+/(review|remind)$"), "internship.report.review"),
@@ -64,31 +73,57 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
 )
 
 
+def _legacy_error(label: str) -> None:
+    raise AppException(
+        "DATA_CONFLICT",
+        f"旧版{label}写入口已停用，请刷新客户端后通过当前批次版本化入口办理",
+    )
+
+
 def _reject_legacy_student_write(method: str, path: str) -> None:
-    """旧读取兼容；可能静默覆盖的无版本写入口一律 fail closed。"""
     verb = str(method or "").upper()
     if path.startswith(_STUDENT_APPLICATION_MARKER):
         suffix = path[len(_STUDENT_APPLICATION_MARKER):].strip("/")
         if ((verb == "PUT" and not suffix)
                 or (verb == "POST" and re.fullmatch(r"[^/]+/(submit|withdraw)", suffix or ""))):
-            raise AppException(
-                "DATA_CONFLICT",
-                "旧版正式实习申请写入口已停用，请刷新客户端后通过当前批次版本化入口办理",
-            )
+            _legacy_error("正式实习申请")
     if path.startswith(_STUDENT_LEAVE_MARKER):
         suffix = path[len(_STUDENT_LEAVE_MARKER):].strip("/")
-        if verb == "POST" and re.fullmatch(r"[^/]+/(withdraw|return)", suffix or ""):
-            raise AppException(
-                "DATA_CONFLICT",
-                "旧版请假撤回/销假入口已停用，请刷新客户端后通过版本化入口办理",
-            )
+        if verb == "POST" and (not suffix or re.fullmatch(r"[^/]+/(withdraw|return)", suffix or "")):
+            _legacy_error("请假")
+    if path.startswith(_STUDENT_MAKEUP_MARKER):
+        suffix = path[len(_STUDENT_MAKEUP_MARKER):].strip("/")
+        if verb == "POST" and (not suffix or re.fullmatch(r"[^/]+/withdraw", suffix or "")):
+            _legacy_error("补卡")
+    if path.startswith(_STUDENT_PLAN_MARKER) and verb == "POST":
+        suffix = path[len(_STUDENT_PLAN_MARKER):].strip("/")
+        if suffix == "acknowledge" or re.fullmatch(r"tasks/[^/]+/submit", suffix or ""):
+            _legacy_error("实习计划")
+    if path.startswith(_STUDENT_AGREEMENT_MARKER) and verb == "POST":
+        suffix = path[len(_STUDENT_AGREEMENT_MARKER):].strip("/")
+        if re.fullmatch(r"[^/]+/confirm", suffix or ""):
+            _legacy_error("三方协议确认")
+
+
+def _reject_legacy_teacher_write(method: str, path: str) -> None:
+    if _TEACHER_MARKER not in path or str(method or "").upper() != "POST":
+        return
+    suffix = path.split(_TEACHER_MARKER, 1)[1].strip("/")
+    if re.fullmatch(r"makeups/[^/]+/review", suffix):
+        _legacy_error("教师补卡审核")
+    if re.fullmatch(r"leaves/[^/]+/review", suffix):
+        _legacy_error("教师请假审核")
+    if re.fullmatch(r"plan-tasks/[^/]+/review", suffix):
+        _legacy_error("教师计划任务审核")
+    if re.fullmatch(r"applications/[^/]+/review", suffix):
+        _legacy_error("教师正式实习申请审核")
 
 
 def resolve_teacher_internship_permission(method: str, path: str) -> str | None:
     if _TEACHER_MARKER not in path:
         return None
     suffix = path.split(_TEACHER_MARKER, 1)[1].strip("/")
-    verb = (method or "").upper()
+    verb = str(method or "").upper()
     for expected_method, pattern, permission in _RULES:
         if verb == expected_method and pattern.fullmatch(suffix):
             return permission
@@ -97,7 +132,7 @@ def resolve_teacher_internship_permission(method: str, path: str) -> str | None:
 
 
 def _preflight_user(authorization: Optional[str]) -> dict:
-    token = (authorization or "").strip()
+    token = str(authorization or "").strip()
     if token.startswith("Bearer "):
         token = token[7:]
     if not token:
@@ -129,6 +164,7 @@ def enforce_teacher_internship_mobile_permission(
     authorization: Optional[str] = Header(default=None),
 ):
     _reject_legacy_student_write(request.method, request.url.path)
+    _reject_legacy_teacher_write(request.method, request.url.path)
     permission = resolve_teacher_internship_permission(request.method, request.url.path)
     if permission is None:
         return None
