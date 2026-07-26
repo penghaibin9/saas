@@ -1,7 +1,8 @@
 """学工中心四端补充 API。
 
-只增加现有移动/门户接线层缺少的本人编辑、正式调宿、可信签到和正式二课成绩单，
-核心审批状态机仍由 affairs_*_service.py 提供。
+只增加现有移动/门户接线层缺少的本人编辑、正式调宿、可信签到、
+受范围约束的学生候选人与正式二课成绩单；核心审批状态机仍由
+``affairs_*_service.py`` 提供。
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.optimistic_lock import atomic_claim_version
-from app.core.permissions import require_permission
+from app.core.permissions import has_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.services.db_service import _tid, session
@@ -35,7 +36,7 @@ class SelfDormTransferBody(BaseModel):
 
 
 class SecureCheckinBody(BaseModel):
-    token: str = Field(..., min_length=20)
+    token: str = Field(..., min_length=6)
 
 
 def _self_student(db, user):
@@ -58,6 +59,86 @@ def _self_leave(db, leave_id: int, user):
     ):
         raise not_found("请假申请不存在或不属于本人")
     return row, stu
+
+
+def _candidate_rows(db, ids: set[int] | None, limit: int = 200) -> list[dict]:
+    """候选人只回选择器所需最小字段，不返回手机号、身份证等敏感信息。"""
+    from app.models import SchoolClass, StudentProfile
+
+    conds = [
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ]
+    if ids is not None:
+        conds.append(StudentProfile.id.in_(ids or {-1}))
+    rows = db.scalars(
+        select(StudentProfile).where(*conds).order_by(StudentProfile.real_name, StudentProfile.id).limit(limit)
+    ).all()
+    class_ids = {int(x.class_id) for x in rows if x.class_id}
+    classes = {
+        int(x.id): x.class_name
+        for x in db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.id.in_(class_ids or {-1}),
+            SchoolClass.is_deleted.is_(False),
+        )).all()
+    }
+    return [
+        {
+            "studentId": str(x.id),
+            "studentNo": x.student_no or "",
+            "name": x.real_name or "",
+            "className": classes.get(int(x.class_id), "") if x.class_id else "",
+        }
+        for x in rows
+    ]
+
+
+@router.get(
+    "/mobile/teacher/affairs/student-candidates",
+    summary="教师学工操作的受范围约束学生候选人",
+)
+def teacher_affairs_student_candidates(
+    purpose: str = Query("TALK", description="TALK/MENTAL"),
+    user=Depends(get_current_user),
+):
+    purpose = (purpose or "TALK").upper()
+    if purpose not in ("TALK", "MENTAL"):
+        raise AppException("VALIDATION_ERROR", "候选人用途仅支持 TALK/MENTAL")
+
+    with session() as db:
+        if purpose == "MENTAL":
+            if not (
+                has_permission(user, "studentAffairs.mental.manage")
+                or has_permission(user, "studentAffairs.risk.psyDetail.view")
+            ):
+                raise no_permission("当前身份无权选择心理关注学生")
+            from app.services.affairs_mental_service import psy_scope_ids
+            ids = psy_scope_ids(db, user)
+        else:
+            if not has_permission(user, "studentAffairs.talk.create"):
+                raise no_permission("当前身份无权创建谈话计划")
+            from app.core.affairs_security import build_affairs_context
+            ctx = build_affairs_context(user, db)
+            if ctx.scope_type == "TENANT_ALL":
+                ids = None
+            elif ctx.scope_type == "STUDENT":
+                ids = set(ctx.student_ids | ctx.psychology_student_ids)
+            else:
+                class_ids = ctx.allowed_class_ids(db)
+                if class_ids is None:
+                    ids = None
+                elif not class_ids:
+                    ids = set()
+                else:
+                    from app.models import StudentProfile
+                    ids = set(db.scalars(select(StudentProfile.id).where(
+                        StudentProfile.tenant_id == _tid(),
+                        StudentProfile.class_id.in_(class_ids),
+                        StudentProfile.is_deleted.is_(False),
+                    )).all())
+        items = _candidate_rows(db, ids)
+        return success({"items": items, "total": len(items), "purpose": purpose})
 
 
 @router.get("/mobile/affairs/leave/{leave_id}/editable", summary="本人读取退回请假的可编辑内容")
