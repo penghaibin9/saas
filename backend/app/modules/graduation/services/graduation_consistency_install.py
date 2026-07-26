@@ -3,6 +3,7 @@
 不复制已经正确的状态机，只替换仍不一致的旧实现：
 - 开题批阅必须锁定开题行；
 - 成果提交必须先锁定学生，再锁定该生全部成果；
+- 选题志愿退选锁定轮次、学生与志愿，缺失轮次返回 404；
 - 选题变更锁定学生、申请与题目容量；
 - 答辩组编排与通知锁定组和学生；
 - 关键审计补齐稳定 actor；
@@ -17,7 +18,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
-from app.models import GraduationFinal, GraduationMidterm, GraduationProposal, GraduationStudent, GraduationTaskBook
+from app.models import (
+    GraduationFinal,
+    GraduationMidterm,
+    GraduationProposal,
+    GraduationStudent,
+    GraduationTaskBook,
+    GraduationTopicChoice,
+    GraduationTopicRound,
+)
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _tid, session
 
@@ -165,6 +174,58 @@ def _locked_submit_final(gd_student_id, final_type, attachments=None) -> dict:
         return {"id": str(final.id), "finalType": final_type, "version": version, "status": "PENDING_REVIEW"}
 
 
+def _locked_withdraw_choices(round_id, gd_student_id) -> dict:
+    """学生退选：缺失轮次返回 404，状态与批次在同一事务核验，重复请求幂等。"""
+    from app.modules.graduation.services import graduation_topic_round_service as rounds
+
+    with session() as db:
+        round_row = db.scalars(select(GraduationTopicRound).where(
+            GraduationTopicRound.id == int(round_id),
+            GraduationTopicRound.tenant_id == _tid(),
+            GraduationTopicRound.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not round_row:
+            raise not_found("选题轮次不存在")
+        if round_row.status != "OPEN":
+            raise AppException("DATA_CONFLICT", "仅进行中的轮次可退选")
+
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+        ).with_for_update()).first()
+        if not student:
+            raise not_found("毕设学生不存在")
+        assert_student_access(db, student, "topic.choice.withdraw")
+        if int(student.batch_id or 0) != int(round_row.batch_id or 0):
+            raise AppException("DATA_CONFLICT", "学生批次与选题轮次不一致，无法退选")
+
+        rows = db.scalars(select(GraduationTopicChoice).where(
+            GraduationTopicChoice.tenant_id == _tid(),
+            GraduationTopicChoice.round_id == round_row.id,
+            GraduationTopicChoice.gd_student_id == student.id,
+            GraduationTopicChoice.is_deleted.is_(False),
+        ).order_by(GraduationTopicChoice.id).with_for_update()).all()
+        if not rows:
+            raise not_found("当前没有可退选的志愿")
+        if any(row.status in ("CONFIRMED", "MATCHED") for row in rows):
+            raise AppException("DATA_CONFLICT", "已被确认/匹配的选题不可自助退选，请走课题变更流程")
+        active = [row for row in rows if row.status != "WITHDRAWN"]
+        if not active:
+            return {"withdrawn": 0, "alreadyWithdrawn": True}
+        for row in active:
+            row.status = "WITHDRAWN"
+            row.is_deleted = False
+            row.submission_version = int(row.submission_version or 0) + 1
+        rounds._audit(
+            db, round_row.id, "WITHDRAW_CHOICES",
+            f"学生 {student.name or student.id} 退选 {len(active)} 个志愿",
+        )
+        db.commit()
+        return {"withdrawn": len(active), "alreadyWithdrawn": False}
+
+
 def install_consistency_guards() -> None:
     global _INSTALLED
     if _INSTALLED:
@@ -192,6 +253,7 @@ def install_consistency_guards() -> None:
 
     gd.review_proposal = _conflict_guard(_locked_review_proposal)
     gd.submit_final = _conflict_guard(_locked_submit_final)
+    rounds.withdraw_choices = _conflict_guard(_locked_withdraw_choices)
     for module, names in (
         (gd, ("submit_proposal", "review_final", "create_defense_group", "update_defense_group",
               "assign_defense_students", "unassign_defense_students", "publish_defense")),
