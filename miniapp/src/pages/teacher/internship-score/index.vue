@@ -14,9 +14,17 @@
 
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="tab === 'list'">
-        <MobileInlineAlert type="info" description="指导教师负责核算并提交复核，最终发布由学校授权角色在管理端完成。" />
-        <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无实习成绩"
-          description="核算后的学生实习成绩会出现在这里。" />
+        <view class="card is__batch" v-if="batches.length">
+          <text class="is__label">实习批次</text>
+          <picker class="is__picker" mode="selector" :range="batchLabels" :value="batchIndex" @change="onBatch">
+            <view class="is__pick-val">{{ batchLabels[batchIndex] || '请选择批次' }}<text class="is__arrow">▾</text></view>
+          </picker>
+        </view>
+        <MobileInlineAlert type="info" description="列表和学生选择使用同一个明确批次；企业评价分只读取已审核评价，最终发布由学校管理端完成。" />
+        <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
+          description="当前身份的数据范围内没有可查看的实习批次。" />
+        <MobileGlobalState v-else-if="!list || !list.length" state="empty" title="暂无实习成绩"
+          description="当前批次核算后的学生实习成绩会出现在这里。" />
         <view class="stack" v-else>
           <view v-for="s in list" :key="s.id" class="card is">
             <view class="row-between">
@@ -32,7 +40,7 @@
                 <text class="is__score-item">打卡 {{ s.checkinScore != null ? s.checkinScore : '—' }}</text>
                 <text class="is__score-item">周报 {{ s.weeklyScore != null ? s.weeklyScore : '—' }}</text>
                 <text class="is__score-item">月报 {{ s.monthlyScore != null ? s.monthlyScore : '—' }}</text>
-                <text class="is__score-item">企业 {{ s.enterpriseScore != null ? s.enterpriseScore : '—' }}</text>
+                <text class="is__score-item">企业 {{ s.enterpriseScore != null ? s.enterpriseScore : '待企业评价审核' }}</text>
                 <text class="is__score-item">学校 {{ s.schoolScore != null ? s.schoolScore : '—' }}</text>
               </view>
             </view>
@@ -56,7 +64,7 @@
         <view class="card is__form" v-else>
           <view class="is__row">
             <text class="is__label">实习学生</text>
-            <picker class="is__picker" mode="selector" :range="studentLabels" :value="studentIndex" @change="(e) => studentIndex = Number(e.detail.value)">
+            <picker class="is__picker" mode="selector" :range="studentLabels" :value="studentIndex" @change="onStudent">
               <view class="is__pick-val">{{ studentLabels[studentIndex] || '请选择' }}<text class="is__arrow">▾</text></view>
             </picker>
           </view>
@@ -65,7 +73,7 @@
             <input class="is__input" type="number" v-model="scores[f.key]" placeholder="0-100" />
           </view>
         </view>
-        <MobileInlineAlert type="info" description="企业评价分只能取已通过的企业评价，教师不可手工覆盖；其余四项需填写 0-100。" />
+        <MobileInlineAlert type="info" description="企业评价分只能取已通过的企业评价，教师不可手工覆盖；已有成绩再次核算会携带当前版本，防止覆盖他人修改。" />
 
         <MobileSafeAreaBar v-if="students.length">
           <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '核算中…' : '提交核算' }}</button>
@@ -77,7 +85,7 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
-import { teacherInternshipMyStudents } from '@/services/internshipApi'
+import { teacherInternshipMyStudents, teacherInternshipScores } from '@/services/internshipApi'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
@@ -94,7 +102,6 @@ export default {
       tab: 'list', list: null, state: 'loading',
       students: [], studentIndex: 0,
       batches: [], batchId: '', batchIndex: 0,
-      permissionPatterns: [],
       scores: { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' },
       submitting: false, SCORE_FIELDS
     }
@@ -107,13 +114,10 @@ export default {
   computed: {
     studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未落实企业'}`) },
     batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
-    canCompute() {
-      const context = useInternshipContextStore()
-      return context.can('internship.score.manage')
-    }
+    canCompute() { return useInternshipContextStore().can('internship.score.manage') }
   },
   methods: {
-    statusTone(s) { return s.status === 'PUBLISHED' ? 'success' : s.incomplete ? 'danger' : 'warning' },
+    statusTone(s) { return ['PUBLISHED', 'ARCHIVED'].includes(s.status) ? 'success' : s.incomplete ? 'danger' : 'warning' },
     async load(done) {
       this.state = 'loading'
       try {
@@ -123,14 +127,16 @@ export default {
         this.batches = context.batches || []
         this.batchId = context.selectedBatchId || ''
         this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
-        const data = await teacherApi.getInternshipScoreList()
-        this.list = (data && data.list) || []
+        await this.loadScores()
         this.state = 'ready'
       } catch (e) {
         this.state = 'error'
-      } finally {
-        if (done) done()
-      }
+      } finally { if (done) done() }
+    },
+    async loadScores() {
+      if (!this.batchId) { this.list = []; return }
+      const data = await teacherInternshipScores(this.batchId)
+      this.list = (data && data.list) || []
     },
     async onComputeTab() {
       this.tab = 'compute'
@@ -143,7 +149,27 @@ export default {
       const context = useInternshipContextStore()
       context.selectBatch(batch && batch.id)
       this.batchId = context.selectedBatchId
-      await this.loadStudents()
+      this.students = []
+      this.studentIndex = 0
+      this.state = 'loading'
+      try {
+        await this.loadScores()
+        if (this.tab === 'compute') await this.loadStudents()
+        this.state = 'ready'
+      } catch (err) {
+        this.state = 'error'
+        toast((err && err.message) || '批次数据加载失败')
+      }
+    },
+    onStudent(e) {
+      this.studentIndex = Number(e.detail.value)
+      const stu = this.students[this.studentIndex]
+      const existing = this.findExisting(stu)
+      if (existing && !['PUBLISHED', 'ARCHIVED'].includes(existing.status)) {
+        SCORE_FIELDS.forEach((f) => { this.scores[f.key] = existing[f.key] == null ? '' : String(existing[f.key]) })
+      } else {
+        this.scores = { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' }
+      }
     },
     async loadStudents() {
       if (!this.batchId) { this.students = []; return }
@@ -151,10 +177,15 @@ export default {
         const data = await teacherInternshipMyStudents(this.batchId)
         this.students = (data && data.list) || []
         this.studentIndex = 0
+        this.onStudent({ detail: { value: 0 } })
       } catch (e) {
         this.students = []
         toast((e && e.message) || '学生名单加载失败')
       }
+    },
+    findExisting(stu) {
+      if (!stu) return null
+      return (this.list || []).find((x) => String(x.internshipId || x.internId) === String(stu.id)) || null
     },
     submit() {
       if (this.submitting) return
@@ -162,15 +193,20 @@ export default {
       if (!stu) { toast('请选择实习学生'); return }
       for (const f of SCORE_FIELDS) {
         const v = this.scores[f.key]
-        if (v === '' || v === null || v === undefined || Number(v) < 0 || Number(v) > 100) {
-          toast(`${f.label}必须是 0-100 的数字`); return
+        if (v === '' || v === null || v === undefined || !Number.isInteger(Number(v)) || Number(v) < 0 || Number(v) > 100) {
+          toast(`${f.label}必须是 0-100 的整数`); return
         }
+      }
+      const existing = this.findExisting(stu)
+      if (existing && ['PUBLISHED', 'ARCHIVED'].includes(existing.status)) {
+        toast('该生成绩已发布或归档，不能在教师端直接重算'); return
       }
       this.submitting = true
       const body = { internshipId: stu.id, batchId: this.batchId }
       SCORE_FIELDS.forEach((f) => { body[f.key] = Number(this.scores[f.key]) })
-      submitLock.run(() => teacherApi.computeInternshipScore(body)).then((r) => {
-        uni.showToast({ title: r && r.incomplete ? `已保存，缺：${r.incompleteReason}` : `核算完成，总分 ${r.total}`, icon: 'none' })
+      if (existing) body.expectedVersion = existing.version
+      submitLock.run(() => teacherApi.computeInternshipScore(body)).then((result) => {
+        uni.showToast({ title: result && result.incomplete ? `已保存，缺：${result.incompleteReason}` : `核算完成，总分 ${result.total}`, icon: 'none' })
         this.scores = { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' }
         this.tab = 'list'; this.load()
       }).catch((e) => {
