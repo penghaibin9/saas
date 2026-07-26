@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Index, Integer, Numeric, String
+from sqlalchemy import BigInteger, DateTime, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -39,8 +39,33 @@ class AcademicStudent(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AcademicGrade(PKMixin, TenantMixin, CommonMixin, Base):
+    """正式成绩事实。
+
+    V2-04 起新写入必须保存稳定课程身份和修读次数。``course_name``、``term``继续保留为历史展示快照；
+    旧行允许身份字段为空，必须通过显式回填治理，禁止迁移时按课程名自动合并。
+    """
     __tablename__ = "t_acad_grade"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "grade_record_id", name="uk_acad_grade_source_record"),
+        Index(
+            "ix_acad_grade_course_attempt",
+            "tenant_id", "acad_student_id", "course_id", "attempt_no", "record_status",
+        ),
+        Index("ix_acad_grade_course_code", "tenant_id", "course_code", "course_version"),
+        Index("ix_acad_grade_grade_task", "tenant_id", "grade_task_id"),
+        Index("ix_acad_grade_teaching_task", "tenant_id", "teaching_task_id"),
+        Index("ix_acad_grade_teaching_class", "tenant_id", "teaching_class_id"),
+    )
     acad_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="→ t_aa_course.id，具体课程版本行")
+    course_code: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="课程代码快照")
+    course_version: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="课程库版本快照")
+    attempt_no: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="第几次修读；补考/清考继承原修读次数")
+    grade_task_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="→ t_aa_grade_task")
+    grade_record_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="→ t_aa_grade_record；正常发布来源唯一")
+    teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="→ t_aa_teaching_task")
+    teaching_class_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="→ t_aa_teaching_class")
+    roster_version_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="发布时采用的正式名单版本")
     course_name: Mapped[str] = mapped_column(String(200), nullable=False)
     term: Mapped[str | None] = mapped_column(String(50))
     nature: Mapped[str] = mapped_column(String(50), nullable=False, default="REQUIRED")
