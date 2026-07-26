@@ -131,6 +131,36 @@ def project_selection_batch_locked(db, batch_id: int) -> dict:
     return {"batchId": str(batch_id), "projected": projected}
 
 
+def sync_batch_teaching_classes(db, batch_id: int) -> dict:
+    """使用保存点隔离单条投影失败，成功记录可正常提交。"""
+    from app.models import AaTeachingTask
+
+    task_ids = [
+        int(value) for (value,) in db.query(AaTeachingTask.id).filter(
+            AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.batch_id == int(batch_id),
+            AaTeachingTask.is_deleted.is_(False),
+        ).all()
+    ]
+    projected = []
+    errors = []
+    for task_id in task_ids:
+        try:
+            with db.begin_nested():
+                row = _base.ensure_teaching_class_for_task(db, task_id)
+                db.flush()
+            projected.append(str(row.id))
+        except Exception as exc:
+            errors.append({"teachingTaskId": str(task_id), "error": str(exc)})
+    return {
+        "taskCount": len(task_ids),
+        "projectedCount": len(projected),
+        "teachingClassIds": projected,
+        "errors": errors,
+    }
+
+
 # 基础服务中的ensure/backfill/apply函数运行时读取这些globals，直接替换即可覆盖所有消费者。
 _base.create_roster_version = create_roster_version
 _base.project_selection_batch_locked = project_selection_batch_locked
+_base.sync_batch_teaching_classes = sync_batch_teaching_classes
