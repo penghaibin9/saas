@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/graduation-p0-cross-client-latest-20260726
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -15,6 +18,7 @@ concurrency:
 
 jobs:
   graduation-validation:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/graduation-p0-cross-client-latest-20260726'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
