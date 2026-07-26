@@ -7,19 +7,123 @@
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
+import time
 from datetime import datetime
 
+from app.core.config import settings
 from app.core.exceptions import AppException
+from app.core.context import get_current_user_ctx
+from app.core.permissions import enforce_permission
 from app.services import xlsx_util
 
 from .spec import ExportSpec, ImportSpec
 from .validators import TYPE_VALIDATORS, check_max_length, check_required
 
 
+def _enforce_spec_permission(spec: ImportSpec) -> None:
+    """Import specifications are security boundaries, not documentation."""
+    if spec.permission_key:
+        enforce_permission(get_current_user_ctx() or {}, spec.permission_key)
+
+
+def _canonical_rows_digest(rows: list) -> str:
+    raw = json.dumps(rows or [], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _batch_scope(rows: list, explicit: str | None = None) -> str:
+    values = {str(explicit)} if explicit else set()
+    for row in rows or []:
+        for key in ("batchId", "batchNo"):
+            if row.get(key) not in (None, ""):
+                values.add(str(row[key]).strip())
+    return ",".join(sorted(value for value in values if value))
+
+
+def _preview_token(spec: ImportSpec, rows: list, evidence: dict | None = None) -> str:
+    user = get_current_user_ctx() or {}
+    evidence = evidence or {}
+    payload = {
+        "module": spec.module_key,
+        "biz": spec.biz_type,
+        "tenant": str(user.get("tenantId") or ""),
+        "user": str(user.get("userId") or ""),
+        "rows": _canonical_rows_digest(rows),
+        "fileName": str(evidence.get("fileName") or "manual-input"),
+        "fileSha256": str(evidence.get("fileSha256") or _canonical_rows_digest(rows)),
+        "batchScope": _batch_scope(rows, evidence.get("batchScope")),
+        "dataScope": {
+            "scope": user.get("dataScope"),
+            "collegeId": user.get("collegeId"),
+            "majorId": user.get("majorId"),
+        },
+        "expected": len(rows),
+        "exp": int(time.time()) + 15 * 60,
+    }
+    payload["dryRunSha256"] = hashlib.sha256(json.dumps(
+        {
+            "module": payload["module"], "biz": payload["biz"], "rows": payload["rows"],
+            "batchScope": payload["batchScope"], "expected": payload["expected"],
+        },
+        sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(raw).rstrip(b"=")
+    signature = hmac.new(settings.jwt_secret.encode("utf-8"), encoded, hashlib.sha256).digest()
+    return f"{encoded.decode()}.{base64.urlsafe_b64encode(signature).rstrip(b'=').decode()}"
+
+
+def _verify_preview_token(spec: ImportSpec, rows: list, token: str | None) -> dict:
+    if spec.module_key != "graduationDesign":
+        return {}
+    if not token or "." not in token:
+        raise AppException("VALIDATION_ERROR", "确认导入前必须重新完成预校验")
+    try:
+        encoded, supplied_signature = token.split(".", 1)
+        expected_signature = base64.urlsafe_b64encode(hmac.new(
+            settings.jwt_secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256,
+        ).digest()).rstrip(b"=").decode()
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            raise ValueError("signature")
+        payload = json.loads(base64.urlsafe_b64decode(
+            encoded + "=" * (-len(encoded) % 4),
+        ).decode("utf-8"))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raise AppException("VALIDATION_ERROR", "预校验凭证无效，请重新校验") from None
+
+    user = get_current_user_ctx() or {}
+    expected = {
+        "module": spec.module_key,
+        "biz": spec.biz_type,
+        "tenant": str(user.get("tenantId") or ""),
+        "user": str(user.get("userId") or ""),
+        "rows": _canonical_rows_digest(rows),
+        "expected": len(rows),
+        "dataScope": {
+            "scope": user.get("dataScope"),
+            "collegeId": user.get("collegeId"),
+            "majorId": user.get("majorId"),
+        },
+    }
+    if int(payload.get("exp") or 0) < int(time.time()) or any(
+        payload.get(key) != value for key, value in expected.items()
+    ):
+        raise AppException("DATA_CONFLICT", "预校验凭证已过期或导入数据/操作者发生变化，请重新校验")
+
+
 # ═══════════ 模板 ═══════════
+
+    payload["previewToken"] = token
+    return payload
+
 
 def build_template(spec: ImportSpec) -> bytes:
     """按 ImportSpec 生成 .xlsx 模板（表头 + 必填标记 + 示例行 + 填写说明页）。"""
+    _enforce_spec_permission(spec)
     samples = [[c.example for c in spec.columns]] if any(c.example != "" for c in spec.columns) else None
     return xlsx_util.build_template_xlsx(
         spec.headers,
@@ -40,6 +144,7 @@ def _auto_notes(spec: ImportSpec) -> list:
 
 def read_upload(spec: ImportSpec, file_bytes: bytes) -> list:
     """上传 .xlsx → list[dict]（按表头映射为字段 key）。"""
+    _enforce_spec_permission(spec)
     return xlsx_util.read_xlsx(file_bytes, spec.header_map)
 
 
@@ -60,7 +165,7 @@ def _validate_cell(col, value: str) -> str | None:
     return None
 
 
-def pre_validate(spec: ImportSpec, rows: list) -> dict:
+def pre_validate(spec: ImportSpec, rows: list, evidence: dict | None = None) -> dict:
     """统一预校验结构（不写库）。
 
     返回：
@@ -69,6 +174,7 @@ def pre_validate(spec: ImportSpec, rows: list) -> dict:
       rows: 原始行（供错误行重建与确认导入），
       errors: [{rowNo, field, title, rawValue, message}]  （rowNo 为数据行 1-based）
     """
+    _enforce_spec_permission(spec)
     rows = rows or []
     errors: list = []
     seen: dict = {tuple(c.key for c in spec.unique_columns): set()} if spec.unique_columns else {}
@@ -117,7 +223,7 @@ def pre_validate(spec: ImportSpec, rows: list) -> dict:
 
     total = len(rows)
     invalid = len(invalid_rows)
-    return {
+    result = {
         "moduleKey": spec.module_key, "bizType": spec.biz_type,
         "templateVersion": spec.template_version,
         "total": total, "validRows": total - invalid, "invalidRows": invalid,
@@ -125,6 +231,9 @@ def pre_validate(spec: ImportSpec, rows: list) -> dict:
         "rows": rows,
         "errors": errors[: spec.max_preview_errors],
     }
+    if spec.module_key == "graduationDesign" and result["passed"]:
+        result["previewToken"] = _preview_token(spec, rows, evidence)
+    return result
 
 
 def build_error_rows(spec: ImportSpec, rows: list, errors: list) -> dict:
@@ -135,11 +244,13 @@ def build_error_rows(spec: ImportSpec, rows: list, errors: list) -> dict:
 
 # ═══════════ 确认导入（统一模式）═══════════
 
-def confirm_import(spec: ImportSpec, rows: list) -> dict:
+def confirm_import(spec: ImportSpec, rows: list, preview_token: str | None = None) -> dict:
     """确认导入：重新预校验（必须全通过）→ transform → persist_rows。
 
     与前端「先预校验后确认」两步对齐；即使前端跳步，这里也强制再校验，杜绝脏数据落库。
     """
+    _enforce_spec_permission(spec)
+    evidence = _verify_preview_token(spec, rows, preview_token)
     pre = pre_validate(spec, rows)
     if not pre["passed"]:
         raise AppException("DATA_CONFLICT",
@@ -147,7 +258,16 @@ def confirm_import(spec: ImportSpec, rows: list) -> dict:
     if not spec.persist_rows:
         raise AppException("VALIDATION_ERROR", f"{spec.module_key}.{spec.biz_type} 未配置 persist_rows 落库逻辑")
     payload = [spec.transform_row(r) for r in rows] if spec.transform_row else list(rows)
-    result = spec.persist_rows(payload) or {}
+    from . import job_service
+    evidence_token = job_service.set_import_evidence({
+        **evidence,
+        "templateVersion": spec.template_version,
+    }) if spec.module_key == "graduationDesign" else None
+    try:
+        result = spec.persist_rows(payload) or {}
+    finally:
+        if evidence_token is not None:
+            job_service.reset_import_evidence(evidence_token)
     created = int(result.get("created", len(payload)))
     return {"moduleKey": spec.module_key, "bizType": spec.biz_type,
             "total": len(rows), "created": created, **result}

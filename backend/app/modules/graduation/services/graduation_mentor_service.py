@@ -547,8 +547,11 @@ def _persist_import_mentors(rows: list[dict]) -> dict:
             db.flush()
             _audit(db, "MENTOR", m.id, "导入申报导师")
             created += 1
+        job = excel.job_service.add_import_job(
+            db, "graduationDesign", "gd-mentor", created=created,
+        )
         db.commit()
-        return {"created": created}
+        return {"created": created, **job}
 
 
 MENTOR_TYPE_IMPORT = ["校内导师", "企业导师", "双导师"]
@@ -581,7 +584,7 @@ def build_import_spec() -> excel.ImportSpec:
         duplicate_check=_import_dup_check,
         transform_row=_import_transform,
         persist_rows=_persist_import_mentors,
-        permission_key="graduationDesign.mentor.import",
+        permission_key="graduationDesign.student.import",
         audit_action="导入毕设导师名单",
     )
 
@@ -613,17 +616,14 @@ def import_errors_pack(rows: list[dict], errors: list[dict]) -> dict:
     return excel.build_error_rows(build_import_spec(), rows, errors)
 
 
-def import_dry_run(rows: list[dict]) -> dict:
-    return excel.pre_validate(build_import_spec(), rows)
+def import_dry_run(rows: list[dict], evidence: dict | None = None) -> dict:
+    return excel.pre_validate(build_import_spec(), rows, evidence)
 
 
-def import_confirm(rows: list[dict]) -> dict:
+def import_confirm(rows: list[dict], preview_token: str | None = None) -> dict:
     spec = build_import_spec()
-    pre = excel.pre_validate(spec, rows)
-    result = excel.confirm_import(spec, rows)
-    excel.job_service.record_import(spec.module_key, spec.biz_type, pre=pre,
-                                    result=result, status="IMPORTED")
-    return {"created": result.get("created", 0)}
+    result = excel.confirm_import(spec, rows, preview_token)
+    return {"created": result.get("created", 0), "jobId": result.get("jobId")}
 
 
 def export_mentors_xlsx(keyword=None, qualification_status=None, mentor_type=None) -> dict:

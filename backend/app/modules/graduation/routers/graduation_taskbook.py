@@ -23,8 +23,9 @@ def gd_taskbook_stats(user=Depends(get_current_user)):
 
 
 @router.post("/gd-taskbooks/export", summary="导出任务书台账 Excel（写审计）")
-def gd_taskbook_export(status: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_taskbooks_xlsx(status=status)
+def gd_taskbook_export(status: Optional[str] = None, batchId: Optional[str] = None,
+                       user=Depends(get_current_user)):
+    data = svc.export_taskbooks_xlsx(status=status, batch_id=batchId)
     audit_log.record("导出任务书台账", "graduation-taskbook:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -32,8 +33,11 @@ def gd_taskbook_export(status: Optional[str] = None, user=Depends(get_current_us
 @router.get("/gd-taskbooks", summary="任务书列表（分页+筛选）")
 def gd_taskbooks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                 keyword: Optional[str] = None, status: Optional[str] = None,
+                batchId: Optional[str] = None,
                 user=Depends(get_current_user)):
-    items, total = svc.list_taskbooks(page, pageSize, keyword=keyword, status=status)
+    items, total = svc.list_taskbooks(
+        page, pageSize, keyword=keyword, status=status, batch_id=batchId,
+    )
     return success(paginate(items, total, page, pageSize))
 
 

@@ -48,7 +48,8 @@ def taskbook_sign(user: dict, body: dict) -> dict:
         if existing and confirmed.get("status") == "CONFIRMED":
             return {"signId": str(existing.id), "contentHash": existing.content_hash,
                     "provider": existing.provider, "signedAt": str(existing.signed_at),
-                    "legalEffect": existing.provider != "reliable_log", "taskbook": confirmed}
+                    "legalEffect": existing.provider != "reliable_log",
+                    "confirmationType": "EVIDENCE_LOG", "taskbook": confirmed}
         if str(confirmed.get("taskbookVersion")) != str(detail.get("taskbookVersion")):
             raise AppException("DATA_CONFLICT", "任务书版本已变化，请刷新后重新确认")
         sign = common.create_sign_record_in_session(
@@ -57,7 +58,8 @@ def taskbook_sign(user: dict, body: dict) -> dict:
         db.commit()
     return {"signId": sign["signId"], "contentHash": sign["contentHash"],
             "provider": sign["provider"], "signedAt": sign["signedAt"],
-            "legalEffect": sign["legalEffect"], "taskbook": confirmed}
+            "legalEffect": sign["legalEffect"], "confirmationType": "EVIDENCE_LOG",
+            "taskbook": confirmed}
 
 
 def taskbook_print(user: dict, body: dict) -> dict:

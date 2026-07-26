@@ -14,9 +14,11 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
 from app.models import GraduationAuditTrail, GraduationStudent, GraduationTaskBook
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.policies import taskbook_policy
 
 STATUS_LABEL = {"PENDING_CONFIRM": "待学生确认", "CONFIRMED": "已确认", "CHANGE_PENDING": "变更待确认"}
 STATUS_TONE = {"PENDING_CONFIRM": "warning", "CONFIRMED": "success", "CHANGE_PENDING": "warning"}
@@ -56,9 +58,10 @@ def _row(t: GraduationTaskBook, stu=None) -> dict:
     }
 
 
-def list_taskbooks(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
+def list_taskbooks(page: int, page_size: int, keyword=None, status=None,
+                   batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
         q = select(GraduationTaskBook).where(GraduationTaskBook.tenant_id == _tid(),
                                               GraduationTaskBook.is_deleted.is_(False),
                                               GraduationTaskBook.gd_student_id.in_(scope_ids or [-1]))
@@ -135,6 +138,7 @@ def confirm_taskbook(gd_student_id, proxy_reason: str | None = None) -> dict:
         if is_student:
             _audit(db, t.id, "学生确认任务书", before=before, after="CONFIRMED")
         else:
+            taskbook_policy.authorize(db, stu, "confirmOnBehalf")
             reason = (proxy_reason or "").strip()
             if len(reason) < 5:
                 raise AppException("VALIDATION_ERROR", "管理员代确认须填写原因（不少于 5 字）")
@@ -217,10 +221,13 @@ def taskbook_stats() -> dict:
         return {"total": total, "byStatus": by_status, "noTaskbookYet": max(0, no_taskbook)}
 
 
-def export_taskbooks_xlsx(status=None) -> dict:
+def export_taskbooks_xlsx(status=None, batch_id=None) -> dict:
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.taskbook.export")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    items, _ = list_taskbooks(1, 100000, status=status)
+    items, _ = list_taskbooks(1, 100000, status=status, batch_id=batch_id)
     headers = ["学生", "学号", "导师", "版本", "状态", "任务目标", "成果要求", "确认时间"]
     operator, _role = _op()
     title = f"任务书台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"

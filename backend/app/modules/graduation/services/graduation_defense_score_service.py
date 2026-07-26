@@ -18,6 +18,7 @@ from app.models import (GraduationAuditTrail, GraduationDefenseExpert, Graduatio
                         GraduationDefenseScore, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.policies import defense_policy
 
 STATUS_LABEL = {"PENDING": "待评分", "SCORED": "已评分", "CONFIRMED": "已确认"}
 
@@ -75,7 +76,7 @@ def _active_round_no(db, gd_student_id: int) -> int:
 
 
 def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
-                         expert_id=None) -> tuple[str, int | None, int | None]:
+                         expert_id=None, judge_mentor_id=None) -> tuple[str, int | None, int | None]:
     """防伪造：评委仅能以本人名义录入；有 manage 代录权限时须落在答辩组名单内。
 
     返回 (judge_name_snapshot, judge_mentor_id, expert_id)。姓名仅作显示快照。
@@ -85,10 +86,9 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
     real_name = (u.get("realName") or "").strip()
     requested_name = (requested or "").strip()
     role = (u.get("currentRoleCode") or u.get("userType") or "").strip().upper()
-    can_proxy = (
-        has_permission(u, "graduationDesign.manage")
-        or has_permission(u, "graduationDesign.defense.manage")
-    )
+    # Proxy scoring is intentionally unavailable: experts score their own stable seat,
+    # while secretaries record absence/confirm through dedicated actions.
+    can_proxy = False
     group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
     seats = gid.judge_panel_seats(group)
     me = gid.current_user_mentor(db)
@@ -102,7 +102,8 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
             raise no_permission("你不在该生答辩组评委名单中")
         # 解析本人对应席位
         my_seat = next(
-            (s for s in seats if gid.user_matches_judge_seat(s, mentor=me, real_name=real_name)),
+            (s for s in seats if gid.user_matches_judge_seat(
+                s, mentor=me, expert_id=u.get("expertId"))),
             None,
         )
         snap_name = (me.teacher_name if me else None) or real_name
@@ -110,10 +111,13 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
             raise no_permission("答辩评委只能以本人名义录入评分")
         mid = int(my_seat["mentorId"]) if my_seat and my_seat.get("mentorId") else (int(me.id) if me else None)
         if not mid:
-            if expert_id in (None, ""):
+            context_expert_id = u.get("expertId")
+            if context_expert_id in (None, ""):
                 raise AppException("VALIDATION_ERROR", "校外专家评分必须提供稳定 expertId")
+            if expert_id not in (None, "") and int(expert_id) != int(context_expert_id):
+                raise no_permission("校外专家只能以本人稳定身份评分")
             expert = db.scalars(select(GraduationDefenseExpert).where(
-                GraduationDefenseExpert.id == int(expert_id),
+                GraduationDefenseExpert.id == int(context_expert_id),
                 GraduationDefenseExpert.tenant_id == _tid(),
                 GraduationDefenseExpert.is_deleted.is_(False),
                 GraduationDefenseExpert.status == "ACTIVE",
@@ -123,23 +127,20 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
             return expert.expert_name, None, int(expert.id)
         return (my_seat or {}).get("name") or snap_name or real_name, mid, None
 
-    # 代录：按姓名/ID 落在席位上
+    # 管理员代录必须明确指定稳定评委 ID；姓名仅作为显示快照。
     judge_name = requested_name or real_name
     if not judge_name:
         raise AppException("VALIDATION_ERROR", "评委姓名必填")
-    if not seats:
-        mid = int(me.id) if me and (me.teacher_name or "").strip() == judge_name else None
-        if not mid:
-            raise AppException("VALIDATION_ERROR", "评委必须绑定导师或专家稳定身份")
-        return judge_name, mid, None
+    if judge_mentor_id in (None, "") and expert_id in (None, ""):
+        raise AppException("VALIDATION_ERROR", "管理员代录必须提供 judgeMentorId 或 expertId")
+    requested_mid = int(judge_mentor_id) if judge_mentor_id not in (None, "") else None
+    requested_eid = int(expert_id) if expert_id not in (None, "") else None
     matched = None
     for seat in seats:
-        if seat.get("mentorId") and me and int(me.id) == int(seat["mentorId"]) and (
-            not requested_name or requested_name in {(me.teacher_name or "").strip(), real_name, seat.get("name")}
-        ):
+        if requested_mid and seat.get("mentorId") and int(requested_mid) == int(seat["mentorId"]):
             matched = seat
             break
-        if (seat.get("name") or "") == judge_name:
+        if requested_eid and seat.get("expertId") and int(requested_eid) == int(seat["expertId"]):
             matched = seat
             break
     if not matched:
@@ -242,7 +243,8 @@ def judge_pending() -> list[dict]:
 
 
 def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent=False,
-                absent_reason=None, defense_group_id=None, expert_id=None) -> dict:
+                absent_reason=None, defense_group_id=None, expert_id=None, judge_mentor_id=None,
+                permission_action="score") -> dict:
     with session() as db:
         stu = db.scalars(select(GraduationStudent).where(
             GraduationStudent.id == int(gd_student_id),
@@ -251,12 +253,13 @@ def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent
         ).with_for_update()).first()
         if not stu:
             raise not_found("毕设学生不存在或不在当前数据范围内")
-        assert_student_access(db, stu, "defense.score")
+        defense_policy.authorize(db, stu, permission_action)
         if not absent and score is None:
             raise AppException("VALIDATION_ERROR", "未缺席须录入评分")
         if absent and (not absent_reason or len(absent_reason.strip()) < 2):
             raise AppException("VALIDATION_ERROR", "缺席须填写原因")
-        judge_name, judge_mid, judge_expert_id = _resolve_entry_judge(db, stu, judge_name, expert_id)
+        judge_name, judge_mid, judge_expert_id = _resolve_entry_judge(
+            db, stu, judge_name, expert_id, judge_mentor_id)
         judge_identity = f"MENTOR:{judge_mid}" if judge_mid else f"EXPERT:{judge_expert_id}"
         latest_round = _active_round_no(db, stu.id)
         # 本轮若已全部确认，禁止再往旧轮写入
@@ -334,7 +337,7 @@ def confirm_scores(gd_student_id) -> dict:
         ).with_for_update()).first()
         if not stu:
             raise not_found("毕设学生不存在")
-        assert_student_access(db, stu, "defense.score.confirm")
+        defense_policy.authorize(db, stu, "scoreConfirm")
         latest_round = _active_round_no(db, stu.id)
         rows = db.scalars(select(GraduationDefenseScore).where(
             GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.gd_student_id == stu.id,
@@ -359,15 +362,7 @@ def confirm_scores(gd_student_id) -> dict:
                     f"答辩组评委尚未全部评分：{('、'.join(missing))}",
                 )
         else:
-            expected = _panel_judge_names(group)
-            if expected:
-                done = {d.judge_name for d in rows if d.status in ("SCORED", "CONFIRMED")}
-                missing = [n for n in expected if n not in done]
-                if missing:
-                    raise AppException(
-                        "DATA_CONFLICT",
-                        f"答辩组评委尚未全部评分：{('、'.join(missing))}",
-                    )
+            raise AppException("DATA_CONFLICT", "答辩组缺少稳定评委身份，不能确认评分")
         now = datetime.now(timezone.utc)
         for d in rows:
             d.status = "CONFIRMED"
@@ -392,7 +387,7 @@ def revoke_confirmation(gd_student_id, reason: str) -> dict:
         ).with_for_update()).first()
         if not stu:
             raise not_found("毕设学生不存在")
-        assert_student_access(db, stu, "defense.score.revoke")
+        defense_policy.authorize(db, stu, "scoreConfirm")
         latest_round = _active_round_no(db, stu.id)
         rows = db.scalars(select(GraduationDefenseScore).where(
             GraduationDefenseScore.tenant_id == _tid(),
@@ -434,7 +429,7 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
         ).with_for_update()).first()
         if not stu:
             raise not_found("毕设学生不存在")
-        assert_student_access(db, stu, "defense.second.create")
+        defense_policy.authorize(db, stu, "secondRound")
         existing_round_rows = db.scalars(select(GraduationDefenseScore).where(
             GraduationDefenseScore.tenant_id == _tid(),
             GraduationDefenseScore.gd_student_id == stu.id,

@@ -9,7 +9,6 @@ from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.core.permissions import require_permission
 from app.modules.graduation.schemas.graduation_grade import GradeCalculateRequest, GradeReviewRequest, GradeWithdrawRequest
-from app.services import audit_log
 from app.modules.graduation.services import graduation_grade_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-成绩评定"])
@@ -37,26 +36,22 @@ def gd_grade_detail(gd_student_id: str, user=Depends(get_current_user)):
 @router.post("/gd-grades/{gd_student_id}/calculate", summary="核算成绩（按批次权重计算综合分）")
 def gd_grade_calculate(gd_student_id: str, body: GradeCalculateRequest, user=Depends(get_current_user)):
     result = svc.calculate_grade(gd_student_id, body.advisorScore, body.reviewerScore, body.defenseScore)
-    audit_log.record("核算成绩", f"graduation-grade:{gd_student_id}")
     return success(result, message="已核算")
 
 
 @router.post("/gd-grades/{gd_student_id}/review", summary="复核成绩（APPROVE/RETURN）")
 def gd_grade_review(gd_student_id: str, body: GradeReviewRequest, user=Depends(get_current_user)):
     result = svc.review_grade(gd_student_id, body.action, body.comment)
-    audit_log.record("复核成绩", f"graduation-grade:{gd_student_id}", detail={"action": body.action})
     return success(result, message="已复核")
 
 
 @router.post("/gd-grades/{gd_student_id}/publish", summary="发布成绩（须复核通过）")
 def gd_grade_publish(gd_student_id: str, user=Depends(require_permission("graduationDesign.grade.publish"))):
     result = svc.publish_grade(gd_student_id)
-    audit_log.record("发布成绩", f"graduation-grade:{gd_student_id}")
     return success(result, message="已发布")
 
 
 @router.post("/gd-grades/{gd_student_id}/withdraw", summary="撤回已发布成绩（原因≥5字）")
 def gd_grade_withdraw(gd_student_id: str, body: GradeWithdrawRequest, user=Depends(get_current_user)):
     result = svc.withdraw_grade(gd_student_id, body.reason)
-    audit_log.record("撤回成绩", f"graduation-grade:{gd_student_id}", detail={"reason": body.reason})
     return success(result, message="已撤回")

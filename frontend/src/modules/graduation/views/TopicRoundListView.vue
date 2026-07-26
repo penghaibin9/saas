@@ -134,7 +134,7 @@
       :preview-fields="['studentNo', 'topicNo', 'topicTitle', 'choiceOrder']"
       :download-template-fn="() => gdTopicRoundApi.downloadChoiceImportTemplate(selectedRoundId)"
       :upload-fn="(file) => gdTopicRoundApi.uploadChoiceImportXlsx(selectedRoundId, file)"
-      :confirm-fn="({ rows }) => gdTopicRoundApi.importChoiceConfirm(selectedRoundId, rows)"
+      :confirm-fn="({ rows, previewToken }) => gdTopicRoundApi.importChoiceConfirm(selectedRoundId, rows, previewToken)"
       :download-errors-fn="({ rows, errors }) => gdTopicRoundApi.downloadChoiceImportErrors(selectedRoundId, rows, errors)"
       @imported="onImported"
     />

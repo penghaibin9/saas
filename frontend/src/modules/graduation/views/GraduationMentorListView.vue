@@ -96,7 +96,7 @@
       :preview-fields="['teacherNo', 'teacherName', 'mentorType', 'title', 'collegeName', 'maxCapacity']"
       :download-template-fn="() => graduationMentorApi.downloadImportTemplate()"
       :upload-fn="(file) => graduationMentorApi.uploadImportXlsx(file)"
-      :confirm-fn="({ rows }) => graduationMentorApi.importConfirm(rows)"
+      :confirm-fn="({ rows, previewToken }) => graduationMentorApi.importConfirm(rows, previewToken)"
       :download-errors-fn="({ rows, errors }) => graduationMentorApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />

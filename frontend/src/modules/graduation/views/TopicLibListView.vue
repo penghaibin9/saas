@@ -208,7 +208,7 @@
       :preview-fields="['title', 'batchNo', 'topicNo', 'sourceType', 'advisorName', 'capacity', 'submitReview']"
       :download-template-fn="() => gdTopicApi.downloadImportTemplate()"
       :upload-fn="(file) => gdTopicApi.uploadImportXlsx(file)"
-      :confirm-fn="({ rows }) => gdTopicApi.importConfirm(rows)"
+      :confirm-fn="({ rows, previewToken }) => gdTopicApi.importConfirm(rows, previewToken)"
       :download-errors-fn="({ rows, errors }) => gdTopicApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />

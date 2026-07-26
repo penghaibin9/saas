@@ -153,7 +153,7 @@
       :preview-fields="['studentNo', 'batchNo', 'advisorName']"
       :download-template-fn="() => gdStudentApi.downloadImportTemplate()"
       :upload-fn="(file) => gdStudentApi.uploadImportXlsx(file)"
-      :confirm-fn="({ rows }) => gdStudentApi.importConfirm(rows)"
+      :confirm-fn="({ rows, previewToken }) => gdStudentApi.importConfirm(rows, previewToken)"
       :download-errors-fn="({ rows, errors }) => gdStudentApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />

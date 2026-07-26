@@ -6,12 +6,67 @@
 """
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import datetime
+import hashlib
 
 from app.core.context import get_current_user_ctx
 from app.db.session import db_enabled
 
 STATUS = ("UPLOADED", "VALIDATING", "VALIDATED", "CONFIRMING", "IMPORTED", "FAILED", "CANCELLED")
+_IMPORT_EVIDENCE: ContextVar[dict | None] = ContextVar("excel_import_evidence", default=None)
+
+
+def set_import_evidence(evidence: dict):
+    return _IMPORT_EVIDENCE.set(evidence)
+
+
+def reset_import_evidence(token) -> None:
+    _IMPORT_EVIDENCE.reset(token)
+
+
+def add_import_job(db, module_key: str, biz_type: str, *, created: int) -> dict:
+    """Add the durable import evidence to the caller's business transaction."""
+    from app.models import ExcelImportJob
+    from app.services.db_service import _tid
+
+    evidence = _IMPORT_EVIDENCE.get()
+    if not evidence:
+        raise RuntimeError("graduation import evidence context is missing")
+    op_id, op_name = _op()
+    now = datetime.utcnow()
+    expected = int(evidence.get("expected") or 0)
+    job = ExcelImportJob(
+        tenant_id=_tid(),
+        module_key=module_key,
+        biz_type=biz_type,
+        file_name=evidence.get("fileName") or None,
+        file_sha256=evidence.get("fileSha256") or None,
+        dry_run_sha256=evidence.get("dryRunSha256") or None,
+        preview_token_sha256=hashlib.sha256(
+            str(evidence.get("previewToken") or "").encode("utf-8"),
+        ).hexdigest(),
+        batch_scope=evidence.get("batchScope") or None,
+        data_scope_snapshot=evidence.get("dataScope") or None,
+        template_version=evidence.get("templateVersion") or "v1",
+        status="IMPORTED",
+        total_rows=expected,
+        valid_rows=expected,
+        invalid_rows=0,
+        success_rows=created,
+        failed_rows=max(0, expected - created),
+        expected_success_rows=expected,
+        operator_id=op_id,
+        operator_name=op_name,
+        started_at=now,
+        finished_at=now,
+        confirm_at=now,
+        created_by=op_id,
+        updated_by=op_id,
+    )
+    db.add(job)
+    db.flush()
+    return {"jobId": str(job.id)}
 
 
 def _op() -> tuple:

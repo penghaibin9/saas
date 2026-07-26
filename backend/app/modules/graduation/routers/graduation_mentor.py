@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import io
 from typing import Optional
 
@@ -18,6 +19,7 @@ from app.modules.graduation.schemas.graduation_mentor import (MentorAssignCancel
                                            MentorChangeRequest, MentorCreate, MentorDisableRequest,
                                            MentorReviewRequest, MentorUpdate)
 from app.services import audit_log
+from app.services import xlsx_util
 from app.modules.graduation.services import graduation_mentor_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-导师管理与分配"])
@@ -40,9 +42,12 @@ def gd_mentor_import_template(user=Depends(get_current_user)):
 
 @router.post("/gd-mentors/import/xlsx", summary="导师名单导入·上传 Excel 解析+预校验（不写库）")
 async def gd_mentor_import_xlsx(file: UploadFile = File(...), user=Depends(get_current_user)):
-    content = await file.read()
+    content = await xlsx_util.read_safe_upload(file)
     rows = svc.import_read(content)
-    return success(svc.import_dry_run(rows))
+    return success(svc.import_dry_run(rows, {
+        "fileName": file.filename or "upload.xlsx",
+        "fileSha256": hashlib.sha256(content).hexdigest(),
+    }))
 
 
 @router.post("/gd-mentors/import/dry-run", summary="导师名单导入·预校验（粘贴行，不写库）")
@@ -57,7 +62,7 @@ def gd_mentor_import_errors_xlsx(body: ExcelErrorRows, user=Depends(get_current_
 
 @router.post("/gd-mentors/import/confirm", summary="导师名单导入·确认（整批事务，须预校验全通过）")
 def gd_mentor_import_confirm(body: ExcelImportRows, user=Depends(get_current_user)):
-    result = svc.import_confirm(body.rows)
+    result = svc.import_confirm(body.rows, body.previewToken)
     audit_log.record("导入毕设导师名单", "graduation-mentor:import", detail=result)
     return success(result, message=f"已导入 {result.get('created', 0)} 条")
 

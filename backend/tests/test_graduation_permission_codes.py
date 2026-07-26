@@ -25,10 +25,10 @@ def _headers(role: str, user_type: str = "TEACHER") -> dict[str, str]:
 
 def test_graduation_role_permission_templates_are_least_privilege():
     mentor = {"currentRoleCode": "GD_MENTOR", "userType": "TEACHER"}
-    assert has_permission(mentor, "graduationDesign.view")
+    assert has_permission(mentor, "graduationDesign.dashboard.view")
     assert has_permission(mentor, "graduationDesign.proposal.review")
     assert not has_permission(mentor, "graduationDesign.grade.publish")
-    assert not has_permission(mentor, "graduationDesign.archive.submit")
+    assert not has_permission(mentor, "graduationDesign.archive.file")
 
     expert = {"currentRoleCode": "GD_DEFENSE_EXPERT", "userType": "TEACHER"}
     assert has_permission(expert, "graduationDesign.defense.score")
@@ -36,9 +36,9 @@ def test_graduation_role_permission_templates_are_least_privilege():
 
 
 def test_request_permission_resolver_is_fail_closed_for_writes():
-    assert graduation_permission_for("GET", "/api/v1/graduation/dashboard") == "graduationDesign.view"
-    assert graduation_permission_for("POST", "/api/v1/graduation/batches") == "graduationDesign.manage"
-    assert graduation_permission_for("DELETE", "/api/v1/graduation/unknown/new-endpoint") == "graduationDesign.manage"
+    assert graduation_permission_for("GET", "/api/v1/graduation/dashboard") == "graduationDesign.dashboard.view"
+    assert graduation_permission_for("POST", "/api/v1/graduation/batches") == "graduationDesign.batch.create"
+    assert graduation_permission_for("DELETE", "/api/v1/graduation/unknown/new-endpoint") is None
     assert graduation_permission_for(
         "POST", "/api/v1/graduation/proposals/123/review"
     ) == "graduationDesign.proposal.review"
@@ -50,16 +50,16 @@ def test_request_permission_resolver_is_fail_closed_for_writes():
     ) == "graduationDesign.grade.publish"
     assert graduation_permission_for(
         "POST", "/api/v1/graduation/proposals/export"
-    ) == "graduationDesign.export"
+    ) == "graduationDesign.proposal.export"
     assert graduation_permission_for(
         "POST", "/api/v1/graduation/gd-taskbooks/123/export-pdf"
-    ) == "graduationDesign.export"
+    ) == "graduationDesign.taskbook.export"
     assert graduation_permission_for(
         "POST", "/api/v1/graduation/gd-plagiarism/123/result"
     ) == "graduationDesign.plagiarism.result"
     assert graduation_permission_for(
         "POST", "/api/v1/graduation/gd-plagiarism/123/dispute/review"
-    ) == "graduationDesign.plagiarism.dispute.review"
+    ) == "graduationDesign.plagiarism.disputeReview"
 
 
 def test_unassigned_staff_is_denied_graduation_center(client):
@@ -71,7 +71,7 @@ def test_mentor_can_view_but_cannot_publish_defense(client):
     headers = _headers("GD_MENTOR")
     assert has_permission(
         {"currentRoleCode": "GD_MENTOR", "userType": "TEACHER"},
-        "graduationDesign.view",
+        "graduationDesign.dashboard.view",
     )
 
     response = client.post(
@@ -147,6 +147,6 @@ def test_organization_admin_with_verified_scope_claim_passes_gate(client):
 
 def test_school_admin_retains_tenant_scoped_full_access(client):
     admin = {"currentRoleCode": "SCHOOL_ADMIN", "userType": "ADMIN"}
-    assert has_permission(admin, "graduationDesign.view")
+    assert has_permission(admin, "graduationDesign.dashboard.view")
     assert has_permission(admin, "graduationDesign.grade.publish")
-    assert has_permission(admin, "graduationDesign.archive.submit")
+    assert has_permission(admin, "graduationDesign.archive.file")

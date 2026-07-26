@@ -25,6 +25,38 @@ def _audit_client_ip() -> str | None:
     return get_request_meta().get("ip")
 
 
+def _audit_user_value(*keys):
+    from app.core.context import get_current_user_ctx
+    user = get_current_user_ctx() or {}
+    for key in keys:
+        value = user.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _audit_permission_code() -> str | None:
+    from app.core.context import get_current_permission_code
+    return get_current_permission_code()
+
+
+def _audit_actor_user_id() -> int | None:
+    value = _audit_user_value("userId")
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _audit_scope_snapshot() -> dict:
+    return {
+        "dataScope": _audit_user_value("dataScope"),
+        "collegeId": _audit_user_value("collegeId"),
+        "majorId": _audit_user_value("majorId"),
+        "orgId": _audit_user_value("orgId"),
+    }
+
+
 class GraduationBatch(PKMixin, TenantMixin, CommonMixin, Base):
     """t_gd_batch 毕设批次（一届/一轮毕业设计的组织与规则容器）。状态机 DRAFT→RUNNING→CLOSED→ARCHIVED。"""
     __tablename__ = "t_gd_batch"
@@ -517,6 +549,31 @@ class GraduationAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
     request_id: Mapped[str | None] = mapped_column(String(64), default=_audit_trace_id)
     request_path: Mapped[str | None] = mapped_column(String(500), default=_audit_request_path)
     client_ip: Mapped[str | None] = mapped_column(String(64), default=_audit_client_ip)
+    actor_user_id: Mapped[int | None] = mapped_column(BigInteger, default=_audit_actor_user_id)
+    actor_context_id: Mapped[str | None] = mapped_column(
+        String(64), default=lambda: _audit_user_value("contextId", "currentContextId"))
+    actor_name_snapshot: Mapped[str | None] = mapped_column(
+        String(100), default=lambda: _audit_user_value("realName", "loginName"))
+    role_code: Mapped[str | None] = mapped_column(
+        String(64), default=lambda: _audit_user_value("currentRoleCode", "userType"))
+    permission_code: Mapped[str | None] = mapped_column(String(120), default=_audit_permission_code)
+    data_scope_snapshot: Mapped[dict | None] = mapped_column(JSON, default=_audit_scope_snapshot)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    before_json: Mapped[dict | None] = mapped_column(JSON)
+    after_json: Mapped[dict | None] = mapped_column(JSON)
+    reason: Mapped[str | None] = mapped_column(String(1000))
+
+    def __init__(self, **kwargs):
+        before = kwargs.get("before_val")
+        after = kwargs.get("after_val")
+        detail = kwargs.get("detail")
+        if before not in (None, ""):
+            kwargs.setdefault("before_json", {"value": before})
+        if after not in (None, ""):
+            kwargs.setdefault("after_json", {"value": after})
+        if detail not in (None, ""):
+            kwargs.setdefault("reason", str(detail)[:1000])
+        super().__init__(**kwargs)
 
 
 class GraduationTemplate(PKMixin, TenantMixin, CommonMixin, Base):

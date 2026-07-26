@@ -43,9 +43,16 @@ export default {
       columns: [
         { key: 'time', title: '时间', width: '160px' },
         { key: 'operator', title: '操作人', width: '100px' },
+        { key: 'operatorAccount', title: '操作账号', width: '100px' },
         { key: 'roleName', title: '角色', width: '100px' },
+        { key: 'permissionCode', title: '权限码', width: '220px' },
+        { key: 'batchId', title: '批次', width: '80px' },
+        { key: 'traceId', title: 'TraceId', width: '150px' },
+        { key: 'dataScope', title: '数据范围', width: '180px' },
         { key: 'bizType', title: '业务类型', width: '120px' },
         { key: 'action', title: '动作', width: '160px' },
+        { key: 'before', title: '变更前', width: '120px' },
+        { key: 'after', title: '变更后', width: '120px' },
         { key: 'detail', title: '详情' }
       ]
     }

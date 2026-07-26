@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import io
 from typing import Optional
 
@@ -18,6 +19,7 @@ from app.schemas.excel import ExcelErrorRows, ExcelImportRows
 from app.modules.graduation.schemas.graduation_topic import (GdTopicArchiveRequest, GdTopicAttachmentsUpdate, GdTopicCapacityUpdate,
                                           GdTopicCreate, GdTopicDisableRequest, GdTopicReviewRequest, GdTopicUpdate)
 from app.services import audit_log
+from app.services import xlsx_util
 from app.modules.graduation.services import graduation_topic_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-题目库"])
@@ -67,9 +69,12 @@ def gd_topic_import_template(user=Depends(get_current_user)):
 
 @router.post("/gd-topics/import/xlsx", summary="题目库导入·上传 Excel 解析+预校验（不写库）")
 async def gd_topic_import_xlsx(file: UploadFile = File(...), user=Depends(get_current_user)):
-    content = await file.read()
+    content = await xlsx_util.read_safe_upload(file)
     rows = svc.import_read(content)
-    dry = svc.import_dry_run(rows)
+    dry = svc.import_dry_run(rows, {
+        "fileName": file.filename or "upload.xlsx",
+        "fileSha256": hashlib.sha256(content).hexdigest(),
+    })
     return success({"rows": rows, **dry})
 
 
@@ -80,7 +85,7 @@ def gd_topic_import_errors_xlsx(body: ExcelErrorRows, user=Depends(get_current_u
 
 @router.post("/gd-topics/import/confirm", summary="题目库导入·确认（整批事务，须预校验全通过）")
 def gd_topic_import_confirm(body: ExcelImportRows, user=Depends(get_current_user)):
-    result = svc.import_confirm(body.rows)
+    result = svc.import_confirm(body.rows, body.previewToken)
     audit_log.record("导入毕设题目", "graduation-topic:import", detail=result)
     return success(result, message="导入完成")
 

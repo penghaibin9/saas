@@ -1,6 +1,7 @@
 """毕业设计中心 · 选题轮次/志愿 API（/api/v1/graduation/gd-topic-rounds/*）。"""
 from __future__ import annotations
 
+import hashlib
 import io
 from typing import Optional
 
@@ -12,6 +13,7 @@ from app.core.security import get_current_user
 from app.schemas.excel import ExcelErrorRows, ExcelImportRows
 from app.modules.graduation.schemas.graduation_topic_round import GdTopicChoiceReview, GdTopicChoiceSubmit, GdTopicRoundCreate
 from app.services import audit_log
+from app.services import xlsx_util
 from app.modules.graduation.services import graduation_topic_round_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-选题轮次"])
@@ -57,9 +59,13 @@ def gd_topic_choice_import_template(round_id: str, user=Depends(get_current_user
 
 @router.post("/gd-topic-rounds/{round_id}/choices/import/xlsx", summary="选题志愿·上传 Excel 预校验")
 async def gd_topic_choice_import_xlsx(round_id: str, file: UploadFile = File(...), user=Depends(get_current_user)):
-    content = await file.read()
+    content = await xlsx_util.read_safe_upload(file)
     rows = svc.choice_import_read(round_id, content)
-    dry = svc.choice_import_dry_run(round_id, rows)
+    dry = svc.choice_import_dry_run(round_id, rows, {
+        "fileName": file.filename or "upload.xlsx",
+        "fileSha256": hashlib.sha256(content).hexdigest(),
+        "batchScope": f"round:{round_id}",
+    })
     return success({"rows": rows, **dry})
 
 
@@ -70,7 +76,7 @@ def gd_topic_choice_import_errors(round_id: str, body: ExcelErrorRows, user=Depe
 
 @router.post("/gd-topic-rounds/{round_id}/choices/import/confirm", summary="选题志愿·确认导入")
 def gd_topic_choice_import_confirm(round_id: str, body: ExcelImportRows, user=Depends(get_current_user)):
-    result = svc.choice_import_confirm(round_id, body.rows)
+    result = svc.choice_import_confirm(round_id, body.rows, body.previewToken)
     audit_log.record("导入选题志愿", f"graduation-topic-round:{round_id}", detail=result)
     return success(result, message="导入完成")
 

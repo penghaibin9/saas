@@ -14,6 +14,9 @@ from pydantic import BaseModel, Field
 class ExcelImportRows(BaseModel):
     """预校验 / 确认导入统一请求体。"""
     rows: list[dict] = Field(default_factory=list, description="行数据（表头映射后的字段 key）")
+    previewToken: Optional[str] = Field(
+        default=None, description="预校验签名凭证；确认导入时必须与操作者、租户和数据完全一致",
+    )
 
 
 class ExcelRowError(BaseModel):

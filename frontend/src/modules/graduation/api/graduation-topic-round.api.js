@@ -82,8 +82,8 @@ export const gdTopicRoundApi = {
   downloadChoiceImportErrors(roundId, rows, errors) {
     return call(() => request(`${BASE}/${roundId}/choices/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
   },
-  importChoiceConfirm(roundId, rows) {
-    return call(() => request(`${BASE}/${roundId}/choices/import/confirm`, { method: 'POST', body: { rows } }))
+  importChoiceConfirm(roundId, rows, previewToken) {
+    return call(() => request(`${BASE}/${roundId}/choices/import/confirm`, { method: 'POST', body: { rows, previewToken } }))
   },
   confirmChoice(choiceId) {
     return call(() => request(`${BASE}/choices/${choiceId}/confirm`, { method: 'POST' }))

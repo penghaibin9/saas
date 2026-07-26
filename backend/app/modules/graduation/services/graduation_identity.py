@@ -50,19 +50,21 @@ def current_user_mentor(db, tenant_id=None) -> GraduationMentor | None:
 
 
 def normalize_member(raw) -> dict:
-    """统一 members_json 条目：{mentorId, name, teacherNo}。兼容历史纯字符串。"""
+    """统一 members_json 条目；姓名仅作快照，不产生授权关系。"""
     if raw is None:
-        return {"mentorId": None, "name": "", "teacherNo": ""}
+        return {"mentorId": None, "expertId": None, "name": "", "teacherNo": ""}
     if isinstance(raw, str):
-        return {"mentorId": None, "name": raw.strip(), "teacherNo": ""}
+        return {"mentorId": None, "expertId": None, "name": raw.strip(), "teacherNo": ""}
     if isinstance(raw, dict):
         mid = raw.get("mentorId") or raw.get("id")
+        eid = raw.get("expertId")
         return {
             "mentorId": str(mid) if mid not in (None, "") else None,
+            "expertId": str(eid) if eid not in (None, "") else None,
             "name": str(raw.get("name") or raw.get("realName") or raw.get("teacherName") or "").strip(),
             "teacherNo": str(raw.get("teacherNo") or "").strip(),
         }
-    return {"mentorId": None, "name": str(raw).strip(), "teacherNo": ""}
+    return {"mentorId": None, "expertId": None, "name": str(raw).strip(), "teacherNo": ""}
 
 
 def member_snapshot(m: GraduationMentor) -> dict:
@@ -93,9 +95,11 @@ def build_members_from_ids(db, member_ids: list | None, legacy_members: list | N
             m = get_mentor(db, item["mentorId"])
             if m:
                 item = member_snapshot(m)
-        if not item.get("name") and not item.get("mentorId"):
+        if not item.get("name") and not item.get("mentorId") and not item.get("expertId"):
             continue
-        key = item.get("mentorId") or f"name:{item.get('name')}"
+        key = item.get("mentorId") or (
+            f"expert:{item.get('expertId')}" if item.get("expertId") else f"name:{item.get('name')}"
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -154,13 +158,16 @@ def merge_members_fields(
                 item = normalize_member(raw)
                 if item.get("mentorId"):
                     continue
-                if item.get("name"):
-                    name_only_raw.append(item.get("name"))
+                if item.get("name") or item.get("expertId"):
+                    name_only_raw.append(item)
         covered_names = {(m.get("name") or "").strip() for m in built if m.get("name")}
         covered_ids = {str(m.get("mentorId")) for m in built if m.get("mentorId")}
         for raw in name_only_raw:
             item = normalize_member(raw)
             if item.get("mentorId") and str(item["mentorId"]) in covered_ids:
+                continue
+            if item.get("expertId"):
+                built.append(item)
                 continue
             nm = (item.get("name") or "").strip()
             if not nm or nm in covered_names:
@@ -188,7 +195,7 @@ def merge_members_fields(
 
 
 def judge_panel_seats(group) -> list[dict]:
-    """应评分评委席位：[{mentorId, name}]，主席 + 成员（不含秘书）。"""
+    """应评分评委席位：稳定 mentorId/expertId + 姓名快照。"""
     seats: list[dict] = []
     if not group:
         return seats
@@ -197,60 +204,59 @@ def judge_panel_seats(group) -> list[dict]:
     if cid or chair:
         seats.append({
             "mentorId": int(cid) if cid else None,
+            "expertId": None,
             "name": chair,
         })
     for raw in (getattr(group, "members_json", None) or []):
         item = normalize_member(raw)
         mid = int(item["mentorId"]) if item.get("mentorId") else None
+        eid = int(item["expertId"]) if item.get("expertId") else None
         name = item.get("name") or ""
-        if mid or name:
-            seats.append({"mentorId": mid, "name": name})
+        if mid or eid or name:
+            seats.append({"mentorId": mid, "expertId": eid, "name": name})
     return seats
 
 
-def user_matches_judge_seat(seat: dict, *, mentor=None, real_name: str = "") -> bool:
-    """单席位匹配：有 mentorId 的席位必须比 ID；无 ID 的席位允许姓名。"""
+def user_matches_judge_seat(seat: dict, *, mentor=None, expert_id=None, real_name: str = "") -> bool:
+    """单席位匹配只认 mentorId/expertId；姓名参数仅为兼容调用签名。"""
     seat_id = seat.get("mentorId")
-    seat_name = (seat.get("name") or "").strip()
-    rn = (real_name or "").strip()
+    seat_expert_id = seat.get("expertId")
     if mentor is not None and seat_id is not None and int(mentor.id) == int(seat_id):
         return True
-    if seat_id is None and rn and seat_name and rn == seat_name:
+    if expert_id not in (None, "") and seat_expert_id is not None and int(expert_id) == int(seat_expert_id):
         return True
     return False
 
 
 def user_on_judge_panel(group, *, mentor=None, real_name: str = "") -> bool:
-    """部分席位有 ID、部分仅姓名时：ID∪姓名双通道（有 ID 席位不可被同名冒充）。"""
+    """当前账号是否匹配稳定评委席位。"""
+    from app.core.context import get_current_user_ctx
+    expert_id = (get_current_user_ctx() or {}).get("expertId")
     return any(
-        user_matches_judge_seat(seat, mentor=mentor, real_name=real_name)
+        user_matches_judge_seat(seat, mentor=mentor, expert_id=expert_id)
         for seat in judge_panel_seats(group)
     )
 
 
 def user_is_secretary(group, *, mentor=None, real_name: str = "") -> bool:
     sid = getattr(group, "secretary_mentor_id", None)
-    sname = (getattr(group, "secretary", None) or "").strip()
-    rn = (real_name or "").strip()
-    if sid is not None:
-        return bool(mentor and int(mentor.id) == int(sid))
-    return bool(rn and sname and rn == sname)
+    return bool(sid is not None and mentor and int(mentor.id) == int(sid))
 
 
 def score_row_covers_seat(row, seat: dict) -> bool:
-    """评分行是否覆盖某席位：ID 对齐，或（席位/行缺 ID 时）姓名对齐。"""
+    """A score covers a seat only when its stable mentor/expert identity matches."""
     if getattr(row, "status", None) not in ("SCORED", "CONFIRMED"):
         return False
     seat_id = seat.get("mentorId")
-    seat_name = (seat.get("name") or "").strip()
     row_id = getattr(row, "judge_mentor_id", None)
-    row_name = (getattr(row, "judge_name", None) or "").strip()
     if seat_id is not None and row_id is not None and int(seat_id) == int(row_id):
         return True
-    if seat_name and row_name and seat_name == row_name:
-        if seat_id is None or row_id is None or int(seat_id) == int(row_id):
-            return True
-    return False
+    seat_expert_id = seat.get("expertId")
+    row_expert_id = getattr(row, "expert_id", None)
+    return bool(
+        seat_expert_id is not None and row_expert_id is not None
+        and int(seat_expert_id) == int(row_expert_id)
+    )
 
 
 def resolve_chair_secretary(db, *, mentor_id=None, name: str | None = None) -> tuple[int | None, str]:

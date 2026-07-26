@@ -126,11 +126,11 @@ export default {
       return []
     },
     canReviewAppeal() {
-      const pa = this.ctx.permissionActions.reviewGradeAppeal || this.ctx.permissionActions.manageGrade || {}
+      const pa = this.ctx.permissionActions.reviewGradeAppeal || {}
       return pa.allowed !== false && pa.visible !== false
     },
     reviewAppealReason() {
-      const pa = this.ctx.permissionActions.reviewGradeAppeal || this.ctx.permissionActions.manageGrade || {}
+      const pa = this.ctx.permissionActions.reviewGradeAppeal || {}
       return pa.reason || '无成绩申诉复核权限'
     }
   },

@@ -13,7 +13,7 @@ from app.core.exceptions import no_permission
 from app.models import GraduationDefenseGroup, GraduationReview, GraduationStudent
 
 
-FULL_SCOPE_ROLES = {"PLATFORM_SUPER_ADMIN", "SCHOOL_ADMIN", "GRADUATION_ADMIN"}
+FULL_SCOPE_ROLES = {"PLATFORM_SUPER_ADMIN", "SCHOOL_ADMIN", "GRADUATION_ADMIN", "GD_GRADE_ADMIN"}
 COLLEGE_SCOPE_ROLES = {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN"}
 MAJOR_SCOPE_ROLES = {"GD_MAJOR_ADMIN"}
 
@@ -56,8 +56,8 @@ def _student_org_keys(db, student: GraduationStudent) -> tuple[str, str]:
     return college_key, major_key
 
 
-def _has_review_relation(db, student: GraduationStudent, real_name: str) -> bool:
-    """评阅关系：优先 reviewer_mentor_id（loginName→teacher_no）；无 ID 的历史任务才比姓名。"""
+def _has_review_relation(db, student: GraduationStudent, real_name: str = "") -> bool:
+    """评阅关系只认 reviewer_mentor_id；姓名仅作快照，历史缺 ID 时 fail-closed。"""
     login = _login_name()
     if login:
         try:
@@ -78,14 +78,7 @@ def _has_review_relation(db, student: GraduationStudent, real_name: str) -> bool
             ).limit(1))
             if hit is not None:
                 return True
-    # 历史无稳定 ID 的指派：仅匹配 reviewer_mentor_id IS NULL，避免同名串到已绑定 ID 的任务
-    return db.scalar(select(GraduationReview.id).where(
-        GraduationReview.tenant_id == student.tenant_id,
-        GraduationReview.gd_student_id == student.id,
-        GraduationReview.reviewer_name == real_name,
-        GraduationReview.reviewer_mentor_id.is_(None),
-        GraduationReview.is_deleted.is_(False),
-    ).limit(1)) is not None
+    return False
 
 
 def _login_name() -> str:
@@ -119,8 +112,7 @@ def _name_is_ambiguous(db, tenant_id: int, real_name: str) -> bool:
     判定归属（advisor_name / reviewer_name / group.secretary / members_json）。学校里姓名会重复
     （开发库已存在同名账号），两名同名教师会互相访问对方学生，属真实越权。
 
-    判定采取「只在能证明重名时才拒绝」：命中 0 个（演示/外聘导师无系统账号）或 1 个时不拒绝，
-    保持既有数据可用；≥2 个才拒绝。这样只堵漏洞，不误伤未建账号的存量指导关系。
+    此函数仅用于历史诊断；查询失败必须拒绝，不能把异常当成姓名授权放行。
     """
     if not real_name:
         return True
@@ -128,7 +120,7 @@ def _name_is_ambiguous(db, tenant_id: int, real_name: str) -> bool:
     # 据此判重名会把所有姓名都误判为重复，进而拒绝全部访问。
     from sqlalchemy.orm import Session as _OrmSession
     if not isinstance(db, _OrmSession):
-        return False
+        return True
     try:
         from app.models import User
         rows = db.scalars(select(User.id).where(
@@ -136,30 +128,22 @@ def _name_is_ambiguous(db, tenant_id: int, real_name: str) -> bool:
             User.real_name == real_name,
             User.is_deleted.is_(False),
         ).limit(2)).all()
-    except Exception:  # noqa: BLE001 — 旧库无表/连接异常时不阻断既有链路
-        return False
+    except Exception:  # noqa: BLE001 — 身份判定异常必须 fail-closed
+        return True
     return len(rows) >= 2
 
 
 def _student_self_identity(db, tenant_id: int) -> tuple[str, int | None]:
-    """学生登录者的稳定本人身份：令牌 studentNo 优先；缺失时在租户内按姓名唯一匹配
-    学籍主档（与登录签发 studentNo 同源的映射）。重名或找不到一律 fail-closed。"""
+    """学生本人身份只认令牌 studentNo/studentId；禁止按姓名反查。"""
     user = get_current_user_ctx() or {}
     student_no = str(user.get("studentNo") or "").strip()
     if student_no:
         return student_no, None
-    real_name = (user.get("realName") or "").strip()
-    if not real_name:
+    profile_id = user.get("studentId") or user.get("studentProfileId")
+    try:
+        return "", int(profile_id) if profile_id not in (None, "") else None
+    except (TypeError, ValueError):
         return "", None
-    from app.models import StudentProfile
-    rows = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == tenant_id,
-        StudentProfile.real_name == real_name,
-        StudentProfile.is_deleted.is_(False),
-    ).limit(2)).all()
-    if len(rows) != 1:
-        return "", None
-    return str(rows[0].student_no or ""), int(rows[0].id)
 
 
 def has_full_scope() -> bool:
@@ -240,17 +224,8 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         from app.modules.graduation.services import graduation_identity as gid
         me = gid.mentor_by_teacher_no(db, _login_name(), student.tenant_id) if _login_name() else None
         if role == "GD_DEFENSE_SECRETARY":
-            if not gid.user_is_secretary(group, mentor=me, real_name=real_name):
-                return False
-            # 有秘书 ID 时已比 ID；仅姓名快照时重名 fail-closed
-            if getattr(group, "secretary_mentor_id", None):
-                return True
-            if _name_is_ambiguous(db, student.tenant_id, real_name):
-                return False
-            return True
-        # 评委：部分席位有 ID / 部分仅姓名 → ID∪姓名双通道（有 ID 席位不可被同名冒充）
-        if not gid.user_on_judge_panel(group, mentor=me, real_name=real_name):
-            return False
+            secretary_id = getattr(group, "secretary_mentor_id", None)
+            return bool(secretary_id and me and int(secretary_id) == int(me.id))
         matched_by_id = bool(
             me and any(
                 s.get("mentorId") is not None and int(me.id) == int(s["mentorId"])
@@ -259,9 +234,10 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         )
         if matched_by_id:
             return True
-        if _name_is_ambiguous(db, student.tenant_id, real_name):
-            return False
-        return True
+        expert_id = str((get_current_user_ctx() or {}).get("expertId") or "").strip()
+        return bool(expert_id and any(
+            str(s.get("expertId") or "") == expert_id for s in gid.judge_panel_seats(group)
+        ))
 
     if role in {"GD_MENTOR", "COUNSELOR", "GD_REVIEWER"}:
         login_name = _login_name()
@@ -271,15 +247,13 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         # 评阅关系已绑 mentor_id 时，后续 _has_review_relation 走 ID，不受同名门禁阻断
         if role == "GD_REVIEWER" or (role in {"GD_MENTOR", "COUNSELOR"} and getattr(student, "mentor_id", None)):
             pass  # 不因同名提前拒绝；由 ID / 评阅关系裁决
-        elif _name_is_ambiguous(db, student.tenant_id, real_name):
+        else:
             return False
 
     if role in {"GD_MENTOR", "COUNSELOR"}:
         # 已绑定 mentor_id 时禁止再靠同名 advisor_name 串号（张伟A/B 隔离）。
         if getattr(student, "mentor_id", None):
             return _has_review_relation(db, student, real_name)
-        if (student.advisor_name or "").strip() == real_name:
-            return True
         return _has_review_relation(db, student, real_name)
 
     if role == "GD_REVIEWER":

@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
 from app.models import (GraduationArchiveRecord, GraduationAuditTrail, GraduationDefenseScore,
                         GraduationFinal, GraduationGrade, GraduationMidterm, GraduationProposal,
                         GraduationRiskCase, GraduationStudent, GraduationTaskBook)
@@ -516,6 +517,9 @@ def archive_stats(batch_id=None) -> dict:
 
 
 def export_archives_xlsx(status=None, keyword=None, batch_id=None) -> dict:
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.archive.export")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     items, total = list_archives(1, 100000, keyword=keyword, status=status, batch_id=batch_id)

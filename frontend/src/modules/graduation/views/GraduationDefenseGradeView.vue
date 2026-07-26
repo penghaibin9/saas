@@ -145,10 +145,10 @@
               <div class="gp-kv"><span>发布时间</span><AppDateDisplay :value="grade.publishedAt" mode="datetime" /></div>
               <div class="ie-actions">
                 <button v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" class="mp-btn mp-btn--primary" :disabled="!canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</button>
-                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canManageGrade" :title="manageGradeReason" @click="doReview('APPROVE')">复核通过</button>
-                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canManageGrade" :title="manageGradeReason" @click="openReturnGrade">复核退回</button>
+                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canReviewGrade" :title="reviewGradeReason" @click="doReview('APPROVE')">复核通过</button>
+                <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canReviewGrade" :title="reviewGradeReason" @click="openReturnGrade">复核退回</button>
                 <button v-if="grade.status === 'CALCULATED' && grade.reviewedAt" class="mp-btn mp-btn--primary" :disabled="!canPublishGrade" :title="publishGradeReason" @click="doPublish">发布成绩</button>
-                <button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" :disabled="!canManageGrade" :title="manageGradeReason" @click="openWithdraw">撤回</button>
+                <button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" :disabled="!canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</button>
               </div>
             </template>
           </div>
@@ -208,27 +208,27 @@ export default {
       return this.batch.rows.filter((r) => r.advisorScore == null || r.reviewerScore == null || r.defenseScore == null || r.totalScore == null)
     },
     canEnterScore() {
-      const pa = this.ctx.permissionActions.enterDefenseScore || this.ctx.permissionActions.manageDefense
+      const pa = this.ctx.permissionActions.enterDefenseScore
       return !!(pa && pa.allowed)
     },
     enterScoreReason() {
-      const pa = this.ctx.permissionActions.enterDefenseScore || this.ctx.permissionActions.manageDefense
+      const pa = this.ctx.permissionActions.enterDefenseScore
       return pa && !pa.allowed ? (pa.reason || '无答辩评分权限') : ''
     },
     canConfirmScores() {
-      const pa = this.ctx.permissionActions.confirmDefenseScores || this.ctx.permissionActions.manageDefense
+      const pa = this.ctx.permissionActions.confirmDefenseScores
       return !!(pa && pa.allowed)
     },
     confirmScoresReason() {
-      const pa = this.ctx.permissionActions.confirmDefenseScores || this.ctx.permissionActions.manageDefense
+      const pa = this.ctx.permissionActions.confirmDefenseScores
       return pa && !pa.allowed ? (pa.reason || '仅答辩秘书/管理员可确认成绩') : ''
     },
     canCreateSecondDefense() {
-      const pa = this.ctx.permissionActions.createSecondDefense || this.ctx.permissionActions.manageDefense
+      const pa = this.ctx.permissionActions.createSecondDefense
       return !!(pa && pa.allowed)
     },
     secondDefenseReason() {
-      const pa = this.ctx.permissionActions.createSecondDefense || this.ctx.permissionActions.manageDefense
+      const pa = this.ctx.permissionActions.createSecondDefense
       return pa && !pa.allowed ? (pa.reason || '仅答辩秘书/管理员可发起二次答辩') : ''
     },
     canManageGrade() {
@@ -239,17 +239,33 @@ export default {
       const pa = this.ctx.permissionActions.manageGrade
       return pa && !pa.allowed ? (pa.reason || '无成绩管理权限') : ''
     },
+    canReviewGrade() {
+      const pa = this.ctx.permissionActions.reviewGrade
+      return !!(pa && pa.allowed)
+    },
+    reviewGradeReason() {
+      const pa = this.ctx.permissionActions.reviewGrade
+      return pa && !pa.allowed ? (pa.reason || '无成绩复核权限') : ''
+    },
+    canWithdrawGrade() {
+      const pa = this.ctx.permissionActions.withdrawGrade
+      return !!(pa && pa.allowed)
+    },
+    withdrawGradeReason() {
+      const pa = this.ctx.permissionActions.withdrawGrade
+      return pa && !pa.allowed ? (pa.reason || '无成绩撤回权限') : ''
+    },
     canPublishGrade() {
-      const pa = this.ctx.permissionActions.publishGrade || this.ctx.permissionActions.manageGrade
+      const pa = this.ctx.permissionActions.publishGrade
       return !!(pa && pa.allowed)
     },
     publishGradeReason() {
-      const pa = this.ctx.permissionActions.publishGrade || this.ctx.permissionActions.manageGrade
+      const pa = this.ctx.permissionActions.publishGrade
       return pa && !pa.allowed ? (pa.reason || '无成绩发布权限') : ''
     }
   },
   created() {
-    const p = this.$route.query.panel
+    const p = this.$route.query.panel || this.$route.meta.defaultPanel
     if (['plagiarism', 'review', 'defense', 'grade'].includes(p)) this.tab = p
     if ((this.$route.query.view || '') === 'batch') { this.mode = 'batch'; this.loadGrades() }
     this.searchStudents()

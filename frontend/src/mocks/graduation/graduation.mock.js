@@ -59,6 +59,8 @@ export const permissionActions = {
   confirmDefenseScores: { visible: true, allowed: true, reason: '' },
   createSecondDefense: { visible: true, allowed: true, reason: '' },
   manageGrade: { visible: true, allowed: true, reason: '' },
+  reviewGrade: { visible: true, allowed: true, reason: '' },
+  withdrawGrade: { visible: true, allowed: true, reason: '' },
   reviewGradeAppeal: { visible: true, allowed: true, reason: '' },
   publishGrade: { visible: true, allowed: true, reason: '' },
   guideMidterm: { visible: true, allowed: true, reason: '' },

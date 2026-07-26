@@ -18,6 +18,7 @@ from app.models import (GraduationAuditTrail, GraduationFinal, GraduationPlagiar
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, has_full_scope)
+from app.modules.graduation.policies import review_policy
 
 PLAG_STATUS_LABEL = {"CHECKING": "检测中", "DONE": "已完成", "FAILED": "失败"}
 REVIEW_STATUS_LABEL = {"ASSIGNED": "待评阅", "REVIEWING": "评阅中", "COMPLETED": "已完成", "RETURNED": "已退回"}
@@ -289,6 +290,7 @@ def assign_review(gd_student_id, reviewer_name: str | None = None, gd_final_id=N
     with session() as db:
         from app.modules.graduation.services import graduation_identity as gid
         stu = _stu(db, gd_student_id)
+        review_policy.authorize(db, stu, "assign")
         mid = None
         reviewer = (reviewer_name or "").strip()
         if reviewer_mentor_id not in (None, ""):
@@ -349,17 +351,12 @@ def submit_review(rid, score: int, opinion: str) -> dict:
         ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
-        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.submit")
-        # 评阅提交是本人动作：有 reviewer_mentor_id 时比 ID；否则比姓名（管理岗可代办）。
+        review_policy.authorize(db, db.get(GraduationStudent, r.gd_student_id), "submit")
+        # 评阅提交只认稳定 reviewer_mentor_id；历史缺 ID 的任务必须先治理。
         if not has_full_scope():
-            if getattr(r, "reviewer_mentor_id", None):
-                me = gid.current_user_mentor(db)
-                if not me or int(me.id) != int(r.reviewer_mentor_id):
-                    raise no_permission("仅被指派的评阅人可提交本评阅任务")
-            else:
-                submitter = (get_current_user_ctx() or {}).get("realName", "").strip()
-                if (r.reviewer_name or "").strip() != submitter:
-                    raise no_permission("仅被指派的评阅人可提交本评阅任务")
+            me = gid.current_user_mentor(db)
+            if not r.reviewer_mentor_id or not me or int(me.id) != int(r.reviewer_mentor_id):
+                raise no_permission("仅稳定ID匹配的被指派评阅人可提交本任务")
         if r.status == "COMPLETED" and r.score == score and (r.opinion or "") == opinion:
             return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status not in ("ASSIGNED", "REVIEWING", "RETURNED"):
@@ -384,7 +381,7 @@ def return_review(rid, reason: str) -> dict:
         ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
-        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "review.return")
+        review_policy.authorize(db, db.get(GraduationStudent, r.gd_student_id), "return")
         if r.status == "RETURNED":
             return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
         if r.status != "COMPLETED":

@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.permissions import enforce_permission
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic,
                         GraduationTopicChoice, GraduationTopicRound)
 from app.services.db_service import _iso, _tid, session
@@ -42,8 +43,14 @@ def plan_topic_matches(choices: list[dict], remaining_by_topic: dict[int, int]) 
 
 
 def _audit(db, biz_id, action, detail=""):
+    user = get_current_user_ctx() or {}
+    operator = user.get("realName") or user.get("loginName")
+    role = user.get("currentRoleCode") or user.get("userType")
+    if not operator:
+        raise AppException("AUDIT_CONTEXT_MISSING", "关键动作缺少操作者上下文")
     db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="TOPIC_ROUND", biz_id=str(biz_id),
-                                action=action, operator="系统", detail=detail, occurred_at=datetime.now(timezone.utc)))
+                                action=action, operator=operator, role_name=role,
+                                detail=detail, occurred_at=datetime.now(timezone.utc)))
 
 
 def _get_round(db, rid) -> GraduationTopicRound:
@@ -548,6 +555,9 @@ def build_round_export_spec():
 
 
 def export_rounds_xlsx(batch_id=None, status=None) -> dict:
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.topic.export")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     from app.core.context import get_current_user_ctx
     from app.services import excel
     items, _ = list_rounds(1, 100000, batch_id=batch_id, status=status)
@@ -649,6 +659,93 @@ def _persist_choice_import(round_id: str, rows: list[dict]) -> dict:
     return {"created": submitted, "students": submitted}
 
 
+def _persist_choice_import_atomic(round_id: str, rows: list[dict]) -> dict:
+    """Persist all imported choices and their evidence in one transaction."""
+    with session() as db:
+        round_row = _get_round(db, round_id)
+        if round_row.status != "OPEN":
+            raise AppException("DATA_CONFLICT", "Only an open topic round can accept imported choices")
+        students = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+        ).with_for_update()).all()
+        student_by_no = {student.student_no: student for student in students}
+        topics = db.scalars(select(GraduationTopic).where(
+            GraduationTopic.tenant_id == _tid(),
+            GraduationTopic.is_deleted.is_(False),
+        ).with_for_update()).all()
+        topic_by_no = {
+            (topic.topic_no or "").strip(): topic
+            for topic in topics if (topic.topic_no or "").strip()
+        }
+        topic_by_title = {topic.title.strip(): topic for topic in topics}
+        grouped: dict[int, list[tuple[int, GraduationTopic]]] = {}
+        for row in rows:
+            student = student_by_no.get((row.get("studentNo") or "").strip())
+            topic_no = (row.get("topicNo") or "").strip()
+            topic_title = (row.get("topicTitle") or row.get("title") or "").strip()
+            topic = topic_by_no.get(topic_no) if topic_no else topic_by_title.get(topic_title)
+            if not student or not topic:
+                raise AppException("DATA_CONFLICT", "Import master data changed; run dry-run again")
+            grouped.setdefault(int(student.id), []).append((
+                int(row.get("choiceOrder") or row.get("choice_order")),
+                topic,
+            ))
+
+        student_by_id = {int(student.id): student for student in students}
+        for student_id, choices in grouped.items():
+            student = student_by_id[student_id]
+            assert_student_access(db, student, "topic.choice.submit")
+            if len(choices) > int(round_row.max_choices or 3):
+                raise AppException("VALIDATION_ERROR", "Imported choices exceed the round limit")
+            if round_row.batch_id and int(student.batch_id or 0) != int(round_row.batch_id):
+                raise AppException("DATA_CONFLICT", "Student and topic round batches do not match")
+            orders = [order for order, _ in choices]
+            if any(order < 1 for order in orders) or len(orders) != len(set(orders)):
+                raise AppException("VALIDATION_ERROR", "Choice order must be positive and unique")
+            for _, topic in choices:
+                if topic.review_status != "APPROVED" or topic.status != "CONFIRMED":
+                    raise AppException("DATA_CONFLICT", "Imported topic is no longer available")
+                if round_row.batch_id and int(topic.batch_id or 0) != int(round_row.batch_id):
+                    raise AppException("DATA_CONFLICT", "Topic and topic round batches do not match")
+
+            existing = db.scalars(select(GraduationTopicChoice).where(
+                GraduationTopicChoice.tenant_id == _tid(),
+                GraduationTopicChoice.round_id == int(round_id),
+                GraduationTopicChoice.gd_student_id == student_id,
+            ).with_for_update()).all()
+            by_order = {int(choice.choice_order): choice for choice in existing}
+            requested = set(orders)
+            for order, topic in choices:
+                choice = by_order.get(order)
+                if choice:
+                    choice.topic_id = int(topic.id)
+                    choice.status = "PENDING"
+                    choice.is_deleted = False
+                    choice.submission_version = int(choice.submission_version or 0) + 1
+                else:
+                    db.add(GraduationTopicChoice(
+                        tenant_id=_tid(), round_id=int(round_id),
+                        gd_student_id=student_id, topic_id=int(topic.id),
+                        choice_order=order, status="PENDING",
+                    ))
+            for order, choice in by_order.items():
+                if order not in requested:
+                    choice.status = "WITHDRAWN"
+                    choice.is_deleted = False
+            _audit(
+                db, round_id, "IMPORT_CHOICES",
+                f"studentId={student_id}, choices={len(choices)}",
+            )
+
+        from app.services import excel
+        job = excel.job_service.add_import_job(
+            db, "graduationDesign", "gd-topic-choice", created=len(grouped),
+        )
+        db.commit()
+        return {"created": len(grouped), "students": len(grouped), **job}
+
+
 def _choice_import_spec(round_id: str):
     from app.services import excel
     C = excel.ColumnSpec
@@ -668,8 +765,8 @@ def _choice_import_spec(round_id: str):
             "4. 轮次须为「进行中」或「已关闭」状态。",
         ],
         business_validate=lambda row, row_no: _choice_import_business_validate(round_id, row, row_no),
-        persist_rows=lambda rows: _persist_choice_import(round_id, rows),
-        permission_key="graduationDesign.topicRound.import",
+        persist_rows=lambda rows: _persist_choice_import_atomic(round_id, rows),
+        permission_key="graduationDesign.topic.create",
         audit_action="导入选题志愿",
     )
 
@@ -684,9 +781,11 @@ def choice_import_read(round_id: str, content: bytes) -> list[dict]:
     return excel.read_upload(_choice_import_spec(round_id), content)
 
 
-def choice_import_dry_run(round_id: str, rows: list[dict]) -> dict:
+def choice_import_dry_run(
+    round_id: str, rows: list[dict], evidence: dict | None = None,
+) -> dict:
     from app.services import excel
-    return excel.pre_validate(_choice_import_spec(round_id), rows)
+    return excel.pre_validate(_choice_import_spec(round_id), rows, evidence)
 
 
 def choice_import_errors_pack(round_id: str, rows: list[dict], errors: list[dict]) -> dict:
@@ -694,14 +793,10 @@ def choice_import_errors_pack(round_id: str, rows: list[dict], errors: list[dict
     return excel.build_error_rows(_choice_import_spec(round_id), rows, errors)
 
 
-def choice_import_confirm(round_id: str, rows: list[dict]) -> dict:
+def choice_import_confirm(round_id: str, rows: list[dict], preview_token: str | None = None) -> dict:
     from app.services import excel
     spec = _choice_import_spec(round_id)
-    pre = excel.pre_validate(spec, rows)
-    result = excel.confirm_import(spec, rows)
-    excel.job_service.record_import(spec.module_key, spec.biz_type, pre=pre,
-                                    result=result, status="IMPORTED",
-                                    remark=f"roundId={round_id}")
+    result = excel.confirm_import(spec, rows, preview_token)
     return result
 
 

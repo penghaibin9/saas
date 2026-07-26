@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
 from app.models import GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic
 from app.services import excel
 from app.services.db_service import _iso, _tid, session
@@ -588,8 +589,11 @@ def _persist_import_topics(rows: list[dict]) -> dict:
                 t.review_status = "PENDING_REVIEW"
                 _audit(db, t.id, "SUBMIT_REVIEW", "导入并提交审核")
             created += 1
+        job = excel.job_service.add_import_job(
+            db, "graduationDesign", "gd-topic", created=created,
+        )
         db.commit()
-        return {"created": created}
+        return {"created": created, **job}
 
 
 def build_import_spec() -> excel.ImportSpec:
@@ -625,7 +629,7 @@ def build_import_spec() -> excel.ImportSpec:
         business_validate=_import_business_validate,
         transform_row=_import_transform,
         persist_rows=_persist_import_topics,
-        permission_key="graduationDesign.topic.import",
+        permission_key="graduationDesign.topic.create",
         audit_action="导入毕设题目",
     )
 
@@ -666,22 +670,22 @@ def import_errors_pack(rows: list[dict], errors: list[dict]) -> dict:
     return excel.build_error_rows(build_import_spec(), rows, errors)
 
 
-def import_dry_run(rows: list[dict]) -> dict:
-    return excel.pre_validate(build_import_spec(), rows)
+def import_dry_run(rows: list[dict], evidence: dict | None = None) -> dict:
+    return excel.pre_validate(build_import_spec(), rows, evidence)
 
 
-def import_confirm(rows: list[dict]) -> dict:
+def import_confirm(rows: list[dict], preview_token: str | None = None) -> dict:
     spec = build_import_spec()
-    pre = excel.pre_validate(spec, rows)
-    result = excel.confirm_import(spec, rows)
-    excel.job_service.record_import(spec.module_key, spec.biz_type, pre=pre,
-                                    result=result, status="IMPORTED")
-    return {"created": result.get("created", 0)}
+    result = excel.confirm_import(spec, rows, preview_token)
+    return {"created": result.get("created", 0), "jobId": result.get("jobId")}
 
 
 def export_topics_xlsx(keyword=None, batch_id=None, source_type=None, category=None,
                        review_status=None, status=None, is_full=None, archive_view=None,
                        has_requirements=None, has_attachments=None, missing_category=None) -> dict:
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.topic.export")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     items, _ = list_topics(1, 100000, keyword=keyword, batch_id=batch_id, source_type=source_type,
                            category=category, review_status=review_status, status=status,
                            is_full=is_full, archive_view=archive_view,

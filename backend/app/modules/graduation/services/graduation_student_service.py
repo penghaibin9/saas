@@ -14,9 +14,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationMidterm, GraduationPlagiarismCheck, GraduationProposal, GraduationReview,
-                        GraduationStudent, GraduationTopic, StudentContact, StudentProfile)
+                        GraduationStudent, GraduationTopic, GraduationMentor, StudentContact,
+                        StudentProfile)
 from app.services import excel
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 from app.core.field_crypto import mask_phone_encrypted
@@ -815,6 +817,9 @@ def _dup_check(rows: list[dict]) -> dict[int, str]:
     with session() as db:
         profiles = _profiles_map(db)
         batches = _batches_map(db)
+        mentors = {m.teacher_no: m for m in db.scalars(select(GraduationMentor).where(
+            GraduationMentor.tenant_id == _tid(), GraduationMentor.is_deleted.is_(False),
+            GraduationMentor.qualification_status == "QUALIFIED")).all()}
         existing = _existing_keys(db)
         for i, r in enumerate(rows or []):
             row_no = i + 1
@@ -831,8 +836,18 @@ def _dup_check(rows: list[dict]) -> dict[int, str]:
             if not stu:
                 out[row_no] = f"未匹配到学生主档：{no}"
                 continue
-            if batch_no and batch_no not in batches:
+            if not stu.college_id or not stu.major_id or not stu.class_id:
+                out[row_no] = f"学生主档缺少学院、专业或班级组织数据：{no}"
+                continue
+            if not batch_no:
+                out[row_no] = "必须选择有效毕业设计批次"
+                continue
+            if batch_no not in batches:
                 out[row_no] = f"毕设批次编号不存在：{batch_no}"
+                continue
+            teacher_no = (r.get("advisorTeacherNo") or "").strip()
+            if teacher_no and teacher_no not in mentors:
+                out[row_no] = f"未匹配到具备资格的导师工号：{teacher_no}"
                 continue
             batch_id = batches[batch_no].id if batch_no else None
             if (stu.id, batch_id) in existing:
@@ -855,12 +870,17 @@ def _persist_gd_students(rows: list[dict]) -> dict:
     with session() as db:
         profiles = _profiles_map(db)
         batches = _batches_map(db)
+        mentors = {m.teacher_no: m for m in db.scalars(select(GraduationMentor).where(
+            GraduationMentor.tenant_id == _tid(), GraduationMentor.is_deleted.is_(False),
+            GraduationMentor.qualification_status == "QUALIFIED")).all()}
         created = 0
         for r in rows or []:
             no = (r.get("studentNo") or "").strip()
             stu = profiles[no]
             batch_no = (r.get("batchNo") or "").strip()
-            batch_id = batches[batch_no].id if batch_no else None
+            batch_id = batches[batch_no].id
+            teacher_no = (r.get("advisorTeacherNo") or "").strip()
+            mentor = mentors.get(teacher_no) if teacher_no else None
             phone = db.scalars(select(StudentContact).where(
                 StudentContact.tenant_id == _tid(), StudentContact.student_id == stu.id,
                 StudentContact.contact_type == "PHONE")).first()
@@ -868,7 +888,9 @@ def _persist_gd_students(rows: list[dict]) -> dict:
                 tenant_id=_tid(), batch_id=batch_id, student_id=stu.id, student_no=stu.student_no,
                 name=stu.real_name, class_id=str(stu.class_id) if stu.class_id else None,
                 class_name=f"{stu.grade}级" if stu.grade else None,
-                advisor_name=(r.get("advisorName") or "").strip() or None,
+                college_id=str(stu.college_id), major_id=str(stu.major_id),
+                mentor_id=mentor.id if mentor else None,
+                advisor_name=mentor.teacher_name if mentor else None,
                 phone_encrypted=phone.contact_value_encrypted if phone else None,
                 stage="TOPIC_SELECTING", risk_level="NONE", eligibility_status="PENDING",
             grad_qual_status="UNKNOWN", record_status="ACTIVE")
@@ -876,8 +898,11 @@ def _persist_gd_students(rows: list[dict]) -> dict:
             db.flush()
             _audit(db, s.id, "IMPORT", no)
             created += 1
+        job = excel.job_service.add_import_job(
+            db, "graduationDesign", "gd-student", created=created,
+        )
         db.commit()
-        return {"created": created}
+        return {"created": created, **job}
 
 
 def build_import_spec() -> excel.ImportSpec:
@@ -887,14 +912,15 @@ def build_import_spec() -> excel.ImportSpec:
         columns=[
             C("studentNo", "学号", required=True, example="2023115001",
               help_text="须为学生主档已有学号"),
-            C("batchNo", "批次编号", example="GD-2026-1",
-              help_text="可选；须为毕设批次管理中已存在的批次编号"),
-            C("advisorName", "指导教师", max_length=50, example="王芳"),
+            C("batchNo", "批次编号", required=True, example="GD-2026-1",
+              help_text="必填；须为毕设批次管理中已存在的批次编号"),
+            C("advisorTeacherNo", "指导教师工号", max_length=50, example="T2026001",
+              help_text="可选；填写时必须唯一匹配已具备资格的导师"),
         ],
         notes=[
             "1. 只导入「导入模板」页；第一行表头请勿改动。",
-            "2. 带 * 为必填：学号。",
-            "3. 批次编号可选；同一学号在同一批次内不可重复建档。",
+            "2. 带 * 为必填：学号、批次编号。",
+            "3. 同一学号在同一批次内不可重复建档。",
             "4. 导入后初始节点为「选题中」，选题请在学生名单或详情中从选题库分配。",
         ],
         duplicate_check=_dup_check,
@@ -938,23 +964,23 @@ def import_errors_pack(rows: list[dict], errors: list[dict]) -> dict:
     return excel.build_error_rows(build_import_spec(), rows, errors)
 
 
-def import_dry_run(rows: list[dict]) -> dict:
-    return excel.pre_validate(build_import_spec(), rows)
+def import_dry_run(rows: list[dict], evidence: dict | None = None) -> dict:
+    return excel.pre_validate(build_import_spec(), rows, evidence)
 
 
-def import_confirm(rows: list[dict]) -> dict:
+def import_confirm(rows: list[dict], preview_token: str | None = None) -> dict:
     spec = build_import_spec()
-    pre = excel.pre_validate(spec, rows)
-    result = excel.confirm_import(spec, rows)
-    excel.job_service.record_import(spec.module_key, spec.biz_type, pre=pre,
-                                    result=result, status="IMPORTED")
-    return {"created": result.get("created", 0)}
+    result = excel.confirm_import(spec, rows, preview_token)
+    return {"created": result.get("created", 0), "jobId": result.get("jobId")}
 
 
 def export_students_xlsx(keyword=None, class_id=None, batch_id=None, stage=None, risk_level=None,
                          advisor_name=None, has_topic=None, eligibility=None, student_group=None,
                          has_defense_group=None, grad_qual_status=None, material_complete=None,
                          archive_view=None) -> dict:
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.student.export")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     """导出与 list_students 使用同一套筛选参数，保证 rowCount == 列表 total。"""
     items, total = list_students(
         1, 100000, keyword=keyword, class_id=class_id, batch_id=batch_id, stage=stage,

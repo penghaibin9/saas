@@ -70,7 +70,8 @@ def sign(user: dict, body: dict) -> dict:
     return {"signId": str(rid), "contentHash": content_hash, "provider": provider,
             "signerName": u.get("realName") or "", "signedAt": _iso(signed_at),
             # reliable_log 为可靠留痕，非法律级电子签名；法律效力待采购持牌平台
-            "legalEffect": provider != "reliable_log"}
+            "legalEffect": provider != "reliable_log",
+            "confirmationType": "EVIDENCE_LOG"}
 
 
 def create_sign_record_in_session(db, user: dict, body: dict, student) -> dict:
@@ -93,7 +94,8 @@ def create_sign_record_in_session(db, user: dict, body: dict, student) -> dict:
     db.flush()
     return {"signId": str(rec.id), "contentHash": content_hash, "provider": provider,
             "signerName": user.get("realName") or "", "signedAt": _iso(signed_at),
-            "legalEffect": provider != "reliable_log"}
+            "legalEffect": provider != "reliable_log",
+            "confirmationType": "EVIDENCE_LOG"}
 
 
 def print_log(user: dict, body: dict) -> dict:

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String
+from sqlalchemy import BigInteger, DateTime, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -23,6 +23,11 @@ class ExcelImportJob(PKMixin, TenantMixin, CommonMixin, Base):
     module_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="模块 key")
     biz_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="业务类型")
     file_name: Mapped[str | None] = mapped_column(String(255), comment="上传文件名")
+    file_sha256: Mapped[str | None] = mapped_column(String(64), comment="Original upload SHA-256")
+    dry_run_sha256: Mapped[str | None] = mapped_column(String(64), comment="Dry-run result SHA-256")
+    preview_token_sha256: Mapped[str | None] = mapped_column(String(64), comment="Preview token SHA-256")
+    batch_scope: Mapped[str | None] = mapped_column(String(500), comment="Import batch scope snapshot")
+    data_scope_snapshot: Mapped[dict | None] = mapped_column(JSON, comment="Actor data scope snapshot")
     template_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
     # 状态机：UPLOADED→VALIDATING→VALIDATED→CONFIRMING→IMPORTED / FAILED / CANCELLED
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="UPLOADED", index=True)
@@ -31,6 +36,7 @@ class ExcelImportJob(PKMixin, TenantMixin, CommonMixin, Base):
     invalid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     success_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expected_success_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_file_key: Mapped[str | None] = mapped_column(String(255), comment="错误行文件句柄（预留）")
     operator_id: Mapped[int | None] = mapped_column(BigInteger, comment="操作人 ID")
     operator_name: Mapped[str | None] = mapped_column(String(100), comment="操作人姓名")

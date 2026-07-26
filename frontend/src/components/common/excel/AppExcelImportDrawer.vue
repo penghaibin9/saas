@@ -188,7 +188,10 @@ export default {
       }
       this.busy = true
       try {
-        const res = await this.confirmFn({ rows: this.pre.rows })
+        const res = await this.confirmFn({
+          rows: this.pre.rows,
+          previewToken: this.pre.previewToken
+        })
         if (res?.code === 0) {
           this.result = res.data
           this.step = 2

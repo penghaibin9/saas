@@ -15,6 +15,7 @@ from typing import Any, Optional
 _trace_id: ContextVar[str] = ContextVar("trace_id", default="-")
 _tenant: ContextVar[Optional[dict]] = ContextVar("tenant", default=None)
 _user: ContextVar[Optional[dict]] = ContextVar("current_user", default=None)
+_permission_code: ContextVar[Optional[str]] = ContextVar("permission_code", default=None)
 
 
 # ── traceId ──
@@ -47,6 +48,14 @@ def set_current_user(user: Optional[dict]) -> None:
 
 def get_current_user_ctx() -> Optional[dict]:
     return _user.get()
+
+
+def set_current_permission_code(code: Optional[str]) -> None:
+    _permission_code.set(code)
+
+
+def get_current_permission_code() -> Optional[str]:
+    return _permission_code.get()
 
 
 # ── 请求元信息（P4 审计增强：ip / userAgent / method / path）──

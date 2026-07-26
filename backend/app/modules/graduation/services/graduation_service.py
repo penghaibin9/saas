@@ -1,14 +1,17 @@
 """毕业设计域真实数据服务。租户过滤 + 脱敏 + 审计留痕 + 开题批阅/答辩发布闭环。"""
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.permissions import enforce_permission
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
-                        GraduationProposal, GraduationStudent, GraduationTopic)
+                        GraduationProposal, GraduationStudent, GraduationTopic, StudentAccountLink,
+                        UnifiedMessage)
 from app.modules.graduation.services import graduation_student_service as gd_stu_svc
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, can_access_student, has_full_scope,
@@ -72,9 +75,65 @@ def _op():
 
 def _audit(db, bt, bid, action, detail="", before="", after=""):
     n, r = _op()
-    db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type=bt, biz_id=str(bid), action=action,
-                                operator=n, role_name=r, detail=detail, before_val=before,
-                                after_val=after, occurred_at=datetime.now(timezone.utc)))
+    trail = GraduationAuditTrail(
+        tenant_id=_tid(), biz_type=bt, biz_id=str(bid), action=action,
+        operator=n, role_name=r, detail=detail, before_val=before,
+        after_val=after, occurred_at=datetime.now(timezone.utc),
+    )
+    db.add(trail)
+    return trail
+
+
+def _deliver_student_reminder(db, stu, *, task_name: str, action_key: str, channel: str):
+    """Create a real, traceable reminder for the student's stably linked account."""
+    link = db.scalars(select(StudentAccountLink).where(
+        StudentAccountLink.tenant_id == _tid(),
+        StudentAccountLink.student_id == stu.student_id,
+        StudentAccountLink.link_status == "ACTIVE",
+        StudentAccountLink.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if not link:
+        raise AppException("DELIVERY_FAILED", "学生未绑定有效登录账号，提醒未发送")
+
+    batch = db.get(GraduationBatch, stu.batch_id)
+    batch_name = batch.batch_name if batch else ""
+    deadline = None
+    expected_stages = ("PROPOSAL",) if task_name == "开题报告" else ("SUBMISSION", "FINAL_CHECK")
+    for stage in (batch.stage_config or []) if batch else []:
+        if stage.get("code") in expected_stages:
+            deadline = stage.get("endDate")
+            break
+    now = datetime.now(timezone.utc)
+    deadline_text = f"，截止时间：{deadline}" if deadline else ""
+    content = f"请及时提交{task_name}。批次：{batch_name or '当前毕业设计批次'}{deadline_text}。"
+    message = UnifiedMessage(
+        tenant_id=_tid(),
+        receiver_id=link.user_id,
+        receiver_user_id=link.user_id,
+        receiver_type="STUDENT",
+        receiver_context_key="GLOBAL",
+        source_module="GRADUATION",
+        source_biz_id=stu.id,
+        title=f"毕业设计{task_name}提交提醒",
+        content=content,
+        rendered_title=f"毕业设计{task_name}提交提醒",
+        rendered_content_plain=content,
+        message_type="REMINDER",
+        category="TODO",
+        priority="IMPORTANT",
+        status="UNREAD",
+        delivered_at=now,
+        delivery_status="DELIVERED",
+        action_key=action_key,
+        action_params_json={
+            "gdStudentId": str(stu.id),
+            "batchId": str(stu.batch_id),
+            "channel": channel,
+        },
+    )
+    db.add(message)
+    db.flush()
+    return message
 
 
 def _page(items, page, ps):
@@ -525,15 +584,21 @@ def remind_proposal(gd_student_id, channel="站内消息") -> dict:
             GraduationProposal.is_deleted.is_(False))) or 0
         if done:
             raise AppException("DATA_CONFLICT", "该生已提交开题报告，无需催交")
+        message = _deliver_student_reminder(
+            db, stu, task_name="开题报告", action_key="graduation.proposal.submit", channel=channel,
+        )
         _audit(db, "PROPOSAL", f"remind-{stu.id}", "开题催交",
-               f"催办 {stu.name} 提交开题报告（{channel}）")
+               f"已向学生账号 {message.receiver_user_id} 发送提醒，消息ID={message.id}")
         db.commit()
         return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True,
-                "deliveryStatus": "RECORDED_ONLY", "messageId": None, "todoId": None}
+                "deliveryStatus": "DELIVERED", "messageId": str(message.id), "todoId": None}
 
 
 def export_proposals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     """开题材料台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.proposal.export")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     items, total = list_proposals(1, 100000, keyword=keyword, status=status, batch_id=batch_id)
@@ -560,13 +625,19 @@ def export_proposals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     ws.freeze_panes = "A3"
     import base64
     import io
-    with session() as db:
-        _audit(db, "PROPOSAL", "export", "导出开题材料台账", f"共 {total} 行，状态={status or '全部'}，批次={batch_id or '全部'}")
-        db.commit()
     buf = io.BytesIO()
     wb.save(buf)
+    content = buf.getvalue()
+    digest = hashlib.sha256(content).hexdigest()
+    with session() as db:
+        trail = _audit(
+            db, "PROPOSAL", "export", "导出开题材料台账",
+            f"共 {total} 行，状态={status or '全部'}，批次={batch_id}，sha256={digest}",
+        )
+        trail.batch_id = int(batch_id)
+        db.commit()
     return {"filename": f"开题材料台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": total,
+            "contentBase64": base64.b64encode(content).decode("ascii"), "rowCount": total,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
@@ -787,14 +858,21 @@ def remind_final(gd_student_id, channel="站内消息") -> dict:
             GraduationFinal.is_deleted.is_(False))) or 0
         if done:
             raise AppException("DATA_CONFLICT", "该生已提交成果，无需催交")
-        _audit(db, "FINAL", f"remind-{stu.id}", "成果催交", f"催办 {stu.name} 提交论文成果（{channel}）")
+        message = _deliver_student_reminder(
+            db, stu, task_name="毕业设计成果", action_key="graduation.final.submit", channel=channel,
+        )
+        _audit(db, "FINAL", f"remind-{stu.id}", "成果催交",
+               f"已向学生账号 {message.receiver_user_id} 发送提醒，消息ID={message.id}")
         db.commit()
         return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True,
-                "deliveryStatus": "RECORDED_ONLY", "messageId": None, "todoId": None}
+                "deliveryStatus": "DELIVERED", "messageId": str(message.id), "todoId": None}
 
 
 def export_finals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     """成果提交台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.final.export")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     items, total = list_finals(1, 100000, keyword=keyword, status=status, batch_id=batch_id)
@@ -821,13 +899,19 @@ def export_finals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     ws.freeze_panes = "A3"
     import base64
     import io
-    with session() as db:
-        _audit(db, "FINAL", "export", "导出成果提交台账", f"共 {total} 行，状态={status or '全部'}，批次={batch_id or '全部'}")
-        db.commit()
     buf = io.BytesIO()
     wb.save(buf)
+    content = buf.getvalue()
+    digest = hashlib.sha256(content).hexdigest()
+    with session() as db:
+        trail = _audit(
+            db, "FINAL", "export", "导出成果提交台账",
+            f"共 {total} 行，状态={status or '全部'}，批次={batch_id}，sha256={digest}",
+        )
+        trail.batch_id = int(batch_id)
+        db.commit()
     return {"filename": f"成果提交台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": total,
+            "contentBase64": base64.b64encode(content).decode("ascii"), "rowCount": total,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
@@ -1235,6 +1319,9 @@ def notify_defense_group(gid, user=None) -> dict:
 
 def export_defense_xlsx(batch_id=None) -> dict:
     """答辩安排台账 Excel 导出（一组一行；与列表同一 batch_id 口径）。"""
+    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.defense.view")
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     items, _ = list_defense_groups(1, 100000, batch_id=batch_id)
@@ -1253,21 +1340,27 @@ def export_defense_xlsx(batch_id=None) -> dict:
         c.font = Font(bold=True); c.fill = fill
     for it in items:
         ws.append([it["groupName"], it["date"], it["location"], it["chair"],
-                  "、".join(it["members"]), it["secretary"], it["studentCount"],
+                  "、".join((m.get("name") or "") if isinstance(m, dict) else str(m)
+                           for m in it["members"]), it["secretary"], it["studentCount"],
                   it["conflict"] or "无", "已发布" if it["published"] else "未发布"])
     for i in range(1, len(headers) + 1):
         ws.column_dimensions[chr(64 + i)].width = 16
     ws.freeze_panes = "A3"
     import base64
     import io
-    with session() as db:
-        _audit(db, "DEFENSE", "export", "导出答辩安排台账",
-               f"共 {len(items)} 组，批次={batch_id or '全部'}")
-        db.commit()
     buf = io.BytesIO()
     wb.save(buf)
+    content = buf.getvalue()
+    digest = hashlib.sha256(content).hexdigest()
+    with session() as db:
+        trail = _audit(
+            db, "DEFENSE", "export", "导出答辩安排台账",
+            f"共 {len(items)} 组，批次={batch_id}，sha256={digest}",
+        )
+        trail.batch_id = int(batch_id)
+        db.commit()
     return {"filename": f"答辩安排台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": len(items),
+            "contentBase64": base64.b64encode(content).decode("ascii"), "rowCount": len(items),
             "batchId": str(batch_id) if batch_id else None,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
@@ -1302,10 +1395,17 @@ def list_audit(page, ps, biz_type=None, keyword=None):
         if keyword:
             kw = keyword.strip()
             rows = [r for r in rows if kw in (r.action or "") or kw in (r.detail or "")]
-        items = [{"id": str(x.id), "time": _iso(x.occurred_at), "operator": x.operator or "",
-                  "roleName": x.role_name or "", "bizType": x.biz_type, "bizId": x.biz_id or "",
+        items = [{"id": str(x.id), "time": _iso(x.occurred_at),
+                  "operator": x.actor_name_snapshot or x.operator or "",
+                  "operatorAccount": str(x.actor_user_id or ""),
+                  "roleName": x.role_code or x.role_name or "",
+                  "permissionCode": x.permission_code or "",
+                  "batchId": str(x.batch_id or ""),
+                  "dataScope": str(x.data_scope_snapshot or ""),
+                  "bizType": x.biz_type, "bizId": x.biz_id or "",
                   "action": x.action, "detail": x.detail or "", "before": x.before_val or "",
                   "after": x.after_val or "", "requestId": x.request_id or "",
+                  "traceId": x.request_id or "",
                   "requestPath": x.request_path or "", "clientIp": x.client_ip or ""} for x in rows]
         return _page(items, page, ps)
 

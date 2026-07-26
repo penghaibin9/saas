@@ -9,18 +9,90 @@ from __future__ import annotations
 
 import base64
 import io
+import zipfile
 from datetime import datetime
 
 from openpyxl import Workbook, load_workbook
+from app.core.exceptions import AppException
 
 MAX_ROWS = 5000  # 单次导入行数上限，防超大文件
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+MAX_ZIP_ENTRIES = 2000
+
+
+async def read_safe_upload(upload) -> bytes:
+    """Bound upload memory and reject non-xlsx content before workbook parsing."""
+    filename = (getattr(upload, "filename", "") or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise AppException("VALIDATION_ERROR", "仅支持 .xlsx 文件")
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        chunk = await upload.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > MAX_UPLOAD_BYTES:
+            raise AppException("VALIDATION_ERROR", "Excel 文件不得超过 10MB")
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    validate_xlsx_package(content)
+    return content
+
+
+def validate_xlsx_package(file_bytes: bytes) -> None:
+    """Reject zip bombs, path traversal, macros, OLE and external workbook links."""
+    if not file_bytes or len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise AppException("VALIDATION_ERROR", "Excel 文件为空或超过 10MB")
+    stream = io.BytesIO(file_bytes)
+    if not zipfile.is_zipfile(stream):
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX")
+    try:
+        with zipfile.ZipFile(stream) as archive:
+            members = archive.infolist()
+            if len(members) > MAX_ZIP_ENTRIES:
+                raise AppException("VALIDATION_ERROR", "XLSX 内部文件数量异常")
+            total = 0
+            for member in members:
+                name = member.filename.replace("\\", "/").lower()
+                if name.startswith("/") or ".." in name.split("/"):
+                    raise AppException("VALIDATION_ERROR", "XLSX 包含非法路径")
+                total += member.file_size
+                if total > MAX_UNCOMPRESSED_BYTES:
+                    raise AppException("VALIDATION_ERROR", "XLSX 解压后体积异常")
+                if member.file_size > 1024 * 1024 and member.compress_size > 0:
+                    if member.file_size / member.compress_size > 100:
+                        raise AppException("VALIDATION_ERROR", "XLSX 压缩比异常")
+                if (
+                    name.endswith(".bin")
+                    or "vbaproject" in name
+                    or "/embeddings/" in name
+                    or "/oleobjects/" in name
+                    or "/externallinks/" in name
+                ):
+                    raise AppException("VALIDATION_ERROR", "XLSX 不允许宏、嵌入对象或外部链接")
+    except zipfile.BadZipFile:
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
 
 
 def read_xlsx(file_bytes: bytes, header_map: dict[str, str]) -> list[dict]:
     """.xlsx 字节 → list[dict]。header_map 例：{"企业名称": "name", "统一社会信用代码": "creditCode"}。"""
-    wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    validate_xlsx_package(file_bytes)
+    wb = load_workbook(
+        io.BytesIO(file_bytes), read_only=True, data_only=True, keep_links=False,
+    )
+    if len(wb.worksheets) > 10:
+        wb.close()
+        raise AppException("VALIDATION_ERROR", "XLSX 工作表不得超过 10 个")
     # 优先取「导入模板」页（模板含「填写说明」第二页；避免误读说明页）
     ws = wb["导入模板"] if "导入模板" in wb.sheetnames else wb.worksheets[0]
+    if ws.max_column > 100:
+        wb.close()
+        raise AppException("VALIDATION_ERROR", "XLSX 单表列数不得超过 100")
+    if ws.max_row > MAX_ROWS + 1:
+        wb.close()
+        raise AppException("VALIDATION_ERROR", f"单次导入不得超过 {MAX_ROWS} 行")
     it = ws.iter_rows(values_only=True)
     try:
         header = next(it)
@@ -45,8 +117,9 @@ def read_xlsx(file_bytes: bytes, header_map: dict[str, str]) -> list[dict]:
                 empty = False
         if not empty:
             out.append(d)
-        if len(out) >= MAX_ROWS:
-            break
+        if len(out) > MAX_ROWS:
+            wb.close()
+            raise AppException("VALIDATION_ERROR", f"单次导入不得超过 {MAX_ROWS} 行")
     wb.close()
     return out
 

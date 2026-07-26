@@ -19,6 +19,7 @@ from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefense
                         GraduationFinal, GraduationGrade, GraduationReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.policies import grade_policy
 
 STATUS_LABEL = {
     "DRAFT": "待核算", "CALCULATED": "已核算", "REVIEWED": "已复核",
@@ -214,6 +215,7 @@ def get_grade(gd_student_id) -> dict:
 def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defense_score=None) -> dict:
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
+        grade_policy.authorize(db, stu, "calculate")
         g = _get_or_create(db, stu, for_update=True)
         if g.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布成绩不可直接核算，请先撤回")
@@ -257,6 +259,7 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
+        grade_policy.authorize(db, stu, "review")
         g = _get_or_create(db, stu, for_update=True)
         if action == "APPROVE" and g.status == "REVIEWED":
             return _row(g, stu)
@@ -283,6 +286,7 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
 def publish_grade(gd_student_id) -> dict:
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
+        grade_policy.authorize(db, stu, "publish")
         g = _get_or_create(db, stu, for_update=True)
         if g.status == "PUBLISHED":
             return _row(g, stu)
@@ -310,6 +314,7 @@ def withdraw_grade(gd_student_id, reason: str) -> dict:
         raise AppException("VALIDATION_ERROR", "撤回原因必填且不少于 5 字")
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
+        grade_policy.authorize(db, stu, "withdraw")
         g = _get_or_create(db, stu, for_update=True)
         if g.status == "WITHDRAWN" and g.withdraw_reason == reason.strip():
             return _row(g, stu)

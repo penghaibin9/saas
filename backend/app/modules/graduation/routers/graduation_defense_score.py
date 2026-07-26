@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, Query
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.modules.graduation.schemas.graduation_defense_score import (
-    DefenseConfirmationRevokeRequest, DefenseScoreEntryRequest, SecondDefenseRequest,
+    DefenseAbsenceRequest, DefenseConfirmationRevokeRequest, DefenseScoreEntryRequest,
+    SecondDefenseRequest,
 )
-from app.services import audit_log
 from app.modules.graduation.services import graduation_defense_score_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-答辩评分"])
@@ -35,15 +35,24 @@ def gd_defense_score_list(page: int = Query(1, ge=1), pageSize: int = Query(20, 
 @router.post("/gd-defense-scores/entry", summary="录入/更新评委评分（缺席须填原因）")
 def gd_defense_score_entry(body: DefenseScoreEntryRequest, user=Depends(get_current_user)):
     result = svc.enter_score(body.gdStudentId, body.judgeName, body.score, body.comment, body.absent,
-                             body.absentReason, expert_id=body.expertId)
-    audit_log.record("录入答辩评分", f"graduation-defense-score:{result['id']}")
+                             body.absentReason, expert_id=body.expertId,
+                             judge_mentor_id=body.judgeMentorId)
     return success(result, message="已保存")
+
+
+@router.post("/gd-defense-scores/absence", summary="答辩秘书记录评委缺席（不可录入分数）")
+def gd_defense_absence_entry(body: DefenseAbsenceRequest, user=Depends(get_current_user)):
+    result = svc.enter_score(
+        body.gdStudentId, body.judgeName, score=None, absent=True,
+        absent_reason=body.absentReason, expert_id=body.expertId,
+        judge_mentor_id=body.judgeMentorId, permission_action="scoreConfirm",
+    )
+    return success(result, message="已记录缺席")
 
 
 @router.post("/gd-defense-scores/{gd_student_id}/confirm", summary="确认该生本轮答辩成绩（须全部评委已评分）")
 def gd_defense_score_confirm(gd_student_id: str, user=Depends(get_current_user)):
     result = svc.confirm_scores(gd_student_id)
-    audit_log.record("确认答辩成绩", f"graduation-defense-score:{gd_student_id}")
     return success(result, message="已确认")
 
 
@@ -55,13 +64,10 @@ def gd_defense_score_revoke_confirmation(
     user=Depends(get_current_user),
 ):
     result = svc.revoke_confirmation(gd_student_id, body.reason)
-    audit_log.record("撤回答辩成绩确认", f"graduation-defense-score:{gd_student_id}",
-                     detail={"reason": body.reason})
     return success(result, message="已撤回确认，可进入更正")
 
 
 @router.post("/gd-defense-scores/{gd_student_id}/second-defense", summary="创建二次答辩（原因≥5字）")
 def gd_defense_score_second(gd_student_id: str, body: SecondDefenseRequest, user=Depends(get_current_user)):
     result = svc.create_second_defense(gd_student_id, body.reason)
-    audit_log.record("创建二次答辩", f"graduation-defense-score:{gd_student_id}", detail={"reason": body.reason})
     return success(result, message="已创建二次答辩")

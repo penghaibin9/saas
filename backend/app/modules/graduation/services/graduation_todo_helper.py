@@ -29,32 +29,23 @@ def resolve_mentor_assignee_id(db, stu) -> int:
             User.is_deleted.is_(False), User.status == "ACTIVE")).first()
         if row:
             return int(row.id)
-    name = (getattr(stu, "advisor_name", None) or "").strip()
-    if not name:
-        return 0
-    rows = db.scalars(select(User).where(
-        User.tenant_id == _tid(), User.real_name == name,
-        User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
-        User.is_deleted.is_(False), User.status == "ACTIVE")).all()
-    return int(rows[0].id) if len(rows) == 1 else 0
+    return 0
 
 
-def resolve_judge_assignee_id(db, judge_name: str) -> int:
-    """答辩评委姓名/工号 → User.id；login_name 优先，其次唯一 real_name。"""
-    from app.models import User
-    key = (judge_name or "").strip()
-    if not key:
+def resolve_judge_assignee_id(db, score_row) -> int:
+    """Resolve a defense todo only through the stable judge mentor identity."""
+    from app.models import GraduationMentor, User
+    mentor_id = getattr(score_row, "judge_mentor_id", None)
+    if not mentor_id:
         return 0
+    mentor = db.get(GraduationMentor, int(mentor_id))
+    if not mentor or mentor.is_deleted or mentor.tenant_id != _tid():
+        return 0
+    key = (mentor.teacher_no or "").strip()
     row = db.scalars(select(User).where(
         User.tenant_id == _tid(), User.login_name == key,
         User.is_deleted.is_(False), User.status == "ACTIVE")).first()
-    if row:
-        return int(row.id)
-    rows = db.scalars(select(User).where(
-        User.tenant_id == _tid(), User.real_name == key,
-        User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
-        User.is_deleted.is_(False), User.status == "ACTIVE")).all()
-    return int(rows[0].id) if len(rows) == 1 else 0
+    return int(row.id) if row else 0
 
 
 def todo_upsert(db, *, biz_type: str, biz_id, todo_type: str, assignee_id: int,
@@ -129,7 +120,7 @@ def push_topic_change_todo(db, change_req, stu) -> bool:
 
 def push_defense_score_todo(db, score_row, stu) -> bool:
     """评委 PENDING 评分行 → GD_DEFENSE_SCORE；biz_id=score.id。"""
-    aid = resolve_judge_assignee_id(db, getattr(score_row, "judge_name", None) or "")
+    aid = resolve_judge_assignee_id(db, score_row)
     name = (getattr(stu, "name", None) or getattr(stu, "real_name", None) or "学生")
     return todo_upsert(
         db, biz_type="GD_DEFENSE_SCORE", biz_id=score_row.id, todo_type=TODO_DEFENSE_SCORE,

@@ -69,8 +69,8 @@ export const graduationMentorApi = {
   downloadImportErrors(rows, errors) {
     return call(() => request(`${BASE}/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
   },
-  importConfirm(rows) {
-    return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows } }))
+  importConfirm(rows, previewToken) {
+    return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows, previewToken } }))
   },
   exportMentors(params = {}) {
     return call(() => request(`${BASE}/export`, { method: 'POST', params }))

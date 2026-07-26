@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 毕业设计中心模块路由（自包含，未接入全局 router）。
  * 接入方式（由负责全局 router 的任务/人执行）：
  *   import graduationRoutes from '@/modules/graduation/routes'
@@ -177,19 +177,19 @@ const graduationRoutes = {
       path: 'defense/groups/create',
       name: 'graduation-defense-group-create',
       component: () => import('@/modules/graduation/views/DefenseGroupFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '新增答辩组', requiresAuth: true, permissionKey: 'graduationDesign.defense.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '新增答辩组', requiresAuth: true, permissionKey: 'graduationDesign.defense.groupManage' }
     },
     {
       path: 'defense/groups/:id/edit',
       name: 'graduation-defense-group-edit',
       component: () => import('@/modules/graduation/views/DefenseGroupFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '编辑答辩组', requiresAuth: true, permissionKey: 'graduationDesign.defense.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '编辑答辩组', requiresAuth: true, permissionKey: 'graduationDesign.defense.groupManage' }
     },
     {
       path: 'defense',
       name: 'graduation-defense',
       component: () => import('@/modules/graduation/views/DefenseScheduleView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩安排管理', requiresAuth: true, permissionKey: 'graduationDesign.defense.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '答辩安排管理', requiresAuth: true, permissionKey: 'graduationDesign.defense.view' }
     },
     {
       path: 'stats-report',
@@ -240,25 +240,25 @@ const graduationRoutes = {
       path: 'batches/create',
       name: 'graduation-batch-create',
       component: () => import('@/modules/graduation/views/GraduationBatchFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '新建毕设批次', requiresAuth: true, permissionKey: 'graduationDesign.batch.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '新建毕设批次', requiresAuth: true, permissionKey: 'graduationDesign.batch.create' }
     },
     {
       path: 'batches/:id/edit',
       name: 'graduation-batch-edit',
       component: () => import('@/modules/graduation/views/GraduationBatchFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '编辑批次', requiresAuth: true, permissionKey: 'graduationDesign.batch.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '编辑批次', requiresAuth: true, permissionKey: 'graduationDesign.batch.update' }
     },
     {
       path: 'batches/:id',
       name: 'graduation-batch-detail',
       component: () => import('@/modules/graduation/views/GraduationBatchDetailView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '批次详情', requiresAuth: true, permissionKey: 'graduationDesign.batch.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '批次详情', requiresAuth: true, permissionKey: 'graduationDesign.batch.view' }
     },
     {
       path: 'batches',
       name: 'graduation-batches',
       component: () => import('@/modules/graduation/views/GraduationBatchListView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '毕设批次', requiresAuth: true, permissionKey: 'graduationDesign.batch.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '毕设批次', requiresAuth: true, permissionKey: 'graduationDesign.batch.view' }
     },
     // ── 导师 ──
     {
@@ -308,38 +308,75 @@ const graduationRoutes = {
       path: 'process/:studentId/:action',
       name: 'graduation-process-action',
       component: () => import('@/modules/graduation/views/GraduationProcessActionView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '过程指导操作', requiresAuth: true, permissionKey: 'graduationDesign.guide.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '过程指导操作', requiresAuth: true, permissionKey: 'graduationDesign.guidance.view' }
     },
     {
       path: 'process',
       name: 'graduation-process',
       component: () => import('@/modules/graduation/views/GraduationProcessView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '过程指导（任务书/指导记录/中期检查）', requiresAuth: true, permissionKey: 'graduationDesign.guide.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '过程指导（任务书/指导记录/中期检查）', requiresAuth: true, permissionKey: 'graduationDesign.guidance.view' }
     },
     // ── 答辩与成绩 ──
     {
       path: 'defense-grade/:studentId/form',
       name: 'graduation-defense-grade-student-form',
       component: () => import('@/modules/graduation/views/GraduationDefenseGradeFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.view', permissionAny: ['graduationDesign.plagiarism.submit', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.dispute.review', 'graduationDesign.final.review', 'graduationDesign.defense.score', 'graduationDesign.defense.manage', 'graduationDesign.manage', 'graduationDesign.grade.publish'] }
+      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view', permissionAny: ['graduationDesign.plagiarism.start', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.disputeReview', 'graduationDesign.review.submit', 'graduationDesign.defense.score', 'graduationDesign.defense.scoreConfirm', 'graduationDesign.grade.calculate', 'graduationDesign.grade.review', 'graduationDesign.grade.publish', 'graduationDesign.grade.withdraw'] }
     },
     {
       path: 'defense-grade/form',
       name: 'graduation-defense-grade-form',
       component: () => import('@/modules/graduation/views/GraduationDefenseGradeFormView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.view', permissionAny: ['graduationDesign.plagiarism.submit', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.dispute.review', 'graduationDesign.final.review', 'graduationDesign.defense.score', 'graduationDesign.defense.manage', 'graduationDesign.manage', 'graduationDesign.grade.publish'] }
+      meta: { moduleCode: 'GRADUATION', title: '答辩成绩操作', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view', permissionAny: ['graduationDesign.plagiarism.start', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.disputeReview', 'graduationDesign.review.submit', 'graduationDesign.defense.score', 'graduationDesign.defense.scoreConfirm', 'graduationDesign.grade.calculate', 'graduationDesign.grade.review', 'graduationDesign.grade.publish', 'graduationDesign.grade.withdraw'] }
     },
     {
       path: 'defense-grade',
       name: 'graduation-defense-grade',
+      redirect: (to) => {
+        const panel = to.query.panel
+        const route = panel === 'review' ? 'graduation-review-tasks'
+          : panel === 'grade' ? 'graduation-grade-ledger'
+            : panel === 'defense' ? 'graduation-defense-scoring'
+              : 'graduation-plagiarism-ledger'
+        return { name: route, query: { ...to.query, panel: undefined } }
+      },
+      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩兼容入口', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view' }
+    },
+    {
+      path: 'plagiarism-ledger',
+      name: 'graduation-plagiarism-ledger',
       component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩（查重/评阅/答辩评分/成绩评定）', requiresAuth: true, permissionKey: 'graduationDesign.view', permissionAny: ['graduationDesign.plagiarism.submit', 'graduationDesign.plagiarism.result', 'graduationDesign.plagiarism.dispute.review', 'graduationDesign.final.review', 'graduationDesign.defense.score', 'graduationDesign.defense.manage', 'graduationDesign.manage', 'graduationDesign.grade.publish'] }
+      meta: { moduleCode: 'GRADUATION', title: '查重台账', defaultPanel: 'plagiarism', requiresAuth: true, permissionKey: 'graduationDesign.plagiarism.view' }
+    },
+    {
+      path: 'review-tasks',
+      name: 'graduation-review-tasks',
+      component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '评阅任务', defaultPanel: 'review', requiresAuth: true, permissionKey: 'graduationDesign.review.view' }
+    },
+    {
+      path: 'defense-scoring',
+      name: 'graduation-defense-scoring',
+      component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '答辩评分', defaultPanel: 'defense', requiresAuth: true, permissionKey: 'graduationDesign.defense.score' }
+    },
+    {
+      path: 'defense-confirmation',
+      name: 'graduation-defense-confirmation',
+      component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '答辩秘书确认', defaultPanel: 'defense', requiresAuth: true, permissionKey: 'graduationDesign.defense.scoreConfirm' }
+    },
+    {
+      path: 'grade-ledger',
+      name: 'graduation-grade-ledger',
+      component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '成绩台账', defaultPanel: 'grade', requiresAuth: true, permissionKey: 'graduationDesign.grade.view' }
     },
     {
       path: 'audit-logs',
       name: 'graduation-audit-logs',
       component: () => import('@/modules/graduation/views/GraduationAuditLogView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '毕设操作日志', requiresAuth: true, permissionKey: 'graduationDesign.manage' }
+      meta: { moduleCode: 'GRADUATION', title: '毕设操作日志', requiresAuth: true, permissionKey: 'graduationDesign.audit.view' }
     },
     {
       path: 'risk-archive',
