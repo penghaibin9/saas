@@ -148,7 +148,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
         audit, dashboard, feedback, implementation, import_export,
         migration, mobile, mobile_export, mobile_internship_context,
-        mobile_internship_student, mobile_orientation_teacher, national_standards,
+        mobile_internship_leave_context, mobile_internship_student,
+        mobile_orientation_teacher, national_standards,
         notification, onboarding, org_directory, platform, stats, system,
         transfer, user_preference,
     )
@@ -188,6 +189,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
         dependencies=[Depends(enforce_teacher_internship_mobile_permission)],
     )
     api_router.include_router(mobile_internship_context.router)
+    api_router.include_router(mobile_internship_leave_context.router)
     api_router.include_router(mobile_internship_student.router)
     portal_gate = [Depends(enforce_student_portal_module_access)]
     api_router.include_router(student_portal_router, dependencies=portal_gate)
