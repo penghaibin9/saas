@@ -21,6 +21,7 @@
         <button v-if="detail.status !== 'ARCHIVED'" class="mp-btn mp-btn--primary" @click="openAssign">{{ detail.positionId ? '调岗' : '分配岗位' }}</button>
         <button v-if="detail.positionId && detail.status !== 'ARCHIVED'" class="mp-btn" @click="askUnassign">退岗</button>
         <button v-if="statusAction" class="mp-btn mp-btn--primary" @click="askStatus(statusAction.action)">{{ statusAction.label }}</button>
+        <button v-if="detail.status === 'ASSESSING'" class="mp-btn mp-btn--primary" @click="goArchive">前往归档中心</button>
       </div>
 
       <div class="mp-grid-2">
@@ -72,11 +73,9 @@
       </section>
     </template>
 
-    <!-- 分配岗位 -->
     <AppDrawer v-model:visible="assignVisible" title="分配岗位">
       <div class="ie-form">
         <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选。</p>
-        <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
           <AppInternshipPositionPicker
             v-model="assignPositionId"
@@ -102,7 +101,7 @@
 </template>
 
 <script>
-/** 实习学生详情（/admin/internship/students/:id）：生产级；企业/岗位/导师真实关联 + 分配/退岗/状态机/资格/去向 + 审计。 */
+/** 实习学生详情：普通状态流只负责 READY/ONBOARD/ASSESS；归档统一进入正式归档中心。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppSensitiveText, AppStatusTag, AppAuditTrail, AppInternshipPositionPicker } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
@@ -113,8 +112,7 @@ import { toast } from '@/utils/toast'
 const STATUS_NEXT = {
   PREPARING: { action: 'READY', label: '置为待上岗' },
   READY: { action: 'ONBOARD', label: '上岗' },
-  ONBOARD: { action: 'ASSESS', label: '进入考核' },
-  ASSESSING: { action: 'ARCHIVE', label: '归档' }
+  ONBOARD: { action: 'ASSESS', label: '进入考核' }
 }
 
 export default {
@@ -153,6 +151,15 @@ export default {
       else if (this.detail?.batchId) q.batchId = this.detail.batchId
       this.$router.push({ path: '/admin/internship/students', query: q })
     },
+    goArchive() {
+      this.$router.push({
+        path: '/admin/internship/archive',
+        query: {
+          batchId: this.detail?.batchId || this.$route.query.batchId || '',
+          internshipId: this.detail?.id || this.$route.params.id
+        }
+      })
+    },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     async load() {
       this.loading = true; this.error = ''
@@ -160,9 +167,7 @@ export default {
       if (res.code === 0) this.detail = res.data; else this.error = res.message
       this.loading = false
     },
-    // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
     openAssign() {
-      // 岗位候选改为选择器内按关键字远程搜索，不再一次性预载
       this.assignPositionId = ''; this.assignError = ''
       this.assignVisible = true
     },
@@ -184,7 +189,6 @@ export default {
     },
     async askStatus(action) {
       const m = STATUS_NEXT[this.detail.status]
-      // BUG-010：上岗前先取前置清单，缺项直接列出来，别让教师点完才吃 409
       if (action === 'ONBOARD') {
         const res = await internStudentApi.getOnboardChecklist(this.detail.id)
         if (res.code === 0 && res.data && !res.data.canOnboard) {
