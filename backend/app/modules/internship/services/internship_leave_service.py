@@ -4,6 +4,7 @@
 状态机：PENDING →(教师) APPROVED/REJECTED；PENDING →(学生) WITHDRAWN。
 证明附件走文件中心 file_id。全程审计 target_type=LEAVE。
 数据范围/owner：复用 internship_service 的 _current_scope / _rec_in_scope。
+病假或连续三天及以上请假必须上传证明；存在证明时审批人须先真实查看并留下审计。
 """
 from __future__ import annotations
 
@@ -19,10 +20,15 @@ from app.services.db_service import _as_id, _iso, _tid, session
 STATUS_LABEL = {"PENDING": "待审批", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
 STATUS_LABEL.update({"RETURNED": "已销假", "OVERDUE": "超期未销假"})
 TYPE_LABEL = {"SICK": "病假", "PERSONAL": "事假", "OTHER": "其他"}
+LONG_LEAVE_DAYS = 3.0
 
 
 def _op_name(user) -> str:
     return (user or {}).get("realName") or "系统"
+
+
+def _actor_id(user) -> str:
+    return str((user or {}).get("userId") or (user or {}).get("loginName") or "").strip()
 
 
 def _trail(db, lid, action, detail=None, operator="系统"):
@@ -64,7 +70,7 @@ def _calc_days(start: str, end: str) -> float:
 
 
 def _validate_file(file_id):
-    fid = (file_id or "").strip()
+    fid = str(file_id or "").strip()
     if not fid:
         return None
     from app.services import file_service
@@ -73,7 +79,66 @@ def _validate_file(file_id):
     return fid
 
 
-def _row(lv: InternshipLeave, rec, stu) -> dict:
+def _evidence_required(leave_type: str | None, days) -> bool:
+    try:
+        day_count = float(days or 0)
+    except (TypeError, ValueError):
+        day_count = 0.0
+    return str(leave_type or "").upper() == "SICK" or day_count >= LONG_LEAVE_DAYS
+
+
+def _evidence_requirement_label(leave_type: str | None, days) -> str:
+    if str(leave_type or "").upper() == "SICK":
+        return "病假必须上传医疗或就诊证明"
+    try:
+        if float(days or 0) >= LONG_LEAVE_DAYS:
+            return "连续3天及以上请假必须上传证明材料"
+    except (TypeError, ValueError):
+        pass
+    return "可选上传请假证明材料"
+
+
+def _previous_rejection(db, lv: InternshipLeave):
+    return db.scalars(select(InternshipLeave).where(
+        InternshipLeave.tenant_id == _tid(),
+        InternshipLeave.internship_id == lv.internship_id,
+        InternshipLeave.leave_type == lv.leave_type,
+        InternshipLeave.start_date == lv.start_date,
+        InternshipLeave.end_date == lv.end_date,
+        InternshipLeave.status == "REJECTED",
+        InternshipLeave.id != lv.id,
+        InternshipLeave.is_deleted.is_(False),
+    ).order_by(InternshipLeave.id.desc())).first()
+
+
+def _evidence_viewed(db, lv: InternshipLeave, user) -> bool:
+    if not lv.file_id:
+        return False
+    actor_id = _actor_id(user)
+    operator = _op_name(user)
+    trails = db.scalars(select(InternshipAuditTrail).where(
+        InternshipAuditTrail.tenant_id == _tid(),
+        InternshipAuditTrail.target_type == "LEAVE",
+        InternshipAuditTrail.target_id == lv.id,
+        InternshipAuditTrail.action == "EVIDENCE_VIEW",
+    ).order_by(InternshipAuditTrail.id.desc())).all()
+    for trail in trails:
+        detail = trail.detail_json or {}
+        try:
+            same_version = int(detail.get("version")) == int(lv.version or 0)
+        except (TypeError, ValueError):
+            same_version = False
+        same_file = str(detail.get("evidenceFileId") or "") == str(lv.file_id)
+        same_actor = actor_id and str(detail.get("operatorUserId") or "") == actor_id
+        if not actor_id:
+            same_actor = (trail.operator_name or "") == operator
+        if same_version and same_file and same_actor:
+            return True
+    return False
+
+
+def _row(lv: InternshipLeave, rec, stu, *, db=None, user=None) -> dict:
+    previous = _previous_rejection(db, lv) if db is not None else None
     return {
         "id": str(lv.id), "internId": str(lv.internship_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -86,7 +151,13 @@ def _row(lv: InternshipLeave, rec, stu) -> dict:
         "returnedAt": _iso(lv.returned_at) or "", "returnNote": lv.return_note or "",
         "returnFileId": lv.return_file_id or "", "overdue": lv.status == "OVERDUE",
         "version": int(lv.version or 0),
-        "createdAt": _iso(lv.created_at) or "",
+        "createdAt": _iso(lv.created_at) or "", "submittedAt": _iso(lv.created_at) or "",
+        "evidenceFileId": lv.file_id or "", "hasEvidence": bool(lv.file_id),
+        "evidenceRequired": _evidence_required(lv.leave_type, lv.days),
+        "evidenceRequirementLabel": _evidence_requirement_label(lv.leave_type, lv.days),
+        "evidenceViewed": _evidence_viewed(db, lv, user) if db is not None and user else False,
+        "previousReviewComment": previous.review_comment or "" if previous else "",
+        "previousReviewAt": _iso(previous.review_at) or "" if previous else "",
     }
 
 
@@ -94,14 +165,19 @@ def _row(lv: InternshipLeave, rec, stu) -> dict:
 
 def apply(user, body) -> dict:
     b = body or {}
-    start, end = (b.get("startDate") or "").strip(), (b.get("endDate") or "").strip()
-    reason = (b.get("reason") or "").strip()
+    start, end = str(b.get("startDate") or "").strip(), str(b.get("endDate") or "").strip()
+    reason = str(b.get("reason") or "").strip()
+    leave_type = str(b.get("leaveType") or "PERSONAL").upper()
+    if leave_type not in TYPE_LABEL:
+        raise AppException("VALIDATION_ERROR", "请假类型无效")
     if not start or not end or not reason or len(reason) < 2:
         raise AppException("VALIDATION_ERROR", "起止日期与事由必填（事由不少于 2 字）")
     days = _calc_days(start, end)
     if days <= 0:
         raise AppException("VALIDATION_ERROR", "结束日期不能早于开始日期")
-    file_id = _validate_file(b.get("fileId"))
+    file_id = _validate_file(b.get("fileId") or b.get("evidenceFileId"))
+    if _evidence_required(leave_type, days) and not file_id:
+        raise AppException("VALIDATION_ERROR", _evidence_requirement_label(leave_type, days))
     with session() as db:
         rec, stu = _student_record(db, user, for_write=True)
         if rec.status not in ("ONBOARD", "ASSESSING"):
@@ -112,16 +188,23 @@ def apply(user, body) -> dict:
         if dup:
             raise AppException("DATA_CONFLICT", "你有待审批的请假申请，请先等待处理或撤回")
         lv = InternshipLeave(tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
-                             leave_type=b.get("leaveType") or "PERSONAL", start_date=start,
+                             leave_type=leave_type, start_date=start,
                              end_date=end, days=days, reason=reason, status="PENDING",
                              apply_by_name=(stu.real_name if stu else _op_name(user)), file_id=file_id)
         db.add(lv); db.flush()
-        _trail(db, lv.id, "APPLY", {"range": f"{start}~{end}", "days": days},
-               operator=lv.apply_by_name or "学生")
+        if file_id:
+            from app.services import file_service
+            file_service.bind_file_biz(file_id, "INTERNSHIP", str(lv.id), user=user, db=db)
+        _trail(db, lv.id, "APPLY", {
+            "range": f"{start}~{end}", "days": days,
+            "leaveType": leave_type, "evidenceFileId": file_id or "",
+            "evidenceRequired": _evidence_required(leave_type, days),
+        }, operator=lv.apply_by_name or "学生")
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.push_leave_todo(db, lv, rec)
         db.commit()
-        return {"id": str(lv.id), "status": "PENDING", "statusLabel": "待审批", "days": days}
+        return {"id": str(lv.id), "status": "PENDING", "statusLabel": "待审批",
+                "days": days, "version": int(lv.version or 0), "hasEvidence": bool(file_id)}
 
 
 def withdraw(user, leave_id) -> dict:
@@ -144,7 +227,7 @@ def withdraw(user, leave_id) -> dict:
 def return_my(user, leave_id, body=None) -> dict:
     """Student return confirmation; an overdue leave may be returned but its risk stays auditable."""
     body = body or {}
-    note = (body.get("returnNote") or body.get("note") or "").strip()
+    note = str(body.get("returnNote") or body.get("note") or "").strip()
     if len(note) < 2:
         raise AppException("VALIDATION_ERROR", "销假说明不少于 2 个字符")
     file_id = _validate_file(body.get("fileId") or body.get("returnFileId"))
@@ -175,7 +258,7 @@ def my_leaves(user) -> list[dict]:
         rows = db.scalars(select(InternshipLeave).where(
             InternshipLeave.tenant_id == _tid(), InternshipLeave.internship_id == rec.id,
             InternshipLeave.is_deleted.is_(False)).order_by(InternshipLeave.id.desc())).all()
-        return [_row(lv, rec, stu) for lv in rows]
+        return [_row(lv, rec, stu, db=db, user=user) for lv in rows]
 
 
 # ═══════════ 指导教师 / 管理员（PC 管理端，owner + 数据范围） ═══════════
@@ -202,7 +285,7 @@ def list_leaves(page, page_size, status=None, keyword=None, batch_id=None, user=
                 continue
             if not _rec_in_scope(scope, db, rec, stu):
                 continue
-            items.append(_row(lv, rec, stu))
+            items.append(_row(lv, rec, stu, db=db, user=user))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -220,10 +303,31 @@ def get_leave(leave_id, user=None) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "LEAVE",
             InternshipAuditTrail.target_id == lv.id).order_by(InternshipAuditTrail.id)).all()
-        return {**_row(lv, rec, stu), "attachment": file_service.attachment_view(lv.file_id),
+        return {**_row(lv, rec, stu, db=db, user=user), "attachment": file_service.attachment_view(lv.file_id),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
                                for t in trail]}
+
+
+def mark_evidence_viewed(user, leave_id) -> dict:
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    from app.services import file_service
+    with session() as db:
+        lv = _get(db, leave_id)
+        rec = db.get(InternshipRecord, lv.internship_id)
+        stu = db.get(StudentProfile, lv.student_id)
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):
+            raise no_permission("该请假申请不在你的数据范围内")
+        if not lv.file_id or not file_service.get_file_meta(lv.file_id, user=user):
+            raise not_found("请假证明不存在或无权查看")
+        _trail(db, lv.id, "EVIDENCE_VIEW", {
+            "version": int(lv.version or 0),
+            "evidenceFileId": str(lv.file_id),
+            "operatorUserId": _actor_id(user),
+        }, operator=_op_name(user))
+        db.commit()
+        return {"id": str(lv.id), "version": int(lv.version or 0),
+                "evidenceViewed": True, "evidenceFileId": str(lv.file_id)}
 
 
 def review(user, leave_id, action: str, comment: str = "", *, expected_version=None) -> dict:
@@ -240,8 +344,13 @@ def review(user, leave_id, action: str, comment: str = "", *, expected_version=N
         lv = _get(db, leave_id)
         rec = db.get(InternshipRecord, lv.internship_id)
         stu = db.get(StudentProfile, lv.student_id)
-        if not _rec_in_scope(_current_scope(user), db, rec, stu):  # owner 级写校验
+        if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能审批本人指导学生的请假申请")
+        if action == "APPROVE":
+            if _evidence_required(lv.leave_type, lv.days) and not lv.file_id:
+                raise AppException("DATA_CONFLICT", "该请假按规则必须上传证明材料，当前不能通过")
+            if lv.file_id and not _evidence_viewed(db, lv, user):
+                raise AppException("DATA_CONFLICT", "请先查看请假证明材料，再执行通过")
         new_status = "APPROVED" if action == "APPROVE" else "REJECTED"
         now = datetime.utcnow()
         new_ver = versioned_update(
@@ -252,11 +361,15 @@ def review(user, leave_id, action: str, comment: str = "", *, expected_version=N
             },
             expected_status="PENDING")
         leave_days = 0
-        if action == "APPROVE":  # 请假↔打卡台账联动：按区间写 LEAVE 留痕，台账显示请假不误判缺卡
+        if action == "APPROVE":
             db.refresh(lv)
             leave_days = _write_leave_checkins(db, lv)
-        _trail(db, lv.id, f"REVIEW_{action}", {"comment": (comment or "").strip(),
-               "leaveCheckins": leave_days}, operator=_op_name(user))
+        _trail(db, lv.id, f"REVIEW_{action}", {
+            "comment": (comment or "").strip(),
+            "leaveCheckins": leave_days,
+            "evidenceFileId": str(lv.file_id or ""),
+            "evidenceViewed": bool(lv.file_id),
+        }, operator=_op_name(user))
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.todo_done(db, biz_id=lv.id, todo_type=ix_todo.TODO_LEAVE)
         db.commit()
@@ -265,8 +378,7 @@ def review(user, leave_id, action: str, comment: str = "", *, expected_version=N
 
 
 def _write_leave_checkins(db, lv) -> int:
-    """请假通过后按日期区间写 result=LEAVE 的打卡留痕（幂等：已有当日打卡则跳过）。
-    使台账把请假日显示为「请假」，不被判为缺卡。返回新写入天数。"""
+    """请假通过后按日期区间写 result=LEAVE 的打卡留痕（幂等：已有当日打卡则跳过）。"""
     try:
         d0 = date.fromisoformat(lv.start_date[:10]); d1 = date.fromisoformat(lv.end_date[:10])
     except ValueError:
@@ -288,10 +400,7 @@ def _write_leave_checkins(db, lv) -> int:
 
 
 def ack_overdue_return(user, leave_id, note: str = "") -> dict:
-    """教师确认超期销假办结：仅 RETURNED 且曾超期（或仍 OVERDUE 但学生已销假）可确认，并关闭 INT-R06 风险。
-
-    学生销假后状态为 RETURNED；教师在小程序/PC 确认办结，避免「学生已销假、风险单仍挂」。
-    """
+    """教师确认超期销假办结并关闭 INT-R06 风险。"""
     note = (note or "").strip()
     if len(note) < 2:
         raise AppException("VALIDATION_ERROR", "办结说明不少于 2 字")
@@ -304,7 +413,6 @@ def ack_overdue_return(user, leave_id, note: str = "") -> dict:
             raise no_permission("只能办结本人指导学生的请假")
         if lv.status not in ("RETURNED", "OVERDUE"):
             raise AppException("DATA_CONFLICT", "仅超期未归或已销假记录可办结确认")
-        # 若仍 OVERDUE：允许教师代确认已返岗（学生无法操作时）
         if lv.status == "OVERDUE":
             lv.status = "RETURNED"
             lv.returned_at = datetime.utcnow()
@@ -336,12 +444,7 @@ def ack_overdue_return(user, leave_id, note: str = "") -> dict:
 
 
 def refresh_overdue(reference_date: date | None = None, user=None, system: bool = False) -> dict:
-    """Mark expired approved leave as overdue and create one unresolved risk per leave period.
-
-    It is intentionally idempotent so it can be invoked by a scheduled job or an operations runbook.
-    全校级批处理：人工触发时仅 ADMIN_TENANT（校级管理员）可执行，避免受限范围角色借此
-    对全租户其他学院学生的请假批量改状态并生成风险单；系统定时任务(system=True)不受此限。
-    """
+    """标记超期请假并创建风险；人工触发仅允许校级管理员。"""
     if not system:
         from app.modules.internship.services.internship_service import assert_admin_tenant
         assert_admin_tenant(user, "请假超期批处理")
@@ -382,9 +485,10 @@ def export_leaves(status=None, keyword=None, batch_id=None, user=None) -> dict:
     items, _ = load_export_rows(
         list_leaves, status=status, keyword=keyword, batch_id=batch_id, user=user)
     headers = ["学号", "姓名", "校内指导教师", "请假类型", "开始", "结束", "天数", "事由",
-               "状态", "审批人", "审批意见"]
+               "证明材料", "状态", "审批人", "审批意见"]
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["leaveTypeLabel"],
-             it["startDate"], it["endDate"], it["days"], it["reason"], it["statusLabel"],
+             it["startDate"], it["endDate"], it["days"], it["reason"],
+             "已上传" if it["hasEvidence"] else "未上传", it["statusLabel"],
              it["reviewBy"], it["reviewComment"]] for it in items]
     wm = f"岗位实习中心·请假审批台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("请假审批台账", headers, rows, watermark=wm)
