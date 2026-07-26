@@ -20,7 +20,7 @@ from . import academic_affairs_selection_facade as academic_affairs_selection_se
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_security_facade as academic_affairs_task_service
-from . import academic_affairs_textbook_roster_facade as academic_affairs_textbook_service
+from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
 # 归档路由和业务模块统一进入最终13域叠加策略层。
@@ -45,7 +45,7 @@ sys.modules[f"{__name__}.academic_affairs_selection_round_service"] = academic_a
 sys.modules[f"{__name__}.academic_affairs_stats_service"] = academic_affairs_stats_service
 # 教学任务批次、明细、确认链和管理数据范围统一进入最终安全工作台facade。
 sys.modules[f"{__name__}.academic_affairs_task_service"] = academic_affairs_task_service
-# 教材选用、审核、征订、发放、退领和费用全部回链所属学期；目录/库存主数据保持跨学期可维护。
+# 教材选用、审核、征订、发放、退领、费用和并发锁统一进入最终层；目录/库存主数据保持跨学期可维护。
 sys.modules[f"{__name__}.academic_affairs_textbook_service"] = academic_affairs_textbook_service
 # 移动聚合路由和后续完整路径导入统一去掉教师姓名授权。
 sys.modules[f"{__name__}.mobile_academic_affairs_service"] = mobile_academic_affairs_service
