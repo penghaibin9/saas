@@ -422,12 +422,12 @@ def _deliver_outbox_row(db, row) -> None:
                 StudentProfile.is_deleted.is_(False),
             ))
             mapped = None
-            if prof and prof.student_no:
-                mapped = db.scalar(select(User.id).where(
-                    User.tenant_id == _tid(),
-                    User.login_name == prof.student_no,
-                    User.is_deleted.is_(False),
-                ))
+            if prof is not None:
+                # 经账号绑定解析（阶段 C）：学号更正不影响历史消息的收件人映射
+                from app.services import student_account_link_service as link_svc
+                mapped = link_svc.resolve_user_id_for_student(
+                    db, tenant_id=_tid(), student_id=prof.id,
+                    student_no=prof.student_no, require_active_account=False)
             targets.append((int(mapped) if mapped else None, sid_i))
 
     if not targets:

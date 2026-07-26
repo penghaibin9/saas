@@ -323,6 +323,12 @@ def restore_student(body) -> dict:
         result = master.restore_voided_student_in_session(
             db, tenant_id=_tid(), student_no=body.studentNo, reason=body.reason, actor=actor)
         s = db.get(StudentProfile, result["studentId"])
+        # 恢复学籍 → 重新启用被暂停的账号绑定；账号本身仍保持原状态，
+        # 需要该生重新登录时由「师生账号」单独启用并按需改密。
+        from app.services import student_account_link_service as link_svc
+        relinked = link_svc.reactivate_by_student_in_session(
+            db, tenant_id=_tid(), student_id=s.id, remark=f"学籍恢复：{body.reason}")
+        result["linkReactivated"] = bool(relinked)
         # 高危动作：操作者、角色、原因、作废前后状态全部入审计
         audit_insert_in_session(
             db, "恢复作废学生主档", "student",
@@ -351,6 +357,12 @@ def void_student(student_id, reason: str) -> dict:
         s.remark = f"VOID:{reason}"
         db.add(StudentStageEvent(tenant_id=_tid(), student_id=s.id, from_stage=s.current_stage,
                                  to_stage="RECYCLED", reason=reason, source_module="student"))
+        # 学籍作废 → 账号绑定转 SUSPENDED（同事务）。只改绑定不停账号：
+        # 账号是否禁用、是否强制改密属于账号管理职责，绑死会让「恢复学籍」顺手打开
+        # 一个本该保持停用的登录。停用账号请到「师生账号」单独处理。
+        from app.services import student_account_link_service as link_svc
+        link_svc.suspend_by_student_in_session(
+            db, tenant_id=_tid(), student_id=s.id, remark=f"学籍作废：{reason}")
         # 高危审计同事务：失败则回滚作废
         audit_insert_in_session(
             db, "作废学生", "student",

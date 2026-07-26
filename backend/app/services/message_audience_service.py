@@ -98,24 +98,113 @@ def _allowed_class_ids(db, user: dict) -> set[int] | None:
     return ctx.allowed_class_ids(db)
 
 
+# 绑定表是否已建（部署未跑迁移时为 False）。表建好后不会消失，故进程级缓存一次即可。
+_LINK_TABLE_READY: bool | None = None
+
+
+def link_table_ready(db) -> bool:
+    """检测 t_student_account_link 是否存在。
+
+    存在意义：代码升级但迁移未执行时，直接 JOIN 不存在的表会让**全校消息发不出去**。
+    检测到表缺失就整体退回历史 JOIN（login_name == student_no），
+    功能可用但不解决改号问题——由运维看到 warning 后补跑迁移。
+    """
+    global _LINK_TABLE_READY
+    if _LINK_TABLE_READY is None:
+        try:
+            from sqlalchemy import inspect as sa_inspect
+            _LINK_TABLE_READY = "t_student_account_link" in sa_inspect(db.get_bind()).get_table_names()
+        except Exception:  # noqa: BLE001
+            _LINK_TABLE_READY = False
+        if not _LINK_TABLE_READY:
+            import logging
+            logging.getLogger("app.message_audience").warning(
+                "student_account_link_table_missing 消息受众退回学号匹配，请执行数据库迁移")
+    return _LINK_TABLE_READY
+
+
+def _link_join():
+    """学生 → 账号绑定（阶段 C）。返回 (target, onclause) 供 outerjoin 展开。
+
+    **必须用 outerjoin**：INNER 会把尚未回填绑定的学生整批过滤掉，
+    _user_join 里的迁移期兜底分支就再也命中不到。
+    """
+    from sqlalchemy import and_
+
+    from app.models import StudentProfile
+    from app.models.student_account_link import LINK_ACTIVE, StudentAccountLink
+    return StudentAccountLink, and_(
+        StudentAccountLink.tenant_id == StudentProfile.tenant_id,
+        StudentAccountLink.student_id == StudentProfile.id,
+        StudentAccountLink.link_status == LINK_ACTIVE,
+        StudentAccountLink.is_deleted.is_(False),
+    )
+
+
+def _user_join(active_only: bool = False):
+    """账号连接：优先按绑定的 user_id，绑定缺失时退回历史约定 login_name == student_no。
+
+    两个分支互斥（后者要求 link 行为 NULL），不会把同一学生匹配成两行。
+    兜底只为迁移期存在：账号链接回填完成、指标归零后删除 or_ 的第二个分支，
+    届时未绑定学生会如实计入 ACCOUNT_UNLINKED 而不是靠学号蒙对。
+    """
+    from sqlalchemy import and_, or_
+
+    from app.models import StudentProfile, User
+    from app.models.student_account_link import StudentAccountLink
+    conds = [
+        User.tenant_id == StudentProfile.tenant_id,
+        User.is_deleted.is_(False),
+        or_(
+            User.id == StudentAccountLink.user_id,
+            # 兜底按学号猜账号时必须确认是学生账号：学号与教师工号撞号会把
+            # 面向学生的消息误发给教师（既有隐患，随本次改造一并收紧）。
+            and_(StudentAccountLink.id.is_(None),
+                 User.login_name == StudentProfile.student_no,
+                 User.user_type == "STUDENT"),
+        ),
+    ]
+    if active_only:
+        conds.append(User.status == "ACTIVE")
+    return User, and_(*conds)
+
+
+def apply_student_account_joins(q, db, *, active_only: bool = False, inner_user: bool = False):
+    """给「学生 → 账号」的查询挂上正确的 JOIN。
+
+    绑定表就绪时：LEFT JOIN 绑定 + JOIN 账号（绑定优先，缺失按学号兜底）；
+    表尚未建立（部署未跑迁移）时：整体退回历史 JOIN，保证消息还发得出去。
+    四处受众查询都经本函数，避免各写一遍分支写歪。
+    """
+    from sqlalchemy import and_
+
+    from app.models import StudentProfile, User
+    if link_table_ready(db):
+        q = q.outerjoin(*_link_join())
+        target, onclause = _user_join(active_only=active_only)
+        return q.join(target, onclause) if inner_user else q.outerjoin(target, onclause)
+
+    conds = [
+        User.tenant_id == StudentProfile.tenant_id,
+        User.login_name == StudentProfile.student_no,
+        User.user_type == "STUDENT",
+        User.is_deleted.is_(False),
+    ]
+    if active_only:
+        conds.append(User.status == "ACTIVE")
+    return q.join(User, and_(*conds)) if inner_user else q.outerjoin(User, and_(*conds))
+
+
 def _student_user_ids_by_classes(db, class_ids: set[int]) -> tuple[set[int], dict[str, int]]:
     """行政班 → 已开通账号的学生 user_id（student_no = User.login_name）。"""
     from app.models import StudentProfile, User
     from sqlalchemy import and_
     if not class_ids:
         return set(), {}
+    q = select(User.id, StudentProfile.student_status, StudentProfile.status).select_from(StudentProfile)
+    q = apply_student_account_joins(q, db)
     rows = db.execute(
-        select(User.id, StudentProfile.student_status, StudentProfile.status)
-        .select_from(StudentProfile)
-        .outerjoin(
-            User,
-            and_(
-                User.tenant_id == StudentProfile.tenant_id,
-                User.login_name == StudentProfile.student_no,
-                User.is_deleted.is_(False),
-            ),
-        )
-        .where(
+        q.where(
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
             StudentProfile.class_id.in_(list(class_ids)),
@@ -152,19 +241,10 @@ def _student_user_ids_by_colleges(
         if not allowed_classes:
             return set(), {}, set()
         conds.append(StudentProfile.class_id.in_(list(allowed_classes)))
-    rows = db.execute(
-        select(User.id, StudentProfile.student_status, StudentProfile.status, StudentProfile.class_id)
-        .select_from(StudentProfile)
-        .outerjoin(
-            User,
-            and_(
-                User.tenant_id == StudentProfile.tenant_id,
-                User.login_name == StudentProfile.student_no,
-                User.is_deleted.is_(False),
-            ),
-        )
-        .where(*conds)
-    ).all()
+    q = select(User.id, StudentProfile.student_status, StudentProfile.status,
+               StudentProfile.class_id).select_from(StudentProfile)
+    q = apply_student_account_joins(q, db)
+    rows = db.execute(q.where(*conds)).all()
     user_ids: set[int] = set()
     excluded = {"ACCOUNT_UNLINKED": 0, "STUDENT_STATUS_EXCLUDED": 0}
     class_set: set[int] = set()
@@ -194,32 +274,19 @@ def _all_student_user_ids(db, allowed_classes: set[int] | None) -> tuple[set[int
         if not allowed_classes:
             return set(), {}
         conds.append(StudentProfile.class_id.in_(list(allowed_classes)))
-    rows = db.execute(
+    rows_q = (
         select(User.id)
         .select_from(StudentProfile)
-        .join(
-            User,
-            and_(
-                User.tenant_id == StudentProfile.tenant_id,
-                User.login_name == StudentProfile.student_no,
-                User.is_deleted.is_(False),
-                User.status == "ACTIVE",
-            ),
-        )
+    )
+    # 本查询语义是「只要已开通账号的学生」，故 User 用 INNER；
+    # 绑定表始终 LEFT（INNER 会把尚未回填的学生整批漏掉）。
+    rows = db.execute(
+        apply_student_account_joins(rows_q, db, active_only=True, inner_user=True)
         .where(*conds)
     ).all()
+    unlinked_q = select(StudentProfile.id).select_from(StudentProfile)
     unlinked = db.execute(
-        select(StudentProfile.id)
-        .select_from(StudentProfile)
-        .outerjoin(
-            User,
-            and_(
-                User.tenant_id == StudentProfile.tenant_id,
-                User.login_name == StudentProfile.student_no,
-                User.is_deleted.is_(False),
-            ),
-        )
-        .where(*conds, User.id.is_(None))
+        apply_student_account_joins(unlinked_q, db).where(*conds, User.id.is_(None))
     ).all()
     return {int(r[0]) for r in rows}, {"ACCOUNT_UNLINKED": len(unlinked)}
 

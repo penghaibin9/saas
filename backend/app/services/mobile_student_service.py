@@ -28,20 +28,44 @@ def _session():
 
 
 def resolve_student(db, u: dict):
-    """在当前租户内解析当前登录学生的主档：优先 studentNo（租户内唯一约束），其次 realName。
+    """解析当前登录学生本人的主档。
 
-    姓名兜底仅在唯一命中时采用：同租户存在多个同名时返回 None，绝不 .first() 撞到他人档案
-    （同名横向越权）。找不到返回 None。
+    顺序（阶段 C 起）：
+      1. token.studentId —— 稳定身份键，学号更正后依然指向同一学生；
+      2. 账号链接表（token 里没有 studentId 的旧令牌，用 userId 反查）；
+      3. studentNo —— 迁移期兜底，链接回填完成后可删；
+      4. 姓名 —— **不再用于正式在线请求**，只在唯一命中且前三者全空时保留给历史演示账号。
+
+    姓名兜底仅唯一命中时采用：同租户存在同名时返回 None，绝不 .first() 撞到他人档案。
     """
     from app.models import StudentProfile
+    from app.services import student_account_link_service as link_svc
+
     tid = _tid()
-    sn = u.get("studentNo")
     q = select(StudentProfile).where(StudentProfile.tenant_id == tid,
                                      StudentProfile.is_deleted.is_(False))
+
+    sid = u.get("studentId")
+    if sid:
+        row = db.scalars(q.where(StudentProfile.id == int(sid))).first()
+        if row:
+            return row
+
+    raw_uid = str(u.get("userId") or "")
+    uid = int(raw_uid[3:]) if raw_uid.startswith("db-") and raw_uid[3:].isdigit() else None
+    if uid:
+        linked = link_svc.get_student_id_by_user(db, tenant_id=tid, user_id=uid)
+        if linked:
+            row = db.scalars(q.where(StudentProfile.id == int(linked))).first()
+            if row:
+                return row
+
+    sn = u.get("studentNo")
     if sn:
         row = db.scalars(q.where(StudentProfile.student_no == sn)).first()
         if row:
             return row
+
     name = u.get("realName")
     if name:
         rows = db.scalars(q.where(StudentProfile.real_name == name)).all()
@@ -191,8 +215,14 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
 
 
 def _home_cache_key(user: dict) -> str:
-    return (f"home:student:{user.get('tenantId') or _tid()}:"
-            f"{user.get('studentNo') or user.get('userId') or '-'}")
+    """首页缓存键以 studentId 为准。
+
+    以前用 studentNo 作键：学号一更正，旧键既不会自然失效、新键又读不到，
+    学生会看到「改号前的首页」直到 TTL 过期。studentId 永不变，不存在这个问题；
+    没有 studentId 的旧令牌退回 userId（同样稳定），studentNo 不再作为缓存键。
+    """
+    ident = user.get("studentId") or user.get("userId") or "-"
+    return f"home:student:{user.get('tenantId') or _tid()}:{ident}"
 
 
 def invalidate_home_cache(user: dict) -> None:

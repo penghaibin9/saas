@@ -769,9 +769,13 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
             raise no_permission("只能提醒本人指导学生")
         if w.status == "APPROVED":
             raise AppException("DATA_CONFLICT", "周报已通过，无需催交")
-        account = db.scalars(select(User).where(
-            User.tenant_id == _tid(), User.login_name == (stu.student_no if stu else ""),
-            User.user_type == "STUDENT", User.is_deleted.is_(False), User.status == "ACTIVE")).first()
+        # 经账号绑定解析（阶段 C），绑定缺失时按学号兜底
+        from app.services import student_account_link_service as link_svc
+        acct_id = link_svc.resolve_user_id_for_student(
+            db, tenant_id=_tid(),
+            student_id=(getattr(stu, "student_id", None) or getattr(stu, "id", None)),
+            student_no=(stu.student_no if stu else None))
+        account = db.get(User, acct_id) if acct_id else None
         if not account:
             raise AppException("DATA_NOT_FOUND", "学生账号未建立，无法发送提醒")
         recent = db.scalars(select(InternshipAuditTrail).where(

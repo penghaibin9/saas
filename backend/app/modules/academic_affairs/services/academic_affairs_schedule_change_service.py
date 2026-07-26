@@ -372,12 +372,16 @@ def _apply_schedule(db, x) -> dict:
             teacher_notified = 1
     students = 0
     if x.class_id:
-        rows = db.execute(select(User.id).select_from(StudentProfile).join(
-            User, and_(User.tenant_id == StudentProfile.tenant_id,
-                      User.login_name == StudentProfile.student_no,
-                      User.is_deleted.is_(False))
-        ).where(StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(x.class_id),
-                StudentProfile.is_deleted.is_(False), User.status == "ACTIVE")).all()
+        # 学生账号经绑定表解析（阶段 C）：学号更正后仍能正确送达，
+        # 绑定缺失时由 _user_join 内的迁移期兜底按学号匹配。
+        from app.services.message_audience_service import _link_join, _user_join
+        rows = db.execute(
+            select(User.id).select_from(StudentProfile)
+            .outerjoin(*_link_join())
+            .join(*_user_join(active_only=True))
+            .where(StudentProfile.tenant_id == _tid(),
+                   StudentProfile.class_id == int(x.class_id),
+                   StudentProfile.is_deleted.is_(False))).all()
         for (uid,) in rows:
             _msg(db, uid, title, content, "STATUS_CHANGED", x.id)
             students += 1

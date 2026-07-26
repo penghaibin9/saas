@@ -217,21 +217,40 @@ def _permission_version(user, contexts: list[dict]) -> str:
     return f"u{int(user.version or 0)}|{role_part}"
 
 
-def _student_no(db, user) -> str | None:
+def _student_identity(db, user) -> tuple[int | None, str | None]:
+    """解析学生账号对应的 (studentId, studentNo)。
+
+    优先经 StudentAccountLink——学号是学籍属性、会被更正，不能当关联键；
+    链接缺失时（回填不到的历史账号）临时退回登录名匹配并由 link_service 记指标，
+    指标归零后即可删除该兜底。姓名匹配只留给历史演示账号，不用于正式身份。
+    """
     if (user.user_type or "").upper() != "STUDENT":
-        return None
+        return None, None
     from app.models import StudentProfile
-    # 正式账号优先以登录名=学号精确绑定；姓名查询只保留给历史演示账号。
-    student = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == user.tenant_id,
-        StudentProfile.student_no == user.login_name,
-        StudentProfile.is_deleted.is_(False))).first()
+    from app.services import student_account_link_service as link_svc
+
+    sid = link_svc.get_student_id_by_user(
+        db, tenant_id=user.tenant_id, user_id=user.id,
+        allow_legacy_fallback=True, login_name=user.login_name)
+    student = None
+    if sid:
+        student = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == int(sid),
+            StudentProfile.tenant_id == user.tenant_id,
+            StudentProfile.is_deleted.is_(False))).first()
     if student is None and user.login_name in LEGACY_DEMO_ROLE_BY_LOGIN:
         student = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == user.tenant_id,
             StudentProfile.real_name == user.real_name,
             StudentProfile.is_deleted.is_(False))).first()
-    return student.student_no if student else None
+    if student is None:
+        return None, None
+    return int(student.id), student.student_no
+
+
+def _student_no(db, user) -> str | None:
+    """兼容旧调用方；新代码请用 _student_identity 拿 studentId。"""
+    return _student_identity(db, user)[1]
 
 
 def _inject_org_scope_claims(db, user, claims: dict) -> None:
@@ -317,7 +336,10 @@ def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> 
         "permissionVersion": _permission_version(user, contexts),
         "clientType": client_type,
     }
-    student_no = _student_no(db, user)
+    student_id, student_no = _student_identity(db, user)
+    if student_id:
+        # studentId 是稳定身份键：学号更正后本人解析、消息收件仍能正确落到同一学生
+        claims["studentId"] = str(student_id)
     if student_no:
         claims["studentNo"] = student_no
     _inject_org_scope_claims(db, user, claims)

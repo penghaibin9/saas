@@ -80,11 +80,42 @@ async def _cancel_tasks(tasks: list) -> None:
             _log.exception("scheduler task shutdown error")
 
 
+# 升级代码但忘记执行数据库迁移，是最容易发生、也最难自查的部署事故。
+# 相关功能本身已做降级（表缺失时自动退回旧口径，不会崩），这里只负责把
+# 「该跑迁移了」这件事在启动日志里说清楚，不阻止启动、不自动改库结构。
+_REQUIRED_TABLES = {
+    "t_student_account_link": "学生账号绑定（学号更正后仍能登录/收消息）",
+}
+
+
+def _check_pending_migrations() -> None:
+    from app.db.session import db_enabled
+    if not db_enabled():
+        return
+    try:
+        from sqlalchemy import inspect as sa_inspect
+
+        from app.db.session import get_engine
+        existing = set(sa_inspect(get_engine()).get_table_names())
+    except Exception as exc:  # noqa: BLE001 - 探测失败不影响启动
+        _log.warning("migration_check_skipped err=%s", type(exc).__name__)
+        return
+    missing = {t: why for t, why in _REQUIRED_TABLES.items() if t not in existing}
+    if not missing:
+        return
+    for table, why in missing.items():
+        _log.warning(
+            "PENDING_MIGRATION 缺少数据表 %s（%s）。相关功能已自动降级运行，"
+            "请执行：cd backend && alembic upgrade head", table, why)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
 
     from app.db.session import db_enabled
+
+    _check_pending_migrations()
 
     tasks: list = []
     app.state.scheduler_tasks = tasks

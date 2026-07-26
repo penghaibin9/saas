@@ -434,6 +434,24 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                 report["entities"]["studentAccounts"]["created"] += 1
                 _bump(report, "accountsCreated")
                 report["studentCredentials"].append({"studentNo": no, "initialPassword": pwd})
+            # 建立学生主档 ↔ 账号的稳定绑定（阶段 C）：此后本人解析、消息受众、
+            # 首页缓存都以它为准，不再依赖 login_name == student_no 这条隐式约定。
+            try:
+                from app.services import student_account_link_service as link_svc
+                profile_row = db.scalars(select(StudentProfile).where(
+                    StudentProfile.tenant_id == tenant_id,
+                    StudentProfile.student_no == no,
+                    StudentProfile.is_deleted.is_(False))).first()
+                if profile_row is not None:
+                    link_svc.bind_in_session(
+                        db, tenant_id=tenant_id, student_id=profile_row.id,
+                        user_id=account.id, source="IDENTITY_IMPORT",
+                        login_name=no, student_no=no)
+            except AppException as exc:
+                # 绑定冲突（账号已绑别的学生等）不静默吞掉，计入回执供人工处理
+                report["errors"].append({"row": int(s.get("_rowNo") or 0),
+                                         "entity": "studentAccountLink",
+                                         "field": "studentNo", "error": exc.message})
             binding = ensure_user_roles(db, tenant_id, account.id, ["STUDENT"])
             report["entities"]["roleBindings"]["created"] += binding["created"] + binding["restored"]
             report["entities"]["roleBindings"]["skipped"] += binding["unchanged"]
