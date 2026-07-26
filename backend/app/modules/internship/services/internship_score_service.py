@@ -2,13 +2,12 @@
 
 五项：打卡 / 周报 / 月报总结 / 企业评价 / 学校(指导教师)评价，权重和须=100。
 状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
-缺项(incomplete)不得发布。企业评价分可自动取已通过企业评价均分。
+缺项(incomplete)不得发布。企业评价分只能读取已审核企业评价，客户端不得手工覆盖。
 owner + 数据范围复用 internship_service。审计 target_type=SCORE。
 """
 from __future__ import annotations
 
 from datetime import datetime
-
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
@@ -26,10 +25,31 @@ COMPONENTS = [("checkinScore", "checkin_score", "w_checkin", "打卡"),
               ("schoolScore", "school_score", "w_school", "学校评价")]
 DEFAULT_CFG = dict(checkin_weight=20, weekly_weight=20, monthly_weight=10,
                    enterprise_weight=30, school_weight=20, pass_line=60.0)
+_REVIEW_ROLES = {"SCHOOL_ADMIN", "COLLEGE_ADMIN", "INTERNSHIP_ADMIN",
+                 "INTERN_ADMIN", "COLLEGE_INTERNSHIP_ADMIN"}
 
 
 def _op_name(user) -> str:
     return (user or {}).get("realName") or "系统"
+
+
+def _user_id(user) -> str:
+    return str((user or {}).get("userId") or "")
+
+
+def _role_code(user) -> str:
+    return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
+
+
+def _assert_reviewer(user, *, final=False):
+    from app.core.permissions import is_super_admin
+    if is_super_admin(user or {}):
+        return
+    role = _role_code(user)
+    if final and role != "SCHOOL_ADMIN":
+        raise no_permission("实习成绩最终发布、撤回和归档仅限学校管理员")
+    if not final and role not in _REVIEW_ROLES:
+        raise no_permission("实习成绩复核仅限学校或学院授权管理员")
 
 
 def _trail(db, sid, action, detail=None, operator="系统"):
@@ -137,11 +157,16 @@ def save_config(user, body) -> dict:
 
 # ═══════════ 核算 / 复核 / 发布 ═══════════
 
-def _enterprise_avg(db, internship_id):
-    e = db.scalars(select(InternshipEnterpriseEval).where(
-        InternshipEnterpriseEval.tenant_id == _tid(), InternshipEnterpriseEval.internship_id == internship_id,
+def _approved_enterprise_eval(db, internship_id):
+    return db.scalars(select(InternshipEnterpriseEval).where(
+        InternshipEnterpriseEval.tenant_id == _tid(),
+        InternshipEnterpriseEval.internship_id == internship_id,
         InternshipEnterpriseEval.school_review_status == "APPROVED",
-        InternshipEnterpriseEval.is_deleted.is_(False))).first()
+        InternshipEnterpriseEval.is_deleted.is_(False)).order_by(
+            InternshipEnterpriseEval.id.desc())).first()
+
+
+def _enterprise_avg(e):
     if not e:
         return None
     return round((e.attendance_score + e.skill_score + e.attitude_score
@@ -151,17 +176,24 @@ def _enterprise_avg(db, internship_id):
 def _score_or_none(v):
     if v is None or str(v) == "":
         return None
-    iv = int(v)
+    try:
+        iv = int(v)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "各项成绩须为 0-100 的整数")
     if not 0 <= iv <= 100:
         raise AppException("VALIDATION_ERROR", "各项成绩须在 0-100 之间")
     return iv
 
 
 def compute(user, body) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.manage")
     b = body or {}
     iid = b.get("internshipId") or b.get("internId")
     if not iid:
         raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+    if b.get("enterpriseScore") not in (None, ""):
+        raise AppException("VALIDATION_ERROR", "企业评价分不得手工填写，只能读取已审核企业评价")
     comps = {"checkin_score": _score_or_none(b.get("checkinScore")),
              "weekly_score": _score_or_none(b.get("weeklyScore")),
              "monthly_score": _score_or_none(b.get("monthlyScore")),
@@ -173,12 +205,9 @@ def compute(user, body) -> dict:
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, rec.student_id)
         if not in_scope(scope, db, rec, stu):
-            raise no_permission("只能核算本人指导学生的成绩")
-        # 企业评价分：body 优先，否则自动取已通过企业评价均分
-        ent = _score_or_none(b.get("enterpriseScore"))
-        if ent is None:
-            ent = _enterprise_avg(db, rec.id)
-        comps["enterprise_score"] = ent
+            raise no_permission("只能核算本人指导或授权范围内学生成绩")
+        enterprise_eval = _approved_enterprise_eval(db, rec.id)
+        comps["enterprise_score"] = _enterprise_avg(enterprise_eval)
         cfg = _active_config(db, rec.batch_id)
         w = dict(w_checkin=(cfg.checkin_weight if cfg else DEFAULT_CFG["checkin_weight"]),
                  w_weekly=(cfg.weekly_weight if cfg else DEFAULT_CFG["weekly_weight"]),
@@ -197,8 +226,8 @@ def compute(user, body) -> dict:
         s = db.scalars(select(InternshipFinalScore).where(
             InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == rec.id,
             InternshipFinalScore.is_deleted.is_(False))).first()
-        if s and s.status == "PUBLISHED":
-            raise AppException("DATA_CONFLICT", "成绩已发布，请先撤回再重算")
+        if s and s.status in ("PUBLISHED", "ARCHIVED"):
+            raise AppException("DATA_CONFLICT", "成绩已发布或归档，不能直接重算")
         new = s is None
         values = {**comps, **w, "total_score": total, "score_config_id": cfg.id if cfg else None,
                   "score_config_version": int(cfg.version or 0) if cfg else 0, "pass_line": pass_line,
@@ -219,20 +248,26 @@ def compute(user, body) -> dict:
                 db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
                 expected_version=extract_expected_version(b), expected_status=s.status, values=values)
         db.flush()
-        _trail(db, s.id, "COMPUTE", {"total": total, "incomplete": incomplete, "missing": missing,
-               "scoreConfigId": str(cfg.id) if cfg else "", "scoreConfigVersion": int(cfg.version or 0) if cfg else 0},
-               operator=_op_name(user))
+        _trail(db, s.id, "COMPUTE", {
+            "total": total, "incomplete": incomplete, "missing": missing,
+            "scoreConfigId": str(cfg.id) if cfg else "",
+            "scoreConfigVersion": int(cfg.version or 0) if cfg else 0,
+            "enterpriseEvalId": str(enterprise_eval.id) if enterprise_eval else "",
+            "enterpriseEvidenceFileId": (enterprise_eval.source_file_id or enterprise_eval.file_id)
+            if enterprise_eval else "",
+            "actorUserId": _user_id(user), "actorRole": _role_code(user),
+        }, operator=_op_name(user))
         db.commit()
-        return {"id": str(s.id), "total": total, "incomplete": incomplete,
-                "incompleteReason": values["incomplete_reason"], "isPass": values["is_pass"], "version": new_ver}
+        return {"id": str(s.id), "internshipId": str(rec.id), "total": total,
+                "enterpriseScore": comps["enterprise_score"], "incomplete": incomplete,
+                "incompleteReason": values["incomplete_reason"], "isPass": values["is_pass"],
+                "status": "PENDING_REVIEW", "version": new_ver}
 
 
 def publish(user, sid, expected_version=None) -> dict:
-    from app.core.permissions import enforce_permission, is_super_admin
+    from app.core.permissions import enforce_permission
     enforce_permission(user or {}, "internship.score.publish")
-    role = ((user or {}).get("currentRoleCode") or "").upper()
-    if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
-        raise no_permission("仅学校管理员可最终发布实习成绩")
+    _assert_reviewer(user, final=True)
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         s = _get(db, sid)
@@ -249,12 +284,19 @@ def publish(user, sid, expected_version=None) -> dict:
             expected_status="PENDING_REVIEW", values={"status": "PUBLISHED",
                 "reviewed_by_name": _op_name(user), "reviewed_at": datetime.utcnow(),
                 "published_by_name": _op_name(user), "published_at": datetime.utcnow()})
-        _trail(db, s.id, "PUBLISH", {"total": s.total_score, "isPass": s.is_pass}, operator=_op_name(user))
+        _trail(db, s.id, "PUBLISH", {"total": s.total_score, "isPass": s.is_pass,
+               "actorUserId": _user_id(user), "actorRole": _role_code(user)}, operator=_op_name(user))
         db.commit()
         return {"id": str(s.id), "status": "PUBLISHED", "statusLabel": STATUS_LABEL["PUBLISHED"], "version": new_ver}
 
 
 def return_recalc(user, sid, reason="", expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.manage")
+    _assert_reviewer(user, final=False)
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
         s = _get(db, sid)
         rec, stu = _ctx(db, s)
@@ -266,12 +308,16 @@ def return_recalc(user, sid, reason="", expected_version=None) -> dict:
         new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
                                    expected_version=extract_expected_version({"expectedVersion": expected_version}),
                                    expected_status="PENDING_REVIEW", values={"status": "PENDING_CALC"})
-        _trail(db, s.id, "RETURN_RECALC", {"reason": (reason or "").strip()}, operator=_op_name(user))
+        _trail(db, s.id, "RETURN_RECALC", {"reason": reason,
+               "actorUserId": _user_id(user), "actorRole": _role_code(user)}, operator=_op_name(user))
         db.commit()
         return {"id": str(s.id), "status": "PENDING_CALC", "version": new_ver}
 
 
 def withdraw(user, sid, reason="", expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.publish")
+    _assert_reviewer(user, final=True)
     if not (reason or "").strip() or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "撤回原因必填且不少于 5 字")
     with session() as db:
@@ -285,12 +331,16 @@ def withdraw(user, sid, reason="", expected_version=None) -> dict:
         new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
                                    expected_version=extract_expected_version({"expectedVersion": expected_version}),
                                    expected_status="PUBLISHED", values={"status": "WITHDRAWN"})
-        _trail(db, s.id, "WITHDRAW", {"reason": reason.strip()}, operator=_op_name(user))
+        _trail(db, s.id, "WITHDRAW", {"reason": reason.strip(),
+               "actorUserId": _user_id(user), "actorRole": _role_code(user)}, operator=_op_name(user))
         db.commit()
         return {"id": str(s.id), "status": "WITHDRAWN", "version": new_ver}
 
 
 def archive(user, sid, expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.manage")
+    _assert_reviewer(user, final=True)
     with session() as db:
         s = _get(db, sid)
         rec, stu = _ctx(db, s)
@@ -302,7 +352,8 @@ def archive(user, sid, expected_version=None) -> dict:
         new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
                                    expected_version=extract_expected_version({"expectedVersion": expected_version}),
                                    expected_status="PUBLISHED", values={"status": "ARCHIVED"})
-        _trail(db, s.id, "ARCHIVE", {}, operator=_op_name(user))
+        _trail(db, s.id, "ARCHIVE", {"actorUserId": _user_id(user),
+               "actorRole": _role_code(user)}, operator=_op_name(user))
         db.commit()
         return {"id": str(s.id), "status": "ARCHIVED", "version": new_ver}
 
@@ -329,7 +380,7 @@ def _grade_level(total, pass_line=60.0) -> str:
 
 def _row(s, rec, stu):
     return {
-        "id": str(s.id), "internId": str(s.internship_id),
+        "id": str(s.id), "internId": str(s.internship_id), "internshipId": str(s.internship_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
         "advisorName": rec.advisor_name if rec else "",
         "checkinScore": s.checkin_score, "weeklyScore": s.weekly_score, "monthlyScore": s.monthly_score,
@@ -382,9 +433,16 @@ def get_score(sid, user=None) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "SCORE",
             InternshipAuditTrail.target_id == s.id).order_by(InternshipAuditTrail.id)).all()
+        enterprise_eval = _approved_enterprise_eval(db, s.internship_id)
         return {**_row(s, rec, stu),
                 "weights": {"checkin": s.w_checkin, "weekly": s.w_weekly, "monthly": s.w_monthly,
                             "enterprise": s.w_enterprise, "school": s.w_school},
+                "enterpriseSource": {
+                    "type": "APPROVED_ENTERPRISE_EVAL" if enterprise_eval else "MISSING",
+                    "sourceId": str(enterprise_eval.id) if enterprise_eval else "",
+                    "sourceFileId": (enterprise_eval.source_file_id or enterprise_eval.file_id)
+                    if enterprise_eval else "",
+                },
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
                                for t in trail]}
