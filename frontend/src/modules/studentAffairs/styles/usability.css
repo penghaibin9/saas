@@ -1,73 +1,171 @@
-/* 学工中心页面易用性层：仅使用 sa-* / student-affairs-* 类，不改变组件行为。 */
+/* 学工中心页面易用性层。
+ * 仅作用于 AdminStudentAffairsLayout 下的页面，不改变组件行为、路由、权限或业务逻辑。
+ */
 
-.sa-summary-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-4, 16px);
-  padding: var(--space-4, 16px);
-  margin-bottom: var(--space-4, 16px);
-  border: 1px solid var(--primary-100, #dbeafe);
-  border-radius: var(--radius-lg, 12px);
-  background: var(--primary-50, #eff6ff);
-}
-
-.sa-summary-strip__content {
+.student-affairs-ui-scope {
+  width: 100%;
   min-width: 0;
 }
 
-.sa-summary-strip__eyebrow {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--primary-700, #1d4ed8);
-  font-size: var(--font-size-xs, 12px);
-  font-weight: var(--font-weight-semibold, 600);
-  letter-spacing: 0.04em;
+.student-affairs-ui-scope > * {
+  min-width: 0;
 }
 
-.sa-summary-strip__title {
-  margin: 0;
+/* 去掉学工页面内过重的玻璃与悬浮感，保留现有品牌色。 */
+.student-affairs-ui-scope .mp-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+.student-affairs-ui-scope .mp-card:hover {
+  box-shadow: none;
+}
+
+.student-affairs-ui-scope .dt {
+  max-width: 100%;
+  box-shadow: none;
+}
+
+.student-affairs-ui-scope .dt:hover {
+  box-shadow: none;
+}
+
+.student-affairs-ui-scope .dt__scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.student-affairs-ui-scope .dt__table {
+  min-width: 720px;
+}
+
+.student-affairs-ui-scope .dt__th {
+  padding: 11px 14px;
+  background: var(--bg-section, #f8fafc);
+  font-size: 12px;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.student-affairs-ui-scope .dt__td {
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.student-affairs-ui-scope .dt__pager {
+  padding: 10px 14px;
+}
+
+.student-affairs-ui-scope .mp-cell-main {
   color: var(--text-primary, #0f172a);
-  font-size: 16px;
-  font-weight: var(--font-weight-bold, 700);
+  font-weight: 600;
+}
+
+.student-affairs-ui-scope .mp-cell-sub {
+  margin-top: 3px;
+  color: var(--text-tertiary, #64748b);
   line-height: 1.45;
 }
 
-.sa-summary-strip__text {
-  margin: 6px 0 0;
+/* 页面首屏：关键数字与主要操作优先，避免指标卡占据过多高度。 */
+.student-affairs-ui-scope .sa-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.student-affairs-ui-scope .sa-toolbar > * {
+  min-width: 0;
+}
+
+.student-affairs-ui-scope .sa-grid--metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  flex: 1 1 620px;
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.student-affairs-ui-scope .sa-toolbar .sa-grid--metrics {
+  margin-bottom: 0;
+}
+
+.student-affairs-ui-scope .sa-summary-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--primary-100, #dbeafe);
+  border-radius: 12px;
+  background: var(--primary-50, #eff6ff);
+}
+
+.student-affairs-ui-scope .sa-summary-strip__content {
+  min-width: 0;
+}
+
+.student-affairs-ui-scope .sa-summary-strip__eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--primary-700, #1d4ed8);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.student-affairs-ui-scope .sa-summary-strip__title {
+  margin: 0;
+  color: var(--text-primary, #0f172a);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.student-affairs-ui-scope .sa-summary-strip__text {
+  margin: 5px 0 0;
   color: var(--text-secondary, #475569);
-  font-size: var(--font-size-sm, 13px);
+  font-size: 13px;
   line-height: 1.65;
 }
 
-.sa-summary-strip__actions {
+.student-affairs-ui-scope .sa-summary-strip__actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-2, 8px);
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.sa-workflow-strip {
+.student-affairs-ui-scope .sa-workflow-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-2, 8px);
-  margin-bottom: var(--space-4, 16px);
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.sa-workflow-step {
+.student-affairs-ui-scope .sa-workflow-step {
   position: relative;
   min-width: 0;
   padding: 10px 12px 10px 34px;
   border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: var(--radius-md, 10px);
+  border-radius: 10px;
   background: var(--bg-card, #fff);
   color: var(--text-secondary, #475569);
-  font-size: var(--font-size-xs, 12px);
+  font-size: 12px;
   line-height: 1.45;
 }
 
-.sa-workflow-step::before {
+.student-affairs-ui-scope .sa-workflow-step::before {
   content: attr(data-step);
   position: absolute;
   left: 10px;
@@ -83,58 +181,35 @@
   font-weight: 700;
 }
 
-.sa-toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3, 12px);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4, 16px);
-}
-
-.sa-toolbar > * {
-  min-width: 0;
-}
-
-.sa-grid--metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-3, 12px);
-  flex: 1 1 620px;
-  min-width: 0;
-  margin-bottom: var(--space-4, 16px);
-}
-
-.sa-filter-bar,
-.sa-filters {
+/* 统一筛选区。兼容各页面现有 fd-/fr-/ca-/ap- 等命名，不改点击逻辑。 */
+.student-affairs-ui-scope .sa-filter-bar,
+.student-affairs-ui-scope .sa-filters,
+.student-affairs-ui-scope [class*="-filters"] {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 8px);
+  gap: 8px;
   flex-wrap: wrap;
-  padding: 10px 12px;
-  margin-bottom: var(--space-3, 12px);
+  padding: 9px 11px;
+  margin-bottom: 12px;
   border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: var(--radius-md, 10px);
+  border-radius: 10px;
   background: var(--bg-section, #f8fafc);
 }
 
-.sa-filter-bar > *,
-.sa-filters > * {
+.student-affairs-ui-scope [class*="-filters"] > * {
   min-width: 0;
 }
 
-.sa-table-shell {
-  width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  border-radius: var(--radius-md, 10px);
+.student-affairs-ui-scope button[class*="-chip"] {
+  min-height: 30px;
+  padding: 4px 12px;
+  white-space: nowrap;
 }
 
-.sa-table-shell table {
-  min-width: 760px;
-}
-
-.sa-actions {
+/* 操作区优先级与换行。按钮逻辑仍由原页面控制。 */
+.student-affairs-ui-scope .sa-actions,
+.student-affairs-ui-scope [class*="-ops"],
+.student-affairs-ui-scope .mp-actions {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
@@ -143,130 +218,166 @@
   max-width: 100%;
 }
 
-.sa-cell-wrap {
-  display: block;
-  min-width: 0;
+.student-affairs-ui-scope .sa-muted,
+.student-affairs-ui-scope [class*="-dash"],
+.student-affairs-ui-scope [class*="-hint"] {
+  color: var(--text-tertiary, #64748b);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.student-affairs-ui-scope [class*="-reason"],
+.student-affairs-ui-scope [class*="-opinion"],
+.student-affairs-ui-scope [class*="-remark"],
+.student-affairs-ui-scope [class*="-content"] {
   max-width: 320px;
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.55;
 }
 
-.sa-muted {
-  color: var(--text-tertiary, #94a3b8);
-  font-size: var(--font-size-xs, 12px);
-}
-
-.sa-empty {
+/* 空态必须看得出这是业务结果，不与普通正文混在一起。 */
+.student-affairs-ui-scope .sa-empty {
   display: grid;
   place-items: center;
-  min-height: 132px;
+  min-height: 120px;
   margin: 0;
-  padding: var(--space-5, 20px);
+  padding: 20px;
   border: 1px dashed var(--border-base, #cbd5e1);
-  border-radius: var(--radius-md, 10px);
+  border-radius: 10px;
   background: var(--bg-section, #f8fafc);
   color: var(--text-tertiary, #64748b);
   text-align: center;
   line-height: 1.7;
 }
 
-.sa-inline-workspace {
-  margin-bottom: var(--space-4, 16px);
-  padding: var(--space-4, 16px);
+/* 现有内嵌工作区与长表单的视觉分组。 */
+.student-affairs-ui-scope .sa-inline-workspace {
+  margin-bottom: 16px;
+  padding: 16px;
   border: 1px solid var(--primary-100, #dbeafe);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: 12px;
   background: var(--bg-card, #fff);
 }
 
-.sa-inline-workspace__head {
+.student-affairs-ui-scope .sa-inline-workspace__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-3, 12px);
-  margin-bottom: var(--space-4, 16px);
-  padding-bottom: var(--space-3, 12px);
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--border-light, #e2e8f0);
 }
 
-.sa-inline-workspace__title {
+.student-affairs-ui-scope .sa-inline-workspace__title {
   margin: 0;
   color: var(--text-primary, #0f172a);
   font-size: 16px;
   font-weight: 700;
 }
 
-.sa-inline-workspace__desc {
+.student-affairs-ui-scope .sa-inline-workspace__desc {
   margin: 4px 0 0;
   color: var(--text-secondary, #475569);
-  font-size: var(--font-size-sm, 13px);
+  font-size: 13px;
   line-height: 1.6;
 }
 
-.sa-form-grid {
+.student-affairs-ui-scope .sa-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3, 12px);
+  gap: 12px;
 }
 
-.sa-form-grid__full {
+.student-affairs-ui-scope .sa-form-grid__full {
   grid-column: 1 / -1;
 }
 
-.sa-form-footer {
+.student-affairs-ui-scope .sa-form-footer {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-2, 8px);
+  gap: 8px;
   flex-wrap: wrap;
-  margin-top: var(--space-4, 16px);
-  padding-top: var(--space-3, 12px);
+  margin-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-light, #e2e8f0);
 }
 
+/* 常见页面自定义网格在中窄屏自动收敛，避免输入框和按钮互相挤压。 */
+.student-affairs-ui-scope [class$="-grid"],
+.student-affairs-ui-scope [class*="-grid "] {
+  min-width: 0;
+}
+
+.student-affairs-ui-scope input,
+.student-affairs-ui-scope select,
+.student-affairs-ui-scope textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.student-affairs-ui-scope textarea {
+  line-height: 1.55;
+}
+
+@media (max-width: 1100px) {
+  .student-affairs-ui-scope .dt__table {
+    min-width: 680px;
+  }
+}
+
 @media (max-width: 960px) {
-  .sa-summary-strip {
+  .student-affairs-ui-scope .sa-summary-strip {
     grid-template-columns: 1fr;
   }
 
-  .sa-summary-strip__actions {
+  .student-affairs-ui-scope .sa-summary-strip__actions {
     justify-content: flex-start;
   }
 
-  .sa-grid--metrics {
+  .student-affairs-ui-scope .sa-grid--metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     flex-basis: 100%;
   }
 
-  .sa-form-grid {
+  .student-affairs-ui-scope .sa-form-grid {
     grid-template-columns: 1fr;
   }
 
-  .sa-form-grid__full {
+  .student-affairs-ui-scope .sa-form-grid__full {
     grid-column: auto;
+  }
+
+  .student-affairs-ui-scope [class*="-ops"] {
+    justify-content: flex-start;
   }
 }
 
 @media (max-width: 640px) {
-  .sa-summary-strip,
-  .sa-inline-workspace {
-    padding: var(--space-3, 12px);
+  .student-affairs-ui-scope .sa-summary-strip,
+  .student-affairs-ui-scope .sa-inline-workspace {
+    padding: 12px;
   }
 
-  .sa-grid--metrics {
+  .student-affairs-ui-scope .sa-grid--metrics {
     grid-template-columns: 1fr;
   }
 
-  .sa-filter-bar,
-  .sa-filters {
+  .student-affairs-ui-scope .sa-filter-bar,
+  .student-affairs-ui-scope .sa-filters,
+  .student-affairs-ui-scope [class*="-filters"] {
     align-items: stretch;
   }
 
-  .sa-filter-bar > *,
-  .sa-filters > * {
+  .student-affairs-ui-scope .sa-filter-bar > *,
+  .student-affairs-ui-scope .sa-filters > *,
+  .student-affairs-ui-scope [class*="-filters"] > * {
     width: 100%;
   }
 
-  .sa-actions {
-    justify-content: flex-start;
+  .student-affairs-ui-scope .dt__th,
+  .student-affairs-ui-scope .dt__td {
+    padding: 10px 12px;
   }
 }
