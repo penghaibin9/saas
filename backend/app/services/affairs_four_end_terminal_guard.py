@@ -3,8 +3,8 @@
 该模块只收紧四端补充接线层，不修改教务、实习、毕设等业务：
 
 1. 所有学生本人补充接口必须先验证 ``userType=STUDENT``，再解析本人主档；
-2. 教师移动写接口的权限映射未知时必须 fail-closed；
-3. 对新增教师移动写路由做启动期机械检查，避免后续新增接口遗漏权限登记。
+2. 教师移动端除总览外，未知读写接口都必须 fail-closed；
+3. 对全部教师学工移动路由做启动期机械检查，避免后续新增接口遗漏权限登记。
 
 必须在其他学工四端兼容层全部安装后最后调用 ``install(api_router)``。
 """
@@ -17,6 +17,20 @@ from app.core.exceptions import no_permission
 _INSTALLED = False
 _SENTINEL = "__AFFAIRS_MOBILE_WRITE_NOT_REGISTERED__"
 _API_PREFIX = "/api/v1"
+_DASHBOARD_PATHS = {
+    "/api/v1/mobile/teacher/affairs",
+    "/api/v1/mobile/teacher/affairs/",
+}
+# 以下端点在自身 Depends/函数体内执行了明确、可审计的 permissionCode 校验，
+# 因业务类型是动态 path 参数或要求多权限联合校验，不能由统一静态映射表达。
+_DIRECT_PERMISSION_PATHS = {
+    "/api/v1/mobile/teacher/affairs/student-candidates",
+    "/api/v1/mobile/teacher/affairs/activities/ongoing",
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/checkin-token",
+    "/api/v1/mobile/teacher/affairs/appeals/{kind}",
+    "/api/v1/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review",
+    "/api/v1/mobile/teacher/affairs/appeals/repair",
+}
 
 
 def _strict_self_student(db, user):
@@ -38,15 +52,14 @@ def _install_student_identity_guard() -> None:
 
 
 def _install_permission_fail_closed() -> None:
-    """最终收紧教师移动权限映射，未知写路径绝不能退化为总览查看权限。"""
+    """未知教师学工移动路由不得退化成总览查看权限。"""
     from app.services import affairs_four_end_contract as contract
 
     previous = contract._teacher_permissions
 
     def teacher_permissions(path: str, method: str) -> tuple[str, ...]:
         required = previous(path, method)
-        write = str(method or "GET").upper() not in ("GET", "HEAD", "OPTIONS")
-        if write and path.startswith("/api/v1/mobile/teacher/affairs"):
+        if path.startswith("/api/v1/mobile/teacher/affairs") and path not in _DASHBOARD_PATHS:
             if not required or required == ("studentAffairs.dashboard.view",):
                 return (_SENTINEL,)
         return required
@@ -55,11 +68,7 @@ def _install_permission_fail_closed() -> None:
 
 
 def _runtime_path(route_path: str) -> str:
-    """把 ``api_router`` 内的子路由路径归一化成真实请求路径。
-
-    FastAPI 在子路由对象中通常保存 ``/mobile/...``，最终挂载后才成为
-    ``/api/v1/mobile/...``。安全检查必须按真实路径调用权限映射，否则会静默漏检。
-    """
+    """把 ``api_router`` 内的子路由路径归一化成真实请求路径。"""
     path = str(route_path or "")
     if path.startswith(_API_PREFIX + "/"):
         return path
@@ -68,18 +77,14 @@ def _runtime_path(route_path: str) -> str:
     return _API_PREFIX + "/" + path
 
 
-def _assert_teacher_write_routes_registered(api_router) -> None:
-    """启动期检查教师移动写路由。
+def _assert_teacher_routes_registered(api_router) -> None:
+    """启动期检查全部教师学工移动路由（读写均覆盖）。
 
-    直接在端点内部按业务类型校验权限的申诉复核与补偿路由列入显式例外；其余旧
-    移动路由必须能被统一权限映射识别。检查失败直接阻止应用启动，避免静默带漏洞上线。
+    端点自身已执行明确权限校验的路径列入有限白名单；其他路径必须由统一映射返回
+    非总览的准确 permissionCode。未知路由直接阻止应用启动，避免静默越权上线。
     """
     from app.services import affairs_four_end_contract as contract
 
-    direct_permission_paths = {
-        "/api/v1/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review",
-        "/api/v1/mobile/teacher/affairs/appeals/repair",
-    }
     failures: list[str] = []
     for route in api_router.routes:
         if not isinstance(route, APIRoute):
@@ -87,18 +92,23 @@ def _assert_teacher_write_routes_registered(api_router) -> None:
         path = _runtime_path(str(route.path))
         if not path.startswith("/api/v1/mobile/teacher/affairs"):
             continue
+        if path in _DIRECT_PERMISSION_PATHS:
+            continue
         for method in set(route.methods or ()):
             method = str(method).upper()
-            if method in ("GET", "HEAD", "OPTIONS"):
-                continue
-            if path in direct_permission_paths:
+            if method in ("HEAD", "OPTIONS"):
                 continue
             required = contract._teacher_permissions(path, method)
             if not required or _SENTINEL in required:
                 failures.append(f"{method} {path}")
     if failures:
         joined = ", ".join(sorted(set(failures)))
-        raise RuntimeError(f"教师学工移动写接口缺少权限登记: {joined}")
+        raise RuntimeError(f"教师学工移动接口缺少权限登记: {joined}")
+
+
+def _assert_teacher_write_routes_registered(api_router) -> None:
+    """兼容旧测试/调用名，实际已升级为全部读写路由检查。"""
+    _assert_teacher_routes_registered(api_router)
 
 
 def install(api_router) -> None:
@@ -107,5 +117,5 @@ def install(api_router) -> None:
         return
     _install_student_identity_guard()
     _install_permission_fail_closed()
-    _assert_teacher_write_routes_registered(api_router)
+    _assert_teacher_routes_registered(api_router)
     _INSTALLED = True
