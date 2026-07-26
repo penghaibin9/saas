@@ -16,6 +16,9 @@ from app.services.db_service import session
 install_taskbook_consistency()
 router = APIRouter(tags=["毕业设计-任务书批次安全"])
 
+from app.modules.graduation.routers import graduation_process_sensitive_router
+router.include_router(graduation_process_sensitive_router.router)
+
 
 def _guard(student_id, batch_id, *, lock=False):
     with session() as db:
