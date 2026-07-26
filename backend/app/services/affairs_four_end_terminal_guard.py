@@ -71,13 +71,14 @@ def _runtime_path(route_path: str) -> str:
 def _assert_teacher_write_routes_registered(api_router) -> None:
     """启动期检查教师移动写路由。
 
-    直接在端点内部按业务类型校验权限的申诉复核路由列入显式例外；其余旧移动
-    路由必须能被统一权限映射识别。检查失败直接阻止应用启动，避免静默带漏洞上线。
+    直接在端点内部按业务类型校验权限的申诉复核与补偿路由列入显式例外；其余旧
+    移动路由必须能被统一权限映射识别。检查失败直接阻止应用启动，避免静默带漏洞上线。
     """
     from app.services import affairs_four_end_contract as contract
 
     direct_permission_paths = {
         "/api/v1/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review",
+        "/api/v1/mobile/teacher/affairs/appeals/repair",
     }
     failures: list[str] = []
     for route in api_router.routes:
