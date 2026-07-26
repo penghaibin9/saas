@@ -39,6 +39,7 @@ from app.services.affairs_four_end_terminal_guard import install as install_affa
 from app.services.affairs_funding_ext_guard import install as install_funding_ext_guard
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
+from app.services.affairs_publicity_guard import install as install_publicity_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
 from app.services.affairs_self_scope_guard import install as install_self_scope_guard
@@ -79,6 +80,8 @@ install_counselor_handover_guard()
 install_risk_evidence_guard()
 install_counselor_eval_guard()
 install_funding_ext_guard()
+# 公示批次与扫描在归档/统计之前统一为正式期限和MySQL行锁。
+install_publicity_guard()
 install_archive_guard()
 install_archive_file_guard()
 install_talk_guard()
