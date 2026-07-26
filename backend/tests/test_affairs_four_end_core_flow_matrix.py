@@ -94,7 +94,10 @@ def test_four_end_core_flow_routes_are_all_registered(client, db_mode):
 
 def test_student_pc_and_miniapp_use_same_core_contract_paths():
     portal = (ROOT / "student-portal/src/services/affairsFourEndApi.js").read_text(encoding="utf-8")
-    mini = (ROOT / "miniapp/src/services/affairsContractApi.js").read_text(encoding="utf-8")
+    mini = "\n".join([
+        (ROOT / "miniapp/src/services/affairsContractApi.js").read_text(encoding="utf-8"),
+        (ROOT / "miniapp/src/services/affairsReturnedApi.js").read_text(encoding="utf-8"),
+    ])
     for fragment in (
         "/mobile/affairs/leave/", "/mobile/affairs/aid/", "/mobile/affairs/funding/",
         "/mobile/affairs/dorm/transfer-options", "/mobile/affairs/dorm/transfers",
