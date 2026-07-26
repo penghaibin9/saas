@@ -1,4 +1,4 @@
-"""教师小程序·延期答辩导师审核（显式批次+分页）。"""
+"""教师小程序·延期答辩导师审核（显式批次+稳定导师分页）。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Query
@@ -20,8 +20,8 @@ def teacher_graduation_delay_pending(
     pageSize: int = Query(20, ge=1, le=100),
     user=Depends(require_permission("graduationDesign.defense.view")),
 ):
-    items, total = safety_svc.list_delays(
-        batch_id=batchId, status="PENDING_ADVISOR", page=page, page_size=pageSize,
+    items, total = safety_svc.list_advisor_delays(
+        batch_id=batchId, page=page, page_size=pageSize,
     )
     return success(paginate(items, total, page, pageSize))
 
