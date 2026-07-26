@@ -7,12 +7,29 @@
     watermark-purpose="第二课堂积分申诉"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载申诉..." @retry="load" @back="$router.push('/admin/student-affairs/activity')">
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics"><AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" /></div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton>
+      <div class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">积分申诉复核</span>
+          <h3 class="sa-summary-strip__title">先核对申诉类型、主张数值和事实理由，再决定是否写入正式台账</h3>
+          <p class="sa-summary-strip__text">“缺记”补录缺失值，“记错”用于更正已有记录。待审核记录是本页首要处理事项。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton>
+        </div>
       </div>
 
-      <AppSectionCard v-if="formVisible" title="提交积分申诉">
+      <div class="sa-workflow-strip" aria-label="积分申诉流程">
+        <div class="sa-workflow-step" data-step="1">核对学生、申诉类型和积分项目</div>
+        <div class="sa-workflow-step" data-step="2">核验主张数值与事实理由</div>
+        <div class="sa-workflow-step" data-step="3">通过后写入正式积分台账</div>
+      </div>
+
+      <div class="sa-toolbar">
+        <div class="sa-grid sa-grid--metrics"><AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" /></div>
+      </div>
+
+      <AppSectionCard v-if="formVisible" class="sa-inline-workspace" title="提交积分申诉">
+        <p class="ca-form-hint">代录前请确认学生已有线下申请材料。主张数值和理由会直接进入后续复核依据。</p>
         <div class="ca-grid">
           <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="ca-field"><span>类型</span><AppSelect v-model="form.appealType" :options="APPEAL_TYPE_OPTIONS" placeholder="" /></label>
@@ -26,6 +43,7 @@
       </AppSectionCard>
 
       <AppSectionCard title="申诉记录">
+        <p class="ca-section-hint">优先处理“待审核”。通过会影响正式积分台账，驳回必须填写可回看的复核意见。</p>
         <div class="ca-filters"><button v-for="f in statusFilters" :key="f.key" type="button" class="ca-chip" :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button></div>
         <DataTable v-if="items.length || pagination.total > 0" :columns="appealColumns" :rows="items" row-key="appealId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo || '' }}</div></template>
@@ -41,7 +59,7 @@
             <span v-else class="ca-dash">—</span>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无积分申诉</p>
+        <p v-else class="sa-empty">当前筛选下暂无积分申诉记录。</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -201,6 +219,22 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-4);margin-bottom:var(--space-4);flex-wrap:wrap }.sa-grid--metrics { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-4);flex:1;min-width:300px }.ca-grid { display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-3) }.ca-field { display:flex;flex-direction:column;gap:4px;font-size:var(--font-size-sm) }.ca-field--wide { grid-column:span 4 }.ca-error { color:var(--danger-500,#dc2626);font-size:var(--font-size-sm) }.ca-help { color:var(--text-tertiary);font-size:12px;margin:0 0 var(--space-3) }.ca-actions { display:flex;gap:var(--space-3);justify-content:flex-end }.ca-btn { border:1px solid var(--border-light);background:var(--bg-card);border-radius:var(--radius-md);padding:7px 16px;cursor:pointer }.ca-filters { display:flex;gap:var(--space-2);margin-bottom:var(--space-3);flex-wrap:wrap }.ca-chip { border:1px solid var(--border-light);background:var(--bg-card);border-radius:var(--radius-full);padding:4px 14px;font-size:var(--font-size-sm);cursor:pointer }.ca-chip.is-on { background:var(--color-primary);color:#fff;border-color:var(--color-primary) }.sa-empty { color:var(--text-tertiary);padding:var(--space-4);text-align:center }.ca-reason { color:var(--text-secondary);font-size:var(--font-size-sm);max-width:240px;white-space:normal;line-height:1.5 }.ca-opinion { display:block;color:var(--text-tertiary);font-size:var(--font-size-xs);font-style:normal }.ca-ops { display:flex;gap:6px }.ca-dash { color:var(--text-tertiary) }
-@media(max-width:960px){.ca-grid{grid-template-columns:1fr 1fr}.ca-field--wide{grid-column:span 2}}
+.ca-form-hint,
+.ca-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.ca-grid { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-bottom:var(--space-3) }
+.ca-field { display:flex;flex-direction:column;gap:5px;min-width:0;font-size:var(--font-size-sm) }
+.ca-field > span { color: var(--text-secondary); font-weight: var(--font-weight-medium); }
+.ca-field--wide { grid-column:span 4 }
+.ca-error { color:var(--danger-500,#dc2626);font-size:var(--font-size-sm) }
+.ca-help { color:var(--text-tertiary);font-size:12px;margin:0 0 var(--space-3);line-height:1.6 }
+.ca-actions { display:flex;gap:var(--space-3);justify-content:flex-end;padding-top:var(--space-3);border-top:1px solid var(--border-light) }
+.ca-btn { border:1px solid var(--border-light);background:var(--bg-card);border-radius:var(--radius-md);padding:7px 16px;cursor:pointer }
+.ca-chip { border:1px solid var(--border-light);background:var(--bg-card);border-radius:var(--radius-full);padding:4px 14px;font-size:var(--font-size-sm);cursor:pointer }
+.ca-chip.is-on { background:var(--color-primary);color:#fff;border-color:var(--color-primary) }
+.ca-reason { color:var(--text-secondary);font-size:var(--font-size-sm);max-width:260px;white-space:normal;line-height:1.5 }
+.ca-opinion { display:block;color:var(--text-tertiary);font-size:var(--font-size-xs);font-style:normal;margin-top:3px }
+.ca-ops { display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end }
+.ca-dash { color:var(--text-tertiary) }
+@media(max-width:1100px){.ca-grid{grid-template-columns:1fr 1fr}.ca-field--wide{grid-column:span 2}}
+@media(max-width:720px){.ca-grid{grid-template-columns:1fr}.ca-field--wide{grid-column:span 1}.ca-actions{justify-content:stretch}.ca-actions>*{flex:1}}
 </style>
