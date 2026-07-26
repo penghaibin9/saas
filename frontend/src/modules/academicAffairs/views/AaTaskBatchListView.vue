@@ -1,11 +1,15 @@
 <template>
+  <AaTeachingClassDetailView v-if="workspaceMode === 'class-detail'" :ctx="ctx" />
+  <AaTeachingClassListView v-else-if="workspaceMode === 'classes'" :ctx="ctx" />
   <ModulePageShell
+    v-else
     title="教学任务工作台"
     subtitle="先看阻断项，再完成教师分配、本人确认、学院核对和教务终审"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppButton @click="openTeachingClasses">教学班与名单</AppButton>
       <AppButton :disabled="loading" @click="load">刷新</AppButton>
       <AppButton variant="primary" @click="showGen = !showGen">＋ 生成任务批次</AppButton>
     </template>
@@ -92,10 +96,12 @@ import { AppSectionCard, AppStatusTag, AppTermEntityPicker } from '@/components/
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, taskBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
+import AaTeachingClassListView from './AaTeachingClassListView.vue'
+import AaTeachingClassDetailView from './AaTeachingClassDetailView.vue'
 
 export default {
   name: 'AaTaskBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppTermEntityPicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppTermEntityPicker, AaTeachingClassListView, AaTeachingClassDetailView },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -120,6 +126,10 @@ export default {
     }
   },
   computed: {
+    workspaceMode() {
+      if (this.$route.query.view !== 'classes') return 'tasks'
+      return this.$route.query.teachingClassId ? 'class-detail' : 'classes'
+    },
     metrics() {
       const rows = this.rows || []
       const totals = rows.reduce((sum, row) => sum + Number(row.taskTotal || 0), 0)
@@ -146,10 +156,16 @@ export default {
   },
   created() {
     if (this.$route?.query?.open === 'generate') this.showGen = true
-    this.load()
+    if (this.workspaceMode === 'tasks') this.load()
+  },
+  watch: {
+    workspaceMode(value) {
+      if (value === 'tasks' && !this.rows.length) this.load()
+    }
   },
   methods: {
     statusColor: taskBatchColor,
+    openTeachingClasses() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes' } }) },
     applyFilters() {
       this.pagination.page = 1
       this.load()
@@ -170,7 +186,9 @@ export default {
       })
       this.generating = false
       if (res.code === 0) {
-        toast.success('教学任务批次已生成，请继续处理阻断项')
+        const projectionErrors = res.data?.teachingClassProjection?.errors || []
+        if (projectionErrors.length) toast.warning(`任务已生成，但有 ${projectionErrors.length} 条教学班投影欠账，请进入“教学班与名单”对账`)
+        else toast.success('教学任务批次及教学班已生成，请继续处理阻断项')
         this.showGen = false
         this.gen = { termId: '', batchName: '' }
         this.load()
