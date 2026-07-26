@@ -1,5 +1,6 @@
 /** 岗位实习合规工作台统一 API。 */
-import { request } from '@/services/http/client'
+import { getToken, request } from '@/services/http/client'
+import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -12,6 +13,27 @@ async function call(fn) {
 }
 
 const B = '/internship/compliance'
+
+async function downloadZip(path, fallbackName) {
+  const token = getToken()
+  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  })
+  if (!response.ok) {
+    let message = '证据包下载失败或你已无权访问'
+    try { message = (await response.json())?.message || message } catch { /* binary/empty */ }
+    throw new Error(message)
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fallbackName || '岗位实习证据包.zip'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
 
 export const complianceApi = {
   workbench(batchId) { return call(() => request(`${B}/workbench/${batchId}`)) },
@@ -77,7 +99,9 @@ export const complianceApi = {
   generateEvidencePackage(packageType, targetId) {
     return call(() => request(`${B}/evidence-packages/${packageType}/${targetId}`, { method: 'POST' }))
   },
-  evidenceDownloadUrl(packageId) { return `${B}/evidence-packages/${packageId}/download` },
+  downloadEvidencePackage(packageId, filename) {
+    return downloadZip(`${B}/evidence-packages/${packageId}/download`, filename)
+  },
   auditHealth() { return call(() => request(`${B}/audit-outbox/health`)) }
 }
 
