@@ -7,8 +7,12 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { toast } from './utils/toast'
 
 const app = createApp(App)
+// 统一轻提示兼容门面：业务页可使用 this.$message.success/error/warning/info，
+// 实际仍由全局 AppToast 渲染，不引入第二套通知组件。
+app.config.globalProperties.$message = toast
 app.use(createPinia())
 app.use(router)
 app.mount('#app')
