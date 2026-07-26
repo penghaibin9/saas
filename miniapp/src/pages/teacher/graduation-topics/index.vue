@@ -13,10 +13,10 @@
       </view>
     </view>
 
-    <MobileGlobalState :state="state" @retry="load">
-      <!-- 志愿确认 -->
+    <MobileGlobalState :state="state" :description="loadError" @retry="load">
       <view class="page-pad" v-if="tab === 'choice'">
-        <MobileGlobalState v-if="!choices || !choices.length" state="empty" title="暂无待确认志愿"
+        <MobileGlobalState v-if="choiceError" state="error" title="志愿队列加载失败" :description="choiceError" @retry="load" />
+        <MobileGlobalState v-else-if="!choices || !choices.length" state="empty" title="暂无待确认志愿"
           description="学生填报到你所指导题目的志愿会出现在这里，确认即录取该生到该题目。" />
         <view class="stack" v-else>
           <view v-for="c in choices" :key="c.id" class="card gt">
@@ -29,16 +29,16 @@
             </view>
             <view class="gt__topic"><text class="gt__topic-label">题目</text><text class="flex-1 t-sm">{{ c.topicTitle || '—' }}</text></view>
             <view class="gt__actions">
-              <button class="gt__reject flex-1" @click="reviewChoice(c, 'REJECT')">驳回</button>
-              <button class="gt__approve flex-1" @click="reviewChoice(c, 'CONFIRM')">确认录取</button>
+              <button class="gt__reject flex-1" :disabled="acting" @click="reviewChoice(c, 'REJECT')">驳回</button>
+              <button class="gt__approve flex-1" :disabled="acting" @click="reviewChoice(c, 'CONFIRM')">确认录取</button>
             </view>
           </view>
         </view>
       </view>
 
-      <!-- 变更审核 -->
       <view class="page-pad" v-if="tab === 'change'">
-        <MobileGlobalState v-if="!changes || !changes.length" state="empty" title="暂无待审变更"
+        <MobileGlobalState v-if="changeError" state="error" title="变更队列加载失败" :description="changeError" @retry="load" />
+        <MobileGlobalState v-else-if="!changes || !changes.length" state="empty" title="暂无待审变更"
           description="与你指导题目相关（原题目或新题目导师为本人）的换题申请会出现在这里。" />
         <view class="stack" v-else>
           <view v-for="r in changes" :key="r.id" class="card gt">
@@ -56,8 +56,8 @@
             </view>
             <view class="gt__reason"><text class="gt__reason-k">变更理由</text><text class="flex-1 t-sm">{{ r.reason || '—' }}</text></view>
             <view class="gt__actions">
-              <button class="gt__reject flex-1" @click="reviewChange(r, 'REJECT')">驳回</button>
-              <button class="gt__approve flex-1" @click="reviewChange(r, 'APPROVE')">通过</button>
+              <button class="gt__reject flex-1" :disabled="acting" @click="reviewChange(r, 'REJECT')">驳回</button>
+              <button class="gt__approve flex-1" :disabled="acting" @click="reviewChange(r, 'APPROVE')">通过</button>
             </view>
           </view>
         </view>
@@ -70,32 +70,50 @@
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 
+function messageOf(error, fallback) {
+  const code = String(error?.code || '')
+  if (code.startsWith('403') || code === 'NO_PERMISSION' || code === 'NO_DATA_SCOPE') {
+    return error?.message || '当前身份没有该动作权限或未配置稳定导师关系'
+  }
+  if (code.startsWith('409') || code === 'DATA_CONFLICT') return error?.message || '数据状态已变化，请刷新'
+  return error?.message || fallback
+}
+
 export default {
-  data() { return { tab: 'choice', choices: null, changes: null, state: 'loading', acting: false } },
+  data() {
+    return {
+      tab: 'choice', choices: null, changes: null, state: 'loading', acting: false,
+      choiceError: '', changeError: '', loadError: ''
+    }
+  },
   onLoad() { this.load() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
-    switchTab(t) { if (this.tab !== t) { this.tab = t; if ((t === 'choice' && !this.choices) || (t === 'change' && !this.changes)) this.load() } },
-    load(done) {
+    switchTab(t) { if (this.tab !== t) this.tab = t },
+    async load(done) {
       this.state = 'loading'
-      Promise.all([
-        teacherApi.getGraduationChoicesPending().catch(() => []),
-        teacherApi.getGraduationChangeRequestsPending().catch(() => [])
-      ]).then(([choices, changes]) => {
-        this.choices = Array.isArray(choices) ? choices : []
-        this.changes = Array.isArray(changes) ? changes : []
-        this.state = 'ready'
-      }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
+      this.choiceError = ''; this.changeError = ''; this.loadError = ''
+      const [choiceResult, changeResult] = await Promise.allSettled([
+        teacherApi.getGraduationChoicesPending(),
+        teacherApi.getGraduationChangeRequestsPending()
+      ])
+      if (choiceResult.status === 'fulfilled') this.choices = Array.isArray(choiceResult.value) ? choiceResult.value : []
+      else { this.choices = []; this.choiceError = messageOf(choiceResult.reason, '志愿队列加载失败，请重试') }
+      if (changeResult.status === 'fulfilled') this.changes = Array.isArray(changeResult.value) ? changeResult.value : []
+      else { this.changes = []; this.changeError = messageOf(changeResult.reason, '变更队列加载失败，请重试') }
+      this.loadError = this.choiceError && this.changeError ? `${this.choiceError}；${this.changeError}` : ''
+      this.state = this.loadError ? 'error' : 'ready'
+      if (done) done()
     },
     reviewChoice(c, action) {
       if (this.acting) return
       const reject = action === 'REJECT'
       uni.showModal({
-        title: reject ? '驳回志愿' : '确认录取',
-        editable: reject, placeholderText: reject ? '请填写驳回原因（学生可见）' : '',
+        title: reject ? '驳回志愿' : '确认录取', editable: reject,
+        placeholderText: reject ? '请填写驳回原因（学生可见）' : '',
         content: reject ? '' : `确认录取「${c.studentName}」到题目「${c.topicTitle}」？该生同轮其余志愿将自动关闭。`,
         success: (r) => {
           if (!r.confirm) return
@@ -112,9 +130,8 @@ export default {
       if (this.acting) return
       const reject = action === 'REJECT'
       uni.showModal({
-        title: reject ? '驳回变更' : '通过变更',
-        editable: true, placeholderText: reject ? '请填写驳回意见' : '可填写审核意见（可选）',
-        content: '',
+        title: reject ? '驳回变更' : '通过变更', editable: true,
+        placeholderText: reject ? '请填写驳回意见' : '可填写审核意见（可选）', content: '',
         success: (r) => {
           if (!r.confirm) return
           if (reject && !(r.content || '').trim()) { toast('请填写驳回意见'); return }
@@ -127,10 +144,9 @@ export default {
       })
     },
     _err(e, label) {
-      const code = e && String(e.code)
-      if (code && (code.startsWith('409') || code === 'DATA_CONFLICT')) { toast('该记录已被处理，正在刷新'); this.load() }
-      else if (code && code.startsWith('403')) toast((e && e.message) || '不在你的指导范围内')
-      else toast((e && e.message) || label + '失败，请重试')
+      const message = messageOf(e, `${label}失败，请重试`)
+      toast(message)
+      if (String(e?.code || '').includes('409') || e?.code === 'DATA_CONFLICT') this.load()
     }
   }
 }
