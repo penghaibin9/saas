@@ -76,7 +76,7 @@ export const affairsContractApi = {
     method: 'POST', data: { conclusion, version }
   }),
 
-  // 教师宿舍、谈话、心理
+  // 教师宿舍、谈话、心理、活动签到
   reviewDormTransfer: (transferId, action, reason, version) => realRequest(`/mobile/teacher/affairs/dorm/transfers/${transferId}/review`, {
     method: 'POST', data: { action, reason: reason || '', version }
   }),
@@ -98,7 +98,7 @@ export const affairsContractApi = {
   closeMental: (referralId, conclusion, version) => realRequest(`/mobile/teacher/mental/${referralId}/close`, {
     method: 'POST', data: { conclusion, version }
   }),
-
+  getOngoingActivities: () => realRequest('/mobile/teacher/affairs/activities/ongoing'),
   getActivityCheckinToken: (activityId) => realRequest(`/mobile/teacher/affairs/activities/${activityId}/checkin-token`)
 }
 
