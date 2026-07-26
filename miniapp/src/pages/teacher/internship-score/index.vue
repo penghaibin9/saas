@@ -1,20 +1,20 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="实习成绩" subtitle="五项加权核算 · 发布" show-back />
+    <MobileNavBar variant="teacher" title="实习成绩" subtitle="五项加权核算 · 提交学校复核" show-back />
 
     <view class="is__tabs">
       <view class="is__tab" :class="{ 'is-on': tab === 'list' }" @click="tab = 'list'">
         成绩列表<text v-if="list && list.length" class="is__tab-badge">{{ list.length }}</text>
         <text v-if="tab === 'list'" class="is__tab-u" />
       </view>
-      <view class="is__tab" :class="{ 'is-on': tab === 'compute' }" @click="onComputeTab">
+      <view v-if="canCompute" class="is__tab" :class="{ 'is-on': tab === 'compute' }" @click="onComputeTab">
         核算成绩<text v-if="tab === 'compute'" class="is__tab-u" />
       </view>
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
-      <!-- 列表 -->
       <view class="page-pad" v-if="tab === 'list'">
+        <MobileInlineAlert type="info" description="指导教师负责核算并提交复核，最终发布由学校授权角色在管理端完成。" />
         <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无实习成绩"
           description="核算后的学生实习成绩会出现在这里。" />
         <view class="stack" v-else>
@@ -37,16 +37,22 @@
               </view>
             </view>
             <text class="is__incomplete" v-if="s.incomplete">缺项：{{ s.incompleteReason }}</text>
-            <button v-if="s.status === 'PENDING_REVIEW' && !s.incomplete" class="btn btn-primary"
-              :disabled="acting" @click="publish(s)">发布成绩</button>
+            <text v-else-if="s.status === 'PENDING_REVIEW'" class="is__pending">已提交学校复核，教师端不可直接发布</text>
           </view>
         </view>
       </view>
 
-      <!-- 核算 -->
-      <view class="page-pad" v-if="tab === 'compute'">
-        <MobileGlobalState v-if="!students.length" state="empty" title="暂无可核算学生"
-          description="仅可为本人指导的实习学生核算成绩。" />
+      <view class="page-pad" v-if="tab === 'compute' && canCompute">
+        <view class="card is__batch" v-if="batches.length">
+          <text class="is__label">实习批次</text>
+          <picker class="is__picker" mode="selector" :range="batchLabels" :value="batchIndex" @change="onBatch">
+            <view class="is__pick-val">{{ batchLabels[batchIndex] || '请选择批次' }}<text class="is__arrow">▾</text></view>
+          </picker>
+        </view>
+        <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
+          description="当前身份的数据范围内没有可核算的实习批次。" />
+        <MobileGlobalState v-else-if="!students.length" state="empty" title="暂无可核算学生"
+          description="当前批次仅可为本人指导的实习学生核算成绩。" />
         <view class="card is__form" v-else>
           <view class="is__row">
             <text class="is__label">实习学生</text>
@@ -58,12 +64,8 @@
             <text class="is__label">{{ f.label }}</text>
             <input class="is__input" type="number" v-model="scores[f.key]" placeholder="0-100" />
           </view>
-          <view class="is__row" style="border-bottom:none;">
-            <text class="is__label">企业评价分</text>
-            <input class="is__input" type="number" v-model="scores.enterpriseScore" placeholder="留空自动取已通过均分" />
-          </view>
         </view>
-        <MobileInlineAlert type="info" description="企业评价分留空时自动取该生已通过企业评价的均分；四项手填分数需 0-100。" />
+        <MobileInlineAlert type="info" description="企业评价分只能取已通过的企业评价，教师不可手工覆盖；其余四项需填写 0-100。" />
 
         <MobileSafeAreaBar v-if="students.length">
           <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '核算中…' : '提交核算' }}</button>
@@ -75,6 +77,8 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { teacherInternshipMyStudents } from '@/services/internshipApi'
+import { useInternshipContextStore } from '@/stores/internshipContext'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
@@ -87,9 +91,11 @@ const SCORE_FIELDS = [
 export default {
   data() {
     return {
-      tab: 'list', list: null, state: 'loading', acting: false,
+      tab: 'list', list: null, state: 'loading',
       students: [], studentIndex: 0,
-      scores: { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '', enterpriseScore: '' },
+      batches: [], batchId: '', batchIndex: 0,
+      permissionPatterns: [],
+      scores: { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' },
       submitting: false, SCORE_FIELDS
     }
   },
@@ -99,40 +105,56 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   computed: {
-    studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未落实企业'}`) }
+    studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.enterpriseName || '未落实企业'}`) },
+    batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
+    canCompute() {
+      const context = useInternshipContextStore()
+      return context.can('internship.score.manage')
+    }
   },
   methods: {
     statusTone(s) { return s.status === 'PUBLISHED' ? 'success' : s.incomplete ? 'danger' : 'warning' },
-    load(done) {
+    async load(done) {
       this.state = 'loading'
-      teacherApi.getInternshipScoreList()
-        .then((d) => { this.list = (d && d.list) || []; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
-        .finally(() => { if (done) done() })
-    },
-    onComputeTab() {
-      this.tab = 'compute'
-      if (!this.students.length) {
-        teacherApi.getInternshipMyStudents().then((d) => { this.students = (d && d.list) || [] }).catch(() => {})
+      try {
+        const context = useInternshipContextStore()
+        context.restore()
+        await context.load(true)
+        this.batches = context.batches || []
+        this.batchId = context.selectedBatchId || ''
+        this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
+        const data = await teacherApi.getInternshipScoreList()
+        this.list = (data && data.list) || []
+        this.state = 'ready'
+      } catch (e) {
+        this.state = 'error'
+      } finally {
+        if (done) done()
       }
     },
-    publish(s) {
-      if (this.acting) return
-      uni.showModal({
-        title: '发布成绩', content: `确认发布「${s.studentName}」的实习成绩（总分 ${s.totalScore}）？发布后学生可查看。`,
-        success: (r) => {
-          if (!r.confirm) return
-          this.acting = true
-          teacherApi.publishInternshipScore(s.id)
-            .then(() => { toast('已发布'); this.load() })
-            .catch((e) => {
-              const code = e && String(e.code)
-              if (code === 'DATA_CONFLICT') { toast((e && e.message) || '当前状态不可发布，正在刷新'); this.load() }
-              else toast((e && e.message) || '发布失败，请重试')
-            })
-            .finally(() => { this.acting = false })
-        }
-      })
+    async onComputeTab() {
+      this.tab = 'compute'
+      if (!this.canCompute) return
+      await this.loadStudents()
+    },
+    async onBatch(e) {
+      this.batchIndex = Number(e.detail.value)
+      const batch = this.batches[this.batchIndex]
+      const context = useInternshipContextStore()
+      context.selectBatch(batch && batch.id)
+      this.batchId = context.selectedBatchId
+      await this.loadStudents()
+    },
+    async loadStudents() {
+      if (!this.batchId) { this.students = []; return }
+      try {
+        const data = await teacherInternshipMyStudents(this.batchId)
+        this.students = (data && data.list) || []
+        this.studentIndex = 0
+      } catch (e) {
+        this.students = []
+        toast((e && e.message) || '学生名单加载失败')
+      }
     },
     submit() {
       if (this.submitting) return
@@ -144,17 +166,12 @@ export default {
           toast(`${f.label}必须是 0-100 的数字`); return
         }
       }
-      const ent = this.scores.enterpriseScore
-      if (ent !== '' && ent !== null && ent !== undefined && (Number(ent) < 0 || Number(ent) > 100)) {
-        toast('企业评价分必须是 0-100 的数字'); return
-      }
       this.submitting = true
-      const body = { internshipId: stu.id }
+      const body = { internshipId: stu.id, batchId: this.batchId }
       SCORE_FIELDS.forEach((f) => { body[f.key] = Number(this.scores[f.key]) })
-      if (ent !== '' && ent !== null && ent !== undefined) body.enterpriseScore = Number(ent)
       submitLock.run(() => teacherApi.computeInternshipScore(body)).then((r) => {
         uni.showToast({ title: r && r.incomplete ? `已保存，缺：${r.incompleteReason}` : `核算完成，总分 ${r.total}`, icon: 'none' })
-        this.scores = { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '', enterpriseScore: '' }
+        this.scores = { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' }
         this.tab = 'list'; this.load()
       }).catch((e) => {
         if (e && e.code === 'LOCKED') return
@@ -180,6 +197,8 @@ export default {
 .is__score-grid { display: flex; flex-wrap: wrap; gap: 4px 10px; flex: 1; }
 .is__score-item { font-size: var(--font-size-xs); color: var(--text-secondary); }
 .is__incomplete { font-size: var(--font-size-xs); color: var(--danger-600); }
+.is__pending { font-size: var(--font-size-xs); color: var(--warning-700); }
+.is__batch { display: flex; align-items: center; min-height: 48px; margin-bottom: var(--space-3); padding: 0 var(--space-3); }
 .is__form { display: flex; flex-direction: column; }
 .is__row { display: flex; align-items: center; min-height: 48px; border-bottom: 1px solid var(--border-light); }
 .is__label { width: 100px; flex-shrink: 0; font-size: var(--font-size-base); color: var(--text-secondary); }
