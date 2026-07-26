@@ -1,10 +1,11 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="三方协议学校确认" subtitle="企业签署由学校代录纸质件 · 确认后生效" show-back />
+    <MobileNavBar variant="teacher" title="三方协议办理进度" subtitle="指导教师查看进度 · 学校终审在管理端完成" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="list">
-        <MobileGlobalState v-if="!list.length" state="empty" title="暂无待确认协议"
-          description="学校代录企业纸质签署并上传扫描件后，待学校确认的协议会出现在这里。" />
+        <MobileInlineAlert type="info" description="指导教师负责跟进学生与企业材料，学校确认生效属于终审动作，仅在学校管理端办理。" />
+        <MobileGlobalState v-if="!list.length" state="empty" title="暂无待学校确认协议"
+          description="学生与企业完成确认并上传签署扫描件后，协议会进入学校终审队列。" />
         <view class="stack" v-else>
           <view v-for="a in list" :key="a.id" class="card ac">
             <view class="row-between">
@@ -12,14 +13,14 @@
                 <text class="t-md t-bold">{{ a.studentName || '—' }}</text>
                 <text class="ac__sub">{{ a.studentNo || '' }} · {{ a.enterpriseName || '—' }} · {{ a.positionName || '—' }}</text>
               </view>
-              <MobileStatusTag label="待学校确认" type="warning" />
+              <MobileStatusTag label="待学校终审" type="warning" />
             </view>
             <view class="ac__confirms">
               <text class="ac__confirm-item">学生 {{ a.studentConfirmLabel }}</text>
               <text class="ac__confirm-item">企业 {{ a.enterpriseConfirmLabel }}</text>
               <text class="ac__confirm-item" :class="{ 'ac__confirm-warn': !a.hasFile }">{{ a.hasFile ? '已上传签署扫描件' : '未上传扫描件' }}</text>
             </view>
-            <button class="btn btn-primary" :disabled="acting" @click="confirm(a)">确认生效</button>
+            <text class="ac__hint">{{ a.hasFile ? '材料已进入学校管理端终审队列' : '请提醒补齐企业签署扫描件后再送学校终审' }}</text>
           </view>
         </view>
       </view>
@@ -29,10 +30,9 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
-import { toast } from '@/utils/nav'
 
 export default {
-  data() { return { list: null, state: 'loading', acting: false } },
+  data() { return { list: null, state: 'loading' } },
   onLoad() { this.load() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
@@ -45,26 +45,6 @@ export default {
         .then((d) => { this.list = (d && d.list) || []; this.state = 'ready' })
         .catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
-    },
-    confirm(a) {
-      if (this.acting) return
-      uni.showModal({
-        title: '确认协议生效',
-        content: `确认「${a.studentName}」与「${a.enterpriseName}」的三方协议？确认后立即生效，不可撤销。`,
-        success: (r) => {
-          if (!r.confirm) return
-          this.acting = true
-          teacherApi.confirmAgreementSchool(a.id)
-            .then(() => { toast('已确认生效'); this.load() })
-            .catch((e) => {
-              const code = e && String(e.code)
-              if (code === 'DATA_CONFLICT') { toast((e && e.message) || '当前状态不可确认，正在刷新'); this.load() }
-              else if (code && code.startsWith('403')) toast((e && e.message) || '不在你的数据范围内')
-              else toast((e && e.message) || '确认失败，请重试')
-            })
-            .finally(() => { this.acting = false })
-        }
-      })
     }
   }
 }
@@ -76,4 +56,5 @@ export default {
 .ac__confirms { display: flex; flex-wrap: wrap; gap: var(--space-3); background: var(--gray-50); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
 .ac__confirm-item { font-size: var(--font-size-xs); color: var(--text-secondary); }
 .ac__confirm-warn { color: var(--danger-600); }
+.ac__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 </style>
