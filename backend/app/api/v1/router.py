@@ -38,6 +38,7 @@ from app.services.affairs_risk_evidence_guard import install as install_risk_evi
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
 from app.services.affairs_student_application_lock import install as install_student_application_lock
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
+from app.services.affairs_talk_guard import install as install_talk_guard
 
 api_router.include_router(affairs_four_end_router)
 api_router.include_router(affairs_student_dorm_router)
@@ -69,6 +70,7 @@ install_counselor_eval_guard()
 install_funding_ext_guard()
 install_archive_guard()
 install_archive_file_guard()
+install_talk_guard()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
