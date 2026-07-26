@@ -92,7 +92,7 @@ def test_insurance_submit_and_verify(client, db_mode):
                             "expiryDate": "2027-06-30"},
                       headers=_student())
     assert sub.status_code == 200 and sub.json()["data"]["status"] == "PENDING_VERIFY"
-    lst = client.get(f"{INT}/insurances", params={"status": "PENDING_VERIFY"},
+    lst = client.get(f"{INT}/insurances", params={"status": "PENDING_VERIFY", "batchId": ids["batch_id"]},
                      headers=_mentor("刘强"))
     assert lst.status_code == 200
     iid = lst.json()["data"]["items"][0]["id"]
