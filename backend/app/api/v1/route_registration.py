@@ -78,7 +78,6 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(internship_agreement_template.router, dependencies=d)
     api_router.include_router(internship_student.router, dependencies=d)
     api_router.include_router(internship_match.router, dependencies=d)
-    # 批次参与人（组织范围选人，替代反复导 Excel 名单）
     api_router.include_router(internship_participant.router, dependencies=d)
     api_router.include_router(internship_application.router, dependencies=d)
     api_router.include_router(internship_archive.router, dependencies=d)
@@ -102,10 +101,11 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 
 def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
-    from app.modules.academic_affairs.routers import academic_affairs
+    from app.modules.academic_affairs.routers import academic_affairs, student_exam_router
 
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
+    api_router.include_router(student_exam_router.router, dependencies=deps["aa"])
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
@@ -186,14 +186,13 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(user_preference.router)
     api_router.include_router(feedback.router)
     api_router.include_router(system.router, tags=["system"])
-    # 组织目录：选人场景（实习/毕设批次、评奖）共用的组织树与年级源，按本人数据范围裁剪
     api_router.include_router(org_directory.router)
 
 
 def register_all_routes(api_router: APIRouter) -> None:
     """注册顺序与拆分前 router.py 一致。"""
     from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
-    from app.modules.academic_affairs.routers import academic_affairs
+    from app.modules.academic_affairs.routers import academic_affairs, student_exam_router
     from app.modules.employment.routers import employment
 
     deps = build_deps()
@@ -209,4 +208,5 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(employment.router, dependencies=deps["employment"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
+    api_router.include_router(student_exam_router.router, dependencies=deps["aa"])
     register_platform_routes(api_router)
