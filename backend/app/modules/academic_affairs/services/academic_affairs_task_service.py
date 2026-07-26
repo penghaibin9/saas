@@ -21,7 +21,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
 
-_TEACH_WEEKS = 18  # 默认学期教学周（真实：应读校历，V1 取常规 18 周）
+_TEACH_WEEKS = 18  # 兼容旧数据；新任务教学周后续改由校历解析器统一提供
 
 # 处于「已分配教师之前」的可合并/可拆分阶段（教师确认后禁止改动教学班组成，需先由教师/学院退回）
 _PRE_CONFIRM_STATUSES = ("PENDING_ASSIGN", "ASSIGNED")
@@ -33,9 +33,9 @@ def _op():
 
 
 def _user_keys(user) -> set[str]:
-    """派生当前用户教师标识键（userId/登录名），用于「教师任务确认」按本人授课范围收敛。
+    """派生当前用户教师标识键，用于教师任务确认按本人授课范围收敛。
 
-    与 grade_service / schedule_service 同口径：**不含 realName**，避免同名越权。
+    只使用 userId/登录名，不含 realName，避免同名教师越权。
     """
     u = user or {}
     uid = str(u.get("userId") or "")
@@ -65,7 +65,7 @@ def _task_row(t) -> dict:
 
 
 def _teaching_class_code(term_id, course_code, class_id) -> str:
-    """确定性教学班代码：学期+课程代码+行政班 id（org_service.list_teaching_classes 按此去重汇总）。"""
+    """确定性教学班代码：学期+课程代码+行政班 id。"""
     return f"TC{term_id}-{course_code or 'X'}-{class_id}"
 
 
@@ -81,16 +81,14 @@ def generate_batch(body, user) -> dict:
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         from app.modules.academic_affairs.services.academic_affairs_stats_service import (
             _resolve_scope, _validate_college_param)
-        guard_term_writable(db, term_id)  # 归档11卡§6.2：已归档学期不应重新生成教学任务
+        guard_term_writable(db, term_id)
         scope = _resolve_scope(user, db)
         _validate_college_param(scope, college_id)
-        # 学院角色未传 collegeId 时强制注入本院，禁止生成全校批次
         if not scope.all and not college_id:
             if len(scope.college_ids) == 1:
                 college_id = next(iter(scope.college_ids))
             else:
                 raise AppException("VALIDATION_ERROR", "请指定学院后再生成教学任务")
-        # 幂等：找现有 DRAFT 批次或新建（同 term+college）
         batch_conds = [
             AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == term_id,
             AaTeachingTaskBatch.status == "DRAFT", AaTeachingTaskBatch.is_deleted.is_(False)]
@@ -104,7 +102,6 @@ def generate_batch(body, user) -> dict:
             db.add(batch)
             db.flush()
         made = 0
-        # 已启用方案 + ACTIVE 绑定 → 方案课程 → 教学任务
         prog_conds = [AaProgram.tenant_id == _tid(), AaProgram.status == "ENABLED",
                       AaProgram.is_deleted.is_(False)]
         for p in db.scalars(select(AaProgram).where(*prog_conds)).all():
@@ -119,9 +116,6 @@ def generate_batch(body, user) -> dict:
                 if bd.class_id:
                     target_classes = [db.get(SchoolClass, int(bd.class_id))]
                 else:
-                    # 绑定未指定行政班（前端"绑定年级"表单"行政班ID"字段明确标注"选填，留空=全专业该年级"）：
-                    # 按 major_id+grade 展开该年级全部在读行政班。此前直接跳过 class_id 为空的绑定，
-                    # 导致按文案承诺的"全专业该年级"绑定一律生成 0 条教学任务、且前端无任何报错提示。
                     target_classes = db.scalars(select(SchoolClass).where(
                         SchoolClass.tenant_id == _tid(), SchoolClass.major_id == bd.major_id,
                         SchoolClass.grade == bd.grade_year, SchoolClass.class_status == "NORMAL",
@@ -129,7 +123,6 @@ def generate_batch(body, user) -> dict:
                 for cls in target_classes:
                     if not cls:
                         continue
-                    # 学院范围：只生成本院班级任务
                     if college_id:
                         from app.models import Major
                         maj = db.get(Major, int(cls.major_id)) if cls.major_id else None
@@ -140,7 +133,6 @@ def generate_batch(body, user) -> dict:
                     for pc in courses:
                         if not pc.course_id:
                             continue
-                        # 幂等去重
                         exist = db.scalars(select(AaTeachingTask).where(
                             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id == batch.id,
                             AaTeachingTask.course_id == pc.course_id, AaTeachingTask.class_id == cls.id,
@@ -148,7 +140,7 @@ def generate_batch(body, user) -> dict:
                         if exist:
                             continue
                         course = db.get(AaCourse, int(pc.course_id))
-                        hours = (course.hours_total if course and course.hours_total else 0)
+                        hours = course.hours_total if course and course.hours_total else 0
                         ccode = course.course_code if course else ""
                         db.add(AaTeachingTask(
                             tenant_id=_tid(), batch_id=batch.id, course_id=pc.course_id,
@@ -175,7 +167,7 @@ def assign_teacher(task_id, user, body) -> dict:
         t = db.get(AaTeachingTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("教学任务不存在")
-        guard_term_writable(db, _term_id_of(db, t.batch_id))  # 归档11卡§6.2：已归档学期的教学任务不应再调整分配
+        guard_term_writable(db, _term_id_of(db, t.batch_id))
         if t.status not in ("PENDING_ASSIGN", "REJECTED_BY_TEACHER", "ASSIGNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该任务当前状态不可分配")
         t.teacher_id = int(body.teacherId) if getattr(body, "teacherId", None) else None
@@ -194,19 +186,26 @@ def assign_teacher(task_id, user, body) -> dict:
         return _task_row(t)
 
 
-_REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}  # 教务处/学校/学院管理员：代管不受本人授课范围收敛
+_REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
 
 
 def _check_teacher_scope(t, user) -> None:
-    """任课教师仅能确认/退回本人 teacher_key 归属的任务；管理角色不受收敛。
-    teacher_key 未回填时（历史分配未填工号）暂不拦截，避免误伤既有数据。"""
+    """任课教师仅能确认/退回本人 teacher_key 归属的任务。
+
+    管理角色可代管历史数据。普通教师遇到 teacher_key 未回填时必须 fail-closed；
+    旧逻辑直接放行会让任何教师确认仅有姓名、没有稳定工号的历史任务。
+    """
     role = (user.get("currentRoleCode") or "").upper()
     if role in _REVIEW_ROLES:
         return
     if not t.teacher_key:
-        return
+        raise AppException(
+            "NO_DATA_SCOPE",
+            "该教学任务尚未绑定稳定教师工号，不能由教师端确认；请联系学院教务修复任务归属",
+            http_status=403,
+        )
     if t.teacher_key not in _user_keys(user):
-        raise AppException("NO_DATA_SCOPE", "该教学任务不在您的授课范围内")
+        raise AppException("NO_DATA_SCOPE", "该教学任务不在您的授课范围内", http_status=403)
 
 
 def teacher_act(task_id, user, action, reason="") -> dict:
@@ -218,7 +217,7 @@ def teacher_act(task_id, user, action, reason="") -> dict:
         t = db.get(AaTeachingTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("教学任务不存在")
-        guard_term_writable(db, _term_id_of(db, t.batch_id))  # 归档11卡§6.2：已归档学期不应再确认/退回教学任务
+        guard_term_writable(db, _term_id_of(db, t.batch_id))
         _check_teacher_scope(t, user)
         if t.status != "ASSIGNED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已分配任务可确认/退回")
@@ -238,7 +237,7 @@ def teacher_act(task_id, user, action, reason="") -> dict:
 
 
 def _pending_count(db, batch_id) -> int:
-    """批内待分配/被教师退回任务数（MERGED 已并入他行不计，不阻断提交/确认）。"""
+    """批内待分配/被教师退回任务数（MERGED 已并入他行不计）。"""
     from app.models import AaTeachingTask
     return db.scalar(select(func.count()).select_from(AaTeachingTask).where(
         AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id == int(batch_id),
@@ -247,15 +246,14 @@ def _pending_count(db, batch_id) -> int:
 
 
 def submit_batch(batch_id, user) -> dict:
-    """批次提交审核：要求所有任务已分配（无待分配/被教师退回）。历史契约：DRAFT/COLLEGE_CONFIRMED/
-    TEACHER_CONFIRMED 均可一步直提 APPROVED（不变，TT1/TT4 测试基线）。"""
+    """批次提交审核：要求所有任务已分配。"""
     with session() as db:
         from app.models import AaTeachingTaskBatch
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = db.get(AaTeachingTaskBatch, int(batch_id))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("任务批次不存在")
-        guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应再提交教学任务批次
+        guard_term_writable(db, b.term_id)
         if b.status not in ("DRAFT", "COLLEGE_CONFIRMED", "TEACHER_CONFIRMED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次当前状态不可提交")
         pending = _pending_count(db, b.id)
@@ -268,10 +266,9 @@ def submit_batch(batch_id, user) -> dict:
         return {"batchId": str(b.id), "status": b.status}
 
 
-# ═══════════ 教学任务确认（教务两级：学院核对确认 → 教务终审，Tier1 新增）═══════════
+# ═══════════ 教务两级确认 ═══════════
 
 def college_confirm_batch(batch_id, user) -> dict:
-    """学院核对确认：DRAFT→COLLEGE_CONFIRMED（要求批内任务均已分配教师，同 submit 校验口径）。"""
     with session() as db:
         from app.models import AaTeachingTaskBatch
         b = db.get(AaTeachingTaskBatch, int(batch_id))
@@ -290,8 +287,7 @@ def college_confirm_batch(batch_id, user) -> dict:
 
 
 def review_batch(batch_id, user, action, reason="") -> dict:
-    """教务终审：COLLEGE_CONFIRMED→APPROVED（批内 TEACHER_CONFIRMED 任务同步置 READY，进入排课资源池）
-    或 →RETURNED（原因必填≥5字，退回学院重新核对）。"""
+    """教务终审：通过后教师已确认任务进入 READY；退回学院重新核对。"""
     action = (action or "").upper()
     with session() as db:
         from app.models import AaTeachingTask, AaTeachingTaskBatch
@@ -320,11 +316,10 @@ def review_batch(batch_id, user, action, reason="") -> dict:
         return {"batchId": str(b.id), "status": b.status}
 
 
-# ═══════════ 合班 / 拆班（Tier1 新增，教师确认前可逆）═══════════
+# ═══════════ 合班 / 拆班 ═══════════
 
 def merge_tasks(body, user) -> dict:
-    """合班：同批次、同课程的 2+ 条待分配/已分配任务合并为一条 survivor（首个 taskId），其余置 MERGED。"""
-    task_ids = list(dict.fromkeys(int(x) for x in (getattr(body, "taskIds", None) or [])))  # 去重保序
+    task_ids = list(dict.fromkeys(int(x) for x in (getattr(body, "taskIds", None) or [])))
     if len(task_ids) < 2:
         raise AppException("VALIDATION_ERROR", "合班至少需选择 2 条教学任务")
     note = (getattr(body, "note", None) or "").strip()
@@ -362,14 +357,13 @@ def merge_tasks(body, user) -> dict:
             m.status = "MERGED"
             m.merged_into_id = survivor.id
         _audit(db, "AA_TASK", survivor.id, "MERGE",
-              f"members={[m.id for m in members]} note={note}" if note else f"members={[m.id for m in members]}")
+               f"members={[m.id for m in members]} note={note}" if note else f"members={[m.id for m in members]}")
         db.commit()
         db.refresh(survivor)
         return _task_row(survivor)
 
 
 def split_task(task_id, user) -> dict:
-    """拆班：还原 merge_tasks 前状态——survivor 自身字段回填快照值，成员行回到 PENDING_ASSIGN。"""
     with session() as db:
         from app.models import AaTeachingTask
         t = db.get(AaTeachingTask, int(task_id))
@@ -399,22 +393,13 @@ def split_task(task_id, user) -> dict:
         return _task_row(t)
 
 
-# ═══════════ 教学任务调整（管理员更正，续工新增）═══════════
+# ═══════════ 教学任务调整 ═══════════
 
 _TEACHER_FIELDS = ("teacherId", "teacherKey", "teacherName")
 
 
 def adjust_task(task_id, user, body) -> dict:
-    """教学任务调整（教务管理员更正）：局部更新教师/周学时/总学时/起止周/预计人数，理由必填+审计。
-
-    与「任课教师分配」(assign_teacher，面向 PENDING_ASSIGN/ASSIGNED/REJECTED_BY_TEACHER 的初始分配工作
-    队列、整体覆盖式写入教师字段) 不同：本操作面向任一非终止态任务（含 TEACHER_CONFIRMED/READY 等已过初
-    始分配阶段仍需更正的场景）。按「新值是否真的不同于当前值」判定字段是否变更（而非只看请求是否携带该
-    字段）——前端表单会回填当前值一并提交，若按"是否携带"判定会把纯粹重提交也当作变更，误触发下面教师
-    变更即退回重新确认的规则。变更教师身份时强制退回 ASSIGNED 要求重新确认，避免旧确认状态与新教师身份
-    不一致地残留；仅调整学时/周次/人数不强制重新确认。
-    已生成课表项(t_aa_schedule_item)的任务不可调整——课表项固化了教师/周次等信息，直接改任务会与课表
-    产生静默不一致，须先在排课模块处理（作废/改排）对应课表项，再回到本操作调整任务。"""
+    """教务管理员更正任务；已生成课表项时禁止静默改任务。"""
     from app.models import AaScheduleItem, AaTeachingTask
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
     reason = (getattr(body, "reason", None) or "").strip()
@@ -424,7 +409,7 @@ def adjust_task(task_id, user, body) -> dict:
         t = db.get(AaTeachingTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("教学任务不存在")
-        guard_term_writable(db, _term_id_of(db, t.batch_id))  # 归档11卡§6.2：已归档学期不应再调整教学任务
+        guard_term_writable(db, _term_id_of(db, t.batch_id))
         if t.status == "MERGED":
             raise AppException("DATA_CONFLICT", "该任务已合班并入其他教学班，请先对合班 survivor 任务拆班后再调整")
         scheduled = db.scalar(select(func.count()).select_from(AaScheduleItem).where(
@@ -432,11 +417,9 @@ def adjust_task(task_id, user, body) -> dict:
             AaScheduleItem.is_deleted.is_(False))) or 0
         if scheduled:
             raise AppException("DATA_CONFLICT", "该任务已生成课表项，请先在排课管理调整/作废对应课表项后再调整教学任务")
-
         changed: list[str] = []
 
         def _apply(field: str, attr: str, new_v) -> None:
-            """仅当请求携带该字段(非 None)且解析后的新值确实不同于当前值时才写入并记入 changed。"""
             if getattr(body, field, None) is None:
                 return
             if new_v != getattr(t, attr):
@@ -451,18 +434,14 @@ def adjust_task(task_id, user, body) -> dict:
         _apply("startWeek", "start_week", getattr(body, "startWeek", None))
         _apply("endWeek", "end_week", getattr(body, "endWeek", None))
         _apply("expectedStudents", "expected_students", getattr(body, "expectedStudents", None))
-
         if not changed:
             raise AppException("VALIDATION_ERROR", "提交的字段与当前值相同，未发生实际调整")
         if t.start_week is not None and t.end_week is not None and t.start_week > t.end_week:
             raise AppException("VALIDATION_ERROR", "起始周不能晚于结束周")
-
-        teacher_touched = any(f in changed for f in _TEACHER_FIELDS)
-        if teacher_touched:
+        if any(f in changed for f in _TEACHER_FIELDS):
             t.status = "ASSIGNED"
             t.confirm_at = None
             t.reject_reason = None
-
         _audit(db, "AA_TASK", t.id, "ADJUST", f"fields={changed} reason={reason}")
         db.commit()
         db.refresh(t)
@@ -509,12 +488,8 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50):
 
 
 def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=False, mine=False,
-                    page=1, page_size=50):
-    """跨批次教学任务列表（Tier1 新增）——供「任课教师分配/合班拆班/教师任务确认」全局工作队列页复用。
-    mergeable=True：仅返回教师确认前、尚未参与过合班的任务（合班候选池，前端按 courseId+batchId 分组勾选）。
-    mine=True：仅返回按 _user_keys 命中本人 teacher_key 的任务（管理角色传 mine 时同样按本人身份收敛，
-    如需代管全部请不传 mine，另走 batch/course 过滤——与 teacher_act 的管理角色豁免是两回事，
-    这里是「列表默认视角」而非越权校验，越权仍在写操作 _check_teacher_scope 兜底）。"""
+                   page=1, page_size=50):
+    """跨批次教学任务列表；mine=True 时仅返回本人稳定 teacher_key 命中的任务。"""
     from app.models import AaTeachingTask
     with session() as db:
         conds = [AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)]
@@ -539,15 +514,14 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
         return out[start:start + page_size], total
 
 
-# ═══════════ 统计（Tier1 新增）═══════════
+# ═══════════ 统计 ═══════════
 
 _DONE_TASK_STATUSES = ("TEACHER_CONFIRMED", "READY")
 _TERMINAL_ASSIGN_STATUSES = ("ASSIGNED", "TEACHER_CONFIRMED", "READY")
 
 
 def get_task_stats(user, term_id=None) -> dict:
-    """教学任务统计（Tier1 新增）：批次/任务状态分布 + 分配率/教师确认率 + 按学期拆分。
-    统计口径剔除 MERGED（已并入他行的非独立教学单元），避免重复计数。"""
+    """批次/任务状态分布 + 分配率/教师确认率；剔除 MERGED 避免重复计数。"""
     from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm
     with session() as db:
         b_conds = [AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False)]
@@ -558,12 +532,11 @@ def get_task_stats(user, term_id=None) -> dict:
         batch_by_status: dict[str, int] = {}
         for b in batches:
             batch_by_status[b.status] = batch_by_status.get(b.status, 0) + 1
-
         t_conds = [AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
                    AaTeachingTask.status != "MERGED"]
         if batch_ids:
             t_conds.append(AaTeachingTask.batch_id.in_(batch_ids))
-        elif term_id:  # 指定学期但无批次：任务数必为 0，短路避免误查全量
+        elif term_id:
             t_conds.append(AaTeachingTask.batch_id.in_([-1]))
         tasks = db.scalars(select(AaTeachingTask).where(*t_conds)).all()
         task_by_status: dict[str, int] = {}
@@ -586,8 +559,9 @@ def get_task_stats(user, term_id=None) -> dict:
             e = by_term.setdefault(b.term_id, {"termId": str(b.term_id), "batchCount": 0,
                                                "taskTotal": 0, "confirmedTotal": 0})
             e["batchCount"] += 1
+        batch_index = {b.id: b for b in batches}
         for t in tasks:
-            b = next((x for x in batches if x.id == t.batch_id), None)
+            b = batch_index.get(t.batch_id)
             if not b:
                 continue
             e = by_term.get(b.term_id)
@@ -607,7 +581,6 @@ def get_task_stats(user, term_id=None) -> dict:
             e["confirmRate"] = _rate(e["confirmedTotal"], e["taskTotal"])
             by_term_list.append(e)
         by_term_list.sort(key=lambda x: x["termId"], reverse=True)
-
         return {
             "batchTotal": len(batches), "batchByStatus": batch_by_status,
             "taskTotal": task_total, "taskByStatus": task_by_status, "mergedCount": merged_n,
