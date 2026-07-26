@@ -1,14 +1,17 @@
 """优秀成果/延期答辩的跨端安全补强。
 
-收口四类容易被 UI 与流程遗漏的边界：
+收口六类容易被 UI、并发与分页遗漏的边界：
 1. 被驳回/撤回的历史延期记录不能永久阻止学生再次申请；
-2. 延期重新分组必须同时重算并撤回旧组、新组发布状态，且校验新组容量；
-3. 学校端按钮按稳定导师身份和当前审核角色逐行下发；
-4. 导师提名/导师审核节点禁止管理员代办，接口也必须按稳定导师绑定校验。
+2. 延期重新分组同时重算并撤回旧组、新组发布状态，且校验容量；
+3. 学校端逐行下发当前角色真实可执行动作；
+4. 导师提名/导师审核禁止管理员代办，按稳定导师绑定校验；
+5. 重复提名/重复申请的唯一键竞争转为业务冲突，不泄露数据库异常；
+6. 教师移动端按稳定导师 ID 在数据库层分页，不先宽查再前端过滤。
 """
 from __future__ import annotations
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import GraduationDefenseGroup, GraduationGrade, GraduationStudent
@@ -40,7 +43,17 @@ def _assert_bound_advisor(student_id) -> None:
 
 def nominate_excellent(gd_student_id, reason: str, evidence: list | None = None) -> dict:
     _assert_bound_advisor(gd_student_id)
-    return base.nominate_excellent(gd_student_id, reason, evidence)
+    try:
+        return base.nominate_excellent(gd_student_id, reason, evidence)
+    except IntegrityError as exc:
+        raise AppException("DATA_CONFLICT", "优秀成果提名已被其他请求提交，请刷新台账") from exc
+
+
+def apply_delay(user: dict, reason: str, evidence: list | None = None) -> dict:
+    try:
+        return base.apply_delay(user, reason, evidence)
+    except IntegrityError as exc:
+        raise AppException("DATA_CONFLICT", "延期答辩申请已被其他请求提交，请刷新状态") from exc
 
 
 def advisor_review_delay(record_id, action: str, comment: str) -> dict:
@@ -58,7 +71,7 @@ def advisor_review_delay(record_id, action: str, comment: str) -> dict:
 
 
 def my_extensions(user: dict) -> dict:
-    """返回学生扩展事项，并正确计算延期再次申请资格。"""
+    """返回学生扩展事项，并按数据库 active_key 计算再次申请资格。"""
     with session() as db:
         student = resolve_current_gd_student(db, user)
         if not student:
@@ -79,6 +92,11 @@ def my_extensions(user: dict) -> dict:
             GraduationDefenseDelay.gd_student_id == student.id,
             GraduationDefenseDelay.is_deleted.is_(False),
         ).order_by(GraduationDefenseDelay.id.desc())).first()
+        active_delay_id = db.scalars(select(GraduationDefenseDelay.id).where(
+            GraduationDefenseDelay.tenant_id == _tid(),
+            GraduationDefenseDelay.active_key == f"active:{student.id}",
+            GraduationDefenseDelay.is_deleted.is_(False),
+        ).limit(1)).first()
         group = db.get(GraduationDefenseGroup, delay.defense_group_id) if delay and delay.defense_group_id else None
         published_grade = db.scalars(select(GraduationGrade.id).where(
             GraduationGrade.tenant_id == _tid(),
@@ -86,7 +104,6 @@ def my_extensions(user: dict) -> dict:
             GraduationGrade.status == "PUBLISHED",
             GraduationGrade.is_deleted.is_(False),
         ).limit(1)).first()
-        has_active_delay = bool(delay and delay.status in _ACTIVE_DELAY_STATUSES)
 
         return {
             "hasData": True,
@@ -96,14 +113,27 @@ def my_extensions(user: dict) -> dict:
             "defenseDelay": base._delay_row(delay, student, group) if delay else None,
             "canApplyDelay": (
                 student.stage in ("FINAL_CHECK", "DEFENSE")
-                and not has_active_delay
+                and not active_delay_id
                 and not published_grade
             ),
         }
 
 
+def list_excellent_outcomes(*, batch_id: int, status: str | None = None, page: int = 1, page_size: int = 20):
+    items, total = base.list_excellent_outcomes(
+        batch_id=batch_id, status=status, page=page, page_size=page_size,
+    )
+    role = base._role()
+    for item in items:
+        item["allowedActions"] = {
+            "majorReview": item["status"] == "PENDING_MAJOR" and role in base._MAJOR_ROLES,
+            "collegeReview": item["status"] == "PENDING_COLLEGE" and role in base._COLLEGE_ROLES,
+        }
+    return items, total
+
+
 def list_delays(*, batch_id: int, status: str | None = None, page: int = 1, page_size: int = 20):
-    """分页台账 + 当前角色逐行可执行动作。"""
+    """学校端分页台账 + 当前角色逐行可执行动作。"""
     items, total = base.list_delays(
         batch_id=batch_id, status=status, page=page, page_size=page_size,
     )
@@ -128,6 +158,43 @@ def list_delays(*, batch_id: int, status: str | None = None, page: int = 1, page
                 "schedule": item["status"] == "APPROVED" and role in base._COLLEGE_ROLES,
             }
     return items, total
+
+
+def list_advisor_delays(*, batch_id: int, page: int = 1, page_size: int = 20):
+    """教师端只查询当前稳定导师本人学生，total 与分页结果保持一致。"""
+    with session() as db:
+        from app.modules.graduation.services import graduation_identity as gid
+        mentor = gid.current_user_mentor(db)
+        if not mentor:
+            raise no_permission("当前教师未绑定毕业设计导师身份")
+        student_ids = select(GraduationStudent.id).where(
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.batch_id == int(batch_id),
+            GraduationStudent.mentor_id == int(mentor.id),
+            GraduationStudent.is_deleted.is_(False),
+        )
+        q = select(GraduationDefenseDelay).where(
+            GraduationDefenseDelay.tenant_id == _tid(),
+            GraduationDefenseDelay.batch_id == int(batch_id),
+            GraduationDefenseDelay.status == "PENDING_ADVISOR",
+            GraduationDefenseDelay.gd_student_id.in_(student_ids),
+            GraduationDefenseDelay.is_deleted.is_(False),
+        )
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.scalars(q.order_by(GraduationDefenseDelay.id.desc())
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        items = []
+        for row in rows:
+            student = db.get(GraduationStudent, row.gd_student_id)
+            item = base._delay_row(row, student)
+            item["allowedActions"] = {
+                "advisorReview": True,
+                "majorReview": False,
+                "collegeReview": False,
+                "schedule": False,
+            }
+            items.append(item)
+        return items, total
 
 
 def schedule_delay(record_id, defense_group_id, planned_date: str) -> dict:
