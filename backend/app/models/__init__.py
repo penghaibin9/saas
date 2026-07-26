@@ -166,6 +166,12 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaTextbookOrderItem, AaTextbookReviewBatch,
                                          AaTextbookReviewBatchItem,
                                          AaTextbookSelection, AaTimeSlot)
+from app.models.academic_affairs_teaching_class import (  # noqa: F401
+    AaTeachingClass,
+    AaTeachingClassMember,
+    AaTeachingClassRosterVersion,
+    AaTeachingClassTeacher,
+)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
