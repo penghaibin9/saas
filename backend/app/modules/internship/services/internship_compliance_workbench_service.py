@@ -8,13 +8,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
-
 from app.core.permissions import is_super_admin
 from app.models import (
-    InternshipComplianceExemption, InternshipConsent, InternshipEmergencyPlan,
-    InternshipEvidencePackage, InternshipIncident, InternshipRecord,
-    InternshipSafetyCompletion, InternshipSafetyCourse, InternshipSpecialFiling,
-    StudentProfile,
+    InternshipAuditTrail, InternshipComplianceExemption, InternshipConsent,
+    InternshipEmergencyPlan, InternshipEvidencePackage, InternshipIncident,
+    InternshipRecord, InternshipSafetyCompletion, InternshipSafetyCourse,
+    InternshipSpecialFiling, StudentProfile,
 )
 from app.services.db_service import _iso, _tid, session
 
@@ -62,12 +61,37 @@ def _student_meta(record, students):
     }
 
 
+def _delivery_audit_map(db, consent_ids) -> dict[int, dict]:
+    """最近一次监护人送达结果；只返回状态和非敏感原因。"""
+    if not consent_ids:
+        return {}
+    rows = db.scalars(select(InternshipAuditTrail).where(
+        InternshipAuditTrail.tenant_id == _tid(),
+        InternshipAuditTrail.target_type == "INTERNSHIP_CONSENT",
+        InternshipAuditTrail.target_id.in_(consent_ids),
+        InternshipAuditTrail.action.like("GUARDIAN_DELIVERY_%"),
+    ).order_by(
+        InternshipAuditTrail.occurred_at.desc(),
+        InternshipAuditTrail.id.desc(),
+    )).all()
+    latest = {}
+    for audit in rows:
+        target_id = int(audit.target_id)
+        if target_id in latest:
+            continue
+        detail = audit.detail_json if isinstance(audit.detail_json, dict) else {}
+        latest[target_id] = {
+            "status": str(detail.get("status") or audit.action.rsplit("_", 1)[-1] or "").upper(),
+            "reason": str(detail.get("reason") or "")[:200],
+        }
+    return latest
+
+
 def get_workbench(batch_id, user=None) -> dict:
     with session() as db:
         batch, records, students = _allowed_records(db, batch_id, user)
         record_map = {record.id: record for record in records}
         record_ids = list(record_map)
-        student_ids = list(students)
 
         consent_rows = []
         if record_ids:
@@ -76,10 +100,16 @@ def get_workbench(batch_id, user=None) -> dict:
                 InternshipConsent.internship_id.in_(record_ids),
                 InternshipConsent.is_deleted.is_(False),
             ).order_by(InternshipConsent.id.desc())).all()
+            delivery_map = _delivery_audit_map(db, [row.id for row in rows])
             for row in rows:
                 record = record_map.get(row.internship_id)
                 if not record:
                     continue
+                delivery = delivery_map.get(int(row.id), {})
+                derived_status = (
+                    "SENT" if row.delivery_channel == "SMS" and row.delivered_at
+                    else str(row.delivery_channel or "").removeprefix("SMS_")
+                )
                 consent_rows.append({
                     **_student_meta(record, students),
                     "id": str(row.id), "consentType": row.consent_type,
@@ -89,6 +119,8 @@ def get_workbench(batch_id, user=None) -> dict:
                     "participantRelation": row.participant_relation or "",
                     "contactMasked": row.contact_masked or "",
                     "deliveryChannel": row.delivery_channel or "",
+                    "deliveryStatus": delivery.get("status") or derived_status or "NOT_SENT",
+                    "deliveryReason": delivery.get("reason") or "",
                     "deliveredAt": _iso(row.delivered_at),
                     "guardianTokenExpiresAt": _iso(row.guardian_token_expires_at),
                     "version": int(row.version or 0),
