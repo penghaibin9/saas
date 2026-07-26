@@ -144,7 +144,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
         audit, dashboard, feedback, implementation, import_export,
         migration, mobile, mobile_export, mobile_orientation_teacher,
-        national_standards, notification, onboarding, platform, stats, system,
+        national_standards, notification, onboarding, org_directory, platform, stats, system,
         transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
@@ -183,6 +183,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(user_preference.router)
     api_router.include_router(feedback.router)
     api_router.include_router(system.router, tags=["system"])
+    # 组织目录：选人场景（实习/毕设批次、评奖）共用的组织树与年级源，按本人数据范围裁剪
+    api_router.include_router(org_directory.router)
 
 
 def register_all_routes(api_router: APIRouter) -> None:

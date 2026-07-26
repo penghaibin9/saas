@@ -3,6 +3,7 @@ import { internStudentApi } from '@/modules/internship/api/internship-student.ap
 import { matchApi } from '@/modules/internship/api/match.api'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { createOrgPickerAdapters } from '@/components/common/picker/orgAdapters'
 
 function rowsOf(response) {
   if (!response || response.code !== 0) throw new Error(response?.message || '选择器数据加载失败')
@@ -73,6 +74,9 @@ const enterpriseMentor = adapter(
 )
 
 export const internshipPickerAdapters = {
+  // 学院/专业/班级/年级走公共组织适配器（数据源 /directory/org-tree，按本人数据范围裁剪）；
+  // 不在本模块另写一份，避免各中心口径分裂
+  ...createOrgPickerAdapters(),
   candidateInternshipStudent,
   internshipStudent,
   unassignedInternshipStudent,

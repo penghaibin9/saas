@@ -81,6 +81,12 @@ export const AppCollegePicker = makePicker('AppCollegePicker', {
   key: 'college',
   placeholder: '选择学院', searchPlaceholder: '按学院名称搜索'
 })
+// 年级不是独立实体表，是学生主档上的字符串；数据源为 /directory/grades 的去重结果，
+// 由 createOrgPickerAdapters 一并提供，避免各页面自己拼一份写死的年级列表
+export const AppGradePicker = makePicker('AppGradePicker', {
+  key: 'grade',
+  placeholder: '选择年级', searchPlaceholder: '按年级搜索', dataScopeHint: '仅显示你数据范围内的年级'
+})
 export const AppCoursePicker = makePicker('AppCoursePicker', {
   key: 'course',
   placeholder: '选择课程', searchPlaceholder: '按课程名 / 课程号搜索'

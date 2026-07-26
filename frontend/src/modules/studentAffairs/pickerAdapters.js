@@ -4,6 +4,7 @@
  */
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { assessmentApi } from '@/modules/studentAffairs/api/class.api'
+import { createOrgPickerAdapters } from '@/components/common/picker/orgAdapters'
 
 function assertOk(response) {
   if (!response || response.code !== 0) throw new Error(response?.message || '选择器数据加载失败')
@@ -129,6 +130,9 @@ const dormBed = entityAdapter(async (keyword, query) => {
 })
 
 export const studentAffairsPickerAdapters = {
+  // 学院/专业/班级/年级走公共组织适配器（数据源 /directory/org-tree，按本人数据范围裁剪）；
+  // 不在本模块另写一份，避免各中心口径分裂
+  ...createOrgPickerAdapters(),
   student,
   riskOwner,
   aidBatch,

@@ -8,6 +8,7 @@ import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { graduationBatchApi } from '@/modules/graduation/api/graduation-batch.api'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
+import { createOrgPickerAdapters } from '@/components/common/picker/orgAdapters'
 
 function assertOk(response) {
   if (!response || response.code !== 0) throw new Error(response?.message || '选择器数据加载失败')
@@ -108,6 +109,9 @@ const defenseGroup = adapter(
 )
 
 export const graduationPickerAdapters = {
+  // 学院/专业/班级/年级走公共组织适配器（数据源 /directory/org-tree，按本人数据范围裁剪）；
+  // 不在本模块另写一份，避免各中心口径分裂
+  ...createOrgPickerAdapters(),
   candidateStudent,
   graduationStudent,
   graduationMentor,

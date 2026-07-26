@@ -6,6 +6,7 @@ export { default as AppRemoteSelect } from './AppRemoteSelect.vue'
 export { default as AppOrgCascader } from './AppOrgCascader.vue'
 export { default as AppAcademicYearPicker } from './AppAcademicYearPicker.vue'
 export { default as AppTermPicker } from './AppTermPicker.vue'
+export { createOrgPickerAdapters, clearOrgTreeCache } from './orgAdapters'
 export {
   AppStudentPicker,
   AppTeacherPicker,
@@ -13,6 +14,7 @@ export {
   AppClassPicker,
   AppMajorPicker,
   AppCollegePicker,
+  AppGradePicker,
   AppCoursePicker,
   AppRolePicker,
   AppTenantPicker,
