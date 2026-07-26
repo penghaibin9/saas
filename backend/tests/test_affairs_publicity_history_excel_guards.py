@@ -36,6 +36,7 @@ def test_xlsx_import_export_prevents_formula_and_path_injection():
     common = read("backend/app/services/import_export_service.py")
     assert "_excel_safe" in domain_export
     assert "_excel_safe" in common
+    assert '("=", "+", "-", "@")' in common
     assert 'ext != "xlsx"' in common
     assert "危险表达式" in common
     assert "candidate.relative_to(root)" in common
