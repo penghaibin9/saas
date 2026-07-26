@@ -81,13 +81,25 @@ def test_unknown_teacher_mobile_write_permission_is_fail_closed():
     assert "__AFFAIRS_MOBILE_WRITE_NOT_REGISTERED__" in required
 
 
-def test_terminal_guard_rejects_unregistered_teacher_write_route():
+def test_terminal_guard_normalizes_mounted_route_path():
+    from app.services.affairs_four_end_terminal_guard import _runtime_path
+
+    assert _runtime_path("/mobile/teacher/affairs/leaves/1/approve") == (
+        "/api/v1/mobile/teacher/affairs/leaves/1/approve"
+    )
+    assert _runtime_path("/api/v1/mobile/teacher/affairs/leaves/1/approve") == (
+        "/api/v1/mobile/teacher/affairs/leaves/1/approve"
+    )
+
+
+def test_terminal_guard_rejects_unregistered_mounted_teacher_write_route():
     from fastapi import APIRouter
     from app.services.affairs_four_end_terminal_guard import _assert_teacher_write_routes_registered
 
     router = APIRouter()
 
-    @router.post("/api/v1/mobile/teacher/affairs/future-unregistered-action")
+    # APIRouter 内部保存的是未挂载 /api/v1 的子路由路径，必须同样被安全门识别。
+    @router.post("/mobile/teacher/affairs/future-unregistered-action")
     def unsafe_route():
         return {"ok": True}
 
