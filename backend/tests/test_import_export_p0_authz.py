@@ -20,24 +20,17 @@ def _token(role: str, *, tenant_id: int = TID, user_id: str = "u-x", user_type: 
     })}
 
 
-def test_teacher_cannot_import_or_export_students(client, db_mode):
+def test_teacher_cannot_export_students(client, db_mode):
+    """学生批量导入已收敛到系统管理入口（见 test_student_import_entries.py），
+    本用例继续锁导出侧越权。"""
     hdr = _hdr(client, "academic01")
-    v = client.post("/api/v1/import/students/validate", headers=hdr,
-                    json={"rows": [{"studentNo": "P0IMP001", "realName": "越权生"}]})
-    assert v.status_code == 403
     e = client.post("/api/v1/export/students", headers=hdr,
                     json={"purpose": "越权导出学生主档测试"})
     assert e.status_code == 403
 
 
-def test_school_admin_import_export_ok(client, db_mode):
+def test_school_admin_export_ok(client, db_mode):
     hdr = _hdr(client, "school_admin01")
-    v = client.post("/api/v1/import/students/validate", headers=hdr,
-                    json={"rows": [{"studentNo": "P0IMP002", "realName": "合法导入"}]}).json()
-    assert v["code"] == 0 and v["data"]["status"] == "DRY_RUN_PASSED"
-    c = client.post("/api/v1/import/students/confirm", headers=hdr,
-                    json={"batchNo": v["data"]["batchNo"]}).json()
-    assert c["code"] == 0 and c["data"]["insertedRows"] == 1
     t = client.post("/api/v1/export/students", headers=hdr,
                     json={"purpose": "合法导出学生主档测试"}).json()
     assert t["code"] == 0 and t["data"]["taskId"].isdigit()

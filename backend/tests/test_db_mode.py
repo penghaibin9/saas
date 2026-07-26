@@ -124,23 +124,9 @@ def test_p4_upload_real(client, auth_headers, db_mode, tmp_path):
     assert bad["code"] != 0  # 黑名单扩展被拒
 
 
-def test_p4_import_dry_run_and_confirm(client, auth_headers, db_mode):
-    rows = [
-        {"studentNo": "2099P4001", "realName": "导入一号", "phone": "13100010001"},
-        {"studentNo": "2099P4001", "realName": "文件内重复"},
-        {"studentNo": "", "realName": "缺学号"},
-    ]
-    v = client.post("/api/v1/import/students/validate", headers=auth_headers,
-                    json={"rows": rows}).json()["data"]
-    assert v["status"] == "DRY_RUN_FAILED" and v["errorRows"] == 2
-    v2 = client.post("/api/v1/import/students/validate", headers=auth_headers,
-                     json={"rows": [rows[0]]}).json()["data"]
-    assert v2["status"] == "DRY_RUN_PASSED"
-    c = client.post("/api/v1/import/students/confirm", headers=auth_headers,
-                    json={"batchNo": v2["batchNo"]}).json()["data"]
-    assert c["status"] == "SUCCESS" and c["insertedRows"] == 1
-    items = client.get("/api/v1/students?keyword=导入一号", headers=auth_headers).json()["data"]["items"]
-    assert len(items) == 1 and items[0]["phoneMasked"] == "131****0001"
+# 原 test_p4_import_dry_run_and_confirm 已随 /import/students/* 删除：
+# 学生批量导入现由「系统管理 › 学生导入与账号开通」承担，覆盖见
+# tests/test_student_import_entries.py；本文件继续覆盖导出与其它 DB 模式行为。
 
 
 def test_p4_export_and_download(client, auth_headers, db_mode):

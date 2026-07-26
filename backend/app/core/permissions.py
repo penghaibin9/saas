@@ -63,6 +63,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       "internship.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
                       "student.profile.view", "student.profile.manage",
+                      # 学籍维护：可补录 / 维护 / 恢复，但仅限本学院——
+                      # 范围由后端 assert_student_org_scope 强制，不依赖前端筛选
+                      "student.profile.create", "student.profile.update",
+                      "student.profile.restore",
                       # 消息中心：本院发布 + 本院发送统计（跨学院由 service 数据范围收敛）
                       "workbench.message.publish",
                       "workbench.message.college.publish", "workbench.message.schedule",
@@ -113,11 +117,16 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "academicAffairs.evaluation.view",
     },
     "ACADEMIC_ADMIN": {"academicAffairs.*", "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
-                       "student.profile.view", "student.profile.manage"},  # 教务处管理员：本校教务全权（TENANT_ALL），
+                       "student.profile.view", "student.profile.manage",
+                       # 学籍维护主责角色：全校范围补录 / 维护 / 恢复
+                       "student.profile.create", "student.profile.update",
+                       "student.profile.restore"},  # 教务处管理员：本校教务全权（TENANT_ALL），
                                                              # 与 COLLEGE_ADMIN 区分——成绩发布/退回/归档等
                                                              # 超高危动作端点内额外校验角色=ACADEMIC_ADMIN/SCHOOL_ADMIN
 
     "STUDENT_AFFAIRS": {"studentAffairs.*", "campusService.*", *_WORKBENCH_SELF, "approval.dashboard.view",
+                        # 学工不承担学籍维护：保留既有 manage 兼容存量功能，
+                        # 不授予 student.profile.create/update/restore
                         "student.profile.view", "student.profile.manage",
                         "workbench.message.publish",
                         "workbench.message.schoolStudent.publish", "workbench.message.schedule",
@@ -125,6 +134,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                         "workbench.message.recipient.view"},
     "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view",
                               *_WORKBENCH_SELF, "approval.dashboard.view", "approval.manage",
+                              # 学工不承担学籍维护：保留既有 manage 兼容存量功能，
+                              # 不授予 student.profile.create/update/restore
+                              # （建档、维护与恢复归 学校/学院/教务处 管理员）
                               "student.profile.view", "student.profile.manage",
                               "workbench.message.publish",
                               "workbench.message.schoolStudent.publish",

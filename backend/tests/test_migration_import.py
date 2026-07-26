@@ -10,13 +10,24 @@ def _login(client, name):
 
 
 def _seed_students(client, auth_headers, nos):
-    rows = [{"studentNo": no, "realName": f"迁移生{i}"} for i, no in enumerate(nos)]
-    dr = client.post("/api/v1/import/students/validate", headers=auth_headers,
-                     json={"rows": rows}).json()
-    assert dr["data"]["status"] == "DRY_RUN_PASSED", dr
-    cf = client.post("/api/v1/import/students/confirm", headers=auth_headers,
-                     json={"batchNo": dr["data"]["batchNo"]}).json()
-    assert cf["code"] == 0
+    """直接经统一主档服务造数据。
+
+    旧 /import/students/* 已随学生导入入口收敛删除；这里的目的只是准备学生行，
+    不必也不应再走某个业务导入入口。
+    """
+    from app.core.student_master_contract import StudentCreateCommand
+    from app.db.session import get_sessionmaker
+    from app.services import student_master_application_service as master
+    tid = 1000000000000000001
+    db = get_sessionmaker()()
+    try:
+        for i, no in enumerate(nos):
+            master.create_student_in_session(
+                db, tenant_id=tid,
+                cmd=StudentCreateCommand(student_no=no, real_name=f"迁移生{i}"))
+        db.commit()
+    finally:
+        db.close()
 
 
 def test_migration_overview_orders_and_deps(client, auth_headers, db_mode):

@@ -58,7 +58,10 @@ def test_creation_paths_delegate_to_master_service(module_path, func_name):
     if fn is None:
         pytest.skip(f"{module_path}.{func_name} 不存在（函数名可能已变，需同步本测试）")
     src = inspect.getsource(fn)
-    assert "create_student_in_session" in src, f"{func_name} 未经统一服务建档"
+    # 入口收敛后，导入类入口经 resolve_student_for_import + apply_resolution_in_session
+    # 走统一服务；单条建档仍直接调 create_student_in_session。两者都算合规。
+    assert ("create_student_in_session" in src
+            or "apply_resolution_in_session" in src), f"{func_name} 未经统一服务建档"
 
 
 # ── 2. 组织父链校验 ────────────────────────────────────────────────────────

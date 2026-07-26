@@ -383,6 +383,20 @@ export const studentApi = {
     return ok(detail)
   },
 
+  /** 恢复已作废学生主档（受控动作：需 student.profile.restore + 原因≥5字）。 */
+  async restoreStudent({ studentNo, reason } = {}) {
+    if (!shouldTryReal()) {
+      return fail('演示模式不支持恢复作废档案，请在真实后端环境操作')
+    }
+    const r = String(reason || '').trim()
+    if (r.length < 5) return fail('恢复原因必填且不少于 5 个字')
+    try {
+      return await realApi.restoreStudent({ studentNo, reason: r })
+    } catch (e) {
+      return { code: e.code || 1, data: null, message: e.message || '恢复失败' }
+    }
+  },
+
   createStudent(payload = {}) {
     return withFallback('students.create', () => realApi.createStudent(payload), () => this._mockCreateStudent(payload))
   },

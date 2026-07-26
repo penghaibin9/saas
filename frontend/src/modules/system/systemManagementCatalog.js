@@ -33,7 +33,10 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     description: '师生账号只在统一入口创建，业务模块只能关联既有身份。',
     items: [
       { key: 'sys-accounts', label: '师生账号', path: '/admin/system/users', permissionKey: 'system.user.view', view: 'users', actions: [action('user:create', '新增账号', 'HIGH'), action('user:update', '编辑账号'), action('user:disable', '停用/启用账号', 'HIGH'), action('user:reset-password', '重置密码', 'HIGH'), action('user:assign-role', '分配角色', 'HIGH'), action('user:export', '脱敏导出', 'HIGH')] },
-      { key: 'sys-identity-import', label: '导入老师和学生', path: '/admin/system/identity-import', permissionKey: 'system.user.import', view: 'identity-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
+      /* 学生与教师拆成两个独立入口：模板字段、结果统计与后续流程完全不同，
+         混在一张表里靠「账号类型」列区分，学校填表极易串列。 */
+      { key: 'sys-student-import', label: '学生导入与账号开通', path: '/admin/system/identity-import/students', permissionKey: 'system.user.import', view: 'student-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
+      { key: 'sys-teacher-import', label: '教师导入', path: '/admin/system/identity-import/teachers', permissionKey: 'system.user.import', view: 'teacher-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
       { key: 'sys-account-exceptions', label: '账号异常中心', path: '/admin/system/account-exceptions', permissionKey: 'system.user.exception.view', view: 'account-exceptions', actions: [action('user:exception:resolve', '处理账号异常', 'HIGH')] },
       { key: 'sys-login-policy', label: '登录与安全策略', path: '/admin/system/login-policy', permissionKey: 'system.security.policy.manage', view: 'login-policy', actions: [action('security:login-policy:update', '修改登录策略', 'HIGH')] }
     ]

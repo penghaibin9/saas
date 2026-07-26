@@ -16,7 +16,6 @@ from app.core.import_export_auth import (
     enforce_export_perm,
     enforce_import_perm,
     enforce_student_export,
-    enforce_student_import,
 )
 from app.core.permissions import require_permission
 from app.core.response import success
@@ -68,7 +67,7 @@ def confirm_placeholder(user=Depends(require_staff)):
                      status_code=200, target_type="import", target_id=batch_id)
     return success({
         "batchId": batch_id, "status": "CONFIRMED",
-        "notice": "占位实现：未真正写库；请改用 POST /import/students/confirm",
+        "notice": "占位实现：未真正写库。学生请用「系统管理 › 学生导入与账号开通」，教务学籍请用「教务中心 › 学籍导入」。",
     }, message="导入已确认（占位）")
 
 
@@ -90,15 +89,6 @@ from fastapi.responses import FileResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from app.services import import_export_service as ie  # noqa: E402
-from app.services.file_service import validate_ext  # noqa: E402
-
-
-class ImportRowsRequest(BaseModel):
-    rows: list[dict] = Field(default_factory=list, description="学生行（studentNo/realName/gender/grade/phone）")
-
-
-class ImportConfirmRequest(BaseModel):
-    batchNo: str = Field(..., description="Dry-Run 返回的批次号")
 
 
 class ExportStudentsRequest(BaseModel):
@@ -115,70 +105,13 @@ def _limit_operation(user: dict, operation: str, *, user_limit: int, tenant_limi
         raise AppException("RATE_LIMITED", f"操作过于频繁（每分钟最多 {user_limit} 次），请稍后再试")
 
 
-# ── 学生导入入口收敛（学生主档统一整改 阶段 B）────────────────────────────
-# 学校批量创建学生身份与登录账号的正式入口是「系统管理 › 师生统一导入」
-# （/api/v1/system/identity-import/*），它在同一事务里建主档 + 账号 + STUDENT 角色。
-# 本组 /import/students/* 只建主档不建账号，保留为兼容入口：底层已与正式入口
-# 共用 student_master_application_service（规则完全一致），响应加 deprecated 标记
-# 引导迁移，待接入方清零后按补充审计 §4.6 下线。
-_CANONICAL_STUDENT_IMPORT = "/api/v1/system/identity-import"
-
-
-def _mark_deprecated(result: dict) -> dict:
-    """给兼容入口的响应打迁移标记，不改变原有字段。"""
-    out = dict(result or {})
-    out["deprecated"] = True
-    out["canonicalEntry"] = _CANONICAL_STUDENT_IMPORT
-    out["deprecationNote"] = ("本入口只建学生主档、不建登录账号；"
-                              "学校正式批量导入请用「系统管理 › 师生统一导入」。")
-    return out
-
-
-@import_router.post("/students/validate", summary="学生导入 · Dry-Run 校验（JSON 行）")
-def import_students_validate(body: ImportRowsRequest,
-                             user=Depends(require_permission("student.import"))):
-    enforce_student_import(user)
-    result = ie.dry_run(body.rows)
-    audit_log.record("IMPORT", "student-dry-run",
-                     detail={"batchNo": result["batchNo"], "total": result["totalRows"], "errors": result["errorRows"]})
-    return success(_mark_deprecated(result), message="校验完成")
-
-
-@import_router.post("/students/validate-file", summary="学生导入 · Dry-Run 校验（上传 xlsx/csv）")
-async def import_students_validate_file(file: UploadFile = File(...),
-                                        user=Depends(require_permission("student.import"))):
-    enforce_student_import(user)
-    ext = validate_ext(file.filename or "")
-    _MAX_IMPORT_BYTES = 20 * 1024 * 1024
-    chunks, size = [], 0
-    while chunk := await file.read(1024 * 1024):
-        size += len(chunk)
-        if size > _MAX_IMPORT_BYTES:
-            raise AppException("FILE_TOO_LARGE", "导入文件超过 20MB 上限，请拆分后重试")
-        chunks.append(chunk)
-    rows = ie.parse_upload_rows(b"".join(chunks), ext)
-    result = ie.dry_run(rows)
-    audit_log.record("IMPORT", "student-dry-run-file",
-                     detail={"file": file.filename, "batchNo": result["batchNo"], "total": result["totalRows"]})
-    return success(_mark_deprecated(result), message="文件解析并校验完成")
-
-
-@import_router.post("/students/confirm", summary="学生导入 · 确认写入（整批一个事务，失败回滚）")
-def import_students_confirm(body: ImportConfirmRequest,
-                            user=Depends(require_permission("student.import")),
-                            idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
-    enforce_student_import(user)
-    ie.assert_confirm_allowed(user, "STUDENT_PROFILE", body.batchNo, "student.import")
-    cached, handle = idempotency_begin(user, "student-import-confirm", idempotency_key,
-                                       {"batchNo": body.batchNo})
-    if cached is not None:
-        return success(cached, message="导入完成（幂等重放）")
-    _limit_operation(user, "import-confirm", user_limit=10, tenant_limit=30)
-    result = ie.confirm(body.batchNo)
-    audit_log.record("IMPORT", "student-confirm",
-                     detail={"batchNo": body.batchNo, "inserted": result["insertedRows"]})
-    idempotency_finish(handle, result)
-    return success(_mark_deprecated(result), message="导入完成")
+# ── 旧学生导入入口已删除（学生主档统一整改）──────────────────────────────
+# 原 /import/students/{validate,validate-file,confirm} 只建主档不建账号，是学生主档的
+# 第三条批量写入链路。学生主档现在只有两条正式写入路径：
+#   1) 教务中心 › 学籍导入（建学籍，不建账号）
+#   2) 系统管理 › 学生导入与账号开通（/api/v1/system/identity-import/students/*）
+# 甲方明确不保留兼容层，故不做 redirect / 410 / 代理转发，旧路径直接 404。
+# 原挂在本组端点上的 studentImport 租户特性闸门已迁至学生导入与账号开通入口。
 
 
 @import_router.post("/domain/{domain}/validate", summary="域白名单通用导入 Dry-Run 校验")

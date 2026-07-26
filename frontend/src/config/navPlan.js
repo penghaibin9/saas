@@ -130,8 +130,8 @@ export const NAV_PLAN = [
       I('风险标签', '/admin/student/risk-tags', 'studentAffairs.risk.view'),
       I('信息更正审核', '/admin/student/corrections', null, null, { permissionAny: _CORRECTION_ANY }),
       I('身份核验', '/admin/student/identity', null, null, { permissionAny: _STU_VIEW_ANY }),
-      I('导入导出', '/admin/student/import-export', null, null,
-        { permissionAny: ['student.import', 'student.export'] }),
+      I('导入学生', '/admin/student/import', null, null, { permissionAny: _STU_VIEW_ANY }),
+      I('数据导出', '/admin/student/import-export', 'student.export'),
       H('学生360详情', '/admin/student-affairs/profile', null, 'DETAIL', { permissionAny: _STU_VIEW_ANY })
     ]),
     // 班级列表/画像/材料原指向同一路由 → 收敛为「班级管理」；画像/材料从班级页内进入

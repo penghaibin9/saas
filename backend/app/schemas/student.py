@@ -37,3 +37,14 @@ class StudentUpdateRequest(BaseModel):
 
 class StudentVoidRequest(BaseModel):
     reason: str = Field(..., min_length=5, description="作废原因（≥5 字，写审计；逻辑删除不物理删除）")
+
+
+class StudentRestoreRequest(BaseModel):
+    """受控恢复已作废学生主档。
+
+    恢复不是「再补录一次」：它复用原 studentId 与全部历史业务关联，属高危动作，
+    因此单独成一个动作、单独一个权限码、必须填原因并写审计。
+    """
+    studentNo: str = Field(..., min_length=1, description="要恢复的学号（租户内唯一）")
+    reason: str = Field(..., min_length=5,
+                        description="恢复原因（≥5 字，写入审计，事后可追溯）")

@@ -316,6 +316,96 @@ export const systemApi = {
     }
   },
 
+  /* ── 学生 / 教师拆分入口（各自独立模板与接口语义，共用批次与回执能力）── */
+
+  async downloadStudentImportTemplate() {
+    try {
+      const blob = await requestBlob('/system/identity-import/students/template')
+      saveBlob(blob, '学生导入模板.xlsx')
+      return { code: 0, data: {}, message: '模板已下载' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async validateStudentIdentityFile(file) {
+    try {
+      const data = await requestUpload('/system/identity-import/students/validate-file', file)
+      return { code: 0, data, message: '学生名单解析及预检完成' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async confirmStudentIdentityBatch(batchNo) {
+    try {
+      const data = await request('/system/identity-import/students/confirm-batch', {
+        method: 'POST', body: { batchNo }
+      })
+      const e = data.entities || {}
+      const sum = data.summary || {}
+      if (data.credentialReceipt) downloadXlsxFromApi(data.credentialReceipt)
+      // 结果按 §10 分类回显，不只报一个笼统数字
+      const parts = [
+        `新建主档 ${e.students?.created || 0}`,
+        `复用已有主档 ${sum.studentsReused || 0}`,
+        `新建账号 ${e.studentAccounts?.created || 0}`,
+        `补齐角色 ${sum.rolesFilled || 0}`,
+        `已存在跳过 ${sum.accountsSkipped || 0}`
+      ]
+      const conflicts = (sum.IDENTITY_CONFLICT || 0) + (sum.ORG_CONFLICT || 0)
+        + (sum.VOIDED_PROFILE || 0) + (sum.ACCOUNT_OCCUPIED || 0)
+      if (conflicts) parts.push(`冲突待处理 ${conflicts}`)
+      return {
+        code: 0,
+        data: { ...data, receipt: parts.join(' / ') + (data.credentialReceipt ? '，初始凭据回执已下载' : '') },
+        message: '学生导入与账号开通已完成'
+      }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async downloadTeacherImportTemplate() {
+    try {
+      const blob = await requestBlob('/system/identity-import/teachers/template')
+      saveBlob(blob, '教师导入模板.xlsx')
+      return { code: 0, data: {}, message: '模板已下载' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async validateTeacherIdentityFile(file) {
+    try {
+      const data = await requestUpload('/system/identity-import/teachers/validate-file', file)
+      return { code: 0, data, message: '教师名单解析及预检完成' }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
+  async confirmTeacherIdentityBatch(batchNo) {
+    try {
+      const data = await request('/system/identity-import/teachers/confirm-batch', {
+        method: 'POST', body: { batchNo }
+      })
+      const e = data.entities || {}
+      if (data.credentialReceipt) downloadXlsxFromApi(data.credentialReceipt)
+      return {
+        code: 0,
+        data: {
+          ...data,
+          receipt: `已创建教师账号 ${e.teachers?.created || 0} 个、角色绑定 ${e.roleBindings?.created || 0} 条`
+            + `${data.credentialReceipt ? '，初始凭据回执已下载' : ''}`
+        },
+        message: '教师账号已整批创建'
+      }
+    } catch (error) {
+      return apiError(error)
+    }
+  },
+
   async downloadIdentityImportErrors(batchNo) {
     try {
       const blob = await requestBlob(`/system/identity-import/batches/${encodeURIComponent(batchNo)}/errors`)

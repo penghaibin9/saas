@@ -68,6 +68,32 @@
         <p class="mp-note">提交后写入审计留痕；编辑模式仅提交实际修改的字段（避免误写脱敏展示值）。敏感字段展示与导出仍按角色权限脱敏。</p>
       </template>
     </div>
+    <AppConfirmDialog
+      :visible="restoreDialog.visible"
+      type="danger"
+      title="恢复已作废的学生主档"
+      confirm-text="确认恢复"
+      :submitting="restoreDialog.submitting"
+      @update:visible="restoreDialog.visible = $event"
+      @confirm="doRestore"
+    >
+      <div class="se-restore">
+        <p class="se-restore__hint">{{ restoreDialog.hint }}</p>
+        <p class="se-restore__note">
+          恢复将<strong>复用原学生 ID 与全部历史关联</strong>（成绩、实习、毕设、审批、消息），
+          不会新建第二份档案。<strong>登录账号不会一并恢复</strong>，如需该生重新登录，
+          请到「系统管理 › 师生账号」单独启用并按需重置密码。本次恢复将记入审计。
+        </p>
+        <label class="se-restore__label">恢复原因（≥5 字，写入审计）</label>
+        <textarea
+          v-model="restoreDialog.reason"
+          class="se-restore__input"
+          rows="3"
+          placeholder="例如：误作废，经与教务处核实该生仍在籍，需恢复原学籍档案"
+        />
+        <p v-if="restoreDialog.error" class="se-restore__error">{{ restoreDialog.error }}</p>
+      </div>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -80,6 +106,7 @@
  * 权限沿用 ctx.permissionActions.createStudent / editStudent（不扩大权限）。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppConfirmDialog } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
 import { toast } from '@/utils/toast'
@@ -88,7 +115,7 @@ const EMPTY_FORM = () => ({ name: '', studentNo: '', gender: '男', classId: '',
 
 export default {
   name: 'StudentEditView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -100,7 +127,9 @@ export default {
       form: EMPTY_FORM(),
       initial: EMPTY_FORM(),
       /* 乐观锁版本：保存时回传，服务端版本已变则 409，提示刷新 */
-      loadedVersion: null
+      loadedVersion: null,
+      /* 受控恢复：复用原档案与历史关联，需原因≥5字并二次确认 */
+      restoreDialog: { visible: false, reason: '', hint: '', error: '', submitting: false }
     }
   },
   computed: {
@@ -200,8 +229,38 @@ export default {
       if (res.code === 0) {
         toast.success(this.isCreate ? '建档成功，已进入待核验队列（已留痕）' : '学生信息已更新（已留痕）')
         this.backToList()
+      } else if (this.isCreate && this.isVoidedConflict(res)) {
+        // 学号属于已作废档案：不静默复活，转入受控恢复（需权限 + 原因 + 二次确认）
+        this.restoreDialog.visible = true
+        this.restoreDialog.hint = res.message
+        this.restoreDialog.reason = ''
+        this.restoreDialog.error = ''
       } else {
         this.formError = res.message
+      }
+    },
+
+    /** 后端用独立错误码区分「作废档案」与普通重复学号，不靠中文串匹配。 */
+    isVoidedConflict(res) {
+      return res?.bizCode === 'VOIDED_PROFILE_EXISTS'
+        || String(res?.message || '').includes('已作废档案')
+    },
+
+    async doRestore() {
+      const reason = String(this.restoreDialog.reason || '').trim()
+      if (reason.length < 5) {
+        this.restoreDialog.error = '恢复原因必填且不少于 5 个字'
+        return
+      }
+      this.restoreDialog.submitting = true
+      const res = await studentApi.restoreStudent({ studentNo: this.form.studentNo, reason })
+      this.restoreDialog.submitting = false
+      if (res.code === 0) {
+        this.restoreDialog.visible = false
+        toast.success(res.message || '已恢复该学生主档（登录账号未一并恢复）')
+        this.backToList()
+      } else {
+        this.restoreDialog.error = res.message
       }
     }
   }
@@ -210,6 +269,15 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.se-restore { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.se-restore__hint { margin: 0; color: var(--mp-text-primary, #1f2733); }
+.se-restore__note { margin: 0; color: var(--mp-text-secondary, #5b6472); font-size: 13px; line-height: 1.7; }
+.se-restore__label { font-size: 13px; color: var(--mp-text-secondary, #5b6472); }
+.se-restore__input {
+  width: 100%; border: 1px solid var(--mp-border, #d9dee7); border-radius: 6px;
+  padding: 8px 10px; font: inherit; resize: vertical;
+}
+.se-restore__error { margin: 0; color: var(--mp-danger, #d93a3a); font-size: 13px; }
 .se-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

@@ -1163,36 +1163,20 @@ def review_roster_correction(correction_id, user, action, note=None) -> dict:
             if current != old_plain:
                 raise AppException("DATA_CONFLICT",
                                    "该字段自发起更正后已被其它操作变更，请驳回后重新发起", http_status=409)
-            if c.field_key == "STUDENT_NO":
-                # 学号租户内永久唯一（含软删行，与 db_service.create_student 的复活规则一致），
-                # 查重不能排除 is_deleted，否则审核通过时会撞 uk_tenant_student_no。
-                dup = db.scalar(select(StudentProfile.id).where(
-                    StudentProfile.tenant_id == _tid(), StudentProfile.student_no == new_plain,
-                    StudentProfile.id != s.id))
-                if dup:
-                    raise AppException("DATA_CONFLICT", f"学号 {new_plain} 已被占用（含已作废档案）",
-                                       http_status=409)
-                s.student_no = new_plain
-            elif c.field_key == "REAL_NAME":
-                s.real_name = new_plain
-            elif c.field_key == "GENDER":
-                s.gender = new_plain
-            elif c.field_key == "ID_CARD":
-                s.id_card_encrypted = encrypt_sensitive(new_plain, "id_card")
-                s.id_card_hash = hash_sensitive(new_plain, "id_card")
-            elif c.field_key == "GRADE":
-                s.grade = new_plain
-            s.version = (s.version or 0) + 1
+            # 主档写入统一交给应用服务：CAS 乐观锁、学号永久唯一（含软删）查重、
+            # 证件号加密与 HMAC、投影同步、审计都在其中，本处不再直接改 ORM。
+            # 更正单状态与主档修改共用同一事务，一起成功或一起回滚。
+            from app.services import student_master_application_service as master
+            master.apply_approved_correction_in_session(
+                db, tenant_id=_tid(), student_id=s.id, field_key=c.field_key,
+                new_value=new_plain, expected_version=int(s.version or 0),
+                actor=user, correction_id=c.id)
             c.status = "APPROVED"
             c.review_note = note or "审核通过，主档已同步更新"
             _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPROVE",
                   f"{s.real_name} · {_CORRECTION_FIELD_LABEL.get(c.field_key)}："
                   f"{_correction_audit_value(c.field_key, old_plain)} → "
                   f"{_correction_audit_value(c.field_key, new_plain)}")
-            # 姓名/学号变更需刷新在校服务、毕设投影，与主档同事务
-            if c.field_key in ("STUDENT_NO", "REAL_NAME"):
-                from app.services.student_projection_sync import sync_student_projections_in_session
-                sync_student_projections_in_session(db, s)
         else:
             c.status = "REJECTED"
             c.review_note = note
@@ -1252,21 +1236,64 @@ def _resolve_class_name_map(db, class_ids) -> dict:
 
 
 def _roster_import_dup_check(rows: list) -> dict:
-    """库内学号查重（studentNo 已存在于 t_student_profile）。"""
-    from app.models import StudentProfile
-    nos = {(r.get("studentNo") or "").strip() for r in rows if r.get("studentNo")}
-    if not nos:
-        return {}
+    """库内查重（预检）：只报**真正阻断**的行，不再把「学号已存在」一律当错误。
+
+    学籍导入的现实是教务反复导入同一份名单来补齐/确认学籍，已有学生应当复用而不是报错
+    （见补充审计 §8）。因此这里只拦：已作废档案、身份关系异常、文件内重复；
+    「已存在且信息一致」交给落库阶段判为复用或跳过，并计入结果统计。
+
+    判定与落库共用 student_master_application_service.resolve_student_for_import，
+    避免预检与落库两套规则漂移；预检结论不缓存，落库时会重新判定。
+    """
+    from app.core.student_master_contract import (SOURCE_ROSTER_IMPORT, StudentCreateCommand,
+                                                  ACTION_CONFLICT)
+    from app.services import student_master_application_service as master
+
+    errors: dict = {}
+    seen_nos: set = set()
+    seen_cards: set = set()
     with session() as db:
-        existing = {s.student_no for s in db.scalars(select(StudentProfile).where(
-            StudentProfile.tenant_id == _tid(), StudentProfile.student_no.in_(list(nos)),
-            StudentProfile.is_deleted.is_(False))).all()}
-    errors = {}
-    for i, r in enumerate(rows, start=1):
-        no = (r.get("studentNo") or "").strip()
-        if no and no in existing:
-            errors[i] = f"学号 {no} 已存在于学籍主档"
+        cls_cache = _roster_class_cache(db, rows)
+        for i, r in enumerate(rows, start=1):
+            no = (r.get("studentNo") or "").strip()
+            if not no:
+                continue
+            cls = cls_cache.get((r.get("className") or "").strip())
+            cmd = StudentCreateCommand(
+                student_no=no, real_name=(r.get("realName") or "").strip(),
+                source=SOURCE_ROSTER_IMPORT,
+                gender=(r.get("gender") or "").strip() or None,
+                grade=(cls.grade if cls else None),
+                class_id=(cls.id if cls else None),
+                major_id=(cls.major_id if cls else None),
+                id_card=(r.get("idCard") or "").strip() or None)
+            res = master.resolve_student_for_import(
+                db, tenant_id=_tid(), cmd=cmd, seen_nos=seen_nos, seen_id_cards=seen_cards)
+            if res.action == ACTION_CONFLICT:
+                errors[i] = res.message
+            seen_nos.add(no)
+            card = (r.get("idCard") or "").strip()
+            if card:
+                from app.core.field_crypto import hash_sensitive
+                seen_cards.add(hash_sensitive(card, "id_card"))
     return errors
+
+
+def _roster_class_cache(db, rows: list) -> dict:
+    """按班级名批量取班级行，避免逐行查询。"""
+    from app.models import SchoolClass
+
+    names = {(r.get("className") or "").strip() for r in rows if r.get("className")}
+    if not names:
+        return {}
+    found = db.scalars(select(SchoolClass).where(
+        SchoolClass.tenant_id == _tid(), SchoolClass.class_name.in_(list(names)),
+        SchoolClass.is_deleted.is_(False))).all()
+    cache: dict = {}
+    for c in found:
+        # 同名班级无法唯一定位时置 None，由业务校验给出明确错误
+        cache[c.class_name] = None if c.class_name in cache else c
+    return cache
 
 
 def _roster_import_business_validate(row: dict, row_no: int) -> str | None:
@@ -1286,45 +1313,88 @@ def _roster_import_business_validate(row: dict, row_no: int) -> str | None:
     return None
 
 
-def _persist_roster_rows(rows: list) -> dict:
-    """学籍导入落库。
+# 教务学籍导入结果分类（与系统管理学生导入共用语义，前端按 key 归类，不靠中文匹配）
+ROSTER_RESULT_KEYS = ("created", "reused", "filled", "skipped",
+                      "identityConflict", "orgConflict", "voidedConflict", "failed")
 
-    阶段 B：本函数不再是第二套主档创建器——建档统一交给
-    student_master_application_service，教务侧只负责「解析班级 + 决定初始学籍状态 +
-    写教务审计」。这样组织父链校验、学号永久唯一/作废复活、敏感字段加密口径
-    与其它三条建档链完全一致，不会各写一份而彼此漂移。
+
+def _persist_roster_rows(rows: list) -> dict:
+    """学籍导入落库，按 §8 分类返回结果。
+
+    建档统一交给 student_master_application_service：教务侧只负责解析班级、
+    决定初始学籍状态、写教务审计。已有学生复用而不是报错——教务反复导入同一份
+    名单补齐学籍是真实作业方式；但组织冲突、身份冲突、作废档案一律阻断。
     """
     from app.core.context import get_current_user_ctx
-    from app.core.student_master_contract import SOURCE_ROSTER_IMPORT, StudentCreateCommand
-    from app.models import SchoolClass
+    from app.core.field_crypto import hash_sensitive
+    from app.core.student_master_contract import (ACTION_CREATE, ACTION_REUSE, ACTION_SKIP,
+                                                  CONFLICT_IDENTITY, CONFLICT_ORG,
+                                                  CONFLICT_VOIDED, SOURCE_ROSTER_IMPORT,
+                                                  StudentCreateCommand)
     from app.services import student_master_application_service as master
 
-    created = 0
+    stats = {k: 0 for k in ROSTER_RESULT_KEYS}
+    details: list = []
     actor = get_current_user_ctx()
+    seen_nos: set = set()
+    seen_cards: set = set()
     with session() as db:
-        for r in rows or []:
+        cls_cache = _roster_class_cache(db, rows or [])
+        for idx, r in enumerate(rows or [], start=1):
             class_name = (r.get("className") or "").strip()
-            cls = db.scalars(select(SchoolClass).where(
-                SchoolClass.tenant_id == _tid(), SchoolClass.class_name == class_name,
-                SchoolClass.is_deleted.is_(False))).first()
+            cls = cls_cache.get(class_name)
             if not cls:
-                continue  # 已在预校验拦截，防御性跳过（理论不可达）
+                # 班级缺失/同名不唯一：预校验已拦，这里防御性计失败并说明
+                stats["failed"] += 1
+                details.append({"row": idx, "studentNo": (r.get("studentNo") or "").strip(),
+                                "result": "failed", "message": f"班级无法唯一定位：{class_name}"})
+                continue
             init_status = (r.get("initialStatus") or "").strip() or "PENDING_REGISTER"
+            no = (r.get("studentNo") or "").strip()
             cmd = StudentCreateCommand(
-                student_no=(r.get("studentNo") or "").strip(),
-                real_name=(r.get("realName") or "").strip(),
+                student_no=no, real_name=(r.get("realName") or "").strip(),
                 source=SOURCE_ROSTER_IMPORT,
                 gender=(r.get("gender") or "").strip() or None,
                 grade=cls.grade,
                 class_id=cls.id, major_id=cls.major_id,
                 id_card=(r.get("idCard") or "").strip() or None,
-                current_stage="ENROLLED", student_status=init_status)
-            result = master.create_student_in_session(
-                db, tenant_id=_tid(), cmd=cmd, actor=actor)
-            _audit(db, "AA_ROSTER", result.student_id, "IMPORT", result.student_no)
-            created += 1
+                current_stage="ENROLLED", student_status=init_status,
+                # 批量导入不得复活已作废档案（预校验已拦，这里是第二道防线）
+                allow_restore=False,
+                # 正式建档：学院/专业/班级必须完整且自洽
+                require_complete_org=True)
+            res = master.resolve_student_for_import(
+                db, tenant_id=_tid(), cmd=cmd, seen_nos=seen_nos, seen_id_cards=seen_cards)
+            seen_nos.add(no)
+            card = (r.get("idCard") or "").strip()
+            if card:
+                seen_cards.add(hash_sensitive(card, "id_card"))
+
+            if res.blocked:
+                key = {CONFLICT_IDENTITY: "identityConflict", CONFLICT_ORG: "orgConflict",
+                       CONFLICT_VOIDED: "voidedConflict"}.get(res.reason_code, "failed")
+                stats[key] += 1
+                details.append({"row": idx, "studentNo": no, "result": key,
+                                "reasonCode": res.reason_code, "message": res.message})
+                continue
+
+            out = master.apply_resolution_in_session(
+                db, tenant_id=_tid(), cmd=cmd, resolution=res, actor=actor)
+            if res.action == ACTION_CREATE:
+                stats["created"] += 1
+                _audit(db, "AA_ROSTER", out.student_id, "IMPORT", out.student_no)
+            elif res.action == ACTION_REUSE:
+                stats["reused"] += 1
+                stats["filled"] += 1
+                _audit(db, "AA_ROSTER", out.student_id, "IMPORT_REUSE",
+                       f"{out.student_no} 复用并补齐 {sorted(res.fillable)}")
+            elif res.action == ACTION_SKIP:
+                stats["skipped"] += 1
+            details.append({"row": idx, "studentNo": no,
+                            "result": res.action.lower(), "message": res.message})
         db.commit()
-    return {"created": created}
+    # created 保留为「新建主档数」，Excel 框架用它显示成功行；其余分类另附
+    return {**stats, "details": details}
 
 
 def build_roster_import_spec():
@@ -1381,12 +1451,15 @@ def roster_import_dry_run(rows: list) -> dict:
 
 
 def roster_import_confirm(rows: list) -> dict:
+    """确认导入并返回分类统计（§10：不能只回一个笼统的 created）。"""
     from app.services import excel
     spec = build_roster_import_spec()
     pre = excel.pre_validate(spec, rows)
     result = excel.confirm_import(spec, rows)
     excel.job_service.record_import(spec.module_key, spec.biz_type, pre=pre, result=result, status="IMPORTED")
-    return {"created": result.get("created", 0)}
+    out = {k: int(result.get(k, 0) or 0) for k in ROSTER_RESULT_KEYS}
+    out["details"] = result.get("details", [])
+    return out
 
 
 # ═══════════ 入学/学年/学期注册 ═══════════

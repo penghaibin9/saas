@@ -4,7 +4,7 @@
       <strong>此处不会创建登录账号</strong>
       <span>这里只导入当前业务数据或名单。老师、学生尚无账号时，请先到系统管理统一批量创建。</span>
     </div>
-    <RouterLink class="aibn__link" to="/admin/system/identity-import">前往“导入老师和学生”</RouterLink>
+    <RouterLink class="aibn__link" to="/admin/system/identity-import/students">前往“学生导入与账号开通”</RouterLink>
   </aside>
 </template>
 

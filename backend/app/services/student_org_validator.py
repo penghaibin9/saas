@@ -34,7 +34,8 @@ def _as_optional_id(v, field_label: str) -> int | None:
 
 
 def validate_student_org_path(db, *, tenant_id: int, college_id=None, major_id=None,
-                              class_id=None, actor: dict | None = None) -> ValidatedStudentOrg:
+                              class_id=None, actor: dict | None = None,
+                              require_complete_org: bool = False) -> ValidatedStudentOrg:
     """校验学院→专业→班级父链。
 
     规则：
@@ -42,9 +43,14 @@ def validate_student_org_path(db, *, tenant_id: int, college_id=None, major_id=N
     2. class.major_id == major_id（传了 major 时）；
     3. major.college_id == college_id（传了 college 时）；
     4. 只传 class/major 时自动反推补齐上级，保证落库的三个 ID 自洽；
-    5. 班级已解散（DISBANDED）不得作为新学生的归属。
+    5. 班级已解散（DISBANDED）、学院/专业已停用（DISABLED/INACTIVE）不得作为新学生归属。
 
-    错误口径与 §9.2 一致：不存在/跨租户=404、父子冲突=422、班级已解散=409。
+    `require_complete_org=True`（所有正式建档入口必须启用）：
+    最终三个 ID 缺任何一个都拒绝创建。允许只填能唯一定位的班级，由服务端反推补齐；
+    但反推不出完整链路就必须报错——不得用默认学院/默认专业/未分班等假组织兜底，
+    也不得自动创建组织节点。组织主数据必须先维护好，再导入正式学生。
+
+    错误口径：不存在/跨租户=404、父子冲突或组织不完整=422、班级解散/组织停用=409。
     """
     from app.models.org import College, Major, SchoolClass
 
@@ -69,6 +75,7 @@ def validate_student_org_path(db, *, tenant_id: int, college_id=None, major_id=N
             Major.is_deleted.is_(False))).first()
         if not maj_row:
             raise not_found("专业不存在")
+        _assert_org_enabled(maj_row, "专业", getattr(maj_row, "major_name", ""))
 
     if cid is not None:
         col_row = db.scalars(select(College).where(
@@ -76,6 +83,7 @@ def validate_student_org_path(db, *, tenant_id: int, college_id=None, major_id=N
             College.is_deleted.is_(False))).first()
         if not col_row:
             raise not_found("学院不存在")
+        _assert_org_enabled(col_row, "学院", getattr(col_row, "college_name", ""))
 
     # 班级 → 专业
     if cls_row is not None:
@@ -107,8 +115,56 @@ def validate_student_org_path(db, *, tenant_id: int, college_id=None, major_id=N
                                f"专业「{maj_row.major_name}」不属于所选学院，请核对后重新选择",
                                http_status=422)
 
+    # 反推补齐后仍缺任一层级 → 正式建档一律拒绝，不接受「部分组织」的学生主档
+    if require_complete_org:
+        missing = [label for label, val in (("学院", cid), ("专业", mid), ("班级", clsid)) if not val]
+        if missing:
+            raise AppException(
+                "VALIDATION_ERROR",
+                f"学生必须归属完整的学院、专业、班级，当前缺少：{'、'.join(missing)}。"
+                "请填写可唯一定位的班级（系统会自动补全专业与学院），"
+                "或先在「学院专业班级」中维护好组织再导入",
+                http_status=422)
+
     _assert_actor_scope(db, actor, cid, clsid)
     return ValidatedStudentOrg(college_id=cid, major_id=mid, class_id=clsid)
+
+
+def _assert_org_enabled(row, label: str, name: str) -> None:
+    """学院/专业已停用不得作为新学生归属（已解散班级在班级分支单独判断）。"""
+    status = str(getattr(row, "status", "") or "").upper()
+    if status in {"DISABLED", "INACTIVE", "ARCHIVED", "CLOSED"}:
+        raise AppException("DATA_CONFLICT",
+                           f"{label}「{name}」已停用，不能作为学生归属，请先在组织管理中恢复或改选",
+                           http_status=409)
+
+
+def assert_student_org_scope(db, *, tenant_id: int, student, actor: dict | None,
+                             action: str = "维护") -> None:
+    """对**已存在的学生**做写操作前的组织范围校验。
+
+    用于恢复、作废、身份更正等「目标是既有学生」的动作：学院管理员只能操作本学院学生，
+    不能靠翻 ID 去动别的学院。前端筛选不算数——列表能不能看到与接口能不能改是两件事。
+    """
+    if actor is None or student is None:
+        return
+    from app.core.permissions import has_permission
+    if has_permission(actor, "*"):
+        return
+    try:
+        from app.core.affairs_security import build_affairs_context
+        ctx = build_affairs_context(actor, db)
+        allowed = ctx.allowed_class_ids(db)
+    except Exception:  # noqa: BLE001 - 范围上下文不可用时交由调用方既有校验兜底
+        return
+    if allowed is None:
+        return  # 全租户范围（学校/教务处管理员）
+    cls_id = getattr(student, "class_id", None)
+    if cls_id is None or int(cls_id) not in {int(x) for x in allowed}:
+        raise AppException("NO_DATA_SCOPE",
+                           f"该学生不在你的管理范围内，无法{action}"
+                           "（学院管理员只能操作本学院学生）",
+                           http_status=403)
 
 
 def _assert_actor_scope(db, actor, college_id, class_id) -> None:

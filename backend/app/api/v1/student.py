@@ -12,10 +12,12 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.affairs_security import no_data_scope, student_directory_scope
 from app.core.exceptions import AppException
-from app.core.permissions import has_permission, require_permission
+from app.core.permissions import (has_permission, require_any_permission,
+                                  require_permission)
 from app.core.response import paginate, success
 from app.core.security import require_staff
-from app.schemas.student import StudentCreateRequest, StudentUpdateRequest, StudentVoidRequest
+from app.schemas.student import (StudentCreateRequest, StudentRestoreRequest,
+                                 StudentUpdateRequest, StudentVoidRequest)
 from app.services import mock_audit_service as audit
 from app.services import student_service as svc
 
@@ -121,20 +123,38 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
     return success(_to_picker_item(row) if is_picker else row)
 
 
-@router.post("", summary="新增学生主档",
-             dependencies=[Depends(require_permission("student.profile.manage"))])
+# 学籍维护动作已拆细：create / update / restore 各自独立权限码，不再用一个
+# 过宽的 student.profile.manage 包办。manage 暂时并列接受，避免存量角色（学工等）
+# 的既有功能在本次拆分中被一刀切断；角色矩阵见 core/permissions.py。
+_P_CREATE = require_any_permission("student.profile.create", "student.profile.manage")
+_P_UPDATE = require_any_permission("student.profile.update", "student.profile.manage")
+_P_RESTORE = require_permission("student.profile.restore")  # 恢复不接受 manage 兜底
+
+
+@router.post("", summary="学生补录（新增学生主档）", dependencies=[Depends(_P_CREATE)])
 def create_student(body: StudentCreateRequest, user=Depends(require_staff)):
     row = svc.create_student(body)
-    audit.record("新增学生" if not row.get("restored") else "复活学生",
-                 method="POST", path="/api/v1/students", status_code=200,
-                 target_type="student", target_id=row["id"],
-                 detail={"restored": bool(row.get("restored"))})
-    msg = "已复活原学号主档" if row.get("restored") else "建档成功"
-    return success(row, message=msg)
+    audit.record("学生补录", method="POST", path="/api/v1/students", status_code=200,
+                 target_type="student", target_id=row["id"])
+    return success(row, message="建档成功")
 
 
-@router.put("/{student_id}", summary="更新学生主档",
-            dependencies=[Depends(require_permission("student.profile.manage"))])
+@router.post("/restore", summary="恢复已作废学生主档（受控动作）",
+             dependencies=[Depends(_P_RESTORE)])
+def restore_student(body: StudentRestoreRequest, user=Depends(require_staff)):
+    """恢复复用原 studentId 与全部历史关联，属高危动作：单独权限 + 原因≥5字 + 审计。
+
+    不自动恢复登录账号——账号启用与密码重置由「师生账号」单独处理。
+    """
+    row = svc.restore_student(body)
+    audit.record_critical(
+        "恢复作废学生主档", method="POST", path="/api/v1/students/restore", status_code=200,
+        target_type="student", target_id=row["id"],
+        detail={"studentNo": body.studentNo, "reason": body.reason})
+    return success(row, message=row.get("message") or "已恢复该学生主档")
+
+
+@router.put("/{student_id}", summary="更新学生主档", dependencies=[Depends(_P_UPDATE)])
 def update_student(student_id: str, body: StudentUpdateRequest, user=Depends(require_staff)):
     _check_target_scope(student_id, user)
     row = svc.update_student(student_id, body)
@@ -143,8 +163,7 @@ def update_student(student_id: str, body: StudentUpdateRequest, user=Depends(req
     return success(row, message="已保存")
 
 
-@router.post("/{student_id}/void", summary="作废学生主档",
-             dependencies=[Depends(require_permission("student.profile.manage"))])
+@router.post("/{student_id}/void", summary="作废学生主档", dependencies=[Depends(_P_UPDATE)])
 def void_student(student_id: str, body: StudentVoidRequest, user=Depends(require_staff)):
     _check_target_scope(student_id, user)
     # DB 模式：作废与高危审计同事务；mock 模式仍走 record_critical

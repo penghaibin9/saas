@@ -481,8 +481,8 @@ export const menuTree = [
         ]
       },
       {
-        id: 'menu-sys-identity-import', code: 'sys-identity-import', name: '导入老师和学生',
-        path: '/admin/system/identity-import', sort: 3, status: 'ENABLED', statusLabel: '启用',
+        id: 'menu-sys-identity-import', code: 'sys-student-import', name: '学生导入与账号开通',
+        path: '/admin/system/identity-import/students', sort: 3, status: 'ENABLED', statusLabel: '启用',
         buttons: [{ code: 'user:import', name: '批量创建账号' }]
       },
       {

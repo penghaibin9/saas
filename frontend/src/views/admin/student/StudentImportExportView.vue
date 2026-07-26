@@ -1,104 +1,21 @@
 <template>
   <ModulePageShell
-    title="导入导出管理"
+    title="数据导出"
     subtitle="模板下载 · 字段校验 · 错误预览 · 脱敏水印 · 审计回执"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
-    watermark-purpose="学生数据导入导出"
+    watermark-purpose="学生数据导出"
   >
     <AppGlobalState
       v-if="forbidden"
       state="forbidden"
-      title="暂无导入导出权限"
+      title="暂无学生数据导出权限"
       :description="forbiddenReason"
     />
     <div v-else class="mp-stack">
       <AccountImportBoundaryNotice />
 
-      <div class="mp-grid-2">
-        <!-- 导入 -->
-        <section class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">批量导入</span>
-            <span v-if="!canImport" class="mp-note">{{ reason('importStudents') }}</span>
-          </div>
-          <div class="mp-card__body mp-stack">
-            <div>
-              <div class="ie-label">1. 下载导入模板</div>
-              <div v-for="t in templates" :key="t.id" class="ie-tpl">
-                <div>
-                  <div class="mp-cell-main">{{ t.name }}</div>
-                  <div class="mp-cell-sub">{{ t.description }} · {{ t.fieldCount }} 个字段 · 更新于 {{ t.updatedAt }}</div>
-                </div>
-                <AppButton variant="ghost" @click="downloadTemplate(t)">下载模板</AppButton>
-              </div>
-            </div>
-
-            <div>
-              <div class="ie-label">2. 选择模板与数据文件</div>
-              <div class="ie-row">
-                <select v-model="importForm.templateId" class="ie-control" :disabled="!canImport">
-                  <option value="">请选择导入模板</option>
-                  <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
-                </select>
-                <AppButton variant="secondary" :disabled="!canImport" @click="pickFile">
-                  {{ importForm.fileName || '选择数据文件（xlsx / csv）' }}
-                </AppButton>
-                <input
-                  ref="fileInput"
-                  type="file"
-                  accept=".xlsx,.csv"
-                  style="display: none"
-                  @change="onFilePicked"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div class="ie-label">3. 校验与导入</div>
-              <div class="ie-row">
-                <AppButton variant="primary" :disabled="!canImport || validating" @click="validate">
-                  {{ validating ? '校验中…' : '开始校验' }}
-                </AppButton>
-                <label v-if="validateResult && !realImport" class="ie-check">
-                  <input v-model="importForm.skipErrors" type="checkbox" />
-                  跳过错误行继续导入
-                </label>
-                <AppButton
-                  v-if="validateResult"
-                  variant="primary"
-                  :disabled="!canImport || importing || (validateResult.errorRows > 0 && (realImport || !importForm.skipErrors))"
-                  @click="confirmImport"
-                >
-                  {{ importing ? '导入中…' : '确认导入' }}
-                </AppButton>
-              </div>
-              <p v-if="importError" class="mp-form-err">{{ importError }}</p>
-
-              <template v-if="validateResult">
-                <div class="ie-validate">
-                  校验完成：共 {{ validateResult.totalRows }} 行，可导入
-                  <span class="ie-ok">{{ validateResult.validRows }}</span> 行，错误
-                  <span class="ie-bad">{{ validateResult.errorRows }}</span> 行
-                </div>
-                <table v-if="validateResult.errors.length" class="mp-audit">
-                  <thead>
-                    <tr><th>行号</th><th>字段</th><th>原始值</th><th>错误说明</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="e in validateResult.errors" :key="e.row">
-                      <td class="is-who">第 {{ e.row }} 行</td>
-                      <td>{{ e.field }}</td>
-                      <td>{{ e.rawValue || '—' }}</td>
-                      <td>{{ e.message }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </template>
-            </div>
-          </div>
-        </section>
-
+      <div class="mp-stack">
         <!-- 导出 -->
         <section class="mp-card">
           <div class="mp-card__head">
@@ -241,14 +158,17 @@
 </template>
 
 <script>
-/** 导入导出管理（/admin/student/import-export）：模板 → 校验 → 错误预览 → 回执；导出脱敏 + 水印 + 审计。 */
+/** 学生数据导出（/admin/student/import-export）：范围 → 字段 → 用途 → 任务；脱敏 + 水印 + 审计。
+ *
+ * 导入部分已迁出：学生主档只有教务学籍导入与系统管理学生导入两条正式写入路径，
+ * 学工侧的「导入学生」改为分流页 StudentImportGatewayView，不再上传与写入。
+ * 路径保持不变以免旧链接 404；菜单标签已改为「数据导出」。
+ */
 import { ModulePageShell, StatusTag as AppStatusTag, EmptyState } from '@/components/business'
 import { AppGlobalState, AppConfirmDialog } from '@/components/common'
 import AccountImportBoundaryNotice from '@/components/common/AccountImportBoundaryNotice.vue'
 import { AppButton } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
-import { shouldTryReal } from '@/services/http/client'
-import { confirmStudentImport, validateStudentImportFile } from '@/services/http/adapters'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -257,28 +177,15 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      templates: [],
       tasks: [],
       audits: [],
       exportOpts: { scopes: [], fieldGroups: [], purposes: [] },
-      importForm: { templateId: '', fileName: '', skipErrors: false },
-      pickedFile: null,
-      realBatchNo: '',
-      realImport: false,
-      validating: false,
-      importing: false,
-      validateResult: null,
-      importError: '',
       exportForm: { scope: 'CURRENT_SCOPE', fieldKeys: ['name', 'studentNo', 'orgPath'], purpose: '', remark: '' },
       exportError: '',
       exportDialog: { visible: false, submitting: false }
     }
   },
   computed: {
-    canImport() {
-      const pa = this.ctx.permissionActions.importStudents
-      return !!(pa && pa.visible && pa.allowed)
-    },
     canExport() {
       const pa = this.ctx.permissionActions.exportStudents
       return !!(pa && pa.visible && pa.allowed)
@@ -289,13 +196,11 @@ export default {
     },
     forbidden() {
       const pa = this.ctx.permissionActions
-      const importVisible = pa.importStudents && pa.importStudents.visible
-      const exportVisible = pa.exportStudents && pa.exportStudents.visible
-      return !importVisible && !exportVisible
+      return !(pa.exportStudents && pa.exportStudents.visible)
     },
     forbiddenReason() {
       const pa = this.ctx.permissionActions
-      return (pa.importStudents && pa.importStudents.reason) || (pa.exportStudents && pa.exportStudents.reason) || '请联系系统管理员开通'
+      return (pa.exportStudents && pa.exportStudents.reason) || '请联系系统管理员开通'
     },
     exportSummary() {
       const scope = this.exportOpts.scopes.find((s) => s.value === this.exportForm.scope)
@@ -312,8 +217,7 @@ export default {
     }
   },
   async created() {
-    const [tplRes, optRes] = await Promise.all([studentApi.getImportTemplates(), studentApi.getExportOptions()])
-    if (tplRes.code === 0) this.templates = tplRes.data
+    const optRes = await studentApi.getExportOptions()
     if (optRes.code === 0) this.exportOpts = optRes.data
     this.refreshTasks()
     this.refreshAudits()
@@ -322,88 +226,6 @@ export default {
     reason(key) {
       const pa = this.ctx.permissionActions[key]
       return pa && !pa.allowed ? pa.reason : ''
-    },
-    downloadTemplate(t) {
-      toast.success('模板「' + t.fileName + '」已开始下载（演示环境不产生真实文件）')
-    },
-    pickFile() {
-      // 真实文件选择（后端在线走 /import/students/validate-file；离线回退 mock 演示）
-      if (this.$refs.fileInput) {
-        this.$refs.fileInput.value = ''
-        this.$refs.fileInput.click()
-        return
-      }
-      this.importForm.fileName = 'student-import-' + Date.now() + '.xlsx'
-      this.validateResult = null
-      this.importError = ''
-    },
-    onFilePicked(e) {
-      const file = e.target.files && e.target.files[0]
-      if (!file) return
-      this.pickedFile = file
-      this.importForm.fileName = file.name
-      this.validateResult = null
-      this.realBatchNo = ''
-      this.realImport = false
-      this.importError = ''
-    },
-    async validate() {
-      this.importError = ''
-      this.validating = true
-      let res
-      if (this.pickedFile && shouldTryReal()) {
-        // 真实 Dry-Run：上传 xlsx/csv → 后端解析校验（失败自动回退 mock 演示流）
-        res = await validateStudentImportFile(this.pickedFile).catch(() => null)
-        if (res && res.code === 0) {
-          this.realImport = true
-          this.realBatchNo = res.data.batchNo
-        }
-      }
-      if (!res) {
-        this.realImport = false
-        res = await studentApi.validateImport(this.importForm)
-      }
-      this.validating = false
-      if (res.code === 0) {
-        this.validateResult = res.data
-        this.refreshAudits()
-      } else {
-        this.importError = res.message
-      }
-    },
-    async confirmImport() {
-      this.importError = ''
-      this.importing = true
-      let res
-      if (this.realImport && this.realBatchNo) {
-        res = await confirmStudentImport(this.realBatchNo).catch((e) => ({ code: -1, message: e.message }))
-      } else {
-        res = await studentApi.confirmImport(this.importForm)
-      }
-      this.importing = false
-      if (res.code === 0) {
-        toast.success(
-          '导入完成：成功 ' + res.data.successRows + ' 条，失败 ' + res.data.failedRows + ' 条，批次 ' + res.data.auditId
-        )
-        const wasReal = this.realImport
-        this.validateResult = null
-        this.pickedFile = null
-        this.realBatchNo = ''
-        this.realImport = false
-        this.importForm = { templateId: '', fileName: '', skipErrors: false }
-        this.refreshTasks()
-        this.refreshAudits()
-        if (wasReal) {
-          // 真实导入成功：跳转学生主档列表（列表挂载即从后端拉取最新数据）
-          this.$router.push('/admin/student/list')
-        }
-      } else {
-        this.importError = res.message
-      }
-    },
-    toggleField(key, checked) {
-      const list = this.exportForm.fieldKeys
-      this.exportForm.fieldKeys = checked ? [...list, key] : list.filter((k) => k !== key)
     },
     openExportConfirm() {
       this.exportError = ''

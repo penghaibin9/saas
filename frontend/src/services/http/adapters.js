@@ -80,6 +80,17 @@ export async function getStudentDetail(studentId) {
   })
 }
 
+/** 受控恢复已作废学生主档：复用原 studentId 与历史关联，需原因≥5字，后端写审计。
+ *  不恢复登录账号——账号启用与改密由「师生账号」单独处理。 */
+export async function restoreStudent({ studentNo, reason } = {}) {
+  const d = await request('/students/restore', {
+    method: 'POST',
+    body: { studentNo, reason }
+  })
+  return envelope(studentRow(d))
+}
+
+
 export async function createStudent(payload = {}) {
   const d = await request('/students', {
     method: 'POST',
@@ -291,37 +302,7 @@ export async function createStudentsExport({ purpose, remark, scopeLabel } = {})
   })
 }
 
-/* ── P4.1 · 学生真实文件导入（Dry-Run 两步） ── */
-import { requestUpload } from './client'
+/* 旧「学生真实文件导入」适配器已删除：/import/students/* 随入口收敛下线。
+ * 学生批量导入统一走「系统管理 › 学生导入与账号开通」
+ * （systemApi.validateStudentIdentityFile / confirmStudentIdentityBatch）。 */
 
-export async function validateStudentImportFile(file) {
-  const d = await requestUpload('/import/students/validate-file', file)
-  return envelope({
-    batchNo: d.batchNo,
-    status: d.status,
-    totalRows: d.totalRows,
-    validRows: d.okRows,
-    successRows: d.okRows,
-    errorRows: d.errorRows,
-    errors: (d.errors || []).map((e) => ({
-      row: e.rowIndex || e.rowNo,
-      rowIndex: e.rowIndex || e.rowNo,
-      field: e.field || e.errorCode || '—',
-      rawValue: e.rawValue === undefined || e.rawValue === '' ? '—' : String(e.rawValue),
-      message: e.message
-    })),
-    realApi: true
-  })
-}
-
-export async function confirmStudentImport(batchNo) {
-  const d = await request('/import/students/confirm', { method: 'POST', body: { batchNo } })
-  return envelope({
-    batchNo: d.batchNo,
-    status: d.status,
-    successRows: d.insertedRows,
-    failedRows: 0,
-    auditId: d.batchNo,
-    realApi: true
-  })
-}

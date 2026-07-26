@@ -287,7 +287,7 @@ export default {
     emptyDescription() {
       return this.isIdentityImport
         ? '请使用本页唯一导入入口批量创建老师或学生账号'
-        : '可调整筛选条件；批量开户请前往「导入老师和学生」菜单'
+        : '可调整筛选条件；批量开户请前往「学生导入与账号开通」或「教师导入」菜单'
     },
     visibleColumns() {
       return this.columnsConfig.filter((c) => c.visible).map((c) => ({ key: c.key, title: c.title }))

@@ -245,7 +245,11 @@ def create_student(body) -> dict:
         student_no=body.studentNo, real_name=body.realName, source=SOURCE_MANUAL,
         gender=body.gender, grade=body.grade,
         college_id=body.collegeId, major_id=body.majorId, class_id=body.classId,
-        phone=body.phone)
+        phone=body.phone, id_card=getattr(body, "idCard", None),
+        # 学生补录同属正式建档：必须归属完整、自洽的学院/专业/班级。
+        # 作废档案一律不在补录里复活——恢复是独立的受控动作（见 restore_student），
+        # 需单独权限、填写原因、二次确认并写审计。
+        require_complete_org=True, allow_restore=False)
     with session() as db:
         result = master.create_student_in_session(
             db, tenant_id=_tid(), cmd=cmd, actor=get_current_user_ctx())
@@ -259,8 +263,6 @@ def create_student(body) -> dict:
         _org_names(db, [s])
         row = _student_row(s, body.phone)
         row["restored"] = result.restored
-        if result.restored:
-            row["message"] = "已复活原学号主档（同一 studentId），非新建档案"
         return row
 
 
@@ -297,6 +299,48 @@ def update_student(student_id, body) -> dict:
         db.refresh(s)
         _org_names(db, [s])
         return _student_row(s, cmd.phone or _primary_phone(db, s.id))
+
+
+def restore_student(body) -> dict:
+    """受控恢复已作废学生主档（独立动作，非补录分支）。
+
+    权限 student.profile.restore 在 API 层校验；这里再做一次数据范围校验，
+    确保学院管理员不能恢复别的学院的学生。恢复与审计同事务，失败一起回滚。
+    """
+    from app.services import student_master_application_service as master
+    from app.services.student_org_validator import assert_student_org_scope
+
+    actor = get_current_user_ctx()
+    with session() as db:
+        # 先按学号定位作废档案并校验数据范围，再执行恢复——
+        # 越权应当在动手之前拒绝，而不是先改完再靠回滚兜底。
+        target = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.student_no == str(body.studentNo or "").strip(),
+            StudentProfile.is_deleted.is_(True))).first()
+        if target is not None:
+            assert_student_org_scope(db, tenant_id=_tid(), student=target, actor=actor, action="恢复")
+        result = master.restore_voided_student_in_session(
+            db, tenant_id=_tid(), student_no=body.studentNo, reason=body.reason, actor=actor)
+        s = db.get(StudentProfile, result["studentId"])
+        # 高危动作：操作者、角色、原因、作废前后状态全部入审计
+        audit_insert_in_session(
+            db, "恢复作废学生主档", "student",
+            {"studentNo": result["studentNo"], "realName": result["realName"],
+             "reason": body.reason,
+             "operator": (actor or {}).get("realName") or "",
+             "roleCode": (actor or {}).get("currentRoleCode") or "",
+             "before": result["before"], "after": result["after"],
+             "note": "复用原 studentId 与历史业务关联；登录账号未自动恢复"},
+            "SUCCESS", resource_id=str(result["studentId"]))
+        db.commit()
+        db.refresh(s)
+        _org_names(db, [s])
+        row = _student_row(s, _primary_phone(db, s.id))
+        row["restored"] = True
+        row["message"] = ("已恢复该学号的作废档案，复用原学生 ID 与历史关联。"
+                          "登录账号未一并恢复，如需该生重新登录请到「师生账号」单独启用。")
+        return row
 
 
 def void_student(student_id, reason: str) -> dict:

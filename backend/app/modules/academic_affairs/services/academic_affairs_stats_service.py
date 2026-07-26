@@ -11,7 +11,7 @@
 - 原"4 项底层未建模块占位"已核销（2026-07-16）：调停课/选课/考务/教学资源四个 service 均已建成落库，
   对应指标改为真实聚合（调停课按班级范围收敛；选课为全校口径，受限角色 fail-closed 置零并说明；
   考务按学院范围收敛；教学资源为全校共享设施口径）。
-- 下钻到学生级明细写审计（STATS_DRILL_*）；证件号沿用 `_mask_id_card` 脱敏（§11）。
+- 下钻到学生级明细写审计（STATS_DRILL_*）；学号为校内编码、非敏感信息，下钻明细直接展示（甲方 2026-07-25 拍板）。
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.permissions import is_super_admin
-from app.services.db_service import _mask_id_card, _tid, session
+from app.services.db_service import _tid, session
 
 # 教务处口径（全校）角色：与 permissions.py `academicAffairs.*` 授权 + mock dataScope=SCHOOL 一致。
 # 说明：这是「本域按业务口径的角色归类」而非新 scope 解析器；范围表解析、班级展开仍由 build_affairs_context 承担。
@@ -567,7 +567,7 @@ def registration_unregistered(user, term_id=None, college_id=None, major_id=None
             p = prof.get(r.student_id)
             rows.append({"registrationId": str(r.id), "studentId": str(r.student_id),
                          "studentName": (p.real_name if p else ""),
-                         "studentNo": _mask_id_card(p.student_no) if p else "",
+                         "studentNo": (p.student_no or "") if p else "",
                          "status": r.status})
         _audit(db, "STATS_DRILL_REGISTRATION", f"未注册名单 total={total} college={college_id or '-'}")
         db.commit()
@@ -602,7 +602,7 @@ def warning_detail(user, level=None, source=None, college_id=None, page=1, page_
         for w in warns:
             a = acad.get(w.acad_student_id)
             rows.append({"warningId": str(w.id), "studentName": (a.name if a else ""),
-                         "studentNo": _mask_id_card(a.student_no) if a else "",
+                         "studentNo": (a.student_no or "") if a else "",
                          "className": (a.class_name if a else ""),
                          "level": w.level, "warnType": w.warn_type, "status": w.status})
         _audit(db, "STATS_DRILL_WARNING", f"预警明细 total={total} level={level or '-'}")
@@ -639,7 +639,7 @@ def status_change_detail(user, change_type=None, term_id=None, college_id=None,
         for c in changes:
             p = prof.get(c.student_id)
             rows.append({"changeId": str(c.id), "studentName": (p.real_name if p else ""),
-                         "studentNo": _mask_id_card(p.student_no) if p else "",
+                         "studentNo": (p.student_no or "") if p else "",
                          "changeType": c.change_type, "fromStatus": c.from_status,
                          "toStatus": c.to_status})
         _audit(db, "STATS_DRILL_STATUS_CHANGE", f"异动明细 total={total} type={change_type or '-'}")
@@ -875,7 +875,7 @@ def exam_detail(user, term_id=None, college_id=None, incident_type=None,
         rows = db.scalars(q.order_by(AaExamIncident.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         items = [{"incidentId": str(i.id), "studentName": i.student_name or "",
-                 "studentNo": _mask_id_card(i.student_no) if i.student_no else "",
+                 "studentNo": i.student_no or "",
                  "incidentType": i.incident_type,
                  "recordedAt": (i.recorded_at.isoformat() if i.recorded_at else None)}
                 for i in rows]
@@ -1090,7 +1090,7 @@ def exam_detail(user, term_id=None, college_id=None, incidentType=None, page=1, 
         rows = db.scalars(q.order_by(AaExamIncident.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         items = [{"incidentId": str(r.id), "studentName": r.student_name or "",
-                 "studentNo": _mask_id_card(r.student_no) if r.student_no else "",
+                 "studentNo": r.student_no or "",
                  "incidentType": r.incident_type,
                  "description": r.description or "", "recordedAt": (r.recorded_at.isoformat() if r.recorded_at else None)}
                 for r in rows]
@@ -1177,7 +1177,7 @@ def grade_detail(user, term_id=None, college_id=None, course_name=None, page=1, 
         for g in rows:
             a = acad.get(g.acad_student_id)
             items.append({"gradeId": str(g.id), "studentName": (a.name if a else ""),
-                         "studentNo": _mask_id_card(a.student_no) if a else "",
+                         "studentNo": (a.student_no or "") if a else "",
                          "courseName": g.course_name, "term": g.term or "", "score": g.score})
         _audit(db, "STATS_DRILL_GRADE", f"挂科明细 total={total} term={term_id or '-'}")
         db.commit()
@@ -1278,7 +1278,7 @@ def graduation_abnormal(user, batch_id=None, college_id=None, item_type=None,
         for r, fail_items in page_rows:
             p = prof.get(r.student_id)
             items_out.append({"resultId": str(r.id), "studentName": (p.real_name if p else ""),
-                             "studentNo": _mask_id_card(p.student_no) if p else "",
+                             "studentNo": (p.student_no or "") if p else "",
                              "abnormalItems": fail_items, "status": r.status})
         _audit(db, "STATS_DRILL_GRADUATION", f"毕业异常明细 total={total} batch={batch_id or '-'}")
         db.commit()

@@ -35,6 +35,17 @@ HEADERS = (
     "数据范围类型（教师）", "数据范围引用（教师）",
 )
 REQUIRED_HEADERS = {"账号类型", "工号/学号", "姓名"}
+
+# ── 学生 / 教师拆分模板（学生导入与账号开通、教师导入两个独立入口）──────────
+# 拆分理由：混合模板靠「账号类型」列区分，学生行要跳过教师列、教师行要跳过学生列，
+# 学校填表时极易串列；且两类导入的权限、结果统计、后续流程完全不同。
+# 两套模板共用本文件的归档校验、行数上限、公式注入防护、批次与回执能力，不另造框架。
+STUDENT_HEADERS = ("学号", "姓名", "所属学院", "所属专业", "班级名称", "年级", "性别", "身份证号")
+STUDENT_REQUIRED_HEADERS = {"学号", "姓名", "班级名称"}
+
+TEACHER_HEADERS = ("工号", "姓名", "所属部门", "岗位名称", "预设角色编码",
+                   "数据范围类型", "数据范围引用")
+TEACHER_REQUIRED_HEADERS = {"工号", "姓名", "预设角色编码"}
 RELATION_HEADERS = ("关系类型", "主体工号", "对象编号/学号", "业务批次编号", "备注")
 RELATION_REQUIRED_HEADERS = {"关系类型", "主体工号", "对象编号/学号"}
 RELATION_TYPES = {
@@ -236,6 +247,241 @@ def build_template() -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _style_header(ws, headers, required, fill, widths) -> None:
+    ws.append([f"{h} *" if h in required else h for h in headers])
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = fill
+    for index, width in enumerate(widths, 1):
+        ws.column_dimensions[ws.cell(row=1, column=index).column_letter].width = width
+    ws.freeze_panes = "A2"
+
+
+def _append_notes(wb, title: str, instructions: list) -> None:
+    notes = wb.create_sheet(title)
+    notes.append([title])
+    notes["A1"].font = Font(bold=True, size=12)
+    for index, item in enumerate(instructions, 2):
+        notes.cell(row=index, column=1, value=item)
+    notes.column_dimensions["A"].width = 100
+
+
+def build_student_template() -> bytes:
+    """学生导入模板：只含学生字段，不出现任何教师列（角色/部门/岗位/数据范围）。"""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "导入模板"
+    fill = PatternFill("solid", fgColor="DCE6F1")
+    _style_header(ws, STUDENT_HEADERS, STUDENT_REQUIRED_HEADERS, fill,
+                  [20, 16, 24, 24, 24, 12, 10, 24])
+    ws.column_dimensions["A"].number_format = "@"  # 学号按文本，避免前导零丢失
+    ws.column_dimensions["H"].number_format = "@"
+    gender = DataValidation(type="list", formula1='"男,女"', allow_blank=True)
+    ws.add_data_validation(gender)
+    gender.add(f"G2:G{MAX_ROWS + 1}")
+
+    _append_notes(wb, "填写说明", [
+        "只允许上传本模板生成的 .xlsx 文件，不支持 CSV、旧版 .xls 或启用宏的 .xlsm。",
+        "本模板只导入学生。教师请使用「教师导入」的专用模板，两者不可混用。",
+        "学生角色由系统固定为 STUDENT，无需也无法在此指定角色。",
+        "班级名称必填：学生必须归属完整的学院、专业、班级，系统会按班级自动补全专业与学院。",
+        "若校内存在同名班级，请同时填写所属学院与所属专业以便唯一定位。",
+        "学号请设置为文本格式，学校内必须唯一；学号一经建立在本校内永久唯一，作废后不可另建新档。",
+        "已存在的学生会自动复用原档案并补齐空缺信息，不会重复建档；院系班变更请走「学籍异动」。",
+        "身份证号选填；填写后用于识别「同一人两个学号」等异常，不会明文展示。",
+        "导入将同时创建登录账号并生成一次性初始密码，请在结果页及时下载凭据回执。",
+        "预检通过后才能整批确认；任何错误都会阻止整批写入。",
+    ])
+
+    samples = wb.create_sheet("填写示例（不要导入）")
+    samples.append(list(STUDENT_HEADERS))
+    samples.append(["20260001", "张同学", "信息工程学院", "软件技术", "软件2601", "2026", "男", ""])
+    for cell in samples[1]:
+        cell.font = Font(bold=True)
+        cell.fill = fill
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    wb.close()
+    return buffer.getvalue()
+
+
+def build_teacher_template() -> bytes:
+    """教师导入模板：只含教职工字段，不出现学生学院/专业/班级/年级/学籍状态。"""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "导入模板"
+    fill = PatternFill("solid", fgColor="DCE6F1")
+    _style_header(ws, TEACHER_HEADERS, TEACHER_REQUIRED_HEADERS, fill,
+                  [20, 16, 24, 20, 30, 22, 28])
+    ws.column_dimensions["A"].number_format = "@"
+    scope = DataValidation(type="list", formula1='"SCHOOL,COLLEGE,CLASS,ADVISOR"', allow_blank=True)
+    ws.add_data_validation(scope)
+    scope.add(f"F2:F{MAX_ROWS + 1}")
+
+    _append_notes(wb, "填写说明", [
+        "只允许上传本模板生成的 .xlsx 文件，不支持 CSV、旧版 .xls 或启用宏的 .xlsm。",
+        "本模板只导入教师。学生请使用「学生导入与账号开通」的专用模板，两者不可混用。",
+        "预设角色编码必填；多个角色用中文/英文逗号、分号或竖线分隔，可选值见「教师预设角色」页。",
+        "辅导员必须填写 CLASS 或 ADVISOR 数据范围类型及对应的数据范围引用（班级名称）。",
+        "工号请设置为文本格式，学校内必须唯一；工号被学生或其它账号占用时会整批阻断。",
+        "导入将创建登录账号并生成一次性初始密码，请在结果页及时下载凭据回执。",
+        "预检通过后才能整批确认；任何错误都会阻止整批写入。",
+    ])
+
+    samples = wb.create_sheet("填写示例（不要导入）")
+    samples.append(list(TEACHER_HEADERS))
+    samples.append(["T2026001", "李老师", "教务处", "任课教师", "ACADEMIC_TEACHER", "", ""])
+    samples.append(["T2026002", "王老师", "学生工作处", "辅导员", "COUNSELOR", "CLASS", "软件2601"])
+    for cell in samples[1]:
+        cell.font = Font(bold=True)
+        cell.fill = fill
+
+    roles = wb.create_sheet("教师预设角色")
+    roles.append(["角色编码", "角色名称", "默认数据范围", "分类"])
+    for item in role_catalog(teacher_only=True)["items"]:
+        roles.append([item["roleCode"], item["roleName"], item["defaultScope"], item["category"]])
+    for cell in roles[1]:
+        cell.font = Font(bold=True)
+        cell.fill = fill
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    wb.close()
+    return buffer.getvalue()
+
+
+def _open_single_sheet(content: bytes, filename: str, headers: tuple, required: set,
+                       what: str) -> tuple:
+    """共用的 xlsx 打开与表头校验（归档校验、大小与公式防护与混合模板一致）。"""
+    if not str(filename or "").lower().endswith(".xlsx"):
+        raise AppException("FILE_TYPE_NOT_ALLOWED", f"{what}只支持标准 .xlsx 文件")
+    if not content:
+        raise AppException("VALIDATION_ERROR", "上传文件为空")
+    if len(content) > MAX_FILE_BYTES:
+        raise AppException("FILE_TOO_LARGE", "导入文件超过 20MB 上限，请拆分后重试")
+    _validate_xlsx_archive(content)
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=False, keep_links=False)
+        ws = wb["导入模板"] if "导入模板" in wb.sheetnames else wb.worksheets[0]
+        iterator = ws.iter_rows(values_only=True)
+        raw_headers = next(iterator)
+    except (StopIteration, KeyError):
+        raise AppException("VALIDATION_ERROR", "Excel 没有可导入的工作表或表头")
+    except Exception as exc:  # noqa: BLE001
+        raise AppException("FILE_TYPE_NOT_ALLOWED", "文件不是有效的标准 .xlsx，请重新下载模板") from exc
+
+    parsed_headers = [_normalize_header(v) for v in raw_headers]
+    dup = sorted({h for h in parsed_headers if h and parsed_headers.count(h) > 1})
+    if dup:
+        wb.close()
+        raise AppException("VALIDATION_ERROR", f"Excel 表头重复：{','.join(dup)}")
+    missing = [h for h in required if h not in parsed_headers]
+    unknown = [h for h in parsed_headers if h and h not in headers]
+    if missing or unknown:
+        wb.close()
+        parts = []
+        if missing:
+            parts.append(f"缺少表头：{','.join(missing)}")
+        if unknown:
+            # 串用模板是最常见的误操作，直接点破
+            parts.append(f"不支持的表头：{','.join(unknown)}（请确认没有把另一类模板传到这里）")
+        raise AppException("VALIDATION_ERROR", "；".join(parts) + "。请使用系统下载的最新版模板")
+    return wb, iterator, parsed_headers
+
+
+def _row_cells(values, headers, header_index, row_no, errors, entity):
+    """取一行并做公式注入防护；返回 (cells, 是否空行)。"""
+    cells = {}
+    for name in headers:
+        index = header_index.get(name)
+        value = values[index] if index is not None and index < len(values) else ""
+        if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+            errors.append({"row": row_no, "entity": entity, "field": name,
+                           "error": "单元格禁止公式或可执行前缀，请改为纯文本"})
+            value = ""
+        cells[name] = _cell_text(value)
+    return cells, not any(cells.values())
+
+
+def parse_student_xlsx(content: bytes, filename: str) -> dict:
+    """解析学生专用模板。输出结构与 parse_xlsx 一致，下游批次/预检/确认完全复用。"""
+    wb, iterator, headers = _open_single_sheet(
+        content, filename, STUDENT_HEADERS, STUDENT_REQUIRED_HEADERS, "学生导入")
+    header_index = {n: headers.index(n) for n in STUDENT_HEADERS if n in headers}
+    students, raw_rows, errors = [], [], []
+    total = 0
+    for row_no, values in enumerate(iterator, 2):
+        cells, empty = _row_cells(values, STUDENT_HEADERS, header_index, row_no, errors, "student")
+        if empty:
+            continue
+        total += 1
+        if total > MAX_ROWS:
+            wb.close()
+            raise AppException("VALIDATION_ERROR", f"单次最多导入 {MAX_ROWS} 行，请拆分文件")
+        no, name = cells["学号"], cells["姓名"]
+        raw_rows.append({"row": row_no, "accountType": "STUDENT", "accountNo": no, "name": name})
+        if not no:
+            errors.append({"row": row_no, "entity": "student", "field": "学号", "error": "学号必填"})
+        if not name:
+            errors.append({"row": row_no, "entity": "student", "field": "姓名", "error": "姓名必填"})
+        if not cells["班级名称"]:
+            errors.append({"row": row_no, "entity": "student", "field": "班级名称",
+                           "error": "班级必填：学生必须归属完整的学院、专业、班级"})
+        students.append({
+            "_rowNo": row_no, "studentNo": no, "name": name,
+            "collegeName": cells["所属学院"], "majorName": cells["所属专业"],
+            "className": cells["班级名称"], "grade": cells["年级"],
+            "gender": cells["性别"], "idCard": cells["身份证号"],
+        })
+    wb.close()
+    if total == 0:
+        raise AppException("VALIDATION_ERROR", "Excel 没有数据行，请填写后再上传")
+    return {"students": students, "teachers": [], "rawRows": raw_rows,
+            "relationships": [], "relationErrors": [], "errors": errors, "totalRows": total,
+            "importKind": "STUDENT",
+            "fileName": filename, "fileSha256": hashlib.sha256(content).hexdigest()}
+
+
+def parse_teacher_xlsx(content: bytes, filename: str) -> dict:
+    """解析教师专用模板。角色、数据范围、辅导员班级范围等既有能力全部保留。"""
+    wb, iterator, headers = _open_single_sheet(
+        content, filename, TEACHER_HEADERS, TEACHER_REQUIRED_HEADERS, "教师导入")
+    header_index = {n: headers.index(n) for n in TEACHER_HEADERS if n in headers}
+    teachers, raw_rows, errors = [], [], []
+    total = 0
+    for row_no, values in enumerate(iterator, 2):
+        cells, empty = _row_cells(values, TEACHER_HEADERS, header_index, row_no, errors, "teacher")
+        if empty:
+            continue
+        total += 1
+        if total > MAX_ROWS:
+            wb.close()
+            raise AppException("VALIDATION_ERROR", f"单次最多导入 {MAX_ROWS} 行，请拆分文件")
+        no, name = cells["工号"], cells["姓名"]
+        raw_rows.append({"row": row_no, "accountType": "TEACHER", "accountNo": no, "name": name})
+        if not no:
+            errors.append({"row": row_no, "entity": "teacher", "field": "工号", "error": "工号必填"})
+        if not name:
+            errors.append({"row": row_no, "entity": "teacher", "field": "姓名", "error": "姓名必填"})
+        if not cells["预设角色编码"]:
+            errors.append({"row": row_no, "entity": "teacher", "field": "预设角色编码",
+                           "error": "教师必须指定预设角色编码"})
+        teachers.append({
+            "_rowNo": row_no, "loginName": no, "name": name,
+            "departmentName": cells["所属部门"], "positionName": cells["岗位名称"],
+            "roleCodes": cells["预设角色编码"],
+            "scopeType": cells["数据范围类型"], "scopeRef": cells["数据范围引用"],
+        })
+    wb.close()
+    if total == 0:
+        raise AppException("VALIDATION_ERROR", "Excel 没有数据行，请填写后再上传")
+    return {"students": [], "teachers": teachers, "rawRows": raw_rows,
+            "relationships": [], "relationErrors": [], "errors": errors, "totalRows": total,
+            "importKind": "TEACHER",
+            "fileName": filename, "fileSha256": hashlib.sha256(content).hexdigest()}
 
 
 def parse_xlsx(content: bytes, filename: str) -> dict:

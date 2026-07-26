@@ -34,6 +34,8 @@ CODE_HTTP = {
     "DATA_CONFLICT": 409,
     "APPROVAL_VERSION_CONFLICT": 409,
     "IDEMPOTENCY_CONFLICT": 409,
+    # 学号属于已作废档案：前端据此弹「确认恢复」，与普通重复学号区分开
+    "VOIDED_PROFILE_EXISTS": 409,
     "FILE_TOO_LARGE": 413,
     "RATE_LIMITED": 429,
     "UPLOAD_FAILED": 500,

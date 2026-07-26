@@ -958,6 +958,91 @@ def identity_import_confirm_batch(
     return success({**public_report, "batchNo": batch_no}, message="师生账号已整批创建")
 
 
+# ── 学生 / 教师拆分入口（身份与账号）────────────────────────────────────────
+# 混合模板靠「账号类型」列区分，学校填表极易串列，且两类导入的权限、结果统计、
+# 后续流程完全不同，故拆成两个独立入口：各自的模板、字段规则、接口语义与结果统计；
+# 共用批次租约、整批事务、错误回执、初始密码回执与审计（不复制第二套批次系统）。
+
+def _identity_import_upload(file: UploadFile, parser):
+    """两个专用入口共用的上传读取与大小限制。"""
+    from app.services.identity_import_file_service import MAX_FILE_BYTES
+    chunks, size = [], 0
+    while True:
+        chunk = file.file.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > MAX_FILE_BYTES:
+            from app.core.exceptions import AppException
+            raise AppException("FILE_TOO_LARGE", "导入文件超过 20MB 上限，请拆分后重试")
+        chunks.append(chunk)
+    return parser(b"".join(chunks), file.filename or "")
+
+
+@router.get("/system/identity-import/students/template", summary="下载学生导入模板（仅 xlsx）")
+def student_import_template(user=Depends(require_permission("systemAdmin.user.import"))):
+    from app.services.identity_import_file_service import build_student_template
+    filename = "学生导入模板.xlsx"
+    return StreamingResponse(
+        io.BytesIO(build_student_template()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
+
+
+@router.post("/system/identity-import/students/validate-file", summary="上传学生 xlsx 并预检")
+async def student_import_validate_file(
+        file: UploadFile = File(...),
+        user=Depends(require_permission("systemAdmin.user.import"))):
+    from app.core.import_export_auth import enforce_student_import
+    from app.services.identity_import_file_service import create_batch, parse_student_xlsx
+    from app.services.identity_import_service import preview_identity_import
+    # 学生导入的租户特性闸门（原挂在已删除的 /import/students/*，随入口收敛迁到这里，
+    # 否则学校「是否购买学生导入」将失去唯一执行点）
+    enforce_student_import(user)
+    parsed = _identity_import_upload(file, parse_student_xlsx)
+    payload = {"students": parsed["students"], "teachers": [], "atomic": True}
+    report = preview_identity_import(user, payload, pre_errors=parsed["errors"])
+    return success(create_batch(user, parsed, report), message="学生名单解析及预检完成")
+
+
+@router.post("/system/identity-import/students/confirm-batch", summary="确认批次并整批开通学生")
+def student_import_confirm_batch(
+        body: dict = Body(...),
+        user=Depends(require_permission("systemAdmin.user.import"))):
+    from app.core.import_export_auth import enforce_student_import
+    enforce_student_import(user)
+    return identity_import_confirm_batch(body=body, user=user)
+
+
+@router.get("/system/identity-import/teachers/template", summary="下载教师导入模板（仅 xlsx）")
+def teacher_import_template(user=Depends(require_permission("systemAdmin.user.import"))):
+    from app.services.identity_import_file_service import build_teacher_template
+    filename = "教师导入模板.xlsx"
+    return StreamingResponse(
+        io.BytesIO(build_teacher_template()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
+
+
+@router.post("/system/identity-import/teachers/validate-file", summary="上传教师 xlsx 并预检")
+async def teacher_import_validate_file(
+        file: UploadFile = File(...),
+        user=Depends(require_permission("systemAdmin.user.import"))):
+    from app.services.identity_import_file_service import create_batch, parse_teacher_xlsx
+    from app.services.identity_import_service import preview_identity_import
+    parsed = _identity_import_upload(file, parse_teacher_xlsx)
+    payload = {"students": [], "teachers": parsed["teachers"], "atomic": True}
+    report = preview_identity_import(user, payload, pre_errors=parsed["errors"])
+    return success(create_batch(user, parsed, report), message="教师名单解析及预检完成")
+
+
+@router.post("/system/identity-import/teachers/confirm-batch", summary="确认批次并整批开通教师")
+def teacher_import_confirm_batch(
+        body: dict = Body(...),
+        user=Depends(require_permission("systemAdmin.user.import"))):
+    return identity_import_confirm_batch(body=body, user=user)
+
+
 @router.get("/system/identity-import/batches/{batch_no}/errors", summary="下载师生导入错误回执")
 def identity_import_errors(
         batch_no: str,

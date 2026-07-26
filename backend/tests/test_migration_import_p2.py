@@ -6,13 +6,19 @@ MAIN_TID = 1000000000000000001
 
 
 def _seed_students(client, auth_headers, nos, gender=None):
-    rows = [{"studentNo": no, "realName": f"生{i}", **({"gender": gender} if gender else {})}
-            for i, no in enumerate(nos)]
-    dr = client.post("/api/v1/import/students/validate", headers=auth_headers,
-                     json={"rows": rows}).json()
-    assert dr["data"]["status"] == "DRY_RUN_PASSED", dr
-    assert client.post("/api/v1/import/students/confirm", headers=auth_headers,
-                       json={"batchNo": dr["data"]["batchNo"]}).json()["code"] == 0
+    """直接经统一主档服务造数据（旧 /import/students/* 已随入口收敛删除）。"""
+    from app.core.student_master_contract import StudentCreateCommand
+    from app.db.session import get_sessionmaker
+    from app.services import student_master_application_service as master
+    db = get_sessionmaker()()
+    try:
+        for i, no in enumerate(nos):
+            master.create_student_in_session(
+                db, tenant_id=MAIN_TID,
+                cmd=StudentCreateCommand(student_no=no, real_name=f"生{i}", gender=gender))
+        db.commit()
+    finally:
+        db.close()
 
 
 def _seed_org(class_name="软件2301班", major_name="软件技术"):

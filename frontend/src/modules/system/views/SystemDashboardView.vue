@@ -101,7 +101,7 @@ export default {
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [
-        { key: 'importUsers', label: '导入老师和学生' },
+        { key: 'importUsers', label: '学生导入与账号开通' },
         { key: 'viewOperationLogs', label: '≡ 操作日志' }
       ]
         .filter((a) => pa[a.key] && pa[a.key].visible)
@@ -113,7 +113,7 @@ export default {
   },
   methods: {
     onToolbar(key) {
-      if (key === 'importUsers') this.$router.push('/admin/system/identity-import')
+      if (key === 'importUsers') this.$router.push('/admin/system/identity-import/students')
       if (key === 'viewOperationLogs') this.$router.push('/admin/system/logs')
     },
     async load() {

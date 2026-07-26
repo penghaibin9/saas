@@ -131,22 +131,45 @@ def test_expired_tenant_readonly(client, auth_headers, db_mode):
 
 # ── §五 功能开关真生效 ──
 
+def _student_xlsx(no="FT2026001", name="开关测试"):
+    """构造一份最小学生导入 xlsx（表头须与 build_student_template 一致）。"""
+    import io as _io
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "导入模板"
+    ws.append(["学号 *", "姓名 *", "所属学院", "所属专业", "班级名称 *", "年级", "性别", "身份证号"])
+    ws.append([no, name, "", "", "软件2301班", "", "", ""])
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def test_feature_toggle_blocks_import(client, auth_headers, db_mode):
+    """studentImport 特性闸门：旧 /import/students/* 已删除，闸门随入口收敛迁到
+    「系统管理 › 学生导入与账号开通」，此处验证它在新入口仍真实生效。"""
     _ensure_main_tenant()
     h = _owner_headers()
-    rows = {"rows": [{"studentNo": "FT2026001", "realName": "开关测试"}]}
+    files = {"file": ("students.xlsx", _student_xlsx(),
+                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
 
     put = client.put(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=h,
                      json={"studentImport": False}).json()
     assert put["code"] == 0 and put["data"]["features"]["studentImport"] is False
 
-    denied = client.post("/api/v1/import/students/validate", headers=auth_headers, json=rows).json()
+    denied = client.post("/api/v1/system/identity-import/students/validate-file",
+                         headers=auth_headers, files=files).json()
     assert denied["code"] == 403001 and denied["bizCode"] == "MODULE_NOT_AUTHORIZED"
 
     client.put(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=h,
                json={"studentImport": True})
-    ok = client.post("/api/v1/import/students/validate", headers=auth_headers, json=rows).json()
-    assert ok["code"] == 0
+    files = {"file": ("students.xlsx", _student_xlsx(),
+                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    ok = client.post("/api/v1/system/identity-import/students/validate-file",
+                     headers=auth_headers, files=files).json()
+    # 闸门放开后不应再是 MODULE_NOT_AUTHORIZED（班级不存在等业务错误由预检回执承载）
+    assert ok.get("bizCode") != "MODULE_NOT_AUTHORIZED"
 
 
 # ── §六 规则中心真生效 ──

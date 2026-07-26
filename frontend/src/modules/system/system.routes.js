@@ -29,11 +29,25 @@ const systemRoutes = {
         permissionKey: 'systemAdmin.user.view' }
     },
     {
+      /* 学生与教师导入拆成两个真实路由：刷新后状态不丢、菜单可正确高亮、
+         权限与模板各自独立，不用 query 伪装成两个页面。 */
+      path: 'identity-import/students',
+      name: 'system-student-import',
+      component: () => import('@/modules/system/views/SystemStudentImportView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '学生导入与账号开通', requiresAuth: true,
+        permissionKey: 'systemAdmin.user.import' }
+    },
+    {
+      path: 'identity-import/teachers',
+      name: 'system-teacher-import',
+      component: () => import('@/modules/system/views/SystemTeacherImportView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '教师导入', requiresAuth: true,
+        permissionKey: 'systemAdmin.user.import' }
+    },
+    {
+      /* 旧的师生混合入口：保留路由避免既有链接 404，直接落到学生导入页。 */
       path: 'identity-import',
-      name: 'system-identity-import',
-      component: () => import('@/modules/system/views/SystemUserListView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '导入老师和学生', requiresAuth: true,
-        permissionKey: 'systemAdmin.user.import', openImport: true }
+      redirect: '/admin/system/identity-import/students'
     },
     {
       path: 'roles',

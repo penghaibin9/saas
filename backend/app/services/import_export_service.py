@@ -26,44 +26,6 @@ def _tid() -> int:
     return tid
 
 
-def _validate_rows(rows: list[dict]) -> tuple[list[dict], list[dict]]:
-    """行级校验：studentNo/realName 必填、studentNo 不重复（批内 + 库内）。"""
-    ok_rows, errors = [], []
-    seen = set()
-    existing = set()
-    if db_enabled():
-        from sqlalchemy import select
-        from app.models import StudentProfile
-        db = get_sessionmaker()()
-        try:
-            existing = {r for r in db.scalars(select(StudentProfile.student_no).where(
-                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)))}
-        finally:
-            db.close()
-    for i, row in enumerate(rows, start=2):  # Excel 行号从 2（1 为表头）
-        no = str(row.get("studentNo") or row.get("学号") or "").strip()
-        name = str(row.get("realName") or row.get("name") or row.get("姓名") or "").strip()
-        if not no or not name:
-            errors.append({"rowNo": i, "rowIndex": i, "errorCode": "REQUIRED_MISSING",
-                           "field": "studentNo" if not no else "realName",
-                           "rawValue": no or name or "", "message": "学号/姓名必填"})
-            continue
-        if no in seen:
-            errors.append({"rowNo": i, "rowIndex": i, "errorCode": "DUP_IN_FILE",
-                           "field": "studentNo", "rawValue": no, "message": f"学号 {no} 在文件内重复"})
-            continue
-        if no in existing:
-            errors.append({"rowNo": i, "rowIndex": i, "errorCode": "DUP_IN_DB",
-                           "field": "studentNo", "rawValue": no, "message": f"学号 {no} 已存在"})
-            continue
-        seen.add(no)
-        ok_rows.append({"studentNo": no, "realName": name,
-                        "gender": str(row.get("gender") or row.get("性别") or "").strip(),
-                        "grade": str(row.get("grade") or row.get("年级") or "").strip(),
-                        "phone": str(row.get("phone") or row.get("手机号") or "").strip()})
-    return ok_rows, errors
-
-
 def parse_upload_rows(content: bytes, ext: str) -> list[dict]:
     """解析上传文件为行字典列表（xlsx 用 openpyxl；csv 用标准库）。"""
     if ext == "xlsx":
@@ -87,104 +49,9 @@ def parse_upload_rows(content: bytes, ext: str) -> list[dict]:
     raise AppException("FILE_TYPE_NOT_ALLOWED", "导入仅支持 .xlsx / .csv")
 
 
-def assert_confirm_allowed(user: dict, namespace: str, batch_no: str, manage_perm: str) -> None:
-    """确认前校验：租户内批次存在 + 创建人或具备导入权限。"""
-    from sqlalchemy import select
-
-    from app.core.import_export_auth import assert_import_batch_owner
-    from app.models import SharedImportBatch
-    from app.services import shared_import_batch_service as shared_batches
-
-    shared_batches.get(_tid(), namespace, batch_no)  # 租户/过期校验（统一 404）
-    db = get_sessionmaker()()
-    try:
-        row = db.scalars(select(SharedImportBatch).where(
-            SharedImportBatch.tenant_id == _tid(),
-            SharedImportBatch.namespace == namespace,
-            SharedImportBatch.batch_no == batch_no,
-            SharedImportBatch.is_deleted.is_(False))).first()
-        op = row.operator_key if row else None
-    finally:
-        db.close()
-    assert_import_batch_owner(user, op, manage_perm)
-
-
-def dry_run(rows: list[dict]) -> dict:
-    _ensure_feature("studentImport", "学生导入")
-    max_rows = int(_rule("import", "importMaxRows") or 5000)
-    if len(rows) > max_rows:
-        raise AppException("VALIDATION_ERROR",
-                           f"单次导入不能超过 {max_rows} 行（平台规则中心配置），当前 {len(rows)} 行")
-    ok_rows, errors = _validate_rows(rows)
-    batch_no = f"IMP{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}"
-    status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
-    batch = {"batchNo": batch_no, "status": status, "totalRows": len(rows),
-             "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50],
-             "rows": ok_rows,
-             # 绑定租户与创建人：确认阶段据此做租户隔离校验，防跨租户凭 batchNo 确认他人批次
-             "tenantId": _tid(), "createdBy": (get_current_user_ctx() or {}).get("userId")}
-    if not db_enabled():
-        raise AppException("SERVER_ERROR", "共享学生导入批次需要启用数据库")
-    from app.models import StudentImportBatch
-    from app.services import shared_import_batch_service as shared_batches
-    db = get_sessionmaker()()
-    try:
-        db.add(StudentImportBatch(tenant_id=_tid(), batch_no=batch_no, total_rows=len(rows),
-                                  success_rows=0, error_rows=len(errors), status=status,
-                                  remark=f"dryRun ok={len(ok_rows)}"))
-        db.commit()
-    finally:
-        db.close()
-    shared_batches.create(_tid(), "STUDENT_PROFILE", batch_no, status,
-                          {"rows": ok_rows}, errors=errors,
-                          operator_key=batch.get("createdBy"))
-    _internal = {"rows", "tenantId", "createdBy"}   # 内部字段不返回给客户端
-    return {k: v for k, v in batch.items() if k not in _internal} | {"batchNo": batch_no}
-
-
-def confirm(batch_no: str) -> dict:
-    from app.services import shared_import_batch_service as shared_batches
-    payload, claim_token, already_done = shared_batches.claim(
-        _tid(), "STUDENT_PROFILE", batch_no, required_status="DRY_RUN_PASSED")
-    if already_done:
-        return payload
-    inserted = 0
-    from sqlalchemy import select
-
-    from app.core.student_master_contract import SOURCE_BULK_IMPORT, StudentCreateCommand
-    from app.models import StudentImportBatch
-    from app.services import student_master_application_service as master
-    actor = get_current_user_ctx()
-    db = get_sessionmaker()()
-    try:
-        try:
-            # 建档统一走 student_master_application_service：组织父链校验、学号永久唯一 +
-            # 作废复活、敏感字段加密、StudentStageEvent 与四条链完全一致，不在此另写一套。
-            for r in payload["rows"]:
-                cmd = StudentCreateCommand(
-                    student_no=r["studentNo"], real_name=r["realName"],
-                    source=SOURCE_BULK_IMPORT,
-                    gender=r.get("gender") or None, grade=r.get("grade") or None,
-                    college_id=r.get("collegeId"), major_id=r.get("majorId"),
-                    class_id=r.get("classId"), phone=r.get("phone"))
-                master.create_student_in_session(db, tenant_id=_tid(), cmd=cmd, actor=actor)
-                inserted += 1
-            b = db.scalars(select(StudentImportBatch).where(
-                StudentImportBatch.tenant_id == _tid(),
-                StudentImportBatch.batch_no == batch_no)).first()
-            if b:
-                b.status = "SUCCESS"
-                b.success_rows = inserted
-            db.commit()  # 整批一个事务：任一行失败自动回滚
-        except Exception as exc:
-            db.rollback()
-            shared_batches.fail(_tid(), "STUDENT_PROFILE", batch_no, claim_token, str(exc))
-            raise
-    finally:
-        db.close()
-    result = {"batchNo": batch_no, "status": "SUCCESS", "insertedRows": inserted}
-    shared_batches.finish(_tid(), "STUDENT_PROFILE", batch_no, claim_token, result)
-    return result
+# 旧学生导入的 dry_run / confirm 已随 /import/students/* 一并删除：
+# 学生主档只保留教务学籍导入与系统管理学生导入两条正式写入路径。
+# 本文件保留 parse_upload_rows（迁移模块仍在用）与学生导出能力。
 
 
 def _mask_phone(v: str | None) -> str:

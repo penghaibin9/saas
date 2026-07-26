@@ -93,7 +93,18 @@ export default {
   },
   methods: {
     onImported(data) {
-      toast.success(`已导入 ${data?.created ?? 0} 名学生学籍档案`)
+      // 后端按「新建/复用/跳过/各类冲突」分类返回，不能只报一个笼统的 created，
+      // 否则教务看不出哪些学生是复用了既有主档、哪些被冲突挡下需要人工处理。
+      const d = data || {}
+      const parts = [`新建 ${d.created ?? 0}`]
+      if (d.reused) parts.push(`复用已有主档 ${d.reused}`)
+      if (d.skipped) parts.push(`已存在跳过 ${d.skipped}`)
+      const conflicts = (d.identityConflict ?? 0) + (d.orgConflict ?? 0) + (d.voidedConflict ?? 0)
+      if (conflicts) parts.push(`冲突待处理 ${conflicts}`)
+      if (d.failed) parts.push(`失败 ${d.failed}`)
+      const msg = `学籍导入完成：${parts.join(' / ')}`
+      if (conflicts || d.failed) toast.warning(msg)
+      else toast.success(msg)
     },
     doExport() {
       this.exportDialog.visible = true

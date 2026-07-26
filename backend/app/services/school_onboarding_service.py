@@ -16,8 +16,10 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
 from app.core.security import hash_password
+from app.core.field_crypto import hash_sensitive
 from app.core.student_lifecycle import ENROLLED, normalize_student_stage
-from app.core.student_master_contract import SOURCE_IDENTITY_IMPORT, StudentCreateCommand
+from app.core.student_master_contract import (ACTION_CREATE, ACTION_REUSE,
+                                              SOURCE_IDENTITY_IMPORT, StudentCreateCommand)
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import audit_log
 from app.services import student_master_application_service as master
@@ -65,12 +67,36 @@ def _resolve_target_tenant(user: dict, body: dict) -> int:
     return target
 
 
+# 学生导入结果细分口径（补充审计 §10：不能只回一个笼统的 created）。
+# 前端按 key 归类展示，不靠中文串匹配。
+STUDENT_SUMMARY_KEYS = (
+    "studentsReused",        # 复用已有主档
+    "studentsFilled",        # 复用时补齐了空缺字段
+    "accountsCreated",       # 新建学生账号
+    "rolesFilled",           # 账号已存在、补齐 STUDENT 角色
+    "accountsSkipped",       # 账号与角色均已存在，幂等跳过
+    "IDENTITY_CONFLICT",     # 学号/姓名/身份证关系异常
+    "ORG_CONFLICT",          # 已有完整组织与本次不一致
+    "VOIDED_PROFILE",        # 学号属于已作废档案
+    "ACCOUNT_OCCUPIED",      # 登录名被非学生账号占用
+    "DUPLICATE_IN_FILE",     # 同一文件内重复
+)
+
+
+def _bump(report: dict, key: str, delta: int = 1) -> None:
+    if not key:
+        return
+    report.setdefault("summary", {})
+    report["summary"][key] = int(report["summary"].get(key, 0)) + delta
+
+
 def _blank_report(dry_run: bool, tenant_id: int) -> dict:
     return {
         "dryRun": dry_run, "tenantId": str(tenant_id),
         "entities": {k: {"created": 0, "skipped": 0, "failed": 0}
                      for k in ("roles", "colleges", "majors", "classes", "students",
                                "studentAccounts", "teachers", "roleBindings", "scopes")},
+        "summary": {k: 0 for k in STUDENT_SUMMARY_KEYS},
         "errors": [], "studentCredentials": [], "teacherCredentials": [],
         "roleTemplateVersion": ROLE_TEMPLATE_VERSION,
     }
@@ -318,7 +344,9 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             )
             report["entities"]["classes"]["created"] += 1
         db.flush()
-        # 学生
+        # 学生：文件内重复由 seen 集合识别，与库内冲突一起走统一 resolver
+        seen_student_nos: set = set()
+        seen_student_cards: set = set()
         for s in (body.get("students") or []):
             no = str(s.get("studentNo")).strip()
             class_name = str(s.get("className") or "").strip()
@@ -334,46 +362,66 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             account = db.scalars(select(User).where(
                 User.tenant_id == tenant_id, User.login_name == no)).first()
             if account and (account.is_deleted or account.user_type != "STUDENT"):
+                # 登录名被教师/员工或历史账号占用：阻断，转账号异常中心处理
                 report["entities"]["studentAccounts"]["failed"] += 1
+                _bump(report, "ACCOUNT_OCCUPIED")
                 report["errors"].append({"entity": "studentAccount", "field": "studentNo",
-                                         "error": f"学号被历史/非学生账号占用：{no}"})
+                                         "error": f"学号被历史/非学生账号占用：{no}",
+                                         "reasonCode": "ACCOUNT_OCCUPIED"})
                 continue
-            profile = db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == tenant_id, StudentProfile.student_no == no,
-                StudentProfile.is_deleted.is_(False))).first()
-            if profile:
-                report["entities"]["students"]["skipped"] += 1
-                # IX-E2E：历史导入可能缺 college_id，按 专业 / 班级→专业 回填
-                if not profile.college_id:
-                    major_id = profile.major_id
-                    if not major_id and profile.class_id:
-                        cls = db.get(SchoolClass, profile.class_id)
-                        major_id = cls.major_id if cls else None
-                        if major_id and not profile.major_id:
-                            profile.major_id = major_id
-                    if major_id:
-                        maj = db.get(Major, major_id)
-                        if maj and maj.college_id:
-                            profile.college_id = maj.college_id
-            else:
-                # 建档统一走 student_master_application_service（同事务，与账号/角色一起提交）：
-                # 组织父链由 student_org_validator 校验并反推补齐，不再本地 major→college 手推。
-                cmd = StudentCreateCommand(
-                    student_no=no, real_name=str(s.get("name")).strip(),
-                    source=SOURCE_IDENTITY_IMPORT,
-                    gender=s.get("gender"), grade=s.get("grade"),
-                    class_id=k.id if k else None,
-                    major_id=(k.major_id if k else None),
-                    current_stage=normalize_student_stage(s.get("stage") or ENROLLED))
-                # actor=None：本入口受 systemAdmin.user.import 保护（校级批量建校），
-                # 原实现亦无按操作者收敛的数据范围校验。此处保持既有行为，不在阶段 B
-                # 顺手收紧——若学校把该权限下放给学院管理员，需改为传真实 actor
-                # 让 student_org_validator 拦跨院导入（见历史欠账 阶段B）。
-                master.create_student_in_session(db, tenant_id=tenant_id, cmd=cmd, actor=None)
-                report["entities"]["students"]["created"] += 1
+            # 主档的新建/复用/阻断判定与教务学籍导入共用同一个 resolver，
+            # 规则不在这里另写一份（补充审计 §7）。
+            cmd = StudentCreateCommand(
+                student_no=no, real_name=str(s.get("name")).strip(),
+                source=SOURCE_IDENTITY_IMPORT,
+                gender=s.get("gender"), grade=s.get("grade"),
+                class_id=k.id if k else None,
+                major_id=(k.major_id if k else None),
+                id_card=str(s.get("idCard") or "").strip() or None,
+                current_stage=normalize_student_stage(s.get("stage") or ENROLLED),
+                # 正式入口：不得靠导入复活作废档案，组织必须完整自洽
+                allow_restore=False, require_complete_org=True)
+            resolution = master.resolve_student_for_import(
+                db, tenant_id=tenant_id, cmd=cmd,
+                seen_nos=seen_student_nos, seen_id_cards=seen_student_cards)
+            seen_student_nos.add(no)
+            if cmd.id_card:
+                seen_student_cards.add(hash_sensitive(cmd.id_card, "id_card"))
 
+            if resolution.blocked:
+                # 身份/组织/作废冲突一律阻断，不自动覆盖也不另建第二份主档
+                report["entities"]["students"]["failed"] += 1
+                _bump(report, resolution.reason_code)
+                report["errors"].append({"row": int(s.get("_rowNo") or 0), "entity": "student",
+                                         "field": "studentNo", "error": resolution.message,
+                                         "reasonCode": resolution.reason_code})
+                continue
+
+            # actor=None：本入口受 systemAdmin.user.import 保护（校级批量建校），
+            # 原实现亦无按操作者收敛的数据范围校验；若该权限下放给学院管理员，
+            # 需改传真实 actor 让 student_org_validator 拦跨院导入（见历史欠账 阶段B）。
+            try:
+                master.apply_resolution_in_session(
+                    db, tenant_id=tenant_id, cmd=cmd, resolution=resolution, actor=None)
+            except AppException as exc:
+                report["entities"]["students"]["failed"] += 1
+                report["errors"].append({"row": int(s.get("_rowNo") or 0), "entity": "student",
+                                         "field": "studentNo", "error": exc.message})
+                continue
+            if resolution.action == ACTION_CREATE:
+                report["entities"]["students"]["created"] += 1
+            elif resolution.action == ACTION_REUSE:
+                report["entities"]["students"]["skipped"] += 1
+                _bump(report, "studentsReused")
+                _bump(report, "studentsFilled")
+            else:
+                report["entities"]["students"]["skipped"] += 1
+                _bump(report, "studentsReused")
+
+            account_existed = bool(account)
             if account:
                 report["entities"]["studentAccounts"]["skipped"] += 1
+                _bump(report, "accountsSkipped")
             else:
                 import secrets
                 pwd = "Stu@" + secrets.token_urlsafe(6)
@@ -384,10 +432,14 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                 db.add(account)
                 db.flush()
                 report["entities"]["studentAccounts"]["created"] += 1
+                _bump(report, "accountsCreated")
                 report["studentCredentials"].append({"studentNo": no, "initialPassword": pwd})
             binding = ensure_user_roles(db, tenant_id, account.id, ["STUDENT"])
             report["entities"]["roleBindings"]["created"] += binding["created"] + binding["restored"]
             report["entities"]["roleBindings"]["skipped"] += binding["unchanged"]
+            # 账号已存在但缺 STUDENT 角色 → 只补角色，不重发密码
+            if binding["created"] + binding["restored"] and account_existed:
+                _bump(report, "rolesFilled")
         db.flush()
         # 教师账号 + 角色 + 范围
         for t in (body.get("teachers") or []):

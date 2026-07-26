@@ -14,7 +14,7 @@
     <div class="mp-stack">
       <section class="poc-note">
         <strong>权限边界</strong>
-        <span>平台运营只能创建学校租户、首位学校管理员并查看交付进度；学生和教师账号必须由学校管理员在“系统管理 → 导入老师和学生”中预检后整批创建。</span>
+        <span>平台运营只能创建学校租户、首位学校管理员并查看交付进度；学生和教师账号必须由学校管理员在“系统管理 → 学生导入与账号开通 / 教师导入”中预检后整批创建。</span>
       </section>
 
       <section class="poc-flow" aria-label="首次开户流程">
@@ -111,7 +111,7 @@ export default {
     nextAction(phase) {
       return {
         WAITING_ADMIN: '创建或恢复首位学校管理员账号',
-        WAITING_IDENTITY_IMPORT: '通知学校管理员导入老师和学生',
+        WAITING_IDENTITY_IMPORT: '通知学校管理员导入学生与教师',
         TEACHER_IMPORTED: '学校管理员继续导入学生账号',
         READY_FOR_ACCEPTANCE: '核对配置后执行学校上线验收'
       }[phase] || '查看学校配置'
