@@ -53,17 +53,18 @@ def test_unknown_term_code_is_not_silently_treated_as_writable(monkeypatch):
     assert "未匹配到本校正式学期" in exc.value.message
 
 
-def test_batch_write_context_guards_batch_term_code(monkeypatch):
+def test_batch_write_context_guards_and_backfills_batch_term(monkeypatch):
     from app.modules.academic_affairs import services
     from app.modules.academic_affairs.services import academic_affairs_makeup_term_facade as service
 
-    batch = SimpleNamespace(id=7, term_code="2025-2026-2")
+    batch = SimpleNamespace(id=7, term_id=None, term_code="2025-2026-2")
     calls = []
+    resolved = SimpleNamespace(id=9)
     monkeypatch.setattr(service, "_original_get_mb", lambda _db, _bid: batch)
     monkeypatch.setattr(
         services.academic_affairs_archive_service,
         "guard_term_code_writable",
-        lambda db, code, required=True: calls.append((db, code, required)),
+        lambda db, code, required=True: calls.append((db, code, required)) or resolved,
     )
     db = object()
     token = service._BATCH_WRITE.set(True)
@@ -73,6 +74,7 @@ def test_batch_write_context_guards_batch_term_code(monkeypatch):
         service._BATCH_WRITE.reset(token)
 
     assert calls == [(db, "2025-2026-2", True)]
+    assert batch.term_id == 9
 
 
 def test_makeup_archive_gate_blocks_unfinished_business():
@@ -105,9 +107,12 @@ def test_public_makeup_and_archive_services_point_to_final_layers():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_makeup_facade"
+        "academic_affairs_archive_textbook_facade"
     )
-    assert any(code == "MAKEUP" for code, _label in services.academic_affairs_archive_service._legacy._DOMAINS)
+    assert any(
+        code == "MAKEUP"
+        for code, _label in services.academic_affairs_archive_service._legacy._DOMAINS
+    )
     assert services.academic_affairs_makeup_service.__name__.endswith(
         "academic_affairs_makeup_term_facade"
     )
