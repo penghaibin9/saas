@@ -3,54 +3,31 @@
     <MobileNavBar variant="teacher" :title="title" subtitle="按数据范围、权限与具体受理人收敛" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
-        <MobileGlobalState v-if="!list.length" state="empty" :title="'暂无' + title"
-          description="有待办时会显示在这里；处理权限与 PC 学工工作台一致。" />
+        <MobileGlobalState v-if="!list.length" state="empty" :title="'暂无' + title" description="有待办时会显示在这里；处理权限与 PC 学工工作台一致。" />
         <view class="stack" v-else>
           <view v-for="x in list" :key="rowKey(x)" class="card ar">
             <view class="row-between">
-              <view class="flex-1">
-                <text class="t-md t-bold">{{ x.realName || x.studentName || '—' }}</text>
-                <text class="ar__sub">{{ x.studentNo || '' }} · {{ x.statusLabel || x.status || '' }}</text>
-              </view>
+              <view class="flex-1"><text class="t-md t-bold">{{ x.realName || x.studentName || '—' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.statusLabel || x.status || '' }}</text></view>
               <MobileStatusTag :label="x.statusLabel || x.status || '待处理'" type="warning" />
             </view>
-            <view class="ar__row" v-if="summary(x)">
-              <text class="ar__k">摘要</text><text class="flex-1 t-sm">{{ summary(x) }}</text>
-            </view>
-            <view class="ar__row" v-if="x.reason">
-              <text class="ar__k">理由</text><text class="flex-1 t-sm">{{ x.reason }}</text>
-            </view>
-            <view class="ar__row" v-if="x.riskLevel">
-              <text class="ar__k">等级</text><text class="flex-1 t-sm">{{ x.riskLevel }}</text>
-            </view>
+            <view class="ar__row" v-if="summary(x)"><text class="ar__k">摘要</text><text class="flex-1 t-sm">{{ summary(x) }}</text></view>
+            <view class="ar__row" v-if="x.reason"><text class="ar__k">理由</text><text class="flex-1 t-sm">{{ x.reason }}</text></view>
+            <view class="ar__row" v-if="x.riskLevel"><text class="ar__k">等级</text><text class="flex-1 t-sm">{{ x.riskLevel }}</text></view>
 
             <view class="ar__detail" v-if="expandedId === rowKey(x)">
               <view v-if="detailLoading === rowKey(x)" class="ar__muted">加载详情…</view>
               <view v-else-if="detailMap[rowKey(x)]">
-                <view class="ar__row" v-for="line in detailLines(detailMap[rowKey(x)])" :key="line.k">
-                  <text class="ar__k">{{ line.k }}</text><text class="flex-1 t-sm">{{ line.v }}</text>
-                </view>
+                <view class="ar__row" v-for="line in detailLines(detailMap[rowKey(x)])" :key="line.k"><text class="ar__k">{{ line.k }}</text><text class="flex-1 t-sm">{{ line.v }}</text></view>
               </view>
               <view v-else class="ar__muted">暂无更多明细</view>
             </view>
-            <button v-if="!isAppeal && meta.detail" class="btn btn-ghost ar__detail-btn" :disabled="acting" @click="toggleDetail(x)">
-              {{ expandedId === rowKey(x) ? '收起详情' : '查看详情' }}
-            </button>
+            <button v-if="!isAppeal && meta.detail" class="btn btn-ghost ar__detail-btn" :disabled="acting" @click="toggleDetail(x)">{{ expandedId === rowKey(x) ? '收起详情' : '查看详情' }}</button>
 
-            <view class="ar__actions" v-if="kind === 'RISK_HANDLE'">
-              <button class="btn btn-ghost flex-1" :disabled="acting" @click="doRiskProcess(x)">填写处置</button>
-              <button class="ar__ok flex-1" :disabled="acting" @click="doRiskClose(x)">关闭</button>
-            </view>
+            <view class="ar__actions" v-if="kind === 'RISK_HANDLE'"><button class="btn btn-ghost flex-1" :disabled="acting" @click="doRiskProcess(x)">填写处置</button><button class="ar__ok flex-1" :disabled="acting" @click="doRiskClose(x)">关闭</button></view>
             <view class="ar__actions ar__appeal-actions" v-else-if="isAppeal">
-              <button v-for="a in appealActions" :key="a.value" class="btn flex-1"
-                :class="a.danger ? 'ar__no' : (a.primary ? 'ar__ok' : 'btn-ghost')"
-                :disabled="acting" @click="reviewAppeal(x, a)">{{ a.label }}</button>
+              <button v-for="a in appealActions" :key="a.value" class="btn flex-1" :class="a.danger ? 'ar__no' : (a.primary ? 'ar__ok' : 'btn-ghost')" :disabled="acting" @click="reviewAppeal(x, a)">{{ a.label }}</button>
             </view>
-            <view class="ar__actions" v-else>
-              <button class="ar__no flex-1" :disabled="acting" @click="doReview(x, 'REJECT')">驳回</button>
-              <button v-if="kind !== 'AID_ADJUST'" class="btn btn-ghost flex-1" :disabled="acting" @click="doReview(x, 'RETURN')">退回</button>
-              <button class="ar__ok flex-1" :disabled="acting" @click="doReview(x, 'APPROVE')">通过</button>
-            </view>
+            <view class="ar__actions" v-else><button class="ar__no flex-1" :disabled="acting" @click="doReview(x, 'REJECT')">驳回</button><button v-if="kind !== 'AID_ADJUST'" class="btn btn-ghost flex-1" :disabled="acting" @click="doReview(x, 'RETURN')">退回</button><button class="ar__ok flex-1" :disabled="acting" @click="doReview(x, 'APPROVE')">通过</button></view>
           </view>
         </view>
       </view>
@@ -78,34 +55,17 @@ const META = {
   SECOND_CLASS_APPEAL_REVIEW: { title: '第二课堂积分申诉', appealKind: 'SECOND_CLASS_APPEAL' }
 }
 const APPEAL_ACTIONS = {
-  AID_OBJECTION: [
-    { label: '异议不成立', value: 'OVERRULED' },
-    { label: '异议成立', value: 'SUSTAINED', danger: true }
-  ],
-  FUNDING_APPEAL: [
-    { label: '申诉不成立', value: 'OVERRULED' },
-    { label: '申诉成立', value: 'SUSTAINED', danger: true }
-  ],
-  DISCIPLINE_APPEAL: [
-    { label: '维持', value: 'UPHELD' },
-    { label: '变更', value: 'REVISED', primary: true },
-    { label: '撤销', value: 'REVOKED', danger: true }
-  ],
-  SECOND_CLASS_APPEAL: [
-    { label: '驳回', value: 'REJECT', danger: true },
-    { label: '通过', value: 'APPROVE', primary: true }
-  ]
+  AID_OBJECTION: [{ label: '异议不成立', value: 'OVERRULED' }, { label: '异议成立', value: 'SUSTAINED', danger: true }],
+  FUNDING_APPEAL: [{ label: '申诉不成立', value: 'OVERRULED' }, { label: '申诉成立', value: 'SUSTAINED', danger: true }],
+  DISCIPLINE_APPEAL: [{ label: '维持', value: 'UPHELD' }, { label: '变更', value: 'REVISED', primary: true }, { label: '撤销', value: 'REVOKED', danger: true }],
+  SECOND_CLASS_APPEAL: [{ label: '驳回', value: 'REJECT', danger: true }, { label: '通过', value: 'APPROVE', primary: true }]
 }
 
 export default {
-  data() {
-    return { kind: 'AID_APPROVAL', list: [], state: 'loading', acting: false, expandedId: '', detailMap: {}, detailLoading: '' }
-  },
+  data() { return { kind: 'AID_APPROVAL', list: [], state: 'loading', acting: false, expandedId: '', detailMap: {}, detailLoading: '' } },
   computed: {
-    meta() { return META[this.kind] || { title: '学工待办' } },
-    title() { return this.meta.title },
-    isAppeal() { return !!this.meta.appealKind },
-    appealActions() { return APPEAL_ACTIONS[this.meta.appealKind] || [] }
+    meta() { return META[this.kind] || { title: '学工待办' } }, title() { return this.meta.title },
+    isAppeal() { return !!this.meta.appealKind }, appealActions() { return APPEAL_ACTIONS[this.meta.appealKind] || [] }
   },
   onLoad(q) { this.kind = (q && q.type) || 'AID_APPROVAL'; this.load() },
   methods: {
@@ -113,9 +73,7 @@ export default {
     summary(x) { return x.title || x.topic || x.statement || x.applyLevel || x.claimCreditType || x.discTypeLabel || '' },
     load() {
       this.state = 'loading'; this.expandedId = ''; this.detailMap = {}
-      const task = this.isAppeal
-        ? affairsAppealApi.getPending(this.meta.appealKind)
-        : (this.meta.load && teacherApi[this.meta.load] ? teacherApi[this.meta.load]() : Promise.reject(new Error('未配置待办接口')))
+      const task = this.isAppeal ? affairsAppealApi.getPending(this.meta.appealKind) : (this.meta.load && teacherApi[this.meta.load] ? teacherApi[this.meta.load]() : Promise.reject(new Error('未配置待办接口')))
       task.then((d) => {
         let rows = (d && (d.items || d.list)) || []
         if (this.kind === 'AID_ADJUST') rows = rows.filter((x) => x.status === 'ADJUST_REVIEW')
@@ -139,40 +97,24 @@ export default {
       if (!id || !this.meta.detail || !teacherApi[this.meta.detail]) return Promise.resolve(x)
       if (this.detailMap[id]) return Promise.resolve({ ...x, ...this.detailMap[id] })
       this.detailLoading = id
-      return teacherApi[this.meta.detail](id).then((d) => {
-        this.detailMap = { ...this.detailMap, [id]: d || {} }
-        return { ...x, ...(d || {}) }
-      }).finally(() => { this.detailLoading = '' })
+      return teacherApi[this.meta.detail](id).then((d) => { this.detailMap = { ...this.detailMap, [id]: d || {} }; return { ...x, ...(d || {}) } }).finally(() => { this.detailLoading = '' })
     },
     toggleDetail(x) {
-      const id = this.rowKey(x)
-      if (!id) return
+      const id = this.rowKey(x); if (!id) return
       if (this.expandedId === id) { this.expandedId = ''; return }
-      this.expandedId = id
-      this.loadDetail(x).catch((e) => { this._err(e, '详情加载'); this.expandedId = '' })
+      this.expandedId = id; this.loadDetail(x).catch((e) => { this._err(e, '详情加载'); this.expandedId = '' })
     },
-    _err(e, label) {
-      const n = normalizeError(e)
-      toast(n.text || (e && e.message) || label + '失败')
-      if (n.kind === 'conflict') this.load()
-    },
+    _err(e, label) { const n = normalizeError(e); toast(n.text || (e && e.message) || label + '失败'); if (n.kind === 'conflict') this.load(); return n },
     versionOf(entity) {
       const value = entity && entity.version
-      if (value === undefined || value === null || value === '') {
-        toast('记录缺少版本号，请刷新后再处理'); this.load(); return null
-      }
+      if (value === undefined || value === null || value === '') { toast('记录缺少版本号，请刷新后再处理'); this.load(); return null }
       return value
     },
     visibleVersion(row, detail) {
-      const visible = this.versionOf(row)
-      if (visible === null) throw new Error('缺少版本号')
+      const visible = this.versionOf(row); if (visible === null) throw new Error('缺少版本号')
       const latest = detail && detail.version
       if (latest !== undefined && latest !== null && latest !== '' && String(latest) !== String(visible)) {
-        toast('记录已被他人修改，请刷新后重新查看并确认')
-        this.load()
-        const error = new Error('记录版本已变化')
-        error.kind = 'conflict'
-        throw error
+        toast('记录已被他人修改，请刷新后重新查看并确认'); this.load(); const error = new Error('记录版本已变化'); error.kind = 'conflict'; throw error
       }
       return visible
     },
@@ -183,54 +125,54 @@ export default {
       if (this.kind === 'FUNDING_APPROVAL') return affairsContractApi.reviewFunding(id, action, reason, version)
       return affairsContractApi.reviewDiscipline(id, action, reason, version)
     },
-    doReview(x, action) {
+    promptText({ title, initial = '', invalid, submit }) {
+      uni.showModal({ title, editable: true, placeholderText: '不少于5字', content: initial, success: (r) => {
+        if (!r.confirm) return
+        const value = (r.content || '').trim(); if (value.length < 5) return toast(invalid)
+        submit(value)
+      } })
+    },
+    doReview(x, action, previous = '') {
       const id = this.rowKey(x); if (!id || this.acting) return
       const needReason = ['REJECT', 'RETURN'].includes(action)
       const run = (reason) => {
-        if (needReason && reason.trim().length < 5) return toast('原因不少于5字')
         this.acting = true
-        this.loadDetail(x).then((detail) => this.reviewRequest(id, action, reason, x, detail))
-          .then(() => { toast('已处理'); this.load() }).catch((e) => this._err(e, '审批'))
+        this.loadDetail(x).then((detail) => this.reviewRequest(id, action, reason, x, detail)).then(() => { toast('已处理'); this.load() })
+          .catch((e) => { const n = this._err(e, '审批'); if (n.kind !== 'conflict' && needReason) setTimeout(() => this.doReview(x, action, reason), 0) })
           .finally(() => { this.acting = false })
       }
-      if (needReason) uni.showModal({ title: action === 'RETURN' ? '退回原因' : '驳回原因', editable: true, placeholderText: '不少于5字', success: (r) => { if (r.confirm) run((r.content || '').trim()) } })
+      if (needReason) this.promptText({ title: action === 'RETURN' ? '退回原因' : '驳回原因', initial: previous, invalid: '原因不少于5字', submit: run })
       else run('')
     },
-    reviewAppeal(x, action) {
+    reviewAppeal(x, action, previous = '') {
       const id = this.rowKey(x); const version = this.versionOf(x)
       if (!id || version === null || this.acting) return
-      uni.showModal({
-        title: action.label, editable: true, placeholderText: '填写复核意见（不少于5字）',
-        success: (r) => {
-          if (!r.confirm) return
-          const opinion = (r.content || '').trim(); if (opinion.length < 5) return toast('复核意见至少5字')
-          const payload = this.meta.appealKind === 'SECOND_CLASS_APPEAL'
-            ? { action: action.value, opinion, version }
-            : { result: action.value, opinion, version }
-          this.acting = true
-          affairsAppealApi.review(this.meta.appealKind, id, payload).then(() => { toast('复核完成'); this.load() })
-            .catch((e) => this._err(e, '复核')).finally(() => { this.acting = false })
-        }
-      })
-    },
-    doRiskProcess(x) {
-      const id = x.riskId || x.id
-      uni.showModal({ title: '处置内容', editable: true, placeholderText: '不少于5字', success: (r) => {
-        if (!r.confirm) return; const content = (r.content || '').trim(); if (content.length < 5) return toast('处置内容不少于5字')
-        this.acting = true; this.loadDetail(x).then((detail) => {
-          const version = this.visibleVersion(x, detail)
-          return affairsContractApi.processRisk(id, content, version)
-        }).then(() => { toast('已记录'); this.load() }).catch((e) => this._err(e, '处置')).finally(() => { this.acting = false })
+      this.promptText({ title: action.label, initial: previous, invalid: '复核意见至少5字', submit: (opinion) => {
+        const payload = this.meta.appealKind === 'SECOND_CLASS_APPEAL' ? { action: action.value, opinion, version } : { result: action.value, opinion, version }
+        this.acting = true
+        affairsAppealApi.review(this.meta.appealKind, id, payload).then(() => { toast('复核完成'); this.load() })
+          .catch((e) => { const n = this._err(e, '复核'); if (n.kind !== 'conflict') setTimeout(() => this.reviewAppeal(x, action, opinion), 0) })
+          .finally(() => { this.acting = false })
       } })
     },
-    doRiskClose(x) {
+    doRiskProcess(x, previous = '') {
       const id = x.riskId || x.id
-      uni.showModal({ title: '关闭结论', editable: true, placeholderText: '不少于5字', success: (r) => {
-        if (!r.confirm) return; const conclusion = (r.content || '').trim(); if (conclusion.length < 5) return toast('关闭结论不少于5字')
-        this.acting = true; this.loadDetail(x).then((detail) => {
-          const version = this.visibleVersion(x, detail)
-          return affairsContractApi.closeRisk(id, conclusion, version)
-        }).then(() => { toast('已关闭'); this.load() }).catch((e) => this._err(e, '关闭')).finally(() => { this.acting = false })
+      this.promptText({ title: '处置内容', initial: previous, invalid: '处置内容不少于5字', submit: (content) => {
+        this.acting = true
+        this.loadDetail(x).then((detail) => affairsContractApi.processRisk(id, content, this.visibleVersion(x, detail)))
+          .then(() => { toast('已记录'); this.load() })
+          .catch((e) => { const n = this._err(e, '处置'); if (n.kind !== 'conflict') setTimeout(() => this.doRiskProcess(x, content), 0) })
+          .finally(() => { this.acting = false })
+      } })
+    },
+    doRiskClose(x, previous = '') {
+      const id = x.riskId || x.id
+      this.promptText({ title: '关闭结论', initial: previous, invalid: '关闭结论不少于5字', submit: (conclusion) => {
+        this.acting = true
+        this.loadDetail(x).then((detail) => affairsContractApi.closeRisk(id, conclusion, this.visibleVersion(x, detail)))
+          .then(() => { toast('已关闭'); this.load() })
+          .catch((e) => { const n = this._err(e, '关闭'); if (n.kind !== 'conflict') setTimeout(() => this.doRiskClose(x, conclusion), 0) })
+          .finally(() => { this.acting = false })
       } })
     }
   }
