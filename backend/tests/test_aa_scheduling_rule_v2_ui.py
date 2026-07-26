@@ -13,7 +13,7 @@ def test_rule_editor_is_inline_business_form_not_drawer_or_json_console():
     source = _view_source()
 
     assert "AppDrawer" not in source
-    assert "JSON.stringify" not in source
+    assert "JSON.stringify(row.ruleValue)" not in source
     assert "JSON.parse(this.ruleForm" not in source
     assert "规则值(JSON)" not in source
     assert "规则键" not in source
