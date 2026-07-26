@@ -8,7 +8,8 @@
 - 对毕业设计新旧 XLSX 导出统一做公式注入净化；
 - 将“二次答辩”严格限制为唯一第二轮；
 - 成绩申诉受理与成绩撤回、学生阶段回退和通知保持原子一致；
-- 成果互查任务绑定具体已通过定稿、双方范围和附件证据。
+- 成果互查任务绑定具体已通过定稿、双方范围和附件证据；
+- 查重复查申请一次性处理并真实通知学生。
 """
 from __future__ import annotations
 
@@ -58,6 +59,9 @@ def install_runtime_settings() -> None:
     from app.modules.graduation.services.graduation_permission_extensions import (
         install_graduation_permission_extensions,
     )
+    from app.modules.graduation.services.graduation_plagiarism_consistency import (
+        install_plagiarism_consistency,
+    )
     from app.modules.graduation.services.graduation_topic_import_consistency import (
         install_topic_import_consistency,
     )
@@ -70,3 +74,4 @@ def install_runtime_settings() -> None:
     install_defense_round_consistency()
     install_grade_appeal_consistency()
     install_peer_consistency()
+    install_plagiarism_consistency()
