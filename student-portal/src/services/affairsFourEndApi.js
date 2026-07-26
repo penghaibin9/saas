@@ -5,7 +5,7 @@ const enc = encodeURIComponent
 function creditAppealBody(body = {}) {
   const value = Number(body.claimValue)
   if (!Number.isFinite(value) || value <= 0) throw new Error('主张数值必填且必须大于0')
-  if (Math.round(value * 100) !== value * 100) throw new Error('主张数值最多保留2位小数')
+  if (Math.abs(Math.round(value * 100) - value * 100) > 1e-8) throw new Error('主张数值最多保留2位小数')
   return { ...body, claimValue: value }
 }
 
