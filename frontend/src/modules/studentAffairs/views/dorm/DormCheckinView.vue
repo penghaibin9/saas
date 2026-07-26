@@ -42,7 +42,6 @@
       </AppSectionCard>
     </AppGlobalState>
 
-    <!-- 入住：原为「请输入入住学生 ID」原生弹窗，要求老师手打学生内部 ID -->
     <AppConfirmDialog
       v-model:visible="inDlg.visible" :title="`办理入住 · ${inDlg.bedLabel}`" type="primary"
       confirm-text="确认入住" :submitting="actioning" @confirm="submitCheckin"
@@ -54,14 +53,12 @@
       <AppInlineAlert v-if="inDlg.error" type="danger" :description="inDlg.error" />
     </AppConfirmDialog>
 
-    <!-- 退宿确认：原为 window.confirm -->
     <AppConfirmDialog
       v-model:visible="outDlg.visible" title="办理退宿" type="warning" confirm-text="确认退宿"
       :description="`确认为 ${outDlg.who} 办理退宿？该床位将立即释放为空床。`"
       :submitting="actioning" @confirm="submitCheckout"
     />
 
-    <!-- 自选宿舍开关：全校级策略，原为 window.confirm，看不出影响面 -->
     <AppConfirmDialog
       v-model:visible="modeDlg.visible"
       :title="config.selfSelectEnabled ? '关闭学生自选宿舍' : '开放学生自选宿舍'"
@@ -82,8 +79,8 @@ import {
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { dormReliabilityApi } from '@/modules/studentAffairs/api/dormReliability.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
-
 
 const BED_COLUMNS = [
   { key: 'bedNo', title: '床号' },
@@ -105,7 +102,7 @@ export default {
       loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '',
       rooms: [], curRoom: '', beds: [],
       inDlg: { visible: false, bedId: '', bedLabel: '', studentId: '', error: '' },
-      outDlg: { visible: false, bedId: '', who: '' },
+      outDlg: { visible: false, bedId: '', who: '', version: null },
       modeDlg: { visible: false }
     }
   },
@@ -157,11 +154,25 @@ export default {
       else d.error = this.errorMessage
     },
     checkout(bd) {
-      this.outDlg = { visible: true, bedId: bd.bedId, who: bd.occupantName || `${bd.bedNo} 号床` }
+      this.outDlg = {
+        visible: true, bedId: bd.bedId,
+        who: bd.occupantName || `${bd.bedNo} 号床`, version: bd.version
+      }
     },
     async submitCheckout() {
-      const ok = await this.runAction(() => studentAffairsApi.dormCheckout(this.outDlg.bedId))
-      if (ok) this.outDlg.visible = false
+      this.actioning = true; this.errorMessage = ''
+      try {
+        await dormReliabilityApi.checkout(this.outDlg.bedId, this.outDlg.version)
+        await this.loadRooms2()
+        this.outDlg.visible = false
+      } catch (e) {
+        this.errorMessage = e.message || '退宿失败'
+        await this.loadBeds().catch(() => {})
+        const latest = this.beds.find((x) => String(x.bedId) === String(this.outDlg.bedId))
+        if (latest) this.outDlg.version = latest.version
+      } finally {
+        this.actioning = false
+      }
     },
     toggleSelfSelect() { this.modeDlg.visible = true },
     async submitToggle() {
@@ -173,7 +184,6 @@ export default {
         this.modeDlg.visible = false
       } catch (e) { this.errorMessage = e.message } finally { this.actioning = false }
     },
-    /** @returns {boolean} 是否成功；失败时保留弹窗与已选内容。 */
     async runAction(fn) {
       this.actioning = true; this.errorMessage = ''
       try { await fn(); await this.loadBeds(); await this.loadRooms2(); return true }
@@ -181,7 +191,6 @@ export default {
       finally { this.actioning = false }
     },
     async loadRooms2() {
-      // 刷新空床数
       const bs = await studentAffairsApi.listDormBuildings(); this.buildings = bs.data.items || []
       if (this.curBuilding) this.rooms = (await studentAffairsApi.listDormRooms(this.curBuilding)).data.items || []
       if (this.curRoom) this.beds = (await studentAffairsApi.listDormBeds(this.curRoom)).data.items || []
