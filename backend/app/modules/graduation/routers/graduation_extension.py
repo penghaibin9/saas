@@ -39,7 +39,7 @@ def gd_excellent_outcome_nominate(
     gd_student_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.grade.view")),
 ):
-    return success(svc.nominate_excellent(
+    return success(safety_svc.nominate_excellent(
         gd_student_id, body.get("reason") or "", body.get("evidence") or [],
     ), message="优秀成果已提名，等待专业复核")
 
@@ -81,7 +81,7 @@ def gd_defense_delay_advisor_review(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.defense.view")),
 ):
-    return success(svc.advisor_review_delay(
+    return success(safety_svc.advisor_review_delay(
         record_id, body.get("action") or "", body.get("comment") or "",
     ), message="导师审核完成")
 
