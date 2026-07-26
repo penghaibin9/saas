@@ -28,6 +28,10 @@ export const teacherInternshipScores = (batchId) => {
   try { return realRequest(batchPath('/mobile/teacher/internship/context/scores', batchId)) }
   catch (e) { return Promise.reject(e) }
 }
+export const teacherInternshipAgreements = (batchId) => {
+  try { return realRequest(batchPath('/mobile/teacher/internship/context/agreements', batchId)) }
+  catch (e) { return Promise.reject(e) }
+}
 export const teacherInternshipEnterpriseEvals = (batchId) => {
   try { return realRequest(batchPath('/mobile/teacher/internship/context/enterprise-evals', batchId)) }
   catch (e) { return Promise.reject(e) }
