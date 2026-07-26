@@ -13,13 +13,13 @@ def test_periodic_affairs_scans_are_wrapped_for_appeal_repair():
 
 
 def test_default_web_scheduler_enables_all_wrapped_affairs_scans():
-    from app.core.config import settings
+    from app.core.config import Settings
     from app import main
 
     source = inspect.getsource(main.lifespan)
-    assert settings.AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN is True
-    assert settings.AFFAIRS_RISK_TIMEOUT_AUTO_SCAN is True
-    assert settings.AFFAIRS_COUNSELOR_TEMP_AUTO_SCAN is True
+    assert Settings.model_fields["AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN"].default is True
+    assert Settings.model_fields["AFFAIRS_RISK_TIMEOUT_AUTO_SCAN"].default is True
+    assert Settings.model_fields["AFFAIRS_COUNSELOR_TEMP_AUTO_SCAN"].default is True
     assert "affairs_leave_service.scan_overdue()" in source
     assert "affairs_risk_service.scan_timeout()" in source
     assert "affairs_counselor_service.scan_expired_temps()" in source
