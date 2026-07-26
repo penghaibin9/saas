@@ -1,7 +1,7 @@
 """学生 PC 门户岗位实习合规、知情与安全教育接口。
 
-与学生小程序复用同一业务服务，不复制状态机；多条进行中实习时，合规和安全
-列表显式接收 batchId，正文与课程操作再按任务/课程归属校验本人。
+与学生小程序复用同一业务服务，不复制状态机；多条进行中实习时，合规、知情
+确认和安全列表显式接收 batchId，正文与课程操作再按任务/课程归属校验本人。
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.modules.internship.services import internship_consent_service as consent
 from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_compliance_service as compliance
+from app.modules.internship.services import internship_student_consent_context_service as consent_context
 
 router = APIRouter(prefix="/portal/internship", tags=["学生PC门户-岗位实习合规"])
 
@@ -25,9 +26,12 @@ def portal_compliance(
     return success(compliance.evaluate_my(user, operation=operation, batch_id=batchId))
 
 
-@router.get("/consents", summary="本人知情确认任务")
-def portal_consents(user=Depends(get_current_user)):
-    return success(consent.list_my(user))
+@router.get("/consents", summary="本人所选批次知情确认任务")
+def portal_consents(
+    batchId: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(consent_context.list_my(user, batch_id=batchId))
 
 
 @router.get("/consents/{consent_id}", summary="本人知情确认正文")
