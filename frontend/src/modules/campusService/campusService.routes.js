@@ -11,22 +11,24 @@ export const campusServiceRoutes = {
   meta: { moduleCode: 'CAMPUS_SERVICE' },
   children: [
     {
+      // 老系统「在校服务中心」已整体退役，业务由学工中心接管。保留 path 只做 redirect，
+      // 保证老书签/外链刷新不 404（CLAUDE.md §6.4）。
       path: '',
       name: 'campus-service-dashboard',
-      component: () => import('@/views/admin/campusService/CampusServiceDashboardView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dashboard.view', title: '在校服务中心' }
+      redirect: '/admin/student-affairs/dashboard'
     },
     {
+      // 旧「学生服务台账」是影子学生台账，已由学生主档列表取代
       path: 'students',
       name: 'campus-service-students',
-      component: () => import('@/views/admin/campusService/ServiceStudentListView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '学生服务' }
+      redirect: '/admin/student/list'
     },
     {
+      // 只回列表、不带 id 跳详情：旧 id 是台账主键，不是学籍档案 id，
+      // 直接当 studentId 用会打开另一个学生（正是本次整改要消灭的身份混用）。
       path: 'students/:id',
       name: 'campus-service-student-detail',
-      component: () => import('@/views/admin/campusService/ServiceStudentDetailView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '学生服务详情' }
+      redirect: '/admin/student/list'
     },
     {
       path: 'leave',
@@ -86,17 +88,16 @@ export const campusServiceRoutes = {
       redirect: '/admin/student-affairs/funding'
     },
     {
+      // 旧宿舍服务页停用，统一走学工中心「宿舍与公寓」
       path: 'dormitory',
       name: 'campus-service-dormitory',
-      component: () => import('@/views/admin/campusService/DormitoryView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dorm.view', title: '宿舍服务' }
+      redirect: '/admin/student-affairs/dorm/checkin'
     },
     {
-      /* 第一批交互改造：单条住宿记录独立详情深链接（与住宿台账双栏复用同一详情组件）。权限沿用住宿台账 key，不扩大权限。 */
+      // 同上；旧住宿记录 id 在新宿舍模块无对应，只回入住管理列表
       path: 'dormitory/records/:recordId',
       name: 'campus-service-dorm-record-detail',
-      component: () => import('@/views/admin/campusService/DormRecordDetailView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.dorm.view', title: '住宿详情' }
+      redirect: '/admin/student-affairs/dorm/checkin'
     },
     {
       path: 'discipline/:recordId',
@@ -110,10 +111,11 @@ export const campusServiceRoutes = {
       redirect: '/admin/student-affairs/discipline'
     },
     {
+      // 「服务工单」是老系统业务，新系统不再提供该功能，学工中心无继任页面。
+      // 表与后端接口保留（历史数据不删），前端入口退役后回学工总览。
       path: 'work-orders',
       name: 'campus-service-work-orders',
-      component: () => import('@/views/admin/campusService/WorkOrderView.vue'),
-      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.workorder.view', title: '服务工单' }
+      redirect: '/admin/student-affairs/dashboard'
     }
   ]
 }

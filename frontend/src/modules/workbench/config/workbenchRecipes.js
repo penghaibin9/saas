@@ -134,7 +134,8 @@ const SCOPE_STUDENT_STATS = [
 
 const SCHOOL_STATS = [
   statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`),
-  statsCue('studentTotal', '在册学生', 'primary', '/admin/campus-service/students'),
+  // 旧「在校服务·学生服务台账」已退役，在册学生统一进学生主档列表
+  statsCue('studentTotal', '在册学生', 'primary', '/admin/student/list'),
   statsCue('academicWarning', '学业预警在办', 'warning', TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE),
   statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed?status=UNEMPLOYED'),
   statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students?status=PENDING')
