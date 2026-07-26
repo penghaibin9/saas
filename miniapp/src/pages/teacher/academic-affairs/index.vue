@@ -6,7 +6,7 @@
       <view class="ta__navbar"><text class="ta__navbar-back" @click="back">‹</text><text class="ta__navbar-title">我的教学</text></view>
       <view class="ta__summary">
         <text class="ta__summary-label">今日教学</text>
-        <text class="ta__summary-value">{{ todayCourses.length ? `${todayCourses.length} 门课程` : '今日无课' }}</text>
+        <text class="ta__summary-value">{{ todaySummary }}</text>
         <text class="ta__summary-sub">{{ headline }}</text>
       </view>
     </view>
@@ -25,7 +25,7 @@
               <view class="flex-1"><text class="ta__course-name">{{ item.courseName }}</text><text class="ta__course-sub">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text></view>
             </view>
           </view>
-          <text v-else class="ta__empty">今天暂无课程，可查看完整课表安排。</text>
+          <text v-else class="ta__empty">{{ todayEmptyText }}</text>
         </view>
 
         <view v-if="taskCues.length" class="ta__tasks card">
@@ -82,18 +82,41 @@ function isExpectedForbidden(result) {
   return result.status === 'rejected' && normalizeError(result.reason).kind === 'forbidden'
 }
 
+function activeInWeek(item, week) {
+  const current = Number(week)
+  if (!Number.isFinite(current) || current < 1) return false
+  const start = Number(item.startWeek || 1)
+  const end = Number(item.endWeek || start)
+  if (current < start || current > end) return false
+  const parity = String(item.weekParity || 'ALL').toUpperCase()
+  if (parity === 'ODD') return current % 2 === 1
+  if (parity === 'EVEN') return current % 2 === 0
+  return true
+}
+
 export default {
   data() {
     return {
       statusBarHeight: 20, state: 'loading', partialError: false,
-      scheduleItems: [], available: { schedule: true }, counts: {}, entries: ENTRIES
+      scheduleItems: [], currentWeek: null, available: { schedule: true }, counts: {}, entries: ENTRIES
     }
   },
   computed: {
     todayCourses() {
       const day = new Date().getDay() || 7
-      return this.scheduleItems.filter((x) => Number(x.weekday) === day)
+      return this.scheduleItems
+        .filter((item) => Number(item.weekday) === day && activeInWeek(item, this.currentWeek))
         .sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
+    },
+    todaySummary() {
+      if (this.currentWeek == null) return '周次待确认'
+      if (Number(this.currentWeek) === 0) return '学期未开始'
+      return this.todayCourses.length ? `${this.todayCourses.length} 门课程` : '今日无课'
+    },
+    todayEmptyText() {
+      if (this.currentWeek == null) return '学校校历缺少学期开始日期，暂不判断今日课程。'
+      if (Number(this.currentWeek) === 0) return '当前学期尚未开始。'
+      return `第${this.currentWeek}周今天暂无课程，可查看完整课表安排。`
     },
     visibleEntries() {
       return this.entries.filter((x) => x.always || this.available[x.source])
@@ -108,6 +131,7 @@ export default {
       ].filter((x) => this.available[x.key] && x.count > 0)
     },
     headline() {
+      if (this.partialError) return '部分待办未完全加载，请点击页面提示重试'
       const total = this.taskCues.reduce((sum, x) => sum + Number(x.count || 0), 0)
       return total ? `还有 ${total} 项教务任务需要处理` : '当前没有紧急教务待办'
     }
@@ -149,7 +173,14 @@ export default {
         this.state = 'error'
         return
       }
-      if (results[0].status === 'fulfilled') this.scheduleItems = listOf(results[0].value)
+      if (results[0].status === 'fulfilled') {
+        this.scheduleItems = listOf(results[0].value)
+        this.currentWeek = results[0].value && results[0].value.currentWeek != null
+          ? Number(results[0].value.currentWeek) : null
+      } else {
+        this.scheduleItems = []
+        this.currentWeek = null
+      }
       this.available = { schedule: true }
       this.counts = {}
       this.setResult('grade', results[1], true)
@@ -161,7 +192,7 @@ export default {
       this.setResult('defer', results[7], true)
       this.setResult('warning', results[8], true)
       this.setResult('workload', results[9], true)
-      this.partialError = results.some((r) => r.status === 'rejected' && !isExpectedForbidden(r))
+      this.partialError = results.some((r) => r.status === 'rejected' && !isExpectedForbidden(r)) || this.currentWeek == null
       this.state = 'ready'
     }
   }
