@@ -1,6 +1,5 @@
 <template>
   <div class="sp-shell">
-    <!-- ============ 侧栏 248px ============ -->
     <aside class="sp-aside">
       <div class="sp-brand">
         <span class="sp-brand__logo">
@@ -31,12 +30,16 @@
       </div>
     </aside>
 
-    <!-- ============ 主区 ============ -->
     <div class="sp-body">
       <header class="sp-header">
-        <div style="display:flex;align-items:baseline;gap:12px;min-width:0">
-          <span class="sp-header__title">{{ pageTitle }}</span>
-          <span class="sp-header__sub">{{ brand.platformName || '学生服务门户' }}</span>
+        <div style="display:flex;align-items:center;gap:12px;min-width:0">
+          <div style="min-width:0">
+            <span class="sp-header__title">{{ pageTitle }}</span>
+            <span class="sp-header__sub">{{ brand.platformName || '学生服务门户' }}</span>
+          </div>
+          <button v-if="activePath === 'internship'" class="sp-context-link" @click="toggleInternshipView">
+            {{ route.name === 'internship-compliance' ? '返回实习工作台' : '上岗合规与安全教育' }}
+          </button>
         </div>
         <div style="display:flex;align-items:center;gap:14px;flex:none">
           <div class="sp-search">
@@ -131,6 +134,9 @@ function onNav(m) {
   if (m.locked) { ui.notify('该模块未开通，请联系学校管理员'); return }
   router.push(m.to)
 }
+function toggleInternshipView() {
+  router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance')
+}
 function goMsg() { router.push('/messages') }
 function doSearch() { if (search.value) router.push('/service-hall') }
 function logout() {
@@ -164,29 +170,29 @@ onMounted(async () => {
 .sp-aside__foot { padding: 12px 16px; border-top: 1px solid var(--line2); display: flex; align-items: center; justify-content: space-between; }
 .sp-logout { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--t3); cursor: pointer; }
 .sp-logout:hover { color: var(--danger-fg); }
-
 .sp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .sp-header { height: 62px; flex: none; background: #fff; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 26px; gap: 20px; }
 .sp-header__title { font-size: 20px; font-weight: 600; color: var(--t1); white-space: nowrap; }
-.sp-header__sub { font-size: 12.5px; color: #A9B0BD; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-header__sub { font-size: 12.5px; color: #A9B0BD; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 12px; }
+.sp-context-link { border:1px solid var(--pri);background:var(--pri-50);color:var(--pri);height:32px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap; }
+.sp-context-link:hover { background:#E8F1FF; }
 .sp-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; background: #F5F7FA; border: 1px solid #EDEFF3; border-radius: 9px; width: 230px; }
 .sp-search input { border: none; background: transparent; outline: none; font-size: 13px; color: var(--t2); width: 100%; }
 .sp-scope { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; background: var(--pri-50); border-radius: 15px; color: var(--pri); font-size: 12.5px; font-weight: 500; flex: none; white-space: nowrap; }
 .sp-bell { all: unset; position: relative; cursor: pointer; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--t2); }
 .sp-bell:hover { background: #F3F5F8; }
 .sp-bell__badge { position: absolute; top: 6px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger-fg); color: #fff; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; border: 1.5px solid #fff; }
-.sp-user { display: flex; align-items: center; gap: 10px; padding-left: 6px; border-left: 1px solid #EDEFF3; cursor: default; }
-.sp-user__avatar { width: 36px; height: 36px; flex: none; border-radius: 10px; background: var(--pri-50); color: var(--pri); font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.sp-user { display: flex; align-items: center; gap: 10px; padding-left: 2px; }
+.sp-user__avatar { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #DCE9FF, #EEF4FF); color: var(--pri); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; border: 1px solid #D6E5FF; }
 .sp-user__name { font-size: 13.5px; font-weight: 600; color: var(--t1); }
 .sp-user__role { font-size: 11.5px; color: var(--t3); }
-
 .sp-main { flex: 1; overflow-y: auto; position: relative; }
 .sp-watermark { position: absolute; inset: 0; pointer-events: none; background-repeat: repeat; z-index: 0; }
 .sp-content { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 26px 32px 40px; }
-
 @media (max-width: 980px) {
   .sp-aside { width: 60px; }
   .sp-brand__school, .sp-brand__portal, .sp-nav__item span, .sp-logout { display: none; }
   .sp-search { width: 120px; }
+  .sp-context-link { display:none; }
 }
 </style>
