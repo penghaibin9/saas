@@ -1,7 +1,11 @@
 """教务归档第12域：学生评教。
 
-学期归档前评教批次必须 CLOSED；有提交数据的任务必须生成结果；评教申诉必须 RESOLVED/REJECTED。
-未启用评教时不阻断。
+真实状态机：DRAFT→PUBLISHED→OPEN→RESULT_READY→ARCHIVED；CLOSED只是关闭核算过程中的历史/兼容状态，
+不是可直接封存的最终结果态。学期归档前：
+- 评教批次必须 RESULT_READY/ARCHIVED；
+- 有提交数据的教学任务必须形成对应 ``batch_id + teaching_task_id`` 结果；
+- 评教申诉必须 RESOLVED/REJECTED；
+- 本学期未启用评教时不阻断。
 """
 from __future__ import annotations
 
@@ -29,11 +33,11 @@ def _evaluation_gate_result(
         return _legacy._result(0, True, "本学期未启用学生评教，不作为归档阻断")
     unfinished = [
         row for row in batches
-        if str(getattr(row, "status", None) or "").upper() != "CLOSED"
+        if str(getattr(row, "status", None) or "").upper() not in {"RESULT_READY", "ARCHIVED"}
     ]
     blockers = []
     if unfinished:
-        blockers.append(f"未关闭评教批次 {len(unfinished)} 个")
+        blockers.append(f"未形成最终结果的评教批次 {len(unfinished)} 个")
     if missing_results:
         blockers.append(f"有提交但未生成结果的评教任务 {int(missing_results)} 个")
     if active_appeals:
@@ -64,33 +68,40 @@ def _evaluate_evaluation(db, term_id):
     batch_ids = [int(row.id) for row in batches]
     if not batch_ids:
         return _evaluation_gate_result([])
+
     tasks = db.query(AaEvaluationTask).filter(
         AaEvaluationTask.tenant_id == _tid(),
         AaEvaluationTask.batch_id.in_(batch_ids),
         AaEvaluationTask.is_deleted.is_(False),
     ).all()
-    task_ids = [int(row.id) for row in tasks]
-    result_task_ids = set()
-    active_appeals = 0
-    if task_ids:
-        results = db.query(AaEvaluationResult).filter(
-            AaEvaluationResult.tenant_id == _tid(),
-            AaEvaluationResult.task_id.in_(task_ids),
-            AaEvaluationResult.is_deleted.is_(False),
-        ).all()
-        result_task_ids = {int(row.task_id) for row in results}
-        result_ids = [int(row.id) for row in results]
-        if result_ids:
-            active_appeals = db.query(AaEvaluationAppeal).filter(
-                AaEvaluationAppeal.tenant_id == _tid(),
-                AaEvaluationAppeal.result_id.in_(result_ids),
-                AaEvaluationAppeal.status.in_(["SUBMITTED", "REVIEWING"]),
-                AaEvaluationAppeal.is_deleted.is_(False),
-            ).count()
+    results = db.query(AaEvaluationResult).filter(
+        AaEvaluationResult.tenant_id == _tid(),
+        AaEvaluationResult.batch_id.in_(batch_ids),
+        AaEvaluationResult.is_deleted.is_(False),
+    ).all()
+    result_keys = {
+        (int(row.batch_id), int(row.teaching_task_id))
+        for row in results
+        if row.batch_id and row.teaching_task_id
+    }
     missing_results = sum(
         1 for task in tasks
-        if int(task.submitted_count or 0) > 0 and int(task.id) not in result_task_ids
+        if int(task.submitted_count or 0) > 0
+        and (
+            not task.teaching_task_id
+            or (int(task.batch_id), int(task.teaching_task_id)) not in result_keys
+        )
     )
+
+    result_ids = [int(row.id) for row in results]
+    active_appeals = 0
+    if result_ids:
+        active_appeals = db.query(AaEvaluationAppeal).filter(
+            AaEvaluationAppeal.tenant_id == _tid(),
+            AaEvaluationAppeal.result_id.in_(result_ids),
+            AaEvaluationAppeal.status.in_(["SUBMITTED", "COLLEGE_REVIEW"]),
+            AaEvaluationAppeal.is_deleted.is_(False),
+        ).count()
     return _evaluation_gate_result(
         batches,
         missing_results=missing_results,
