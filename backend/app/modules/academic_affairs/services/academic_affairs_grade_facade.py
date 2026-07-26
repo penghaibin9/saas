@@ -5,13 +5,17 @@
 2. 历史行仅以“规范课程名 + 课程性质 + 学分”作为显式兼容键，并按正式来源、考试尝试和
    最新记录选择有效行，不再用最高分硬编码学校的补考/重修制度。
 
-V2后续迁移应把 ``AaGradeTask.course_id`` 投影到成绩读模型，并冻结学校有效成绩策略。
+本facade同时替换原模块内部的有效成绩与汇总函数，保证成绩发布、成绩单、预警和毕业审核
+不会出现两套口径。V2后续迁移应把 ``AaGradeTask.course_id`` 投影到成绩读模型，并冻结学校
+有效成绩策略快照。
 """
 from __future__ import annotations
 
 import logging
 import unicodedata
 from decimal import Decimal, InvalidOperation
+
+from sqlalchemy import select
 
 from . import academic_affairs_grade_service as _legacy
 
@@ -20,6 +24,7 @@ _SOURCE_PRIORITY = {
     "RECHECK": 70,
     "CHANGE": 60,
     "RECOGNIZED": 55,
+    "RECOGNITION": 55,
     "PUBLISH": 50,
     "MANUAL": 40,
     "LEGACY": 10,
@@ -80,7 +85,7 @@ def _attempt_rank(row):
         1 if record_status == "ACTIVE" else 0,
         _SOURCE_PRIORITY.get(source, 20),
         _EXAM_PRIORITY.get(exam_type, 15),
-        1 if pass_status in {"PASSED", "FAILED"} else 0,
+        1 if pass_status in {"PASSED", "FAILED", "FAIL"} else 0,
         row_id,
     )
 
@@ -103,3 +108,55 @@ def effective_grade_rows(rows):
             legacy_count,
         )
     return list(selected.values())
+
+
+def refresh_academic_aggregates(db, academic_student) -> None:
+    """用统一有效成绩口径刷新均分、未通过、学分和GPA。"""
+    from app.models import AcademicGrade
+
+    all_rows = db.scalars(select(AcademicGrade).where(
+        AcademicGrade.tenant_id == _legacy._tid(),
+        AcademicGrade.acad_student_id == academic_student.id,
+        AcademicGrade.record_status == "ACTIVE",
+        AcademicGrade.is_deleted.is_(False),
+    )).all()
+    rows = effective_grade_rows(all_rows)
+    scored = [row for row in rows if row.score is not None]
+
+    academic_student.avg_score = (
+        round(sum(float(row.score) for row in scored) / len(scored))
+        if scored else 0
+    )
+    academic_student.failed_count = sum(
+        1 for row in rows
+        if str(row.pass_status or "").upper() in {"FAIL", "FAILED"}
+    )
+    academic_student.obtained_credits = sum(
+        float(row.credit_value or 0)
+        for row in rows
+        if str(row.pass_status or "").upper() == "PASSED"
+    )
+
+    if not scored:
+        academic_student.gpa = 0
+        return
+    total_credit = sum(float(row.credit_value or 0) for row in scored)
+    if total_credit > 0:
+        academic_student.gpa = round(
+            sum(
+                _legacy._course_point(row.score) * float(row.credit_value or 0)
+                for row in scored
+            ) / total_credit,
+            2,
+        )
+    else:
+        academic_student.gpa = round(
+            sum(_legacy._course_point(row.score) for row in scored) / len(scored),
+            2,
+        )
+
+
+# 原模块函数内部通过自身globals查找这两个名字；显式替换后，publish_grades/transcript等旧函数
+# 也会消费同一规则，而不是只有facade外部调用才生效。
+_legacy.effective_grade_rows = effective_grade_rows
+_legacy._refresh_aggregates = refresh_academic_aggregates
