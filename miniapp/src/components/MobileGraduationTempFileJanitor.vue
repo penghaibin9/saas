@@ -3,18 +3,22 @@
 <script>
 import { realRequest } from '@/services/request'
 function pageStack() { return typeof getCurrentPages === 'function' ? getCurrentPages() : [] }
+let owner = null
 export default {
   name: 'MobileGraduationTempFileJanitor',
-  data() { return { active: false, known: new Set(), initialized: false, timer: null } },
+  data() { return { active: false, known: new Set(), initialized: false, timer: null, owns: false } },
   mounted() {
     const pages = pageStack(); const page = pages[pages.length - 1]
-    const route = (page && (page.route || page.__route__)) || ''
-    this.active = route === 'pages/student/graduation/index'
-    if (this.active) { this.sync(); this.timer = setInterval(this.sync, 600) }
+    const match = ((page && (page.route || page.__route__)) || '') === 'pages/student/graduation/index'
+    if (match && owner == null) {
+      owner = this._uid; this.owns = true; this.active = true
+      this.sync(); this.timer = setInterval(this.sync, 600)
+    }
   },
   beforeUnmount() {
     if (this.timer) clearInterval(this.timer)
     if (this.active) this.currentIds().forEach((id) => this.abandon(id))
+    if (this.owns && owner === this._uid) owner = null
   },
   methods: {
     currentVm() { const pages = pageStack(); const page = pages[pages.length - 1]; return page && page.$vm },
