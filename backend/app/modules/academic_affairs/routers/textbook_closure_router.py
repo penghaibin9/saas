@@ -1,7 +1,7 @@
 """教材征订、发放与费用P0闭环入口。
 
-主教材router保持不改大文件；本小router补：当前学期审核候选、发放工作台、未到货征订取消、教材退领。
-所有写事实仍进入教材最终facade和统一审计。
+主教材router保持不改大文件；本小router补：当前学期审核候选、发放批次/明细工作台、
+未到货征订取消、教材退领。所有写事实仍进入教材最终facade和统一审计。
 """
 from __future__ import annotations
 
@@ -37,6 +37,19 @@ def distribution_batches(
 ):
     items, total = workbench_svc.list_distribution_batches(user, termId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/distribution-workbench/{batchId}/records", summary="教材发放学生明细与费用状态")
+def distribution_records(
+    batchId: int = Path(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
+    user=Depends(require_permission("academicAffairs.textbook.distribution.manage")),
+):
+    items, total, batch = workbench_svc.list_distribution_records(user, batchId, page, pageSize)
+    data = paginate(items, total, page, pageSize)
+    data["batch"] = batch
+    return success(data)
 
 
 @router.post("/order-batches/{batchId}/cancel", summary="取消未到货征订批次并恢复来源选用")
