@@ -1,7 +1,7 @@
 """学生 PC 门户岗位实习权威接口。
 
 与学生小程序复用同一业务服务，不复制状态机；批次由显式 batchId 或统一
-X-Internship-Batch-Id 上下文解析。正式申请、请假撤回与销假均强制乐观锁版本。
+X-Internship-Batch-Id 上下文解析。正式申请、请假和补卡关键写操作均强制版本。
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from app.modules.internship.services import internship_student_application_conte
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_leave_context_service as leaves
+from app.modules.internship.services import internship_student_makeup_context_service as makeups
 
 router = APIRouter(prefix="/portal/internship", tags=["学生PC门户-岗位实习权威接口"])
 
@@ -177,3 +178,26 @@ def portal_leave_return(
     user=Depends(get_current_user),
 ):
     return success(leaves.return_my(user, leave_id, body or {}), message="销假已提交")
+
+
+@router.get("/context/makeups", summary="本人所选批次补卡申请列表")
+def portal_makeup_list(user=Depends(get_current_user)):
+    return success(makeups.list_my(user))
+
+
+@router.post("/context/makeups", summary="本人发起合规补卡申请")
+def portal_makeup_apply(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(makeups.apply(user, body or {}), message="补卡申请已提交")
+
+
+@router.post("/context/makeups/{makeup_id}/withdraw", summary="按版本撤回本人待审核补卡")
+def portal_makeup_withdraw(
+    makeup_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(makeups.withdraw(
+        user, makeup_id, (body or {}).get("expectedVersion")), message="补卡已撤回")
