@@ -13,6 +13,7 @@ from . import academic_affairs_exam_facade as academic_affairs_exam_service
 from . import academic_affairs_grade_facade as academic_affairs_grade_service
 from . import academic_affairs_makeup_facade as academic_affairs_makeup_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
+from . import academic_affairs_selection_facade as academic_affairs_selection_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_facade as academic_affairs_task_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
@@ -30,6 +31,8 @@ sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_gra
 sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_makeup_service
 # 学生课表等完整路径导入统一使用“同一发布批次内合并LOCKED选课”的安全读侧。
 sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_schedule_service
+# 选课锁定前必须形成可复核的正式教学任务名单。
+sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
 # 教学任务生成运行时完整路径导入统计范围函数；统一切到空范围fail-closed版本。
 sys.modules[f"{__name__}.academic_affairs_stats_service"] = academic_affairs_stats_service
 # 其它服务可能完整路径导入教学任务；统一切到读取学期/校历教学周的 facade。
