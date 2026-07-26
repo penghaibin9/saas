@@ -1,8 +1,10 @@
-"""教材域最终输入校验层。
+"""教材域最终输入与异常闭环校验层。
 
-在学期写保护facade之上补两条生产级约束：
+在学期写保护facade之上补生产级约束：
 - 审核批次selectionIds去重，避免同一选用重复插入唯一关联；
-- 征订前所有来源选用必须有正整数预计数量，禁止生成0本征订后错误推进状态。
+- 征订前所有来源选用必须有正整数预计数量，禁止0本征订；
+- 只有同学期已有有效征订时，新批次才标记为补订；
+- 退领必须存在费用台账，已有实收时禁止静默冲销。
 """
 from __future__ import annotations
 
@@ -88,7 +90,7 @@ def create_review_batch(user, body):
 
 
 def create_order_batch(user, body):
-    """同学期新增已备案选用形成新批次，即补订；数量不完整时整批拒绝。"""
+    """同学期新增已备案选用形成新批次；数量不完整时整批拒绝。"""
     from app.models import (
         AaTeachingTask,
         AaTeachingTaskBatch,
@@ -126,10 +128,19 @@ def create_order_batch(user, body):
                 f"教材选用 {preview}{suffix} 未填写正整数预计数量，不能生成征订批次",
                 http_status=409,
             )
-
+        previous_count = db.query(AaTextbookOrderBatch).filter(
+            AaTextbookOrderBatch.tenant_id == _legacy._tid(),
+            AaTextbookOrderBatch.term_id == term.id,
+            AaTextbookOrderBatch.status != "CANCELLED",
+            AaTextbookOrderBatch.is_deleted.is_(False),
+        ).count()
+        supplemental = previous_count > 0
         batch = AaTextbookOrderBatch(
             tenant_id=_legacy._tid(),
-            batch_name=(getattr(body, "batchName", None) or "教材征订批次").strip(),
+            batch_name=(
+                getattr(body, "batchName", None)
+                or ("教材补订批次" if supplemental else "教材征订批次")
+            ).strip(),
             term_id=term.id,
             status="DRAFT",
         )
@@ -162,16 +173,61 @@ def create_order_batch(user, body):
             ))
         _legacy._audit(
             db, "AA_TEXTBOOK_ORDER", batch.id, "TEXTBOOK_ORDER_GENERATE",
-            f"合并 {len(merged)} 种教材；来源选用 {len(rows)} 条",
+            f"{'补订' if supplemental else '首批征订'}；合并 {len(merged)} 种教材；来源选用 {len(rows)} 条",
         )
         db.commit()
         return {
             "orderBatchId": str(batch.id),
             "itemCount": len(merged),
             "selectionCount": len(rows),
-            "supplemental": True,
+            "supplemental": supplemental,
         }
+
+
+def return_distribution(user, record_id, reason):
+    """未实收教材可退领；缺费用台账或已有实收均拒绝，避免无退款流水静默冲销。"""
+    from app.models import AaTextbookFeeLedger
+
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise _legacy._bad("退领原因必填且不少于5字")
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        record, distribution, _order = _base._distribution_chain(db, record_id)
+        if record.status == "RETURNED":
+            return {"recordId": str(record.id), "status": record.status}
+        if record.status != "RECEIVED":
+            raise _legacy._invalid("仅已签收教材可办理退领")
+        fee = db.query(AaTextbookFeeLedger).filter(
+            AaTextbookFeeLedger.tenant_id == _legacy._tid(),
+            AaTextbookFeeLedger.distribution_record_id == record.id,
+            AaTextbookFeeLedger.is_deleted.is_(False),
+        ).first()
+        if not fee:
+            raise AppException(
+                "DATA_CONFLICT",
+                "已签收教材缺少费用台账，禁止退领；请先完成费用数据治理",
+                http_status=409,
+            )
+        if float(fee.paid_amount or 0) > 0 or fee.status in ("PAID", "PARTIAL"):
+            raise AppException(
+                "DATA_CONFLICT",
+                "该教材已发生实收，当前系统尚无退款流水，禁止直接退领冲销；请先完成正式退款闭环",
+                http_status=409,
+            )
+        if fee.status == "UNPAID":
+            fee.status = "WAIVED"
+            fee.waive_reason = f"退领：{reason}"[:500]
+        elif fee.status != "WAIVED":
+            raise _legacy._invalid("费用状态异常，不能办理退领")
+        record.status = "RETURNED"
+        record.exchange_reason = reason
+        _base._refresh_distribution_batch(db, distribution)
+        _legacy._audit(db, "AA_TEXTBOOK_DIST", record.id, "TEXTBOOK_RETURN", reason)
+        db.commit()
+        return {"recordId": str(record.id), "status": record.status, "feeStatus": fee.status}
 
 
 _legacy.create_review_batch = create_review_batch
 _legacy.create_order_batch = create_order_batch
+_legacy.return_distribution = return_distribution
