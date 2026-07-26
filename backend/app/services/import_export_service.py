@@ -59,7 +59,7 @@ def parse_upload_rows(content: bytes, ext: str) -> list[dict]:
     for row_index, row in enumerate(rows[1:], start=2):
         values = []
         for column_index, cell in enumerate(row, start=1):
-            if isinstance(cell, str) and cell.lstrip().startswith(("=", "+", "@")):
+            if isinstance(cell, str) and cell.lstrip().startswith(("=", "+", "-", "@")):
                 raise AppException(
                     "VALIDATION_ERROR",
                     f"第{row_index}行第{column_index}列包含公式或危险表达式，禁止导入",
