@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.config import settings
 from app.core.graduation_permissions import require_graduation_request_permission
+from app.core.mobile_graduation_permissions import require_mobile_graduation_request_permission
 from app.core.permissions import require_module
 from app.core.security import require_staff
 
@@ -78,7 +79,6 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(internship_agreement_template.router, dependencies=d)
     api_router.include_router(internship_student.router, dependencies=d)
     api_router.include_router(internship_match.router, dependencies=d)
-    # 批次参与人（组织范围选人，替代反复导 Excel 名单）
     api_router.include_router(internship_participant.router, dependencies=d)
     api_router.include_router(internship_application.router, dependencies=d)
     api_router.include_router(internship_archive.router, dependencies=d)
@@ -119,6 +119,7 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
         graduation_mentor,
         graduation_midterm,
         graduation_more,
+        graduation_p0_guard,
         graduation_review,
         graduation_risk,
         graduation_stats,
@@ -132,6 +133,8 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     )
 
     d = deps["gd"]
+    # Exact P0 guard routes must precede legacy handlers with the same paths.
+    api_router.include_router(graduation_p0_guard.router, dependencies=d)
     for r in (
         graduation, graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
@@ -146,9 +149,9 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
 def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
         audit, dashboard, feedback, implementation, import_export,
-        migration, mobile, mobile_export, mobile_orientation_teacher,
-        national_standards, notification, onboarding, org_directory, platform, stats, system,
-        transfer, user_preference,
+        migration, mobile, mobile_export, mobile_graduation_guard, mobile_orientation_teacher,
+        national_standards, notification, onboarding, org_directory, platform, stats,
+        student_portal_graduation_guard, system, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
     from app.api.v1 import message_center as message_center_api
@@ -174,7 +177,16 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(stats.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
-    api_router.include_router(mobile.router)
+
+    from app.modules.graduation.services.graduation_record_resolver import install_mobile_resolver
+    install_mobile_resolver()
+    # Evidence-backed exact routes shadow the legacy mobile/portal handlers.
+    api_router.include_router(mobile_graduation_guard.router)
+    api_router.include_router(
+        mobile.router,
+        dependencies=[Depends(require_mobile_graduation_request_permission)],
+    )
+    api_router.include_router(student_portal_graduation_guard.router)
     api_router.include_router(student_portal_router)
     from app.api.v1 import student_portal_admin
     api_router.include_router(student_portal_admin.router)
@@ -186,7 +198,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(user_preference.router)
     api_router.include_router(feedback.router)
     api_router.include_router(system.router, tags=["system"])
-    # 组织目录：选人场景（实习/毕设批次、评奖）共用的组织树与年级源，按本人数据范围裁剪
     api_router.include_router(org_directory.router)
 
 
