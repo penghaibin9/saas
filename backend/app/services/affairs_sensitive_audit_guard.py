@@ -1,11 +1,12 @@
-"""心理明细强敏感访问的 fail-closed 审计门禁。
+"""心理明细强敏感访问的 fail-closed 审计与权限门禁。
 
 公共 audit_log.record() 为全局 fire-and-forget 设计，会吞掉落库异常；心理原文属于强敏感数据，
-必须额外核验本次审计落库健康，失败时返回 503 而不是继续泄露明文。
+必须同时满足显式明细权限、逐生范围、查看原因与审计成功，任一失败都不得返回原文。
 """
 from __future__ import annotations
 
 from app.core.exceptions import AppException
+from app.core.permissions import has_permission
 
 
 def strict_sensitive_view_audit(student_id, reason: str, resource: str) -> None:
@@ -23,7 +24,6 @@ def strict_sensitive_view_audit(student_id, reason: str, resource: str) -> None:
         result="SUCCESS",
     )
     after = audit_log.get_audit_db_health()
-    # record 外层失败会返回空字典；本次数据库写失败会增加连续失败计数并记录 lastFailure。
     failed_this_call = (
         not entry
         or int(after.get("consecutiveFailures") or 0) > int(before.get("consecutiveFailures") or 0)
@@ -36,6 +36,16 @@ def strict_sensitive_view_audit(student_id, reason: str, resource: str) -> None:
         )
 
 
+def explicit_detail_permission(user, student_id, scope_ids) -> bool:
+    """角色名称不能代替权限；通配与自定义角色均复用统一权限执行层。"""
+    if not has_permission(user, "studentAffairs.risk.psyDetail.view"):
+        return False
+    if scope_ids is None:
+        return True
+    return int(student_id) in {int(x) for x in scope_ids}
+
+
 def install() -> None:
     from app.services import affairs_mental_service as mental
     mental._sensitive_view_audit = strict_sensitive_view_audit
+    mental._can_view_detail = explicit_detail_permission
