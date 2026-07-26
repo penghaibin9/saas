@@ -78,10 +78,28 @@ def require_mobile_graduation_request_permission(
         "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN", "COLLEGE_ADMIN",
     }
     if code in _STABLE_MENTOR_REQUIRED and role not in admin_roles:
+        from sqlalchemy import func, select
+        from app.models import GraduationMentor
         from app.modules.graduation.services.graduation_identity import current_user_mentor
-        from app.services.db_service import session
+        from app.services.db_service import _tid, session
+
+        is_external_expert = bool(user.get("expertId")) and code in {
+            "graduationDesign.defense.view", "graduationDesign.defense.score",
+        }
         with session() as db:
             mentor = current_user_mentor(db)
-        if not mentor and not (code == "graduationDesign.defense.score" and user.get("expertId")):
+            same_name_count = 0
+            if mentor and (mentor.teacher_name or "").strip():
+                same_name_count = int(db.scalar(select(func.count()).select_from(GraduationMentor).where(
+                    GraduationMentor.tenant_id == _tid(),
+                    GraduationMentor.teacher_name == mentor.teacher_name,
+                    GraduationMentor.is_deleted.is_(False),
+                )) or 0)
+        if not mentor and not is_external_expert:
             raise no_permission("当前账号未绑定稳定毕设导师/评委身份，已拒绝按姓名授权；请管理员按工号完成绑定。")
+        # Legacy mobile services still contain name-based filters. Until those
+        # queries are fully rewritten to mentor_id, duplicate names must fail
+        # closed; otherwise two teachers named 张伟 can see each other's tasks.
+        if mentor and same_name_count > 1:
+            raise no_permission("当前学校存在同名毕设教师，移动端已停止按姓名授权；请使用 PC 端或完成稳定 ID 链路升级。")
     return checked
