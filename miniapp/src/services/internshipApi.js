@@ -31,6 +31,16 @@ export const teacherInternshipEnterpriseEvalResubmit = (evalId, body) =>
 export const teacherInternshipEnterpriseEvalReview = (evalId, body) =>
   realRequest(`/mobile/teacher/internship/context/enterprise-evals/${evalId}/review`, { method: 'POST', data: body || {} })
 
+/** 教师保险核验直接复用学校 PC 正式接口，权限、范围、版本契约完全同源。 */
+export const teacherInternshipInsurancePending = (batchId) => {
+  try {
+    const value = requireBatch(batchId)
+    return realRequest(`/internship/insurances?page=1&pageSize=100&status=PENDING_VERIFY&batchId=${encodeURIComponent(value)}`)
+  } catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipInsuranceVerify = (insuranceId, body) =>
+  realRequest(`/internship/insurances/${insuranceId}/verify`, { method: 'POST', data: body || {} })
+
 export const studentInternshipDashboard = (batchId = '') =>
   realRequest(optionalBatch('/mobile/internship/context/my', batchId))
 export const studentInternshipCompliance = (operation = 'ONBOARD', batchId = '') => {
