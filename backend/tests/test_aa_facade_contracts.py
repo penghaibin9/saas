@@ -14,10 +14,16 @@ def test_public_service_aliases_point_to_final_layers():
         "academic_affairs_makeup_term_facade"
     )
     assert services.academic_affairs_textbook_service.__name__.endswith(
-        "academic_affairs_textbook_roster_facade"
+        "academic_affairs_textbook_lock_facade"
     )
     assert services.academic_affairs_textbook_service.generate_distribution.__module__.endswith(
         "academic_affairs_textbook_roster_facade"
+    )
+    assert services.academic_affairs_textbook_service._term_layer._distribution_chain.__module__.endswith(
+        "academic_affairs_textbook_lock_facade"
+    )
+    assert services.academic_affairs_textbook_service._term_layer._fee_chain.__module__.endswith(
+        "academic_affairs_textbook_lock_facade"
     )
     assert services.academic_affairs_exam_service.__name__.endswith(
         "academic_affairs_exam_term_facade"
