@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -17,6 +18,9 @@ from app.services.db_service import _tid, session
 log = logging.getLogger(__name__)
 _OPERATION = "AFFAIRS_APPEAL_REPAIR"
 _MAX_ATTEMPTS = 8
+_REPAIRING: ContextVar[bool] = ContextVar("affairs_appeal_repairing", default=False)
+_RAW_SYNC = None
+_RAW_NOTICE = None
 
 
 def _key(todo_type: str, row_id: int, stage: str) -> str:
@@ -107,52 +111,67 @@ def _finish(record_id: int, ok: bool, error: str = "") -> None:
 
 
 def repair_pending(limit: int = 20) -> dict:
-    from app.services import affairs_appeal_todo_service as todo
+    global _RAW_SYNC, _RAW_NOTICE
+    if _REPAIRING.get() or _RAW_SYNC is None or _RAW_NOTICE is None:
+        return {"claimed": 0, "repaired": 0, "failed": 0}
 
-    limit = min(100, max(1, int(limit or 20)))
-    claimed = _claim(limit)
-    repaired = failed = 0
-    for item in claimed:
-        try:
-            stage = str(item.get("stage") or "")
-            todo_type = str(item.get("todoType") or "")
-            row_id = int(item.get("rowId") or 0)
-            if stage == "TODO_SYNC":
-                ok = bool(todo._sync_todo_after_commit(todo_type, row_id))
-            elif stage in ("RESULT_NOTICE", "OUTBOX_DRAIN"):
-                ok = bool(todo._result_notice(todo_type, row_id))
-            else:
-                ok = False
-            _finish(item["id"], ok, "" if ok else "repair returned false")
-            repaired += int(ok)
-            failed += int(not ok)
-        except Exception as exc:  # noqa: BLE001
-            _finish(item["id"], False, type(exc).__name__)
-            failed += 1
-    return {"claimed": len(claimed), "repaired": repaired, "failed": failed}
+    token = _REPAIRING.set(True)
+    try:
+        limit = min(100, max(1, int(limit or 20)))
+        claimed = _claim(limit)
+        repaired = failed = 0
+        for item in claimed:
+            try:
+                stage = str(item.get("stage") or "")
+                todo_type = str(item.get("todoType") or "")
+                row_id = int(item.get("rowId") or 0)
+                if stage == "TODO_SYNC":
+                    ok = bool(_RAW_SYNC(todo_type, row_id))
+                elif stage in ("RESULT_NOTICE", "OUTBOX_DRAIN"):
+                    ok = bool(_RAW_NOTICE(todo_type, row_id))
+                else:
+                    ok = False
+                _finish(item["id"], ok, "" if ok else "repair returned false")
+                repaired += int(ok)
+                failed += int(not ok)
+            except Exception as exc:  # noqa: BLE001
+                _finish(item["id"], False, type(exc).__name__)
+                failed += 1
+        return {"claimed": len(claimed), "repaired": repaired, "failed": failed}
+    finally:
+        _REPAIRING.reset(token)
 
 
 def install() -> None:
+    global _RAW_SYNC, _RAW_NOTICE
     from app.services import affairs_appeal_todo_service as todo
 
-    original = todo._record_sync_failure
+    original_record = todo._record_sync_failure
+    _RAW_SYNC = todo._sync_todo_after_commit
+    _RAW_NOTICE = todo._result_notice
 
     def record_sync_failure(todo_type, row_id, stage, exc):
-        original(todo_type, row_id, stage, exc)
+        original_record(todo_type, row_id, stage, exc)
         if row_id:
             enqueue(todo_type, int(row_id), stage, exc)
 
     todo._record_sync_failure = record_sync_failure
 
-    # 每次异议/申诉写操作前小批清理历史补偿；失败不阻塞当前业务。
-    for name in ("_sync_todo_after_commit", "_result_notice"):
-        original_fn = getattr(todo, name)
-
-        def wrapper(*args, __original=original_fn, **kwargs):
+    def sync_wrapper(*args, **kwargs):
+        if not _REPAIRING.get():
             try:
                 repair_pending(limit=5)
             except Exception:  # noqa: BLE001
                 log.exception("background appeal repair failed")
-            return __original(*args, **kwargs)
+        return _RAW_SYNC(*args, **kwargs)
 
-        setattr(todo, name, wrapper)
+    def notice_wrapper(*args, **kwargs):
+        if not _REPAIRING.get():
+            try:
+                repair_pending(limit=5)
+            except Exception:  # noqa: BLE001
+                log.exception("background appeal repair failed")
+        return _RAW_NOTICE(*args, **kwargs)
+
+    todo._sync_todo_after_commit = sync_wrapper
+    todo._result_notice = notice_wrapper
