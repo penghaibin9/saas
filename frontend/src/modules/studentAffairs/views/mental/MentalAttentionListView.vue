@@ -19,14 +19,35 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
+      <section class="sa-summary-strip mental-privacy-summary">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">心理信息保护红线</span>
+          <h2 class="sa-summary-strip__title">名单只展示必要摘要；查看心理明文必须有逐生授权、填写业务原因并留下安全审计</h2>
+          <p class="sa-summary-strip__text">当前授权范围共 {{ total }} 条关注记录。先看等级、状态、事由摘要和最近回访；只有业务确有必要时才点击“查看明细”。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" :loading="actioning" @click="createReferral">登记转介</AppPermissionButton>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="心理关注处理流程">
+        <div class="sa-workflow-step" data-step="1"><strong>登记转介</strong><br>客观记录关注等级与事由摘要</div>
+        <div class="sa-workflow-step" data-step="2"><strong>查看摘要</strong><br>默认只读必要业务信息和脱敏内容</div>
+        <div class="sa-workflow-step" data-step="3"><strong>授权查明细</strong><br>填写原因并记录敏感查看审计</div>
+        <div class="sa-workflow-step" data-step="4"><strong>回访 / 关闭</strong><br>持续记录处置，满足条件后关闭</div>
+      </div>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
       </div>
 
-      <AppSectionCard title="关注名单（明细遮蔽）">
-        <div class="sa-toolbar">
+      <AppSectionCard title="关注名单（明细默认遮蔽）">
+        <div class="mental-list-note">
+          <strong>查看顺序：</strong>学生 → 关注等级 → 当前状态 → 事由摘要 → 最近回访。心理明细列保持脱敏，点击查看时必须说明业务必要性。
+        </div>
+        <div class="sa-toolbar sa-filter-bar">
           <AppSelect v-model="filters.level" :options="LEVEL_FILTERS" placeholder="全部等级" class="sa-pick" @change="onFilterChange" />
-          <span class="sa-hint">共 {{ total }} 条 · 明细默认脱敏</span>
+          <span class="sa-hint">共 {{ total }} 条 · 当前页 {{ items.length }} 条 · 明细默认脱敏</span>
         </div>
 
         <DataTable v-if="items.length || pagination.total > 0" :columns="attentionColumns" :rows="items" row-key="referralId"
@@ -37,10 +58,10 @@
           </template>
           <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
           <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
-          <template #cell-reason="{ row }">{{ row.reasonSummary || '—' }}</template>
+          <template #cell-reason="{ row }"><span class="mental-reason sa-cell-wrap">{{ row.reasonSummary || '—' }}</span></template>
           <template #cell-channel="{ row }">{{ row.channel || '—' }}</template>
-          <template #cell-lastFollow="{ row }">{{ (row.lastFollowTime || '').slice(0, 16) || '—' }}</template>
-          <template #cell-note="{ row }"><span :class="{ 'sa-mask': row.noteMasked }">{{ row.note }}</span></template>
+          <template #cell-lastFollow="{ row }"><span :class="row.lastFollowTime ? 'mental-followed' : 'mental-not-followed'">{{ (row.lastFollowTime || '').slice(0, 16) || '尚未回访' }}</span></template>
+          <template #cell-note="{ row }"><span :class="row.noteMasked ? 'sa-mask' : 'mental-revealed'">{{ row.note }}</span></template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
               <AppPermissionButton :allowed="canBtn('studentAffairs.risk.psyDetail.view')" code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="reveal(row)">
@@ -55,13 +76,10 @@
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前授权范围内暂无心理关注记录</p>
+        <p v-else class="sa-empty">当前授权范围内暂无心理关注记录。需要建立转介时，可点击“登记转介”。</p>
       </AppSectionCard>
     </AppGlobalState>
 
-    <!-- 查看心理明细：敏感操作，原因写入 SENSITIVE_VIEW 安全审计。
-         此处刻意不挂快捷用语——现有 common.revealReason 词条全是「核对联系方式/家庭经济」口径，
-         与「查阅心理咨询明细」不是一回事，挂上会诱导老师填错审计原因。 -->
     <AppConfirmDialog
       v-model:visible="revDlg.visible" :title="`查看心理明细 · ${revDlg.who}`" type="warning"
       confirm-text="确认查看" require-reason :reason-min-length="5"
@@ -72,9 +90,9 @@
       <AppInlineAlert v-if="revDlg.error" type="danger" :description="revDlg.error" />
     </AppConfirmDialog>
 
-    <!-- 登记转介：原为「学生ID→事由摘要→等级码→去向」4 连原生弹窗 -->
     <AppDrawer :visible="refDlg.visible" title="登记心理转介" @close="refDlg.visible = false">
       <div class="dr-form">
+        <div class="mental-form-note">只记录客观表现、关注等级与转介必要性，不在此处填写诊断性结论。</div>
         <AppFormItem label="学生" required>
           <AppStudentPicker v-model="refDlg.studentId"
                             placeholder="按姓名 / 学号搜索" :disabled="actioning" />
@@ -99,7 +117,6 @@
       </template>
     </AppDrawer>
 
-    <!-- 回访 / 关闭：统一必填说明弹窗，词条已逐条核对与动作语义一致 -->
     <AppConfirmDialog
       v-model:visible="txtDlg.visible" :title="txtDlg.title" :type="txtDlg.type"
       :confirm-text="txtDlg.confirmText" require-reason :reason-min-length="5"
@@ -132,7 +149,6 @@ import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
-
 const ATTENTION_COLUMNS = [
   { key: 'student', title: '学生' },
   { key: 'level', title: '关注等级' },
@@ -143,14 +159,12 @@ const ATTENTION_COLUMNS = [
   { key: 'note', title: '心理明细' },
   { key: 'actions', title: '操作', align: 'right', width: '260px' }
 ]
-/** 与后端心理关注等级取值一一对应。 */
 const LEVELS = [
   { value: 'GENERAL', label: '一般关注' },
   { value: 'FOCUS', label: '重点关注' },
   { value: 'CRISIS', label: '危机' }
 ]
 const LEVEL_FILTERS = [{ value: '', label: '全部等级' }, ...LEVELS]
-/** 转介去向：沿用原 prompt 提示里的四个既有选项，未自行扩充。 */
 const CHANNELS = ['校内咨询', '校医院', '专业机构', '家长'].map((v) => ({ value: v, label: v }))
 
 export default {
@@ -233,7 +247,6 @@ export default {
       this.pagination.page = page
       this.load()
     },
-    /* ── 查看心理明细（敏感，SENSITIVE_VIEW 审计） ── */
     reveal(row) {
       this.revDlg = { visible: true, row, who: row.realName || row.studentNo || '该生', error: '' }
     },
@@ -243,7 +256,6 @@ export default {
       try {
         const res = await studentAffairsApi.getMentalReferral(row.referralId, reason.trim())
         if (res.data.noteMasked) {
-          // 无 PSY_STUDENT 专项授权：留在弹窗里说明，不用 alert 打断
           this.revDlg.error = '您对该生的心理明细无查看授权（需 PSY_STUDENT 专项授权），仅可见摘要。本次查看请求已留痕。'
         } else {
           row.note = res.data.note
@@ -257,7 +269,6 @@ export default {
         this.actioning = false
       }
     },
-    /* ── 登记转介 ── */
     createReferral() {
       this.refDlg = { visible: true, studentId: '', level: 'FOCUS', channel: '校内咨询', reasonSummary: '', error: '' }
     },
@@ -279,7 +290,6 @@ export default {
       if (ok) d.visible = false
       else d.error = this.errorMessage
     },
-    /* ── 回访 / 关闭 ── */
     follow(row) {
       this.txtDlg = {
         visible: true, kind: 'follow', row, title: `登记回访 · ${row.realName || '该生'}`, type: 'primary',
@@ -301,7 +311,6 @@ export default {
       const ok = await this.runAction(fn)
       if (ok) d.visible = false
     },
-    /** @returns {boolean} 是否成功；失败时保留弹窗与已填内容。 */
     async runAction(fn) {
       this.actioning = true
       this.errorMessage = ''
@@ -337,53 +346,21 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-.sa-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-.sa-pick {
-  min-width: 160px;
-}
-.dr-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.dr-hint {
-  margin: var(--space-1) 0 0;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
-}
-.sa-hint {
-  color: var(--text-tertiary);
-}
-.sa-mask {
-  color: var(--text-tertiary);
-  font-style: italic;
-}
-.sa-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-.sa-empty {
-  color: var(--text-tertiary);
-  padding: var(--space-4);
-  text-align: center;
-}
-@media (max-width: 960px) {
-  .sa-grid--metrics {
-    grid-template-columns: 1fr;
-  }
-}
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.mental-privacy-summary { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
+.mental-list-note, .mental-form-note { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.sa-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.sa-pick { min-width: 180px; }
+.dr-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.dr-hint { margin: var(--space-1) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
+.sa-hint { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.mental-reason { color: var(--text-secondary); }
+.mental-followed { color: var(--success-700, #15803d); font-weight: 600; }
+.mental-not-followed { color: var(--warning-700, #b45309); font-weight: 600; }
+.sa-mask { color: var(--text-tertiary); font-style: italic; }
+.mental-revealed { color: var(--danger-700, #b91c1c); font-size: var(--font-size-xs); }
+.sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } .sa-toolbar { align-items: stretch; } .sa-pick { width: 100%; } }
 @import '@/styles/module-page.css';
 </style>
