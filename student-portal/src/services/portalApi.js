@@ -194,7 +194,9 @@ export const portalApi = {
 
   // ── 毕业设计学生工作台（PC 签署/成绩走 portal；过程读写走 mobile 本人接口）──
   graduationTaskbook: () => request('/portal/graduation/taskbook'),
-  signGraduationTaskbook: () => request('/portal/graduation/taskbook/sign', { method: 'POST', body: { confirm: true } }),
+  signGraduationTaskbook: (taskbookVersion) => request('/portal/graduation/taskbook/sign', {
+    method: 'POST', body: { confirm: true, taskbookVersion }
+  }),
   graduationProposal: () => request('/portal/graduation/proposal'),
   submitGraduationProposal: (body) => request('/portal/graduation/proposal/submit', { method: 'POST', body }),
   graduationMidterm: () => request('/portal/graduation/midterm'),
