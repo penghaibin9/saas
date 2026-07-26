@@ -8,7 +8,6 @@ import re
 from typing import Optional
 
 from fastapi import Header, Request
-
 from app.core.exceptions import AppException, no_permission, unauthorized
 from app.core.permissions import enforce_permission
 from app.core.security import decode_token
@@ -33,9 +32,11 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("POST", re.compile(r"^context/student-evals/[^/]+/advisor-comment$"), "internship.eval.advisor.manage"),
     ("POST", re.compile(r"^context/student-evals/[^/]+/review$"), "internship.eval.self.review"),
     ("GET", re.compile(r"^context/makeups$"), "internship.makeup.view"),
+    ("POST", re.compile(r"^context/makeups/[^/]+/evidence-viewed$"), "internship.makeup.view"),
     ("POST", re.compile(r"^context/makeups/[^/]+/review$"), "internship.makeup.review"),
     ("GET", re.compile(r"^context/leaves$"), "internship.leave.view"),
     ("GET", re.compile(r"^context/leaves/overdue$"), "internship.leave.view"),
+    ("POST", re.compile(r"^context/leaves/[^/]+/evidence-viewed$"), "internship.leave.view"),
     ("POST", re.compile(r"^context/leaves/[^/]+/review$"), "internship.leave.review"),
     ("POST", re.compile(r"^context/leaves/[^/]+/ack-return$"), "internship.leave.review"),
     ("GET", re.compile(r"^context/process-reports(?:/[^/]+)?$"), "internship.report.view"),
