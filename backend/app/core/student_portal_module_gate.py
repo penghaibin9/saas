@@ -1,6 +1,7 @@
 """学生与监护人门户岗位实习模块授权及遗留写入口前置门。"""
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from fastapi import Header, Request
@@ -14,15 +15,24 @@ _MARKERS = (
     "/portal/guardian/internship",
 )
 _LEGACY_APPLICATION_PATH = "/portal/internship/applications"
+_LEGACY_LEAVE_MARKER = "/portal/internship/leaves"
 
 
-def _reject_legacy_application_write(request: Request) -> None:
+def _reject_legacy_write(request: Request) -> None:
     path = request.url.path.rstrip("/")
-    if path == _LEGACY_APPLICATION_PATH and request.method.upper() == "POST":
+    method = request.method.upper()
+    if path == _LEGACY_APPLICATION_PATH and method == "POST":
         raise AppException(
             "DATA_CONFLICT",
             "旧版正式实习申请写入口已停用，请刷新页面后通过版本化入口办理",
         )
+    if path.startswith(_LEGACY_LEAVE_MARKER) and method == "POST":
+        suffix = path[len(_LEGACY_LEAVE_MARKER):].strip("/")
+        if suffix == "apply" or re.fullmatch(r"[^/]+/(withdraw|return)", suffix or ""):
+            raise AppException(
+                "DATA_CONFLICT",
+                "旧版实习请假写入口已停用，请刷新页面后通过版本化入口办理",
+            )
 
 
 def enforce_student_portal_module_access(
@@ -56,5 +66,5 @@ def enforce_student_portal_module_access(
                 tenant_id, "internship",
                 write=request.method.upper() not in ("GET", "HEAD", "OPTIONS"),
             )
-    _reject_legacy_application_write(request)
+    _reject_legacy_write(request)
     return user
