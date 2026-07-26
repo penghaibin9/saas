@@ -19,18 +19,23 @@
 <script>
 import { realRequest, normalizeError, getTeacherGraduationBatch } from '@/services/request'
 function pageStack() { return typeof getCurrentPages === 'function' ? getCurrentPages() : [] }
+let owner = null
 export default {
   name: 'MobileGraduationDelayQueue',
-  data() { return { visible: false, rows: [], error: '', busyId: '', lastBatchId: '', timer: null } },
+  data() { return { visible: false, rows: [], error: '', busyId: '', lastBatchId: '', timer: null, owns: false } },
   mounted() {
     const pages = pageStack(); const page = pages[pages.length - 1]
-    this.visible = ((page && (page.route || page.__route__)) || '') === 'pages/teacher/graduation-guide/index'
-    if (this.visible) {
+    const match = ((page && (page.route || page.__route__)) || '') === 'pages/teacher/graduation-guide/index'
+    if (match && owner == null) {
+      owner = this._uid; this.owns = true; this.visible = true
       this.timer = setInterval(this.syncBatch, 600)
       this.syncBatch()
     }
   },
-  beforeUnmount() { if (this.timer) clearInterval(this.timer) },
+  beforeUnmount() {
+    if (this.timer) clearInterval(this.timer)
+    if (this.owns && owner === this._uid) owner = null
+  },
   methods: {
     syncBatch() {
       const batch = getTeacherGraduationBatch()
@@ -40,7 +45,7 @@ export default {
     load() {
       if (!getTeacherGraduationBatch()) return
       this.error = ''
-      realRequest('/mobile/teacher/graduation/defense-delays/pending').then((d) => {
+      realRequest('/mobile/teacher/graduation/defense-delays/pending?page=1&pageSize=100').then((d) => {
         this.rows = (d && (d.items || d.list)) || []
       }).catch((e) => { this.rows = []; this.error = normalizeError(e).text || '延期答辩待办加载失败' })
     },
