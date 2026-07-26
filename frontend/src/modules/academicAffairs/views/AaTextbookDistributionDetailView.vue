@@ -37,7 +37,7 @@
           <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
         </template>
         <template #cell-status="{ row }">
-          <AppStatusTag :status="row.status" dot />
+          <AppStatusTag :status="row.status" :label="distributionStatusLabel(row.status)" dot />
         </template>
         <template #cell-fee="{ row }">
           <AppStatusTag v-if="row.feeStatus" :status="row.feeStatus" />
@@ -114,6 +114,9 @@ export default {
   },
   created() { this.load() },
   methods: {
+    distributionStatusLabel(status) {
+      return status === 'RETURNED' ? '已退领' : ''
+    },
     onPageChange(page) { this.pagination.page = page; this.load() },
     async load() {
       this.loading = true
