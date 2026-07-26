@@ -11,7 +11,6 @@ from app.core.security import get_current_user
 from app.modules.internship.services import internship_consent_service as consent
 from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_compliance_service as compliance
-from app.api.v1.mobile_internship_student import my_safety_course_detail
 
 router = APIRouter(prefix="/portal/internship", tags=["学生PC门户-岗位实习合规"])
 
@@ -72,8 +71,7 @@ def portal_safety_completions(user=Depends(get_current_user)):
 
 @router.get("/safety/courses/{course_id}/detail", summary="本人安全教育课程详情")
 def portal_safety_detail(course_id: str, user=Depends(get_current_user)):
-    # 复用移动端详情装配逻辑，返回结构保持四端一致。
-    return my_safety_course_detail(course_id, user)
+    return success(safety.get_my_course_detail(course_id, user))
 
 
 @router.post("/safety/courses/{course_id}/start", summary="开始本人安全课程")
