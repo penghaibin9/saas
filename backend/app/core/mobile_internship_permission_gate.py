@@ -1,7 +1,7 @@
 """移动端岗位实习前置门。
 
 - 教师小程序 `/mobile/teacher/internship/*` 必须逐项登记权限，未登记默认拒绝；
-- 学生旧版正式申请无版本写入口默认拒绝，强制迁移到 `/context/applications` 乐观锁契约；
+- 学生旧版正式申请、请假撤回/销假无版本写入口默认拒绝；
 - 对象归属仍由业务服务校验。
 """
 from __future__ import annotations
@@ -17,6 +17,7 @@ from app.core.security import decode_token
 
 _TEACHER_MARKER = "/mobile/teacher/internship"
 _STUDENT_APPLICATION_MARKER = "/mobile/internship/applications"
+_STUDENT_LEAVE_MARKER = "/mobile/internship/leaves"
 
 _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^$"), "internship.dashboard.view"),
@@ -63,21 +64,24 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
 )
 
 
-def _reject_legacy_student_application_write(method: str, path: str) -> None:
-    """旧 GET 仅作读取兼容；无 expectedVersion 的写入口全部 fail closed。"""
-    if not path.startswith(_STUDENT_APPLICATION_MARKER):
-        return
+def _reject_legacy_student_write(method: str, path: str) -> None:
+    """旧读取兼容；可能静默覆盖的无版本写入口一律 fail closed。"""
     verb = str(method or "").upper()
-    suffix = path[len(_STUDENT_APPLICATION_MARKER):].strip("/")
-    legacy_write = (
-        (verb == "PUT" and not suffix)
-        or (verb == "POST" and re.fullmatch(r"[^/]+/(submit|withdraw)", suffix or ""))
-    )
-    if legacy_write:
-        raise AppException(
-            "DATA_CONFLICT",
-            "旧版正式实习申请写入口已停用，请刷新客户端后通过当前批次版本化入口办理",
-        )
+    if path.startswith(_STUDENT_APPLICATION_MARKER):
+        suffix = path[len(_STUDENT_APPLICATION_MARKER):].strip("/")
+        if ((verb == "PUT" and not suffix)
+                or (verb == "POST" and re.fullmatch(r"[^/]+/(submit|withdraw)", suffix or ""))):
+            raise AppException(
+                "DATA_CONFLICT",
+                "旧版正式实习申请写入口已停用，请刷新客户端后通过当前批次版本化入口办理",
+            )
+    if path.startswith(_STUDENT_LEAVE_MARKER):
+        suffix = path[len(_STUDENT_LEAVE_MARKER):].strip("/")
+        if verb == "POST" and re.fullmatch(r"[^/]+/(withdraw|return)", suffix or ""):
+            raise AppException(
+                "DATA_CONFLICT",
+                "旧版请假撤回/销假入口已停用，请刷新客户端后通过版本化入口办理",
+            )
 
 
 def resolve_teacher_internship_permission(method: str, path: str) -> str | None:
@@ -124,7 +128,7 @@ def enforce_teacher_internship_mobile_permission(
     request: Request,
     authorization: Optional[str] = Header(default=None),
 ):
-    _reject_legacy_student_application_write(request.method, request.url.path)
+    _reject_legacy_student_write(request.method, request.url.path)
     permission = resolve_teacher_internship_permission(request.method, request.url.path)
     if permission is None:
         return None
