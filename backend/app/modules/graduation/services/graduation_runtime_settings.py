@@ -3,6 +3,7 @@
 - 安装新安全路由的精确动作权限映射，未登记接口继续 fail-closed；
 - 归档预览令牌使用系统 JWT 强密钥签名；
 - 安装真实文件归档证据链与批量预览/执行一致性；
+- 备案后统一冻结任务书、材料、评阅、答辩和成绩等归档证据；
 - 安装选题志愿 Excel 的统一模板、预校验与确认规则；
 - 安装毕业设计材料专用的业务对象下载授权链；
 - 对毕业设计新旧 XLSX 导出统一做公式注入净化；
@@ -41,6 +42,9 @@ def install_runtime_settings() -> None:
     from app.modules.graduation.services.graduation_archive_batch_consistency import (
         install_archive_batch_consistency,
     )
+    from app.modules.graduation.services.graduation_archive_terminal_guard import (
+        install_archive_terminal_guard,
+    )
     from app.modules.graduation.services.graduation_defense_round_consistency import (
         install_defense_round_consistency,
     )
@@ -68,6 +72,7 @@ def install_runtime_settings() -> None:
     install_graduation_permission_extensions()
     install_archive_consistency()
     install_archive_batch_consistency()
+    install_archive_terminal_guard()
     install_material_access_consistency()
     install_topic_import_consistency()
     install_graduation_export_security()
