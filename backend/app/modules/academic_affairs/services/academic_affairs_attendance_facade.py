@@ -1,7 +1,7 @@
 """课堂考勤兼容入口。
 
-普通教师创建场次必须选择当前学期本人真实教学任务，服务端从任务派生课程、行政班、
-教师工号和学期，拒绝“选班级后手填课程”的伪归属。其余考勤读写委托已收口的原服务。
+普通教师创建场次必须选择当前学期本人真实教学任务，服务端从任务派生课程、班级、教师工号和
+学期；点名名单统一使用教学任务官方名单：已锁定选课优先，没有选课关系才退回行政班/合班名单。
 """
 from __future__ import annotations
 
@@ -12,8 +12,9 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_attendance_service as _legacy
+from .academic_affairs_teaching_roster_service import resolve_teaching_task_roster
 
-_ATTENDANCE_TASK_STATUSES = {"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED"}
+_ATTENDANCE_TASK_STATUSES = {"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY"}
 
 
 def __getattr__(name):
@@ -47,6 +48,7 @@ def create_session(user, body) -> dict:
             raise AppException("DATA_CONFLICT", "当前学校尚未设置当前学期")
 
         task = None
+        roster_source = "ADMIN_MANUAL"
         if task_id:
             task = db.get(AaTeachingTask, int(task_id))
             if not task or task.is_deleted or task.tenant_id != _legacy._tid():
@@ -54,7 +56,7 @@ def create_session(user, body) -> dict:
             if str(task.status or "").upper() not in _ATTENDANCE_TASK_STATUSES:
                 raise AppException(
                     "DATA_CONFLICT",
-                    "教学任务须经教师确认后才能用于课堂考勤",
+                    "教学任务须经教师确认并进入可执行状态后才能用于课堂考勤",
                 )
             batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
             if not batch or batch.is_deleted or batch.tenant_id != _legacy._tid():
@@ -69,25 +71,47 @@ def create_session(user, body) -> dict:
             raise AppException("VALIDATION_ERROR", "请选择当前学期本人教学任务后再点名")
 
         class_id = int(task.class_id) if task and task.class_id else int(body.get("classId") or 0)
-        if not class_id:
-            raise AppException("VALIDATION_ERROR", "教学任务未关联行政班，暂不能自动圈定名单")
         if task and body.get("classId") and int(body.get("classId")) != class_id:
             raise AppException("VALIDATION_ERROR", "教学任务与行政班不一致")
 
-        students = db.scalars(select(StudentProfile).where(
-            StudentProfile.tenant_id == _legacy._tid(),
-            StudentProfile.class_id == class_id,
-            StudentProfile.is_deleted.is_(False),
-        )).all()
-        if not students:
-            raise not_found("该教学任务行政班暂无学生名单")
+        if task:
+            official = resolve_teaching_task_roster(db, task.id)
+            if not official["ready"]:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"教学任务名单尚不可用：{official['note']}",
+                    details=official,
+                    http_status=409,
+                )
+            roster_source = official["source"]
+            roster = [{
+                "studentId": item["studentId"],
+                "studentNo": item["studentNo"],
+                "realName": item["realName"],
+                "status": "PRESENT",
+            } for item in official["items"]]
+            # 现有考勤表仍保留 class_id 快照。选课教学班没有单一行政班时暂写0，成员事实以roster_json为准；
+            # V2阶段02迁移为独立 teaching_class_id 后删除此兼容值。
+            if not class_id:
+                class_ids = {int(item["classId"]) for item in official["items"] if str(item.get("classId") or "").isdigit()}
+                class_id = next(iter(class_ids)) if len(class_ids) == 1 else 0
+        else:
+            if not class_id:
+                raise AppException("VALIDATION_ERROR", "请选择行政班或教学任务")
+            students = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _legacy._tid(),
+                StudentProfile.class_id == class_id,
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+            roster = [{
+                "studentId": str(student.id),
+                "studentNo": student.student_no,
+                "realName": student.real_name,
+                "status": "PRESENT",
+            } for student in students]
 
-        roster = [{
-            "studentId": str(student.id),
-            "studentNo": student.student_no,
-            "realName": student.real_name,
-            "status": "PRESENT",
-        } for student in students]
+        if not roster:
+            raise not_found("该教学任务暂无可用学生名单")
 
         teacher_key = (
             task.teacher_key if task else
@@ -117,7 +141,7 @@ def create_session(user, body) -> dict:
             db,
             item.id,
             "CREATE",
-            f"task={task.id if task else '-'};course={item.course_name or ''};date={session_date}",
+            f"task={task.id if task else '-'};source={roster_source};course={item.course_name or ''};date={session_date}",
         )
         db.commit()
         db.refresh(item)
