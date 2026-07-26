@@ -36,6 +36,7 @@ from app.services.affairs_four_end_terminal_guard import install as install_affa
 from app.services.affairs_funding_ext_guard import install as install_funding_ext_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
+from app.services.affairs_self_scope_guard import install as install_self_scope_guard
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
 from app.services.affairs_student_application_lock import install as install_student_application_lock
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
@@ -63,6 +64,8 @@ install_appeal_todo_reconciliation()
 install_appeal_repair()
 # 将补偿队列接入现有学工周期扫描，避免一次孤立失败长期等待人工或下一次写请求。
 install_appeal_repair_scheduler()
+# SELF 必须先由服务端账号关系解析，后续画像、二课和申诉只能访问本人。
+install_self_scope_guard()
 # 核心审计安全门必须在既有兼容层之后安装，避免后续补丁再次放宽数据口径。
 install_data_integrity_guard()
 install_counselor_handover_guard()
