@@ -5,7 +5,7 @@
     <view class="page-pad">
       <view class="card ap__batch" v-if="batches.length">
         <text class="ap__label">实习批次</text>
-        <picker class="ap__picker" mode="selector" :range="batchLabels" :value="batchIndex" @change="onBatch">
+        <picker class="ap__picker" mode="selector" :range="batchLabels" :value="batchIndex" :disabled="!!actingId" @change="onBatch">
           <view class="ap__pick-val">{{ batchLabels[batchIndex] || '请选择批次' }}<text class="ap__arrow">▾</text></view>
         </picker>
       </view>
@@ -31,15 +31,19 @@
             <view class="ap__row" v-if="a.workAddress"><text class="ap__row-k">工作地点</text><text class="flex-1 t-sm">{{ a.workAddress }}</text></view>
             <view class="ap__row" v-if="a.contactName"><text class="ap__row-k">联系人</text><text class="flex-1 t-sm">{{ a.contactName }} {{ a.contactPhone || '' }}</text></view>
             <view class="ap__row" v-if="a.applicationNote"><text class="ap__row-k">申请说明</text><text class="flex-1 t-sm">{{ a.applicationNote }}</text></view>
-            <view class="ap__evidence" v-if="a.evidenceFileId">
-              <text class="ap__file">已上传自主实习证明材料</text>
-              <text class="ap__file-id">文件编号 {{ a.evidenceFileId }}</text>
-            </view>
+
+            <button v-if="a.evidenceFileId" class="ap__evidence" :disabled="previewingId === a.id" @click="previewEvidence(a)">
+              {{ previewingId === a.id ? '正在打开证明材料…' : '查看自主实习证明材料' }}
+            </button>
             <view v-else-if="a.applicationType === 'SELF_ARRANGED'" class="ap__danger">自主实习申请缺少证明材料，不能通过</view>
+
+            <view class="ap__row"><text class="ap__row-k">申请版本</text><text class="flex-1 t-sm">v{{ a.version }}</text></view>
+            <view class="ap__row"><text class="ap__row-k">学生记录</text><text class="flex-1 t-sm">{{ a.recordVersion == null ? '版本缺失，请刷新' : `v${a.recordVersion}` }}</text></view>
             <text class="ap__time" v-if="a.submittedAt">提交于 {{ fmt(a.submittedAt) }}</text>
+
             <view class="ap__actions" v-if="canReview">
               <button class="ap__reject flex-1" :disabled="actingId === a.id" @click="review(a, 'REJECT')">驳回修改</button>
-              <button class="ap__approve flex-1" :disabled="actingId === a.id || !canApprove(a)" @click="review(a, 'APPROVE')">通过并落实去向</button>
+              <button class="ap__approve flex-1" :disabled="actingId === a.id || !canApprove(a)" @click="review(a, 'APPROVE')">{{ approveLabel(a) }}</button>
             </view>
             <MobileInlineAlert v-else type="warning" description="当前身份仅可查看，无正式实习申请审核权限。" />
           </view>
@@ -51,12 +55,13 @@
 
 <script>
 import { teacherInternshipApplications, teacherInternshipApplicationReview } from '@/services/internshipApi'
+import { openBusinessFile } from '@/services/fileApi'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { toast } from '@/utils/nav'
 
 export default {
   data() {
-    return { list: null, state: 'loading', actingId: '', batches: [], batchId: '', batchIndex: 0 }
+    return { list: null, state: 'loading', actingId: '', previewingId: '', batches: [], batchId: '', batchIndex: 0 }
   },
   computed: {
     batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
@@ -69,8 +74,10 @@ export default {
   },
   methods: {
     fmt(value) { return value ? String(value).slice(0, 16).replace('T', ' ') : '—' },
+    approveLabel(a) { return a.applicationType === 'SELF_ARRANGED' ? '通过并确认自主实习' : '通过并落实岗位' },
     canApprove(a) {
-      return a.applicationType !== 'SELF_ARRANGED' || !!a.evidenceFileId
+      const evidenceOk = a.applicationType !== 'SELF_ARRANGED' || !!a.evidenceFileId
+      return evidenceOk && a.recordVersion != null && a.version != null
     },
     async load(done) {
       this.state = 'loading'
@@ -88,9 +95,11 @@ export default {
       } catch (e) {
         this.list = []
         this.state = 'error'
+        toast((e && e.message) || '实习申请加载失败')
       } finally { if (done) done() }
     },
     async onBatch(e) {
+      if (this.actingId) return
       this.batchIndex = Number(e.detail.value)
       const batch = this.batches[this.batchIndex]
       const context = useInternshipContextStore()
@@ -98,15 +107,24 @@ export default {
       this.batchId = context.selectedBatchId
       await this.load()
     },
+    async previewEvidence(item) {
+      if (!item.evidenceFileId || this.previewingId) return
+      this.previewingId = item.id
+      try { await openBusinessFile(item.evidenceFileId) }
+      catch (e) { toast((e && e.message) || '证明材料打开失败') }
+      finally { this.previewingId = '' }
+    },
     review(a, action) {
       if (!this.canReview || this.actingId) return
       if (action === 'APPROVE' && !this.canApprove(a)) {
-        toast('自主实习证明材料缺失，不能通过')
+        toast(a.applicationType === 'SELF_ARRANGED' && !a.evidenceFileId
+          ? '自主实习证明材料缺失，不能通过'
+          : '申请或学生记录版本缺失，请刷新后再试')
         return
       }
       const reject = action === 'REJECT'
       uni.showModal({
-        title: reject ? '驳回申请' : '确认通过并落实去向',
+        title: reject ? '驳回申请' : this.approveLabel(a),
         editable: true,
         placeholderText: reject ? '请填写具体驳回原因（至少5字）' : '可填写审核意见',
         content: '',
@@ -123,7 +141,7 @@ export default {
               recordExpectedVersion: a.recordVersion,
               batchId: this.batchId
             })
-            toast(reject ? '已驳回学生修改' : '已通过并落实实习去向')
+            toast(reject ? '已驳回学生修改' : (a.applicationType === 'SELF_ARRANGED' ? '已确认自主实习去向' : '已通过并落实岗位'))
             await this.load()
           } catch (e) {
             if (String(e && e.code) === 'DATA_CONFLICT') {
@@ -148,15 +166,14 @@ export default {
 .ap__sub { display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:2px; }
 .ap__row { display:flex;gap:var(--space-3); }
 .ap__row-k { font-size:var(--font-size-sm);color:var(--text-tertiary);width:68px;flex-shrink:0; }
-.ap__evidence { display:flex;flex-direction:column;gap:2px;padding:var(--space-2);background:var(--success-50);border-radius:var(--radius-md); }
-.ap__file { font-size:var(--font-size-xs);color:var(--success-600); }
-.ap__file-id { font-size:10px;color:var(--text-tertiary);word-break:break-all; }
+.ap__evidence { min-height:40px;padding:0 var(--space-3);border:1px solid var(--success-500);border-radius:var(--radius-md);background:var(--success-50);color:var(--success-700);font-size:var(--font-size-sm);text-align:left; }
+.ap__evidence::after { border:none; }
 .ap__danger { padding:var(--space-2);border-radius:var(--radius-md);background:var(--danger-50);color:var(--danger-600);font-size:var(--font-size-xs); }
 .ap__time { font-size:var(--font-size-xs);color:var(--text-tertiary); }
 .ap__actions { display:flex;gap:var(--space-2);margin-top:var(--space-1); }
 .ap__reject,.ap__approve { min-height:var(--touch-target-min);border-radius:var(--radius-md);font-size:var(--font-size-md); }
 .ap__reject { border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600); }
 .ap__approve { border:none;background:var(--teacher-600);color:#fff; }
-.ap__approve[disabled] { opacity:.45; }
+.ap__approve[disabled],.ap__reject[disabled],.ap__evidence[disabled] { opacity:.45; }
 .ap__reject::after,.ap__approve::after { border:none; }
 </style>
