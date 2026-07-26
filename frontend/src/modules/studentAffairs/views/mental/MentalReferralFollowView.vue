@@ -11,19 +11,37 @@
     </template>
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载转介回访工作台..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">当前工作要求</span>
+          <h2 class="sa-summary-strip__title">先看摘要与最近回访，再决定继续回访、升级危机或关闭</h2>
+          <p class="sa-summary-strip__text">列表只展示必要业务摘要；敏感明细仍需专项授权和查看审计。已升级危机由风险中枢继续处置，转介记录不再提供普通回访动作。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" :loading="actioning" @click="createReferral">登记新转介</AppPermissionButton>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="心理转介回访流程">
+        <div class="sa-workflow-step" data-step="1"><strong>登记转介</strong><br>客观记录表现、渠道与必要性</div>
+        <div class="sa-workflow-step" data-step="2"><strong>持续回访</strong><br>记录方式、当前情况和后续安排</div>
+        <div class="sa-workflow-step" data-step="3"><strong>危机升级</strong><br>有明确依据时转入风险中枢</div>
+        <div class="sa-workflow-step" data-step="4"><strong>关闭归档</strong><br>确认必要处置已完成后关闭</div>
+      </div>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
       </div>
 
       <AppSectionCard title="心理转介与回访记录">
-        <AppInlineAlert type="info" description="列表只展示业务摘要；敏感明细必须进入详情并填写查看原因。已升级危机由风险中枢继续处置，转介记录不再提供普通回访动作。" />
+        <AppInlineAlert type="info" description="先查看学生、关注等级、当前状态和最近回访。仅在后端允许动作中显示回访、升级或关闭按钮。" />
         <DataTable v-if="items.length || pagination.total > 0" :columns="followColumns" :rows="items" row-key="referralId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-student="{ row }"><div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div><div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div></template>
           <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
           <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
-          <template #cell-reason="{ row }">{{ row.reasonSummary || '—' }}</template>
+          <template #cell-reason="{ row }"><span class="mental-summary sa-cell-wrap">{{ row.reasonSummary || '—' }}</span></template>
           <template #cell-channel="{ row }">{{ row.channel || '—' }}</template>
-          <template #cell-lastFollow="{ row }">{{ (row.lastFollowTime || '').slice(0, 16) || '尚未回访' }}</template>
+          <template #cell-lastFollow="{ row }"><span :class="row.lastFollowTime ? 'mental-followed' : 'mental-pending'">{{ (row.lastFollowTime || '').slice(0, 16) || '尚未回访' }}</span></template>
           <template #cell-actions="{ row }">
             <div class="sa-actions" v-if="allowed(row).length">
               <AppPermissionButton v-if="allowed(row).includes('FOLLOW')" :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" size="sm" :disabled="!hasVersion(row)" @click="follow(row)">回访</AppPermissionButton>
@@ -33,12 +51,13 @@
             <span v-else class="sa-muted">当前状态无操作</span>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无心理转介记录</p>
+        <p v-else class="sa-empty">当前授权范围内暂无心理转介记录。需要开展转介时，可使用页面右上角“登记转介”。</p>
       </AppSectionCard>
     </AppGlobalState>
 
     <AppDrawer :visible="refDlg.visible" title="登记心理转介" @close="closeReferral">
       <div class="dr-form">
+        <div class="mental-form-note">仅记录客观观察和转介必要性，不在此页面作诊断结论。</div>
         <AppFormItem label="学生" required><AppStudentPicker v-model="refDlg.studentId" placeholder="按姓名 / 学号搜索" :disabled="actioning" /></AppFormItem>
         <AppFormItem label="转介去向"><AppSelect v-model="refDlg.channel" :options="CHANNELS" placeholder="可空" clearable :disabled="actioning" /></AppFormItem>
         <AppFormItem label="转介事由摘要（5-500字）" required>
@@ -203,7 +222,16 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-4);margin-bottom:var(--space-4) }.sa-actions { display:flex;flex-wrap:wrap;gap:var(--space-2) }.sa-muted { color:var(--text-tertiary);font-size:12px }.sa-empty { color:var(--text-tertiary);padding:var(--space-4);text-align:center }.dr-form { display:flex;flex-direction:column;gap:var(--space-4) }.char-count { margin:4px 0 0;text-align:right;color:var(--text-tertiary);font-size:12px }
+.sa-grid--metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-bottom:var(--space-4) }
+.sa-actions { display:flex;flex-wrap:wrap;gap:var(--space-2) }
+.sa-muted { color:var(--text-tertiary);font-size:12px }
+.mental-summary { color: var(--text-secondary); }
+.mental-followed { color: var(--success-700, #15803d); font-weight: 600; }
+.mental-pending { color: var(--warning-700, #b45309); font-weight: 600; }
+.dr-form { display:flex;flex-direction:column;gap:var(--space-4) }
+.mental-form-note { padding: 10px 12px; border: 1px solid var(--primary-100, #dbeafe); border-radius: var(--radius-md); background: var(--primary-50, #eff6ff); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
+.char-count { margin:4px 0 0;text-align:right;color:var(--text-tertiary);font-size:12px }
 @media(max-width:960px){.sa-grid--metrics{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.sa-grid--metrics{grid-template-columns:1fr}}
 @import '@/styles/module-page.css';
 </style>
