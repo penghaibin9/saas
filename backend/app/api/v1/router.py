@@ -21,13 +21,17 @@ from app.services.affairs_activity_reliability_service import install as install
 from app.services.affairs_appeal_repair_scheduler import install as install_appeal_repair_scheduler
 from app.services.affairs_appeal_repair_service import install as install_appeal_repair
 from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
+from app.services.affairs_counselor_eval_guard import install as install_counselor_eval_guard
+from app.services.affairs_counselor_handover_guard import install as install_counselor_handover_guard
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
+from app.services.affairs_data_integrity_guard import install as install_data_integrity_guard
 from app.services.affairs_dorm_projection_service import install as install_dorm_projection
 from app.services.affairs_dorm_reliability_service import install as install_dorm_reliability
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
 from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
 from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
+from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
 from app.services.affairs_student_application_lock import install as install_student_application_lock
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
@@ -54,6 +58,11 @@ install_appeal_todo_reconciliation()
 install_appeal_repair()
 # 将补偿队列接入现有学工周期扫描，避免一次孤立失败长期等待人工或下一次写请求。
 install_appeal_repair_scheduler()
+# 核心审计安全门必须在既有兼容层之后安装，避免后续补丁再次放宽数据口径。
+install_data_integrity_guard()
+install_counselor_handover_guard()
+install_risk_evidence_guard()
+install_counselor_eval_guard()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
