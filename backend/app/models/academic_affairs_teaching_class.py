@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, BigIntPK, CommonMixin, PKMixin, TenantMixin
+from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
 
 class AaTeachingClass(PKMixin, TenantMixin, CommonMixin, Base):
@@ -59,8 +59,8 @@ class AaTeachingClassRosterVersion(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_teaching_class_roster_version"
     __table_args__ = (
         UniqueConstraint("tenant_id", "teaching_class_id", "version_no", name="uk_aa_tc_roster_version"),
-        UniqueConstraint("tenant_id", "teaching_class_id", "roster_hash", name="uk_aa_tc_roster_hash"),
         Index("ix_aa_tc_roster_status", "tenant_id", "teaching_class_id", "status"),
+        Index("ix_aa_tc_roster_hash", "tenant_id", "teaching_class_id", "roster_hash"),
     )
 
     teaching_class_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
