@@ -10,8 +10,9 @@
       </div>
       <button type="button" @click="retryGraduation">重新加载</button>
     </section>
-    <GraduationExtensionPanel v-if="showGraduationPanel" />
     <router-view />
+    <!-- 低频扩展事项放在主流程之后，避免遮挡选题、任务书、开题等首屏主线。 -->
+    <GraduationExtensionPanel v-if="showGraduationPanel" />
     <div v-if="ui.toast" class="sp-toast">{{ ui.toast }}</div>
   </div>
 </template>
@@ -31,7 +32,7 @@ const router = useRouter()
 const health = useGraduationHealth()
 const graduationErrors = health.items
 const primary = computed(() => cfg.brand?.primaryColor || '#1677ff')
-const showGraduationPanel = computed(() => String(route.path || '').includes('/graduation'))
+const showGraduationPanel = computed(() => route.name === 'graduation-workbench')
 const showGraduationHealth = computed(() => showGraduationPanel.value && graduationErrors.value.length > 0)
 
 function retryGraduation() {
@@ -46,4 +47,5 @@ function retryGraduation() {
 .gd-health p { margin:5px 0; font-size:13px; line-height:1.6; }
 .gd-health ul { margin:6px 0 0; padding-left:18px; font-size:12px; line-height:1.6; color:#8c2f39; }
 .gd-health button { flex:none; min-height:36px; padding:0 14px; border:1px solid #ff7875; border-radius:8px; background:#fff; color:#cf1322; cursor:pointer; }
+@media (max-width: 700px) { .gd-health { margin:10px; flex-direction:column; gap:10px; }.gd-health button { width:100%; } }
 </style>
