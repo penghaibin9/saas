@@ -29,21 +29,24 @@
             <MobileStatusTag :label="commitmentConfirmed ? '已确认' : '待确认'" :type="commitmentConfirmed ? 'success' : 'warning'" />
           </view>
           <text class="sc__commit-text">本人已阅读本课程，承诺遵守岗位安全操作规程，发现风险立即停止作业并向企业导师、校内指导教师报告。</text>
-          <button v-if="completion && !commitmentConfirmed" class="btn btn-ghost" :disabled="submitting" @click="commitment">确认安全承诺</button>
+          <button v-if="completionStatus === 'IN_PROGRESS' && !commitmentConfirmed" class="btn btn-ghost" :disabled="submitting" @click="commitment">确认安全承诺</button>
+          <text v-else-if="needsStart" class="sc__hint">开始或重新学习后，才能确认本次课程版本的安全承诺。</text>
         </view>
 
         <MobileInlineAlert v-if="completionStatus === 'PENDING_REVIEW'" type="info" description="学习结果已提交，等待指导教师审核。审核完成后会在此显示结果。" />
-        <MobileInlineAlert v-if="completionStatus === 'FAILED'" type="warning" description="本次审核未通过，可在剩余次数内重新学习并提交。" />
+        <MobileInlineAlert v-if="completionStatus === 'FAILED'" type="warning" description="本次审核未通过。点击重新学习后，服务端会重置本次时长和承诺，旧审核结果仍保留在审计记录中。" />
         <MobileInlineAlert v-if="completionStatus === 'PASSED'" type="success" description="本课程已通过。只有当前批次全部必修课程通过后，上岗安全教育才算完成。" />
-        <MobileInlineAlert v-if="completion && trustedMinutes < Number(course.requiredMinutes || 0)" type="warning"
-          :description="`服务端可信学习时长尚差 ${Number(course.requiredMinutes || 0) - trustedMinutes} 分钟；停留页面不会绕过服务端计时。`" />
+        <MobileInlineAlert v-if="completionStatus === 'IN_PROGRESS' && trustedMinutes < Number(course.requiredMinutes || 0)" type="warning"
+          :description="`服务端可信学习时长尚差 ${Number(course.requiredMinutes || 0) - trustedMinutes} 分钟；切换页面或修改本机时间不会绕过服务端计时。`" />
       </view>
     </MobileGlobalState>
 
     <MobileSafeAreaBar v-if="state === 'ready' && course && completionStatus !== 'PASSED' && completionStatus !== 'PENDING_REVIEW'">
-      <button v-if="!completion" class="btn btn-primary flex-1" :disabled="submitting" @click="start">开始学习</button>
+      <button v-if="needsStart" class="btn btn-primary flex-1" :disabled="submitting || noAttemptsLeft" @click="start">
+        {{ completionStatus === 'FAILED' ? (noAttemptsLeft ? '已无剩余尝试次数' : '重新学习') : '开始学习' }}
+      </button>
       <button v-else class="btn btn-primary flex-1" :disabled="!canSubmit || submitting" @click="submit">
-        {{ submitting ? '提交中…' : (canSubmit ? '提交学习结果' : '完成学习时长后提交') }}
+        {{ submitting ? '提交中…' : (canSubmit ? '提交学习结果' : '完成学习时长和安全承诺后提交') }}
       </button>
     </MobileSafeAreaBar>
   </view>
@@ -62,17 +65,18 @@ export default {
     completion() { return this.course?.completion || null },
     completionStatus() { return this.completion?.status || this.course?.completionStatus || 'NOT_STARTED' },
     commitmentConfirmed() { return !!this.completion?.commitmentConfirmed },
+    needsStart() { return !this.completion || ['NOT_STARTED', 'FAILED'].includes(this.completionStatus) },
+    noAttemptsLeft() { return this.completionStatus === 'FAILED' && Number(this.course?.remainingAttempts || 0) <= 0 },
     trustedMinutes() {
       const stored = Number(this.completion?.studiedMinutes || this.course?.studiedMinutes || 0)
-      if (!this.completion?.startedAt) return stored
+      if (this.completionStatus !== 'IN_PROGRESS' || !this.completion?.startedAt) return stored
       const start = new Date(this.completion.startedAt).getTime()
       if (!Number.isFinite(start)) return stored
       return Math.max(stored, Math.floor((this.now - start) / 60000))
     },
     canSubmit() {
-      if (!this.completion) return false
+      if (!this.completion || this.completionStatus !== 'IN_PROGRESS') return false
       if (this.course.requireCommitment && !this.commitmentConfirmed) return false
-      if (this.completionStatus === 'PASSED' || this.completionStatus === 'PENDING_REVIEW') return false
       return this.trustedMinutes >= Number(this.course.requiredMinutes || 0)
     },
     statusLabel() {
@@ -102,11 +106,11 @@ export default {
       } catch (e) { this.state = 'error' }
     },
     async start() {
-      if (this.submitting) return
+      if (this.submitting || this.noAttemptsLeft) return
       this.submitting = true
       try {
         await studentApi.startInternshipSafetyCourse(this.id)
-        toast('课程学习已开始')
+        toast(this.completionStatus === 'FAILED' ? '已重新开始学习' : '课程学习已开始')
         await this.load()
       } catch (e) { toast(normalizeError(e).text || '开始失败，请重试') }
       finally { this.submitting = false }
@@ -118,10 +122,10 @@ export default {
       } catch (e) { return 'miniapp-device' }
     },
     commitment() {
-      if (!this.completion || this.submitting) return
+      if (!this.completion || this.completionStatus !== 'IN_PROGRESS' || this.submitting) return
       uni.showModal({
         title: '确认安全承诺',
-        content: '确认本人已阅读课程正文，并承诺遵守岗位安全规程？',
+        content: '确认本人已阅读当前课程版本正文，并承诺遵守岗位安全规程？',
         success: async (r) => {
           if (!r.confirm) return
           this.submitting = true
@@ -169,4 +173,5 @@ export default {
 .sc__body-title { font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); }
 .sc__content { white-space: pre-wrap; line-height: 1.8; color: var(--text-secondary); }
 .sc__commit-text { font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.7; }
+.sc__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 </style>
