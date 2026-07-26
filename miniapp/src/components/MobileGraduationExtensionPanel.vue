@@ -35,14 +35,16 @@
 <script>
 import { realRequest, normalizeError } from '@/services/request'
 function pageStack() { return typeof getCurrentPages === 'function' ? getCurrentPages() : [] }
+let owner = null
 export default {
   name: 'MobileGraduationExtensionPanel',
-  data() { return { visible: false, data: null, error: '', reason: '', submitting: false } },
+  data() { return { visible: false, data: null, error: '', reason: '', submitting: false, owns: false } },
   mounted() {
     const pages = pageStack(); const page = pages[pages.length - 1]
-    this.visible = ((page && (page.route || page.__route__)) || '') === 'pages/student/graduation/index'
-    if (this.visible) this.load()
+    const match = ((page && (page.route || page.__route__)) || '') === 'pages/student/graduation/index'
+    if (match && owner == null) { owner = this._uid; this.owns = true; this.visible = true; this.load() }
   },
+  beforeUnmount() { if (this.owns && owner === this._uid) owner = null },
   methods: {
     load() {
       this.error = ''
