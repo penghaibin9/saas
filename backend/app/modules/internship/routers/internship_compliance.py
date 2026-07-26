@@ -105,7 +105,6 @@ def batch_stats(batch_id: str,
 @router.post("/filings")
 def filing_create(body: dict = Body(...),
                   user=Depends(require_permission("internship.filing.review"))):
-    """特殊备案由学院/学校合规角色建单；普通只读角色不得用 view 权限创建。"""
     return success(filing.create(body, user))
 
 
@@ -139,9 +138,12 @@ def emergency_create(body: dict = Body(...),
 
 
 @router.post("/emergency-plans/{iid}/{action}")
-def emergency_action(iid: str, action: str,
+def emergency_action(iid: str, action: str, body: dict = Body(default={}),
                      user=Depends(require_permission("internship.incident.handle"))):
-    return success(incident.review_plan(iid, action.upper(), user))
+    return success(incident.review_plan(
+        iid, action.upper(), user=user,
+        expected_version=body.get("expectedVersion"),
+        comment=body.get("comment", "")))
 
 
 @router.get("/evaluate/{internship_id}")
