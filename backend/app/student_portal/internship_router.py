@@ -1,7 +1,7 @@
 """学生 PC 门户岗位实习权威接口。
 
 与学生小程序复用同一业务服务，不复制状态机；批次由显式 batchId 或统一
-X-Internship-Batch-Id 上下文解析。正式申请、请假和补卡关键写操作均强制版本。
+X-Internship-Batch-Id 上下文解析。正式申请、请假、补卡、计划确认与任务提交均强制版本。
 """
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from fastapi import APIRouter, Body, Depends, Query, Request
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_consent_service as consent
+from app.modules.internship.services import internship_plan_service as plans
+from app.modules.internship.services import internship_plan_task_service as plan_tasks
 from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_application_context_service as applications
 from app.modules.internship.services import internship_student_compliance_service as compliance
@@ -201,3 +203,33 @@ def portal_makeup_withdraw(
 ):
     return success(makeups.withdraw(
         user, makeup_id, (body or {}).get("expectedVersion")), message="补卡已撤回")
+
+
+@router.get("/context/plan", summary="本人当前已发布实习计划及回执版本")
+def portal_plan(user=Depends(get_current_user)):
+    return success(plans.student_my_plan(user))
+
+
+@router.post("/context/plan/acknowledge", summary="按正文与回执版本确认实习计划")
+def portal_plan_acknowledge(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(plans.student_acknowledge(user, body or {}), message="已确认当前版本实习计划")
+
+
+@router.get("/context/plan/tasks", summary="本人当前计划任务与进度版本")
+def portal_plan_tasks(user=Depends(get_current_user)):
+    return success(plan_tasks.student_tasks(user))
+
+
+@router.post("/context/plan/tasks/{sort_order}/submit", summary="按版本提交当前计划任务完成情况")
+def portal_plan_task_submit(
+    sort_order: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(
+        plan_tasks.student_submit_task(user, sort_order, body or {}),
+        message="任务已提交，等待指导教师确认",
+    )
