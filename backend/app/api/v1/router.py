@@ -15,9 +15,11 @@ from app.api.v1.affairs_four_end import router as affairs_four_end_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
+from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
 
 api_router.include_router(affairs_four_end_router)
 api_router.include_router(affairs_student_dorm_router)
 api_router.include_router(affairs_activity_mobile_router)
 install_affairs_four_end_contract()
 install_activity_checkin_code()
+install_atomic_student_applications()
