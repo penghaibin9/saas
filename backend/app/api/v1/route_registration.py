@@ -157,6 +157,10 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.core.mobile_internship_permission_gate import (
         enforce_teacher_internship_mobile_permission,
     )
+    from app.core.student_portal_module_gate import (
+        enforce_student_portal_module_access,
+    )
+    from app.student_portal.internship_router import router as student_portal_internship_router
     from app.student_portal.router import router as student_portal_router
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -183,7 +187,9 @@ def register_platform_routes(api_router: APIRouter) -> None:
     )
     api_router.include_router(mobile_internship_context.router)
     api_router.include_router(mobile_internship_student.router)
-    api_router.include_router(student_portal_router)
+    portal_gate = [Depends(enforce_student_portal_module_access)]
+    api_router.include_router(student_portal_router, dependencies=portal_gate)
+    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)
     from app.api.v1 import student_portal_admin
     api_router.include_router(student_portal_admin.router)
     api_router.include_router(onboarding.router)
