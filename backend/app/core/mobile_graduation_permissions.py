@@ -13,6 +13,7 @@ from app.core.permissions import enforce_permission
 from app.core.security import get_current_user
 
 MOBILE_GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
+    "teacher_graduation_batches": "graduationDesign.dashboard.view",
     "teacher_graduation": "graduationDesign.dashboard.view",
     "teacher_proposal_detail": "graduationDesign.proposal.view",
     "teacher_proposal_review": "graduationDesign.proposal.review",
