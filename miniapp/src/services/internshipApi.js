@@ -31,7 +31,7 @@ export const teacherInternshipScores = (batchId) => {
   } catch (e) { return Promise.reject(e) }
 }
 
-/** 教师小程序：当前批次企业评价；创建绑定真实附件，审核必须携带版本。 */
+/** 教师小程序：当前批次企业评价；创建绑定真实附件，审核与重交必须携带版本。 */
 export const teacherInternshipEnterpriseEvals = (batchId) => {
   try {
     const value = requireBatch(batchId)
@@ -40,6 +40,8 @@ export const teacherInternshipEnterpriseEvals = (batchId) => {
 }
 export const teacherInternshipEnterpriseEvalCreate = (body) =>
   realRequest('/mobile/teacher/internship/context/enterprise-evals', { method: 'POST', data: body || {} })
+export const teacherInternshipEnterpriseEvalResubmit = (evalId, body) =>
+  realRequest(`/mobile/teacher/internship/context/enterprise-evals/${evalId}/resubmit`, { method: 'POST', data: body || {} })
 export const teacherInternshipEnterpriseEvalReview = (evalId, body) =>
   realRequest(`/mobile/teacher/internship/context/enterprise-evals/${evalId}/review`, { method: 'POST', data: body || {} })
 
