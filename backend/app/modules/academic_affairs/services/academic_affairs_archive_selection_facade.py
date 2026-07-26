@@ -52,6 +52,17 @@ def _selection_gate_result(
     )
 
 
+def _active_round_count(rounds) -> int:
+    """DRAFT/OPEN均在途；LOTTERY的CLOSED待摇号，FCFS的CLOSED已正常终结。"""
+    count = 0
+    for row in rounds or []:
+        status = str(getattr(row, "status", None) or "").upper()
+        mode = str(getattr(row, "mode", None) or "FCFS").upper()
+        if status in {"DRAFT", "OPEN"} or (status == "CLOSED" and mode == "LOTTERY"):
+            count += 1
+    return count
+
+
 def _evaluate_selection(db, term_id):
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord, AaSelectionRound
 
@@ -66,12 +77,12 @@ def _evaluate_selection(db, term_id):
     if not batch_ids:
         return _selection_gate_result([])
 
-    active_rounds = db.query(AaSelectionRound).filter(
+    rounds = db.query(AaSelectionRound).filter(
         AaSelectionRound.tenant_id == _tid(),
         AaSelectionRound.batch_id.in_(batch_ids),
-        AaSelectionRound.status.in_(["DRAFT", "OPEN", "CLOSED"]),
         AaSelectionRound.is_deleted.is_(False),
-    ).count()
+    ).all()
+    active_rounds = _active_round_count(rounds)
     pending_records = db.query(AaSelectionRecord).filter(
         AaSelectionRecord.tenant_id == _tid(),
         AaSelectionRecord.batch_id.in_(batch_ids),
