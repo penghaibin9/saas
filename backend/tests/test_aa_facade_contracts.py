@@ -5,7 +5,16 @@ def test_public_service_aliases_point_to_final_layers():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_selection_facade"
+        "academic_affairs_archive_textbook_facade"
+    )
+    assert services.academic_affairs_evaluation_service.__name__.endswith(
+        "academic_affairs_evaluation_term_facade"
+    )
+    assert services.academic_affairs_makeup_service.__name__.endswith(
+        "academic_affairs_makeup_term_facade"
+    )
+    assert services.academic_affairs_textbook_service.__name__.endswith(
+        "academic_affairs_textbook_final_facade"
     )
     assert services.academic_affairs_exam_service.__name__.endswith(
         "academic_affairs_exam_term_facade"
@@ -46,6 +55,10 @@ def test_current_model_fields_used_by_facades_exist():
         AaSelectionCourse,
         AaSelectionRecord,
         AaTeachingTask,
+        AaTextbookDistributionBatch,
+        AaTextbookDistributionRecord,
+        AaTextbookFeeLedger,
+        AaTextbookOrderBatch,
     )
 
     required = {
@@ -57,6 +70,10 @@ def test_current_model_fields_used_by_facades_exist():
         AaSelectionCourse: {"batch_id", "teaching_task_id", "selected_count", "status"},
         AaSelectionRecord: {"batch_id", "selection_course_id", "student_id", "status"},
         AaTeachingTask: {"batch_id", "course_id", "class_id", "expected_students", "merge_snapshot_json", "status"},
+        AaTextbookOrderBatch: {"term_id", "status"},
+        AaTextbookDistributionBatch: {"order_batch_id", "status"},
+        AaTextbookDistributionRecord: {"batch_id", "status"},
+        AaTextbookFeeLedger: {"distribution_record_id", "status", "paid_amount"},
     }
     # CommonMixin provides status only where the concrete model declares it; inspect mapper attrs rather than __dict__.
     for model, fields in required.items():
