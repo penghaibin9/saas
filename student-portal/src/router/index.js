@@ -19,6 +19,7 @@ const routes = [
       // 教务首页先进入可靠的独立课表工作区；旧19项综合页保留在 /academic/all，避免删功能或破坏历史成果。
       { path: 'academic', redirect: '/academic/schedule' },
       { path: 'academic/schedule', name: 'academic-schedule', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentScheduleView.vue') },
+      { path: 'academic/grades', name: 'academic-grades', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentGradesView.vue') },
       { path: 'academic/all', name: 'academic-all', meta: { modulePath: 'academic' }, component: () => import('../views/academic/AcademicView.vue') },
       { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsView.vue') },
       { path: 'internship', name: 'internship', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipView.vue') },
