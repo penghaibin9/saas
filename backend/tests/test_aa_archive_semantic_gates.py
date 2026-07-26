@@ -1,6 +1,7 @@
 """教务归档语义门禁回归测试。"""
 from contextlib import contextmanager
 from datetime import date, datetime
+from importlib import import_module
 from types import SimpleNamespace
 
 import pytest
@@ -127,8 +128,10 @@ def test_graduation_gate_does_not_cross_term_when_dates_missing():
 def test_force_cannot_bypass_missing_archive_gate(monkeypatch):
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_archive_facade as facade
-    from app.modules.academic_affairs.services import academic_affairs_archive_service as legacy
 
+    legacy = import_module(
+        "app.modules.academic_affairs.services.academic_affairs_archive_service"
+    )
     batch = SimpleNamespace(id=1, status="MISSING_ITEMS", missing_count=2)
     fake_db = SimpleNamespace()
 
