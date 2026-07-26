@@ -82,6 +82,19 @@ const STATUS_MAP = {
   ACADEMIC_REVIEW: { label: '教务终审中', type: 'processing' },
   CHANGE_REVIEW: { label: '更正审核中', type: 'warning' },
 
+  // 教务·教材征订/发放/费用
+  ORDERED: { label: '已征订', type: 'processing' },
+  PARTIALLY_ARRIVED: { label: '部分到货', type: 'warning' },
+  ARRIVED: { label: '已到货', type: 'success' },
+  DISTRIBUTING: { label: '发放中', type: 'processing' },
+  RECEIVED: { label: '已签收', type: 'success' },
+  EXCLUDED: { label: '不发放', type: 'info' },
+  EXCHANGED: { label: '已换领', type: 'info' },
+  UNPAID: { label: '未收款', type: 'warning' },
+  PARTIAL: { label: '部分收款', type: 'warning' },
+  PAID: { label: '已结清', type: 'success' },
+  WAIVED: { label: '已减免', type: 'info' },
+
   // 学工/迎新/毕设/实习
   REPORTED: { label: '已报到', type: 'success' },
   NOT_REPORTED: { label: '未报到', type: 'warning' },
