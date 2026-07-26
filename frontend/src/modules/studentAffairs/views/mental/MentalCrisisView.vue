@@ -7,6 +7,21 @@
     watermark-purpose="心理危机升级处理"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载心理危机记录..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
+      <section class="sa-summary-strip mental-crisis-summary">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">高风险操作提醒</span>
+          <h2 class="sa-summary-strip__title">只有客观危机信号明确、已采取初步措施时，才升级到风险中枢</h2>
+          <p class="sa-summary-strip__text">升级会生成正式风险单并通知责任人。请先核对学生身份、当前状态、事由摘要和是否已经存在关联风险，避免重复或无依据升级。</p>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="心理危机升级流程">
+        <div class="sa-workflow-step" data-step="1"><strong>核对学生</strong><br>确认学生身份、关注等级与当前状态</div>
+        <div class="sa-workflow-step" data-step="2"><strong>记录依据</strong><br>写明危机信号、来源和已采取措施</div>
+        <div class="sa-workflow-step" data-step="3"><strong>升级风险</strong><br>生成风险中枢记录并通知责任人</div>
+        <div class="sa-workflow-step" data-step="4"><strong>持续处置</strong><br>后续进入风险详情完成闭环</div>
+      </div>
+
       <div class="sa-grid sa-grid--metrics"><AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" /></div>
 
       <AppSectionCard title="危机与可升级记录">
@@ -23,7 +38,7 @@
           <template #cell-student="{ row }"><div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div><div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div></template>
           <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
           <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
-          <template #cell-reason="{ row }">{{ row.reasonSummary || '—' }}</template>
+          <template #cell-reason="{ row }"><span class="mental-crisis-reason sa-cell-wrap">{{ row.reasonSummary || '—' }}</span></template>
           <template #cell-risk="{ row }"><a v-if="row.riskId" class="sa-link" @click="gotoRisk(row.riskId)">风险 #{{ row.riskId }} →</a><span v-else class="sa-muted">未升级</span></template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
@@ -42,7 +57,7 @@
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前授权范围内暂无心理关注记录</p>
+        <p v-else class="sa-empty">当前授权范围内暂无心理关注记录。需要先在“谈话转介与回访”中登记转介。</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -164,9 +179,15 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-4);margin-bottom:var(--space-4) }
+.sa-grid--metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-bottom:var(--space-4) }
 :deep(.dt__tr.sa-crisis) .dt__td { background:var(--danger-50,var(--warning-50)) }
-.sa-actions { display:flex;flex-wrap:wrap;gap:var(--space-2) }.sa-link { color:var(--primary-600);cursor:pointer }.sa-muted { color:var(--text-tertiary) }.sa-empty { color:var(--text-tertiary);padding:var(--space-4);text-align:center }.char-count { margin:4px 0 0;text-align:right;color:var(--text-tertiary);font-size:12px }.field-error { margin:4px 0 0;color:var(--danger-600);font-size:12px }
+.sa-actions { display:flex;flex-wrap:wrap;gap:var(--space-2) }
+.sa-link { color:var(--primary-600);cursor:pointer;font-weight:600 }
+.sa-muted { color:var(--text-tertiary) }
+.mental-crisis-reason { color: var(--text-secondary); }
+.char-count { margin:4px 0 0;text-align:right;color:var(--text-tertiary);font-size:12px }
+.field-error { margin:4px 0 0;color:var(--danger-600);font-size:12px }
 @media(max-width:960px){.sa-grid--metrics{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.sa-grid--metrics{grid-template-columns:1fr}}
 @import '@/styles/module-page.css';
 </style>
