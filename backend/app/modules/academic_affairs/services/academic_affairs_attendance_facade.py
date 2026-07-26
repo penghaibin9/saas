@@ -13,6 +13,8 @@ from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_attendance_service as _legacy
 
+_ATTENDANCE_TASK_STATUSES = {"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED"}
+
 
 def __getattr__(name):
     return getattr(_legacy, name)
@@ -49,8 +51,11 @@ def create_session(user, body) -> dict:
             task = db.get(AaTeachingTask, int(task_id))
             if not task or task.is_deleted or task.tenant_id != _legacy._tid():
                 raise not_found("教学任务不存在")
-            if task.status in {"PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"}:
-                raise AppException("DATA_CONFLICT", "该教学任务尚不可用于课堂考勤")
+            if str(task.status or "").upper() not in _ATTENDANCE_TASK_STATUSES:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "教学任务须经教师确认后才能用于课堂考勤",
+                )
             batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
             if not batch or batch.is_deleted or batch.tenant_id != _legacy._tid():
                 raise not_found("教学任务批次不存在")
