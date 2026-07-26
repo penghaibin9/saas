@@ -22,7 +22,7 @@
         <template v-else-if="tab === 'makeup'">
           <MobileInlineAlert v-if="!canReviewMakeup" type="warning" description="当前身份仅能查看补卡申请，没有补卡审批权限；页面已隐藏可执行能力，后端也会独立校验。" />
           <MobileGlobalState v-if="!makeups.length" state="empty" title="暂无待审补卡" description="当前批次本人指导范围内没有待审核补卡。" />
-          <ApprovalCard
+          <InternshipApprovalCard
             v-for="item in makeups"
             :key="item.id"
             :item="item"
@@ -39,7 +39,7 @@
         <template v-else-if="tab === 'leave'">
           <MobileInlineAlert v-if="!canReviewLeave" type="warning" description="当前身份仅能查看请假申请，没有实习请假审批权限；页面与后端均按权限码独立拦截。" />
           <MobileGlobalState v-if="!leaves.length" state="empty" title="暂无待审请假" description="当前批次本人指导范围内没有待审批请假。" />
-          <ApprovalCard
+          <InternshipApprovalCard
             v-for="item in leaves"
             :key="item.id"
             :item="item"
@@ -81,7 +81,7 @@
 </template>
 
 <script>
-import ApprovalCard from './ApprovalCard.vue'
+import InternshipApprovalCard from './ApprovalCard.vue'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import {
   teacherInternshipLeaveEvidenceViewed,
@@ -96,7 +96,7 @@ import { realRequest } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 export default {
-  components: { ApprovalCard },
+  components: { InternshipApprovalCard },
   data: () => ({
     tab: 'makeup', makeups: [], leaves: [], overdues: [], state: 'loading',
     batches: [], batchId: '', batchIndex: 0,
@@ -250,5 +250,19 @@ export default {
 </script>
 
 <style scoped>
-.tabs{display:flex;gap:24rpx;padding:20rpx 28rpx 0;background:var(--bg-card)}.tab{position:relative;padding-bottom:20rpx;color:var(--text-tertiary)}.tab.on{color:var(--text-primary);font-weight:600}.underline{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:44rpx;height:6rpx;border-radius:3rpx;background:var(--teacher-600)}.badge{margin-left:8rpx;font-size:20rpx;color:#fff;background:var(--danger-500);padding:2rpx 10rpx;border-radius:20rpx}.batch-card{display:flex;align-items:center;justify-content:space-between}.muted,.sub{color:var(--text-tertiary);font-size:24rpx}.picker-value{color:var(--teacher-700);font-size:26rpx}.item-card{display:flex;flex-direction:column;gap:14rpx}.title{font-size:30rpx;font-weight:600}.sub{display:block;margin-top:4rpx}.detail{display:flex;gap:20rpx;font-size:26rpx}.key{width:130rpx;color:var(--text-tertiary);flex-shrink:0}.approve{min-height:88rpx;background:var(--teacher-600);color:#fff;border:0;border-radius:16rpx}.approve::after{border:0}.approve[disabled]{opacity:.55}
+.tabs { display: flex; background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
+.tab { position: relative; flex: 1; padding: 14px 4px 12px; text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); }
+.tab.on { color: var(--brand-primary); font-weight: var(--font-weight-semibold); }
+.underline { position: absolute; left: 34%; right: 34%; bottom: 0; height: 2px; border-radius: 2px; background: var(--brand-primary); }
+.badge { display: inline-flex; min-width: 16px; height: 16px; margin-left: 4px; padding: 0 4px; align-items: center; justify-content: center; border-radius: 8px; background: var(--error-500); color: #fff; font-size: 10px; box-sizing: border-box; }
+.batch-card { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.muted { color: var(--text-tertiary); font-size: var(--font-size-sm); }
+.picker-value { color: var(--brand-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); text-align: right; }
+.item-card { display: flex; flex-direction: column; gap: 10px; }
+.title { display: block; color: var(--text-primary); font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); }
+.sub { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.detail { display: flex; gap: 12px; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.55; }
+.key { width: 68px; flex: 0 0 68px; color: var(--text-tertiary); }
+.approve { margin: 4px 0 0; background: var(--brand-primary); color: #fff; border: 0; }
+.approve[disabled] { background: var(--gray-300); color: var(--text-tertiary); }
 </style>
