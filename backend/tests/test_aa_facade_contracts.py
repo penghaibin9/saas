@@ -11,7 +11,7 @@ def test_public_service_aliases_point_to_final_layers():
         "academic_affairs_evaluation_term_facade"
     )
     assert services.academic_affairs_makeup_service.__name__.endswith(
-        "academic_affairs_makeup_term_facade"
+        "academic_affairs_makeup_identity_facade"
     )
     assert services.academic_affairs_textbook_service.__name__.endswith(
         "academic_affairs_textbook_lock_facade"
