@@ -2,7 +2,8 @@
 请求上下文中间件
 ────────────────────────────────────────────────────────────
 为每个请求分配/透传 traceId，解析当前租户写入上下文，回写 X-Trace-Id 响应头，
-并记录一行访问日志。traceId 复用入站 X-Request-Id / X-Trace-Id（便于跨系统串联）。
+并记录一行访问日志。学生岗位实习请求可通过 X-Internship-Batch-Id 显式绑定
+当前批次，后端所有本人业务共享同一事实源。
 """
 from __future__ import annotations
 
@@ -14,7 +15,12 @@ from functools import lru_cache
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from app.core.context import set_current_user, set_request_meta, set_trace_id
+from app.core.context import (
+    set_current_internship_batch_id,
+    set_current_user,
+    set_request_meta,
+    set_trace_id,
+)
 from app.core.config import settings
 from app.core.tenant_context import resolve_tenant
 
@@ -27,18 +33,20 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         trace_id = (incoming or f"req-{uuid.uuid4().hex[:16]}")[:64]
         set_trace_id(trace_id)
         set_current_user(None)
-        resolve_tenant(request)  # 多租户：解析并写入上下文（single 模式恒为默认租户）
-        _bind_token_tenant(request)  # 令牌带 tenantId 时覆盖（demo 账号只见 demo-school 数据）
+        set_current_internship_batch_id(_resolve_internship_batch_id(request))
+        resolve_tenant(request)
+        _bind_token_tenant(request)
         set_request_meta({
             "ip": _resolve_client_ip(request),
             "userAgent": request.headers.get("user-agent", "")[:400],
             "method": request.method,
             "path": request.url.path,
-        })  # P4：审计落库补全 ip/ua/method/path
+            "internshipBatchId": _resolve_internship_batch_id(request) or "",
+        })
 
-        deny = _expired_tenant_readonly_deny(request)  # P6：到期租户只读（写操作 403）
+        deny = _expired_tenant_readonly_deny(request)
         if deny is None:
-            deny = _demo_tenant_readonly_deny(request)  # P12：正式演示租户只读锁
+            deny = _demo_tenant_readonly_deny(request)
         if deny is not None:
             deny.headers["X-Trace-Id"] = trace_id
             return deny
@@ -61,9 +69,24 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _resolve_internship_batch_id(request: Request) -> str | None:
+    """只接受学生岗位实习域的显式批次头，避免其它域或教师接口误绑定。"""
+    path = request.url.path
+    if not (
+        path.startswith("/api/v1/mobile/internship") or
+        path.startswith("/api/v1/portal/internship")
+    ):
+        return None
+    raw = (request.headers.get("x-internship-batch-id") or "").strip()
+    if not raw:
+        return None
+    if len(raw) > 32 or not raw.isdigit():
+        return None
+    return raw
+
+
 @lru_cache(maxsize=8)
 def _trusted_networks(spec: str) -> tuple:
-    """把 TRUSTED_PROXY_IPS 解析为网段列表（单 IP 视作 /32、/128；非法项忽略）。"""
     import ipaddress
     nets = []
     for part in (spec or "").split(","):
@@ -87,10 +110,6 @@ def _is_trusted_proxy(direct: str, spec: str) -> bool:
 
 
 def _resolve_client_ip(request: Request) -> str:
-    """真实客户端 IP：仅当直连方是可信代理（TRUSTED_PROXY_IPS，默认本机回环，支持 CIDR）
-    时才信任 X-Forwarded-For 第一跳 / X-Real-IP，否则一律用直连 IP，防头部伪造。
-    生产拓扑为 Nginx 反代（deploy/nginx 已注入两个头）——不解析的话登录限流与
-    审计日志看到的全是代理内网 IP，全校共享同一个限流桶。"""
     direct = request.client.host if request.client else ""
     try:
         from app.core.config import settings
@@ -103,14 +122,12 @@ def _resolve_client_ip(request: Request) -> str:
             real = request.headers.get("x-real-ip", "").strip()
             if real:
                 return real[:64]
-    except Exception:  # noqa: BLE001 — IP 解析故障不阻断请求
+    except Exception:
         pass
     return direct
 
 
 def _bind_token_tenant(request: Request) -> None:
-    """从 Authorization 令牌解出 tenantId 并覆盖上下文租户（在 async 上下文中 set，
-    确保 contextvar 传播到所有 threadpool 依赖与端点；失败静默，走默认租户）。"""
     try:
         auth = request.headers.get("authorization") or ""
         if not auth.lower().startswith("bearer "):
@@ -118,9 +135,6 @@ def _bind_token_tenant(request: Request) -> None:
         from app.core.context import set_tenant
         from app.core.security import decode_token
         claims = decode_token(auth[7:].strip())
-        # 在 async 上下文绑定当前用户，确保 currentRoleCode 等随 contextvar 传播到 threadpool 内的
-        # 同步 service（如 campus_service 的数据范围解析依赖 get_current_user_ctx()）。get_current_user
-        # 依赖仍会再 set 一次同样的完整用户（幂等），此处解决「服务层拿到无角色用户」的传播缺口。
         set_current_user({
             "userId": claims.get("userId"), "realName": claims.get("realName"),
             "userType": claims.get("userType"), "tenantCode": claims.get("tid"),
@@ -142,28 +156,21 @@ def _bind_token_tenant(request: Request) -> None:
                         "tenantName": claims.get("tenantName") or "",
                         "status": "ACTIVE"})
         elif claims.get("tid"):
-            # 兼容旧令牌（只有租户码无 tenantId）：按令牌租户码绑定，
-            # 确保已登录请求的数据租户只由令牌决定，X-Tenant 头无法越权切换。
             from app.core.tenant_context import get_mock_tenant
             t = get_mock_tenant(str(claims["tid"]).strip())
             if t:
                 set_tenant(dict(t))
-    except Exception:  # noqa: BLE001 — 非法令牌交由 get_current_user 统一处理
+    except Exception:
         return
 
 
-# ── P6：到期租户只读控制 ──
 _READONLY_EXEMPT_PREFIXES = (
     "/api/v1/auth", "/api/v1/platform", "/health", "/docs", "/openapi", "/redoc",
 )
-
-# ── P12：正式演示租户（demo-school）只读锁 ──
 _DEMO_READONLY_TENANT_ID = "1000000000000000003"
 
 
 def is_readonly_tenant(tenant: dict | None = None) -> bool:
-    """当前（或指定）租户是否处于演示只读态。供 /rbac/current-context 下发给前端，
-    使按钮层与中间件的 403 判定同源，避免「能点但必然失败」的假可用按钮（BUG-001）。"""
     try:
         from app.core.config import settings
         if not settings.demo_tenant_readonly:
@@ -172,12 +179,11 @@ def is_readonly_tenant(tenant: dict | None = None) -> bool:
             from app.core.context import get_tenant
             tenant = get_tenant() or {}
         return str((tenant or {}).get("tenantId") or "") == _DEMO_READONLY_TENANT_ID
-    except Exception:  # noqa: BLE001 — 判定失败按「非只读」处理，后端仍是最终边界
+    except Exception:
         return False
 
 
 def _demo_tenant_readonly_deny(request: Request):
-    """正式演示租户数据不许改动：写操作 403。守卫自身异常时对写请求 503，禁止 fail-open。"""
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return None
     path = request.url.path
@@ -191,7 +197,7 @@ def _demo_tenant_readonly_deny(request: Request):
         tenant = get_tenant() or {}
         if str(tenant.get("tenantId") or "") != _DEMO_READONLY_TENANT_ID:
             return None
-    except Exception:  # noqa: BLE001
+    except Exception:
         from starlette.responses import JSONResponse
         from app.core.response import fail
         return JSONResponse(status_code=503, content=fail(
@@ -203,12 +209,12 @@ def _demo_tenant_readonly_deny(request: Request):
         try:
             audit_log.record("DEMO_READONLY_DENY", path,
                              detail={"method": request.method}, result="DENIED")
-        except Exception:  # noqa: BLE001 — 审计失败不影响拒绝判定
+        except Exception:
             pass
         return JSONResponse(status_code=403, content=fail(
             "NO_PERMISSION",
             "正式演示环境为只读，数据不可修改。想动手体验请使用沙箱环境"))
-    except Exception:  # noqa: BLE001
+    except Exception:
         from starlette.responses import JSONResponse
         from app.core.response import fail
         return JSONResponse(status_code=503, content=fail(
@@ -216,7 +222,6 @@ def _demo_tenant_readonly_deny(request: Request):
 
 
 def _expired_tenant_readonly_deny(request: Request):
-    """租户到期后写操作 403。状态读取异常时对写请求 503，禁止 fail-open。"""
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return None
     path = request.url.path
@@ -226,7 +231,6 @@ def _expired_tenant_readonly_deny(request: Request):
         from app.core.context import get_current_user_ctx, get_tenant
         from app.core.permissions import is_super_admin
         user = get_current_user_ctx() or {}
-        # 平台超管豁免须已绑定已验证身份（有 userId + PLATFORM_SUPER_ADMIN）
         if is_super_admin(user) and user.get("userId"):
             return None
         tenant = get_tenant() or {}
@@ -240,7 +244,7 @@ def _expired_tenant_readonly_deny(request: Request):
         status = tenant_status(int(tid), strict=True)
         if status != "expired":
             return None
-    except Exception:  # noqa: BLE001 — 含 strict 状态读取失败
+    except Exception:
         from starlette.responses import JSONResponse
         from app.core.response import fail
         return JSONResponse(status_code=503, content=fail(
@@ -252,12 +256,12 @@ def _expired_tenant_readonly_deny(request: Request):
         try:
             audit_log.record("WRITE_DENIED_EXPIRED", path,
                              detail={"method": request.method, "tenantId": str(tid)}, result="DENIED")
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         return JSONResponse(status_code=403, content=fail(
             "MODULE_EXPIRED_READONLY",
             "服务已到期，当前为只读模式：可查看数据，无法新增或修改。请联系平台运营续费"))
-    except Exception:  # noqa: BLE001
+    except Exception:
         from starlette.responses import JSONResponse
         from app.core.response import fail
         return JSONResponse(status_code=503, content=fail(
