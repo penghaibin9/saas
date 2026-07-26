@@ -2,13 +2,7 @@
   <view v-if="visible" class="gdbc">
     <view class="gdbc__main">
       <text class="gdbc__label">当前毕设批次</text>
-      <picker
-        v-if="batches.length"
-        mode="selector"
-        :range="batchLabels"
-        :value="selectedIndex"
-        @change="changeBatch"
-      >
+      <picker v-if="batches.length" mode="selector" :range="batchLabels" :value="selectedIndex" @change="changeBatch">
         <view class="gdbc__picker">
           <view class="gdbc__text">
             <text class="gdbc__name">{{ selectedBatch ? selectedBatch.batchName : '请选择批次' }}</text>
@@ -34,34 +28,30 @@ const ROUTES = new Set([
   'pages/teacher/defense-score/index'
 ])
 
+function pageStack() {
+  return typeof getCurrentPages === 'function' ? getCurrentPages() : []
+}
+
 export default {
   name: 'MobileGraduationBatchContext',
-  data() {
-    return { visible: false, loading: false, error: '', batches: [], selectedId: '' }
-  },
+  data() { return { visible: false, loading: false, error: '', batches: [], selectedId: '' } },
   computed: {
-    batchLabels() {
-      return this.batches.map((b) => `${b.batchName}${b.gradeYear ? ` · ${b.gradeYear}` : ''}`)
-    },
+    batchLabels() { return this.batches.map((b) => `${b.batchName}${b.gradeYear ? ` · ${b.gradeYear}` : ''}`) },
     selectedIndex() {
       const i = this.batches.findIndex((b) => String(b.id) === String(this.selectedId))
       return i < 0 ? 0 : i
     },
-    selectedBatch() {
-      return this.batches[this.selectedIndex] || null
-    }
+    selectedBatch() { return this.batches[this.selectedIndex] || null }
   },
   mounted() {
-    const pages = getCurrentPages ? getCurrentPages() : []
+    const pages = pageStack()
     const page = pages[pages.length - 1]
     const route = (page && (page.route || page.__route__)) || ''
     this.visible = ROUTES.has(route)
     if (this.visible) this.load()
   },
   methods: {
-    statusLabel(status) {
-      return ({ DRAFT: '筹备中', RUNNING: '进行中', CLOSED: '已结束' })[status] || status || '—'
-    },
+    statusLabel(status) { return ({ DRAFT: '筹备中', RUNNING: '进行中', CLOSED: '已结束' })[status] || status || '—' },
     load() {
       if (this.loading) return
       this.loading = true
@@ -76,15 +66,13 @@ export default {
         if (preferred) {
           this.selectedId = String(preferred.id)
           setTeacherGraduationBatch({ id: preferred.id, name: preferred.batchName, status: preferred.status })
-          // 首次从无批次恢复时，页面首轮请求会 fail-closed；选定后立即重载当前页。
           if (!oldId) this.reloadCurrentPage()
         } else {
           this.selectedId = ''
           setTeacherGraduationBatch(null)
         }
-      }).catch((e) => {
-        this.error = normalizeError(e).text || '批次加载失败'
-      }).finally(() => { this.loading = false })
+      }).catch((e) => { this.error = normalizeError(e).text || '批次加载失败' })
+        .finally(() => { this.loading = false })
     },
     changeBatch(e) {
       const index = Number(e && e.detail && e.detail.value)
@@ -96,17 +84,11 @@ export default {
     },
     reloadCurrentPage() {
       this.$nextTick(() => {
-        const pages = getCurrentPages ? getCurrentPages() : []
+        const pages = pageStack()
         const page = pages[pages.length - 1]
         const vm = page && page.$vm
-        if (vm && typeof vm.load === 'function') {
-          vm.load()
-          return
-        }
-        if (vm && typeof vm.reloadTab === 'function') {
-          vm.reloadTab()
-          return
-        }
+        if (vm && typeof vm.load === 'function') { vm.load(); return }
+        if (vm && typeof vm.reloadTab === 'function') { vm.reloadTab(); return }
         try { uni.startPullDownRefresh() } catch (e) { /* 页面无下拉能力时保持当前状态 */ }
       })
     }
@@ -115,14 +97,10 @@ export default {
 </script>
 
 <style scoped>
-.gdbc { margin: 0 var(--page-padding-mobile) var(--space-3); padding: var(--space-3); display:flex; align-items:center; gap:var(--space-2); border:1px solid var(--primary-100); border-radius:var(--radius-lg); background:var(--primary-50); }
-.gdbc__main { min-width:0; flex:1; }
-.gdbc__label { display:block; margin-bottom:4px; font-size:var(--font-size-xs); color:var(--text-tertiary); }
-.gdbc__picker { min-height:38px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
-.gdbc__text { min-width:0; }
+.gdbc { margin:0 var(--page-padding-mobile) var(--space-3); padding:var(--space-3); display:flex; align-items:center; gap:var(--space-2); border:1px solid var(--primary-100); border-radius:var(--radius-lg); background:var(--primary-50); }
+.gdbc__main { min-width:0; flex:1; }.gdbc__label { display:block; margin-bottom:4px; font-size:var(--font-size-xs); color:var(--text-tertiary); }
+.gdbc__picker { min-height:38px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }.gdbc__text { min-width:0; }
 .gdbc__name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--font-size-base); font-weight:var(--font-weight-medium); color:var(--text-primary); }
-.gdbc__meta { display:block; margin-top:2px; font-size:var(--font-size-xs); color:var(--text-secondary); }
-.gdbc__arrow { flex:none; font-size:var(--font-size-sm); color:var(--primary-600); }
-.gdbc__error { font-size:var(--font-size-sm); color:var(--danger-600); }
-.gdbc__retry { flex:none; margin:0; min-height:34px; line-height:34px; padding:0 var(--space-3); font-size:var(--font-size-sm); color:var(--primary-600); background:var(--bg-card); border:1px solid var(--primary-200); }
+.gdbc__meta { display:block; margin-top:2px; font-size:var(--font-size-xs); color:var(--text-secondary); }.gdbc__arrow { flex:none; font-size:var(--font-size-sm); color:var(--primary-600); }
+.gdbc__error { font-size:var(--font-size-sm); color:var(--danger-600); }.gdbc__retry { flex:none; margin:0; min-height:34px; line-height:34px; padding:0 var(--space-3); font-size:var(--font-size-sm); color:var(--primary-600); background:var(--bg-card); border:1px solid var(--primary-200); }
 </style>
