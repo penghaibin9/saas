@@ -1,17 +1,20 @@
 """考务服务兼容入口。
 
-不重写排考、发布、座位、监考和缓考状态机，只补三项生产门禁：
-- 考试结束前必须完成考试课程确认、考生到考状态登记和缓考审批收口；
-- 违纪/其他异常必须移交处分线索，误登记必须显式作废；缺考须已发送风险联动；
-- 考务归档再次执行同一检查，禁止绕过结束门禁写入 ARCHIVED。
+不重写排考、发布、监考和缓考状态机，只补生产门禁：
+- 人工铺位只能从教学任务官方名单选择；
+- 发布前逐课程校验“官方名单=全部考场座位并集”，且每个考场有监考；
+- 考试结束前完成到考状态、缓考和异常闭环；
+- 归档再次执行同一检查，禁止绕过。
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_exam_service as _legacy
+from .academic_affairs_teaching_roster_service import resolve_teaching_task_roster
 
 
 def __getattr__(name):
@@ -20,6 +23,189 @@ def __getattr__(name):
 
 def _status(value) -> str:
     return str(value or "").strip().upper()
+
+
+def _effective_room_capacity(room) -> int:
+    capacity = int(getattr(room, "capacity", 0) or 0)
+    if _status(getattr(room, "seat_mode", None)) == "SPACED":
+        return (capacity + 1) // 2
+    return capacity
+
+
+def assign_seats(user, room_id, student_ids):
+    """人工铺位必须是官方名单子集，同一课程跨考场不可重复。"""
+    from app.models import AaExamRoom, AaExamRoomStudent
+
+    with _legacy.session() as db:
+        context = _legacy._ctx(user, db)
+        room = db.query(AaExamRoom).filter(
+            AaExamRoom.id == int(room_id),
+            AaExamRoom.tenant_id == _legacy._tid(),
+            AaExamRoom.is_deleted.is_(False),
+        ).first()
+        if not room:
+            raise not_found("考场不存在")
+        course = _legacy._get_course(db, room.exam_course_id)
+        _legacy._check_college_scope(context, course.college_id)
+        batch = _legacy._get_batch(db, course.batch_id)
+        _legacy._ensure_not_archived(batch)
+        if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
+            raise _legacy._invalid("仅课程确认/编排阶段可铺位")
+        if not course.teaching_task_id:
+            raise AppException("DATA_CONFLICT", "考试课程未关联教学任务，无法核验考生名单")
+
+        official = resolve_teaching_task_roster(db, int(course.teaching_task_id))
+        if not official["ready"]:
+            raise AppException(
+                "DATA_CONFLICT",
+                f"考试课程官方名单尚不可用：{official['note']}",
+                details=official,
+                http_status=409,
+            )
+        requested = [int(value) for value in student_ids if str(value).isdigit()]
+        if len(requested) != len(set(requested)):
+            raise AppException("VALIDATION_ERROR", "铺位名单内学生重复")
+        official_ids = set(int(value) for value in official["studentIds"])
+        outside = sorted(set(requested) - official_ids)
+        if outside:
+            raise AppException(
+                "VALIDATION_ERROR",
+                f"有 {len(outside)} 名学生不在教学任务正式名单",
+                details={"studentIds": [str(value) for value in outside]},
+            )
+
+        other_seats = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.exam_room_id != room.id,
+            AaExamRoomStudent.student_id.in_(requested or [0]),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).all()
+        if other_seats:
+            raise AppException(
+                "DATA_CONFLICT",
+                f"有 {len(other_seats)} 名学生已安排在本课程其它考场",
+                details={"studentIds": [str(row.student_id) for row in other_seats]},
+                http_status=409,
+            )
+
+        usable_capacity = _effective_room_capacity(room)
+        if len(requested) > usable_capacity:
+            raise _legacy._conflict(f"考生数 {len(requested)} 超过考场有效容量 {usable_capacity}")
+        profile_by_id = {int(item["studentId"]): item for item in official["items"]}
+        ordered = sorted(requested, key=lambda value: (profile_by_id[value]["studentNo"], value))
+        if _status(room.seat_mode) == "RANDOM":
+            ordered = sorted(
+                requested,
+                key=lambda value: hashlib.sha256(f"{room.id}:{value}".encode()).hexdigest(),
+            )
+
+        db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.exam_room_id == room.id,
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+        ).delete(synchronize_session=False)
+        for index, student_id in enumerate(ordered, start=1):
+            profile = profile_by_id[student_id]
+            seat_no = index * 2 - 1 if _status(room.seat_mode) == "SPACED" else index
+            db.add(AaExamRoomStudent(
+                tenant_id=_legacy._tid(),
+                exam_room_id=room.id,
+                exam_course_id=course.id,
+                student_id=student_id,
+                student_no=profile["studentNo"],
+                student_name=profile["realName"],
+                seat_no=seat_no,
+                admission_no=f"{course.id}{seat_no:04d}",
+                attendance_status="NOT_STARTED",
+            ))
+        room.planned_count = len(ordered)
+        _legacy._audit(
+            db,
+            "EXAM_ROOM",
+            room.id,
+            "EXAM_SEAT_ASSIGN",
+            f"{room.seat_mode} 铺位 {len(ordered)} 人 roster={official['source']}",
+        )
+        db.commit()
+        return {
+            "examRoomId": str(room.id),
+            "seatCount": len(ordered),
+            "seatMode": room.seat_mode,
+            "rosterSource": official["source"],
+        }
+
+
+def _check_arrangement_complete(db, batch_id):
+    """发布前校验每门课程的时间、官方名单、座位全集与逐考场监考。"""
+    from app.models import AaExamCourse, AaExamInvigilator, AaExamRoom, AaExamRoomStudent
+
+    courses = db.query(AaExamCourse).filter(
+        AaExamCourse.batch_id == int(batch_id),
+        AaExamCourse.tenant_id == _legacy._tid(),
+        AaExamCourse.status == "CONFIRMED",
+        AaExamCourse.is_deleted.is_(False),
+    ).all()
+    problems = []
+    for course in courses:
+        label = course.course_name or f"课程{course.id}"
+        if not course.exam_date or not course.start_time or not course.end_time:
+            problems.append(f"{label}：考试日期/时间不完整")
+        if not course.teaching_task_id:
+            problems.append(f"{label}：未关联教学任务")
+            continue
+        official = resolve_teaching_task_roster(db, int(course.teaching_task_id))
+        if not official["ready"]:
+            problems.append(f"{label}：{official['note']}")
+            continue
+        official_ids = set(int(value) for value in official["studentIds"])
+        if not official_ids:
+            problems.append(f"{label}：正式考生名单为空")
+
+        rooms = db.query(AaExamRoom).filter(
+            AaExamRoom.exam_course_id == course.id,
+            AaExamRoom.tenant_id == _legacy._tid(),
+            AaExamRoom.status == "ACTIVE",
+            AaExamRoom.is_deleted.is_(False),
+        ).all()
+        if not rooms:
+            problems.append(f"{label}：无考场")
+            continue
+        room_ids = [int(room.id) for room in rooms]
+        seats = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.exam_room_id.in_(room_ids),
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).all()
+        seat_ids = [int(seat.student_id) for seat in seats]
+        duplicate_count = len(seat_ids) - len(set(seat_ids))
+        missing = official_ids - set(seat_ids)
+        extra = set(seat_ids) - official_ids
+        if duplicate_count:
+            problems.append(f"{label}：跨考场重复安排 {duplicate_count} 人")
+        if missing:
+            problems.append(f"{label}：仍有 {len(missing)} 名正式考生未铺位")
+        if extra:
+            problems.append(f"{label}：有 {len(extra)} 名名单外考生")
+
+        seats_by_room = {}
+        for seat in seats:
+            seats_by_room.setdefault(int(seat.exam_room_id), []).append(seat)
+        for room in rooms:
+            room_seats = seats_by_room.get(int(room.id), [])
+            if not room_seats:
+                problems.append(f"{label}：考场{room.room_seq}无座位")
+            if len(room_seats) > _effective_room_capacity(room):
+                problems.append(f"{label}：考场{room.room_seq}超过有效容量")
+            if int(room.planned_count or 0) != len(room_seats):
+                problems.append(f"{label}：考场{room.room_seq}计划人数与座位数不一致")
+            invigilator_count = db.query(AaExamInvigilator).filter(
+                AaExamInvigilator.exam_room_id == room.id,
+                AaExamInvigilator.tenant_id == _legacy._tid(),
+                AaExamInvigilator.is_deleted.is_(False),
+            ).count()
+            if not invigilator_count:
+                problems.append(f"{label}：考场{room.room_seq}无监考")
+    return courses, problems
 
 
 def _batch_closure_issues(db, batch_id: int) -> dict:
@@ -141,12 +327,7 @@ def archive_batch(user, bid):
 
 
 def resolve_incident(user, incident_id: int, action: str, reason: str = "", discipline_case_ref: str = "") -> dict:
-    """考场异常闭环。
-
-    HANDOFF：违纪/其他异常移交处分或后续处理线索，保留 ACTIVE 事实记录；
-    CLOSE：缺考风险联动已成功时确认闭环，不篡改事实状态；
-    VOID：误登记作废，原因不少于5字。
-    """
+    """考场异常闭环：HANDOFF移交线索、CLOSE确认缺考联动、VOID作废误登记。"""
     from app.models import AaExamIncident
 
     action = _status(action)
@@ -205,6 +386,8 @@ def resolve_incident(user, incident_id: int, action: str, reason: str = "", disc
         }
 
 
-# 原服务内部或完整路径导入仍应消费收口后的结束/归档实现。
+# 原服务内部或完整路径导入仍应消费统一名单、结束和归档实现。
+_legacy.assign_seats = assign_seats
+_legacy._check_arrangement_complete = _check_arrangement_complete
 _legacy.finish_batch = finish_batch
 _legacy.archive_batch = archive_batch
