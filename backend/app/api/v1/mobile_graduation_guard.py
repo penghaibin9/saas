@@ -10,7 +10,9 @@ from fastapi import APIRouter, Body, Depends
 
 from app.core.response import success
 from app.core.security import get_current_user
-from app.student_portal.services import graduation_service as portal_graduation
+from app.modules.graduation.services.graduation_taskbook_confirmation_service import (
+    confirm_with_evidence,
+)
 
 router = APIRouter(prefix="/mobile/graduation", tags=["移动端聚合-毕业设计高风险修复"])
 
@@ -21,5 +23,8 @@ def graduation_taskbook_confirm_evidence(
     user=Depends(get_current_user),
 ):
     payload = dict(body or {})
-    payload["confirm"] = True
-    return success(portal_graduation.taskbook_sign(user, payload), message="已确认")
+    return success(confirm_with_evidence(
+        user,
+        expected_version=payload.get("taskbookVersion") or payload.get("expectedVersion"),
+        confirm=True,
+    ), message="已确认")
