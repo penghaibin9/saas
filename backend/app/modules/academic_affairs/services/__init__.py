@@ -20,7 +20,7 @@ from . import academic_affairs_selection_facade as academic_affairs_selection_se
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_security_facade as academic_affairs_task_service
-from . import academic_affairs_textbook_final_facade as academic_affairs_textbook_service
+from . import academic_affairs_textbook_roster_facade as academic_affairs_textbook_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
 # 归档路由和业务模块统一进入最终13域叠加策略层。
