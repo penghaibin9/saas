@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import sys
 
-# 先加载兼容名单策略、V2-02最终教学班策略与真实模型属性守卫；随后导入全部名单消费者。
+# 先加载兼容名单策略、V2-02最终教学班策略与真实模型属性守卫。
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
 from . import academic_affairs_teaching_class_lock_service as academic_affairs_teaching_class_service
 from . import academic_affairs_teaching_class_runtime_guard as academic_affairs_teaching_class_runtime_guard
+# V2-03：在总路由导入 scheduling/autoschedule 之前，注入中文规则目录与最终校验策略。
+from . import academic_affairs_scheduling_rule_policy as academic_affairs_scheduling_rule_policy
 # 最终归档链：旧9域 + 选课 + 补考重修免修 + 评教 + 教材，共13域。
 from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
