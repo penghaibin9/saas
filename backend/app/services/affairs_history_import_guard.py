@@ -1,8 +1,7 @@
 """学工历史迁移安全门。
 
-历史导入不是日常状态机捷径：批次必须存入 Redis，多 worker 共享；确认使用一次性分布式锁；
-各类记录固定为明确历史终态，并补齐处分投影、宿舍床位、成长事件与审计副作用。
-Redis 不可用时 fail-closed，禁止回落进程内存。
+批次存入 Redis，多 worker 共享；确认使用分布式锁；记录固定为历史终态，
+补齐处分投影、宿舍床位、成长事件和审计。Redis 不可用时 fail-closed。
 """
 from __future__ import annotations
 
@@ -13,9 +12,7 @@ from sqlalchemy import select
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.redis_client import (
-    cache_delete, cache_get_json, cache_set_json, cache_set_json_if_absent,
-)
+from app.core.redis_client import cache_delete, cache_get_json, cache_set_json, cache_set_json_if_absent
 from app.db.session import get_sessionmaker
 
 _INSTALLED = False
@@ -98,13 +95,15 @@ def _normalize_rows(rows: list[dict]) -> list[dict]:
             raise AppException("VALIDATION_ERROR", f"第{index}行历史编号必填")
         student_id = _positive_int(row.get("studentId"), f"第{index}行学生ID")
         clean = {
-            "bizType": kind, "historyNo": history_no, "studentId": student_id,
+            "bizType": kind,
+            "historyNo": history_no,
+            "studentId": student_id,
             "remark": _safe_string(row.get("remark"), f"第{index}行备注", 1000),
         }
         if kind == "DIFFICULT":
-            level = _safe_string(row.get("level") or "GENERAL", f"第{index}行困难等级", 30).upper()
+            level = _safe_string(row.get("level") or "GENERAL", "困难等级", 30).upper()
             if level not in _ALLOWED_AID_LEVELS:
-                raise AppException("VALIDATION_ERROR", f"第{index}行困难等级非法")
+                raise AppException("VALIDATION_ERROR", "困难等级非法")
             clean.update({"batchId": _positive_int(row.get("batchId"), "困难认定批次"), "level": level})
         elif kind == "FUNDING":
             clean.update({
@@ -118,8 +117,11 @@ def _normalize_rows(rows: list[dict]) -> list[dict]:
             reason = _safe_string(row.get("reason") or row.get("remark"), "违纪事实", 500)
             if len(reason) < 5:
                 raise AppException("VALIDATION_ERROR", "历史处分违纪事实不少于5字")
-            clean.update({"discType": disc_type, "reason": reason,
-                          "docNo": _safe_string(row.get("docNo"), "处分文号", 100)})
+            clean.update({
+                "discType": disc_type,
+                "reason": reason,
+                "docNo": _safe_string(row.get("docNo"), "处分文号", 100),
+            })
         elif kind == "DORM":
             clean["bedId"] = _positive_int(row.get("bedId"), "床位ID")
         elif kind == "ORG_CADRE":
@@ -135,16 +137,18 @@ def _normalize_rows(rows: list[dict]) -> list[dict]:
             dev_type = _safe_string(row.get("devType") or "PARTY", "发展类型", 20).upper()
             if dev_type not in ("PARTY", "LEAGUE"):
                 raise AppException("VALIDATION_ERROR", "发展类型非法")
-            clean.update({"stage": stage, "devType": dev_type,
-                          "branchName": _safe_string(row.get("branchName"), "支部名称", 100)})
+            clean.update({
+                "stage": stage,
+                "devType": dev_type,
+                "branchName": _safe_string(row.get("branchName"), "支部名称", 100),
+            })
         normalized.append(clean)
     return normalized
 
 
 def _validate_references(rows: list[dict]) -> None:
-    from app.models import (
-        AffairsOrganization, AidBatch, DormBed, FundingBatch, StudentProfile,
-    )
+    from app.models import AffairsStudentOrg, AidBatch, DormBed, FundingBatch, StudentProfile
+
     tenant_id = _tenant_id()
     db = get_sessionmaker()()
     try:
@@ -171,7 +175,7 @@ def _validate_references(rows: list[dict]) -> None:
                 if not bed or bed.is_deleted or bed.tenant_id != tenant_id:
                     raise AppException("DATA_CONFLICT", f"床位{row['bedId']}不存在或跨租户")
             elif row["bizType"] == "ORG_CADRE":
-                org = db.get(AffairsOrganization, row["orgId"])
+                org = db.get(AffairsStudentOrg, row["orgId"])
                 if not org or org.is_deleted or org.tenant_id != tenant_id:
                     raise AppException("DATA_CONFLICT", f"组织{row['orgId']}不存在或跨租户")
     finally:
@@ -180,9 +184,17 @@ def _validate_references(rows: list[dict]) -> None:
 
 def _confirm_rows(rows: list[dict]) -> dict:
     from app.models import (
-        AffairsAuditTrail, AffairsLeagueDev, AffairsLeagueDevStage, AffairsOrganization,
-        AffairsOrgPosition, AidApply, DisciplineCase, DormBed, FundingApplication,
-        FundingBatch, StudentProfile, StudentStageEvent,
+        AffairsAuditTrail,
+        AffairsLeagueDev,
+        AffairsLeagueDevStage,
+        AffairsOrgPosition,
+        AidApply,
+        DisciplineCase,
+        DormBed,
+        FundingApplication,
+        FundingBatch,
+        StudentProfile,
+        StudentStageEvent,
     )
     from app.services import affairs_discipline_service as discipline
     from app.services import affairs_dorm_service as dorm
@@ -194,7 +206,6 @@ def _confirm_rows(rows: list[dict]) -> dict:
     db = get_sessionmaker()()
     inserted, records = 0, []
     try:
-        # 真实表上的历史编号审计是第二道幂等门，Redis锁丢失也不会静默重复。
         history_nos = {f"historyNo={row['historyNo']}" for row in rows}
         existing = set(db.scalars(select(AffairsAuditTrail.detail).where(
             AffairsAuditTrail.tenant_id == tenant_id,
@@ -218,39 +229,58 @@ def _confirm_rows(rows: list[dict]) -> dict:
             common = {"tenant_id": tenant_id, "created_by": created_by}
             if kind == "DIFFICULT":
                 obj = AidApply(
-                    **common, batch_id=row["batchId"], student_id=student_id,
-                    apply_level=row["level"], final_level=row["level"],
-                    statement=row["remark"] or "历史迁移", status="APPROVED",
+                    **common,
+                    batch_id=row["batchId"],
+                    student_id=student_id,
+                    apply_level=row["level"],
+                    final_level=row["level"],
+                    statement=row["remark"] or "历史迁移",
+                    status="APPROVED",
                 )
-                db.add(obj); db.flush()
+                db.add(obj)
+                db.flush()
                 stage = "AID_APPROVED"
             elif kind == "FUNDING":
                 batch = db.get(FundingBatch, row["batchId"])
                 obj = FundingApplication(
-                    **common, batch_id=batch.id, student_id=student_id,
+                    **common,
+                    batch_id=batch.id,
+                    student_id=student_id,
                     project_type=batch.project_type,
                     amount=Decimal(row["amount"]) if row["amount"] else None,
-                    statement=row["remark"] or "历史迁移", status="GRANTED",
+                    statement=row["remark"] or "历史迁移",
+                    status="GRANTED",
                 )
-                db.add(obj); db.flush()
+                db.add(obj)
+                db.flush()
                 stage = "FUNDING_GRANTED"
             elif kind == "DISCIPLINE":
                 obj = DisciplineCase(
-                    **common, student_id=student_id, disc_type=row["discType"],
-                    reason=row["reason"], doc_no=row["docNo"] or None,
-                    status="EFFECTIVE", effective_at=datetime.utcnow(),
+                    **common,
+                    student_id=student_id,
+                    disc_type=row["discType"],
+                    reason=row["reason"],
+                    doc_no=row["docNo"] or None,
+                    status="EFFECTIVE",
+                    effective_at=datetime.utcnow(),
                 )
-                db.add(obj); db.flush()
+                db.add(obj)
+                db.flush()
                 discipline._make_effective(db, obj, student)
                 stage = "DISCIPLINE_EFFECTIVE"
             elif kind == "DORM":
+                from app.models import DormBuilding, DormRoom
+
                 target = db.scalars(select(DormBed).where(
-                    DormBed.tenant_id == tenant_id, DormBed.id == row["bedId"],
+                    DormBed.tenant_id == tenant_id,
+                    DormBed.id == row["bedId"],
                     DormBed.is_deleted.is_(False),
                 ).with_for_update()).first()
                 current = db.scalars(select(DormBed).where(
-                    DormBed.tenant_id == tenant_id, DormBed.student_id == student_id,
-                    DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False),
+                    DormBed.tenant_id == tenant_id,
+                    DormBed.student_id == student_id,
+                    DormBed.status == "OCCUPIED",
+                    DormBed.is_deleted.is_(False),
                 ).with_for_update()).all()
                 if target.student_id not in (None, student_id) or target.status not in ("VACANT", "OCCUPIED"):
                     raise AppException("DATA_CONFLICT", f"床位{target.id}已被其他学生占用")
@@ -259,13 +289,12 @@ def _confirm_rows(rows: list[dict]) -> dict:
                         old.student_id, old.status, old.occupied_at = None, "VACANT", None
                         old.cs_dorm_record_id = None
                         old.version = int(old.version or 0) + 1
-                target.student_id, target.status, target.occupied_at = student_id, "OCCUPIED", datetime.utcnow()
-                target.version = int(target.version or 0) + 1
-                from app.models import DormBuilding, DormRoom
                 building = db.get(DormBuilding, int(target.building_id))
                 room = db.get(DormRoom, int(target.room_id))
                 if not building or not room or building.tenant_id != tenant_id or room.tenant_id != tenant_id:
                     raise AppException("DATA_INCONSISTENT", "床位楼栋/房间关系异常")
+                target.student_id, target.status, target.occupied_at = student_id, "OCCUPIED", datetime.utcnow()
+                target.version = int(target.version or 0) + 1
                 target.cs_dorm_record_id = dorm._writeback_dorm_record(
                     db, student_id, building.building_name, room.room_no, target.bed_no,
                 )
@@ -283,11 +312,15 @@ def _confirm_rows(rows: list[dict]) -> dict:
                 if duplicate:
                     raise AppException("DATA_CONFLICT", "该学生已有相同组织任职")
                 obj = AffairsOrgPosition(
-                    **common, org_id=row["orgId"], student_id=student_id,
-                    position=row["position"], term_code=row["termCode"] or None,
+                    **common,
+                    org_id=row["orgId"],
+                    student_id=student_id,
+                    position=row["position"],
+                    term_code=row["termCode"] or None,
                     status="ACTIVE",
                 )
-                db.add(obj); db.flush()
+                db.add(obj)
+                db.flush()
                 stage = "ORG_CADRE_ACTIVE"
             else:
                 duplicate = db.scalars(select(AffairsLeagueDev.id).where(
@@ -300,25 +333,40 @@ def _confirm_rows(rows: list[dict]) -> dict:
                 if duplicate:
                     raise AppException("DATA_CONFLICT", "该学生已有进行中的同类党团发展记录")
                 obj = AffairsLeagueDev(
-                    **common, student_id=student_id, dev_type=row["devType"],
-                    current_stage=row["stage"], branch_name=row["branchName"] or None,
+                    **common,
+                    student_id=student_id,
+                    dev_type=row["devType"],
+                    current_stage=row["stage"],
+                    branch_name=row["branchName"] or None,
                     status="ONGOING",
                 )
-                db.add(obj); db.flush()
+                db.add(obj)
+                db.flush()
                 db.add(AffairsLeagueDevStage(
-                    tenant_id=tenant_id, dev_id=obj.id, to_stage=row["stage"],
-                    operator="历史迁移", remark=f"historyNo={row['historyNo']}",
+                    tenant_id=tenant_id,
+                    dev_id=obj.id,
+                    to_stage=row["stage"],
+                    operator="历史迁移",
+                    remark=f"historyNo={row['historyNo']}",
                 ))
                 stage = "LEAGUE_HISTORY_IMPORTED"
 
             db.add(StudentStageEvent(
-                tenant_id=tenant_id, student_id=student_id, from_stage=None,
-                to_stage=stage, reason="学工历史迁移", source_module="student-affairs",
+                tenant_id=tenant_id,
+                student_id=student_id,
+                from_stage=None,
+                to_stage=stage,
+                reason="学工历史迁移",
+                source_module="student-affairs",
             ))
             db.add(AffairsAuditTrail(
-                tenant_id=tenant_id, biz_type=f"HISTORY_IMPORT_{kind}", biz_id=obj.id,
-                action="IMPORT", operator=str(actor.get("realName") or "未记录"),
-                detail=f"historyNo={row['historyNo']}", occurred_at=datetime.utcnow(),
+                tenant_id=tenant_id,
+                biz_type=f"HISTORY_IMPORT_{kind}",
+                biz_id=obj.id,
+                action="IMPORT",
+                operator=str(actor.get("realName") or "未记录"),
+                detail=f"historyNo={row['historyNo']}",
+                occurred_at=datetime.utcnow(),
             ))
             records.append({"historyNo": row["historyNo"], "bizType": kind, "recordId": str(obj.id)})
             inserted += 1
@@ -355,17 +403,17 @@ def install() -> None:
         memory["rows"] = normalized
         memory["status"] = "DRY_RUN_PASSED"
         _persist(batch_no, memory)
-        result["status"] = "DRY_RUN_PASSED"
-        result["okRows"] = len(normalized)
-        result["errorRows"] = 0
-        result["errors"] = []
+        result.update({"status": "DRY_RUN_PASSED", "okRows": len(normalized), "errorRows": 0, "errors": []})
         return result
 
     def peek_batch(batch_no):
         try:
             batch = _load(batch_no)
-            return {"domain": batch.get("domain"), "status": batch.get("status"),
-                    "createdBy": batch.get("createdBy")}
+            return {
+                "domain": batch.get("domain"),
+                "status": batch.get("status"),
+                "createdBy": batch.get("createdBy"),
+            }
         except Exception:
             return old_peek(batch_no)
 
@@ -375,6 +423,7 @@ def install() -> None:
         except Exception:
             return old_assert(user, batch_no, auth)
         from app.core.import_export_auth import assert_import_batch_owner
+
         assert_import_batch_owner(user, batch.get("createdBy"), auth.import_perm)
 
     def confirm(batch_no):
