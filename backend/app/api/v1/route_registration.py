@@ -61,6 +61,7 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_communication,
         internship_complaint,
         internship_compliance,
+        internship_guardian_consent_delivery,
         internship_insurance,
         internship_match,
         internship_participant,
@@ -89,6 +90,7 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(internship_visit_plan.router, dependencies=d)
     api_router.include_router(internship_complaint.router, dependencies=d)
     api_router.include_router(internship_compliance.router, dependencies=d)
+    api_router.include_router(internship_guardian_consent_delivery.router, dependencies=d)
 
 
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
