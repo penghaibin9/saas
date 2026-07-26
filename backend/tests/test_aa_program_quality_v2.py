@@ -123,7 +123,16 @@ def test_opening_summary_counts_full_scope_before_filter():
     assert result["overOpened"] == 1
 
 
-def test_public_program_services_use_final_quality_layers():
+def test_program_binding_models_have_required_scope_fields():
+    from app.models import AaProgramBinding, SchoolClass
+
+    binding_fields = set(AaProgramBinding.__mapper__.attrs.keys())
+    class_fields = set(SchoolClass.__mapper__.attrs.keys())
+    assert {"program_id", "major_id", "grade_year", "class_id", "status"} <= binding_fields
+    assert {"major_id", "grade", "class_name", "class_status"} <= class_fields
+
+
+def test_public_program_services_use_complete_quality_layers():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_program_service.__name__.endswith(
@@ -132,14 +141,11 @@ def test_public_program_services_use_final_quality_layers():
     assert services.academic_affairs_program_service.submit_program.__module__.endswith(
         "academic_affairs_program_quality_facade"
     )
-    assert services.academic_affairs_program_quality_service.__name__.endswith(
-        "academic_affairs_program_quality_ui_service"
-    )
-    assert services.academic_affairs_program_quality_service._security.__name__.endswith(
-        "academic_affairs_program_quality_security_service"
-    )
-    assert services.academic_affairs_program_quality_service._final.__name__.endswith(
-        "academic_affairs_program_quality_final_service"
+    quality = services.academic_affairs_program_quality_service
+    assert quality.__name__.endswith("academic_affairs_program_quality_complete_service")
+    assert quality._ui.__name__.endswith("academic_affairs_program_quality_ui_service")
+    assert quality.validate_program_db.__module__.endswith(
+        "academic_affairs_program_binding_quality_service"
     )
 
 
