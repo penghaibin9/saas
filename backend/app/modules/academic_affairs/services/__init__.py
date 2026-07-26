@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import sys
 
+# 必须先加载官方名单最终策略，再导入考勤/考务/成绩/选课消费者；否则 from-import 会缓存旧函数对象。
+from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
 from . import academic_affairs_archive_selection_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
