@@ -68,6 +68,11 @@ const APPEAL_ACTIONS = {
   SECOND_CLASS_APPEAL: [{ label: '驳回', value: 'REJECT', danger: true }, { label: '通过', value: 'APPROVE', primary: true }]
 }
 const LEVELS = [{ label: '一般困难', value: 'GENERAL' }, { label: '困难', value: 'DIFFICULT' }, { label: '特别困难', value: 'SPECIAL' }]
+const DISC_TYPES = [
+  { label: '警告', value: 'WARNING' }, { label: '严重警告', value: 'SERIOUS_WARNING' },
+  { label: '记过', value: 'DEMERIT' }, { label: '留校察看', value: 'PROBATION' },
+  { label: '开除学籍', value: 'EXPEL' }
+]
 
 export default {
   data() { return { kind: 'AID_APPROVAL', list: [], state: 'loading', acting: false, expandedId: '', detailMap: {}, detailLoading: '' } },
@@ -164,14 +169,24 @@ export default {
         } })
       } })
     },
-    reviewAppeal(x, action, previous = '') {
+    reviewAppeal(x, action, previous = '', revisedDiscType = '') {
       const id = this.rowKey(x); const version = this.versionOf(x)
       if (!id || version === null || this.acting) return
+      if (this.meta.appealKind === 'DISCIPLINE_APPEAL' && action.value === 'REVISED' && !revisedDiscType) {
+        const options = DISC_TYPES.filter((item) => item.value !== x.discType)
+        uni.showActionSheet({ itemList: options.map((item) => item.label), success: (r) => {
+          const selected = options[r.tapIndex]
+          if (selected) this.reviewAppeal(x, action, previous, selected.value)
+        } })
+        return
+      }
       this.promptText({ title: action.label, initial: previous, invalid: '复核意见至少5字', submit: (opinion) => {
-        const payload = this.meta.appealKind === 'SECOND_CLASS_APPEAL' ? { action: action.value, opinion, version } : { result: action.value, opinion, version }
+        const payload = this.meta.appealKind === 'SECOND_CLASS_APPEAL'
+          ? { action: action.value, opinion, version }
+          : { result: action.value, opinion, version, ...(revisedDiscType ? { revisedDiscType } : {}) }
         this.acting = true
         affairsAppealApi.review(this.meta.appealKind, id, payload).then(() => { toast('复核完成'); this.load() })
-          .catch((e) => { const n = this._err(e, '复核'); if (n.kind !== 'conflict') setTimeout(() => this.reviewAppeal(x, action, opinion), 0) }).finally(() => { this.acting = false })
+          .catch((e) => { const n = this._err(e, '复核'); if (n.kind !== 'conflict') setTimeout(() => this.reviewAppeal(x, action, opinion, revisedDiscType), 0) }).finally(() => { this.acting = false })
       } })
     },
     doRiskProcess(x, previous = '') {
