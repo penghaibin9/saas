@@ -1,4 +1,4 @@
-"""P2-D · 实习成绩五项权重（权重和=100 / 计算正确 / 缺项不能发布 / 复核发布留痕 / 非法发布拒 / 数据范围 / 企业分自动取数）。"""
+"""实习成绩：权重快照、企业评价权威来源、导师核算、学校发布与版本锁。"""
 from __future__ import annotations
 
 TID = 1000000000000000001
@@ -6,9 +6,9 @@ INT = "/api/v1/internship"
 
 
 def _admin(client):
-    d = client.post("/api/v1/auth/mock-login",
-                    json={"loginName": "school_admin01", "password": "any"}).json()["data"]
-    return {"Authorization": f"Bearer {d['accessToken']}"}
+    data = client.post("/api/v1/auth/mock-login",
+                       json={"loginName": "school_admin01", "password": "any"}).json()["data"]
+    return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
 def _mentor(name, tid=TID):
@@ -19,145 +19,220 @@ def _mentor(name, tid=TID):
         "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
 
 
-def _student(sno, tid=TID):
+def _student(student_no, tid=TID):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"u-{sno}", "realName": "学生", "userType": "STUDENT", "tid": "x",
-        "tenantId": str(tid), "studentNo": sno, "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "userId": f"u-{student_no}", "realName": "学生", "userType": "STUDENT",
+        "tid": "x", "tenantId": str(tid), "studentNo": student_no,
+        "currentRoleCode": "STUDENT", "clientType": "MP"})}
 
 
 def _seed(db_mode):
+    from uuid import uuid4
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import FileObject, InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     ids = {}
     try:
-        for no, name, adv, key in [("SC-A", "甲", "刘强", "a"), ("SC-B", "乙", "王芳", "b")]:
-            s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
-                               current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
-            db.add(s); db.flush()
-            r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
-                                 enterprise_name="测试企业", position_name="实习生",
-                                 status="ONBOARD", risk_level="NONE")
-            db.add(r); db.flush()
-            ids[f"rec_{key}"] = r.id
-        db.commit()
-        return ids
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name="成绩测试批次",
+            batch_no=f"SCORE-{uuid4().hex[:8]}", status="RUNNING", planned_count=2)
+        db.add(batch); db.flush(); ids["batch"] = batch.id
+        evidence = FileObject(
+            tenant_id=TID, file_key=f"score/{uuid4().hex}.pdf", file_name="企业评价扫描件.pdf",
+            ext="pdf", size_bytes=1024, biz_type="INTERNSHIP", biz_id="ENT_EVAL_TEST",
+            visibility="BIZ_SCOPED", status="STORED")
+        db.add(evidence); db.flush(); ids["file"] = str(evidence.id)
+        for number, name, advisor, key in [
+            ("SC-A", "甲", "刘强", "a"), ("SC-B", "乙", "王芳", "b")
+        ]:
+            student = StudentProfile(
+                tenant_id=TID, student_no=number, real_name=name,
+                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+            db.add(student); db.flush()
+            record = InternshipRecord(
+                tenant_id=TID, student_id=student.id, advisor_name=advisor,
+                enterprise_name="测试企业", position_name="实习生", status="ONBOARD",
+                risk_level="NONE", batch_id=batch.id)
+            db.add(record); db.flush(); ids[f"rec_{key}"] = record.id
+        db.commit(); return ids
     finally:
         db.close()
 
 
-def _cfg100(client):
-    # 权重 20/20/10/30/20 = 100
-    return client.post(f"{INT}/scores/config", json={"checkinWeight": 20, "weeklyWeight": 20,
-                       "monthlyWeight": 10, "enterpriseWeight": 30, "schoolWeight": 20, "passLine": 60},
-                       headers=_admin(client))
+def _config(client, **overrides):
+    body = {
+        "checkinWeight": 20, "weeklyWeight": 20, "monthlyWeight": 10,
+        "enterpriseWeight": 30, "schoolWeight": 20, "passLine": 60,
+        **overrides,
+    }
+    return client.post(f"{INT}/scores/config", json=body, headers=_admin(client))
 
 
-def test_config_weight_sum_must_be_100(client, db_mode):
-    _seed(db_mode)
-    bad = client.post(f"{INT}/scores/config", json={"checkinWeight": 20, "weeklyWeight": 20,
-                      "monthlyWeight": 10, "enterpriseWeight": 30, "schoolWeight": 30}, headers=_admin(client))
+def _approve_enterprise_eval(client, record_id, evidence_file_id, mentor_name="刘强",
+                             component_score=60):
+    created = client.post(
+        f"{INT}/enterprise-evals",
+        json={
+            "internshipId": str(record_id), "mentorName": "企业导师",
+            "attendanceScore": component_score, "skillScore": component_score,
+            "attitudeScore": component_score, "collaborationScore": component_score,
+            "safetyScore": component_score, "sourceFileId": evidence_file_id,
+        },
+        headers=_mentor(mentor_name),
+    )
+    assert created.status_code == 200
+    data = created.json()["data"]
+    reviewed = client.post(
+        f"{INT}/enterprise-evals/{data['id']}/review-versioned",
+        json={"action": "APPROVE", "expectedVersion": data["version"]},
+        headers=_admin(client),
+    )
+    assert reviewed.status_code == 200
+    return data["id"]
+
+
+def _compute(client, ids, key="a", mentor="刘强", scores=None):
+    values = scores or {
+        "checkinScore": 90, "weeklyScore": 80,
+        "monthlyScore": 70, "schoolScore": 100,
+    }
+    return client.post(
+        f"{INT}/scores/compute",
+        json={"internshipId": str(ids[f"rec_{key}"]), **values},
+        headers=_mentor(mentor),
+    )
+
+
+def test_config_weight_sum_and_snapshot(client, db_mode):
+    ids = _seed(db_mode)
+    bad = _config(client, schoolWeight=30)
     assert bad.status_code == 400
-    assert _cfg100(client).status_code == 200
-    cfg = client.get(f"{INT}/scores/config", headers=_admin(client)).json()["data"]
-    assert cfg["enterpriseWeight"] == 30 and cfg["passLine"] == 60 and cfg["configId"]
-
-
-def test_score_keeps_configuration_snapshot_and_mentor_cannot_change_config(client, db_mode):
-    ids = _seed(db_mode)
-    first = _cfg100(client).json()["data"]
-    denied = client.post(f"{INT}/scores/config", json={"checkinWeight": 20, "weeklyWeight": 20,
-                         "monthlyWeight": 10, "enterpriseWeight": 30, "schoolWeight": 20},
-                         headers=_mentor("刘强"))
+    first = _config(client).json()["data"]
+    assert first["configId"]
+    denied = client.post(
+        f"{INT}/scores/config",
+        json={"checkinWeight": 20, "weeklyWeight": 20, "monthlyWeight": 10,
+              "enterpriseWeight": 30, "schoolWeight": 20},
+        headers=_mentor("刘强"))
     assert denied.status_code == 403
-    computed = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]),
-                           "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80,
-                           "enterpriseScore": 80, "schoolScore": 80}, headers=_mentor("刘强")).json()["data"]
-    assert computed["total"] == 80.0
-    second = client.post(f"{INT}/scores/config", json={"checkinWeight": 10, "weeklyWeight": 10,
-                         "monthlyWeight": 10, "enterpriseWeight": 40, "schoolWeight": 30, "passLine": 60},
-                         headers=_admin(client)).json()["data"]
+
+    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], component_score=80)
+    computed = _compute(client, ids, scores={
+        "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "schoolScore": 80})
+    assert computed.status_code == 200
+    detail = client.get(
+        f"{INT}/scores/{computed.json()['data']['id']}", headers=_mentor("刘强")).json()["data"]
+    assert detail["scoreConfigId"] == first["configId"]
+    assert detail["scoreConfigVersion"] >= 1
+
+    second = _config(client, checkinWeight=10, weeklyWeight=10,
+                     enterpriseWeight=40, schoolWeight=30).json()["data"]
     assert second["configId"] != first["configId"]
-    detail = client.get(f"{INT}/scores/{computed['id']}", headers=_mentor("刘强")).json()["data"]
-    assert detail["scoreConfigId"] == first["configId"] and detail["scoreConfigVersion"] >= 1
 
 
-def test_compute_correct_and_publish(client, db_mode):
+def test_compute_and_school_publish_with_versions(client, db_mode):
     ids = _seed(db_mode)
-    _cfg100(client)
-    h = _mentor("刘强")
-    # 全项：checkin90 weekly80 monthly70 enterprise60 school100 → (90*20+80*20+70*10+60*30+100*20)/100 = 79.0
-    c = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), "checkinScore": 90,
-                    "weeklyScore": 80, "monthlyScore": 70, "enterpriseScore": 60, "schoolScore": 100}, headers=h)
-    assert c.status_code == 200
-    data = c.json()["data"]
-    assert data["total"] == 79.0 and data["incomplete"] is False and data["isPass"] is True
-    sid = data["id"]
-    # 发布
-    pub = client.post(f"{INT}/scores/{sid}/publish", headers=h)
-    assert pub.status_code == 200 and pub.json()["data"]["status"] == "PUBLISHED"
-    # 复核/发布留痕
-    detail = client.get(f"{INT}/scores/{sid}", headers=h).json()["data"]
-    assert {"COMPUTE", "PUBLISH"} <= {t["action"] for t in detail["auditTrail"]}
-    # 非法发布拒：已发布再发布 → 409
-    assert client.post(f"{INT}/scores/{sid}/publish", headers=h).status_code == 409
+    _config(client)
+    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], component_score=60)
+    computed = _compute(client, ids)
+    assert computed.status_code == 200
+    score = computed.json()["data"]
+    assert score["total"] == 79.0 and score["incomplete"] is False and score["isPass"] is True
+
+    mentor_publish = client.post(
+        f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": score["version"]}, headers=_mentor("刘强"))
+    assert mentor_publish.status_code == 403
+
+    published = client.post(
+        f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": score["version"]}, headers=_admin(client))
+    assert published.status_code == 200
+    published_data = published.json()["data"]
+    assert published_data["status"] == "PUBLISHED"
+
+    detail = client.get(f"{INT}/scores/{score['id']}", headers=_mentor("刘强")).json()["data"]
+    assert {"COMPUTE", "PUBLISH"} <= {item["action"] for item in detail["auditTrail"]}
+    stale = client.post(
+        f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": score["version"]}, headers=_admin(client))
+    assert stale.status_code == 409
+
+
+def test_enterprise_score_is_authoritative_and_manual_override_rejected(client, db_mode):
+    ids = _seed(db_mode)
+    _config(client)
+    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], component_score=84)
+
+    manual = client.post(
+        f"{INT}/scores/compute",
+        json={"internshipId": str(ids["rec_a"]), "checkinScore": 100,
+              "weeklyScore": 100, "monthlyScore": 100,
+              "enterpriseScore": 1, "schoolScore": 100},
+        headers=_mentor("刘强"))
+    assert manual.status_code == 400
+
+    computed = _compute(client, ids, scores={
+        "checkinScore": 100, "weeklyScore": 100,
+        "monthlyScore": 100, "schoolScore": 100})
+    assert computed.status_code == 200
+    detail = client.get(
+        f"{INT}/scores/{computed.json()['data']['id']}", headers=_mentor("刘强")).json()["data"]
+    assert detail["enterpriseScore"] == 84
+    assert detail["enterpriseSource"]["type"] == "APPROVED_ENTERPRISE_EVAL"
 
 
 def test_incomplete_cannot_publish(client, db_mode):
     ids = _seed(db_mode)
-    _cfg100(client)
-    h = _mentor("刘强")
-    # 缺 monthly + enterprise（无企业评价自动取数）
-    c = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), "checkinScore": 90,
-                    "weeklyScore": 80, "schoolScore": 100}, headers=h)
-    assert c.status_code == 200 and c.json()["data"]["incomplete"] is True
-    sid = c.json()["data"]["id"]
-    # 缺项不能发布 → 409
-    assert client.post(f"{INT}/scores/{sid}/publish", headers=h).status_code == 409
+    _config(client)
+    computed = _compute(client, ids, scores={
+        "checkinScore": 90, "weeklyScore": 80, "schoolScore": 100})
+    assert computed.status_code == 200
+    score = computed.json()["data"]
+    assert score["incomplete"] is True
+    denied = client.post(
+        f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": score["version"]}, headers=_admin(client))
+    assert denied.status_code == 409
 
 
-def test_enterprise_score_auto_from_eval(client, db_mode):
+def test_scope_student_forbidden_withdraw_and_export(client, db_mode):
     ids = _seed(db_mode)
-    _cfg100(client)
-    h = _mentor("刘强")
-    # 先录入并审核通过企业评价（均分 (80+80+80+80+100)/5 = 84）
-    ev = client.post(f"{INT}/enterprise-evals", json={"internshipId": str(ids["rec_a"]), "mentorName": "李导师",
-                     "attendanceScore": 80, "skillScore": 80, "attitudeScore": 80,
-                     "collaborationScore": 80, "safetyScore": 100}, headers=h).json()["data"]["id"]
-    client.post(f"{INT}/enterprise-evals/{ev}/review", json={"action": "APPROVE"}, headers=h)
-    # 核算不传 enterpriseScore → 自动取 84
-    c = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), "checkinScore": 100,
-                    "weeklyScore": 100, "monthlyScore": 100, "schoolScore": 100}, headers=h)
-    detail = client.get(f"{INT}/scores/{c.json()['data']['id']}", headers=h).json()["data"]
-    assert detail["enterpriseScore"] == 84
+    _config(client)
+    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], mentor_name="刘强", component_score=80)
+    _approve_enterprise_eval(client, ids["rec_b"], ids["file"], mentor_name="王芳", component_score=80)
+    score_a = _compute(client, ids, key="a", mentor="刘强", scores={
+        "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "schoolScore": 80}).json()["data"]
+    score_b = _compute(client, ids, key="b", mentor="王芳", scores={
+        "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "schoolScore": 80}).json()["data"]
 
+    assert client.get(
+        f"{INT}/scores/{score_b['id']}", headers=_mentor("刘强")).status_code == 403
+    params = {"batchId": ids["batch"]}
+    assert client.get(f"{INT}/scores", params=params,
+                      headers=_admin(client)).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/scores", params=params,
+                      headers=_mentor("刘强")).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/scores", params=params,
+                      headers=_student("SC-A")).status_code == 403
 
-def test_scope_and_student_forbidden(client, db_mode):
-    ids = _seed(db_mode)
-    _cfg100(client)
-    p = {"checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "enterpriseScore": 80, "schoolScore": 80}
-    client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), **p}, headers=_mentor("刘强"))
-    bid = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_b"]), **p}, headers=_mentor("王芳")).json()["data"]["id"]
-    # 刘强越权发布王芳学生成绩 → 403
-    assert client.post(f"{INT}/scores/{bid}/publish", headers=_mentor("刘强")).status_code == 403
-    # 数据范围
-    assert client.get(f"{INT}/scores", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/scores", headers=_mentor("刘强")).json()["data"]["total"] == 1
-    # 学生 403
-    assert client.get(f"{INT}/scores", headers=_student("SC-A")).status_code == 403
-    assert client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), **p}, headers=_student("SC-A")).status_code == 403
+    published = client.post(
+        f"{INT}/scores/{score_a['id']}/publish",
+        json={"expectedVersion": score_a["version"]}, headers=_admin(client)).json()["data"]
+    too_short = client.post(
+        f"{INT}/scores/{score_a['id']}/withdraw",
+        json={"reason": "x", "expectedVersion": published["version"]}, headers=_admin(client))
+    assert too_short.status_code == 400
+    withdrawn = client.post(
+        f"{INT}/scores/{score_a['id']}/withdraw",
+        json={"reason": "成绩录入有误需要重新核算", "expectedVersion": published["version"]},
+        headers=_admin(client))
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["data"]["status"] == "WITHDRAWN"
 
-
-def test_withdraw_and_export(client, db_mode):
-    ids = _seed(db_mode)
-    _cfg100(client)
-    h = _mentor("刘强")
-    p = {"checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "enterpriseScore": 80, "schoolScore": 80}
-    sid = client.post(f"{INT}/scores/compute", json={"internshipId": str(ids["rec_a"]), **p}, headers=h).json()["data"]["id"]
-    client.post(f"{INT}/scores/{sid}/publish", headers=h)
-    # 撤回需原因
-    assert client.post(f"{INT}/scores/{sid}/withdraw", json={"reason": "x"}, headers=h).status_code == 400
-    assert client.post(f"{INT}/scores/{sid}/withdraw", json={"reason": "成绩录入有误需重算"}, headers=h).json()["data"]["status"] == "WITHDRAWN"
-    res = client.post(f"{INT}/scores/export", headers=_admin(client))
-    assert res.status_code == 200 and res.json()["data"]["filename"].endswith(".xlsx") and res.json()["data"]["rowCount"] == 1
+    exported = client.post(
+        f"{INT}/scores/export", params=params, headers=_admin(client))
+    assert exported.status_code == 200
+    data = exported.json()["data"]
+    assert data["filename"].endswith(".xlsx") and data["rowCount"] == 2
