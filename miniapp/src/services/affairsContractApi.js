@@ -24,6 +24,9 @@ export const affairsContractApi = {
   }),
 
   // 学生宿舍与活动
+  getDormTransferOptions: () => realRequest('/mobile/affairs/dorm/transfer-options'),
+  getDormTransferRooms: (buildingId) => realRequest(`/mobile/affairs/dorm/transfer-buildings/${buildingId}/rooms`),
+  getDormTransferBeds: (roomId) => realRequest(`/mobile/affairs/dorm/transfer-rooms/${roomId}/beds`),
   submitDormTransfer: (toBedId, reason) => realRequest('/mobile/affairs/dorm/transfers', {
     method: 'POST', data: { toBedId, reason }
   }),
