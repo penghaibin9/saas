@@ -32,7 +32,12 @@ async function callList(path, params = {}, required = true) {
 const BASE = '/graduation/gd-students'
 
 export const gdStudentApi = {
-  getStudents(params = {}) { return callList(BASE, params) },
+  getStudents(params = {}) {
+    // 按学生连续处理页历史上固定只取前 20 人且无翻页。无 page 的搜索型调用扩到后端上限；
+    // 数据超过 200 时仍可通过关键词服务端搜索定位，不再出现“第 21 人永远搜不到”。
+    const pickerSearch = params.page == null && Number(params.pageSize || 0) === 20
+    return callList(BASE, pickerSearch ? { ...params, page: 1, pageSize: 200 } : params)
+  },
   getStudentDetail(id) { return call(() => request(`${BASE}/${id}`)) },
   createStudent(body) { return call(() => request(BASE, { method: 'POST', body })) },
   updateStudent(id, body) { return call(() => request(`${BASE}/${id}`, { method: 'PUT', body })) },
@@ -63,9 +68,7 @@ export const gdStudentApi = {
   assignDefenseGroup(id, { defenseGroupId, reason }) {
     return call(() => request(`${BASE}/${id}/defense-group`, { method: 'POST', body: { defenseGroupId, reason } }))
   },
-  setGradQual(id, { status, note, reason }) {
-    return call(() => request(`${BASE}/${id}/grad-qual`, { method: 'POST', body: { status, note, reason } }))
-  },
+  // 最终毕业资格只读镜像由教务中心统一重算；毕设前端不再暴露写 API。
   batchArchive({ recordIds, reason }) {
     return call(() => request(`${BASE}/batch-archive`, { method: 'POST', body: { recordIds, reason } }))
   },
