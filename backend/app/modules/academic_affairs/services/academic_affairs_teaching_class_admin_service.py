@@ -36,16 +36,24 @@ def _scoped_tasks(db, user, term_id: int):
     ).order_by(AaTeachingTask.id).all()
     if scope.all:
         return tasks
-    if scope.class_ids:
-        return [row for row in tasks if row.class_id and int(row.class_id) in scope.class_ids]
-    if scope.college_ids:
-        return [
-            row for row in tasks
-            if batch_by_id.get(int(row.batch_id))
-            and batch_by_id[int(row.batch_id)].college_id
-            and int(batch_by_id[int(row.batch_id)].college_id) in scope.college_ids
-        ]
-    return []
+
+    allowed = []
+    for row in tasks:
+        batch = batch_by_id.get(int(row.batch_id))
+        in_college = bool(
+            scope.college_ids
+            and batch
+            and batch.college_id
+            and int(batch.college_id) in scope.college_ids
+        )
+        in_class = bool(
+            scope.class_ids
+            and row.class_id
+            and int(row.class_id) in scope.class_ids
+        )
+        if in_college or in_class:
+            allowed.append(row)
+    return allowed
 
 
 def _preview_rows(db, tasks):
