@@ -56,6 +56,10 @@ def apply(user: dict, body: dict) -> dict:
     makeup_type = str(payload.get("makeupType") or "MISSING").upper()
     if makeup_type not in _ALLOWED_TYPES:
         raise AppException("VALIDATION_ERROR", "补卡类型无效")
+    evidence_file_id = legacy._validate_evidence_file(
+        payload.get("evidenceFileId") or payload.get("fileId"))
+    if legacy._evidence_required(makeup_type) and not evidence_file_id:
+        raise AppException("VALIDATION_ERROR", legacy._evidence_requirement_label(makeup_type))
     with session() as db:
         record, student = legacy._student_record(db, user, for_write=True)
         if record.status not in ("ONBOARD", "ASSESSING"):
@@ -93,8 +97,15 @@ def apply(user: dict, body: dict) -> dict:
         )
         db.add(row)
         db.flush()
+        if evidence_file_id:
+            from app.services import file_service
+            file_service.bind_file_biz(
+                evidence_file_id, "INTERNSHIP", str(row.id), user=user, db=db)
         legacy._trail(db, row.id, "APPLY_CONTEXT", {
-            "date": date_text, "makeupType": makeup_type,
+            "date": date_text,
+            "makeupType": makeup_type,
+            "evidenceFileId": evidence_file_id or "",
+            "evidenceRequired": legacy._evidence_required(makeup_type),
             "newVersion": int(row.version or 0),
         }, operator=row.apply_by_name or "学生")
         db.commit()
@@ -102,6 +113,7 @@ def apply(user: dict, body: dict) -> dict:
             "id": str(row.id), "status": row.status,
             "statusLabel": legacy.STATUS_LABEL[row.status],
             "version": int(row.version or 0),
+            "hasEvidence": bool(evidence_file_id),
         }
 
 
