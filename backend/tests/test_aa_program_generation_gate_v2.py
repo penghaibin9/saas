@@ -1,4 +1,5 @@
 """V2-01 教学任务生成前的方案质量门禁。"""
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -48,6 +49,39 @@ def test_generation_precheck_accepts_valid_program_and_counts_warnings(monkeypat
     result = service._generation_precheck(object(), {}, None)
 
     assert result == {"programCount": 2, "warningCount": 3}
+
+
+def test_generate_batch_calls_original_once_and_returns_validation_summary(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_task_program_gate_facade as service
+
+    calls = []
+
+    @contextmanager
+    def fake_session():
+        yield object()
+
+    monkeypatch.setattr(service, "session", fake_session)
+    monkeypatch.setattr(
+        service,
+        "_generation_precheck",
+        lambda _db, _user, _college: {"programCount": 2, "warningCount": 1},
+    )
+    monkeypatch.setattr(
+        service,
+        "_original_generate_batch",
+        lambda body, user: calls.append((body.termId, user["userId"])) or {
+            "batchId": "9", "tasksGenerated": 12,
+        },
+    )
+
+    result = service.generate_batch(SimpleNamespace(termId="3", collegeId="2"), {"userId": "u1"})
+
+    assert calls == [("3", "u1")]
+    assert result["programValidation"] == {
+        "programCount": 2,
+        "warningCount": 1,
+        "conclusion": "已启用方案结构校验通过",
+    }
 
 
 def test_public_task_service_uses_program_gate_above_security_workbench():
