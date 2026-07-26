@@ -1,11 +1,9 @@
 <template>
   <view class="mobile-global-state">
-    <!-- 组件均会按当前 route 自行决定是否启用。 -->
+    <!-- 教师批次与高优先级错误在主页面之前；学生低频扩展事项在主流程之后。 -->
     <MobileGraduationBatchContext />
     <MobileGraduationDelayQueue />
-    <MobileGraduationExtensionPanel />
     <MobileGraduationSectionErrors />
-    <MobileGraduationTempFileJanitor />
 
     <slot v-if="state === 'ready'" />
 
@@ -30,6 +28,9 @@
         </slot>
       </view>
     </view>
+
+    <MobileGraduationExtensionPanel />
+    <MobileGraduationTempFileJanitor />
   </view>
 </template>
 
