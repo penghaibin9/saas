@@ -6,6 +6,10 @@ def _batch(status):
     return SimpleNamespace(status=status)
 
 
+def _round(status, mode):
+    return SimpleNamespace(status=status, mode=mode)
+
+
 def test_no_selection_batch_is_optional_and_does_not_block_archive():
     from app.modules.academic_affairs.services.academic_affairs_archive_selection_facade import (
         _selection_gate_result,
@@ -26,6 +30,22 @@ def test_open_or_closed_selection_batch_blocks_term_archive():
 
     assert result["present"] is False
     assert "未锁定/未归档选课批次 2 个" in result["remark"]
+
+
+def test_closed_fcfs_round_is_terminal_but_closed_lottery_waits_for_draw():
+    from app.modules.academic_affairs.services.academic_affairs_archive_selection_facade import (
+        _active_round_count,
+    )
+
+    assert _active_round_count([
+        _round("CLOSED", "FCFS"),
+        _round("DRAWN", "LOTTERY"),
+    ]) == 0
+    assert _active_round_count([
+        _round("DRAFT", "FCFS"),
+        _round("OPEN", "FCFS"),
+        _round("CLOSED", "LOTTERY"),
+    ]) == 3
 
 
 def test_locked_selection_still_blocks_when_round_or_roster_is_unfinished():
