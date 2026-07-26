@@ -1,7 +1,7 @@
 """教学任务→独立教学班双写最终层。
 
-旧任务服务各自管理事务，本层在旧写成功后执行可重试投影：不篡改旧事务结果；若投影失败，
-返回明确 projectionErrors，由教学班回填接口修复。选课锁定名单仍在原事务内写入版本表。
+旧任务服务各自管理事务，本层在旧写成功后执行可重试投影：不篡改旧事务结果；单条投影使用
+保存点隔离，成功教学班正常提交，失败项返回 projectionErrors 供回填接口修复。
 """
 from __future__ import annotations
 
@@ -56,10 +56,7 @@ def generate_batch(body, user) -> dict:
     batch_id = int(result["batchId"])
     with session() as db:
         projection = sync_batch_teaching_classes(db, batch_id)
-        if projection["errors"]:
-            db.rollback()
-        else:
-            db.commit()
+        db.commit()
     result["teachingClassProjection"] = projection
     return result
 
