@@ -1,6 +1,6 @@
 /**
- * 岗位实习中心 · 企业评价 API（P2-B，生产级只走真实后端）。
- * 端点 /internship/enterprise-evals。owner + 数据范围由后端强校验。
+ * 岗位实习中心 · 企业评价 API。
+ * 录入人与审核人分离；当前管理端审核只走版本化端点。
  */
 import { request } from '@/services/http/client'
 export { uploadAttachment, downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
@@ -27,8 +27,10 @@ export const enterpriseEvalApi = {
   getEvals(params = {}) { return callList(B, params) },
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
   create(body) { return call(() => request(B, { method: 'POST', body })) },
-  review(id, { action, comment }) {
-    return call(() => request(`${B}/${id}/review`, { method: 'POST', body: { action, comment } }))
+  review(id, { action, comment, expectedVersion }) {
+    return call(() => request(`${B}/${id}/review-versioned`, {
+      method: 'POST', body: { action, comment, expectedVersion }
+    }))
   },
   exportEvals(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) }
 }
