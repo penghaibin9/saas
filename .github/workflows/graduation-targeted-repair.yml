@@ -83,6 +83,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
+          exec > >(tee /tmp/alembic-validation.log) 2>&1
           alembic heads | tee /tmp/alembic-heads.txt
           HEAD_COUNT=$(grep -c '(head)' /tmp/alembic-heads.txt || true)
           if [ "$HEAD_COUNT" -ne 1 ]; then
@@ -91,6 +92,15 @@ jobs:
           fi
           alembic upgrade head
           alembic current
+
+      - name: 上传 Alembic 诊断日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-alembic-log
+          path: /tmp/alembic-validation.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: MySQL 毕设核心行锁并发验证
         run: |
