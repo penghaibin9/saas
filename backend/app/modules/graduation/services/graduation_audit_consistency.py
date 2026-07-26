@@ -12,8 +12,9 @@ from sqlalchemy import event
 
 from app.core.context import (
     get_current_permission_code,
-    get_current_request_context,
     get_current_user_ctx,
+    get_request_meta,
+    get_trace_id,
 )
 from app.models import GraduationAuditTrail
 
@@ -34,7 +35,7 @@ def _db_id(value) -> int | None:
 
 def _before_insert(_mapper, _connection, target: GraduationAuditTrail) -> None:
     user = get_current_user_ctx() or {}
-    request = get_current_request_context() or {}
+    request = get_request_meta() or {}
     if target.actor_user_id is None:
         target.actor_user_id = _db_id(
             user.get("userId") or user.get("id") or user.get("dbUserId") or user.get("accountId")
@@ -53,7 +54,7 @@ def _before_insert(_mapper, _connection, target: GraduationAuditTrail) -> None:
     if not target.permission_code:
         target.permission_code = get_current_permission_code()
     if not target.request_id:
-        target.request_id = request.get("traceId") or request.get("requestId")
+        target.request_id = get_trace_id()
     if not target.request_path:
         target.request_path = request.get("path")
     if not target.client_ip:
