@@ -72,12 +72,16 @@ jobs:
         run: >-
           pytest -q
           tests/test_aa_archive_semantic_gates.py
+          tests/test_aa_archive_status_change_gate.py
           tests/test_aa_evaluation_appeal_scope.py
           tests/test_aa_attendance_teacher_identity.py
           tests/test_aa_attendance_task_binding.py
           tests/test_aa_mobile_teacher_identity.py
           tests/test_aa_mobile_schedule_week.py
           tests/test_aa_effective_grade_identity.py
+          tests/test_aa_makeup_effective_candidates.py
+          tests/test_aa_makeup_student_identity.py
+          tests/test_aa_makeup_candidate_scope.py
           tests/test_aa_task_teaching_weeks.py
           tests/test_aa_task_scope_security.py
           tests/test_aa_scope_fail_closed.py
