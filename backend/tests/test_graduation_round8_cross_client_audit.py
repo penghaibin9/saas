@@ -1,7 +1,7 @@
-"""毕业设计四端终极缺陷防回归静态门禁。
+"""毕业设计四端缺陷防回归静态门禁。
 
-本文件不连接数据库，专门锁死路由顺序、DTO、前端入口和状态机证据；
-真实 MySQL/浏览器/微信开发者工具验收由独立集成测试执行。
+本文件不连接数据库，只锁定路由顺序、DTO、前端入口和状态机证据；
+真实 MySQL、浏览器与微信开发者工具验收由定向工作流和人工 UAT 执行。
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ def test_new_python_files_are_syntax_valid():
         "backend/app/modules/graduation/routers/graduation_extension.py",
         "backend/app/modules/graduation/services/graduation_extension_service.py",
         "backend/app/modules/graduation/services/graduation_extension_query_service.py",
+        "backend/app/modules/graduation/services/graduation_extension_safety_service.py",
         "backend/app/modules/graduation/services/graduation_material_temp_service.py",
         "backend/app/modules/graduation/services/graduation_mobile_taskbook_bridge.py",
         "backend/alembic/versions/0142_gd_excellent_delay_workflows.py",
@@ -58,7 +59,7 @@ def test_shared_grade_view_remounts_by_route_identity():
         assert f"defaultPanel: '{panel}'" in routes
 
 
-def test_teacher_mobile_requires_batch_and_pages_all_lists():
+def test_teacher_mobile_requires_batch_and_pages_lists():
     router = read("backend/app/api/v1/mobile_graduation_teacher_context.py")
     request = read("miniapp/src/services/request.js")
     picker = read("miniapp/src/components/MobileGraduationBatchContext.vue")
@@ -114,10 +115,12 @@ def test_menu_route_and_action_permissions_are_aligned():
 def test_reminder_copy_matches_real_message_delivery():
     toast = read("frontend/src/utils/toast.js")
     layout = read("frontend/src/modules/graduation/views/AdminGraduationLayout.vue")
-    backend = read("backend/app/modules/graduation/routers/graduation_material_batch_router.py")
+    backend = read("backend/app/modules/graduation/services/graduation_service.py")
     assert "发送开题站内催办并写入留痕" in toast
     assert "催交会发送真实站内消息" in layout
-    assert "真实站内消息已创建" in backend
+    assert "def _deliver_student_reminder" in backend
+    assert "UnifiedMessage(" in backend
+    assert "学生未绑定有效登录账号，提醒未发送" in backend
 
 
 def test_temporary_file_cleanup_is_owner_scoped_and_binding_safe():
@@ -152,18 +155,28 @@ def test_excellent_outcome_is_independent_multilevel_workflow():
     assert "优秀成果认定" in student_mobile
 
 
-def test_delayed_defense_is_independent_four_role_workflow():
+def test_delayed_defense_reapply_and_regrouping_are_safe():
     model = read("backend/app/models/graduation_extension.py")
     service = read("backend/app/modules/graduation/services/graduation_extension_service.py")
-    school_ui = read("frontend/src/modules/graduation/views/GraduationExtensionAdminPanel.vue")
+    safety = read("backend/app/modules/graduation/services/graduation_extension_safety_service.py")
+    school_router = read("backend/app/modules/graduation/routers/graduation_extension.py")
+    student_mobile_router = read("backend/app/api/v1/mobile_graduation_guard.py")
+    student_portal_router = read("backend/app/api/v1/student_portal_graduation_guard.py")
     teacher_ui = read("miniapp/src/components/MobileGraduationDelayQueue.vue")
     assert "PENDING_ADVISOR/PENDING_MAJOR/PENDING_COLLEGE/APPROVED/SCHEDULED" in model
     assert "apply_delay" in service
     assert "advisor_review_delay" in service
     assert "major_review_delay" in service
     assert "college_review_delay" in service
-    assert "schedule_delay" in service
-    assert "不与二次答辩混用" in school_ui
+    assert '"REJECTED"' in safety and '"CANCELLED"' in safety
+    assert "not has_active_delay" in safety
+    assert "MAX_DEFENSE_STUDENTS" in safety
+    assert "old_group.published = False" in safety
+    assert "_recompute_defense(db, old_group)" in safety
+    assert "_recompute_defense(db, group)" in safety
+    assert "safety_svc.schedule_delay" in school_router
+    assert "extension_safety_svc.my_extensions" in student_mobile_router
+    assert "extension_safety_svc.my_extensions" in student_portal_router
     assert "仅显示当前批次、本人指导学生" in teacher_ui
 
 
@@ -172,11 +185,11 @@ def test_second_defense_and_judge_conflict_are_real_state_machines():
     group = read("backend/app/modules/graduation/services/graduation_service.py")
     pc = read("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue")
     assert "round_no" in defense
-    assert "create_second_round" in defense
-    assert "上一轮评分尚未由答辩秘书确认" in defense
+    assert "def create_second_defense" in defense
+    assert "本轮评分尚未全部确认，暂不能创建二次答辩" in defense
     assert "judge_identity" in defense
-    assert "指导教师与答辩评委冲突" in group
-    assert "该答辩组存在评委回避冲突" in group
+    assert "评委与指导教师冲突" in group
+    assert "存在评委与导师冲突" in group
     assert "发起二次答辩" in pc
 
 
