@@ -1,8 +1,12 @@
 """学工异议/申诉补偿队列的稳定定时触发器。
 
-web scheduler 模式由 ``app.main.lifespan`` 每 5 分钟遍历启用租户并执行补偿；
-external scheduler 模式仍通过既有请假逾期、风险超时、辅导员临时代管扫描包装兜底。
-节流按租户隔离，禁止同一轮只处理第一个租户。
+仓库现有 web scheduler 默认启用三条学工扫描：请假逾期、风险超时、辅导员临时
+代管；启动后立即执行，之后每 6 小时执行。这里包装三条模块函数，任一扫描运行时
+都会为当前租户补偿申诉队列，5 分钟内重复扫描只执行一次。节流按租户隔离，禁止
+同一轮只处理第一个租户。
+
+``run_all_tenants`` 提供给 external scheduler 进程直接调用的单轮入口；生产采用
+SCHEDULER_MODE=external 时必须把该入口或上述任一已包装扫描纳入外部调度。
 
 补偿失败只记录日志，不得覆盖原定时任务结果；原任务失败时仍尝试补偿，然后保留
 原异常，避免把真实扫描故障伪装成成功。
@@ -66,7 +70,7 @@ def run_due(*, force: bool = False) -> dict:
 
 
 def run_all_tenants() -> dict:
-    """web scheduler 单轮：逐租户执行，任一租户失败不影响其他租户。"""
+    """external scheduler 单轮入口：逐租户执行，任一租户失败不影响其他租户。"""
     from sqlalchemy import select
 
     from app.core.context import set_tenant
@@ -113,7 +117,7 @@ def _wrap_periodic(original: Callable) -> Callable:
 
 
 def install() -> None:
-    """接入既有学工扫描，作为external scheduler与异常场景兜底。"""
+    """接入既有学工扫描，形成无后续写请求和无人工点击依赖的定时触发。"""
     global _INSTALLED
     if _INSTALLED:
         return
