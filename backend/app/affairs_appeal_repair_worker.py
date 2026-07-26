@@ -23,9 +23,19 @@ _DEFAULT_INTERVAL_SECONDS = 5 * 60
 _STOP = threading.Event()
 
 
+def _ensure_contracts_installed() -> None:
+    """加载API聚合器，初始化申诉同步、通知与补偿函数绑定。"""
+    from app.api.v1 import router as _router  # noqa: F401
+    from app.services import affairs_appeal_repair_service as repair
+
+    if repair._RAW_SYNC is None or repair._RAW_NOTICE is None:
+        raise RuntimeError("学工申诉补偿契约未完成初始化")
+
+
 def run_once() -> dict:
     if not db_enabled():
         raise RuntimeError("学工申诉补偿worker要求 DB_ENABLED=true")
+    _ensure_contracts_installed()
     result = run_all_tenants()
     log.info(
         "appeal repair sweep tenants=%s claimed=%s repaired=%s failed=%s skipped=%s",
