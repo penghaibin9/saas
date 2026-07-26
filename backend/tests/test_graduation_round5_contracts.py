@@ -1,6 +1,7 @@
 """毕业设计四端收口合同测试（不依赖 mock 业务数据）。"""
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def text(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_all_round5_modules_import_without_cycles():
+    modules = [
+        "app.modules.graduation.services.graduation_runtime_settings",
+        "app.modules.graduation.services.graduation_audit_consistency",
+        "app.modules.graduation.services.graduation_batch_context",
+        "app.modules.graduation.services.graduation_topic_change_consistency",
+        "app.modules.graduation.services.graduation_material_consistency",
+        "app.modules.graduation.services.graduation_defense_group_consistency",
+        "app.modules.graduation.services.graduation_process_consistency",
+        "app.modules.graduation.services.graduation_taskbook_consistency",
+        "app.modules.graduation.services.graduation_archive_consistency",
+        "app.modules.graduation.services.graduation_mobile_stable_bridge",
+        "app.modules.graduation.services.graduation_permission_extensions",
+        "app.modules.graduation.routers.graduation_sensitive_router",
+        "app.modules.graduation.routers.graduation_archive_sensitive_router",
+        "app.modules.graduation.routers.graduation_taskbook_sensitive_router",
+        "app.modules.graduation.routers.graduation_process_sensitive_router",
+        "app.modules.graduation.routers.graduation_material_sensitive_router",
+    ]
+    for module in modules:
+        assert importlib.import_module(module)
 
 
 def test_defense_score_dto_contains_real_score_contract():
@@ -58,9 +82,13 @@ def test_defense_member_contract_keeps_details_and_names():
 
 def test_sensitive_routes_require_batch_and_precede_legacy_routes():
     routes = text("backend/app/api/v1/route_registration.py")
-    assert "graduation_sensitive_router.router" in routes
-    assert "graduation_archive_sensitive_router.router" in routes
-    assert routes.index("graduation_sensitive_router.router") < routes.index("graduation, graduation_batch")
+    for name in (
+        "graduation_sensitive_router.router",
+        "graduation_archive_sensitive_router.router",
+        "graduation_material_sensitive_router.router",
+    ):
+        assert name in routes
+        assert routes.index(name) < routes.index("graduation, graduation_batch")
     sensitive = text("backend/app/modules/graduation/routers/graduation_sensitive_router.py")
     for endpoint in (
         '"/gd-grades/{gd_student_id}"',
@@ -72,12 +100,33 @@ def test_sensitive_routes_require_batch_and_precede_legacy_routes():
     assert sensitive.count("batchId: int = Query(..., ge=1)") >= 15
 
 
+def test_exact_routes_have_action_permissions_and_no_manage_fallback():
+    extensions = text("backend/app/modules/graduation/services/graduation_permission_extensions.py")
+    assert '"graduationDesign.defense.notify", "defense_notify"' in extensions
+    assert '"graduationDesign.grade.publish", "grade_publish"' in extensions
+    assert '"graduationDesign.archive.preview", "archive_generate_preview"' in extensions
+    assert 'GRADUATION_ENDPOINT_PERMISSION_OVERRIDES[f"{module}.{name}"] = code' in extensions
+    assert "graduationDesign.manage" not in extensions
+
+
 def test_pc_grade_api_never_sends_unbound_final_and_always_sends_batch():
     api = text("frontend/src/modules/graduation/api/graduation-defense-grade.api.js")
     assert "function batchParams" in api
     assert "params: batchParams()" in api
     assert "gdFinalId: null" not in api
     assert "reviewerMentorId" in api
+
+
+def test_pc_main_workflows_are_bound_to_batch():
+    api = text("frontend/src/modules/graduation/api/graduation.api.js")
+    assert "function withBatch" in api
+    for fragment in (
+        "getProposalReviewDetail", "reviewProposal", "holdProposalDefense",
+        "getFinalDetail", "reviewFinal", "getDefenseGroupDetail",
+        "assignDefenseStudents", "notifyDefenseSchedule", "getAuditLogs",
+    ):
+        assert fragment in api
+    assert api.count("params: withBatch") >= 15
 
 
 def test_archive_manifest_uses_file_sha_and_signed_preview():
@@ -107,24 +156,47 @@ def test_teacher_mobile_uses_stable_ids_not_same_name_blockade():
 def test_topic_change_and_material_submissions_are_serialized():
     topic = text("backend/app/modules/graduation/services/graduation_topic_change_consistency.py")
     consistency = text("backend/app/modules/graduation/services/graduation_consistency_install.py")
+    defense = text("backend/app/modules/graduation/services/graduation_defense_group_consistency.py")
     assert topic.count("with_for_update()") >= 4
     assert "install_topic_change_consistency()" in consistency
+    assert "install_defense_group_consistency()" in consistency
     assert "GraduationProposal" in consistency and "with_for_update()" in consistency
     assert "GraduationFinal" in consistency and "active_key=f\"pending:{student.id}\"" in consistency
+    assert defense.count("with_for_update()") >= 5
+    assert '"queued": len(rows)' in defense and '"delivered": delivered' in defense
 
 
-def test_get_grade_remains_read_only():
-    service = text("backend/app/modules/graduation/services/graduation_grade_service.py")
-    start = service.index("def get_grade(")
-    end = service.index("\ndef calculate_grade(", start)
-    body = service[start:end]
-    assert "db.commit()" not in body
-    assert "db.add(" not in body
-    assert '"exists": False' in body
+def test_grade_and_midterm_gets_remain_read_only():
+    grade_service = text("backend/app/modules/graduation/services/graduation_grade_service.py")
+    start = grade_service.index("def get_grade(")
+    end = grade_service.index("\ndef calculate_grade(", start)
+    grade_body = grade_service[start:end]
+    assert "db.commit()" not in grade_body
+    assert "db.add(" not in grade_body
+    assert '"exists": False' in grade_body
+
+    process = text("backend/app/modules/graduation/services/graduation_process_consistency.py")
+    start = process.index("def get_midterm(")
+    end = process.index("\ndef _locked_student_midterm", start)
+    midterm_body = process[start:end]
+    assert "db.commit()" not in midterm_body
+    assert "db.add(" not in midterm_body
+    assert '"exists": False' in midterm_body
 
 
-def test_teacher_topic_page_does_not_turn_errors_into_empty_lists():
-    page = text("miniapp/src/pages/teacher/graduation-topics/index.vue")
-    assert "Promise.allSettled" in page
-    assert "catch(() => [])" not in page
-    assert "choiceError" in page and "changeError" in page
+def test_taskbook_legacy_state_and_mvp_wording_are_closed():
+    taskbook = text("backend/app/modules/graduation/services/graduation_taskbook_consistency.py")
+    assert '("PENDING_CONFIRM", "CHANGE_PENDING")' in taskbook
+    assert '"ISSUED"' not in taskbook
+    assert "套打MVP" not in taskbook
+    assert "毕业设计任务书正式套打" in taskbook
+
+
+def test_teacher_pages_do_not_turn_errors_into_empty_lists():
+    topics = text("miniapp/src/pages/teacher/graduation-topics/index.vue")
+    defense = text("miniapp/src/pages/teacher/defense-score/index.vue")
+    assert "Promise.allSettled" in topics
+    assert "catch(() => [])" not in topics
+    assert "choiceError" in topics and "changeError" in topics
+    assert "loadError" in defense
+    assert "catch(() => {})" not in defense
