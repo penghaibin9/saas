@@ -138,6 +138,7 @@ def appeal_review(
         from app.services import affairs_discipline_service as service
         result = service.review_appeal(appeal_id, SimpleNamespace(
             result=str(body.get("result") or "").upper(), opinion=opinion, version=version,
+            revisedDiscType=str(body.get("revisedDiscType") or "").upper(),
         ), user)
     else:
         from app.services import affairs_activity_service as service
