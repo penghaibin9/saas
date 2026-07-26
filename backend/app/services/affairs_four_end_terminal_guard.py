@@ -67,8 +67,8 @@ _MOBILE_CATALOG_CODES = {
     "studentAffairs.activity.confirm",
 }
 
-# 以下端点在自身 Depends/函数体内执行明确 permissionCode 校验。这里记录其真实代码，
-# 启动检查仍会验证这些代码属于 PC 权限目录，而不是简单跳过。
+# 以下端点在自身 Depends/函数体内执行更精确的业务分支校验。这里记录其真实 PC 权限，
+# 运行时先做同源预检，端点内再按 purpose/kind 做最终校验，禁止退化成 dashboard.view。
 _DIRECT_PERMISSION_CODES: dict[str, tuple[str, ...]] = {
     "/api/v1/mobile/teacher/affairs/student-candidates": (
         "studentAffairs.talk.create",
@@ -162,7 +162,7 @@ def _install_permission_fail_closed() -> None:
         if path in _DASHBOARD_PATHS:
             return required
         if path in _DIRECT_PERMISSION_CODES:
-            return required
+            return _DIRECT_PERMISSION_CODES[path]
         if _permission_problem(path, str(method or "GET").upper(), required):
             return (_SENTINEL,)
         return required
@@ -204,7 +204,6 @@ def _assert_teacher_routes_registered(api_router) -> None:
             if problem:
                 failures.append(f"{method} {path}: {problem}")
 
-    # 明确登记的端点若已从路由中删除，也应让测试/启动暴露陈旧矩阵，而不是长期漂移。
     stale = sorted(set(_DIRECT_PERMISSION_CODES) - seen_paths)
     failures.extend(f"STALE {path}: 直接权限登记无对应路由" for path in stale)
 
