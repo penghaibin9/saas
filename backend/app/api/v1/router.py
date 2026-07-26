@@ -30,6 +30,7 @@ from app.services.affairs_dorm_reliability_service import install as install_dor
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
 from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
 from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
+from app.services.affairs_funding_ext_guard import install as install_funding_ext_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
@@ -63,6 +64,7 @@ install_data_integrity_guard()
 install_counselor_handover_guard()
 install_risk_evidence_guard()
 install_counselor_eval_guard()
+install_funding_ext_guard()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
