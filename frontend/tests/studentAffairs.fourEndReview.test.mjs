@@ -28,13 +28,46 @@ test('student activity checkin never exposes manual checkin action', () => {
   assert.doesNotMatch(source, /method:\s*['"]MANUAL['"]/)
 })
 
-test('student returned applications preserve version through edit and resubmit', () => {
+test('student returned applications retain the new version when resubmit fails', () => {
   const aid = read('miniapp/src/pages/student/affairs/aid.vue')
   const funding = read('miniapp/src/pages/student/affairs/funding.vue')
-  assert.match(aid, /version/)
-  assert.match(funding, /version/)
-  assert.match(aid, /resubmit/)
-  assert.match(funding, /resubmit/)
+  const leave = read('miniapp/src/pages/student/affairs/leave.vue')
+  for (const source of [aid, funding, leave]) {
+    assert.match(source, /修改已保存，但重新提交失败/)
+    assert.match(source, /version:\s*updated\.version/)
+  }
+})
+
+test('student portal clears forms only after a successful command', () => {
+  const source = read('student-portal/src/views/affairs/AffairsFourEndView.vue')
+  assert.match(source, /return \{ ok: true, data \}/)
+  assert.match(source, /return \{ ok: false, error: e \}/)
+  assert.match(source, /if \(result\.ok\) leaveForm\.reason = ''/)
+  assert.match(source, /if \(result\.ok\) aidObjections\[item\.applyId\] = ''/)
+  assert.match(source, /if \(result\.ok\) fundAppeals\[item\.applicationId\] = ''/)
+  assert.match(source, /modal\.item = \{ \.\.\.\(modal\.item \|\| \{\}\), \.\.\.\(updated \|\| \{\}\), version:/)
+  assert.match(source, /修改已保存，但重新提交失败/)
+  assert.match(source, /setTimeout\(\(\) => closeModal\(\), 0\)/)
+})
+
+test('teacher editable decisions reopen with the previous text after non-conflict failure', () => {
+  const leave = read('miniapp/src/pages/teacher/affairs-leave/index.vue')
+  const review = read('miniapp/src/pages/teacher/affairs-review/index.vue')
+  const dorm = read('miniapp/src/pages/teacher/dorm-review/index.vue')
+  for (const source of [leave, review, dorm]) {
+    assert.match(source, /content:\s*initial/)
+    assert.match(source, /n\.kind !== 'conflict'/)
+    assert.match(source, /setTimeout\(/)
+  }
+})
+
+test('mental follow-up and talk records keep inline text until success', () => {
+  const mental = read('miniapp/src/pages/teacher/affairs/mental/index.vue')
+  const talk = read('miniapp/src/pages/teacher/affairs/talk/index.vue')
+  assert.match(mental, /\.then\(\(d\) => \{[\s\S]*this\.actionContent = ''/)
+  assert.match(mental, /\.catch\(\(e\) => this\.showError\(e, '操作失败'\)\)/)
+  assert.match(talk, /\.then\(\(d\) => \{[\s\S]*this\.followContent = ''/)
+  assert.match(talk, /\.catch\(\(e\) => this\.showError\(e, '处理失败'\)\)/)
 })
 
 test('student portal request serializes pagination query parameters', () => {
