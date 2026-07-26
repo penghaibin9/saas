@@ -1,7 +1,7 @@
 """学生 PC 门户岗位实习权威接口。
 
 与学生小程序复用同一业务服务，不复制状态机；批次由显式 batchId 或统一
-X-Internship-Batch-Id 上下文解析。所有正式申请写操作强制乐观锁版本。
+X-Internship-Batch-Id 上下文解析。正式申请、请假撤回与销假均强制乐观锁版本。
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_application_context_service as applications
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
+from app.modules.internship.services import internship_student_leave_context_service as leaves
 
 router = APIRouter(prefix="/portal/internship", tags=["学生PC门户-岗位实习权威接口"])
 
@@ -109,7 +110,6 @@ def portal_safety_commit(
     return success(safety.commit_my_completion(completion_id, body or {}, user))
 
 
-# 使用 context 前缀避开历史 `/portal/internship/applications` 读取兼容路由。
 @router.get("/context/applications", summary="本人所选批次正式实习申请")
 def portal_application_list(user=Depends(get_current_user)):
     return success(applications.list_my(user))
@@ -145,3 +145,35 @@ def portal_application_withdraw(
         applications.withdraw(user, application_id, (body or {}).get("expectedVersion")),
         message="申请已撤回",
     )
+
+
+@router.get("/context/leaves", summary="本人所选批次实习请假列表")
+def portal_leave_list(user=Depends(get_current_user)):
+    return success(leaves.list_my(user))
+
+
+@router.post("/context/leaves", summary="本人发起实习请假")
+def portal_leave_apply(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(leaves.apply(user, body or {}), message="请假申请已提交")
+
+
+@router.post("/context/leaves/{leave_id}/withdraw", summary="按版本撤回本人待审批请假")
+def portal_leave_withdraw(
+    leave_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(leaves.withdraw(
+        user, leave_id, (body or {}).get("expectedVersion")), message="请假已撤回")
+
+
+@router.post("/context/leaves/{leave_id}/return", summary="按版本办理本人销假")
+def portal_leave_return(
+    leave_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(leaves.return_my(user, leave_id, body or {}), message="销假已提交")
