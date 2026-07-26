@@ -13,21 +13,37 @@
       @retry="loadAll"
       @back="$router.push('/admin/student-affairs/funding')"
     >
+      <div class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">勤工助学工作区</span>
+          <h3 class="sa-summary-strip__title">优先处理待审核申请和在岗学生月度考核</h3>
+          <p class="sa-summary-strip__text">岗位发布、录用、上岗和补贴登记保持在同一台账中。操作列只展示当前状态允许的动作。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" @click="postDlg.visible = true">新建岗位</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" variant="secondary" @click="applyDlg.visible = true">代录申请</AppPermissionButton>
+        </div>
+      </div>
+
+      <div class="sa-workflow-strip" aria-label="勤工助学流程">
+        <div class="sa-workflow-step" data-step="1">发布岗位并明确需求人数</div>
+        <div class="sa-workflow-step" data-step="2">审核申请并确认录用</div>
+        <div class="sa-workflow-step" data-step="3">确认上岗并按月登记考核</div>
+        <div class="sa-workflow-step" data-step="4">补贴进入正式累计台账</div>
+      </div>
+
       <div class="sa-toolbar">
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard title="启用岗位" :value="enabledPosts" accent="primary" />
           <AppMetricCard title="待审核申请" :value="statusCount('APPLIED')" accent="warning" />
           <AppMetricCard title="在岗人数" :value="statusCount('ONBOARD')" accent="success" />
         </div>
-        <div class="ws-tools">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" @click="postDlg.visible = true">新建岗位</AppPermissionButton>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" variant="secondary" @click="applyDlg.visible = true">代录申请</AppPermissionButton>
-        </div>
       </div>
 
       <AppInlineAlert v-if="postError" type="warning" :description="postError" />
 
       <AppSectionCard title="上岗记录与月度考核">
+        <p class="ws-section-hint">待审核记录先完成录用或拒绝；已录用记录确认上岗后，才可登记月度考核和补贴。</p>
         <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo || '' }}</div></template>
           <template #cell-post="{ row }">{{ postName(row.postId) }}</template>
@@ -45,7 +61,7 @@
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前范围暂无勤工助学记录</p>
+        <p v-else class="sa-empty">当前范围暂无勤工助学记录。可先新建岗位，再为已收齐材料的学生代录申请。</p>
         <AppPagination v-if="pagination.total > pagination.pageSize" v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="loadRecords" />
       </AppSectionCard>
     </AppGlobalState>
@@ -198,12 +214,10 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
+.ws-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .ws-tools, .ws-ops { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .ws-ops { justify-content: flex-end; }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .ws-muted { color: var(--text-tertiary); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+@media (max-width: 960px) { .ws-ops { justify-content: flex-start; } }
 @import '@/styles/module-page.css';
 </style>
