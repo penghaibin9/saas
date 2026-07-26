@@ -22,6 +22,17 @@ async function call(fn) {
   }
 }
 
+function paged(data, page, pageSize) {
+  const payload = data || {}
+  return {
+    list: payload.items || payload.list || [],
+    total: Number(payload.total || 0),
+    page: Number(payload.page || page),
+    pageSize: Number(payload.pageSize || pageSize),
+    batch: payload.batch || null
+  }
+}
+
 export const textbookP0Api = {
   reviewCandidates(termId) {
     return call(() => request(`${BASE}/review-candidates`, { params: { termId } }))
@@ -31,13 +42,14 @@ export const textbookP0Api = {
       params: { termId, page, pageSize }
     }))
     if (result.code !== 0) return result
-    const data = result.data || {}
-    return ok({
-      list: data.items || data.list || [],
-      total: Number(data.total || 0),
-      page: Number(data.page || page),
-      pageSize: Number(data.pageSize || pageSize)
-    })
+    return ok(paged(result.data, page, pageSize))
+  },
+  async distributionRecords(batchId, { page = 1, pageSize = 100 } = {}) {
+    const result = await call(() => request(`${BASE}/distribution-workbench/${batchId}/records`, {
+      params: { page, pageSize }
+    }))
+    if (result.code !== 0) return result
+    return ok(paged(result.data, page, pageSize))
   },
   cancelOrder(batchId, reason) {
     return call(() => request(`${BASE}/order-batches/${batchId}/cancel`, {
