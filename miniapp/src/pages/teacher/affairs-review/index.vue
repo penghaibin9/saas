@@ -163,10 +163,23 @@ export default {
       }
       return value
     },
-    reviewRequest(id, action, reason, entity) {
-      const version = this.versionOf(entity)
-      if (version === null) return Promise.reject(new Error('缺少版本号'))
-      if (['AID_APPROVAL', 'AID_ADJUST'].includes(this.kind)) return affairsContractApi.reviewAid(id, action, reason, entity.suggestLevel || entity.applyLevel, version)
+    visibleVersion(row, detail) {
+      const visible = this.versionOf(row)
+      if (visible === null) throw new Error('缺少版本号')
+      const latest = detail && detail.version
+      if (latest !== undefined && latest !== null && latest !== '' && String(latest) !== String(visible)) {
+        toast('记录已被他人修改，请刷新后重新查看并确认')
+        this.load()
+        const error = new Error('记录版本已变化')
+        error.kind = 'conflict'
+        throw error
+      }
+      return visible
+    },
+    reviewRequest(id, action, reason, row, detail) {
+      const version = this.visibleVersion(row, detail)
+      const level = (detail && (detail.suggestLevel || detail.applyLevel)) || row.suggestLevel || row.applyLevel
+      if (['AID_APPROVAL', 'AID_ADJUST'].includes(this.kind)) return affairsContractApi.reviewAid(id, action, reason, level, version)
       if (this.kind === 'FUNDING_APPROVAL') return affairsContractApi.reviewFunding(id, action, reason, version)
       return affairsContractApi.reviewDiscipline(id, action, reason, version)
     },
@@ -176,7 +189,7 @@ export default {
       const run = (reason) => {
         if (needReason && reason.trim().length < 5) return toast('原因不少于5字')
         this.acting = true
-        this.loadDetail(x).then((entity) => this.reviewRequest(id, action, reason, entity))
+        this.loadDetail(x).then((detail) => this.reviewRequest(id, action, reason, x, detail))
           .then(() => { toast('已处理'); this.load() }).catch((e) => this._err(e, '审批'))
           .finally(() => { this.acting = false })
       }
@@ -204,8 +217,8 @@ export default {
       const id = x.riskId || x.id
       uni.showModal({ title: '处置内容', editable: true, placeholderText: '不少于5字', success: (r) => {
         if (!r.confirm) return; const content = (r.content || '').trim(); if (content.length < 5) return toast('处置内容不少于5字')
-        this.acting = true; this.loadDetail(x).then((entity) => {
-          const version = this.versionOf(entity); if (version === null) throw new Error('缺少版本号')
+        this.acting = true; this.loadDetail(x).then((detail) => {
+          const version = this.visibleVersion(x, detail)
           return affairsContractApi.processRisk(id, content, version)
         }).then(() => { toast('已记录'); this.load() }).catch((e) => this._err(e, '处置')).finally(() => { this.acting = false })
       } })
@@ -214,8 +227,8 @@ export default {
       const id = x.riskId || x.id
       uni.showModal({ title: '关闭结论', editable: true, placeholderText: '不少于5字', success: (r) => {
         if (!r.confirm) return; const conclusion = (r.content || '').trim(); if (conclusion.length < 5) return toast('关闭结论不少于5字')
-        this.acting = true; this.loadDetail(x).then((entity) => {
-          const version = this.versionOf(entity); if (version === null) throw new Error('缺少版本号')
+        this.acting = true; this.loadDetail(x).then((detail) => {
+          const version = this.visibleVersion(x, detail)
           return affairsContractApi.closeRisk(id, conclusion, version)
         }).then(() => { toast('已关闭'); this.load() }).catch((e) => this._err(e, '关闭')).finally(() => { this.acting = false })
       } })
