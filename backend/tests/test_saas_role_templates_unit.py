@@ -312,10 +312,16 @@ def test_identity_import_api_has_no_raw_json_account_creation_bypass():
 
 
 def test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher():
-    scope = mobile_teacher_service.resolve_teacher_scope({
-        "userId": "db-17", "userType": "TEACHER",
-        "currentRoleCode": "INTERN_MENTOR", "realName": "同名老师",
-    })
+    # resolve_teacher_scope 现会把 _tid() 写进返回的 scope，纯单元测试须自备租户上下文。
+    from app.core.context import set_tenant
+    set_tenant({"tenantId": "1000000000000000001"})
+    try:
+        scope = mobile_teacher_service.resolve_teacher_scope({
+            "userId": "db-17", "userType": "TEACHER",
+            "currentRoleCode": "INTERN_MENTOR", "realName": "同名老师",
+        })
+    finally:
+        set_tenant(None)
     assert scope["mode"] == "SCOPED"
     assert scope["advisorUserIds"] == {"17"}
     scope["classNames"].add("软件2401")
