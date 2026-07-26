@@ -34,7 +34,7 @@
     <view v-if="editVisible" class="fd__mask" @click.self="closeEdit">
       <view class="card fd__sheet">
         <text class="card-title">修改退回的{{ typeLabel(editTarget.projectType) }}申请</text>
-        <MobileInlineAlert type="warning" title="请按退回意见修改" :description="editTarget.returnReason || '修改后将重新进入辅导员初审。'" />
+        <MobileInlineAlert type="warning" title="请按退回意见修改" :description="editNotice || editTarget.returnReason || '修改后将重新进入辅导员初审。'" />
         <view class="fld"><text class="lbl">申请理由</text><textarea class="ta" v-model="editReason" maxlength="500" placeholder="申请理由（≥5字）" /></view>
         <view class="fd__actions"><button class="btn btn-ghost flex-1" :disabled="busy" @click="closeEdit">取消</button><button class="btn flex-1" :disabled="busy" @click="saveAndResubmit">保存并重新提交</button></view>
       </view>
@@ -55,7 +55,7 @@ export default {
       d: null, state: 'loading', busy: false, reasons: {}, batchError: '',
       fundTypes: [{ k: 'SCHOLARSHIP', t: '奖学金' }, { k: 'GRANT', t: '助学金' }], fundType: 'SCHOLARSHIP',
       allBatches: [], batchIndex: 0, form: { reason: '', commit: false },
-      editVisible: false, editTarget: {}, editReason: ''
+      editVisible: false, editTarget: {}, editReason: '', editNotice: ''
     }
   },
   computed: {
@@ -66,7 +66,7 @@ export default {
   onLoad() { this.load() },
   methods: {
     typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款', TUITION_REDUCTION: '学费减免', TEMPORARY_AID: '临时补助' })[t] || t || '奖助' },
-    showError(e, fallback) { toast(normalizeError(e).text || (e && e.message) || fallback) },
+    showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); return n },
     load() {
       this.state = 'loading'; this.batchError = ''
       Promise.all([studentApi.getMyFunding(), studentApi.getFundingBatches().catch((e) => ({ __error: normalizeError(e).text || '开放批次加载失败' }))]).then(([d, b]) => {
@@ -85,15 +85,25 @@ export default {
     },
     async editReturned(x) {
       if (this.busy) return; this.busy = true
-      try { const d = await affairsReturnedApi.getFunding(x.applicationId); this.editTarget = { ...x, ...d }; this.editReason = d.statement || ''; this.editVisible = true }
+      try { const d = await affairsReturnedApi.getFunding(x.applicationId); this.editTarget = { ...x, ...d }; this.editReason = d.statement || ''; this.editNotice = ''; this.editVisible = true }
       catch (e) { this.showError(e, '退回申请加载失败') } finally { this.busy = false }
     },
-    closeEdit() { if (!this.busy) this.editVisible = false },
+    closeEdit() { if (!this.busy) { this.editVisible = false; this.editNotice = '' } },
     async saveAndResubmit() {
       const reason = this.editReason.trim(); if (reason.length < 5) return toast('申请理由至少5字')
       this.busy = true
-      try { const updated = await affairsReturnedApi.updateFunding(this.editTarget.applicationId, { statement: reason, version: this.editTarget.version }); await affairsReturnedApi.resubmitFunding(this.editTarget.applicationId, updated.version); toast('已修改并重新提交'); this.editVisible = false; this.load() }
-      catch (e) { this.showError(e, '重新提交失败') } finally { this.busy = false }
+      try {
+        const updated = await affairsReturnedApi.updateFunding(this.editTarget.applicationId, { statement: reason, version: this.editTarget.version })
+        this.editTarget = { ...this.editTarget, ...(updated || {}), version: updated.version }
+        try {
+          await affairsReturnedApi.resubmitFunding(this.editTarget.applicationId, this.editTarget.version)
+        } catch (e) {
+          this.editNotice = `修改已保存，但重新提交失败：${normalizeError(e).text || e.message || '请重试'}`
+          this.showError(e, '重新提交失败')
+          return
+        }
+        toast('已修改并重新提交'); this.editVisible = false; this.editNotice = ''; this.load()
+      } catch (e) { this.showError(e, '保存修改失败') } finally { this.busy = false }
     },
     async appeal(x) {
       const reason = (this.reasons[x.applicationId] || '').trim(); if (reason.length < 5) return toast('申诉理由至少5字')
