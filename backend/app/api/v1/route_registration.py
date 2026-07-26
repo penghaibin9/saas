@@ -55,22 +55,10 @@ def register_core_routes(api_router: APIRouter) -> None:
 
 def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.internship.routers import (
-        internship,
-        internship_agreement_template,
-        internship_application,
-        internship_archive,
-        internship_communication,
-        internship_complaint,
-        internship_compliance,
-        internship_insurance,
-        internship_match,
-        internship_participant,
-        internship_plan,
-        internship_position,
-        internship_process,
-        internship_stats,
-        internship_student,
-        internship_visit_plan,
+        internship, internship_agreement_template, internship_application, internship_archive,
+        internship_communication, internship_complaint, internship_compliance, internship_insurance,
+        internship_match, internship_participant, internship_plan, internship_position,
+        internship_process, internship_stats, internship_student, internship_visit_plan,
     )
 
     d = deps["intern"]
@@ -94,7 +82,6 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
 
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import campus_service, orientation, student_affairs
-
     api_router.include_router(orientation.router, dependencies=deps["orientation"])
     api_router.include_router(campus_service.router, dependencies=deps["cs"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
@@ -103,7 +90,6 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
     from app.modules.academic_affairs.routers import academic_affairs
-
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
 
@@ -113,34 +99,20 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     install_consistency_guards()
 
     from app.modules.graduation.routers import (
-        graduation,
-        graduation_archive,
-        graduation_archive_sensitive_router,
-        graduation_batch,
-        graduation_defense_score,
-        graduation_grade,
-        graduation_guidance,
-        graduation_mentor,
-        graduation_midterm,
-        graduation_more,
-        graduation_p0_guard,
-        graduation_review,
-        graduation_risk,
-        graduation_sensitive_router,
-        graduation_stats,
-        graduation_student,
-        graduation_student_eval,
-        graduation_taskbook,
-        graduation_template,
-        graduation_topic,
-        graduation_topic_change,
-        graduation_topic_round,
+        graduation, graduation_archive, graduation_archive_sensitive_router, graduation_batch,
+        graduation_defense_score, graduation_grade, graduation_guidance,
+        graduation_material_sensitive_router, graduation_mentor, graduation_midterm,
+        graduation_more, graduation_p0_guard, graduation_review, graduation_risk,
+        graduation_sensitive_router, graduation_stats, graduation_student,
+        graduation_student_eval, graduation_taskbook, graduation_template,
+        graduation_topic, graduation_topic_change, graduation_topic_round,
     )
 
     d = deps["gd"]
     api_router.include_router(graduation_p0_guard.router, dependencies=d)
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
+    api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
     for r in (
         graduation, graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
@@ -189,10 +161,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     install_mobile_resolver()
     install_mobile_stable_bridge()
     api_router.include_router(mobile_graduation_guard.router)
-    api_router.include_router(
-        mobile.router,
-        dependencies=[Depends(require_mobile_graduation_request_permission)],
-    )
+    api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
     api_router.include_router(student_portal_graduation_guard.router)
     api_router.include_router(student_portal_router)
     from app.api.v1 import student_portal_admin
