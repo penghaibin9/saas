@@ -56,8 +56,9 @@ def _authorize_binding(db, binding) -> None:
         GraduationStudent.is_deleted.is_(False),
     )).first()
     user = get_current_user_ctx() or {}
-    role = str(user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
-    if role == "STUDENT":
+    role = str(user.get("currentRoleCode") or "").strip().upper()
+    user_type = str(user.get("userType") or "").strip().upper()
+    if role == "STUDENT" or user_type == "STUDENT":
         current = resolve_current_gd_student(db, user)
         if not current:
             raise no_permission("无法确认当前毕业设计学生身份")
