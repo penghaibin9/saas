@@ -1,4 +1,4 @@
-"""普通教师课堂考勤必须绑定当前学期本人真实教学任务。"""
+"""普通教师课堂考勤必须绑定当前学期本人已确认的真实教学任务。"""
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -113,6 +113,21 @@ def test_teacher_must_supply_teaching_task(monkeypatch):
         service.create_session(_user(), {"classId": 10, "sessionDate": "2026-03-02"})
 
     assert "请选择当前学期本人教学任务" in exc.value.message
+
+
+def test_assigned_but_unconfirmed_task_is_rejected(monkeypatch):
+    from app.core.exceptions import AppException
+
+    db = _Db(term=_term(), task=_task(status="ASSIGNED"), batch=_batch())
+    service = _prepare(monkeypatch, db)
+    with pytest.raises(AppException) as exc:
+        service.create_session(_user(), {
+            "teachingTaskId": 30,
+            "classId": 10,
+            "sessionDate": "2026-03-02",
+        })
+
+    assert "须经教师确认" in exc.value.message
 
 
 def test_other_teacher_task_is_rejected(monkeypatch):
