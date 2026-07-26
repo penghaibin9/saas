@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 
 
-def test_evaluation_archive_gate_blocks_open_window_missing_results_and_appeals():
+def test_evaluation_archive_gate_blocks_non_final_batches_missing_results_and_appeals():
     from app.modules.academic_affairs.services.academic_affairs_archive_evaluation_facade import (
         _evaluation_gate_result,
     )
@@ -14,18 +14,21 @@ def test_evaluation_archive_gate_blocks_open_window_missing_results_and_appeals(
     )
 
     assert result["present"] is False
-    assert "未关闭评教批次 1 个" in result["remark"]
+    assert "未形成最终结果的评教批次 2 个" in result["remark"]
     assert "未生成结果的评教任务 2 个" in result["remark"]
     assert "在途评教申诉 3 条" in result["remark"]
 
 
-def test_evaluation_archive_gate_accepts_closed_or_unused_domain():
+def test_evaluation_archive_gate_accepts_result_ready_archived_or_unused_domain():
     from app.modules.academic_affairs.services.academic_affairs_archive_evaluation_facade import (
         _evaluation_gate_result,
     )
 
     assert _evaluation_gate_result([])["present"] is True
-    assert _evaluation_gate_result([SimpleNamespace(status="CLOSED")])["present"] is True
+    assert _evaluation_gate_result([
+        SimpleNamespace(status="RESULT_READY"),
+        SimpleNamespace(status="ARCHIVED"),
+    ])["present"] is True
 
 
 def test_evaluation_write_helpers_call_term_guard(monkeypatch):
@@ -49,13 +52,16 @@ def test_public_evaluation_and_archive_services_point_to_final_layers():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_evaluation_facade"
+        "academic_affairs_archive_textbook_facade"
     )
-    assert any(code == "EVALUATION" for code, _label in services.academic_affairs_archive_service._legacy._DOMAINS)
+    assert any(
+        code == "EVALUATION"
+        for code, _label in services.academic_affairs_archive_service._legacy._DOMAINS
+    )
     assert services.academic_affairs_evaluation_service.__name__.endswith(
         "academic_affairs_evaluation_term_facade"
     )
-    assert services.academic_affairs_evaluation_service.submit.__module__.endswith(
+    assert services.academic_affairs_evaluation_service.submit_evaluation.__module__.endswith(
         "academic_affairs_evaluation_term_facade"
     )
     assert services.academic_affairs_evaluation_service.review_appeal.__module__.endswith(
