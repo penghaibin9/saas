@@ -99,6 +99,7 @@ jobs:
           tests/test_aa_student_exam_time.py
           tests/test_aa_graduation_program_resolution.py
           tests/test_aa_program_quality_v2.py
+          tests/test_aa_program_generation_gate_v2.py
           tests/test_security_student_identity.py
           --maxfail=1
 
