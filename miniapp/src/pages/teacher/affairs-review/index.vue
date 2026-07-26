@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" :title="title" subtitle="按数据范围与指派人收敛" show-back />
+    <MobileNavBar variant="teacher" :title="title" subtitle="按数据范围、权限与指派人收敛" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
         <MobileGlobalState v-if="!list.length" state="empty" :title="'暂无' + title"
@@ -55,29 +55,18 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { affairsContractApi } from '@/services/affairsContractApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 const META = {
-  AID_APPROVAL: {
-    title: '困难认定待审', load: 'getAffairsAidPending', review: 'reviewAffairsAid', detail: 'getAffairsAidDetail'
-  },
-  AID_ADJUST: {
-    title: '困难等级调整', load: 'getAffairsAidPending', review: 'reviewAffairsAid', detail: 'getAffairsAidDetail'
-  },
-  FUNDING_APPROVAL: {
-    title: '奖助待审', load: 'getAffairsFundingPending', review: 'reviewAffairsFunding', detail: 'getAffairsFundingDetail'
-  },
-  DISCIPLINE_APPROVAL: {
-    title: '处分待审', load: 'getAffairsDisciplinePending', review: 'reviewAffairsDiscipline', detail: 'getAffairsDisciplineDetail'
-  },
-  DISCIPLINE_REMOVE: {
-    title: '处分解除待审', load: 'getAffairsDisciplinePending', review: 'reviewAffairsDiscipline', detail: 'getAffairsDisciplineDetail'
-  },
-  RISK_HANDLE: {
-    title: '风险待处置', load: 'getAffairsRiskPending', detail: 'getAffairsRiskDetail'
-  }
+  AID_APPROVAL: { title: '困难认定待审', load: 'getAffairsAidPending', detail: 'getAffairsAidDetail' },
+  AID_ADJUST: { title: '困难等级调整', load: 'getAffairsAidPending', detail: 'getAffairsAidDetail' },
+  FUNDING_APPROVAL: { title: '奖助待审', load: 'getAffairsFundingPending', detail: 'getAffairsFundingDetail' },
+  DISCIPLINE_APPROVAL: { title: '处分待审', load: 'getAffairsDisciplinePending', detail: 'getAffairsDisciplineDetail' },
+  DISCIPLINE_REMOVE: { title: '处分解除待审', load: 'getAffairsDisciplinePending', detail: 'getAffairsDisciplineDetail' },
+  RISK_HANDLE: { title: '风险待处置', load: 'getAffairsRiskPending', detail: 'getAffairsRiskDetail' }
 }
-
 const ACTION_LABEL = { APPROVE: '已通过', REJECT: '已驳回', RETURN: '已退回' }
 
 export default {
@@ -107,16 +96,15 @@ export default {
       teacherApi[m.load]().then((d) => {
         let rows = (d && d.list) || []
         if (this.kind === 'AID_ADJUST') rows = rows.filter((x) => x.status === 'ADJUST_REVIEW')
-        if (this.kind === 'AID_APPROVAL') {
-          rows = rows.filter((x) => x.status !== 'ADJUST_REVIEW')
-        }
+        if (this.kind === 'AID_APPROVAL') rows = rows.filter((x) => x.status !== 'ADJUST_REVIEW')
         if (this.kind === 'DISCIPLINE_REMOVE') rows = rows.filter((x) => x.status === 'REMOVE_REVIEW')
-        if (this.kind === 'DISCIPLINE_APPROVAL') {
-          rows = rows.filter((x) => x.status !== 'REMOVE_REVIEW')
-        }
+        if (this.kind === 'DISCIPLINE_APPROVAL') rows = rows.filter((x) => x.status !== 'REMOVE_REVIEW')
         this.list = rows
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+      }).catch((e) => {
+        this.state = 'error'
+        this._err(e, '加载')
+      })
     },
     detailLines(d) {
       if (!d || typeof d !== 'object') return []
@@ -131,43 +119,64 @@ export default {
       ]
       return pairs.filter(([, v]) => v != null && String(v).trim() !== '').map(([k, v]) => ({ k, v: String(v) }))
     },
+    loadDetail(x) {
+      const id = this.rowKey(x)
+      const m = META[this.kind]
+      if (!id || !m || !m.detail || !teacherApi[m.detail]) return Promise.resolve(x)
+      if (this.detailMap[id]) return Promise.resolve({ ...x, ...this.detailMap[id] })
+      this.detailLoading = id
+      return teacherApi[m.detail](id).then((d) => {
+        this.detailMap = { ...this.detailMap, [id]: d || {} }
+        return { ...x, ...(d || {}) }
+      }).finally(() => { this.detailLoading = '' })
+    },
     toggleDetail(x) {
       const id = this.rowKey(x)
       if (!id) return
-      if (this.expandedId === id) {
-        this.expandedId = ''
-        return
-      }
+      if (this.expandedId === id) { this.expandedId = ''; return }
       this.expandedId = id
-      const m = META[this.kind]
-      if (!m || !m.detail || !teacherApi[m.detail]) return
-      if (this.detailMap[id]) return
-      this.detailLoading = id
-      teacherApi[m.detail](id).then((d) => {
-        this.$set ? this.$set(this.detailMap, id, d || {}) : (this.detailMap = { ...this.detailMap, [id]: d || {} })
-      }).catch((e) => {
-        toast((e && e.message) || '详情加载失败')
+      this.loadDetail(x).catch((e) => {
+        this._err(e, '详情加载')
         this.expandedId = ''
-      }).finally(() => { this.detailLoading = '' })
+      })
     },
     _err(e, label) {
-      const code = e && String(e.code)
-      if (code === 'APPROVAL_VERSION_CONFLICT' || code === 'DATA_CONFLICT') {
-        toast((e && e.message) || '状态已变化，正在刷新'); this.load()
-      } else if (code && code.startsWith('403')) toast((e && e.message) || '无权处理')
-      else toast((e && e.message) || label + '失败')
+      const n = normalizeError(e)
+      toast(n.text || (e && e.message) || label + '失败')
+      if (n.kind === 'conflict') this.load()
+    },
+    versionOf(entity) {
+      const value = entity && entity.version
+      if (value === undefined || value === null || value === '') {
+        toast('记录缺少版本号，请刷新后再处理')
+        this.load()
+        return null
+      }
+      return value
+    },
+    reviewRequest(id, action, reason, entity) {
+      const version = this.versionOf(entity)
+      if (version === null) return Promise.reject({ message: '缺少版本号' })
+      if (this.kind === 'AID_APPROVAL' || this.kind === 'AID_ADJUST') {
+        return affairsContractApi.reviewAid(id, action, reason, entity.suggestLevel || entity.applyLevel, version)
+      }
+      if (this.kind === 'FUNDING_APPROVAL') {
+        return affairsContractApi.reviewFunding(id, action, reason, version)
+      }
+      return affairsContractApi.reviewDiscipline(id, action, reason, version)
     },
     doReview(x, action) {
-      const m = META[this.kind]
       const id = this.rowKey(x)
-      if (!m || !m.review || !id) return
+      if (!id || this.acting) return
       const needReason = action === 'REJECT' || action === 'RETURN'
       const run = (reason) => {
         if (needReason && (!reason || reason.trim().length < 5)) {
-          toast((action === 'RETURN' ? '退回' : '驳回') + '原因不少于 5 字'); return
+          toast((action === 'RETURN' ? '退回' : '驳回') + '原因不少于 5 字')
+          return
         }
         this.acting = true
-        teacherApi[m.review](id, { action, reason: reason || '' })
+        this.loadDetail(x)
+          .then((entity) => this.reviewRequest(id, action, reason || '', entity))
           .then(() => { toast(ACTION_LABEL[action] || '已处理'); this.load() })
           .catch((e) => this._err(e, '审批'))
           .finally(() => { this.acting = false })
@@ -187,10 +196,13 @@ export default {
         success: (r) => {
           if (!r.confirm) return
           const content = (r.content || '').trim()
-          if (content.length < 5) { toast('处置内容不少于 5 字'); return }
+          if (content.length < 5) return toast('处置内容不少于 5 字')
           this.acting = true
-          teacherApi.processAffairsRisk(id, content)
-            .then(() => { toast('已记录'); this.load() })
+          this.loadDetail(x).then((entity) => {
+            const version = this.versionOf(entity)
+            if (version === null) throw { message: '缺少版本号' }
+            return affairsContractApi.processRisk(id, content, version)
+          }).then(() => { toast('已记录'); this.load() })
             .catch((e) => this._err(e, '处置'))
             .finally(() => { this.acting = false })
         }
@@ -203,10 +215,13 @@ export default {
         success: (r) => {
           if (!r.confirm) return
           const conclusion = (r.content || '').trim()
-          if (conclusion.length < 5) { toast('关闭结论不少于 5 字'); return }
+          if (conclusion.length < 5) return toast('关闭结论不少于 5 字')
           this.acting = true
-          teacherApi.closeAffairsRisk(id, conclusion)
-            .then(() => { toast('已关闭'); this.load() })
+          this.loadDetail(x).then((entity) => {
+            const version = this.versionOf(entity)
+            if (version === null) throw { message: '缺少版本号' }
+            return affairsContractApi.closeRisk(id, conclusion, version)
+          }).then(() => { toast('已关闭'); this.load() })
             .catch((e) => this._err(e, '关闭'))
             .finally(() => { this.acting = false })
         }
