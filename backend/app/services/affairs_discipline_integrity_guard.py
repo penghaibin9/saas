@@ -58,7 +58,8 @@ def install() -> None:
             return int(existing.id)
         snapshot = shadow.identity_snapshot(db, profile)
         record = CsServiceStudent(
-            tenant_id=_tid(), record_status="ACTIVE", care_level="NORMAL",
+            tenant_id=_tid(), student_id=int(profile.id),
+            record_status="ACTIVE", care_level="NORMAL",
             risk_level="LOW", mental_flag=False,
             **{key: value for key, value in snapshot.items() if value is not None},
         )
