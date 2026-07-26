@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main, master]
     paths:
+      - 'backend/alembic/versions/**'
+      - 'backend/app/models/academic_affairs_teaching_class.py'
+      - 'backend/app/models/__init__.py'
+      - 'backend/app/api/v1/route_registration.py'
       - 'backend/app/modules/academic_affairs/**'
       - 'backend/app/core/security.py'
       - 'backend/tests/test_aa_*.py'
@@ -64,6 +68,9 @@ jobs:
       - name: Python语法与导入编译
         working-directory: backend
         run: python -m compileall -q app tests
+      - name: Alembic单一head检查
+        working-directory: backend
+        run: test "$(alembic heads | grep -c '(head)')" -eq 1
       - name: 创建MySQL表
         working-directory: backend
         run: python -c "from app.db.session import get_engine; from app.models.base import Base; import app.models; Base.metadata.create_all(bind=get_engine())"
@@ -100,6 +107,7 @@ jobs:
           tests/test_aa_graduation_program_resolution.py
           tests/test_aa_program_quality_v2.py
           tests/test_aa_program_generation_gate_v2.py
+          tests/test_aa_teaching_class_v2.py
           tests/test_security_student_identity.py
           --maxfail=1
 
