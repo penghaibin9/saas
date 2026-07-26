@@ -17,22 +17,22 @@ router = APIRouter(tags=["学工中心·异议申诉"])
 _KINDS = {
     "AID_OBJECTION": {
         "view": ("studentAffairs.aid.view",),
-        "review": ("studentAffairs.aid.approve", "studentAffairs.aid.schoolReview"),
+        "review": ("studentAffairs.aid.approve",),
         "model": "AidObjection", "id_key": "objectionId",
     },
     "FUNDING_APPEAL": {
         "view": ("studentAffairs.funding.view",),
-        "review": ("studentAffairs.funding.approve",),
+        "review": ("studentAffairs.funding.publicity.manage",),
         "model": "FundingAppeal", "id_key": "appealId",
     },
     "DISCIPLINE_APPEAL": {
         "view": ("studentAffairs.discipline.view",),
-        "review": ("studentAffairs.discipline.approve",),
+        "review": ("studentAffairs.discipline.appeal.review",),
         "model": "DisciplineAppeal", "id_key": "appealId",
     },
     "SECOND_CLASS_APPEAL": {
         "view": ("studentAffairs.activity.view",),
-        "review": ("studentAffairs.activity.manage", "studentAffairs.activity.credit.review"),
+        "review": ("studentAffairs.activity.confirm",),
         "model": "AffairsCreditAppeal", "id_key": "appealId",
     },
 }
