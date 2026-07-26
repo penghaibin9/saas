@@ -100,7 +100,7 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
 
     from app.modules.graduation.routers import (
         graduation, graduation_archive, graduation_archive_sensitive_router, graduation_batch,
-        graduation_defense_score, graduation_grade, graduation_guidance,
+        graduation_defense_score, graduation_extension, graduation_grade, graduation_guidance,
         graduation_material_sensitive_router, graduation_mentor, graduation_midterm,
         graduation_more, graduation_p0_guard, graduation_review, graduation_risk,
         graduation_sensitive_router, graduation_stats, graduation_student,
@@ -113,6 +113,12 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
+    # 扩展流程每个 endpoint 已显式 require_permission，再叠加教职工+模块授权；
+    # 不走旧 endpoint-name 映射，避免新角色动作遗漏后被错误归到只读权限。
+    api_router.include_router(
+        graduation_extension.router,
+        dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
+    )
     for r in (
         graduation, graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
