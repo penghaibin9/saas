@@ -5,7 +5,7 @@
     <view class="page-pad">
       <view class="card pt__batch" v-if="batches.length">
         <text class="pt__label">实习批次</text>
-        <picker class="pt__picker" mode="selector" :range="batchLabels" :value="batchIndex" @change="onBatch">
+        <picker class="pt__picker" mode="selector" :range="batchLabels" :value="batchIndex" :disabled="!!actingId" @change="onBatch">
           <view class="pt__pick-val">{{ batchLabels[batchIndex] || '请选择批次' }}<text class="pt__arrow">▾</text></view>
         </picker>
       </view>
@@ -28,11 +28,12 @@
               <MobileStatusTag :label="p.statusLabel" type="warning" />
             </view>
             <view class="pt__note" v-if="p.studentNote"><text class="flex-1 t-sm">{{ p.studentNote }}</text></view>
-            <view class="pt__evidence" v-if="p.evidenceFileId">
-              <text class="pt__file">学生已上传完成凭证</text>
-              <text class="pt__file-id">文件编号 {{ p.evidenceFileId }}</text>
-            </view>
+            <button v-if="p.evidenceFileId" class="pt__evidence" :disabled="previewingId === p.id" @click="previewEvidence(p)">
+              {{ previewingId === p.id ? '正在打开凭证…' : '查看学生完成凭证' }}
+            </button>
+            <text class="pt__missing" v-else>学生未上传完成凭证，请结合任务要求判断是否可确认。</text>
             <text class="pt__time" v-if="p.submittedAt">提交于 {{ fmt(p.submittedAt) }}</text>
+            <text class="pt__version">数据版本 v{{ p.version }}</text>
             <view class="pt__actions" v-if="canReview">
               <button class="pt__reject flex-1" :disabled="actingId === p.id" @click="review(p, 'REJECT')">退回修改</button>
               <button class="pt__approve flex-1" :disabled="actingId === p.id" @click="review(p, 'APPROVE')">确认完成</button>
@@ -47,13 +48,14 @@
 
 <script>
 import { teacherInternshipPlanTasks, teacherInternshipPlanTaskReview } from '@/services/internshipApi'
+import { openBusinessFile } from '@/services/fileApi'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { toast } from '@/utils/nav'
 
 export default {
   data() {
     return {
-      list: null, state: 'loading', actingId: '', batches: [], batchId: '', batchIndex: 0
+      list: null, state: 'loading', actingId: '', previewingId: '', batches: [], batchId: '', batchIndex: 0
     }
   },
   computed: {
@@ -83,15 +85,24 @@ export default {
       } catch (e) {
         this.list = []
         this.state = 'error'
+        toast((e && e.message) || '计划任务加载失败')
       } finally { if (done) done() }
     },
     async onBatch(e) {
+      if (this.actingId) return
       this.batchIndex = Number(e.detail.value)
       const batch = this.batches[this.batchIndex]
       const context = useInternshipContextStore()
       context.selectBatch(batch && batch.id)
       this.batchId = context.selectedBatchId
       await this.load()
+    },
+    async previewEvidence(item) {
+      if (!item.evidenceFileId || this.previewingId) return
+      this.previewingId = item.id
+      try { await openBusinessFile(item.evidenceFileId) }
+      catch (e) { toast((e && e.message) || '凭证打开失败') }
+      finally { this.previewingId = '' }
     },
     review(p, action) {
       if (!this.canReview || this.actingId) return
@@ -134,13 +145,14 @@ export default {
 .pt { display:flex;flex-direction:column;gap:var(--space-2); }
 .pt__sub { display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:2px; }
 .pt__note { background:var(--gray-50);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3); }
-.pt__evidence { display:flex;flex-direction:column;gap:2px;padding:var(--space-2);background:var(--success-50);border-radius:var(--radius-md); }
-.pt__file { font-size:var(--font-size-xs);color:var(--success-600); }
-.pt__file-id { font-size:10px;color:var(--text-tertiary);word-break:break-all; }
-.pt__time { font-size:var(--font-size-xs);color:var(--text-tertiary); }
+.pt__evidence { min-height:40px;padding:0 var(--space-3);border:1px solid var(--success-500);border-radius:var(--radius-md);background:var(--success-50);color:var(--success-700);font-size:var(--font-size-sm);text-align:left; }
+.pt__evidence::after { border:none; }
+.pt__missing { font-size:var(--font-size-xs);color:var(--warning-700); }
+.pt__time,.pt__version { font-size:var(--font-size-xs);color:var(--text-tertiary); }
 .pt__actions { display:flex;gap:var(--space-2);margin-top:var(--space-1); }
 .pt__reject,.pt__approve { min-height:var(--touch-target-min);border-radius:var(--radius-md);font-size:var(--font-size-md); }
 .pt__reject { border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600); }
 .pt__approve { border:none;background:var(--teacher-600);color:#fff; }
 .pt__reject::after,.pt__approve::after { border:none; }
+.pt__reject[disabled],.pt__approve[disabled],.pt__evidence[disabled] { opacity:.55; }
 </style>
