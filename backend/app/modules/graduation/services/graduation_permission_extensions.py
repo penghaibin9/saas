@@ -53,8 +53,8 @@ def install_graduation_permission_extensions() -> None:
     module = "graduation_archive_sensitive_router"
     _register(module, "graduationDesign.archive.view", "stats", "list_rows", "detail")
     _register(module, "graduationDesign.archive.export", "export_rows")
-    _register(module, "graduationDesign.archive.preview", "generate")
-    _register(module, "graduationDesign.archive.file", "submit", "file_record", "reject")
+    _register(module, "graduationDesign.archive.preview", "generate", "batch_generate_preview", "batch_file_preview")
+    _register(module, "graduationDesign.archive.file", "submit", "file_record", "reject", "batch_generate", "batch_file")
 
     module = "graduation_taskbook_sensitive_router"
     _register(module, "graduationDesign.taskbook.view", "stats", "list_rows", "detail")
