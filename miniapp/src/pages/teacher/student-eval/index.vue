@@ -47,8 +47,8 @@
 
           <view class="se__brief">
             <view><text>自评提交</text><text>{{ item.submitStatusLabel || '—' }}</text></view>
+            <view><text>指导意见</text><text>{{ item.hasAdvisorOpinion ? '已填写' : '未填写' }}</text></view>
             <view><text>学校审核</text><text>{{ item.reviewStatusLabel || '—' }}</text></view>
-            <view><text>记录版本</text><text>v{{ item.version }}</text></view>
           </view>
 
           <view class="se__next" :class="{ 'is-warning': item.reviewStatus === 'RETURNED' }">
@@ -142,8 +142,8 @@ export default {
     canAdvisor() { return this.context.can('internship.eval.advisor.manage') },
     canReview() { return this.context.can('internship.eval.self.review') },
     batchLabels() { return this.batches.map((x) => `${x.name} · ${x.status} · ${x.studentCount}人`) },
-    pendingAdvisorCount() { return this.list.filter((item) => item.reviewStatus === 'PENDING' && !item.advisorOpinion).length },
-    pendingReviewCount() { return this.list.filter((item) => item.submitStatus === 'SUBMITTED' && item.reviewStatus === 'PENDING' && !!item.advisorOpinion).length },
+    pendingAdvisorCount() { return this.list.filter((item) => item.submitStatus === 'SUBMITTED' && item.reviewStatus === 'PENDING' && !item.hasAdvisorOpinion).length },
+    pendingReviewCount() { return this.list.filter((item) => item.submitStatus === 'SUBMITTED' && item.reviewStatus === 'PENDING' && item.hasAdvisorOpinion).length },
     returnedCount() { return this.list.filter((item) => item.reviewStatus === 'RETURNED').length },
     summaryConclusion() {
       if (!this.list.length) return '当前没有需要办理的学生鉴定。'
@@ -169,7 +169,7 @@ export default {
     nextStepText(item) {
       if (item.reviewStatus === 'RETURNED') return '等待学生按学校意见修改并重新提交。'
       if (item.submitStatus !== 'SUBMITTED') return '等待学生完成并提交实习自评。'
-      if (!item.advisorOpinion) return this.canAdvisor ? '展开详情并填写指导教师意见。' : '等待指导教师填写意见。'
+      if (!item.hasAdvisorOpinion) return this.canAdvisor ? '展开详情并填写指导教师意见。' : '等待指导教师填写意见。'
       if (item.reviewStatus === 'PENDING') return this.canReview ? '展开详情核对材料并完成学校审核。' : '等待学校或学院授权角色审核。'
       return '鉴定已完成审核，可查看最终意见。'
     },
