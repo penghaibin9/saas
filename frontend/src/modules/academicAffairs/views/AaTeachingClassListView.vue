@@ -45,9 +45,9 @@
 
       <div v-if="rows.length" class="aa-summary-grid">
         <div><strong>{{ pagination.total }}</strong><span>教学班总数</span></div>
-        <div><strong>{{ activeCount }}</strong><span>当前使用中</span></div>
-        <div><strong>{{ lockedCount }}</strong><span>名单已锁定</span></div>
-        <div :class="{ 'is-danger': debtCount }"><strong>{{ debtCount }}</strong><span>尚无正式版本</span></div>
+        <div><strong>{{ activeCount }}</strong><span>当前页使用中</span></div>
+        <div><strong>{{ lockedCount }}</strong><span>当前页名单已锁定</span></div>
+        <div :class="{ 'is-danger': debtCount }"><strong>{{ debtCount }}</strong><span>当前页尚无正式版本</span></div>
       </div>
 
       <AppInlineAlert
@@ -72,7 +72,7 @@
           <div class="mp-cell-sub">{{ row.expectedStudents ?? 0 }}人</div>
         </template>
         <template #cell-status="{ row }"><AppStatusTag :status="row.status" dot /></template>
-        <template #cell-actions="{ row }"><button class="mp-link" @click="$router.push(`/admin/academic-affairs/teaching-classes/${row.teachingClassId}`)">查看名单与版本</button></template>
+        <template #cell-actions="{ row }"><button class="mp-link" @click="openDetail(row)">查看名单与版本</button></template>
       </DataTable>
     </div>
 
@@ -82,7 +82,7 @@
       type="warning"
       confirm-text="确认回填"
       require-reason
-      reason-label="回填说明（≥5字）"
+      reason-label="回填原因（≥5字）"
       :submitting="backfilling"
       @confirm="executeBackfill"
     />
@@ -123,6 +123,7 @@ export default {
   methods: {
     classTypeLabel(value) { return ({ ADMIN: '行政班', SELECTION: '选课班', MERGED: '合班', RETAKE: '重修班', LAYERED: '分层班' })[value] || value || '—' },
     primaryTeacher(row) { return (row.teachers || []).find(item => item.roleType === 'PRIMARY' && item.status === 'ACTIVE') },
+    openDetail(row) { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', teachingClassId: row.teachingClassId } }) },
     onPageChange(page) { this.pagination.page = page; this.load() },
     async loadTerms() {
       const [termsRes, currentRes] = await Promise.all([academicAffairsApi.getTerms({ page: 1, pageSize: 50 }), academicAffairsApi.getCurrentTerm()])
@@ -151,7 +152,7 @@ export default {
     },
     async executeBackfill({ reason }) {
       if (this.backfilling) return
-      if (!reason || reason.trim().length < 5) { toast.error('请填写不少于5字的回填说明'); return }
+      if (!reason || reason.trim().length < 5) { toast.error('请填写不少于5字的回填原因'); return }
       this.backfilling = true
       const res = await teachingClassApi.backfill(this.filters.termId, false)
       this.backfilling = false
