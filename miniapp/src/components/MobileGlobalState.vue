@@ -1,5 +1,8 @@
 <template>
   <view class="mobile-global-state">
+    <!-- 教师毕设四个高频页面共享同一批次上下文；组件会按当前 route 自行决定是否展示。 -->
+    <MobileGraduationBatchContext />
+
     <!-- ready：正常渲染业务内容 -->
     <slot v-if="state === 'ready'" />
 
