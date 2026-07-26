@@ -30,18 +30,24 @@ def _student(sno, tid=TID):
 
 
 def _seed(db_mode):
+    from uuid import uuid4
+
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     ids = {}
     try:
+        b = InternshipBatch(tenant_id=TID, batch_name="协议测试批次",
+                            batch_no=f"AGB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.flush()
+        ids["batch"] = b.id
         for no, name, adv, key in [("AG-A", "甲", "刘强", "a"), ("AG-B", "乙", "王芳", "b")]:
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
-                                 status="ONBOARD", risk_level="NONE")
+                                 status="ONBOARD", risk_level="NONE", batch_id=b.id)
             db.add(r); db.flush()
             ids[f"rec_{key}"] = r.id
         db.commit()
@@ -71,22 +77,34 @@ def test_full_three_party_flow(client, db_mode):
     gen = client.post(f"{INT}/agreements", json={"internshipId": str(ids["rec_a"])}, headers=h)
     assert gen.status_code == 200
     aid = gen.json()["data"]["id"]
+    ver = int(gen.json()["data"].get("version") or 0)
     # 重复生成被拒
     assert client.post(f"{INT}/agreements", json={"internshipId": str(ids["rec_a"])}, headers=h).status_code == 409
     # 下发 → 待学生确认
-    assert client.post(f"{INT}/agreements/{aid}/issue", headers=h).json()["data"]["status"] == "PENDING_STUDENT"
+    issued = client.post(f"{INT}/agreements/{aid}/issue", headers=h, json={"expectedVersion": ver}).json()
+    assert issued["data"]["status"] == "PENDING_STUDENT"
+    ver = issued["data"]["version"]
     # 学生确认 → 待企业确认
-    sc = client.post(f"/api/v1/mobile/internship/agreements/{aid}/confirm", json={"action": "CONFIRM"}, headers=_student("AG-A"))
+    sc = client.post(f"/api/v1/mobile/internship/agreements/{aid}/confirm",
+                     json={"action": "CONFIRM", "expectedVersion": ver}, headers=_student("AG-A"))
     assert sc.status_code == 200 and sc.json()["data"]["status"] == "PENDING_ENTERPRISE"
+    ver = sc.json()["data"]["version"]
     # 企业确认需扫描件：缺 file → 400
-    assert client.post(f"{INT}/agreements/{aid}/enterprise-confirm", json={"confirmBy": "企业HR"}, headers=h).status_code == 400
+    assert client.post(f"{INT}/agreements/{aid}/enterprise-confirm",
+                       json={"confirmBy": "企业HR", "expectedVersion": ver}, headers=h).status_code == 400
     # 带扫描件 → 待学校确认
-    ec = client.post(f"{INT}/agreements/{aid}/enterprise-confirm", json={"confirmBy": "企业HR", "fileId": fid}, headers=h)
+    ec = client.post(f"{INT}/agreements/{aid}/enterprise-confirm",
+                     json={"confirmBy": "企业HR", "fileId": fid, "expectedVersion": ver}, headers=h)
     assert ec.status_code == 200 and ec.json()["data"]["status"] == "PENDING_SCHOOL"
-    # 学校确认 → 生效
-    assert client.post(f"{INT}/agreements/{aid}/school-confirm", headers=h).json()["data"]["status"] == "EFFECTIVE"
+    ver = ec.json()["data"]["version"]
+    # 学校确认：仅学校管理员可执行（导师无此权限）
+    school = client.post(f"{INT}/agreements/{aid}/school-confirm", headers=_admin(client),
+                         json={"expectedVersion": ver}).json()
+    assert school["data"]["status"] == "EFFECTIVE", school
+    ver = school["data"]["version"]
     # 归档
-    assert client.post(f"{INT}/agreements/{aid}/archive", headers=h).json()["data"]["status"] == "ARCHIVED"
+    arch = client.post(f"{INT}/agreements/{aid}/archive", headers=h, json={"expectedVersion": ver}).json()
+    assert arch["data"]["status"] == "ARCHIVED"
     # 详情含附件 + 全链审计
     detail = client.get(f"{INT}/agreements/{aid}", headers=h).json()["data"]
     assert detail["attachment"]["fileName"] == "三方协议签署.pdf"
@@ -113,19 +131,24 @@ def test_owner_and_scope(client, db_mode):
     # 刘强 也给自己学生 A 建一个
     client.post(f"{INT}/agreements", json={"internshipId": str(ids["rec_a"])}, headers=_mentor("刘强"))
     # 数据范围：管理员看 2，刘强看 1
-    assert client.get(f"{INT}/agreements", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/agreements", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/agreements", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/agreements", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
 
 
 def test_staff_reject_pending(client, db_mode):
     ids = _seed(db_mode)
     h = _mentor("刘强")
-    aid = client.post(f"{INT}/agreements", json={"internshipId": str(ids["rec_a"])}, headers=h).json()["data"]["id"]
-    client.post(f"{INT}/agreements/{aid}/issue", headers=h)
+    created = client.post(f"{INT}/agreements", json={"internshipId": str(ids["rec_a"])}, headers=h).json()
+    aid = created["data"]["id"]
+    ver = int(created["data"].get("version") or 0)
+    issued = client.post(f"{INT}/agreements/{aid}/issue", headers=h, json={"expectedVersion": ver}).json()
+    ver = issued["data"]["version"]
     # 驳回需原因≥5字
-    assert client.post(f"{INT}/agreements/{aid}/reject", json={"reason": "no"}, headers=h).status_code == 400
-    ok = client.post(f"{INT}/agreements/{aid}/reject", json={"reason": "信息有误需重新生成"}, headers=h)
-    assert ok.status_code == 200 and ok.json()["data"]["status"] == "REJECTED"
+    assert client.post(f"{INT}/agreements/{aid}/reject",
+                       json={"reason": "no", "expectedVersion": ver}, headers=h).status_code == 400
+    ok = client.post(f"{INT}/agreements/{aid}/reject",
+                     json={"reason": "信息有误需重新生成", "expectedVersion": ver}, headers=h)
+    assert ok.status_code == 200 and ok.json()["data"]["status"] == "REJECTED", ok.json()
 
 
 def test_student_forbidden_on_pc(client, db_mode):
@@ -137,7 +160,7 @@ def test_student_forbidden_on_pc(client, db_mode):
 def test_export(client, db_mode):
     ids = _seed(db_mode)
     client.post(f"{INT}/agreements", json={"internshipId": str(ids["rec_a"])}, headers=_mentor("刘强"))
-    res = client.post(f"{INT}/agreements/export", headers=_admin(client))
+    res = client.post(f"{INT}/agreements/export", headers=_admin(client), params={"batchId": ids["batch"]})
     assert res.status_code == 200
     d = res.json()["data"]
     assert d["filename"].endswith(".xlsx") and d["rowCount"] == 1 and d["contentBase64"]
