@@ -165,11 +165,12 @@ export const studentApi = {
   enrollSelection: (selectionCourseId) => real.acadSelectionEnroll(selectionCourseId),
   dropSelection: (selectionCourseId) => real.acadSelectionDrop(selectionCourseId),
   getMySelections: (batchId) => real.acadSelectionMy(batchId),
-  // 缓考申请（真实接口，无 mock 兜底）
-  getMyExamSchedule: () => real.acadExamMy(),
-  getMyDeferOptions: () => real.acadExamDeferOptions(),
+  // 学生考试与缓考：切换到时区安全、本人名单校验的v2接口；旧接口保留兼容但不再由新页面调用。
+  getMyExamSchedule: () => realRequest('/mobile/academic/exam-v2/my'),
+  getMyDeferOptions: () => realRequest('/mobile/academic/exam-v2/defer-options'),
   getMyDeferrals: (status) => real.acadExamDeferMy(status),
-  applyDefer: (examCourseId, reasonType, reason) => real.acadExamDeferApply(examCourseId, reasonType, reason),
+  applyDefer: (examCourseId, reasonType, reason) =>
+    realRequest('/mobile/academic/exam-v2/defer/apply', { method: 'POST', data: { examCourseId, reasonType, reason } }),
   resubmitDefer: (deferId) => real.acadExamDeferResubmit(deferId),
   // 成绩认定/课程替代（学生自助，对标正方 3.16/3.27）
   getMyRecognition: () => real.acadRecognitionMy(),
