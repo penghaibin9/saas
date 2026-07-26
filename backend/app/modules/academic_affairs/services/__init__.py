@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import sys
 
-from . import academic_affairs_archive_policy_facade as academic_affairs_archive_service
+from . import academic_affairs_archive_selection_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
 from . import academic_affairs_exam_facade as academic_affairs_exam_service
@@ -18,7 +18,7 @@ from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_facade as academic_affairs_task_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
-# 归档路由和业务模块的完整路径导入统一进入语义策略层，避免内部写保护仍绕回旧规则。
+# 归档路由和业务模块的完整路径导入统一进入最终叠加策略层（含第10域选课名单）。
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
 # 普通教师创建考勤必须选择当前学期本人教学任务。
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
