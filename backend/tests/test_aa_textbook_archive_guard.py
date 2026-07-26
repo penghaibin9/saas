@@ -1,4 +1,4 @@
-"""教材学期写保护、异常关闭和第13归档域回归。"""
+"""教材学期写保护、库存容量、异常关闭和第13归档域回归。"""
 from types import SimpleNamespace
 
 
@@ -68,6 +68,20 @@ def test_textbook_input_helpers_dedupe_ids_and_reject_zero_quantity():
         SimpleNamespace(id=4, expected_qty="5"),
     ]
     assert _invalid_order_quantity_ids(rows) == [2, 3, 4]
+
+
+def test_distribution_capacity_counts_only_active_allocations():
+    from app.modules.academic_affairs.services.academic_affairs_textbook_roster_facade import (
+        _ACTIVE_ALLOCATION_STATUSES,
+        _distribution_shortage,
+    )
+
+    assert set(_ACTIVE_ALLOCATION_STATUSES) == {"PENDING", "RECEIVED", "EXCHANGED"}
+    # 到货30，已有20条有效占用，再发10人刚好；退领/排除不进入allocated。
+    assert _distribution_shortage(arrived=30, allocated=20, requested=10) == 0
+    assert _distribution_shortage(arrived=30, allocated=20, requested=11) == 1
+    # 历史脏数据已超占时，可用量按0处理，禁止继续发放。
+    assert _distribution_shortage(arrived=5, allocated=8, requested=2) == 2
 
 
 def test_textbook_model_term_chain_matches_current_schema():
