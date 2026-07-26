@@ -1,6 +1,6 @@
 /**
  * 毕业设计中心 · 毕设学生 API（真实后端）。
- * 学校端列表、统计、导出均绑定当前批次；跨批操作由后端二次校验。
+ * 学校端列表、统计、导出与答辩组选择均绑定当前批次；跨批操作由后端二次校验。
  */
 import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
@@ -124,12 +124,18 @@ export const gdStudentApi = {
     )
   },
   getConfirmedTopics() { return gdTopicApi.getAssignableTopics() },
-  getDefenseGroups() {
+  getDefenseGroups(params = {}) {
     return call(() =>
-      request('/graduation/defense-groups', { params: { page: 1, pageSize: 200 } }).then((d) =>
+      request('/graduation/defense-groups', {
+        params: withBatch({ page: 1, pageSize: 200, ...params })
+      }).then((d) =>
         (d.items || []).map((g) => ({
-          id: g.id, groupName: g.groupName, defenseDate: g.defenseDate, location: g.location,
-          studentCount: g.studentCount, published: g.published
+          id: g.id,
+          groupName: g.groupName,
+          defenseDate: g.date || g.defenseDate || '',
+          location: g.location,
+          studentCount: g.studentCount,
+          published: g.published
         }))
       )
     )
