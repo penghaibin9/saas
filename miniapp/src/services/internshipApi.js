@@ -58,6 +58,8 @@ export const teacherInternshipMakeups = (batchId) => {
   try { return realRequest(batchPath('/mobile/teacher/internship/context/makeups', batchId)) }
   catch (e) { return Promise.reject(e) }
 }
+export const teacherInternshipMakeupEvidenceViewed = (makeupId) =>
+  realRequest(`/mobile/teacher/internship/context/makeups/${enc(makeupId)}/evidence-viewed`, { method: 'POST' })
 export const teacherInternshipMakeupReview = (makeupId, body) =>
   realRequest(`/mobile/teacher/internship/context/makeups/${enc(makeupId)}/review`, { method: 'POST', data: body || {} })
 
@@ -65,6 +67,8 @@ export const teacherInternshipLeaves = (batchId) => {
   try { return realRequest(batchPath('/mobile/teacher/internship/context/leaves', batchId)) }
   catch (e) { return Promise.reject(e) }
 }
+export const teacherInternshipLeaveEvidenceViewed = (leaveId) =>
+  realRequest(`/mobile/teacher/internship/context/leaves/${enc(leaveId)}/evidence-viewed`, { method: 'POST' })
 export const teacherInternshipLeaveReview = (leaveId, body) =>
   realRequest(`/mobile/teacher/internship/context/leaves/${enc(leaveId)}/review`, { method: 'POST', data: body || {} })
 
