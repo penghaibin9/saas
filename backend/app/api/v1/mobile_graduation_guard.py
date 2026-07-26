@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends
 from app.core.exceptions import no_permission
 from app.core.response import success
 from app.core.security import get_current_user
+from app.modules.graduation.services import graduation_extension_safety_service as extension_safety_svc
 from app.modules.graduation.services import graduation_extension_service as extension_svc
 from app.modules.graduation.services.graduation_contract_bridge import install_contract_bridge
 from app.modules.graduation.services.graduation_material_temp_service import abandon_temporary_material
@@ -35,7 +36,7 @@ def graduation_taskbook_confirm_evidence(
 
 @router.get("/extensions/my", summary="本人优秀成果与延期答辩状态")
 def graduation_extensions_my(user=Depends(get_current_user)):
-    return success(extension_svc.my_extensions(_student(user)))
+    return success(extension_safety_svc.my_extensions(_student(user)))
 
 
 @router.post("/defense-delay/apply", summary="学生本人申请延期答辩")
