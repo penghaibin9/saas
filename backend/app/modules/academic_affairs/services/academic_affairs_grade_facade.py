@@ -20,11 +20,17 @@ from sqlalchemy import select
 from . import academic_affairs_grade_service as _legacy
 
 _LOG = logging.getLogger(__name__)
+# 显式业务覆盖顺序。分数绝不参与排序：正式更正/复查最高，清考/补考/重修是后续正式尝试，
+# 必须覆盖原正常考试。学校如采用“最高分/并存/覆盖”等其它制度，V2用规则快照替换本兼容表。
 _SOURCE_PRIORITY = {
-    "RECHECK": 70,
-    "CHANGE": 60,
-    "RECOGNIZED": 55,
-    "RECOGNITION": 55,
+    "CHANGE": 100,
+    "RECHECK": 95,
+    "CLEARANCE": 90,
+    "MAKEUP": 85,
+    "RETAKE": 80,
+    "RECOGNIZED": 75,
+    "RECOGNITION": 75,
+    "EXEMPTION": 75,
     "PUBLISH": 50,
     "MANUAL": 40,
     "LEGACY": 10,
