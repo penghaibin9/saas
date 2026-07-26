@@ -3,7 +3,7 @@
  * 所有学校端请求必须携带当前 batchId；旧标签页或缓存学生 ID 跨批时由后端 409 拒绝。
  */
 import { request } from '@/services/http/client'
-import { useGraduationBatchStore } from '@/modules/graduation/stores/graduationBatch'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
