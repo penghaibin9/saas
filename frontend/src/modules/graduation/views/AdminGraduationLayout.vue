@@ -27,7 +27,7 @@
       class="gd-scope-alert"
     />
     <GraduationBatchStrip v-if="ctx" class="gd-batch-bar" />
-    <router-view v-if="canRenderBusiness" :ctx="businessCtx" />
+    <router-view v-if="canRenderBusiness" :key="businessViewKey" :ctx="businessCtx" />
     <LoadingState v-else-if="loading" text="正在加载毕业设计中心…" />
     <EmptyState
       v-else-if="!scopeReady && ctx"
@@ -78,11 +78,18 @@ export default {
       return (this.ctx.tenantBrandConfig?.schoolName || '管理端') + ' · 管理端'
     },
     layoutCtx() {
-      // 布局壳可用静态壳；写权限与业务加载由 permissionReady / scopeReady 门禁
       return this.ctx
     },
     canRenderBusiness() {
       return !!(this.ctx && this.permissionReady && this.scopeReady)
+    },
+    /**
+     * 查重/评阅/答辩/成绩多个路由复用同一个 Vue 组件。
+     * 以 route name + defaultPanel 做 key，避免地址和菜单已切换但旧组件状态仍停在上一个业务页签。
+     * 不使用 fullPath，防止搜索、分页、选中项 query 变化导致整个页面无意义重建。
+     */
+    businessViewKey() {
+      return `${this.$route.name || this.$route.path}|${this.$route.meta?.defaultPanel || ''}`
     },
     businessCtx() {
       if (!this.ctx) return null
@@ -101,6 +108,15 @@ export default {
       handler(id) {
         const store = useGraduationBatchStore()
         store.ensureLoaded({ batchIdFromUrl: id || '', force: !store.initialized })
+      }
+    },
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        // 毕设中心只展示教务毕业资格镜像，不再提供人工“通过/不通过”裁决入口。
+        if (panel === 'grad-qual') {
+          router.replace({ query: { ...this.$route.query, panel: 'roster' } }).catch(() => {})
+        }
       }
     }
   },
@@ -128,7 +144,6 @@ export default {
       }
       this.ctx = res.data
       this.permissionReady = !!res.data.permissionReady
-      // 需要组织范围但未配置 → 不加载业务列表
       const needsScope = !!res.data.roleNeedsOrgScope
       const configured = res.data.scopeConfigured !== false
       this.scopeReady = !(needsScope && !configured)
