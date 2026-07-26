@@ -83,9 +83,9 @@
                 </div>
                 <label class="gd-check">
                   <input v-model="taskbookAck" type="checkbox" />
-                  我已阅读并确认任务书
+                  我已阅读并确认任务书 v{{ taskbook.taskbookVersion || '—' }}
                 </label>
-                <button class="sp-btn" :disabled="busy || !taskbookAck" @click="signTaskbook">签署确认</button>
+                <button class="sp-btn" :disabled="busy || !taskbookAck || !taskbook.taskbookVersion" @click="signTaskbook">签署确认</button>
               </template>
 
               <template v-else-if="step.key === 'topic'">
@@ -158,17 +158,32 @@
 
       <section v-if="hasPeerWork" class="gd-peer sp-panel">
         <h2>成果互查</h2>
-        <p class="sp-muted">完成学校分配的互查或整改任务后，进度会同步到管理端。</p>
+        <p class="sp-muted">任务绑定学校确认的正式定稿。请先下载并阅读材料，再提交互查意见。</p>
         <div v-for="p in (peer.toReview || [])" :key="'r-' + p.id" class="gd-peer__item">
           <header><strong>待互查 · {{ p.studentName || '同学' }}</strong><StatusTag :text="p.statusLabel || '待互查'" tone="warn" /></header>
+          <p class="sp-muted">评阅材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</p>
+          <p v-if="p.taskValid === false" class="gd-step__comment">{{ p.taskError || '任务未绑定有效正式定稿，请联系管理员重新分配。' }}</p>
+          <div v-if="p.attachmentsList?.length" class="gd-files">
+            <button v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file" :disabled="busy" @click="downloadMaterial(file)">
+              下载 {{ file.fileName || '定稿材料' }}
+            </button>
+          </div>
+          <p v-else-if="p.taskValid !== false" class="gd-step__comment">该定稿暂无可下载附件，请联系管理员核对文件状态。</p>
           <label>互查意见<textarea v-model.trim="peerOpinions[p.id]" placeholder="互查意见（至少 5 字）" maxlength="500" /></label>
-          <button class="sp-btn" :disabled="busy || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">提交互查意见</button>
+          <button class="sp-btn" :disabled="busy || p.taskValid === false || !p.attachmentsList?.length || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">提交互查意见</button>
         </div>
         <div v-for="p in (peer.myRectify || [])" :key="'x-' + p.id" class="gd-peer__item">
           <header><strong>需整改 · 互查人 {{ p.reviewerName || '—' }}</strong><StatusTag :text="p.statusLabel || '待整改'" tone="danger" /></header>
+          <p class="sp-muted">对应材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</p>
+          <p v-if="p.taskValid === false" class="gd-step__comment">{{ p.taskError || '任务未绑定有效正式定稿，请联系管理员重新分配。' }}</p>
+          <div v-if="p.attachmentsList?.length" class="gd-files">
+            <button v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file" :disabled="busy" @click="downloadMaterial(file)">
+              下载 {{ file.fileName || '定稿材料' }}
+            </button>
+          </div>
           <p v-if="p.opinion" class="gd-step__comment">互查意见：{{ p.opinion }}</p>
           <label>整改说明<textarea v-model.trim="peerNotes[p.id]" placeholder="整改说明（至少 5 字）" maxlength="500" /></label>
-          <button class="sp-btn" :disabled="busy || (peerNotes[p.id] || '').trim().length < 5" @click="submitPeerRectify(p.id)">提交整改说明</button>
+          <button class="sp-btn" :disabled="busy || p.taskValid === false || (peerNotes[p.id] || '').trim().length < 5" @click="submitPeerRectify(p.id)">提交整改说明</button>
         </div>
       </section>
       </template>
@@ -329,7 +344,6 @@ function topicBatchId() {
   return my.value.batchId || round.value?.batchId || ''
 }
 
-// 每个板块一个命名加载器：动作后只刷新受影响板块，也避免长数组位置解构错位。
 const sections = {
   my: async () => { my.value = await portalApi.domainMy('graduation') },
   taskbook: async () => { taskbook.value = await portalApi.graduationTaskbook() },
@@ -356,7 +370,6 @@ async function load() {
   error.value = ''
   const keys = Object.keys(sections)
   const failed = await refresh(keys)
-  // 单个接口故障只降级对应板块；全部失败才整页报错。
   if (failed.length === keys.length) {
     error.value = failed[0].reason?.message || '毕业设计数据加载失败'
   } else if (failed.length) {
@@ -406,10 +419,10 @@ function toggleTopic(id) {
 }
 
 async function signTaskbook() {
-  if (!taskbookAck.value) return
+  if (!taskbookAck.value || !taskbook.value.taskbookVersion) return
   busy.value = true
   try {
-    await portalApi.signGraduationTaskbook()
+    await portalApi.signGraduationTaskbook(taskbook.value.taskbookVersion)
     ui.notify('任务书已签署确认')
     expanded.value = ''
     taskbookAck.value = false
@@ -509,8 +522,9 @@ async function submitAppeal() {
 }
 
 async function submitPeer(pid) {
+  const task = (peer.value.toReview || []).find((item) => String(item.id) === String(pid))
   const opinion = (peerOpinions[pid] || '').trim()
-  if (opinion.length < 5) return
+  if (!task || task.taskValid === false || !(task.attachmentsList || []).length || opinion.length < 5) return
   busy.value = true
   try {
     await portalApi.submitGraduationPeer(pid, opinion)
@@ -521,8 +535,9 @@ async function submitPeer(pid) {
 }
 
 async function submitPeerRectify(pid) {
+  const task = (peer.value.myRectify || []).find((item) => String(item.id) === String(pid))
   const note = (peerNotes[pid] || '').trim()
-  if (note.length < 5) return
+  if (!task || task.taskValid === false || note.length < 5) return
   busy.value = true
   try {
     await portalApi.rectifyGraduationPeer(pid, note)
