@@ -6,8 +6,9 @@ from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.internship.services import (
     internship_audit_service as internship_audit,
+    internship_compliance_authoritative_service as compliance_eval,
     internship_compliance_notice_service as notice,
-    internship_compliance_service as compliance,
+    internship_compliance_service as compliance_admin,
     internship_compliance_template_service as tpl,
     internship_compliance_workbench_service as workbench,
     internship_consent_service as consent,
@@ -91,7 +92,8 @@ def templates(user=Depends(require_permission("internship.compliance.view"))):
 
 
 @router.post("/templates")
-def template_create(body: dict = Body(...), user=Depends(require_permission("internship.compliance.manage"))):
+def template_create(body: dict = Body(...),
+                    user=Depends(require_permission("internship.compliance.manage"))):
     return success(tpl.create_draft(body, user))
 
 
@@ -120,7 +122,8 @@ def inspection_action(iid: str, action: str, body: dict = Body(default={}),
     if normalized == "submit":
         return success(insp.submit(iid, user))
     return success(insp.review(
-        iid, normalized.upper(), body.get("comment", ""), body.get("validUntil"), user))
+        iid, normalized.upper(), body.get("comment", ""),
+        body.get("validUntil"), user))
 
 
 @router.post("/consents")
@@ -162,7 +165,7 @@ def safety_review(iid: str, body: dict = Body(...),
 @router.get("/batches/{batch_id}/stats")
 def batch_stats(batch_id: str,
                 user=Depends(require_permission("internship.compliance.view"))):
-    return success(compliance.batch_compliance_stats(batch_id, user))
+    return success(compliance_eval.batch_compliance_stats(batch_id, user))
 
 
 @router.post("/filings")
@@ -172,11 +175,13 @@ def filing_create(body: dict = Body(...),
 
 
 @router.post("/filings/{iid}/{level}/{action}")
-def filing_action(iid: str, level: str, action: str, body: dict = Body(default={}),
+def filing_action(iid: str, level: str, action: str,
+                  body: dict = Body(default={}),
                   user=Depends(require_permission("internship.filing.review"))):
     normalized = str(action or "").lower()
     if normalized == "submit":
-        return success(filing.submit(iid, user, expected_version=body.get("expectedVersion")))
+        return success(filing.submit(
+            iid, user, expected_version=body.get("expectedVersion")))
     return success(filing.review(
         iid, level.upper(), normalized.upper(), body.get("comment", ""), user,
         expected_version=body.get("expectedVersion")))
@@ -212,19 +217,20 @@ def emergency_action(iid: str, action: str, body: dict = Body(default={}),
 @router.get("/evaluate/{internship_id}")
 def evaluate(internship_id: str, operation: str = "ONBOARD",
              user=Depends(require_permission("internship.compliance.view"))):
-    return success(compliance.evaluate_internship_compliance(internship_id, operation, user))
+    return success(compliance_eval.evaluate_internship_compliance(
+        internship_id, operation, user))
 
 
 @router.post("/exemptions")
 def exemption(body: dict = Body(...),
               user=Depends(require_permission("internship.compliance.exempt.request"))):
-    return success(compliance.grant_exemption(body, user))
+    return success(compliance_admin.grant_exemption(body, user))
 
 
 @router.post("/exemptions/{exemption_id}/review")
 def exemption_review(exemption_id: str, body: dict = Body(...),
                      user=Depends(require_permission("internship.compliance.exempt.approve"))):
-    return success(compliance.review_exemption(exemption_id, body, user))
+    return success(compliance_admin.review_exemption(exemption_id, body, user))
 
 
 @router.post("/notices")
@@ -261,5 +267,7 @@ def package_download(package_id: str,
 
 
 @router.get("/audit-outbox/health")
-def audit_outbox_health(user=Depends(require_permission("internship.compliance.view"))):
+def audit_outbox_health(
+    user=Depends(require_permission("internship.compliance.view")),
+):
     return success(internship_audit.health_status())
