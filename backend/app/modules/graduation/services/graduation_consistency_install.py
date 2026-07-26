@@ -4,6 +4,7 @@
 - 开题批阅必须锁定开题行；
 - 成果提交必须先锁定学生，再锁定该生全部成果；
 - 选题变更锁定学生、申请与题目容量；
+- 答辩组编排与通知锁定组和学生；
 - 关键审计补齐稳定 actor；
 - 数据库唯一约束竞争统一转换为 409，而不是裸 500。
 """
@@ -129,10 +130,7 @@ def _locked_submit_final(gd_student_id, final_type, attachments=None) -> dict:
         ).order_by(GraduationFinal.id.desc()).with_for_update()).all()
         pending = next((row for row in existing if row.status == "PENDING_REVIEW"), None)
         if pending:
-            same = (
-                pending.final_type == final_type
-                and (pending.attachments_json or []) == attachment_ids
-            )
+            same = pending.final_type == final_type and (pending.attachments_json or []) == attachment_ids
             if same:
                 return {
                     "id": str(pending.id), "finalType": pending.final_type,
@@ -175,10 +173,12 @@ def install_consistency_guards() -> None:
     from app.modules.graduation.services.graduation_runtime_settings import install_runtime_settings
     from app.modules.graduation.services.graduation_audit_consistency import install_audit_consistency
     from app.modules.graduation.services.graduation_topic_change_consistency import install_topic_change_consistency
+    from app.modules.graduation.services.graduation_defense_group_consistency import install_defense_group_consistency
 
     install_runtime_settings()
     install_audit_consistency()
     install_topic_change_consistency()
+    install_defense_group_consistency()
     _INSTALLED = True
 
     from app.modules.graduation.services import (
@@ -193,7 +193,8 @@ def install_consistency_guards() -> None:
     gd.review_proposal = _conflict_guard(_locked_review_proposal)
     gd.submit_final = _conflict_guard(_locked_submit_final)
     for module, names in (
-        (gd, ("submit_proposal", "review_final")),
+        (gd, ("submit_proposal", "review_final", "create_defense_group", "update_defense_group",
+              "assign_defense_students", "unassign_defense_students", "publish_defense")),
         (rounds, ("submit_choices", "confirm_choice")),
         (review, ("submit_plagiarism", "review_dispute", "assign_review", "submit_review")),
         (defense, ("enter_score", "confirm_scores", "create_second_defense")),
