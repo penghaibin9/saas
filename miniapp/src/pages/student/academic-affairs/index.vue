@@ -103,6 +103,18 @@ const ENTRIES = [
 ]
 const COMMON_KEYS = new Set(['schedule', 'selection', 'transcript', 'exam', 'credits', 'status', 'graduation', 'registration'])
 
+function rowsOf(data) {
+  if (Array.isArray(data)) return data
+  return (data && (data.items || data.list)) || []
+}
+
+function localDateKey(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export default {
   data() {
     return {
@@ -120,7 +132,7 @@ export default {
         .sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
     },
     upcomingExam() {
-      const today = new Date().toISOString().slice(0, 10)
+      const today = localDateKey(new Date())
       return this.examItems.filter((x) => !x.examDate || x.examDate >= today)
         .sort((a, b) => String(a.examDate || '9999').localeCompare(String(b.examDate || '9999')))[0] || null
     }
@@ -152,10 +164,10 @@ export default {
         studentApi.getMySchedule(), studentApi.getMyExamSchedule(),
         studentApi.getMyWarnings(), studentApi.getMyEvaluationTasks()
       ])
-      if (results[0].status === 'fulfilled') this.scheduleItems = results[0].value.items || []
-      if (results[1].status === 'fulfilled') this.examItems = results[1].value.items || []
-      if (results[2].status === 'fulfilled') this.warningCount = Number(results[2].value.total || (results[2].value.items || []).length) || 0
-      if (results[3].status === 'fulfilled') this.evaluationCount = Number(results[3].value.total || (results[3].value.list || []).length) || 0
+      if (results[0].status === 'fulfilled') this.scheduleItems = rowsOf(results[0].value)
+      if (results[1].status === 'fulfilled') this.examItems = rowsOf(results[1].value)
+      if (results[2].status === 'fulfilled') this.warningCount = Number(results[2].value && results[2].value.total != null ? results[2].value.total : rowsOf(results[2].value).length) || 0
+      if (results[3].status === 'fulfilled') this.evaluationCount = Number(results[3].value && results[3].value.total != null ? results[3].value.total : rowsOf(results[3].value).length) || 0
       this.partialError = results.some((r) => r.status === 'rejected')
       this.state = 'ready'
     }
