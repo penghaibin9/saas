@@ -6,6 +6,11 @@ function requireBatch(batchId) {
   return value
 }
 
+function optionalBatch(path, batchId) {
+  const value = String(batchId || '').trim()
+  return value ? `${path}${path.includes('?') ? '&' : '?'}batchId=${encodeURIComponent(value)}` : path
+}
+
 /** 教师小程序：服务端权限 + 本人数据范围内批次上下文。 */
 export const teacherInternshipContext = () =>
   realRequest('/mobile/teacher/internship/context')
@@ -26,6 +31,10 @@ export const teacherInternshipScores = (batchId) => {
   } catch (e) { return Promise.reject(e) }
 }
 
+/** 学生本人：所选批次实习摘要；多条进行中记录时禁止服务端猜测。 */
+export const studentInternshipDashboard = (batchId = '') =>
+  realRequest(optionalBatch('/mobile/internship/context/my', batchId))
+
 /** 学生本人：后端唯一合规事实源，学生端禁止自行重新计算。 */
 export const studentInternshipCompliance = (operation = 'ONBOARD', batchId = '') => {
   const query = [`operation=${encodeURIComponent(operation || 'ONBOARD')}`]
@@ -45,11 +54,11 @@ export const studentInternshipConsentConfirm = (consentId, body) =>
 export const studentInternshipConsentReject = (consentId, body) =>
   realRequest(`/mobile/internship/consents/${consentId}/reject`, { method: 'POST', data: body || {} })
 
-/** 学生安全教育：课程、详情、开始、提交、承诺。 */
-export const studentInternshipSafetyCourses = () =>
-  realRequest('/mobile/internship/safety/courses')
-export const studentInternshipSafetyCompletions = () =>
-  realRequest('/mobile/internship/safety/completions')
+/** 学生安全教育：所选批次课程、详情、开始、提交、承诺。 */
+export const studentInternshipSafetyCourses = (batchId = '') =>
+  realRequest(optionalBatch('/mobile/internship/context/safety/courses', batchId))
+export const studentInternshipSafetyCompletions = (batchId = '') =>
+  realRequest(optionalBatch('/mobile/internship/context/safety/completions', batchId))
 export const studentInternshipSafetyCourseDetail = (courseId) =>
   realRequest(`/mobile/internship/safety/courses/${courseId}/detail`)
 export const studentInternshipSafetyStart = (courseId) =>
