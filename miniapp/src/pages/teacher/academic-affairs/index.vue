@@ -56,6 +56,7 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { normalizeError } from '@/services/request'
 import { go } from '@/utils/nav'
 
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7']
@@ -73,7 +74,12 @@ const ENTRIES = [
 ]
 
 function listOf(data) {
+  if (Array.isArray(data)) return data
   return (data && (data.items || data.list)) || []
+}
+
+function isExpectedForbidden(result) {
+  return result.status === 'rejected' && normalizeError(result.reason).kind === 'forbidden'
 }
 
 export default {
@@ -143,7 +149,7 @@ export default {
         this.state = 'error'
         return
       }
-      if (results[0].status === 'fulfilled') this.scheduleItems = results[0].value.items || []
+      if (results[0].status === 'fulfilled') this.scheduleItems = listOf(results[0].value)
       this.available = { schedule: true }
       this.counts = {}
       this.setResult('grade', results[1], true)
@@ -155,7 +161,7 @@ export default {
       this.setResult('defer', results[7], true)
       this.setResult('warning', results[8], true)
       this.setResult('workload', results[9], true)
-      this.partialError = results.some((r) => r.status === 'rejected')
+      this.partialError = results.some((r) => r.status === 'rejected' && !isExpectedForbidden(r))
       this.state = 'ready'
     }
   }
