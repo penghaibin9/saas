@@ -24,6 +24,7 @@ import GraduationExtensionPanel from './components/graduation/GraduationExtensio
 import { usePortalConfigStore } from './stores/portalConfig'
 import { useUiStore } from './stores/ui'
 import { useGraduationHealth } from './stores/graduationHealth'
+import './styles/graduation-usability.css'
 
 const cfg = usePortalConfigStore()
 const ui = useUiStore()
