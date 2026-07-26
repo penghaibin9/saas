@@ -3,7 +3,8 @@
 - 统一锁顺序：发放记录 → 发放批次 → 费用行；
 - 管理员签收、学生签收、退领和收款并发时不会重复应收或形成反向锁；
 - 库存口径与发放门禁一致：PENDING为待发预占，RECEIVED/EXCHANGED为已发占用，
-  RETURNED/EXCLUDED不占库存；可分配库存=累计到货-全部有效占用。
+  RETURNED/EXCLUDED不占库存；可分配库存=累计到货-全部有效占用；
+- 中间facade的旧发放/费用函数也强制指向最终安全实现，禁止直接导入旁路。
 """
 from __future__ import annotations
 
@@ -120,3 +121,6 @@ def textbook_stock(user):
 _term_layer._distribution_chain = _distribution_chain
 _term_layer._fee_chain = _fee_chain
 _legacy.textbook_stock = textbook_stock
+# final facade源码仍保留过渡期旧函数；运行时强制回指最终实现，封死直接导入旁路。
+_base._base.generate_distribution = _base.generate_distribution
+_base._base.mark_fee = _base.mark_fee
