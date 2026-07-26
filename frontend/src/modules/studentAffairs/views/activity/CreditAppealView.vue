@@ -138,7 +138,7 @@ export default {
       const value = Number(this.form.claimValue)
       if (!Number.isFinite(value) || value <= 0) return '主张数值必须大于0'
       if (value > 9999.99) return '主张数值不得超过9999.99'
-      if (Math.round(value * 100) !== value * 100) return '主张数值最多保留2位小数'
+      if (Math.abs(Math.round(value * 100) - value * 100) > 1e-8) return '主张数值最多保留2位小数'
       return ''
     },
     formValid() {
