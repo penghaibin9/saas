@@ -84,6 +84,17 @@ def teacher_batch_scores(
     return success({"list": items, "total": total, "batchId": str(batchId)})
 
 
+@router.get("/agreements", summary="教师当前批次待学校终审协议进度")
+def teacher_batch_agreements(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.agreement.view")),
+):
+    from app.modules.internship.services import internship_agreement_service as agreements
+    items, total = agreements.list_agreements(
+        1, 200, status="PENDING_SCHOOL", batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
 @router.get("/enterprise-evals", summary="教师当前批次企业评价列表")
 def teacher_batch_enterprise_evals(
     batchId: str = Query(..., min_length=1),
