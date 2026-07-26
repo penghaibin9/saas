@@ -159,8 +159,10 @@ def register_platform_routes(api_router: APIRouter) -> None:
 
     from app.modules.graduation.services.graduation_record_resolver import install_mobile_resolver
     from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
+    from app.modules.graduation.services.graduation_mobile_taskbook_bridge import install_mobile_taskbook_list_bridge
     install_mobile_resolver()
     install_mobile_stable_bridge()
+    install_mobile_taskbook_list_bridge()
     # 精确教师毕设 Router 必须在历史聚合 Router 之前注册，确保 batchId/分页/跨批门禁先命中。
     api_router.include_router(
         mobile_graduation_teacher_context.router,
