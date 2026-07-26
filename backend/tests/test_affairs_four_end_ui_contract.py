@@ -52,11 +52,15 @@ def test_credit_appeal_contract_matches_backend_numeric_rules():
 
 def test_teacher_dangerous_actions_have_nonempty_evidence_guards():
     mental = _read("miniapp/src/pages/teacher/affairs/mental/index.vue")
+    mental_pc = _read("frontend/src/modules/studentAffairs/views/mental/MentalCrisisView.vue")
     talk = _read("miniapp/src/pages/teacher/affairs/talk/index.vue")
     leave = _read("miniapp/src/pages/teacher/affairs-leave/index.vue")
     review = _read("miniapp/src/pages/teacher/affairs-review/index.vue")
     assert "确认升级为危机" in mental
     assert "确认关闭心理关注" in mental
+    assert "升级依据（5-300字）" in mental_pc
+    assert "message=\"升级后将生成正式风险中枢记录" in mental_pc
+    assert "升级说明（可空）" not in mental_pc
     assert "处理说明需5-300字" in talk
     assert "实际返校时间不能晚于当前时间" in leave
     assert "确认关闭风险" in review
