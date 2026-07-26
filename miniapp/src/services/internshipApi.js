@@ -31,6 +31,17 @@ export const teacherInternshipEnterpriseEvalResubmit = (evalId, body) =>
 export const teacherInternshipEnterpriseEvalReview = (evalId, body) =>
   realRequest(`/mobile/teacher/internship/context/enterprise-evals/${evalId}/review`, { method: 'POST', data: body || {} })
 
+export const teacherInternshipStudentEvals = (batchId) => {
+  try { const value = requireBatch(batchId); return realRequest(`/mobile/teacher/internship/context/student-evals?batchId=${encodeURIComponent(value)}`) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipStudentEvalDetail = (evalId) =>
+  realRequest(`/mobile/teacher/internship/context/student-evals/${evalId}`)
+export const teacherInternshipStudentEvalAdvisorComment = (evalId, body) =>
+  realRequest(`/mobile/teacher/internship/context/student-evals/${evalId}/advisor-comment`, { method: 'POST', data: body || {} })
+export const teacherInternshipStudentEvalReview = (evalId, body) =>
+  realRequest(`/mobile/teacher/internship/context/student-evals/${evalId}/review`, { method: 'POST', data: body || {} })
+
 /** 教师保险核验直接复用学校 PC 正式接口，权限、范围、版本契约完全同源。 */
 export const teacherInternshipInsurancePending = (batchId) => {
   try {
