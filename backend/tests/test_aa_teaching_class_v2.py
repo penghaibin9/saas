@@ -1,4 +1,6 @@
 """V2-02 独立教学班及名单版本回归。"""
+from importlib import util
+from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -35,10 +37,10 @@ def test_roster_hash_is_order_independent_and_deduplicated():
 def test_selection_validation_carries_batch_id(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as service
 
-    monkeypatch.setattr(service, "_legacy_validate_selection_lock", lambda _db, _batch: {
+    monkeypatch.setattr(service._base, "_legacy_validate_selection_lock", lambda _db, _batch: {
         "valid": True, "issues": [], "selectedRecordCount": 2, "taskStudentCounts": {"8": 2},
     })
-    result = service.validate_selection_lock(object(), SimpleNamespace(id=17))
+    result = service._base.validate_selection_lock(object(), SimpleNamespace(id=17))
 
     assert result["batchId"] == "17"
     assert result["valid"] is True
@@ -48,11 +50,11 @@ def test_locked_projection_calls_legacy_then_version_projection(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as service
 
     calls = []
-    monkeypatch.setattr(service, "_legacy_apply_locked_projection", lambda db, validation: calls.append(("legacy", db, validation["batchId"])))
-    monkeypatch.setattr(service, "project_selection_batch_locked", lambda db, batch_id: calls.append(("v2", db, str(batch_id))))
+    monkeypatch.setattr(service._base, "_legacy_apply_locked_projection", lambda db, validation: calls.append(("legacy", db, validation["batchId"])))
+    monkeypatch.setattr(service._base, "project_selection_batch_locked", lambda db, batch_id: calls.append(("v2", db, str(batch_id))))
 
     db = object()
-    service.apply_locked_roster_projection(db, {"batchId": "9", "taskStudentCounts": {"3": 10}})
+    service._base.apply_locked_roster_projection(db, {"batchId": "9", "taskStudentCounts": {"3": 10}})
 
     assert calls == [("legacy", db, "9"), ("v2", db, "9")]
 
@@ -61,6 +63,12 @@ def test_public_roster_resolver_and_task_service_use_v2_layers():
     from app.modules.academic_affairs import services
     from app.modules.academic_affairs.services import academic_affairs_teaching_roster_service as roster_service
 
+    assert services.academic_affairs_teaching_class_service.__name__.endswith(
+        "academic_affairs_teaching_class_lock_service"
+    )
+    assert services.academic_affairs_teaching_class_service._base.__name__.endswith(
+        "academic_affairs_teaching_class_service"
+    )
     assert roster_service.resolve_teaching_task_roster.__module__.endswith(
         "academic_affairs_teaching_class_service"
     )
@@ -84,9 +92,21 @@ def test_teaching_class_router_exposes_list_detail_and_backfill():
     assert "/academic-affairs/teaching-classes/actions/backfill" in paths
 
 
-def test_0127_migration_is_single_line_successor():
-    import importlib
+def test_academic_affairs_main_router_mounts_teaching_class_routes():
+    from app.modules.academic_affairs.routers import academic_affairs
 
-    migration = importlib.import_module("alembic.versions.0127_aa_teaching_class_roster")
+    paths = {route.path for route in academic_affairs.router.routes}
+    assert "/academic-affairs/teaching-classes" in paths
+    assert "/academic-affairs/teaching-classes/{teaching_class_id}" in paths
+    assert "/academic-affairs/teaching-classes/actions/backfill" in paths
+
+
+def test_0127_migration_is_single_line_successor():
+    migration_path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0127_aa_teaching_class_roster.py"
+    spec = util.spec_from_file_location("aa_migration_0127", migration_path)
+    assert spec and spec.loader
+    migration = util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
     assert migration.revision == "0127_aa_teaching_class_roster"
     assert migration.down_revision == "0126_aa_grade_task_uniqueness_guard"
