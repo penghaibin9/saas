@@ -16,6 +16,7 @@ from . import academic_affairs_grade_term_facade as academic_affairs_grade_servi
 from . import academic_affairs_makeup_facade as academic_affairs_makeup_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
 from . import academic_affairs_selection_facade as academic_affairs_selection_service
+from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_security_facade as academic_affairs_task_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
@@ -34,6 +35,8 @@ sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_ma
 sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_schedule_service
 # 选课锁定前必须形成可复核的正式教学任务名单。
 sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
+# 选课轮次新建、开关轮和摇号全部执行所属学期写保护。
+sys.modules[f"{__name__}.academic_affairs_selection_round_service"] = academic_affairs_selection_round_service
 # 教学任务生成运行时完整路径导入统计范围函数；统一切到空范围fail-closed版本。
 sys.modules[f"{__name__}.academic_affairs_stats_service"] = academic_affairs_stats_service
 # 教学任务批次、明细、确认链和管理数据范围统一进入最终安全工作台facade。
