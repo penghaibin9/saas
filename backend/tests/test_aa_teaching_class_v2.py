@@ -1,5 +1,5 @@
 """V2-02 独立教学班及名单版本回归。"""
-from importlib import util
+from importlib import import_module, util
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -185,13 +185,11 @@ def test_teaching_class_router_exposes_list_detail_backfill_and_version_flow():
 
 
 def test_teaching_class_list_keeps_items_and_list_compatibility():
-    from app.modules.academic_affairs.routers.teaching_class_router import teaching_class_list
-    from app.modules.academic_affairs.routers import teaching_class_router as module
-
+    module = import_module("app.modules.academic_affairs.routers.teaching_class_router")
     original = module.query_service.list_teaching_classes
     module.query_service.list_teaching_classes = lambda *_args, **_kwargs: ([{"teachingClassId": "1"}], 1)
     try:
-        response = teaching_class_list(page=1, pageSize=30, user={})
+        response = module.teaching_class_list(page=1, pageSize=30, user={})
     finally:
         module.query_service.list_teaching_classes = original
 
