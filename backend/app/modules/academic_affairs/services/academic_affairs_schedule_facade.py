@@ -55,6 +55,36 @@ def _enrolled_items(db, student_id, batch_id):
     return out
 
 
+def merge_student_schedule_items(base_items, enrolled_items):
+    """同一课表项只返回一次；若同时命中行政班和选课，保留选课来源解释。"""
+    merged = {}
+    anonymous_index = 0
+    for row in list(base_items or []) + list(enrolled_items or []):
+        item_id = str(row.get("itemId") or "").strip()
+        if item_id:
+            key = f"id:{item_id}"
+        else:
+            # 历史脏数据没有itemId时不得全部压成同一个空键，使用完整排课事实去重。
+            key = "fact:" + "|".join(str(row.get(field) or "") for field in (
+                "weekday", "slotNo", "startWeek", "endWeek", "weekParity",
+                "courseName", "teacherKey", "classroom",
+            ))
+            if key == "fact:|||||||":
+                anonymous_index += 1
+                key = f"anonymous:{anonymous_index}"
+        merged[key] = row
+
+    return sorted(
+        merged.values(),
+        key=lambda row: (
+            int(row.get("weekday") or 0),
+            int(row.get("slotNo") or 0),
+            int(row.get("startWeek") or 0),
+            str(row.get("courseName") or ""),
+        ),
+    )
+
+
 def student_view(batch_id, user, student_id):
     """行政班课表 + 本人LOCKED选课，同一批次内合并并去重。"""
     from app.models import AaScheduleItem, StudentProfile
@@ -73,22 +103,6 @@ def student_view(batch_id, user, student_id):
             if student.class_id else []
         )
         enrolled_items = _enrolled_items(db, student.id, batch_id)
-
-        merged = {}
-        for row in base_items:
-            merged[str(row.get("itemId") or "")] = row
-        for row in enrolled_items:
-            # 同一个课表项同时由行政班和选课命中时只展示一次；选课来源更能解释本人为何可见。
-            merged[str(row.get("itemId") or "")] = row
-
-        items = sorted(
-            merged.values(),
-            key=lambda row: (
-                int(row.get("weekday") or 0),
-                int(row.get("slotNo") or 0),
-                int(row.get("startWeek") or 0),
-                str(row.get("courseName") or ""),
-            ),
-        )
+        items = merge_student_schedule_items(base_items, enrolled_items)
         note = "" if student.class_id else "学生无行政班归属；仅展示已锁定选课课程"
         return {"items": items, "note": note}
