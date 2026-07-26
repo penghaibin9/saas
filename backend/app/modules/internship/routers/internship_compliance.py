@@ -1,4 +1,4 @@
-"""岗位实习 P2 合规、准入与证据包 API。"""
+"""岗位实习 P2 合规、准入、办理工作台与证据包 API。"""
 from fastapi import APIRouter, Body, Depends
 from fastapi.responses import FileResponse
 
@@ -9,16 +9,80 @@ from app.modules.internship.services import (
     internship_compliance_notice_service as notice,
     internship_compliance_service as compliance,
     internship_compliance_template_service as tpl,
+    internship_compliance_workbench_service as workbench,
     internship_consent_service as consent,
+    internship_enterprise_eval_service as enterprise_eval,
     internship_enterprise_inspection_service as insp,
     internship_evidence_package_service as evidence,
     internship_incident_service as incident,
+    internship_insurance_service as insurance,
     internship_safety_authority_service as safety_authority,
     internship_safety_service as safety,
     internship_special_filing_service as filing,
+    internship_student_eval_service as student_eval,
 )
 
 router = APIRouter(prefix="/internship/compliance", tags=["岗位实习·合规"])
+
+
+@router.get("/workbench/{batch_id}")
+def compliance_workbench(
+    batch_id: str,
+    user=Depends(require_permission("internship.compliance.view")),
+):
+    return success(workbench.get_workbench(batch_id, user))
+
+
+@router.post("/workbench/enterprise-evals/{eval_id}/review")
+def workbench_enterprise_eval_review(
+    eval_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.enterprise.review")),
+):
+    payload = body or {}
+    return success(enterprise_eval.review(
+        user, eval_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "",
+        expected_version=payload.get("expectedVersion")),
+        message="企业评价审核完成")
+
+
+@router.post("/workbench/student-evals/{eval_id}/advisor-comment")
+def workbench_student_eval_advisor_comment(
+    eval_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.advisor.manage")),
+):
+    return success(student_eval.advisor_comment(user, eval_id, body or {}),
+                   message="指导意见已保存")
+
+
+@router.post("/workbench/student-evals/{eval_id}/review")
+def workbench_student_eval_review(
+    eval_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.self.review")),
+):
+    payload = body or {}
+    return success(student_eval.review(
+        user, eval_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "",
+        expected_version=payload.get("expectedVersion")),
+        message="学生鉴定审核完成")
+
+
+@router.post("/workbench/insurances/{insurance_id}/verify")
+def workbench_insurance_verify(
+    insurance_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.insurance.verify")),
+):
+    payload = body or {}
+    return success(insurance.verify_insurance(
+        insurance_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "",
+        expected_version=payload.get("expectedVersion"), user=user),
+        message="保险核验完成")
 
 
 @router.get("/templates")
