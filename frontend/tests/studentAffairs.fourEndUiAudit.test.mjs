@@ -66,12 +66,18 @@ test('dorm approvals expose source and target beds and obey actions', () => {
 
 test('teacher high-risk actions require evidence and confirmation', () => {
   const mental = read('miniapp/src/pages/teacher/affairs/mental/index.vue')
+  const mentalPc = read('frontend/src/modules/studentAffairs/views/mental/MentalCrisisView.vue')
   const talk = read('miniapp/src/pages/teacher/affairs/talk/index.vue')
   const leave = read('miniapp/src/pages/teacher/affairs-leave/index.vue')
   const review = read('miniapp/src/pages/teacher/affairs-review/index.vue')
   assert.match(mental, /升级原因/)
   assert.match(mental, /确认升级为危机/)
   assert.match(mental, /确认关闭心理关注/)
+  assert.match(mentalPc, /升级依据（5-300字）/)
+  assert.match(mentalPc, /message="升级后将生成正式风险中枢记录/)
+  assert.match(mentalPc, /allowedActions/)
+  assert.doesNotMatch(mentalPc, /升级说明（可空）/)
+  assert.doesNotMatch(mentalPc, /description="升级后将自动生成风险中枢记录/)
   assert.match(talk, /followContent\.trim\(\)\.length < 5/)
   assert.match(talk, /确认办结谈话/)
   assert.match(leave, /YYYY-MM-DD HH:mm/)
