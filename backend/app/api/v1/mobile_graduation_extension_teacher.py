@@ -8,6 +8,7 @@ from app.core.exceptions import AppException, not_found
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.models.graduation_extension import GraduationDefenseDelay
+from app.modules.graduation.services import graduation_extension_safety_service as safety_svc
 from app.modules.graduation.services import graduation_extension_service as svc
 from app.services.db_service import _tid, session
 
@@ -20,7 +21,7 @@ def teacher_graduation_delay_pending(
     pageSize: int = Query(20, ge=1, le=100),
     user=Depends(require_permission("graduationDesign.defense.view")),
 ):
-    items, total = svc.list_delays(
+    items, total = safety_svc.list_delays(
         batch_id=batchId, status="PENDING_ADVISOR", page=page, page_size=pageSize,
     )
     return success(paginate(items, total, page, pageSize))
