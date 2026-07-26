@@ -35,22 +35,31 @@ def _student():
 
 def _seed(db_mode):
     """两名学生 + 两条实习记录：advisor=刘强 / advisor=王芳；外租户一条（跨租户不可见）。"""
+    from uuid import uuid4
+
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     ids = {}
     try:
-        for tid, no, name, adv, key in [
-            (TID, "SCOPE-A", "甲同学", "刘强", "a"),
-            (TID, "SCOPE-B", "乙同学", "王芳", "b"),
-            (OTHER_TID, "SCOPE-X", "外校生", "刘强", "x"),
+        b = InternshipBatch(tenant_id=TID, batch_name="数据范围测试批次",
+                            batch_no=f"SCOPEB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.flush()
+        ids["batch"] = b.id
+        ob = InternshipBatch(tenant_id=OTHER_TID, batch_name="外租户批次",
+                             batch_no=f"SCOPEBX-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(ob); db.flush()
+        for tid, no, name, adv, key, bid in [
+            (TID, "SCOPE-A", "甲同学", "刘强", "a", b.id),
+            (TID, "SCOPE-B", "乙同学", "王芳", "b", b.id),
+            (OTHER_TID, "SCOPE-X", "外校生", "刘强", "x", ob.id),
         ]:
             s = StudentProfile(tenant_id=tid, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
             r = InternshipRecord(tenant_id=tid, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
-                                 status="ONBOARD", risk_level="NONE",
+                                 status="ONBOARD", risk_level="NONE", batch_id=bid,
                                  intern_start_date=datetime(2026, 3, 2))
             db.add(r); db.flush()
             ids[key] = r.id
@@ -61,19 +70,19 @@ def _seed(db_mode):
 
 
 def test_admin_sees_all(client, db_mode):
-    _seed(db_mode)
-    body = client.get(BASE, headers=_admin(client)).json()
+    ids = _seed(db_mode)
+    body = client.get(BASE, headers=_admin(client), params={"batchId": ids["batch"]}).json()
     assert body["code"] == 0
     # 管理员看本租户全校（2 条，不含外租户）
     assert body["data"]["total"] == 2
 
 
 def test_mentor_sees_only_own(client, db_mode):
-    _seed(db_mode)
-    liu = client.get(BASE, headers=_mentor("刘强")).json()
+    ids = _seed(db_mode)
+    liu = client.get(BASE, headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()
     assert liu["data"]["total"] == 1
     assert liu["data"]["items"][0]["advisorName"] == "刘强"
-    wang = client.get(BASE, headers=_mentor("王芳")).json()
+    wang = client.get(BASE, headers=_mentor("王芳"), params={"batchId": ids["batch"]}).json()
     assert wang["data"]["total"] == 1
     assert wang["data"]["items"][0]["advisorName"] == "王芳"
 
@@ -98,9 +107,10 @@ def test_unauthenticated_401(client):
 
 
 def test_cross_tenant_invisible(client, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     # 本租户管理员看不到外租户那条（外校生 SCOPE-X）
-    body = client.get(BASE + "?keyword=外校生", headers=_admin(client)).json()
+    body = client.get(BASE, headers=_admin(client),
+                      params={"keyword": "外校生", "batchId": ids["batch"]}).json()
     assert body["data"]["total"] == 0
 
 
@@ -112,17 +122,23 @@ INT = "/api/v1/internship"
 def _seed_full(db_mode):
     """记录 A(刘强)/B(王芳) 各挂 1 条 周报待批 / 打卡异常待核实 / 风险待处理 / 意向。"""
     from datetime import datetime
+    from uuid import uuid4
+
     from app.db.session import get_sessionmaker
-    from app.models import (AttendanceException, InternshipIntention, InternshipRecord,
-                            RiskRecord, StudentProfile, WeeklyReport)
+    from app.models import (AttendanceException, InternshipBatch, InternshipIntention,
+                            InternshipRecord, RiskRecord, StudentProfile, WeeklyReport)
     db = get_sessionmaker()()
     try:
+        b = InternshipBatch(tenant_id=TID, batch_name="数据范围全量测试批次",
+                            batch_no=f"SCOPEFB-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
+        db.add(b); db.flush()
+        bid = b.id
         for no, name, adv in [("FULL-A", "甲", "刘强"), ("FULL-B", "乙", "王芳")]:
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
-                                 status="ONBOARD", risk_level="HIGH")
+                                 status="ONBOARD", risk_level="HIGH", batch_id=bid)
             db.add(r); db.flush()
             db.add(AttendanceException(tenant_id=TID, internship_id=r.id, exception_type="OUT_OF_RANGE",
                                        exception_date=datetime.utcnow(), status="PENDING_HANDLE"))
@@ -131,52 +147,55 @@ def _seed_full(db_mode):
             db.add(RiskRecord(tenant_id=TID, internship_id=r.id, risk_code="INT-R07",
                               risk_title="打卡异常", risk_level="HIGH", source_module="system",
                               status="PENDING_HANDLE"))
-            db.add(InternshipIntention(tenant_id=TID, record_id=r.id, student_id=s.id, status="SUBMITTED"))
+            db.add(InternshipIntention(tenant_id=TID, record_id=r.id, student_id=s.id,
+                                       batch_id=bid, status="SUBMITTED"))
         db.commit()
+        return bid
     finally:
         db.close()
 
 
 def test_dashboard_scope(client, db_mode):
-    _seed_full(db_mode)
-    adm = client.get(f"{INT}/dashboard", headers=_admin(client)).json()["data"]
-    liu = client.get(f"{INT}/dashboard", headers=_mentor("刘强")).json()["data"]
+    bid = _seed_full(db_mode)
+    adm = client.get(f"{INT}/dashboard", headers=_admin(client), params={"batchId": bid}).json()["data"]
+    liu = client.get(f"{INT}/dashboard", headers=_mentor("刘强"), params={"batchId": bid}).json()["data"]
     amap = {s["label"]: s["value"] for s in adm["stats"]}
     lmap = {s["label"]: s["value"] for s in liu["stats"]}
     # 管理员：待批阅周报/待处理异常/风险各 2；刘强：各 1（仅本人指导）
     assert amap["待批阅周报"] == "2" and lmap["待批阅周报"] == "1"
     assert amap["待处理打卡异常"] == "2" and lmap["待处理打卡异常"] == "1"
-    assert amap["风险学生"] == "2" and lmap["风险学生"] == "1"
+    # 看板卡片标签已从"风险学生"改为"开放风险"，口径不变
+    assert amap["开放风险"] == "2" and lmap["开放风险"] == "1"
 
 
 def test_weekly_list_scope(client, db_mode):
-    _seed_full(db_mode)
-    assert client.get(f"{INT}/reports", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/reports", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    bid = _seed_full(db_mode)
+    assert client.get(f"{INT}/reports", headers=_admin(client), params={"batchId": bid}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/reports", headers=_mentor("刘强"), params={"batchId": bid}).json()["data"]["total"] == 1
 
 
 def test_exception_list_scope(client, db_mode):
-    _seed_full(db_mode)
-    assert client.get(f"{INT}/exceptions", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/exceptions", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    bid = _seed_full(db_mode)
+    assert client.get(f"{INT}/exceptions", headers=_admin(client), params={"batchId": bid}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/exceptions", headers=_mentor("刘强"), params={"batchId": bid}).json()["data"]["total"] == 1
 
 
 def test_risk_list_scope(client, db_mode):
-    _seed_full(db_mode)
-    assert client.get(f"{INT}/risks", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/risks", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    bid = _seed_full(db_mode)
+    assert client.get(f"{INT}/risks", headers=_admin(client), params={"batchId": bid}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/risks", headers=_mentor("刘强"), params={"batchId": bid}).json()["data"]["total"] == 1
 
 
 def test_match_intentions_scope(client, db_mode):
-    _seed_full(db_mode)
-    assert client.get(f"{INT}/match/intentions", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/match/intentions", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    bid = _seed_full(db_mode)
+    assert client.get(f"{INT}/match/intentions", headers=_admin(client), params={"batchId": bid}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/match/intentions", headers=_mentor("刘强"), params={"batchId": bid}).json()["data"]["total"] == 1
 
 
 def test_legacy_students_list_scope(client, db_mode):
-    _seed_full(db_mode)
-    assert client.get(f"{INT}/students", headers=_admin(client)).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/students", headers=_mentor("刘强")).json()["data"]["total"] == 1
+    bid = _seed_full(db_mode)
+    assert client.get(f"{INT}/students", headers=_admin(client), params={"batchId": bid}).json()["data"]["total"] == 2
+    assert client.get(f"{INT}/students", headers=_mentor("刘强"), params={"batchId": bid}).json()["data"]["total"] == 1
 
 
 def test_service_endpoints_student_403(client, db_mode):
@@ -190,13 +209,17 @@ def test_college_scope_derives_missing_college_id(client, db_mode):
 
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
-    from app.models import (College, InternshipIntention, InternshipRecord, Major, SchoolClass,
-                            StudentProfile, TeacherStudentScope, WeeklyReport)
+    from app.models import (College, InternshipBatch, InternshipIntention, InternshipRecord, Major,
+                            SchoolClass, StudentProfile, TeacherStudentScope, WeeklyReport)
     from app.modules.internship.services import internship_match_service as match_svc
     from app.modules.internship.services import internship_service as ix_svc
 
     db = get_sessionmaker()()
     try:
+        batch = InternshipBatch(tenant_id=TID, batch_name="学院范围测试批次",
+                                batch_no="IXSCOPEB-001", status="RUNNING", planned_count=5)
+        db.add(batch); db.flush()
+        bid = batch.id
         col = College(tenant_id=TID, college_name="IX软件学院", code="IX-SOFT")
         db.add(col); db.flush()
         maj = Major(tenant_id=TID, college_id=col.id, major_name="IX软件技术", code="IX-ST")
@@ -212,14 +235,14 @@ def test_college_scope_derives_missing_college_id(client, db_mode):
         rec = InternshipRecord(
             tenant_id=TID, student_id=stu.id, advisor_name="外院导师",
             enterprise_name="测试企业", position_name="实习生",
-            status="ONBOARD", risk_level="NONE",
+            status="ONBOARD", risk_level="NONE", batch_id=bid,
             intern_start_date=datetime(2026, 3, 2))
         db.add(rec); db.flush()
         wr = WeeklyReport(
             tenant_id=TID, internship_id=rec.id, week_number=1, word_count=800,
             report_version=1, submitted_at=datetime.utcnow(), status="PENDING_REVIEW")
         intent = InternshipIntention(
-            tenant_id=TID, record_id=rec.id, student_id=stu.id, status="SUBMITTED")
+            tenant_id=TID, record_id=rec.id, student_id=stu.id, batch_id=bid, status="SUBMITTED")
         db.add_all([wr, intent])
         db.add(TeacherStudentScope(
             tenant_id=TID, teacher_key="ix_college_scope", teacher_name="学院范围测",
@@ -268,7 +291,8 @@ def test_college_scope_derives_missing_college_id(client, db_mode):
         "userId": "u_ix_college_scope", "realName": "学院范围测", "userType": "TEACHER",
         "tid": "x", "tenantId": str(TID), "activeContextId": "ctx_ix_college_scope",
         "currentRoleCode": "COLLEGE_ADMIN", "clientType": "PC"})}
-    reports = client.get(f"{INT}/reports?keyword=缺学院生", headers=hdr).json()
+    reports = client.get(f"{INT}/reports", headers=hdr, params={"keyword": "缺学院生", "batchId": bid}).json()
     assert reports["code"] == 0 and reports["data"]["total"] >= 1
-    intentions = client.get(f"{INT}/match/intentions?keyword=缺学院生", headers=hdr).json()
+    intentions = client.get(f"{INT}/match/intentions", headers=hdr,
+                            params={"keyword": "缺学院生", "batchId": bid}).json()
     assert intentions["code"] == 0 and intentions["data"]["total"] >= 1
