@@ -10,6 +10,7 @@
       </div>
       <button type="button" @click="retryGraduation">重新加载</button>
     </section>
+    <GraduationExtensionPanel v-if="showGraduationPanel" />
     <router-view />
     <div v-if="ui.toast" class="sp-toast">{{ ui.toast }}</div>
   </div>
@@ -18,6 +19,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import GraduationExtensionPanel from './components/graduation/GraduationExtensionPanel.vue'
 import { usePortalConfigStore } from './stores/portalConfig'
 import { useUiStore } from './stores/ui'
 import { useGraduationHealth } from './stores/graduationHealth'
@@ -29,13 +31,11 @@ const router = useRouter()
 const health = useGraduationHealth()
 const graduationErrors = health.items
 const primary = computed(() => cfg.brand?.primaryColor || '#1677ff')
-const showGraduationHealth = computed(() =>
-  String(route.path || '').includes('/graduation') && graduationErrors.value.length > 0
-)
+const showGraduationPanel = computed(() => String(route.path || '').includes('/graduation'))
+const showGraduationHealth = computed(() => showGraduationPanel.value && graduationErrors.value.length > 0)
 
 function retryGraduation() {
   health.clear()
-  // 当前毕业设计工作台会重新执行所有分板块真实请求，避免只刷新壳不刷新业务数据。
   router.go(0)
 }
 </script>
