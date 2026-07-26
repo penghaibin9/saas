@@ -4,6 +4,9 @@
 """
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 
@@ -81,9 +84,8 @@ def test_unknown_teacher_mobile_read_and_write_permissions_are_fail_closed():
         )
         assert "__AFFAIRS_MOBILE_WRITE_NOT_REGISTERED__" in required
 
-    # 真实总览路径仍使用冻结的总览查看权限。
     assert contract._teacher_permissions(
-        "/api/v1/mobile/teacher/affairs", "GET"
+        "/api/v1/mobile/teacher/affairs", "GET",
     ) == ("studentAffairs.dashboard.view",)
 
 
@@ -112,5 +114,60 @@ def test_terminal_guard_rejects_unregistered_mounted_teacher_read_and_write_rout
     def unsafe_write():
         return {"ok": True}
 
-    with pytest.raises(RuntimeError, match="缺少权限登记"):
+    with pytest.raises(RuntimeError, match="权限矩阵不一致"):
         _assert_teacher_routes_registered(router)
+
+
+def test_mobile_permission_codes_are_all_present_in_pc_catalog():
+    from app.services.affairs_four_end_terminal_guard import (
+        _DIRECT_PERMISSION_CODES,
+        _MOBILE_CATALOG_CODES,
+    )
+
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/modules/studentAffairs/config/permissionCatalog.js").read_text(
+        encoding="utf-8",
+    )
+    pc_codes = set(re.findall(r"permission\('([^']+)'", source))
+    direct_codes = {code for codes in _DIRECT_PERMISSION_CODES.values() for code in codes}
+
+    assert _MOBILE_CATALOG_CODES <= pc_codes
+    assert direct_codes <= pc_codes
+
+
+def test_teacher_mobile_write_routes_never_use_only_view_permission():
+    from app.api.v1.router import api_router
+    from app.services import affairs_four_end_contract as contract
+    from app.services.affairs_four_end_terminal_guard import (
+        _DIRECT_PERMISSION_CODES,
+        _is_read_only_code,
+        _is_teacher_mobile_path,
+        _runtime_path,
+    )
+
+    failures = []
+    for route in api_router.routes:
+        path = _runtime_path(getattr(route, "path", ""))
+        if not _is_teacher_mobile_path(path):
+            continue
+        for method in set(getattr(route, "methods", set()) or set()):
+            if method in ("GET", "HEAD", "OPTIONS"):
+                continue
+            codes = _DIRECT_PERMISSION_CODES.get(path) or contract._teacher_permissions(path, method)
+            if not codes or all(_is_read_only_code(code) for code in codes):
+                failures.append(f"{method} {path}: {codes}")
+    assert failures == []
+
+
+def test_mental_statistics_and_individual_detail_permissions_are_separated():
+    from app.services import affairs_four_end_contract as contract
+
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/mental-stats", "GET",
+    ) == ("studentAffairs.stats.view",)
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/mental/123", "GET",
+    ) == ("studentAffairs.risk.psyDetail.view",)
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/mental/123", "POST",
+    ) == ("studentAffairs.mental.manage",)
