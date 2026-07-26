@@ -71,7 +71,14 @@ export const complianceApi = {
   reviewInspection(id, action, body = {}) {
     return call(() => request(`${B}/inspections/${id}/${action}`, { method: 'POST', body }))
   },
-  createConsent(body) { return call(() => request(`${B}/consents`, { method: 'POST', body })) },
+  createConsent(body) {
+    return call(() => request(`${B}/consents/deliver`, { method: 'POST', body }))
+  },
+  redeliverConsent(id, expectedVersion) {
+    return call(() => request(`${B}/consents/${id}/redeliver`, {
+      method: 'POST', body: { expectedVersion }
+    }))
+  },
   revokeConsent(id, body) {
     return call(() => request(`${B}/consents/${id}/revoke`, { method: 'POST', body }))
   },
