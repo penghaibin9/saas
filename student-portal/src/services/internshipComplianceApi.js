@@ -10,7 +10,7 @@ function query(values) {
 export const internshipComplianceApi = {
   compliance: (operation = 'ONBOARD', batchId = '') =>
     request(`/portal/internship/compliance${query({ operation, batchId })}`),
-  consents: () => request('/portal/internship/consents'),
+  consents: (batchId = '') => request(`/portal/internship/consents${query({ batchId })}`),
   consentDetail: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}`),
   consentView: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}/view`, { method: 'POST' }),
   consentConfirm: (id, body) => request(`/portal/internship/consents/${encodeURIComponent(id)}/confirm`, { method: 'POST', body }),
