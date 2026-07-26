@@ -63,18 +63,28 @@ def _current_term_and_batch(db):
     return term, batch
 
 
-def _current_teaching_week(db, term):
+def teaching_week_from_dates(start_date, today):
+    """自然教学周纯函数：开学前=0，开学日起每7天递增一周。"""
+    if not start_date or not today:
+        return None
+    start = start_date.date() if isinstance(start_date, datetime) else start_date
+    current = today.date() if isinstance(today, datetime) else today
+    if current < start:
+        return 0
+    return ((current - start).days // 7) + 1
+
+
+def _current_teaching_week(db, term, now=None):
     """按租户学校时区与学期开始日期计算自然教学周；无法计算返回None。"""
     from app.modules.academic_affairs.services.student_exam_read_service import _tenant_timezone
 
     if not term or not term.start_date:
         return None, None
     zone, zone_name = _tenant_timezone(db)
-    today = datetime.now(zone).date()
-    start = term.start_date.date() if isinstance(term.start_date, datetime) else term.start_date
-    if today < start:
-        return 0, zone_name
-    return ((today - start).days // 7) + 1, zone_name
+    current = now or datetime.now(zone)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=zone)
+    return teaching_week_from_dates(term.start_date, current.astimezone(zone).date()), zone_name
 
 
 def _schedule_meta(db, term, batch):
