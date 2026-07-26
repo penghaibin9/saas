@@ -37,14 +37,15 @@ def _seed(db_mode):
                           status="PROCESSING")
         db.add_all([exc, rep, risk])
         db.commit()
-        return {"record": rec.id, "exception": exc.id, "report": rep.id}
+        return {"record": rec.id, "exception": exc.id, "report": rep.id, "batch": batch.id}
     finally:
         db.close()
 
 
 def test_dashboard(client, auth_headers, db_mode):
     ids = _seed(db_mode)
-    body = client.get("/api/v1/internship/dashboard", headers=auth_headers).json()
+    body = client.get("/api/v1/internship/dashboard", headers=auth_headers,
+                      params={"batchId": ids["batch"]}).json()
     assert body["code"] == 0
     labels = {s["label"]: s["value"] for s in body["data"]["stats"]}
     assert labels["在岗学生"] == "1"
@@ -52,18 +53,23 @@ def test_dashboard(client, auth_headers, db_mode):
 
 def test_students_list_and_detail(client, auth_headers, db_mode):
     ids = _seed(db_mode)
-    lst = client.get("/api/v1/internship/students", headers=auth_headers).json()
+    lst = client.get("/api/v1/internship/students", headers=auth_headers,
+                     params={"batchId": ids["batch"]}).json()
     assert lst["code"] == 0 and lst["data"]["total"] == 1
     assert lst["data"]["items"][0]["statusLabel"] == "在岗中"
     det = client.get(f"/api/v1/internship/students/{ids['record']}", headers=auth_headers).json()
-    assert det["code"] == 0 and len(det["data"]["checkins"]) == 1 and len(det["data"]["reports"]) == 1
+    # 详情不再内嵌 checkins/reports 列表（各自走 /checkins、/reports 独立台账），只核对主档字段
+    assert det["code"] == 0 and det["data"]["id"] == str(ids["record"])
+    assert det["data"]["statusLabel"] == "在岗中" and det["data"]["riskLabel"] == "高风险"
 
 
 def test_students_filter_risk(client, auth_headers, db_mode):
-    _seed(db_mode)
-    hit = client.get("/api/v1/internship/students?riskLevel=HIGH", headers=auth_headers).json()
+    ids = _seed(db_mode)
+    hit = client.get("/api/v1/internship/students", headers=auth_headers,
+                     params={"batchId": ids["batch"], "riskLevel": "HIGH"}).json()
     assert hit["data"]["total"] == 1
-    miss = client.get("/api/v1/internship/students?riskLevel=LOW", headers=auth_headers).json()
+    miss = client.get("/api/v1/internship/students", headers=auth_headers,
+                      params={"batchId": ids["batch"], "riskLevel": "LOW"}).json()
     assert miss["data"]["total"] == 0
 
 
@@ -75,14 +81,16 @@ def test_handle_exception_closed_loop(client, auth_headers, db_mode):
     assert bad["code"] == 422001
     # 转风险闭环
     ok = client.post(f"/api/v1/internship/exceptions/{ids['exception']}/handle",
-                     headers=auth_headers, json={"action": "TO_RISK", "comment": "已核实并转风险跟进"}).json()
+                     headers=auth_headers,
+                     json={"action": "TO_RISK", "comment": "已核实并转风险跟进", "expectedVersion": 0}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "COMPLETED"
     # 重复处理冲突
     again = client.post(f"/api/v1/internship/exceptions/{ids['exception']}/handle",
                         headers=auth_headers, json={"action": "REASONABLE", "comment": "重复处理意见"}).json()
     assert again["code"] == 409001
     # 转风险后应多出一条风险单
-    risks = client.get("/api/v1/internship/risks", headers=auth_headers).json()
+    risks = client.get("/api/v1/internship/risks", headers=auth_headers,
+                       params={"batchId": ids["batch"]}).json()
     assert risks["code"] == 0 and risks["data"]["total"] >= 2
 
 
@@ -93,7 +101,8 @@ def test_review_report_closed_loop(client, auth_headers, db_mode):
                       headers=auth_headers, json={"action": "RETURN", "comment": "x"}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/internship/reports/{ids['report']}/review",
-                     headers=auth_headers, json={"action": "APPROVE", "comment": ""}).json()
+                     headers=auth_headers,
+                     json={"action": "APPROVE", "comment": "", "expectedVersion": 0}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
     dup = client.post(f"/api/v1/internship/reports/{ids['report']}/review",
                       headers=auth_headers, json={"action": "APPROVE", "comment": ""}).json()
@@ -101,10 +110,12 @@ def test_review_report_closed_loop(client, auth_headers, db_mode):
 
 
 def test_exceptions_and_reports_list(client, auth_headers, db_mode):
-    _seed(db_mode)
-    exc = client.get("/api/v1/internship/exceptions?status=PENDING_HANDLE", headers=auth_headers).json()
+    ids = _seed(db_mode)
+    exc = client.get("/api/v1/internship/exceptions?status=PENDING_HANDLE", headers=auth_headers,
+                     params={"batchId": ids["batch"]}).json()
     assert exc["code"] == 0 and exc["data"]["total"] == 1
-    rep = client.get("/api/v1/internship/reports?status=PENDING_REVIEW", headers=auth_headers).json()
+    rep = client.get("/api/v1/internship/reports?status=PENDING_REVIEW", headers=auth_headers,
+                     params={"batchId": ids["batch"]}).json()
     assert rep["code"] == 0 and rep["data"]["total"] == 1
 
 
@@ -143,36 +154,48 @@ def test_batch_closed_loop(client, auth_headers, db_mode):
     assert lst["code"] == 0 and lst["data"]["total"] == 1
     row = lst["data"]["items"][0]
     assert row["statusLabel"] == "草稿" and row["plannedCount"] == 120 and row["actualCount"] == 0
-    assert client.post(f"/api/v1/internship/batches/{bid}/close", headers=auth_headers).json()["code"] != 0
-    assert client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers).json()["code"] != 0
+    assert client.post(f"/api/v1/internship/batches/{bid}/close", headers=auth_headers,
+                       json={"expectedVersion": 0}).json()["code"] != 0
+    assert client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers,
+                       json={"expectedVersion": 0}).json()["code"] != 0
     # 草稿态改规则（局部合并）
     upd0 = client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
-                      json={"rules": {"checkin": {"geofenceRadiusM": 800}}}).json()
-    assert upd0["code"] == 0
+                      json={"rules": {"checkin": {"geofenceRadiusM": 800}}, "expectedVersion": 0}).json()
+    assert upd0["code"] == 0, upd0
+    ver = upd0["data"]["version"]
     det_r = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()["data"]
     assert det_r["rules"]["checkin"]["geofenceRadiusM"] == 800
     assert det_r["rules"]["weeklyReport"]["minWordCount"] == 800
-    act = client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()
-    assert act["code"] == 0 and act["data"]["status"] == "RUNNING"
-    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers).json()["code"] != 0
+    act = client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers,
+                      json={"expectedVersion": ver}).json()
+    assert act["code"] == 0 and act["data"]["status"] == "RUNNING", act
+    ver = act["data"]["version"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/activate", headers=auth_headers,
+                       json={"expectedVersion": ver}).json()["code"] != 0
     assert client.post(f"/api/v1/internship/batches/{bid}/void", headers=auth_headers,
-                       json={"reason": "误建批次需要作废"}).json()["code"] != 0
+                       json={"reason": "误建批次需要作废", "expectedVersion": ver}).json()["code"] != 0
     # 启用后不可改规则，可改计划人数
     assert client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
-                      json={"rules": {"checkin": {"geofenceRadiusM": 900}}}).json()["code"] != 0
+                      json={"rules": {"checkin": {"geofenceRadiusM": 900}}, "expectedVersion": ver}).json()["code"] != 0
     upd = client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
-                     json={"plannedCount": 150}).json()
-    assert upd["code"] == 0
+                     json={"plannedCount": 150, "expectedVersion": ver}).json()
+    assert upd["code"] == 0, upd
+    ver = upd["data"]["version"]
     det1 = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()["data"]
     assert det1["plannedCount"] == 150
     assert det1["rules"]["checkin"]["geofenceRadiusM"] == 800
-    cl = client.post(f"/api/v1/internship/batches/{bid}/close", headers=auth_headers).json()
-    assert cl["code"] == 0 and cl["data"]["status"] == "CLOSED"
+    cl = client.post(f"/api/v1/internship/batches/{bid}/close", headers=auth_headers,
+                     json={"expectedVersion": ver}).json()
+    assert cl["code"] == 0 and cl["data"]["status"] == "CLOSED", cl
+    ver = cl["data"]["version"]
     assert client.put(f"/api/v1/internship/batches/{bid}", headers=auth_headers,
-                      json={"remark": "x"}).json()["code"] != 0
-    ar = client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers).json()
-    assert ar["code"] == 0 and ar["data"]["status"] == "ARCHIVED"
-    assert client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers).json()["code"] != 0
+                      json={"remark": "x", "expectedVersion": ver}).json()["code"] != 0
+    ar = client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers,
+                     json={"expectedVersion": ver}).json()
+    assert ar["code"] == 0 and ar["data"]["status"] == "ARCHIVED", ar
+    ver = ar["data"]["version"]
+    assert client.post(f"/api/v1/internship/batches/{bid}/archive", headers=auth_headers,
+                       json={"expectedVersion": ver}).json()["code"] != 0
     det2 = client.get(f"/api/v1/internship/batches/{bid}", headers=auth_headers).json()["data"]
     assert len(det2["auditTrail"]) >= 4
     import base64
