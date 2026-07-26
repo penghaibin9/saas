@@ -10,7 +10,7 @@ from . import academic_affairs_archive_selection_facade as academic_affairs_arch
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
 from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
-from . import academic_affairs_grade_roster_facade as academic_affairs_grade_service
+from . import academic_affairs_grade_term_facade as academic_affairs_grade_service
 from . import academic_affairs_makeup_facade as academic_affairs_makeup_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
 from . import academic_affairs_selection_facade as academic_affairs_selection_service
@@ -24,7 +24,7 @@ sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_a
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
 # 考务新建、名单、异常、结束与归档全部进入最终叠加facade。
 sys.modules[f"{__name__}.academic_affairs_exam_service"] = academic_affairs_exam_service
-# 成绩有效口径和录入名单统一经叠加facade，完整路径导入不得绕回行政班旧逻辑。
+# 成绩有效口径、官方名单与学期写保护统一经最终叠加facade。
 sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_grade_service
 # 补考/清考候选统一消费有效成绩口径。
 sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_makeup_service
