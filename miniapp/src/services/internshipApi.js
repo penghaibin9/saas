@@ -82,3 +82,17 @@ export const studentInternshipSafetySubmit = (courseId, body) =>
   realRequest(`/mobile/internship/safety/courses/${courseId}/submit`, { method: 'POST', data: body || {} })
 export const studentInternshipSafetyCommit = (completionId, body) =>
   realRequest(`/mobile/internship/safety/completions/${completionId}/commit`, { method: 'POST', data: body || {} })
+
+/** 学生正式实习申请：列表、草稿、提交、撤回全部使用显式版本。 */
+export const studentInternshipApplications = () =>
+  realRequest('/mobile/internship/context/applications')
+export const studentInternshipApplicationSave = (body) =>
+  realRequest('/mobile/internship/context/applications', { method: 'PUT', data: body || {} })
+export const studentInternshipApplicationSubmit = (applicationId, expectedVersion) =>
+  realRequest(`/mobile/internship/context/applications/${applicationId}/submit`, {
+    method: 'POST', data: { expectedVersion }
+  })
+export const studentInternshipApplicationWithdraw = (applicationId, expectedVersion) =>
+  realRequest(`/mobile/internship/context/applications/${applicationId}/withdraw`, {
+    method: 'POST', data: { expectedVersion }
+  })
