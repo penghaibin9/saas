@@ -14,6 +14,7 @@ import { ENV } from '@/config/env'
 
 const TOKEN_KEY = 'gx_token_v1'
 const REFRESH_KEY = 'gx_refresh_v1'
+const GD_TEACHER_BATCH_KEY = 'gx_gd_teacher_batch_v1'
 const state = { offlineUntil: 0, warned: false }
 
 export function setToken(token) {
@@ -32,9 +33,26 @@ export function getRefreshToken() {
   try { return uni.getStorageSync(REFRESH_KEY) || '' } catch (e) { return '' }
 }
 
+/** 教师小程序当前毕业设计批次。对象形状：{ id, name, status }。 */
+export function setTeacherGraduationBatch(batch) {
+  try {
+    const value = batch && batch.id ? { id: String(batch.id), name: batch.name || batch.batchName || '', status: batch.status || '' } : null
+    if (value) uni.setStorageSync(GD_TEACHER_BATCH_KEY, value)
+    else uni.removeStorageSync(GD_TEACHER_BATCH_KEY)
+  } catch (e) { /* 忽略本地缓存失败，页面仍会要求重新选择 */ }
+}
+
+export function getTeacherGraduationBatch() {
+  try {
+    const value = uni.getStorageSync(GD_TEACHER_BATCH_KEY)
+    return value && value.id ? value : null
+  } catch (e) { return null }
+}
+
 export function clearTokens() {
   setToken('')
   setRefreshToken('')
+  setTeacherGraduationBatch(null)
 }
 
 export function shouldTryReal() {
@@ -136,6 +154,55 @@ export function mockRequest(payload, { latency = ENV.mockLatency, fail = false }
   })
 }
 
+/* ── 教师毕业设计批次上下文 ── */
+const GD_TEACHER_PREFIX = '/mobile/teacher/graduation'
+const GD_TEACHER_PAGED_PATHS = new Set([
+  GD_TEACHER_PREFIX,
+  `${GD_TEACHER_PREFIX}/my-students`,
+  `${GD_TEACHER_PREFIX}/midterm/queue`,
+  `${GD_TEACHER_PREFIX}/reviews/my`,
+  `${GD_TEACHER_PREFIX}/defense/arrangements`,
+  `${GD_TEACHER_PREFIX}/grade/queue`,
+  `${GD_TEACHER_PREFIX}/choices/pending`,
+  `${GD_TEACHER_PREFIX}/change-requests/pending`,
+  `${GD_TEACHER_PREFIX}/taskbooks`,
+  `${GD_TEACHER_PREFIX}/defense/pending`
+])
+
+function appendQuery(path, key, value) {
+  if (new RegExp(`[?&]${key}=`).test(path)) return path
+  return `${path}${path.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`
+}
+
+function withTeacherGraduationContext(path) {
+  if (!path.startsWith(GD_TEACHER_PREFIX) || path.startsWith(`${GD_TEACHER_PREFIX}/batches`)) return path
+  const batch = getTeacherGraduationBatch()
+  if (!batch || !batch.id) {
+    throw { code: 422001, biz: true, message: '请先选择毕业设计批次' }
+  }
+  let value = appendQuery(path, 'batchId', batch.id)
+  const pathname = value.split('?')[0]
+  if (GD_TEACHER_PAGED_PATHS.has(pathname)) {
+    value = appendQuery(value, 'page', 1)
+    value = appendQuery(value, 'pageSize', 50)
+  }
+  return value
+}
+
+function normalizeTeacherGraduationData(path, data) {
+  const pathname = path.split('?')[0]
+  if (GD_TEACHER_PAGED_PATHS.has(pathname) && pathname !== GD_TEACHER_PREFIX && data && Array.isArray(data.items)) {
+    const items = data.items
+    Object.defineProperty(items, '_pageMeta', {
+      value: { total: data.total || items.length, page: data.page || 1, pageSize: data.pageSize || items.length, hasMore: !!data.hasMore },
+      enumerable: false,
+      configurable: true
+    })
+    return items
+  }
+  return data
+}
+
 /* ── 401 刷新单飞队列 ── */
 let _refreshing = null
 function _refreshOnce() {
@@ -151,7 +218,6 @@ function _refreshOnce() {
       return d.accessToken
     })
     .catch((e) => {
-      // 刷新失败：清 token 跳登录，终止所有排队请求
       requireAuthOrRedirect()
       throw e
     })
@@ -161,12 +227,18 @@ function _refreshOnce() {
 
 /** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
 export function realRequest(path, { method = 'GET', data, auth = true, _retried = false } = {}) {
+  let effectivePath
+  try {
+    effectivePath = withTeacherGraduationContext(path)
+  } catch (e) {
+    return Promise.reject(e)
+  }
   return new Promise((resolve, reject) => {
     const header = { 'Content-Type': 'application/json' }
     const token = auth ? getToken() : ''
     if (token) header.Authorization = 'Bearer ' + token
     uni.request({
-      url: ENV.apiBaseUrl + ENV.apiPrefix + path,
+      url: ENV.apiBaseUrl + ENV.apiPrefix + effectivePath,
       method,
       data: data || {},
       header,
@@ -180,7 +252,6 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
         }
         if (body.code !== 0) {
           if (body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
-            // 401：单飞刷新后重试一次；再失败则透出（requireAuthOrRedirect 已在刷新失败时触发）
             _refreshOnce()
               .then(() => realRequest(path, { method, data, auth, _retried: true }))
               .then(resolve)
@@ -191,7 +262,7 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
           return
         }
         state.warned = false
-        resolve(body.data)
+        resolve(normalizeTeacherGraduationData(effectivePath, body.data))
       },
       fail: (err) => {
         markOffline()
@@ -211,7 +282,7 @@ export function realFirst(label, realFn, mockFn) {
     return Promise.reject({ code: 'NETWORK', message: '真实接口不可用，生产环境已禁用 mock fallback' })
   }
   return realFn().catch((e) => {
-    if (e && e.biz) throw e // 业务错误透出，不兜底
+    if (e && e.biz) throw e
     if (ENV.allowMockFallback && mockFn) return mockFn()
     throw e
   })
@@ -230,5 +301,6 @@ export function request(options) {
 export default {
   mockRequest, realRequest, realFirst, realFirstStrict, request,
   setToken, getToken, clearTokens, safeToast, toastError, normalizeError,
+  setTeacherGraduationBatch, getTeacherGraduationBatch,
   createSubmitLock, requireAuthOrRedirect, isBusinessError, isNetworkError
 }
