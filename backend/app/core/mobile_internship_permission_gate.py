@@ -37,6 +37,8 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^context/leaves/overdue$"), "internship.leave.view"),
     ("POST", re.compile(r"^context/leaves/[^/]+/review$"), "internship.leave.review"),
     ("POST", re.compile(r"^context/leaves/[^/]+/ack-return$"), "internship.leave.review"),
+    ("GET", re.compile(r"^context/process-reports(?:/[^/]+)?$"), "internship.report.view"),
+    ("POST", re.compile(r"^context/process-reports/[^/]+/review$"), "internship.report.review"),
     ("GET", re.compile(r"^context/plan-tasks$"), "internship.task.view"),
     ("POST", re.compile(r"^context/plan-tasks/[^/]+/review$"), "internship.task.review"),
     ("GET", re.compile(r"^context/applications$"), "internship.application.view"),
@@ -115,6 +117,8 @@ def _reject_legacy_teacher_write(method: str, path: str) -> None:
         _legacy_error("教师补卡审核")
     if re.fullmatch(r"leaves/[^/]+/review", suffix):
         _legacy_error("教师请假审核")
+    if re.fullmatch(r"process-reports/[^/]+/review", suffix):
+        _legacy_error("教师过程报告批阅")
     if re.fullmatch(r"plan-tasks/[^/]+/review", suffix):
         _legacy_error("教师计划任务审核")
     if re.fullmatch(r"applications/[^/]+/review", suffix):
