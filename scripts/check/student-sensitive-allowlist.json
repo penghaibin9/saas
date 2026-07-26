@@ -19,18 +19,6 @@
       "removeByPhase": "NEVER"
     },
     {
-      "path": "backend/app/services/student_master_application_service.py",
-      "anchor": "教务学籍导入）此前各自 `StudentProfile(...)`",
-      "reason": "模块 docstring 中的说明文字，非可执行代码。",
-      "removeByPhase": "NEVER"
-    },
-    {
-      "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_service.py",
-      "anchor": "StudentProfile(发放名单",
-      "reason": "模块 docstring 中的复用说明，非可执行代码。",
-      "removeByPhase": "NEVER"
-    },
-    {
       "path": "backend/app/services/platform_service.py",
       "anchor": "s = StudentProfile(tenant_id=DEMO_TID",
       "reason": "平台演示租户的 seed 数据生成，不是业务写入口，不面向学校真实数据；走统一服务反而会被组织校验与审计噪音干扰。",
@@ -41,6 +29,24 @@
       "anchor": "sp = StudentProfile(tenant_id=SANDBOX_TID",
       "reason": "销售沙箱租户的 seed 数据生成，同 platform_service，不是业务写入口。",
       "removeByPhase": "NEVER"
+    },
+    {
+      "path": "backend/app/services/orientation_service.py",
+      "anchor": "s = OrientationStudent(",
+      "reason": "迎新候选人是「还没有学籍的录取人员」，本来就不该有 student_id：强制绑主档等于要求学生报到前先建学籍，与业务相反。正式报到时通过晋级流程创建/绑定主档并回写 student_id。",
+      "removeByPhase": "迎新晋级阶段（后续阶段·迎新晋级）"
+    },
+    {
+      "path": "backend/app/services/message_audience_service.py",
+      "anchor": "User.login_name == StudentProfile.student_no",
+      "reason": "阶段 C 已改为优先按 StudentAccountLink 找账号，这两处是链接表尚未回填时的兜底 JOIN，删早了会让未回填学生整批收不到消息。回填脚本跑完、link_missing 指标归零后删除。",
+      "removeByPhase": "D（backfill_shadow_student_ids 与账号链接回填完成后）"
+    },
+    {
+      "path": "backend/app/services/student_account_link_service.py",
+      "anchor": "User.login_name == str(student_no)",
+      "reason": "同上，本函数就是迁移期兜底的唯一收口点，命中时打 warning 供运维观察；指标归零即可连函数一起删。",
+      "removeByPhase": "D（账号链接回填完成后）"
     }
   ]
 }

@@ -288,7 +288,7 @@ def seed_sandbox(db) -> dict:
                        end_time=now + timedelta(days=2), expected_return_at=now + timedelta(days=2),
                        apply_time=now - timedelta(hours=1)))
         acad = AcademicStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME, student_no=SBX_STUDENT_NO,
-                               class_name=SBX_CLASS, gpa=3.0, avg_score=80, obtained_credits=60,
+                               student_id=p.id, class_name=SBX_CLASS, gpa=3.0, avg_score=80, obtained_credits=60,
                                required_credits=120, academic_status="WARNING",
                                warning_level="LOW", record_status="ACTIVE")
         db.add(acad); db.flush()
@@ -318,7 +318,7 @@ def seed_sandbox(db) -> dict:
                                   submit_at=now - timedelta(hours=6), status="PENDING_REVIEW",
                                   background="体验开题批阅", plan="调研+方案", outcome="方案与论文"))
         db.add(EmpStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME, student_no=SBX_STUDENT_NO,
-                          grade="2026届", class_name=SBX_CLASS, destination_type="UNEMPLOYED",
+                          student_id=p.id, grade="2026届", class_name=SBX_CLASS, destination_type="UNEMPLOYED",
                           verify_status="PENDING_HANDLE", material_status="NOT_SUBMITTED",
                           help_level="NORMAL", risk_level="LOW", counselor=SBX_TEACHER_NAME,
                           record_status="ACTIVE"))

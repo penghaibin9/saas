@@ -9,6 +9,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob, EmpMaterial, EmpStudent)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
+from app.services import shadow_student_service as shadow
 from app.services.db_service import _iso, _tid, session
 
 L_DEST = {"SIGNED": "签约就业", "FLEXIBLE": "灵活就业", "FURTHER_STUDY": "升学", "ENLISTED": "入伍",
@@ -132,7 +133,16 @@ def _todo_done_followup(db, emp_student_id) -> int:
     return n
 
 
-def _stu_row(s: EmpStudent) -> dict:
+def _stu_row(s: EmpStudent, *, db=None, profiles: dict | None = None,
+             cache: dict | None = None) -> dict:
+    """渲染就业台账行；传 db+profiles 时走双读（已绑定显示主档当前身份，未绑定标 legacyFallback）。"""
+    row = _stu_row_raw(s)
+    if db is not None:
+        shadow.apply_dual_read(row, s, profiles if profiles is not None else {}, db=db, cache=cache)
+    return row
+
+
+def _stu_row_raw(s: EmpStudent) -> dict:
     return {"id": str(s.id), "studentId": str(s.student_id or s.id), "name": s.name,
             "studentNo": s.student_no or "", "gender": s.gender or "", "grade": s.grade or "",
             "collegeName": s.college_name or "", "majorName": s.major_name or "",
@@ -171,7 +181,8 @@ def list_students(page, ps, keyword=None, class_id=None, destination_type=None, 
         if keyword:
             kw = keyword.strip()
             rows = [r for r in rows if kw in (r.name or "") or kw in (r.student_no or "")]
-        return _page([_stu_row(r) for r in rows], page, ps)
+        profiles, cache = shadow.load_profiles(db, rows), {}
+        return _page([_stu_row(r, db=db, profiles=profiles, cache=cache) for r in rows], page, ps)
 
 
 def get_student_detail(sid) -> dict:
@@ -183,34 +194,42 @@ def get_student_detail(sid) -> dict:
                          EmpFollowup.emp_student_id == s.id).order_by(EmpFollowup.id.desc())).all()
         logs = db.scalars(select(EmpAuditTrail).where(EmpAuditTrail.tenant_id == _tid(),
                           EmpAuditTrail.biz_id == str(s.id)).order_by(EmpAuditTrail.id.desc()).limit(20)).all()
-        return {"student": _stu_row(s),
+        return {"student": _stu_row(s, db=db, profiles=shadow.load_profiles(db, [s])),
                 "materials": [_mat_row(m, s) for m in mats],
                 "followUps": [_fu_row(f, s) for f in fus],
                 "auditLogs": [_log_row(x) for x in logs]}
 
 
 def create_student(body: dict) -> dict:
-    name = str(body.get("name") or "").strip()
-    no = str(body.get("studentNo") or "").strip()
-    if not name or not no:
-        raise AppException("VALIDATION_ERROR", "姓名与学号必填")
+    """新建就业台账行。阶段 D 起必须挂在已有学籍档案上，身份字段取自主档快照。"""
     with session() as db:
         from app.core.field_crypto import encrypt_field
-        s = EmpStudent(tenant_id=_tid(), name=name, student_no=no, class_id=body.get("classId"),
-                       class_name=body.get("className"), phone_encrypted=encrypt_field(body.get("phone")),
+        p = shadow.resolve_profile_for_shadow(
+            db, _tid(), domain_label="就业台账",
+            student_id=body.get("studentId") or body.get("profileStudentId"),
+            student_no=body.get("studentNo"))
+        dup = db.scalars(select(EmpStudent).where(
+            EmpStudent.tenant_id == _tid(), EmpStudent.student_id == p.id,
+            EmpStudent.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", f"{p.real_name} 已有就业台账记录，请勿重复新增")
+        snap = shadow.identity_snapshot(db, p)
+        s = EmpStudent(tenant_id=_tid(), phone_encrypted=encrypt_field(body.get("phone")),
                        destination_type=body.get("destinationType") or "UNEMPLOYED",
                        company_name=body.get("companyName"), sign_date=body.get("signDate"),
-                       counselor=body.get("counselor"))
+                       counselor=body.get("counselor"),
+                       **{k: v for k, v in snap.items() if v is not None})
         db.add(s)
         db.flush()
-        _audit(db, "RECORD", s.id, "新增就业记录", f"{name}（{no}）")
+        _audit(db, "RECORD", s.id, "新增就业记录", f"{snap['name']}（{snap['student_no']}）")
         db.commit()
-        return {"id": str(s.id)}
+        return {"id": str(s.id), "profileStudentId": str(p.id)}
 
 
 def update_student(sid, body: dict) -> dict:
     with session() as db:
         s = _get_stu(db, sid)
+        shadow.assert_identity_immutable(db, s, body, "就业台账")
         for k, col in {"destinationType": "destination_type", "companyName": "company_name",
                        "jobTitle": "job_title", "salaryRange": "salary_range", "signDate": "sign_date",
                        "employmentTeacher": "employment_teacher"}.items():
@@ -344,7 +363,9 @@ def list_unemployed(page, ps, keyword=None, help_level=None, risk_level=None):
         if keyword:
             kw = keyword.strip()
             rows = [r for r in rows if kw in (r.name or "")]
-        items = [{**_stu_row(r), "assignedTeacher": r.employment_teacher or "未分配"} for r in rows]
+        _pf, _ca = shadow.load_profiles(db, rows), {}
+        items = [{**_stu_row(r, db=db, profiles=_pf, cache=_ca),
+                  "assignedTeacher": r.employment_teacher or "未分配"} for r in rows]
         return _page(items, page, ps)
 
 

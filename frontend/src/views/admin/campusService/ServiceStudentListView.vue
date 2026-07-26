@@ -100,7 +100,7 @@
       :title="form.mode === 'create' ? '新增服务记录' : '编辑服务信息（' + form.model.name + '）'"
       :fields="formFields"
       :submitting="form.submitting"
-      note="服务记录以学生主档（student_id）为唯一关联；请假/资助/工单等明细在对应页面办理。"
+      note="新增前该学生必须已有学籍档案：填学号后系统自动关联主档，姓名/班级以学籍为准。若提示查无学籍，请先到「教务中心 → 学籍导入/补录」或「系统管理 → 学生导入与账号开通」建档。"
       @submit="submitForm"
     />
 

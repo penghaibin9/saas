@@ -23,6 +23,10 @@ def _tid() -> int:
     return tid
 
 
+# 阶段 D：这些域的导入不得再凭 Excel 里的姓名+学号造学生，必须逐行确认学籍档案已存在。
+# 迎新不在其中——录取候选人本来就还没有学籍，那是它的正常业务语义。
+_REQUIRE_MASTER_PROFILE = {"campus-service", "academic", "employment"}
+
 # 域 → (key字段前端名, create 服务路径, list 服务路径, 展示名)
 DOMAINS = {
     "orientation": ("admissionNo", "orientation_service.create_student",
@@ -78,6 +82,24 @@ def _existing_keys(domain: str, list_path: str, key_field: str) -> set[str]:
         db.close()
 
 
+def _master_student_nos(domain: str) -> set[str] | None:
+    """本租户已建档学号集合；不需要校验主档的域（迎新）返回 None。
+
+    Dry-Run 阶段就把「查无此学籍」判成错行，用户在预检结果里一次看全，
+    而不是确认导入时才一行行报 410。
+    """
+    if domain not in _REQUIRE_MASTER_PROFILE or not db_enabled():
+        return None
+    from app.models import StudentProfile
+    db = get_sessionmaker()()
+    try:
+        return {str(v) for v in db.scalars(select(StudentProfile.student_no).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+            StudentProfile.student_no.is_not(None))).all()}
+    finally:
+        db.close()
+
+
 def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user: dict | None = None) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导入域：{domain}（支持 {'/'.join(DOMAINS)}）")
@@ -88,6 +110,7 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
                            f"单次导入不能超过 {MAX_IMPORT_ROWS} 行，当前 {len(rows)} 行，请拆分后重试")
     key_field, _, list_path, key_label = DOMAINS[domain]
     existing = _existing_keys(domain, list_path, key_field)
+    known_master = _master_student_nos(domain)
     ok_rows, errors, seen = [], [], set()
     for i, row in enumerate(rows, start=2):
         name = str(row.get("name") or row.get("姓名") or "").strip()
@@ -103,6 +126,12 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
         if key in existing:
             errors.append({"rowIndex": i, "field": key_field, "rawValue": key,
                            "message": f"{key_label} {key} 已存在"})
+            continue
+        if known_master is not None and key not in known_master:
+            # 阶段 D 止血：没有学籍档案就不给建业务台账，否则又多一个"只在这个域里存在的学生"
+            errors.append({"rowIndex": i, "field": key_field, "rawValue": key,
+                           "message": f"{key_label} {key} 没有学籍档案，本域不能凭表格建学生。"
+                                      "请先在「教务中心 → 学籍导入/补录」或「系统管理 → 学生导入与账号开通」建档"})
             continue
         seen.add(key)
         ok_rows.append({"name": name, key_field: key, "className": row.get("className") or row.get("班级")})

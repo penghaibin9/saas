@@ -82,6 +82,30 @@ def sync_student_projections_in_session(db, s) -> dict:
         row.version = int(row.version or 0) + 1
         updated["graduation"] += 1
 
+    # 旧域影子台账（学业/就业/迎新）同样按 student_id 跟随主档。
+    # 这三张表的姓名/学号不只是展示：列表关键字搜索、导出、统计都直接查它们的列，
+    # 只在接口渲染层做双读覆盖的话，「改了学籍后按新名字搜不到人」依旧存在。
+    from app.models import AcademicStudent, EmpStudent, OrientationStudent
+
+    for model, key in ((AcademicStudent, "academic"), (EmpStudent, "employment"),
+                       (OrientationStudent, "orientation")):
+        updated[key] = 0
+        for row in db.scalars(select(model).where(
+            model.tenant_id == tenant_id,
+            model.student_id == s.id,
+            model.is_deleted.is_(False),
+        )).all():
+            row.name = s.real_name
+            if hasattr(row, "student_no"):
+                row.student_no = s.student_no
+            if s.class_id:
+                row.class_id = str(s.class_id)
+            row.class_name = class_name or row.class_name
+            row.college_name = college_name or row.college_name
+            row.major_name = major_name or row.major_name
+            row.version = int(row.version or 0) + 1
+            updated[key] += 1
+
     return updated
 
 

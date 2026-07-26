@@ -47,6 +47,19 @@ RE_BARE_HASH = re.compile(
 # 负向后行排除 `class StudentProfile(...)` 的模型定义本身
 RE_DIRECT_PROFILE_CREATE = re.compile(r"(?<!class )\bStudentProfile\s*\(")
 
+# ── 规则 6：影子学生台账必须绑主档（阶段 D）────────────────────────────────
+# 旧域的四张学生台账一旦不带 student_id 建行，就又多出一个"只存在于这个域里的学生"，
+# 改学籍看不到、统计对不上、数据范围算不准。构造时必须同时给出 student_id。
+RE_SHADOW_CREATE = re.compile(
+    r"(?<!class )\b(CsServiceStudent|AcademicStudent|EmpStudent|OrientationStudent)\s*\(")
+# 构造语句可能跨多行，向后看这么多行找 student_id=
+SHADOW_LOOKAHEAD = 12
+RE_BOUND_KW = re.compile(r"(?<![A-Za-z0-9_])student_id\s*=")
+
+# ── 规则 7：学生身份不得再靠登录名等于学号（阶段 C/D）──────────────────────
+# 正确入口是 student_account_link_service；直接写这条 JOIN 的地方，学号一更正就断链。
+RE_LOGIN_NAME_JOIN = re.compile(r"User\.login_name\s*==\s*(?:StudentProfile\.student_no|str\(student_no\))")
+
 SKIP_DIR_PARTS = {"__pycache__", "node_modules", "dist", ".git", "alembic"}
 
 
@@ -75,6 +88,40 @@ def _rel(p: Path) -> str:
     return p.relative_to(ROOT).as_posix()
 
 
+def _code_lines(path: Path) -> tuple[list[str], list[str]] | None:
+    """返回 (原始行, 去掉字符串/注释内容的行)。
+
+    规则要匹配的是真实代码，不是文档里对错误写法的描述——本文件自己的说明和
+    各服务顶部「不要再写 login_name == student_no」这类警示注释都不该被当成违规。
+    用 tokenize 精确抹掉 STRING/COMMENT，避免正则去猜引号配对。
+    """
+    import io
+    import tokenize
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None
+    lines = raw.splitlines()
+    blanked = list(lines)
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(raw).readline):
+            if tok.type not in (tokenize.STRING, tokenize.COMMENT):
+                continue
+            (r1, c1), (r2, c2) = tok.start, tok.end
+            for r in range(r1, r2 + 1):
+                i = r - 1
+                if i >= len(blanked):
+                    break
+                s = blanked[i]
+                start = c1 if r == r1 else 0
+                end = c2 if r == r2 else len(s)
+                blanked[i] = s[:start] + " " * max(0, end - start) + s[end:]
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return lines, lines  # 语法异常文件退回原始行，宁可多报不漏报
+    return lines, blanked
+
+
 def scan_backend(allow: set[str]) -> list[tuple[str, int, str, str]]:
     hits: list[tuple[str, int, str, str]] = []
     rules = [
@@ -83,24 +130,68 @@ def scan_backend(allow: set[str]) -> list[tuple[str, int, str, str]]:
         ("敏感值裸哈希（应改用 hash_sensitive 的 HMAC）", RE_BARE_HASH),
         ("直接构造 StudentProfile（须经 student_master_application_service）",
          RE_DIRECT_PROFILE_CREATE),
+        ("学生身份靠 login_name==student_no 关联（须经 student_account_link_service）",
+         RE_LOGIN_NAME_JOIN),
     ]
     for path in _iter_py(BACKEND):
         rel = _rel(path)
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except UnicodeDecodeError:
+        got = _code_lines(path)
+        if got is None:
             continue
-        for no, line in enumerate(lines, 1):
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
+        lines, code = got
+        for no, line in enumerate(code, 1):
+            stripped = lines[no - 1].strip()
             for label, rx in rules:
                 if not rx.search(line):
                     continue
-                if any(k.split("::", 1)[0] == rel and k.split("::", 1)[1] in line for k in allow):
+                if any(k.split("::", 1)[0] == rel and k.split("::", 1)[1] in lines[no - 1]
+                       for k in allow):
                     continue
                 hits.append((rel, no, label, stripped[:120]))
+        hits.extend(_scan_shadow_creates(rel, lines, code, allow))
     return hits
+
+
+def _call_span(lines: list[str], row: int, col: int) -> str:
+    """从 `Model(` 的左括号开始截到配对的右括号为止。
+
+    不能简单地"往后看 N 行"：紧跟其后的另一条语句里常有 cs_student_id=/student_id=，
+    会把"这个构造没绑主档"误判成绑了。
+    """
+    depth, out = 0, []
+    for r in range(row, min(row + SHADOW_LOOKAHEAD * 4, len(lines))):
+        s = lines[r]
+        start = col if r == row else 0
+        for ch in s[start:]:
+            out.append(ch)
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    return "".join(out)
+        out.append("\n")
+    return "".join(out)
+
+
+def _scan_shadow_creates(rel: str, lines: list[str], code: list[str], allow: set[str]):
+    """影子台账构造未绑 student_id 的检查（构造参数常跨多行，逐行正则看不全）。"""
+    out = []
+    for no, line in enumerate(code, 1):
+        stripped = lines[no - 1].strip()
+        if not RE_SHADOW_CREATE.search(line):
+            continue
+        if any(k.split("::", 1)[0] == rel and k.split("::", 1)[1] in lines[no - 1] for k in allow):
+            continue
+        span = _call_span(lines, no - 1, RE_SHADOW_CREATE.search(line).end() - 1)
+        # 构造参数里出现 student_id= 或整段快照展开（**snap）才算已绑定。
+        # 必须带词边界：acad_student_id= / cs_student_id= / emp_student_id= 指向的是影子行自己，
+        # 不是主档，用子串判断会把"没绑主档"误判成"已绑定"。
+        if RE_BOUND_KW.search(span) or "**snap" in span or "**{k: v for k, v in snap" in span:
+            continue
+        out.append((rel, no, "影子学生台账未绑定 student_id（须经 shadow_student_service 解析主档）",
+                    stripped[:120]))
+    return out
 
 
 # ── 规则 4：前端学生权限码必须在后端真实存在 ──────────────────────────────

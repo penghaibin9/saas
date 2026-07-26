@@ -91,7 +91,7 @@
       :title="form.mode === 'create' ? '新增学业记录' : '编辑学业信息（' + form.model.name + '）'"
       :fields="formFields"
       :submitting="form.submitting"
-      note="学业记录以学生主档（student_id）为唯一关联；课程/成绩明细请在「课程成绩」页维护。"
+      note="新增前该学生必须已有学籍档案：填学号后系统自动关联主档，姓名/班级以学籍为准。若提示查无学籍，请先到「教务中心 → 学籍导入/补录」建档。课程/成绩明细请在「课程成绩」页维护。"
       @submit="submitForm"
     />
 

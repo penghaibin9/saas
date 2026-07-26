@@ -235,8 +235,9 @@ export default {
     },
     editFields() {
       return [
-        { key: 'name', label: '姓名', type: 'text', required: true, disabled: !!this.editing },
-        { key: 'studentNo', label: '学号', type: 'text', required: true, disabled: !!this.editing },
+        // 新增时姓名/班级以学籍档案为准（后端按学号关联主档并覆盖），此处填写仅用于核对
+        { key: 'name', label: '姓名（以学籍档案为准）', type: 'text', required: true, disabled: !!this.editing },
+        { key: 'studentNo', label: '学号（须已有学籍档案）', type: 'text', required: true, disabled: !!this.editing },
         { key: 'classId', label: '班级', type: 'select', options: this.filterOptions.classes || [], required: true },
         { key: 'destinationType', label: '去向类型', type: 'select', options: this.statusOptions.destinationType || [], required: true },
         { key: 'companyName', label: '单位 / 院校', type: 'text', placeholder: '签约单位或升学院校' },

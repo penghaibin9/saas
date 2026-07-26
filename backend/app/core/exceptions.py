@@ -36,6 +36,9 @@ CODE_HTTP = {
     "IDEMPOTENCY_CONFLICT": 409,
     # 学号属于已作废档案：前端据此弹「确认恢复」，与普通重复学号区分开
     "VOIDED_PROFILE_EXISTS": 409,
+    # 旧业务域独立新增学生等已下线写路径：410 Gone，与「参数错」「没权限」区分开，
+    # 前端据此提示「先去建学籍档案」而不是让用户反复改表单重试
+    "DEPRECATED_WRITE_PATH": 410,
     "FILE_TOO_LARGE": 413,
     "RATE_LIMITED": 429,
     "UPLOAD_FAILED": 500,

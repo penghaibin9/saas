@@ -10,6 +10,7 @@ from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import encrypt_field, mask_phone_encrypted
 from app.models import (AcademicAuditTrail, AcademicGrade, AcademicIntervention, AcademicMakeup,
                         AcademicRetake, AcademicStudent, AcademicWarning)
+from app.services import shadow_student_service as shadow
 from app.services.db_service import _iso, _tid, session
 
 L_WARN_T = {"MULTI_FAIL": "多门挂科", "CREDIT_GAP": "学分不足", "GRADE_DROP": "成绩持续下滑",
@@ -72,7 +73,16 @@ def _stu_of(db, sid):
     return db.get(AcademicStudent, sid)
 
 
-def _stu_row(s: AcademicStudent) -> dict:
+def _stu_row(s: AcademicStudent, *, db=None, profiles: dict | None = None,
+             cache: dict | None = None) -> dict:
+    """渲染学业台账行；传 db+profiles 时走双读（已绑定显示主档当前身份，未绑定标 legacyFallback）。"""
+    row = _stu_row_raw(s)
+    if db is not None:
+        shadow.apply_dual_read(row, s, profiles if profiles is not None else {}, db=db, cache=cache)
+    return row
+
+
+def _stu_row_raw(s: AcademicStudent) -> dict:
     return {"id": str(s.id), "studentId": str(s.student_id or s.id), "studentNo": s.student_no or "",
             "name": s.name, "classId": s.class_id or "", "className": s.class_name or "",
             "collegeName": s.college_name or "", "majorName": s.major_name or "", "grade": s.grade or "",
@@ -104,7 +114,8 @@ def list_students(page, ps, keyword=None, class_id=None, warning_level=None, aca
         total = db.scalar(select(func.count()).select_from(AcademicStudent).where(*conds)) or 0
         rows = db.scalars(select(AcademicStudent).where(*conds)
                           .order_by(AcademicStudent.id).offset(_off(page, ps)).limit(ps)).all()
-        return [_stu_row(r) for r in rows], total
+        profiles, cache = shadow.load_profiles(db, rows), {}
+        return [_stu_row(r, db=db, profiles=profiles, cache=cache) for r in rows], total
 
 
 def get_student_detail(sid) -> dict:
@@ -122,7 +133,7 @@ def get_student_detail(sid) -> dict:
                            AcademicWarning.is_deleted.is_(False)).order_by(AcademicWarning.id.desc())).all()
         logs = db.scalars(select(AcademicAuditTrail).where(AcademicAuditTrail.tenant_id == _tid(),
                           AcademicAuditTrail.biz_id == str(s.id)).order_by(AcademicAuditTrail.id.desc()).limit(20)).all()
-        return {"student": _stu_row(s),
+        return {"student": _stu_row(s, db=db, profiles=shadow.load_profiles(db, [s])),
                 "grades": [_grade_row(x, s) for x in grades],
                 "credit": {"obtained": _num(s.obtained_credits), "required": _num(s.required_credits),
                            "gap": max(0.0, _num(s.required_credits) - _num(s.obtained_credits))},
@@ -133,30 +144,34 @@ def get_student_detail(sid) -> dict:
 
 
 def create_student(body: dict) -> dict:
-    name = str(body.get("name") or "").strip()
-    no = str(body.get("studentNo") or "").strip()
-    if not name or not no:
-        raise AppException("VALIDATION_ERROR", "姓名与学号必填")
+    """新建学业台账行。阶段 D 起必须挂在已有学籍档案上，身份字段取自主档快照。"""
     with session() as db:
-        dup = db.scalars(select(AcademicStudent).where(AcademicStudent.tenant_id == _tid(),
-                         AcademicStudent.student_no == no, AcademicStudent.is_deleted.is_(False))).first()
+        p = shadow.resolve_profile_for_shadow(
+            db, _tid(), domain_label="学业台账",
+            student_id=body.get("studentId") or body.get("profileStudentId"),
+            student_no=body.get("studentNo"))
+        dup = db.scalars(select(AcademicStudent).where(
+            AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == p.id,
+            AcademicStudent.is_deleted.is_(False))).first()
         if dup:
-            raise AppException("DATA_CONFLICT", f"学号 {no} 已存在")
-        s = AcademicStudent(tenant_id=_tid(), name=name, student_no=no, class_id=body.get("classId"),
-                            class_name=body.get("className"), counselor=body.get("counselor"),
+            raise AppException("DATA_CONFLICT", f"{p.real_name} 已有学业台账记录，请勿重复新增")
+        snap = shadow.identity_snapshot(db, p)
+        s = AcademicStudent(tenant_id=_tid(), counselor=body.get("counselor"),
                             phone_encrypted=encrypt_field(body.get("phone")),
                             obtained_credits=body.get("obtainedCredits") or 0,
-                            required_credits=body.get("requiredCredits") or 120)
+                            required_credits=body.get("requiredCredits") or 120,
+                            **{k: v for k, v in snap.items() if v is not None})
         db.add(s)
         db.flush()
-        _audit(db, "RECORD", s.id, "新增学业记录", f"{name}（{no}）")
+        _audit(db, "RECORD", s.id, "新增学业记录", f"{snap['name']}（{snap['student_no']}）")
         db.commit()
-        return {"id": str(s.id)}
+        return {"id": str(s.id), "profileStudentId": str(p.id)}
 
 
 def update_student(sid, body: dict) -> dict:
     with session() as db:
         s = _get_stu(db, sid)
+        shadow.assert_identity_immutable(db, s, body, "学业台账")
         for k, col in {"name": "name", "classId": "class_id", "className": "class_name",
                        "counselor": "counselor"}.items():
             if body.get(k) is not None:
@@ -479,7 +494,7 @@ def get_warning_detail(wid) -> dict:
         stu = _stu_of(db, x.acad_student_id)
         itvs = db.scalars(select(AcademicIntervention).where(AcademicIntervention.tenant_id == _tid(),
                           AcademicIntervention.warning_id == x.id).order_by(AcademicIntervention.id.desc())).all()
-        return {"warning": _warn_row(x, stu), "student": _stu_row(stu) if stu else None,
+        return {"warning": _warn_row(x, stu), "student": _stu_row(stu, db=db, profiles=shadow.load_profiles(db, [stu])) if stu else None,
                 "interventions": [{"id": str(i.id), "time": _iso(i.follow_time), "way": i.way,
                                    "wayLabel": L_WAY.get(i.way, i.way), "content": i.content or "",
                                    "result": i.result or "", "nextPlan": i.next_plan or "",

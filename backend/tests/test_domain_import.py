@@ -8,7 +8,23 @@ from app.core.exceptions import AppException
 MAIN_TID = 1000000000000000001
 
 
+def _seed_profiles(nos):
+    """阶段 D 起旧域导入只能给已有学籍的学生建业务台账，测试需先备好主档。"""
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+    db = get_sessionmaker()()
+    try:
+        for i, no in enumerate(nos):
+            db.add(StudentProfile(tenant_id=1000000000000000001, student_no=no,
+                                  real_name=f"导入主档{i}", current_stage="ENROLLED",
+                                  student_status="NORMAL", status="ACTIVE"))
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_academic_import_dry_run_and_confirm(client, auth_headers, db_mode):
+    _seed_profiles(["IMP2026001", "IMP2026002", "IMP2026010", "IMP2026011"])
     rows = [{"name": "导入生A", "studentNo": "IMP2026001", "className": "软件2301班"},
             {"name": "导入生B", "studentNo": "IMP2026002"},
             {"name": "", "studentNo": "IMP2026003"},          # 姓名缺失

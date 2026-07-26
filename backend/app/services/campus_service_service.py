@@ -11,6 +11,7 @@ from app.core.field_crypto import encrypt_field, mask_id_card_encrypted, mask_ph
 from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
 from app.models import (CsAuditTrail, CsDiscipline, CsDormException, CsDormRecord, CsGrant, CsLeave,
                         CsMentalRecord, CsServiceStudent, CsWorkOrder)
+from app.services import shadow_student_service as shadow
 from app.services.db_service import _iso, _tid, session
 
 L_LEAVE_T = {"SICK": "病假", "PERSONAL": "事假", "GOOUT": "外出报备"}
@@ -114,7 +115,17 @@ def _cs_students_by_ids(db, rows, attr="cs_student_id"):
 
 # ═══ 学生台账 ═══
 
-def _stu_row(s: CsServiceStudent) -> dict:
+def _stu_row(s: CsServiceStudent, *, db=None, profiles: dict | None = None,
+             cache: dict | None = None) -> dict:
+    """渲染台账行。传 db+profiles 时走双读：已绑定行显示主档当前身份，
+    未绑定的历史行沿用自己的快照并标 legacyFallback（见 shadow_student_service）。"""
+    row = _stu_row_raw(s)
+    if db is not None:
+        shadow.apply_dual_read(row, s, profiles if profiles is not None else {}, db=db, cache=cache)
+    return row
+
+
+def _stu_row_raw(s: CsServiceStudent) -> dict:
     return {"id": str(s.id), "studentId": str(s.student_id or s.id), "name": s.name,
             "studentNo": s.student_no or "", "gender": s.gender or "", "collegeName": s.college_name or "",
             "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
@@ -144,7 +155,9 @@ def list_students(page, page_size, keyword=None, class_id=None, care_level=None,
         if keyword:
             kw = keyword.strip()
             rows = [r for r in rows if kw in (r.name or "") or kw in (r.student_no or "")]
-        return _page([_stu_row(r) for r in rows], page, page_size)
+        profiles, cache = shadow.load_profiles(db, rows), {}
+        return _page([_stu_row(r, db=db, profiles=profiles, cache=cache) for r in rows],
+                     page, page_size)
 
 
 def get_student_detail(sid) -> dict:
@@ -160,7 +173,7 @@ def get_student_detail(sid) -> dict:
                          CsWorkOrder.cs_student_id == s.id).order_by(CsWorkOrder.id.desc())).all()
         logs = db.scalars(select(CsAuditTrail).where(CsAuditTrail.tenant_id == _tid(),
                           CsAuditTrail.biz_id == str(s.id)).order_by(CsAuditTrail.id.desc()).limit(20)).all()
-        return {"student": _stu_row(s),
+        return {"student": _stu_row(s, db=db, profiles=shadow.load_profiles(db, [s])),
                 "leaves": [_leave_row(x, s) for x in leaves],
                 "grants": [_grant_row(x, s) for x in grants],
                 "disciplines": [_disc_row(x, s) for x in discs],
@@ -169,26 +182,38 @@ def get_student_detail(sid) -> dict:
 
 
 def create_student(body: dict) -> dict:
-    name = str(body.get("name") or "").strip()
-    no = str(body.get("studentNo") or "").strip()
-    if not name or not no:
-        raise AppException("VALIDATION_ERROR", "姓名与学号必填")
+    """新建服务台账行。阶段 D 起必须挂在已有学籍档案上，不再允许独立影子学生。
+
+    身份字段（姓名/学号/组织）一律取自主档快照，调用方传什么都不采信——
+    否则同一个人在这里叫张三、在学籍里叫张山，越权范围和统计口径立刻分裂。
+    """
     with session() as db:
-        s = CsServiceStudent(tenant_id=_tid(), name=name, student_no=no,
-                             class_id=body.get("classId"), class_name=body.get("className"),
+        p = shadow.resolve_profile_for_shadow(
+            db, _tid(), domain_label="在校服务台账",
+            student_id=body.get("studentId") or body.get("profileStudentId"),
+            student_no=body.get("studentNo"))
+        dup = db.scalars(select(CsServiceStudent).where(
+            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_id == p.id,
+            CsServiceStudent.is_deleted.is_(False))).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", f"{p.real_name} 已有在校服务台账记录，请勿重复新增")
+        snap = shadow.identity_snapshot(db, p)
+        s = CsServiceStudent(tenant_id=_tid(), record_status="ACTIVE",
                              care_level=body.get("careLevel") or "NORMAL", room=body.get("room"),
                              building=body.get("building"), counselor=body.get("counselor"),
-                             phone_encrypted=encrypt_field(body.get("phone")), record_status="ACTIVE")
+                             phone_encrypted=encrypt_field(body.get("phone")),
+                             **{k: v for k, v in snap.items() if v is not None})
         db.add(s)
         db.flush()
-        _audit(db, "RECORD", s.id, "新增服务记录", f"{name}（{no}）")
+        _audit(db, "RECORD", s.id, "新增服务记录", f"{snap['name']}（{snap['student_no']}）")
         db.commit()
-        return {"id": str(s.id)}
+        return {"id": str(s.id), "profileStudentId": str(p.id)}
 
 
 def update_student(sid, body: dict) -> dict:
     with session() as db:
         s = _get_stu(db, sid)
+        shadow.assert_identity_immutable(db, s, body, "在校服务台账")
         for k, col in {"careLevel": "care_level", "building": "building", "room": "room",
                        "counselor": "counselor", "className": "class_name"}.items():
             if body.get(k) is not None:
@@ -267,7 +292,7 @@ def get_leave_detail(lid) -> dict:
         hist = db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
                           CsLeave.cs_student_id == x.cs_student_id,
                           CsLeave.id != x.id).order_by(CsLeave.id.desc()).limit(5)).all()
-        return {"leave": _leave_row(x, stu), "student": _stu_row(stu) if stu else None,
+        return {"leave": _leave_row(x, stu), "student": _stu_row(stu, db=db, profiles=shadow.load_profiles(db, [stu])) if stu else None,
                 "history": [_leave_row(h, stu) for h in hist]}
 
 
@@ -380,7 +405,7 @@ def get_grant_detail(gid) -> dict:
             raise not_found("资助申请不存在")
         _require_cs_scope(db, x.cs_student_id)
         stu = _stu_of(db, x.cs_student_id)
-        return {"grant": _grant_row(x, stu, mask=False), "student": _stu_row(stu) if stu else None}
+        return {"grant": _grant_row(x, stu, mask=False), "student": _stu_row(stu, db=db, profiles=shadow.load_profiles(db, [stu])) if stu else None}
 
 
 def _grant_act(gid, target, need_reason=False, reason=None, node="", action="", expected_version=None):
@@ -635,7 +660,7 @@ def get_work_order_detail(wid) -> dict:
         stu = _stu_of(db, x.cs_student_id)
         row = _wo_row(x, stu)
         row["trail"] = x.trail_json or []
-        return {"order": row, "student": _stu_row(stu) if stu else None}
+        return {"order": row, "student": _stu_row(stu, db=db, profiles=shadow.load_profiles(db, [stu])) if stu else None}
 
 
 def create_work_order(body: dict) -> dict:

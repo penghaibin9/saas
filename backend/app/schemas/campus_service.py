@@ -36,8 +36,12 @@ class VersionedIdsBody(BaseModel):
 
 
 class StudentCreate(BaseModel):
-    name: str = Field(..., min_length=1)
-    studentNo: str = Field(..., min_length=1)
+    # 阶段 D：业务台账不再独立建学生，必须指到已有学籍档案。
+    # 优先传 studentId（从学籍选人）；只传 studentNo 时后端按学号唯一匹配主档。
+    # name 保留只为兼容旧调用方，后端一律以主档姓名为准，不采信此值。
+    studentId: Optional[str] = None
+    studentNo: Optional[str] = None
+    name: Optional[str] = None
     classId: Optional[str] = None
     className: Optional[str] = None
     careLevel: Optional[str] = None
