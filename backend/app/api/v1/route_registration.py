@@ -105,11 +105,13 @@ def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
         academic_affairs,
         exam_incident_closure_router,
         student_exam_router,
+        teaching_task_workbench_router,
     )
 
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
     api_router.include_router(exam_incident_closure_router.router, dependencies=deps["aa"])
+    api_router.include_router(teaching_task_workbench_router.router, dependencies=deps["aa"])
     api_router.include_router(student_exam_router.router, dependencies=deps["aa"])
 
 
@@ -201,6 +203,7 @@ def register_all_routes(api_router: APIRouter) -> None:
         academic_affairs,
         exam_incident_closure_router,
         student_exam_router,
+        teaching_task_workbench_router,
     )
     from app.modules.employment.routers import employment
 
@@ -218,5 +221,6 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
     api_router.include_router(exam_incident_closure_router.router, dependencies=deps["aa"])
+    api_router.include_router(teaching_task_workbench_router.router, dependencies=deps["aa"])
     api_router.include_router(student_exam_router.router, dependencies=deps["aa"])
     register_platform_routes(api_router)
