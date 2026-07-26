@@ -22,10 +22,10 @@
           <span>{{ item.index }}</span><b>{{ item.label }}</b>
         </button>
         <div class="aa-nav-links">
-          <button @click="openConsole('credit')">学分要求</button>
-          <button @click="openConsole('graduation')">毕业要求</button>
-          <button @click="openConsole('practice')">实践环节</button>
-          <button @click="openConsole('version')">版本与变更</button>
+          <button @click="openConsole('creditRequirements')">学分要求</button>
+          <button @click="openConsole('graduationRequirements')">毕业要求</button>
+          <button @click="openConsole('practiceSegments')">实践环节</button>
+          <button @click="openConsole('versions')">版本与变更</button>
         </div>
       </aside>
 
