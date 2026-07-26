@@ -23,7 +23,9 @@ from app.api.v1.mobile_internship_context import _choose_default_batch
     ("POST", "/api/v1/mobile/teacher/internship/change-requests/12/review", "internship.change.review"),
     ("POST", "/api/v1/mobile/teacher/internship/scores/compute", "internship.score.manage"),
     ("GET", "/api/v1/mobile/teacher/internship/agreements/pending-school", "internship.agreement.view"),
-    ("POST", "/api/v1/mobile/teacher/internship/process-reports/12/review", "internship.report.review"),
+    ("GET", "/api/v1/mobile/teacher/internship/context/process-reports", "internship.report.view"),
+    ("GET", "/api/v1/mobile/teacher/internship/context/process-reports/12", "internship.report.view"),
+    ("POST", "/api/v1/mobile/teacher/internship/context/process-reports/12/review", "internship.report.review"),
     ("GET", "/api/v1/mobile/teacher/internship/context/plan-tasks", "internship.task.view"),
     ("POST", "/api/v1/mobile/teacher/internship/context/plan-tasks/12/review", "internship.task.review"),
     ("GET", "/api/v1/mobile/teacher/internship/context/applications", "internship.application.view"),
@@ -50,6 +52,7 @@ def test_unregistered_teacher_internship_route_fails_closed(path):
 
 
 @pytest.mark.parametrize("path", [
+    "/api/v1/mobile/teacher/internship/process-reports/12/review",
     "/api/v1/mobile/teacher/internship/plan-tasks/12/review",
     "/api/v1/mobile/teacher/internship/applications/12/review",
 ])
