@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import sys
 
-# 必须先加载官方名单最终策略，再导入考勤/考务/成绩/选课消费者；否则 from-import 会缓存旧函数对象。
+# 先加载兼容名单策略，再加载V2-02独立教学班/版本策略；随后导入考勤/考务/成绩/选课消费者。
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
+from . import academic_affairs_teaching_class_service as academic_affairs_teaching_class_service
 # 最终归档链：旧9域 + 选课 + 补考重修免修 + 评教 + 教材，共13域。
 from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
@@ -40,9 +41,11 @@ sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_ma
 # 培养方案提交必须通过V2-01结构化质量校验；管理型质量读模型含绑定完整性、范围和稳定摘要。
 sys.modules[f"{__name__}.academic_affairs_program_service"] = academic_affairs_program_service
 sys.modules[f"{__name__}.academic_affairs_program_quality_service"] = academic_affairs_program_quality_service
-# 学生课表等完整路径导入统一使用“同一发布批次内合并LOCKED选课”的安全读侧。
+# V2-02独立教学班、教师关系和名单版本服务。
+sys.modules[f"{__name__}.academic_affairs_teaching_class_service"] = academic_affairs_teaching_class_service
+# 学生课表等完整路径导入统一使用教学班当前名单版本；旧数据未投影时兼容回退。
 sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_schedule_service
-# 选课锁定前必须形成可复核的正式教学任务名单。
+# 选课锁定在同一事务生成新名单版本。
 sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
 # 选课轮次新建、开关轮和摇号全部执行所属学期写保护。
 sys.modules[f"{__name__}.academic_affairs_selection_round_service"] = academic_affairs_selection_round_service
