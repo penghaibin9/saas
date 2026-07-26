@@ -111,12 +111,10 @@ import {
   AppAuditTrail,
   AppDescriptionList,
   AppGlobalState,
-  AppMetricCard,
   AppPageShell,
   AppPermissionButton,
   AppRiskTag,
-  AppSectionCard,
-  AppStatusTag
+  AppSectionCard
 } from '@/components/common'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -128,12 +126,10 @@ export default {
     AppAuditTrail,
     AppDescriptionList,
     AppGlobalState,
-    AppMetricCard,
     AppPageShell,
     AppPermissionButton,
     AppRiskTag,
-    AppSectionCard,
-    AppStatusTag
+    AppSectionCard
   },
   data() {
     return {
