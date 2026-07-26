@@ -1,9 +1,9 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar title="岗前安全教育" subtitle="当前批次全部必修课程" show-back />
+    <MobileNavBar title="岗前安全教育" subtitle="当前所选批次全部必修课程" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="state === 'ready'">
-        <MobileInlineAlert type="info" description="上岗前须完成当前批次全部必修课程；旧版本课程通过记录不能代替新版本。" />
+        <MobileInlineAlert type="info" :description="batchId ? '上岗前须完成所选批次全部必修课程；旧版本课程通过记录不能代替新版本。' : '当前只有一条进行中实习记录，系统已使用该批次。'" />
         <MobileGlobalState v-if="!courses.length" state="empty" title="暂无安全教育课程"
           description="如学校已要求安全教育但此处无课程，请联系指导教师或学校管理员。" />
         <view v-for="course in courses" :key="course.id" class="card ss" @click="open(course)">
@@ -31,8 +31,11 @@ import { studentApi } from '@/services/studentApi'
 import { go } from '@/utils/nav'
 
 export default {
-  data() { return { state: 'loading', courses: [] } },
-  onLoad() { this.load() },
+  data() { return { state: 'loading', courses: [], batchId: '' } },
+  onLoad(options) {
+    this.batchId = String(options?.batchId || '')
+    this.load()
+  },
   onShow() { if (this.state === 'ready') this.load() },
   onPullDownRefresh() { this.load(() => uni.stopPullDownRefresh()) },
   methods: {
@@ -40,8 +43,8 @@ export default {
       this.state = 'loading'
       try {
         const [courses, completions] = await Promise.all([
-          studentApi.getInternshipSafetyCourses(),
-          studentApi.getInternshipSafetyCompletions()
+          studentApi.getInternshipSafetyCourses(this.batchId),
+          studentApi.getInternshipSafetyCompletions(this.batchId)
         ])
         const completionRows = Array.isArray(completions) ? completions : (completions?.items || [])
         const cmap = Object.fromEntries(completionRows.map((x) => [String(x.courseId), x]))
@@ -50,7 +53,7 @@ export default {
           ...(cmap[String(x.id)] || {}),
           id: x.id,
           courseVersion: x.courseVersion,
-          completionStatus: (cmap[String(x.id)] || {}).status || x.completionStatus || 'NOT_STARTED',
+          completionStatus: x.completionStatus || (cmap[String(x.id)] || {}).status || 'NOT_STARTED',
           commitmentConfirmed: !!(cmap[String(x.id)] || {}).commitmentConfirmed
         }))
         this.state = 'ready'
@@ -58,7 +61,11 @@ export default {
         this.state = 'error'
       } finally { done && done() }
     },
-    open(course) { go(`/pages/student/internship/safety/course?id=${encodeURIComponent(course.id)}`) },
+    open(course) {
+      const query = [`id=${encodeURIComponent(course.id)}`]
+      if (this.batchId) query.push(`batchId=${encodeURIComponent(this.batchId)}`)
+      go(`/pages/student/internship/safety/course?${query.join('&')}`)
+    },
     statusLabel(status) {
       return ({ NOT_STARTED: '未开始', IN_PROGRESS: '学习中', PENDING_REVIEW: '待审核',
         PASSED: '已通过', FAILED: '未通过' })[status] || status || '未开始'
