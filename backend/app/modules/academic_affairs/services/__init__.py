@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import sys
 
-# 先加载兼容名单策略，再加载V2-02独立教学班/版本策略；随后导入考勤/考务/成绩/选课消费者。
+# 先加载兼容名单策略，再加载V2-02并发安全教学班/版本策略；随后导入所有名单消费者。
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
-from . import academic_affairs_teaching_class_service as academic_affairs_teaching_class_service
+from . import academic_affairs_teaching_class_lock_service as academic_affairs_teaching_class_service
 # 最终归档链：旧9域 + 选课 + 补考重修免修 + 评教 + 教材，共13域。
 from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
@@ -26,34 +26,20 @@ from . import academic_affairs_task_teaching_class_facade as academic_affairs_ta
 from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook_service
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 
-# 归档路由和业务模块统一进入最终13域叠加策略层。
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
-# 普通教师创建考勤必须选择当前学期本人教学任务。
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
-# 评教批次、窗口、匿名提交、结果和申诉统一执行所属学期写保护。
 sys.modules[f"{__name__}.academic_affairs_evaluation_service"] = academic_affairs_evaluation_service
-# 考务新建、名单、异常、结束与归档全部进入最终叠加facade。
 sys.modules[f"{__name__}.academic_affairs_exam_service"] = academic_affairs_exam_service
-# 成绩有效口径、官方名单与学期写保护统一经最终叠加facade。
 sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_grade_service
-# 补考、清考、重修和免修统一执行学期写保护；学生主档缺失时fail-closed。
 sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_makeup_service
-# 培养方案提交必须通过V2-01结构化质量校验；管理型质量读模型含绑定完整性、范围和稳定摘要。
 sys.modules[f"{__name__}.academic_affairs_program_service"] = academic_affairs_program_service
 sys.modules[f"{__name__}.academic_affairs_program_quality_service"] = academic_affairs_program_quality_service
-# V2-02独立教学班、教师关系和名单版本服务。
+# V2-02独立教学班、教师关系和名单版本最终服务。
 sys.modules[f"{__name__}.academic_affairs_teaching_class_service"] = academic_affairs_teaching_class_service
-# 学生课表等完整路径导入统一使用教学班当前名单版本；旧数据未投影时兼容回退。
 sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_schedule_service
-# 选课锁定在同一事务生成新名单版本。
 sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
-# 选课轮次新建、开关轮和摇号全部执行所属学期写保护。
 sys.modules[f"{__name__}.academic_affairs_selection_round_service"] = academic_affairs_selection_round_service
-# 教学任务生成/教师分配/合拆班在旧事务成功后投影教学班，质量门禁与安全工作台链保持不变。
 sys.modules[f"{__name__}.academic_affairs_task_service"] = academic_affairs_task_service
-# 教学任务生成运行时完整路径导入统计范围函数；统一切到空范围fail-closed版本。
 sys.modules[f"{__name__}.academic_affairs_stats_service"] = academic_affairs_stats_service
-# 教材选用、审核、征订、发放、退领、费用和并发锁统一进入最终层；目录/库存主数据保持跨学期可维护。
 sys.modules[f"{__name__}.academic_affairs_textbook_service"] = academic_affairs_textbook_service
-# 移动聚合路由和后续完整路径导入统一去掉教师姓名授权。
 sys.modules[f"{__name__}.mobile_academic_affairs_service"] = mobile_academic_affairs_service
