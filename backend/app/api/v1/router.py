@@ -29,6 +29,7 @@ from app.services.affairs_counselor_eval_guard import install as install_counsel
 from app.services.affairs_counselor_handover_guard import install as install_counselor_handover_guard
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
 from app.services.affairs_data_integrity_guard import install as install_data_integrity_guard
+from app.services.affairs_discipline_integrity_guard import install as install_discipline_integrity_guard
 from app.services.affairs_dorm_node_guard import install as install_dorm_node_guard
 from app.services.affairs_dorm_projection_service import install as install_dorm_projection
 from app.services.affairs_dorm_reliability_service import install as install_dorm_reliability
@@ -82,6 +83,7 @@ install_talk_guard()
 install_activity_accounting_guard()
 install_activity_authority_guard()
 install_student_ledger_guard()
+install_discipline_integrity_guard()
 install_stats_integrity_guard()
 # 先安装通用版本/移动权限门，再以节点级调宿授权覆盖旧的楼栋一刀切。
 install_affairs_four_end_review_guard()
