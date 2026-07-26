@@ -104,6 +104,16 @@ def teacher_batch_enterprise_eval_create(
     return success(evaluations.create(user, body), message="企业评价已录入，等待独立审核")
 
 
+@router.post("/enterprise-evals/{eval_id}/resubmit", summary="退回企业评价修改后重交")
+def teacher_batch_enterprise_eval_resubmit(
+    eval_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.enterprise.manage")),
+):
+    from app.modules.internship.services import internship_enterprise_eval_service as evaluations
+    return success(evaluations.resubmit(user, eval_id, body), message="企业评价已修改重交")
+
+
 @router.post("/enterprise-evals/{eval_id}/review", summary="学校或学院授权角色独立审核企业评价")
 def teacher_batch_enterprise_eval_review(
     eval_id: str,
