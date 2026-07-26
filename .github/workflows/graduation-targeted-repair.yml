@@ -1,4 +1,4 @@
-name: Graduation Targeted Repair
+name: Graduation Targeted Validation
 
 on:
   push:
@@ -7,15 +7,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: graduation-targeted-repair-${{ github.ref }}
+  group: graduation-targeted-validation-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  repair-and-verify:
-    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message || '', '[graduation-targeted-verified]')
+  graduation-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -40,34 +39,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: true
 
-      - name: 精确修复 PC 成绩复核契约
+      - name: 校验 PC 成绩复核契约
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue")
           text = path.read_text(encoding="utf-8")
-
-          old_button = """                <button v-if=\"grade.status === 'CALCULATED' && grade.reviewedAt\" class=\"mp-btn mp-btn--primary\" :disabled=\"!canPublishGrade\" :title=\"publishGradeReason\" @click=\"doPublish\">发布成绩</button>"""
-          new_button = """                <button v-if=\"grade.status === 'REVIEWED'\" class=\"mp-btn mp-btn--primary\" :disabled=\"!canPublishGrade\" :title=\"publishGradeReason\" @click=\"doPublish\">发布成绩</button>"""
-          if text.count(old_button) != 1:
-              raise SystemExit("发布按钮旧契约未唯一命中，停止自动修改")
-          text = text.replace(old_button, new_button, 1)
-
-          old_tabs = """        { value: 'CALCULATED', label: '已核算' },
-                  { value: 'PUBLISHED', label: '已发布' },"""
-          new_tabs = """        { value: 'CALCULATED', label: '已核算' },
-                  { value: 'REVIEWED', label: '已复核' },
-                  { value: 'PUBLISHED', label: '已发布' },"""
-          if text.count(old_tabs) != 1:
-              raise SystemExit("成绩页签旧契约未唯一命中，停止自动修改")
-          text = text.replace(old_tabs, new_tabs, 1)
-          path.write_text(text, encoding="utf-8")
+          assert "grade.status === 'REVIEWED'" in text
+          assert "grade.status === 'CALCULATED' && grade.reviewedAt" not in text
+          assert "{ value: 'REVIEWED', label: '已复核' }" in text
           PY
           git diff --check
-          git diff -- frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue
 
       - uses: actions/setup-python@v5
         with:
@@ -216,14 +199,3 @@ jobs:
           npm ci
           npm run build:h5
           npm run build:mp-weixin
-
-      - name: 精确提交并推送修复
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue
-          git diff --cached --check
-          test "$(git diff --cached --name-only)" = "frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue"
-          git commit -m "fix(graduation): align reviewed grade publish state [graduation-targeted-verified]"
-          git push origin HEAD:fix/graduation-p0-cross-client-latest-20260726
