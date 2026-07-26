@@ -1,8 +1,8 @@
-"""Teacher-miniapp graduation action permissions.
+"""教师微信小程序毕业设计动作权限。
 
-The aggregate mobile router is outside the PC graduation router dependency. This
-module makes `/mobile/teacher/graduation/*` use the same action permission codes
-and fails closed for newly added endpoints that were not registered.
+聚合移动 Router 不在 PC 毕设 Router 的依赖链内，因此这里显式复用 PC 动作权限码。
+身份范围由 graduation_mobile_stable_bridge 使用 mentor_id/reviewer_mentor_id/评委席位
+完成；同名教师不再被临时封死，也不再回退姓名授权。
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ MOBILE_GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
     "teacher_graduation_defense_score_entry": "graduationDesign.defense.score",
 }
 
-_STABLE_MENTOR_REQUIRED = {
+_STABLE_ID_REQUIRED = {
     "graduationDesign.dashboard.view",
     "graduationDesign.proposal.view", "graduationDesign.proposal.review",
     "graduationDesign.final.view", "graduationDesign.final.review",
@@ -51,6 +51,11 @@ _STABLE_MENTOR_REQUIRED = {
     "graduationDesign.guidance.create", "graduationDesign.taskbook.view",
     "graduationDesign.taskbook.issue", "graduationDesign.taskbook.update",
     "graduationDesign.defense.view", "graduationDesign.defense.score",
+}
+
+_ADMIN_ROLES = {
+    "PLATFORM_SUPER_ADMIN", "SCHOOL_ADMIN", "SAAS_ADMIN", "GRADUATION_ADMIN", "GD_ADMIN",
+    "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN", "COLLEGE_ADMIN", "GD_GRADE_ADMIN",
 }
 
 
@@ -74,30 +79,15 @@ def require_mobile_graduation_request_permission(
     checked = enforce_permission(user, code)
 
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
-    admin_roles = {
-        "SCHOOL_ADMIN", "SAAS_ADMIN", "GRADUATION_ADMIN", "GD_ADMIN",
-        "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN", "COLLEGE_ADMIN",
-    }
-    if code in _STABLE_MENTOR_REQUIRED and role not in admin_roles:
-        from sqlalchemy import func, select
-        from app.models import GraduationMentor
+    if code in _STABLE_ID_REQUIRED and role not in _ADMIN_ROLES:
         from app.modules.graduation.services.graduation_identity import current_user_mentor
-        from app.services.db_service import _tid, session
+        from app.services.db_service import session
 
         is_external_expert = bool(user.get("expertId")) and code in {
             "graduationDesign.defense.view", "graduationDesign.defense.score",
         }
         with session() as db:
             mentor = current_user_mentor(db)
-            same_name_count = 0
-            if mentor and (mentor.teacher_name or "").strip():
-                same_name_count = int(db.scalar(select(func.count()).select_from(GraduationMentor).where(
-                    GraduationMentor.tenant_id == _tid(),
-                    GraduationMentor.teacher_name == mentor.teacher_name,
-                    GraduationMentor.is_deleted.is_(False),
-                )) or 0)
         if not mentor and not is_external_expert:
-            raise no_permission("当前账号未绑定稳定毕设导师/评委身份，已拒绝按姓名授权；请管理员按工号完成绑定。")
-        if mentor and same_name_count > 1:
-            raise no_permission("当前学校存在同名毕设教师，移动端已停止按姓名授权；请使用 PC 端或完成稳定 ID 链路升级。")
+            raise no_permission("当前账号未按工号绑定稳定毕设导师/评委身份，请管理员完成绑定。")
     return checked
