@@ -6,9 +6,7 @@
 from __future__ import annotations
 
 import json
-
 from sqlalchemy import select
-
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_attendance_service as _legacy
@@ -29,6 +27,7 @@ def create_session(user, body) -> dict:
         AaTerm,
         StudentProfile,
     )
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
 
     body = body or {}
     role = _legacy._role(user)
@@ -46,6 +45,7 @@ def create_session(user, body) -> dict:
         )).first()
         if not current_term:
             raise AppException("DATA_CONFLICT", "当前学校尚未设置当前学期")
+        guard_term_writable(db, current_term.id)
 
         task = None
         roster_source = "ADMIN_MANUAL"
@@ -93,7 +93,10 @@ def create_session(user, body) -> dict:
             # 现有考勤表仍保留 class_id 快照。选课教学班没有单一行政班时暂写0，成员事实以roster_json为准；
             # V2阶段02迁移为独立 teaching_class_id 后删除此兼容值。
             if not class_id:
-                class_ids = {int(item["classId"]) for item in official["items"] if str(item.get("classId") or "").isdigit()}
+                class_ids = {
+                    int(item["classId"]) for item in official["items"]
+                    if str(item.get("classId") or "").isdigit()
+                }
                 class_id = next(iter(class_ids)) if len(class_ids) == 1 else 0
         else:
             if not class_id:
