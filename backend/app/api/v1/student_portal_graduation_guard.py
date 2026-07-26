@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends
 from app.core.exceptions import no_permission
 from app.core.response import success
 from app.core.security import get_current_user
+from app.modules.graduation.services import graduation_extension_action_service as extension_action_svc
 from app.modules.graduation.services import graduation_extension_safety_service as extension_safety_svc
 from app.modules.graduation.services.graduation_material_temp_service import abandon_temporary_material
 from app.modules.graduation.services.graduation_taskbook_confirmation_service import confirm_with_evidence
@@ -40,8 +41,8 @@ def graduation_extensions_my(user=Depends(get_current_user)):
 def graduation_defense_delay_apply(
     body: dict = Body(...), user=Depends(get_current_user),
 ):
-    return success(extension_safety_svc.apply_delay(
-        _student(user), body.get("reason") or "", body.get("evidence") or [],
+    return success(extension_action_svc.apply_delay(
+        _student(user), body.get("reason"), body.get("evidence"),
     ), message="延期答辩申请已提交，等待指导教师审核")
 
 
