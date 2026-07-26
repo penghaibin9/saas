@@ -14,6 +14,27 @@
 业务侧的"能不能参加"（学分、欠费、已在别的批次等）由各域的资格校验另行叠加，
 本模块不猜业务规则——猜错会把不该进的人放进正式名单。
 
+前端不要另造选择器——公共组件已齐，选人页直接用（CLAUDE.md §6.3）：
+
+- `AppOrgCascader`（学院→专业→班级三级联动，components/common/picker）
+- `AppCollegePicker` / `AppMajorPicker` / `AppClassPicker` / `AppStudentPicker`
+  （entityPickers.js，均支持 multiple + 远程搜索 + 数据范围提示）
+
+本模块的规则字段就是按这些组件的产出对齐的：组件吐 id，规则收 `collegeIds`/`majorIds`/
+`classIds`/`studentIds`，排除项同名加 `exclude` 前缀，前后端不需要再做一层字段映射。
+
+已知两处缺口（建到选人页时要先补，且应补在公共层而不是页面里）：
+
+1. 喂数据的 adapter 只有教务有（`academicAffairsPickerAdapters` 里的
+   `orgCascade/college/major/class`）；学工与实习/毕设的 adapter 集合里没有这几个 key，
+   直接把组件放进实习页会是空下拉。
+2. 现有两个组织树接口的权限都不匹配选人场景：`/system/org-tree` 要
+   `systemAdmin.org.view`，教务的 `/orgs/tree` 要教务权限，而选人的是实习管理员／学院管理员。
+   需要一个按调用者数据范围返回的公共组织树端点，别让业务方各自复制一份。
+
+另：年级没有现成组件，但年级是主档上的字符串枚举，用 `AppSelect` + 后端 distinct 即可，
+不必为它新造 picker。
+
 三条硬口径：
 
 1. **数据范围先收敛再返回**。学院管理员即使把规则写成"全校"，也只会拿到本院学生；
