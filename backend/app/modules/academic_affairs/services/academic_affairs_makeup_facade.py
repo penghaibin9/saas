@@ -2,6 +2,7 @@
 
 - 学生本人优先按稳定 ``studentId`` / 账号绑定解析，学号只保留迁移期兜底；
 - 候选名单统一消费成绩中心 ``effective_grade_rows``；
+- 学院身份仅返回数据范围内行政班学生，空范围不回落全校；
 - 已被补考、清考、更正或复查覆盖的旧失败行不再重复入池；
 - 清考不再按课程名取历史最高分；
 - 分数不参与有效成绩选择，候选只看统一口径后的最终结果。
@@ -32,6 +33,13 @@ def _numeric_user_id(value):
         return int(text)
     match = re.search(r"(\d+)$", text)
     return int(match.group(1)) if match else None
+
+
+def _class_id(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _student(db):
@@ -83,12 +91,26 @@ def _effective_failed_rows(rows):
     ]
 
 
+def _filter_students_by_scope(ctx, db, students):
+    """TENANT_ALL返回全部；受限身份只保留允许行政班，空范围返回空。"""
+    allowed = ctx.allowed_class_ids(db)
+    if allowed is None:
+        return list(students or [])
+    allowed_ids = {int(value) for value in allowed}
+    if not allowed_ids:
+        return []
+    return [
+        student for student in (students or [])
+        if _class_id(getattr(student, "class_id", None)) in allowed_ids
+    ]
+
+
 def makeup_pending(user, term=None, page=1, page_size=50):
-    """仅返回统一有效成绩仍不及格的学生课程。"""
+    """仅返回统一有效成绩仍不及格、且处于当前身份数据范围内的学生课程。"""
     from app.models import AcademicGrade, AcademicStudent
 
     with session() as db:
-        _legacy._ctx(user, db)
+        ctx = _legacy._ctx(user, db)
         query = db.query(AcademicGrade).filter(
             AcademicGrade.tenant_id == _tid(),
             AcademicGrade.record_status == "ACTIVE",
@@ -99,14 +121,15 @@ def makeup_pending(user, term=None, page=1, page_size=50):
         effective_failed = _effective_failed_rows(query.all())
 
         student_ids = sorted({int(row.acad_student_id) for row in effective_failed})
+        raw_students = db.query(AcademicStudent).filter(
+            AcademicStudent.tenant_id == _tid(),
+            AcademicStudent.id.in_(student_ids),
+            AcademicStudent.is_deleted.is_(False),
+        ).all() if student_ids else []
         students = {
             student.id: student
-            for student in db.query(AcademicStudent).filter(
-                AcademicStudent.tenant_id == _tid(),
-                AcademicStudent.id.in_(student_ids),
-                AcademicStudent.is_deleted.is_(False),
-            ).all()
-        } if student_ids else {}
+            for student in _filter_students_by_scope(ctx, db, raw_students)
+        }
 
         items = []
         for grade in effective_failed:
