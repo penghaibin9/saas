@@ -14,7 +14,7 @@ from . import academic_affairs_attendance_facade as academic_affairs_attendance_
 from . import academic_affairs_evaluation_term_facade as academic_affairs_evaluation_service
 from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
 from . import academic_affairs_grade_term_facade as academic_affairs_grade_service
-from . import academic_affairs_makeup_term_facade as academic_affairs_makeup_service
+from . import academic_affairs_makeup_identity_facade as academic_affairs_makeup_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
 from . import academic_affairs_selection_facade as academic_affairs_selection_service
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
@@ -33,7 +33,7 @@ sys.modules[f"{__name__}.academic_affairs_evaluation_service"] = academic_affair
 sys.modules[f"{__name__}.academic_affairs_exam_service"] = academic_affairs_exam_service
 # 成绩有效口径、官方名单与学期写保护统一经最终叠加facade。
 sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_grade_service
-# 补考、清考、重修和免修统一消费有效成绩口径并执行学期写保护。
+# 补考、清考、重修和免修统一执行学期写保护；学生主档缺失时fail-closed。
 sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_makeup_service
 # 学生课表等完整路径导入统一使用“同一发布批次内合并LOCKED选课”的安全读侧。
 sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_schedule_service
