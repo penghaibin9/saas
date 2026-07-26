@@ -114,6 +114,9 @@ def test_public_program_services_use_final_quality_layers():
         "academic_affairs_program_quality_facade"
     )
     assert services.academic_affairs_program_quality_service.__name__.endswith(
+        "academic_affairs_program_quality_security_service"
+    )
+    assert services.academic_affairs_program_quality_service._base.__name__.endswith(
         "academic_affairs_program_quality_final_service"
     )
 
