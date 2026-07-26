@@ -21,6 +21,7 @@ from app.services.affairs_activity_reliability_service import install as install
 from app.services.affairs_appeal_repair_scheduler import install as install_appeal_repair_scheduler
 from app.services.affairs_appeal_repair_service import install as install_appeal_repair
 from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
+from app.services.affairs_archive_guard import install as install_archive_guard
 from app.services.affairs_counselor_eval_guard import install as install_counselor_eval_guard
 from app.services.affairs_counselor_handover_guard import install as install_counselor_handover_guard
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
@@ -65,6 +66,7 @@ install_counselor_handover_guard()
 install_risk_evidence_guard()
 install_counselor_eval_guard()
 install_funding_ext_guard()
+install_archive_guard()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
