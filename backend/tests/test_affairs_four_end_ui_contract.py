@@ -65,3 +65,17 @@ def test_teacher_dangerous_actions_have_nonempty_evidence_guards():
     assert "实际返校时间不能晚于当前时间" in leave
     assert "确认关闭风险" in review
     assert "选择等级并通过" in review
+
+
+def test_mental_allowed_actions_are_centralized_and_match_backend_transitions():
+    service = _read("backend/app/services/affairs_mental_service.py")
+    pc = _read("frontend/src/modules/studentAffairs/views/mental/MentalReferralFollowView.vue")
+    assert '"allowedActions": _allowed_actions(x)' in service
+    assert 'if x.status == "ESCALATED"' in service
+    assert 'return ["CLOSE"]' in service
+    assert 'if "FOLLOW" not in _allowed_actions(x)' in service
+    assert 'if "ESCALATE" not in _allowed_actions(x)' in service
+    assert "危机升级依据需5-300字" in service
+    assert ':pagination="pagination"' in pc
+    assert 'Array.isArray(row.allowedActions)' in pc
+    assert "ESCALATED: ['CLOSE']" in pc
