@@ -108,6 +108,7 @@ jobs:
           tests/test_aa_program_quality_v2.py
           tests/test_aa_program_generation_gate_v2.py
           tests/test_aa_teaching_class_v2.py
+          tests/test_aa_teaching_class_v2_runtime.py
           tests/test_security_student_identity.py
           --maxfail=1
 
