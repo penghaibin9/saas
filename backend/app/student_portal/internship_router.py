@@ -1,6 +1,7 @@
 """学生 PC 门户岗位实习合规、知情与安全教育接口。
 
-与学生小程序复用同一业务服务，不复制状态机。
+与学生小程序复用同一业务服务，不复制状态机；多条进行中实习时，合规和安全
+列表显式接收 batchId，正文与课程操作再按任务/课程归属校验本人。
 """
 from __future__ import annotations
 
@@ -59,14 +60,20 @@ def portal_consent_reject(
     return success(consent.reject(consent_id, body or {}, user))
 
 
-@router.get("/safety/courses", summary="本人当前批次安全教育课程")
-def portal_safety_courses(user=Depends(get_current_user)):
-    return success(safety.list_my_courses(user))
+@router.get("/safety/courses", summary="本人所选批次安全教育课程")
+def portal_safety_courses(
+    batchId: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(safety.list_my_courses(user, batch_id=batchId))
 
 
-@router.get("/safety/completions", summary="本人安全教育完成记录")
-def portal_safety_completions(user=Depends(get_current_user)):
-    return success(safety.list_my_completions(user))
+@router.get("/safety/completions", summary="本人所选批次安全教育完成记录")
+def portal_safety_completions(
+    batchId: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(safety.list_my_completions(user, batch_id=batchId))
 
 
 @router.get("/safety/courses/{course_id}/detail", summary="本人安全教育课程详情")
