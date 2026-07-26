@@ -87,6 +87,9 @@ def return_my(user: dict, leave_id, body: dict) -> dict:
         row.return_note = note
         row.return_file_id = file_id
         row.version = int(row.version or 0) + 1
+        if file_id:
+            from app.services import file_service
+            file_service.bind_file_biz(file_id, "INTERNSHIP", str(row.id), user=user, db=db)
         legacy._trail(db, row.id, "RETURN_VERSIONED", {
             "wasOverdue": was_overdue,
             "hasFile": bool(file_id),
@@ -120,7 +123,7 @@ def list_teacher_overdue(batch_id, user: dict) -> dict:
                 continue
             if not _rec_in_scope(scope, db, record, student):
                 continue
-            items.append(legacy._row(db, row, record, student))
+            items.append(legacy._row(row, record, student, db=db, user=user))
         return {"list": items, "total": len(items), "batchId": str(batch_id or "")}
 
 
