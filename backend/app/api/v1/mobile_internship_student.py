@@ -6,6 +6,8 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
+from app.modules.internship.services import internship_plan_service as plans
+from app.modules.internship.services import internship_plan_task_service as plan_tasks
 from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_application_context_service as applications
 from app.modules.internship.services import internship_student_compliance_service as compliance
@@ -155,3 +157,33 @@ def withdraw_selected_makeup(
 ):
     return success(makeups.withdraw(
         user, makeup_id, (body or {}).get("expectedVersion")), message="补卡已撤回")
+
+
+@router.get("/context/plan", summary="本人当前已发布实习计划及回执版本")
+def my_selected_plan(user=Depends(get_current_user)):
+    return success(plans.student_my_plan(user))
+
+
+@router.post("/context/plan/acknowledge", summary="按正文与回执版本确认实习计划")
+def acknowledge_selected_plan(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(plans.student_acknowledge(user, body or {}), message="已确认当前版本实习计划")
+
+
+@router.get("/context/plan/tasks", summary="本人当前计划任务与进度版本")
+def my_selected_plan_tasks(user=Depends(get_current_user)):
+    return success(plan_tasks.student_tasks(user))
+
+
+@router.post("/context/plan/tasks/{sort_order}/submit", summary="按版本提交当前计划任务完成情况")
+def submit_selected_plan_task(
+    sort_order: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(
+        plan_tasks.student_submit_task(user, sort_order, body or {}),
+        message="任务已提交，等待指导教师确认",
+    )
