@@ -25,7 +25,7 @@
               <text class="aa__focus-main">{{ todayCourses[0].courseName }}</text>
               <text class="aa__focus-sub">第{{ todayCourses[0].slotNo }}节 · {{ todayCourses[0].classroom || '教室待定' }}</text>
             </template>
-            <text v-else class="aa__focus-empty">今天暂无课程</text>
+            <text v-else class="aa__focus-empty">{{ todayEmptyText }}</text>
           </view>
 
           <view class="aa__focus card" @click="go('/pages/student/academic-affairs/exam')">
@@ -35,7 +35,7 @@
               <text class="aa__focus-main">{{ upcomingExam.courseName }}</text>
               <text class="aa__focus-sub">{{ upcomingExam.startTime || '时间待定' }} · {{ upcomingExam.classroom || '考场待定' }}</text>
             </template>
-            <text v-else class="aa__focus-empty">暂无已发布考试</text>
+            <text v-else class="aa__focus-empty">{{ examLoaded ? '暂无已发布考试' : '考试数据暂未加载' }}</text>
           </view>
         </view>
 
@@ -115,12 +115,24 @@ function localDateKey(date) {
   return `${y}-${m}-${d}`
 }
 
+function activeInWeek(item, week) {
+  const current = Number(week)
+  if (!Number.isFinite(current) || current < 1) return false
+  const start = Number(item.startWeek || 1)
+  const end = Number(item.endWeek || start)
+  if (current < start || current > end) return false
+  const parity = String(item.weekParity || 'ALL').toUpperCase()
+  if (parity === 'ODD') return current % 2 === 1
+  if (parity === 'EVEN') return current % 2 === 0
+  return true
+}
+
 export default {
   data() {
     return {
       status: null, state: 'loading', statusBarHeight: 20, entries: ENTRIES,
-      scheduleItems: [], examItems: [], warningCount: 0, evaluationCount: 0,
-      partialError: false, showAll: false
+      scheduleItems: [], currentWeek: null, examItems: [], examLoaded: false,
+      warningCount: 0, evaluationCount: 0, partialError: false, showAll: false
     }
   },
   computed: {
@@ -128,8 +140,14 @@ export default {
     otherEntries() { return this.entries.filter((x) => !COMMON_KEYS.has(x.key)) },
     todayCourses() {
       const day = new Date().getDay() || 7
-      return this.scheduleItems.filter((x) => Number(x.weekday) === day)
+      return this.scheduleItems
+        .filter((item) => Number(item.weekday) === day && activeInWeek(item, this.currentWeek))
         .sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
+    },
+    todayEmptyText() {
+      if (this.currentWeek == null) return '校历周次暂未加载'
+      if (Number(this.currentWeek) === 0) return '当前学期尚未开始'
+      return `第${this.currentWeek}周今天暂无课程`
     },
     upcomingExam() {
       const today = localDateKey(new Date())
@@ -164,11 +182,23 @@ export default {
         studentApi.getMySchedule(), studentApi.getMyExamSchedule(),
         studentApi.getMyWarnings(), studentApi.getMyEvaluationTasks()
       ])
-      if (results[0].status === 'fulfilled') this.scheduleItems = rowsOf(results[0].value)
-      if (results[1].status === 'fulfilled') this.examItems = rowsOf(results[1].value)
-      if (results[2].status === 'fulfilled') this.warningCount = Number(results[2].value && results[2].value.total != null ? results[2].value.total : rowsOf(results[2].value).length) || 0
-      if (results[3].status === 'fulfilled') this.evaluationCount = Number(results[3].value && results[3].value.total != null ? results[3].value.total : rowsOf(results[3].value).length) || 0
-      this.partialError = results.some((r) => r.status === 'rejected')
+      if (results[0].status === 'fulfilled') {
+        this.scheduleItems = rowsOf(results[0].value)
+        this.currentWeek = results[0].value && results[0].value.currentWeek != null
+          ? Number(results[0].value.currentWeek) : null
+      } else {
+        this.scheduleItems = []
+        this.currentWeek = null
+      }
+      this.examLoaded = results[1].status === 'fulfilled'
+      this.examItems = this.examLoaded ? rowsOf(results[1].value) : []
+      this.warningCount = results[2].status === 'fulfilled'
+        ? Number(results[2].value && results[2].value.total != null ? results[2].value.total : rowsOf(results[2].value).length) || 0
+        : 0
+      this.evaluationCount = results[3].status === 'fulfilled'
+        ? Number(results[3].value && results[3].value.total != null ? results[3].value.total : rowsOf(results[3].value).length) || 0
+        : 0
+      this.partialError = results.some((result) => result.status === 'rejected') || this.currentWeek == null
       this.state = 'ready'
     }
   }
