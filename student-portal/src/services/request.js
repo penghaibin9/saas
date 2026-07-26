@@ -28,13 +28,25 @@ export function clearSession() {
   try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY) } catch { /* ignore */ }
 }
 
-export async function request(path, { method = 'GET', body, auth = true } = {}) {
+function withQuery(path, params) {
+  const entries = Object.entries(params || {}).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  if (!entries.length) return path
+  const query = new URLSearchParams()
+  for (const [key, value] of entries) {
+    if (Array.isArray(value)) value.forEach((item) => query.append(key, String(item)))
+    else query.append(key, String(value))
+  }
+  return `${path}${path.includes('?') ? '&' : '?'}${query.toString()}`
+}
+
+export async function request(path, { method = 'GET', body, auth = true, params, query } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
+  const requestPath = withQuery(path, params || query)
   let res
   try {
-    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, {
+    res = await fetch(`${API_BASE}${API_PREFIX}${requestPath}`, {
       method, headers, body: body ? JSON.stringify(body) : undefined
     })
   } catch (netErr) {
