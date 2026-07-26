@@ -36,6 +36,10 @@ _KINDS = {
         "model": "AffairsCreditAppeal", "id_key": "appealId",
     },
 }
+_DISC_LABELS = {
+    "WARNING": "警告", "SERIOUS_WARNING": "严重警告", "DEMERIT": "记过",
+    "PROBATION": "留校察看", "EXPEL": "开除学籍",
+}
 
 
 def _kind(value: str) -> tuple[str, dict]:
@@ -79,6 +83,29 @@ def _versions(kind: str, items: list[dict]) -> dict[int, int]:
     return result
 
 
+def _attach_discipline_types(items: list[dict]) -> None:
+    from app.models import DisciplineCase
+    case_ids = {
+        int(item.get("caseId")) for item in items
+        if str(item.get("caseId") or "").isdigit()
+    }
+    if not case_ids:
+        return
+    with session() as db:
+        cases = db.scalars(select(DisciplineCase).where(
+            DisciplineCase.tenant_id == _tid(), DisciplineCase.id.in_(case_ids),
+            DisciplineCase.is_deleted.is_(False),
+        )).all()
+    case_map = {int(row.id): row.disc_type for row in cases}
+    for item in items:
+        raw = item.get("caseId")
+        disc_type = case_map.get(int(raw)) if str(raw or "").isdigit() else None
+        if not disc_type:
+            raise AppException("DATA_INCONSISTENT", "申诉关联的原处分不存在", http_status=503)
+        item["discType"] = disc_type
+        item["discTypeLabel"] = _DISC_LABELS.get(disc_type, disc_type)
+
+
 @router.get("/mobile/teacher/affairs/appeals/{kind}", summary="教师异议/申诉待处理列表")
 def appeal_pending(
     kind: str = Path(...),
@@ -98,6 +125,7 @@ def appeal_pending(
     elif key == "DISCIPLINE_APPEAL":
         from app.services import affairs_discipline_service as service
         items, total = service.list_appeals(user, status="SUBMITTED", page=page, page_size=pageSize)
+        _attach_discipline_types(items)
     else:
         from app.services import affairs_activity_service as service
         items, total, _counts = service.list_credit_appeals(user, status="SUBMITTED", page=page, page_size=pageSize)
