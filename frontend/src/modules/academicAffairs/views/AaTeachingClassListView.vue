@@ -7,8 +7,8 @@
   >
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/teaching-tasks')">教学任务</AppButton>
-      <AppButton :disabled="!filters.termId" :loading="checking" @click="runBackfill(true)">存量对账</AppButton>
-      <AppButton variant="primary" :disabled="!filters.termId || !backfillReport" @click="confirmVisible = true">执行回填</AppButton>
+      <AppButton :disabled="!filters.termId" :loading="checking" @click="runBackfill">存量对账</AppButton>
+      <AppButton variant="primary" :disabled="!canExecuteBackfill" @click="confirmVisible = true">执行回填</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -21,7 +21,7 @@
       <AppSectionCard title="查询范围">
         <div class="aa-filter-row">
           <label>学期
-            <select v-model="filters.termId" class="aa-select" @change="load">
+            <select v-model="filters.termId" class="aa-select" @change="onTermChange">
               <option value="">全部学期</option>
               <option v-for="term in terms" :key="term.termId" :value="term.termId">{{ term.termName || `${term.yearCode}-${term.termNo}` }}</option>
             </select>
@@ -52,9 +52,9 @@
 
       <AppInlineAlert
         v-if="backfillReport"
-        :type="backfillReport.readyCount === backfillReport.taskCount ? 'success' : 'warning'"
+        :type="canExecuteBackfill ? 'success' : 'warning'"
         title="存量对账结果"
-        :description="`共 ${backfillReport.taskCount} 条教学任务，其中 ${backfillReport.readyCount} 条可形成正式名单；执行回填前请处理未就绪任务。`"
+        :description="backfillDescription"
       />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -71,7 +71,7 @@
           <AppStatusTag :type="row.rosterStatus === 'LOCKED' ? 'success' : 'warning'" :label="row.rosterStatus === 'LOCKED' ? `第${row.rosterVersionNo}版` : '待形成名单'" dot />
           <div class="mp-cell-sub">{{ row.expectedStudents ?? 0 }}人</div>
         </template>
-        <template #cell-status="{ row }"><AppStatusTag :status="row.status" dot /></template>
+        <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ACTIVE' ? 'success' : 'info'" :label="statusLabel(row.status)" dot /></template>
         <template #cell-actions="{ row }"><button class="mp-link" @click="openDetail(row)">查看名单与版本</button></template>
       </DataTable>
     </div>
@@ -117,14 +117,28 @@ export default {
   computed: {
     activeCount() { return this.rows.filter(row => row.status === 'ACTIVE').length },
     lockedCount() { return this.rows.filter(row => row.rosterStatus === 'LOCKED').length },
-    debtCount() { return this.rows.filter(row => row.rosterStatus !== 'LOCKED').length }
+    debtCount() { return this.rows.filter(row => row.rosterStatus !== 'LOCKED').length },
+    canExecuteBackfill() {
+      const total = Number(this.backfillReport?.taskCount || 0)
+      return Boolean(this.filters.termId && total > 0 && Number(this.backfillReport?.readyCount || 0) === total)
+    },
+    backfillDescription() {
+      const total = Number(this.backfillReport?.taskCount || 0)
+      const ready = Number(this.backfillReport?.readyCount || 0)
+      const blocked = Number(this.backfillReport?.blockedCount ?? Math.max(total - ready, 0))
+      if (!total) return '当前范围没有可回填的教学任务，不会写入空批次。'
+      if (blocked) return `共 ${total} 条教学任务，${ready} 条名单就绪、${blocked} 条阻断；必须全部处理完才能正式回填。`
+      return `共 ${total} 条教学任务，名单全部就绪；正式回填将一次性生成教学班和名单版本并写入审计。`
+    }
   },
   async created() { await this.loadTerms(); await this.load() },
   methods: {
     classTypeLabel(value) { return ({ ADMIN: '行政班', SELECTION: '选课班', MERGED: '合班', RETAKE: '重修班', LAYERED: '分层班' })[value] || value || '—' },
+    statusLabel(value) { return ({ ACTIVE: '使用中', ARCHIVED: '已归档' })[value] || value || '—' },
     primaryTeacher(row) { return (row.teachers || []).find(item => item.roleType === 'PRIMARY' && item.status === 'ACTIVE') },
     openDetail(row) { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', teachingClassId: row.teachingClassId } }) },
     onPageChange(page) { this.pagination.page = page; this.load() },
+    onTermChange() { this.backfillReport = null; this.confirmVisible = false; this.pagination.page = 1; this.load() },
     async loadTerms() {
       const [termsRes, currentRes] = await Promise.all([academicAffairsApi.getTerms({ page: 1, pageSize: 50 }), academicAffairsApi.getCurrentTerm()])
       if (termsRes.code === 0) this.terms = termsRes.data.list || []
@@ -142,22 +156,29 @@ export default {
       else { this.rows = []; this.pagination.total = 0; this.error = res.message || '加载教学班失败' }
       this.loading = false
     },
-    async runBackfill(dryRun) {
+    async runBackfill() {
       if (!this.filters.termId || this.checking) return
       this.checking = true
-      const res = await teachingClassApi.backfill(this.filters.termId, dryRun)
+      const res = await teachingClassApi.backfill(this.filters.termId, true)
       this.checking = false
       if (res.code === 0) { this.backfillReport = res.data; toast.success('存量对账完成') }
-      else toast.error(res.message || '存量对账失败')
+      else { this.backfillReport = res.data || null; toast.error(res.message || '存量对账失败') }
     },
     async executeBackfill({ reason }) {
-      if (this.backfilling) return
+      if (this.backfilling || !this.canExecuteBackfill) return
       if (!reason || reason.trim().length < 5) { toast.error('请填写不少于5字的回填原因'); return }
       this.backfilling = true
-      const res = await teachingClassApi.backfill(this.filters.termId, false)
+      const res = await teachingClassApi.backfill(this.filters.termId, false, reason.trim())
       this.backfilling = false
-      if (res.code === 0) { this.confirmVisible = false; this.backfillReport = res.data; toast.success('教学班与名单版本回填完成'); await this.load() }
-      else toast.error(res.message || '回填失败')
+      if (res.code === 0) {
+        this.confirmVisible = false
+        this.backfillReport = res.data
+        toast.success('教学班与名单版本回填完成')
+        await this.load()
+      } else {
+        this.backfillReport = res.data || this.backfillReport
+        toast.error(res.message || '回填失败')
+      }
     }
   }
 }
