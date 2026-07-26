@@ -1,12 +1,13 @@
 """学生小程序岗位实习本人权威接口。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_safety_service as safety
+from app.modules.internship.services import internship_student_application_context_service as applications
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_dashboard_service as dashboard
@@ -62,3 +63,38 @@ def my_selected_safety_completions(
 @router.get("/safety/courses/{course_id}/detail", summary="本人安全教育课程详情与完成版本")
 def my_safety_course_detail(course_id: str, user=Depends(get_current_user)):
     return success(safety.get_my_course_detail(course_id, user))
+
+
+@router.get("/context/applications", summary="本人所选批次正式实习申请")
+def my_selected_applications(user=Depends(get_current_user)):
+    return success(applications.list_my(user))
+
+
+@router.put("/context/applications", summary="按版本保存本人正式实习申请草稿")
+def save_selected_application(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(applications.save(user, body or {}), message="申请草稿已保存")
+
+
+@router.post("/context/applications/{application_id}/submit", summary="按版本提交本人正式实习申请")
+def submit_selected_application(
+    application_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(applications.submit(
+        user, application_id, (body or {}).get("expectedVersion")),
+        message="申请已提交审核")
+
+
+@router.post("/context/applications/{application_id}/withdraw", summary="按版本撤回本人待审核申请")
+def withdraw_selected_application(
+    application_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(applications.withdraw(
+        user, application_id, (body or {}).get("expectedVersion")),
+        message="申请已撤回")
