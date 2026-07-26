@@ -32,7 +32,10 @@
     </section>
 
     <StateBlock v-if="loading" type="loading" text="正在读取已发布课表…" />
-    <StateBlock v-else-if="error" type="error" :text="error" />
+    <section v-else-if="error" class="schedule-error sp-card">
+      <StateBlock type="error" :text="error" />
+      <button class="sp-btn sp-btn--ghost" @click="load">重新加载</button>
+    </section>
     <StateBlock v-else-if="!items.length" type="empty" text="暂无已发布课表" />
     <StateBlock v-else-if="!filteredItems.length" type="empty" :text="`第${selectedWeek}周没有课程安排`" />
 
@@ -116,7 +119,7 @@ function itemKey(item) {
 
 function weekLabel(item) {
   const parity = item.weekParity === 'ODD' ? '单周' : item.weekParity === 'EVEN' ? '双周' : '全周'
-  return `第${item.startWeek || 1}—${item.endWeek || maxWeek}周 · ${parity}`
+  return `第${item.startWeek || 1}—${item.endWeek || maxWeek.value}周 · ${parity}`
 }
 
 function sourceClass(item) {
@@ -151,8 +154,9 @@ async function printSchedule() {
   printing.value = true
   try {
     const audit = await portalApi.academicSchedulePrint({ reason: '个人课表' })
-    const win = window.open('', '_blank', 'noopener,noreferrer')
+    const win = window.open('', '_blank')
     if (!win) throw new Error('浏览器阻止了打印窗口，请允许弹出窗口后重试')
+    win.opener = null
     const doc = win.document
     doc.title = '个人课表'
     const style = doc.createElement('style')
@@ -207,6 +211,7 @@ onMounted(load)
 .week-filter button.active { border-color: var(--pri); background: var(--pri-50); color: var(--pri); font-weight: 600; }
 .schedule-summary { display: flex; gap: 16px; color: var(--t3); font-size: 12.5px; white-space: nowrap; }
 .schedule-summary b { color: var(--t1); }
+.schedule-error { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .week-board { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 10px; align-items: start; overflow-x: auto; padding-bottom: 8px; }
 .day-column { min-width: 150px; border: 1px solid var(--line); border-radius: 13px; background: #fff; overflow: hidden; }
 .day-column.is-empty { background: #fafbfc; }
