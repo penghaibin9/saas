@@ -18,7 +18,13 @@ from app.core.permissions import has_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.services.db_service import _tid, session
+from app.services.affairs_leave_date_contract import (
+    install as install_leave_date_contract,
+    normalize_range,
+    normalize_reason,
+)
 
+install_leave_date_contract()
 router = APIRouter(tags=["学工中心·四端契约"])
 
 
@@ -26,7 +32,7 @@ class ReturnedLeaveUpdate(BaseModel):
     leaveType: Optional[str] = Field(None, description="SICK/PERSONAL/HOME/HOSPITAL/GOOUT/OTHER")
     startTime: Optional[str] = None
     endTime: Optional[str] = None
-    reason: Optional[str] = Field(None, max_length=500)
+    reason: Optional[str] = Field(None, max_length=300)
     version: int = Field(..., description="当前页面看到的乐观锁版本")
 
 
@@ -36,7 +42,7 @@ class SelfDormTransferBody(BaseModel):
 
 
 class SecureCheckinBody(BaseModel):
-    token: str = Field(..., min_length=6)
+    token: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 def _self_student(db, user):
@@ -64,7 +70,6 @@ def _self_leave(db, leave_id: int, user):
 def _candidate_rows(db, ids: set[int] | None, limit: int = 200) -> list[dict]:
     """候选人只回选择器所需最小字段，不返回手机号、身份证等敏感信息。"""
     from app.models import SchoolClass, StudentProfile
-
     conds = [
         StudentProfile.tenant_id == _tid(),
         StudentProfile.is_deleted.is_(False),
@@ -105,7 +110,6 @@ def teacher_affairs_student_candidates(
     purpose = (purpose or "TALK").upper()
     if purpose not in ("TALK", "MENTAL"):
         raise AppException("VALIDATION_ERROR", "候选人用途仅支持 TALK/MENTAL")
-
     with session() as db:
         if purpose == "MENTAL":
             if not (
@@ -161,24 +165,21 @@ def leave_update_returned(
 ):
     from app.models import CsLeave
     from app.services import affairs_leave_service as leave_svc
-
     with session() as db:
         row, stu = _self_leave(db, leave_id, user)
         if row.affairs_status != "RETURNED":
             raise AppException("DATA_CONFLICT", "只有已退回申请可以修改")
         atomic_claim_version(db, row, body.version)
-
-        leave_type = body.leaveType or row.leave_type
+        leave_type = (body.leaveType or row.leave_type or "PERSONAL").strip().upper()
         if leave_type not in leave_svc.L_TYPE:
             raise AppException("VALIDATION_ERROR", "请假类型非法")
-        start = leave_svc._parse_dt(body.startTime) if body.startTime is not None else row.start_time
-        end = leave_svc._parse_dt(body.endTime) if body.endTime is not None else row.end_time
-        if not start or not end or end <= start:
-            raise AppException("VALIDATION_ERROR", "结束时间必须晚于开始时间")
-        reason = (body.reason if body.reason is not None else row.reason or "").strip()
-        if len(reason) < 2:
-            raise AppException("VALIDATION_ERROR", "请假事由至少填写2个字")
-
+        start, end = normalize_range(
+            body.startTime,
+            body.endTime,
+            fallback_start=row.start_time,
+            fallback_end=row.end_time,
+        )
+        reason = normalize_reason(body.reason if body.reason is not None else row.reason)
         active_states = (
             "SUBMITTED", "COUNSELOR_REVIEW", "COLLEGE_REVIEW",
             "STUDENT_AFFAIRS_REVIEW", "APPROVED", "EXTENSION_REVIEW",
@@ -193,7 +194,6 @@ def leave_update_returned(
         )).all()
         if any(leave_svc._overlap(start, end, x.start_time, x.end_time) for x in others):
             raise AppException("DATA_CONFLICT", "该时间段与已有请假记录重叠")
-
         before = (
             f"type={row.leave_type};start={row.start_time};"
             f"end={row.end_time};reason={row.reason or ''}"
@@ -217,7 +217,6 @@ def leave_update_returned(
 def dorm_transfer_self(body: SelfDormTransferBody, user=Depends(get_current_user)):
     from app.models import DormBed, DormBuilding, DormTransfer
     from app.services import affairs_dorm_service as dorm
-
     with session() as db:
         stu = _self_student(db, user)
         current = db.scalars(select(DormBed).where(
@@ -247,7 +246,6 @@ def dorm_transfer_self(body: SelfDormTransferBody, user=Depends(get_current_user
         if pending:
             raise AppException("DATA_CONFLICT", "已有调宿申请正在处理中，请勿重复提交")
         sid = int(stu.id)
-
     result = dorm.submit_transfer(user, sid, body.toBedId, body.reason.strip())
     return success(result, message="调宿申请已提交")
 
