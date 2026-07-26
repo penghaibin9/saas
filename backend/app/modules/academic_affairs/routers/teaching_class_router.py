@@ -45,7 +45,9 @@ def teaching_class_list(
     items, total = query_service.list_teaching_classes(
         user, termId, status, classType, keyword, page, min(max(pageSize, 1), 200),
     )
-    return success(paginate(items, total, page, pageSize))
+    data = paginate(items, total, page, pageSize)
+    data["list"] = items
+    return success(data)
 
 
 @router.post("/actions/backfill", summary="教学班存量投影与对账")
