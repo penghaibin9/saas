@@ -28,6 +28,7 @@ from app.services.affairs_four_end_review_guard import install as install_affair
 from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
+from app.services.affairs_student_application_lock import install as install_student_application_lock
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
 
 api_router.include_router(affairs_four_end_router)
@@ -45,10 +46,12 @@ install_credit_appeal_reliability()
 install_dorm_reliability()
 install_dorm_projection()
 install_atomic_student_applications()
+# 原子申请入口安装后，再把本人解析收紧为同学生行锁，序列化并发重复提交。
+install_student_application_lock()
 # 必须在核心申诉实现完成后安装，包装具体受理人待办和结果消息。
 install_appeal_todo_reconciliation()
 install_appeal_repair()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
-# 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动写权限登记。
+# 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
 install_affairs_four_end_terminal_guard(api_router)
