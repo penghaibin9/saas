@@ -1,11 +1,12 @@
 """学工四端兼容层的二次安全门。
 
 现有 ``affairs_four_end_contract`` 为避免大范围改动，通过运行时兼容层把移动端
-请求接回既有核心服务。本文件只收紧三个容易失控的边界：
+请求接回既有核心服务。本文件收紧以下边界：
 
 1. 服务函数已经显式收到 version 时，请求上下文不得偷换成数据库最新或其他值；
 2. 教师移动端新增写接口未登记 permissionCode 时默认拒绝；
-3. 学生身份只在明确的本人宿舍房源 GET 路径中放开房源读取，不能全局获得楼栋范围。
+3. 心理统计、个体名单、个体明细权限严格分离；
+4. 学生身份只在明确的本人宿舍房源 GET 路径中放开房源读取。
 """
 from __future__ import annotations
 
@@ -73,8 +74,16 @@ def _install_permission_guard(contract) -> None:
     original = contract._teacher_permissions
 
     def teacher_permissions(path: str, method: str) -> tuple[str, ...]:
-        required = original(path, method)
+        method = method.upper()
         write = method not in ("GET", "HEAD", "OPTIONS")
+        if path == "/api/v1/mobile/teacher/mental-stats":
+            return ("studentAffairs.stats.view",)
+        if path == "/api/v1/mobile/teacher/mental" or path.startswith("/api/v1/mobile/teacher/mental/"):
+            if write:
+                return ("studentAffairs.mental.manage",)
+            return ("studentAffairs.risk.psyDetail.view",)
+
+        required = original(path, method)
         if (
             write
             and path.startswith("/api/v1/mobile/teacher/affairs")
