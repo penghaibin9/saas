@@ -109,13 +109,13 @@ def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
-    # Install service-level fixes before any router module binds/uses them.
     from app.modules.graduation.services.graduation_consistency_install import install_consistency_guards
     install_consistency_guards()
 
     from app.modules.graduation.routers import (
         graduation,
         graduation_archive,
+        graduation_archive_sensitive_router,
         graduation_batch,
         graduation_defense_score,
         graduation_grade,
@@ -138,9 +138,9 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     )
 
     d = deps["gd"]
-    # Exact safety routes precede legacy handlers with the same paths.
     api_router.include_router(graduation_p0_guard.router, dependencies=d)
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
+    api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
     for r in (
         graduation, graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
@@ -188,7 +188,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
     install_mobile_resolver()
     install_mobile_stable_bridge()
-    # Evidence-backed exact routes shadow the legacy mobile/portal handlers.
     api_router.include_router(mobile_graduation_guard.router)
     api_router.include_router(
         mobile.router,
