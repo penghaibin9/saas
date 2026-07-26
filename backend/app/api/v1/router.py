@@ -18,6 +18,7 @@ from app.api.v1.affairs_student_returned import router as affairs_student_return
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
+from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
@@ -33,3 +34,5 @@ install_returned_view_projection()
 install_activity_checkin_code()
 install_atomic_student_applications()
 install_appeal_todo_reconciliation()
+# 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
+install_affairs_four_end_review_guard()
