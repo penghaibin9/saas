@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import select
 
 from app.core.permissions import (
@@ -54,13 +54,9 @@ def teacher_internship_context(
                 InternshipBatch.start_date.desc(), InternshipBatch.id.desc()
             )).all()
             batches = [{
-                "id": str(x.id),
-                "name": x.batch_name,
-                "batchNo": x.batch_no,
-                "status": x.status,
-                "academicYear": x.academic_year or "",
-                "term": x.term or "",
-                "startDate": _iso(x.start_date),
+                "id": str(x.id), "name": x.batch_name, "batchNo": x.batch_no,
+                "status": x.status, "academicYear": x.academic_year or "",
+                "term": x.term or "", "startDate": _iso(x.start_date),
                 "endDate": _iso(x.end_date),
                 "studentCount": int(counts.get(int(x.id), 0)),
             } for x in rows]
@@ -86,3 +82,37 @@ def teacher_batch_scores(
     from app.modules.internship.services import internship_score_service as scores
     items, total = scores.list_scores(1, 200, batch_id=batchId, user=user)
     return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.get("/enterprise-evals", summary="教师当前批次企业评价列表")
+def teacher_batch_enterprise_evals(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.eval.enterprise.view")),
+):
+    from app.modules.internship.services import internship_enterprise_eval_service as evaluations
+    items, total = evaluations.list_evals(
+        1, 200, batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.post("/enterprise-evals", summary="教师为当前批次学生代录企业纸质评价")
+def teacher_batch_enterprise_eval_create(
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.enterprise.manage")),
+):
+    from app.modules.internship.services import internship_enterprise_eval_service as evaluations
+    return success(evaluations.create(user, body), message="企业评价已录入，等待独立审核")
+
+
+@router.post("/enterprise-evals/{eval_id}/review", summary="学校或学院授权角色独立审核企业评价")
+def teacher_batch_enterprise_eval_review(
+    eval_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.eval.enterprise.review")),
+):
+    from app.modules.internship.services import internship_enterprise_eval_service as evaluations
+    payload = body or {}
+    return success(evaluations.review(
+        user, eval_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", expected_version=payload.get("expectedVersion")),
+        message="企业评价审核完成")
