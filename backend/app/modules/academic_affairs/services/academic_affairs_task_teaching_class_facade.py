@@ -2,6 +2,7 @@
 
 旧任务服务各自管理事务，本层在旧写成功后执行可重试投影：不篡改旧事务结果；单条投影使用
 保存点隔离，成功教学班正常提交，失败项返回 projectionErrors 供回填接口修复。
+合班/拆班除同步教学班外，必须重建行政班成员事实版本，不能只改名称和预计人数。
 """
 from __future__ import annotations
 
@@ -10,10 +11,10 @@ import json
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_task_program_gate_facade as _base
-from .academic_affairs_teaching_class_service import (
-    ensure_teaching_class_for_task,
-    sync_batch_teaching_classes,
-)
+from . import academic_affairs_teaching_class_lock_service as _teaching_class
+
+ensure_teaching_class_for_task = _teaching_class.ensure_teaching_class_for_task
+sync_batch_teaching_classes = _teaching_class.sync_batch_teaching_classes
 
 _original_generate_batch = _base.generate_batch
 _original_assign_teacher = _base.assign_teacher
@@ -41,6 +42,60 @@ def _sync_task(task_id: int) -> dict:
                 "teachingTaskId": str(task_id),
                 "teachingClassId": str(row.id),
                 "rosterVersionNo": int(row.current_roster_version_no or 0),
+            }
+        except Exception as exc:
+            db.rollback()
+            return {
+                "ok": False,
+                "teachingTaskId": str(task_id),
+                "error": str(exc),
+            }
+
+
+def _refresh_administrative_roster(task_id: int, reason: str) -> dict:
+    """合拆班后按教学任务当前行政班并集形成新版本；选课教学班禁止从此入口覆盖。"""
+    with session() as db:
+        try:
+            from app.models import AaSelectionCourse, AaTeachingTask
+
+            task = db.query(AaTeachingTask).filter(
+                AaTeachingTask.id == int(task_id),
+                AaTeachingTask.tenant_id == _tid(),
+                AaTeachingTask.is_deleted.is_(False),
+            ).first()
+            if not task:
+                raise ValueError("教学任务不存在")
+            selection_exists = db.query(AaSelectionCourse.id).filter(
+                AaSelectionCourse.tenant_id == _tid(),
+                AaSelectionCourse.teaching_task_id == int(task_id),
+                AaSelectionCourse.is_deleted.is_(False),
+            ).first() is not None
+            if selection_exists:
+                raise ValueError("教学任务已进入选课流程，合拆班名单必须回选课管理重新锁定")
+
+            teaching_class = ensure_teaching_class_for_task(
+                db, int(task_id), initialize_admin_roster=False,
+            )
+            student_ids = _teaching_class._administrative_roster(db, task)
+            if not student_ids:
+                raise ValueError("教学任务当前行政班范围没有有效学生，不能形成正式名单版本")
+            version, created = _teaching_class.create_roster_version(
+                db,
+                teaching_class,
+                student_ids,
+                source_type="ADMIN_CLASS",
+                source_id=None if task.is_merged else task.class_id,
+                reason=reason,
+            )
+            db.commit()
+            return {
+                "ok": True,
+                "teachingTaskId": str(task_id),
+                "teachingClassId": str(teaching_class.id),
+                "rosterVersionId": str(version.id),
+                "rosterVersionNo": int(version.version_no),
+                "memberCount": int(version.member_count),
+                "created": bool(created),
             }
         except Exception as exc:
             db.rollback()
@@ -81,6 +136,10 @@ def merge_tasks(body, user) -> dict:
     if survivor_id and survivor_id not in task_ids:
         projections.append(_sync_task(survivor_id))
     result["teachingClassProjections"] = projections
+    result["rosterProjection"] = (
+        _refresh_administrative_roster(survivor_id, "教学任务合班后重建行政班成员并集")
+        if survivor_id else {"ok": False, "error": "合班结果缺少survivor教学任务ID"}
+    )
     return result
 
 
@@ -88,6 +147,7 @@ def split_task(task_id, user) -> dict:
     member_ids = []
     with session() as db:
         from app.models import AaTeachingTask
+
         task = db.query(AaTeachingTask).filter(
             AaTeachingTask.id == int(task_id),
             AaTeachingTask.tenant_id == _tid(),
@@ -100,8 +160,11 @@ def split_task(task_id, user) -> dict:
             except (TypeError, ValueError):
                 member_ids = []
     result = _original_split_task(task_id, user)
-    result["teachingClassProjections"] = [
-        _sync_task(value) for value in [int(task_id), *member_ids]
+    restored_ids = list(dict.fromkeys([int(task_id), *member_ids]))
+    result["teachingClassProjections"] = [_sync_task(value) for value in restored_ids]
+    result["rosterProjections"] = [
+        _refresh_administrative_roster(value, "教学任务拆班后恢复行政班正式名单")
+        for value in restored_ids
     ]
     return result
 
