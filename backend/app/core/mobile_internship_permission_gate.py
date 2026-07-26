@@ -24,6 +24,7 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^$"), "internship.dashboard.view"),
     ("GET", re.compile(r"^context$"), "internship.dashboard.view"),
     ("GET", re.compile(r"^context/scores$"), "internship.score.view"),
+    ("GET", re.compile(r"^context/agreements$"), "internship.agreement.view"),
     ("GET", re.compile(r"^context/enterprise-evals$"), "internship.eval.enterprise.view"),
     ("POST", re.compile(r"^context/enterprise-evals$"), "internship.eval.enterprise.manage"),
     ("POST", re.compile(r"^context/enterprise-evals/[^/]+/resubmit$"), "internship.eval.enterprise.manage"),
