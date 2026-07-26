@@ -29,6 +29,7 @@ from app.services.affairs_counselor_eval_guard import install as install_counsel
 from app.services.affairs_counselor_handover_guard import install as install_counselor_handover_guard
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
 from app.services.affairs_data_integrity_guard import install as install_data_integrity_guard
+from app.services.affairs_dorm_node_guard import install as install_dorm_node_guard
 from app.services.affairs_dorm_projection_service import install as install_dorm_projection
 from app.services.affairs_dorm_reliability_service import install as install_dorm_reliability
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
@@ -82,7 +83,8 @@ install_activity_accounting_guard()
 install_activity_authority_guard()
 install_student_ledger_guard()
 install_stats_integrity_guard()
-# 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
+# 先安装通用版本/移动权限门，再以节点级调宿授权覆盖旧的楼栋一刀切。
 install_affairs_four_end_review_guard()
+install_dorm_node_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
 install_affairs_four_end_terminal_guard(api_router)
