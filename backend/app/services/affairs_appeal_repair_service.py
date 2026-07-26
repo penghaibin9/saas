@@ -45,9 +45,9 @@ def enqueue(todo_type: str, row_id: int, stage: str, exc: Exception | None = Non
             ).with_for_update()).first()
             if existing:
                 if existing.state != "COMPLETED":
-                    previous = existing.response_json if isinstance(existing.response_json, dict) else {}
+                    previous = existing.result_json if isinstance(existing.result_json, dict) else {}
                     payload["attempts"] = int(previous.get("attempts") or 0)
-                    existing.response_json = payload
+                    existing.result_json = payload
                     existing.state = "PENDING"
                     existing.expires_at = datetime.utcnow() + timedelta(days=30)
                 db.commit()
@@ -55,7 +55,7 @@ def enqueue(todo_type: str, row_id: int, stage: str, exc: Exception | None = Non
             db.add(IdempotencyRecord(
                 tenant_id=_tid(), user_id="system", operation=_OPERATION,
                 key_hash=key_hash, fingerprint=key_hash,
-                state="PENDING", response_json=payload,
+                state="PENDING", result_json=payload,
                 expires_at=datetime.utcnow() + timedelta(days=30),
             ))
             try:
@@ -80,14 +80,14 @@ def _claim(limit: int) -> list[dict]:
         ).order_by(IdempotencyRecord.id).with_for_update(skip_locked=True).limit(limit)).all()
         claimed = []
         for row in rows:
-            payload = row.response_json if isinstance(row.response_json, dict) else {}
+            payload = row.result_json if isinstance(row.result_json, dict) else {}
             attempts = int(payload.get("attempts") or 0)
             if attempts >= _MAX_ATTEMPTS:
                 row.state = "DEAD"
                 continue
             row.state = "PROCESSING"
             payload["attempts"] = attempts + 1
-            row.response_json = payload
+            row.result_json = payload
             claimed.append({"id": int(row.id), **payload})
         db.commit()
         return claimed
@@ -100,10 +100,10 @@ def _finish(record_id: int, ok: bool, error: str = "") -> None:
         row = db.get(IdempotencyRecord, int(record_id))
         if not row or row.tenant_id != _tid() or row.operation != _OPERATION:
             return
-        payload = row.response_json if isinstance(row.response_json, dict) else {}
+        payload = row.result_json if isinstance(row.result_json, dict) else {}
         if error:
             payload["lastError"] = error[:120]
-        row.response_json = payload
+        row.result_json = payload
         row.state = "COMPLETED" if ok else (
             "DEAD" if int(payload.get("attempts") or 0) >= _MAX_ATTEMPTS else "FAILED"
         )
