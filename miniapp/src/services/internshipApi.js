@@ -64,6 +64,15 @@ export const teacherInternshipLeaves = (batchId) => {
 export const teacherInternshipLeaveReview = (leaveId, body) =>
   realRequest(`/mobile/teacher/internship/context/leaves/${enc(leaveId)}/review`, { method: 'POST', data: body || {} })
 
+export const teacherInternshipProcessReports = (batchId) => {
+  try { return realRequest(batchPath('/mobile/teacher/internship/context/process-reports', batchId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipProcessReportDetail = (reportId) =>
+  realRequest(`/mobile/teacher/internship/context/process-reports/${enc(reportId)}`)
+export const teacherInternshipProcessReportReview = (reportId, body) =>
+  realRequest(`/mobile/teacher/internship/context/process-reports/${enc(reportId)}/review`, { method: 'POST', data: body || {} })
+
 export const teacherInternshipPlanTasks = (batchId) => {
   try { return realRequest(batchPath('/mobile/teacher/internship/context/plan-tasks', batchId)) }
   catch (e) { return Promise.reject(e) }
