@@ -5,9 +5,8 @@
         <view class="page-pad"><MobileGlobalState state="empty" title="当前暂无实习任务" description="进入实习阶段后，这里会显示岗位、协议、打卡与周报。" /></view>
       </template>
       <view class="page-pad stack" v-else-if="i">
-        <!-- 实习概览 -->
         <view class="in__hero card">
-          <text class="in__hero-batch">{{ i.batch }}</text>
+          <text class="in__hero-batch">{{ compliance.batchName || i.batch }}</text>
           <text class="in__hero-post">{{ i.post }}</text>
           <text class="in__hero-company">{{ i.company }}</text>
           <view class="in__hero-mentors">
@@ -16,7 +15,14 @@
           </view>
         </view>
 
-        <!-- 今日两大主任务：打卡 + 周报 -->
+        <MobileInlineAlert v-if="complianceError" type="warning" title="合规状态暂不可用" :description="complianceError" />
+        <MobileInlineAlert v-else-if="compliance.currentTask" :type="compliance.passed ? 'success' : 'warning'"
+          :title="compliance.passed ? '上岗合规已通过' : `当前待办：${compliance.currentTask.label}`"
+          :description="compliance.currentTask.reason || '请按学校要求完成当前任务'" />
+        <button v-if="compliance.nextAction && compliance.nextAction.route" class="btn btn-primary" @click="openSub(compliance.nextAction.route)">
+          {{ compliance.nextAction.label }}
+        </button>
+
         <view class="in__today">
           <view class="in__today-card" @click="go('/pages/student/internship/checkin/index')">
             <text class="in__today-icon">📍</text>
@@ -32,11 +38,8 @@
           </view>
         </view>
         <MobileInlineAlert type="info" :description="i.checkin.note" />
-
-        <!-- 上周反馈 -->
         <MobileInlineAlert v-if="i.weekly.lastFeedback" type="warning" title="导师上周反馈" :description="i.weekly.lastFeedback" />
 
-        <!-- 状态清单 -->
         <view class="section-head"><text class="section-head__title">实习状态</text></view>
         <view class="card">
           <view class="in__status-grid">
@@ -49,33 +52,22 @@
           </view>
         </view>
 
-        <!-- 实习流程 -->
-        <view class="section-head"><text class="section-head__title">实习流程</text></view>
-        <view class="card"><MobileTimeline :nodes="i.timeline" /></view>
-
-        <view class="section-head"><text class="section-head__title">上岗合规</text></view>
+        <view class="section-head"><text class="section-head__title">上岗合规</text><text class="section-head__more">{{ completenessText }}</text></view>
         <view class="card">
-          <view class="in__compliance-row">
-            <text>我的知情确认</text>
-            <text>{{ compliance.studentConsent }}</text>
+          <view v-for="item in visibleComplianceItems" :key="item.code" class="in__compliance-row"
+            :class="{ 'is-clickable': !!item.route }" @click="item.route && openSub(item.route)">
+            <view class="flex-1">
+              <text class="in__compliance-label">{{ item.label }}</text>
+              <text v-if="item.reason" class="in__compliance-reason">{{ item.reason }}</text>
+            </view>
+            <MobileStatusTag :label="item.statusLabel" :type="complianceTone(item.status)" />
           </view>
-          <view class="in__compliance-row">
-            <text>我的监护人确认状态</text>
-            <text>{{ compliance.guardianConsent }}</text>
-          </view>
-          <view class="in__compliance-row">
-            <text>我的安全教育</text>
-            <text>{{ compliance.safety }}</text>
-          </view>
-          <MobileInlineAlert
-            v-if="compliance.blockingReason"
-            type="warning"
-            title="上岗阻断原因"
-            :description="compliance.blockingReason"
-          />
+          <MobileInlineAlert v-if="blockingReason" type="warning" title="上岗阻断原因" :description="blockingReason" />
         </view>
 
-        <!-- 自助服务入口 -->
+        <view class="section-head"><text class="section-head__title">实习流程</text></view>
+        <view class="card"><MobileTimeline :nodes="compliance.timeline && compliance.timeline.length ? compliance.timeline : i.timeline" /></view>
+
         <view class="section-head"><text class="section-head__title">自助服务</text></view>
         <view class="in__nav card">
           <view v-for="n in navItems" :key="n.path" class="in__nav-item" @click="openSub(n.path)">
@@ -83,7 +75,6 @@
             <text class="in__nav-label">{{ n.label }}</text>
           </view>
         </view>
-
       </view>
     </MobileGlobalState>
 
@@ -97,65 +88,77 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { toast, go } from '@/utils/nav'
+
 export default {
-  data() { return { i: null, state: 'loading',
-    compliance: { studentConsent: '加载中', guardianConsent: '加载中', safety: '加载中', blockingReason: '' },
-    navItems: [
-      { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯' },
-      { label: '正式申请', path: '/pages/student/internship/application/index', icon: '📋' },
-      { label: '企业岗位库', path: '/pages/student/internship/enterprises/index', icon: '🏢' },
-      { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄' },
-      { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️' },
-      { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️' },
-      { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️' },
-      { label: '补卡申请', path: '/pages/student/internship/makeup/index', icon: '📍' },
-      { label: '日报', path: '/pages/student/internship/process-report/index?type=daily', icon: '📝' },
-      { label: '月报', path: '/pages/student/internship/process-report/index?type=monthly', icon: '📑' },
-      { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒' },
-      { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄' },
-      { label: '实习求助', path: '/pages/student/internship/help/index', icon: '🆘' },
-      { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐' }
-    ] } },
-  onLoad() { this.load() },
-  onShow() {
-    // 从打卡页/写周报返回时刷新真实状态（打卡/周报都已真实落库，不再依赖本地演示态推断）
-    if (this.i) this.load()
+  data() {
+    return {
+      i: null, state: 'loading', compliance: { items: [], blockers: [], warnings: [], timeline: [] }, complianceError: '',
+      navItems: [
+        { label: '知情确认', path: '/pages/student/internship/consent/index', icon: '✅' },
+        { label: '安全教育', path: '/pages/student/internship/safety/index', icon: '⛑️' },
+        { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯' },
+        { label: '正式申请', path: '/pages/student/internship/application/index', icon: '📋' },
+        { label: '企业岗位库', path: '/pages/student/internship/enterprises/index', icon: '🏢' },
+        { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄' },
+        { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️' },
+        { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️' },
+        { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️' },
+        { label: '补卡申请', path: '/pages/student/internship/makeup/index', icon: '📍' },
+        { label: '日报', path: '/pages/student/internship/process-report/index?type=daily', icon: '📝' },
+        { label: '月报', path: '/pages/student/internship/process-report/index?type=monthly', icon: '📑' },
+        { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒' },
+        { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄' },
+        { label: '实习求助', path: '/pages/student/internship/help/index', icon: '🆘' },
+        { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐' }
+      ]
+    }
   },
+  computed: {
+    visibleComplianceItems() {
+      return (this.compliance.items || []).filter((x) => x.required || x.status !== 'NOT_APPLICABLE')
+    },
+    blockingReason() {
+      return (this.compliance.blockers || []).map((x) => `${x.label}：${x.reason || x.statusLabel}`).join('；')
+    },
+    completenessText() {
+      const c = this.compliance.completeness
+      return c ? `${c.done}/${c.required}` : ''
+    }
+  },
+  onLoad() { this.load() },
+  onShow() { if (this.i) this.load() },
   methods: {
-    toast,
+    toast, go,
     openSub(path) { go(path) },
-    load() {
+    async load() {
       this.state = 'loading'
-      studentApi.getInternship().then((d) => { this.i = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
-      Promise.all([
-        studentApi.getInternshipConsents(),
-        studentApi.getInternshipSafetyCourses(),
-        studentApi.getInternshipSafetyCompletions()
-      ]).then(([consents, courses, completions]) => {
-        const rows = Array.isArray(consents) ? consents : []
-        const student = rows.find((x) => x.consentType === 'STUDENT')
-        const guardian = rows.find((x) => x.consentType === 'GUARDIAN')
-        const courseRows = Array.isArray(courses) ? courses : (courses?.items || [])
-        const completionRows = Array.isArray(completions) ? completions : (completions?.items || [])
-        const safetyDone = completionRows.some((x) => x.status === 'PASSED')
-        const reasons = []
-        if (!student || student.status !== 'VALID') reasons.push('学生知情确认未完成')
-        if (guardian && guardian.status !== 'VALID') reasons.push('监护人确认未完成')
-        if (courseRows.length && !safetyDone) reasons.push('安全教育未通过')
-        this.compliance = {
-          studentConsent: student?.status || '暂无任务',
-          guardianConsent: guardian?.status || '无需确认',
-          safety: courseRows.length ? (safetyDone ? '已通过' : '待完成') : '暂无课程',
-          blockingReason: reasons.join('；')
+      this.complianceError = ''
+      try {
+        const [internship, compliance] = await Promise.all([
+          studentApi.getInternship(),
+          studentApi.getInternshipCompliance('ONBOARD')
+        ])
+        this.i = internship
+        this.compliance = compliance || { items: [], blockers: [], warnings: [], timeline: [] }
+        this.state = 'ready'
+      } catch (e) {
+        try {
+          this.i = await studentApi.getInternship()
+          this.compliance = { items: [], blockers: [], warnings: [], timeline: [] }
+          this.complianceError = (e && e.message) || '无法取得学校权威合规状态，请稍后重试；系统不会把未知状态显示为已通过。'
+          this.state = 'ready'
+        } catch (second) {
+          this.state = 'error'
         }
-      }).catch(() => {
-        this.compliance = { studentConsent: '暂不可用', guardianConsent: '暂不可用', safety: '暂不可用', blockingReason: '' }
-      })
+      }
+    },
+    complianceTone(status) {
+      if (status === 'VALID' || status === 'EXEMPTED' || status === 'NOT_APPLICABLE') return 'success'
+      if (status === 'REJECTED' || status === 'CONFIG_ERROR') return 'danger'
+      return 'warning'
     },
     weekly() {
-      if (this.i.weekly && this.i.weekly.submitted) {
-        return toast('本周周报已提交')
-      }
+      if (this.i.weekly && this.i.weekly.submitted) return toast('本周周报已提交')
       const q = 'week=' + encodeURIComponent(this.i.weekly.week) +
         '&company=' + encodeURIComponent(this.i.company) +
         '&post=' + encodeURIComponent(this.i.post)
@@ -181,7 +184,11 @@ export default {
 .in__status-grid { display: flex; flex-wrap: wrap; }
 .in__status-item { width: 33.33%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: var(--space-2) 0; }
 .in__status-k { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.in__compliance-row { display: flex; justify-content: space-between; padding: var(--space-2) 0; color: var(--text-secondary); }
+.in__compliance-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-light); }
+.in__compliance-row:last-child { border-bottom: 0; }
+.in__compliance-row.is-clickable { cursor: pointer; }
+.in__compliance-label { display: block; color: var(--text-primary); font-size: var(--font-size-sm); }
+.in__compliance-reason { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; }
 .in__nav { display: flex; flex-wrap: wrap; }
 .in__nav-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--space-3) 0; }
 .in__nav-icon { font-size: 26px; line-height: 1; }
