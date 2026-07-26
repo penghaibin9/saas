@@ -71,14 +71,20 @@ def test_teacher_cannot_enter_student_self_routes_even_with_student_number(clien
     assert transfers.status_code == 403
 
 
-def test_unknown_teacher_mobile_write_permission_is_fail_closed():
+def test_unknown_teacher_mobile_read_and_write_permissions_are_fail_closed():
     from app.services import affairs_four_end_contract as contract
 
-    required = contract._teacher_permissions(
-        "/api/v1/mobile/teacher/affairs/future-unregistered-action",
-        "POST",
-    )
-    assert "__AFFAIRS_MOBILE_WRITE_NOT_REGISTERED__" in required
+    for method in ("GET", "POST"):
+        required = contract._teacher_permissions(
+            "/api/v1/mobile/teacher/affairs/future-unregistered-action",
+            method,
+        )
+        assert "__AFFAIRS_MOBILE_WRITE_NOT_REGISTERED__" in required
+
+    # 真实总览路径仍使用冻结的总览查看权限。
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/affairs", "GET"
+    ) == ("studentAffairs.dashboard.view",)
 
 
 def test_terminal_guard_normalizes_mounted_route_path():
@@ -92,16 +98,19 @@ def test_terminal_guard_normalizes_mounted_route_path():
     )
 
 
-def test_terminal_guard_rejects_unregistered_mounted_teacher_write_route():
+def test_terminal_guard_rejects_unregistered_mounted_teacher_read_and_write_routes():
     from fastapi import APIRouter
-    from app.services.affairs_four_end_terminal_guard import _assert_teacher_write_routes_registered
+    from app.services.affairs_four_end_terminal_guard import _assert_teacher_routes_registered
 
     router = APIRouter()
 
-    # APIRouter 内部保存的是未挂载 /api/v1 的子路由路径，必须同样被安全门识别。
-    @router.post("/mobile/teacher/affairs/future-unregistered-action")
-    def unsafe_route():
+    @router.get("/mobile/teacher/affairs/future-unregistered-read")
+    def unsafe_read():
+        return {"ok": True}
+
+    @router.post("/mobile/teacher/affairs/future-unregistered-write")
+    def unsafe_write():
         return {"ok": True}
 
     with pytest.raises(RuntimeError, match="缺少权限登记"):
-        _assert_teacher_write_routes_registered(router)
+        _assert_teacher_routes_registered(router)
