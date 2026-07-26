@@ -1,8 +1,11 @@
-"""教材发放名单与费用终态最终安全层。
+"""教材发放名单、库存容量与费用终态最终安全层。
 
 当前组织模型的真实行政班类为 ``SchoolClass``。本层收口：
 - 发放必须选择真实班级，学生必须全部属于该班；
 - 学生ID去重，重复请求名单一致时幂等、不一致时409；
+- 发放在MySQL事务内锁定征订明细，逐教材核对“累计到货－既有有效占用”；
+- PENDING/RECEIVED/EXCHANGED占用库存，RETURNED/EXCLUDED释放或不占库存；
+- 征订批次归档后，只要学期尚未封存仍可继续完成发放；
 - 费用 ``PAID/WAIVED`` 终态不可逆；部分收款只允许 ``UNPAID/PARTIAL``；
 - 其余征订、到货、价格快照、签收和退领逻辑复用下层facade。
 """
@@ -11,16 +14,26 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+from sqlalchemy import func
+
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_textbook_final_facade as _base
 
 _legacy = _base._legacy
 _term_layer = _base._base
+_ACTIVE_ALLOCATION_STATUSES = ("PENDING", "RECEIVED", "EXCHANGED")
+_ELIGIBLE_STUDENT_STATUSES = {"NORMAL", "REGISTERED", "ON_CAMPUS"}
 
 
 def __getattr__(name):
     return getattr(_base, name)
+
+
+def _distribution_shortage(arrived, allocated, requested):
+    """返回库存缺口；负可用量按0处理，便于纯规则回归。"""
+    available = max(0, int(arrived or 0) - int(allocated or 0))
+    return max(0, int(requested or 0) - available)
 
 
 def generate_distribution(user, order_batch_id, class_id, student_ids):
@@ -44,8 +57,8 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
         _legacy._require_school(_legacy._ctx(user, db))
         order = _term_layer._original_get_ob(db, int(order_batch_id))
         _term_layer._term(db, order.term_id)
-        if order.status not in ("ARRIVED", "PARTIALLY_ARRIVED"):
-            raise _legacy._invalid("对应征订批次未到货，不可发放")
+        if order.status not in ("ARRIVED", "PARTIALLY_ARRIVED", "ARCHIVED"):
+            raise _legacy._invalid("对应征订批次尚未到货，不可发放")
         clazz = db.query(SchoolClass).filter(
             SchoolClass.id == class_value,
             SchoolClass.tenant_id == _legacy._tid(),
@@ -69,16 +82,17 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
                 f"发放名单包含不属于所选班级的学生：{wrong_class[:10]}",
                 http_status=409,
             )
+
+        # 锁同一征订批次全部明细，串行化不同班级同时生成名单，避免并发超发。
         items = db.query(AaTextbookOrderItem).filter(
             AaTextbookOrderItem.order_batch_id == order.id,
             AaTextbookOrderItem.tenant_id == _legacy._tid(),
             AaTextbookOrderItem.is_deleted.is_(False),
-        ).all()
+        ).with_for_update().all()
         if not items:
             raise AppException("DATA_CONFLICT", "征订批次没有有效教材明细", http_status=409)
-        if any(int(item.arrived_qty or 0) <= 0 for item in items):
-            raise _legacy._invalid("征订批次仍有教材未到货，不能生成完整发放名单")
 
+        # 同一征订批次+班级必须先做幂等判断，不能把现有名单再次计入本次容量需求。
         existing = db.query(AaTextbookDistributionBatch).filter(
             AaTextbookDistributionBatch.tenant_id == _legacy._tid(),
             AaTextbookDistributionBatch.order_batch_id == order.id,
@@ -98,32 +112,68 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
                     "该征订批次和班级已生成发放名单，且现有名单与本次请求不一致",
                     http_status=409,
                 )
+            _term_layer._refresh_distribution_batch(db, existing)
             record_count = db.query(AaTextbookDistributionRecord).filter(
                 AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
                 AaTextbookDistributionRecord.batch_id == existing.id,
                 AaTextbookDistributionRecord.is_deleted.is_(False),
             ).count()
+            db.commit()
             return {
                 "distributionBatchId": str(existing.id),
                 "recordCount": record_count,
                 "idempotent": True,
             }
 
+        eligible_students = [
+            student for student in students
+            if str(student.student_status or "NORMAL").upper() in _ELIGIBLE_STUDENT_STATUSES
+        ]
+        eligible_count = len(eligible_students)
+        capacity_errors = []
+        for item in items:
+            allocated = db.query(
+                func.coalesce(func.sum(AaTextbookDistributionRecord.qty), 0)
+            ).join(
+                AaTextbookDistributionBatch,
+                AaTextbookDistributionBatch.id == AaTextbookDistributionRecord.batch_id,
+            ).filter(
+                AaTextbookDistributionBatch.tenant_id == _legacy._tid(),
+                AaTextbookDistributionBatch.order_batch_id == order.id,
+                AaTextbookDistributionBatch.is_deleted.is_(False),
+                AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
+                AaTextbookDistributionRecord.textbook_id == item.textbook_id,
+                AaTextbookDistributionRecord.status.in_(_ACTIVE_ALLOCATION_STATUSES),
+                AaTextbookDistributionRecord.is_deleted.is_(False),
+            ).scalar() or 0
+            shortage = _distribution_shortage(item.arrived_qty, allocated, eligible_count)
+            if shortage:
+                available = max(0, int(item.arrived_qty or 0) - int(allocated or 0))
+                capacity_errors.append(
+                    f"{item.textbook_name}可分配{available}本，本班需{eligible_count}本，缺{shortage}本"
+                )
+        if capacity_errors:
+            raise AppException(
+                "DATA_CONFLICT",
+                "到货库存不足，不能生成发放名单：" + "；".join(capacity_errors[:10]),
+                http_status=409,
+            )
+
+        now = datetime.utcnow()
         batch = AaTextbookDistributionBatch(
             tenant_id=_legacy._tid(),
             order_batch_id=order.id,
             class_id=class_value,
             class_name=clazz.class_name,
-            status="DISTRIBUTING",
-            started_at=datetime.utcnow(),
+            status="DISTRIBUTING" if eligible_count else "COMPLETED",
+            started_at=now,
+            completed_at=now if not eligible_count else None,
         )
         db.add(batch)
         db.flush()
         record_count = 0
         for student in students:
-            enrolled = str(student.student_status or "NORMAL").upper() in {
-                "NORMAL", "REGISTERED", "ON_CAMPUS",
-            }
+            enrolled = str(student.student_status or "NORMAL").upper() in _ELIGIBLE_STUDENT_STATUSES
             for item in items:
                 db.add(AaTextbookDistributionRecord(
                     tenant_id=_legacy._tid(),
@@ -138,12 +188,13 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
                 record_count += 1
         _legacy._audit(
             db, "AA_TEXTBOOK_DIST", batch.id, "TEXTBOOK_DIST_GENERATE",
-            f"classId={class_value};学生={len(students)};记录={record_count}",
+            f"classId={class_value};申请学生={len(students)};可发学生={eligible_count};记录={record_count}",
         )
         db.commit()
         return {
             "distributionBatchId": str(batch.id),
             "recordCount": record_count,
+            "eligibleStudentCount": eligible_count,
             "idempotent": False,
         }
 
