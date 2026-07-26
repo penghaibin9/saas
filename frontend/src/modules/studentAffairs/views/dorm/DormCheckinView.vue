@@ -14,21 +14,48 @@
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <AppSectionCard title="分配模式">
-        <p class="sa-mode">当前：<strong>{{ config.selfSelectEnabled ? '学生自选' : '辅导员/宿管统一分配' }}</strong> · {{ config.studentNotice }}</p>
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">当前分配模式</span>
+          <h2 class="sa-summary-strip__title">{{ config.selfSelectEnabled ? '学生自选床位已开放' : '当前由辅导员 / 宿管统一分配床位' }}</h2>
+          <p class="sa-summary-strip__text">{{ config.studentNotice || '选择楼栋和房间后查看床位。空床可办理入住，已住床位可办理退宿。' }}</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" code="studentAffairs.dorm.allocation.manage" variant="secondary" :loading="actioning" @click="toggleSelfSelect">
+            {{ config.selfSelectEnabled ? '关闭学生自选' : '开放学生自选' }}
+          </AppPermissionButton>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="宿舍入住办理流程">
+        <div class="sa-workflow-step" data-step="1"><strong>选择楼栋</strong><br>仅展示当前角色可管理的楼栋</div>
+        <div class="sa-workflow-step" data-step="2"><strong>选择房间</strong><br>查看房间空床数量和床位清单</div>
+        <div class="sa-workflow-step" data-step="3"><strong>核对床位</strong><br>确认空床或当前入住学生</div>
+        <div class="sa-workflow-step" data-step="4"><strong>办理结果</strong><br>入住占床、退宿释放床位并刷新台账</div>
+      </div>
+
+      <AppSectionCard title="分配模式说明">
+        <div class="sa-mode-card" :class="config.selfSelectEnabled ? 'is-open' : 'is-managed'">
+          <div>
+            <span class="sa-mode-card__label">当前模式</span>
+            <strong>{{ config.selfSelectEnabled ? '学生自选' : '统一分配' }}</strong>
+          </div>
+          <p>{{ config.studentNotice || '当前模式说明暂未配置' }}</p>
+        </div>
       </AppSectionCard>
 
-      <AppSectionCard title="选床入住">
-        <div class="sa-toolbar">
+      <AppSectionCard title="选床入住 / 退宿">
+        <p class="sa-section-hint">按顺序选择楼栋和房间。床位列表会显示当前状态与入住学生，避免在不同房间间反复查找。</p>
+        <div class="sa-toolbar dorm-picker-bar">
           <AppDormBuildingPicker v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
           <AppDormRoomPicker v-model="curRoom" :options="roomOptions" :query="{ buildingId: curBuilding }" placeholder="选择房间" class="sa-pick"
                      :disabled="!curBuilding" @change="loadBeds" />
         </div>
         <template v-if="curRoom">
           <DataTable v-if="beds.length" :columns="bedColumns" :rows="beds" row-key="bedId">
-            <template #cell-bedNo="{ row }"><span class="mp-cell-main">{{ row.bedNo }}</span></template>
+            <template #cell-bedNo="{ row }"><span class="mp-cell-main">{{ row.bedNo }} 号床</span></template>
             <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'OCCUPIED' ? 'warning' : 'success'" :label="row.status === 'OCCUPIED' ? '已住' : '空床'" /></template>
-            <template #cell-occupant="{ row }">{{ row.occupantName || '—' }}</template>
+            <template #cell-occupant="{ row }"><span :class="row.occupantName ? 'dorm-occupied' : 'sa-muted'">{{ row.occupantName || '暂无学生' }}</span></template>
             <template #cell-actions="{ row }">
               <div class="sa-actions">
                 <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" v-if="row.status !== 'OCCUPIED'" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" @click="checkin(row)">入住</AppPermissionButton>
@@ -36,9 +63,9 @@
               </div>
             </template>
           </DataTable>
-          <p v-else class="sa-empty">该房暂无床位</p>
+          <p v-else class="sa-empty">该房间暂未配置床位，请返回宿舍资源配置检查房间和床位。</p>
         </template>
-        <p v-else class="sa-empty">请先选择楼栋与房间</p>
+        <p v-else class="sa-empty">请先选择楼栋，再选择房间；系统随后显示该房间全部床位和入住状态。</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -201,9 +228,17 @@ export default {
 
 <style scoped>
 .sa-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
-.sa-toolbar select { min-width: 200px; border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-surface); padding: var(--space-2) var(--space-3); }
-.sa-mode { margin: 0; color: var(--text-secondary); }
+.sa-pick { min-width: 240px; flex: 0 1 320px; }
+.sa-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.sa-mode-card { display: grid; grid-template-columns: minmax(180px, .45fr) minmax(0, 1fr); gap: var(--space-4); align-items: center; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-section); }
+.sa-mode-card.is-open { border-color: var(--success-200, #bbf7d0); background: var(--success-50, #f0fdf4); }
+.sa-mode-card.is-managed { border-color: var(--primary-100, #dbeafe); background: var(--primary-50, #eff6ff); }
+.sa-mode-card__label { display: block; margin-bottom: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sa-mode-card strong { color: var(--text-primary); font-size: var(--font-size-lg); }
+.sa-mode-card p { margin: 0; color: var(--text-secondary); line-height: 1.65; }
+.dorm-picker-bar { padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
 .sa-actions { display: flex; gap: var(--space-2); }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+.dorm-occupied { color: var(--text-primary); font-weight: 600; }
+@media (max-width: 720px) { .sa-mode-card { grid-template-columns: 1fr; } .sa-pick { width: 100%; flex-basis: 100%; } }
 @import '@/styles/module-page.css';
 </style>
