@@ -57,7 +57,7 @@ export default {
   },
   computed: {
     roleName() { return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '辅导员 / 学院学工 / 学工处' },
-    scopeHint() { return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.name) || '按数据范围裁剪' },
+    scopeHint() { return (this.ctx && this.ctx.dataScope && (this.ctx.dataScope.scopeName || this.ctx.dataScope.name)) || '按数据范围裁剪' },
     groupLabel() { return (GROUP_OPTIONS.find((o) => o.value === this.groupBy) || {}).label || '' }
   },
   created() { this.load() },

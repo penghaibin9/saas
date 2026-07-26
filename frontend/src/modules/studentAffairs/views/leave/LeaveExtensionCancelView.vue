@@ -170,7 +170,7 @@ export default {
   },
   computed: {
     roleName() { return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '辅导员 / 学院学工 / 学工处' },
-    scopeHint() { return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.name) || '按数据范围：辅导员本班 / 学院本院 / 学工处全校' },
+    scopeHint() { return (this.ctx && this.ctx.dataScope && (this.ctx.dataScope.scopeName || this.ctx.dataScope.name)) || '按数据范围：辅导员本班 / 学院本院 / 学工处全校' },
     pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
     asideState() {
       if (this.loading) return 'loading'

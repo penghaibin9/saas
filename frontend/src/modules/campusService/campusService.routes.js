@@ -7,7 +7,10 @@
  */
 export const campusServiceRoutes = {
   path: '/admin/campus-service',
-  component: () => import('@/views/admin/campusService/AdminCampusServiceLayout.vue'),
+  // 老「在校服务」父布局的身份上下文来自本模块的 mock（角色名/数据范围都是假的），
+  // 旧页面退役后只剩请假四页与班级两页仍住在这个 path 下，它们本就是学工中心的页面，
+  // 因此改用学工中心真实布局：品牌/角色/数据范围/权限模式走 /rbac/current-context。
+  component: () => import('@/modules/studentAffairs/views/AdminStudentAffairsLayout.vue'),
   meta: { moduleCode: 'CAMPUS_SERVICE' },
   children: [
     {

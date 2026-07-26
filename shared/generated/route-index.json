@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-25T06:01:12.292Z",
-  "exactCount": 432,
+  "generatedAt": "2026-07-26T04:24:02.831Z",
+  "exactCount": 439,
   "patternCount": 74,
-  "redirectCount": 31,
+  "redirectCount": 38,
   "aliasCount": 0,
   "exact": [
     "/",
@@ -346,9 +346,13 @@
     "/admin/student-affairs/discipline/counselor-assessment",
     "/admin/student-affairs/discipline/counselor-assignments",
     "/admin/student-affairs/discipline/discipline",
+    "/admin/student-affairs/discipline/dormitory",
+    "/admin/student-affairs/discipline/dormitory/records/:recordId",
     "/admin/student-affairs/discipline/grants",
     "/admin/student-affairs/discipline/ledger",
     "/admin/student-affairs/discipline/stats",
+    "/admin/student-affairs/discipline/students",
+    "/admin/student-affairs/discipline/students/:id",
     "/admin/student-affairs/discipline/work-orders",
     "/admin/student-affairs/dorm/check",
     "/admin/student-affairs/dorm/checkin",
@@ -387,6 +391,7 @@
     "/admin/student/corrections",
     "/admin/student/edit",
     "/admin/student/identity",
+    "/admin/student/import",
     "/admin/student/import-export",
     "/admin/student/list",
     "/admin/student/list/new",
@@ -398,6 +403,8 @@
     "/admin/system/delegations",
     "/admin/system/dictionaries-fields",
     "/admin/system/identity-import",
+    "/admin/system/identity-import/students",
+    "/admin/system/identity-import/teachers",
     "/admin/system/implementation/acceptance",
     "/admin/system/implementation/changes",
     "/admin/system/implementation/data-mapping",
@@ -560,6 +567,18 @@
       "to": "/admin/academic-affairs/warnings"
     },
     {
+      "from": "/admin/student-affairs/discipline",
+      "to": "/admin/student-affairs/dashboard"
+    },
+    {
+      "from": "/admin/student-affairs/discipline/students",
+      "to": "/admin/student/list"
+    },
+    {
+      "from": "/admin/student-affairs/discipline/students/:id",
+      "to": "/admin/student/list"
+    },
+    {
       "from": "/admin/student-affairs/discipline/counselor-assignments",
       "to": "/admin/student-affairs/counselor-assignments"
     },
@@ -572,8 +591,20 @@
       "to": "/admin/student-affairs/funding"
     },
     {
+      "from": "/admin/student-affairs/discipline/dormitory",
+      "to": "/admin/student-affairs/dorm/checkin"
+    },
+    {
+      "from": "/admin/student-affairs/discipline/dormitory/records/:recordId",
+      "to": "/admin/student-affairs/dorm/checkin"
+    },
+    {
       "from": "/admin/student-affairs/discipline/discipline",
       "to": "/admin/student-affairs/discipline"
+    },
+    {
+      "from": "/admin/student-affairs/discipline/work-orders",
+      "to": "/admin/student-affairs/dashboard"
     },
     {
       "from": "/admin/internship/workbench",
@@ -634,6 +665,10 @@
     {
       "from": "/admin/system",
       "to": "/admin/system/overview"
+    },
+    {
+      "from": "/admin/system/identity-import",
+      "to": "/admin/system/identity-import/students"
     },
     {
       "from": "/admin/system/menus",

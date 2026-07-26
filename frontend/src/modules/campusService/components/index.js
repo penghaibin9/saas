@@ -1,11 +1,11 @@
 /**
- * 在校服务中心 — 模块局部组件（不进入全局 components/business，避免并行任务冲突）。
- * 覆盖：批量导入（模板/校验/回执）、导出（范围/字段/脱敏/水印/审计确认）、表格列设置、通用表单抽屉。
+ * 在校服务中心 — 模块局部组件。
+ *
+ * 老「在校服务」页面已整体退役（见 campusService.routes.js），只被那些页面使用的
+ * 导入/导出/列设置/表单抽屉/住宿详情组件随之删除。这里保留的两项仍被学生主档的
+ * 更正审核、身份核验、学生列表等在用页面引用：
+ * - SplitWorkspace：左右双栏工作区
+ * - readListState / writeListState：列表筛选状态与 URL 同步
  */
-export { default as ImportDrawer } from './ImportDrawer.vue'
-export { default as ExportDrawer } from './ExportDrawer.vue'
-export { default as ColumnSettingsDrawer } from './ColumnSettingsDrawer.vue'
-export { default as FormDrawer } from './FormDrawer.vue'
 export { default as SplitWorkspace } from './SplitWorkspace.vue'
-export { default as DormRecordDetail } from './DormRecordDetail.vue'
 export { readListState, writeListState } from './routeState'
