@@ -143,7 +143,7 @@ async function load() {
 }
 
 function appendText(parent, tag, text) {
-  const el = document.createElement(tag)
+  const el = parent.ownerDocument.createElement(tag)
   el.textContent = text
   parent.appendChild(el)
   return el
@@ -151,13 +151,20 @@ function appendText(parent, tag, text) {
 
 async function printSchedule() {
   if (printing.value || !items.value.length) return
+  const win = window.open('', '_blank')
+  if (!win) {
+    ui.notify('浏览器阻止了打印窗口，请允许弹出窗口后重试')
+    return
+  }
+  win.opener = null
+  win.document.title = '个人课表生成中'
+  appendText(win.document.body, 'p', '正在生成带留痕的个人课表，请稍候…')
   printing.value = true
   try {
     const audit = await portalApi.academicSchedulePrint({ reason: '个人课表' })
-    const win = window.open('', '_blank')
-    if (!win) throw new Error('浏览器阻止了打印窗口，请允许弹出窗口后重试')
-    win.opener = null
     const doc = win.document
+    doc.head.textContent = ''
+    doc.body.textContent = ''
     doc.title = '个人课表'
     const style = doc.createElement('style')
     style.textContent = 'body{font-family:Segoe UI,Microsoft YaHei,sans-serif;padding:24px;color:#111}h1{font-size:20px;margin:0 0 8px}.meta{color:#666;font-size:12px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #ddd;padding:7px 8px;text-align:left}th{background:#f5f7fa}.wm{position:fixed;inset:28% 8%;font-size:38px;color:rgba(0,0,0,.07);transform:rotate(-24deg);pointer-events:none;text-align:center}'
@@ -188,6 +195,7 @@ async function printSchedule() {
     win.print()
     ui.notify('课表打印留痕已记录')
   } catch (e) {
+    if (!win.closed) win.close()
     ui.notify(e?.message || '打印失败')
   } finally {
     printing.value = false
