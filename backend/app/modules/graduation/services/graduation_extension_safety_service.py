@@ -1,15 +1,16 @@
 """优秀成果/延期答辩的跨端安全补强。
 
-收口三类容易被 UI 与排期流程遗漏的边界：
+收口四类容易被 UI 与流程遗漏的边界：
 1. 被驳回/撤回的历史延期记录不能永久阻止学生再次申请；
 2. 延期重新分组必须同时重算并撤回旧组、新组发布状态，且校验新组容量；
-3. 学校端按钮按稳定导师身份和当前审核角色逐行下发，避免“看得见但必失败”。
+3. 学校端按钮按稳定导师身份和当前审核角色逐行下发；
+4. 导师提名/导师审核节点禁止管理员代办，接口也必须按稳定导师绑定校验。
 """
 from __future__ import annotations
 
 from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.models import GraduationDefenseGroup, GraduationGrade, GraduationStudent
 from app.models.graduation_extension import GraduationDefenseDelay, GraduationExcellentOutcome
 from app.modules.graduation.services import graduation_extension_service as base
@@ -23,6 +24,37 @@ _ACTIVE_DELAY_STATUSES = {
     "APPROVED",
     "SCHEDULED",
 }
+
+
+def _assert_bound_advisor(student_id) -> None:
+    """严格导师节点：任何管理员身份都不能代替稳定绑定导师。"""
+    with session() as db:
+        student = db.get(GraduationStudent, int(student_id))
+        if not student or student.is_deleted or student.tenant_id != _tid():
+            raise not_found("毕设学生不存在")
+        from app.modules.graduation.services import graduation_identity as gid
+        mentor = gid.current_user_mentor(db)
+        if not mentor or not student.mentor_id or int(mentor.id) != int(student.mentor_id):
+            raise no_permission("该节点仅允许学生当前稳定绑定的指导教师处理")
+
+
+def nominate_excellent(gd_student_id, reason: str, evidence: list | None = None) -> dict:
+    _assert_bound_advisor(gd_student_id)
+    return base.nominate_excellent(gd_student_id, reason, evidence)
+
+
+def advisor_review_delay(record_id, action: str, comment: str) -> dict:
+    try:
+        rid = int(record_id)
+    except (TypeError, ValueError):
+        raise not_found("延期答辩申请不存在") from None
+    with session() as db:
+        row = db.get(GraduationDefenseDelay, rid)
+        if not row or row.is_deleted or row.tenant_id != _tid():
+            raise not_found("延期答辩申请不存在")
+        student_id = row.gd_student_id
+    _assert_bound_advisor(student_id)
+    return base.advisor_review_delay(record_id, action, comment)
 
 
 def my_extensions(user: dict) -> dict:
