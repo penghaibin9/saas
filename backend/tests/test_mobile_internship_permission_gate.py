@@ -23,6 +23,8 @@ from app.api.v1.mobile_internship_context import _choose_default_batch
     ("POST", "/api/v1/mobile/teacher/internship/change-requests/12/review", "internship.change.review"),
     ("POST", "/api/v1/mobile/teacher/internship/scores/compute", "internship.score.manage"),
     ("GET", "/api/v1/mobile/teacher/internship/agreements/pending-school", "internship.agreement.view"),
+    ("POST", "/api/v1/mobile/teacher/internship/context/makeups/12/evidence-viewed", "internship.makeup.view"),
+    ("POST", "/api/v1/mobile/teacher/internship/context/leaves/12/evidence-viewed", "internship.leave.view"),
     ("GET", "/api/v1/mobile/teacher/internship/context/process-reports", "internship.report.view"),
     ("GET", "/api/v1/mobile/teacher/internship/context/process-reports/12", "internship.report.view"),
     ("POST", "/api/v1/mobile/teacher/internship/context/process-reports/12/review", "internship.report.review"),
