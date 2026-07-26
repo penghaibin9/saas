@@ -12,6 +12,8 @@ from . import academic_affairs_task_security_facade as _base
 from .academic_affairs_program_quality_final_service import validate_program_db
 from .academic_affairs_program_quality_security_service import _allowed_major_ids
 
+_original_generate_batch = _base.generate_batch
+
 
 def __getattr__(name):
     return getattr(_base, name)
@@ -90,7 +92,7 @@ def generate_batch(body, user) -> dict:
     with session() as db:
         precheck = _generation_precheck(db, user, college_id)
 
-    result = _base.generate_batch(body, user)
+    result = _original_generate_batch(body, user)
     result["programValidation"] = {
         "programCount": precheck["programCount"],
         "warningCount": precheck["warningCount"],
