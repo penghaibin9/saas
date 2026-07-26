@@ -16,6 +16,7 @@ from app.core.exceptions import no_permission
 
 _INSTALLED = False
 _SENTINEL = "__AFFAIRS_MOBILE_WRITE_NOT_REGISTERED__"
+_API_PREFIX = "/api/v1"
 
 
 def _strict_self_student(db, user):
@@ -53,6 +54,20 @@ def _install_permission_fail_closed() -> None:
     contract._teacher_permissions = teacher_permissions
 
 
+def _runtime_path(route_path: str) -> str:
+    """把 ``api_router`` 内的子路由路径归一化成真实请求路径。
+
+    FastAPI 在子路由对象中通常保存 ``/mobile/...``，最终挂载后才成为
+    ``/api/v1/mobile/...``。安全检查必须按真实路径调用权限映射，否则会静默漏检。
+    """
+    path = str(route_path or "")
+    if path.startswith(_API_PREFIX + "/"):
+        return path
+    if path.startswith("/"):
+        return _API_PREFIX + path
+    return _API_PREFIX + "/" + path
+
+
 def _assert_teacher_write_routes_registered(api_router) -> None:
     """启动期检查教师移动写路由。
 
@@ -68,7 +83,7 @@ def _assert_teacher_write_routes_registered(api_router) -> None:
     for route in api_router.routes:
         if not isinstance(route, APIRoute):
             continue
-        path = str(route.path)
+        path = _runtime_path(str(route.path))
         if not path.startswith("/api/v1/mobile/teacher/affairs"):
             continue
         for method in set(route.methods or ()):
