@@ -4,21 +4,22 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 
+from app.core.exceptions import not_found
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.models import GraduationGuidance, GraduationGuidancePlan, GraduationStudent
 from app.modules.graduation.schemas.graduation_guidance import (
     GuidanceCreate, GuidancePlanCancel, GuidancePlanCheckin, GuidancePlanCreate, GuidanceVoidRequest,
 )
-from app.modules.graduation.schemas.graduation_midterm import (
-    MidtermCheckRequest, MidtermRectifyReview, MidtermRectifySubmit,
-)
+from app.modules.graduation.schemas.graduation_midterm import MidtermCheckRequest, MidtermRectifyReview, MidtermRectifySubmit
 from app.modules.graduation.services import graduation_guidance_service as guidance
 from app.modules.graduation.services import graduation_midterm_service as midterm
-from app.modules.graduation.services.graduation_batch_context import load_student_in_batch, require_batch_id
+from app.modules.graduation.services.graduation_batch_context import assert_student_batch, load_student_in_batch, require_batch_id
 from app.modules.graduation.services.graduation_process_consistency import install_process_consistency
 from app.modules.graduation.services.graduation_p0_service import void_guidance_scoped
-from app.services.db_service import session
+from app.services.db_service import _tid, session
 
 install_process_consistency()
 router = APIRouter(tags=["毕业设计-过程批次安全"])
@@ -27,6 +28,18 @@ router = APIRouter(tags=["毕业设计-过程批次安全"])
 def _guard(student_id, batch_id, *, lock=False):
     with session() as db:
         load_student_in_batch(db, student_id, batch_id, for_update=lock)
+
+
+def _related_guard(model, record_id, batch_id) -> int:
+    with session() as db:
+        record = db.scalars(select(model).where(
+            model.id == int(record_id), model.tenant_id == _tid(), model.is_deleted.is_(False),
+        )).first()
+        if not record:
+            raise not_found("指导记录或计划不存在")
+        student = db.get(GraduationStudent, int(record.gd_student_id))
+        assert_student_batch(student, batch_id)
+        return int(student.id)
 
 
 @router.get("/gd-guidances/stats")
@@ -43,7 +56,8 @@ def guidance_list(
     gdStudentId: Optional[str] = None, keyword: Optional[str] = None,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    if gdStudentId: _guard(gdStudentId, batchId)
+    if gdStudentId:
+        _guard(gdStudentId, batchId)
     items, total = guidance.list_guidance(
         page, pageSize, gd_student_id=gdStudentId, keyword=keyword, batch_id=batchId,
     )
@@ -64,10 +78,8 @@ def guidance_void(
     gid: str, body: GuidanceVoidRequest, batchId: int = Query(..., ge=1),
     user=Depends(get_current_user),
 ):
-    # void_guidance_scoped itself locks the guidance and authorizes its student;
-    # batch is checked by reading the record's student first in the service audit path.
-    result = void_guidance_scoped(gid, body.reason)
-    return success(result, message="已撤销")
+    _related_guard(GraduationGuidance, gid, batchId)
+    return success(void_guidance_scoped(gid, body.reason), message="已撤销")
 
 
 @router.get("/gd-guidance-plans")
@@ -76,7 +88,8 @@ def plan_list(
     gdStudentId: Optional[str] = None, batchId: int = Query(..., ge=1),
     user=Depends(get_current_user),
 ):
-    if gdStudentId: _guard(gdStudentId, batchId)
+    if gdStudentId:
+        _guard(gdStudentId, batchId)
     items, total = guidance.list_plans(
         page, pageSize, gd_student_id=gdStudentId, batch_id=batchId,
     )
@@ -97,6 +110,7 @@ def plan_checkin(
     plan_id: str, body: Optional[GuidancePlanCheckin] = None,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
+    _related_guard(GraduationGuidancePlan, plan_id, batchId)
     return success(guidance.checkin_plan(plan_id, body.model_dump() if body else {}), message="已签到")
 
 
@@ -105,6 +119,7 @@ def plan_cancel(
     plan_id: str, body: GuidancePlanCancel,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
+    _related_guard(GraduationGuidancePlan, plan_id, batchId)
     return success(guidance.cancel_plan(plan_id, body.reason), message="已取消")
 
 
@@ -127,8 +142,7 @@ def midterm_list(
 
 @router.get("/gd-midterms/{gd_student_id}", summary="只读查看中期检查；不存在返回虚拟待检查态")
 def midterm_detail(
-    gd_student_id: str, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
+    gd_student_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     _guard(gd_student_id, batchId)
     return success(midterm.get_midterm(gd_student_id))
