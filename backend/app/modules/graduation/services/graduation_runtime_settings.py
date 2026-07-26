@@ -1,5 +1,6 @@
 """毕业设计运行时兼容安装。
 
+- 安装新安全路由的精确动作权限映射，未登记接口继续 fail-closed；
 - 归档预览令牌使用系统 JWT 强密钥签名；
 - 安装真实文件归档证据链与批量预览/执行一致性；
 - 安装选题志愿 Excel 的统一模板、预校验与确认规则；
@@ -54,9 +55,13 @@ def install_runtime_settings() -> None:
     from app.modules.graduation.services.graduation_peer_consistency import (
         install_peer_consistency,
     )
+    from app.modules.graduation.services.graduation_permission_extensions import (
+        install_graduation_permission_extensions,
+    )
     from app.modules.graduation.services.graduation_topic_import_consistency import (
         install_topic_import_consistency,
     )
+    install_graduation_permission_extensions()
     install_archive_consistency()
     install_archive_batch_consistency()
     install_material_access_consistency()
