@@ -11,6 +11,7 @@ from app.core.exceptions import AppException
 from app.db.session import db_enabled
 from app.models import (
     GraduationAuditTrail,
+    GraduationStudent,
     GraduationTaskBook,
     PortalSignRecord,
 )
@@ -57,25 +58,50 @@ def _taskbook_payload(taskbook: GraduationTaskBook, student) -> dict:
     }
 
 
+def _required_version(value) -> int:
+    """学生必须确认自己实际阅读的任务书版本，禁止缺省后确认最新未知版本。"""
+    if value in (None, ""):
+        raise AppException("VALIDATION_ERROR", "请刷新任务书并携带当前版本后再确认")
+    try:
+        version = int(value)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "任务书版本格式不正确") from None
+    if version <= 0:
+        raise AppException("VALIDATION_ERROR", "任务书版本必须为正整数")
+    return version
+
+
 def confirm_with_evidence(user: dict, *, expected_version=None, confirm: bool = True) -> dict:
     """Confirm current taskbook and evidence record in one MySQL transaction.
 
     Idempotency is version + canonical content hash, so a previous version's
-    signature can never be reused for changed taskbook content.
+    signature can never be reused for changed taskbook content. The client must
+    send the version it rendered; a stale page receives 409 instead of silently
+    confirming newly changed content.
     """
     u = _require_student(user)
     if not confirm:
         raise AppException("VALIDATION_ERROR", "请先勾选确认后再签署任务书")
+    expected = _required_version(expected_version)
     if not db_enabled():
-        raise AppException("VALIDATION_ERROR", "演示模式不支持真实签署")
+        raise AppException("VALIDATION_ERROR", "当前环境不支持真实签署")
 
     with _session() as db:
         master = resolve_student(db, u)
         if not master:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法签署")
-        gd_student = resolve_current_gd_student(db, u)
-        if not gd_student:
+        resolved = resolve_current_gd_student(db, u)
+        if not resolved:
             raise AppException("DATA_NOT_FOUND", "未找到你的毕业设计档案，无法签署")
+        # 锁定毕业设计学生档案和任务书，确保版本核验、签署证据与阶段推进同事务完成。
+        gd_student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(resolved.id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+        ).with_for_update()).first()
+        if not gd_student:
+            raise AppException("DATA_NOT_FOUND", "毕业设计档案已变化，请刷新后重试")
 
         taskbook = db.scalars(select(GraduationTaskBook).where(
             GraduationTaskBook.tenant_id == _tid(),
@@ -86,8 +112,8 @@ def confirm_with_evidence(user: dict, *, expected_version=None, confirm: bool = 
             raise AppException("DATA_NOT_FOUND", "导师尚未下达任务书")
 
         version = int(taskbook.taskbook_version or 1)
-        if expected_version not in (None, "") and int(expected_version) != version:
-            raise AppException("DATA_CONFLICT", "任务书版本已变化，请刷新后重新确认")
+        if expected != version:
+            raise AppException("DATA_CONFLICT", "任务书版本已变化，请刷新并重新阅读后确认")
         if taskbook.status not in ("PENDING_CONFIRM", "CHANGE_PENDING", "CONFIRMED"):
             raise AppException("DATA_CONFLICT", "当前任务书状态不允许确认")
 
@@ -120,6 +146,7 @@ def confirm_with_evidence(user: dict, *, expected_version=None, confirm: bool = 
             taskbook.confirmed_at = now
             if gd_student.stage == "TASKBOOK_CONFIRM":
                 gd_student.stage = "GUIDING"
+                gd_student.version = int(gd_student.version or 0) + 1
             db.add(GraduationAuditTrail(
                 tenant_id=_tid(), biz_type="TASKBOOK", biz_id=str(taskbook.id),
                 action="学生确认任务书",
