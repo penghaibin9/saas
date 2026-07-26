@@ -28,8 +28,6 @@ _TEACHER_PREFIXES = (
     "/api/v1/mobile/teacher/mental",
 )
 
-# 只列出教师移动端实际允许使用的 PC 冻结权限码。新增路由必须先进入 PC 权限目录，
-# 再在统一映射或端点自身 Depends 中登记，不能临时发明近义码。
 _MOBILE_CATALOG_CODES = {
     "studentAffairs.dashboard.view",
     "studentAffairs.stats.view",
@@ -103,7 +101,6 @@ _DIRECT_PERMISSION_CODES: dict[str, tuple[str, ...]] = {
 
 
 def _strict_self_student(db, user):
-    """只允许当前登录学生解析本人主档，教师/管理员不得借绑定字段进入本人接口。"""
     from app.services.mobile_student_service import _require_student, resolve_student
 
     current = _require_student(user)
@@ -125,6 +122,25 @@ def _is_teacher_mobile_path(path: str) -> bool:
 
 def _is_read_only_code(code: str) -> bool:
     return code.endswith(".view") or code == "studentAffairs.stats.view"
+
+
+def _path_template_matches(template: str, path: str) -> bool:
+    """匹配 FastAPI 路由模板与真实请求路径，不把参数值误当成未登记接口。"""
+    t_parts = str(template or "").strip("/").split("/")
+    p_parts = str(path or "").strip("/").split("/")
+    if len(t_parts) != len(p_parts):
+        return False
+    return all(
+        (part.startswith("{") and part.endswith("}")) or part == actual
+        for part, actual in zip(t_parts, p_parts)
+    )
+
+
+def _direct_permission_codes(path: str) -> tuple[str, ...] | None:
+    for template, codes in _DIRECT_PERMISSION_CODES.items():
+        if _path_template_matches(template, path):
+            return codes
+    return None
 
 
 def _permission_problem(path: str, method: str, required: tuple[str, ...]) -> str | None:
@@ -150,7 +166,6 @@ def _permission_problem(path: str, method: str, required: tuple[str, ...]) -> st
 
 
 def _install_permission_fail_closed() -> None:
-    """未知路由、近义权限和写操作借用查看权限均不得通过。"""
     from app.services import affairs_four_end_contract as contract
 
     previous = contract._teacher_permissions
@@ -161,8 +176,9 @@ def _install_permission_fail_closed() -> None:
             return required
         if path in _DASHBOARD_PATHS:
             return required
-        if path in _DIRECT_PERMISSION_CODES:
-            return _DIRECT_PERMISSION_CODES[path]
+        direct = _direct_permission_codes(path)
+        if direct is not None:
+            return direct
         if _permission_problem(path, str(method or "GET").upper(), required):
             return (_SENTINEL,)
         return required
@@ -171,7 +187,6 @@ def _install_permission_fail_closed() -> None:
 
 
 def _runtime_path(route_path: str) -> str:
-    """把 ``api_router`` 内的子路由路径归一化成真实请求路径。"""
     path = str(route_path or "")
     if path.startswith(_API_PREFIX + "/"):
         return path
@@ -181,7 +196,6 @@ def _runtime_path(route_path: str) -> str:
 
 
 def _assert_teacher_routes_registered(api_router) -> None:
-    """启动期完整检查教师学工移动路由的PC权限一致性。"""
     from app.services import affairs_four_end_contract as contract
 
     failures: list[str] = []
@@ -197,10 +211,9 @@ def _assert_teacher_routes_registered(api_router) -> None:
             method = str(method).upper()
             if method in ("HEAD", "OPTIONS"):
                 continue
-            if path in _DIRECT_PERMISSION_CODES:
-                problem = _permission_problem(path, method, _DIRECT_PERMISSION_CODES[path])
-            else:
-                problem = _permission_problem(path, method, tuple(contract._teacher_permissions(path, method) or ()))
+            direct = _direct_permission_codes(path)
+            required = direct if direct is not None else tuple(contract._teacher_permissions(path, method) or ())
+            problem = _permission_problem(path, method, required)
             if problem:
                 failures.append(f"{method} {path}: {problem}")
 
@@ -212,7 +225,6 @@ def _assert_teacher_routes_registered(api_router) -> None:
 
 
 def _assert_teacher_write_routes_registered(api_router) -> None:
-    """兼容旧测试/调用名，实际已升级为全部读写路由检查。"""
     _assert_teacher_routes_registered(api_router)
 
 
