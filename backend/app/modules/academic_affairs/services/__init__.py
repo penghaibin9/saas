@@ -9,7 +9,7 @@ import sys
 from . import academic_affairs_archive_selection_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
-from . import academic_affairs_exam_facade as academic_affairs_exam_service
+from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
 from . import academic_affairs_grade_roster_facade as academic_affairs_grade_service
 from . import academic_affairs_makeup_facade as academic_affairs_makeup_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
@@ -22,7 +22,7 @@ from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
 # 普通教师创建考勤必须选择当前学期本人教学任务。
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
-# 考务结束、异常闭环和归档统一执行同一门禁。
+# 考务新建、名单、异常、结束与归档全部进入最终叠加facade。
 sys.modules[f"{__name__}.academic_affairs_exam_service"] = academic_affairs_exam_service
 # 成绩有效口径和录入名单统一经叠加facade，完整路径导入不得绕回行政班旧逻辑。
 sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_grade_service
