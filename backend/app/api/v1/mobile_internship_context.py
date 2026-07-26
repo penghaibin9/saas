@@ -1,14 +1,9 @@
-"""Teacher mini-program internship access and batch context.
-
-The teacher mini-program previously used local role constants and opened student
-pickers without a batch id. This endpoint provides one server-authoritative
-payload for permission-driven quick actions and scoped batch selection.
-"""
+"""教师小程序岗位实习权限、批次与批次化查询上下文。"""
 from __future__ import annotations
 
 from collections import Counter
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
 from app.core.permissions import (
@@ -71,12 +66,23 @@ def teacher_internship_context(
             } for x in rows]
 
     access = get_effective_access_context(user)
+    healthy = bool(access.get("moduleAccessHealthy", True))
     return success({
         "roleCode": access.get("roleCode"),
-        "permissionPatterns": access.get("permissionPatterns") or [],
+        "permissionPatterns": (access.get("permissionPatterns") or []) if healthy else [],
         "permissionVersion": access.get("permissionVersion"),
-        "moduleAccessHealthy": access.get("moduleAccessHealthy", True),
+        "moduleAccessHealthy": healthy,
         "moduleAccessError": access.get("moduleAccessError") or "",
-        "batches": batches,
-        "defaultBatchId": _choose_default_batch(batches),
+        "batches": batches if healthy else [],
+        "defaultBatchId": _choose_default_batch(batches) if healthy else "",
     })
+
+
+@router.get("/scores", summary="教师当前批次实习成绩列表")
+def teacher_batch_scores(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.score.view")),
+):
+    from app.modules.internship.services import internship_score_service as scores
+    items, total = scores.list_scores(1, 200, batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
