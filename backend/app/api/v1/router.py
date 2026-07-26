@@ -17,6 +17,7 @@ from app.api.v1.affairs_four_end import router as affairs_four_end_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
 from app.services.affairs_activity_accounting_guard import install as install_activity_accounting_guard
+from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_activity_reliability_service import install as install_activity_reliability
 from app.services.affairs_appeal_repair_scheduler import install as install_appeal_repair_scheduler
@@ -77,6 +78,7 @@ install_archive_guard()
 install_archive_file_guard()
 install_talk_guard()
 install_activity_accounting_guard()
+install_activity_authority_guard()
 install_stats_integrity_guard()
 # 必须最后安装：收紧前述兼容层的 fail-closed、显式 version 与学生宿舍范围边界。
 install_affairs_four_end_review_guard()
