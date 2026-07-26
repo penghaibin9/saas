@@ -129,7 +129,7 @@ def resolve_teaching_task_roster(db, teaching_task_id: int) -> dict:
             }
 
     # 完全没有当前学期选课关系时，复用行政班/合班兼容逻辑。
-    return _base._resolve_teaching_task_roster_legacy(db, task)
+    return _base._resolve_teaching_task_roster_legacy(db, int(task.id))
 
 
 def validate_selection_lock(db, batch) -> dict:
