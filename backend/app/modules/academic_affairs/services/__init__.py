@@ -9,6 +9,7 @@ import sys
 from . import academic_affairs_archive_policy_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 from . import academic_affairs_evaluation_facade as academic_affairs_evaluation_service
+from . import academic_affairs_exam_facade as academic_affairs_exam_service
 from . import academic_affairs_grade_facade as academic_affairs_grade_service
 from . import academic_affairs_makeup_facade as academic_affairs_makeup_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
@@ -20,6 +21,8 @@ from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
 # 普通教师创建考勤必须选择当前学期本人教学任务。
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
+# 考务结束、异常闭环和归档统一执行同一门禁。
+sys.modules[f"{__name__}.academic_affairs_exam_service"] = academic_affairs_exam_service
 # 毕业审核等旧服务使用完整子模块路径导入 effective_grade_rows；在包初始化完成后将该公开路径
 # 指向兼容 facade，使所有读侧统一停止“按课程名取最高分”。facade 内仍保留 legacy 模块引用。
 sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_grade_service
