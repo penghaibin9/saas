@@ -303,6 +303,36 @@ def _patch_mental_audit() -> None:
     mental._sensitive_view_audit = _strict_sensitive_view_audit
 
 
+def _patch_core_rows() -> None:
+    """统一核心列表DTO：所有可变记录必须返回 version 与可执行动作。"""
+    from app.services import affairs_leave_service as leave
+
+    original_leave_row = leave._row
+    _ORIGINALS["leave_row"] = original_leave_row
+
+    def leave_row(entity, student=None):
+        data = original_leave_row(entity, student)
+        data["version"] = int(entity.version or 0)
+        status = entity.affairs_status or ""
+        if status in ("COUNSELOR_REVIEW", "COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW"):
+            data["allowedActions"] = ["APPROVE", "RETURN", "REJECT"]
+        elif status == "APPROVED":
+            data["allowedActions"] = ["PROXY_CANCEL"]
+        elif status == "WAIT_CANCEL_LEAVE":
+            data["allowedActions"] = ["CONFIRM_CANCEL", "RETURN_CANCEL"]
+        elif status == "EXTENSION_REVIEW":
+            data["allowedActions"] = ["APPROVE_EXTENSION", "REJECT_EXTENSION"]
+        elif status == "OVERDUE":
+            data["allowedActions"] = ["HANDLE_OVERDUE"]
+        elif status == "RETURNED":
+            data["allowedActions"] = ["EDIT_RETURNED", "RESUBMIT"]
+        else:
+            data["allowedActions"] = []
+        return data
+
+    leave._row = leave_row
+
+
 def _patch_student_views() -> None:
     from app.services import mobile_affairs_service as aff
 
@@ -553,6 +583,7 @@ def install() -> None:
     _patch_student_scope()
     _patch_mental_audit()
     _patch_student_dorm_scope()
+    _patch_core_rows()
     _patch_student_views()
     _patch_insecure_activity_checkin()
     _INSTALLED = True
