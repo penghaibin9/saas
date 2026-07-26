@@ -38,7 +38,7 @@
     <view v-if="editVisible" class="aid__mask" @click.self="closeEdit">
       <view class="card aid__sheet">
         <text class="card-title">修改退回的认定申请</text>
-        <MobileInlineAlert type="warning" title="请按退回意见修改" :description="editTarget.returnReason || '修改后将重新进入班级评议。'" />
+        <MobileInlineAlert type="warning" title="请按退回意见修改" :description="editNotice || editTarget.returnReason || '修改后将重新进入班级评议。'" />
         <view class="fld"><text class="lbl">申请等级</text><picker mode="selector" :range="levels" range-key="label" :value="editLevelIndex" @change="editLevelIndex = Number($event.detail.value)"><view class="picker">{{ levels[editLevelIndex].label }}</view></picker></view>
         <view class="fld"><text class="lbl">家庭年收入（元）</text><input class="inp" type="number" v-model="editForm.income" placeholder="选填" /></view>
         <view class="fld"><text class="lbl">困难情况说明（≥10字）</text><textarea class="ta" v-model="editForm.reason" maxlength="500" /></view>
@@ -62,12 +62,12 @@ export default {
     return {
       d: null, state: 'loading', busy: false, reasons: {}, batches: [], batchIndex: 0, batchError: '',
       levels: LEVELS, levelIndex: 0, form: { income: '', reason: '', commit: false },
-      editVisible: false, editTarget: {}, editLevelIndex: 0, editForm: { income: '', reason: '' }
+      editVisible: false, editTarget: {}, editLevelIndex: 0, editForm: { income: '', reason: '' }, editNotice: ''
     }
   },
   onLoad() { this.load() },
   methods: {
-    showError(e, fallback) { toast(normalizeError(e).text || (e && e.message) || fallback) },
+    showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); return n },
     load() {
       this.state = 'loading'; this.batchError = ''
       Promise.all([studentApi.getMyAid(), studentApi.getAidBatches().catch((e) => ({ __error: normalizeError(e).text || '开放批次加载失败' }))]).then(([d, b]) => {
@@ -98,10 +98,11 @@ export default {
         const idx = LEVELS.findIndex((o) => o.value === d.applyLevel)
         this.editLevelIndex = idx >= 0 ? idx : 0
         this.editForm = { income: d.annualIncome == null ? '' : String(d.annualIncome), reason: d.statement || '' }
+        this.editNotice = ''
         this.editVisible = true
       } catch (e) { this.showError(e, '退回申请加载失败') } finally { this.busy = false }
     },
-    closeEdit() { if (!this.busy) this.editVisible = false },
+    closeEdit() { if (!this.busy) { this.editVisible = false; this.editNotice = '' } },
     async saveAndResubmit() {
       if (this.busy) return
       const reason = this.editForm.reason.trim()
@@ -109,9 +110,16 @@ export default {
       this.busy = true
       try {
         const updated = await affairsReturnedApi.updateAid(this.editTarget.applyId, { applyLevel: LEVELS[this.editLevelIndex].value, annualIncome: this.editForm.income ? Number(this.editForm.income) : null, statement: reason, version: this.editTarget.version })
-        await affairsReturnedApi.resubmitAid(this.editTarget.applyId, updated.version)
-        toast('已修改并重新提交'); this.editVisible = false; this.load()
-      } catch (e) { this.showError(e, '重新提交失败') } finally { this.busy = false }
+        this.editTarget = { ...this.editTarget, ...(updated || {}), version: updated.version }
+        try {
+          await affairsReturnedApi.resubmitAid(this.editTarget.applyId, this.editTarget.version)
+        } catch (e) {
+          this.editNotice = `修改已保存，但重新提交失败：${normalizeError(e).text || e.message || '请重试'}`
+          this.showError(e, '重新提交失败')
+          return
+        }
+        toast('已修改并重新提交'); this.editVisible = false; this.editNotice = ''; this.load()
+      } catch (e) { this.showError(e, '保存修改失败') } finally { this.busy = false }
     },
     async object(x) {
       const reason = (this.reasons[x.applyId] || '').trim(); if (reason.length < 5) return toast('异议理由至少5字')
