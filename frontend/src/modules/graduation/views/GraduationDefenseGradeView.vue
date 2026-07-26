@@ -147,7 +147,7 @@
                 <button v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" class="mp-btn mp-btn--primary" :disabled="!canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</button>
                 <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canReviewGrade" :title="reviewGradeReason" @click="doReview('APPROVE')">复核通过</button>
                 <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canReviewGrade" :title="reviewGradeReason" @click="openReturnGrade">复核退回</button>
-                <button v-if="grade.status === 'CALCULATED' && grade.reviewedAt" class="mp-btn mp-btn--primary" :disabled="!canPublishGrade" :title="publishGradeReason" @click="doPublish">发布成绩</button>
+                <button v-if="grade.status === 'REVIEWED'" class="mp-btn mp-btn--primary" :disabled="!canPublishGrade" :title="publishGradeReason" @click="doPublish">发布成绩</button>
                 <button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" :disabled="!canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</button>
               </div>
             </template>
@@ -184,6 +184,7 @@ export default {
         { value: '', label: '全部' },
         { value: 'DRAFT', label: '待核算' },
         { value: 'CALCULATED', label: '已核算' },
+        { value: 'REVIEWED', label: '已复核' },
         { value: 'PUBLISHED', label: '已发布' },
         { value: 'WITHDRAWN', label: '已撤回' }
       ],
