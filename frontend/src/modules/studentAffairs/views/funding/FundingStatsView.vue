@@ -8,17 +8,28 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载奖助统计..." @retry="load"
                     @back="$router.push('/admin/student-affairs/funding')">
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">当前奖助结论</span>
+          <h2 class="sa-summary-strip__title">申请 {{ stats.total || 0 }} 人，已获资助 {{ stats.granted || 0 }} 人，在途或未获 {{ (stats.total || 0) - (stats.granted || 0) }} 人</h2>
+          <p class="sa-summary-strip__text">先看状态分布判断审核与公示积压，再看奖学金、助学金等项目类型结构。本页只显示人数，不展示个人金额。</p>
+        </div>
+      </section>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
       <div class="ss-cols">
         <AppSectionCard title="按状态分布">
-          <BreakdownTable :rows="stats.byStatus" :label-map="STATUS_LABELS" empty="暂无申请" />
+          <p class="stats-hint">识别辅导员初审、学院复审、学校终审、公示和退回等阶段的待处理规模。</p>
+          <BreakdownTable :rows="stats.byStatus" :label-map="STATUS_LABELS" empty="当前范围暂无奖助申请" />
         </AppSectionCard>
         <AppSectionCard title="按项目类型分布">
-          <BreakdownTable :rows="stats.byType" :label-map="TYPE_LABELS" empty="暂无类型数据" />
+          <p class="stats-hint">查看奖学金、助学金、勤工助学、助学贷款、减免和临时补助等业务数量结构。</p>
+          <BreakdownTable :rows="stats.byType" :label-map="TYPE_LABELS" empty="当前范围暂无项目类型数据" />
         </AppSectionCard>
       </div>
+      <p class="stats-note">统计口径与奖助台账和当前数据范围保持一致；具体审核、发放和异常处理请进入对应业务工作台。</p>
     </AppGlobalState>
   </AppPageShell>
 </template>
@@ -63,7 +74,9 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .ss-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .ss-cols { grid-template-columns: 1fr; } }
+.stats-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.stats-note { margin: var(--space-4) 0 0; padding: 10px 12px; border-left: 3px solid var(--primary-300, #93c5fd); background: var(--primary-50, #eff6ff); color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.65; }
+@media (max-width: 960px) { .sa-grid--metrics, .ss-cols { grid-template-columns: 1fr; } }
 </style>
