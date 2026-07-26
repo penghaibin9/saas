@@ -46,7 +46,8 @@
         description="点击催交后，系统会向该学生创建真实站内消息并写入催办留痕；请勿因旧页面缓存而重复电话或微信催办。"
         class="gd-scope-alert"
       />
-      <router-view :key="businessViewKey" :ctx="businessCtx" />
+      <GraduationExtensionAdminPanel v-if="isExtensionWorkspace" :ctx="businessCtx" />
+      <router-view v-else :key="businessViewKey" :ctx="businessCtx" />
     </div>
     <LoadingState v-else-if="loading" text="正在加载毕业设计中心…" />
     <EmptyState
@@ -63,11 +64,6 @@
 </template>
 
 <script>
-/**
- * AdminGraduationLayout — /admin/graduation 父布局。
- * 侧栏由 BasePortalLayout + navPlan（graduationWorkspaces 8 工作区）驱动，禁止本文件硬编码业务菜单。
- * 统一提供批次上下文（Pinia）与权限 fail-safe（permissionReady / scopeReady）。
- */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, EmptyState } from '@/components/business'
 import { AppInlineAlert } from '@/components/common'
@@ -76,49 +72,35 @@ import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationPickerAdapters } from '@/modules/graduation/pickerAdapters'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
+import GraduationExtensionAdminPanel from './GraduationExtensionAdminPanel.vue'
 import router from '@/router'
 
 export default {
   name: 'AdminGraduationLayout',
-  components: { BasePortalLayout, LoadingState, EmptyState, AppInlineAlert, GraduationBatchStrip },
-  provide() {
-    return { appPickerAdapters: graduationPickerAdapters }
+  components: {
+    BasePortalLayout, LoadingState, EmptyState, AppInlineAlert,
+    GraduationBatchStrip, GraduationExtensionAdminPanel
   },
+  provide() { return { appPickerAdapters: graduationPickerAdapters } },
   data() {
-    return {
-      loading: true,
-      ctx: null,
-      contextError: '',
-      permissionReady: false,
-      scopeReady: false
-    }
+    return { loading: true, ctx: null, contextError: '', permissionReady: false, scopeReady: false }
   },
   computed: {
     brandTitle() {
       if (!this.ctx) return '管理端'
       return (this.ctx.tenantBrandConfig?.schoolName || '管理端') + ' · 管理端'
     },
-    layoutCtx() {
-      return this.ctx
-    },
-    canRenderBusiness() {
-      return !!(this.ctx && this.permissionReady && this.scopeReady)
-    },
-    isStudentList() {
-      return this.$route.name === 'graduation-students'
-    },
-    isReminderWorkspace() {
-      return ['graduation-proposals', 'graduation-finals'].includes(this.$route.name)
+    layoutCtx() { return this.ctx },
+    canRenderBusiness() { return !!(this.ctx && this.permissionReady && this.scopeReady) },
+    isStudentList() { return this.$route.name === 'graduation-students' },
+    isReminderWorkspace() { return ['graduation-proposals', 'graduation-finals'].includes(this.$route.name) },
+    isExtensionWorkspace() {
+      return this.$route.name === 'graduation-dashboard' && ['excellent', 'delay'].includes(String(this.$route.query.extension || ''))
     },
     canManageStudents() {
       const patterns = this.ctx?.permissionPatterns
       return Array.isArray(patterns) && matchPermission(patterns, 'graduationDesign.student.manage')
     },
-    /**
-     * 查重/评阅/答辩/成绩多个路由复用同一个 Vue 组件。
-     * 以 route name + defaultPanel 做 key，避免地址和菜单已切换但旧组件状态仍停在上一个业务页签。
-     * 不使用 fullPath，防止搜索、分页、选中项 query 变化导致整个页面无意义重建。
-     */
     businessViewKey() {
       return `${this.$route.name || this.$route.path}|${this.$route.meta?.defaultPanel || ''}`
     },
@@ -145,22 +127,15 @@ export default {
     '$route.query.panel': {
       immediate: true,
       handler(panel) {
-        // 毕设中心只展示教务毕业资格镜像，不再提供人工“通过/不通过”裁决入口。
         if (panel === 'grad-qual') {
           router.replace({ query: { ...this.$route.query, panel: 'roster' } }).catch(() => {})
         }
       }
     }
   },
-  async created() {
-    await this.loadContext()
-  },
-  mounted() {
-    this.normalizeReminderCopy()
-  },
-  updated() {
-    this.normalizeReminderCopy()
-  },
+  async created() { await this.loadContext() },
+  mounted() { this.normalizeReminderCopy() },
+  updated() { this.normalizeReminderCopy() },
   methods: {
     normalizeReminderCopy() {
       if (!this.isReminderWorkspace || typeof document === 'undefined') return
@@ -183,8 +158,7 @@ export default {
           tenantBrandConfig: { schoolName: '管理端' },
           currentRole: { roleName: '未识别' },
           dataScope: { scopeName: '未知' },
-          permissionActions: {},
-          permissionPatterns: null
+          permissionActions: {}, permissionPatterns: null
         }
         this.permissionReady = false
         this.scopeReady = false
@@ -196,34 +170,24 @@ export default {
       const needsScope = !!res.data.roleNeedsOrgScope
       const configured = res.data.scopeConfigured !== false
       this.scopeReady = !(needsScope && !configured)
-      if (!this.permissionReady) {
-        this.contextError = res.data.permissionError || '真实权限未加载成功，写操作已禁用'
-      }
+      if (!this.permissionReady) this.contextError = res.data.permissionError || '真实权限未加载成功，写操作已禁用'
       const store = useGraduationBatchStore()
-      await store.ensureLoaded({
-        batchIdFromUrl: this.$route.query.batchId || '',
-        force: true
-      })
+      await store.ensureLoaded({ batchIdFromUrl: this.$route.query.batchId || '', force: true })
       this.syncBatchToUrl()
     },
     syncBatchToUrl() {
       const store = useGraduationBatchStore()
       const cur = this.$route.query.batchId ? String(this.$route.query.batchId) : ''
       const next = store.selectedBatchId || ''
-      if (next && next !== cur) {
-        router.replace({ query: { ...this.$route.query, batchId: next } }).catch(() => {})
-      }
+      if (next && next !== cur) router.replace({ query: { ...this.$route.query, batchId: next } }).catch(() => {})
     },
     onMenuSelect(item) {
       if (item?.path && item.path !== this.$route.fullPath.split('#')[0]) {
         const store = useGraduationBatchStore()
         const path = item.path
-        const hasQuery = path.includes('?')
         const batchQ = store.selectedBatchId ? `batchId=${encodeURIComponent(store.selectedBatchId)}` : ''
         let target = path
-        if (batchQ && !/[?&]batchId=/.test(path)) {
-          target = hasQuery ? `${path}&${batchQ}` : `${path}?${batchQ}`
-        }
+        if (batchQ && !/[?&]batchId=/.test(path)) target = path.includes('?') ? `${path}&${batchQ}` : `${path}?${batchQ}`
         router.push(target).catch(() => {})
       }
     }
@@ -234,8 +198,6 @@ export default {
 <style scoped>
 .gd-scope-alert { margin: 0 0 var(--space-4); }
 .gd-batch-bar { margin: 0 0 var(--space-3); }
-/* 学生列表历史页面没有逐个消费动作权限：只读角色仅保留每行首个“详情”入口。 */
 .gd-student-readonly :deep(.mp-link + .mp-link) { display: none !important; }
-/* 最终毕业资格由教务中心统一重算；隐藏旧的人工联动页签。 */
 .gd-business-view :deep(.mp-tabs .mp-tab:nth-child(8)) { display: none !important; }
 </style>
