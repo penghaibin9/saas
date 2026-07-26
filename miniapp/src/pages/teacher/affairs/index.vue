@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="学工待办" subtitle="点卡片进入处置；权限与指派人与 PC 一致" back />
+    <MobileNavBar variant="brand" title="学工待办" subtitle="权限、数据范围、指派人与 PC 一致" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="data">
         <view class="ta__total">
@@ -9,12 +9,7 @@
         </view>
         <view class="ta__empty" v-if="!data.cards.length"><text>暂无待办</text></view>
         <view class="stack">
-          <view
-            v-for="c in data.cards"
-            :key="c.todoType"
-            class="ta__card"
-            @click="openCard(c)"
-          >
+          <view v-for="c in data.cards" :key="c.todoType" class="ta__card" @click="openCard(c)">
             <text class="ta__label">{{ c.label }}</text>
             <view class="ta__right">
               <text class="ta__count">{{ c.count }}</text>
@@ -22,13 +17,41 @@
             </view>
           </view>
         </view>
+
+        <template v-if="activityVisible">
+          <view class="section-head ta__section"><text class="section-head__title">现场活动签到</text></view>
+          <MobileInlineAlert v-if="activityError" type="warning" title="活动签到暂不可用" :description="activityError" />
+          <MobileGlobalState v-else-if="!activities.length" state="empty" title="暂无进行中活动" description="活动开始后可在此生成5分钟动态签到码。" />
+          <view v-else class="stack">
+            <view v-for="a in activities" :key="a.activityId" class="ta__card ta__activity">
+              <view class="flex-1">
+                <text class="ta__label">{{ a.activityName }}</text>
+                <text class="ta__sub">{{ a.location || '未填写地点' }} · 已报名 {{ a.signupCount || 0 }} 人</text>
+              </view>
+              <button class="btn btn-primary ta__code-btn" :disabled="codeLoading === a.activityId" @click="showCode(a)">
+                {{ codeLoading === a.activityId ? '生成中…' : '生成签到码' }}
+              </button>
+            </view>
+          </view>
+        </template>
       </view>
     </MobileGlobalState>
+
+    <view v-if="codeData" class="ta__mask" @click.self="codeData = null">
+      <view class="card ta__code-card">
+        <text class="card-title">{{ codeData.activityName }}</text>
+        <text class="ta__code">{{ codeData.checkinCode }}</text>
+        <text class="ta__code-tip">请学生在活动页输入此码。动态码最多5分钟有效，过期后重新生成。</text>
+        <button class="btn btn-primary" @click="codeData = null">完成</button>
+      </view>
+    </view>
   </view>
 </template>
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { affairsContractApi } from '@/services/affairsContractApi'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 const ROUTES = {
@@ -47,18 +70,51 @@ const ROUTES = {
 }
 
 export default {
-  data() { return { data: null, state: 'loading' } },
+  data() {
+    return {
+      data: null, state: 'loading', activities: [], activityVisible: true,
+      activityError: '', codeData: null, codeLoading: ''
+    }
+  },
   onLoad() { this.load() },
   onShow() { if (this.state === 'ready') this.load() },
   methods: {
     load() {
       this.state = 'loading'
-      teacherApi.getAffairs().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      this.activityError = ''
+      teacherApi.getAffairs().then((d) => {
+        this.data = d
+        this.state = 'ready'
+      }).catch((e) => {
+        this.state = 'error'
+        toast(normalizeError(e).text || '学工待办加载失败')
+      })
+      affairsContractApi.getOngoingActivities().then((d) => {
+        this.activities = (d && d.items) || []
+        this.activityVisible = true
+      }).catch((e) => {
+        const n = normalizeError(e)
+        if (n.kind === 'forbidden') {
+          this.activityVisible = false
+          this.activities = []
+        } else {
+          this.activityVisible = true
+          this.activityError = n.text || '活动数据加载失败，请稍后重试'
+        }
+      })
     },
     openCard(c) {
       const url = ROUTES[c.todoType]
       if (!url) { toast('该类型请在 PC 学工模块处理'); return }
       uni.navigateTo({ url })
+    },
+    showCode(a) {
+      if (this.codeLoading) return
+      this.codeLoading = a.activityId
+      affairsContractApi.getActivityCheckinToken(a.activityId).then((d) => {
+        this.codeData = d
+      }).catch((e) => toast(normalizeError(e).text || '签到码生成失败'))
+        .finally(() => { this.codeLoading = '' })
     }
   }
 }
@@ -69,8 +125,16 @@ export default {
 .ta__total-n { font-size: 28px; font-weight: 700; }
 .ta__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-5); }
 .ta__card { display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); }
-.ta__label { font-weight: 600; color: var(--text-primary); }
+.ta__label { display: block; font-weight: 600; color: var(--text-primary); }
+.ta__sub { display: block; margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
 .ta__right { display: flex; align-items: center; gap: 8px; }
 .ta__count { font-size: 20px; font-weight: 700; color: var(--brand-primary); }
 .ta__go { color: var(--text-tertiary); font-size: 20px; }
+.ta__section { margin-top: 22px; }
+.ta__activity { gap: 10px; }
+.ta__code-btn { flex-shrink: 0; font-size: 12px; padding: 0 10px; }
+.ta__mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ta__code-card { width: 100%; text-align: center; padding: 24px; }
+.ta__code { display: block; font-size: 44px; letter-spacing: 10px; font-weight: 800; color: var(--brand-primary); margin: 22px 0 12px; }
+.ta__code-tip { display: block; font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 18px; }
 </style>
