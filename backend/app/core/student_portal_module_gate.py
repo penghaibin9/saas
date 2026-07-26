@@ -14,25 +14,39 @@ _MARKERS = (
     "/portal/internship",
     "/portal/guardian/internship",
 )
-_LEGACY_APPLICATION_PATH = "/portal/internship/applications"
-_LEGACY_LEAVE_MARKER = "/portal/internship/leaves"
+_BASE = "/portal/internship"
+
+
+def _legacy_error(label: str) -> None:
+    raise AppException(
+        "DATA_CONFLICT",
+        f"旧版{label}写入口已停用，请刷新页面后通过当前批次版本化入口办理",
+    )
 
 
 def _reject_legacy_write(request: Request) -> None:
     path = request.url.path.rstrip("/")
     method = request.method.upper()
-    if path == _LEGACY_APPLICATION_PATH and method == "POST":
-        raise AppException(
-            "DATA_CONFLICT",
-            "旧版正式实习申请写入口已停用，请刷新页面后通过版本化入口办理",
-        )
-    if path.startswith(_LEGACY_LEAVE_MARKER) and method == "POST":
-        suffix = path[len(_LEGACY_LEAVE_MARKER):].strip("/")
+    if method not in ("POST", "PUT"):
+        return
+    if path == f"{_BASE}/applications" and method == "POST":
+        _legacy_error("正式实习申请")
+    if path.startswith(f"{_BASE}/leaves") and method == "POST":
+        suffix = path[len(f"{_BASE}/leaves"):].strip("/")
         if suffix == "apply" or re.fullmatch(r"[^/]+/(withdraw|return)", suffix or ""):
-            raise AppException(
-                "DATA_CONFLICT",
-                "旧版实习请假写入口已停用，请刷新页面后通过版本化入口办理",
-            )
+            _legacy_error("实习请假")
+    if path.startswith(f"{_BASE}/makeup") and method == "POST":
+        suffix = path[len(f"{_BASE}/makeup"):].strip("/")
+        if not suffix or re.fullmatch(r"[^/]+/withdraw", suffix or ""):
+            _legacy_error("实习补卡")
+    if path.startswith(f"{_BASE}/plan") and method == "POST":
+        suffix = path[len(f"{_BASE}/plan"):].strip("/")
+        if suffix == "acknowledge" or re.fullmatch(r"tasks/[^/]+/submit", suffix or ""):
+            _legacy_error("实习计划")
+    if path.startswith(f"{_BASE}/agreements") and method == "POST":
+        suffix = path[len(f"{_BASE}/agreements"):].strip("/")
+        if re.fullmatch(r"[^/]+/confirm", suffix or ""):
+            _legacy_error("三方协议确认")
 
 
 def enforce_student_portal_module_access(
@@ -42,7 +56,7 @@ def enforce_student_portal_module_access(
     """仅对学生/监护人岗位实习路由执行模块授权；遗留无版本写入口默认拒绝。"""
     if not any(marker in request.url.path for marker in _MARKERS):
         return None
-    token = (authorization or "").strip()
+    token = str(authorization or "").strip()
     if token.startswith("Bearer "):
         token = token[7:]
     if not token:
