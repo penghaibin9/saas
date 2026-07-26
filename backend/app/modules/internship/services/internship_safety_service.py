@@ -25,6 +25,27 @@ def _audit(db, x, action, user=None, detail=None):
         detail_json=detail or {}, occurred_at=datetime.utcnow()))
 
 
+def _completion_row(x):
+    if not x:
+        return None
+    return {
+        "id": str(x.id),
+        "courseId": str(x.course_id),
+        "courseVersion": x.course_version,
+        "status": x.status,
+        "startedAt": x.started_at,
+        "submittedAt": x.submitted_at,
+        "completedAt": x.completed_at,
+        "studiedMinutes": int(x.studied_minutes or 0),
+        "attemptCount": int(x.attempt_count or 0),
+        "score": x.score,
+        "passed": bool(x.passed),
+        "commitmentConfirmed": bool(x.commitment_confirmed),
+        "commitmentAt": x.commitment_at,
+        "version": int(x.version or 0),
+    }
+
+
 def _course_row(x, completion=None):
     return {
         "id": str(x.id), "title": x.title, "status": x.status,
@@ -32,9 +53,11 @@ def _course_row(x, completion=None):
         "passingScore": x.passing_score, "maxAttempts": x.max_attempts,
         "requireCommitment": bool(x.require_commitment),
         "contentSnapshot": x.content_snapshot,
+        "contentHash": _hash(x.content_snapshot or ""),
         "completionStatus": completion.status if completion else "NOT_STARTED",
-        "studiedMinutes": completion.studied_minutes if completion else 0,
+        "studiedMinutes": int(completion.studied_minutes or 0) if completion else 0,
         "remainingAttempts": max(0, x.max_attempts - (completion.attempt_count if completion else 0)),
+        "commitmentConfirmed": bool(completion and completion.commitment_confirmed),
         "blocksOnboard": not completion or completion.status != "PASSED",
     }
 
@@ -81,6 +104,21 @@ def _my_context(db, user):
     return stu, ctx.record
 
 
+def _my_completions(db, rec):
+    return db.scalars(select(InternshipSafetyCompletion).where(
+        InternshipSafetyCompletion.tenant_id == _tid(),
+        InternshipSafetyCompletion.internship_id == rec.id,
+        InternshipSafetyCompletion.is_deleted.is_(False),
+    ).order_by(InternshipSafetyCompletion.id.asc())).all()
+
+
+def _latest_completion_map(rows):
+    result = {}
+    for row in rows:
+        result[row.course_id] = row
+    return result
+
+
 def list_my_courses(user):
     with session() as db:
         _, rec = _my_context(db, user)
@@ -88,29 +126,33 @@ def list_my_courses(user):
             InternshipSafetyCourse.tenant_id == _tid(),
             InternshipSafetyCourse.batch_id == rec.batch_id,
             InternshipSafetyCourse.status == "ACTIVE",
-            InternshipSafetyCourse.is_deleted.is_(False))).all()
-        completions = db.scalars(select(InternshipSafetyCompletion).where(
-            InternshipSafetyCompletion.tenant_id == _tid(),
-            InternshipSafetyCompletion.internship_id == rec.id,
-            InternshipSafetyCompletion.is_deleted.is_(False))).all()
-        cmap = {x.course_id: x for x in completions}
+            InternshipSafetyCourse.is_deleted.is_(False)).order_by(
+                InternshipSafetyCourse.id.asc())).all()
+        cmap = _latest_completion_map(_my_completions(db, rec))
         return [_course_row(c, cmap.get(c.id)) for c in courses]
 
 
 def list_my_completions(user):
     with session() as db:
         _, rec = _my_context(db, user)
-        rows = db.scalars(select(InternshipSafetyCompletion).where(
+        return [_completion_row(x) for x in _my_completions(db, rec)]
+
+
+def get_my_course_detail(course_id, user):
+    """四端共用课程详情；包含可信计时起点与完成记录版本。"""
+    with session() as db:
+        _, rec = _my_context(db, user)
+        course = db.get(InternshipSafetyCourse, _as_id(course_id))
+        if (not course or course.tenant_id != _tid() or course.is_deleted or
+                course.status != "ACTIVE" or course.batch_id != rec.batch_id):
+            raise not_found("当前批次安全教育课程不存在")
+        completion = db.scalars(select(InternshipSafetyCompletion).where(
             InternshipSafetyCompletion.tenant_id == _tid(),
             InternshipSafetyCompletion.internship_id == rec.id,
-            InternshipSafetyCompletion.is_deleted.is_(False))).all()
-        return [{
-            "id": str(x.id), "courseId": str(x.course_id), "status": x.status,
-            "studiedMinutes": x.studied_minutes, "attemptCount": x.attempt_count,
-            "score": x.score, "passed": bool(x.passed),
-            "commitmentConfirmed": bool(x.commitment_confirmed),
-            "version": int(x.version or 0),
-        } for x in rows]
+            InternshipSafetyCompletion.course_id == course.id,
+            InternshipSafetyCompletion.is_deleted.is_(False),
+        ).order_by(InternshipSafetyCompletion.id.desc())).first()
+        return {**_course_row(course, completion), "completion": _completion_row(completion)}
 
 
 def start_my_course(course_id, user):
@@ -124,10 +166,36 @@ def start_my_course(course_id, user):
             InternshipSafetyCompletion.tenant_id == _tid(),
             InternshipSafetyCompletion.internship_id == rec.id,
             InternshipSafetyCompletion.course_id == course.id,
-            InternshipSafetyCompletion.is_deleted.is_(False)).with_for_update()).first()
+            InternshipSafetyCompletion.is_deleted.is_(False)).order_by(
+                InternshipSafetyCompletion.id.desc()).with_for_update()).first()
+        # 课程升级后保留旧完成记录，创建新版本记录，证据链不被覆盖。
+        if x and str(x.course_version or "") != str(course.course_version or ""):
+            x = None
         if x:
-            return {"id": str(x.id), "status": x.status, "startedAt": x.started_at,
-                    "version": int(x.version or 0)}
+            if x.status == "NOT_STARTED":
+                x.status = "IN_PROGRESS"
+                x.started_at = datetime.utcnow()
+                x.version = int(x.version or 0) + 1
+                _audit(db, x, "START", user, {"courseVersion": course.course_version})
+                db.commit()
+            elif x.status == "FAILED":
+                if int(x.attempt_count or 0) >= int(course.max_attempts or 0):
+                    raise AppException("DATA_CONFLICT", "已超过最大尝试次数")
+                x.status = "IN_PROGRESS"
+                x.started_at = datetime.utcnow()
+                x.submitted_at = None
+                x.completed_at = None
+                x.score = None
+                x.passed = False
+                x.answer_snapshot = None
+                x.studied_minutes = 0
+                x.version = int(x.version or 0) + 1
+                _audit(db, x, "RESTART", user, {
+                    "courseVersion": course.course_version,
+                    "attemptCount": int(x.attempt_count or 0),
+                })
+                db.commit()
+            return _completion_row(x)
         x = InternshipSafetyCompletion(
             tenant_id=_tid(), internship_id=rec.id, batch_id=rec.batch_id,
             student_id=stu.id, course_id=course.id, course_version=course.course_version,
@@ -139,8 +207,7 @@ def start_my_course(course_id, user):
         db.flush()
         _audit(db, x, "START", user, {"courseVersion": course.course_version})
         db.commit()
-        return {"id": str(x.id), "status": x.status, "startedAt": x.started_at,
-                "version": int(x.version or 0)}
+        return _completion_row(x)
 
 
 def submit_my_course(course_id, body, user):
@@ -154,17 +221,28 @@ def submit_my_course(course_id, body, user):
             InternshipSafetyCompletion.tenant_id == _tid(),
             InternshipSafetyCompletion.internship_id == rec.id,
             InternshipSafetyCompletion.course_id == _as_id(course_id),
-            InternshipSafetyCompletion.is_deleted.is_(False)).with_for_update()).first()
+            InternshipSafetyCompletion.is_deleted.is_(False)).order_by(
+                InternshipSafetyCompletion.id.desc()).with_for_update()).first()
         if not course or not x or course.batch_id != rec.batch_id:
             raise not_found("请先开始当前批次安全课程")
+        if str(x.course_version or "") != str(course.course_version or ""):
+            raise AppException("DATA_CONFLICT", "课程版本已更新，请重新打开并开始最新课程")
         if b.get("expectedVersion") is None or int(b["expectedVersion"]) != int(x.version or 0):
             raise AppException("DATA_CONFLICT", "学习记录版本已变化")
+        if x.status != "IN_PROGRESS":
+            raise AppException("DATA_CONFLICT", "仅学习中的课程可提交")
         if x.attempt_count >= course.max_attempts:
             raise AppException("DATA_CONFLICT", "已超过最大尝试次数")
+        if course.require_commitment and not x.commitment_confirmed:
+            raise AppException("DATA_CONFLICT", "请先确认安全承诺")
         now = datetime.utcnow()
         elapsed = max(0, int((now - x.started_at).total_seconds() // 60)) if x.started_at else 0
         claimed = max(0, int(b.get("studiedMinutes") or elapsed))
         x.studied_minutes = min(claimed, elapsed)
+        if x.studied_minutes < int(course.required_minutes or 0):
+            raise AppException(
+                "DATA_CONFLICT",
+                f"可信学习时长不足，应完成 {course.required_minutes} 分钟，当前 {x.studied_minutes} 分钟")
         x.answer_snapshot = b.get("answers") or None
         x.submitted_at = now
         x.attempt_count += 1
@@ -174,8 +252,7 @@ def submit_my_course(course_id, body, user):
             "trustedMinutes": x.studied_minutes, "claimedMinutes": claimed,
             "attempt": x.attempt_count})
         db.commit()
-        return {"id": str(x.id), "status": x.status,
-                "studiedMinutes": x.studied_minutes, "version": x.version}
+        return _completion_row(x)
 
 
 def commit_my_completion(completion_id, body, user):
@@ -193,8 +270,12 @@ def commit_my_completion(completion_id, body, user):
             raise not_found("安全教育完成记录不存在")
         if b.get("expectedVersion") is None or int(b["expectedVersion"]) != int(x.version or 0):
             raise AppException("DATA_CONFLICT", "学习记录版本已变化")
+        if str(b.get("contentHash")) != str(x.course_content_hash or ""):
+            raise AppException("DATA_CONFLICT", "课程正文已变化，请重新打开最新课程")
         if x.commitment_confirmed:
-            return {"id": str(x.id), "status": x.status, "version": x.version}
+            return _completion_row(x)
+        if x.status not in ("IN_PROGRESS", "FAILED"):
+            raise AppException("DATA_CONFLICT", "当前状态不可确认安全承诺")
         x.commitment_confirmed = True
         x.commitment_at = datetime.utcnow()
         x.commitment_content_hash = b["contentHash"]
@@ -202,7 +283,7 @@ def commit_my_completion(completion_id, body, user):
         x.version = int(x.version or 0) + 1
         _audit(db, x, "COMMITMENT_CONFIRM", user, {"contentHash": x.commitment_content_hash})
         db.commit()
-        return {"id": str(x.id), "status": x.status, "version": x.version}
+        return _completion_row(x)
 
 
 def teacher_review_completion(completion_id, score=None, action=None, comment=None,
@@ -221,6 +302,8 @@ def teacher_review_completion(completion_id, score=None, action=None, comment=No
         if x.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待审核记录可处理")
         course = db.get(InternshipSafetyCourse, x.course_id)
+        if not course or str(x.course_version or "") != str(course.course_version or ""):
+            raise AppException("DATA_CONFLICT", "课程版本已更新，旧版本完成记录不可审核通过")
         act = (action or "APPROVE").upper()
         if act == "APPROVE":
             if score is None:
@@ -242,8 +325,7 @@ def teacher_review_completion(completion_id, score=None, action=None, comment=No
         x.version = int(x.version or 0) + 1
         _audit(db, x, "REVIEW", user, {"action": act, "result": x.status, "comment": comment})
         db.commit()
-        return {"id": str(x.id), "status": x.status, "passed": x.passed,
-                "courseVersion": x.course_version, "version": x.version}
+        return _completion_row(x)
 
 
 def ensure_completion(body, user=None):
@@ -261,9 +343,11 @@ def ensure_completion(body, user=None):
             InternshipSafetyCompletion.tenant_id == _tid(),
             InternshipSafetyCompletion.internship_id == rec.id,
             InternshipSafetyCompletion.course_id == course.id,
-            InternshipSafetyCompletion.is_deleted.is_(False))).first()
+            InternshipSafetyCompletion.course_version == course.course_version,
+            InternshipSafetyCompletion.is_deleted.is_(False)).order_by(
+                InternshipSafetyCompletion.id.desc())).first()
         if exist:
-            return {"id": str(exist.id), "status": exist.status, "passed": exist.passed}
+            return _completion_row(exist)
         x = InternshipSafetyCompletion(
             tenant_id=_tid(), internship_id=rec.id, batch_id=rec.batch_id,
             student_id=rec.student_id, course_id=course.id,
@@ -275,4 +359,4 @@ def ensure_completion(body, user=None):
         db.flush()
         _audit(db, x, "ASSIGN", user)
         db.commit()
-        return {"id": str(x.id), "status": x.status, "passed": False}
+        return _completion_row(x)
