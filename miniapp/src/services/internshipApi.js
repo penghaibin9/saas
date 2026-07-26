@@ -31,6 +31,18 @@ export const teacherInternshipScores = (batchId) => {
   } catch (e) { return Promise.reject(e) }
 }
 
+/** 教师小程序：当前批次企业评价；创建绑定真实附件，审核必须携带版本。 */
+export const teacherInternshipEnterpriseEvals = (batchId) => {
+  try {
+    const value = requireBatch(batchId)
+    return realRequest(`/mobile/teacher/internship/context/enterprise-evals?batchId=${encodeURIComponent(value)}`)
+  } catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipEnterpriseEvalCreate = (body) =>
+  realRequest('/mobile/teacher/internship/context/enterprise-evals', { method: 'POST', data: body || {} })
+export const teacherInternshipEnterpriseEvalReview = (evalId, body) =>
+  realRequest(`/mobile/teacher/internship/context/enterprise-evals/${evalId}/review`, { method: 'POST', data: body || {} })
+
 /** 学生本人：所选批次实习摘要；多条进行中记录时禁止服务端猜测。 */
 export const studentInternshipDashboard = (batchId = '') =>
   realRequest(optionalBatch('/mobile/internship/context/my', batchId))
