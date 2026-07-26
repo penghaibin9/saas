@@ -1,4 +1,4 @@
-"""Conditional module entitlement gate for student PC portal routes."""
+"""Conditional internship entitlement gate for student and guardian portal routes."""
 from __future__ import annotations
 
 from typing import Optional
@@ -9,19 +9,22 @@ from app.core.exceptions import unauthorized
 from app.core.permissions import is_super_admin
 from app.core.security import decode_token
 
-_MARKER = "/portal/internship"
+_MARKERS = (
+    "/portal/internship",
+    "/portal/guardian/internship",
+)
 
 
 def enforce_student_portal_module_access(
     request: Request,
     authorization: Optional[str] = Header(default=None),
 ):
-    """Require the internship entitlement only for `/portal/internship/*`.
+    """Require internship entitlement only for student/guardian internship routes.
 
     The main portal router contains many domains, so applying `require_module`
     to the whole router would incorrectly block academic/affairs/graduation.
     """
-    if _MARKER not in request.url.path:
+    if not any(marker in request.url.path for marker in _MARKERS):
         return None
     token = (authorization or "").strip()
     if token.startswith("Bearer "):
@@ -46,5 +49,7 @@ def enforce_student_portal_module_access(
         raise unauthorized("令牌缺少租户信息，请重新登录")
     from app.services.module_access_service import assert_module_access
     assert_module_access(
-        tenant_id, "internship", write=request.method.upper() not in ("GET", "HEAD", "OPTIONS"))
+        tenant_id, "internship",
+        write=request.method.upper() not in ("GET", "HEAD", "OPTIONS"),
+    )
     return user
