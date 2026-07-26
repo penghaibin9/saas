@@ -1,7 +1,7 @@
 """学生 PC 门户岗位实习权威接口。
 
 与学生小程序复用同一业务服务，不复制状态机；批次由显式 batchId 或统一
-X-Internship-Batch-Id 上下文解析。正式申请、请假、补卡、计划确认与任务提交均强制版本。
+X-Internship-Batch-Id 上下文解析。正式申请、请假、补卡、计划与协议关键写操作均强制版本。
 """
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, Depends, Query, Request
 
 from app.core.response import success
 from app.core.security import get_current_user
+from app.modules.internship.services import internship_agreement_service as agreements
 from app.modules.internship.services import internship_consent_service as consent
 from app.modules.internship.services import internship_plan_service as plans
 from app.modules.internship.services import internship_plan_task_service as plan_tasks
@@ -233,3 +234,28 @@ def portal_plan_task_submit(
         plan_tasks.student_submit_task(user, sort_order, body or {}),
         message="任务已提交，等待指导教师确认",
     )
+
+
+@router.get("/context/agreements", summary="本人所选批次三方协议列表")
+def portal_agreement_list(user=Depends(get_current_user)):
+    return success(agreements.my_agreements(user))
+
+
+@router.get("/context/agreements/{agreement_id}", summary="本人三方协议详情与当前版本")
+def portal_agreement_detail(
+    agreement_id: str,
+    user=Depends(get_current_user),
+):
+    return success(agreements.get_student_agreement(user, agreement_id))
+
+
+@router.post("/context/agreements/{agreement_id}/confirm", summary="按版本确认或驳回本人三方协议")
+def portal_agreement_confirm(
+    agreement_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    payload = body or {}
+    return success(agreements.student_confirm(
+        user, agreement_id, str(payload.get("action") or "").upper(),
+        payload.get("reason") or "", body=payload), message="协议办理完成")
