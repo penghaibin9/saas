@@ -10,6 +10,7 @@ import { clearTokens, shouldTryReal } from '@/services/request'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 
 const STORAGE_KEY = 'gx_session_v1'
+const STUDENT_INTERNSHIP_BATCH_KEY = 'gx_student_internship_batch_v1'
 
 export const useSessionStore = defineStore('session', {
   state: () => ({
@@ -38,6 +39,7 @@ export const useSessionStore = defineStore('session', {
     },
     clearBusinessContexts() {
       useInternshipContextStore().clear()
+      try { uni.removeStorageSync(STUDENT_INTERNSHIP_BATCH_KEY) } catch (e) {}
     },
     async login(roleKey, { skipRealLogin = false } = {}) {
       if (!skipRealLogin) {
