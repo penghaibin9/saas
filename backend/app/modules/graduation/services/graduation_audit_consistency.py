@@ -2,7 +2,8 @@
 
 - ``db-123`` 等账号 ID 解析为稳定数据库用户 ID；
 - 补齐 actor/context/role/permission/request/scope；
-- 根据业务对象反查 batch_id，避免同一学生跨届后审计混批。
+- 根据业务对象反查 batch_id，避免同一学生跨届后审计混批；
+- DEFENSE/GUIDANCE 历史复用 bizType 时按真实表存在性判定。
 """
 from __future__ import annotations
 
@@ -10,12 +11,7 @@ import re
 
 from sqlalchemy import event, text
 
-from app.core.context import (
-    get_current_permission_code,
-    get_current_user_ctx,
-    get_request_meta,
-    get_trace_id,
-)
+from app.core.context import get_current_permission_code, get_current_user_ctx, get_request_meta, get_trace_id
 from app.models import GraduationAuditTrail
 
 _INSTALLED = False
@@ -33,7 +29,12 @@ def _db_id(value) -> int | None:
     return int(match.group(1)) if match else None
 
 
-_DIRECT_BATCH = {"BATCH": "t_gd_batch", "TOPIC_ROUND": "t_gd_topic_round", "TOPIC": "t_gd_topic"}
+_DIRECT_BATCH = {
+    "BATCH": "t_gd_batch",
+    "TOPIC_ROUND": "t_gd_topic_round",
+    "TOPIC": "t_gd_topic",
+    "DEFENSE_GROUP": "t_gd_defense_group",
+}
 _STUDENT_TABLES = {
     "STUDENT": "t_gd_student",
     "TASKBOOK": "t_gd_task_book",
@@ -41,7 +42,6 @@ _STUDENT_TABLES = {
     "FINAL": "t_gd_final",
     "PLAGIARISM": "t_gd_plagiarism",
     "REVIEW": "t_gd_review",
-    "DEFENSE": "t_gd_defense_score",
     "DEFENSE_SCORE": "t_gd_defense_score",
     "GRADE": "t_gd_grade",
     "RISK": "t_gd_risk_case",
@@ -49,9 +49,16 @@ _STUDENT_TABLES = {
     "GRADE_APPEAL": "t_gd_grade_appeal",
     "PEER": "t_gd_peer_review",
     "TOPIC_CHANGE": "t_gd_topic_change_request",
-    "GUIDANCE": "t_gd_guidance",
     "MIDTERM": "t_gd_midterm",
 }
+
+
+def _student_batch_from_table(connection, table: str, biz_id: int, tenant_id: int) -> int | None:
+    return connection.execute(text(
+        f"SELECT s.batch_id FROM {table} b "
+        "JOIN t_gd_student s ON s.id=b.gd_student_id AND s.tenant_id=b.tenant_id "
+        "WHERE b.id=:id AND b.tenant_id=:tenant LIMIT 1"
+    ), {"id": biz_id, "tenant": tenant_id}).scalar()
 
 
 def _infer_batch_id(connection, target: GraduationAuditTrail) -> int | None:
@@ -62,22 +69,25 @@ def _infer_batch_id(connection, target: GraduationAuditTrail) -> int | None:
     if biz_type in _DIRECT_BATCH:
         if biz_type == "BATCH":
             return biz_id
-        table = _DIRECT_BATCH[biz_type]
         return connection.execute(text(
-            f"SELECT batch_id FROM {table} WHERE id=:id AND tenant_id=:tenant LIMIT 1"
+            f"SELECT batch_id FROM {_DIRECT_BATCH[biz_type]} "
+            "WHERE id=:id AND tenant_id=:tenant LIMIT 1"
         ), {"id": biz_id, "tenant": target.tenant_id}).scalar()
-    table = _STUDENT_TABLES.get(biz_type)
-    if not table:
-        return None
     if biz_type == "STUDENT":
         return connection.execute(text(
             "SELECT batch_id FROM t_gd_student WHERE id=:id AND tenant_id=:tenant LIMIT 1"
         ), {"id": biz_id, "tenant": target.tenant_id}).scalar()
-    return connection.execute(text(
-        f"SELECT s.batch_id FROM {table} b "
-        "JOIN t_gd_student s ON s.id=b.gd_student_id AND s.tenant_id=b.tenant_id "
-        "WHERE b.id=:id AND b.tenant_id=:tenant LIMIT 1"
-    ), {"id": biz_id, "tenant": target.tenant_id}).scalar()
+    if biz_type == "DEFENSE":
+        group_batch = connection.execute(text(
+            "SELECT batch_id FROM t_gd_defense_group "
+            "WHERE id=:id AND tenant_id=:tenant LIMIT 1"
+        ), {"id": biz_id, "tenant": target.tenant_id}).scalar()
+        return group_batch or _student_batch_from_table(connection, "t_gd_defense_score", biz_id, target.tenant_id)
+    if biz_type == "GUIDANCE":
+        guidance_batch = _student_batch_from_table(connection, "t_gd_guidance", biz_id, target.tenant_id)
+        return guidance_batch or _student_batch_from_table(connection, "t_gd_guidance_plan", biz_id, target.tenant_id)
+    table = _STUDENT_TABLES.get(biz_type)
+    return _student_batch_from_table(connection, table, biz_id, target.tenant_id) if table else None
 
 
 def _before_insert(_mapper, connection, target: GraduationAuditTrail) -> None:
