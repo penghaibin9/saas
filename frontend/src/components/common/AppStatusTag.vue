@@ -7,13 +7,8 @@
 
 <script>
 /**
- * AppStatusTag 统一状态标签
- * Props:
- *  - status: 业务状态码（见 STATUS_MAP），传入后自动匹配语义色与中文文案
- *  - type:   直接指定语义色 success | processing | primary | warning | danger | info | default
- *  - label:  自定义文案（优先于 status 映射）
- *  - dot:    是否显示状态圆点
- * 依据 V2.1 §3.2：状态语义色只表达业务状态。
+ * AppStatusTag 统一状态标签。
+ * ARCHIVED 永远表示“已归档”；业务作废必须使用 VOIDED，禁止再按页面自行改义。
  */
 const STATUS_MAP = {
   // 通用审批/流转
@@ -42,16 +37,56 @@ const STATUS_MAP = {
   CANCELLED: { label: '已取消', type: 'default' },
   PUBLISHED: { label: '已发布', type: 'success' },
   ARCHIVED: { label: '已归档', type: 'info' },
+  VOIDED: { label: '已作废', type: 'danger' },
   READONLY: { label: '只读', type: 'info' },
   ENABLED: { label: '启用中', type: 'success' },
   DISABLED: { label: '已停用', type: 'default' },
   NOT_STARTED: { label: '未开始', type: 'default' },
-  // 学工/迎新
+
+  // 教务·教学任务/课表
+  PENDING_ASSIGN: { label: '待分配教师', type: 'warning' },
+  ASSIGNED: { label: '待教师确认', type: 'processing' },
+  TEACHER_CONFIRMED: { label: '教师已确认', type: 'success' },
+  REJECTED_BY_TEACHER: { label: '教师已退回', type: 'danger' },
+  COLLEGE_CONFIRMED: { label: '学院已确认', type: 'processing' },
+  READY: { label: '已就绪', type: 'success' },
+  MERGED: { label: '已并入合班', type: 'info' },
+  PRE_PUBLISHED: { label: '预发布', type: 'processing' },
+
+  // 教务·选课
+  OPEN: { label: '开放中', type: 'processing' },
+  CLOSED: { label: '已截止', type: 'warning' },
+  LOCKED: { label: '名单已锁定', type: 'success' },
+  SELECTED: { label: '已选中', type: 'success' },
+  DROPPED: { label: '已退选', type: 'default' },
+  PENDING_LOTTERY: { label: '待摇号', type: 'warning' },
+  LOTTERY_LOST: { label: '未中签', type: 'danger' },
+  COURSE_CANCELLED: { label: '课程已取消', type: 'danger' },
+
+  // 教务·考务
+  COURSE_CONFIRMED: { label: '课程已确认', type: 'processing' },
+  ARRANGED: { label: '已编排', type: 'processing' },
+  PENDING_CONFIRM: { label: '待确认', type: 'warning' },
+  REMOVED: { label: '已移除', type: 'default' },
+  ACTIVE: { label: '有效', type: 'success' },
+  PRESENT: { label: '到考', type: 'success' },
+  ABSENT: { label: '缺考', type: 'danger' },
+  LATE: { label: '迟到', type: 'warning' },
+  CHEAT: { label: '作弊', type: 'danger' },
+  DEFERRED: { label: '缓考', type: 'warning' },
+  EXEMPT: { label: '免修', type: 'info' },
+
+  // 教务·成绩审核
+  INPUTTING: { label: '录入中', type: 'processing' },
+  COLLEGE_REVIEW: { label: '学院审核中', type: 'warning' },
+  ACADEMIC_REVIEW: { label: '教务终审中', type: 'processing' },
+  CHANGE_REVIEW: { label: '更正审核中', type: 'warning' },
+
+  // 学工/迎新/毕设/实习
   REPORTED: { label: '已报到', type: 'success' },
   NOT_REPORTED: { label: '未报到', type: 'warning' },
   CHECKED_IN: { label: '已入住', type: 'success' },
   ON_LEAVE: { label: '请假中', type: 'processing' },
-  // 教务/毕设/实习
   ENROLLED: { label: '在读', type: 'success' },
   GRADED: { label: '已评定', type: 'success' },
   DEFENDING: { label: '答辩中', type: 'processing' },
@@ -79,7 +114,7 @@ export default {
   },
   computed: {
     mapped() {
-      return STATUS_MAP[this.status] || null
+      return STATUS_MAP[String(this.status || '').toUpperCase()] || null
     },
     semantic() {
       return this.type || (this.mapped ? this.mapped.type : 'default')
