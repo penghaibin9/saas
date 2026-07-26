@@ -4,7 +4,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Body, Depends, Path, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission
 from app.core.permissions import has_permission
@@ -54,21 +54,29 @@ def _require_any(user: dict, codes: tuple[str, ...]) -> None:
 def _versions(kind: str, items: list[dict]) -> dict[int, int]:
     from app import models
     spec = _KINDS[kind]
-    ids = []
-    for item in items:
-        value = item.get(spec["id_key"])
-        if str(value or "").isdigit():
-            ids.append(int(value))
+    ids = {
+        int(item.get(spec["id_key"]))
+        for item in items
+        if str(item.get(spec["id_key"]) or "").isdigit()
+    }
     if not ids:
         return {}
     model = getattr(models, spec["model"])
     with session() as db:
-        return {
+        result = {
             int(row.id): int(row.version or 0)
             for row in db.scalars(select(model).where(
-                model.tenant_id == _tid(), model.id.in_(ids), model.is_deleted.is_(False)
+                model.tenant_id == _tid(), model.id.in_(ids), model.is_deleted.is_(False),
             )).all()
         }
+    missing = ids - set(result)
+    if missing:
+        raise AppException(
+            "DATA_INCONSISTENT",
+            "异议/申诉版本信息不完整，请刷新后重试",
+            http_status=503,
+        )
+    return result
 
 
 @router.get("/mobile/teacher/affairs/appeals/{kind}", summary="教师异议/申诉待处理列表")
@@ -79,7 +87,8 @@ def appeal_pending(
     user=Depends(get_current_user),
 ):
     key, spec = _kind(kind)
-    _require_any(user, spec["view"])
+    # 待处理入口不是普通台账查看，必须持有真实复核动作权限。
+    _require_any(user, spec["review"])
     if key == "AID_OBJECTION":
         from app.services import affairs_aid_service as service
         items, total = service.list_objections(user, status="SUBMITTED", page=page, page_size=pageSize)
@@ -95,7 +104,9 @@ def appeal_pending(
     versions = _versions(key, items)
     for item in items:
         raw = item.get(spec["id_key"])
-        item["version"] = versions.get(int(raw), 0) if str(raw or "").isdigit() else 0
+        if not str(raw or "").isdigit():
+            raise AppException("DATA_INCONSISTENT", "异议/申诉编号缺失", http_status=503)
+        item["version"] = versions[int(raw)]
         item["appealKind"] = key
     return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
@@ -146,22 +157,30 @@ def _self_student(db, user):
 
 
 @router.get("/mobile/affairs/second-class/appeals/my", summary="本人第二课堂积分申诉")
-def credit_appeals_my(user=Depends(get_current_user)):
+def credit_appeals_my(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(get_current_user),
+):
     from app.models import AffairsCreditAppeal
     from app.services.affairs_activity_service import _cappeal_row
     with session() as db:
         student = _self_student(db, user)
-        rows = db.scalars(select(AffairsCreditAppeal).where(
+        conds = [
             AffairsCreditAppeal.tenant_id == _tid(),
-            AffairsCreditAppeal.student_id == student.id,
+            AffairsCreditAppeal.student_id == int(student.id),
             AffairsCreditAppeal.is_deleted.is_(False),
-        ).order_by(AffairsCreditAppeal.id.desc()).limit(100)).all()
-        return success({"items": [_cappeal_row(x, student) | {"version": int(x.version or 0)} for x in rows]})
+        ]
+        total = int(db.scalar(select(func.count()).select_from(AffairsCreditAppeal).where(*conds)) or 0)
+        rows = db.scalars(select(AffairsCreditAppeal).where(*conds)
+                          .order_by(AffairsCreditAppeal.id.desc())
+                          .offset((page - 1) * pageSize).limit(pageSize)).all()
+        items = [_cappeal_row(x, student) | {"version": int(x.version or 0)} for x in rows]
+        return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
 
 @router.post("/mobile/affairs/second-class/appeals", summary="本人提交第二课堂积分申诉")
 def credit_appeal_submit(body: dict = Body(...), user=Depends(get_current_user)):
-    from app.models import AffairsCreditAppeal
     from app.services import affairs_activity_service as service
     reason = str(body.get("reason") or "").strip()
     if len(reason) < 5:
@@ -170,17 +189,8 @@ def credit_appeal_submit(body: dict = Body(...), user=Depends(get_current_user))
     activity_id = body.get("activityId")
     with session() as db:
         student = _self_student(db, user)
-        duplicate = db.scalars(select(AffairsCreditAppeal).where(
-            AffairsCreditAppeal.tenant_id == _tid(),
-            AffairsCreditAppeal.student_id == student.id,
-            AffairsCreditAppeal.activity_id == (int(activity_id) if str(activity_id or "").isdigit() else None),
-            AffairsCreditAppeal.appeal_type == appeal_type,
-            AffairsCreditAppeal.status == "SUBMITTED",
-            AffairsCreditAppeal.is_deleted.is_(False),
-        )).first()
-        if duplicate:
-            raise AppException("DATA_CONFLICT", "该记录已有待审核申诉")
         sid = int(student.id)
+    # 重复判断、学生行锁、活动引用与数值校验由同事务核心实现统一完成。
     result = service.submit_credit_appeal(SimpleNamespace(
         studentId=sid,
         activityId=(int(activity_id) if str(activity_id or "").isdigit() else None),
