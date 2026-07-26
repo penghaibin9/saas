@@ -28,7 +28,7 @@ def gd_excellent_outcomes(
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
     user=Depends(require_permission("graduationDesign.grade.view")),
 ):
-    items, total = svc.list_excellent_outcomes(
+    items, total = safety_svc.list_excellent_outcomes(
         batch_id=batchId, status=status, page=page, page_size=pageSize,
     )
     return success(paginate(items, total, page, pageSize))
