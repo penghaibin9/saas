@@ -88,6 +88,48 @@ def test_locked_projection_calls_legacy_then_version_projection(monkeypatch):
     assert calls == [("legacy", db, "9"), ("v2", db, "9")]
 
 
+def test_selection_roster_projection_must_match_latest_locked_batch(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_teaching_class_lock_service as service
+
+    current = {
+        "ready": True, "source": "SELECTION_LOCK", "studentIds": [1, 2],
+        "items": [], "batchIds": ["8"], "teachingClassId": "3",
+        "rosterVersionId": "11", "rosterVersionNo": 2,
+    }
+    authoritative = {
+        "ready": True, "source": "SELECTION_LOCKED", "studentIds": [1, 2, 3],
+        "items": [], "batchIds": ["9"], "note": "最新锁定批次",
+    }
+    monkeypatch.setattr(service, "_original_resolve_roster", lambda _db, _task_id: current)
+    monkeypatch.setattr(service._base, "_legacy_resolve_roster", lambda _db, _task_id: authoritative)
+
+    result = service.resolve_teaching_task_roster(object(), 7)
+
+    assert result["ready"] is False
+    assert result["source"] == "TEACHING_CLASS_PROJECTION_STALE"
+    assert result["batchIds"] == ["9"]
+    assert result["details"]["currentMemberCount"] == 2
+    assert result["details"]["authoritativeMemberCount"] == 3
+
+
+def test_selection_roster_projection_allows_exact_batch_and_member_match(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_teaching_class_lock_service as service
+
+    current = {
+        "ready": True, "source": "SELECTION_LOCK", "studentIds": [3, 1, 2],
+        "items": [], "batchIds": ["9"], "teachingClassId": "3",
+        "rosterVersionId": "12", "rosterVersionNo": 3,
+    }
+    authoritative = {
+        "ready": True, "source": "SELECTION_LOCKED", "studentIds": [1, 2, 3],
+        "items": [], "batchIds": ["9"], "note": "最新锁定批次",
+    }
+    monkeypatch.setattr(service, "_original_resolve_roster", lambda _db, _task_id: current)
+    monkeypatch.setattr(service._base, "_legacy_resolve_roster", lambda _db, _task_id: authoritative)
+
+    assert service.resolve_teaching_task_roster(object(), 7) is current
+
+
 def test_roster_change_sets_are_version_oriented():
     from app.modules.academic_affairs.services.academic_affairs_teaching_class_change_service import _change_sets
 
@@ -160,7 +202,7 @@ def test_public_roster_resolver_and_task_service_use_v2_layers():
         "academic_affairs_teaching_class_service"
     )
     assert roster_service.resolve_teaching_task_roster.__module__.endswith(
-        "academic_affairs_teaching_class_service"
+        "academic_affairs_teaching_class_lock_service"
     )
     assert roster_service.apply_locked_roster_projection.__module__.endswith(
         "academic_affairs_teaching_class_service"
