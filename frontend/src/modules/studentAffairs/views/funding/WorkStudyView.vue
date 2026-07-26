@@ -1,220 +1,209 @@
 <template>
-  <AppPageShell title="勤工助学" subtitle="部门发岗 → 学生申请 → 录用 → 上岗 → 终止。补贴金额按角色脱敏。"
-    role-name="学工处 / 资助老师" data-scope-name="资助范围（辅导员限本班）" watermark-purpose="勤工助学管理">
-    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载中..." @retry="load"
-                    @back="$router.push('/admin/student-affairs/funding')">
-      <div class="ws-cols">
-        <AppSectionCard title="岗位（部门发岗）" class="ws-posts">
-          <div class="ws-add">
-            <AppTextInput v-model="postForm.deptName" placeholder="用人部门" />
-            <AppTextInput v-model="postForm.postName" placeholder="岗位名称" />
-            <AppNumberInput v-model="postForm.salary" class="ws-sm" :min="0" placeholder="月薪" />
-            <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='post'" @click="addPost">发岗</AppPermissionButton>
-          </div>
-          <ul class="ws-postlist">
-            <li v-for="p in posts" :key="p.postId" class="ws-post" :class="{ 'is-on': selPost===p.postId }" @click="selectPost(p)">
-              <strong>{{ p.postName }}</strong><span>{{ p.deptName }} · {{ p.salary != null ? ('¥'+p.salary) : '—' }} · {{ p.headcount || '—' }}人</span>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click.stop="applyTo(p)">代录申请</AppPermissionButton>
-            </li>
-            <li v-if="!posts.length" class="ws-empty">暂无岗位</li>
-          </ul>
-        </AppSectionCard>
-
-        <AppSectionCard :title="selPost ? '上岗记录（本岗位）' : '上岗记录（全部）'" class="ws-recs">
-          <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
-            <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
-            <template #cell-status="{ row }"><StatusTag :type="wsType(row.status)" :label="row.statusLabel || row.status" dot /></template>
-            <template #cell-subsidyTotal="{ row }">{{ amountText(row.subsidyTotal) }}</template>
-            <template #cell-actions="{ row }">
-              <div class="ws-ops">
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting===row.recordId" @click="act(row,'APPROVE')">录用</AppPermissionButton>
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='APPLIED'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'REJECT')">拒绝</AppPermissionButton>
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='APPROVED'" code="studentAffairs.funding.workstudy.manage" size="sm" @click="act(row,'ONBOARD')">上岗</AppPermissionButton>
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="row.status==='ONBOARD'" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(row)">月度考核</AppPermissionButton>
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" v-if="['APPROVED','ONBOARD'].includes(row.status)" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger @click="act(row,'TERMINATE')">终止</AppPermissionButton>
-              </div>
-            </template>
-          </DataTable>
-          <p v-else class="sa-empty">暂无记录</p>
-        </AppSectionCard>
+  <AppPageShell
+    title="勤工助学"
+    subtitle="岗位发布 → 学生申请 → 录用 → 上岗 → 月度考核 → 补贴台账。容量与累计金额由后端行锁保护。"
+    role-name="资助老师 / 学工处"
+    data-scope-name="学工数据范围"
+    watermark-purpose="勤工助学管理"
+  >
+    <AppGlobalState
+      :state="pageState"
+      :description="errorMessage"
+      loading-text="正在加载勤工助学台账..."
+      @retry="loadAll"
+      @back="$router.push('/admin/student-affairs/funding')"
+    >
+      <div class="sa-toolbar">
+        <div class="sa-grid sa-grid--metrics">
+          <AppMetricCard title="启用岗位" :value="enabledPosts" accent="primary" />
+          <AppMetricCard title="待审核申请" :value="statusCount('APPLIED')" accent="warning" />
+          <AppMetricCard title="在岗人数" :value="statusCount('ONBOARD')" accent="success" />
+        </div>
+        <div class="ws-tools">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" @click="postDlg.visible = true">新建岗位</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" variant="secondary" @click="applyDlg.visible = true">代录申请</AppPermissionButton>
+        </div>
       </div>
 
-      <AppDrawer :visible="mm.visible" :title="mm.name + ' · 月度考核（累计补贴 ' + amountText(mm.subsidyTotal) + '）'" @update:visible="mm.visible = $event">
-        <div class="ws-madd">
-          <AppTextInput v-model="mm.form.monthCode" placeholder="考核月 2025-10" />
-          <AppSelect v-model="mm.form.rating" :options="RATING_OPTIONS" placeholder="" />
-          <AppNumberInput v-model="mm.form.workHours" class="ws-sm" :min="0" placeholder="工时" />
-          <AppNumberInput v-model="mm.form.subsidyAmount" class="ws-sm" :min="0" placeholder="补贴" />
-          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" :loading="acting==='mon'" @click="addMonthly">录入</AppPermissionButton>
-        </div>
-        <DataTable v-if="mm.list.length" :columns="monthlyColumns" :rows="mm.list" row-key="monthlyId">
-          <template #cell-month="{ row }">{{ row.monthCode }}</template>
-          <template #cell-rating="{ row }">{{ row.ratingLabel || row.rating }}</template>
-          <template #cell-workHours="{ row }">{{ row.workHours != null ? row.workHours : '—' }}</template>
-          <template #cell-subsidy="{ row }">{{ amountText(row.subsidyAmount) }}</template>
+      <AppInlineAlert v-if="postError" type="warning" :description="postError" />
+
+      <AppSectionCard title="上岗记录与月度考核">
+        <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo || '' }}</div></template>
+          <template #cell-post="{ row }">{{ postName(row.postId) }}</template>
+          <template #cell-salary="{ row }">{{ money(row.salary) }}</template>
+          <template #cell-subsidy="{ row }">{{ money(row.subsidyTotal) }}</template>
+          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-actions="{ row }">
+            <div class="ws-ops">
+              <AppPermissionButton v-if="allows(row, 'APPROVE')" :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" :disabled="!hasVersion(row)" :loading="acting === row.recordId" @click="openAction(row, 'APPROVE')">录用</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'REJECT')" :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger :disabled="!hasVersion(row)" @click="openAction(row, 'REJECT')">拒绝</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'ONBOARD')" :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" :disabled="!hasVersion(row)" :loading="acting === row.recordId" @click="openAction(row, 'ONBOARD')">确认上岗</AppPermissionButton>
+              <AppPermissionButton v-if="row.status === 'ONBOARD'" :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(row)">月度考核</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'TERMINATE')" :allowed="canBtn('studentAffairs.funding.workstudy.manage')" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger :disabled="!hasVersion(row)" @click="openAction(row, 'TERMINATE')">终止</AppPermissionButton>
+              <span v-if="!rowActions(row).length && row.status !== 'ONBOARD'" class="ws-muted">—</span>
+            </div>
+          </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无月度考核</p>
-        <template #footer>
-          <AppButton @click="mm.visible = false">关闭</AppButton>
-        </template>
-      </AppDrawer>
+        <p v-else class="sa-empty">当前范围暂无勤工助学记录</p>
+        <AppPagination v-if="pagination.total > pagination.pageSize" v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="loadRecords" />
+      </AppSectionCard>
     </AppGlobalState>
 
-    <!-- 岗位申请：原为「学生主档ID」原生弹窗，要老师手打内部 ID -->
-    <AppConfirmDialog
-      v-model:visible="appDlg.visible" :title="`为学生申请岗位 · ${appDlg.postName}`" type="primary"
-      confirm-text="提交申请" :submitting="!!acting" @confirm="submitApply"
-    >
-      <AppFormItem label="申请学生" required>
-        <AppStudentPicker v-model="appDlg.studentId" placeholder="按姓名 / 学号搜索" />
-      </AppFormItem>
-      <AppInlineAlert v-if="appDlg.error" type="danger" :description="appDlg.error" />
+    <AppConfirmDialog v-model:visible="postDlg.visible" title="新建勤工助学岗位" type="primary" message="岗位启用后可接收学生申请，需求人数会在录用时执行并发行锁校验。" confirm-text="创建岗位" :submitting="acting === 'post'" @confirm="submitPost">
+      <AppFormItem label="岗位名称" required><AppTextInput v-model="postDlg.postName" :maxlength="200" placeholder="如：图书馆整理助理" /></AppFormItem>
+      <AppFormItem label="需求人数" required><AppNumberInput v-model="postDlg.headcount" :min="1" :max="10000" :step="1" /></AppFormItem>
+      <AppFormItem label="薪酬（元）"><AppNumberInput v-model="postDlg.salary" :min="0" :max="999999999999.99" :precision="2" /></AppFormItem>
+      <AppInlineAlert v-if="postDlg.error" type="danger" :description="postDlg.error" />
     </AppConfirmDialog>
 
-    <!-- 终止原因：后端 act_work_study 卡 ≥5 字，前端此前只判非空，失败要重打 -->
-    <AppConfirmDialog
-      v-model:visible="terDlg.visible" title="终止勤工助学" type="danger" confirm-text="确认终止"
-      require-reason :reason-min-length="5" reason-label="终止原因（≥5 字）"
-      description="终止后该生岗位记录置为已终止，原因记入台账。"
-      :submitting="acting === terDlg.recordId" @confirm="submitTerminate"
-    />
+    <AppConfirmDialog v-model:visible="applyDlg.visible" title="代录勤工助学申请" type="primary" message="代录仅用于学生线下材料已收齐的场景，提交后仍进入正式审核。" confirm-text="提交申请" :submitting="acting === 'apply'" @confirm="submitApply">
+      <AppFormItem label="岗位" required><AppSelect v-model="applyDlg.postId" :options="postOptions" /></AppFormItem>
+      <AppFormItem label="学生" required><AppStudentPicker v-model="applyDlg.studentId" /></AppFormItem>
+      <AppInlineAlert v-if="applyDlg.error" type="danger" :description="applyDlg.error" />
+    </AppConfirmDialog>
+
+    <AppConfirmDialog v-model:visible="actionDlg.visible" :title="actionTitle" :type="actionDlg.action === 'TERMINATE' || actionDlg.action === 'REJECT' ? 'danger' : 'primary'" :message="actionMessage" :confirm-text="actionConfirmText" :require-reason="['REJECT', 'TERMINATE'].includes(actionDlg.action)" :reason-min-length="5" reason-label="处理原因（5-500字）" :submitting="acting === actionDlg.recordId" @confirm="submitAction" />
+
+    <AppConfirmDialog v-model:visible="monthlyDlg.visible" title="登记月度考核" type="primary" message="同一记录同一月份只能登记一次，补贴金额会累加到正式台账。" confirm-text="保存考核" :submitting="acting === monthlyDlg.recordId" @confirm="submitMonthly">
+      <AppFormItem label="考核月" required><AppTextInput v-model="monthlyDlg.monthCode" placeholder="YYYY-MM" :maxlength="7" /></AppFormItem>
+      <AppFormItem label="工时" required><AppNumberInput v-model="monthlyDlg.workHours" :min="0" :max="9999.99" :precision="2" /></AppFormItem>
+      <AppFormItem label="考核等级" required><AppSelect v-model="monthlyDlg.rating" :options="RATING_OPTIONS" /></AppFormItem>
+      <AppFormItem label="补贴金额" required><AppNumberInput v-model="monthlyDlg.subsidyAmount" :min="0" :max="999999999999.99" :precision="2" :disabled="monthlyDlg.rating === 'FAIL'" /></AppFormItem>
+      <AppInlineAlert v-if="monthlyDlg.error" type="danger" :description="monthlyDlg.error" />
+    </AppConfirmDialog>
   </AppPageShell>
 </template>
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
+  AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag,
+  AppStudentPicker, AppTextInput
 } from '@/components/common'
-import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
-import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { toast } from '@/utils/toast'
 
-
-const RATING_OPTIONS = [{ value: 'GOOD', label: '优' }, { value: 'PASS', label: '合格' }, { value: 'FAIL', label: '不合格' }]
 const RECORD_COLUMNS = [
-  { key: 'student', title: '学生' },
-  { key: 'status', title: '状态' },
-  { key: 'subsidyTotal', title: '累计补贴' },
-  { key: 'actions', title: '操作', align: 'right', width: '260px' }
+  { key: 'student', title: '学生' }, { key: 'post', title: '岗位' }, { key: 'salary', title: '薪酬' },
+  { key: 'subsidy', title: '累计补贴' }, { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', align: 'right', width: '320px' }
 ]
-const MONTHLY_COLUMNS = [
-  { key: 'month', title: '月份' },
-  { key: 'rating', title: '等级' },
-  { key: 'workHours', title: '工时' },
-  { key: 'subsidy', title: '补贴' }
-]
+const RATING_OPTIONS = [{ value: 'GOOD', label: '优秀' }, { value: 'PASS', label: '合格' }, { value: 'FAIL', label: '不合格' }]
 
 export default {
   name: 'WorkStudyView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, StatusTag: AppStatusTag, AppTextInput, DataTable,
-    AppButton, AppDrawer
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
+    AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
+    StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
-    return { recordColumns: RECORD_COLUMNS, monthlyColumns: MONTHLY_COLUMNS, loading: true, acting: '', errorMessage: '', posts: [], records: [], selPost: '', postForm: { deptName: '', postName: '', salary: null },
-      appDlg: { visible: false, postId: '', postName: '', studentId: '', error: '' },
-      terDlg: { visible: false, recordId: '' },
-      mm: { visible: false, recordId: '', name: '', subsidyTotal: null, list: [], form: this.blankMonthly() } }
+    return {
+      recordColumns: RECORD_COLUMNS,
+      loading: true, acting: '', errorMessage: '', postError: '', posts: [], records: [], statusCounts: null,
+      pagination: { page: 1, pageSize: 50, total: 0 },
+      postDlg: { visible: false, postName: '', headcount: 1, salary: null, error: '' },
+      applyDlg: { visible: false, postId: '', studentId: '', error: '' },
+      actionDlg: { visible: false, recordId: '', version: null, action: '' },
+      monthlyDlg: { visible: false, recordId: '', monthCode: '', workHours: null, rating: 'PASS', subsidyAmount: null, error: '' }
+    }
   },
   computed: {
     RATING_OPTIONS: () => RATING_OPTIONS,
-    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') }
+    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    enabledPosts() { return this.posts.filter((post) => post.status === 'ENABLED').length },
+    postOptions() { return this.posts.filter((post) => post.status === 'ENABLED').map((post) => ({ value: post.postId, label: post.postName })) },
+    actionTitle() { return ({ APPROVE: '确认录用', REJECT: '拒绝申请', ONBOARD: '确认上岗', TERMINATE: '终止勤工助学' })[this.actionDlg.action] || '处理勤工助学' },
+    actionConfirmText() { return ({ APPROVE: '确认录用', REJECT: '确认拒绝', ONBOARD: '确认上岗', TERMINATE: '确认终止' })[this.actionDlg.action] || '确认' },
+    actionMessage() { return ({ APPROVE: '录用时会校验岗位剩余人数；达到上限将拒绝。', ONBOARD: '确认后该学生进入在岗状态，可登记月度考核。', REJECT: '拒绝后本次申请终止。', TERMINATE: '终止后不可继续登记月度考核，原因会写入审计。' })[this.actionDlg.action] || '' }
   },
-  mounted() { this.load() },
+  mounted() { this.loadAll() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
-    async load() {
-      this.loading = true; this.errorMessage = ''
-      const [ps, rs] = await Promise.all([studentAffairsApi.getWorkStudyPosts(), studentAffairsApi.getWorkStudyRecords({ postId: this.selPost })])
-      if (ps.code === 0 && ps.data) this.posts = ps.data.items || []
-      else this.errorMessage = ps.message || '加载失败'
-      this.records = (rs.code === 0 && rs.data) ? (rs.data.items || []) : []
-      this.loading = false
+    hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
+    rowActions(row) { return Array.isArray(row?.allowedActions) ? row.allowedActions : ({ APPLIED: ['APPROVE', 'REJECT'], APPROVED: ['ONBOARD', 'TERMINATE'], ONBOARD: ['TERMINATE'] })[row?.status] || [] },
+    allows(row, action) { return this.rowActions(row).includes(action) },
+    statusCount(key) { return this.statusCounts === null ? '—' : Number(this.statusCounts[key] || 0) },
+    postName(id) { return this.posts.find((post) => String(post.postId) === String(id))?.postName || `岗位#${id}` },
+    money(value) { return value == null || value === '' ? '—' : (typeof value === 'number' ? `¥${value}` : value) },
+    statusType(status) { return ({ APPLIED: 'warning', APPROVED: 'processing', REJECTED: 'default', ONBOARD: 'success', TERMINATED: 'danger' })[status] || 'default' },
+    async loadAll() { this.loading = true; await Promise.all([this.loadPosts(), this.loadRecords()]); this.loading = false },
+    async loadPosts() {
+      this.postError = ''
+      const response = await studentAffairsApi.getWorkStudyPosts()
+      if (response.code === 0 && response.data) this.posts = response.data.items || []
+      else { this.posts = []; this.postError = response.message || '岗位加载失败，暂不能新建申请' }
     },
-    async addPost() {
-      const f = this.postForm
-      const deptName = (f.deptName || '').trim()
-      const postName = (f.postName || '').trim()
-      if (!deptName || !postName) { toast.error('部门与岗位名称必填'); return }
-      this.acting = 'post'
-      const res = await studentAffairsApi.createWorkStudyPost({ deptName, postName, salary: f.salary != null ? String(f.salary) : undefined })
+    async loadRecords() {
+      this.errorMessage = ''
+      const response = await studentAffairsApi.getWorkStudyRecords({ page: this.pagination.page, pageSize: this.pagination.pageSize })
+      if (response.code !== 0 || !response.data) {
+        this.records = []; this.pagination.total = 0; this.statusCounts = null
+        this.errorMessage = response.message || '勤工助学记录加载失败'
+        return
+      }
+      this.records = response.data.items || []
+      this.pagination.total = response.data.total != null ? response.data.total : this.records.length
+      this.statusCounts = response.data.statusCounts || null
+    },
+    async submitPost() {
+      const dialog = this.postDlg
+      const name = dialog.postName.trim()
+      if (name.length < 2 || name.length > 200) { dialog.error = '岗位名称需2-200字'; return }
+      if (!Number.isInteger(Number(dialog.headcount)) || Number(dialog.headcount) < 1 || Number(dialog.headcount) > 10000) { dialog.error = '需求人数应为1-10000整数'; return }
+      dialog.error = ''; this.acting = 'post'
+      const response = await studentAffairsApi.createWorkStudyPost({ postName: name, headcount: Number(dialog.headcount), salary: dialog.salary != null ? String(dialog.salary) : undefined })
       this.acting = ''
-      if (res.code === 0) { toast.success('已发岗'); this.postForm = { deptName: '', postName: '', salary: null }; this.load() } else toast.error(res.message || '发岗失败')
-    },
-    selectPost(p) { this.selPost = this.selPost === p.postId ? '' : p.postId; this.load() },
-    applyTo(p) {
-      this.appDlg = { visible: true, postId: p.postId, postName: p.postName || '该岗位', studentId: '', error: '' }
+      if (response.code === 0) { dialog.visible = false; Object.assign(dialog, { postName: '', headcount: 1, salary: null, error: '' }); toast.success('岗位已创建'); await this.loadPosts() }
+      else dialog.error = response.message || '创建失败'
     },
     async submitApply() {
-      const d = this.appDlg
-      if (!d.studentId) { d.error = '请选择申请学生'; return }
-      d.error = ''
-      this.acting = d.postId
-      const res = await studentAffairsApi.applyWorkStudy(d.postId, Number(d.studentId))
+      const dialog = this.applyDlg
+      if (!dialog.postId || !dialog.studentId) { dialog.error = '岗位和学生必填'; return }
+      dialog.error = ''; this.acting = 'apply'
+      const response = await studentAffairsApi.applyWorkStudy(dialog.postId, Number(dialog.studentId))
       this.acting = ''
-      if (res.code === 0) { d.visible = false; toast.success('已申请'); this.load() }
-      else { d.error = res.message || '申请失败' }
+      if (response.code === 0) { dialog.visible = false; Object.assign(dialog, { postId: '', studentId: '', error: '' }); toast.success('申请已提交'); await this.loadRecords() }
+      else dialog.error = response.message || '提交失败'
     },
-    async act(r, action) {
-      if (action === 'TERMINATE') { this.terDlg = { visible: true, recordId: r.recordId, version: r.version }; return }
-      this.acting = r.recordId
-      const res = await studentAffairsApi.actWorkStudy(r.recordId, action, '', r.version)
+    openAction(row, action) { if (this.allows(row, action) && this.hasVersion(row)) this.actionDlg = { visible: true, recordId: row.recordId, version: row.version, action } },
+    async submitAction({ reason }) {
+      const dialog = this.actionDlg
+      const text = (reason || '').trim()
+      if (['REJECT', 'TERMINATE'].includes(dialog.action) && (text.length < 5 || text.length > 500)) { toast.error('处理原因需5-500字'); return }
+      this.acting = dialog.recordId
+      const response = await studentAffairsApi.actWorkStudy(dialog.recordId, dialog.action, text, dialog.version)
       this.acting = ''
-      if (res.code === 0) { toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
+      if (response.code === 0) { dialog.visible = false; toast.success('已处理'); await this.loadRecords() }
+      else { toast.error(response.message || '操作失败'); if (response.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.loadRecords() }
     },
-    async submitTerminate({ reason }) {
-      const d = this.terDlg
-      this.acting = d.recordId
-      const res = await studentAffairsApi.actWorkStudy(d.recordId, 'TERMINATE', reason.trim(), d.version)
+    openMonthly(row) { this.monthlyDlg = { visible: true, recordId: row.recordId, monthCode: '', workHours: null, rating: 'PASS', subsidyAmount: null, error: '' } },
+    async submitMonthly() {
+      const dialog = this.monthlyDlg
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(dialog.monthCode.trim())) { dialog.error = '考核月格式应为YYYY-MM'; return }
+      if (dialog.workHours == null || Number(dialog.workHours) < 0 || Number(dialog.workHours) > 9999.99) { dialog.error = '工时应为0-9999.99'; return }
+      if (dialog.rating !== 'FAIL' && (dialog.subsidyAmount == null || Number(dialog.subsidyAmount) < 0)) { dialog.error = '请填写有效补贴金额'; return }
+      dialog.error = ''; this.acting = dialog.recordId
+      const response = await studentAffairsApi.addWorkStudyMonthly(dialog.recordId, { monthCode: dialog.monthCode.trim(), workHours: String(dialog.workHours), rating: dialog.rating, subsidyAmount: dialog.rating === 'FAIL' ? '0' : String(dialog.subsidyAmount) })
       this.acting = ''
-      if (res.code === 0) { d.visible = false; toast.success('已处理'); this.load() } else toast.error(res.message || '操作失败')
-    },
-    wsType(s) { return ({ APPLIED: 'warning', APPROVED: 'processing', ONBOARD: 'success', REJECTED: 'default', TERMINATED: 'default' })[s] || 'default' },
-    amountText(a) { return (a == null || a === '') ? '¥0' : (typeof a === 'number' ? ('¥' + a) : a) },
-    blankMonthly() { return { monthCode: '', rating: 'PASS', workHours: null, subsidyAmount: null } },
-    async openMonthly(r) {
-      this.mm = { visible: true, recordId: r.recordId, name: r.realName || ('#' + r.studentId), subsidyTotal: r.subsidyTotal, list: [], form: this.blankMonthly() }
-      const res = await studentAffairsApi.getWorkStudyMonthly(r.recordId)
-      if (res.code === 0 && res.data) this.mm.list = res.data.items || []
-    },
-    async addMonthly() {
-      const f = this.mm.form
-      const monthCode = (f.monthCode || '').trim()
-      if (!monthCode) { toast.error('考核月必填'); return }
-      this.acting = 'mon'
-      const res = await studentAffairsApi.addWorkStudyMonthly(this.mm.recordId, { monthCode, rating: f.rating, workHours: f.workHours != null ? Number(f.workHours) : undefined, subsidyAmount: f.subsidyAmount != null ? String(f.subsidyAmount) : undefined })
-      this.acting = ''
-      if (res.code === 0) {
-        toast.success('已录入'); this.mm.form = this.blankMonthly()
-        const lr = await studentAffairsApi.getWorkStudyMonthly(this.mm.recordId)
-        this.mm.list = (lr.code === 0 && lr.data) ? (lr.data.items || []) : this.mm.list
-        this.mm.subsidyTotal = this.mm.list.reduce((a, m) => a + (Number(m.subsidyAmount) || 0), 0)
-        this.load()
-      } else toast.error(res.message || '录入失败')
+      if (response.code === 0) { dialog.visible = false; toast.success('月度考核已登记'); await this.loadRecords() }
+      else dialog.error = response.message || '登记失败'
     }
   }
 }
 </script>
 
 <style scoped>
-.ws-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-.ws-add { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
-.ws-add > *, .ws-madd > * { flex: 1 1 130px; min-width: 110px; }
-.ws-add > .app-perm-btn, .ws-madd > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
-.ws-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
-.ws-sm { flex: 0 0 100px; min-width: 90px; }
-.ws-postlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.ws-post { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
-.ws-post.is-on { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
-.ws-post span { font-size: var(--font-size-sm); color: var(--text-secondary); }
-.ws-empty, .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
-.ws-ops { display: flex; gap: 6px; flex-wrap: wrap; }
-.ws-madd { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
-@media (max-width: 960px) { .ws-cols { grid-template-columns: 1fr; } }
+.sa-toolbar { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; margin-bottom: var(--space-4); flex-wrap: wrap; }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
+.ws-tools, .ws-ops { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.ws-ops { justify-content: flex-end; }
+.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+.ws-muted { color: var(--text-tertiary); }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 </style>
