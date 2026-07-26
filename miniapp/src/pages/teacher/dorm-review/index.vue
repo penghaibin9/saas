@@ -11,10 +11,7 @@
         <MobileGlobalState v-if="tab === 'transfer' && !transfers.length" state="empty" title="暂无调宿待审" description="有学生调宿进入辅导员/宿管节点时会出现在这里。" />
         <view class="stack" v-else-if="tab === 'transfer'">
           <view v-for="x in transfers" :key="x.transferId" class="card ar">
-            <view class="row-between">
-              <view class="flex-1"><text class="t-md t-bold">{{ x.realName || '—' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.status || x.currentNode || '' }}</text></view>
-              <MobileStatusTag :label="x.status || '待审'" type="warning" />
-            </view>
+            <view class="row-between"><view class="flex-1"><text class="t-md t-bold">{{ x.realName || '—' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.status || x.currentNode || '' }}</text></view><MobileStatusTag :label="x.status || '待审'" type="warning" /></view>
             <text class="ar__sub" v-if="x.reason">事由：{{ x.reason }}</text>
             <view class="ar__actions"><button class="ar__no flex-1" :disabled="acting" @click="reviewTransfer(x, 'REJECT')">驳回</button><button class="ar__ok flex-1" :disabled="acting" @click="reviewTransfer(x, 'APPROVE')">通过</button></view>
           </view>
@@ -23,10 +20,7 @@
         <MobileGlobalState v-if="tab === 'exception' && !exceptions.length" state="empty" title="暂无宿舍异常" description="查寝异常、夜不归宿等待处置记录会显示在这里。" />
         <view class="stack" v-else-if="tab === 'exception'">
           <view v-for="x in exceptions" :key="x.exceptionId" class="card ar">
-            <view class="row-between">
-              <view class="flex-1"><text class="t-md t-bold">{{ x.realName || '房间级异常' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.excType || '异常' }}</text></view>
-              <MobileStatusTag :label="x.status || '待处置'" type="warning" />
-            </view>
+            <view class="row-between"><view class="flex-1"><text class="t-md t-bold">{{ x.realName || '房间级异常' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.excType || '异常' }}</text></view><MobileStatusTag :label="x.status || '待处置'" type="warning" /></view>
             <text class="ar__sub" v-if="x.detail">{{ x.detail }}</text>
             <button class="ar__ok" style="margin-top:10px" :disabled="acting" @click="handleException(x)">登记处置</button>
           </view>
@@ -49,45 +43,29 @@ export default {
   methods: {
     load() {
       this.state = 'loading'
-      teacherApi.getAffairsDormPending().then((d) => {
-        this.transfers = (d && d.transfers) || []; this.exceptions = (d && d.exceptions) || []; this.state = 'ready'
-      }).catch((e) => { this.state = 'error'; this.showError(e, '宿舍待办加载失败') })
+      teacherApi.getAffairsDormPending().then((d) => { this.transfers = (d && d.transfers) || []; this.exceptions = (d && d.exceptions) || []; this.state = 'ready' })
+        .catch((e) => { this.state = 'error'; this.showError(e, '宿舍待办加载失败') })
     },
-    showError(e, fallback) {
-      const n = normalizeError(e); toast(n.text || (e && e.message) || fallback)
-      if (n.kind === 'conflict') this.load()
-      return n
-    },
-    versionOf(x) {
-      if (x.version === undefined || x.version === null || x.version === '') { toast('记录缺少版本号，请刷新后重试'); this.load(); return null }
-      return x.version
-    },
+    showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
+    versionOf(x) { if (x.version === undefined || x.version === null || x.version === '') { toast('记录缺少版本号，请刷新后重试'); this.load(); return null }; return x.version },
     promptText({ title, placeholder, initial = '', min = 5, invalid, submit }) {
-      uni.showModal({
-        title, editable: true, placeholderText: placeholder, content: initial,
-        success: (r) => {
-          if (!r.confirm) return
-          const value = (r.content || '').trim()
-          if (value.length < min) return toast(invalid)
-          submit(value)
-        }
-      })
+      uni.showModal({ title, editable: true, placeholderText: placeholder, content: initial, success: (r) => {
+        if (!r.confirm) return
+        const value = (r.content || '').trim(); if (value.length < min) return toast(invalid)
+        submit(value)
+      } })
     },
     reviewTransfer(x, action, previous = '') {
       if (this.acting) return
       const run = (reason) => {
         const version = this.versionOf(x); if (version === null) return
         this.acting = true
-        affairsContractApi.reviewDormTransfer(x.transferId, action, reason, version).then(() => {
-          toast(action === 'APPROVE' ? '已通过' : '已驳回'); this.load()
-        }).catch((e) => {
-          const n = this.showError(e, '调宿处理失败')
-          if (n.kind !== 'conflict' && action === 'REJECT') this.reviewTransfer(x, action, reason)
-        }).finally(() => { this.acting = false })
+        affairsContractApi.reviewDormTransfer(x.transferId, action, reason, version).then(() => { toast(action === 'APPROVE' ? '已通过' : '已驳回'); this.load() })
+          .catch((e) => { const n = this.showError(e, '调宿处理失败'); if (n.kind !== 'conflict' && action === 'REJECT') setTimeout(() => this.reviewTransfer(x, action, reason), 0) })
+          .finally(() => { this.acting = false })
       }
-      if (action === 'REJECT') {
-        this.promptText({ title: '驳回调宿', placeholder: '驳回原因不少于5字', initial: previous, invalid: '驳回原因至少5字', submit: run })
-      } else run('')
+      if (action === 'REJECT') this.promptText({ title: '驳回调宿', placeholder: '驳回原因不少于5字', initial: previous, invalid: '驳回原因至少5字', submit: run })
+      else run('')
     },
     handleException(x, previous = '') {
       if (this.acting) return
@@ -97,7 +75,7 @@ export default {
           const version = this.versionOf(x); if (version === null) return
           this.acting = true
           affairsContractApi.handleDormException(x.exceptionId, note, version).then(() => { toast('已处置'); this.load() })
-            .catch((e) => { const n = this.showError(e, '异常处置失败'); if (n.kind !== 'conflict') this.handleException(x, note) })
+            .catch((e) => { const n = this.showError(e, '异常处置失败'); if (n.kind !== 'conflict') setTimeout(() => this.handleException(x, note), 0) })
             .finally(() => { this.acting = false })
         }
       })
