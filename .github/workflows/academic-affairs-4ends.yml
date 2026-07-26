@@ -67,7 +67,7 @@ jobs:
       - name: 创建MySQL表
         working-directory: backend
         run: python -c "from app.db.session import get_engine; from app.models.base import Base; import app.models; Base.metadata.create_all(bind=get_engine())"
-      - name: 教务P0/P1定向测试
+      - name: 教务P0/P1/V2定向测试
         working-directory: backend
         run: >-
           pytest -q
@@ -98,6 +98,7 @@ jobs:
           tests/test_aa_student_schedule_merge.py
           tests/test_aa_student_exam_time.py
           tests/test_aa_graduation_program_resolution.py
+          tests/test_aa_program_quality_v2.py
           tests/test_security_student_identity.py
           --maxfail=1
 
