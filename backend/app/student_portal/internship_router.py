@@ -1,7 +1,7 @@
-"""学生 PC 门户岗位实习合规、知情与安全教育接口。
+"""学生 PC 门户岗位实习权威接口。
 
-与学生小程序复用同一业务服务，不复制状态机；多条进行中实习时，合规、知情
-确认和安全列表显式接收 batchId，正文与课程操作再按任务/课程归属校验本人。
+与学生小程序复用同一业务服务，不复制状态机；批次由显式 batchId 或统一
+X-Internship-Batch-Id 上下文解析。所有正式申请写操作强制乐观锁版本。
 """
 from __future__ import annotations
 
@@ -11,10 +11,11 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_consent_service as consent
 from app.modules.internship.services import internship_safety_service as safety
+from app.modules.internship.services import internship_student_application_context_service as applications
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 
-router = APIRouter(prefix="/portal/internship", tags=["学生PC门户-岗位实习合规"])
+router = APIRouter(prefix="/portal/internship", tags=["学生PC门户-岗位实习权威接口"])
 
 
 @router.get("/compliance", summary="本人岗位实习权威合规状态")
@@ -106,3 +107,41 @@ def portal_safety_commit(
     user=Depends(get_current_user),
 ):
     return success(safety.commit_my_completion(completion_id, body or {}, user))
+
+
+# 使用 context 前缀避开历史 `/portal/internship/applications` 读取兼容路由。
+@router.get("/context/applications", summary="本人所选批次正式实习申请")
+def portal_application_list(user=Depends(get_current_user)):
+    return success(applications.list_my(user))
+
+
+@router.put("/context/applications", summary="按版本保存本人正式实习申请草稿")
+def portal_application_save(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(applications.save(user, body or {}), message="申请草稿已保存")
+
+
+@router.post("/context/applications/{application_id}/submit", summary="按版本提交本人正式实习申请")
+def portal_application_submit(
+    application_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(
+        applications.submit(user, application_id, (body or {}).get("expectedVersion")),
+        message="申请已提交审核",
+    )
+
+
+@router.post("/context/applications/{application_id}/withdraw", summary="按版本撤回本人待审核申请")
+def portal_application_withdraw(
+    application_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(
+        applications.withdraw(user, application_id, (body or {}).get("expectedVersion")),
+        message="申请已撤回",
+    )
