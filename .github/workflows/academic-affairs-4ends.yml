@@ -78,6 +78,7 @@ jobs:
           tests/test_aa_exam_closure.py
           tests/test_aa_teaching_roster_unification.py
           tests/test_aa_facade_contracts.py
+          tests/test_aa_task_workbench.py
           tests/test_aa_evaluation_appeal_scope.py
           tests/test_aa_attendance_teacher_identity.py
           tests/test_aa_attendance_task_binding.py
