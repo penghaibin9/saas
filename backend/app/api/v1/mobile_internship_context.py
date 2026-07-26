@@ -1,4 +1,4 @@
-"""教师小程序岗位实习权限、批次与批次化查询上下文。"""
+"""教师小程序岗位实习权限、批次与版本化业务上下文。"""
 from __future__ import annotations
 
 from collections import Counter
@@ -24,8 +24,8 @@ router = APIRouter(
 
 
 def _choose_default_batch(items: list[dict]) -> str:
-    running = [x for x in items if x.get("status") == "RUNNING"]
-    pool = running or [x for x in items if x.get("status") != "VOIDED"] or items
+    running = [item for item in items if item.get("status") == "RUNNING"]
+    pool = running or [item for item in items if item.get("status") != "VOIDED"] or items
     return str(pool[0]["id"]) if pool else ""
 
 
@@ -42,7 +42,7 @@ def teacher_internship_context(
         records = db.scalars(
             apply_internship_record_scope(query, user).order_by(InternshipRecord.id.desc())
         ).all()
-        counts = Counter(int(x.batch_id) for x in records if x.batch_id)
+        counts = Counter(int(row.batch_id) for row in records if row.batch_id)
         batch_ids = list(counts)
         batches = []
         if batch_ids:
@@ -54,12 +54,12 @@ def teacher_internship_context(
                 InternshipBatch.start_date.desc(), InternshipBatch.id.desc()
             )).all()
             batches = [{
-                "id": str(x.id), "name": x.batch_name, "batchNo": x.batch_no,
-                "status": x.status, "academicYear": x.academic_year or "",
-                "term": x.term or "", "startDate": _iso(x.start_date),
-                "endDate": _iso(x.end_date),
-                "studentCount": int(counts.get(int(x.id), 0)),
-            } for x in rows]
+                "id": str(row.id), "name": row.batch_name, "batchNo": row.batch_no,
+                "status": row.status, "academicYear": row.academic_year or "",
+                "term": row.term or "", "startDate": _iso(row.start_date),
+                "endDate": _iso(row.end_date),
+                "studentCount": int(counts.get(int(row.id), 0)),
+            } for row in rows]
 
     access = get_effective_access_context(user)
     healthy = bool(access.get("moduleAccessHealthy", True))
@@ -168,3 +168,103 @@ def teacher_batch_student_eval_review(
         user, eval_id, str(payload.get("action") or "").upper(),
         payload.get("comment") or "", expected_version=payload.get("expectedVersion")),
         message="学生鉴定审核完成")
+
+
+@router.get("/makeups", summary="教师当前批次补卡待审核队列")
+def teacher_batch_makeups(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.makeup.view")),
+):
+    from app.modules.internship.services import internship_makeup_service as makeups
+    items, total = makeups.list_makeups(1, 200, status="PENDING", batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.post("/makeups/{makeup_id}/review", summary="教师按版本审批补卡")
+def teacher_batch_makeup_review(
+    makeup_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.makeup.review")),
+):
+    from app.modules.internship.services import internship_makeup_service as makeups
+    payload = body or {}
+    return success(makeups.review(
+        user, makeup_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", expected_version=payload.get("expectedVersion")),
+        message="补卡审批完成")
+
+
+@router.get("/leaves", summary="教师当前批次请假待审批队列")
+def teacher_batch_leaves(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.leave.view")),
+):
+    from app.modules.internship.services import internship_leave_service as leaves
+    items, total = leaves.list_leaves(1, 200, status="PENDING", batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.post("/leaves/{leave_id}/review", summary="教师按版本审批请假")
+def teacher_batch_leave_review(
+    leave_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.leave.review")),
+):
+    from app.modules.internship.services import internship_leave_service as leaves
+    payload = body or {}
+    return success(leaves.review(
+        user, leave_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", expected_version=payload.get("expectedVersion")),
+        message="请假审批完成")
+
+
+@router.get("/plan-tasks", summary="教师当前批次计划任务待确认队列")
+def teacher_batch_plan_tasks(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.task.view")),
+):
+    from app.modules.internship.services import internship_plan_task_service as tasks
+    items, total = tasks.list_progress(1, 200, batch_id=batchId, status="SUBMITTED", user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.post("/plan-tasks/{progress_id}/review", summary="教师按版本确认计划任务")
+def teacher_batch_plan_task_review(
+    progress_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.task.review")),
+):
+    from app.modules.internship.services import internship_plan_task_service as tasks
+    payload = body or {}
+    return success(tasks.review_progress(
+        progress_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", user=user,
+        expected_version=payload.get("expectedVersion")),
+        message="计划任务处理完成")
+
+
+@router.get("/applications", summary="教师当前批次正式实习申请待审核队列")
+def teacher_batch_applications(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.application.view")),
+):
+    from app.modules.internship.services import internship_application_service as applications
+    items, total = applications.list_applications(
+        1, 200, status="PENDING_REVIEW", batch_id=batchId, user=user)
+    return success({"list": items, "total": total, "batchId": str(batchId)})
+
+
+@router.post("/applications/{application_id}/review", summary="教师按申请与学生记录版本审核正式实习申请")
+def teacher_batch_application_review(
+    application_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.application.review")),
+):
+    from app.modules.internship.services import internship_application_service as applications
+    payload = body or {}
+    return success(applications.review_application(
+        application_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", user=user,
+        expected_version=payload.get("expectedVersion"),
+        record_expected_version=payload.get("recordExpectedVersion")),
+        message="正式实习申请审核完成")
