@@ -13,6 +13,7 @@ from app.modules.internship.services import (
     internship_enterprise_inspection_service as insp,
     internship_evidence_package_service as evidence,
     internship_incident_service as incident,
+    internship_safety_authority_service as safety_authority,
     internship_safety_service as safety,
     internship_special_filing_service as filing,
 )
@@ -79,21 +80,19 @@ def safety_courses(batch_id: str,
 @router.post("/safety")
 def safety_create(body: dict = Body(...),
                   user=Depends(require_permission("internship.safety.manage"))):
-    return success(safety.create_course(body, user=user))
+    return success(safety_authority.create_course(body, user))
 
 
 @router.post("/safety/completions")
 def safety_ensure(body: dict = Body(...),
                   user=Depends(require_permission("internship.safety.manage"))):
-    return success(safety.ensure_completion(body, user))
+    return success(safety_authority.ensure_completion(body, user))
 
 
 @router.post("/safety/completions/{iid}/review")
 def safety_review(iid: str, body: dict = Body(...),
                   user=Depends(require_permission("internship.safety.manage"))):
-    return success(safety.teacher_review_completion(
-        iid, score=body.get("score"), action=body.get("action"),
-        comment=body.get("comment"), expected_version=body.get("expectedVersion"), user=user))
+    return success(safety_authority.review_completion(iid, body, user))
 
 
 @router.get("/batches/{batch_id}/stats")
