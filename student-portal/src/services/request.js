@@ -2,17 +2,18 @@
  * 学生 PC 门户 · 统一请求层。
  * - token 独立 key：sp_token_v1（不碰 miniapp / frontend 管理端的 token）。
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
- * - 绝不调用 /auth/mock-login，绝不免密。
+ * - 岗位实习所有门户请求自动携带当前选择批次，禁止各页面猜实习记录。
  */
 const TOKEN_KEY = 'sp_token_v1'
 const REFRESH_KEY = 'sp_refresh_v1'
+const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const API_PREFIX = '/api/v1'
 
 const API_BASE = (() => {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
   if (env.VITE_API_BASE_URL) return String(env.VITE_API_BASE_URL).replace(/\/+$/, '')
   if (env.DEV) return 'http://localhost:8000'
-  return '' // 生产同源：/api/v1 由 Nginx 反代
+  return ''
 })()
 
 export function getToken() {
@@ -25,13 +26,32 @@ export function setRefreshToken(t) {
   try { localStorage.setItem(REFRESH_KEY, t || '') } catch { /* ignore */ }
 }
 export function clearSession() {
-  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY) } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_KEY)
+    localStorage.removeItem(INTERNSHIP_BATCH_KEY)
+  } catch { /* ignore */ }
+}
+
+function selectedInternshipBatch(path) {
+  if (!String(path || '').startsWith('/portal/internship')) return ''
+  try {
+    const value = String(localStorage.getItem(INTERNSHIP_BATCH_KEY) || '').trim()
+    return /^\d+$/.test(value) ? value : ''
+  } catch { return '' }
+}
+
+function authHeaders(path, auth = true, json = true) {
+  const headers = json ? { 'Content-Type': 'application/json' } : {}
+  const token = getToken()
+  if (auth && token) headers.Authorization = `Bearer ${token}`
+  const batchId = selectedInternshipBatch(path)
+  if (batchId) headers['X-Internship-Batch-Id'] = batchId
+  return headers
 }
 
 export async function request(path, { method = 'GET', body, auth = true } = {}) {
-  const headers = { 'Content-Type': 'application/json' }
-  const token = getToken()
-  if (auth && token) headers.Authorization = `Bearer ${token}`
+  const headers = authHeaders(path, auth, true)
   let res
   try {
     res = await fetch(`${API_BASE}${API_PREFIX}${path}`, {
@@ -47,19 +67,15 @@ export async function request(path, { method = 'GET', body, auth = true } = {}) 
     const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status; throw e
   }
   if (payload.code !== 0) {
-    const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true; throw e
+    const e = new Error(payload.message || `业务错误 ${payload.code}`)
+    e.code = payload.code; e.biz = true; e.traceId = payload.traceId; throw e
   }
   return payload.data
 }
 
-/**
- * 学生门户的文件上传：仅用于先上传、再把 fileId 交给具体业务接口的两步流程。
- * 不给调用方暴露后台接口，也不把文件内容混入普通 JSON 请求。
- */
+/** 学生门户文件上传；岗位实习上传同样携带所选批次，供文件业务绑定与审计使用。 */
 export async function uploadFile(path, file, { auth = true } = {}) {
-  const headers = {}
-  const token = getToken()
-  if (auth && token) headers.Authorization = `Bearer ${token}`
+  const headers = authHeaders(path, auth, false)
   const form = new FormData()
   form.append('file', file)
   let res
@@ -75,16 +91,15 @@ export async function uploadFile(path, file, { auth = true } = {}) {
     const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status; throw e
   }
   if (payload.code !== 0) {
-    const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true; throw e
+    const e = new Error(payload.message || `业务错误 ${payload.code}`)
+    e.code = payload.code; e.biz = true; e.traceId = payload.traceId; throw e
   }
   return payload.data
 }
 
 /** 下载受业务关系保护的文件；以 Bearer token 取回 blob，避免把令牌拼进 URL。 */
-export async function downloadFile(path, fallbackName = '毕业设计材料') {
-  const headers = {}
-  const token = getToken()
-  if (token) headers.Authorization = `Bearer ${token}`
+export async function downloadFile(path, fallbackName = '业务材料') {
+  const headers = authHeaders(path, true, false)
   let res
   try {
     res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers })
