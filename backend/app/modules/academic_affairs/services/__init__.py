@@ -8,7 +8,9 @@ import sys
 
 # 先加载兼容名单策略、V2-02最终教学班策略与真实模型属性守卫。
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
-from . import academic_affairs_teaching_class_lock_service as academic_affairs_teaching_class_service
+from . import academic_affairs_teaching_class_lock_service as academic_affairs_teaching_class_lock_service
+# R8：在并发锁层之上补齐选课人工调整后的0人/非0人名单版本兼容迁移。
+from . import academic_affairs_teaching_class_compat_migration_service as academic_affairs_teaching_class_service
 from . import academic_affairs_teaching_class_runtime_guard as academic_affairs_teaching_class_runtime_guard
 # V2-03：先装载目录和旧请求体兼容，再由最终安全层接管规则写入、引擎读取和教师不可排时间。
 from . import academic_affairs_scheduling_rule_policy as academic_affairs_scheduling_rule_policy
@@ -28,7 +30,8 @@ from . import academic_affairs_program_quality_facade as academic_affairs_progra
 # R7：完整结构校验继续复用既有层，开课差异由最终闭环统一生效状态、学时和范围口径。
 from . import academic_affairs_program_opening_closure_service as academic_affairs_program_quality_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
-from . import academic_affairs_selection_facade as academic_affairs_selection_service
+# R8：LOCKED人工调整必须与教学班名单版本同事务。
+from . import academic_affairs_selection_roster_migration_facade as academic_affairs_selection_service
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_teaching_class_facade as academic_affairs_task_service
@@ -45,7 +48,7 @@ sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_gra
 sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_makeup_service
 sys.modules[f"{__name__}.academic_affairs_program_service"] = academic_affairs_program_service
 sys.modules[f"{__name__}.academic_affairs_program_quality_service"] = academic_affairs_program_quality_service
-# V2-02独立教学班、教师关系和名单版本最终服务。
+# R8独立教学班、教师关系和名单版本最终服务。
 sys.modules[f"{__name__}.academic_affairs_teaching_class_service"] = academic_affairs_teaching_class_service
 sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_schedule_service
 sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
