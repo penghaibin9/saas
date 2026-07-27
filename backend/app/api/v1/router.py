@@ -15,6 +15,7 @@ from app.api.v1.affairs_activity_mobile import router as affairs_activity_mobile
 from app.api.v1.affairs_appeal_mobile import router as affairs_appeal_mobile_router
 from app.api.v1.affairs_appeal_repair_api import router as affairs_appeal_repair_router
 from app.api.v1.affairs_four_end import router as affairs_four_end_router
+from app.api.v1.affairs_leave_self_api import router as affairs_leave_self_router
 from app.api.v1.affairs_operations_api import router as affairs_operations_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
@@ -65,12 +66,7 @@ def _route_signature(route) -> tuple[str, frozenset[str]]:
 
 
 def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
-    """确定性挂载已构建好的补充 APIRoute。
-
-    当前 FastAPI 依赖范围内，项目运行环境出现 ``include_router`` 未复制这些后置构建路由的情况；
-    子路由没有额外 prefix 或 include 级 dependencies，APIRoute 已包含端点依赖、响应模型、标签与方法，
-    因此按 path+method 去重后直接加入聚合器。随后终态安全门仍会逐条验证权限登记，禁止静默漏挂。
-    """
+    """确定性挂载已构建好的补充 APIRoute。"""
     existing = {_route_signature(route) for route in parent.routes if isinstance(route, APIRoute)}
     for route in child.routes:
         if not isinstance(route, APIRoute):
@@ -90,6 +86,7 @@ for supplemental_router in (
     affairs_appeal_mobile_router,
     affairs_appeal_repair_router,
     affairs_student_returned_router,
+    affairs_leave_self_router,
 ):
     _mount_supplemental_router(api_router, supplemental_router)
 
@@ -102,49 +99,34 @@ install_credit_appeal_reliability()
 install_dorm_reliability()
 install_dorm_projection()
 install_atomic_student_applications()
-# 原子申请入口安装后，再把本人解析收紧为同学生行锁，序列化并发重复提交。
 install_student_application_lock()
-# 必须在核心申诉实现完成后安装，包装具体受理人待办和结果消息。
 install_appeal_todo_reconciliation()
 install_appeal_repair()
-# SELF 必须先由服务端账号关系解析，后续画像、二课和申诉只能访问本人。
 install_self_scope_guard()
-# 核心审计安全门必须在既有兼容层之后安装，避免后续补丁再次放宽数据口径。
 install_data_integrity_guard()
 install_counselor_handover_guard()
 install_risk_evidence_guard()
 install_counselor_eval_guard()
 install_funding_ext_guard()
-# 公示和批处理扫描统一在归档/统计之前使用正式期限、数据范围和MySQL行锁。
 install_publicity_guard()
 install_batch_job_guard()
 install_archive_guard()
 install_archive_file_guard()
 install_talk_guard()
 install_activity_accounting_guard()
-# append-only 撤销确认后，重新确认需要追加正向恢复流水并恢复报名状态。
 install_activity_reconfirm_guard()
 install_activity_authority_guard()
 install_student_ledger_guard()
 install_discipline_integrity_guard()
-# 历史导入先安装共享存储/完整副作用，再安装“错行整批失败”修正层。
 install_history_import_guard()
 install_history_dry_run_guard()
 install_stats_integrity_guard()
-# 先安装通用版本/移动权限门，再以节点级调宿授权覆盖旧的楼栋一刀切。
 install_affairs_four_end_review_guard()
 install_dorm_node_guard()
-# 学生四端合同必须在所有业务兼容层后安装，确保动作、申请、时间线、材料和消息读取最终同源。
 install_student_contract()
-# 最终安全门收紧学生时间线、附件可见性、稳定标识和可执行动作。
 install_student_contract_security_guard()
-# 正式材料缺项/补交版本必须在学生合同安全门后接入，保留本人附件过滤并补充结构化缺项。
 install_affairs_operations()
-# 材料附件下载与教师队列计数的终态对象级安全门。
 install_affairs_operations_final_guard()
-# 教师学工首页复用通用待办可见性，并返回真实逐条跨业务待办。
 install_teacher_workbench_guard()
-# 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
 install_affairs_four_end_terminal_guard(api_router)
-# 补偿调度器必须最后安装，包装所有安全门最终替换后的周期扫描函数；否则后续安装器会覆盖包装。
 install_appeal_repair_scheduler()
