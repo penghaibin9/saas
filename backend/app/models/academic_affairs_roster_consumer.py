@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-
 from sqlalchemy import BigInteger, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,3 +38,11 @@ class AaRosterConsumerSnapshot(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "consumer_type", "consumer_id", name="uk_aa_roster_consumer"),
     )
+
+
+# 确保 Base.metadata.create_all 同时注册 R10 兼容扩展表。
+from app.models.academic_affairs_r10 import (  # noqa: E402,F401
+    AaGradeComponentScore,
+    AaGradeSchemeSnapshot,
+    AaStatsSnapshot,
+)
