@@ -18,7 +18,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
-from . import academic_affairs_grade_identity_facade as _grade
+from . import academic_affairs_grade_service as grade_service
 from .academic_affairs_roster_consumer_service import resolve_versioned_roster
 
 _CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,39}$")
@@ -100,19 +100,39 @@ def _task(db, task_id, user, *, lock=False):
     task = query.first()
     if not task:
         raise not_found("成绩录入任务不存在")
-    _grade._legacy._check_course_scope(task, user)
+    grade_service._check_course_scope(task, user)
     return task
 
 
-def _scheme(db, task, *, create_default=False):
+def _scheme_row(db, task, *, lock=False):
     from app.models.academic_affairs_r10 import AaGradeSchemeSnapshot
 
-    row = db.scalars(select(AaGradeSchemeSnapshot).where(
+    query = db.query(AaGradeSchemeSnapshot).filter(
         AaGradeSchemeSnapshot.tenant_id == _tid(),
         AaGradeSchemeSnapshot.grade_task_id == task.id,
-        AaGradeSchemeSnapshot.is_deleted.is_(False),
-    )).first()
-    if not row and create_default:
+    )
+    if lock:
+        query = query.with_for_update()
+    return query.first()
+
+
+def _scheme(db, task, *, create_default=False):
+    row = _scheme_row(db, task, lock=create_default)
+    if row and row.is_deleted:
+        if not create_default:
+            return None
+        components = _default_components(task)
+        row.is_deleted = False
+        row.scheme_version = int(row.scheme_version or 0) + 1
+        row.scheme_json = json.dumps(components, ensure_ascii=False, separators=(",", ":"))
+        row.total_weight = 100
+        row.status = "DRAFT"
+        row.locked_at = None
+        row.locked_by = None
+        db.flush()
+    elif not row and create_default:
+        from app.models.academic_affairs_r10 import AaGradeSchemeSnapshot
+
         components = _default_components(task)
         row = AaGradeSchemeSnapshot(
             tenant_id=_tid(),
@@ -170,8 +190,8 @@ def configure_scheme(task_id, user, components) -> dict:
         ).count()
         if record_count:
             raise AppException("DATA_CONFLICT", "成绩任务已有录分记录，不可修改成绩项方案")
-        row = _scheme(db, task)
-        if row and row.status == "LOCKED":
+        row = _scheme_row(db, task, lock=True)
+        if row and not row.is_deleted and row.status == "LOCKED":
             raise AppException("DATA_CONFLICT", "动态成绩方案已锁定")
         if not row:
             row = AaGradeSchemeSnapshot(
@@ -184,11 +204,14 @@ def configure_scheme(task_id, user, components) -> dict:
             )
             db.add(row)
         else:
+            row.is_deleted = False
             row.scheme_version = int(row.scheme_version or 0) + 1
         row.scheme_json = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
         row.total_weight = 100
         row.status = "DRAFT"
-        _grade._legacy._audit(
+        row.locked_at = None
+        row.locked_by = None
+        grade_service._audit(
             db,
             "AA_GRADE_TASK",
             task.id,
@@ -284,8 +307,7 @@ def enter_component_scores(task_id, user, student_id, scores, exception_flag="NO
                     AaGradeComponentScore.grade_task_id == task.id,
                     AaGradeComponentScore.student_id == int(student_id),
                     AaGradeComponentScore.component_code == component["code"],
-                    AaGradeComponentScore.is_deleted.is_(False),
-                )).first()
+                ).with_for_update()).first()
                 if not row:
                     row = AaGradeComponentScore(
                         tenant_id=_tid(),
@@ -295,6 +317,9 @@ def enter_component_scores(task_id, user, student_id, scores, exception_flag="NO
                         component_code=component["code"],
                     )
                     db.add(row)
+                else:
+                    row.is_deleted = False
+                    row.grade_record_id = record.id
                 row.component_name = component["name"]
                 row.weight = component["weight"]
                 row.score = value
@@ -323,7 +348,7 @@ def enter_component_scores(task_id, user, student_id, scores, exception_flag="NO
             scheme.status = "LOCKED"
             scheme.locked_at = datetime.utcnow()
             scheme.locked_by = _operator()
-        _grade._legacy._audit(
+        grade_service._audit(
             db,
             "AA_GRADE_TASK",
             task.id,
