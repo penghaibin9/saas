@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import select
-
 from . import mobile_student_service as _legacy
 from . import student_account_link_service as link_service
 
@@ -17,8 +16,10 @@ log = logging.getLogger("app.student_identity")
 
 def _numeric_user_id(user: dict) -> int | None:
     raw = str((user or {}).get("userId") or "").strip()
-    if raw.startswith("db-"):
-        raw = raw[3:]
+    for prefix in ("db-", "u_"):
+        if raw.startswith(prefix):
+            raw = raw[len(prefix):]
+            break
     return int(raw) if raw.isdigit() else None
 
 
