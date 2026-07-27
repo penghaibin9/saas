@@ -45,6 +45,29 @@ def test_student_section_route_fails_closed_and_hides_legacy_entry():
     assert "router.push('/academic/all')" not in source
 
 
+def test_student_evaluation_uses_dedicated_secure_workspace():
+    router = _read("student-portal/src/router/index.js")
+    view = _read("student-portal/src/views/academic/StudentEvaluationView.vue")
+
+    assert "academic/evaluation" in router
+    assert "StudentEvaluationView.vue" in router
+    assert "academicSection('academic/evaluation'" not in router
+    assert "task.canSubmit === true" in view
+    assert "task.submitted === true" in view
+    assert "task.canSubmit !== true || task.submitted === true" in view
+    assert "页面不展示班级累计提交人数" in view
+    assert "submittedCount" not in view
+    assert "portalApi.academicEvaluationSubmit" in view
+
+
+def test_student_home_counts_only_actionable_evaluation_tasks():
+    source = _read("student-portal/src/views/academic/StudentAcademicHomeView.vue")
+
+    assert "function actionableEvaluationRows(data)" in source
+    assert "row.canSubmit === true && row.submitted !== true" in source
+    assert "const evaluation = actionableEvaluationRows(val(1))" in source
+
+
 def test_admin_menu_is_fail_closed_and_cache_signature_is_identity_complete():
     source = _read("frontend/src/config/adminMenu.js")
 
