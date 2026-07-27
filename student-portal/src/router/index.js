@@ -39,7 +39,7 @@ const routes = [
       { path: 'academic/schedule', name: 'academic-schedule', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentScheduleView.vue') },
       { path: 'academic/grades', name: 'academic-grades', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentGradesView.vue') },
       { path: 'academic/registration', name: 'academic-registration', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentRegistrationView.vue') },
-      academicSection('academic/selection', 'academic-selection', '选课中心', '网上选课', '查询可选课程、完成选课退课并核对已选记录'),
+      { path: 'academic/selection', name: 'academic-selection', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentSelectionView.vue') },
       { path: 'academic/evaluation', name: 'academic-evaluation', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentEvaluationView.vue') },
       academicSection('academic/recheck', 'academic-recheck', '成绩复查', '成绩复查', '对本人已发布成绩申请复查并查看处理结果'),
       academicSection('academic/status', 'academic-status', '学籍异动', '学籍与异动', '查看当前学籍并发起休学、复学、转专业等申请'),
