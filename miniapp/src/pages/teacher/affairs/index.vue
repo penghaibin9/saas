@@ -116,7 +116,12 @@ export default {
       return base + (base.includes('?') ? '&' : '?') + query.join('&')
     },
     openTodo(item) {
-      const url = this.routeFor(item.todoType, item.actionParams || item)
+      const params = {
+        ...(item.actionParams || {}),
+        recordId: item.recordId || (item.actionParams && item.actionParams.recordId) || '',
+        todoId: item.todoId || (item.actionParams && item.actionParams.todoId) || ''
+      }
+      const url = this.routeFor(item.todoType, params)
       if (!url) { toast('该待办类型尚未配置移动端处理入口'); return }
       uni.navigateTo({ url })
     },
