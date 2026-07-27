@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-
 from sqlalchemy import BigInteger, DateTime, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -99,3 +98,7 @@ class AaTeachingClassMember(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="ACTIVE")
     joined_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     removed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# 通过 app.models 既有教学班聚合导入注册 R9 统一消费者快照表，确保 Base.metadata.create_all 可见。
+from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot  # noqa: E402,F401
