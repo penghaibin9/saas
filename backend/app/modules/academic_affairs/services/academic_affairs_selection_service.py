@@ -1,945 +1,884 @@
-"""13B 选课管理 service（SM-09 冻结状态机）。
+"""选课域唯一公开 Service。
 
-三层：批次头(6态) → 课程供给(容量行锁) → 学生选课记录(4态)。
-- 批次：建/发布/开选/截止/低人数课程取消/锁定名单/归档，时间窗到达由定时任务迁移。
-- 学生：可选课程+实时余量 / 选课(八条校验+行锁扣减防超卖) / 退课 / 补选指引。
-- 教务处：人工调整(LOCKED 后退课，原因≥5字) / 名单(教师按授课关系收敛) / 冲突报表 / 统计。
+原列表、统计、冲突报表和归档导出保存在 ``academic_affairs_selection_core_service``；本文件显式收口：
+- 所有写动作在同一事务校验正式学期未封存；
+- 学生本人只使用稳定账号绑定；
+- 已修与先修规则按稳定 courseCode 和统一有效成绩判断；
+- 先到先得、抽签、补退选继续复用同一批次/记录状态机；
+- CLOSED→LOCKED 前执行名单一致性校验并生成独立教学班名单版本；
+- LOCKED 后人工退课使用真实 R9 消费者快照判断，不按课程名模糊猜测；
+- 人工调整、容量、预计人数和新名单版本在同一事务完成。
 
-复用：AaCourse/AaTeachingTask/AaScheduleItem（课表冲突）/StudentProfile.student_status（SUSPENDED 拦截，
-只读，不平行建表）/AffairsAuditTrail（审计）/get_config_json（规则兜底，不用误判为已启用的 feature_enabled）。
-数据范围复用 affairs_security.build_affairs_context（TENANT_ALL/COLLEGE）。
+不修改其它模块函数，不依赖 Facade 导入顺序。
 """
 from __future__ import annotations
 
 import json
 from datetime import datetime
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import select
 
-from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
-from app.services.db_service import _iso, _tid, session
+from app.core.exceptions import AppException, no_data_scope, not_found
 
-# ── 状态常量 ──
-_BATCH_DRAFT, _BATCH_PUBLISHED, _BATCH_OPEN = "DRAFT", "PUBLISHED", "OPEN"
-_BATCH_CLOSED, _BATCH_LOCKED, _BATCH_ARCHIVED = "CLOSED", "LOCKED", "ARCHIVED"
-_REC_SELECTED, _REC_DROPPED = "SELECTED", "DROPPED"
-_REC_COURSE_CANCELLED, _REC_LOCKED = "COURSE_CANCELLED", "LOCKED"
-_REC_PENDING, _REC_LOST = "PENDING_LOTTERY", "LOTTERY_LOST"  # 抽签轮：志愿待摇号/未中签
-_COURSE_OPEN, _COURSE_CANCELLED = "OPEN", "COURSE_CANCELLED"
+from . import academic_affairs_grade_service as grade_service
+from . import academic_affairs_selection_core_service as _core
+from . import academic_affairs_selection_roster_projection_service as roster_projection
+from . import academic_affairs_teaching_class_service as teaching_class_service
+from .academic_affairs_roster_consumer_service import consumer_counts
+from .academic_affairs_teaching_roster_service import (
+    apply_locked_roster_projection,
+    validate_selection_lock,
+)
+
+_BATCH_DRAFT = _core._BATCH_DRAFT
+_BATCH_PUBLISHED = _core._BATCH_PUBLISHED
+_BATCH_OPEN = _core._BATCH_OPEN
+_BATCH_CLOSED = _core._BATCH_CLOSED
+_BATCH_LOCKED = _core._BATCH_LOCKED
+_BATCH_ARCHIVED = _core._BATCH_ARCHIVED
+_REC_SELECTED = _core._REC_SELECTED
+_REC_LOCKED = _core._REC_LOCKED
+_REC_DROPPED = _core._REC_DROPPED
+_REC_COURSE_CANCELLED = _core._REC_COURSE_CANCELLED
+_REC_PENDING = _core._REC_PENDING
+_REC_LOST = _core._REC_LOST
+_COURSE_OPEN = _core._COURSE_OPEN
+_COURSE_CANCELLED = _core._COURSE_CANCELLED
+
+
+def __getattr__(name):
+    """未重写的只读列表、统计、冲突报表和归档导出显式复用稳定 core。"""
+    return getattr(_core, name)
+
+
+def _guard_batch_writable(db, batch):
+    from . import academic_affairs_archive_service as archive_service
+
+    if not getattr(batch, "term_id", None):
+        raise AppException("DATA_CONFLICT", "选课批次必须绑定正式学期termId", http_status=409)
+    archive_service.guard_term_writable(db, int(batch.term_id))
+    return batch
+
+
+def _load_student(db):
+    from app.services.mobile_student_identity_facade import resolve_student
+
+    student = resolve_student(db, get_current_user_ctx() or {})
+    if not student:
+        raise not_found("当前账号尚未绑定唯一学生档案")
+    return student
+
+
+def _passed_course_codes(db, student) -> set[str]:
+    from app.models import AcademicGrade, AcademicStudent
+
+    academic_student = db.query(AcademicStudent).filter(
+        AcademicStudent.tenant_id == _core._tid(),
+        AcademicStudent.student_id == int(student.id),
+        AcademicStudent.is_deleted.is_(False),
+    ).first()
+    if not academic_student:
+        return set()
+    rows = db.query(AcademicGrade).filter(
+        AcademicGrade.tenant_id == _core._tid(),
+        AcademicGrade.acad_student_id == academic_student.id,
+        AcademicGrade.record_status == "ACTIVE",
+        AcademicGrade.is_deleted.is_(False),
+    ).all()
+    return {
+        str(row.course_code or "").strip().upper()
+        for row in grade_service.effective_grade_rows(rows)
+        if str(row.pass_status or "").upper() == "PASSED"
+        and str(row.course_code or "").strip()
+    }
 
 
 def _active_round(db, batch_id):
-    """批次当前 OPEN 轮次（同批次至多一个；无轮次=既有先到先得行为）。"""
     from app.models import AaSelectionRound
+
     return db.query(AaSelectionRound).filter(
-        AaSelectionRound.tenant_id == _tid(), AaSelectionRound.batch_id == int(batch_id),
-        AaSelectionRound.status == "OPEN", AaSelectionRound.is_deleted.is_(False)).first()
+        AaSelectionRound.tenant_id == _core._tid(),
+        AaSelectionRound.batch_id == int(batch_id),
+        AaSelectionRound.status == "OPEN",
+        AaSelectionRound.is_deleted.is_(False),
+    ).first()
 
 
-def _conflict(msg: str) -> AppException:
-    return AppException("DATA_CONFLICT", msg)
+def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allow_reselect_closed=False):
+    from app.models import AaCourse, AaSelectionCourse
+    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _weeks_overlap
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
 
+    if not is_enrolled(getattr(student, "student_status", None)):
+        raise no_data_scope("当前学籍状态不可选课")
+    if batch.status != _BATCH_OPEN:
+        if not (allow_reselect_closed and batch.status == _BATCH_CLOSED):
+            raise _core._invalid("不在选课时间内")
 
-def _invalid(msg: str) -> AppException:
-    # 非法状态转移统一 409（本项目 INVALID_STATE 未注册，显式指定 http_status 对齐 DATA_CONFLICT 语义）
-    return AppException("DATA_CONFLICT", msg, http_status=409)
+    if batch.apply_scope_json:
+        try:
+            scope = json.loads(batch.apply_scope_json)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raise AppException("DATA_CONFLICT", "选课批次适用范围配置损坏，请联系教务处修复", http_status=409)
+        if scope:
+            grade_ok = not scope.get("grades") or student.grade in scope["grades"]
+            major_ok = not scope.get("majorIds") or str(student.major_id) in {str(value) for value in scope["majorIds"]}
+            class_ok = not scope.get("classIds") or str(student.class_id) in {str(value) for value in scope["classIds"]}
+            if not (grade_ok and major_ok and class_ok):
+                raise AppException("VALIDATION_ERROR", "不在本批次适用范围内")
 
+    for record in my_records:
+        if int(record.course_id or 0) == int(course.course_id) and record.status in {_REC_SELECTED, _REC_LOCKED, _REC_PENDING}:
+            raise _core._conflict("已选过该课程或已有待抽签志愿")
 
-def _op() -> str:
-    ctx = get_current_user_ctx() or {}
-    return str(ctx.get("userId") or ctx.get("loginName") or "")
+    target = db.query(AaCourse).filter(
+        AaCourse.id == int(course.course_id),
+        AaCourse.tenant_id == _core._tid(),
+        AaCourse.is_deleted.is_(False),
+    ).first()
+    if not target:
+        raise AppException("DATA_CONFLICT", "选课课程版本不存在", http_status=409)
+    target_code = str(target.course_code or "").strip().upper()
+    if not target_code:
+        raise AppException(
+            "DATA_CONFLICT",
+            "课程缺少稳定courseCode，禁止用于正式选课",
+            details={"courseId": str(target.id)},
+            http_status=409,
+        )
 
+    passed_codes = _passed_course_codes(db, student)
+    if target_code in passed_codes:
+        raise AppException("VALIDATION_ERROR", "该课程已通过，不可再选（重修请走重修报名）")
 
-def _role() -> str:
-    ctx = get_current_user_ctx() or {}
-    return str(ctx.get("currentRoleCode") or "")
+    if target.prerequisite_codes_json:
+        try:
+            prerequisites = {
+                str(value).strip().upper()
+                for value in (json.loads(target.prerequisite_codes_json) or [])
+                if str(value).strip()
+            }
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raise AppException("DATA_CONFLICT", "课程先修规则配置损坏，请联系教务处修复", http_status=409)
+        missing = prerequisites - passed_codes
+        if missing:
+            labels = {
+                str(row.course_code or "").strip().upper(): row.course_name
+                for row in db.query(AaCourse).filter(
+                    AaCourse.tenant_id == _core._tid(),
+                    AaCourse.course_code.in_(sorted(missing)),
+                    AaCourse.is_deleted.is_(False),
+                ).all()
+            }
+            readable = [f"{code} {labels.get(code, '')}".strip() for code in sorted(missing)]
+            raise AppException("VALIDATION_ERROR", f"未满足先修课程要求：{', '.join(readable)}")
 
+    target_slots = _core._task_slots(db, course.teaching_task_id)
+    if target_slots:
+        selected_course_ids = [
+            record.selection_course_id for record in my_records
+            if record.status in {_REC_SELECTED, _REC_LOCKED}
+        ]
+        if selected_course_ids:
+            task_rows = db.query(AaSelectionCourse.teaching_task_id).filter(
+                AaSelectionCourse.id.in_(selected_course_ids),
+                AaSelectionCourse.tenant_id == _core._tid(),
+            ).all()
+            for (task_id,) in task_rows:
+                for weekday_left, slot_left, start_left, end_left, parity_left in _core._task_slots(db, task_id):
+                    for weekday_right, slot_right, start_right, end_right, parity_right in target_slots:
+                        if (
+                            weekday_left == weekday_right
+                            and slot_left == slot_right
+                            and _weeks_overlap(
+                                start_left, end_left, parity_left,
+                                start_right, end_right, parity_right,
+                            )
+                        ):
+                            message = f"与已选课程上课时间冲突（周{weekday_left}第{slot_left}节）"
+                            _core._record_conflict_reject(db, batch, course, student, message)
+                            raise _core._conflict(message)
 
-def _audit(db, biz_id, action, detail="", before="", after=""):
-    from app.models import AffairsAuditTrail
-    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="AA_SELECTION", biz_id=biz_id,
-                             action=action, operator=_op(), role_name=_role(),
-                             detail=detail[:990], before_val=before[:990], after_val=after[:990],
-                             occurred_at=datetime.utcnow()))
-
-
-def _rule(db, batch, key, default):
-    """批次规则优先 rule_json，其次 ACAD_RULE 配置，最后显式默认值（不误判未注册开关为已启用）。"""
-    try:
-        if batch.rule_json:
-            j = json.loads(batch.rule_json)
-            if key in j and j[key] is not None:
-                return j[key]
-    except (ValueError, TypeError):
-        pass
-    from app.services.platform_service import get_config_json
-    cfg = get_config_json(_tid(), "ACAD_RULE", "selection")
-    if isinstance(cfg, dict) and cfg.get(key) is not None:
-        return cfg[key]
-    return default
-
-
-# ══════════════ 数据范围 ══════════════
-
-def _ctx(user, db):
-    return build_affairs_context(user, db)
-
-
-def _is_school_scope(ctx) -> bool:
-    return ctx.scope_type == "TENANT_ALL"
-
-
-def _require_manage_scope(ctx):
-    """写操作要求全校范围（教务处）。学院教务员只读。"""
-    if not _is_school_scope(ctx):
-        raise no_data_scope("仅教务处可管理选课批次")
-
-
-# ══════════════ 批次 ══════════════
-
-def _batch_dto(b) -> dict:
-    return {"batchId": str(b.id), "termId": str(b.term_id) if b.term_id else None,
-            "batchName": b.batch_name, "selectStartAt": _iso(b.select_start_at),
-            "selectEndAt": _iso(b.select_end_at), "status": b.status,
-            "applyScope": json.loads(b.apply_scope_json) if b.apply_scope_json else None,
-            "rule": json.loads(b.rule_json) if b.rule_json else None,
-            "remark": b.remark, "lockedAt": _iso(b.locked_at)}
-
-
-def _get_batch(db, batch_id):
-    from app.models import AaSelectionBatch
-    b = db.query(AaSelectionBatch).filter(
-        AaSelectionBatch.id == batch_id, AaSelectionBatch.tenant_id == _tid(),
-        AaSelectionBatch.is_deleted.is_(False)).first()
-    if not b:
-        raise not_found("选课批次不存在")
-    return b
+    maximum = _core._rule(db, batch, "maxCredits", 0)
+    if maximum and float(maximum) > 0:
+        current = sum(
+            float(record.credit or 0)
+            for record in my_records
+            if record.status in {_REC_SELECTED, _REC_LOCKED, _REC_PENDING}
+        )
+        if current + float(add_credit or 0) > float(maximum):
+            raise AppException("VALIDATION_ERROR", f"超过本批次选课学分上限 {maximum}")
 
 
 def create_batch(user, body) -> dict:
-    from app.models import AaSelectionBatch
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        name = (getattr(body, "batchName", None) or "").strip()
+    from app.models import AaSelectionBatch, AaTerm
+    from . import academic_affairs_archive_service as archive_service
+
+    term_id = getattr(body, "termId", None)
+    if not term_id:
+        raise AppException("VALIDATION_ERROR", "选课批次必须绑定正式学期termId")
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        term = db.query(AaTerm).filter(
+            AaTerm.id == int(term_id),
+            AaTerm.tenant_id == _core._tid(),
+            AaTerm.is_deleted.is_(False),
+        ).first()
+        if not term:
+            raise not_found("学期不存在")
+        archive_service.guard_term_writable(db, term.id)
+        name = str(getattr(body, "batchName", None) or "").strip()
         if not name:
             raise AppException("VALIDATION_ERROR", "批次名称必填")
-        b = AaSelectionBatch(
-            tenant_id=_tid(), batch_name=name,
-            term_id=int(body.termId) if getattr(body, "termId", None) else None,
-            select_start_at=_parse_dt(getattr(body, "selectStartAt", None)),
-            select_end_at=_parse_dt(getattr(body, "selectEndAt", None)),
-            apply_scope_json=json.dumps(body.applyScope, ensure_ascii=False) if getattr(body, "applyScope", None) else None,
-            rule_json=json.dumps(body.rule, ensure_ascii=False) if getattr(body, "rule", None) else None,
-            remark=getattr(body, "remark", None), status=_BATCH_DRAFT)
-        db.add(b)
+        start = _core._parse_dt(getattr(body, "selectStartAt", None))
+        end = _core._parse_dt(getattr(body, "selectEndAt", None))
+        if start and end and end <= start:
+            raise AppException("VALIDATION_ERROR", "选课结束时间必须晚于开始时间")
+        row = AaSelectionBatch(
+            tenant_id=_core._tid(),
+            batch_name=name,
+            term_id=term.id,
+            select_start_at=start,
+            select_end_at=end,
+            apply_scope_json=(
+                json.dumps(body.applyScope, ensure_ascii=False)
+                if getattr(body, "applyScope", None) else None
+            ),
+            rule_json=(
+                json.dumps(body.rule, ensure_ascii=False)
+                if getattr(body, "rule", None) else None
+            ),
+            remark=getattr(body, "remark", None),
+            status=_BATCH_DRAFT,
+        )
+        db.add(row)
         db.flush()
-        _audit(db, b.id, "SELECTION_BATCH_CREATE", f"建批次 {name}")
+        _core._audit(db, row.id, "SELECTION_BATCH_CREATE", f"建批次 {name};termId={term.id}")
         db.commit()
-        return _batch_dto(b)
-
-
-def _parse_dt(v):
-    if not v:
-        return None
-    try:
-        return datetime.fromisoformat(str(v).replace("Z", "+00:00").replace("+00:00", ""))
-    except ValueError:
-        return None
-
-
-def list_batches(user, status=None, term_id=None, page=1, page_size=20):
-    from app.models import AaSelectionBatch
-    with session() as db:
-        ctx = _ctx(user, db)
-        q = select(AaSelectionBatch).where(
-            AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.is_deleted.is_(False))
-        if status:
-            q = q.where(AaSelectionBatch.status == status)
-        if term_id:
-            q = q.where(AaSelectionBatch.term_id == int(term_id))
-        # 学院教务员 COLLEGE：仅看本院有课程供给的批次（简化：本期先全量只读，范围收敛在名单/统计层）
-        rows = db.execute(q.order_by(AaSelectionBatch.id.desc())).scalars().all()
-        total = len(rows)
-        page_rows = rows[(page - 1) * page_size: page * page_size]
-        return [_batch_dto(b) for b in page_rows], total
-
-
-def get_batch(user, batch_id):
-    with session() as db:
-        _ctx(user, db)
-        b = _get_batch(db, batch_id)
-        return _batch_dto(b)
+        return _core._batch_dto(row)
 
 
 def publish_batch(user, batch_id) -> dict:
     from app.models import AaSelectionCourse
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, batch_id)
-        if b.status != _BATCH_DRAFT:
-            raise _invalid(f"仅 DRAFT 批次可发布，当前 {b.status}")
-        cnt = db.query(func.count(AaSelectionCourse.id)).filter(
-            AaSelectionCourse.batch_id == b.id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.is_deleted.is_(False)).scalar()
-        if not cnt:
-            raise AppException("VALIDATION_ERROR", "批次未配置任何可选课程，不可发布")
-        b.status = _BATCH_PUBLISHED
-        _audit(db, b.id, "SELECTION_BATCH_PUBLISH", "发布批次")
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = db.query(type(_core._get_batch(db, int(batch_id)))).filter_by(id=int(batch_id)).with_for_update().first()
+        _guard_batch_writable(db, batch)
+        if batch.status != _BATCH_DRAFT:
+            raise _core._invalid(f"仅 DRAFT 批次可发布，当前 {batch.status}")
+        courses = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.batch_id == batch.id,
+            AaSelectionCourse.tenant_id == _core._tid(),
+            AaSelectionCourse.status == _COURSE_OPEN,
+            AaSelectionCourse.is_deleted.is_(False),
+        ).all()
+        if not courses:
+            raise AppException("VALIDATION_ERROR", "批次未配置任何有效可选课程，不可发布")
+        invalid = [row for row in courses if int(row.capacity or 0) <= 0 or int(row.min_capacity or 0) < 0]
+        if invalid:
+            raise AppException(
+                "DATA_CONFLICT",
+                f"有 {len(invalid)} 门课程容量或开班下限配置无效",
+                details={"selectionCourseIds": [str(row.id) for row in invalid]},
+                http_status=409,
+            )
+        batch.status = _BATCH_PUBLISHED
+        _core._audit(db, batch.id, "SELECTION_BATCH_PUBLISH", f"发布批次；课程{len(courses)}门")
         db.commit()
-        return _batch_dto(b)
+        return _core._batch_dto(batch)
 
 
 def open_batch(user, batch_id) -> dict:
-    """教务处手动开选（PUBLISHED→OPEN）；定时任务亦复用同一迁移。"""
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, batch_id)
-        if b.status != _BATCH_PUBLISHED:
-            raise _invalid(f"仅 PUBLISHED 批次可开选，当前 {b.status}")
-        b.status = _BATCH_OPEN
-        _audit(db, b.id, "SELECTION_BATCH_OPEN", "开选")
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _core._get_batch(db, int(batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status != _BATCH_PUBLISHED:
+            raise _core._invalid(f"仅 PUBLISHED 批次可开选，当前 {batch.status}")
+        batch.status = _BATCH_OPEN
+        _core._audit(db, batch.id, "SELECTION_BATCH_OPEN", "开选")
         db.commit()
-        return _batch_dto(b)
+        return _core._batch_dto(batch)
 
 
 def close_batch(user, batch_id) -> dict:
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, batch_id)
-        if b.status != _BATCH_OPEN:
-            raise _invalid(f"仅 OPEN 批次可截止，当前 {b.status}")
-        b.status = _BATCH_CLOSED
-        _audit(db, b.id, "SELECTION_BATCH_CLOSE", "截止选课")
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _core._get_batch(db, int(batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status != _BATCH_OPEN:
+            raise _core._invalid(f"仅 OPEN 批次可截止，当前 {batch.status}")
+        active_round = _active_round(db, batch.id)
+        if active_round:
+            raise _core._invalid(f"第{active_round.round_no}轮仍在开放，请先关闭轮次")
+        batch.status = _BATCH_CLOSED
+        _core._audit(db, batch.id, "SELECTION_BATCH_CLOSE", "截止选课")
         db.commit()
-        return _batch_dto(b)
-
-
-def lock_batch(user, batch_id) -> dict:
-    """CLOSED→LOCKED：生成正式名单，选课记录 SELECTED→LOCKED（幂等）。"""
-    from app.models import AaSelectionRecord
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, batch_id)
-        if b.status == _BATCH_LOCKED:
-            return _batch_dto(b)
-        if b.status != _BATCH_CLOSED:
-            raise _invalid(f"仅 CLOSED 批次可锁定，当前 {b.status}")
-        db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.batch_id == b.id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.status == _REC_SELECTED).update(
-            {AaSelectionRecord.status: _REC_LOCKED}, synchronize_session=False)
-        b.status = _BATCH_LOCKED
-        b.locked_at = datetime.utcnow()
-        _audit(db, b.id, "SELECTION_BATCH_LOCK", "锁定名单")
-        db.commit()
-        return _batch_dto(b)
-
-
-def archive_batch(user, batch_id) -> dict:
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, batch_id)
-        if b.status == _BATCH_ARCHIVED:
-            return _batch_dto(b)
-        if b.status != _BATCH_LOCKED:
-            raise _invalid(f"仅 LOCKED 批次可归档，当前 {b.status}")
-        b.status = _BATCH_ARCHIVED
-        _audit(db, b.id, "SELECTION_BATCH_ARCHIVE", "归档")
-        db.commit()
-        return _batch_dto(b)
+        return _core._batch_dto(batch)
 
 
 def save_rule(user, batch_id, rule) -> dict:
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, batch_id)
-        if b.status not in (_BATCH_DRAFT, _BATCH_PUBLISHED):
-            raise _invalid("仅 DRAFT/PUBLISHED 批次可改规则")
-        b.rule_json = json.dumps(rule, ensure_ascii=False) if rule else None
-        _audit(db, b.id, "SELECTION_RULE_UPDATE", "保存选课规则")
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _core._get_batch(db, int(batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status not in {_BATCH_DRAFT, _BATCH_PUBLISHED}:
+            raise _core._invalid("仅 DRAFT/PUBLISHED 批次可改规则")
+        batch.rule_json = json.dumps(rule, ensure_ascii=False) if rule else None
+        _core._audit(db, batch.id, "SELECTION_RULE_UPDATE", "保存选课规则")
         db.commit()
-        return _batch_dto(b)
-
-
-# ══════════════ 课程供给 ══════════════
-
-def _course_dto(c) -> dict:
-    remain = max(0, (c.capacity or 0) - (c.selected_count or 0))
-    return {"selectionCourseId": str(c.id), "batchId": str(c.batch_id),
-            "courseId": str(c.course_id), "courseName": c.course_name,
-            "teachingTaskId": str(c.teaching_task_id) if c.teaching_task_id else None,
-            "teacherKey": c.teacher_key, "teacherName": c.teacher_name,
-            "credit": float(c.credit) if c.credit is not None else None,
-            "capacity": c.capacity, "minCapacity": c.min_capacity,
-            "selectedCount": c.selected_count, "remain": remain, "status": c.status}
-
-
-def _get_course(db, course_id):
-    from app.models import AaSelectionCourse
-    c = db.query(AaSelectionCourse).filter(
-        AaSelectionCourse.id == course_id, AaSelectionCourse.tenant_id == _tid(),
-        AaSelectionCourse.is_deleted.is_(False)).first()
-    if not c:
-        raise not_found("可选课程供给项不存在")
-    return c
+        return _core._batch_dto(batch)
 
 
 def add_course(user, batch_id, body) -> dict:
-    from app.models import AaCourse, AaSelectionCourse, AaTeachingTask
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, batch_id)
-        if b.status not in (_BATCH_DRAFT, _BATCH_PUBLISHED):
-            raise _invalid("仅 DRAFT/PUBLISHED 批次可增课程")
-        cid = int(body.courseId)
+    from app.models import AaCourse, AaSelectionCourse, AaTeachingTask, AaTeachingTaskBatch
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _core._get_batch(db, int(batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status not in {_BATCH_DRAFT, _BATCH_PUBLISHED}:
+            raise _core._invalid("仅 DRAFT/PUBLISHED 批次可增课程")
         course = db.query(AaCourse).filter(
-            AaCourse.id == cid, AaCourse.tenant_id == _tid()).first()
+            AaCourse.id == int(body.courseId),
+            AaCourse.tenant_id == _core._tid(),
+            AaCourse.is_deleted.is_(False),
+        ).first()
         if not course:
             raise not_found("课程不存在")
-        tt_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
-        tkey = tname = None
-        if tt_id:
-            tt = db.query(AaTeachingTask).filter(
-                AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid()).first()
-            if tt:
-                tkey, tname = tt.teacher_key, tt.teacher_name
-        dup = db.query(AaSelectionCourse).filter(
-            AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.batch_id == b.id,
-            AaSelectionCourse.course_id == cid,
-            AaSelectionCourse.teaching_task_id == tt_id,
-            AaSelectionCourse.is_deleted.is_(False)).first()
-        if dup:
-            raise AppException("VALIDATION_ERROR", "该课程(教学班)已在本批次")
-        c = AaSelectionCourse(
-            tenant_id=_tid(), batch_id=b.id, course_id=cid,
-            course_name=getattr(course, "course_name", None) or getattr(course, "name", None),
-            teaching_task_id=tt_id, teacher_key=tkey, teacher_name=tname,
-            credit=getattr(course, "credit", None),
-            capacity=int(getattr(body, "capacity", 0) or 0),
-            min_capacity=int(getattr(body, "minCapacity", 0) or 0),
-            selected_count=0, status=_COURSE_OPEN)
-        db.add(c)
+        if not str(course.course_code or "").strip():
+            raise AppException("DATA_CONFLICT", "课程缺少稳定courseCode，不能进入选课供给", http_status=409)
+        task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
+        teacher_key = teacher_name = None
+        if task_id:
+            task = db.query(AaTeachingTask).filter(
+                AaTeachingTask.id == task_id,
+                AaTeachingTask.tenant_id == _core._tid(),
+                AaTeachingTask.is_deleted.is_(False),
+            ).first()
+            if not task:
+                raise not_found("教学任务不存在")
+            task_batch = db.query(AaTeachingTaskBatch).filter(
+                AaTeachingTaskBatch.id == task.batch_id,
+                AaTeachingTaskBatch.tenant_id == _core._tid(),
+                AaTeachingTaskBatch.is_deleted.is_(False),
+            ).first()
+            if not task_batch or int(task_batch.term_id or 0) != int(batch.term_id):
+                raise AppException("DATA_CONFLICT", "教学任务与选课批次不属于同一学期", http_status=409)
+            if int(task.course_id or 0) != int(course.id):
+                raise AppException("DATA_CONFLICT", "教学任务课程与所选课程版本不一致", http_status=409)
+            teacher_key, teacher_name = task.teacher_key, task.teacher_name
+        duplicate = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.tenant_id == _core._tid(),
+            AaSelectionCourse.batch_id == batch.id,
+            AaSelectionCourse.course_id == course.id,
+            AaSelectionCourse.teaching_task_id == task_id,
+            AaSelectionCourse.is_deleted.is_(False),
+        ).first()
+        if duplicate:
+            raise AppException("VALIDATION_ERROR", "该课程（教学班）已在本批次")
+        capacity = int(getattr(body, "capacity", 0) or 0)
+        minimum = int(getattr(body, "minCapacity", 0) or 0)
+        if capacity <= 0 or minimum < 0 or minimum > capacity:
+            raise AppException("VALIDATION_ERROR", "容量须大于0，开班下限须在0至容量之间")
+        row = AaSelectionCourse(
+            tenant_id=_core._tid(),
+            batch_id=batch.id,
+            course_id=course.id,
+            course_name=course.course_name,
+            teaching_task_id=task_id,
+            teacher_key=teacher_key,
+            teacher_name=teacher_name,
+            credit=course.credit,
+            capacity=capacity,
+            min_capacity=minimum,
+            selected_count=0,
+            status=_COURSE_OPEN,
+        )
+        db.add(row)
         db.flush()
-        _audit(db, b.id, "SELECTION_COURSE_ADD", f"增课程 {c.course_name}")
+        _core._audit(db, batch.id, "SELECTION_COURSE_ADD", f"增课程 {row.course_name};courseId={course.id}")
         db.commit()
-        return _course_dto(c)
-
-
-def list_courses(user, batch_id, page=1, page_size=50):
-    from app.models import AaSelectionCourse
-    with session() as db:
-        _ctx(user, db)
-        _get_batch(db, batch_id)
-        rows = db.query(AaSelectionCourse).filter(
-            AaSelectionCourse.batch_id == batch_id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.is_deleted.is_(False)).order_by(AaSelectionCourse.id).all()
-        total = len(rows)
-        return [_course_dto(c) for c in rows[(page - 1) * page_size: page * page_size]], total
+        return _core._course_dto(row)
 
 
 def update_course(user, course_id, body) -> dict:
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        c = _get_course(db, course_id)
-        b = _get_batch(db, c.batch_id)
-        if b.status in (_BATCH_LOCKED, _BATCH_ARCHIVED):
-            raise _invalid("批次已锁定，不可改课程容量/规则")
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        course = _core._get_course(db, int(course_id))
+        batch = _core._get_batch(db, int(course.batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status in {_BATCH_LOCKED, _BATCH_ARCHIVED}:
+            raise _core._invalid("批次已锁定，不可改课程容量/规则")
         if getattr(body, "capacity", None) is not None:
-            cap = int(body.capacity)
-            if cap < (c.selected_count or 0):
-                raise AppException("VALIDATION_ERROR", f"容量不可小于已选人数 {c.selected_count}")
-            c.capacity = cap
+            capacity = int(body.capacity)
+            if capacity <= 0 or capacity < int(course.selected_count or 0):
+                raise AppException("VALIDATION_ERROR", f"容量须大于0且不可小于已选人数 {course.selected_count}")
+            course.capacity = capacity
         if getattr(body, "minCapacity", None) is not None:
-            c.min_capacity = int(body.minCapacity)
-        _audit(db, b.id, "SELECTION_COURSE_UPDATE", f"改课程 {c.course_name} 容量/下限")
+            minimum = int(body.minCapacity)
+            if minimum < 0 or minimum > int(course.capacity or 0):
+                raise AppException("VALIDATION_ERROR", "开班下限须在0至容量之间")
+            course.min_capacity = minimum
+        _core._audit(db, batch.id, "SELECTION_COURSE_UPDATE", f"改课程 {course.course_name} 容量/下限")
         db.commit()
-        return _course_dto(c)
+        return _core._course_dto(course)
 
 
-def cancel_course(user, course_id) -> dict:
-    """人工取消开课（人数不足）：课程 COURSE_CANCELLED，其 SELECTED 记录批量置 COURSE_CANCELLED（幂等）。"""
+def cancel_course(user, course_id, reason="人数不足取消开课") -> dict:
     from app.models import AaSelectionRecord
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        c = _get_course(db, course_id)
-        b = _get_batch(db, c.batch_id)
-        if b.status != _BATCH_CLOSED:
-            raise _invalid("仅 CLOSED 批次可取消低人数课程")
-        if c.status == _COURSE_CANCELLED:
-            return _course_dto(c)
-        c.status = _COURSE_CANCELLED
-        db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.selection_course_id == c.id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.status == _REC_SELECTED).update(
-            {AaSelectionRecord.status: _REC_COURSE_CANCELLED}, synchronize_session=False)
-        _audit(db, b.id, "SELECTION_COURSE_CANCEL", f"取消开课 {c.course_name}(人数不足)")
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        course = _core._get_course(db, int(course_id))
+        batch = _core._get_batch(db, int(course.batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status != _BATCH_CLOSED:
+            raise _core._invalid("仅 CLOSED 批次可取消低人数课程")
+        if course.status == _COURSE_CANCELLED:
+            return _core._course_dto(course)
+        course.status = _COURSE_CANCELLED
+        cancelled = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.selection_course_id == course.id,
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.status.in_([_REC_SELECTED, _REC_PENDING]),
+            AaSelectionRecord.is_deleted.is_(False),
+        ).update({AaSelectionRecord.status: _REC_COURSE_CANCELLED}, synchronize_session=False)
+        course.selected_count = 0
+        _core._audit(
+            db,
+            batch.id,
+            "SELECTION_COURSE_CANCEL",
+            f"取消开课 {course.course_name};records={cancelled};reason={str(reason or '')[:200]}",
+        )
         db.commit()
-        return _course_dto(c)
-
-
-# ══════════════ 学生选课/退课 ══════════════
-
-def _student_from_token():
-    ctx = get_current_user_ctx() or {}
-    sid = ctx.get("studentId") or ctx.get("userId")
-    return ctx, sid
-
-
-def _load_student(db, student_no=None, student_id=None):
-    from app.models import StudentProfile
-    q = db.query(StudentProfile).filter(StudentProfile.tenant_id == _tid(),
-                                        StudentProfile.is_deleted.is_(False))
-    if student_no:
-        q = q.filter(StudentProfile.student_no == student_no)
-    elif student_id and str(student_id).isdigit():
-        q = q.filter(StudentProfile.id == int(student_id))
-    return q.first()
+        return _core._course_dto(course)
 
 
 def student_courses(user, batch_id=None):
-    """学生端：OPEN 批次可选课程 + 实时余量。"""
-    from app.models import AaSelectionBatch, AaSelectionCourse
-    with session() as db:
-        q = db.query(AaSelectionBatch).filter(
-            AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.status == _BATCH_OPEN,
-            AaSelectionBatch.is_deleted.is_(False))
-        if batch_id:
-            q = q.filter(AaSelectionBatch.id == int(batch_id))
-        batches = q.all()
-        out = []
-        for b in batches:
-            courses = db.query(AaSelectionCourse).filter(
-                AaSelectionCourse.batch_id == b.id, AaSelectionCourse.tenant_id == _tid(),
-                AaSelectionCourse.status == _COURSE_OPEN,
-                AaSelectionCourse.is_deleted.is_(False)).all()
-            out.append({"batch": _batch_dto(b), "courses": [_course_dto(c) for c in courses]})
-        return out
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
 
-
-def _passed_course_names(db, student):
-    """学生已通过(PASSED)的课程名集合（用于④先修/⑧重修判定）。"""
-    from app.models import AcademicGrade, AcademicStudent
-    acad = db.query(AcademicStudent).filter(AcademicStudent.tenant_id == _tid(),
-                                            AcademicStudent.student_id == student.id).first()
-    if not acad:
-        return set()
-    rows = db.query(AcademicGrade).filter(AcademicGrade.tenant_id == _tid(),
-                                          AcademicGrade.acad_student_id == acad.id,
-                                          AcademicGrade.pass_status == "PASSED",
-                                          AcademicGrade.record_status == "ACTIVE").all()
-    return {r.course_name for r in rows}
-
-
-def _task_slots(db, teaching_task_id):
-    """教学任务在已发布课表中的时段（供⑤课表冲突检测）。"""
-    from app.models import AaScheduleItem
-    if not teaching_task_id:
-        return []
-    rows = db.query(AaScheduleItem).filter(AaScheduleItem.tenant_id == _tid(),
-                                           AaScheduleItem.task_id == teaching_task_id,
-                                           AaScheduleItem.status == "EFFECTIVE",
-                                           AaScheduleItem.is_deleted.is_(False)).all()
-    return [(i.weekday, i.slot_no, i.start_week, i.end_week, i.week_parity) for i in rows]
-
-
-def _record_conflict_reject(db, batch, course, student, msg):
-    """⑤课表冲突被拒事件持久化（供「冲突检测」卡批次级报表聚合，见09号卡§8）。
-    独立 commit：即使随后 enroll() 整体因冲突异常回滚，该拒绝事件仍需留痕，
-    不能随请求失败一起丢失（否则报表无数据源）。biz_id=selection_course_id 供按课程聚合，
-    detail 内嵌 studentNo 供「按学号查询」过滤（不新建专属统计表，复用审计基座）。"""
-    from app.models import AffairsAuditTrail
-    db.add(AffairsAuditTrail(
-        tenant_id=_tid(), biz_type="AA_SELECTION_CONFLICT", biz_id=course.id,
-        action="SELECTION_CONFLICT_REJECT", operator=_op(), role_name=_role(),
-        detail=(f"studentNo={student.student_no or ''} studentName={student.real_name or ''} "
-               f"courseName={course.course_name or ''} reason={msg}")[:990],
-        occurred_at=datetime.utcnow()))
-    db.commit()
-
-
-def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_reselect_closed=False):
-    """选课八条校验（全部落地；返回 None 表示通过，否则抛异常）。
-    ① 批次 OPEN ② 适用范围 ③ 未修过(本批次重复) ④ 先修课程 ⑤ 课表时间冲突 ⑥ 学分上限 ⑦ 容量(行锁) ⑧ 重修规则 + SUSPENDED 学籍。
-    allow_reselect_closed=True 时①放宽：批次 CLOSED 且学生在本批次确有待补选(COURSE_CANCELLED)记录方可选课
-    （由调用方 student_enroll 独立核验资格后传入，不信任前端 isReselect 参数本身，见06号卡§10）。"""
-    from app.models import AaCourse, AaSelectionCourse
-    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _weeks_overlap
-    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
-    # SUSPENDED/非在籍 → 403
-    if not is_enrolled(getattr(student, "student_status", None)):
-        raise no_data_scope("当前学籍状态不可选课")
-    # ① 批次 OPEN（补选特例：CLOSED + 已核验资格可放行，见06号卡）
-    if batch.status != _BATCH_OPEN:
-        if not (allow_reselect_closed and batch.status == _BATCH_CLOSED):
-            raise _invalid("不在选课时间内")
-    # ② 适用范围
-    if batch.apply_scope_json:
-        try:
-            scope = json.loads(batch.apply_scope_json)
-        except ValueError:
-            scope = {}
-        if scope:
-            ok_grade = (not scope.get("grades")) or (student.grade in scope["grades"])
-            ok_major = (not scope.get("majorIds")) or (str(student.major_id) in [str(x) for x in scope["majorIds"]])
-            ok_class = (not scope.get("classIds")) or (str(student.class_id) in [str(x) for x in scope["classIds"]])
-            if not (ok_grade and ok_major and ok_class):
-                raise AppException("VALIDATION_ERROR", "不在本批次适用范围内")
-    # ③ 未修过该课程（同批次内已有 SELECTED/LOCKED 到同 course_id）
-    for r in my_records:
-        if r.course_id == course.course_id and r.status in (_REC_SELECTED, _REC_LOCKED):
-            raise _conflict("已选过该课程")
-    passed = _passed_course_names(db, student)
-    tb = db.query(AaCourse).filter(AaCourse.id == course.course_id, AaCourse.tenant_id == _tid()).first()
-    # ⑧ 重修规则：非重修生已通过该课程不可再选（V1 选课无重修上下文，一律拦已通过课程）
-    if tb and tb.course_name in passed:
-        raise AppException("VALIDATION_ERROR", "该课程已通过，不可再选（重修请走重修报名）")
-    # ④ 先修课程：课程 prerequisite_codes_json 中所有先修课须已通过
-    if tb and tb.prerequisite_codes_json:
-        try:
-            pre_codes = json.loads(tb.prerequisite_codes_json) or []
-        except ValueError:
-            pre_codes = []
-        if pre_codes:
-            pre_names = {c.course_name for c in db.query(AaCourse).filter(
-                AaCourse.tenant_id == _tid(), AaCourse.course_code.in_([str(x) for x in pre_codes])).all()}
-            missing = pre_names - passed
-            if missing:
-                raise AppException("VALIDATION_ERROR", f"未满足先修课程要求：{', '.join(sorted(missing))}")
-    # ⑤ 课表时间冲突：目标课程时段 vs 本批次已选课程时段
-    target_slots = _task_slots(db, course.teaching_task_id)
-    if target_slots:
-        sel_course_ids = [r.selection_course_id for r in my_records if r.status in (_REC_SELECTED, _REC_LOCKED)]
-        if sel_course_ids:
-            my_tasks = db.query(AaSelectionCourse.teaching_task_id).filter(
-                AaSelectionCourse.id.in_(sel_course_ids), AaSelectionCourse.tenant_id == _tid()).all()
-            for (tt_id,) in my_tasks:
-                for (w1, s1, sw1, ew1, p1) in _task_slots(db, tt_id):
-                    for (w2, s2, sw2, ew2, p2) in target_slots:
-                        if w1 == w2 and s1 == s2 and _weeks_overlap(sw1, ew1, p1, sw2, ew2, p2):
-                            msg = f"与已选课程上课时间冲突（周{w1}第{s1}节）"
-                            _record_conflict_reject(db, batch, course, student, msg)
-                            raise _conflict(msg)
-    # ⑥ 学分上限
-    max_credits = _rule(db, batch, "maxCredits", 0)
-    if max_credits and max_credits > 0:
-        cur = sum(float(r.credit or 0) for r in my_records if r.status in (_REC_SELECTED, _REC_LOCKED))
-        if cur + add_credit > float(max_credits):
-            raise AppException("VALIDATION_ERROR", f"超过本批次选课学分上限 {max_credits}")
-    # ⑦ 容量在 enroll() 内以行锁原子扣减
-    return None
-
-
-def student_enroll(user, body) -> dict:
-    """学生选课：八条校验 + 行锁原子扣减防超卖。复用同一行(D-09)。
-    补选（06号卡）：批次 CLOSED 时，若学生在本批次确有待补选(COURSE_CANCELLED)记录，
-    允许对本批次其余有余量课程选课；资格由后端独立核验（学生存在未补选的COURSE_CANCELLED
-    记录），不信任请求体 isReselect 标志位本身（防伪造绕过CLOSED窗口限制）。"""
-    from app.models import AaSelectionCourse, AaSelectionRecord
-    ctx, sid = _student_from_token()
-    with session() as db:
-        student = _load_student(db, student_no=ctx.get("studentNo"), student_id=sid)
-        if not student:
-            raise not_found("学生档案不存在")
-        c = _get_course(db, int(body.selectionCourseId))
-        if c.status != _COURSE_OPEN:
-            raise _invalid("该课程不可选（已取消开课）")
-        b = _get_batch(db, c.batch_id)
-        my = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.batch_id == b.id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.student_id == student.id).all()
-        # 补选（06号卡）：CLOSED 批次且学生确有待补选(COURSE_CANCELLED)记录才放宽；资格后端独立核验，不信任请求体标志位
-        allow_reselect = b.status == _BATCH_CLOSED and any(
-            r.status == _REC_COURSE_CANCELLED for r in my)
-        _validate_enroll(db, b, c, student, my, float(c.credit or 0),
-                         allow_reselect_closed=allow_reselect)
-        rnd = _active_round(db, b.id)
-        if rnd and not rnd.allow_enroll:
-            raise _invalid("本轮次仅可退课，不可选课")
-
-        if rnd and rnd.mode == "LOTTERY":
-            # ── 抽签轮：志愿登记不占容量，关轮后统一摇号（对标商业教务"预选抽签"）──
-            for r in my:
-                if r.course_id == c.course_id and r.status == _REC_PENDING:
-                    raise _conflict("已登记该课程志愿，待摇号")
-            max_credits = _rule(db, b, "maxCredits", 0)
-            if max_credits and max_credits > 0:
-                cur = sum(float(r.credit or 0) for r in my
-                          if r.status in (_REC_SELECTED, _REC_LOCKED, _REC_PENDING))
-                if cur + float(c.credit or 0) > float(max_credits):
-                    raise AppException("VALIDATION_ERROR",
-                                       f"含待摇号志愿已超过本批次选课学分上限 {max_credits}")
-            existing = next((r for r in my if r.selection_course_id == c.id), None)
-            if existing:
-                existing.status, existing.round_id = _REC_PENDING, rnd.id
-                existing.enrolled_at, existing.dropped_at = datetime.utcnow(), None
-                existing.re_enroll = True
-                rec = existing
-            else:
-                rec = AaSelectionRecord(
-                    tenant_id=_tid(), batch_id=b.id, selection_course_id=c.id,
-                    course_id=c.course_id, course_name=c.course_name, credit=c.credit,
-                    student_id=student.id, student_no=student.student_no,
-                    student_name=student.real_name, enrolled_at=datetime.utcnow(),
-                    status=_REC_PENDING, round_id=rnd.id)
-                db.add(rec)
-            db.flush()
-            _audit(db, rec.id, "SELECTION_LOTTERY_REGISTER", f"抽签志愿 {c.course_name}（第{rnd.round_no}轮）")
-            db.commit()
-            return {"recordId": str(rec.id), "selectionCourseId": str(c.id),
-                    "courseName": c.course_name, "status": rec.status,
-                    "roundNo": rnd.round_no, "lottery": True}
-
-        # ── 先到先得（无轮次批次 / FCFS 轮次）：行锁原子扣减，selected_count<capacity 时 +1 ──
-        upd = db.query(AaSelectionCourse).filter(
-            AaSelectionCourse.id == c.id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.selected_count < AaSelectionCourse.capacity).update(
-            {AaSelectionCourse.selected_count: AaSelectionCourse.selected_count + 1},
-            synchronize_session=False)
-        if not upd:
-            db.rollback()
-            raise _conflict("课程容量已满")
-        # 复用同一行：DROPPED/COURSE_CANCELLED 记录复选
-        existing = next((r for r in my if r.selection_course_id == c.id), None)
-        if existing:
-            existing.status = _REC_SELECTED
-            existing.enrolled_at = datetime.utcnow()
-            existing.dropped_at = None
-            existing.re_enroll = True
-            existing.round_id = rnd.id if rnd else existing.round_id
-            rec = existing
+    with _core.session() as db:
+        student = _load_student(db)
+        batch = _core._get_batch(db, int(batch_id)) if batch_id else db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.tenant_id == _core._tid(),
+            AaSelectionBatch.status.in_([_BATCH_OPEN, _BATCH_CLOSED]),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).order_by(AaSelectionBatch.id.desc()).first()
+        if not batch:
+            return {"batch": None, "items": []}
+        active_round = _active_round(db, batch.id)
+        if active_round and active_round.mode == "LOTTERY":
+            can_enroll = bool(active_round.allow_enroll)
         else:
-            rec = AaSelectionRecord(
-                tenant_id=_tid(), batch_id=b.id, selection_course_id=c.id,
-                course_id=c.course_id, course_name=c.course_name, credit=c.credit,
-                student_id=student.id, student_no=student.student_no, student_name=student.real_name,
-                enrolled_at=datetime.utcnow(), status=_REC_SELECTED,
-                round_id=(rnd.id if rnd else None))
-            db.add(rec)
+            can_enroll = batch.status == _BATCH_OPEN and (not active_round or bool(active_round.allow_enroll))
+        records = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.batch_id == batch.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).all()
+        by_course = {int(row.selection_course_id): row for row in records}
+        courses = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.tenant_id == _core._tid(),
+            AaSelectionCourse.batch_id == batch.id,
+            AaSelectionCourse.status == _COURSE_OPEN,
+            AaSelectionCourse.is_deleted.is_(False),
+        ).order_by(AaSelectionCourse.id).all()
+        items = []
+        for course in courses:
+            item = _core._course_dto(course)
+            record = by_course.get(int(course.id))
+            item["myStatus"] = record.status if record else None
+            item["myRecordId"] = str(record.id) if record else None
+            item["canEnroll"] = can_enroll and (
+                record is None or record.status in {_REC_DROPPED, _REC_LOST, _REC_COURSE_CANCELLED}
+            )
+            item["roundId"] = str(active_round.id) if active_round else None
+            item["roundMode"] = active_round.mode if active_round else "FCFS"
+            items.append(item)
+        return {
+            "batch": _core._batch_dto(batch),
+            "round": (
+                {
+                    "roundId": str(active_round.id),
+                    "roundNo": active_round.round_no,
+                    "roundName": active_round.round_name,
+                    "mode": active_round.mode,
+                    "allowEnroll": bool(active_round.allow_enroll),
+                    "allowDrop": bool(active_round.allow_drop),
+                }
+                if active_round else None
+            ),
+            "items": items,
+        }
+
+
+def student_enroll(user, body):
+    from app.models import AaSelectionRecord
+
+    with _core.session() as db:
+        student = _load_student(db)
+        course = db.query(type(_core._get_course(db, int(body.selectionCourseId)))).filter_by(
+            id=int(body.selectionCourseId)
+        ).with_for_update().first()
+        batch = _core._get_batch(db, int(course.batch_id))
+        _guard_batch_writable(db, batch)
+        if course.status != _COURSE_OPEN:
+            raise _core._invalid("课程已取消或不可选")
+        active_round = _active_round(db, batch.id)
+        if active_round and not active_round.allow_enroll:
+            raise _core._invalid("当前轮次不允许选课")
+        allow_reselect_closed = batch.status == _BATCH_CLOSED and active_round is not None
+        my_records = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.batch_id == batch.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).all()
+        _validate_enroll(
+            db,
+            batch,
+            course,
+            student,
+            my_records,
+            float(course.credit or 0),
+            allow_reselect_closed=allow_reselect_closed,
+        )
+
+        lottery = bool(active_round and active_round.mode == "LOTTERY")
+        status = _REC_PENDING if lottery else _REC_SELECTED
+        if not lottery:
+            updated = db.query(type(course)).filter(
+                type(course).id == course.id,
+                type(course).tenant_id == _core._tid(),
+                type(course).status == _COURSE_OPEN,
+                type(course).selected_count < type(course).capacity,
+            ).update({type(course).selected_count: type(course).selected_count + 1}, synchronize_session=False)
+            if not updated:
+                raise _core._conflict("课程容量已满")
+
+        existing = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.selection_course_id == course.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).first()
+        now = datetime.utcnow()
+        if existing:
+            if existing.status not in {_REC_DROPPED, _REC_LOST, _REC_COURSE_CANCELLED}:
+                raise _core._conflict("已存在有效选课记录")
+            existing.status = status
+            existing.round_id = active_round.id if active_round else None
+            existing.enrolled_at = now if status == _REC_SELECTED else None
+            existing.dropped_at = None
+            existing.drop_reason = None
+            existing.adjust_reason = None
+            record = existing
+        else:
+            record = AaSelectionRecord(
+                tenant_id=_core._tid(),
+                batch_id=batch.id,
+                selection_course_id=course.id,
+                student_id=student.id,
+                student_no=student.student_no,
+                student_name=student.real_name,
+                course_id=course.course_id,
+                course_name=course.course_name,
+                credit=course.credit,
+                round_id=active_round.id if active_round else None,
+                status=status,
+                enrolled_at=now if status == _REC_SELECTED else None,
+            )
+            db.add(record)
         db.flush()
-        _audit(db, rec.id, "SELECTION_ENROLL",
-               f"选课 {c.course_name}" + ("(复选)" if existing else "") +
-               ("(补选)" if allow_reselect else ""))
+        _core._audit(
+            db,
+            record.id,
+            "SELECTION_ENROLL",
+            f"studentNo={student.student_no} course={course.course_name} status={status}",
+        )
         db.commit()
-        return {"recordId": str(rec.id), "selectionCourseId": str(c.id),
-                "courseName": c.course_name, "status": rec.status}
+        return _core._record_dto(record)
 
 
-def student_drop(user, body) -> dict:
-    """学生退课：批次 OPEN 且记录 SELECTED；释放容量。"""
+def student_drop(user, body):
     from app.models import AaSelectionCourse, AaSelectionRecord
-    ctx, sid = _student_from_token()
-    with session() as db:
-        student = _load_student(db, student_no=ctx.get("studentNo"), student_id=sid)
-        if not student:
-            raise not_found("学生档案不存在")
-        c = _get_course(db, int(body.selectionCourseId))
-        b = _get_batch(db, c.batch_id)
-        if b.status != _BATCH_OPEN:
-            raise _invalid("不在选课时间内，不可退课")
-        rec = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.selection_course_id == c.id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.student_id == student.id).first()
-        if rec and rec.status == _REC_PENDING:
-            # 撤回抽签志愿：未占容量，直接落 DROPPED，不做容量回退
-            rec.status, rec.dropped_at = _REC_DROPPED, datetime.utcnow()
-            _audit(db, rec.id, "SELECTION_LOTTERY_WITHDRAW", f"撤回抽签志愿 {c.course_name}")
-            db.commit()
-            return {"recordId": str(rec.id), "status": rec.status}
-        if not rec or rec.status != _REC_SELECTED:
-            raise _invalid("无可退课的选课记录")
-        rnd = _active_round(db, b.id)
-        if rnd and not rnd.allow_drop:
-            raise _invalid("本轮次仅可选课，不可退课")
-        # 条件更新（仅当仍为 SELECTED 才转 DROPPED）：防并发重复退课导致 selected_count 被多扣一次
-        upd = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.id == rec.id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.status == _REC_SELECTED).update(
-            {AaSelectionRecord.status: _REC_DROPPED, AaSelectionRecord.dropped_at: datetime.utcnow()},
-            synchronize_session=False)
-        if not upd:
-            db.rollback()
-            raise _invalid("无可退课的选课记录")
-        db.query(AaSelectionCourse).filter(
-            AaSelectionCourse.id == c.id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.selected_count > 0).update(
-            {AaSelectionCourse.selected_count: AaSelectionCourse.selected_count - 1},
-            synchronize_session=False)
-        _audit(db, rec.id, "SELECTION_DROP", f"退课 {c.course_name}")
+
+    with _core.session() as db:
+        student = _load_student(db)
+        record = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == int(body.recordId),
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not record:
+            raise not_found("选课记录不存在")
+        batch = _core._get_batch(db, int(record.batch_id))
+        _guard_batch_writable(db, batch)
+        active_round = _active_round(db, batch.id)
+        if batch.status != _BATCH_OPEN:
+            raise _core._invalid("当前不在退课窗口")
+        if active_round and not active_round.allow_drop:
+            raise _core._invalid("当前轮次不允许退课")
+        if record.status not in {_REC_SELECTED, _REC_PENDING}:
+            raise _core._invalid("当前记录不可退课")
+        previous = record.status
+        record.status = _REC_DROPPED
+        record.dropped_at = datetime.utcnow()
+        record.drop_reason = str(getattr(body, "reason", None) or "").strip() or None
+        if previous == _REC_SELECTED:
+            updated = db.query(AaSelectionCourse).filter(
+                AaSelectionCourse.id == record.selection_course_id,
+                AaSelectionCourse.tenant_id == _core._tid(),
+                AaSelectionCourse.selected_count > 0,
+            ).update({AaSelectionCourse.selected_count: AaSelectionCourse.selected_count - 1}, synchronize_session=False)
+            if not updated:
+                raise AppException("DATA_CONFLICT", "课程人数计数异常，退课已取消，请联系教务处", http_status=409)
+        _core._audit(db, record.id, "SELECTION_DROP", f"studentNo={student.student_no};from={previous}")
         db.commit()
-        return {"recordId": str(rec.id), "status": _REC_DROPPED}
+        return _core._record_dto(record)
 
 
 def my_selections(user, batch_id=None):
-    """学生查看本人选课记录。"""
     from app.models import AaSelectionRecord
-    ctx, sid = _student_from_token()
-    with session() as db:
-        student = _load_student(db, student_no=ctx.get("studentNo"), student_id=sid)
-        if not student:
-            return []
-        q = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.student_id == student.id,
-            AaSelectionRecord.is_deleted.is_(False))
+
+    with _core.session() as db:
+        student = _load_student(db)
+        query = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        )
         if batch_id:
-            q = q.filter(AaSelectionRecord.batch_id == int(batch_id))
-        return [_record_dto(r) for r in q.order_by(AaSelectionRecord.id.desc()).all()]
+            query = query.filter(AaSelectionRecord.batch_id == int(batch_id))
+        return [_core._record_dto(row) for row in query.order_by(AaSelectionRecord.id.desc()).all()]
+
+
+def student_reselect_guide(user, batch_id=None):
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+
+    with _core.session() as db:
+        student = _load_student(db)
+        query = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.status == _REC_COURSE_CANCELLED,
+            AaSelectionRecord.is_deleted.is_(False),
+        )
+        if batch_id:
+            query = query.filter(AaSelectionRecord.batch_id == int(batch_id))
+        cancelled = query.all()
+        output = []
+        for current_batch_id in sorted({int(row.batch_id) for row in cancelled}):
+            batch = db.query(AaSelectionBatch).filter(
+                AaSelectionBatch.id == current_batch_id,
+                AaSelectionBatch.tenant_id == _core._tid(),
+                AaSelectionBatch.is_deleted.is_(False),
+            ).first()
+            if not batch or batch.status != _BATCH_CLOSED:
+                continue
+            courses = db.query(AaSelectionCourse).filter(
+                AaSelectionCourse.batch_id == batch.id,
+                AaSelectionCourse.tenant_id == _core._tid(),
+                AaSelectionCourse.status == _COURSE_OPEN,
+                AaSelectionCourse.is_deleted.is_(False),
+            ).all()
+            output.append({
+                "batch": _core._batch_dto(batch),
+                "cancelledRecords": [
+                    _core._record_dto(row) for row in cancelled if int(row.batch_id) == batch.id
+                ],
+                "availableCourses": [
+                    _core._course_dto(row)
+                    for row in courses
+                    if int(row.selected_count or 0) < int(row.capacity or 0)
+                ],
+            })
+        return output
+
+
+def lock_batch(user, batch_id) -> dict:
+    from app.models import AaSelectionRecord
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _core._get_batch(db, int(batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status == _BATCH_LOCKED:
+            return _core._batch_dto(batch)
+        if batch.status != _BATCH_CLOSED:
+            raise _core._invalid(f"仅 CLOSED 批次可锁定，当前 {batch.status}")
+        validation = validate_selection_lock(db, batch)
+        if not validation.get("valid"):
+            issues = list(validation.get("issues") or [])
+            messages = [str(item.get("message") or item) for item in issues[:8]]
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课名单一致性检查未通过：" + "；".join(messages),
+                details=validation,
+                http_status=409,
+            )
+        claimed = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.batch_id == batch.id,
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.status == _REC_SELECTED,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).update({AaSelectionRecord.status: _REC_LOCKED}, synchronize_session=False)
+        if int(claimed or 0) != int(validation.get("selectedRecordCount") or 0):
+            db.rollback()
+            raise AppException("APPROVAL_VERSION_CONFLICT", "锁定期间选课名单已变化，请刷新后重试", http_status=409)
+        apply_locked_roster_projection(db, validation)
+        batch.status = _BATCH_LOCKED
+        batch.locked_at = datetime.utcnow()
+        _core._audit(
+            db,
+            batch.id,
+            "SELECTION_BATCH_LOCK",
+            f"records={claimed};tasks={len(validation.get('taskStudentCounts') or {})}",
+        )
+        db.commit()
+        return _core._batch_dto(batch)
 
 
 def adjust_record(user, record_id, reason) -> dict:
-    """教务处 LOCKED 后人工调整（退课），原因≥5字，留痕。"""
     from app.models import AaSelectionCourse, AaSelectionRecord
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        reason = (reason or "").strip()
-        if len(reason) < 5:
-            raise AppException("VALIDATION_ERROR", "调整原因必填且不少于5字")
-        rec = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.id == record_id, AaSelectionRecord.tenant_id == _tid()).first()
-        if not rec:
+
+    reason_text = str(reason or "").strip()
+    if len(reason_text) < 5:
+        raise AppException("VALIDATION_ERROR", "调整原因必填且不少于5字")
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        record = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == int(record_id),
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not record:
             raise not_found("选课记录不存在")
-        if rec.status != _REC_LOCKED:
-            raise _invalid("仅 LOCKED 记录可人工调整")
-        # 条件更新（仅当仍为 LOCKED 才转 DROPPED）：防并发重复调整导致 selected_count 被多扣一次
-        upd = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.id == rec.id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.status == _REC_LOCKED).update(
-            {AaSelectionRecord.status: _REC_DROPPED, AaSelectionRecord.dropped_at: datetime.utcnow(),
-             AaSelectionRecord.adjust_reason: reason}, synchronize_session=False)
-        if not upd:
+        if record.status != _REC_LOCKED:
+            raise _core._invalid("仅 LOCKED 记录可人工调整")
+        course = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.id == int(record.selection_course_id),
+            AaSelectionCourse.tenant_id == _core._tid(),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not course:
+            raise not_found("选课课程不存在")
+        batch = _core._get_batch(db, int(record.batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status != _BATCH_LOCKED:
+            raise _core._invalid(f"仅 LOCKED 批次可人工调整，当前 {batch.status}")
+        if not course.teaching_task_id:
+            raise AppException("DATA_CONFLICT", "该课程未关联教学任务，无法生成新正式名单版本", http_status=409)
+        teaching_class = teaching_class_service.ensure_teaching_class_for_task(
+            db,
+            int(course.teaching_task_id),
+            initialize_admin_roster=False,
+        )
+        consumers = consumer_counts(db, teaching_class_id=int(teaching_class.id))
+        if int(consumers.get("TOTAL") or 0) > 0:
+            raise AppException(
+                "DATA_CONFLICT",
+                "正式名单已被考勤、考务或成绩使用，不可直接退课；请先退回下游任务并走名单换版流程",
+                details={"consumers": consumers, "teachingClassId": str(teaching_class.id)},
+                http_status=409,
+            )
+        updated = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == record.id,
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.status == _REC_LOCKED,
+        ).update({
+            AaSelectionRecord.status: _REC_DROPPED,
+            AaSelectionRecord.dropped_at: datetime.utcnow(),
+            AaSelectionRecord.adjust_reason: reason_text,
+        }, synchronize_session=False)
+        if not updated:
             db.rollback()
-            raise _invalid("仅 LOCKED 记录可人工调整")
+            raise AppException("APPROVAL_VERSION_CONFLICT", "名单已被他人调整，请刷新", http_status=409)
         db.query(AaSelectionCourse).filter(
-            AaSelectionCourse.id == rec.selection_course_id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.selected_count > 0).update(
-            {AaSelectionCourse.selected_count: AaSelectionCourse.selected_count - 1},
-            synchronize_session=False)
-        _audit(db, rec.id, "SELECTION_RECORD_ADJUST", f"人工调整退课：{reason}")
+            AaSelectionCourse.id == course.id,
+            AaSelectionCourse.tenant_id == _core._tid(),
+            AaSelectionCourse.selected_count > 0,
+        ).update({AaSelectionCourse.selected_count: AaSelectionCourse.selected_count - 1}, synchronize_session=False)
+        db.flush()
+        projection = roster_projection.project_selection_course_locked(
+            db,
+            int(course.id),
+            reason=f"锁定名单人工退课：{reason_text}",
+        )
+        _core._audit(
+            db,
+            record.id,
+            "SELECTION_RECORD_ADJUST",
+            (
+                f"人工调整退课：{reason_text};teachingClassId={projection['teachingClassId']};"
+                f"rosterVersionId={projection['rosterVersionId']};members={projection['memberCount']}"
+            ),
+        )
         db.commit()
-        return {"recordId": str(rec.id), "status": _REC_DROPPED}
+        return {
+            "recordId": str(record.id),
+            "status": _REC_DROPPED,
+            "teachingClassId": projection["teachingClassId"],
+            "rosterVersionId": projection["rosterVersionId"],
+            "rosterVersionNo": projection["versionNo"],
+            "memberCount": projection["memberCount"],
+        }
 
 
-def _record_dto(r) -> dict:
-    return {"recordId": str(r.id), "batchId": str(r.batch_id),
-            "selectionCourseId": str(r.selection_course_id),
-            "courseId": str(r.course_id) if r.course_id else None, "courseName": r.course_name,
-            "credit": float(r.credit) if r.credit is not None else None,
-            "studentId": str(r.student_id), "studentNo": r.student_no, "studentName": r.student_name,
-            "enrolledAt": _iso(r.enrolled_at), "status": r.status, "reEnroll": r.re_enroll,
-            "adjustReason": r.adjust_reason}
-
-
-# ══════════════ 名单（教师授课关系收敛） / 统计 ══════════════
-
-def course_roster(user, course_id, page=1, page_size=50):
-    from app.models import AaSelectionRecord
-    with session() as db:
-        ctx = _ctx(user, db)
-        c = _get_course(db, course_id)
-        # 任课教师只读本人授课班：业务关系校验（非行政数据范围，键由 user 派生，非 ctx 属性）
-        if ctx.scope_type not in ("COLLEGE", "TENANT_ALL"):
-            keys = _derive_keys(user)
-            if not c.teacher_key or c.teacher_key not in keys:
-                raise no_data_scope("非本人授课教学班，无权查看名单")
-        rows = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.selection_course_id == course_id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.status.in_([_REC_SELECTED, _REC_LOCKED]),
-            AaSelectionRecord.is_deleted.is_(False)).order_by(AaSelectionRecord.student_no).all()
-        total = len(rows)
-        return [_record_dto(r) for r in rows[(page - 1) * page_size: page * page_size]], total
-
-
-def batch_stats(user, batch_id) -> dict:
-    from app.models import AaSelectionCourse, AaSelectionRecord
-    with session() as db:
-        _ctx(user, db)
-        b = _get_batch(db, batch_id)
-        courses = db.query(AaSelectionCourse).filter(
-            AaSelectionCourse.batch_id == b.id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.is_deleted.is_(False)).all()
-        total_cap = sum(c.capacity or 0 for c in courses)
-        total_sel = sum(c.selected_count or 0 for c in courses)
-        low = [c for c in courses if c.status == _COURSE_OPEN and (c.selected_count or 0) < (c.min_capacity or 0)]
-        full = [c for c in courses if (c.selected_count or 0) >= (c.capacity or 0) and (c.capacity or 0) > 0]
-        rec_total = db.query(func.count(AaSelectionRecord.id)).filter(
-            AaSelectionRecord.batch_id == b.id, AaSelectionRecord.tenant_id == _tid(),
-            AaSelectionRecord.status.in_([_REC_SELECTED, _REC_LOCKED])).scalar()
-        return {"batchId": str(b.id), "status": b.status, "courseCount": len(courses),
-                "totalCapacity": total_cap, "totalSelected": total_sel,
-                "fillRate": round(total_sel / total_cap, 4) if total_cap else 0,
-                "lowEnrollCount": len(low), "fullCount": len(full),
-                "recordCount": rec_total,
-                "lowEnrollCourses": [_course_dto(c) for c in low]}
+def archive_batch(user, batch_id) -> dict:
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _core._get_batch(db, int(batch_id))
+        _guard_batch_writable(db, batch)
+        if batch.status == _BATCH_ARCHIVED:
+            return _core._batch_dto(batch)
+        if batch.status != _BATCH_LOCKED:
+            raise _core._invalid(f"仅 LOCKED 批次可归档，当前 {batch.status}")
+        batch.status = _BATCH_ARCHIVED
+        _core._audit(db, batch.id, "SELECTION_BATCH_ARCHIVE", "正式名单锁定后归档")
+        db.commit()
+        return _core._batch_dto(batch)
 
 
 def run_time_tick(user):
-    """定时任务触发点：PUBLISHED 且到开选时间→OPEN；OPEN 且到截止时间→CLOSED（幂等，供 cron/调度调用）。"""
     from app.models import AaSelectionBatch
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
         now = datetime.utcnow()
-        opened = closed = 0
-        pub = db.query(AaSelectionBatch).filter(AaSelectionBatch.tenant_id == _tid(),
-                                                AaSelectionBatch.status == _BATCH_PUBLISHED,
-                                                AaSelectionBatch.select_start_at.isnot(None),
-                                                AaSelectionBatch.select_start_at <= now,
-                                                AaSelectionBatch.is_deleted.is_(False)).all()
-        for b in pub:
-            b.status = _BATCH_OPEN
-            _audit(db, b.id, "SELECTION_BATCH_AUTO_OPEN", "定时开选")
-            opened += 1
-        opn = db.query(AaSelectionBatch).filter(AaSelectionBatch.tenant_id == _tid(),
-                                                AaSelectionBatch.status == _BATCH_OPEN,
-                                                AaSelectionBatch.select_end_at.isnot(None),
-                                                AaSelectionBatch.select_end_at <= now,
-                                                AaSelectionBatch.is_deleted.is_(False)).all()
-        for b in opn:
-            b.status = _BATCH_CLOSED
-            _audit(db, b.id, "SELECTION_BATCH_AUTO_CLOSE", "定时截止")
-            closed += 1
+        opened = closed = skipped = 0
+        candidates = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.tenant_id == _core._tid(),
+            AaSelectionBatch.status.in_([_BATCH_PUBLISHED, _BATCH_OPEN]),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).with_for_update().all()
+        for batch in candidates:
+            try:
+                _guard_batch_writable(db, batch)
+            except AppException:
+                skipped += 1
+                continue
+            if (
+                batch.status == _BATCH_PUBLISHED
+                and batch.select_start_at is not None
+                and batch.select_start_at <= now
+            ):
+                batch.status = _BATCH_OPEN
+                _core._audit(db, batch.id, "SELECTION_BATCH_AUTO_OPEN", "定时开选")
+                opened += 1
+            elif (
+                batch.status == _BATCH_OPEN
+                and batch.select_end_at is not None
+                and batch.select_end_at <= now
+                and not _active_round(db, batch.id)
+            ):
+                batch.status = _BATCH_CLOSED
+                _core._audit(db, batch.id, "SELECTION_BATCH_AUTO_CLOSE", "定时截止")
+                closed += 1
         db.commit()
-        return {"opened": opened, "closed": closed, "tickAt": now.isoformat()}
-
-
-def reselect_guide(user, batch_id):
-    """补选指引：CLOSED 批次里被取消开课的课程 + 仍有余量的课程。"""
-    from app.models import AaSelectionCourse
-    with session() as db:
-        _ctx(user, db)
-        b = _get_batch(db, batch_id)
-        if b.status != _BATCH_CLOSED:
-            raise _invalid("仅 CLOSED 批次有补选指引")
-        courses = db.query(AaSelectionCourse).filter(
-            AaSelectionCourse.batch_id == b.id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.is_deleted.is_(False)).all()
-        cancelled = [_course_dto(c) for c in courses if c.status == _COURSE_CANCELLED]
-        available = [_course_dto(c) for c in courses
-                     if c.status == _COURSE_OPEN and (c.selected_count or 0) < (c.capacity or 0)]
-        return {"batchId": str(b.id), "cancelledCourses": cancelled, "availableCourses": available}
-
-
-# ══════════════ 补选管理（06号卡：学生自助视角） ══════════════
-
-def student_reselect_guide(user, batch_id=None):
-    """学生端补选指引：本人在 CLOSED 批次内待补选(COURSE_CANCELLED)记录 + 该批次仍有余量课程。
-    batch_id 缺省时扫描学生所有存在待补选记录的 CLOSED 批次（06号卡§4"补选指引"区块数据源）。"""
-    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
-    ctx, sid = _student_from_token()
-    with session() as db:
-        student = _load_student(db, student_no=ctx.get("studentNo"), student_id=sid)
-        if not student:
-            raise not_found("学生档案不存在")
-        rec_q = db.query(AaSelectionRecord).filter(
-            AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.student_id == student.id,
-            AaSelectionRecord.status == _REC_COURSE_CANCELLED, AaSelectionRecord.is_deleted.is_(False))
-        if batch_id:
-            rec_q = rec_q.filter(AaSelectionRecord.batch_id == int(batch_id))
-        cancelled_records = rec_q.all()
-        batch_ids = sorted({r.batch_id for r in cancelled_records})
-        out = []
-        for bid in batch_ids:
-            b = db.query(AaSelectionBatch).filter(
-                AaSelectionBatch.id == bid, AaSelectionBatch.tenant_id == _tid()).first()
-            if not b or b.status != _BATCH_CLOSED:
-                continue  # 已 LOCKED（补选窗口关闭）或批次不存在，不再提供指引（06号卡§6）
-            my_cancelled = [r for r in cancelled_records if r.batch_id == bid]
-            courses = db.query(AaSelectionCourse).filter(
-                AaSelectionCourse.batch_id == bid, AaSelectionCourse.tenant_id == _tid(),
-                AaSelectionCourse.status == _COURSE_OPEN, AaSelectionCourse.is_deleted.is_(False)).all()
-            available = [_course_dto(c) for c in courses if (c.selected_count or 0) < (c.capacity or 0)]
-            out.append({"batch": _batch_dto(b), "cancelledRecords": [_record_dto(r) for r in my_cancelled],
-                       "availableCourses": available})
-        return out
-
-
-# ══════════════ 冲突检测（09号卡：批次级冲突预警报表） ══════════════
-
-def get_conflict_report(user, batch_id, student_no=None):
-    """批次级冲突预警报表：聚合 enroll() ⑤课表冲突被拒事件（`_record_conflict_reject` 落的
-    AffairsAuditTrail，biz_type=AA_SELECTION_CONFLICT）。无 studentNo 时按课程聚合次数；
-    传 studentNo 时返回该生逐条冲突明细（教务处客服支持场景，09号卡§3/§7）。"""
-    from app.models import AaSelectionCourse, AffairsAuditTrail
-    with session() as db:
-        _ctx(user, db)
-        b = _get_batch(db, batch_id)
-        course_rows = db.query(AaSelectionCourse.id, AaSelectionCourse.course_name).filter(
-            AaSelectionCourse.batch_id == b.id, AaSelectionCourse.tenant_id == _tid(),
-            AaSelectionCourse.is_deleted.is_(False)).all()
-        course_ids = [cid for cid, _ in course_rows]
-        course_names = {cid: name for cid, name in course_rows}
-        if not course_ids:
-            return {"batchId": str(b.id), "summary": [], "items": []}
-        q = db.query(AffairsAuditTrail).filter(
-            AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "AA_SELECTION_CONFLICT",
-            AffairsAuditTrail.action == "SELECTION_CONFLICT_REJECT",
-            AffairsAuditTrail.biz_id.in_(course_ids))
-        if student_no:
-            q = q.filter(AffairsAuditTrail.detail.like(f"%studentNo={student_no} %"))
-        rows = q.order_by(AffairsAuditTrail.occurred_at.desc()).all()
-        items = [{"occurredAt": _iso(r.occurred_at), "courseName": course_names.get(r.biz_id, ""),
-                 "detail": r.detail} for r in rows]
-        counts: dict[str, int] = {}
-        for cid, name in course_rows:
-            n = sum(1 for r in rows if r.biz_id == cid)
-            if n:
-                counts[name or str(cid)] = counts.get(name or str(cid), 0) + n
-        summary = [{"courseName": k, "conflictRejectCount": v} for k, v in
-                  sorted(counts.items(), key=lambda kv: -kv[1])]
-        return {"batchId": str(b.id), "summary": summary, "items": items}
-
-
-def export_conflict_report_xlsx(user, batch_id, purpose="") -> bytes:
-    """冲突预警报表导出 xlsx（09号卡§11，水印+审计+用途必填）。"""
-    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
-    from app.services.xlsx_util import build_ledger_xlsx
-    report = get_conflict_report(user, batch_id, None)
-    u = get_current_user_ctx() or {}
-    watermark = (f"导出人：{u.get('realName') or u.get('loginName') or '-'}  "
-                f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}")
-    headers = ["课程", "冲突拒选次数"]
-    rows = [[s["courseName"], s["conflictRejectCount"]] for s in report["summary"]]
-    content = build_ledger_xlsx("选课冲突预警报表", headers, rows, watermark=watermark)
-    with session() as db:
-        _audit(db, int(batch_id), "SELECTION_CONFLICT_EXPORT", f"冲突报表导出 用途={purpose.strip()[:100]}")
-        db.commit()
-    return content
-
-
-# ══════════════ 选课归档（12号卡：ARCHIVED 批次历史查询/导出） ══════════════
-
-def list_archived_batches(user, term_id=None, page=1, page_size=20):
-    """归档批次列表（仅 ARCHIVED 状态，复用 list_batches 不重复实现，12号卡§7）。"""
-    return list_batches(user, status=_BATCH_ARCHIVED, term_id=term_id, page=page, page_size=page_size)
-
-
-def archive_detail(user, batch_id):
-    """归档批次详情（复用 get_batch + batch_stats 组合，非 ARCHIVED 409，12号卡§7）。"""
-    b = get_batch(user, batch_id)
-    if b["status"] != _BATCH_ARCHIVED:
-        raise _invalid("仅已归档批次可查看归档详情")
-    stats = batch_stats(user, batch_id)
-    return {**b, "stats": stats}
-
-
-def export_archive_xlsx(user, batch_id, purpose="") -> bytes:
-    """归档批次台账导出 xlsx（12号卡§11，水印+审计+用途必填；非 ARCHIVED 409）。"""
-    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
-    b = get_batch(user, batch_id)
-    if b["status"] != _BATCH_ARCHIVED:
-        raise _invalid("仅已归档批次可导出归档台账")
-    from app.services.xlsx_util import build_ledger_xlsx
-    courses, _total = list_courses(user, batch_id, page=1, page_size=1000)
-    u = get_current_user_ctx() or {}
-    watermark = (f"导出人：{u.get('realName') or u.get('loginName') or '-'}  "
-                f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}")
-    headers = ["课程", "教师", "容量", "开课下限", "已选", "状态"]
-    rows = [[c["courseName"], c["teacherName"] or "", c["capacity"], c["minCapacity"],
-            c["selectedCount"], c["status"]] for c in courses]
-    content = build_ledger_xlsx(f"选课归档台账 · {b['batchName']}", headers, rows, watermark=watermark)
-    with session() as db:
-        _audit(db, int(batch_id), "SELECTION_ARCHIVE_EXPORT", f"归档台账导出 用途={purpose.strip()[:100]}")
-        db.commit()
-    return content
+        return {"opened": opened, "closed": closed, "skippedArchivedTerms": skipped, "tickAt": now.isoformat()}
