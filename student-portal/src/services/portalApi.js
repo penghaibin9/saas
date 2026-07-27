@@ -127,8 +127,21 @@ export const portalApi = {
   affairsActivityEnroll: (activityId) =>
     request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
-  // ── 岗位实习 ──
+  // ── 岗位实习：主线合规、知情确认与安全教育接口必须保留 ──
   internshipMy: () => request('/portal/internship/my'),
+  internshipCompliance: (operation = 'ONBOARD', batchId = '') =>
+    request(`/portal/internship/compliance${q({ operation, batchId })}`),
+  internshipConsents: (batchId = '') => request(`/portal/internship/consents${q({ batchId })}`),
+  internshipConsentDetail: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}`),
+  internshipConsentView: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}/view`, { method: 'POST' }),
+  internshipConsentConfirm: (id, body) => request(`/portal/internship/consents/${encodeURIComponent(id)}/confirm`, { method: 'POST', body }),
+  internshipConsentReject: (id, body) => request(`/portal/internship/consents/${encodeURIComponent(id)}/reject`, { method: 'POST', body }),
+  internshipSafetyCourses: (batchId = '') => request(`/portal/internship/safety/courses${q({ batchId })}`),
+  internshipSafetyCompletions: (batchId = '') => request(`/portal/internship/safety/completions${q({ batchId })}`),
+  internshipSafetyDetail: (id) => request(`/portal/internship/safety/courses/${encodeURIComponent(id)}/detail`),
+  internshipSafetyStart: (id) => request(`/portal/internship/safety/courses/${encodeURIComponent(id)}/start`, { method: 'POST' }),
+  internshipSafetySubmit: (id, body) => request(`/portal/internship/safety/courses/${encodeURIComponent(id)}/submit`, { method: 'POST', body }),
+  internshipSafetyCommit: (id, body) => request(`/portal/internship/safety/completions/${encodeURIComponent(id)}/commit`, { method: 'POST', body }),
   internshipWeeklySubmit: (body) => request('/portal/internship/weekly/submit', { method: 'POST', body }),
   internshipReportSubmit: (body) => request('/portal/internship/report/submit', { method: 'POST', body }),
   internshipAgreementPrint: (body) => request('/portal/internship/agreement/print', { method: 'POST', body }),
