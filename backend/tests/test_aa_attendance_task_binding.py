@@ -1,8 +1,12 @@
 """普通教师课堂考勤必须绑定当前学期本人已确认的真实教学任务。"""
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class _ScalarResult:
@@ -175,9 +179,14 @@ def test_client_cannot_replace_task_class(monkeypatch):
     assert "教学任务与行政班不一致" in exc.value.message
 
 
-def test_public_attendance_service_is_canonical_and_facade_is_only_compatibility_export():
+def test_public_attendance_service_freezes_roster_without_compatibility_patch():
     from app.modules.academic_affairs.services import academic_affairs_attendance_facade as compatibility
     from app.modules.academic_affairs.services import academic_affairs_attendance_service as service
 
-    assert service.create_session.__module__.endswith("academic_affairs_attendance_service")
+    facade_source = (
+        ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_attendance_roster_identity_facade.py"
+    ).read_text(encoding="utf-8")
+    assert service.create_session.__module__.endswith("academic_affairs_attendance_public_service")
     assert compatibility.create_session is service.create_session
+    assert "_base.create_session =" not in facade_source
+    assert "_base.get_session =" not in facade_source
