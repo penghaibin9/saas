@@ -47,7 +47,8 @@
         </header>
         <div v-if="dayItems(day.value).length" class="day-column__list">
           <div v-for="item in dayItems(day.value)" :key="itemKey(item)" class="course-card" :class="sourceClass(item)">
-            <div class="course-card__slot">第{{ item.slotNo }}节</div>
+            <div class="course-card__slot">{{ slotLabel(item) }}</div>
+            <div v-if="slotDetail(item)" class="course-card__time">{{ slotDetail(item) }}</div>
             <div class="course-card__name">{{ item.courseName || '未命名课程' }}</div>
             <div class="course-card__meta">
               <span>{{ item.classroom || '教室待定' }}</span>
@@ -63,7 +64,7 @@
 
     <section v-if="items.length" class="schedule-note sp-card">
       <strong>看课表时请注意</strong>
-      <span>单双周、起止周以每门课程卡片为准；调停课生效后请以最新发布结果和消息通知为准。</span>
+      <span>单双周、起止周以每门课程卡片为准；钟点来自学校当前生效作息。多校区同一节次时间不一致时，本页会明确显示“按校区作息”，不会擅自猜测。调停课生效后请以最新发布结果和消息通知为准。</span>
     </section>
   </div>
 </template>
@@ -80,7 +81,7 @@ const ui = useUiStore()
 const loading = ref(true)
 const error = ref('')
 const printing = ref(false)
-const schedule = ref({ items: [] })
+const schedule = ref({ items: [], timeBands: [] })
 const selectedWeek = ref(null)
 
 const days = [
@@ -90,6 +91,7 @@ const days = [
 ]
 
 const items = computed(() => Array.isArray(schedule.value.items) ? schedule.value.items : [])
+const timeBands = computed(() => Array.isArray(schedule.value.timeBands) ? schedule.value.timeBands : [])
 const maxWeek = computed(() => Math.max(
   1,
   Number(schedule.value.teachingWeeks || 0),
@@ -136,6 +138,39 @@ function sourceClass(item) {
   return item.source === 'ENROLLED' ? 'is-enrolled' : ''
 }
 
+function bandsForSlot(item) {
+  const slotNo = Number(item.slotNo)
+  return timeBands.value.filter((band) => Number(band.slotNo) === slotNo)
+}
+
+function timeText(band) {
+  const start = String(band?.startTime || '').trim()
+  const end = String(band?.endTime || '').trim()
+  return start && end ? `${start}–${end}` : ''
+}
+
+function distinctSlotTimes(item) {
+  return [...new Set(bandsForSlot(item).map(timeText).filter(Boolean))]
+}
+
+function slotLabel(item) {
+  const bands = bandsForSlot(item)
+  const base = bands[0]?.slotName || `第${Number(item.slotNo) || '—'}节`
+  const times = distinctSlotTimes(item)
+  if (times.length === 1) return `${base} · ${times[0]}`
+  if (times.length > 1) return `${base} · 按校区作息`
+  return base
+}
+
+function slotDetail(item) {
+  const bands = bandsForSlot(item)
+  const times = distinctSlotTimes(item)
+  if (times.length <= 1) return ''
+  return bands
+    .map((band) => `${band.campusCode || band.bandName || '默认校区'} ${timeText(band) || '时间待定'}`)
+    .join('；')
+}
+
 function goAll() {
   router.push('/academic/all')
 }
@@ -144,7 +179,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    schedule.value = await portalApi.academicSchedule() || { items: [] }
+    schedule.value = await portalApi.academicSchedule() || { items: [], timeBands: [] }
     const currentWeek = Number(schedule.value.currentWeek)
     selectedWeek.value = Number.isFinite(currentWeek) && currentWeek >= 1 && currentWeek <= maxWeek.value
       ? currentWeek
@@ -194,14 +229,14 @@ async function printSchedule() {
     const table = documentRef.createElement('table')
     const tableHead = documentRef.createElement('thead')
     const headerRow = documentRef.createElement('tr')
-    ;['星期', '节次', '课程', '教室', '教师', '周次'].forEach((text) => appendText(headerRow, 'th', text))
+    ;['星期', '节次与时间', '课程', '教室', '教师', '周次'].forEach((text) => appendText(headerRow, 'th', text))
     tableHead.appendChild(headerRow)
     table.appendChild(tableHead)
     const tableBody = documentRef.createElement('tbody')
     filteredItems.value.slice().sort((a, b) => Number(a.weekday) - Number(b.weekday) || Number(a.slotNo) - Number(b.slotNo)).forEach((item) => {
       const row = documentRef.createElement('tr')
       const day = days.find((entry) => entry.value === Number(item.weekday))
-      ;[day?.label || `周${item.weekday}`, `第${item.slotNo}节`, item.courseName || '—', item.classroom || '—', item.teacherName || '—', weekLabel(item)]
+      ;[day?.label || `周${item.weekday}`, slotLabel(item), item.courseName || '—', item.classroom || '—', item.teacherName || '—', weekLabel(item)]
         .forEach((text) => appendText(row, 'td', String(text)))
       tableBody.appendChild(row)
     })
@@ -246,6 +281,7 @@ onMounted(load)
 .course-card { position: relative; padding: 10px; border-left: 3px solid var(--pri); border-radius: 9px; background: var(--pri-50); }
 .course-card.is-enrolled { border-left-color: var(--ok-fg); background: #edf9f1; }
 .course-card__slot { color: var(--pri); font-size: 11px; font-weight: 600; }
+.course-card__time { margin-top: 3px; color: var(--warning-fg, #a15c00); font-size: 10px; line-height: 1.4; }
 .course-card__name { margin-top: 5px; color: var(--t1); font-size: 13px; font-weight: 600; line-height: 1.4; }
 .course-card__meta { display: flex; flex-direction: column; gap: 2px; margin-top: 7px; color: var(--t3); font-size: 11px; }
 .course-card__weeks { margin-top: 7px; color: var(--t4); font-size: 10.5px; }
