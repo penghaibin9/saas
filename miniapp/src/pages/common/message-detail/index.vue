@@ -97,9 +97,13 @@ export default {
     formatTime(t) { return t ? String(t).slice(0, 16).replace('T', ' ') : '' },
     resolveTarget() {
       if (!this.m || this.m.withdrawn) return ''
+      const params = this.m.actionParams && typeof this.m.actionParams === 'object' ? this.m.actionParams : {}
+      const materialRequirementId = params.materialRequirementId || params.requirementId || ''
+      if (materialRequirementId) {
+        return `/pages/student/affairs/index?materialRequirementId=${encodeURIComponent(String(materialRequirementId))}`
+      }
       const key = String(this.m.actionKey || '').trim().toUpperCase()
       let route = ACTION_ROUTES[key] || ''
-      const params = this.m.actionParams && typeof this.m.actionParams === 'object' ? this.m.actionParams : {}
       const biz = String(params.businessType || params.bizType || '').trim().toUpperCase()
       if (!route && biz) route = ACTION_ROUTES[`STUDENT_AFFAIRS_${biz}`] || ACTION_ROUTES[biz] || ''
       if (!route && this.m.status === 'RETURNED') route = ACTION_ROUTES.STUDENT_APPLICATIONS
