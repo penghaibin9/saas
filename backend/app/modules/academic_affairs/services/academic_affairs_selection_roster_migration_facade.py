@@ -1,4 +1,7 @@
-"""R8 选课人工调整与教学班名单版本原子同步层。"""
+"""选课 LOCKED 名单人工调整与教学班名单版本原子同步（过渡入口）。
+
+该文件不再覆盖其它模块函数；选课域收口时将 ``adjust_record`` 合并回公开 Selection Service 后删除。
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -6,7 +9,7 @@ from datetime import datetime
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_selection_facade as _base
-from . import academic_affairs_teaching_class_compat_migration_service as _teaching_class
+from . import academic_affairs_selection_roster_projection_service as roster_projection
 
 
 def __getattr__(name):
@@ -20,7 +23,7 @@ def adjust_record(user, record_id, reason) -> dict:
 
     with _base._legacy.session() as db:
         _base._legacy._require_manage_scope(_base._legacy._ctx(user, db))
-        reason_text = (reason or "").strip()
+        reason_text = str(reason or "").strip()
         if len(reason_text) < 5:
             raise AppException("VALIDATION_ERROR", "调整原因必填且不少于5字")
         record = db.query(AaSelectionRecord).filter(
@@ -50,8 +53,7 @@ def adjust_record(user, record_id, reason) -> dict:
             raise AppException(
                 "DATA_CONFLICT",
                 "正式名单已被下游业务使用，不可直接退课：" + "、".join(consumers) + "。请走名单变更迁移流程。",
-                details={"consumers": consumers},
-                http_status=409,
+                details={"consumers": consumers}, http_status=409,
             )
 
         updated = db.query(AaSelectionRecord).filter(
@@ -75,15 +77,11 @@ def adjust_record(user, record_id, reason) -> dict:
         }, synchronize_session=False)
         db.flush()
 
-        projection = _teaching_class.project_selection_course_locked(
-            db,
-            int(course.id),
-            reason=f"锁定名单人工退课：{reason_text}",
+        projection = roster_projection.project_selection_course_locked(
+            db, int(course.id), reason=f"锁定名单人工退课：{reason_text}",
         )
         _base._legacy._audit(
-            db,
-            record.id,
-            "SELECTION_RECORD_ADJUST",
+            db, record.id, "SELECTION_RECORD_ADJUST",
             (
                 f"人工调整退课：{reason_text};teachingClassId={projection['teachingClassId']};"
                 f"rosterVersionId={projection['rosterVersionId']};members={projection['memberCount']}"
@@ -98,7 +96,3 @@ def adjust_record(user, record_id, reason) -> dict:
             "rosterVersionNo": projection["versionNo"],
             "memberCount": projection["memberCount"],
         }
-
-
-_base.adjust_record = adjust_record
-_base._legacy.adjust_record = adjust_record
