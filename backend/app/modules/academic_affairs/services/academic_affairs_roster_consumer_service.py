@@ -9,7 +9,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid
 
-from . import academic_affairs_teaching_class_compat_migration_service as teaching_class_service
+from . import academic_affairs_teaching_class_service as teaching_class_service
 
 _ALLOWED_CONSUMERS = {"ATTENDANCE_SESSION", "EXAM_COURSE", "GRADE_TASK"}
 
@@ -35,19 +35,18 @@ def resolve_versioned_roster(db, teaching_task_id: int) -> dict:
         raise AppException(
             "DATA_CONFLICT",
             f"教学任务正式名单尚不可用：{roster.get('note') or '未知原因'}",
-            details=roster,
-            http_status=409,
+            details=roster, http_status=409,
         )
     teaching_class_id = roster.get("teachingClassId")
     roster_version_id = roster.get("rosterVersionId")
     if not teaching_class_id or not roster_version_id:
         raise AppException(
             "DATA_CONFLICT",
-            "教学任务尚未形成独立教学班和正式名单版本，请先执行R8名单投影",
-            details=roster,
-            http_status=409,
+            "教学任务尚未形成独立教学班和正式名单版本，请先执行名单投影",
+            details=roster, http_status=409,
         )
     from app.models import AaTeachingClassRosterVersion
+
     version = db.query(AaTeachingClassRosterVersion).filter(
         AaTeachingClassRosterVersion.id == int(roster_version_id),
         AaTeachingClassRosterVersion.tenant_id == _tid(),
@@ -99,49 +98,50 @@ def freeze_consumer_snapshot(db, consumer_type: str, consumer_id: int, teaching_
     ).with_for_update().first()
     payload = {
         "teachingTaskId": str(teaching_task_id),
-        "teachingClassId": str(resolved["teachingClassId"]),
-        "rosterVersionId": str(resolved["rosterVersionId"]),
-        "rosterVersionNo": int(resolved["rosterVersionNo"]),
-        "rosterSource": str(resolved.get("source") or ""),
+        "teachingClassId": resolved["teachingClassId"],
+        "rosterVersionId": resolved["rosterVersionId"],
+        "rosterVersionNo": resolved["rosterVersionNo"],
         "rosterHash": resolved["rosterHash"],
-        "memberCount": int(resolved["memberCount"]),
-        "studentIds": _ids(resolved["studentIds"]),
+        "memberCount": resolved["memberCount"],
+        "source": resolved.get("source"),
     }
     if existing:
-        same = (
-            int(existing.teaching_task_id) == int(teaching_task_id)
-            and int(existing.teaching_class_id or 0) == int(payload["teachingClassId"])
-            and int(existing.roster_version_id or 0) == int(payload["rosterVersionId"])
-            and existing.roster_hash == payload["rosterHash"]
-        )
-        if not same:
+        if (
+            int(existing.teaching_task_id) != int(teaching_task_id)
+            or int(existing.teaching_class_id) != int(resolved["teachingClassId"])
+            or int(existing.roster_version_id) != int(resolved["rosterVersionId"])
+            or existing.roster_hash != resolved["rosterHash"]
+        ):
             raise AppException(
                 "APPROVAL_VERSION_CONFLICT",
-                "该业务已冻结另一版正式名单，禁止静默换版；请撤销或退回后重建",
+                "该业务已冻结其它教学班名单版本，禁止静默切换",
                 details={
-                    "consumerType": kind,
-                    "consumerId": str(consumer_id),
-                    "frozenRosterVersionId": str(existing.roster_version_id or ""),
-                    "currentRosterVersionId": payload["rosterVersionId"],
+                    "existing": {
+                        "teachingTaskId": str(existing.teaching_task_id),
+                        "teachingClassId": str(existing.teaching_class_id),
+                        "rosterVersionId": str(existing.roster_version_id),
+                        "rosterHash": existing.roster_hash,
+                    },
+                    "requested": payload,
                 },
                 http_status=409,
             )
-        return {"snapshotId": str(existing.id), **payload, "created": False}
+        return {**payload, "snapshotId": str(existing.id), "created": False}
 
-    row = AaRosterConsumerSnapshot(
+    snapshot = AaRosterConsumerSnapshot(
         tenant_id=_tid(), consumer_type=kind, consumer_id=int(consumer_id),
         teaching_task_id=int(teaching_task_id),
-        teaching_class_id=int(payload["teachingClassId"]),
-        roster_version_id=int(payload["rosterVersionId"]),
-        roster_version_no=payload["rosterVersionNo"],
-        roster_source=payload["rosterSource"], roster_hash=payload["rosterHash"],
-        member_count=payload["memberCount"],
-        student_ids_json=json.dumps(payload["studentIds"], ensure_ascii=False, separators=(",", ":")),
-        captured_at=datetime.utcnow(), captured_by=_operator(), status="ACTIVE",
+        teaching_class_id=int(resolved["teachingClassId"]),
+        roster_version_id=int(resolved["rosterVersionId"]),
+        roster_version_no=int(resolved["rosterVersionNo"]),
+        roster_hash=resolved["rosterHash"], member_count=int(resolved["memberCount"]),
+        source_type=resolved.get("source") or "UNKNOWN",
+        snapshot_json=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        frozen_at=datetime.utcnow(), frozen_by=_operator(), status="FROZEN",
     )
-    db.add(row)
+    db.add(snapshot)
     db.flush()
-    return {"snapshotId": str(row.id), **payload, "created": True}
+    return {**payload, "snapshotId": str(snapshot.id), "created": True}
 
 
 def get_consumer_snapshot(db, consumer_type: str, consumer_id: int) -> dict | None:
@@ -149,78 +149,18 @@ def get_consumer_snapshot(db, consumer_type: str, consumer_id: int) -> dict | No
 
     row = db.query(AaRosterConsumerSnapshot).filter(
         AaRosterConsumerSnapshot.tenant_id == _tid(),
-        AaRosterConsumerSnapshot.consumer_type == str(consumer_type or "").upper(),
+        AaRosterConsumerSnapshot.consumer_type == str(consumer_type or "").strip().upper(),
         AaRosterConsumerSnapshot.consumer_id == int(consumer_id),
-        AaRosterConsumerSnapshot.status == "ACTIVE",
         AaRosterConsumerSnapshot.is_deleted.is_(False),
     ).first()
     if not row:
         return None
-    try:
-        student_ids = _ids(json.loads(row.student_ids_json or "[]"))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        student_ids = []
     return {
-        "snapshotId": str(row.id),
-        "consumerType": row.consumer_type,
-        "consumerId": str(row.consumer_id),
-        "teachingTaskId": str(row.teaching_task_id),
-        "teachingClassId": str(row.teaching_class_id or ""),
-        "rosterVersionId": str(row.roster_version_id or ""),
-        "rosterVersionNo": int(row.roster_version_no or 0),
-        "rosterSource": row.roster_source,
-        "rosterHash": row.roster_hash,
-        "memberCount": int(row.member_count or 0),
-        "studentIds": student_ids,
-        "capturedAt": row.captured_at.isoformat() if row.captured_at else None,
+        "snapshotId": str(row.id), "consumerType": row.consumer_type,
+        "consumerId": str(row.consumer_id), "teachingTaskId": str(row.teaching_task_id),
+        "teachingClassId": str(row.teaching_class_id),
+        "rosterVersionId": str(row.roster_version_id),
+        "rosterVersionNo": int(row.roster_version_no),
+        "rosterHash": row.roster_hash, "memberCount": int(row.member_count),
+        "sourceType": row.source_type, "status": row.status,
     }
-
-
-def require_consumer_snapshot_current(db, consumer_type: str, consumer_id: int,
-                                      teaching_task_id: int) -> tuple[dict, dict]:
-    """业务继续写入前，确认冻结版本仍是教学班当前版本。"""
-    snapshot = get_consumer_snapshot(db, consumer_type, consumer_id)
-    if not snapshot:
-        raise AppException(
-            "DATA_CONFLICT",
-            "该业务尚未冻结正式名单版本，请退回上一节点重新确认",
-            details={"consumerType": consumer_type, "consumerId": str(consumer_id)},
-            http_status=409,
-        )
-    current = resolve_versioned_roster(db, int(teaching_task_id))
-    if (
-        str(snapshot["rosterVersionId"]) != str(current["rosterVersionId"])
-        or snapshot["rosterHash"] != current["rosterHash"]
-    ):
-        raise AppException(
-            "APPROVAL_VERSION_CONFLICT",
-            "正式名单已换版，当前业务仍引用旧版本；请退回重建名单相关数据",
-            details={
-                "consumerType": consumer_type,
-                "consumerId": str(consumer_id),
-                "frozenRosterVersionId": snapshot["rosterVersionId"],
-                "currentRosterVersionId": str(current["rosterVersionId"]),
-                "frozenMemberCount": snapshot["memberCount"],
-                "currentMemberCount": current["memberCount"],
-            },
-            http_status=409,
-        )
-    return snapshot, current
-
-
-def consumer_counts(db, teaching_class_id: int, roster_version_id: int | None = None) -> dict:
-    from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot
-
-    query = db.query(AaRosterConsumerSnapshot).filter(
-        AaRosterConsumerSnapshot.tenant_id == _tid(),
-        AaRosterConsumerSnapshot.teaching_class_id == int(teaching_class_id),
-        AaRosterConsumerSnapshot.status == "ACTIVE",
-        AaRosterConsumerSnapshot.is_deleted.is_(False),
-    )
-    if roster_version_id:
-        query = query.filter(AaRosterConsumerSnapshot.roster_version_id == int(roster_version_id))
-    rows = query.all()
-    counts = {kind: 0 for kind in _ALLOWED_CONSUMERS}
-    for row in rows:
-        counts[row.consumer_type] = counts.get(row.consumer_type, 0) + 1
-    return counts
