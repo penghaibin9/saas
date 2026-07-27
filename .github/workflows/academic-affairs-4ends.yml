@@ -1,27 +1,6 @@
 name: 教务四端专项验证
 
 on:
-  pull_request:
-    branches: [main, master]
-    paths:
-      - 'backend/alembic/versions/**'
-      - 'backend/app/models/academic_affairs_teaching_class.py'
-      - 'backend/app/models/academic_affairs_roster_consumer.py'
-      - 'backend/app/models/academic_affairs_r10.py'
-      - 'backend/app/models/__init__.py'
-      - 'backend/app/api/v1/route_registration.py'
-      - 'backend/app/modules/academic_affairs/**'
-      - 'backend/app/core/security.py'
-      - 'backend/tests/test_aa_*.py'
-      - 'backend/tests/test_security_student_identity.py'
-      - 'frontend/src/modules/academicAffairs/**'
-      - 'frontend/src/config/adminMenu.js'
-      - 'student-portal/**'
-      - 'miniapp/src/pages/student/academic-affairs/**'
-      - 'miniapp/src/pages/teacher/academic-affairs/**'
-      - 'miniapp/src/pages/teacher/my-schedule/**'
-      - 'miniapp/src/services/**'
-      - '.github/workflows/academic-affairs-4ends.yml'
   workflow_dispatch:
 
 permissions:
