@@ -20,7 +20,7 @@ from . import academic_affairs_evaluation_term_facade as academic_affairs_evalua
 from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
 # V2-04：正式成绩冻结courseId/课程版本/修读次数/教学班名单版本。
 from . import academic_affairs_grade_identity_facade as academic_affairs_grade_service
-from . import academic_affairs_makeup_identity_facade as academic_affairs_makeup_service
+from . import academic_affairs_makeup_grade_identity_facade as academic_affairs_makeup_service
 from . import academic_affairs_program_quality_facade as academic_affairs_program_service
 from . import academic_affairs_program_quality_complete_service as academic_affairs_program_quality_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
