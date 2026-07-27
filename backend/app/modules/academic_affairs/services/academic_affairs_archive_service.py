@@ -1,7 +1,7 @@
 """教务归档唯一公开 Service。
 
 - 归档批次、确认封存、解冻、导出和审计复用 ``academic_affairs_archive_core_service``；
-- 十三域语义规则只由 ``academic_affairs_archive_domain_policy`` 编排；
+- 十三域语义规则只由纯策略模块编排；
 - 不修改其它模块函数，不依赖 Facade 导入顺序，不建立第二套归档事实。
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ from app.services.db_service import _tid
 
 from . import academic_affairs_archive_core_service as _core
 from . import academic_affairs_archive_domain_policy as _policy
+from . import academic_affairs_archive_operational_policy as _operational
 
 _DOMAINS = list(_policy.DOMAINS)
 _ROUTE = dict(_policy.ROUTES)
@@ -23,8 +24,44 @@ def __getattr__(name):
     return getattr(_core, name)
 
 
+def _merge_blocking_result(code: str, base: dict, extra: dict, *, rule_code: str) -> dict:
+    left = _public_result(code, base)
+    right = _public_result(code, extra)
+    if right["result"] == "PASS":
+        left["evidence"] = [
+            *left["evidence"],
+            {"type": rule_code, "result": "PASS", "summary": right["summary"]},
+        ]
+        return left
+    left["present"] = False
+    left["result"] = "BLOCKED"
+    left["ruleCode"] = rule_code
+    left["blockingCount"] = int(left["blockingCount"] or 0) + max(1, int(right["blockingCount"] or 0))
+    left["summary"] = "；".join(value for value in (left["summary"], right["summary"]) if value)
+    left["remark"] = left["summary"]
+    left["route"] = right["route"] or left["route"]
+    left["evidence"] = [
+        *left["evidence"],
+        {"type": rule_code, "result": "BLOCKED", "summary": right["summary"]},
+        *right["evidence"],
+    ]
+    return left
+
+
 def _evaluate_domains(db, term_id, term_code, college_ids=None):
-    return _policy.evaluate_domains(db, term_id, term_code, college_ids)
+    results = _policy.evaluate_domains(db, term_id, term_code, college_ids)
+    schedule_operational = _operational.evaluate_schedule(db, term_id, college_ids)
+    results["SCHEDULE"] = _merge_blocking_result(
+        "SCHEDULE",
+        results["SCHEDULE"],
+        schedule_operational,
+        rule_code="SCHEDULE_OPERATIONAL_CLOSURE",
+    )
+    results["EXAM"] = _public_result(
+        "EXAM",
+        _operational.evaluate_exam(db, term_id),
+    )
+    return results
 
 
 def _public_result(code: str, result: dict) -> dict:
