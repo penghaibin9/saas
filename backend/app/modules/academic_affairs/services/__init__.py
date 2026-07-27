@@ -1,13 +1,15 @@
 """教务中心服务包。
 
-本包不在导入阶段替换模块、不执行 monkey patch，也不依赖导入顺序安装业务规则。
-调用方必须显式导入所需 Service；兼容逻辑应合并回对应原 Service 或由其显式调用纯策略/校验器。
+本包集中声明各业务域的正式公开入口。兼容模块只保留历史导入路径，Router 不得自行选择
+旧实现或依赖导入顺序抢占函数。
 """
 
-# 各域最终公开入口。均为普通模块别名，不改写其它模块函数对象。
+# 各域最终公开入口。
 from . import academic_affairs_dashboard_scope_facade as academic_affairs_service
+from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
 from . import academic_affairs_stats_public_service as academic_affairs_stats_service
+from . import academic_affairs_evaluation_term_facade as academic_affairs_evaluation_service
 from . import academic_affairs_selection_final_service as academic_affairs_selection_service
 from . import academic_affairs_scheduling_public_service as academic_affairs_scheduling_service
 from . import academic_affairs_autoschedule_final_service as academic_affairs_autoschedule_service
