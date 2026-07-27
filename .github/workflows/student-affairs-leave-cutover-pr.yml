@@ -29,9 +29,12 @@ jobs:
         shell: bash
         run: |
           set +e
-          python scripts/maintenance/student_affairs_leave_cutover_followup.py 2>&1 | tee leave-cutover.log
+          {
+            python scripts/maintenance/student_affairs_leave_cutover_followup.py
+            python scripts/maintenance/repair_affairs_leave_tests.py
+          } 2>&1 | tee leave-cutover.log
           status=${PIPESTATUS[0]}
-          tail -n 160 leave-cutover.log
+          tail -n 200 leave-cutover.log
           exit "$status"
       - uses: actions/upload-artifact@v4
         if: always()
