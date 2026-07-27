@@ -57,15 +57,18 @@ export default {
       studentApi.getGraduationTaskbook().then((d) => {
         this.t = d
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+      }).catch((e) => {
+        this.state = 'error'
+        toast(normalizeError(e).text || '任务书加载失败')
+      })
     },
     confirm() {
-      if (this.submitting) return
+      if (this.submitting || !this.t || !this.t.taskbookVersion) return
       this.submitting = true
-      studentApi.confirmGraduationTaskbook().then(() => {
+      studentApi.confirmGraduationTaskbook(this.t.taskbookVersion).then(() => {
         uni.showToast({ title: '已确认', icon: 'success' })
         this.load()
-      }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '确认失败，请稍后重试'))
+      }).catch((e) => toast(normalizeError(e).text || '确认失败，请稍后重试'))
         .finally(() => { this.submitting = false })
     }
   }

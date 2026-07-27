@@ -2,6 +2,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_TASKBOOK = "/api/v1/graduation/gd-taskbooks"
 GD_MENTOR = "/api/v1/graduation/gd-mentors"
 GD_ASSIGN = "/api/v1/graduation/gd-mentor-assignments"
@@ -12,7 +14,7 @@ STU = "/api/v1/students"
 
 def _gd_student_with_mentor(client, h, no, name, mentor_no):
     """建档 + 分配导师（不涉及选题，stage 保持 TOPIC_SELECTING）。"""
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     mid = client.post(GD_MENTOR, headers=h, json={"teacherNo": mentor_no, "teacherName": f"导师{mentor_no}"}).json()["data"]["id"]
     client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})
@@ -34,7 +36,7 @@ def _gd_student_with_topic_and_mentor(client, h, no, name, mentor_no):
 
 def test_issue_requires_mentor_and_no_duplicate(client, auth_headers, db_mode):
     h = auth_headers
-    sid = client.post(STU, headers=h, json={"studentNo": "TB001", "realName": "无导师生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "TB001", "realName": "无导师生", "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
     no_mentor = client.post(f"{GD_TASKBOOK}/{gid}/issue", headers=h, json={"objective": "完成毕设选题相关设计", "content": "系统设计与实现"})

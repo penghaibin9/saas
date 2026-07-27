@@ -4,6 +4,8 @@
 全部走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 STU = "/api/v1/students"
@@ -29,7 +31,7 @@ def _teacher_token(real_name):
 
 
 def _gd_student_with_topic(client, h, no, name, advisor="成果张老师"):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
@@ -120,7 +122,8 @@ def test_final_review_reject_needs_reason(client, auth_headers, db_mode):
     name = "成果退回生"
     _gd_student_with_topic(client, h, "FN002", name, advisor="成果李老师")
     sh = _stu_token(name)
-    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    fid = _upload(client, sh)
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [fid]})
     finals = client.get(f"{MOBILE}/teacher/graduation", headers=h).json()["data"]["finalDetail"]
     fdid = next(f["id"] for f in finals if f["studentName"] == name)
     # 退回不填原因 → 校验失败

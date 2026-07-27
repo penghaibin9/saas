@@ -20,6 +20,7 @@ from app.models import orientation as _orientation  # noqa: F401
 from app.models import campus_service as _campus_service  # noqa: F401
 from app.models import academic as _academic  # noqa: F401
 from app.models import graduation as _graduation  # noqa: F401
+from app.models import graduation_extension as _graduation_extension  # noqa: F401
 from app.models import employment as _employment  # noqa: F401
 from app.models import message as _message  # noqa: F401
 from app.models import portal as _portal  # noqa: F401

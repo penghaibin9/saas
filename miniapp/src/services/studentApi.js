@@ -96,7 +96,11 @@ export const studentApi = {
   getGraduationFinal: () => real.gdFinal(),
   submitGraduationFinal: (body) => real.gdSubmitFinal(body),
   getGraduationTaskbook: () => real.gdTaskbook(),
-  confirmGraduationTaskbook: () => real.gdTaskbookConfirm(),
+  // 必须携带页面实际展示的版本；后端据此拒绝过期页面确认新版本任务书。
+  confirmGraduationTaskbook: (taskbookVersion) =>
+    realRequest('/mobile/graduation/taskbook/confirm', {
+      method: 'POST', data: { taskbookVersion }
+    }),
   getGraduationMidterm: () => real.gdMidterm(),
   submitGraduationMidtermRectify: (content) => real.gdMidtermRectify(content),
   getGraduationDefense: () => real.gdDefense(),

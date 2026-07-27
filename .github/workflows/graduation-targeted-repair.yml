@@ -1,0 +1,210 @@
+name: Graduation Targeted Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-targeted-validation
+  cancel-in-progress: true
+
+jobs:
+  graduation-validation:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/graduation-p0-cross-client-latest-20260726'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_migration?charset=utf8mb4
+      PYTHONUNBUFFERED: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=18
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 校验 PC 成绩复核契约
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue").read_text(encoding="utf-8")
+          assert "grade.status === 'REVIEWED'" in text
+          assert "grade.status === 'CALCULATED' && grade.reviewedAt" not in text
+          assert "{ value: 'REVIEWED', label: '已复核' }" in text
+          PY
+          git diff --check
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: 安装后端依赖
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: 创建迁移测试库
+        run: |
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host="127.0.0.1", port=3306, user="root", password="root", autocommit=True)
+          with conn.cursor() as cur:
+              cur.execute("CREATE DATABASE IF NOT EXISTS student_lifecycle_migration CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+          conn.close()
+          PY
+
+      - name: Alembic 单头与 MySQL 升级
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          exec > >(tee /tmp/alembic-validation.log) 2>&1
+          alembic heads | tee /tmp/alembic-heads.txt
+          HEAD_COUNT=$(grep -c '(head)' /tmp/alembic-heads.txt || true)
+          if [ "$HEAD_COUNT" -ne 1 ]; then
+            echo "预期只有一个 Alembic head，实际 $HEAD_COUNT"
+            exit 1
+          fi
+          alembic upgrade head
+          alembic current
+
+      - name: 上传 Alembic 诊断日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-alembic-log
+          path: /tmp/alembic-validation.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: MySQL 毕设核心行锁并发验证
+        run: |
+          python - <<'PY'
+          import threading
+          import time
+          import pymysql
+
+          def connect():
+              return pymysql.connect(
+                  host="127.0.0.1", port=3306, user="root", password="root",
+                  database="student_lifecycle_migration", autocommit=False, charset="utf8mb4",
+              )
+
+          seed = connect()
+          with seed.cursor() as cur:
+              cur.execute(
+                  """INSERT INTO t_gd_batch
+                  (tenant_id,batch_name,batch_no,planned_count,status,archive_status,created_at,updated_at,is_deleted,version)
+                  VALUES (900001,'并发验证批次','LOCK-SMOKE-001',1,'RUNNING','NOT_ARCHIVED',NOW(),NOW(),0,0)"""
+              )
+              batch_id = cur.lastrowid
+              cur.execute(
+                  """INSERT INTO t_gd_student
+                  (tenant_id,batch_id,student_no,name,stage,risk_level,eligibility_status,grad_qual_status,record_status,
+                   created_at,updated_at,is_deleted,version)
+                  VALUES (900001,%s,'LOCK-STU-001','并发验证学生','TASKBOOK_CONFIRM','NONE','QUALIFIED','UNKNOWN','ACTIVE',NOW(),NOW(),0,0)""",
+                  (batch_id,),
+              )
+              student_id = cur.lastrowid
+          seed.commit()
+          seed.close()
+
+          first = connect()
+          with first.cursor() as cur:
+              cur.execute("SELECT id FROM t_gd_student WHERE id=%s AND tenant_id=900001 FOR UPDATE", (student_id,))
+              assert cur.fetchone()[0] == student_id
+
+          result = {"done": False, "error": None, "elapsed": 0.0}
+          started = threading.Event()
+
+          def concurrent_update():
+              second = connect()
+              try:
+                  with second.cursor() as cur:
+                      started.set()
+                      t0 = time.monotonic()
+                      cur.execute(
+                          "UPDATE t_gd_student SET version=version+1, updated_at=NOW() WHERE id=%s AND tenant_id=900001",
+                          (student_id,),
+                      )
+                      second.commit()
+                      result["elapsed"] = time.monotonic() - t0
+                      result["done"] = True
+              except Exception as exc:
+                  second.rollback()
+                  result["error"] = repr(exc)
+              finally:
+                  second.close()
+
+          thread = threading.Thread(target=concurrent_update, daemon=True)
+          thread.start()
+          assert started.wait(3), "并发事务未启动"
+          time.sleep(1.0)
+          assert thread.is_alive(), "第二事务未被毕业设计学生行锁阻塞"
+          first.commit()
+          first.close()
+          thread.join(8)
+          assert not thread.is_alive(), "释放锁后第二事务仍未结束"
+          assert result["error"] is None, result["error"]
+          assert result["done"] and result["elapsed"] >= 0.9, result
+
+          verify = connect()
+          with verify.cursor() as cur:
+              cur.execute("SELECT version FROM t_gd_student WHERE id=%s AND tenant_id=900001", (student_id,))
+              assert cur.fetchone()[0] == 1
+          verify.close()
+          print(f"MySQL row-lock concurrency passed: blocked {result['elapsed']:.2f}s")
+          PY
+
+      - name: Graduation 定向 pytest
+        working-directory: backend
+        run: timeout 35m pytest tests/test_graduation*.py -q -p no:warnings --durations=30
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: PC 管理端 lint 与 build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: 学生 PC 门户 lint 与 build
+        working-directory: student-portal
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: 微信小程序双目标 build
+        working-directory: miniapp
+        env:
+          VITE_USE_MOCK: "false"
+          VITE_API_BASE_URL: "https://example.invalid"
+        run: |
+          npm ci
+          npm run build:h5
+          npm run build:mp-weixin

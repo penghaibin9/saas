@@ -1,6 +1,8 @@
 """毕业设计中心 · 选题轮次/志愿测试。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_ROUND = "/api/v1/graduation/gd-topic-rounds"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 GD_BATCH = "/api/v1/graduation/batches"
@@ -24,7 +26,7 @@ def _approved_topic(client, h, title="轮次测试题", capacity=2):
 
 
 def _gd_student(client, h, no="S-GD-RND-01"):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": "轮次测"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": "轮次测", "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "QUALIFIED", "reason": "E2E测试认定合格",

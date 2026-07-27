@@ -30,7 +30,7 @@ def test_pending_defense_count_reflects_new_group(client, auth_headers, db_mode)
     }).json()["data"]["id"]
     before = _todo(client.get(DASH, headers=h, params={"batchId": bid}).json()["data"], "t4")["count"]
 
-    client.post(DG, headers=h, json={"groupName": "看板答辩组", "batchId": bid, "chair": "组长", "location": "L1",
+    client.post(DG, headers=h, params={"batchId": bid}, json={"groupName": "看板答辩组", "batchId": bid, "chair": "组长", "location": "L1",
                                      "members": ["评委1"], "secretary": "秘书"})
 
     after = _todo(client.get(DASH, headers=h, params={"batchId": bid}).json()["data"], "t4")["count"]
