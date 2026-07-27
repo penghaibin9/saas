@@ -1,4 +1,5 @@
 """教材学期写保护、库存容量、异常关闭和第13归档域回归。"""
+from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -71,16 +72,14 @@ def test_textbook_input_helpers_dedupe_ids_and_reject_zero_quantity():
 
 
 def test_distribution_capacity_counts_only_active_allocations():
-    from app.modules.academic_affairs.services.academic_affairs_textbook_roster_facade import (
+    from app.modules.academic_affairs.services.academic_affairs_textbook_final_facade import (
         _ACTIVE_ALLOCATION_STATUSES,
         _distribution_shortage,
     )
 
     assert set(_ACTIVE_ALLOCATION_STATUSES) == {"PENDING", "RECEIVED", "EXCHANGED"}
-    # 到货30，已有20条有效占用，再发10人刚好；退领/排除不进入allocated。
     assert _distribution_shortage(arrived=30, allocated=20, requested=10) == 0
     assert _distribution_shortage(arrived=30, allocated=20, requested=11) == 1
-    # 历史脏数据已超占时，可用量按0处理，禁止继续发放。
     assert _distribution_shortage(arrived=5, allocated=8, requested=2) == 2
 
 
@@ -108,27 +107,34 @@ def test_textbook_model_term_chain_matches_current_schema():
     assert {"class_name", "class_status"} <= class_fields
 
 
-def test_public_textbook_and_archive_services_point_to_final_layers():
+def test_public_textbook_service_exposes_one_lifecycle_contract_without_patch_layers():
     from app.modules.academic_affairs import services
 
-    archive = services.academic_affairs_archive_service
     textbook = services.academic_affairs_textbook_service
+    assert textbook.__name__.endswith("academic_affairs_textbook_final_facade")
+    for name in (
+        "create_selection", "submit_selection", "withdraw_selection",
+        "create_review_batch", "review_batch_advance",
+        "create_order_batch", "submit_order", "record_arrival", "archive_order_batch",
+        "cancel_order_batch", "generate_distribution", "sign_receipt", "sign_receipt_my",
+        "return_distribution", "mark_fee", "textbook_stock",
+    ):
+        assert callable(getattr(textbook, name))
 
-    assert archive.__name__.endswith("academic_affairs_archive_textbook_facade")
-    domain_codes = [code for code, _label in archive._legacy._DOMAINS]
-    assert {"SELECTION", "MAKEUP", "EVALUATION", "TEXTBOOK"} <= set(domain_codes)
-    assert archive._archive_executor._evaluate_domains is archive._evaluate_domains
+    root = Path(__file__).resolve().parents[1]
+    for filename in (
+        "academic_affairs_textbook_final_facade.py",
+        "academic_affairs_textbook_term_facade.py",
+        "academic_affairs_textbook_roster_facade.py",
+        "academic_affairs_textbook_lock_facade.py",
+        "academic_affairs_textbook_order_guard_facade.py",
+    ):
+        source = (root / "app/modules/academic_affairs/services" / filename).read_text(encoding="utf-8")
+        assert "setattr(" not in source
+        assert "sys.modules" not in source
+        assert "_legacy.create_" not in source
+        assert "_legacy.generate_distribution =" not in source
+        assert "_legacy.mark_fee =" not in source
 
-    assert textbook.__name__.endswith("academic_affairs_textbook_lock_facade")
-    assert textbook.generate_distribution.__module__.endswith("academic_affairs_textbook_roster_facade")
-    assert textbook.mark_fee.__module__.endswith("academic_affairs_textbook_roster_facade")
-    assert textbook.create_order_batch.__module__.endswith("academic_affairs_textbook_final_facade")
-    assert textbook.record_arrival.__module__.endswith("academic_affairs_textbook_final_facade")
-    assert textbook.cancel_order_batch.__module__.endswith("academic_affairs_textbook_term_facade")
-    assert textbook.return_distribution.__module__.endswith("academic_affairs_textbook_final_facade")
-    assert textbook._legacy._apply_receipt.__module__.endswith("academic_affairs_textbook_final_facade")
-    assert textbook._term_layer._distribution_chain.__module__.endswith("academic_affairs_textbook_lock_facade")
-    assert textbook._term_layer._fee_chain.__module__.endswith("academic_affairs_textbook_lock_facade")
-    # 教材目录是跨学期主数据，仍由原服务维护，不应被学期写保护包装。
-    assert textbook.create_textbook.__module__.endswith("academic_affairs_textbook_service")
-    assert textbook.update_textbook.__module__.endswith("academic_affairs_textbook_service")
+    assert textbook.create_textbook is textbook._legacy.create_textbook
+    assert textbook.update_textbook is textbook._legacy.update_textbook
