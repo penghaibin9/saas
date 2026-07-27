@@ -24,6 +24,17 @@ _canonical = importlib.import_module(
     package=__package__,
 )
 
+# 显式保留常用测试/兼容注入点；公开实现自身只读取这些本地引用。
+session = _canonical.session
+_tid = _canonical._tid
+_audit = _canonical._audit
+_role = _canonical._role
+_teacher_keys = _canonical._teacher_keys
+_primary_teacher_key = _canonical._primary_teacher_key
+_row = _canonical._row
+_ADMIN_ROLES = _canonical._ADMIN_ROLES
+_ATTENDANCE_TASK_STATUSES = _canonical._ATTENDANCE_TASK_STATUSES
+
 
 def __getattr__(name):
     return getattr(_canonical, name)
@@ -35,16 +46,16 @@ def create_session(user, body) -> dict:
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
 
     body = body or {}
-    role = _canonical._role(user)
+    role = _role(user)
     task_id = body.get("teachingTaskId")
     session_date = str(body.get("sessionDate") or "").strip()
     if not session_date:
         raise AppException("VALIDATION_ERROR", "考勤日期必填")
     slot_no = body.get("slotNo")
 
-    with _canonical.session() as db:
+    with session() as db:
         current_term = db.scalars(select(AaTerm).where(
-            AaTerm.tenant_id == _canonical._tid(),
+            AaTerm.tenant_id == _tid(),
             AaTerm.is_current.is_(True),
             AaTerm.is_deleted.is_(False),
         )).first()
@@ -58,20 +69,20 @@ def create_session(user, body) -> dict:
         roster_source = "ADMIN_MANUAL"
         if task_id:
             task = db.get(AaTeachingTask, int(task_id))
-            if not task or task.is_deleted or task.tenant_id != _canonical._tid():
+            if not task or task.is_deleted or task.tenant_id != _tid():
                 raise not_found("教学任务不存在")
-            if str(task.status or "").upper() not in _canonical._ATTENDANCE_TASK_STATUSES:
+            if str(task.status or "").upper() not in _ATTENDANCE_TASK_STATUSES:
                 raise AppException("DATA_CONFLICT", "教学任务须经教师确认并进入可执行状态后才能用于课堂考勤")
             batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
-            if not batch or batch.is_deleted or batch.tenant_id != _canonical._tid():
+            if not batch or batch.is_deleted or batch.tenant_id != _tid():
                 raise not_found("教学任务批次不存在")
             if int(batch.term_id or 0) != int(current_term.id):
                 raise AppException("DATA_CONFLICT", "只能为当前学期教学任务创建考勤")
-            if role not in _canonical._ADMIN_ROLES:
-                keys = _canonical._teacher_keys(user)
+            if role not in _ADMIN_ROLES:
+                keys = _teacher_keys(user)
                 if not keys or not task.teacher_key or task.teacher_key not in keys:
                     raise AppException("NO_DATA_SCOPE", "该教学任务不属于当前教师", http_status=403)
-        elif role not in _canonical._ADMIN_ROLES:
+        elif role not in _ADMIN_ROLES:
             raise AppException("VALIDATION_ERROR", "请选择当前学期本人教学任务后再点名")
 
         class_id = int(task.class_id) if task and task.class_id else int(body.get("classId") or 0)
@@ -97,7 +108,7 @@ def create_session(user, body) -> dict:
             if not class_id:
                 raise AppException("VALIDATION_ERROR", "请选择行政班或教学任务")
             students = db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == _canonical._tid(),
+                StudentProfile.tenant_id == _tid(),
                 StudentProfile.class_id == class_id,
                 StudentProfile.is_deleted.is_(False),
             )).all()
@@ -112,13 +123,13 @@ def create_session(user, body) -> dict:
             raise not_found("该教学任务暂无可用学生名单")
         teacher_key = (
             task.teacher_key if task else
-            str(body.get("teacherKey") or "").strip() or _canonical._primary_teacher_key(user)
+            str(body.get("teacherKey") or "").strip() or _primary_teacher_key(user)
         )
         if not teacher_key:
             raise AppException("VALIDATION_ERROR", "无法确定考勤场次教师工号")
 
         item = AaAttendanceSession(
-            tenant_id=_canonical._tid(),
+            tenant_id=_tid(),
             class_id=class_id,
             course_name=(task.course_name if task else str(body.get("courseName") or "").strip() or None),
             term_code=f"{current_term.year_code}-{current_term.term_no}",
@@ -142,7 +153,7 @@ def create_session(user, body) -> dict:
                 int(task.id),
                 roster=official,
             )
-        _canonical._audit(
+        _audit(
             db,
             item.id,
             "CREATE",
@@ -153,7 +164,7 @@ def create_session(user, body) -> dict:
         )
         db.commit()
         db.refresh(item)
-        result = _canonical._row(item)
+        result = _row(item)
         result["teachingTaskId"] = str(task.id) if task else None
         result["rosterIdentity"] = roster_identity
         return result
@@ -161,7 +172,7 @@ def create_session(user, body) -> dict:
 
 def get_session(session_id, user) -> dict:
     result = _canonical.get_session(session_id, user)
-    with _canonical.session() as db:
+    with session() as db:
         result["rosterIdentity"] = get_consumer_snapshot(
             db,
             "ATTENDANCE_SESSION",
