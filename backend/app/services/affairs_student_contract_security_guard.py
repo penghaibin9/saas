@@ -3,7 +3,8 @@
 - 学生时间线不透出内部审计 detail/before/after 原文；
 - 没有显式可见性列的附件仅返回学生本人上传的元数据；
 - 处分申请始终以案件 ID 为稳定标识；
-- 调宿退回没有真实编辑重提接口时不返回假动作。
+- 调宿退回没有真实编辑重提接口时不返回假动作；
+- 历史消息动作键统一转换为四端标准键。
 """
 from __future__ import annotations
 
@@ -26,6 +27,19 @@ _SAFE_ACTION_LABELS = {
     "REJECT": "审批驳回",
     "RETURN": "退回修改",
     "CLOSE": "办理关闭",
+}
+_CANONICAL_MESSAGE_ACTIONS = {
+    "AFFAIRS_LEAVE", "AFFAIRS_AID", "AFFAIRS_FUNDING", "AFFAIRS_DISCIPLINE",
+    "AFFAIRS_DORM", "AFFAIRS_ACTIVITY", "AFFAIRS_APPLICATIONS",
+}
+_LEGACY_MESSAGE_ACTIONS = {
+    "student.leave.detail": "AFFAIRS_LEAVE",
+    "student.affairs.leave": "AFFAIRS_LEAVE",
+    "student.affairs.aid": "AFFAIRS_AID",
+    "student.affairs.funding": "AFFAIRS_FUNDING",
+    "student.affairs.discipline": "AFFAIRS_DISCIPLINE",
+    "student.affairs.dorm": "AFFAIRS_DORM",
+    "student.affairs.activity": "AFFAIRS_ACTIVITY",
 }
 
 
@@ -170,6 +184,45 @@ def _secure_application_view(original):
     return my_applications
 
 
+def _canonical_message_action(item: dict, contract) -> None:
+    current = str(item.get("actionKey") or "").strip()
+    if current in _CANONICAL_MESSAGE_ACTIONS:
+        return
+    canonical = _LEGACY_MESSAGE_ACTIONS.get(current)
+    biz_type = contract._biz(item.get("bizType") or "")
+    if not canonical:
+        canonical = contract._ACTION_KEY_BY_BIZ.get(biz_type)
+    if not canonical:
+        return
+    record_id = str(item.get("recordId") or (item.get("actionParams") or {}).get("recordId") or "")
+    params = dict(item.get("actionParams") or {})
+    params.setdefault("bizType", biz_type)
+    if record_id:
+        params.setdefault("recordId", record_id)
+    item["actionKey"] = canonical
+    item["actionParams"] = params
+
+
+def _secure_message_views(student, contract) -> None:
+    original_list = student.my_messages
+    original_detail = student.message_get
+
+    def my_messages(user):
+        data = original_list(user)
+        for item in data.get("list") or []:
+            if item.get("kind") == "UNIFIED_MESSAGE":
+                _canonical_message_action(item, contract)
+        return data
+
+    def message_get(user, message_id):
+        data = original_detail(user, message_id)
+        _canonical_message_action(data, contract)
+        return data
+
+    student.my_messages = my_messages
+    student.message_get = message_get
+
+
 def install() -> None:
     global _INSTALLED
     if _INSTALLED:
@@ -180,4 +233,5 @@ def install() -> None:
     contract._timeline = _secure_timeline
     contract._materials = _secure_materials
     student.my_applications = _secure_application_view(student.my_applications)
+    _secure_message_views(student, contract)
     _INSTALLED = True
