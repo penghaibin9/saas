@@ -16,7 +16,7 @@
           v-if="isAdminRole && !form.teachingTaskId"
           type="warning"
           title="管理员特殊补录"
-          description="必须选择正式学期和课程库具体版本并填写原因；课程名、学分和课程版本均由课程库带出。"
+          description="必须选择正式学期、课程库具体版本和明确行政班并填写原因；课程名、学分和课程版本均由课程库带出。"
         />
         <div class="aa-grid2">
           <label class="aa-field">
@@ -34,7 +34,7 @@
           </label>
           <label v-else class="aa-field"><span>学期</span><input :value="form.termCode" type="text" class="aa-input" disabled placeholder="由教学任务所属批次带出" /></label>
           <label class="aa-field"><span>学分</span><input v-model.number="form.credit" type="number" min="0" step="0.5" class="aa-input" disabled /></label>
-          <label class="aa-field"><span>班级</span><AppClassPicker v-model="form.classId" placeholder="由教学任务带出；特殊补录可选" :disabled="!!form.teachingTaskId" /></label>
+          <label class="aa-field"><span :class="{ req: isAdminRole && !form.teachingTaskId }">班级</span><AppClassPicker v-model="form.classId" placeholder="由教学任务带出；特殊补录必选" :disabled="!!form.teachingTaskId" /></label>
           <label class="aa-field"><span>平时占比%</span><input v-model.number="form.usualRatio" type="number" min="0" max="100" class="aa-input" /></label>
           <label class="aa-field"><span>期中占比%</span><input v-model.number="form.midtermRatio" type="number" min="0" max="100" class="aa-input" placeholder="0=不启用期中" /></label>
           <label class="aa-field"><span>期末占比%</span><input v-model.number="form.finalRatio" type="number" min="0" max="100" class="aa-input" /></label>
@@ -196,6 +196,7 @@ import {
 } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { gradeIdentityApi } from '@/modules/academicAffairs/api/grade-identity.api'
 import { academicAffairsR10Api } from '@/modules/academicAffairs/api/academic-affairs-r10.api'
 import { toast } from '@/utils/toast'
 
@@ -385,23 +386,27 @@ export default {
       if (!this.form.teachingTaskId) {
         if (!this.form.courseId) { toast.error('请选择课程库具体版本'); return }
         if (!this.form.termId) { toast.error('请选择正式学期'); return }
+        if (!this.form.classId) { toast.error('请选择明确行政班'); return }
         if ((this.form.adminSupplementReason || '').trim().length < 5) { toast.error('管理员特殊补录原因不少于5字'); return }
       }
       if (Number(this.form.usualRatio) + Number(this.form.midtermRatio) + Number(this.form.finalRatio) !== 100) {
         toast.error('平时+期中+期末占比之和须=100'); return
       }
       this.creating = true
-      const res = await academicAffairsApi.createGradeTask({
+      const payload = {
         teachingTaskId: this.form.teachingTaskId || undefined,
         courseId: this.form.teachingTaskId ? undefined : Number(this.form.courseId),
         courseName: this.form.teachingTaskId ? undefined : this.form.courseName,
         termId: this.form.teachingTaskId ? undefined : Number(this.form.termId),
-        classId: this.form.teachingTaskId || !this.form.classId ? undefined : Number(this.form.classId),
+        classId: this.form.teachingTaskId ? undefined : Number(this.form.classId),
         credit: this.form.teachingTaskId ? undefined : this.form.credit,
         usualRatio: Number(this.form.usualRatio), midtermRatio: Number(this.form.midtermRatio),
         finalRatio: Number(this.form.finalRatio), passLine: Number(this.form.passLine),
         adminSupplementReason: this.form.teachingTaskId ? undefined : this.form.adminSupplementReason.trim()
-      })
+      }
+      const res = this.form.teachingTaskId
+        ? await academicAffairsApi.createGradeTask(payload)
+        : await gradeIdentityApi.createGradeTask(payload)
       this.creating = false
       if (res.code === 0) { this.task = res.data; toast.success('任务已创建，开始录入'); this.loadTasks() }
       else toast.error(res.message || '创建失败')
