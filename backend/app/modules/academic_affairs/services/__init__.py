@@ -6,7 +6,7 @@
 
 # 各域最终公开入口。
 from . import academic_affairs_dashboard_scope_facade as academic_affairs_service
-from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
+from . import academic_affairs_archive_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
 from . import academic_affairs_stats_public_service as academic_affairs_stats_service
 from . import academic_affairs_evaluation_term_facade as academic_affairs_evaluation_service
