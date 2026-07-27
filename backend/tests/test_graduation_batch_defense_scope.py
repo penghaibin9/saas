@@ -1,8 +1,6 @@
 """第3批：答辩组 batch_id 隔离 + 学生同批唯一 + 跨批关系拒绝。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 import uuid
 
 from sqlalchemy import inspect
@@ -30,7 +28,7 @@ def _batch(client, h, name=None):
 
 def _student(client, h, no=None, name="生"):
     return client.post(STU, headers=h, json={
-        "studentNo": no or _uniq("S"), "realName": name, "classId": make_org_class(),
+        "studentNo": no or _uniq("S"), "realName": name,
     }).json()["data"]["id"]
 
 
@@ -48,7 +46,7 @@ def _group(client, h, bid, name=None, **extra):
         "secretary": "秘书",
     }
     body.update(extra)
-    return client.post(DG, headers=h, params={"batchId": bid}, json=body)
+    return client.post(DG, headers=h, json=body)
 
 
 def test_create_requires_batch_id(client, auth_headers, db_mode):
@@ -104,7 +102,7 @@ def test_cross_batch_assign_rejected(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    bad = client.post(f"{DG}/{gid}/assign", headers=h, params={"batchId": b1}, json={"studentIds": [sid]})
+    bad = client.post(f"{DG}/{gid}/assign", headers=h, json={"studentIds": [sid]})
     assert bad.json()["code"] != 0
     assert "批次" in (bad.json().get("message") or "")
 

@@ -5,8 +5,6 @@
 """
 from __future__ import annotations
 
-from conftest import make_org_class
-
 import uuid
 from datetime import datetime, timezone
 
@@ -42,7 +40,6 @@ def _student(client, h, no=None, name=None):
     sno = no or _uniq("S")
     r = client.post(STU, headers=h, json={
         "studentNo": sno, "realName": name or f"学生{sno[-4:]}",
-        "classId": make_org_class(),
     }).json()
     assert r["code"] == 0, r
     return r["data"]["id"]
@@ -234,11 +231,11 @@ def test_defense_list_export_same_batch(client, auth_headers, db_mode):
     g1 = _record(client, h, _student(client, h, name="答辩甲"), b1)
     g2 = _record(client, h, _student(client, h, name="答辩乙"), b2)
 
-    d1 = client.post(DG, headers=h, params={"batchId": b1}, json={
+    d1 = client.post(DG, headers=h, json={
         "groupName": _uniq("一组"), "batchId": b1, "chair": "组长A", "members": ["评委1"], "secretary": "秘书A",
     }).json()
     assert d1["code"] == 0, d1
-    d2 = client.post(DG, headers=h, params={"batchId": b2}, json={
+    d2 = client.post(DG, headers=h, json={
         "groupName": _uniq("二组"), "batchId": b2, "chair": "组长B", "members": ["评委2"], "secretary": "秘书B",
     }).json()
     assert d2["code"] == 0, d2

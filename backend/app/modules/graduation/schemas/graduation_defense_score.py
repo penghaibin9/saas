@@ -8,13 +8,21 @@ from pydantic import BaseModel, Field, model_validator
 
 class DefenseScoreEntryRequest(BaseModel):
     gdStudentId: str
-    judgeName: str = Field(..., min_length=1, max_length=100, description="评委姓名快照")
-    judgeMentorId: Optional[str] = Field(default=None, description="校内评委稳定导师ID")
-    expertId: Optional[str] = Field(default=None, description="校外专家稳定ID")
-    score: Optional[int] = Field(default=None, ge=0, le=100)
-    comment: Optional[str] = Field(default=None, max_length=2000)
+    judgeName: str = Field(..., min_length=1)
+    judgeMentorId: Optional[str] = None
+
+
+class DefenseAbsenceRequest(BaseModel):
+    gdStudentId: str
+    judgeName: str = Field(..., min_length=1, max_length=100)
+    judgeMentorId: Optional[str] = None
+    expertId: Optional[str] = None
+    absentReason: str = Field(..., min_length=2, max_length=500)
+    expertId: Optional[str] = None
+    score: Optional[int] = Field(None, ge=0, le=100)
+    comment: Optional[str] = None
     absent: bool = Field(default=False)
-    absentReason: Optional[str] = Field(default=None, max_length=500)
+    absentReason: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_attendance_score(self):
@@ -26,14 +34,6 @@ class DefenseScoreEntryRequest(BaseModel):
         elif self.score is None:
             raise ValueError("非缺席评委必须填写 score")
         return self
-
-
-class DefenseAbsenceRequest(BaseModel):
-    gdStudentId: str
-    judgeName: str = Field(..., min_length=1, max_length=100)
-    judgeMentorId: Optional[str] = None
-    expertId: Optional[str] = None
-    absentReason: str = Field(..., min_length=2, max_length=500)
 
 
 class SecondDefenseRequest(BaseModel):

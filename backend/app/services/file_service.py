@@ -374,7 +374,10 @@ def resolve_download(file_id: str, *, allow_graduation_material: bool = False, u
         if not row or not authorize_file_access(user, row, "download"):
             return None
         if (row.biz_type or "").upper() == "GRADUATION_MATERIAL" and not allow_graduation_material:
-            return None
+            if not has_permission(user, "graduationDesign.view") and not has_permission(user, "*"):
+                # 仍允许本人/已通过 authorize 的业务权限路径；此处仅额外拦截裸下载旁路
+                if not (row.owner_user_id and _actor_user_id(user) == row.owner_user_id):
+                    return None
         path = get_backend().fetch_local(row.file_key)
         if not path or not path.exists():
             return None

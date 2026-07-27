@@ -2,9 +2,6 @@
 
 Revision ID: 0138_intern_position_facts
 Revises: 0137_intern_role_closure
-
-兼容说明：0001 历史迁移会导入运行时当前 metadata，空库升级时这些列可能已提前
-创建，故先探测再加列（同 0103/0104/0105 约定）。
 """
 from alembic import op
 import sqlalchemy as sa
@@ -15,15 +12,7 @@ branch_labels = None
 depends_on = None
 
 
-def _column_names(table: str) -> set:
-    bind = op.get_bind()
-    if not sa.inspect(bind).has_table(table):
-        return set()
-    return {col["name"] for col in sa.inspect(bind).get_columns(table)}
-
-
 def upgrade():
-    existing = _column_names("t_internship_position")
     for name, col in (
         ("work_address", sa.String(300)),
         ("rest_days_per_week", sa.Float()),
@@ -31,8 +20,7 @@ def upgrade():
         ("rights_checked_at", sa.DateTime()),
         ("rights_rule_version", sa.String(64)),
     ):
-        if name not in existing:
-            op.add_column("t_internship_position", sa.Column(name, col, nullable=True))
+        op.add_column("t_internship_position", sa.Column(name, col, nullable=True))
     for name in (
         "night_shift", "overtime_allowed", "accommodation_provided",
         "meal_provided", "hazardous_flag",

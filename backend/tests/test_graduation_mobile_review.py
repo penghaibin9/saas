@@ -5,8 +5,6 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 STU = "/api/v1/students"
@@ -31,7 +29,7 @@ def _teacher_token(real_name):
 
 
 def _gd_student_with_topic(client, h, no, name, advisor="详情张老师"):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,

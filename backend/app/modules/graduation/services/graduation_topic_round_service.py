@@ -182,8 +182,7 @@ def list_choices(round_id, gd_student_id=None) -> list[dict]:
         _get_round(db, round_id)
         q = select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
-            GraduationTopicChoice.is_deleted.is_(False),
-            GraduationTopicChoice.status != "WITHDRAWN")
+            GraduationTopicChoice.is_deleted.is_(False))
         scope_ids = accessible_student_ids(db, _tid())
         q = q.where(GraduationTopicChoice.gd_student_id.in_(scope_ids or [-1]))
         if gd_student_id:
@@ -447,15 +446,14 @@ def withdraw_choices(round_id, gd_student_id) -> dict:
         chs = db.scalars(select(GraduationTopicChoice).where(
             GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
             GraduationTopicChoice.gd_student_id == int(gd_student_id),
-            GraduationTopicChoice.is_deleted.is_(False),
-            GraduationTopicChoice.status != "WITHDRAWN").with_for_update()).all()
+            GraduationTopicChoice.is_deleted.is_(False)).with_for_update()).all()
         if not chs:
             raise not_found("当前没有可退选的志愿")
         if any(c.status in ("CONFIRMED", "MATCHED") for c in chs):
             raise AppException("DATA_CONFLICT", "已被确认/匹配的选题不可自助退选，请走「课题变更」流程")
         for c in chs:
             c.status = "WITHDRAWN"
-            c.is_deleted = True
+            c.is_deleted = False
             c.submission_version = int(c.submission_version or 0) + 1
         _audit(db, round_id, "WITHDRAW_CHOICES", f"学生 {stu.name if stu else gd_student_id} 退选 {len(chs)} 个志愿")
         db.commit()
@@ -560,6 +558,7 @@ def export_rounds_xlsx(batch_id=None, status=None) -> dict:
     enforce_permission(get_current_user_ctx() or {}, "graduationDesign.topic.export")
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
+    from app.core.context import get_current_user_ctx
     from app.services import excel
     items, _ = list_rounds(1, 100000, batch_id=batch_id, status=status)
     user = get_current_user_ctx() or {}

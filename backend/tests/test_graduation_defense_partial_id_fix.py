@@ -1,8 +1,6 @@
 """答辩组部分 ID 回填修复：update 保留姓名快照；ID∪姓名双通道；confirm 兼容；stats 传 batchId。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 import uuid
 
 from app.core.context import set_current_user
@@ -44,7 +42,7 @@ def test_update_without_ids_preserves_name_snapshots(client, auth_headers, db_mo
     """编辑时未传 mentorId：保留原姓名快照，不清空。"""
     h = auth_headers
     bid = _batch(client, h)
-    created = client.post(DG, headers=h, params={"batchId": bid}, json={
+    created = client.post(DG, headers=h, json={
         "groupName": _uniq("名组"), "batchId": bid, "location": "C101",
         "chair": "历史主席", "secretary": "历史秘书", "members": ["历史评委甲", "历史评委乙"],
     }).json()
@@ -54,7 +52,7 @@ def test_update_without_ids_preserves_name_snapshots(client, auth_headers, db_mo
     assert created["data"]["secretary"] == "历史秘书"
 
     # 仅改地点 / 组名；不传 ID、不传姓名字段（或传 null ID）
-    updated = client.put(f"{DG}/{gid_}", headers=h, params={"batchId": bid}, json={
+    updated = client.put(f"{DG}/{gid_}", headers=h, json={
         "groupName": created["data"]["groupName"],
         "location": "C202",
         "chairMentorId": None,
@@ -67,22 +65,22 @@ def test_update_without_ids_preserves_name_snapshots(client, auth_headers, db_mo
     assert "历史评委甲" in names and "历史评委乙" in names
 
 
-def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(client, auth_headers, db_mode):
-    """组内部分席位有 ID、主席仅姓名：姓名只是快照，不产生授权关系。"""
+def test_partial_id_panel_name_only_chair_can_access(client, auth_headers, db_mode):
+    """组内部分席位有 ID、主席仅姓名：姓名主席可访问；不得冒充有 ID 席位。"""
     h = auth_headers
     bid = _batch(client, h)
     no_m = _uniq("TM")
     mid = _mentor(client, h, no_m, "有ID评委")
-    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
+    grp = client.post(DG, headers=h, json={
         "groupName": _uniq("混组"), "batchId": bid, "location": "D1",
         "chair": "仅姓名主席", "memberMentorIds": [int(mid)],
         "secretary": "秘书快照",
     }).json()["data"]
     assert grp["chair"] == "仅姓名主席"
     assert grp["chairMentorId"] in (None, "")
-    assert any(str(m.get("mentorId")) == str(mid) for m in grp.get("memberDetails", []))
+    assert any(str(m.get("mentorId")) == str(mid) for m in grp["members"])
 
-    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "混组生", "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "混组生"}).json()["data"]["id"]
     gsid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     try:
@@ -95,7 +93,7 @@ def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(client, a
             "currentRoleCode": "GD_DEFENSE_EXPERT", "userType": "TEACHER",
             "realName": "仅姓名主席", "loginName": _uniq("chair-no"), "tenantId": MAIN,
         })
-        assert can_access_student(db, stu) is False
+        assert can_access_student(db, stu) is True
 
         # 同名冒充有 ID 评委：无对应 mentor 工号 → 拒绝
         set_current_user({
@@ -115,17 +113,16 @@ def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(client, a
         db.close()
 
 
-def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(client, auth_headers, db_mode):
-    """部分席位有 ID 时：确认使用稳定导师 ID 评分行覆盖席位。"""
+def test_confirm_accepts_name_only_score_rows_on_partial_id_panel(client, auth_headers, db_mode):
+    """部分席位有 ID 时：历史仅姓名评分行仍可确认（name/id 任一齐）。"""
     h = auth_headers
     bid = _batch(client, h)
-    chair_mid = _mentor(client, h, _uniq("TC"), "姓名主席")
     mid = _mentor(client, h, _uniq("TJ"), "ID评委")
-    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
+    grp = client.post(DG, headers=h, json={
         "groupName": _uniq("确认组"), "batchId": bid,
-        "chairMentorId": int(chair_mid), "memberMentorIds": [int(mid)],
+        "chair": "姓名主席", "memberMentorIds": [int(mid)],
     }).json()["data"]
-    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "确认生", "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "确认生"}).json()["data"]["id"]
     gsid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
 
     db = get_sessionmaker()()
@@ -136,7 +133,7 @@ def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(client, auth_h
         db.add(GraduationDefenseScore(
             tenant_id=MAIN, gd_student_id=int(gsid), defense_group_id=int(grp["id"]),
             judge_name="姓名主席", score=88, round_no=1, status="SCORED",
-            judge_mentor_id=int(chair_mid),
+            judge_mentor_id=None,
         ))
         db.add(GraduationDefenseScore(
             tenant_id=MAIN, gd_student_id=int(gsid), defense_group_id=int(grp["id"]),
@@ -147,7 +144,7 @@ def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(client, auth_h
     finally:
         db.close()
 
-    ok = client.post(f"{GD_SCORE}/{gsid}/confirm", headers=h, params={"batchId": bid}).json()
+    ok = client.post(f"{GD_SCORE}/{gsid}/confirm", headers=h).json()
     assert ok["code"] == 0, ok
     assert ok["data"]["judgeCount"] == 2
 
@@ -157,7 +154,7 @@ def test_mixed_panel_update_keeps_name_only_members(client, auth_headers, db_mod
     h = auth_headers
     bid = _batch(client, h)
     mid = _mentor(client, h, _uniq("TMIX"), "ID评委")
-    created = client.post(DG, headers=h, params={"batchId": bid}, json={
+    created = client.post(DG, headers=h, json={
         "groupName": _uniq("混存组"), "batchId": bid,
         "chair": "混存主席",
         "members": ["仅姓名评委", {"mentorId": int(mid), "name": "ID评委"}],
@@ -165,7 +162,7 @@ def test_mixed_panel_update_keeps_name_only_members(client, auth_headers, db_mod
     assert created["code"] == 0, created
     gid_ = created["data"]["id"]
     # 模拟前端只传已选 ID（旧行为会清空仅姓名评委）
-    updated = client.put(f"{DG}/{gid_}", headers=h, params={"batchId": bid}, json={
+    updated = client.put(f"{DG}/{gid_}", headers=h, json={
         "groupName": created["data"]["groupName"],
         "location": "E101",
         "memberMentorIds": [int(mid)],
@@ -173,7 +170,7 @@ def test_mixed_panel_update_keeps_name_only_members(client, auth_headers, db_mod
     assert updated["code"] == 0, updated
     names = set()
     ids = set()
-    for m in (updated["data"].get("memberDetails") or updated["data"]["members"] or []):
+    for m in (updated["data"]["members"] or []):
         if isinstance(m, dict):
             if m.get("name"):
                 names.add(m["name"])
@@ -213,8 +210,8 @@ def test_score_row_covers_seat_helpers():
     seat_id = {"mentorId": 7, "name": "甲"}
     seat_name = {"mentorId": None, "name": "乙"}
     assert gid.score_row_covers_seat(Row("SCORED", "甲", 7), seat_id)
-    assert not gid.score_row_covers_seat(Row("SCORED", "甲", None), seat_id)
-    assert not gid.score_row_covers_seat(Row("SCORED", "乙", None), seat_name)
+    assert gid.score_row_covers_seat(Row("SCORED", "甲", None), seat_id)  # 历史姓名行覆盖有 ID 席
+    assert gid.score_row_covers_seat(Row("SCORED", "乙", None), seat_name)
     assert not gid.score_row_covers_seat(Row("PENDING", "乙", None), seat_name)
-    assert not gid.user_matches_judge_seat(seat_name, mentor=None, real_name="乙")
+    assert gid.user_matches_judge_seat(seat_name, mentor=None, real_name="乙")
     assert not gid.user_matches_judge_seat(seat_id, mentor=None, real_name="甲")

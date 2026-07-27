@@ -74,15 +74,6 @@ def gd_topic_choice_import_errors(round_id: str, body: ExcelErrorRows, user=Depe
     return success(svc.choice_import_errors_pack(round_id, body.rows, [e.model_dump() for e in body.errors]))
 
 
-@router.post("/gd-topic-rounds/{round_id}/choices/import/dry-run", summary="选题志愿·预校验（粘贴行）")
-def gd_topic_choice_import_dry_run(round_id: str, body: ExcelImportRows, user=Depends(get_current_user)):
-    return success(svc.choice_import_dry_run(round_id, body.rows, {
-        "fileName": "manual-input",
-        "fileSha256": "",
-        "batchScope": f"round:{round_id}",
-    }))
-
-
 @router.post("/gd-topic-rounds/{round_id}/choices/import/confirm", summary="选题志愿·确认导入")
 def gd_topic_choice_import_confirm(round_id: str, body: ExcelImportRows, user=Depends(get_current_user)):
     result = svc.choice_import_confirm(round_id, body.rows, body.previewToken)

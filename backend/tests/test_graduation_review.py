@@ -2,8 +2,6 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 GD_PLAG = "/api/v1/graduation/gd-plagiarism"
 GD_REVIEW = "/api/v1/graduation/gd-reviews"
 GD_STU = "/api/v1/graduation/gd-students"
@@ -11,7 +9,7 @@ STU = "/api/v1/students"
 
 
 def _gd_student(client, h, no, name, advisor=None):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     if advisor:
         client.post(f"{GD_STU}/{gid}/assign-advisor", headers=h, json={"advisorName": advisor})
@@ -21,14 +19,11 @@ def _gd_student(client, h, no, name, advisor=None):
 def _reviewer_token(real_name):
     """构造一个非全范围角色（GD_REVIEWER）的登录令牌，真实姓名可指定，用来验证
     评阅提交是否按「被指派评阅人」而非「对该生有任意评阅关系」收敛。"""
-    from hashlib import sha1
     from app.core.security import create_access_token
     main_tid = 1000000000000000001
-    login_name = f"TEST-{sha1(real_name.encode('utf-8')).hexdigest()[:12]}"
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-reviewer-{real_name}", "realName": real_name, "userType": "TEACHER", "tid": "demo",
-        "tenantId": str(main_tid), "activeContextId": "ctx", "currentRoleCode": "GD_REVIEWER",
-        "clientType": "PC", "loginName": login_name})}
+        "tenantId": str(main_tid), "activeContextId": "ctx", "currentRoleCode": "GD_REVIEWER", "clientType": "PC"})}
 
 
 def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
@@ -84,9 +79,6 @@ def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
     review = client.post(f"{GD_PLAG}/{pid}/dispute/review", headers=h, json={"action": "APPROVE", "comment": "核实无误"})
     assert review.json()["data"]["disputeStatus"] == "APPROVED"
     assert review.json()["data"]["overThreshold"] is True
-    recheck_id = review.json()["data"]["recheckTaskId"]
-    recheck_result = client.post(f"{GD_PLAG}/{recheck_id}/result", headers=h, json={"rate": "12"})
-    assert recheck_result.json()["data"]["overThreshold"] is False
 
     approved_exception = client.post(
         f"/api/v1/graduation/finals/{final_id}/review", headers=h, json={"action": "APPROVE"},
@@ -95,7 +87,7 @@ def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
 
     db = get_sessionmaker()()
     refreshed = db.get(GraduationFinal, int(final_id))
-    assert refreshed.plagiarism_rate == "12.0%"
+    assert refreshed.plagiarism_rate == "35.0%"
     assert refreshed.plagiarism_status == "已检测"
     db.close()
 

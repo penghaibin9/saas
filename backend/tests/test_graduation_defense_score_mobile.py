@@ -10,49 +10,25 @@ GD_SCORE = "/api/v1/graduation/gd-defense-scores"
 TID = 1000000000000000001
 
 
-_TEACHER_NO_BY_NAME = {"评委甲": "MOB-JA", "评委乙": "MOB-JB", "组外专家": "MOB-OUT"}
-
-
 def _defense_expert(name, tid=TID):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{name}", "realName": name, "userType": "TEACHER",
         "tid": "x", "tenantId": str(tid), "activeContextId": "ctx",
-        "currentRoleCode": "GD_DEFENSE_EXPERT", "clientType": "MP",
-        "loginName": _TEACHER_NO_BY_NAME.get(name, f"MOB-{name}"),
-    })}
+        "currentRoleCode": "GD_DEFENSE_EXPERT", "clientType": "MP"})}
 
 
 def _seed(db_mode, published=True):
     """1个答辩组(chair=评委甲, members=[评委乙])，1个学生挂在组下。返回 gd_student_id(str)。"""
     from app.db.session import get_sessionmaker
-    from app.models import GraduationBatch, GraduationDefenseGroup, GraduationMentor, GraduationStudent
+    from app.models import GraduationDefenseGroup, GraduationStudent
     db = get_sessionmaker()()
     try:
-        batch = GraduationBatch(
-            tenant_id=TID, batch_name="移动端答辩批次",
-            batch_no=f"MOB-DEF-{published}", grade_year="2026届",
-            planned_count=10, status="ACTIVE",
-        )
-        db.add(batch)
-        db.flush()
-        judge_a = GraduationMentor(
-            tenant_id=TID, teacher_no="MOB-JA", teacher_name="评委甲",
-            qualification_status="QUALIFIED",
-        )
-        judge_b = GraduationMentor(
-            tenant_id=TID, teacher_no="MOB-JB", teacher_name="评委乙",
-            qualification_status="QUALIFIED",
-        )
-        db.add_all([judge_a, judge_b])
-        db.flush()
-        g = GraduationDefenseGroup(tenant_id=TID, batch_id=batch.id, group_name="答辩一组", chair="评委甲",
-                                   chair_mentor_id=judge_a.id,
-                                   members_json=[{"mentorId": judge_b.id, "name": "评委乙", "teacherNo": "MOB-JB"}],
-                                   secretary="", published=published)
+        g = GraduationDefenseGroup(tenant_id=TID, group_name="答辩一组", chair="评委甲",
+                                   members_json=["评委乙"], secretary="", published=published)
         db.add(g)
         db.flush()
-        stu = GraduationStudent(tenant_id=TID, batch_id=batch.id, name="答辩测试生", student_no="DEF001",
+        stu = GraduationStudent(tenant_id=TID, name="答辩测试生", student_no="DEF001",
                                 advisor_name="另一位导师", record_status="ACTIVE",
                                 stage="DEFENSE", defense_group_id=g.id)
         db.add(stu)
@@ -64,36 +40,29 @@ def _seed(db_mode, published=True):
         db.close()
 
 
-def _items(data):
-    return data.get("items", []) if isinstance(data, dict) else data
-
-
 def test_panel_members_see_pending_outsider_does_not(db_mode, client):
     gid = _seed(db_mode)
 
     r1 = client.get(f"{MOB}/teacher/graduation/defense/pending", headers=_defense_expert("评委甲"))
     assert r1.status_code == 200
-    items1 = _items(r1.json()["data"])
+    items1 = r1.json()["data"]
     assert any(x["gdStudentId"] == gid for x in items1)
     row1 = next(x for x in items1 if x["gdStudentId"] == gid)
     assert row1["myStatus"] == "PENDING" and row1["myScore"] is None
 
     r2 = client.get(f"{MOB}/teacher/graduation/defense/pending", headers=_defense_expert("评委乙"))
-    items2 = _items(r2.json()["data"])
+    items2 = r2.json()["data"]
     assert any(x["gdStudentId"] == gid for x in items2)
 
     r3 = client.get(f"{MOB}/teacher/graduation/defense/pending", headers=_defense_expert("组外专家"))
-    if r3.status_code == 403:
-        assert r3.json()["code"] != 0
-    else:
-        items3 = _items(r3.json()["data"])
-        assert not any(x["gdStudentId"] == gid for x in items3)
+    items3 = r3.json()["data"]
+    assert not any(x["gdStudentId"] == gid for x in items3)
 
 
 def test_unpublished_group_excluded_from_pending(db_mode, client):
     gid = _seed(db_mode, published=False)
     r = client.get(f"{MOB}/teacher/graduation/defense/pending", headers=_defense_expert("评委甲"))
-    items = _items(r.json()["data"])
+    items = r.json()["data"]
     assert not any(x["gdStudentId"] == gid for x in items)
 
 
@@ -106,13 +75,13 @@ def test_score_entry_updates_pending_status_and_judge_name_is_server_forced(db_m
                         json={"score": 88, "comment": "表现优秀", "judgeName": "评委乙"})
     assert entry.status_code == 200 and entry.json()["code"] == 0
 
-    pending_a = _items(client.get(f"{MOB}/teacher/graduation/defense/pending", headers=h_a).json()["data"])
+    pending_a = client.get(f"{MOB}/teacher/graduation/defense/pending", headers=h_a).json()["data"]
     row_a = next(x for x in pending_a if x["gdStudentId"] == gid)
     assert row_a["myStatus"] == "SCORED" and row_a["myScore"] == 88
 
     # 评委乙自己的视角仍是 PENDING——证明评委甲的伪造 judgeName 没有落到评委乙名下
-    pending_b = _items(client.get(f"{MOB}/teacher/graduation/defense/pending",
-                                  headers=_defense_expert("评委乙")).json()["data"])
+    pending_b = client.get(f"{MOB}/teacher/graduation/defense/pending",
+                           headers=_defense_expert("评委乙")).json()["data"]
     row_b = next(x for x in pending_b if x["gdStudentId"] == gid)
     assert row_b["myStatus"] == "PENDING" and row_b["myScore"] is None
 

@@ -23,7 +23,7 @@
 
             <view class="section-head"><text class="section-head__title">评委组成</text></view>
             <view class="card">
-              <text v-if="memberNames.length" class="df__v">{{ memberNames.join('、') }}</text>
+              <text v-if="(d.members || []).length" class="df__v">{{ (d.members || []).join('、') }}</text>
               <text v-else class="df__hint">评委名单待安排</text>
             </view>
           </template>
@@ -37,13 +37,6 @@
 import { studentApi } from '@/services/studentApi'
 export default {
   data() { return { d: null, state: 'loading' } },
-  computed: {
-    memberNames() {
-      return (this.d?.memberNames || this.d?.members || [])
-        .map((member) => typeof member === 'string' ? member : (member?.name || member?.teacherName || ''))
-        .filter(Boolean)
-    }
-  },
   onLoad() { this.load() },
   methods: {
     load() {
@@ -51,11 +44,7 @@ export default {
       studentApi.getGraduationDefense().then((data) => {
         this.d = data
         this.state = 'ready'
-      }).catch((error) => {
-        this.d = null
-        this.state = 'error'
-        console.error('[graduation-defense] load failed', error)
-      })
+      }).catch(() => { this.state = 'error' })
     }
   }
 }

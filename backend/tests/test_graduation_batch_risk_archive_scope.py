@@ -5,8 +5,6 @@
 """
 from __future__ import annotations
 
-from conftest import make_org_class
-
 import uuid
 from datetime import datetime, timezone
 
@@ -37,7 +35,6 @@ def _student(client, h, name=None):
     sno = _uniq("S")
     r = client.post(STU, headers=h, json={
         "studentNo": sno, "realName": name or f"学生{sno[-4:]}",
-        "classId": make_org_class(),
     }).json()
     assert r["code"] == 0, r
     return r["data"]["id"]

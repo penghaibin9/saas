@@ -516,6 +516,15 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
                 GraduationProposal.id.desc()).with_for_update()).all()
         latest = existing[0] if existing else None
         if latest and latest.status == "PENDING_REVIEW":
+            same = (
+                (latest.background or "") == background.strip()
+                and (latest.plan or "") == plan.strip()
+                and (latest.outcome or "") == (outcome or "").strip()
+                and (latest.attachments_json or []) == attachment_ids
+            )
+            if same:
+                return {"id": str(latest.id), "version": latest.version,
+                        "isResubmit": latest.is_resubmit, "status": latest.status}
             raise AppException("DATA_CONFLICT", "已有待审阅的开题报告，请等待指导教师批阅")
         if latest and latest.status == "APPROVED":
             raise AppException("DATA_CONFLICT", "开题报告已通过，无需重复提交")
@@ -1113,8 +1122,6 @@ def get_defense_group_detail(gid) -> dict:
             raise not_found("答辩组不存在")
         if not _can_access_defense_group(db, g):
             raise no_permission("Defense group is outside the current graduation-design scope")
-        _recompute_defense(db, g)
-        db.flush()
         from app.modules.graduation.services import graduation_identity as gid_id
         panel_ids = gid_id.panel_mentor_ids(g)
         panel_names = gid_id.panel_names(g)

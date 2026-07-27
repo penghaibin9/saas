@@ -71,12 +71,7 @@ def add_import_job(db, module_key: str, biz_type: str, *, created: int) -> dict:
 
 def _op() -> tuple:
     u = get_current_user_ctx() or {}
-    raw_id = u.get("userId")
-    try:
-        op_id = int(raw_id) if raw_id not in (None, "") and str(raw_id).isdigit() else None
-    except Exception:
-        op_id = None
-    return op_id, (u.get("realName") or "系统")
+    return u.get("userId"), (u.get("realName") or "系统")
 
 
 def _row(j) -> dict:

@@ -1,8 +1,6 @@
 """复审收口：学生端附件强制、开题 canSubmit 与 topic_id 一致、成绩申诉态。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 from app.core.security import create_access_token
 
 MAIN = 1000000000000000001
@@ -33,7 +31,7 @@ def test_final_requires_attachment(client, auth_headers, db_mode):
 
     h = auth_headers
     name = "强制附件生"
-    sid = client.post(STU, headers=h, json={"studentNo": "ATT-REQ-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "ATT-REQ-01", "realName": name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     stu = db.get(GraduationStudent, int(gid))
@@ -63,7 +61,7 @@ def test_proposal_can_submit_requires_topic_id(client, auth_headers, db_mode):
 
     h = auth_headers
     name = "开题提示生"
-    sid = client.post(STU, headers=h, json={"studentNo": "PROP-TOPIC-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "PROP-TOPIC-01", "realName": name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     stu = db.get(GraduationStudent, int(gid))
@@ -86,7 +84,7 @@ def test_grade_exposes_appeal_pending(client, auth_headers, db_mode):
 
     h = auth_headers
     name = "申诉态生"
-    sid = client.post(STU, headers=h, json={"studentNo": "APPEAL-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "APPEAL-01", "realName": name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     stu = db.get(GraduationStudent, int(gid))

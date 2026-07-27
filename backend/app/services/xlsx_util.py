@@ -1,9 +1,9 @@
 """Excel(.xlsx) 导入/模板/台账导出通用工具（openpyxl）。
 
 - read_xlsx(file_bytes, header_map)：解析首个 sheet，首行为表头，按「表头文字→字段key」映射为 list[dict]。
-- build_template_xlsx / build_ledger_xlsx / build_error_rows_xlsx：生成真实 .xlsx。
-- 所有业务导出文本统一防公式注入，用户输入不得在 Excel 打开时被执行。
-不做业务校验（脏数据拦截仍由各域 import_dry_run 负责）。
+- build_template_xlsx(headers, sample)：生成带表头(+示例行)的 .xlsx 字节，供「下载模板」。
+- build_ledger_xlsx / build_error_rows_xlsx / pack_xlsx_result：台账导出与错误行 Excel 下载。
+不做业务校验（脏数据拦截仍由各域 import_dry_run 负责），只做「文件→行数据」的解析。
 """
 from __future__ import annotations
 
@@ -15,29 +15,10 @@ from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from app.core.exceptions import AppException
 
-MAX_ROWS = 5000
+MAX_ROWS = 5000  # 单次导入行数上限，防超大文件
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 MAX_ZIP_ENTRIES = 2000
-_FORMULA_PREFIXES = ("=", "+", "-", "@")
-
-
-def safe_excel_value(value):
-    """Neutralize spreadsheet formulas while preserving numeric/date values.
-
-    A leading apostrophe is Excel's standard text marker. Leading whitespace is
-    considered too, because office clients may trim it before formula parsing.
-    """
-    if not isinstance(value, str):
-        return value
-    stripped = value.lstrip()
-    if stripped.startswith(_FORMULA_PREFIXES):
-        return "'" + value
-    return value
-
-
-def _safe_row(values) -> list:
-    return [safe_excel_value(value) for value in values]
 
 
 async def read_safe_upload(upload) -> bytes:
@@ -96,7 +77,7 @@ def validate_xlsx_package(file_bytes: bytes) -> None:
 
 
 def read_xlsx(file_bytes: bytes, header_map: dict[str, str]) -> list[dict]:
-    """.xlsx 字节 → list[dict]。"""
+    """.xlsx 字节 → list[dict]。header_map 例：{"企业名称": "name", "统一社会信用代码": "creditCode"}。"""
     validate_xlsx_package(file_bytes)
     wb = load_workbook(
         io.BytesIO(file_bytes), read_only=True, data_only=True, keep_links=False,
@@ -104,6 +85,7 @@ def read_xlsx(file_bytes: bytes, header_map: dict[str, str]) -> list[dict]:
     if len(wb.worksheets) > 10:
         wb.close()
         raise AppException("VALIDATION_ERROR", "XLSX 工作表不得超过 10 个")
+    # 优先取「导入模板」页（模板含「填写说明」第二页；避免误读说明页）
     ws = wb["导入模板"] if "导入模板" in wb.sheetnames else wb.worksheets[0]
     if ws.max_column > 100:
         wb.close()
@@ -115,12 +97,11 @@ def read_xlsx(file_bytes: bytes, header_map: dict[str, str]) -> list[dict]:
     try:
         header = next(it)
     except StopIteration:
-        wb.close()
         return []
     idx_key: dict[int, str] = {}
     for i, h in enumerate(header):
         name = str(h).strip() if h is not None else ""
-        name = name.rstrip(" *").strip()
+        name = name.rstrip(" *").strip()  # 去掉表头必填标记「 *」，与 header_map 对齐
         if name in header_map:
             idx_key[i] = header_map[name]
     out: list[dict] = []
@@ -147,7 +128,11 @@ def build_template_xlsx(headers: list[str], sample: list | None = None,
                         samples: list[list] | None = None,
                         notes: list[str] | None = None,
                         required: list[str] | None = None) -> bytes:
-    """生成预制导入模板 .xlsx。模板示例由服务端定义，不属于用户导出数据。"""
+    """生成预制导入模板 .xlsx。
+    - headers：表头（第一行）；required：必填表头集合（会在表头后加「*」）。
+    - sample/samples：示例行（sample 单行；samples 多行）。
+    - notes：填写说明（生成第二个 sheet「填写说明」，一行一条）。
+    """
     from openpyxl.styles import Font, PatternFill
     req = set(required or [])
     wb = Workbook()
@@ -167,8 +152,8 @@ def build_template_xlsx(headers: list[str], sample: list | None = None,
         ns = wb.create_sheet("填写说明")
         ns.append(["填写说明（请阅读后删除本页或忽略，仅导入「导入模板」页）"])
         ns["A1"].font = Font(bold=True, size=12)
-        for i, note in enumerate(notes, start=2):
-            ns.cell(row=i, column=1, value=note)
+        for i, n in enumerate(notes, start=2):
+            ns.cell(row=i, column=1, value=n)
         ns.column_dimensions["A"].width = 80
     buf = io.BytesIO()
     wb.save(buf)
@@ -177,28 +162,31 @@ def build_template_xlsx(headers: list[str], sample: list | None = None,
 
 def build_ledger_xlsx(sheet_title: str, headers: list[str], data_rows: list[list],
                       watermark: str | None = None) -> bytes:
-    """生成台账 .xlsx；业务数据逐单元格防公式注入。"""
+    """生成台账 .xlsx（可选首行水印 + 表头 + 数据行）。"""
     from openpyxl.styles import Font, PatternFill
     wb = Workbook()
     ws = wb.active
     ws.title = (sheet_title or "台账")[:28]
     row_idx = 1
     if watermark:
-        ws.append([safe_excel_value(watermark)])
+        ws.append([watermark])
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(len(headers), 1))
         ws["A1"].font = Font(bold=True, color="666666", size=10)
         row_idx = 2
-    ws.append(_safe_row(headers))
+    ws.append(headers)
     head_fill = PatternFill("solid", fgColor="DCE6F1")
     for cell in ws[row_idx]:
         cell.font = Font(bold=True)
         cell.fill = head_fill
     for row in data_rows:
-        ws.append(_safe_row(row))
+        ws.append(row)
     for i in range(1, len(headers) + 1):
         col = chr(64 + i) if i <= 26 else "A"
         ws.column_dimensions[col].width = 18
-    ws.freeze_panes = "A3" if watermark else "A2"
+    if watermark:
+        ws.freeze_panes = "A3"
+    else:
+        ws.freeze_panes = "A2"
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -208,29 +196,27 @@ def build_error_rows_xlsx(template_headers: list[str], rows: list[dict], errors:
                           row_values: callable) -> bytes:
     """错误行 Excel：原表头 + 错误字段 + 错误原因（仅含出错行）。"""
     err_by_row: dict[int, list[dict]] = {}
-    for error in errors or []:
-        err_by_row.setdefault(int(error.get("rowNo") or 0), []).append(error)
+    for e in errors or []:
+        err_by_row.setdefault(int(e.get("rowNo") or 0), []).append(e)
     headers = template_headers + ["错误字段", "错误原因"]
     data: list[list] = []
-    for i, row in enumerate(rows or []):
+    for i, r in enumerate(rows or []):
         row_no = i + 1
         if row_no not in err_by_row:
             continue
-        messages = err_by_row[row_no]
-        fields = "；".join(str(item.get("field") or "") for item in messages)
-        reason = "；".join(str(item.get("message") or "") for item in messages)
-        data.append(list(row_values(row)) + [fields, reason])
-    return build_ledger_xlsx(
-        "导入错误行", headers, data,
-        watermark="以下为未通过预校验的行，请修正后重新导入（仅导入「导入模板」页）",
-    )
+        msgs = err_by_row[row_no]
+        fields = "；".join(str(x.get("field") or "") for x in msgs)
+        reason = "；".join(str(x.get("message") or "") for x in msgs)
+        data.append(list(row_values(r)) + [fields, reason])
+    return build_ledger_xlsx("导入错误行", headers, data,
+                             watermark="以下为未通过预校验的行，请修正后重新导入（仅导入「导入模板」页）")
 
 
 def pack_xlsx_result(content: bytes, filename: str, row_count: int,
                      tenant_label: str = "") -> dict:
     """API 响应：xlsx 二进制转 base64，文件名补时间戳。"""
     name = filename if filename.endswith(".xlsx") else f"{filename}.xlsx"
-    if not any(char.isdigit() for char in name[-20:]):
+    if not any(c.isdigit() for c in name[-20:]):
         stem = name[:-5] if name.endswith(".xlsx") else name
         suffix = f"_{tenant_label}" if tenant_label else ""
         name = f"{stem}{suffix}_{datetime.now():%Y%m%d_%H%M}.xlsx"

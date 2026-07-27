@@ -50,14 +50,11 @@ def _op() -> tuple[str, str]:
     return u.get("realName") or "系统", u.get("roleName") or u.get("currentRoleCode") or ""
 
 
-def _audit(db, bid, action, detail="", before="", after="", batch_id=None):
+def _audit(db, bid, action, detail="", before="", after=""):
     n, r = _op()
-    db.add(GraduationAuditTrail(
-        tenant_id=_tid(), batch_id=int(batch_id) if batch_id else None,
-        biz_type="RISK", biz_id=str(bid), action=action,
-        operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
-        occurred_at=datetime.now(timezone.utc),
-    ))
+    db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="RISK", biz_id=str(bid), action=action,
+                                operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
+                                occurred_at=datetime.now(timezone.utc)))
 
 
 def _now() -> datetime:
@@ -382,7 +379,7 @@ def scan_risks(batch_id=None) -> dict:
             f"skipped={skipped_students} elapsedMs={elapsed_ms} "
             f"operator={scope['operator']} scope={scope['scopeSummary']}"
         )
-        _audit(db, f"scan-{bid}", "扫描毕设风险", detail, batch_id=bid)
+        _audit(db, f"scan-{bid}", "扫描毕设风险", detail)
         db.commit()
         total_cases = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
             GraduationRiskCase.tenant_id == _tid(),

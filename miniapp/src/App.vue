@@ -19,7 +19,6 @@ export default {
 /* 全局设计令牌 + 通用样式。移动端组件/页面禁止硬编码颜色/字号/间距。 */
 @import './styles/tokens.css';
 @import './styles/common.css';
-@import './styles/graduation-usability.css';
 
 page {
   background: var(--bg-page);

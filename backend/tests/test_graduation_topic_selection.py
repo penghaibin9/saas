@@ -3,8 +3,6 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 STU = "/api/v1/students"
@@ -12,7 +10,7 @@ RD = "/api/v1/graduation/gd-topic-rounds"
 
 
 def _student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "QUALIFIED", "reason": "E2E测试认定合格",

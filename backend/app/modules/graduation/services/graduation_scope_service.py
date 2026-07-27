@@ -58,14 +58,6 @@ def _student_org_keys(db, student: GraduationStudent) -> tuple[str, str]:
 
 def _has_review_relation(db, student: GraduationStudent, real_name: str = "") -> bool:
     """评阅关系只认 reviewer_mentor_id；姓名仅作快照，历史缺 ID 时 fail-closed。"""
-    from sqlalchemy.orm import Session as _OrmSession
-    if not isinstance(db, _OrmSession):
-        return db.scalar(select(GraduationReview.id).where(
-            GraduationReview.tenant_id == student.tenant_id,
-            GraduationReview.gd_student_id == student.id,
-            GraduationReview.reviewer_name == real_name,
-            GraduationReview.is_deleted.is_(False),
-        ).limit(1)) is not None
     login = _login_name()
     if login:
         try:
@@ -209,8 +201,6 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
     if student is None:
         return False
     role, real_name = _ctx()
-    from sqlalchemy.orm import Session as _OrmSession
-    is_fake_db = not isinstance(db, _OrmSession)
     if role in FULL_SCOPE_ROLES:
         return True
     if not real_name and role != "STUDENT":
@@ -231,16 +221,6 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         group = db.get(GraduationDefenseGroup, student.defense_group_id)
         if not group or group.is_deleted or group.tenant_id != student.tenant_id:
             return False
-        if is_fake_db:
-            names = {str(getattr(group, "secretary", "") or "").strip(),
-                     str(getattr(group, "chair", "") or "").strip()}
-            for raw in (getattr(group, "members_json", None) or []):
-                if isinstance(raw, str):
-                    names.add(raw.strip())
-                elif isinstance(raw, dict):
-                    names.add(str(raw.get("name") or raw.get("teacherName") or "").strip())
-            names.discard("")
-            return real_name in names
         from app.modules.graduation.services import graduation_identity as gid
         me = gid.mentor_by_teacher_no(db, _login_name(), student.tenant_id) if _login_name() else None
         if role == "GD_DEFENSE_SECRETARY":
@@ -261,20 +241,20 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
 
     if role in {"GD_MENTOR", "COUNSELOR", "GD_REVIEWER"}:
         login_name = _login_name()
-        if is_fake_db and role in {"GD_MENTOR", "COUNSELOR"}:
-            return (student.advisor_name or "").strip() == real_name
         if role in {"GD_MENTOR", "COUNSELOR"} and login_name:
             if _mentor_teacher_no(db, student) == login_name:
                 return True
         # 评阅关系已绑 mentor_id 时，后续 _has_review_relation 走 ID，不受同名门禁阻断
         if role == "GD_REVIEWER" or (role in {"GD_MENTOR", "COUNSELOR"} and getattr(student, "mentor_id", None)):
             pass  # 不因同名提前拒绝；由 ID / 评阅关系裁决
+        else:
+            return False
 
     if role in {"GD_MENTOR", "COUNSELOR"}:
-        # 已绑定 mentor_id 时只认导师台账 teacher_no；历史无 ID 的数据才按姓名快照兼容。
+        # 已绑定 mentor_id 时禁止再靠同名 advisor_name 串号（张伟A/B 隔离）。
         if getattr(student, "mentor_id", None):
-            return False
-        return (student.advisor_name or "").strip() == real_name
+            return _has_review_relation(db, student, real_name)
+        return _has_review_relation(db, student, real_name)
 
     if role == "GD_REVIEWER":
         return _has_review_relation(db, student, real_name)

@@ -1,8 +1,7 @@
 /**
- * 毕业设计中心 · 扩展事项 API：互查、专家、申诉、优秀成果、延期答辩。
+ * 毕业设计中心 · Batch 5-9：统计中心 + 互查整改 + 答辩专家 + 成绩申诉 + 开题答辩（realStrict）。
  */
 import { request } from '@/services/http/client'
-import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -11,15 +10,11 @@ async function call(fn) { try { return ok(await fn()) } catch (e) { return toErr
 async function callList(path, params = {}) {
   try { const d = await request(path, { params }); return ok({ list: d.items || [], total: d.total || 0 }) } catch (e) { return toErr(e) }
 }
-function withBatch(params = {}) {
-  const id = params.batchId || useGraduationBatchStore().selectedBatchId
-  if (!id) throw new Error('请先选择毕业设计批次')
-  return { ...params, batchId: String(id) }
-}
 
 const G = '/graduation'
 
 export const graduationMoreApi = {
+  // ── 统计中心：直接取各域 /stats ──
   stat(path, params = {}) { return call(() => request(path, { params })) },
   getProposalStats(params = {}) { return this.stat(`${G}/proposals/stats`, params) },
   getFinalStats(params = {}) { return this.stat(`${G}/finals/stats`, params) },
@@ -31,9 +26,12 @@ export const graduationMoreApi = {
   getGradeStats(params = {}) { return this.stat(`${G}/gd-grades/stats`, params) },
   getPeerStats(params = {}) { return this.stat(`${G}/gd-peer-reviews/stats`, params) },
 
+  // ── 开题答辩（现场）──
   holdProposalDefense(pid, result, comment) {
     return call(() => request(`${G}/proposals/${pid}/defense`, { method: 'POST', body: { result, comment } }))
   },
+
+  // ── 成果互查整改 ──
   getPeerReviews(params = {}) { return callList(`${G}/gd-peer-reviews`, params) },
   assignPeer(gdStudentId, reviewerGdStudentId) {
     return call(() => request(`${G}/gd-peer-reviews/assign`, { method: 'POST', body: { gdStudentId, reviewerGdStudentId } }))
@@ -41,33 +39,16 @@ export const graduationMoreApi = {
   submitPeer(pid, opinion) { return call(() => request(`${G}/gd-peer-reviews/${pid}/submit`, { method: 'POST', body: { opinion } })) },
   rectifyPeer(pid, note) { return call(() => request(`${G}/gd-peer-reviews/${pid}/rectify`, { method: 'POST', body: { note } })) },
 
+  // ── 答辩专家库 ──
   getExperts(params = {}) { return callList(`${G}/gd-defense-experts`, params) },
   createExpert(body) { return call(() => request(`${G}/gd-defense-experts`, { method: 'POST', body })) },
   setExpertStatus(eid, action) { return call(() => request(`${G}/gd-defense-experts/${eid}/status`, { method: 'POST', body: { action } })) },
 
+  // ── 成绩更正申诉 ──
   getAppeals(params = {}) { return callList(`${G}/gd-grade-appeals`, params) },
   reviewAppeal(aid, action, comment) { return call(() => request(`${G}/gd-grade-appeals/${aid}/review`, { method: 'POST', body: { action, comment } })) },
 
-  getExcellentCandidates(params = {}) { return callList(`${G}/gd-excellent-outcomes/candidates`, withBatch(params)) },
-  getExcellentOutcomes(params = {}) { return callList(`${G}/gd-excellent-outcomes`, withBatch(params)) },
-  nominateExcellent(gdStudentId, reason, evidence = []) {
-    return call(() => request(`${G}/gd-excellent-outcomes/${gdStudentId}/nominate`, { method: 'POST', body: { reason, evidence } }))
-  },
-  reviewExcellent(id, level, action, comment = '') {
-    return call(() => request(`${G}/gd-excellent-outcomes/${id}/${level}-review`, { method: 'POST', body: { action, comment } }))
-  },
-
-  getDefenseDelays(params = {}) { return callList(`${G}/gd-defense-delays`, withBatch(params)) },
-  reviewDefenseDelay(id, level, action, comment = '') {
-    return call(() => request(`${G}/gd-defense-delays/${id}/${level}-review`, { method: 'POST', body: { action, comment } }))
-  },
-  scheduleDefenseDelay(id, defenseGroupId, plannedDefenseDate) {
-    return call(() => request(`${G}/gd-defense-delays/${id}/schedule`, { method: 'POST', body: { defenseGroupId, plannedDefenseDate } }))
-  },
-  getDefenseGroups(params = {}) {
-    return callList(`${G}/defense-groups`, withBatch({ page: 1, pageSize: 200, ...params }))
-  },
-
+  // ── 答辩通知 ──
   notifyDefense(defenseGroupId) { return call(() => request(`${G}/gd-defense-notify`, { method: 'POST', body: { defenseGroupId } })) }
 }
 

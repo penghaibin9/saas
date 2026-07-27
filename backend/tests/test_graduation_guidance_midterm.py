@@ -2,8 +2,6 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 GD_GUIDANCE = "/api/v1/graduation/gd-guidances"
 GD_MIDTERM = "/api/v1/graduation/gd-midterms"
 GD_STU = "/api/v1/graduation/gd-students"
@@ -11,19 +9,8 @@ STU = "/api/v1/students"
 
 
 def _gd_student(client, h, no, name):
-    from app.db.session import get_sessionmaker
-    from app.models import GraduationStudent
-
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
-    db = get_sessionmaker()()
-    try:
-        stu = db.get(GraduationStudent, int(gid))
-        stu.stage = "MIDTERM"
-        db.commit()
-    finally:
-        db.close()
-    return gid
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
 def test_guidance_create_stats_void(client, auth_headers, db_mode):

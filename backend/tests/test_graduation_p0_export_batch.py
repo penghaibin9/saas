@@ -1,15 +1,13 @@
 """毕业设计 P0：学生列表与导出筛选一致；按 batchId/材料/答辩组/资格/风险导出。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 GD_STU = "/api/v1/graduation/gd-students"
 GD_BATCH = "/api/v1/graduation/batches"
 STU = "/api/v1/students"
 
 
 def _student(client, h, no, name="导出一致学生"):
-    return client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    return client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
 
 
 def _batch(client, h, no):
@@ -72,14 +70,8 @@ def test_export_filters_match_list_total(client, auth_headers, db_mode):
     assert _export_count(client, auth_headers, batchId=b1, eligibility="QUALIFIED") == t_elig
 
     # 按毕业资格
-    from app.db.session import get_sessionmaker
-    from app.models import GraduationStudent
-    db = get_sessionmaker()()
-    try:
-        db.get(GraduationStudent, int(r1)).grad_qual_status = "PASS"
-        db.commit()
-    finally:
-        db.close()
+    assert client.post(f"{GD_STU}/{r1}/grad-qual", headers=auth_headers,
+                       json={"status": "PASS", "note": "测试", "reason": "定向测试毕业资格"}).json()["code"] == 0
     t_gq = _list_total(client, auth_headers, batchId=b1, gradQualStatus="PASS")
     assert _export_count(client, auth_headers, batchId=b1, gradQualStatus="PASS") == t_gq
 

@@ -4,8 +4,6 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 GD_ROUND = "/api/v1/graduation/gd-topic-rounds"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 GD_BATCH = "/api/v1/graduation/batches"
@@ -48,7 +46,7 @@ def _approved_topic(client, h, title, advisor="王老师", capacity=1):
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "QUALIFIED", "reason": "E2E测试认定合格",
@@ -232,7 +230,7 @@ def test_mobile_student_browse_submit_and_request_change(client, auth_headers, d
     bid = _batch(client, auth_headers, "GD-CHG-M1")
     t1 = _approved_topic(client, auth_headers, "学生浏览题1", advisor="张导师")
     t2 = _approved_topic(client, auth_headers, "学生浏览题2", advisor="张导师")
-    sid = client.post(STU, headers=auth_headers, json={"studentNo": "S-CHG-M1", "realName": "移动测学生", "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=auth_headers, json={"studentNo": "S-CHG-M1", "realName": "移动测学生"}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=auth_headers, json={"studentId": sid}).json()["data"]["id"]
     client.post(f"{GD_STU}/{gid}/eligibility", headers=auth_headers, json={
         "status": "QUALIFIED", "reason": "E2E测试认定合格",
@@ -290,9 +288,8 @@ def test_mobile_teacher_confirm_reject_and_change_review(client, auth_headers, d
 
     teacher_tok = _teacher_token("李导师")
     pending = client.get("/api/v1/mobile/teacher/graduation/choices/pending", headers=teacher_tok).json()
-    items = pending["data"].get("items", []) if isinstance(pending.get("data"), dict) else pending["data"]
-    assert pending["code"] == 0 and len(items) == 1
-    choice_id = items[0]["id"]
+    assert pending["code"] == 0 and len(pending["data"]) == 1
+    choice_id = pending["data"][0]["id"]
 
     # 越权：其他老师不能审核不属于自己的题目志愿
     other_teacher_tok = _teacher_token("路人甲")
@@ -312,8 +309,7 @@ def test_mobile_teacher_confirm_reject_and_change_review(client, auth_headers, d
 
     pending_cr = client.get("/api/v1/mobile/teacher/graduation/change-requests/pending",
                             headers=teacher_tok).json()
-    pending_cr_items = pending_cr["data"].get("items", []) if isinstance(pending_cr.get("data"), dict) else pending_cr["data"]
-    assert pending_cr["code"] == 0 and any(x["id"] == cr["id"] for x in pending_cr_items)
+    assert pending_cr["code"] == 0 and any(x["id"] == cr["id"] for x in pending_cr["data"])
 
     rev = client.post(f"/api/v1/mobile/teacher/graduation/change-requests/{cr['id']}/review",
                       headers=teacher_tok, json={"action": "APPROVE"}).json()

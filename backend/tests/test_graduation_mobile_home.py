@@ -3,8 +3,6 @@
 教师新增一条指导记录后，学生主页 guideLogs 必须出现该条真实内容。全部走真库(db_mode)。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 GD_MENTOR = "/api/v1/graduation/gd-mentors"
 GD_ASSIGN = "/api/v1/graduation/gd-mentor-assignments"
 GD_STU = "/api/v1/graduation/gd-students"
@@ -31,7 +29,7 @@ def _teacher_token(real_name):
 def test_graduation_my_real_nodes_stage_and_guide_logs(client, auth_headers, db_mode):
     h = auth_headers
     student_no, student_name = "HM001", "主页测试生"
-    sid = client.post(STU, headers=h, json={"studentNo": student_no, "realName": student_name, "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": student_no, "realName": student_name}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     mid = client.post(GD_MENTOR, headers=h, json={"teacherNo": "HMT1", "teacherName": "主页导师"}).json()["data"]["id"]
     client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})

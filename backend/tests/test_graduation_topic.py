@@ -1,8 +1,6 @@
 """毕业设计中心 · 题目库测试（MySQL 真库 via db_mode）。"""
 from __future__ import annotations
 
-from conftest import make_org_class
-
 import base64
 
 GD_TOPIC = "/api/v1/graduation/gd-topics"
@@ -73,7 +71,7 @@ def test_assign_student_requires_approved(client, auth_headers, db_mode):
         draft_id = str(t.id)
     finally:
         db.close()
-    sid = client.post(STU, headers=auth_headers, json={"studentNo": "S-GDT-001", "realName": "选题测", "classId": make_org_class()}).json()["data"]["id"]
+    sid = client.post(STU, headers=auth_headers, json={"studentNo": "S-GDT-001", "realName": "选题测"}).json()["data"]["id"]
     rid = client.post(GD_STU, headers=auth_headers, json={"studentId": sid}).json()["data"]["id"]
     assert client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": draft_id}).json()["code"] != 0
     # 审核后可分配
