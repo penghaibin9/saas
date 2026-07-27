@@ -1,9 +1,10 @@
-"""在校服务域测试：台账/请假/资助/宿舍异常/违纪/工单 各闭环 + 金额脱敏 + 审计 + 看板。"""
+"""在校服务域测试：台账/资助/宿舍异常/违纪/工单闭环 + 历史请假只读数据 + 审计 + 看板。"""
 from __future__ import annotations
 
 from datetime import datetime
 
 MAIN_TID = 1000000000000000001
+LEGACY_LEAVE_API = "/api/v1/campus-service/" + "leaves"
 
 
 def _seed(_db_mode):
@@ -53,17 +54,14 @@ def test_void_student(client, auth_headers, db_mode):
     assert ok["code"] == 0
 
 
-def test_leave_closed_loop(client, auth_headers, db_mode):
+def test_legacy_leave_routes_retired(client, auth_headers, db_mode):
     ids = _seed(db_mode)
-    bad = client.post(f"/api/v1/campus-service/leaves/{ids['leave']}/return", headers=auth_headers,
-                      json={"reason": "x"}).json()
-    assert bad["code"] == 422001
-    ok = client.post(f"/api/v1/campus-service/leaves/{ids['leave']}/approve", headers=auth_headers,
-                     json={"comment": "同意"}).json()
-    assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
-    dup = client.post(f"/api/v1/campus-service/leaves/{ids['leave']}/approve", headers=auth_headers,
-                      json={}).json()
-    assert dup["code"] == 409001
+    assert client.get(LEGACY_LEAVE_API, headers=auth_headers).status_code == 404
+    assert client.post(
+        f"{LEGACY_LEAVE_API}/{ids['leave']}/approve",
+        headers=auth_headers,
+        json={"comment": "同意", "version": 0},
+    ).status_code == 404
 
 
 def test_grant_masked_and_closed_loop(client, auth_headers, db_mode):
@@ -75,17 +73,17 @@ def test_grant_masked_and_closed_loop(client, auth_headers, db_mode):
     det = client.get(f"/api/v1/campus-service/grants/{ids['grant']}", headers=auth_headers).json()
     assert det["data"]["grant"]["amount"] == 3300  # 详情可见真实金额
     ok = client.post(f"/api/v1/campus-service/grants/{ids['grant']}/approve", headers=auth_headers,
-                     json={}).json()
+                     json={"version": det["data"]["grant"]["version"]}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
 
 
 def test_dorm_exception_closed_loop(client, auth_headers, db_mode):
     ids = _seed(db_mode)
     bad = client.post(f"/api/v1/campus-service/dorm-exceptions/{ids['de']}/handle", headers=auth_headers,
-                      json={"note": "x", "complete": True}).json()
+                      json={"note": "x", "complete": True, "version": 0}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/campus-service/dorm-exceptions/{ids['de']}/handle", headers=auth_headers,
-                     json={"note": "已联系家长核实并教育", "complete": True}).json()
+                     json={"note": "已联系家长核实并教育", "complete": True, "version": 0}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "COMPLETED"
     # 新标记异常
     mk = client.post("/api/v1/campus-service/dorm-exceptions", headers=auth_headers,
@@ -115,7 +113,7 @@ def test_discipline_legacy_write_retired(client, auth_headers, db_mode):
                           "reason": "违反宿舍管理规定给予警告"}).json()
     assert c["code"] != 0 and c["bizCode"] == "DATA_CONFLICT"
     u = client.put(f"/api/v1/campus-service/disciplines/{did}", headers=auth_headers,
-                  json={"status": "REVOKED"}).json()
+                   json={"status": "REVOKED"}).json()
     assert u["code"] != 0 and u["bizCode"] == "DATA_CONFLICT"
     v = client.post(f"/api/v1/campus-service/disciplines/{did}/void", headers=auth_headers,
                     json={"reason": "处分决定撤销"}).json()
@@ -128,14 +126,14 @@ def test_work_order_closed_loop(client, auth_headers, db_mode):
                       json={"ids": [str(ids["wo"])], "handler": "王学工"}).json()
     assert asg["code"] == 0 and asg["data"]["count"] == 1
     h = client.post(f"/api/v1/campus-service/work-orders/{ids['wo']}/handle", headers=auth_headers,
-                    json={"note": "已开具证明并交付学生", "close": True}).json()
+                    json={"note": "已开具证明并交付学生", "close": True, "version": 0}).json()
     assert h["code"] == 0 and h["data"]["status"] == "COMPLETED"
     det = client.get(f"/api/v1/campus-service/work-orders/{ids['wo']}", headers=auth_headers).json()
     assert det["code"] == 0 and len(det["data"]["order"]["trail"]) >= 1
 
 
 def test_dashboard_mental_audit(client, auth_headers, db_mode):
-    ids = _seed(db_mode)
+    _seed(db_mode)
     dash = client.get("/api/v1/campus-service/dashboard", headers=auth_headers).json()
     assert dash["code"] == 0 and any(k["key"] == "students" for k in dash["data"]["kpis"])
     # 查看心理记录会写涉密审计
