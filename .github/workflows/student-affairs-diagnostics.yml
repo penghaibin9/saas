@@ -58,7 +58,7 @@ jobs:
     env:
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
     steps:
-      - name: Run new backend contract tests
+      - name: Inspect routes and run backend contracts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -75,4 +75,29 @@ jobs:
           git clone -q --depth 1 --branch "$SOURCE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
           cd repo/backend
           python -m pip install -q -r requirements.txt cryptography
+          python - <<'PY'
+          from fastapi import APIRouter
+          from fastapi.routing import APIRoute
+          from app.api.v1 import affairs_activity_mobile, affairs_appeal_mobile, affairs_appeal_repair_api, affairs_four_end
+
+          supplements = (
+              affairs_four_end.router,
+              affairs_activity_mobile.router,
+              affairs_appeal_mobile.router,
+              affairs_appeal_repair_api.router,
+          )
+          print('=== 独立补充路由 ===')
+          for child in supplements:
+              for route in child.routes:
+                  if isinstance(route, APIRoute) and '/mobile/teacher/affairs' in route.path:
+                      print(sorted(route.methods or ()), route.path)
+
+          aggregate = APIRouter()
+          for child in supplements:
+              aggregate.include_router(child)
+          print('=== 独立聚合后路由 ===')
+          for route in aggregate.routes:
+              if isinstance(route, APIRoute) and '/mobile/teacher/affairs' in route.path:
+                  print(sorted(route.methods or ()), route.path)
+          PY
           pytest tests/test_affairs_student_contract_service.py tests/test_affairs_student_contract_security_guard.py -q -p no:warnings
