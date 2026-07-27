@@ -1,21 +1,19 @@
-"""V2-02 非选课教学班名单变更与影响预览。
+"""非选课教学班名单变更与影响预览。
 
-边界：
-- 存在选课关系或当前名单来自选课锁定时，必须回选课流程调整，禁止人工覆盖；
-- 非选课教学班可创建 MANUAL 新版本，但先展示课表/考勤/考务/成绩影响；
-- 考勤、考务或成绩已消费名单时，本阶段阻断直接变更，留给后续下游迁移流程处理；
-- 课表是教学班级别事实，仅提示不阻断。
+- 选课管理的教学班禁止人工覆盖；
+- 非选课教学班可创建 MANUAL 新版本；
+- 先展示课表、考勤、考务、成绩影响；
+- 考勤、考务或成绩已消费名单时阻断直接变更。
 """
 from __future__ import annotations
 
+from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.affairs_security import no_data_scope
 from app.services.db_service import _tid, session
 
-from . import academic_affairs_teaching_class_lock_service as _teaching_class
-from . import academic_affairs_teaching_class_query_service as _query
-from .academic_affairs_task_security_facade import _scope
+from . import academic_affairs_teaching_class_query_service as query_service
+from . import academic_affairs_teaching_class_service as teaching_class_service
 
 
 def _change_sets(current_ids, proposed_ids) -> dict:
@@ -48,11 +46,18 @@ def _impact_summary(schedule_count: int, attendance_count: int, exam_count: int,
 
 
 def _manual_mode(selection_exists: bool, class_type: str, current_source: str) -> dict:
-    managed_by_selection = bool(selection_exists) or str(class_type or "").upper() == "SELECTION" or str(current_source or "").upper() == "SELECTION_LOCK"
+    managed_by_selection = (
+        bool(selection_exists)
+        or str(class_type or "").upper() == "SELECTION"
+        or str(current_source or "").upper() == "SELECTION_LOCK"
+    )
     return {
         "managedBySelection": managed_by_selection,
         "canManualChange": not managed_by_selection,
-        "reason": "该教学班名单由选课结果管理，请在选课管理中补退选并重新锁定名单" if managed_by_selection else "",
+        "reason": (
+            "该教学班名单由选课结果管理，请在选课管理中补退选并重新锁定名单"
+            if managed_by_selection else ""
+        ),
     }
 
 
@@ -69,7 +74,7 @@ def _get_class(db, user, teaching_class_id: int, *, lock=False):
     row = query.first()
     if not row:
         raise not_found("教学班不存在")
-    if not _query._accessible_rows(db, user, [row]):
+    if not query_service._accessible_rows(db, user, [row]):
         raise no_data_scope("该教学班不在当前数据范围")
     if row.status != "ACTIVE":
         raise AppException("DATA_CONFLICT", "仅使用中的教学班可调整名单", http_status=409)
@@ -114,37 +119,46 @@ def _selection_exists(db, teaching_class) -> bool:
 
 
 def _validate_student_scope(db, user, student_ids) -> None:
-    from app.models import Major, SchoolClass, StudentProfile
+    from app.models import Major, SchoolClass
 
-    ids, profiles = _teaching_class._member_profiles(db, student_ids)
-    scope = _scope(user, db)
-    if scope.all:
+    ids, profiles = teaching_class_service._member_profiles(db, student_ids)
+    context = build_affairs_context(user, db)
+    if str(context.scope_type or "").upper() == "TENANT_ALL":
         return
+    allowed_class_ids = {int(value) for value in (context.allowed_class_ids(db) or set())}
+    allowed_college_ids = {int(value) for value in (context.college_ids or set())}
+    if not allowed_class_ids and not allowed_college_ids:
+        raise no_data_scope("当前身份未配置可管理的学院或班级范围")
+
+    class_ids = sorted({
+        int(profiles[value].class_id) for value in ids if profiles[value].class_id
+    })
+    classes = db.query(SchoolClass).filter(
+        SchoolClass.tenant_id == _tid(),
+        SchoolClass.id.in_(class_ids or [0]),
+        SchoolClass.is_deleted.is_(False),
+    ).all()
+    major_ids = sorted({int(row.major_id) for row in classes if row.major_id})
+    majors = db.query(Major).filter(
+        Major.tenant_id == _tid(),
+        Major.id.in_(major_ids or [0]),
+        Major.is_deleted.is_(False),
+    ).all()
+    college_by_major = {int(row.id): int(row.college_id) for row in majors if row.college_id}
+    class_college = {
+        int(row.id): college_by_major.get(int(row.major_id))
+        for row in classes if row.major_id
+    }
+
     invalid = []
-    if scope.class_ids:
-        invalid = [value for value in ids if not profiles[value].class_id or int(profiles[value].class_id) not in scope.class_ids]
-    elif scope.college_ids:
-        class_ids = sorted({int(profiles[value].class_id) for value in ids if profiles[value].class_id})
-        classes = db.query(SchoolClass).filter(
-            SchoolClass.tenant_id == _tid(),
-            SchoolClass.id.in_(class_ids or [0]),
-            SchoolClass.is_deleted.is_(False),
-        ).all()
-        major_ids = sorted({int(row.major_id) for row in classes if row.major_id})
-        majors = db.query(Major).filter(
-            Major.tenant_id == _tid(),
-            Major.id.in_(major_ids or [0]),
-            Major.is_deleted.is_(False),
-        ).all()
-        college_by_major = {int(row.id): int(row.college_id) for row in majors if row.college_id}
-        class_college = {int(row.id): college_by_major.get(int(row.major_id)) for row in classes if row.major_id}
-        invalid = [
-            value for value in ids
-            if not profiles[value].class_id
-            or class_college.get(int(profiles[value].class_id)) not in scope.college_ids
-        ]
-    else:
-        invalid = ids
+    for student_id in ids:
+        class_id = int(profiles[student_id].class_id) if profiles[student_id].class_id else None
+        in_class = bool(class_id and class_id in allowed_class_ids)
+        in_college = bool(
+            class_id and class_college.get(class_id) in allowed_college_ids
+        )
+        if not in_class and not in_college:
+            invalid.append(student_id)
     if invalid:
         raise no_data_scope(f"拟加入名单中有 {len(invalid)} 名学生不在当前学院或班级数据范围")
 
@@ -152,7 +166,7 @@ def _validate_student_scope(db, user, student_ids) -> None:
 def _downstream_impact(db, teaching_class) -> dict:
     from app.models import (
         AaAttendanceSession, AaExamCourse, AaGradeTask, AaScheduleItem,
-        AaTeachingTask, AaTeachingTaskBatch, AaTerm,
+        AaTeachingTask, AaTerm,
     )
 
     task = db.query(AaTeachingTask).filter(
@@ -179,11 +193,6 @@ def _downstream_impact(db, teaching_class) -> dict:
 
     attendance_count = 0
     if task:
-        batch = db.query(AaTeachingTaskBatch).filter(
-            AaTeachingTaskBatch.id == task.batch_id,
-            AaTeachingTaskBatch.tenant_id == _tid(),
-            AaTeachingTaskBatch.is_deleted.is_(False),
-        ).first()
         term = db.query(AaTerm).filter(
             AaTerm.id == teaching_class.term_id,
             AaTerm.tenant_id == _tid(),
@@ -200,7 +209,6 @@ def _downstream_impact(db, teaching_class) -> dict:
         if term_code:
             attendance_query = attendance_query.filter(AaAttendanceSession.term_code == term_code)
         attendance_count = attendance_query.count()
-
     return _impact_summary(schedule_count, attendance_count, exam_count, grade_count)
 
 
@@ -241,7 +249,7 @@ def preview_roster_change(user, teaching_class_id: int, student_ids) -> dict:
 
 
 def create_manual_roster_version(user, teaching_class_id: int, student_ids, reason: str) -> dict:
-    reason_text = (reason or "").strip()
+    reason_text = str(reason or "").strip()
     if len(reason_text) < 5:
         raise AppException("VALIDATION_ERROR", "名单变更原因必填且不少于5字")
 
@@ -256,31 +264,23 @@ def create_manual_roster_version(user, teaching_class_id: int, student_ids, reas
             raise AppException("DATA_CONFLICT", "拟提交名单与当前正式名单完全一致，无需创建新版本", http_status=409)
         if preview["impact"]["blocked"]:
             raise AppException(
-                "DATA_CONFLICT",
-                preview["impact"]["blockerMessage"],
-                details=preview,
-                http_status=409,
+                "DATA_CONFLICT", preview["impact"]["blockerMessage"],
+                details=preview, http_status=409,
             )
 
-        version, created = _teaching_class.create_roster_version(
-            db,
-            teaching_class,
-            student_ids,
-            source_type="MANUAL",
-            source_id=None,
-            reason=reason_text,
+        version, created = teaching_class_service.create_roster_version(
+            db, teaching_class, student_ids,
+            source_type="MANUAL", source_id=None, reason=reason_text,
         )
         if not created:
             raise AppException("DATA_CONFLICT", "当前正式名单版本未发生变化", http_status=409)
 
-        ctx = get_current_user_ctx() or {}
+        context = get_current_user_ctx() or {}
         db.add(AffairsAuditTrail(
-            tenant_id=_tid(),
-            biz_type="AA_TEACHING_CLASS",
-            biz_id=int(teaching_class.id),
-            action="ROSTER_VERSION_CREATE",
-            operator=str(ctx.get("userId") or ctx.get("loginName") or ""),
-            role_name=str(ctx.get("currentRoleCode") or ""),
+            tenant_id=_tid(), biz_type="AA_TEACHING_CLASS",
+            biz_id=int(teaching_class.id), action="ROSTER_VERSION_CREATE",
+            operator=str(context.get("userId") or context.get("loginName") or ""),
+            role_name=str(context.get("currentRoleCode") or ""),
             detail=(
                 f"versionNo={version.version_no};memberCount={version.member_count};"
                 f"added={len(preview['addedStudentIds'])};removed={len(preview['removedStudentIds'])};"
