@@ -116,10 +116,10 @@ export default {
 .ev__item { align-items: center; gap: var(--space-2); }
 .ev__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .ev__state { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 4px; }
-.ev__state.is-open { color: var(--color-primary); }
-.ev__state.is-done { color: var(--color-success); }
+.ev__state.is-open { color: var(--primary-600); }
+.ev__state.is-done { color: var(--success-600); }
 .ev__done { flex-shrink: 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.ev__mask { position: fixed; inset: 0; background: rgba(15,23,42,0.45); display: flex; align-items: flex-end; z-index: 40; }
+.ev__mask { position: fixed; inset: 0; background: var(--bg-mask); display: flex; align-items: flex-end; z-index: var(--z-modal); }
 .ev__sheet { width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: var(--space-4); }
 .ev__sheet-title { font-size: var(--font-size-base); font-weight: 600; color: var(--text-primary); }
 .ev__score-row { display: flex; align-items: center; gap: var(--space-2); }
