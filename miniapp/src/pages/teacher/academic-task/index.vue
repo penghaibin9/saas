@@ -7,7 +7,8 @@
         <MobileGlobalState v-if="!tasks.length" state="empty" title="暂无教学任务"
           description="分配给你的教学任务会出现在这里。" />
         <view class="stack" v-else>
-          <view v-for="t in tasks" :key="t.taskId" class="card at">
+          <view v-for="t in tasks" :key="t.taskId" class="card at" :class="{ 'is-target': isTarget(t) }">
+            <view v-if="isTarget(t)" class="at__target">从工作台直达的任务</view>
             <view class="row-between">
               <view class="flex-1">
                 <text class="t-md t-bold">{{ t.courseName || '—' }}</text>
@@ -44,8 +45,11 @@ const STATUS_TONES = {
 }
 
 export default {
-  data() { return { tasks: [], state: 'loading', acting: false } },
-  onLoad() { this.load() },
+  data() { return { tasks: [], state: 'loading', acting: false, targetTaskId: '' } },
+  onLoad(options = {}) {
+    this.targetTaskId = String(options.id || options.taskId || '')
+    this.load()
+  },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -53,10 +57,23 @@ export default {
   methods: {
     statusLabel(s) { return STATUS_LABELS[s] || s },
     statusTone(s) { return STATUS_TONES[s] || 'default' },
+    isTarget(task) { return !!this.targetTaskId && String(task.taskId || task.teachingTaskId || '') === this.targetTaskId },
+    focusTarget(rows) {
+      if (!this.targetTaskId) return rows
+      const index = rows.findIndex((task) => this.isTarget(task))
+      if (index < 0) {
+        toast('该教学任务不存在、已处理或不在当前身份范围内')
+        this.targetTaskId = ''
+        return rows
+      }
+      if (index === 0) return rows
+      return [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)]
+    },
     load(done) {
       this.state = 'loading'
       teacherApi.getAcademicMyTasks().then((d) => {
-        this.tasks = (d && d.list) || []
+        const rows = (d && (d.list || d.items)) || []
+        this.tasks = this.focusTarget(rows)
         this.state = 'ready'
       }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
     },
@@ -74,7 +91,7 @@ export default {
           if (!r.confirm) return
           this.acting = true
           teacherApi.actAcademicTask(t.taskId, 'CONFIRM')
-            .then(() => { toast('已确认'); this.load() })
+            .then(() => { toast('已确认'); this.targetTaskId = ''; this.load() })
             .catch((e) => this._err(e, '确认'))
             .finally(() => { this.acting = false })
         }
@@ -90,7 +107,7 @@ export default {
           if (reason.length < 5) { toast('退回原因至少 5 个字'); return }
           this.acting = true
           teacherApi.actAcademicTask(t.taskId, 'REJECT', reason)
-            .then(() => { toast('已退回'); this.load() })
+            .then(() => { toast('已退回'); this.targetTaskId = ''; this.load() })
             .catch((e) => this._err(e, '退回'))
             .finally(() => { this.acting = false })
         }
@@ -102,6 +119,8 @@ export default {
 
 <style scoped>
 .at { display: flex; flex-direction: column; gap: var(--space-2); }
+.at.is-target { border: 1px solid var(--teacher-500); box-shadow: 0 0 0 2px var(--teacher-50); }
+.at__target { color: var(--teacher-700); font-size: var(--font-size-xs); font-weight: 600; }
 .at__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .at__row { display: flex; gap: var(--space-3); }
 .at__row-k { font-size: var(--font-size-sm); color: var(--text-tertiary); width: 56px; flex-shrink: 0; }
