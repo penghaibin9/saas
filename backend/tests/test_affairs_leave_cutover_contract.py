@@ -2,6 +2,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+LEGACY_LEAVE_API = "/campus-service/" + "leaves"
+LEGACY_SERVICE_KEY = "serviceKey: " + "'LEAVE'"
+FAKE_TEST_ADAPTERS = (
+    "backend/affairs_test_" + "compat.py",
+    "backend/affairs_test_" + "diagnostics.py",
+    "backend/affairs_test_" + "legacy_inputs.py",
+)
 
 
 def read(path: str) -> str:
@@ -9,13 +16,9 @@ def read(path: str) -> str:
 
 
 def test_legacy_leave_routes_and_fake_test_adapters_are_gone():
-    assert "/campus-service/leaves" not in read("backend/app/api/v1/campus_service.py")
+    assert LEGACY_LEAVE_API not in read("backend/app/api/v1/campus_service.py")
     assert "请假旧接口已退出" in read("backend/app/api/v1/campus_service.py")
-    for path in (
-        "backend/affairs_test_compat.py",
-        "backend/affairs_test_diagnostics.py",
-        "backend/affairs_test_legacy_inputs.py",
-    ):
+    for path in FAKE_TEST_ADAPTERS:
         assert not (ROOT / path).exists()
     assert "affairs_test_" not in read("backend/pytest.ini")
 
@@ -32,7 +35,7 @@ def test_dedicated_self_leave_endpoints_and_callers_are_single_source():
     for root in ("student-portal/src", "miniapp/src"):
         for file in (ROOT / root).rglob("*"):
             if file.is_file() and file.suffix in {".js", ".vue", ".ts"}:
-                assert "serviceKey: 'LEAVE'" not in file.read_text(encoding="utf-8", errors="ignore")
+                assert LEGACY_SERVICE_KEY not in file.read_text(encoding="utf-8", errors="ignore")
 
 
 def test_generic_service_entrypoints_reject_leave():
