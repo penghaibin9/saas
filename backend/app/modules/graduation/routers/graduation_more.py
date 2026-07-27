@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.permissions import require_permission
 from app.core.response import success
 from app.core.security import get_current_user
 from app.services import audit_log
@@ -48,12 +49,14 @@ def peer_rectify(pid: str, body: PeerRectifyRequest, user=Depends(get_current_us
 
 # ── 答辩专家库 ──
 @router.get("/gd-defense-experts", summary="答辩专家列表")
-def expert_list(status: Optional[str] = None, keyword: Optional[str] = None, user=Depends(get_current_user)):
+def expert_list(status: Optional[str] = None, keyword: Optional[str] = None,
+                user=Depends(require_permission("graduationDesign.defense.groupManage"))):
     return success({"items": svc.list_experts(status=status, keyword=keyword)})
 
 
 @router.post("/gd-defense-experts", summary="新增答辩专家")
-def expert_create(body: ExpertCreateRequest, user=Depends(get_current_user)):
+def expert_create(body: ExpertCreateRequest,
+                  user=Depends(require_permission("graduationDesign.defense.groupManage"))):
     result = svc.create_expert(body.expertName, body.title, body.collegeName,
                                body.isExternal, body.avoidNote)
     audit_log.record("新增答辩专家", f"graduation-expert:{result['id']}")
@@ -61,7 +64,8 @@ def expert_create(body: ExpertCreateRequest, user=Depends(get_current_user)):
 
 
 @router.post("/gd-defense-experts/{eid}/status", summary="启用/停用答辩专家")
-def expert_status(eid: str, body: ExpertStatusRequest, user=Depends(get_current_user)):
+def expert_status(eid: str, body: ExpertStatusRequest,
+                  user=Depends(require_permission("graduationDesign.defense.groupManage"))):
     return success(svc.set_expert_status(eid, body.action), message="已更新")
 
 

@@ -7,7 +7,7 @@
   >
     <ErrorState v-if="error" :description="error" @retry="error = ''" />
     <p v-if="readonlyTenant" class="mc-warn mc-readonly">
-      {{ readonlyReason || '当前学校为正式演示只读环境，不能真正发布。请用沙箱账号 admin2（密码 123456，学校编码 sandbox-school）体验发布与发布记录。' }}
+      {{ readonlyReason || '当前学校为正式演示只读环境，不能真正发布。请用沙箱账号 admin2（学校编码 sandbox-school，登录密码见沙箱账号说明文档）体验发布与发布记录。' }}
     </p>
 
     <div class="mc-compose">

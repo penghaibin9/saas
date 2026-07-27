@@ -1,7 +1,7 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="teacher" title="答辩评分" subtitle="本人担任评委的答辩学生" show-back />
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" :description="loadError" @retry="load">
       <view class="page-pad" v-if="list">
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待评分学生"
           description="答辩安排发布后，本人所在评委面板的学生会出现在这里。" />
@@ -51,8 +51,23 @@
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 
+function errorText(error) {
+  const code = String(error?.code || '')
+  if (code.startsWith('403') || code === 'NO_PERMISSION' || code === 'NO_DATA_SCOPE') {
+    return error?.message || '当前账号没有答辩评分权限，或尚未绑定稳定评委身份'
+  }
+  if (code.startsWith('409') || code === 'DATA_CONFLICT') {
+    return error?.message || '答辩安排已变化，请刷新后重试'
+  }
+  return error?.message || '答辩评分队列加载失败，请检查网络后重试'
+}
+
 export default {
-  data() { return { list: null, state: 'loading', expanded: null, drafts: {}, acting: false } },
+  data() {
+    return {
+      list: null, state: 'loading', loadError: '', expanded: null, drafts: {}, acting: false
+    }
+  },
   onLoad() { this.load() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
@@ -62,9 +77,14 @@ export default {
     statusTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'SCORED' ? 'warning' : 'default' },
     load(done) {
       this.state = 'loading'
+      this.loadError = ''
       teacherApi.getGraduationDefenseScorePending()
-        .then((d) => { this.list = d || []; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+        .then((d) => { this.list = Array.isArray(d) ? d : []; this.state = 'ready' })
+        .catch((e) => {
+          this.list = null
+          this.loadError = errorText(e)
+          this.state = 'error'
+        })
         .finally(() => { if (done) done() })
     },
     toggle(d) {
@@ -72,8 +92,12 @@ export default {
       if (this.expanded === d.gdStudentId) { this.expanded = null; return }
       this.expanded = d.gdStudentId
       if (!this.drafts[d.gdStudentId]) {
-        const draft = { score: d.myScore != null ? String(d.myScore) : '', comment: d.myComment || '',
-          absent: !!d.myAbsent, absentReason: '' }
+        const draft = {
+          score: d.myScore != null ? String(d.myScore) : '',
+          comment: d.myComment || '',
+          absent: !!d.myAbsent,
+          absentReason: d.myAbsentReason || ''
+        }
         this.$set ? this.$set(this.drafts, d.gdStudentId, draft) : (this.drafts[d.gdStudentId] = draft)
       }
     },
@@ -95,10 +119,13 @@ export default {
       teacherApi.submitGraduationDefenseScore(d.gdStudentId, body)
         .then(() => { toast('已保存'); this.expanded = null; this.load() })
         .catch((e) => {
-          const code = e && String(e.code)
-          if (code === 'DATA_CONFLICT') { toast((e && e.message) || '当前状态不可修改，正在刷新'); this.load() }
-          else if (code && code.startsWith('403')) toast((e && e.message) || '不在你的评委范围内')
-          else toast((e && e.message) || '提交失败，请重试')
+          const code = String(e?.code || '')
+          if (code.startsWith('409') || code === 'DATA_CONFLICT') {
+            toast(e?.message || '当前状态不可修改，正在刷新')
+            this.load()
+          } else {
+            toast(errorText(e))
+          }
         })
         .finally(() => { this.acting = false })
     }

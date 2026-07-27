@@ -60,7 +60,8 @@ def test_view_and_sign_taskbook(client, db_mode):
     h = _stu_token("毕一", "GD-P-001")
     tb = client.get(f"{PORTAL}/taskbook", headers=h).json()
     assert tb["code"] == 0 and tb["data"]["hasData"] is True
-    r = client.post(f"{PORTAL}/taskbook/sign", headers=h, json={"confirm": True}).json()
+    r = client.post(f"{PORTAL}/taskbook/sign", headers=h,
+                    json={"confirm": True, "taskbookVersion": tb["data"]["taskbookVersion"]}).json()
     assert r["code"] == 0
     d = r["data"]
     assert len(d["contentHash"]) == 64 and d["provider"] == "reliable_log" and d["legalEffect"] is False
@@ -87,7 +88,8 @@ def test_sign_requires_confirm(client, db_mode):
 def test_sign_without_taskbook(client, db_mode):
     _seed_student("GD-P-003", "毕三")  # 无毕设记录
     h = _stu_token("毕三", "GD-P-003")
-    r = client.post(f"{PORTAL}/taskbook/sign", headers=h, json={"confirm": True}).json()
+    r = client.post(f"{PORTAL}/taskbook/sign", headers=h,
+                    json={"confirm": True, "taskbookVersion": 1}).json()
     assert r["code"] == 404001
 
 
@@ -196,13 +198,17 @@ def _seed_gd_for_final(no, name):
     db.close()
 
 
-def _seed_pdf_file():
-    """建一个真实 pdf 文件对象（论文附件校验要求真实 file_id + ext∈pdf/doc/docx/zip）。"""
+def _seed_pdf_file(student_no):
+    """建一个真实 pdf 文件对象（论文附件校验要求真实 file_id + ext∈pdf/doc/docx/zip）。
+
+    biz_id 绑定学号：文件授权 _student_owns_file 要求 biz_id == studentNo 才认定本人可访问。
+    """
     from app.db.session import get_sessionmaker
     from app.models import FileObject
     db = get_sessionmaker()()
     f = FileObject(tenant_id=TID, file_key="test/thesis-1.pdf", file_name="毕业论文.pdf",
-                   ext="pdf", size_bytes=1024, biz_type="GRADUATION_MATERIAL", status="CONFIRMED")
+                   ext="pdf", size_bytes=1024, biz_type="GRADUATION_MATERIAL", biz_id=student_no,
+                   status="CONFIRMED")
     db.add(f)
     db.commit()
     fid = str(f.id)
@@ -213,7 +219,7 @@ def _seed_pdf_file():
 def test_view_and_submit_final(client, db_mode):
     _seed_student("GD-P-301", "成果一")
     _seed_gd_for_final("GD-P-301", "成果一")
-    fid = _seed_pdf_file()
+    fid = _seed_pdf_file("GD-P-301")
     h = _stu_token("成果一", "GD-P-301")
     v = client.get(f"{PORTAL}/final", headers=h).json()
     assert v["code"] == 0 and v["data"]["hasData"] is True and v["data"]["canSubmitDraft"] is True

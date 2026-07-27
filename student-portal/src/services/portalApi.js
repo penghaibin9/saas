@@ -13,6 +13,9 @@ const q = (obj) => {
   return parts.length ? `?${parts.join('&')}` : ''
 }
 
+// 仅缓存本页最近一次真实加载并展示的任务书版本；确认时禁止重新 GET 后偷换成未阅读的新版本。
+let renderedGraduationTaskbookVersion = null
+
 export const portalApi = {
   // ── 认证 / 通用查看 ──
   login: (loginName, password, tenantCode) =>
@@ -193,8 +196,15 @@ export const portalApi = {
   commonExportLog: (body) => request('/portal/common/export-log', { method: 'POST', body }),
 
   // ── 毕业设计学生工作台（PC 签署/成绩走 portal；过程读写走 mobile 本人接口）──
-  graduationTaskbook: () => request('/portal/graduation/taskbook'),
-  signGraduationTaskbook: () => request('/portal/graduation/taskbook/sign', { method: 'POST', body: { confirm: true } }),
+  graduationTaskbook: async () => {
+    const data = await request('/portal/graduation/taskbook')
+    renderedGraduationTaskbookVersion = data?.hasData ? data.taskbookVersion : null
+    return data
+  },
+  signGraduationTaskbook: (taskbookVersion = renderedGraduationTaskbookVersion) =>
+    request('/portal/graduation/taskbook/sign', {
+      method: 'POST', body: { confirm: true, taskbookVersion }
+    }),
   graduationProposal: () => request('/portal/graduation/proposal'),
   submitGraduationProposal: (body) => request('/portal/graduation/proposal/submit', { method: 'POST', body }),
   graduationMidterm: () => request('/portal/graduation/midterm'),

@@ -4,15 +4,22 @@
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
  * - 绝不调用 /auth/mock-login，绝不免密。
  */
+import {
+  clearGraduationSection,
+  failGraduationSection,
+  graduationSectionForPath
+} from '@/stores/graduationHealth'
+
 const TOKEN_KEY = 'sp_token_v1'
 const REFRESH_KEY = 'sp_refresh_v1'
+const GD_TEMP_FILES_KEY = 'sp_gd_temp_files_v1'
 const API_PREFIX = '/api/v1'
 
 const API_BASE = (() => {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
   if (env.VITE_API_BASE_URL) return String(env.VITE_API_BASE_URL).replace(/\/+$/, '')
   if (env.DEV) return 'http://localhost:8000'
-  return '' // 生产同源：/api/v1 由 Nginx 反代
+  return ''
 })()
 
 export function getToken() {
@@ -25,10 +32,59 @@ export function setRefreshToken(t) {
   try { localStorage.setItem(REFRESH_KEY, t || '') } catch { /* ignore */ }
 }
 export function clearSession() {
-  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY) } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_KEY)
+    localStorage.removeItem(GD_TEMP_FILES_KEY)
+  } catch { /* ignore */ }
+}
+
+function readTempFiles() {
+  try { return JSON.parse(localStorage.getItem(GD_TEMP_FILES_KEY) || '{}') || {} } catch { return {} }
+}
+function writeTempFiles(value) {
+  try { localStorage.setItem(GD_TEMP_FILES_KEY, JSON.stringify(value || {})) } catch { /* ignore */ }
+}
+function rememberTempFile(fileId) {
+  if (!fileId) return
+  const value = readTempFiles()
+  value[String(fileId)] = Date.now()
+  writeTempFiles(value)
+}
+function markTempFilesBound(fileIds) {
+  const ids = new Set((fileIds || []).map(String))
+  if (!ids.size) return
+  const value = readTempFiles()
+  ids.forEach((id) => delete value[id])
+  writeTempFiles(value)
+}
+
+export async function abandonTemporaryGraduationMaterial(fileId) {
+  if (!fileId) return null
+  const data = await request(`/portal/graduation/materials/${fileId}/abandon`, { method: 'POST' })
+  const value = readTempFiles()
+  delete value[String(fileId)]
+  writeTempFiles(value)
+  return data
+}
+
+let cleanupStarted = false
+function cleanupStaleGraduationTemps() {
+  if (cleanupStarted) return
+  cleanupStarted = true
+  const now = Date.now()
+  const cutoff = 24 * 60 * 60 * 1000
+  const value = readTempFiles()
+  Object.entries(value).forEach(([fileId, at]) => {
+    if (now - Number(at || 0) < cutoff) return
+    abandonTemporaryGraduationMaterial(fileId).catch(() => { /* 已绑定文件会 409，保留登记供后续核对 */ })
+  })
 }
 
 export async function request(path, { method = 'GET', body, auth = true } = {}) {
+  cleanupStaleGraduationTemps()
+  const section = method === 'GET' ? graduationSectionForPath(path) : ''
+  if (section) clearGraduationSection(section)
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -38,16 +94,31 @@ export async function request(path, { method = 'GET', body, auth = true } = {}) 
       method, headers, body: body ? JSON.stringify(body) : undefined
     })
   } catch (netErr) {
-    const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
+    const e = new Error('网络不可达，请检查后端服务'); e.network = true
+    if (section) failGraduationSection(section, e.message)
+    throw e
   }
   let payload = null
   try { payload = await res.json() } catch { payload = null }
-  if (res.status === 401) { clearSession(); const e = new Error('登录已失效，请重新登录'); e.status = 401; throw e }
+  if (res.status === 401) {
+    clearSession()
+    const e = new Error('登录已失效，请重新登录'); e.status = 401
+    if (section) failGraduationSection(section, e.message)
+    throw e
+  }
   if (!payload || typeof payload.code !== 'number') {
-    const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status; throw e
+    const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status
+    if (section) failGraduationSection(section, e.message)
+    throw e
   }
   if (payload.code !== 0) {
-    const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true; throw e
+    const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true
+    if (section) failGraduationSection(section, e.message)
+    throw e
+  }
+  const cleanPath = String(path || '').split('?')[0]
+  if (method === 'POST' && ['/portal/graduation/proposal', '/portal/graduation/final'].includes(cleanPath)) {
+    markTempFilesBound(body && body.attachments)
   }
   return payload.data
 }
@@ -57,6 +128,7 @@ export async function request(path, { method = 'GET', body, auth = true } = {}) 
  * 不给调用方暴露后台接口，也不把文件内容混入普通 JSON 请求。
  */
 export async function uploadFile(path, file, { auth = true } = {}) {
+  cleanupStaleGraduationTemps()
   const headers = {}
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -76,6 +148,9 @@ export async function uploadFile(path, file, { auth = true } = {}) {
   }
   if (payload.code !== 0) {
     const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true; throw e
+  }
+  if (String(path).includes('bizType=GRADUATION_MATERIAL') && payload.data?.fileId) {
+    rememberTempFile(payload.data.fileId)
   }
   return payload.data
 }
