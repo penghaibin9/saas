@@ -8,7 +8,7 @@ from datetime import datetime
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
-from app.services.db_service import _tid
+from app.services.db_service import _tid, session
 from app.services.import_export_service import upload_dir
 
 # 域 → (标题, 列表函数路径, [(表头, 字段名)])
@@ -87,6 +87,20 @@ def _call_list(path):
     return items, total
 
 
+def _require_student_affairs_full_scope(user: dict) -> None:
+    """学工历史迁移对账包含全租户操作记录，范围角色不得导出全校数据。"""
+    from app.core.affairs_security import build_affairs_context
+
+    with session() as db:
+        ctx = build_affairs_context(user or {}, db)
+        if ctx.scope_type != "TENANT_ALL":
+            raise AppException(
+                "NO_PERMISSION",
+                "学工历史迁移对账仅限学校级全域角色导出",
+                http_status=403,
+            )
+
+
 def export_domain(domain: str, purpose: str, user: dict | None = None) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导出域：{domain}")
@@ -94,9 +108,11 @@ def export_domain(domain: str, purpose: str, user: dict | None = None) -> dict:
         raise AppException("VALIDATION_ERROR", "导出用途必填且不少于 5 字")
     if not db_enabled():
         raise AppException("SERVER_ERROR", "导出需启用数据库")
+    user = user or get_current_user_ctx() or {}
+    if domain == "student-affairs":
+        _require_student_affairs_full_scope(user)
     title, list_path, cols = DOMAINS[domain]
     items, total = _call_list(list_path)
-    user = user or get_current_user_ctx() or {}
     from openpyxl import Workbook
     wb = Workbook(write_only=True)
     ws = wb.create_sheet(title=title[:28])
