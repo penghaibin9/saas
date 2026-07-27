@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from . import academic_affairs as academic_affairs
+from .dashboard_readiness_router import router as dashboard_readiness_router
 from .dynamic_grade_router import router as dynamic_grade_router
 from .grade_identity_router import router as grade_identity_router
 from .mobile_grade_entry_router import router as mobile_grade_entry_router
@@ -56,6 +57,7 @@ if not any(path == "/academic-affairs/scheduling/rules" for path, _methods in _e
     academic_affairs.router.include_router(scheduling_rule_router)
 if not any(path == "/academic-affairs/teaching-classes" for path, _methods in _existing):
     academic_affairs.router.include_router(teaching_class_router)
+_append_routes(dashboard_readiness_router)
 _append_routes(grade_identity_router)
 _append_routes(dynamic_grade_router)
 _append_routes(stats_snapshot_router)
