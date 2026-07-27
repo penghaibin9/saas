@@ -177,16 +177,21 @@ def test_portal_leave_resubmit_self_only(client, db_mode):
     from datetime import datetime
 
     from app.db.session import get_sessionmaker
-    from app.models import CsLeave, StudentProfile
+    from app.models import CsLeave, SchoolClass, StudentProfile, User
     from app.services import affairs_leave_service as leave_svc
 
     db = get_sessionmaker()()
+    counselor = User(tenant_id=TID, login_name="portal-resubmit-counselor", real_name="重交回归辅导员",
+                     password_hash="x", user_type="TEACHER", status="ACTIVE")
+    db.add(counselor); db.flush()
+    cls = SchoolClass(tenant_id=TID, major_id=1, class_name="门户重交回归班", counselor_id=counselor.id)
+    db.add(cls); db.flush()
     stu = StudentProfile(tenant_id=TID, student_no="SA-RESUB-01", real_name="重交生",
                          gender="M", grade="2024", current_stage="ENROLLED",
-                         student_status="NORMAL", status="ACTIVE")
+                         student_status="NORMAL", status="ACTIVE", class_id=cls.id)
     other = StudentProfile(tenant_id=TID, student_no="SA-RESUB-02", real_name="他人",
                            gender="F", grade="2024", current_stage="ENROLLED",
-                           student_status="NORMAL", status="ACTIVE")
+                           student_status="NORMAL", status="ACTIVE", class_id=cls.id)
     db.add(stu); db.add(other); db.flush()
     leave = CsLeave(
         tenant_id=TID, cs_student_id=0, student_id=stu.id, leave_type="PERSONAL",
@@ -196,17 +201,20 @@ def test_portal_leave_resubmit_self_only(client, db_mode):
         return_reason="材料不齐请补充说明",
     )
     db.add(leave); db.commit()
+    db.refresh(leave)
     leave_id = leave.id
+    leave_version = leave.version
     db.close()
 
     h = _stu_token("重交生", "SA-RESUB-01")
     ok = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=h,
-                     json={"reason": "已按退回意见补充行程说明材料"}).json()
+                     json={"reason": "已按退回意见补充行程说明材料", "version": leave_version}).json()
     assert ok["code"] == 0
     assert ok["data"]["affairsStatus"] == "COUNSELOR_REVIEW"
 
     # 再次重交应失败（已不在 RETURNED）
-    again = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=h, json={"reason": "再次重交不应成功"}).json()
+    again = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=h,
+                       json={"reason": "再次重交不应成功", "version": leave_version + 1}).json()
     assert again["code"] != 0
 
     # 他人不可重交
@@ -218,5 +226,5 @@ def test_portal_leave_resubmit_self_only(client, db_mode):
     db.commit(); db.close()
     other_h = _stu_token("他人", "SA-RESUB-02")
     deny = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=other_h,
-                       json={"reason": "他人冒充重交应当失败"}).json()
+                       json={"reason": "他人冒充重交应当失败", "version": leave_version + 1}).json()
     assert deny["code"] in (403001, 403002) or deny.get("bizCode") in ("NO_PERMISSION", "NO_DATA_SCOPE")

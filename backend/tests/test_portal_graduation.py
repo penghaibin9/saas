@@ -47,7 +47,7 @@ def _seed_gd_with_taskbook(no, name):
     db.add(g)
     db.flush()
     db.add(GraduationTaskBook(tenant_id=TID, gd_student_id=g.id, taskbook_version=1,
-                              status="PENDING_CONFIRM", objective="研究XX系统设计与实现",
+                              status="ISSUED", objective="研究XX系统设计与实现",
                               content="完成需求分析、设计、编码、测试与论文撰写。",
                               history_json=[]))
     db.commit()
