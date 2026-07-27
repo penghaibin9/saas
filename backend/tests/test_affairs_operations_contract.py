@@ -83,6 +83,8 @@ def test_safe_batch_is_low_risk_idempotent_and_retryable_per_item():
     assert 'row.status == "FAILED"' in guard
     assert "row.attempt_count = before + 1" in guard
     assert 'biz_type="BATCH_JOB"' in guard
+    assert 'existed.status == "PENDING"' in guard
+    assert "return operations.run_batch_job(resume_id, user)" in guard
 
 
 def test_dorm_exception_returns_risk_responsibility_and_actions_without_auto_close():
@@ -136,6 +138,42 @@ def test_teacher_pc_has_material_queue_review_and_failed_only_batch_retry():
     assert "逐条校验权限、范围、状态和版本" in page
     assert "验收" in page and "退回" in page and "免交" in page
     assert "/admin/student-affairs/material-operations" in routes
+
+
+def test_student_miniapp_has_authenticated_upload_versions_and_notice_focus():
+    request = _read("miniapp/src/services/request.js")
+    api = _read("miniapp/src/services/affairsContractApi.js")
+    page = _read("miniapp/src/pages/student/affairs/index.vue")
+    message = _read("miniapp/src/pages/common/message-detail/index.vue")
+
+    assert "export function realUpload" in request
+    assert "export function realDownload" in request
+    assert "_refreshOnce()" in request
+    assert "getMyMaterialRequirements" in api
+    assert "uploadMaterialFile" in api
+    assert "submitMaterialVersion" in api
+    assert "item.version" in page
+    assert "version.versionNo" in page
+    assert "历史" in page or "版本记录" in page
+    assert "materialRequirementId" in message
+    assert "/pages/student/affairs/index?materialRequirementId=" in message
+
+
+def test_teacher_miniapp_has_inline_review_safe_batch_and_todo_focus():
+    api = _read("miniapp/src/services/affairsContractApi.js")
+    page = _read("miniapp/src/pages/teacher/affairs/index.vue")
+
+    assert "getMaterialRequirements" in api
+    assert "reviewMaterialRequirement" in api
+    assert "createMaterialReminderBatch" in api
+    assert "retryMaterialBatchFailed" in api
+    assert "MATERIAL_REVIEW" in page
+    assert "逐条校验权限、范围、状态和版本" in page
+    assert "验收" in page and "退回" in page and "免交" in page
+    assert "重试失败项" in page
+    # 复用已注册的学工首页，不为本轮新增 pages.json 路由，降低小程序页面清单变更风险。
+    assert "pages/student/affairs/index" in _read("miniapp/src/pages.json")
+    assert "pages/teacher/affairs/index" in _read("miniapp/src/pages.json")
 
 
 def test_temporary_student_affairs_diagnostics_workflow_is_removed():
