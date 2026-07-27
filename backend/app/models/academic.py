@@ -83,23 +83,33 @@ class AcademicGrade(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AcademicMakeup(PKMixin, TenantMixin, CommonMixin, Base):
-    """补考/清考名单事实。
+    """补考、清考和缓考后续考试名单事实。
 
-    V2-04起纳入名单时冻结原正式成绩与课程身份，后续发布不再按课程名反查。
+    纳入名单时冻结原成绩或缓考来源、稳定课程身份、教学任务和名单版本；发布不再按课程名反查。
     """
     __tablename__ = "t_acad_makeup"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "source_biz_type", "source_biz_id", name="uk_acad_makeup_source_biz"),
         Index("ix_acad_makeup_origin_grade", "tenant_id", "origin_grade_id"),
         Index("ix_acad_makeup_course_attempt", "tenant_id", "acad_student_id", "course_id", "attempt_no"),
+        Index("ix_acad_makeup_teaching_task", "tenant_id", "teaching_task_id"),
+        Index("ix_acad_makeup_roster_version", "tenant_id", "roster_version_id"),
     )
     acad_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="MAKEUP", index=True,
-                                      comment="MAKEUP 常规补考 / CLEARANCE 毕业清考")
+    kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="MAKEUP", index=True,
+        comment="MAKEUP常规补考/CLEARANCE毕业清考/DEFERRED缓考后续考试",
+    )
     origin_grade_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="→ t_acad_grade 原失败成绩")
-    course_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="原失败成绩具体课程版本")
+    source_biz_type: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="DEFERRED_EXAM等原始业务")
+    source_biz_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    course_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="具体课程版本")
     course_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     course_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    attempt_no: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="继承原修读次数")
+    attempt_no: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="补考继承原修读次数；缓考冻结当前修读次数")
+    teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    teaching_class_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    roster_version_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     course_name: Mapped[str] = mapped_column(String(200), nullable=False)
     term: Mapped[str | None] = mapped_column(String(50))
     origin_score: Mapped[int | None] = mapped_column(Integer)
@@ -135,8 +145,7 @@ class AcademicWarning(PKMixin, TenantMixin, CommonMixin, Base):
     level: Mapped[str] = mapped_column(String(50), nullable=False, default="MEDIUM")
     reason: Mapped[str | None] = mapped_column(String(500))
     source_rule: Mapped[str | None] = mapped_column(String(100))
-    source_code: Mapped[str | None] = mapped_column(String(50), index=True,
-                                                   comment="来源 EXAM_FAIL/CREDIT_GAP…")
+    source_code: Mapped[str | None] = mapped_column(String(50), index=True, comment="来源 EXAM_FAIL/CREDIT_GAP…")
     rule_code: Mapped[str | None] = mapped_column(String(50), comment="触发规则编码")
     owner: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_HANDLE")
