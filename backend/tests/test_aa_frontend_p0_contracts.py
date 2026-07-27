@@ -73,6 +73,21 @@ def test_student_registration_uses_dedicated_actionable_workspace():
     assert "window.prompt" not in view
 
 
+def test_student_selection_uses_dedicated_server_authoritative_workspace():
+    router = _read("student-portal/src/router/index.js")
+    view = _read("student-portal/src/views/academic/StudentSelectionView.vue")
+
+    assert "StudentSelectionView.vue" in router
+    assert "academicSection('academic/selection'" not in router
+    assert "portalApi.academicCourseSelection()" in view
+    assert "portalApi.academicSelectionRecords()" in view
+    assert "portalApi.academicEnroll" in view
+    assert "portalApi.academicDrop" in view
+    assert "await load()" in view
+    assert "余量、冲突和选退课窗口以服务器最终校验为准" in view
+    assert "window.prompt" not in view
+
+
 def test_student_evaluation_uses_dedicated_secure_workspace():
     router = _read("student-portal/src/router/index.js")
     view = _read("student-portal/src/views/academic/StudentEvaluationView.vue")
