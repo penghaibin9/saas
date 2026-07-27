@@ -60,7 +60,7 @@ class CsLeave(PKMixin, TenantMixin, CommonMixin, Base):
 class CsGrant(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_grant"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     grant_type: Mapped[str] = mapped_column(String(50), nullable=False, default="SCHOLARSHIP")
     amount: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0)
     apply_reason: Mapped[str | None] = mapped_column(String(500))
