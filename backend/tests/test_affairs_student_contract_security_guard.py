@@ -1,8 +1,10 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.services.affairs_student_contract_security_guard import (
     _canonical_message_action,
     _safe_status_token,
+    _secure_message_producers,
 )
 
 
@@ -64,3 +66,66 @@ def test_existing_canonical_message_action_is_not_rewritten():
     _canonical_message_action(item, _ContractStub)
     assert item["actionKey"] == "AFFAIRS_AID"
     assert item["actionParams"] == {"recordId": "custom"}
+
+
+def test_outbox_write_canonicalizes_leave_and_appeal_actions():
+    calls = []
+
+    def original(db, **kwargs):
+        calls.append(kwargs)
+        return kwargs
+
+    outbox = SimpleNamespace(emit_message_event=original)
+    _secure_message_producers(outbox)
+
+    outbox.emit_message_event(
+        object(),
+        event_code="LEAVE.RETURNED",
+        source_module="student-affairs",
+        source_biz_type="leave_request",
+        source_biz_id=31,
+        recipient_refs=[{"studentId": 8}],
+        action_key="student.leave.detail",
+        action_params={"leaveId": 31},
+    )
+    assert calls[-1]["action_key"] == "AFFAIRS_LEAVE"
+    assert calls[-1]["action_params"] == {
+        "leaveId": 31,
+        "bizType": "LEAVE_REQUEST",
+        "recordId": "31",
+    }
+
+    outbox.emit_message_event(
+        object(),
+        event_code="AID.NOTICE",
+        source_module="student-affairs",
+        source_biz_type="aid_objection",
+        source_biz_id=32,
+        recipient_refs=[{"studentId": 8}],
+    )
+    assert calls[-1]["action_key"] == "AFFAIRS_AID"
+    assert calls[-1]["action_params"] == {
+        "bizType": "AID_OBJECTION",
+        "recordId": "32",
+    }
+
+
+def test_outbox_does_not_create_sensitive_risk_deep_link():
+    calls = []
+
+    def original(db, **kwargs):
+        calls.append(kwargs)
+        return kwargs
+
+    outbox = SimpleNamespace(emit_message_event=original)
+    _secure_message_producers(outbox)
+    outbox.emit_message_event(
+        object(),
+        event_code="RISK.STATUS",
+        source_module="student-affairs",
+        source_biz_type="risk",
+        source_biz_id=99,
+        recipient_refs=[{"studentId": 8}],
+    )
+    assert calls[-1].get("action_key") is None
+    assert calls[-1].get("action_params") is None
