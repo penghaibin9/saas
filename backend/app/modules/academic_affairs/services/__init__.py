@@ -44,6 +44,8 @@ from . import academic_affairs_program_quality_facade as academic_affairs_progra
 from . import academic_affairs_program_opening_closure_service as academic_affairs_program_quality_service
 from . import academic_affairs_schedule_facade as academic_affairs_schedule_service
 from . import academic_affairs_selection_facade as academic_affairs_selection_service
+# P0-05/P0-11学生选课守卫：稳定账号解析 + courseCode先修/已修判断。
+from . import academic_affairs_selection_student_guard as academic_affairs_selection_student_guard
 # R8选课名单同步层替换 selection facade 的 adjust_record，公开名继续保持兼容。
 from . import academic_affairs_selection_roster_migration_facade as academic_affairs_selection_roster_migration_facade
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
