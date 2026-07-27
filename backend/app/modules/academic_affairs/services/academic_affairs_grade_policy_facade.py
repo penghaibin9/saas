@@ -4,6 +4,8 @@ from __future__ import annotations
 from . import academic_affairs_grade_identity_facade as _base
 from .academic_affairs_effective_grade_policy_service import policy_snapshot_debt
 
+_original_identity_debt = _base.identity_debt
+
 
 def __getattr__(name):
     return getattr(_base, name)
@@ -11,7 +13,7 @@ def __getattr__(name):
 
 def identity_debt(user, term=None) -> dict:
     """教务处治理视图：课程身份、修读次数和策略快照必须同时完整。"""
-    identity = _base.identity_debt(user, term)
+    identity = _original_identity_debt(user, term)
     with _base._legacy.session() as db:
         policy = policy_snapshot_debt(db, term=term)
     return {
