@@ -111,7 +111,6 @@ async function load() {
     portalApi.academicEvaluationTasks(),
     portalApi.academicWarning(),
     portalApi.academicExamDefer(),
-    portalApi.academicGradeRecheck(),
     portalApi.academicMakeupOptions()
   ])
   partialError.value = results.some((result) => result.status === 'rejected')
@@ -120,15 +119,13 @@ async function load() {
   const evaluation = actionableEvaluationRows(val(1))
   const warnings = pendingRows(rowsOf(val(2)))
   const deferrals = rowsOf(val(3)).filter((row) => String(row.status || '').toUpperCase() === 'RETURNED')
-  const rechecks = rowsOf(val(4)).filter((row) => String(row.status || '').toUpperCase() === 'RETURNED')
-  const makeup = val(5, { retakeOptions: [], exemptionOptions: [] })
+  const makeup = val(4, { retakeOptions: [], exemptionOptions: [] })
 
   const next = []
   if (registration.length) next.push({ key: 'registration', icon: '🪪', title: '完成学期注册', description: '存在尚未完成的注册批次', badge: `${registration.length}项`, tone: 'warn', route: '/academic/registration' })
   if (evaluation.length) next.push({ key: 'evaluation', icon: '⭐', title: '完成学生评教', description: '评教窗口已开放，提交后不可重复提交', badge: `${evaluation.length}门`, tone: 'primary', route: '/academic/evaluation' })
   if (warnings.length) next.push({ key: 'warning', icon: '⚠️', title: '查看学业预警', description: '确认原因、责任老师和后续处理要求', badge: `${warnings.length}条`, tone: 'danger', route: '/academic/warning' })
   if (deferrals.length) next.push({ key: 'defer', icon: '🗓', title: '补充缓考材料', description: '存在退回待修改的缓考申请', badge: `${deferrals.length}项`, tone: 'warn', route: '/academic/exam' })
-  if (rechecks.length) next.push({ key: 'recheck', icon: '🔍', title: '修改成绩复查申请', description: '存在退回待补充说明的复查申请', badge: `${rechecks.length}项`, tone: 'warn', route: '/academic/recheck' })
   const retakeCount = (makeup.retakeOptions || []).length
   if (retakeCount) next.push({ key: 'makeup', icon: '📝', title: '处理补考重修', description: '存在可报名的当前有效未通过课程', badge: `${retakeCount}门`, tone: 'warn', route: '/academic/makeup' })
   tasks.value = next
