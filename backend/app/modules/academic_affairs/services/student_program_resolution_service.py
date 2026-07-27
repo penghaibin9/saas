@@ -1,14 +1,15 @@
 """学生培养方案绑定解析器。
 
 毕业审核、学分进度和学生自查必须使用同一确定规则，禁止按专业 ``first()`` 猜方案：
-1. 班级特例绑定；
-2. 专业 + 学生入学年级绑定；
-3. 仅当该专业恰好只有一个有效绑定时兼容回退；
-4. 多条候选无法唯一确定时返回 AMBIGUOUS，不擅自给出毕业结论。
+1. 班级当前绑定；
+2. 专业 + 学生入学年级当前绑定；
+3. 同一班级或专业年级范围内，按生效时间选择历史绑定；
+4. 无法唯一证明时返回 MISSING/AMBIGUOUS，不擅自给出毕业结论。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, time, timezone
 
 from sqlalchemy import select
 
@@ -22,59 +23,115 @@ class ProgramResolution:
     message: str
 
 
-def resolve_student_program(db, student, *, tenant_id: int) -> ProgramResolution:
+_EFFECTIVE_PROGRAM_STATUSES = {"PUBLISHED", "ENABLED", "FROZEN"}
+
+
+def _naive_utc(value) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        value = datetime.combine(value, time.min)
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def _binding_time(binding) -> datetime | None:
+    return _naive_utc(getattr(binding, "bound_at", None))
+
+
+def resolve_student_program(db, student, *, tenant_id: int, as_of=None) -> ProgramResolution:
     from app.models import AaProgram, AaProgramBinding
 
     if not student or not getattr(student, "major_id", None):
         return ProgramResolution(None, None, "MISSING", "NO_MAJOR", "学生未维护专业，无法解析培养方案")
 
+    resolved_at = _naive_utc(as_of) or datetime.utcnow()
     rows = db.scalars(select(AaProgramBinding).where(
         AaProgramBinding.tenant_id == int(tenant_id),
         AaProgramBinding.major_id == int(student.major_id),
-        AaProgramBinding.status == "ACTIVE",
+        AaProgramBinding.status.in_(["ACTIVE", "SUPERSEDED"]),
         AaProgramBinding.is_deleted.is_(False),
     ).order_by(AaProgramBinding.id.desc())).all()
 
-    def enabled(binding):
+    def effective_program(binding):
         program = db.get(AaProgram, int(binding.program_id)) if binding.program_id else None
         if not program or program.is_deleted or program.tenant_id != int(tenant_id):
             return None
-        if str(program.status or "").upper() != "ENABLED":
+        if str(program.status or "").upper() not in _EFFECTIVE_PROGRAM_STATUSES:
             return None
         return program
 
-    # 班级特例优先；同一班级若多条有效绑定，属于数据冲突，不猜最新一条。
+    def choose(scope_rows, *, current_rule, history_rule, conflict_rule, invalid_rule, scope_label):
+        if not scope_rows:
+            return None
+        candidates = [(row, effective_program(row)) for row in scope_rows]
+        valid = [(row, program) for row, program in candidates if program is not None]
+        current = [(row, program) for row, program in valid if str(row.status or "").upper() == "ACTIVE"]
+        if len(current) == 1:
+            row, program = current[0]
+            return ProgramResolution(program, row, "RESOLVED", current_rule, f"按{scope_label}当前绑定解析")
+        if len(current) > 1:
+            return ProgramResolution(None, None, "AMBIGUOUS", conflict_rule,
+                                     f"{scope_label}存在多条当前有效培养方案绑定，请先修复绑定数据")
+
+        historical = [
+            (row, program, _binding_time(row))
+            for row, program in valid
+            if str(row.status or "").upper() == "SUPERSEDED"
+            and _binding_time(row) is not None
+            and _binding_time(row) <= resolved_at
+        ]
+        if historical:
+            latest_time = max(item[2] for item in historical)
+            latest = [(row, program) for row, program, bound_at in historical if bound_at == latest_time]
+            if len(latest) == 1:
+                row, program = latest[0]
+                return ProgramResolution(program, row, "RESOLVED", history_rule,
+                                         f"按{scope_label}生效日期内历史绑定解析")
+            return ProgramResolution(None, None, "AMBIGUOUS", conflict_rule,
+                                     f"{scope_label}同一生效时点存在多条历史培养方案绑定")
+
+        # 该范围已经明确配置过绑定，但方案不可用或历史绑定缺少可证明生效时间时，不得降级猜其它方案。
+        return ProgramResolution(None, None, "MISSING", invalid_rule,
+                                 f"{scope_label}绑定存在，但方案状态或生效时间不满足毕业审核要求")
+
     if getattr(student, "class_id", None):
-        class_rows = [r for r in rows if r.class_id and int(r.class_id) == int(student.class_id)]
-        valid = [(r, enabled(r)) for r in class_rows]
-        valid = [(r, p) for r, p in valid if p is not None]
-        if len(valid) == 1:
-            r, p = valid[0]
-            return ProgramResolution(p, r, "RESOLVED", "CLASS_BINDING", "按学生行政班特例绑定解析")
-        if len(valid) > 1:
-            return ProgramResolution(None, None, "AMBIGUOUS", "CLASS_BINDING_CONFLICT",
-                                     "该班级存在多条有效培养方案绑定，请先修复绑定数据")
+        class_rows = [row for row in rows if row.class_id and int(row.class_id) == int(student.class_id)]
+        picked = choose(
+            class_rows,
+            current_rule="CLASS_BINDING",
+            history_rule="CLASS_HISTORICAL_EFFECTIVE",
+            conflict_rule="CLASS_BINDING_CONFLICT",
+            invalid_rule="CLASS_BINDING_INVALID",
+            scope_label="学生行政班",
+        )
+        if picked is not None:
+            return picked
 
     grade = str(getattr(student, "grade", None) or "").strip()
     if grade:
-        grade_rows = [r for r in rows if str(r.grade_year or "").strip() == grade and not r.class_id]
-        valid = [(r, enabled(r)) for r in grade_rows]
-        valid = [(r, p) for r, p in valid if p is not None]
-        if len(valid) == 1:
-            r, p = valid[0]
-            return ProgramResolution(p, r, "RESOLVED", "MAJOR_GRADE_BINDING", "按专业和入学年级绑定解析")
-        if len(valid) > 1:
-            return ProgramResolution(None, None, "AMBIGUOUS", "MAJOR_GRADE_CONFLICT",
-                                     "该专业年级存在多条有效培养方案绑定，请先修复绑定数据")
+        grade_rows = [
+            row for row in rows
+            if not row.class_id and str(row.grade_year or "").strip() == grade
+        ]
+        picked = choose(
+            grade_rows,
+            current_rule="MAJOR_GRADE_BINDING",
+            history_rule="MAJOR_GRADE_HISTORICAL_EFFECTIVE",
+            conflict_rule="MAJOR_GRADE_CONFLICT",
+            invalid_rule="MAJOR_GRADE_BINDING_INVALID",
+            scope_label="专业与入学年级",
+        )
+        if picked is not None:
+            return picked
 
-    # 兼容历史：专业下只有一个有效、非班级绑定时才允许回退。
-    generic = [(r, enabled(r)) for r in rows if not r.class_id]
-    generic = [(r, p) for r, p in generic if p is not None]
-    if len(generic) == 1:
-        r, p = generic[0]
-        return ProgramResolution(p, r, "RESOLVED", "UNIQUE_MAJOR_FALLBACK",
-                                 "历史数据未按年级绑定，因专业仅一个有效方案而兼容解析")
-    if len(generic) > 1:
-        return ProgramResolution(None, None, "AMBIGUOUS", "MULTIPLE_MAJOR_BINDINGS",
-                                 "专业存在多个年级方案，但学生年级未匹配，不能自动判断")
-    return ProgramResolution(None, None, "MISSING", "NO_ACTIVE_BINDING", "未找到学生适用的有效培养方案")
+    return ProgramResolution(
+        None,
+        None,
+        "MISSING",
+        "NO_EFFECTIVE_BINDING",
+        "未找到班级、专业年级或生效日期内历史培养方案绑定",
+    )
