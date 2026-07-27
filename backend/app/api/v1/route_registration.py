@@ -1,7 +1,7 @@
 """按域显式注册 /api/v1 路由。
 
-禁止依赖包导入副作用修改 Router；所有新增路由必须在这里明确登记。
-重复路径必须先合并回原 Router，不能通过运行时删除旧 APIRoute 抢占。
+保持主线既有路径、依赖、注册顺序与安全守卫；教务扩展 Router 必须在这里显式登记，
+禁止依赖包导入副作用、运行时替换 Router 或通过注册顺序抢占重复路径。
 """
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.config import settings
 from app.core.graduation_permissions import require_graduation_request_permission
+from app.core.mobile_graduation_permissions import require_mobile_graduation_request_permission
 from app.core.permissions import require_module
 from app.core.security import require_staff
 
@@ -26,7 +27,6 @@ def _require_aa_route_user(user=Depends(require_module("academicAffairs"))):
 
 
 def build_deps():
-    """统一模块门禁依赖，禁止在注册处重复拼装。"""
     return {
         "gd": [
             Depends(require_staff),
@@ -99,24 +99,8 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         api_router.include_router(module.router, dependencies=dependency)
 
 
-def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
-    from app.api.v1 import campus_service, orientation, student_affairs
-
-    api_router.include_router(orientation.router, dependencies=deps["orientation"])
-    api_router.include_router(campus_service.router, dependencies=deps["cs"])
-    api_router.include_router(student_affairs.router, dependencies=deps["sa"])
-
-
 def _academic_affairs_extension_routers():
-    """只返回已确认独立、无重复路径、无导入副作用的教务扩展 Router。
-
-    成绩稳定身份创建使用独立 ``/grade-tasks/identity``，不与旧创建路径重复。
-    看板准备度、学期工作区、教学班、教学任务工作台、考场异常、教材闭环、学生评教工作清单和
-    教师移动批量成绩均使用独立 URL，可直接显式注册。
-
-    排课规则 Router 复用历史 ``/scheduling/rules`` URL，必须先把请求模型和实现
-    合并回主 Router 后再登记，禁止依赖注册顺序抢占旧路由。
-    """
+    """返回使用独立 URL、无重复路径和无导入副作用的教务扩展 Router。"""
     from app.modules.academic_affairs.routers import (
         dashboard_readiness_router,
         dynamic_grade_router,
@@ -152,29 +136,32 @@ def _academic_affairs_extension_routers():
     )
 
 
-def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
-    from app.api.v1 import academic
-    from app.modules.academic_affairs.routers import academic_affairs
-
-    api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
-    api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
+def register_academic_affairs_extensions(api_router: APIRouter, deps: dict) -> None:
     for module in _academic_affairs_extension_routers():
         api_router.include_router(module.router, dependencies=deps["aa"])
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
+    from app.modules.graduation.services.graduation_consistency_install import install_consistency_guards
+
+    install_consistency_guards()
     from app.modules.graduation.routers import (
         graduation,
         graduation_archive,
+        graduation_archive_sensitive_router,
         graduation_batch,
         graduation_defense_score,
+        graduation_extension,
         graduation_grade,
         graduation_guidance,
+        graduation_material_sensitive_router,
         graduation_mentor,
         graduation_midterm,
         graduation_more,
+        graduation_p0_guard,
         graduation_review,
         graduation_risk,
+        graduation_sensitive_router,
         graduation_stats,
         graduation_student,
         graduation_student_eval,
@@ -186,6 +173,14 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     )
 
     dependency = deps["gd"]
+    api_router.include_router(graduation_p0_guard.router, dependencies=dependency)
+    api_router.include_router(graduation_sensitive_router.router, dependencies=dependency)
+    api_router.include_router(graduation_archive_sensitive_router.router, dependencies=dependency)
+    api_router.include_router(graduation_material_sensitive_router.router, dependencies=dependency)
+    api_router.include_router(
+        graduation_extension.router,
+        dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
+    )
     for module in (
         graduation,
         graduation_batch,
@@ -220,6 +215,12 @@ def register_platform_routes(api_router: APIRouter) -> None:
         migration,
         mobile,
         mobile_export,
+        mobile_graduation_extension_teacher,
+        mobile_graduation_guard,
+        mobile_graduation_teacher_context,
+        mobile_internship_context,
+        mobile_internship_leave_context,
+        mobile_internship_student,
         mobile_orientation_teacher,
         national_standards,
         notification,
@@ -227,6 +228,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
         org_directory,
         platform,
         stats,
+        student_portal_graduation_guard,
         system,
         transfer,
         user_preference,
@@ -255,8 +257,33 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(stats.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
-    api_router.include_router(mobile.router)
+
+    from app.modules.graduation.services.graduation_record_resolver import install_mobile_resolver
+    from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
+    from app.modules.graduation.services.graduation_mobile_taskbook_bridge import install_mobile_taskbook_list_bridge
+
+    install_mobile_resolver()
+    install_mobile_stable_bridge()
+    install_mobile_taskbook_list_bridge()
+    teacher_mobile_deps = [Depends(require_staff), Depends(require_module("graduation"))]
+    api_router.include_router(mobile_graduation_extension_teacher.router, dependencies=teacher_mobile_deps)
+    api_router.include_router(
+        mobile_graduation_teacher_context.router,
+        dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
+    )
+    api_router.include_router(mobile_graduation_guard.router)
+    api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
+
+    from app.core.student_portal_module_gate import enforce_student_portal_module_access
+    from app.student_portal.internship_router import router as student_portal_internship_router
+
+    api_router.include_router(mobile_internship_context.router)
+    api_router.include_router(mobile_internship_leave_context.router)
+    api_router.include_router(mobile_internship_student.router)
+    api_router.include_router(student_portal_graduation_guard.router)
     api_router.include_router(student_portal_router)
+    portal_gate = [Depends(enforce_student_portal_module_access)]
+    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)
 
     from app.api.v1 import student_portal_admin
 
@@ -273,8 +300,9 @@ def register_platform_routes(api_router: APIRouter) -> None:
 
 
 def register_all_routes(api_router: APIRouter) -> None:
-    """注册顺序与拆分前 router.py 保持一致。"""
-    from app.api.v1 import approval, excel, student
+    """保持主线注册顺序，并在主教务 Router 后追加独立扩展 Router。"""
+    from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
+    from app.modules.academic_affairs.routers import academic_affairs
     from app.modules.employment.routers import employment
 
     deps = build_deps()
@@ -282,9 +310,13 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(student.router)
     api_router.include_router(approval.router)
     register_internship_routes(api_router, deps)
-    register_student_affairs_routes(api_router, deps)
-    register_academic_affairs_routes(api_router, deps)
+    api_router.include_router(orientation.router, dependencies=deps["orientation"])
+    api_router.include_router(campus_service.router, dependencies=deps["cs"])
+    api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     register_graduation_routes(api_router, deps)
     api_router.include_router(excel.router)
     api_router.include_router(employment.router, dependencies=deps["employment"])
+    api_router.include_router(student_affairs.router, dependencies=deps["sa"])
+    api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
+    register_academic_affairs_extensions(api_router, deps)
     register_platform_routes(api_router)
