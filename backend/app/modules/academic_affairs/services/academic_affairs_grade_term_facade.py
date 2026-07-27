@@ -2,7 +2,8 @@
 
 有效成绩口径、官方名单、单生录入均由 ``academic_affairs_grade_roster_facade`` 提供；本层补：
 - xlsx确认导入与提交审核均受学期归档门禁；
-- 成绩提交学院审核时，在同一事务冻结独立教学班与正式名单版本。
+- 成绩提交学院审核时，在同一事务冻结独立教学班与正式名单版本；
+- 退回任务重新提交时显式换版，旧名单快照保留为历史证据。
 """
 from __future__ import annotations
 
@@ -75,6 +76,7 @@ def submit_task(task_id, user) -> dict:
         _legacy._check_course_scope(task, user)
         if task.status not in ("INPUTTING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可提交")
+        was_returned = task.status == "RETURNED"
         if not task.teaching_task_id:
             raise AppException(
                 "DATA_CONFLICT",
@@ -112,7 +114,13 @@ def submit_task(task_id, user) -> dict:
             raise AppException("DATA_CONFLICT", f"仍有 {len(incomplete)} 名学生成绩未录全，不可提交")
 
         roster_identity = freeze_consumer_snapshot(
-            db, "GRADE_TASK", int(task.id), int(task.teaching_task_id), roster=roster_data,
+            db,
+            "GRADE_TASK",
+            int(task.id),
+            int(task.teaching_task_id),
+            roster=roster_data,
+            allow_replace=was_returned,
+            replace_reason="成绩任务退回后按当前正式名单重新提交" if was_returned else "",
         )
         claimed = db.query(AaGradeTask).filter(
             AaGradeTask.id == task.id,
@@ -146,7 +154,8 @@ def submit_task(task_id, user) -> dict:
             (
                 f"roster={roster_data['source']};students={len(roster_ids)};"
                 f"teachingClassId={roster_identity['teachingClassId']};"
-                f"rosterVersionId={roster_identity['rosterVersionId']}"
+                f"rosterVersionId={roster_identity['rosterVersionId']};"
+                f"snapshotVersion={roster_identity['snapshotVersion']}"
             ),
         )
         db.commit()
