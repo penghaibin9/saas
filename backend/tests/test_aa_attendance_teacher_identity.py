@@ -1,4 +1,5 @@
-"""课堂考勤只能按稳定教师工号授权，姓名不得参与。"""
+"""课堂考勤只能按稳定教师工号授权，移动端详情不得串场。"""
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -69,3 +70,19 @@ def test_primary_teacher_key_is_deterministic():
         "activeContextId": "ctx_other",
     }
     assert service._primary_teacher_key(user) == "T001"
+
+
+def test_teacher_attendance_page_clears_previous_roster_before_loading_detail():
+    root = Path(__file__).resolve().parents[2]
+    page = (
+        root / "miniapp/src/pages/teacher/academic-affairs/attendance.vue"
+    ).read_text(encoding="utf-8")
+
+    assert "this.items = []" in page
+    assert "this.detailLoading = true" in page
+    assert "this.closeSession()" in page
+    assert "名单加载失败，请稍后重试" in page
+    assert "v-if=\"detailLoading\"" in page
+    assert "提交后教师端不可直接修改" in page
+    assert "const confirmed = await this.confirmModal" in page
+    assert "classId: this.form.classId ? Number(this.form.classId) : undefined" in page
