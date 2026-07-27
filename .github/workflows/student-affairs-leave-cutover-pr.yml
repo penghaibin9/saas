@@ -32,9 +32,10 @@ jobs:
           {
             python scripts/maintenance/student_affairs_leave_cutover_followup.py
             python scripts/maintenance/repair_affairs_leave_tests.py
+            python scripts/maintenance/repair_affairs_validation_round2.py
           } 2>&1 | tee leave-cutover.log
           status=${PIPESTATUS[0]}
-          tail -n 200 leave-cutover.log
+          tail -n 240 leave-cutover.log
           exit "$status"
       - uses: actions/upload-artifact@v4
         if: always()
