@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="成绩录入"
-    subtitle="建录入任务（绑定教学任务或具体课程版本）→ 逐生录入 → 提交学院审核"
+    subtitle="建录入任务 → 选择固定三段或动态成绩项 → 按正式名单录入 → 提交学院审核"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -21,12 +21,7 @@
         <div class="aa-grid2">
           <label class="aa-field">
             <span :class="{ req: !isAdminRole }">教学任务</span>
-            <AppTeachingTaskPicker
-              v-model="form.teachingTaskId"
-              clearable
-              @change="onTeachingTaskChange"
-              placeholder="普通教师必选；管理员可留空做特殊补录"
-            />
+            <AppTeachingTaskPicker v-model="form.teachingTaskId" clearable @change="onTeachingTaskChange" placeholder="普通教师必选；管理员可留空做特殊补录" />
           </label>
           <label v-if="isAdminRole && !form.teachingTaskId" class="aa-field">
             <span class="req">课程具体版本</span>
@@ -46,7 +41,7 @@
           <label class="aa-field"><span>及格线</span><input v-model.number="form.passLine" type="number" min="0" max="100" class="aa-input" /></label>
           <label v-if="isAdminRole && !form.teachingTaskId" class="aa-field"><span class="req">补录原因</span><input v-model="form.adminSupplementReason" type="text" class="aa-input" placeholder="不少于5字" /></label>
         </div>
-        <p class="mp-note">教学任务模式自动继承课程ID、课程版本、学期和教学班；特殊补录不得只填课程名称。</p>
+        <p class="mp-note">创建后可继续使用固定三段录入，也可在任务内切换为1—12项动态成绩方案；动态方案首次录分后锁定。</p>
         <div class="aa-actions"><AppButton variant="primary" :loading="creating" @click="createTask">创建任务</AppButton></div>
 
         <div v-if="myTasks.length" class="aa-my-tasks">
@@ -63,57 +58,127 @@
 
       <template v-else>
         <AppSectionCard :title="`录入任务：${task.courseName}`">
-          <template #header-extra><button class="mp-link" @click="task = null">返回</button></template>
+          <template #header-extra><button class="mp-link" @click="closeTask">返回</button></template>
           <div class="aa-task-head">
-            <span>课程ID {{ task.courseId || '待治理' }} · 平时 {{ task.usualRatio }}%<template v-if="hasMidterm"> · 期中 {{ task.midtermRatio }}%</template> · 期末 {{ task.finalRatio }}% · 及格线 {{ task.passLine }}</span>
+            <span>课程ID {{ task.courseId || '待治理' }} · 及格线 {{ task.passLine }}</span>
             <AppStatusTag :type="statusColor(task.status)" dot>{{ statusLabel(task.status) }}</AppStatusTag>
+          </div>
+          <div class="aa-mode-switch">
+            <button :class="['aa-mode', { 'is-active': !dynamicMode }]" @click="switchMode(false)">固定三段</button>
+            <button :class="['aa-mode', { 'is-active': dynamicMode }]" @click="switchMode(true)">动态成绩项</button>
           </div>
           <AppInlineAlert v-if="!task.courseId" type="warning" title="课程身份欠账" description="该历史任务尚未绑定课程库具体版本，不能发布正式成绩。" />
           <AppInlineAlert v-if="task.status === 'RETURNED' && task.returnReason" type="warning" :message="`已被退回：${task.returnReason}，请核对后重新提交`" />
         </AppSectionCard>
 
-        <AppSectionCard v-if="editable" title="添加学生">
-          <div class="aa-reg-search">
-            <AppStudentPicker v-model="candidateStudentId" class="aa-input--grow" placeholder="按姓名/学号检索并添加学生" @change="onStudentPicked" />
-            <AppButton :loading="loadingRoster" @click="loadRoster">按正式名单圈定</AppButton>
-            <AppButton @click="importVisible = true">导入成绩（Excel）</AppButton>
-          </div>
-        </AppSectionCard>
+        <template v-if="!dynamicMode">
+          <AppSectionCard v-if="editable" title="添加学生">
+            <div class="aa-reg-search">
+              <AppStudentPicker v-model="candidateStudentId" class="aa-input--grow" placeholder="按姓名/学号检索并添加学生" @change="onStudentPicked" />
+              <AppButton :loading="loadingRoster" @click="loadRoster">按正式名单圈定</AppButton>
+              <AppButton @click="importVisible = true">导入成绩（Excel）</AppButton>
+            </div>
+          </AppSectionCard>
 
-        <AppExcelImportDrawer
-          v-if="task"
-          v-model:visible="importVisible"
-          title="导入成绩（学号/平时/期中/期末/异常标记）"
-          template-name="成绩导入模板.xlsx"
-          :required-fields="['学号']"
-          :preview-fields="['studentNo', 'studentName', 'usualScore', 'midtermScore', 'finalScore', 'exceptionFlag']"
-          :download-template-fn="() => academicAffairsApi.downloadGradeImportTemplate(task.gradeTaskId)"
-          :upload-fn="(file) => academicAffairsApi.uploadGradeImportXlsx(task.gradeTaskId, file)"
-          :confirm-fn="({ rows }) => academicAffairsApi.confirmGradeImport(task.gradeTaskId, rows)"
-          :download-errors-fn="({ rows, errors }) => academicAffairsApi.downloadGradeImportErrors(task.gradeTaskId, rows, errors)"
-          @imported="onImported"
-        />
+          <AppExcelImportDrawer
+            v-if="task"
+            v-model:visible="importVisible"
+            title="导入成绩（学号/平时/期中/期末/异常标记）"
+            template-name="成绩导入模板.xlsx"
+            :required-fields="['学号']"
+            :preview-fields="['studentNo', 'studentName', 'usualScore', 'midtermScore', 'finalScore', 'exceptionFlag']"
+            :download-template-fn="() => academicAffairsApi.downloadGradeImportTemplate(task.gradeTaskId)"
+            :upload-fn="(file) => academicAffairsApi.uploadGradeImportXlsx(task.gradeTaskId, file)"
+            :confirm-fn="({ rows }) => academicAffairsApi.confirmGradeImport(task.gradeTaskId, rows)"
+            :download-errors-fn="({ rows, errors }) => academicAffairsApi.downloadGradeImportErrors(task.gradeTaskId, rows, errors)"
+            @imported="onImported"
+          />
 
-        <AppSectionCard title="成绩录入表">
-          <EmptyState v-if="!rows.length" title="录入表为空" description="从上方检索学生加入，或按正式教学班名单圈定" />
-          <table v-else class="aa-course-table">
-            <thead><tr><th>学生</th><th>异常标记</th><th>平时分</th><th v-if="hasMidterm">期中分</th><th>期末分</th><th>总评</th><th>结果</th><th></th></tr></thead>
-            <tbody>
-              <tr v-for="r in rows" :key="r.studentId">
-                <td>{{ r.realName }}</td>
-                <td><AppSelect v-model="r.exceptionFlag" :options="exceptionOptions" :disabled="!editable" placeholder="" size="compact" /></td>
-                <td><input v-model.number="r.usual" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
-                <td v-if="hasMidterm"><input v-model.number="r.midterm" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
-                <td><input v-model.number="r.final" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
-                <td>{{ r.total ?? '—' }}</td>
-                <td><AppStatusTag v-if="r.passStatus" :type="r.passStatus === 'PASSED' ? 'success' : 'danger'">{{ r.passStatus === 'PASSED' ? '及格' : '不及格' }}</AppStatusTag></td>
-                <td><button v-if="editable" class="mp-link" @click="saveRow(r)">录入</button></td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-if="editable" class="aa-actions">
+          <AppSectionCard title="固定三段成绩录入表">
+            <p class="mp-note">平时 {{ task.usualRatio }}%<template v-if="hasMidterm"> · 期中 {{ task.midtermRatio }}%</template> · 期末 {{ task.finalRatio }}%</p>
+            <EmptyState v-if="!rows.length" title="录入表为空" description="从上方检索学生加入，或按正式教学班名单圈定" />
+            <table v-else class="aa-course-table">
+              <thead><tr><th>学生</th><th>异常标记</th><th>平时分</th><th v-if="hasMidterm">期中分</th><th>期末分</th><th>总评</th><th>结果</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="r in rows" :key="r.studentId">
+                  <td>{{ r.realName }}</td>
+                  <td><AppSelect v-model="r.exceptionFlag" :options="exceptionOptions" :disabled="!editable" placeholder="" size="compact" /></td>
+                  <td><input v-model.number="r.usual" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
+                  <td v-if="hasMidterm"><input v-model.number="r.midterm" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
+                  <td><input v-model.number="r.final" type="number" min="0" max="100" class="aa-input aa-input--xs" :disabled="!editable || r.exceptionFlag !== 'NORMAL'" /></td>
+                  <td>{{ r.total ?? '—' }}</td>
+                  <td><AppStatusTag v-if="r.passStatus" :type="r.passStatus === 'PASSED' ? 'success' : 'danger'">{{ r.passStatus === 'PASSED' ? '及格' : '不及格' }}</AppStatusTag></td>
+                  <td><button v-if="editable" class="mp-link" @click="saveRow(r)">录入</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </AppSectionCard>
+        </template>
+
+        <template v-else>
+          <AppSectionCard title="动态成绩项方案">
+            <AppInlineAlert
+              type="info"
+              title="兼容现有成绩主账"
+              description="分项成绩单独留痕，系统按权重生成总评后仍进入原学院审核、教务发布、预警和成绩单流程。首次录分后方案自动锁定。"
+            />
+            <LoadingState v-if="dynamicLoading" />
+            <template v-else-if="dynamicData">
+              <div class="aa-scheme-head">
+                <span>名单版本：{{ dynamicData.rosterIdentity?.rosterVersionNo || '—' }} · {{ dynamicData.rosterIdentity?.memberCount || 0 }}人</span>
+                <span>权重合计 {{ schemeTotal }}%</span>
+              </div>
+              <div class="aa-scheme-list">
+                <div v-for="(component, index) in schemeDraft" :key="component.code + index" class="aa-scheme-row">
+                  <input v-model.trim="component.code" class="aa-input aa-code" maxlength="40" :disabled="!schemeEditable" placeholder="代码" />
+                  <input v-model.trim="component.name" class="aa-input aa-name" maxlength="80" :disabled="!schemeEditable" placeholder="名称" />
+                  <input v-model.number="component.weight" type="number" min="0.01" max="100" step="0.01" class="aa-input aa-weight" :disabled="!schemeEditable" />
+                  <label class="aa-required"><input v-model="component.required" type="checkbox" :disabled="!schemeEditable" /> 必填</label>
+                  <button v-if="schemeEditable && schemeDraft.length > 1" class="mp-link is-danger" @click="removeComponent(index)">删除</button>
+                </div>
+              </div>
+              <div v-if="schemeEditable" class="aa-actions">
+                <AppButton :disabled="schemeDraft.length >= 12" @click="addComponent">新增成绩项</AppButton>
+                <AppButton variant="primary" :loading="schemeSaving" @click="saveScheme">保存方案</AppButton>
+              </div>
+              <p v-else class="mp-note">方案状态：{{ dynamicData.scheme?.status }}。已开始录分或任务状态已变化，当前只读。</p>
+            </template>
+          </AppSectionCard>
+
+          <AppSectionCard title="动态分项录入表">
+            <ErrorState v-if="dynamicError" :description="dynamicError" @retry="loadDynamic" />
+            <LoadingState v-else-if="dynamicLoading" />
+            <EmptyState v-else-if="!dynamicRows.length" title="正式名单为空" description="请先完成教学班和名单版本治理" />
+            <div v-else class="aa-table-scroll">
+              <table class="aa-course-table aa-dynamic-table">
+                <thead>
+                  <tr>
+                    <th>学生</th><th>异常标记</th>
+                    <th v-for="component in dynamicComponents" :key="component.code">{{ component.name }}<small>{{ component.weight }}%</small></th>
+                    <th>总评</th><th>结果</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in dynamicRows" :key="row.studentId">
+                    <td><strong>{{ row.realName }}</strong><small>{{ row.studentNo }}</small></td>
+                    <td><AppSelect v-model="row.exceptionFlag" :options="exceptionOptions" :disabled="!editable" placeholder="" size="compact" /></td>
+                    <td v-for="component in dynamicComponents" :key="component.code">
+                      <input v-model.number="row.scores[component.code]" type="number" min="0" max="100" step="0.01" class="aa-input aa-input--xs" :disabled="!editable || row.exceptionFlag !== 'NORMAL'" />
+                    </td>
+                    <td>{{ row.totalScore ?? '—' }}</td>
+                    <td><AppStatusTag v-if="row.passStatus" :type="row.passStatus === 'PASSED' ? 'success' : 'danger'">{{ row.passStatus === 'PASSED' ? '及格' : '不及格' }}</AppStatusTag></td>
+                    <td><button v-if="editable" class="mp-link" :disabled="dynamicSavingId === row.studentId" @click="saveDynamicRow(row)">{{ dynamicSavingId === row.studentId ? '保存中' : '保存' }}</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </AppSectionCard>
+        </template>
+
+        <AppSectionCard v-if="editable" title="提交审核">
+          <div class="aa-actions">
             <AppButton variant="primary" :loading="submitting" @click="submit">提交进入学院审核</AppButton>
-            <span class="mp-note">提交后课程版本和名单仍会在发布时再次核对；发生变化必须退回重审。</span>
+            <span class="mp-note">提交时冻结正式名单版本；名单换版后必须退回重建，禁止静默替换。</span>
           </div>
         </AppSectionCard>
       </template>
@@ -122,7 +187,7 @@
 </template>
 
 <script>
-import { ModulePageShell, EmptyState } from '@/components/business'
+import { ModulePageShell, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
   AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect,
@@ -131,6 +196,7 @@ import {
 } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsR10Api } from '@/modules/academicAffairs/api/academic-affairs-r10.api'
 import { toast } from '@/utils/toast'
 
 const TASK_STATUS = {
@@ -144,9 +210,9 @@ const ADMIN_ROLES = new Set(['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'JWC_ADMIN', 'PLA
 export default {
   name: 'AaGradeEntryView',
   components: {
-    ModulePageShell, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert,
-    AppSelect, AppExcelImportDrawer, AppClassPicker, AppStudentPicker, AppTeachingTaskPicker,
-    AppCoursePicker, AppTermEntityPicker
+    ModulePageShell, EmptyState, LoadingState, ErrorState, AppButton, AppSectionCard,
+    AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer, AppClassPicker,
+    AppStudentPicker, AppTeachingTaskPicker, AppCoursePicker, AppTermEntityPicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -158,7 +224,9 @@ export default {
       },
       creating: false, task: null, myTasks: [],
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
-      importVisible: false
+      importVisible: false,
+      dynamicMode: false, dynamicLoading: false, dynamicError: '', dynamicData: null,
+      schemeDraft: [], schemeSaving: false, dynamicSavingId: ''
     }
   },
   computed: {
@@ -174,10 +242,28 @@ export default {
         { value: 'DEFERRED', label: '缓考' }, { value: 'EXEMPT', label: '免修' },
         { value: 'CHEAT', label: '作弊' }
       ]
-    }
+    },
+    dynamicRows() { return this.dynamicData?.items || [] },
+    dynamicComponents() { return this.dynamicData?.scheme?.components || [] },
+    schemeEditable() { return !!this.dynamicData?.scheme?.editable },
+    schemeTotal() { return Number(this.schemeDraft.reduce((sum, item) => sum + Number(item.weight || 0), 0).toFixed(4)) }
   },
   created() { this.loadTasks() },
   methods: {
+    statusLabel(status) { return TASK_STATUS[status] || status || '未知' },
+    statusColor(status) {
+      if (['PUBLISHED', 'ARCHIVED'].includes(status)) return 'success'
+      if (['RETURNED'].includes(status)) return 'warning'
+      if (['SUBMITTED', 'COLLEGE_REVIEW', 'ACADEMIC_REVIEW'].includes(status)) return 'primary'
+      return 'default'
+    },
+    closeTask() {
+      this.task = null; this.rows = []; this.dynamicData = null; this.dynamicMode = false
+    },
+    switchMode(value) {
+      this.dynamicMode = value
+      if (value) this.loadDynamic()
+    },
     onTeachingTaskChange(value, items) {
       if (!value) {
         this.form.courseId = ''; this.form.courseName = ''; this.form.termCode = ''
@@ -202,20 +288,8 @@ export default {
     onStudentPicked(value, items) {
       const item = items?.[0]
       if (!item) return
-      const student = item.raw || item
-      this.addRow({
-        ...student,
-        studentId: student.studentId || student.id || value,
-        realName: student.realName || student.studentName || student.name || item.label
-      })
+      this.addRow(item.raw || item)
       this.candidateStudentId = ''
-    },
-    statusLabel(value) { return TASK_STATUS[value] || value || '' },
-    statusColor(value) {
-      if (value === 'PUBLISHED') return 'success'
-      if (value === 'RETURNED') return 'danger'
-      if (['SUBMITTED', 'COLLEGE_REVIEW', 'ACADEMIC_REVIEW'].includes(value)) return 'primary'
-      return 'default'
     },
     async loadTasks() {
       const res = await academicAffairsApi.getGradeTasks({ page: 1, pageSize: 50 })
@@ -231,7 +305,13 @@ export default {
         if (hit) await this.openTask(hit)
       } else if ((filter === 'pending' || todoType === 'AA_GRADE_ENTRY') && list.length === 1) await this.openTask(list[0])
     },
-    async openTask(row) { this.task = { ...row }; this.rows = []; await this.refreshRecords(); if (this.$route.query.action === 'import') this.importVisible = true },
+    async openTask(row) {
+      this.task = { ...row }; this.rows = []; this.dynamicData = null
+      this.dynamicMode = String(this.$route.query.mode || '') === 'dynamic'
+      await this.refreshRecords()
+      if (this.dynamicMode) await this.loadDynamic()
+      if (this.$route.query.action === 'import') this.importVisible = true
+    },
     async refreshRecords() {
       if (!this.task) return
       const res = await academicAffairsApi.getGradeRecords(this.task.gradeTaskId)
@@ -242,6 +322,57 @@ export default {
           passStatus: item.passStatus, exceptionFlag: item.exceptionFlag || 'NORMAL'
         }))
       }
+    },
+    async loadDynamic() {
+      if (!this.task || this.dynamicLoading) return
+      this.dynamicLoading = true; this.dynamicError = ''
+      const res = await academicAffairsR10Api.getDynamicGradeRoster(this.task.gradeTaskId)
+      this.dynamicLoading = false
+      if (res.code !== 0) { this.dynamicError = res.message || '动态成绩工作区加载失败'; return }
+      this.dynamicData = res.data
+      this.schemeDraft = (res.data.scheme?.components || []).map((item, index) => ({
+        code: item.code, name: item.name, weight: Number(item.weight),
+        required: item.required !== false, order: item.order || index + 1
+      }))
+      this.dynamicData.items = (res.data.items || []).map((row) => ({
+        ...row, scores: { ...(row.scores || {}) }, exceptionFlag: row.exceptionFlag || 'NORMAL'
+      }))
+      if (this.task.status !== res.data.status) this.task.status = res.data.status
+    },
+    addComponent() {
+      const index = this.schemeDraft.length + 1
+      this.schemeDraft.push({ code: `ITEM_${index}`, name: `成绩项${index}`, weight: 0, required: true, order: index })
+    },
+    removeComponent(index) { this.schemeDraft.splice(index, 1) },
+    async saveScheme() {
+      if (this.schemeSaving) return
+      if (Math.abs(this.schemeTotal - 100) > 0.0001) { toast.error(`权重合计须为100%，当前为${this.schemeTotal}%`); return }
+      this.schemeSaving = true
+      const res = await academicAffairsR10Api.updateGradeScheme(this.task.gradeTaskId, this.schemeDraft.map((item, index) => ({ ...item, code: String(item.code || '').toUpperCase(), order: index + 1 })))
+      this.schemeSaving = false
+      if (res.code === 0) { toast.success('动态成绩项方案已保存'); await this.loadDynamic() }
+      else toast.error(res.message || '方案保存失败')
+    },
+    async saveDynamicRow(row) {
+      if (this.dynamicSavingId) return
+      this.dynamicSavingId = row.studentId
+      const scores = {}
+      if (row.exceptionFlag === 'NORMAL') {
+        this.dynamicComponents.forEach((component) => {
+          if (row.scores[component.code] !== '' && row.scores[component.code] != null) scores[component.code] = row.scores[component.code]
+        })
+      }
+      const res = await academicAffairsR10Api.saveDynamicGrade(this.task.gradeTaskId, {
+        studentId: Number(row.studentId), scores, exceptionFlag: row.exceptionFlag
+      })
+      this.dynamicSavingId = ''
+      if (res.code === 0) {
+        row.totalScore = res.data.totalScore; row.passStatus = res.data.passStatus
+        row.exceptionFlag = res.data.exceptionFlag || row.exceptionFlag
+        if (this.task.status === 'NOT_STARTED') this.task.status = 'INPUTTING'
+        toast.success(`${row.realName} 分项成绩已保存`)
+        await this.loadDynamic()
+      } else toast.error(res.message || '分项成绩保存失败')
     },
     async onImported(result) {
       toast.success(`已导入 ${result?.imported ?? result?.created ?? 0} 条成绩`)
@@ -323,12 +454,18 @@ export default {
 .aa-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-field .req::before, .aa-field span.req::before { content: '*'; color: var(--danger-600, #f53f3f); margin-right: 4px; }
 .aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
-.aa-input--grow { flex: 1; }.aa-input--xs { width: 90px; height: 30px; padding: 0 8px; }
-.aa-actions { margin-top: 16px; display: flex; gap: 12px; align-items: center; }.aa-reg-search { display: flex; gap: 12px; }
+.aa-input--grow { flex: 1; }.aa-input--xs { width: 82px; height: 30px; padding: 0 8px; }
+.aa-actions { margin-top: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-reg-search { display: flex; gap: 12px; }
 .aa-task-head { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--text-700, #4e5969); margin-bottom: 8px; }
+.aa-mode-switch { display: inline-flex; gap: 4px; margin: 8px 0 12px; padding: 4px; border-radius: 8px; background: var(--fill-100, #f2f3f5); }
+.aa-mode { padding: 7px 14px; border: 0; border-radius: 6px; background: transparent; color: var(--text-600, #64748b); cursor: pointer; }
+.aa-mode.is-active { background: #fff; color: var(--primary-600, #2563eb); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
 .aa-course-table { width: 100%; border-collapse: collapse; }.aa-course-table th, .aa-course-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }
-.aa-course-table th { color: var(--text-500, #646a73); font-weight: 500; font-size: 13px; }
+.aa-course-table th { color: var(--text-500, #646a73); font-weight: 500; font-size: 13px; white-space: nowrap; }.aa-course-table th small, .aa-course-table td small { display: block; margin-top: 3px; color: var(--text-400, #8a9099); font-size: 11px; }
+.aa-table-scroll { overflow-x: auto; }.aa-dynamic-table { min-width: 860px; }
+.aa-scheme-head { display: flex; justify-content: space-between; margin: 14px 0 10px; color: var(--text-600, #64748b); font-size: 13px; }
+.aa-scheme-list { display: flex; flex-direction: column; gap: 8px; }.aa-scheme-row { display: flex; align-items: center; gap: 10px; }.aa-code { width: 150px; }.aa-name { flex: 1; }.aa-weight { width: 110px; }.aa-required { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }.is-danger { color: var(--danger-600, #dc2626); }
 .aa-my-tasks { margin-top: 20px; border-top: 1px solid var(--border-100, #f0f1f2); padding-top: 16px; }.aa-my-tasks h4 { margin: 0 0 10px; font-size: 14px; }
 .aa-my-tasks ul { list-style: none; margin: 0; padding: 0; }.aa-my-task-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }.aa-my-task-item small { color: var(--text-500, #64748b); }
-@media (max-width: 760px) { .aa-grid2 { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .aa-grid2 { grid-template-columns: 1fr; }.aa-scheme-row { align-items: stretch; flex-direction: column; }.aa-code, .aa-weight { width: 100%; } }
 </style>
