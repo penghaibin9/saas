@@ -149,7 +149,7 @@ jobs:
       - run: npm run build
       - name: 禁止 PC 产物携带固定演示凭据
         run: |
-          PATTERN="密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password[\"':= ]+123456"
+          PATTERN='密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password.{0,3}123456'
           if grep -R -E "$PATTERN" dist; then
             echo "❌ PC 生产包包含固定演示凭据"
             exit 1
@@ -174,7 +174,7 @@ jobs:
       - run: npm run build:mp-weixin
       - name: 禁止生产包携带固定演示凭据
         run: |
-          PATTERN="密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password[\"':= ]+123456"
+          PATTERN='密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password.{0,3}123456'
           if grep -R -E "$PATTERN" dist/build/mp-weixin; then
             echo "❌ 小程序生产包包含固定演示凭据"
             exit 1
