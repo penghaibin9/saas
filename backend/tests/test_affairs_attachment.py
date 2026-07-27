@@ -100,7 +100,7 @@ def test_attachment_link_denied_for_wrong_role(client, db_mode):
 
 
 def test_attachment_download_denied_for_wrong_role(client, db_mode):
-    """越权下载：真实党团材料已关联，宿管无 league.view，下载仍返回403。"""
+    """越权下载：真实党团材料已关联，宿管被对象级数据范围门拦截且不泄露文件。"""
     admin = _hdr(client, "sa_admin01")
     biz_id = _seed_league_dev(db_mode)
     file_id = _upload(client, admin)
@@ -113,4 +113,4 @@ def test_attachment_download_denied_for_wrong_role(client, db_mode):
         headers=_hdr(client, "dorm01"),
     )
     assert response.status_code == 403
-    assert response.json()["bizCode"] == "NO_PERMISSION"
+    assert response.json()["bizCode"] == "NO_DATA_SCOPE"
