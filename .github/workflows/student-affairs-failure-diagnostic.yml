@@ -1,0 +1,109 @@
+name: Student Affairs Failure Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: student-affairs-diagnostic-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/student-affairs-leave-cutover-20260727
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: Apply migrations
+        working-directory: backend
+        run: alembic upgrade head
+      - name: Add workspace-only failed-response logging
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/tests/conftest.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''        response = self._wrapped.request(method, url, **kwargs)\n        self._remember_batch(method, url, kwargs, response)\n        return response\n'''
+          new = '''        response = self._wrapped.request(method, url, **kwargs)\n        if response.status_code >= 400 and str(url).startswith(("/api/v1/student-affairs", "/api/v1/mobile/affairs", "/api/v1/mobile/teacher/affairs", "/api/v1/mobile/teacher/mental", "/api/v1/mobile/teacher/talk")):\n            try:\n                payload = response.json()\n            except Exception:\n                payload = response.text\n            print(f"AFFAIRS_HTTP_FAILURE method={method} url={url} status={response.status_code} payload={payload}", flush=True)\n        self._remember_batch(method, url, kwargs, response)\n        return response\n'''
+          if old not in text:
+              raise SystemExit('diagnostic logging anchor missing')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Run current failing student-affairs files
+        working-directory: backend
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          pytest -q -s -p no:warnings \
+            tests/test_affairs_club.py \
+            tests/test_affairs_cockpit.py \
+            tests/test_affairs_counselor_eval.py \
+            tests/test_affairs_credit_appeal.py \
+            tests/test_affairs_discipline.py \
+            tests/test_affairs_discipline_appeal.py \
+            tests/test_affairs_dorm.py \
+            tests/test_affairs_eval_weight.py \
+            tests/test_affairs_family_contact_mobile.py \
+            tests/test_affairs_funding.py \
+            tests/test_affairs_funding_appeal.py \
+            tests/test_affairs_funding_disbursement.py \
+            tests/test_affairs_funding_ext.py \
+            tests/test_affairs_league.py \
+            tests/test_affairs_mental.py \
+            tests/test_affairs_mobile.py \
+            tests/test_affairs_optimistic_lock_round1.py \
+            tests/test_affairs_org.py \
+            tests/test_affairs_phase2_bigdata.py \
+            tests/test_affairs_profile.py \
+            tests/test_affairs_risk.py \
+            tests/test_affairs_round1_trust.py \
+            tests/test_affairs_round2_bigdata.py \
+            tests/test_affairs_round2_pagination.py \
+            tests/test_affairs_student_dorm_discipline_integrity.py \
+            tests/test_affairs_talk.py \
+            tests/test_affairs_todo_drilldown.py \
+            2>&1 | tee ../student-affairs-failure-diagnostic.log
+          exit ${PIPESTATUS[0]}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: student-affairs-failure-diagnostic-log
+          path: student-affairs-failure-diagnostic.log
+          retention-days: 2
