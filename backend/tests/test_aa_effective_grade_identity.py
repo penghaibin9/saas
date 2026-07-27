@@ -1,4 +1,4 @@
-"""有效成绩不得再按课程名称取最高分，学业汇总必须消费同一规则。"""
+"""有效成绩不得再按课程名称取最高分；所有消费者必须使用同一策略。"""
 from types import SimpleNamespace
 
 
@@ -14,6 +14,8 @@ def _grade(
     exam_type="FINAL",
     course_id=None,
     course_code=None,
+    course_version=1,
+    attempt_no=1,
     record_status="ACTIVE",
 ):
     return SimpleNamespace(
@@ -28,6 +30,8 @@ def _grade(
         exam_type=exam_type,
         course_id=course_id,
         course_code=course_code,
+        course_version=course_version,
+        attempt_no=attempt_no,
         record_status=record_status,
         pass_status="PASSED" if score >= 60 else "FAILED",
         score=score,
@@ -49,18 +53,34 @@ def test_legacy_same_name_different_credit_is_not_merged():
     from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
 
     rows = [
-        _grade(1, 90, credit=2),
-        _grade(2, 70, credit=4),
+        _grade(1, 90, credit=2, course_version=None, attempt_no=None),
+        _grade(2, 70, credit=4, course_version=None, attempt_no=None),
     ]
 
     assert {row.id for row in effective_grade_rows(rows)} == {1, 2}
 
 
+def test_legacy_exact_same_name_nature_and_credit_is_still_not_silently_merged():
+    from app.modules.academic_affairs.services.academic_affairs_grade_facade import (
+        effective_grade_rows,
+        grade_identity_key,
+    )
+
+    first = _grade(1, 90, course_version=None, attempt_no=None)
+    second = _grade(2, 70, course_version=None, attempt_no=None)
+
+    selected = effective_grade_rows([first, second])
+
+    assert {row.id for row in selected} == {1, 2}
+    assert grade_identity_key(first)[1] == "LEGACY_NAME_KEY"
+    assert grade_identity_key(first) != grade_identity_key(second)
+
+
 def test_latest_official_attempt_wins_even_when_score_is_lower():
     from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
 
-    old_high = _grade(1, 95)
-    latest_lower = _grade(2, 61)
+    old_high = _grade(1, 95, course_id=101, attempt_no=1)
+    latest_lower = _grade(2, 61, course_id=101, attempt_no=2)
 
     selected = effective_grade_rows([old_high, latest_lower])
 
@@ -72,8 +92,8 @@ def test_latest_official_attempt_wins_even_when_score_is_lower():
 def test_makeup_supersedes_original_publish_without_comparing_score():
     from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
 
-    original = _grade(1, 59, source="PUBLISH")
-    makeup = _grade(2, 55, source="MAKEUP")
+    original = _grade(1, 59, source="PUBLISH", course_id=101)
+    makeup = _grade(2, 55, source="MAKEUP", course_id=101)
 
     selected = effective_grade_rows([original, makeup])
 
@@ -84,9 +104,9 @@ def test_makeup_supersedes_original_publish_without_comparing_score():
 def test_clearance_supersedes_makeup_and_original():
     from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
 
-    original = _grade(1, 58, source="PUBLISH")
-    makeup = _grade(2, 59, source="MAKEUP")
-    clearance = _grade(3, 60, source="CLEARANCE")
+    original = _grade(1, 58, source="PUBLISH", course_id=101)
+    makeup = _grade(2, 59, source="MAKEUP", course_id=101)
+    clearance = _grade(3, 60, source="CLEARANCE", course_id=101)
 
     selected = effective_grade_rows([clearance, original, makeup])
 
@@ -97,8 +117,8 @@ def test_clearance_supersedes_makeup_and_original():
 def test_formal_recheck_source_beats_plain_publish_without_comparing_score():
     from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
 
-    rechecked = _grade(3, 58, source="RECHECK")
-    published = _grade(9, 99, source="PUBLISH")
+    rechecked = _grade(3, 58, source="RECHECK", course_id=101)
+    published = _grade(9, 99, source="PUBLISH", course_id=101)
 
     selected = effective_grade_rows([published, rechecked])
 
@@ -109,8 +129,8 @@ def test_formal_recheck_source_beats_plain_publish_without_comparing_score():
 def test_inactive_row_cannot_override_active_row():
     from app.modules.academic_affairs.services.academic_affairs_grade_facade import effective_grade_rows
 
-    active = _grade(1, 60, source="PUBLISH", record_status="ACTIVE")
-    voided = _grade(9, 100, source="RECHECK", record_status="VOIDED")
+    active = _grade(1, 60, source="PUBLISH", record_status="ACTIVE", course_id=101)
+    voided = _grade(9, 100, source="RECHECK", record_status="VOIDED", course_id=101)
 
     selected = effective_grade_rows([active, voided])
 
@@ -123,8 +143,8 @@ def test_aggregate_uses_same_policy_instead_of_old_high_score(monkeypatch):
     class _Db:
         def scalars(self, _query):
             return SimpleNamespace(all=lambda: [
-                _grade(1, 95, credit=4),
-                _grade(2, 61, credit=4),
+                _grade(1, 95, credit=4, course_id=101, attempt_no=1),
+                _grade(2, 61, credit=4, course_id=101, attempt_no=2),
             ])
 
     monkeypatch.setattr(service._legacy, "_tid", lambda: 1)
@@ -146,6 +166,8 @@ def test_aggregate_uses_same_policy_instead_of_old_high_score(monkeypatch):
 
 def test_legacy_module_globals_are_patched_to_unified_policy():
     from app.modules.academic_affairs.services import academic_affairs_grade_facade as service
+    from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_service as policy
 
     assert service._legacy.effective_grade_rows is service.effective_grade_rows
     assert service._legacy._refresh_aggregates is service.refresh_academic_aggregates
+    assert service.grade_identity_key is policy.grade_identity_key
