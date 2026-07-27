@@ -29,11 +29,12 @@
         </view>
 
         <view v-if="taskCues.length" class="ta__tasks card">
-          <view class="ta__section-head"><text>待处理</text><text class="ta__section-sub">按你的当前身份实时收敛</text></view>
+          <view class="ta__section-head"><text>待处理</text><text class="ta__section-sub">点击直达第一条具体任务</text></view>
           <view class="ta__task-grid">
             <view v-for="cue in taskCues" :key="cue.key" class="ta__task" @click="go(cue.route)">
               <text class="ta__task-value">{{ cue.count }}</text>
               <text class="ta__task-label">{{ cue.label }}</text>
+              <text v-if="cue.detail" class="ta__task-detail">{{ cue.detail }}</text>
             </view>
           </view>
         </view>
@@ -77,11 +78,9 @@ function listOf(data) {
   if (Array.isArray(data)) return data
   return (data && (data.items || data.list)) || []
 }
-
 function isExpectedForbidden(result) {
   return result.status === 'rejected' && normalizeError(result.reason).kind === 'forbidden'
 }
-
 function activeInWeek(item, week) {
   const current = Number(week)
   if (!Number.isFinite(current) || current < 1) return false
@@ -93,12 +92,45 @@ function activeInWeek(item, week) {
   if (parity === 'EVEN') return current % 2 === 0
   return true
 }
+function pendingRows(rows) {
+  const pending = new Set(['PENDING', 'NOT_STARTED', 'INPUTTING', 'RETURNED', 'PENDING_CONFIRM', 'PROCESSING', 'ESCALATED'])
+  return (rows || []).filter((row) => !row.status || pending.has(String(row.status).toUpperCase()))
+}
+function taskTarget(key, row) {
+  if (!row) return ''
+  const idMap = {
+    grade: row.gradeTaskId || row.taskId,
+    academicTask: row.taskId || row.teachingTaskId,
+    scheduleReview: row.changeId || row.scheduleChangeId,
+    defer: row.deferId || row.id,
+    warning: row.warningId || row.id
+  }
+  const base = {
+    grade: '/pages/teacher/academic-affairs/grade-entry',
+    academicTask: '/pages/teacher/academic-task/index',
+    scheduleReview: '/pages/teacher/academic-affairs/schedule-change-review',
+    defer: '/pages/teacher/exam-defer/index',
+    warning: '/pages/teacher/academic-warning/index'
+  }[key]
+  const id = idMap[key]
+  return base && id ? `${base}?id=${encodeURIComponent(id)}` : (base || '')
+}
+function taskDetail(key, row) {
+  if (!row) return ''
+  if (key === 'grade') return row.courseName || row.className || '打开成绩任务'
+  if (key === 'academicTask') return row.courseName || row.taskName || '确认教学任务'
+  if (key === 'scheduleReview') return row.courseName || row.changeTypeLabel || '处理调课申请'
+  if (key === 'defer') return row.studentName || row.courseName || '处理缓考申请'
+  if (key === 'warning') return row.studentName || row.reason || '跟进预警学生'
+  return ''
+}
 
 export default {
   data() {
     return {
       statusBarHeight: 20, state: 'loading', partialError: false,
-      scheduleItems: [], currentWeek: null, available: { schedule: true }, counts: {}, entries: ENTRIES
+      scheduleItems: [], currentWeek: null, available: { schedule: true }, counts: {}, entries: ENTRIES,
+      taskTargets: {}, taskDetails: {}
     }
   },
   computed: {
@@ -118,16 +150,14 @@ export default {
       if (Number(this.currentWeek) === 0) return '当前学期尚未开始。'
       return `第${this.currentWeek}周今天暂无课程，可查看完整课表安排。`
     },
-    visibleEntries() {
-      return this.entries.filter((x) => x.always || this.available[x.source])
-    },
+    visibleEntries() { return this.entries.filter((x) => x.always || this.available[x.source]) },
     taskCues() {
       return [
-        { key: 'grade', label: '待录成绩', count: this.counts.grade || 0, route: '/pages/teacher/academic-affairs/grade-entry' },
-        { key: 'academicTask', label: '任务确认', count: this.counts.academicTask || 0, route: '/pages/teacher/academic-task/index' },
-        { key: 'scheduleReview', label: '调课审批', count: this.counts.scheduleReview || 0, route: '/pages/teacher/academic-affairs/schedule-change-review' },
-        { key: 'defer', label: '缓考审批', count: this.counts.defer || 0, route: '/pages/teacher/exam-defer/index' },
-        { key: 'warning', label: '学业预警', count: this.counts.warning || 0, route: '/pages/teacher/academic-warning/index' }
+        { key: 'grade', label: '待录成绩', count: this.counts.grade || 0, route: this.taskTargets.grade || '/pages/teacher/academic-affairs/grade-entry', detail: this.taskDetails.grade },
+        { key: 'academicTask', label: '任务确认', count: this.counts.academicTask || 0, route: this.taskTargets.academicTask || '/pages/teacher/academic-task/index', detail: this.taskDetails.academicTask },
+        { key: 'scheduleReview', label: '调课审批', count: this.counts.scheduleReview || 0, route: this.taskTargets.scheduleReview || '/pages/teacher/academic-affairs/schedule-change-review', detail: this.taskDetails.scheduleReview },
+        { key: 'defer', label: '缓考审批', count: this.counts.defer || 0, route: this.taskTargets.defer || '/pages/teacher/exam-defer/index', detail: this.taskDetails.defer },
+        { key: 'warning', label: '学业预警', count: this.counts.warning || 0, route: this.taskTargets.warning || '/pages/teacher/academic-warning/index', detail: this.taskDetails.warning }
       ].filter((x) => this.available[x.key] && x.count > 0)
     },
     headline() {
@@ -149,9 +179,15 @@ export default {
       if (result.status !== 'fulfilled') return false
       this.available[key] = true
       const rows = listOf(result.value)
+      const pending = pendingOnly ? pendingRows(rows) : rows
       this.counts[key] = pendingOnly
-        ? rows.filter((x) => !x.status || ['PENDING', 'NOT_STARTED', 'INPUTTING', 'RETURNED', 'PENDING_CONFIRM'].includes(String(x.status).toUpperCase())).length
+        ? pending.length
         : Number(result.value && result.value.total != null ? result.value.total : rows.length) || 0
+      const first = pending[0]
+      const target = taskTarget(key, first)
+      if (target) this.taskTargets[key] = target
+      const detail = taskDetail(key, first)
+      if (detail) this.taskDetails[key] = detail
       return true
     },
     async load() {
@@ -183,6 +219,8 @@ export default {
       }
       this.available = { schedule: true }
       this.counts = {}
+      this.taskTargets = {}
+      this.taskDetails = {}
       this.setResult('grade', results[1], true)
       this.setResult('academicTask', results[2], true)
       this.setResult('attendance', results[3])
@@ -225,6 +263,7 @@ export default {
 .ta__task { padding: var(--space-3) var(--space-2); border-radius: var(--radius-md); background: var(--teacher-50); text-align: center; }
 .ta__task-value { display: block; color: var(--teacher-600); font-size: 22px; font-weight: 700; }
 .ta__task-label { display: block; margin-top: 2px; color: var(--text-secondary); font-size: var(--font-size-xs); }
+.ta__task-detail { display: block; margin-top: 3px; overflow: hidden; color: var(--text-tertiary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .icon-grid__item { position: relative; }
 .ta__badge { position: absolute; top: 0; right: 10%; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--danger-600); color: #fff; font-size: 10px; line-height: 17px; text-align: center; }
 </style>
