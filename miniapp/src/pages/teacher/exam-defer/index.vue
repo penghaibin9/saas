@@ -70,12 +70,12 @@ export default {
       }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
     },
     _err(e, label) {
-      const code = e && String(e.code)
+      const code = String((e && e.code) || '')
       if (code === 'APPROVAL_VERSION_CONFLICT' || code.startsWith('409')) {
         toast((e && e.message) || '该申请已处理，正在刷新')
         this.targetDeferId = ''
         this.load()
-      } else if (code && code.startsWith('403')) toast((e && e.message) || '无权处理该申请')
+      } else if (code.startsWith('403')) toast((e && e.message) || '无权处理该申请')
       else toast((e && e.message) || label + '失败，请重试')
     },
     doAct(x, action) {
