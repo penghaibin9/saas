@@ -25,7 +25,7 @@ EXPECTED_ENTRYPOINTS = {
         "app.modules.academic_affairs.services.academic_affairs_stats_public_service"
     ),
     "academic_affairs_evaluation_service": (
-        "app.modules.academic_affairs.services.academic_affairs_evaluation_term_facade"
+        "app.modules.academic_affairs.services.academic_affairs_evaluation_public_service"
     ),
     "academic_affairs_selection_service": (
         "app.modules.academic_affairs.services.academic_affairs_selection_final_service"
@@ -75,6 +75,7 @@ IMPORT_ORDERS = [
         "app.modules.academic_affairs.services.academic_affairs_evaluation_service",
         "app.modules.academic_affairs.services.academic_affairs_evaluation_facade",
         "app.modules.academic_affairs.services.academic_affairs_evaluation_term_facade",
+        "app.modules.academic_affairs.services.academic_affairs_evaluation_public_service",
     ],
     [
         "app.modules.academic_affairs.services.academic_affairs_attendance_service",
