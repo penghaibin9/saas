@@ -77,6 +77,7 @@ jobs:
         working-directory: backend
         run: >-
           pytest -q
+          tests/test_aa_route_registration_main_compat.py
           tests/test_aa_archive_semantic_gates.py
           tests/test_aa_archive_status_change_gate.py
           tests/test_aa_archive_workflow_policy.py
