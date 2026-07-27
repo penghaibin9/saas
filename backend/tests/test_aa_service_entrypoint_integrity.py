@@ -16,7 +16,7 @@ EXPECTED_ENTRYPOINTS = {
         "app.modules.academic_affairs.services.academic_affairs_dashboard_scope_facade"
     ),
     "academic_affairs_archive_service": (
-        "app.modules.academic_affairs.services.academic_affairs_archive_textbook_facade"
+        "app.modules.academic_affairs.services.academic_affairs_archive_service"
     ),
     "academic_affairs_attendance_service": (
         "app.modules.academic_affairs.services.academic_affairs_attendance_public_service"
@@ -64,9 +64,9 @@ IMPORT_ORDERS = [
         "app.modules.academic_affairs.services.academic_affairs_dashboard_readiness_runtime_guard",
     ],
     [
-        "app.modules.academic_affairs.services.academic_affairs_archive_service",
-        "app.modules.academic_affairs.services.academic_affairs_archive_facade",
         "app.modules.academic_affairs.services.academic_affairs_archive_textbook_facade",
+        "app.modules.academic_affairs.services.academic_affairs_archive_facade",
+        "app.modules.academic_affairs.services.academic_affairs_archive_service",
     ],
     [
         "app.modules.academic_affairs.services.academic_affairs_evaluation_service",
