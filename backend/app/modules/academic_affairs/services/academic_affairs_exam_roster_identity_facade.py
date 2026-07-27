@@ -14,6 +14,8 @@ from .academic_affairs_roster_consumer_service import (
 
 _legacy = _exam._legacy
 _original_check_arrangement = _exam._check_arrangement_complete
+_original_assign_seats = _exam.assign_seats
+_original_list_courses = _exam.list_courses
 
 
 def __getattr__(name):
@@ -83,7 +85,7 @@ def assign_seats(user, room_id, student_ids):
                 f"有 {len(outside)} 名学生不在考试课程冻结名单",
                 details={"studentIds": [str(value) for value in outside]},
             )
-    result = _exam.assign_seats(user, room_id, student_ids)
+    result = _original_assign_seats(user, room_id, student_ids)
     result["rosterIdentity"] = snapshot
     return result
 
@@ -102,12 +104,12 @@ def _check_arrangement_complete(db, batch_id):
                     f"{course.course_name or course.id}：预计考生数与冻结名单人数不一致"
                 )
         except AppException as exc:
-            problems.append(f"{course.course_name or course.id}：{exc.message if hasattr(exc, 'message') else str(exc)}")
+            problems.append(f"{course.course_name or course.id}：{getattr(exc, 'message', None) or str(exc)}")
     return courses, problems
 
 
 def list_courses(user, bid, page=1, page_size=100):
-    rows, total = _base.list_courses(user, bid, page, page_size)
+    rows, total = _original_list_courses(user, bid, page, page_size)
     with _legacy.session() as db:
         for row in rows:
             row["rosterIdentity"] = get_consumer_snapshot(
