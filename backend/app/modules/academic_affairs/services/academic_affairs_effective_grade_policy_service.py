@@ -190,9 +190,15 @@ def freeze_effective_grade_policy(
     existing = db.scalars(select(AaEffectiveGradePolicySnapshot).where(
         AaEffectiveGradePolicySnapshot.tenant_id == _tid(),
         AaEffectiveGradePolicySnapshot.event_key == event_key,
-        AaEffectiveGradePolicySnapshot.is_deleted.is_(False),
     ).with_for_update()).first()
     if existing:
+        if existing.is_deleted:
+            raise AppException(
+                "DATA_CONFLICT",
+                "有效成绩策略快照曾被软删除，禁止静默重建同一事件",
+                details={"eventKey": event_key, "snapshotId": str(existing.id)},
+                http_status=409,
+            )
         if existing.policy_hash != payload_hash or int(existing.academic_grade_id) != int(grade.id):
             raise AppException(
                 "APPROVAL_VERSION_CONFLICT",
