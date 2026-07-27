@@ -11,7 +11,7 @@ def test_public_service_aliases_point_to_final_layers():
         "academic_affairs_evaluation_term_facade"
     )
     assert services.academic_affairs_makeup_service.__name__.endswith(
-        "academic_affairs_makeup_identity_facade"
+        "academic_affairs_makeup_course_identity_guard"
     )
     assert services.academic_affairs_textbook_service.__name__.endswith(
         "academic_affairs_textbook_lock_facade"
@@ -35,7 +35,7 @@ def test_public_service_aliases_point_to_final_layers():
         "academic_affairs_exam_facade"
     )
     assert services.academic_affairs_grade_service.__name__.endswith(
-        "academic_affairs_grade_term_facade"
+        "academic_affairs_grade_identity_facade"
     )
     assert services.academic_affairs_grade_service.submit_task.__module__.endswith(
         "academic_affairs_grade_term_facade"
