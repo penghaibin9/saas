@@ -114,7 +114,7 @@ def _student_submission_context(db, user, task) -> tuple[object, dict, str]:
 
 
 def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
-    """返回当前学生正式教学班内的评教任务，供学生 PC/小程序获得真实 taskId。"""
+    """返回当前学生正式教学班内已发布的匿名评教任务。"""
     from app.models import (
         AaEvaluationBatch,
         AaEvaluationRecord,
@@ -123,6 +123,12 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
         AaTeachingClassMember,
     )
 
+    visible_statuses = [
+        _legacy._B_PUBLISHED,
+        _legacy._B_OPEN,
+        _legacy._B_RESULT,
+        _legacy._B_ARCHIVED,
+    ]
     with session() as db:
         profile = _resolve_student(db, user)
         query = db.query(AaEvaluationTask, AaEvaluationBatch).join(
@@ -140,6 +146,8 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
             AaEvaluationTask.evaluator_type == "STUDENT",
             AaEvaluationTask.is_deleted.is_(False),
             AaEvaluationBatch.tenant_id == _tid(),
+            AaEvaluationBatch.status.in_(visible_statuses),
+            AaEvaluationBatch.anonymous.is_(True),
             AaEvaluationBatch.is_deleted.is_(False),
             AaTeachingClass.tenant_id == _tid(),
             AaTeachingClass.is_deleted.is_(False),
@@ -152,8 +160,8 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
         if batch_id:
             query = query.filter(AaEvaluationBatch.id == int(batch_id))
         if not include_closed:
-            query = query.filter(AaEvaluationBatch.status.in_([_legacy._B_PUBLISHED, _legacy._B_OPEN]))
-        rows = query.order_by(
+            query = query.filter(AaEvaluationBatch.status == _legacy._B_OPEN)
+        rows = query.distinct().order_by(
             AaEvaluationBatch.id.desc(),
             AaEvaluationTask.id.desc(),
         ).all()
@@ -175,7 +183,7 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
                 "courseName": task.course_name,
                 "teacherName": task.teacher_name,
                 "windowStatus": batch.status,
-                "anonymous": bool(batch.anonymous),
+                "anonymous": True,
                 "submitted": submitted,
                 "canSubmit": batch.status == _legacy._B_OPEN and not submitted,
             })
@@ -204,6 +212,12 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             raise _legacy._invalid("评教窗口未开放")
 
         if task.evaluator_type == "STUDENT":
+            if not bool(batch.anonymous):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "学生评教批次未启用匿名模式，已拒绝提交，请联系教务处修正批次配置",
+                    http_status=409,
+                )
             profile, roster, token = _student_submission_context(db, user, task)
             duplicate = db.query(AaEvaluationRecord).filter(
                 AaEvaluationRecord.tenant_id == _tid(),
