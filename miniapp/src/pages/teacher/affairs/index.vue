@@ -1,13 +1,33 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="学工待办" subtitle="权限、数据范围、指派人与 PC 一致" back />
+    <MobileNavBar variant="brand" title="学工待办" subtitle="逐条待办、权限、数据范围与 PC 同源" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="data">
         <view class="ta__total">
           <text class="ta__total-n">{{ data.total }}</text>
           <text class="ta__total-l">项学工待办</text>
         </view>
-        <view class="ta__empty" v-if="!data.cards.length"><text>暂无待办</text></view>
+
+        <view class="section-head"><text class="section-head__title">待我处理</text></view>
+        <view class="ta__empty" v-if="!todoItems.length"><text>暂无待办</text></view>
+        <view class="stack" v-else>
+          <view v-for="item in todoItems" :key="item.todoId" class="ta__todo" @click="openTodo(item)">
+            <view class="flex-1">
+              <view class="ta__todo-head">
+                <text class="ta__label">{{ item.label || item.todoType }}</text>
+                <text v-if="item.overdue" class="ta__overdue">已逾期</text>
+              </view>
+              <text class="ta__title">{{ item.title || '学工待办' }}</text>
+              <text v-if="item.studentName || item.studentNo" class="ta__sub">
+                {{ item.studentName || '学生' }}{{ item.studentNo ? ` · ${item.studentNo}` : '' }}{{ item.className ? ` · ${item.className}` : '' }}
+              </text>
+              <text v-if="item.dueAt" class="ta__due">截止 {{ formatTime(item.dueAt) }}</text>
+            </view>
+            <text class="ta__go">›</text>
+          </view>
+        </view>
+
+        <view class="section-head ta__section"><text class="section-head__title">按业务分类</text></view>
         <view class="stack">
           <view v-for="c in data.cards" :key="c.todoType" class="ta__card" @click="openCard(c)">
             <text class="ta__label">{{ c.label }}</text>
@@ -70,9 +90,11 @@ const ROUTES = {
 
 export default {
   data() { return { data: null, state: 'loading', activities: [], activityVisible: true, activityError: '', codeData: null, codeLoading: '' } },
+  computed: { todoItems() { return (this.data && Array.isArray(this.data.items)) ? this.data.items : [] } },
   onLoad() { this.load() },
   onShow() { if (this.state === 'ready') this.load() },
   methods: {
+    formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
     load() {
       this.state = 'loading'; this.activityError = ''
       teacherApi.getAffairs().then((d) => { this.data = d; this.state = 'ready' })
@@ -84,8 +106,22 @@ export default {
           else { this.activityVisible = true; this.activityError = n.text || '活动数据加载失败，请稍后重试' }
         })
     },
+    routeFor(todoType, params = {}) {
+      const base = ROUTES[todoType]
+      if (!base) return ''
+      const query = []
+      if (params.recordId) query.push(`recordId=${encodeURIComponent(params.recordId)}`)
+      if (params.todoId) query.push(`todoId=${encodeURIComponent(params.todoId)}`)
+      if (!query.length) return base
+      return base + (base.includes('?') ? '&' : '?') + query.join('&')
+    },
+    openTodo(item) {
+      const url = this.routeFor(item.todoType, item.actionParams || item)
+      if (!url) { toast('该待办类型尚未配置移动端处理入口'); return }
+      uni.navigateTo({ url })
+    },
     openCard(c) {
-      const url = ROUTES[c.todoType]
+      const url = this.routeFor(c.todoType)
       if (!url) { toast('该待办类型尚未配置移动端处理入口'); return }
       uni.navigateTo({ url })
     },
@@ -104,9 +140,14 @@ export default {
 .ta__total { background: var(--brand-primary); color: #fff; border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); display: flex; align-items: baseline; gap: var(--space-2); }
 .ta__total-n { font-size: 28px; font-weight: 700; }
 .ta__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-5); }
-.ta__card { display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); }
+.ta__card,.ta__todo { display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); }
+.ta__todo { align-items: flex-start; gap: 12px; }
+.ta__todo-head { display: flex; align-items: center; gap: 8px; }
+.ta__overdue { font-size: 11px; color: var(--danger-600); background: var(--danger-50, #fef2f2); padding: 2px 6px; border-radius: 6px; }
+.ta__title { display: block; margin-top: 5px; color: var(--text-primary); font-size: 14px; line-height: 1.5; }
 .ta__label { display: block; font-weight: 600; color: var(--text-primary); }
-.ta__sub { display: block; margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+.ta__sub,.ta__due { display: block; margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+.ta__due { color: var(--warning-700); }
 .ta__right { display: flex; align-items: center; gap: 8px; }
 .ta__count { font-size: 20px; font-weight: 700; color: var(--brand-primary); }
 .ta__go { color: var(--text-tertiary); font-size: 20px; }
