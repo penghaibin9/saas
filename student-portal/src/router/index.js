@@ -1,6 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { guard } from '../platform/permissionGuard'
 
+const optionalViews = import.meta.glob('../views/**/*.vue')
+const optionalView = (relativePath, fallback) =>
+  optionalViews[`../views/${relativePath}.vue`] || fallback
+
 const academicSection = (path, name, tab, title, description) => ({
   path,
   name,
@@ -49,6 +53,15 @@ const routes = [
 
       { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsView.vue') },
       { path: 'internship', name: 'internship', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipView.vue') },
+      {
+        path: 'internship/compliance',
+        name: 'internship-compliance',
+        meta: { modulePath: 'internship' },
+        component: optionalView(
+          'internship/InternshipComplianceView',
+          () => import('../views/internship/InternshipView.vue')
+        )
+      },
       { path: 'employment', name: 'employment', meta: { modulePath: 'employment' }, component: () => import('../views/employment/EmploymentView.vue') },
       { path: 'orientation', name: 'orientation', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
       { path: 'messages', name: 'messages', meta: { modulePath: 'messages' }, component: () => import('../views/messages/MessagesView.vue') },
