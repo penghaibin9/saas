@@ -69,8 +69,9 @@ class AaStatsSnapshot(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="FROZEN")
 
 
-# 确保 Base.metadata.create_all 注册 R11 真实学期试点表。
+# 确保 Base.metadata.create_all 注册 R11 试点表与P0-11有效成绩策略快照表。
 from app.models.academic_affairs_r11 import (  # noqa: E402,F401
     AaSemesterPilot,
     AaSemesterPilotCheckpoint,
 )
+from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicySnapshot  # noqa: E402,F401
