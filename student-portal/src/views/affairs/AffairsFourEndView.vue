@@ -4,7 +4,7 @@
       <button v-for="item in tabs" :key="item.key" class="sp-tab" :class="{ 'is-active': tab === item.key }" @click="tab = item.key">{{ item.label }}</button>
     </nav>
 
-    <StateBlock v-if="loading" type="loading" text="学工数据加载中…" />
+    <StateBlock v-if="loading" type="loading" :text="`${activeTabLabel}加载中…`" />
     <template v-else>
       <div v-if="tabError" class="domain-error"><strong>当前业务暂不可用</strong><span>{{ tabError }}</span><button class="sp-btn sp-btn--ghost" @click="reload">重新加载</button></div>
 
@@ -125,7 +125,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
@@ -135,7 +135,19 @@ import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const tabs = [{ key: 'leave', label: '请假销假' }, { key: 'aid', label: '困难认定' }, { key: 'funding', label: '奖学金与助学金' }, { key: 'dorm', label: '我的宿舍' }, { key: 'discipline', label: '处分申诉' }, { key: 'psy', label: '心理自评' }, { key: 'activity', label: '活动与第二课堂' }, { key: 'talk', label: '谈心谈话' }]
-const tab = ref('leave'); const loading = ref(true); const busy = ref(false); const errors = reactive({}); const tabError = computed(() => errors[tab.value] || '')
+const tab = ref('leave')
+const busy = ref(false)
+const errors = reactive({})
+const loadedTabs = reactive({})
+const loadingTabs = reactive({})
+const inflight = new Map()
+const loadEpoch = Object.create(null)
+let viewActive = true
+
+const tabError = computed(() => errors[tab.value] || '')
+const loading = computed(() => !!loadingTabs[tab.value])
+const activeTabLabel = computed(() => tabs.find((item) => item.key === tab.value)?.label || '学工数据')
+
 const leave = ref({ items: [] }); const aid = ref({ items: [] }); const funding = ref({ items: [] }); const dorm = ref({}); const discipline = ref({ items: [] }); const psy = ref({ questions: [] }); const psyHistory = ref({ items: [] }); const activities = ref({ available: [], mine: [] }); const talk = ref({ items: [] }); const aidBatches = ref([]); const fundingBatches = ref([]); const secondClass = ref({ items: [], byType: [] }); const creditAppeals = ref([]); const dormTransfers = ref([])
 const leaveForm = reactive({ leaveType: 'PERSONAL', startTime: '', endTime: '', reason: '' }); const extendId = ref(''); const extendForm = reactive({ newEndTime: '', reason: '' }); const aidForm = reactive({ batchId: '', applyLevel: 'GENERAL', memberCount: null, annualIncome: null, debt: null, specialTags: '', statement: '', confirm: false }); const fundForm = reactive({ projectType: 'SCHOLARSHIP', batchId: '', statement: '', confirm: false }); const aidObjections = reactive({}); const fundAppeals = reactive({}); const disciplineAppeals = reactive({}); const psyAnswers = reactive({}); const dormBuildings = ref([]); const dormRooms = ref([]); const dormBeds = ref([]); const dormForm = reactive({ visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }); const modal = reactive({ type: '', title: '', notice: '', item: null, form: {} })
 
@@ -167,54 +179,99 @@ const appealLabel = (status) => ({ SUBMITTED: '申诉已提交', REVIEWING: '复
 const creditLabel = (type) => ({ SECOND_CLASS: '第二课堂', MORAL: '德育积分', VOLUNTEER_HOUR: '志愿时长' }[type] || type)
 const notifyError = (e, fallback) => ui.notify(e?.message || fallback)
 
-async function reload() {
-  loading.value = true; Object.keys(errors).forEach((key) => delete errors[key])
-  const tasks = { leave: portalApi.affairsLeave(), aid: portalApi.affairsAid(), funding: portalApi.affairsFunding(), discipline: portalApi.affairsDiscipline(), psy: portalApi.affairsPsyQuestions(), psyHistory: portalApi.affairsPsyHistory(), activities: portalApi.affairsActivitiesMy(), aidBatches: portalApi.affairsAidBatches(), fundingBatches: portalApi.affairsFundingBatches(), talk: portalApi.affairsTalk(), dorm: portalApi.affairsDorm(), secondClass: affairsFourEndApi.secondClassReport(), creditAppeals: affairsFourEndApi.myCreditAppeals(), dormTransfers: affairsFourEndApi.myDormTransfers() }
-  const entries = Object.entries(tasks); const results = await Promise.allSettled(entries.map(([, task]) => task))
-  results.forEach((result, index) => {
-    const key = entries[index][0]
-    if (result.status === 'rejected') errors[key === 'psyHistory' ? 'psy' : key === 'aidBatches' ? 'aid' : key === 'fundingBatches' ? 'funding' : key === 'secondClass' || key === 'creditAppeals' ? 'activity' : key === 'dormTransfers' ? 'dorm' : key] = result.reason?.message || '数据加载失败'
-    else {
-      const value = result.value || {}
-      if (key === 'leave') leave.value = value; else if (key === 'aid') aid.value = value; else if (key === 'funding') funding.value = value; else if (key === 'discipline') discipline.value = value; else if (key === 'psy') psy.value = value; else if (key === 'psyHistory') psyHistory.value = value; else if (key === 'activities') activities.value = value; else if (key === 'aidBatches') aidBatches.value = value.items || []; else if (key === 'fundingBatches') fundingBatches.value = value.items || []; else if (key === 'talk') talk.value = value; else if (key === 'dorm') dorm.value = value; else if (key === 'secondClass') secondClass.value = { items: [], byType: [], ...value }; else if (key === 'creditAppeals') creditAppeals.value = value.items || []; else if (key === 'dormTransfers') dormTransfers.value = value.items || []
-    }
-  })
-  loading.value = false
+const TAB_LOADERS = {
+  leave: [{ load: () => portalApi.affairsLeave(), apply: (value) => { leave.value = value || { items: [] } } }],
+  aid: [{ load: () => portalApi.affairsAid(), apply: (value) => { aid.value = value || { items: [] } } }, { load: () => portalApi.affairsAidBatches(), apply: (value) => { aidBatches.value = value?.items || [] } }],
+  funding: [{ load: () => portalApi.affairsFunding(), apply: (value) => { funding.value = value || { items: [] } } }, { load: () => portalApi.affairsFundingBatches(), apply: (value) => { fundingBatches.value = value?.items || [] } }],
+  dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), apply: (value) => { dormTransfers.value = value?.items || [] } }],
+  discipline: [{ load: () => portalApi.affairsDiscipline(), apply: (value) => { discipline.value = value || { items: [] } } }],
+  psy: [{ load: () => portalApi.affairsPsyQuestions(), apply: (value) => { psy.value = value || { questions: [] } } }, { load: () => portalApi.affairsPsyHistory(), apply: (value) => { psyHistory.value = value || { items: [] } } }],
+  activity: [{ load: () => portalApi.affairsActivitiesMy(), apply: (value) => { activities.value = value || { available: [], mine: [] } } }, { load: () => affairsFourEndApi.secondClassReport(), apply: (value) => { secondClass.value = { items: [], byType: [], ...(value || {}) } } }, { load: () => affairsFourEndApi.myCreditAppeals(), apply: (value) => { creditAppeals.value = value?.items || [] } }],
+  talk: [{ load: () => portalApi.affairsTalk(), apply: (value) => { talk.value = value || { items: [] } } }]
 }
 
-async function run(task, success, fallback) { busy.value = true; try { const data = await task(); ui.notify(success); await reload(); return { ok: true, data } } catch (e) { notifyError(e, fallback); return { ok: false, error: e } } finally { busy.value = false } }
-async function applyLeave() { if (!validLeave.value) return ui.notify('请填写有效日期和5-300字事由'); const result = await run(() => portalApi.affairsServiceApply({ serviceKey: 'LEAVE', ...leaveForm }), '请假已提交', '请假提交失败'); if (result.ok) leaveForm.reason = '' }
-async function cancelLeave(item) { if (!window.confirm('确认已返校或请假事项已结束，并提交销假申请？')) return; await run(() => affairsFourEndApi.cancelLeave(item.leaveId, item.version, '学生本人申请销假'), '销假申请已提交', '销假提交失败') }
+function loadTab(key, { force = false } = {}) {
+  const entries = TAB_LOADERS[key]
+  if (!entries) return Promise.resolve()
+  if (!force && loadedTabs[key]) return Promise.resolve()
+  if (inflight.has(key)) return inflight.get(key)
+  const epoch = (loadEpoch[key] || 0) + 1
+  loadEpoch[key] = epoch
+  loadingTabs[key] = true
+  delete errors[key]
+  const promise = Promise.allSettled(entries.map((entry) => entry.load()))
+    .then((results) => {
+      if (!viewActive || loadEpoch[key] !== epoch) return
+      const failures = []
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') entries[index].apply(result.value)
+        else failures.push(result.reason?.message || '数据加载失败')
+      })
+      if (failures.length) errors[key] = [...new Set(failures)].join('；')
+      loadedTabs[key] = true
+    })
+    .finally(() => {
+      if (loadEpoch[key] === epoch) loadingTabs[key] = false
+      if (inflight.get(key) === promise) inflight.delete(key)
+    })
+  inflight.set(key, promise)
+  return promise
+}
+
+function reload() { return loadTab(tab.value, { force: true }) }
+
+async function run(task, success, fallback, refreshKey = tab.value) {
+  busy.value = true
+  try {
+    const data = await task()
+    ui.notify(success)
+    await loadTab(refreshKey, { force: true })
+    return { ok: true, data }
+  } catch (e) {
+    notifyError(e, fallback)
+    return { ok: false, error: e }
+  } finally {
+    busy.value = false
+  }
+}
+
+async function applyLeave() { if (!validLeave.value) return ui.notify('请填写有效日期和5-300字事由'); const result = await run(() => portalApi.affairsServiceApply({ serviceKey: 'LEAVE', ...leaveForm }), '请假已提交', '请假提交失败', 'leave'); if (result.ok) leaveForm.reason = '' }
+async function cancelLeave(item) { if (!window.confirm('确认已返校或请假事项已结束，并提交销假申请？')) return; await run(() => affairsFourEndApi.cancelLeave(item.leaveId, item.version, '学生本人申请销假'), '销假申请已提交', '销假提交失败', 'leave') }
 function openExtend(item) { extendId.value = item.leaveId; extendForm.newEndTime = dayAfter(fmt(item.endTime)); extendForm.reason = '' }
 function validExtend(item) { return !!extendForm.newEndTime && extendForm.newEndTime > fmt(item.endTime) && validReason(extendForm.reason, 5, 300) }
-async function submitExtend(item) { if (!validExtend(item)) return ui.notify('新结束日期必须晚于原结束日期，续假事由需5-300字'); const result = await run(() => affairsFourEndApi.extendLeave(item.leaveId, item.version, extendForm.newEndTime, extendForm.reason), '续假申请已提交', '续假提交失败'); if (result.ok) extendId.value = '' }
+async function submitExtend(item) { if (!validExtend(item)) return ui.notify('新结束日期必须晚于原结束日期，续假事由需5-300字'); const result = await run(() => affairsFourEndApi.extendLeave(item.leaveId, item.version, extendForm.newEndTime, extendForm.reason), '续假申请已提交', '续假提交失败', 'leave'); if (result.ok) extendId.value = '' }
 async function editLeave(item) { busy.value = true; try { const data = await affairsFourEndApi.getReturnedLeave(item.leaveId); Object.assign(modal, { type: 'leave', title: '修改退回请假', notice: data.returnReason || item.returnReason, item: data, form: { leaveType: data.leaveType, startTime: fmt(data.startTime), endTime: fmt(data.endTime), reason: data.reason || '' } }) } catch (e) { notifyError(e, '加载失败') } finally { busy.value = false } }
-async function submitAid() { if (!validAid.value) return ui.notify(aidValidationError.value || '请完成本人确认'); const body = { batchId: aidForm.batchId, applyLevel: aidForm.applyLevel, memberCount: Number(aidForm.memberCount), annualIncome: aidForm.annualIncome === '' || aidForm.annualIncome == null ? null : Number(aidForm.annualIncome), debt: aidForm.debt === '' || aidForm.debt == null ? null : Number(aidForm.debt), specialTags: aidForm.specialTags.split(/[,，]/).map((x) => x.trim()).filter(Boolean), statement: aidForm.statement, confirm: true }; const result = await run(() => portalApi.affairsAidApply(body), '困难认定申请已提交', '提交失败'); if (result.ok) { aidForm.statement = ''; aidForm.confirm = false } }
+async function submitAid() { if (!validAid.value) return ui.notify(aidValidationError.value || '请完成本人确认'); const body = { batchId: aidForm.batchId, applyLevel: aidForm.applyLevel, memberCount: Number(aidForm.memberCount), annualIncome: aidForm.annualIncome === '' || aidForm.annualIncome == null ? null : Number(aidForm.annualIncome), debt: aidForm.debt === '' || aidForm.debt == null ? null : Number(aidForm.debt), specialTags: aidForm.specialTags.split(/[,，]/).map((x) => x.trim()).filter(Boolean), statement: aidForm.statement, confirm: true }; const result = await run(() => portalApi.affairsAidApply(body), '困难认定申请已提交', '提交失败', 'aid'); if (result.ok) { aidForm.statement = ''; aidForm.confirm = false } }
 async function editAid(item) { busy.value = true; try { const data = await affairsFourEndApi.getReturnedAid(item.applyId); Object.assign(modal, { type: 'aid', title: '修改退回认定申请', notice: item.returnReason, item: data, form: { applyLevel: data.applyLevel, memberCount: data.memberCount, annualIncome: data.annualIncome, debt: data.debt, specialTags: Array.isArray(data.specialTags) ? data.specialTags.join('，') : '', statement: data.statement || '' } }) } catch (e) { notifyError(e, '加载失败') } finally { busy.value = false } }
-async function submitAidObjection(item) { if (!validReason(aidObjections[item.applyId], 5, 500)) return ui.notify('异议理由需5-500字'); const result = await run(() => portalApi.affairsAidObjection({ applyId: item.applyId, reason: aidObjections[item.applyId] }), '异议已提交并进入老师待办', '异议提交失败'); if (result.ok) aidObjections[item.applyId] = '' }
-async function submitFunding() { if (!validFunding.value) return ui.notify('请选择批次、填写5-1000字申请理由并确认'); const result = await run(() => portalApi.affairsFundingApply({ batchId: fundForm.batchId, statement: fundForm.statement, confirm: true }), '奖助申请已提交', '提交失败'); if (result.ok) { fundForm.statement = ''; fundForm.confirm = false } }
+async function submitAidObjection(item) { if (!validReason(aidObjections[item.applyId], 5, 500)) return ui.notify('异议理由需5-500字'); const result = await run(() => portalApi.affairsAidObjection({ applyId: item.applyId, reason: aidObjections[item.applyId] }), '异议已提交并进入老师待办', '异议提交失败', 'aid'); if (result.ok) aidObjections[item.applyId] = '' }
+async function submitFunding() { if (!validFunding.value) return ui.notify('请选择批次、填写5-1000字申请理由并确认'); const result = await run(() => portalApi.affairsFundingApply({ batchId: fundForm.batchId, statement: fundForm.statement, confirm: true }), '奖助申请已提交', '提交失败', 'funding'); if (result.ok) { fundForm.statement = ''; fundForm.confirm = false } }
 async function editFunding(item) { busy.value = true; try { const data = await affairsFourEndApi.getReturnedFunding(item.applicationId); Object.assign(modal, { type: 'funding', title: '修改退回奖助申请', notice: item.returnReason, item: data, form: { statement: data.statement || '' } }) } catch (e) { notifyError(e, '加载失败') } finally { busy.value = false } }
-async function submitFundingAppeal(item) { if (!validReason(fundAppeals[item.applicationId], 5, 1000)) return ui.notify('申诉理由需5-1000字'); const result = await run(() => portalApi.affairsFundingAppeal({ applicationId: item.applicationId, reason: fundAppeals[item.applicationId] }), '申诉已提交并进入老师待办', '申诉提交失败'); if (result.ok) fundAppeals[item.applicationId] = '' }
+async function submitFundingAppeal(item) { if (!validReason(fundAppeals[item.applicationId], 5, 1000)) return ui.notify('申诉理由需5-1000字'); const result = await run(() => portalApi.affairsFundingAppeal({ applicationId: item.applicationId, reason: fundAppeals[item.applicationId] }), '申诉已提交并进入老师待办', '申诉提交失败', 'funding'); if (result.ok) fundAppeals[item.applicationId] = '' }
 async function loadDormOptions() { if (pendingDormTransfer.value) return ui.notify('已有调宿申请处理中，不能重复提交'); busy.value = true; try { const data = await affairsFourEndApi.dormTransferOptions(); dormBuildings.value = data.items || []; dormForm.visible = true } catch (e) { notifyError(e, '调宿选项加载失败') } finally { busy.value = false } }
 async function loadRooms() { dormForm.roomId = ''; dormForm.bedId = ''; dormRooms.value = []; dormBeds.value = []; if (!dormForm.buildingId) return; try { const data = await affairsFourEndApi.dormTransferRooms(dormForm.buildingId); dormRooms.value = data.items || [] } catch (e) { notifyError(e, '房间加载失败') } }
 async function loadBeds() { dormForm.bedId = ''; dormBeds.value = []; if (!dormForm.roomId) return; try { const data = await affairsFourEndApi.dormTransferBeds(dormForm.roomId); dormBeds.value = data.items || [] } catch (e) { notifyError(e, '床位加载失败') } }
 function closeDormForm() { if (!busy.value) Object.assign(dormForm, { visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }) }
-async function submitDormTransfer() { if (!validDormTransfer.value) return ui.notify('请选择目标床位并填写5-300字调宿原因'); if (!window.confirm(`确认提交调宿？\n目标：${selectedDormTarget.value}\n审批完成前原床保持不变。`)) return; const result = await run(() => affairsFourEndApi.submitDormTransfer(dormForm.bedId, dormForm.reason), '调宿申请已提交', '调宿提交失败'); if (result.ok) closeDormForm() }
-async function submitDisciplineAppeal(item) { if (!validReason(disciplineAppeals[item.caseId], 5, 1000)) return ui.notify('处分申诉理由需5-1000字'); const result = await run(() => portalApi.affairsDisciplineAppeal({ caseId: item.caseId, reason: disciplineAppeals[item.caseId] }), '处分申诉已提交', '申诉提交失败'); if (result.ok) disciplineAppeals[item.caseId] = '' }
-async function submitPsy() { const answers = (psy.value.questions || []).map((q) => ({ qKey: q.key, score: psyAnswers[q.key] })); await run(() => portalApi.affairsPsySubmit({ answers }), '心理自评已提交', '自评提交失败') }
-async function enroll(item) { await run(() => portalApi.affairsActivityEnroll(item.activityId), '报名成功', '报名失败') }
+async function submitDormTransfer() { if (!validDormTransfer.value) return ui.notify('请选择目标床位并填写5-300字调宿原因'); if (!window.confirm(`确认提交调宿？\n目标：${selectedDormTarget.value}\n审批完成前原床保持不变。`)) return; const result = await run(() => affairsFourEndApi.submitDormTransfer(dormForm.bedId, dormForm.reason), '调宿申请已提交', '调宿提交失败', 'dorm'); if (result.ok) closeDormForm() }
+async function submitDisciplineAppeal(item) { if (!validReason(disciplineAppeals[item.caseId], 5, 1000)) return ui.notify('处分申诉理由需5-1000字'); const result = await run(() => portalApi.affairsDisciplineAppeal({ caseId: item.caseId, reason: disciplineAppeals[item.caseId] }), '处分申诉已提交', '申诉提交失败', 'discipline'); if (result.ok) disciplineAppeals[item.caseId] = '' }
+async function submitPsy() { const answers = (psy.value.questions || []).map((q) => ({ qKey: q.key, score: psyAnswers[q.key] })); await run(() => portalApi.affairsPsySubmit({ answers }), '心理自评已提交', '自评提交失败', 'psy') }
+async function enroll(item) { await run(() => portalApi.affairsActivityEnroll(item.activityId), '报名成功', '报名失败', 'activity') }
 function openCreditAppeal(item) { Object.assign(modal, { type: 'credit', title: item ? '第二课堂记错申诉' : '第二课堂缺记申诉', notice: '', item, form: { appealType: item ? 'WRONG' : 'MISSING', activityId: item?.activityId || '', activityName: item?.remark || '', claimCreditType: item?.creditType || 'SECOND_CLASS', claimValue: item?.creditValue == null ? '' : String(item.creditValue), reason: '' } }) }
 function closeModal() { if (!busy.value) Object.assign(modal, { type: '', title: '', notice: '', item: null, form: {} }) }
-async function submitUpdatedAndResubmit({ update, resubmit, success }) { busy.value = true; try { const updated = await update(); modal.item = { ...(modal.item || {}), ...(updated || {}), version: updated?.version ?? modal.item?.version }; try { await resubmit(modal.item.version) } catch (e) { modal.notice = `修改已保存，但重新提交失败：${e?.message || '请保留当前内容后重试'}`; notifyError(e, '重新提交失败'); return false } ui.notify(success); await reload(); setTimeout(() => closeModal(), 0); return true } catch (e) { notifyError(e, '保存修改失败'); return false } finally { busy.value = false } }
+async function submitUpdatedAndResubmit({ update, resubmit, success, refreshKey }) { busy.value = true; try { const updated = await update(); modal.item = { ...(modal.item || {}), ...(updated || {}), version: updated?.version ?? modal.item?.version }; try { await resubmit(modal.item.version) } catch (e) { modal.notice = `修改已保存，但重新提交失败：${e?.message || '请保留当前内容后重试'}`; notifyError(e, '重新提交失败'); return false } ui.notify(success); await loadTab(refreshKey, { force: true }); setTimeout(() => closeModal(), 0); return true } catch (e) { notifyError(e, '保存修改失败'); return false } finally { busy.value = false } }
 async function submitModal() {
   if (!modalValid.value) return ui.notify(modalValidationError.value)
-  if (modal.type === 'leave') { const id = modal.item.leaveId || modal.item.id; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedLeave(id, { ...modal.form, version: modal.item.version }), resubmit: (version) => affairsFourEndApi.resubmitLeave(id, version), success: '请假已修改并重新提交' }) }
-  else if (modal.type === 'aid') { const id = modal.item.applyId; const body = { ...modal.form, memberCount: Number(modal.form.memberCount), annualIncome: modal.form.annualIncome === '' || modal.form.annualIncome == null ? null : Number(modal.form.annualIncome), debt: modal.form.debt === '' || modal.form.debt == null ? null : Number(modal.form.debt), specialTags: String(modal.form.specialTags || '').split(/[,，]/).map((x) => x.trim()).filter(Boolean), version: modal.item.version }; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedAid(id, body), resubmit: (version) => affairsFourEndApi.resubmitAid(id, version), success: '认定申请已修改并重新提交' }) }
-  else if (modal.type === 'funding') { const id = modal.item.applicationId; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedFunding(id, { ...modal.form, version: modal.item.version }), resubmit: (version) => affairsFourEndApi.resubmitFunding(id, version), success: '奖助申请已修改并重新提交' }) }
-  else if (modal.type === 'credit') { const result = await run(() => affairsFourEndApi.submitCreditAppeal({ ...modal.form, claimValue: Number(modal.form.claimValue) }), '积分申诉已提交', '申诉提交失败'); if (result.ok) setTimeout(() => closeModal(), 0) }
+  if (modal.type === 'leave') { const id = modal.item.leaveId || modal.item.id; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedLeave(id, { ...modal.form, version: modal.item.version }), resubmit: (version) => affairsFourEndApi.resubmitLeave(id, version), success: '请假已修改并重新提交', refreshKey: 'leave' }) }
+  else if (modal.type === 'aid') { const id = modal.item.applyId; const body = { ...modal.form, memberCount: Number(modal.form.memberCount), annualIncome: modal.form.annualIncome === '' || modal.form.annualIncome == null ? null : Number(modal.form.annualIncome), debt: modal.form.debt === '' || modal.form.debt == null ? null : Number(modal.form.debt), specialTags: String(modal.form.specialTags || '').split(/[,，]/).map((x) => x.trim()).filter(Boolean), version: modal.item.version }; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedAid(id, body), resubmit: (version) => affairsFourEndApi.resubmitAid(id, version), success: '认定申请已修改并重新提交', refreshKey: 'aid' }) }
+  else if (modal.type === 'funding') { const id = modal.item.applicationId; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedFunding(id, { ...modal.form, version: modal.item.version }), resubmit: (version) => affairsFourEndApi.resubmitFunding(id, version), success: '奖助申请已修改并重新提交', refreshKey: 'funding' }) }
+  else if (modal.type === 'credit') { const result = await run(() => affairsFourEndApi.submitCreditAppeal({ ...modal.form, claimValue: Number(modal.form.claimValue) }), '积分申诉已提交', '申诉提交失败', 'activity'); if (result.ok) setTimeout(() => closeModal(), 0) }
 }
 
-onMounted(reload)
+watch(tab, (key) => { loadTab(key) }, { immediate: true })
+onBeforeUnmount(() => {
+  viewActive = false
+  Object.keys(loadEpoch).forEach((key) => { loadEpoch[key] += 1 })
+  inflight.clear()
+})
 </script>
 
 <style scoped>
