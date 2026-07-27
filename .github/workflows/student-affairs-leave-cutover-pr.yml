@@ -34,9 +34,10 @@ jobs:
             python scripts/maintenance/repair_affairs_leave_tests.py
             python scripts/maintenance/repair_affairs_validation_round2.py
             python scripts/maintenance/repair_affairs_validation_round3.py
+            python scripts/maintenance/repair_affairs_explicit_contracts_round4.py
           } 2>&1 | tee leave-cutover.log
           status=${PIPESTATUS[0]}
-          tail -n 260 leave-cutover.log
+          tail -n 320 leave-cutover.log
           exit "$status"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -57,7 +58,7 @@ jobs:
           ! git grep -n "affairs_test_compat\|affairs_test_diagnostics\|affairs_test_legacy_inputs" -- backend/pytest.ini backend/tests
           git grep -n "/admin/student-affairs/leave" -- frontend/src/config frontend/src/modules/campusService
           git grep -n "portal/affairs/leave\|mobile/affairs/leave" -- backend/app/api/v1/affairs_leave_self_api.py student-portal/src miniapp/src
-          python -m compileall -q backend/app backend/tests
+          python -m compileall -q backend/app backend/tests backend/affairs_contract_test_support.py
           node --check student-portal/src/services/portalApi.js
           node --check miniapp/src/services/realApi.js
           node --check miniapp/src/services/studentApi.js
@@ -66,10 +67,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/app backend/tests backend/pytest.ini frontend/src frontend/tests student-portal/src miniapp/src scripts/maintenance
+          git add backend/app backend/tests backend/pytest.ini backend/affairs_contract_test_support.py frontend/src frontend/tests student-portal/src miniapp/src scripts/maintenance
           if git diff --cached --quiet; then
             echo "No cutover changes to commit"
           else
-            git commit -m "refactor(student-affairs): complete leave cutover and repair tests"
+            git commit -m "test(student-affairs): make legacy contracts explicit"
             git push origin HEAD:codex/student-affairs-leave-cutover-20260727
           fi
