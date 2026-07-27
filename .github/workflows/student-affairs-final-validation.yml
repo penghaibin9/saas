@@ -17,6 +17,7 @@ jobs:
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
       FAST_TEST_SCHEMA: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
     services:
       mysql:
         image: mysql:8.0
@@ -58,8 +59,40 @@ jobs:
           HEADS="$(alembic heads | awk '{print $1}')"
           printf '%s\n' "$HEADS"
           test "$(printf '%s\n' "$HEADS" | sed '/^$/d' | wc -l)" -eq 1
-          printf '%s\n' "$HEADS" | grep -qx '0143_merge_affairs_material_ops'
+          printf '%s\n' "$HEADS" | grep -qx '0144_affairs_leave_identity_cutover'
           alembic upgrade head
+
+      - name: Leave cutover real MySQL tests
+        id: leave_tests
+        working-directory: backend
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          timeout 25m pytest \
+            tests/test_affairs_leave_cutover_contract.py \
+            tests/test_affairs_leave_identity_cutover_contract.py \
+            tests/test_affairs_four_end_core_flow_matrix.py \
+            tests/test_affairs_four_end_hardening.py \
+            tests/test_affairs_four_end_review_round2.py \
+            tests/test_affairs_four_end_terminal_guard.py \
+            tests/test_affairs_route_mount_contract.py \
+            -k 'leave or cutover or route_mount' \
+            -q -s -p no:warnings --durations=30 2>&1 | tee ../student-affairs-leave-pytest.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: student-affairs-leave-pytest-log
+          path: student-affairs-leave-pytest.log
+          retention-days: 2
+
+      - name: Stop on leave cutover failure
+        if: steps.leave_tests.outputs.status != '0'
+        run: exit 1
 
       - name: Full student affairs MySQL tests
         id: affairs_tests
@@ -147,7 +180,7 @@ jobs:
         run: |
           set -euo pipefail
           FILES="$(git ls-files)"
-          BAD="$(echo "$FILES" | grep -E '(^|/)\.env$|\.db$|(^|/)dist/|(^|/)node_modules/|(^|/)unpackage/|\.pem$|\.key$|(^|/)\.ai-backup/|(^|/)_local-backup/|backend/_pfull3\.txt|backend/scripts/_sec_verify\.py|一键构建\.bat|docs/ui/.*\.(zip|pdf)$' || true)"
+          BAD="$(echo "$FILES" | grep -E '(^|/)\.env$|\.db$|\.pyc$|(^|/)__pycache__/|(^|/)dist/|(^|/)node_modules/|(^|/)unpackage/|\.pem$|\.key$|(^|/)\.ai-backup/|(^|/)_local-backup/|backend/_pfull3\.txt|backend/scripts/_sec_verify\.py|一键构建\.bat|docs/ui/.*\.(zip|pdf)$' || true)"
           RUNTIME="$(echo "$FILES" | grep -E '(^|/)(uploads|exports)/' | grep -vE 'docs/ui/|docs/[^/]*/ui/|/internship-backend/uploads/|backend/app/.*/exports/' || true)"
           BAD="$(printf '%s\n%s' "$BAD" "$RUNTIME" | grep -vE '^$' || true)"
           if [ -n "$BAD" ]; then
