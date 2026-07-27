@@ -144,10 +144,10 @@ export const NAV_PLAN = [
     mod('sa-orientation', '数字迎新', '/admin/orientation', [], 'studentAffairs.orientation.view'),
     // 请假销假
     mod('sa-leave', '请假销假', null, [
-      I('请假审批', '/admin/campus-service/leave', 'studentAffairs.leave.view'),
-      I('销假与续假', '/admin/campus-service/leave-extensions', 'studentAffairs.leave.view'),
-      I('请假台账', '/admin/campus-service/leave-ledger', 'studentAffairs.leave.view'),
-      I('请假统计', '/admin/campus-service/leave-stats', 'studentAffairs.leave.view')
+      I('请假审批', '/admin/student-affairs/leave', 'studentAffairs.leave.view'),
+      I('销假与续假', '/admin/student-affairs/leave/followup', 'studentAffairs.leave.view'),
+      I('请假台账', '/admin/student-affairs/leave/ledger', 'studentAffairs.leave.view'),
+      I('请假统计', '/admin/student-affairs/leave/stats', 'studentAffairs.leave.view')
     ]),
     // 宿舍与公寓
     mod('sa-dorm', '宿舍与公寓', null, [

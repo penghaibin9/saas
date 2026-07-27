@@ -178,7 +178,7 @@ export default {
           }
           toast('已修改并重新提交')
         } else {
-          await studentApi.submitServiceApply({ serviceKey: 'LEAVE', ...payload })
+          await studentApi.applyLeave(payload)
           toast('请假已提交，等待辅导员审批')
         }
         this.formVisible = false; this.editTarget = null; this.editNotice = ''; this.load()

@@ -303,40 +303,10 @@ def _patch_mental_audit() -> None:
     mental._sensitive_view_audit = _strict_sensitive_view_audit
 
 
-def _patch_core_rows() -> None:
-    """统一核心列表DTO：所有可变记录必须返回 version 与可执行动作。"""
-    from app.services import affairs_leave_service as leave
-
-    original_leave_row = leave._row
-    _ORIGINALS["leave_row"] = original_leave_row
-
-    def leave_row(entity, student=None):
-        data = original_leave_row(entity, student)
-        data["version"] = int(entity.version or 0)
-        status = entity.affairs_status or ""
-        if status in ("COUNSELOR_REVIEW", "COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW"):
-            data["allowedActions"] = ["APPROVE", "RETURN", "REJECT"]
-        elif status == "APPROVED":
-            data["allowedActions"] = ["PROXY_CANCEL"]
-        elif status == "WAIT_CANCEL_LEAVE":
-            data["allowedActions"] = ["CONFIRM_CANCEL", "RETURN_CANCEL"]
-        elif status == "EXTENSION_REVIEW":
-            data["allowedActions"] = ["APPROVE_EXTENSION", "REJECT_EXTENSION"]
-        elif status == "OVERDUE":
-            data["allowedActions"] = ["HANDLE_OVERDUE"]
-        elif status == "RETURNED":
-            data["allowedActions"] = ["EDIT_RETURNED", "RESUBMIT"]
-        else:
-            data["allowedActions"] = []
-        return data
-
-    leave._row = leave_row
-
 
 def _patch_student_views() -> None:
     from app.services import mobile_affairs_service as aff
 
-    original_leave_my = aff.leave_my
     original_aid_my = aff.aid_my
     original_funding_my = aff.funding_my
     original_overview = aff.overview_my
@@ -345,7 +315,6 @@ def _patch_student_views() -> None:
     original_self_select = aff.dorm_self_select
 
     _ORIGINALS.update({
-        "leave_my": original_leave_my,
         "aid_my": original_aid_my,
         "funding_my": original_funding_my,
         "overview_my": original_overview,
@@ -353,34 +322,6 @@ def _patch_student_views() -> None:
         "dorm_beds": original_dorm_beds,
         "dorm_self_select": original_self_select,
     })
-
-    def leave_my(user):
-        data = original_leave_my(user)
-        ids = [int(x["leaveId"]) for x in data.get("items", []) if str(x.get("leaveId", "")).isdigit()]
-        versions = {}
-        if ids:
-            from app.models import CsLeave
-            with session() as db:
-                versions = {
-                    int(row.id): int(row.version or 0)
-                    for row in db.scalars(select(CsLeave).where(
-                        CsLeave.tenant_id == _tid(),
-                        CsLeave.id.in_(ids),
-                        CsLeave.is_deleted.is_(False),
-                    )).all()
-                }
-        for item in data.get("items", []):
-            lid = int(item["leaveId"]) if str(item.get("leaveId", "")).isdigit() else 0
-            item["version"] = versions.get(lid, 0)
-            actions = []
-            if item.get("canResubmit"):
-                actions.extend(["EDIT_RETURNED", "RESUBMIT"])
-            if item.get("canCancel"):
-                actions.append("SUBMIT_CANCEL")
-            if item.get("canExtend"):
-                actions.append("SUBMIT_EXTENSION")
-            item["allowedActions"] = actions
-        return data
 
     def aid_my(user):
         data = original_aid_my(user)
@@ -475,7 +416,6 @@ def _patch_student_views() -> None:
                 )
         return original_self_select(user, bed_id)
 
-    aff.leave_my = leave_my
     aff.aid_my = aid_my
     aff.funding_my = funding_my
     aff.overview_my = overview_my
@@ -583,7 +523,6 @@ def install() -> None:
     _patch_student_scope()
     _patch_mental_audit()
     _patch_student_dorm_scope()
-    _patch_core_rows()
     _patch_student_views()
     _patch_insecure_activity_checkin()
     _INSTALLED = True

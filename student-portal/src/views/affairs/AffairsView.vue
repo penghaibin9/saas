@@ -337,8 +337,7 @@ async function reload() {
 async function applyLeave() {
   busy.value = true
   try {
-    await portalApi.affairsServiceApply({
-      serviceKey: 'LEAVE', reason: leaveForm.reason, leaveType: leaveForm.leaveType,
+    await portalApi.affairsLeaveApply({reason: leaveForm.reason, leaveType: leaveForm.leaveType,
       startTime: leaveForm.startDate, endTime: leaveForm.endDate
     })
     ui.notify('请假申请已提交，等待辅导员审批'); leaveForm.reason = ''; leaveForm.startDate = ''; leaveForm.endDate = ''; reload()
@@ -349,7 +348,7 @@ async function resubmitLeave(lv) {
   if (!leaveId) return
   busy.value = true
   try {
-    await portalApi.affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '' })
+    await portalApi.affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '', version: lv.version })
     ui.notify('已重新提交，等待审批')
     reload()
   } catch (e) { ui.notify(e?.message || '重新提交失败') } finally { busy.value = false }
@@ -359,7 +358,7 @@ async function cancelLeave(lv) {
   if (!leaveId) return
   busy.value = true
   try {
-    await portalApi.affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假' })
+    await portalApi.affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假', version: lv.version })
     ui.notify('销假已提交，等待辅导员确认')
     reload()
   } catch (e) { ui.notify(e?.message || '销假提交失败') } finally { busy.value = false }
@@ -379,7 +378,8 @@ async function submitExtend(lv) {
   try {
     await portalApi.affairsLeaveExtend(leaveId, {
       newEndTime: extendForm.newEndTime,
-      reason: extendForm.reason.trim()
+      reason: extendForm.reason.trim(),
+      version: lv.version
     })
     ui.notify('续假已提交，等待辅导员审批')
     extendId.value = ''

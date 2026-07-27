@@ -235,7 +235,7 @@ async function run(task, success, fallback, refreshKey = tab.value) {
   }
 }
 
-async function applyLeave() { if (!validLeave.value) return ui.notify('请填写有效日期和5-300字事由'); const result = await run(() => portalApi.affairsServiceApply({ serviceKey: 'LEAVE', ...leaveForm }), '请假已提交', '请假提交失败', 'leave'); if (result.ok) leaveForm.reason = '' }
+async function applyLeave() { if (!validLeave.value) return ui.notify('请填写有效日期和5-300字事由'); const result = await run(() => portalApi.affairsLeaveApply({ ...leaveForm }), '请假已提交', '请假提交失败', 'leave'); if (result.ok) leaveForm.reason = '' }
 async function cancelLeave(item) { if (!window.confirm('确认已返校或请假事项已结束，并提交销假申请？')) return; await run(() => affairsFourEndApi.cancelLeave(item.leaveId, item.version, '学生本人申请销假'), '销假申请已提交', '销假提交失败', 'leave') }
 function openExtend(item) { extendId.value = item.leaveId; extendForm.newEndTime = dayAfter(fmt(item.endTime)); extendForm.reason = '' }
 function validExtend(item) { return !!extendForm.newEndTime && extendForm.newEndTime > fmt(item.endTime) && validReason(extendForm.reason, 5, 300) }

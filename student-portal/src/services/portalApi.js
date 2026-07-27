@@ -79,6 +79,7 @@ export const portalApi = {
 
   affairsOverview: () => request('/portal/affairs/overview'),
   affairsLeave: () => request('/portal/affairs/leave'),
+  affairsLeaveApply: (body) => request('/portal/affairs/leave', { method: 'POST', body }),
   affairsLeaveResubmit: (leaveId, body = {}) => request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/resubmit`, { method: 'POST', body }),
   affairsLeaveCancel: (leaveId, body = {}) => request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/cancel`, { method: 'POST', body }),
   affairsLeaveExtend: (leaveId, body = {}) => request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/extension`, { method: 'POST', body }),

@@ -159,6 +159,7 @@ export const studentApi = {
   submitProcessReport: (body) => real.submitProcessReport(body),
   getAffairsOverview: () => real.affairsOverview(),
   getMyLeaves: () => real.affairsLeaveMy(),
+  applyLeave: (body) => real.affairsLeaveApply(body),
   resubmitLeave: (leaveId, body) => real.affairsLeaveResubmit(leaveId, body),
   cancelLeave: (leaveId, body) => real.affairsLeaveCancel(leaveId, body),
   extendLeave: (leaveId, body) => real.affairsLeaveExtend(leaveId, body),

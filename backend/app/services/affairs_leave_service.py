@@ -237,10 +237,28 @@ def _check_leave_action_assignee(db, x, user, *, todo_type: str, node: str = "CO
         raise AppException("NO_PERMISSION", "当前待办未指派给您")
 
 
+def _allowed_actions(status: str | None) -> list[str]:
+    state = str(status or "")
+    if state in _REVIEW_NODES:
+        return ["APPROVE", "RETURN", "REJECT"]
+    if state == "APPROVED":
+        return ["SUBMIT_CANCEL", "SUBMIT_EXTENSION", "PROXY_CANCEL"]
+    if state == "WAIT_CANCEL_LEAVE":
+        return ["CONFIRM_CANCEL", "RETURN_CANCEL"]
+    if state == "EXTENSION_REVIEW":
+        return ["APPROVE_EXTENSION", "REJECT_EXTENSION"]
+    if state == "OVERDUE":
+        return ["SUBMIT_CANCEL", "SUBMIT_EXTENSION", "HANDLE_OVERDUE"]
+    if state == "RETURNED":
+        return ["EDIT_RETURNED", "RESUBMIT"]
+    return []
+
+
 def _row(x, s=None) -> dict:
     approval_deadline = leave_approval_deadline(getattr(x, "created_at", None))
     return {
         "id": str(x.id), "studentId": str(x.student_id or ""),
+        "version": int(x.version or 0), "allowedActions": _allowed_actions(x.affairs_status),
         "studentNo": (s.student_no if s else "") or "",
         "studentName": s.real_name if s else "", "className": str(s.class_id or "") if s else "",
         "leaveType": x.leave_type, "leaveTypeLabel": L_TYPE.get(x.leave_type or "", x.leave_type or ""),

@@ -53,9 +53,14 @@ def leave_my(user) -> dict:
                 "affairsStatusLabel": L.get(x.affairs_status, x.affairs_status or ""),
                 "reason": x.reason or "",
                 "returnReason": getattr(x, "return_reason", None) or "",
-                "canResubmit": (x.affairs_status or "") == "RETURNED",
-                "canCancel": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),
-                "canExtend": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),
+                "version": int(x.version or 0),
+                "allowedActions": (actions := (
+                    ["EDIT_RETURNED", "RESUBMIT"] if (x.affairs_status or "") == "RETURNED" else
+                    (["SUBMIT_CANCEL", "SUBMIT_EXTENSION"] if (x.affairs_status or "") in ("APPROVED", "OVERDUE") else [])
+                )),
+                "canResubmit": "RESUBMIT" in actions,
+                "canCancel": "SUBMIT_CANCEL" in actions,
+                "canExtend": "SUBMIT_EXTENSION" in actions,
             })
         return {"items": items}
 
