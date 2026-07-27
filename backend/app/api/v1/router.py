@@ -48,6 +48,7 @@ from app.services.affairs_sensitive_audit_guard import install as install_sensit
 from app.services.affairs_stats_integrity_guard import install as install_stats_integrity_guard
 from app.services.affairs_student_application_lock import install as install_student_application_lock
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
+from app.services.affairs_student_contract_security_guard import install as install_student_contract_security_guard
 from app.services.affairs_student_contract_service import install as install_student_contract
 from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
@@ -101,5 +102,7 @@ install_affairs_four_end_review_guard()
 install_dorm_node_guard()
 # 学生四端合同必须在所有业务兼容层后安装，确保动作、申请、时间线、材料和消息读取最终同源。
 install_student_contract()
+# 最终安全门收紧学生时间线、附件可见性、稳定标识和可执行动作。
+install_student_contract_security_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
 install_affairs_four_end_terminal_guard(api_router)
