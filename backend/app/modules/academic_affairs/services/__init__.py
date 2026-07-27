@@ -32,7 +32,9 @@ from . import academic_affairs_selection_round_facade as academic_affairs_select
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
 from . import academic_affairs_task_teaching_class_facade as academic_affairs_task_service
 from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook_service
-from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
+# V2-05/R5：保留移动教务稳定身份/当前周 facade，再由最终层接管教师微信成绩批量保存与质量门禁。
+from . import mobile_academic_affairs_facade as mobile_academic_affairs_facade
+from . import mobile_academic_grade_entry_closure_service as mobile_academic_affairs_service
 
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
