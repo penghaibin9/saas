@@ -70,12 +70,17 @@ def test_stable_course_identity_allows_formal_source_resolution_without_using_sc
     assert selected[0].score == 61
 
 
-def test_model_registers_same_transaction_insert_and_update_listeners():
+def test_model_registers_named_same_transaction_listeners_once_and_filters_irrelevant_updates():
     source = (ROOT / "backend/app/models/academic_affairs_effective_grade.py").read_text(encoding="utf-8")
 
-    assert 'event.listen(AcademicGrade, "after_insert"' in source
-    assert 'event.listen(AcademicGrade, "after_update"' in source
+    assert 'event.contains(AcademicGrade, "after_insert", _after_grade_insert)' in source
+    assert 'event.contains(AcademicGrade, "after_update", _after_grade_update)' in source
+    assert 'event.listen(AcademicGrade, "after_insert", _after_grade_insert)' in source
+    assert 'event.listen(AcademicGrade, "after_update", _after_grade_update)' in source
+    assert "lambda _m, conn, target" not in source
+    assert "history.has_changes()" in source
     assert "connection.execute(table.insert().values" in source
+    assert 'event_key = f"{event_type}:{source_biz_type}:{int(source_biz_id)}"' in source
     assert "policy_hash" in source
     assert "LEGACY_NAME_KEY" in source
 
@@ -89,31 +94,31 @@ def test_migration_chains_after_r11_without_historical_guessing():
     assert "历史成绩不回填、不按课程名猜测" in source
 
 
-def test_makeup_and_clearance_use_exact_source_business_record():
-    source = (ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_makeup_grade_identity_facade.py").read_text(encoding="utf-8")
+def test_makeup_and_clearance_use_exact_source_business_record_in_canonical_service():
+    source = (ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_makeup_service.py").read_text(encoding="utf-8")
 
-    assert 'AcademicGrade.source_biz_type == source' in source
-    assert 'AcademicGrade.source_biz_id == makeup.id' in source
-    assert 'source_biz_type=source' in source
-    assert 'source_biz_id=makeup.id' in source
-    assert "makeup.origin_grade_id = origin.id" in source
+    assert 'AcademicGrade.source_biz_type == identity["sourceBizType"]' in source
+    assert 'AcademicGrade.source_biz_id == identity["sourceBizId"]' in source
+    assert 'source_biz_type=identity["sourceBizType"]' in source
+    assert 'source_biz_id=identity["sourceBizId"]' in source
+    assert '"originGradeId": str(grade.id)' in source
 
 
-def test_recheck_uses_unified_student_identity_and_exact_source_link():
+def test_recheck_uses_unified_student_identity_and_exact_source_link_without_module_location_assertion():
     source = (ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py").read_text(encoding="utf-8")
 
-    assert "mobile_student_identity_facade import resolve_student" in source
+    assert "resolve_student(db, user)" in source
     assert 'grade.source_biz_type = "RECHECK"' in source
     assert "grade.source_biz_id = row.id" in source
     assert "StudentProfile.student_no ==" not in source
 
 
-def test_public_grade_debt_includes_policy_snapshot_and_legacy_debt():
-    source = (ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_grade_policy_facade.py").read_text(encoding="utf-8")
-    public_init = (ROOT / "backend/app/modules/academic_affairs/services/__init__.py").read_text(encoding="utf-8")
+def test_canonical_grade_service_debt_includes_policy_snapshot_and_legacy_debt():
+    source = (ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_grade_service.py").read_text(encoding="utf-8")
 
-    assert "missingPolicySnapshot" in source
-    assert "legacyNameKey" in source
-    assert "policyReady" in source
-    assert "_original_identity_debt" in source
-    assert "academic_affairs_grade_policy_facade as academic_affairs_grade_service" in public_init
+    assert "def identity_debt(user, term=None)" in source
+    assert '"missingPolicySnapshot": policy["missingPolicySnapshot"]' in source
+    assert '"legacyNameKey": policy["legacyNameKey"]' in source
+    assert '"policyReady": policy["ready"]' in source
+    assert "grade_identity_debt(db, term=term)" in source
+    assert "policy_snapshot_debt(db, term=term)" in source
