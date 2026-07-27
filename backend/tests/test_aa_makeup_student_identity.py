@@ -1,25 +1,7 @@
-"""补考/重修/免修本人解析优先稳定studentId与账号绑定。"""
+"""补考、重修、免修本人解析只使用统一学生账号绑定服务。"""
 from types import SimpleNamespace
 
 import pytest
-
-
-class _ScalarResult:
-    def __init__(self, row):
-        self.row = row
-
-    def first(self):
-        return self.row
-
-
-class _Db:
-    def __init__(self, row):
-        self.row = row
-        self.queries = []
-
-    def scalars(self, query):
-        self.queries.append(str(query))
-        return _ScalarResult(self.row)
 
 
 def _student(student_id=11, student_no="20260001"):
@@ -27,82 +9,61 @@ def _student(student_id=11, student_no="20260001"):
         id=student_id,
         tenant_id=1,
         student_no=student_no,
+        real_name="测试学生",
         is_deleted=False,
     )
 
 
-def test_stable_student_id_is_used_before_student_number(monkeypatch):
-    from app.modules.academic_affairs.services import academic_affairs_makeup_facade as service
+def test_makeup_student_resolver_delegates_to_unified_identity(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as service
+    from app.services import mobile_student_identity_facade as identity
 
     row = _student(11, "NEW-NO")
-    db = _Db(row)
-    monkeypatch.setattr(service, "get_current_user_ctx", lambda: {
-        "studentId": "11",
-        "studentNo": "OLD-NO",
-        "loginName": "OLD-NO",
-        "userId": "db-99",
-    })
-    monkeypatch.setattr(service, "_tid", lambda: 1)
-    monkeypatch.setattr(
-        service,
-        "get_student_id_by_user",
-        lambda *_args, **_kwargs: pytest.fail("已有studentId时不应再查账号绑定"),
-    )
-
-    resolved = service._student(db)
-
-    assert resolved.id == 11
-    assert resolved.student_no == "NEW-NO"
-
-
-def test_account_link_resolves_student_when_token_lacks_student_id(monkeypatch):
-    from app.modules.academic_affairs.services import academic_affairs_makeup_facade as service
-
-    row = _student(22, "20260022")
-    db = _Db(row)
     calls = []
-    monkeypatch.setattr(service, "get_current_user_ctx", lambda: {
-        "studentId": None,
-        "studentNo": "OLD-NO",
-        "loginName": "OLD-NO",
-        "userId": "db-88",
-    })
-    monkeypatch.setattr(service, "_tid", lambda: 1)
 
-    def resolve(_db, **kwargs):
-        calls.append(kwargs)
-        return 22
+    def resolve(db, user):
+        calls.append((db, user))
+        return row
 
-    monkeypatch.setattr(service, "get_student_id_by_user", resolve)
+    monkeypatch.setattr(identity, "resolve_student", resolve)
+    user = {"studentId": "11", "userId": "db-99", "studentNo": "OLD-NO"}
+    db = object()
 
-    resolved = service._student(db)
+    resolved = service._student(db, user)
 
-    assert resolved.id == 22
-    assert calls[0]["user_id"] == 88
-    assert calls[0]["allow_legacy_fallback"] is True
+    assert resolved is row
+    assert calls == [(db, user)]
 
 
-def test_missing_binding_and_profile_is_rejected(monkeypatch):
+def test_missing_binding_is_rejected_as_business_404(monkeypatch):
     from app.core.exceptions import AppException
-    from app.modules.academic_affairs.services import academic_affairs_makeup_facade as service
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as service
+    from app.services import mobile_student_identity_facade as identity
 
-    db = _Db(None)
-    monkeypatch.setattr(service, "get_current_user_ctx", lambda: {
-        "studentId": None,
-        "studentNo": "UNKNOWN",
-        "loginName": "UNKNOWN",
-        "userId": "db-77",
-    })
-    monkeypatch.setattr(service, "_tid", lambda: 1)
-    monkeypatch.setattr(service, "get_student_id_by_user", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(identity, "resolve_student", lambda _db, _user: None)
 
     with pytest.raises(AppException) as exc:
-        service._student(db)
+        service._student(object(), {"userId": "db-77"})
 
-    assert "账号尚未绑定" in exc.value.message
+    assert "尚未绑定唯一学生档案" in exc.value.message
+    assert exc.value.http_status == 404
 
 
-def test_original_makeup_state_machine_uses_stable_resolver():
-    from app.modules.academic_affairs.services import academic_affairs_makeup_facade as service
+def test_retake_and_exemption_student_lists_use_profile_id_not_student_number():
+    source = __import__("pathlib").Path(__file__).resolve().parents[1] / (
+        "app/modules/academic_affairs/services/academic_affairs_makeup_service.py"
+    )
+    text = source.read_text(encoding="utf-8")
 
-    assert service._legacy._student is service._student
+    assert "AaRetakeApply.student_id == int(student.id)" in text
+    assert "AaExemption.student_id == int(student.id)" in text
+    assert "AaRetakeApply.student_no ==" not in text
+    assert "AaExemption.student_no ==" not in text
+
+
+def test_legacy_identity_facade_only_reexports_canonical_resolver():
+    from app.modules.academic_affairs.services import academic_affairs_makeup_identity_facade as compatibility
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as canonical
+
+    assert compatibility._legacy is canonical
+    assert compatibility._required_student is canonical._student
