@@ -1,5 +1,7 @@
-"""补考/清考/重修/免修termCode写保护、身份保护和归档域回归。"""
+"""补考、清考、重修、免修学期写保护、身份保护和归档域回归。"""
 from types import SimpleNamespace
+
+import pytest
 
 
 class _Query:
@@ -41,7 +43,6 @@ def test_term_code_resolver_requires_exact_formal_term(monkeypatch):
 
 
 def test_unknown_term_code_is_not_silently_treated_as_writable(monkeypatch):
-    import pytest
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_archive_term_guard_facade as service
 
@@ -53,40 +54,37 @@ def test_unknown_term_code_is_not_silently_treated_as_writable(monkeypatch):
     assert "未匹配到本校正式学期" in exc.value.message
 
 
-def test_batch_write_context_guards_and_backfills_batch_term(monkeypatch):
-    from app.modules.academic_affairs import services
-    from app.modules.academic_affairs.services import academic_affairs_makeup_term_facade as service
+def test_makeup_batch_guard_backfills_term_id(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as service
 
     batch = SimpleNamespace(id=7, term_id=None, term_code="2025-2026-2")
-    calls = []
     resolved = SimpleNamespace(id=9)
-    monkeypatch.setattr(service, "_original_get_mb", lambda _db, _bid: batch)
+    calls = []
+
     monkeypatch.setattr(
-        services.academic_affairs_archive_service,
-        "guard_term_code_writable",
-        lambda db, code, required=True: calls.append((db, code, required)) or resolved,
+        service,
+        "_guard_code",
+        lambda db, code: calls.append((db, code)) or resolved,
     )
     db = object()
-    token = service._BATCH_WRITE.set(True)
-    try:
-        assert service._get_mb(db, 7) is batch
-    finally:
-        service._BATCH_WRITE.reset(token)
 
-    assert calls == [(db, "2025-2026-2", True)]
+    assert service._guard_batch(db, batch) is resolved
     assert batch.term_id == 9
+    assert calls == [(db, "2025-2026-2")]
 
 
-def test_missing_student_profile_fails_closed(monkeypatch):
-    import pytest
+def test_makeup_batch_guard_rejects_mismatched_term_identity(monkeypatch):
     from app.core.exceptions import AppException
-    from app.modules.academic_affairs.services import academic_affairs_makeup_identity_facade as service
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as service
 
-    monkeypatch.setattr(service, "_original_student", lambda _db: None)
+    batch = SimpleNamespace(id=7, term_id=10, term_code="2025-2026-2")
+    monkeypatch.setattr(service, "_guard_code", lambda _db, _code: SimpleNamespace(id=9))
+    monkeypatch.setattr(service, "_guard_term_id", lambda _db, _term_id: None)
+
     with pytest.raises(AppException) as exc:
-        service._required_student(object())
+        service._guard_batch(object(), batch)
 
-    assert "学生档案不存在" in exc.value.message
+    assert "指向不同学期" in exc.value.message
 
 
 def test_makeup_archive_gate_blocks_unfinished_business():
@@ -115,25 +113,27 @@ def test_makeup_archive_gate_accepts_finished_or_no_business():
     assert _makeup_gate_result([SimpleNamespace(status="FINISHED")])["present"] is True
 
 
-def test_public_makeup_and_archive_services_point_to_final_layers():
-    from app.modules.academic_affairs import services
+def test_public_makeup_and_archive_services_are_canonical():
+    from app.modules.academic_affairs.services import (
+        academic_affairs_archive_service as archive_service,
+        academic_affairs_makeup_service as makeup_service,
+    )
 
-    assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_textbook_facade"
-    )
-    assert any(
-        code == "MAKEUP"
-        for code, _label in services.academic_affairs_archive_service._legacy._DOMAINS
-    )
-    assert services.academic_affairs_makeup_service.__name__.endswith(
-        "academic_affairs_makeup_identity_facade"
-    )
-    assert services.academic_affairs_makeup_service.create_makeup_batch.__module__.endswith(
-        "academic_affairs_makeup_term_facade"
-    )
-    assert services.academic_affairs_makeup_service.retake_apply.__module__.endswith(
-        "academic_affairs_makeup_term_facade"
-    )
-    assert services.academic_affairs_makeup_service._legacy._student.__module__.endswith(
-        "academic_affairs_makeup_identity_facade"
-    )
+    assert archive_service.__name__.endswith("academic_affairs_archive_service")
+    assert any(code == "MAKEUP" for code, _label in archive_service._DOMAINS)
+    assert makeup_service.__name__.endswith("academic_affairs_makeup_service")
+    assert makeup_service._core.__name__.endswith("academic_affairs_makeup_core_service")
+    assert callable(makeup_service.create_makeup_batch)
+    assert callable(makeup_service.retake_apply)
+    assert callable(makeup_service.exemption_apply)
+    assert callable(makeup_service.merge_deferred)
+
+
+def test_legacy_makeup_term_facade_is_side_effect_free_reexport():
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as canonical
+    from app.modules.academic_affairs.services import academic_affairs_makeup_term_facade as compatibility
+
+    assert compatibility._legacy is canonical
+    assert compatibility.create_makeup_batch is canonical.create_makeup_batch
+    assert compatibility.finish_makeup_batch is canonical.finish_makeup_batch
+    assert compatibility.retake_enroll is canonical.retake_enroll
