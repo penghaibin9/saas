@@ -9,3 +9,4 @@ from . import academic_affairs_selection_final_service as academic_affairs_selec
 from . import academic_affairs_scheduling_public_service as academic_affairs_scheduling_service
 from . import academic_affairs_autoschedule_final_service as academic_affairs_autoschedule_service
 from . import academic_affairs_schedule_final_service as academic_affairs_schedule_service
+from . import academic_affairs_exam_facade as academic_affairs_exam_service
