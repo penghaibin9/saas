@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from conftest import make_org_class
+
 from app.core.security import create_access_token
 
 GD_EVAL = "/api/v1/graduation/gd-student-evals"
@@ -15,7 +17,7 @@ MAIN = 1000000000000000001
 
 
 def _gd_student(client, h, no, name, advisor_name=None):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     body = {"studentId": sid}
     if advisor_name:
         body["advisorName"] = advisor_name

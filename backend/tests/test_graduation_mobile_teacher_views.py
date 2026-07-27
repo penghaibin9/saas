@@ -2,6 +2,8 @@
 全部走真库(db_mode)，验证真实处理闭环 + 范围校验（SCOPED 越权 403）+ SoD 回避。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 STU = "/api/v1/students"
@@ -18,16 +20,18 @@ def _stu_token(real_name):
         "currentRoleCode": "STUDENT", "clientType": "MP"})}
 
 
-def _teacher_token(real_name):
+def _teacher_token(real_name, role="GD_MENTOR"):
+    from hashlib import sha1
     from app.core.security import create_access_token
+    login_name = f"TEST-{sha1(real_name.encode('utf-8')).hexdigest()[:12]}"
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{real_name}", "realName": real_name, "userType": "TEACHER",
         "tid": "demo", "tenantId": str(MAIN), "activeContextId": "ctx",
-        "currentRoleCode": "GD_MENTOR", "clientType": "MP"})}
+        "currentRoleCode": role, "clientType": "MP", "loginName": login_name})}
 
 
 def _gd_student_with_topic(client, h, no, name, advisor):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
@@ -37,17 +41,47 @@ def _gd_student_with_topic(client, h, no, name, advisor):
     return gid
 
 
+def _set_stage(gd_student_id, stage):
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent
+    db = get_sessionmaker()()
+    try:
+        stu = db.get(GraduationStudent, int(gd_student_id))
+        if stu:
+            stu.stage = stage
+            if stage == "MIDTERM":
+                exists = db.scalars(select(GraduationMidterm).where(
+                    GraduationMidterm.tenant_id == MAIN,
+                    GraduationMidterm.gd_student_id == int(gd_student_id),
+                    GraduationMidterm.is_deleted.is_(False),
+                ).limit(1)).first()
+                if exists is None:
+                    db.add(GraduationMidterm(
+                        tenant_id=MAIN, gd_student_id=int(gd_student_id),
+                        batch_id=stu.batch_id, status="PENDING",
+                    ))
+            db.commit()
+    finally:
+        db.close()
+
+
+def _items(data):
+    return data.get("items", []) if isinstance(data, dict) else data
+
+
 def test_midterm_check_rectify_flow_and_scope(client, auth_headers, db_mode):
     h = auth_headers
     name, advisor = "中期检查生", "中期导师"
     gid = _gd_student_with_topic(client, h, "MT001", name, advisor)
+    _set_stage(gid, "MIDTERM")
     th = _teacher_token(advisor)
 
     # 详情 get-or-create PENDING
     d = client.get(f"{MOBILE}/teacher/graduation/midterm/{gid}", headers=th).json()["data"]
     assert d["status"] == "PENDING"
     # 队列出现该生
-    q = client.get(f"{MOBILE}/teacher/graduation/midterm/queue", headers=th).json()["data"]
+    q = _items(client.get(f"{MOBILE}/teacher/graduation/midterm/queue", headers=th).json()["data"])
     assert any(str(x["gdStudentId"]) == str(gid) for x in q)
     # SCOPED 越权 403
     out = client.get(f"{MOBILE}/teacher/graduation/midterm/{gid}", headers=_teacher_token("中期范围外"))
@@ -85,11 +119,16 @@ def test_review_assign_sod_and_submit(client, auth_headers, db_mode):
     rid = asg.json()["data"]["id"]
 
     # 评阅人本人看到任务，无关老师看不到
-    th = _teacher_token(reviewer)
-    my = client.get(f"{MOBILE}/teacher/graduation/reviews/my", headers=th).json()["data"]
+    th = _teacher_token(reviewer, role="GD_REVIEWER")
+    my = _items(client.get(f"{MOBILE}/teacher/graduation/reviews/my", headers=th).json()["data"])
     assert any(str(r["id"]) == str(rid) for r in my)
-    other = client.get(f"{MOBILE}/teacher/graduation/reviews/my", headers=_teacher_token("无关评阅老师")).json()["data"]
-    assert not any(str(r["id"]) == str(rid) for r in other)
+    other_resp = client.get(f"{MOBILE}/teacher/graduation/reviews/my",
+                            headers=_teacher_token("无关评阅老师", role="GD_REVIEWER"))
+    if other_resp.status_code == 403:
+        assert other_resp.json()["code"] != 0
+    else:
+        other = _items(other_resp.json()["data"])
+        assert not any(str(r["id"]) == str(rid) for r in other)
 
     # 评分越界 / 意见过短 → 校验失败
     assert client.post(f"{MOBILE}/teacher/graduation/review/{rid}/submit", headers=th,
@@ -97,7 +136,8 @@ def test_review_assign_sod_and_submit(client, auth_headers, db_mode):
     assert client.post(f"{MOBILE}/teacher/graduation/review/{rid}/submit", headers=th,
                        json={"score": 88, "opinion": "短"}).json()["code"] != 0
     # 冒充非评阅人提交 → 403
-    assert client.post(f"{MOBILE}/teacher/graduation/review/{rid}/submit", headers=_teacher_token("冒充老师"),
+    assert client.post(f"{MOBILE}/teacher/graduation/review/{rid}/submit",
+                       headers=_teacher_token("冒充老师", role="GD_REVIEWER"),
                        json={"score": 60, "opinion": "越权提交测试意见"}).json()["code"] != 0
     # 评阅人本人正常提交
     ok = client.post(f"{MOBILE}/teacher/graduation/review/{rid}/submit", headers=th,
@@ -111,7 +151,7 @@ def test_defense_arrangement_readonly(client, auth_headers, db_mode):
     bid = client.post("/api/v1/graduation/batches", headers=h, json={
         "batchName": "移动答辩批", "batchNo": "GD-MOB-DF", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    sid = client.post(STU, headers=h, json={"studentNo": "DF001", "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "DF001", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
@@ -130,7 +170,7 @@ def test_defense_arrangement_readonly(client, auth_headers, db_mode):
         db.close()
 
     # 建组（评委不含导师，避免回避冲突）→ 分配 → 发布
-    grp = client.post(DG, headers=h, json={
+    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": "移动答辩组", "batchId": bid, "chair": "答辩组长", "location": "M301",
         "members": ["评委甲", "评委乙"], "secretary": "答辩秘书", "defenseDate": "2026-06-01 09:00"}).json()["data"]
     gpid = grp["id"]
@@ -139,15 +179,19 @@ def test_defense_arrangement_readonly(client, auth_headers, db_mode):
     assert pub.json()["code"] == 0
 
     # 导师本人只读看到已发布答辩安排
-    arr = client.get(f"{MOBILE}/teacher/graduation/defense/arrangements", headers=th).json()["data"]
+    arr = _items(client.get(f"{MOBILE}/teacher/graduation/defense/arrangements", headers=th).json()["data"])
     mine = next((a for a in arr if str(a["gdStudentId"]) == str(gid)), None)
     assert mine is not None
     assert mine["published"] is True
     assert mine["groupName"] == "移动答辩组"
     assert mine["location"] == "M301"
     # 无关老师看不到
-    other = client.get(f"{MOBILE}/teacher/graduation/defense/arrangements", headers=_teacher_token("答辩无关")).json()["data"]
-    assert not any(str(a["gdStudentId"]) == str(gid) for a in other)
+    other_resp = client.get(f"{MOBILE}/teacher/graduation/defense/arrangements", headers=_teacher_token("答辩无关"))
+    if other_resp.status_code == 403:
+        assert other_resp.json()["code"] != 0
+    else:
+        other = _items(other_resp.json()["data"])
+        assert not any(str(a["gdStudentId"]) == str(gid) for a in other)
 
 
 def test_grade_detail_queue_and_review(client, auth_headers, db_mode):
@@ -181,7 +225,7 @@ def test_grade_detail_queue_and_review(client, auth_headers, db_mode):
     calc = client.post(f"/api/v1/graduation/gd-grades/{gid}/calculate", headers=h,
                        json={"advisorScore": 85, "reviewerScore": 80, "defenseScore": 90})
     assert calc.json()["code"] == 0
-    th = _teacher_token(advisor)
+    th = _teacher_token(advisor, role="GD_GRADE_ADMIN")
 
     # 详情：三段构成
     d = client.get(f"{MOBILE}/teacher/graduation/grade/{gid}", headers=th).json()["data"]
@@ -189,7 +233,7 @@ def test_grade_detail_queue_and_review(client, auth_headers, db_mode):
     assert d["advisorScore"] == 85 and d["defenseScore"] == 90
     assert d["totalScore"] == 85  # 85*0.4 + 80*0.3 + 90*0.3
     # 队列出现待复核
-    q = client.get(f"{MOBILE}/teacher/graduation/grade/queue", headers=th).json()["data"]
+    q = _items(client.get(f"{MOBILE}/teacher/graduation/grade/queue", headers=th).json()["data"])
     assert any(str(x["gdStudentId"]) == str(gid) for x in q)
     # SCOPED 越权 403
     out = client.get(f"{MOBILE}/teacher/graduation/grade/{gid}", headers=_teacher_token("成绩范围外"))

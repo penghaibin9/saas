@@ -3,6 +3,8 @@
 退回后重交 → 未提交派生 + 催交 → Excel 台账导出。全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_STU = "/api/v1/graduation/gd-students"
 GD_TOPIC = "/api/v1/graduation/gd-topics"
 STU = "/api/v1/students"
@@ -10,6 +12,7 @@ PROP = "/api/v1/graduation/proposals"
 FINAL = "/api/v1/graduation/finals"
 MOBILE = "/api/v1/mobile"
 MAIN = 1000000000000000001
+_STUDENT_NO_BY_NAME: dict[str, str] = {}
 
 def _upload_pdf(client, headers, name="thesis.pdf"):
     files = {"file": (name, b"%PDF-1.4 test", "application/pdf")}
@@ -20,15 +23,17 @@ def _upload_pdf(client, headers, name="thesis.pdf"):
 
 
 def _stu_token(real_name):
+    student_no = _STUDENT_NO_BY_NAME.get(real_name)
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{real_name}", "realName": real_name, "userType": "STUDENT",
         "tid": "demo", "tenantId": str(MAIN), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": student_no})}
 
 
 def _gd_student_with_topic(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    _STUDENT_NO_BY_NAME[name] = no
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     tid = client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": "指导李老师",

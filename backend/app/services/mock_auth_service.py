@@ -94,7 +94,8 @@ DEMO_USERS.update({
     "u_teacher01": _mk_user("u_teacher01", "teacher01", "李明", "TEACHER", "GD_MENTOR", "指导教师", "软件学院", "GD_STUDENTS", "本人指导学生", 28),
     "u_employment01": _mk_user("u_employment01", "employment01", "刘芳", "TEACHER", "EMPLOYMENT_TEACHER", "就业老师", "就业指导中心", "SCHOOL", "应届毕业生", 2641),
     "u_academic01": _mk_user("u_academic01", "academic01", "赵敏", "TEACHER", "ACADEMIC_TEACHER", "教务老师", "教务处", "SCHOOL", "全校教学过程", 9800),
-    "u_college_admin01": _mk_user("u_college_admin01", "college_admin01", "张晓明", "ADMIN", "COLLEGE_ADMIN", "学院管理员", "软件学院", "COLLEGE", "本学院全体学生", 1260),
+    "u_college_admin01": {**_mk_user("u_college_admin01", "college_admin01", "张晓明", "ADMIN", "COLLEGE_ADMIN", "学院管理员", "软件学院", "COLLEGE", "本学院全体学生", 1260),
+                          "collegeId": "1"},
     "u_school_admin01": _mk_user("u_school_admin01", "school_admin01", "陈校", "ADMIN", "SCHOOL_ADMIN", "学校管理员", "示范职院", "SCHOOL", "全校学生", 9800),
     "u_sa_admin01": _mk_user("u_sa_admin01", "sa_admin01", "学工处·周", "ADMIN", "STUDENT_AFFAIRS_ADMIN", "学工处管理员", "学生工作处", "SCHOOL", "全校学生（学工）", 9800),
     "u_psych01": _mk_user("u_psych01", "psych01", "心理·孙", "TEACHER", "PSYCHOLOGY_TEACHER", "心理老师", "心理健康中心", "PSY_STUDENT", "授权心理关注学生", 30),
@@ -135,12 +136,20 @@ def login(tenant_code: str, login_name: str, user_type: str, client_type: str) -
     active = contexts[0]
     tclaims = _resolve_tenant_claims(tenant_code)
     claims = {
-        "userId": user["userId"], "realName": user["realName"], "userType": user["userType"],
+        "userId": user["userId"], "loginName": user["loginName"],
+        "realName": user["realName"], "userType": user["userType"],
         **tclaims, "activeContextId": active["contextId"],
         "currentRoleCode": active["contextType"], "clientType": client_type,
     }
     if user.get("studentNo"):
         claims["studentNo"] = user["studentNo"]
+    # 学院/专业管理员演示账号：补齐可验证的组织 claim，与真实登录写入 JWT 的口径一致。
+    if user.get("collegeId") is not None:
+        claims["collegeId"] = str(user["collegeId"])
+        claims["collegeIds"] = [str(user["collegeId"])]
+    if user.get("majorId") is not None:
+        claims["majorId"] = str(user["majorId"])
+        claims["majorIds"] = [str(user["majorId"])]
     token = create_access_token(claims)
     from app.core.token_store import issue_refresh
     refresh_token = issue_refresh(dict(claims))

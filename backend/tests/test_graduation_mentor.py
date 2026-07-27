@@ -2,6 +2,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from conftest import make_org_class
+
 GD_MENTOR = "/api/v1/graduation/gd-mentors"
 GD_ASSIGN = "/api/v1/graduation/gd-mentor-assignments"
 GD_STU = "/api/v1/graduation/gd-students"
@@ -9,7 +11,7 @@ STU = "/api/v1/students"
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 

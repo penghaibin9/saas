@@ -1,17 +1,52 @@
 <template>
   <div class="sp-app" :style="{ '--sp-primary': primary }">
+    <section v-if="showGraduationHealth" class="gd-health" role="alert">
+      <div>
+        <strong>部分毕业设计环节加载失败</strong>
+        <p>{{ graduationErrors.map((item) => item.label).join('、') }}。这不是“暂无业务”，请重试后再办理。</p>
+        <ul>
+          <li v-for="item in graduationErrors" :key="item.key">{{ item.label }}：{{ item.message }}</li>
+        </ul>
+      </div>
+      <button type="button" @click="retryGraduation">重新加载</button>
+    </section>
     <router-view />
+    <!-- 低频扩展事项放在主流程之后，避免遮挡选题、任务书、开题等首屏主线。 -->
+    <GraduationExtensionPanel v-if="showGraduationPanel" />
     <div v-if="ui.toast" class="sp-toast">{{ ui.toast }}</div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import GraduationExtensionPanel from './components/graduation/GraduationExtensionPanel.vue'
 import { usePortalConfigStore } from './stores/portalConfig'
 import { useUiStore } from './stores/ui'
+import { useGraduationHealth } from './stores/graduationHealth'
+import './styles/graduation-usability.css'
 
 const cfg = usePortalConfigStore()
 const ui = useUiStore()
-// 品牌主色来自 portal-config（不写死）；未加载时用安全默认。
+const route = useRoute()
+const router = useRouter()
+const health = useGraduationHealth()
+const graduationErrors = health.items
 const primary = computed(() => cfg.brand?.primaryColor || '#1677ff')
+const showGraduationPanel = computed(() => route.name === 'graduation-workbench')
+const showGraduationHealth = computed(() => showGraduationPanel.value && graduationErrors.value.length > 0)
+
+function retryGraduation() {
+  health.clear()
+  router.go(0)
+}
 </script>
+
+<style scoped>
+.gd-health { margin:16px auto; max-width:1120px; padding:14px 16px; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; border:1px solid #ffccc7; border-radius:10px; background:#fff2f0; color:#5c0011; }
+.gd-health strong { font-size:14px; }
+.gd-health p { margin:5px 0; font-size:13px; line-height:1.6; }
+.gd-health ul { margin:6px 0 0; padding-left:18px; font-size:12px; line-height:1.6; color:#8c2f39; }
+.gd-health button { flex:none; min-height:36px; padding:0 14px; border:1px solid #ff7875; border-radius:8px; background:#fff; color:#cf1322; cursor:pointer; }
+@media (max-width: 700px) { .gd-health { margin:10px; flex-direction:column; gap:10px; }.gd-health button { width:100%; } }
+</style>

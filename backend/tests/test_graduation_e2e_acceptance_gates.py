@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from conftest import make_org_class
+
 
 def _upload_pdf(client, headers, name="thesis.pdf"):
     files = {"file": (name, b"%PDF-1.4 test", "application/pdf")}
@@ -35,7 +37,7 @@ STU = "/api/v1/students"
 
 
 def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
@@ -50,19 +52,32 @@ def _approved_topic(client, h, title, capacity=1):
 
 
 def _seed_archive_ready(db, gid: int, *, with_open_risk: bool = False):
-    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade,
+    from app.models import (FileObject, GraduationDefenseScore, GraduationFinal, GraduationGrade,
                             GraduationMidterm, GraduationProposal, GraduationReview,
-                            GraduationRiskCase, GraduationTaskBook)
+                            GraduationRiskCase, GraduationTaskBook, PortalSignRecord)
+
+    file_obj = FileObject(
+        tenant_id=1000000000000000001, file_key=f"test/final-{gid}.docx",
+        file_name="final.docx", ext="docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size_bytes=128, sha256=f"{int(gid):064x}"[-64:], biz_type="GRADUATION_FINAL", biz_id=str(gid),
+        visibility="BIZ_SCOPED", status="AVAILABLE",
+    )
+    db.add(file_obj)
+    db.flush()
 
     final = GraduationFinal(
         tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
         version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",
-        plagiarism_status="已检测", status="APPROVED", attachments_json=["test-file"],
+        plagiarism_status="已检测", status="APPROVED", attachments_json=[str(file_obj.id)],
     )
     db.add(final)
     db.flush()
     rows = [
-        GraduationTaskBook(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CONFIRMED"),
+        GraduationTaskBook(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CONFIRMED",
+                           taskbook_version=1),
+        PortalSignRecord(tenant_id=1000000000000000001, student_id=int(gid),
+                         biz_type="GRADUATION_TASKBOOK", biz_id=f"{int(gid)}:v1",
+                         content_hash=f"taskbook-{gid}", signer_name="测试学生"),
         GraduationProposal(tenant_id=1000000000000000001, gd_student_id=int(gid), version="v1", status="APPROVED"),
         GraduationMidterm(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CHECKED_PASS"),
         GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid), gd_final_id=final.id,
@@ -186,7 +201,7 @@ def test_open_risk_skips_batch_archive_generate_and_file(client, auth_headers, d
     bid = client.post(GD_BATCH, headers=h, json={
         "batchName": "E2E批量风险批", "batchNo": "E2E-RISK-BATCH-B", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    sid = client.post(STU, headers=h, json={"studentNo": "E2E-RISK-BATCH-01", "realName": "批量风险归档生"}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": "E2E-RISK-BATCH-01", "realName": "批量风险归档生", "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     _seed_archive_ready(db, int(gid), with_open_risk=True)
@@ -355,7 +370,7 @@ def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode)
 
 def test_review_rectification_sets_conclusion_pass(client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import GraduationMidterm, GraduationStudent
+    from app.models import GraduationBatch, GraduationMidterm, GraduationStudent
 
     h = auth_headers
     gid = _gd_student(client, h, "MT-CONCL-01", "整改结论生")
@@ -385,20 +400,27 @@ def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(client, auth
     """摘要接口与提交门禁同一解析；学生详情中期读真实行。"""
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
-    from app.models import GraduationMidterm, GraduationStudent
+    from app.models import GraduationBatch, GraduationMidterm, GraduationStudent
 
     h = auth_headers
     name = "摘要一致生"
     sno = "MT-MY-01"
-    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     old_row = db.get(GraduationStudent, int(old))
     old_row.topic_title = "旧批次题目"
-    old_row.stage = "TOPIC_SELECTING"
+    old_row.stage = "ARCHIVED"
+    batch = GraduationBatch(
+        tenant_id=1000000000000000001, batch_name="摘要新批次",
+        batch_no="MT-MY-NEW", grade_year="2027届", planned_count=1,
+        status="ACTIVE",
+    )
+    db.add(batch)
+    db.flush()
     row = GraduationStudent(
         tenant_id=1000000000000000001, student_id=int(sid), student_no=sno, name=name,
-        stage="FINAL_CHECK", topic_title="新批次题目",
+        batch_id=batch.id, stage="FINAL_CHECK", topic_title="新批次题目",
     )
     db.add(row)
     db.flush()
@@ -411,11 +433,12 @@ def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(client, auth
     ))
     db.commit()
     db.close()
+    client._active_batch_id = str(batch.id)
 
     sh = {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": sno,
+        "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": sno, "studentId": str(sid),
     })}
     my = client.get("/api/v1/mobile/graduation/my", headers=sh).json()
     assert my["code"] == 0
@@ -438,7 +461,7 @@ def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_head
     h = auth_headers
     name = "多批次命中生"
     sno = "MT-MULTI-01"
-    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name}).json()["data"]["id"]
+    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
     old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     # 业务接口对同生重复建档会 409；用第二行模拟历史多批次并存

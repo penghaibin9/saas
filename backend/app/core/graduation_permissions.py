@@ -20,6 +20,7 @@ GRADUATION_PERMISSION_CODES = frozenset({
     *{f"graduationDesign.taskbook.{x}" for x in ("view", "issue", "update", "confirmOnBehalf", "export")},
     *{f"graduationDesign.proposal.{x}" for x in ("view", "review", "defense", "remind", "export")},
     *{f"graduationDesign.guidance.{x}" for x in ("view", "create", "update")},
+    "graduationDesign.guide.manage",
     "graduationDesign.midterm.review",
     *{f"graduationDesign.final.{x}" for x in ("view", "review", "remind", "export")},
     *{f"graduationDesign.plagiarism.{x}" for x in ("view", "start", "result", "disputeReview")},
@@ -27,6 +28,7 @@ GRADUATION_PERMISSION_CODES = frozenset({
     *{f"graduationDesign.defense.{x}" for x in (
         "view", "groupManage", "publish", "notify", "score", "scoreConfirm", "secondRound",
     )},
+    "graduationDesign.defense.manage",
     *{f"graduationDesign.grade.{x}" for x in (
         "view", "calculate", "review", "publish", "withdraw", "appealReview",
     )},
@@ -83,7 +85,8 @@ GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
              "gd_topic_import_template", "gd_topic_import_xlsx", "gd_topic_import_dry_run",
              "gd_topic_import_errors_xlsx", "gd_topic_import_confirm",
              "gd_topic_choice_import_template", "gd_topic_choice_import_xlsx",
-             "gd_topic_choice_import_errors", "gd_topic_choice_import_confirm"),
+             "gd_topic_choice_import_dry_run", "gd_topic_choice_import_errors",
+             "gd_topic_choice_import_confirm"),
     **_group("graduationDesign.topic.review", "review_gd_topic", "confirm_gd_topic_choice",
              "reject_gd_topic_choice", "review_gd_topic_change_request"),
     **_group("graduationDesign.topic.assign", "assign_topic", "unassign_topic", "assign_advisor",
@@ -126,9 +129,9 @@ GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
     **_group("graduationDesign.review.assign", "peer_assign"),
     **_group("graduationDesign.review.submit", "peer_submit", "peer_rectify"),
     **_group("graduationDesign.defense.view", "defense_groups", "defense_detail", "defense_eligible",
-             "gd_defense_score_list", "gd_defense_score_stats", "defense_export", "expert_list"),
+             "gd_defense_score_list", "gd_defense_score_stats", "defense_export"),
     **_group("graduationDesign.defense.groupManage", "defense_create", "defense_update",
-             "defense_assign", "defense_unassign", "expert_create", "expert_status"),
+             "defense_assign", "defense_unassign", "expert_list", "expert_create", "expert_status"),
     **_group("graduationDesign.defense.publish", "defense_publish"),
     **_group("graduationDesign.defense.notify", "defense_notify"),
     **_group("graduationDesign.defense.score", "gd_defense_score_entry"),
@@ -141,6 +144,13 @@ GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
     **_group("graduationDesign.grade.publish", "gd_grade_publish"),
     **_group("graduationDesign.grade.withdraw", "gd_grade_withdraw"),
     **_group("graduationDesign.grade.appealReview", "appeal_list", "appeal_review"),
+    **_group("graduationDesign.grade.view", "gd_excellent_outcome_candidates", "gd_excellent_outcomes",
+             "gd_excellent_outcome_nominate"),
+    **_group("graduationDesign.grade.review", "gd_excellent_outcome_major_review"),
+    **_group("graduationDesign.grade.publish", "gd_excellent_outcome_college_review"),
+    **_group("graduationDesign.defense.view", "gd_defense_delays", "gd_defense_delay_advisor_review"),
+    **_group("graduationDesign.defense.groupManage", "gd_defense_delay_major_review",
+             "gd_defense_delay_college_review", "gd_defense_delay_schedule"),
     **_group("graduationDesign.risk.view", "gd_risks", "gd_risk_stats", "gd_risk_last_scan"),
     **_group("graduationDesign.risk.scan", "gd_risk_scan"),
     **_group("graduationDesign.risk.accept", "gd_risk_accept"),
@@ -173,14 +183,21 @@ def graduation_permission_for(method: str, path: str) -> str | None:
         ("POST", "/graduation/gd-grades/", "/publish", "graduationDesign.grade.publish"),
         ("POST", "/graduation/gd-plagiarism/", "/result", "graduationDesign.plagiarism.result"),
         ("POST", "/graduation/gd-plagiarism/", "/dispute/review", "graduationDesign.plagiarism.disputeReview"),
+        ("POST", "/graduation/gd-student-evals/", "", "graduationDesign.guide.manage"),
+        ("POST", "/graduation/gd-guidance-plans/", "/checkin", "graduationDesign.guide.manage"),
+        ("POST", "/graduation/gd-defense-scores/", "/confirm", "graduationDesign.defense.manage"),
+        ("POST", "/graduation/gd-defense-scores/", "/second-defense", "graduationDesign.defense.manage"),
+        ("POST", "/graduation/gd-defense-scores/entry", "", "graduationDesign.defense.score"),
     )
     for expected_method, contains, suffix, code in rules:
-        if method == expected_method and contains in path and path.endswith(suffix):
+        if method == expected_method and contains in path and (not suffix or path.endswith(suffix)):
             return code
     if method == "POST" and path.endswith("/graduation/batches"):
         return "graduationDesign.batch.create"
     if method == "GET" and path.endswith("/graduation/dashboard"):
         return "graduationDesign.dashboard.view"
+    if method == "GET" and path.endswith("/graduation/gd-guidance-plans"):
+        return "graduationDesign.view"
     export_domains = {
         "/proposals/export": "graduationDesign.proposal.export",
         "/finals/export": "graduationDesign.final.export",

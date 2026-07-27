@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.config import settings
 from app.core.graduation_permissions import require_graduation_request_permission
+from app.core.mobile_graduation_permissions import require_mobile_graduation_request_permission
 from app.core.permissions import require_module
 from app.core.security import require_staff
 
@@ -21,13 +22,8 @@ def _require_aa_route_user(user=Depends(require_module("academicAffairs"))):
 
 
 def build_deps():
-    """统一模块门禁依赖；禁止在注册处再手工拼装导致漂移。"""
     return {
-        "gd": [
-            Depends(require_staff),
-            Depends(require_module("graduation")),
-            Depends(require_graduation_request_permission),
-        ],
+        "gd": [Depends(require_staff), Depends(require_module("graduation")), Depends(require_graduation_request_permission)],
         "intern": [Depends(require_staff), Depends(require_module("internship"))],
         "employment": [Depends(require_staff), Depends(require_module("employment"))],
         "orientation": [Depends(require_staff), Depends(require_module("orientation"))],
@@ -41,7 +37,6 @@ def build_deps():
 def register_core_routes(api_router: APIRouter) -> None:
     from app.api.v1 import auth, authz, files, rbac, tenant
     from app.api.v1 import file as file_simple
-
     api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
     api_router.include_router(authz.router)
     api_router.include_router(tenant.router, prefix="/tenant", tags=["tenant"])
@@ -54,50 +49,23 @@ def register_core_routes(api_router: APIRouter) -> None:
 
 def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.internship.routers import (
-        internship,
-        internship_agreement_template,
-        internship_application,
-        internship_archive,
-        internship_communication,
-        internship_complaint,
-        internship_compliance,
-        internship_enterprise_eval_versioned,
-        internship_guardian_consent_delivery,
-        internship_insurance,
-        internship_match,
-        internship_participant,
-        internship_plan,
-        internship_position,
-        internship_process,
-        internship_stats,
-        internship_student,
-        internship_visit_plan,
+        internship, internship_agreement_template, internship_application, internship_archive,
+        internship_communication, internship_complaint, internship_compliance, internship_insurance,
+        internship_match, internship_participant, internship_plan, internship_position,
+        internship_process, internship_stats, internship_student, internship_visit_plan,
     )
-
     d = deps["intern"]
-    api_router.include_router(internship.router, dependencies=d)
-    api_router.include_router(internship_position.router, dependencies=d)
-    api_router.include_router(internship_agreement_template.router, dependencies=d)
-    api_router.include_router(internship_student.router, dependencies=d)
-    api_router.include_router(internship_match.router, dependencies=d)
-    api_router.include_router(internship_participant.router, dependencies=d)
-    api_router.include_router(internship_application.router, dependencies=d)
-    api_router.include_router(internship_archive.router, dependencies=d)
-    api_router.include_router(internship_stats.router, dependencies=d)
-    api_router.include_router(internship_plan.router, dependencies=d)
-    api_router.include_router(internship_insurance.router, dependencies=d)
-    api_router.include_router(internship_process.router, dependencies=d)
-    api_router.include_router(internship_communication.router, dependencies=d)
-    api_router.include_router(internship_visit_plan.router, dependencies=d)
-    api_router.include_router(internship_complaint.router, dependencies=d)
-    api_router.include_router(internship_compliance.router, dependencies=d)
-    api_router.include_router(internship_enterprise_eval_versioned.router, dependencies=d)
-    api_router.include_router(internship_guardian_consent_delivery.router, dependencies=d)
+    for r in (
+        internship, internship_position, internship_agreement_template, internship_student,
+        internship_match, internship_participant, internship_application, internship_archive,
+        internship_stats, internship_plan, internship_insurance, internship_process,
+        internship_communication, internship_visit_plan, internship_complaint, internship_compliance,
+    ):
+        api_router.include_router(r.router, dependencies=d)
 
 
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import campus_service, orientation, student_affairs
-
     api_router.include_router(orientation.router, dependencies=deps["orientation"])
     api_router.include_router(campus_service.router, dependencies=deps["cs"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
@@ -106,35 +74,31 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
     from app.modules.academic_affairs.routers import academic_affairs
-
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
+    from app.modules.graduation.services.graduation_consistency_install import install_consistency_guards
+    install_consistency_guards()
     from app.modules.graduation.routers import (
-        graduation,
-        graduation_archive,
-        graduation_batch,
-        graduation_defense_score,
-        graduation_grade,
-        graduation_guidance,
-        graduation_mentor,
-        graduation_midterm,
-        graduation_more,
-        graduation_review,
-        graduation_risk,
-        graduation_stats,
-        graduation_student,
-        graduation_student_eval,
-        graduation_taskbook,
-        graduation_template,
-        graduation_topic,
-        graduation_topic_change,
-        graduation_topic_round,
+        graduation, graduation_archive, graduation_archive_sensitive_router, graduation_batch,
+        graduation_defense_score, graduation_extension, graduation_grade, graduation_guidance,
+        graduation_material_sensitive_router, graduation_mentor, graduation_midterm,
+        graduation_more, graduation_p0_guard, graduation_review, graduation_risk,
+        graduation_sensitive_router, graduation_stats, graduation_student,
+        graduation_student_eval, graduation_taskbook, graduation_template,
+        graduation_topic, graduation_topic_change, graduation_topic_round,
     )
-
     d = deps["gd"]
+    api_router.include_router(graduation_p0_guard.router, dependencies=d)
+    api_router.include_router(graduation_sensitive_router.router, dependencies=d)
+    api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
+    api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
+    api_router.include_router(
+        graduation_extension.router,
+        dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
+    )
     for r in (
         graduation, graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
@@ -149,23 +113,15 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
 def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
         audit, dashboard, feedback, implementation, import_export,
-        migration, mobile, mobile_export, mobile_internship_context,
-        mobile_internship_leave_context, mobile_internship_student,
-        mobile_orientation_teacher, national_standards,
-        notification, onboarding, org_directory, platform, stats, system,
-        transfer, user_preference,
+        migration, mobile, mobile_export, mobile_graduation_extension_teacher,
+        mobile_graduation_guard, mobile_graduation_teacher_context, mobile_orientation_teacher,
+        national_standards, notification, onboarding, org_directory, platform, stats,
+        student_portal_graduation_guard, system, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
     from app.api.v1 import message_center as message_center_api
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
-    from app.core.mobile_internship_permission_gate import (
-        enforce_teacher_internship_mobile_permission,
-    )
-    from app.core.student_portal_module_gate import (
-        enforce_student_portal_module_access,
-    )
-    from app.student_portal.internship_router import router as student_portal_internship_router
     from app.student_portal.router import router as student_portal_router
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -186,16 +142,23 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(stats.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
+
+    from app.modules.graduation.services.graduation_record_resolver import install_mobile_resolver
+    from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
+    from app.modules.graduation.services.graduation_mobile_taskbook_bridge import install_mobile_taskbook_list_bridge
+    install_mobile_resolver()
+    install_mobile_stable_bridge()
+    install_mobile_taskbook_list_bridge()
+    teacher_mobile_deps = [Depends(require_staff), Depends(require_module("graduation"))]
+    api_router.include_router(mobile_graduation_extension_teacher.router, dependencies=teacher_mobile_deps)
     api_router.include_router(
-        mobile.router,
-        dependencies=[Depends(enforce_teacher_internship_mobile_permission)],
+        mobile_graduation_teacher_context.router,
+        dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
     )
-    api_router.include_router(mobile_internship_context.router)
-    api_router.include_router(mobile_internship_leave_context.router)
-    api_router.include_router(mobile_internship_student.router)
-    portal_gate = [Depends(enforce_student_portal_module_access)]
-    api_router.include_router(student_portal_router, dependencies=portal_gate)
-    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)
+    api_router.include_router(mobile_graduation_guard.router)
+    api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
+    api_router.include_router(student_portal_graduation_guard.router)
+    api_router.include_router(student_portal_router)
     from app.api.v1 import student_portal_admin
     api_router.include_router(student_portal_admin.router)
     api_router.include_router(onboarding.router)
@@ -210,11 +173,9 @@ def register_platform_routes(api_router: APIRouter) -> None:
 
 
 def register_all_routes(api_router: APIRouter) -> None:
-    """注册顺序与拆分前 router.py 一致。"""
     from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
     from app.modules.academic_affairs.routers import academic_affairs
     from app.modules.employment.routers import employment
-
     deps = build_deps()
     register_core_routes(api_router)
     api_router.include_router(student.router)

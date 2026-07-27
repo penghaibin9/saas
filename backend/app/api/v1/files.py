@@ -24,7 +24,12 @@ async def upload_file(file: UploadFile = File(...),
     from app.core.token_store import rate_limit
     if not rate_limit(f"upload:{user.get('userId', '-')}", 20, 60):
         raise AppException("RATE_LIMITED", "上传过于频繁（每分钟最多 20 次），请稍后再试")
-    meta = await file_service.store_upload(file, bizType, biz_id=bizId, user=user,
+    normalized_biz_type = (bizType or "ATTACHMENT").upper()
+    if normalized_biz_type == "GRADUATION_MATERIAL" and not bizId:
+        # 用户关闭页面后无法保证前端主动清理；下次上传前机会式回收本人超过 24h 的未绑定材料。
+        from app.modules.graduation.services.graduation_material_temp_service import cleanup_stale_temporary_materials
+        cleanup_stale_temporary_materials(user, older_than_hours=24, limit=50)
+    meta = await file_service.store_upload(file, normalized_biz_type, biz_id=bizId, user=user,
                                            visibility="BIZ_SCOPED")
     audit_log.record("FILE_UPLOAD", f"file:{meta['fileId']}",
                      {"fileName": meta.get("fileName"), "size": meta.get("sizeBytes")})
@@ -32,6 +37,7 @@ async def upload_file(file: UploadFile = File(...),
         "fileId": meta["fileId"], "fileName": meta.get("fileName"),
         "size": meta.get("sizeBytes"), "mimeType": file.content_type,
         "hash": meta.get("sha256"),
+        "temporary": normalized_biz_type == "GRADUATION_MATERIAL" and not bizId,
     })
 
 

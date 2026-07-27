@@ -177,8 +177,14 @@
               <text class="gd__choice-title">待互查 · {{ p.studentName || '同学' }}</text>
               <MobileStatusTag :label="p.statusLabel || '待互查'" type="warning" />
             </view>
+            <text class="gd__hint">评阅材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</text>
+            <MobileInlineAlert v-if="p.taskValid === false" type="danger" title="互查任务不可处理" :description="p.taskError || '任务未绑定有效正式定稿，请联系管理员'" />
+            <view v-if="p.attachmentsList && p.attachmentsList.length" class="gd__atts">
+              <text v-for="a in p.attachmentsList" :key="a.fileId" class="gd__att" @click="downloadAtt(a)">📎 {{ a.fileName }}</text>
+            </view>
+            <text v-else-if="p.taskValid !== false" class="gd__hint">该定稿暂无可下载附件，请联系管理员核对文件状态。</text>
             <textarea class="gd__reason" v-model="peerOpinions[p.id]" :maxlength="500" placeholder="互查意见（至少5字）" placeholder-class="wr__ph" />
-            <button class="btn btn-primary" :disabled="peerBusyId === p.id || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">
+            <button class="btn btn-primary" :disabled="peerBusyId === p.id || p.taskValid === false || !(p.attachmentsList || []).length || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">
               {{ peerBusyId === p.id ? '提交中…' : '提交互查意见' }}
             </button>
           </view>
@@ -187,9 +193,14 @@
               <text class="gd__choice-title">需整改 · 互查人 {{ p.reviewerName || '—' }}</text>
               <MobileStatusTag :label="p.statusLabel || '待整改'" type="danger" />
             </view>
+            <text class="gd__hint">对应材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</text>
+            <MobileInlineAlert v-if="p.taskValid === false" type="danger" title="整改任务不可处理" :description="p.taskError || '任务未绑定有效正式定稿，请联系管理员'" />
+            <view v-if="p.attachmentsList && p.attachmentsList.length" class="gd__atts">
+              <text v-for="a in p.attachmentsList" :key="a.fileId" class="gd__att" @click="downloadAtt(a)">📎 {{ a.fileName }}</text>
+            </view>
             <text v-if="p.opinion" class="gd__hint">互查意见：{{ p.opinion }}</text>
             <textarea class="gd__reason" v-model="peerNotes[p.id]" :maxlength="500" placeholder="整改说明（至少5字）" placeholder-class="wr__ph" />
-            <button class="btn btn-primary" :disabled="peerBusyId === p.id || (peerNotes[p.id] || '').trim().length < 5" @click="submitPeerRectify(p.id)">
+            <button class="btn btn-primary" :disabled="peerBusyId === p.id || p.taskValid === false || (peerNotes[p.id] || '').trim().length < 5" @click="submitPeerRectify(p.id)">
               {{ peerBusyId === p.id ? '提交中…' : '提交整改说明' }}
             </button>
           </view>
@@ -435,7 +446,7 @@ export default {
       const token = getToken()
       const fileId = a && a.fileId
       if (!fileId) { toast('附件无效'); return }
-      // 始终走学生端 materials 下载通道（带 student_channel 权限）
+      // 始终走学生端 materials 下载通道（本人材料或明确分配的互查定稿）
       const url = ENV.apiBaseUrl + ENV.apiPrefix + '/mobile/graduation/materials/' + fileId + '/download'
       uni.showLoading({ title: '下载中' })
       uni.downloadFile({

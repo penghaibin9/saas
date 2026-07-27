@@ -42,7 +42,7 @@ async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_curr
             "mimeType": file.content_type, "hash": sha.hexdigest(),
             "notice": "非生产占位：未落盘；请改用 POST /api/v1/files/upload"}
     audit_log.record("FILE_UPLOAD", f"file:{file_id}", {"fileName": file.filename, "size": size,
-                                                        "placeholder": True})
+                                                         "placeholder": True})
     return success(meta)
 
 
@@ -54,7 +54,12 @@ async def upload_real(file: UploadFile = File(...),
     from app.core.token_store import rate_limit
     if not rate_limit(f"upload:{user.get('userId', '-')}", 20, 60):
         raise AppException("RATE_LIMITED", "上传过于频繁（每分钟最多 20 次），请稍后再试")
-    meta = await file_service.store_upload(file, bizType, biz_id=bizId, user=user)
+    normalized_biz_type = (bizType or "ATTACHMENT").upper()
+    if normalized_biz_type == "GRADUATION_MATERIAL" and not bizId:
+        from app.modules.graduation.services.graduation_material_temp_service import cleanup_stale_temporary_materials
+        cleanup_stale_temporary_materials(user, older_than_hours=24, limit=50)
+    meta = await file_service.store_upload(file, normalized_biz_type, biz_id=bizId, user=user)
+    meta["temporary"] = normalized_biz_type == "GRADUATION_MATERIAL" and not bizId
     audit_log.record("FILE_UPLOAD", meta["fileName"],
                      detail={"fileId": meta["fileId"], "size": meta["sizeBytes"],
                              "sha256": (meta.get("sha256") or "")[:16]})
