@@ -2,6 +2,7 @@
 
 - 材料审核附件按“业务权限 + 学生数据范围”做对象级授权；
 - 教师材料队列在计数和分页前按业务权限过滤，禁止跨域数量泄露；
+- 宿管的调宿材料按当前入住楼栋或调宿目标楼栋收敛，不错误套用班级范围；
 - 批次幂等键绑定同一请求，失败尝试次数即使事务回滚也可靠累计；
 - 材料重新开启新一轮时仅保留历史版本，不把旧验收件冒充本轮当前件。
 """
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
@@ -17,6 +18,47 @@ from app.core.permissions import has_permission
 from app.services.db_service import _tid, session
 
 _INSTALLED = False
+
+
+def _install_dorm_material_scope_guard(operations) -> None:
+    """DORM_BUILDING 角色按楼栋关联学生，而不是按空班级集合 fail-closed。"""
+    original = operations._require_student_scope
+
+    def require_student_scope(db, student_id: int, user: dict) -> None:
+        from app.core.affairs_security import build_affairs_context, no_data_scope
+        from app.models import DormBed, DormTransfer
+
+        ctx = build_affairs_context(user or {}, db)
+        if ctx.scope_type != "DORM_BUILDING":
+            original(db, student_id, user)
+            return
+        buildings = set(ctx.dorm_building_ids or set())
+        if not buildings:
+            raise no_data_scope("未配置宿舍楼栋数据范围")
+        current = db.scalar(select(DormBed.id).where(
+            DormBed.tenant_id == _tid(),
+            DormBed.student_id == int(student_id),
+            DormBed.building_id.in_(buildings),
+            DormBed.status == "OCCUPIED",
+            DormBed.is_deleted.is_(False),
+        ).limit(1))
+        if current:
+            return
+        target = db.scalar(select(DormTransfer.id).join(
+            DormBed, DormBed.id == DormTransfer.to_bed_id,
+        ).where(
+            DormTransfer.tenant_id == _tid(),
+            DormTransfer.student_id == int(student_id),
+            DormTransfer.is_deleted.is_(False),
+            DormTransfer.status.in_(("SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW", "DORM_MANAGER_REVIEW", "RETURNED")),
+            DormBed.tenant_id == _tid(),
+            DormBed.building_id.in_(buildings),
+            DormBed.is_deleted.is_(False),
+        ).limit(1))
+        if not target:
+            raise no_data_scope("该学生的住宿或调宿记录不在您的楼栋范围内")
+
+    operations._require_student_scope = require_student_scope
 
 
 def _install_material_file_access_guard(operations) -> None:
@@ -33,7 +75,6 @@ def _install_material_file_access_guard(operations) -> None:
         if not raw_id.isdigit():
             return False
         try:
-            from app.core.affairs_security import build_affairs_context
             from app.models.affairs_operations import AffairsMaterialRequirement
 
             with session() as db:
@@ -47,7 +88,7 @@ def _install_material_file_access_guard(operations) -> None:
                 permissions = operations._BIZ_PERMISSIONS.get(requirement.biz_type, ())
                 if not any(has_permission(user or {}, code) for code in permissions):
                     return False
-                build_affairs_context(user or {}, db).require_student(db, requirement.student_id)
+                operations._require_student_scope(db, requirement.student_id, user or {})
                 return True
         except Exception:
             # 文件授权必须 fail-closed；调用方统一按不存在处理，不泄露文件存在性。
@@ -59,7 +100,8 @@ def _install_material_file_access_guard(operations) -> None:
 def _install_teacher_requirement_scope_guard(operations) -> None:
     def list_teacher_requirements(user: dict, *, status: str | None = None,
                                   page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
-        from app.models import StudentProfile, User
+        from app.core.affairs_security import build_affairs_context
+        from app.models import DormBed, DormTransfer, StudentProfile, User
         from app.models.affairs_operations import AffairsMaterialRequirement
         from app.services.affairs_dashboard_service import _allowed_class_ids
 
@@ -73,7 +115,7 @@ def _install_teacher_requirement_scope_guard(operations) -> None:
         page = max(1, int(page))
         page_size = min(100, max(1, int(page_size)))
         with session() as db:
-            allowed, _ = _allowed_class_ids(db, user)
+            ctx = build_affairs_context(user or {}, db)
             conds = [
                 AffairsMaterialRequirement.tenant_id == _tid(),
                 AffairsMaterialRequirement.biz_type.in_(visible_biz_types),
@@ -84,8 +126,33 @@ def _install_teacher_requirement_scope_guard(operations) -> None:
             ]
             if status:
                 conds.append(AffairsMaterialRequirement.status == str(status).upper())
-            if allowed is not None:
-                conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+            if ctx.scope_type == "DORM_BUILDING":
+                # 宿管只处理调宿材料；学生须当前住在本人楼栋，或调宿目标床位属于本人楼栋。
+                visible_biz_types &= {"DORM_TRANSFER"}
+                if not visible_biz_types or not ctx.dorm_building_ids:
+                    return [], 0
+                conds[1] = AffairsMaterialRequirement.biz_type.in_(visible_biz_types)
+                current_students = select(DormBed.student_id).where(
+                    DormBed.tenant_id == _tid(),
+                    DormBed.building_id.in_(ctx.dorm_building_ids),
+                    DormBed.status == "OCCUPIED",
+                    DormBed.is_deleted.is_(False),
+                )
+                target_students = select(DormTransfer.student_id).join(
+                    DormBed, DormBed.id == DormTransfer.to_bed_id,
+                ).where(
+                    DormTransfer.tenant_id == _tid(),
+                    DormTransfer.is_deleted.is_(False),
+                    DormTransfer.status.in_(("SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW", "DORM_MANAGER_REVIEW", "RETURNED")),
+                    DormBed.tenant_id == _tid(),
+                    DormBed.building_id.in_(ctx.dorm_building_ids),
+                    DormBed.is_deleted.is_(False),
+                )
+                conds.append(or_(StudentProfile.id.in_(current_students), StudentProfile.id.in_(target_students)))
+            else:
+                allowed, _ = _allowed_class_ids(db, user)
+                if allowed is not None:
+                    conds.append(StudentProfile.class_id.in_(allowed or {-1}))
             joined = select(AffairsMaterialRequirement).join(
                 StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
             )
@@ -255,6 +322,7 @@ def install() -> None:
         return
     from app.services import affairs_operations_service as operations
 
+    _install_dorm_material_scope_guard(operations)
     _install_material_file_access_guard(operations)
     _install_teacher_requirement_scope_guard(operations)
     _install_batch_reliability_guard(operations)
