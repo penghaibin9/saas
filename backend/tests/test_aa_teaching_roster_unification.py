@@ -167,17 +167,17 @@ def test_administrative_class_is_used_only_when_no_selection_relation(monkeypatc
     assert result["studentIds"] == [1, 2]
 
 
-def test_public_services_share_roster_aware_facades():
+def test_public_services_share_one_roster_aware_entry_per_domain():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_selection_service.lock_batch.__module__.endswith(
-        "academic_affairs_selection_facade"
+        "academic_affairs_selection_service"
     )
     assert services.academic_affairs_attendance_service.create_session.__module__.endswith(
-        "academic_affairs_attendance_facade"
+        "academic_affairs_attendance_public_service"
     )
     assert services.academic_affairs_grade_service.roster.__module__.endswith(
-        "academic_affairs_grade_roster_facade"
+        "academic_affairs_grade_service"
     )
     assert services.academic_affairs_exam_service.assign_seats.__module__.endswith(
         "academic_affairs_exam_facade"
