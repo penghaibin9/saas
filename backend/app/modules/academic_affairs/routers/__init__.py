@@ -21,6 +21,7 @@ def _legacy_grade_identity_route(route) -> bool:
     path = getattr(route, "path", "")
     methods = set(getattr(route, "methods", set()) or set())
     return "POST" in methods and path in {
+        "/academic-affairs/grade-tasks",
         "/academic-affairs/makeup/batches/{bid}/enroll",
         "/academic-affairs/retake/apply",
         "/academic-affairs/exemption/apply",
