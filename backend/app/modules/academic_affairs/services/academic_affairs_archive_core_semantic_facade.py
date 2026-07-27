@@ -1,7 +1,7 @@
 """教务归档P0最终公开层：四域结构化语义门禁。
 
 沿用现有AaArchiveBatch/AaArchiveItem和归档状态机；不新增第二套归档事实。
-四域评估结果以JSON摘要写入AaArchiveItem.remark，旧数据仍可按普通文本读取。
+AaArchiveItem.remark只有300字符，因此只持久化紧凑规则摘要；完整证据由实时预检返回。
 """
 from __future__ import annotations
 
@@ -43,39 +43,61 @@ def _public_result(code: str, result: dict) -> dict:
     normalized["route"] = normalized.get("route") or _ROUTE.get(
         code, "/admin/academic-affairs/archive/precheck"
     )
-    normalized["remark"] = normalized.get("summary") or normalized.get("remark") or ""
+    normalized["summary"] = normalized.get("summary") or normalized.get("remark") or ""
+    normalized["remark"] = normalized["summary"]
+    normalized["evidence"] = list(normalized.get("evidence") or [])
     return normalized
 
 
 def _persisted_remark(code: str, result: dict) -> str:
+    """紧凑摘要必须适配AaArchiveItem.remark VARCHAR(300)。"""
     normalized = _public_result(code, result)
+    summary = str(normalized["summary"] or "")[:150]
     payload = {
-        "schema": "AA_ARCHIVE_RULE_V2",
-        "result": normalized["result"],
-        "ruleCode": normalized["ruleCode"],
-        "summary": normalized["summary"],
-        "blockingCount": normalized["blockingCount"],
-        "route": normalized["route"],
-        "evidence": normalized["evidence"],
+        "v": 2,
+        "r": normalized["result"],
+        "c": str(normalized["ruleCode"] or "")[:70],
+        "b": int(normalized["blockingCount"] or 0),
+        "s": summary,
     }
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if len(encoded) <= 300:
+        return encoded
+    payload["s"] = summary[:80]
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))[:300]
 
 
 def parse_persisted_remark(code: str, remark, *, present=False, record_count=0) -> dict:
     raw = str(remark or "")
     try:
         payload = json.loads(raw)
-    except (TypeError, ValueError, json.JSONDecodeError):
+    except (TypeError, ValueError):
         payload = None
-    if isinstance(payload, dict) and payload.get("schema") == "AA_ARCHIVE_RULE_V2":
+    if isinstance(payload, dict) and payload.get("v") == 2:
+        summary = str(payload.get("s") or "")
         return {
             "domain": code,
             "recordCount": int(record_count or 0),
             "present": bool(present),
-            "remark": payload.get("summary") or "",
+            "remark": summary,
+            "result": payload.get("r") or ("PASS" if present else "BLOCKED"),
+            "ruleCode": payload.get("c") or f"{code}_SEMANTIC_GATE",
+            "summary": summary,
+            "blockingCount": int(payload.get("b") or 0),
+            "route": _ROUTE.get(code, "/admin/academic-affairs/archive/precheck"),
+            "evidence": [],
+        }
+    # 兼容最早试做过的长JSON格式和历史纯文本。
+    if isinstance(payload, dict) and payload.get("schema") == "AA_ARCHIVE_RULE_V2":
+        summary = str(payload.get("summary") or "")
+        return {
+            "domain": code,
+            "recordCount": int(record_count or 0),
+            "present": bool(present),
+            "remark": summary,
             "result": payload.get("result") or ("PASS" if present else "BLOCKED"),
             "ruleCode": payload.get("ruleCode") or f"{code}_SEMANTIC_GATE",
-            "summary": payload.get("summary") or "",
+            "summary": summary,
             "blockingCount": int(payload.get("blockingCount") or 0),
             "route": payload.get("route") or _ROUTE.get(code),
             "evidence": list(payload.get("evidence") or []),
@@ -89,12 +111,16 @@ def parse_persisted_remark(code: str, remark, *, present=False, record_count=0) 
     return {"domain": code, **normalized}
 
 
-def _evaluate_domains(db, term_id, term_code, college_ids=None):
+def _raw_evaluate_domains(db, term_id, term_code, college_ids=None):
     previous = _previous_evaluate_domains(db, term_id, term_code, college_ids)
-    results = evaluate_first_batch(
+    return evaluate_first_batch(
         db, term_id, term_code, previous, college_ids=college_ids,
     )
-    # run_check沿用现有字段，只把结构化摘要装进remark；其它键供实时预检直接消费。
+
+
+def _evaluate_domains(db, term_id, term_code, college_ids=None):
+    results = _raw_evaluate_domains(db, term_id, term_code, college_ids)
+    # run_check沿用现有字段，只把紧凑结构化摘要装进remark。
     for code, result in results.items():
         result["remark"] = _persisted_remark(code, result)
     return results
@@ -124,21 +150,12 @@ def _items_dto(db, batch_id):
 
 
 def _live_results(db, term_id, term_code, college_ids=None):
-    raw = _evaluate_domains(db, term_id, term_code, college_ids)
-    output = {}
-    for code, result in raw.items():
-        parsed = parse_persisted_remark(
-            code,
-            result.get("remark"),
-            present=result.get("present"),
-            record_count=result.get("recordCount"),
-        )
-        output[code] = parsed
-    return output
+    raw = _raw_evaluate_domains(db, term_id, term_code, college_ids)
+    return {code: _public_result(code, result) for code, result in raw.items()}
 
 
 def precheck(user, term_id=None):
-    """实时预检返回结构化门禁，不落库。"""
+    """实时预检返回结构化门禁和证据，不落库。"""
     from app.models import AaTerm
 
     with _archive_executor.session() as db:
