@@ -17,6 +17,21 @@
           <text>部分教务数据暂未更新</text><text>点击重试</text>
         </view>
 
+        <view v-if="taskCues.length" class="card aa__tasks">
+          <view class="aa__section-head"><text>当前需要我处理</text><text class="aa__section-sub">点击直达具体事项</text></view>
+          <view class="aa__task-list">
+            <view v-for="task in taskCues" :key="task.key" class="aa__task" @click="go(task.route)">
+              <text class="aa__task-icon">{{ task.icon }}</text>
+              <view class="flex-1">
+                <text class="aa__task-title">{{ task.title }}</text>
+                <text class="aa__task-sub">{{ task.description }}</text>
+              </view>
+              <text class="aa__task-count">{{ task.count }}</text>
+              <text class="aa__task-go">去处理 ›</text>
+            </view>
+          </view>
+        </view>
+
         <view class="aa__focus-grid">
           <view class="aa__focus card" @click="go('/pages/student/academic-affairs/schedule')">
             <view class="aa__focus-head"><text>今日课程</text><text class="aa__link">查看课表 ›</text></view>
@@ -105,16 +120,14 @@ const COMMON_KEYS = new Set(['schedule', 'selection', 'transcript', 'exam', 'cre
 
 function rowsOf(data) {
   if (Array.isArray(data)) return data
-  return (data && (data.items || data.list)) || []
+  return (data && (data.items || data.list || data.batches)) || []
 }
-
 function localDateKey(date) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
 }
-
 function activeInWeek(item, week) {
   const current = Number(week)
   if (!Number.isFinite(current) || current < 1) return false
@@ -126,18 +139,32 @@ function activeInWeek(item, week) {
   if (parity === 'EVEN') return current % 2 === 0
   return true
 }
+function unfinished(rows) {
+  const done = new Set(['DONE', 'COMPLETED', 'APPROVED', 'REGISTERED', 'SUBMITTED', 'PUBLISHED', 'CLOSED'])
+  return (rows || []).filter((row) => !done.has(String(row.status || row.registrationStatus || '').toUpperCase()))
+}
 
 export default {
   data() {
     return {
       status: null, state: 'loading', statusBarHeight: 20, entries: ENTRIES,
       scheduleItems: [], currentWeek: null, examItems: [], examLoaded: false,
-      warningCount: 0, evaluationCount: 0, partialError: false, showAll: false
+      warningCount: 0, evaluationCount: 0, registrationCount: 0, returnedDeferCount: 0,
+      retakeCount: 0, partialError: false, showAll: false
     }
   },
   computed: {
     commonEntries() { return this.entries.filter((x) => COMMON_KEYS.has(x.key)) },
     otherEntries() { return this.entries.filter((x) => !COMMON_KEYS.has(x.key)) },
+    taskCues() {
+      return [
+        { key: 'registration', icon: '🪪', title: '完成学期注册', description: '存在尚未完成的注册批次', count: this.registrationCount, route: '/pages/student/academic-affairs/registration' },
+        { key: 'evaluation', icon: '⭐', title: '完成学生评教', description: '开放窗口内课程等待匿名评价', count: this.evaluationCount, route: '/pages/student/academic-affairs/evaluation' },
+        { key: 'warning', icon: '⚠️', title: '跟进学业预警', description: '查看原因、责任老师和处理要求', count: this.warningCount, route: '/pages/student/academic-affairs/warning' },
+        { key: 'defer', icon: '🗓', title: '补充缓考材料', description: '存在退回待重新提交的缓考申请', count: this.returnedDeferCount, route: '/pages/student/academic-affairs/exam' },
+        { key: 'makeup', icon: '📝', title: '处理补考重修', description: '存在可报名的当前有效未通过课程', count: this.retakeCount, route: '/pages/student/academic-affairs/makeup' }
+      ].filter((item) => Number(item.count || 0) > 0)
+    },
     todayCourses() {
       const day = new Date().getDay() || 7
       return this.scheduleItems
@@ -167,6 +194,8 @@ export default {
     badgeOf(key) {
       if (key === 'warning') return this.warningCount || ''
       if (key === 'evaluation') return this.evaluationCount || ''
+      if (key === 'registration') return this.registrationCount || ''
+      if (key === 'makeup') return this.retakeCount || ''
       return ''
     },
     async load() {
@@ -180,7 +209,8 @@ export default {
       }
       const results = await Promise.allSettled([
         studentApi.getMySchedule(), studentApi.getMyExamSchedule(),
-        studentApi.getMyWarnings(), studentApi.getMyEvaluationTasks()
+        studentApi.getMyWarnings(), studentApi.getMyEvaluationTasks(),
+        studentApi.getMyRegistration(), studentApi.getMyDeferrals(), studentApi.getMakeupOptions()
       ])
       if (results[0].status === 'fulfilled') {
         this.scheduleItems = rowsOf(results[0].value)
@@ -192,12 +222,13 @@ export default {
       }
       this.examLoaded = results[1].status === 'fulfilled'
       this.examItems = this.examLoaded ? rowsOf(results[1].value) : []
-      this.warningCount = results[2].status === 'fulfilled'
-        ? Number(results[2].value && results[2].value.total != null ? results[2].value.total : rowsOf(results[2].value).length) || 0
-        : 0
-      this.evaluationCount = results[3].status === 'fulfilled'
-        ? Number(results[3].value && results[3].value.total != null ? results[3].value.total : rowsOf(results[3].value).length) || 0
-        : 0
+      this.warningCount = results[2].status === 'fulfilled' ? unfinished(rowsOf(results[2].value)).length : 0
+      this.evaluationCount = results[3].status === 'fulfilled' ? rowsOf(results[3].value).length : 0
+      this.registrationCount = results[4].status === 'fulfilled' ? unfinished(rowsOf(results[4].value)).length : 0
+      this.returnedDeferCount = results[5].status === 'fulfilled'
+        ? rowsOf(results[5].value).filter((row) => String(row.status || '').toUpperCase() === 'RETURNED').length : 0
+      const makeup = results[6].status === 'fulfilled' ? (results[6].value || {}) : {}
+      this.retakeCount = (makeup.retakeOptions || []).length
       this.partialError = results.some((result) => result.status === 'rejected') || this.currentWeek == null
       this.state = 'ready'
     }
@@ -217,6 +248,14 @@ export default {
 .aa__status-tag.is-warn { background: rgba(217,119,6,0.85); }
 .aa__body { padding-top: var(--space-3); }
 .aa__partial { display: flex; justify-content: space-between; margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--warning-50); color: var(--warning-700); font-size: var(--font-size-xs); }
+.aa__tasks { margin-bottom: var(--space-3); }
+.aa__task-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.aa__task { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--surface-base); }
+.aa__task-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--brand-50); }
+.aa__task-title { display: block; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 600; }
+.aa__task-sub { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: 10px; }
+.aa__task-count { min-width: 20px; height: 20px; border-radius: 10px; background: var(--danger-50); color: var(--danger-600); font-size: 11px; line-height: 20px; text-align: center; }
+.aa__task-go { color: var(--brand-primary); font-size: var(--font-size-xs); }
 .aa__focus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3); }
 .aa__focus { min-height: 132px; }
 .aa__focus-head, .aa__section-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; }
