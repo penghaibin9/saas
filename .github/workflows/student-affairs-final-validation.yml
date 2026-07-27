@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - codex/student-affairs-integration-20260727
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   final-validation:
+    if: github.event_name == 'push' || github.head_ref == 'codex/student-affairs-integration-20260727'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
