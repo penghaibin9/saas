@@ -1,0 +1,108 @@
+"""V2-04 补考重修免修最终安全层：修正免修申请查询与附件校验。"""
+from __future__ import annotations
+
+import json
+
+from app.core.exceptions import AppException, not_found
+
+from . import academic_affairs_makeup_course_identity_facade as _base
+from . import academic_affairs_makeup_term_facade as _term
+from . import academic_affairs_grade_identity_facade as _grade
+
+_legacy = _base._legacy
+
+
+def __getattr__(name):
+    return getattr(_base, name)
+
+
+def exemption_apply(user, body):
+    from app.models import AaCourse, AaExemption, AcademicGrade, FileObject
+
+    with _legacy.session() as db:
+        student = _legacy._student(db)
+        current_term = _term._current_term(db)
+        requested = str(getattr(body, "termCode", None) or "").strip()
+        term_code = _term._term_code(current_term)
+        if requested and requested != term_code:
+            raise AppException("VALIDATION_ERROR", "免修申请只能绑定当前办理学期")
+
+        course_id = getattr(body, "courseId", None)
+        if not course_id:
+            raise AppException("VALIDATION_ERROR", "免修申请必须选择课程库具体courseId")
+        course = db.query(AaCourse).filter(
+            AaCourse.id == int(course_id),
+            AaCourse.tenant_id == _legacy._tid(),
+            AaCourse.is_deleted.is_(False),
+        ).first()
+        if not course:
+            raise not_found("课程版本不存在")
+        if not (course.course_code or "").strip() or not int(course.version or 0):
+            raise AppException("DATA_CONFLICT", "课程缺少稳定代码或版本号，暂不可申请免修", http_status=409)
+
+        academic_student = _base._academic_student_for_profile(db, student.id)
+        if academic_student:
+            grades = db.query(AcademicGrade).filter(
+                AcademicGrade.tenant_id == _legacy._tid(),
+                AcademicGrade.acad_student_id == academic_student.id,
+                AcademicGrade.course_code == course.course_code,
+                AcademicGrade.record_status == "ACTIVE",
+                AcademicGrade.is_deleted.is_(False),
+            ).all()
+            if any(
+                str(row.pass_status or "").upper() == "PASSED"
+                for row in _grade.effective_grade_rows(grades)
+            ):
+                raise _legacy._bad("该课程已获及格成绩，不可申请免修")
+
+        maximum = int(_legacy._rule("exemption_max_count", 2))
+        used = db.query(AaExemption).filter(
+            AaExemption.tenant_id == _legacy._tid(),
+            AaExemption.student_id == student.id,
+            AaExemption.term_code == term_code,
+            AaExemption.status.notin_([_legacy._EX_REJECTED, _legacy._EX_CANCELLED]),
+            AaExemption.is_deleted.is_(False),
+        ).count()
+        if used >= maximum:
+            raise _legacy._bad(f"本学期免修申请已达上限{maximum}门")
+
+        values = list(getattr(body, "materialFileIds", None) or [])
+        file_ids = [int(value) for value in values if str(value).isdigit()]
+        if len(file_ids) != len(values):
+            raise _legacy._bad("免修材料包含无效文件ID")
+        if file_ids:
+            found = db.query(FileObject).filter(
+                FileObject.tenant_id == _legacy._tid(),
+                FileObject.id.in_(file_ids),
+            ).count()
+            if found != len(file_ids):
+                raise _legacy._bad("免修材料包含不存在或跨租户文件")
+        material_json = json.dumps([str(value) for value in file_ids], ensure_ascii=False) if file_ids else None
+
+        row = AaExemption(
+            tenant_id=_legacy._tid(),
+            student_id=student.id,
+            student_no=student.student_no,
+            student_name=student.real_name,
+            course_id=course.id,
+            course_name=course.course_name,
+            term_code=term_code,
+            college_id=getattr(student, "college_id", None),
+            reason=getattr(body, "reason", None),
+            material_file_ids=material_json,
+            current_node=_legacy._EX_TEACHER,
+            status=_legacy._EX_TEACHER,
+        )
+        db.add(row)
+        db.flush()
+        _legacy._audit(
+            db, "AA_EXEMPTION", row.id, "EXEMPTION_APPLY_IDENTITY",
+            f"courseId={course.id};code={course.course_code};version={course.version};files={len(file_ids)}",
+        )
+        db.commit()
+        return _legacy._ex_dto(row)
+
+
+# 完整路径与中间facade统一指向安全实现。
+for module in (_base, _base._base, _term, _legacy):
+    module.exemption_apply = exemption_apply
