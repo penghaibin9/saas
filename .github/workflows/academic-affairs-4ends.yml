@@ -102,6 +102,7 @@ jobs:
           tests/test_aa_scope_fail_closed.py
           tests/test_aa_student_schedule_merge.py
           tests/test_aa_student_exam_time.py
+          tests/test_aa_student_identity_legacy_entry_guards.py
           tests/test_aa_graduation_program_resolution.py
           tests/test_aa_program_quality_v2.py
           tests/test_aa_program_generation_gate_v2.py
