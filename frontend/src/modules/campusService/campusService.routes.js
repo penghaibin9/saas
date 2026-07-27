@@ -11,30 +11,6 @@ export const campusServiceRoutes = {
   meta: { moduleCode: 'CAMPUS_SERVICE' },
   children: [
     {
-      path: '/admin/student-affairs/leave',
-      name: 'student-affairs-leave',
-      component: () => import('@/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue'),
-      meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假审批' }
-    },
-    {
-      path: '/admin/student-affairs/leave/followup',
-      name: 'student-affairs-leave-followup',
-      component: () => import('@/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue'),
-      meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '销假与续假' }
-    },
-    {
-      path: '/admin/student-affairs/leave/ledger',
-      name: 'student-affairs-leave-ledger',
-      component: () => import('@/modules/studentAffairs/views/leave/LeaveLedgerView.vue'),
-      meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假台账' }
-    },
-    {
-      path: '/admin/student-affairs/leave/stats',
-      name: 'student-affairs-leave-stats',
-      component: () => import('@/modules/studentAffairs/views/leave/LeaveStatsView.vue'),
-      meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假统计' }
-    },
-    {
       path: '',
       name: 'campus-service-dashboard',
       redirect: '/admin/student-affairs/dashboard'

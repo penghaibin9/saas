@@ -35,7 +35,7 @@ class CsServiceStudent(PKMixin, TenantMixin, CommonMixin, Base):
 class CsLeave(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_leave"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     leave_type: Mapped[str] = mapped_column(String(50), nullable=False, default="PERSONAL")
     start_time: Mapped[datetime | None] = mapped_column(DateTime)
     end_time: Mapped[datetime | None] = mapped_column(DateTime)

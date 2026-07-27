@@ -5,7 +5,6 @@
 - 教师移动端复用 PC 同名 permissionCode；
 - 点名 STUDENT 范围不得扩大为整班；
 - 心理明细审计失败时禁止返回原文；
-- 学生请假自视图返回 version/allowedActions；
 - 已有床学生不得通过自选入口绕过正式调宿流程；
 - 学生端旧 MANUAL 活动签到入口关闭，改走短时签名凭证。
 
@@ -141,7 +140,7 @@ def _patch_optimistic_lock() -> None:
     exc_mod.check_version = check_version
 
     modules = [
-        "affairs_leave_service", "affairs_aid_service", "affairs_funding_service",
+        "affairs_aid_service", "affairs_funding_service",
         "affairs_discipline_service", "affairs_dorm_service", "affairs_risk_service",
         "affairs_mental_service", "affairs_talk_service", "affairs_activity_service",
         "affairs_club_service", "affairs_org_service", "affairs_league_service",

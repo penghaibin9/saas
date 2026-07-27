@@ -391,7 +391,7 @@ def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
                 raise AppException("DATA_CONFLICT", "该生存在时间重叠的在途请假，不可重复提交")
         wf = _wf_code(days)
         first = NODE_SEQ[wf][0]
-        x = CsLeave(tenant_id=_tid(), cs_student_id=0, student_id=student_id,
+        x = CsLeave(tenant_id=_tid(), cs_student_id=None, student_id=student_id,
                     leave_type=(body.leaveType or "PERSONAL"), start_time=start, end_time=end,
                     reason=body.reason, days=days, duration=f"{days}天",
                     affairs_status=first, status=_project(first), apply_time=datetime.utcnow(),

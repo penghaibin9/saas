@@ -113,8 +113,11 @@ def me_portal_config(user=Depends(get_current_user)):
     return success(sp.get_config(int(current_tenant_id() or 0)))
 
 
-@router.post("/campus-service/apply", summary="提交在校服务申请（本人）")
+@router.post("/campus-service/apply", summary="提交在校服务申请（本人，不含请假）")
 def campus_service_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    if str((body or {}).get("serviceKey") or "").strip().upper() == "LEAVE":
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "请假已迁移到 /mobile/affairs/leave 专用入口")
     return success(stu.campus_service_apply(user, body))
 
 

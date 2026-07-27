@@ -1,8 +1,8 @@
 """学生 PC 门户 · 学工事务（第4期）。
 
 学工学生自视图已在 mobile_affairs_service（aff：leave_my/funding_my/aid_my/discipline_my/
-overview_my，均经 aff._me 收口本人+非学生403）。学生写入口为 campus_service_apply（通用事务申请：
-请假/咨询/工单）。本刀 PC 接出：学工自视图聚合 + 通用事务申请 + 打印回执/请假条。
+overview_my，均经 aff._me 收口本人+非学生403）。请假使用专用 affairs_leave_service；
+campus_service_apply 仅保留咨询/工单。本刀 PC 接出学工自视图聚合、专用请假和打印回执。
 （困难认定长表+批量材料+承诺书签署 见后续专卡。）
 """
 from __future__ import annotations
@@ -53,8 +53,11 @@ def discipline(user: dict) -> dict:
 
 
 def service_apply(user: dict, body: dict) -> dict:
-    """通用学工事务申请（请假/咨询/工单，复用现有学生写入口 campus_service_apply）。"""
-    return stu.campus_service_apply(user, body or {})
+    """通用咨询/工单入口；请假必须走 affairs_leave_service 专用状态机。"""
+    body = body or {}
+    if str(body.get("serviceKey") or "").strip().upper() == "LEAVE":
+        raise AppException("VALIDATION_ERROR", "请假已迁移到专用入口")
+    return stu.campus_service_apply(user, body)
 
 
 def print_doc(user: dict, body: dict) -> dict:
