@@ -21,6 +21,7 @@ SOURCE_PRIORITY = {
     "RECHECK": 95,
     "CLEARANCE": 90,
     "MAKEUP": 85,
+    "DEFERRED": 85,
     "RETAKE": 80,
     "RECOGNIZED": 75,
     "RECOGNITION": 75,
@@ -31,6 +32,7 @@ SOURCE_PRIORITY = {
 }
 EXAM_PRIORITY = {
     "CLEARANCE": 50,
+    "DEFERRED": 45,
     "MAKEUP": 40,
     "RETAKE": 30,
     "FINAL": 20,
