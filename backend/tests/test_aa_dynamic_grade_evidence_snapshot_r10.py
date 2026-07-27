@@ -18,10 +18,16 @@ def test_dynamic_grade_scheme_accepts_one_to_twelve_and_requires_total_100():
     }]
 
     twelve = normalize_components([
-        {"code": f"ITEM_{index}", "name": f"项目{index}", "weight": (100 / 12), "required": index < 11}
+        {
+            "code": f"ITEM_{index}",
+            "name": f"项目{index}",
+            "weight": 12 if index == 11 else 8,
+            "required": index < 11,
+        }
         for index in range(12)
     ])
     assert len(twelve) == 12
+    assert sum(item["weight"] for item in twelve) == 100
 
     with pytest.raises(AppException):
         normalize_components([])
