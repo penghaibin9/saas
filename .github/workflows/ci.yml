@@ -67,7 +67,16 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography   # PyMySQL 连 MySQL8 caching_sha2_password 认证所需
       - name: 岗位实习专项测试（20分钟硬超时）
-        run: timeout 20m pytest tests/test_internship*.py -q -p no:warnings --durations=20
+        id: internship_pytest
+        run: |
+          set -o pipefail
+          timeout 20m pytest tests/test_internship*.py -q -p no:warnings --durations=20 2>&1 | tee /tmp/internship-pytest.log
+      - name: 上传岗位实习 pytest 失败日志
+        if: failure() && steps.internship_pytest.conclusion == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-pytest-failure-log
+          path: /tmp/internship-pytest.log
 
   graduation-production-gates:
     name: 毕业设计生产闸门
@@ -120,16 +129,24 @@ jobs:
           echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
           echo "选中: $TARGETS"
       - name: 运行 pytest（push/PR 变更感知；schedule 全量）
+        id: backend_pytest
         run: |
+          set -o pipefail
           if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "定时全量：pytest 全部用例"
-            timeout 80m pytest -q -p no:warnings --durations=30
+            timeout 80m pytest -q -p no:warnings --durations=30 2>&1 | tee /tmp/backend-pytest.log
           else
             TARGETS="${{ steps.select.outputs.targets }}"
             echo "push/PR 变更感知：$TARGETS"
             # 每组 25 分钟硬超时；失败即失败，不 continue-on-error
-            timeout 25m pytest $TARGETS -q -p no:warnings --durations=20
+            timeout 25m pytest $TARGETS -q -p no:warnings --durations=20 2>&1 | tee /tmp/backend-pytest.log
           fi
+      - name: 上传后端 pytest 失败日志
+        if: failure() && steps.backend_pytest.conclusion == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-failure-log
+          path: /tmp/backend-pytest.log
 
   frontend:
     name: PC 管理端 lint + build
