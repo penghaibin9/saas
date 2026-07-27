@@ -159,6 +159,7 @@ def _install_batch_reliability_guard(operations) -> None:
         requested_ids = _request_ids(payload)
         job_type = str(payload.get("jobType") or "").strip().upper()
         key = str(payload.get("idempotencyKey") or "").strip()
+        resume_id = None
         with session() as db:
             existed = db.scalars(select(AffairsBatchJob).where(
                 AffairsBatchJob.tenant_id == _tid(),
@@ -168,6 +169,14 @@ def _install_batch_reliability_guard(operations) -> None:
             )).first()
             if existed:
                 _assert_same_request(existed, requested_ids)
+                if existed.status == "PENDING":
+                    resume_id = int(existed.id)
+                else:
+                    return operations._batch_job_dict(db, existed)
+        if resume_id:
+            # 进程在“主表/明细已提交、尚未开始逐条执行”之间中断时，
+            # 客户端用同一幂等键重试会恢复原批次，而不是新建第二批。
+            return operations.run_batch_job(resume_id, user)
         result = original_create_batch(user, payload)
         result_id = str(result.get("batchJobId") or "")
         if result_id.isdigit():
