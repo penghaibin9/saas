@@ -61,22 +61,22 @@ from app.models.campus_service import (CsAuditTrail, CsDiscipline, CsDormExcepti
                                         CsDormRecord, CsGrant, CsLeave, CsMentalRecord,
                                         CsServiceStudent, CsWorkOrder)
 from app.models.academic import (AcademicAuditTrail, AcademicGrade, AcademicIntervention,  # noqa: F401
-                                    AcademicMakeup, AcademicRetake, AcademicStudent, AcademicWarning)
+                                  AcademicMakeup, AcademicRetake, AcademicStudent, AcademicWarning)
 from app.models.graduation import (GraduationArchiveRecord, GraduationAuditTrail,  # noqa: F401
-                                      GraduationBatch, GraduationDefenseGroup, GraduationDefenseScore,
-                                      GraduationFinal, GraduationGrade, GraduationGuidance,
-                                      GraduationDefenseExpert, GraduationGradeAppeal,
-                                      GraduationMentor, GraduationMentorAssignment,
-                                      GraduationMentorEval, GraduationMidterm, GraduationPeerReview,
-                                      GraduationPlagiarismCheck, GraduationProposal, GraduationReview,
-                                      GraduationRiskCase,
-                                      GraduationStudent, GraduationStudentEval, GraduationGuidancePlan,
-                                      GraduationTaskBook, GraduationTemplate,
-                                      GraduationTopic, GraduationTopicChangeRequest,
-                                      GraduationTopicChoice, GraduationTopicRound)
+                                    GraduationBatch, GraduationDefenseGroup, GraduationDefenseScore,
+                                    GraduationFinal, GraduationGrade, GraduationGuidance,
+                                    GraduationDefenseExpert, GraduationGradeAppeal,
+                                    GraduationMentor, GraduationMentorAssignment,
+                                    GraduationMentorEval, GraduationMidterm, GraduationPeerReview,
+                                    GraduationPlagiarismCheck, GraduationProposal, GraduationReview,
+                                    GraduationRiskCase,
+                                    GraduationStudent, GraduationStudentEval, GraduationGuidancePlan,
+                                    GraduationTaskBook, GraduationTemplate,
+                                    GraduationTopic, GraduationTopicChangeRequest,
+                                    GraduationTopicChoice, GraduationTopicRound)
 from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup,  # noqa: F401
-                                     EmpJob, EmpMaterial, EmpStudent,
-                                     InternshipEnterpriseContact)
+                                    EmpJob, EmpMaterial, EmpStudent,
+                                    InternshipEnterpriseContact)
 from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
 from app.models.affairs import (AffairsAuditTrail, AffairsClassCadre,  # noqa: F401
                                 AffairsLeaveCancelRecord, AffairsLeaveExtension)
@@ -172,6 +172,17 @@ from app.models.academic_affairs_teaching_class import (  # noqa: F401
     AaTeachingClassRosterVersion,
     AaTeachingClassTeacher,
 )
+from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot  # noqa: F401
+from app.models.academic_affairs_r10 import (  # noqa: F401
+    AaGradeComponentScore,
+    AaGradeSchemeSnapshot,
+    AaStatsSnapshot,
+)
+from app.models.academic_affairs_r11 import (  # noqa: F401
+    AaSemesterPilot,
+    AaSemesterPilotCheckpoint,
+)
+from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicySnapshot  # noqa: F401
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
