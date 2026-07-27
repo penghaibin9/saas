@@ -2,6 +2,7 @@
  * 学生 PC 门户 · 统一请求层。
  * - token 独立 key：sp_token_v1（不碰 miniapp / frontend 管理端的 token）。
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
+ * - 401 单飞刷新并重试一次；刷新失败才清会话，避免长表单因 access token 到期直接丢失。
  * - 绝不调用 /auth/mock-login，绝不免密。
  */
 const TOKEN_KEY = 'sp_token_v1'
@@ -21,6 +22,9 @@ export function getToken() {
 export function setToken(t) {
   try { localStorage.setItem(TOKEN_KEY, t || '') } catch { /* ignore */ }
 }
+export function getRefreshToken() {
+  try { return localStorage.getItem(REFRESH_KEY) || '' } catch { return '' }
+}
 export function setRefreshToken(t) {
   try { localStorage.setItem(REFRESH_KEY, t || '') } catch { /* ignore */ }
 }
@@ -39,7 +43,64 @@ function withQuery(path, params) {
   return `${path}${path.includes('?') ? '&' : '?'}${query.toString()}`
 }
 
-export async function request(path, { method = 'GET', body, auth = true, params, query } = {}) {
+function authError(message = '登录已失效，请重新登录') {
+  const e = new Error(message)
+  e.status = 401
+  e.code = 401001
+  e.biz = true
+  return e
+}
+
+async function responseJson(res) {
+  try { return await res.json() } catch { return null }
+}
+
+let refreshing = null
+async function refreshOnce() {
+  if (refreshing) return refreshing
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) {
+    clearSession()
+    throw authError()
+  }
+  refreshing = (async () => {
+    let res
+    try {
+      res = await fetch(`${API_BASE}${API_PREFIX}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      })
+    } catch {
+      const e = new Error('网络不可达，请检查后端服务')
+      e.network = true
+      throw e
+    }
+    const payload = await responseJson(res)
+    if (!payload || typeof payload.code !== 'number' || res.status === 401 || payload.code !== 0) {
+      throw authError((payload && payload.message) || '登录已失效，请重新登录')
+    }
+    const data = payload.data || {}
+    if (!data.accessToken) throw authError()
+    setToken(data.accessToken)
+    setRefreshToken(data.refreshToken || refreshToken)
+    return data.accessToken
+  })()
+    .catch((e) => {
+      clearSession()
+      throw e
+    })
+    .finally(() => { refreshing = null })
+  return refreshing
+}
+
+function isUnauthorized(res, payload) {
+  return res.status === 401 || (payload && payload.code === 401001)
+}
+
+export async function request(path, {
+  method = 'GET', body, auth = true, params, query, _retried = false
+} = {}) {
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -49,12 +110,18 @@ export async function request(path, { method = 'GET', body, auth = true, params,
     res = await fetch(`${API_BASE}${API_PREFIX}${requestPath}`, {
       method, headers, body: body ? JSON.stringify(body) : undefined
     })
-  } catch (netErr) {
+  } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
-  let payload = null
-  try { payload = await res.json() } catch { payload = null }
-  if (res.status === 401) { clearSession(); const e = new Error('登录已失效，请重新登录'); e.status = 401; throw e }
+  const payload = await responseJson(res)
+  if (isUnauthorized(res, payload)) {
+    if (auth && !_retried && !path.startsWith('/auth/')) {
+      await refreshOnce()
+      return request(path, { method, body, auth, params, query, _retried: true })
+    }
+    clearSession()
+    throw authError((payload && payload.message) || undefined)
+  }
   if (!payload || typeof payload.code !== 'number') {
     const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status; throw e
   }
@@ -68,7 +135,7 @@ export async function request(path, { method = 'GET', body, auth = true, params,
  * 学生门户的文件上传：仅用于先上传、再把 fileId 交给具体业务接口的两步流程。
  * 不给调用方暴露后台接口，也不把文件内容混入普通 JSON 请求。
  */
-export async function uploadFile(path, file, { auth = true } = {}) {
+export async function uploadFile(path, file, { auth = true, _retried = false } = {}) {
   const headers = {}
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -77,12 +144,18 @@ export async function uploadFile(path, file, { auth = true } = {}) {
   let res
   try {
     res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { method: 'POST', headers, body: form })
-  } catch (netErr) {
+  } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
-  let payload = null
-  try { payload = await res.json() } catch { payload = null }
-  if (res.status === 401) { clearSession(); const e = new Error('登录已失效，请重新登录'); e.status = 401; throw e }
+  const payload = await responseJson(res)
+  if (isUnauthorized(res, payload)) {
+    if (auth && !_retried) {
+      await refreshOnce()
+      return uploadFile(path, file, { auth, _retried: true })
+    }
+    clearSession()
+    throw authError((payload && payload.message) || undefined)
+  }
   if (!payload || typeof payload.code !== 'number') {
     const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status; throw e
   }
@@ -93,17 +166,24 @@ export async function uploadFile(path, file, { auth = true } = {}) {
 }
 
 /** 下载受业务关系保护的文件；以 Bearer token 取回 blob，避免把令牌拼进 URL。 */
-export async function downloadFile(path, fallbackName = '毕业设计材料') {
+export async function downloadFile(path, fallbackName = '毕业设计材料', _retried = false) {
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
   let res
   try {
     res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers })
-  } catch (netErr) {
+  } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
-  if (res.status === 401) { clearSession(); const e = new Error('登录已失效，请重新登录'); e.status = 401; throw e }
+  if (res.status === 401) {
+    if (!_retried) {
+      await refreshOnce()
+      return downloadFile(path, fallbackName, true)
+    }
+    clearSession()
+    throw authError()
+  }
   if (!res.ok) {
     const e = new Error('材料下载失败或你已无权访问'); e.status = res.status; throw e
   }
