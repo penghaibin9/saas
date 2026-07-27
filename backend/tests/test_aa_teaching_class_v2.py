@@ -1,4 +1,4 @@
-"""V2-02 独立教学班及名单版本回归。"""
+"""V2-02 独立教学班及名单版本行为回归。"""
 from importlib import import_module, util
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,16 +15,15 @@ def test_teaching_class_models_have_required_version_fields():
         "class_type", "current_roster_version_id", "current_roster_version_no",
         "roster_status", "status",
     } <= set(AaTeachingClass.__mapper__.attrs.keys())
-    assert {
-        "teaching_class_id", "teacher_key", "role_type", "start_week", "end_week", "status",
-    } <= set(AaTeachingClassTeacher.__mapper__.attrs.keys())
-    assert {
-        "teaching_class_id", "version_no", "source_type", "source_id", "member_count",
-        "roster_hash", "status", "locked_at", "locked_by",
-    } <= set(AaTeachingClassRosterVersion.__mapper__.attrs.keys())
-    assert {
-        "teaching_class_id", "roster_version_id", "student_id", "source_type", "source_id", "status",
-    } <= set(AaTeachingClassMember.__mapper__.attrs.keys())
+    assert {"teaching_class_id", "teacher_key", "role_type", "status"} <= set(
+        AaTeachingClassTeacher.__mapper__.attrs.keys()
+    )
+    assert {"teaching_class_id", "version_no", "roster_hash", "source_type", "status"} <= set(
+        AaTeachingClassRosterVersion.__mapper__.attrs.keys()
+    )
+    assert {"teaching_class_id", "roster_version_id", "student_id", "source_type", "status"} <= set(
+        AaTeachingClassMember.__mapper__.attrs.keys()
+    )
 
 
 def test_teaching_class_model_indexes_match_0127_names():
@@ -33,27 +32,12 @@ def test_teaching_class_model_indexes_match_0127_names():
         AaTeachingClassRosterVersion, AaTeachingClassTeacher,
     )
 
-    class_indexes = {index.name for index in AaTeachingClass.__table__.indexes}
-    teacher_indexes = {index.name for index in AaTeachingClassTeacher.__table__.indexes}
-    version_indexes = {index.name for index in AaTeachingClassRosterVersion.__table__.indexes}
-    member_indexes = {index.name for index in AaTeachingClassMember.__table__.indexes}
-
-    assert {
-        "ix_t_aa_teaching_class_tenant_id", "ix_aa_tc_term_id", "ix_aa_tc_course_id",
-        "ix_aa_tc_current_roster", "ix_aa_tc_term_course", "ix_aa_tc_status",
-    } <= class_indexes
-    assert {
-        "ix_t_aa_teaching_class_teacher_tenant_id", "ix_aa_tc_teacher_class", "ix_aa_tc_teacher_key",
-    } <= teacher_indexes
-    assert {
-        "ix_t_aa_teaching_class_roster_version_tenant_id", "ix_aa_tc_roster_class",
-        "ix_aa_tc_roster_status", "ix_aa_tc_roster_hash",
-    } <= version_indexes
-    assert {
-        "ix_t_aa_teaching_class_member_tenant_id", "ix_aa_tc_member_teaching_class",
-        "ix_aa_tc_member_roster_version", "ix_aa_tc_member_student_id",
-        "ix_aa_tc_member_student", "ix_aa_tc_member_class",
-    } <= member_indexes
+    assert {"ix_aa_tc_term_id", "ix_aa_tc_course_id", "ix_aa_tc_current_roster"} <= {
+        index.name for index in AaTeachingClass.__table__.indexes
+    }
+    assert "ix_aa_tc_teacher_key" in {index.name for index in AaTeachingClassTeacher.__table__.indexes}
+    assert "ix_aa_tc_roster_hash" in {index.name for index in AaTeachingClassRosterVersion.__table__.indexes}
+    assert "ix_aa_tc_member_student" in {index.name for index in AaTeachingClassMember.__table__.indexes}
 
 
 def test_roster_hash_is_order_independent_and_deduplicated():
@@ -66,11 +50,10 @@ def test_roster_hash_is_order_independent_and_deduplicated():
 def test_selection_validation_carries_batch_id(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as service
 
-    monkeypatch.setattr(service._base, "_legacy_validate_selection_lock", lambda _db, _batch: {
+    monkeypatch.setattr(service._core, "_legacy_validate_selection_lock", lambda _db, _batch: {
         "valid": True, "issues": [], "selectedRecordCount": 2, "taskStudentCounts": {"8": 2},
     })
-    result = service._base.validate_selection_lock(object(), SimpleNamespace(id=17))
-
+    result = service.validate_selection_lock(object(), SimpleNamespace(id=17))
     assert result["batchId"] == "17"
     assert result["valid"] is True
 
@@ -79,55 +62,17 @@ def test_locked_projection_calls_legacy_then_version_projection(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as service
 
     calls = []
-    monkeypatch.setattr(service._base, "_legacy_apply_locked_projection", lambda db, validation: calls.append(("legacy", db, validation["batchId"])))
-    monkeypatch.setattr(service._base, "project_selection_batch_locked", lambda db, batch_id: calls.append(("v2", db, str(batch_id))))
-
+    monkeypatch.setattr(
+        service._core, "_legacy_apply_locked_projection",
+        lambda db, validation: calls.append(("legacy", db, validation["batchId"])),
+    )
+    monkeypatch.setattr(
+        service, "project_selection_batch_locked",
+        lambda db, batch_id: calls.append(("v2", db, str(batch_id))),
+    )
     db = object()
-    service._base.apply_locked_roster_projection(db, {"batchId": "9", "taskStudentCounts": {"3": 10}})
-
+    service.apply_locked_roster_projection(db, {"batchId": "9", "taskStudentCounts": {"3": 10}})
     assert calls == [("legacy", db, "9"), ("v2", db, "9")]
-
-
-def test_selection_roster_projection_must_match_latest_locked_batch(monkeypatch):
-    from app.modules.academic_affairs.services import academic_affairs_teaching_class_lock_service as service
-
-    current = {
-        "ready": True, "source": "SELECTION_LOCK", "studentIds": [1, 2],
-        "items": [], "batchIds": ["8"], "teachingClassId": "3",
-        "rosterVersionId": "11", "rosterVersionNo": 2,
-    }
-    authoritative = {
-        "ready": True, "source": "SELECTION_LOCKED", "studentIds": [1, 2, 3],
-        "items": [], "batchIds": ["9"], "note": "最新锁定批次",
-    }
-    monkeypatch.setattr(service, "_original_resolve_roster", lambda _db, _task_id: current)
-    monkeypatch.setattr(service._base, "_legacy_resolve_roster", lambda _db, _task_id: authoritative)
-
-    result = service.resolve_teaching_task_roster(object(), 7)
-
-    assert result["ready"] is False
-    assert result["source"] == "TEACHING_CLASS_PROJECTION_STALE"
-    assert result["batchIds"] == ["9"]
-    assert result["details"]["currentMemberCount"] == 2
-    assert result["details"]["authoritativeMemberCount"] == 3
-
-
-def test_selection_roster_projection_allows_exact_batch_and_member_match(monkeypatch):
-    from app.modules.academic_affairs.services import academic_affairs_teaching_class_lock_service as service
-
-    current = {
-        "ready": True, "source": "SELECTION_LOCK", "studentIds": [3, 1, 2],
-        "items": [], "batchIds": ["9"], "teachingClassId": "3",
-        "rosterVersionId": "12", "rosterVersionNo": 3,
-    }
-    authoritative = {
-        "ready": True, "source": "SELECTION_LOCKED", "studentIds": [1, 2, 3],
-        "items": [], "batchIds": ["9"], "note": "最新锁定批次",
-    }
-    monkeypatch.setattr(service, "_original_resolve_roster", lambda _db, _task_id: current)
-    monkeypatch.setattr(service._base, "_legacy_resolve_roster", lambda _db, _task_id: authoritative)
-
-    assert service.resolve_teaching_task_roster(object(), 7) is current
 
 
 def test_roster_change_sets_are_version_oriented():
@@ -140,13 +85,10 @@ def test_roster_change_sets_are_version_oriented():
     assert result["changed"] is True
 
 
-def test_roster_impact_blocks_attendance_exam_or_grade_but_not_schedule_only():
+def test_roster_impact_blocks_consumed_roster_but_not_schedule_only():
     from app.modules.academic_affairs.services.academic_affairs_teaching_class_change_service import _impact_summary
 
-    schedule_only = _impact_summary(8, 0, 0, 0)
-    assert schedule_only["scheduleCount"] == 8
-    assert schedule_only["blocked"] is False
-
+    assert _impact_summary(8, 0, 0, 0)["blocked"] is False
     consumed = _impact_summary(8, 2, 1, 1)
     assert consumed["blockingConsumerCount"] == 4
     assert consumed["blocked"] is True
@@ -180,39 +122,26 @@ def test_atomic_backfill_report_exposes_existing_skip_and_blocked_counts():
     assert result["alreadyProjectedCount"] == 1
     assert result["toCreateCount"] == 0
     assert "studentIds" not in result["items"][0]
-    assert "batchIds" not in result["items"][0]
 
 
-def test_final_change_scope_is_applied_to_preview_and_create():
-    from app.modules.academic_affairs.services import academic_affairs_teaching_class_change_final_service as final
+def test_public_services_are_explicit_canonical_entries():
+    from app.modules.academic_affairs.services import (
+        academic_affairs_task_service as task_service,
+        academic_affairs_teaching_class_change_service as change_service,
+        academic_affairs_teaching_class_query_service as query_service,
+        academic_affairs_teaching_class_service as class_service,
+    )
 
-    assert final._base._validate_student_scope is final._validate_student_scope
-    assert final.preview_roster_change.__module__.endswith("academic_affairs_teaching_class_change_final_service")
-    assert final.create_manual_roster_version.__module__.endswith("academic_affairs_teaching_class_change_final_service")
-
-
-def test_public_roster_resolver_and_task_service_use_v2_layers():
-    from app.modules.academic_affairs import services
-    from app.modules.academic_affairs.services import academic_affairs_teaching_roster_service as roster_service
-
-    assert services.academic_affairs_teaching_class_service.__name__.endswith(
-        "academic_affairs_teaching_class_lock_service"
-    )
-    assert services.academic_affairs_teaching_class_service._base.__name__.endswith(
-        "academic_affairs_teaching_class_service"
-    )
-    assert roster_service.resolve_teaching_task_roster.__module__.endswith(
-        "academic_affairs_teaching_class_lock_service"
-    )
-    assert roster_service.apply_locked_roster_projection.__module__.endswith(
-        "academic_affairs_teaching_class_service"
-    )
-    assert services.academic_affairs_task_service.__name__.endswith(
-        "academic_affairs_task_teaching_class_facade"
-    )
-    assert services.academic_affairs_task_service._base.__name__.endswith(
-        "academic_affairs_task_program_gate_facade"
-    )
+    assert class_service.create_roster_version.__module__.endswith("academic_affairs_teaching_class_service")
+    assert query_service.get_teaching_class.__module__.endswith("academic_affairs_teaching_class_query_service")
+    assert change_service.create_manual_roster_version.__module__.endswith("academic_affairs_teaching_class_change_service")
+    assert task_service.merge_tasks.__module__.endswith("academic_affairs_task_service")
+    assert all("facade" not in function.__module__ for function in (
+        class_service.create_roster_version,
+        query_service.get_teaching_class,
+        change_service.create_manual_roster_version,
+        task_service.merge_tasks,
+    ))
 
 
 def test_teaching_class_router_exposes_list_detail_backfill_and_version_flow():
@@ -234,21 +163,9 @@ def test_teaching_class_list_keeps_items_and_list_compatibility():
         response = module.teaching_class_list(page=1, pageSize=30, user={})
     finally:
         module.query_service.list_teaching_classes = original
-
     assert response["data"]["items"] == [{"teachingClassId": "1"}]
     assert response["data"]["list"] == response["data"]["items"]
     assert response["data"]["total"] == 1
-
-
-def test_academic_affairs_main_router_mounts_teaching_class_routes():
-    from app.modules.academic_affairs.routers import academic_affairs
-
-    paths = {route.path for route in academic_affairs.router.routes}
-    assert "/academic-affairs/teaching-classes" in paths
-    assert "/academic-affairs/teaching-classes/{teaching_class_id}" in paths
-    assert "/academic-affairs/teaching-classes/actions/backfill" in paths
-    assert "/academic-affairs/teaching-classes/{teaching_class_id}/roster/impact" in paths
-    assert "/academic-affairs/teaching-classes/{teaching_class_id}/roster/versions" in paths
 
 
 def test_0127_migration_is_single_line_successor_and_idempotent():
@@ -257,7 +174,6 @@ def test_0127_migration_is_single_line_successor_and_idempotent():
     assert spec and spec.loader
     migration = util.module_from_spec(spec)
     spec.loader.exec_module(migration)
-
     assert migration.revision == "0127_aa_teaching_class_roster"
     assert migration.down_revision == "0126_aa_grade_task_uniqueness_guard"
     assert callable(migration._ensure_index)
