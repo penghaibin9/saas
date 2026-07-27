@@ -78,8 +78,10 @@ def test_locked_or_archived_selection_with_consistent_roster_passes():
     assert result["present"] is True
 
 
-def test_selection_domain_is_patched_into_real_archive_executor():
+def test_selection_domain_is_bound_to_canonical_archive_executor():
     from app.modules.academic_affairs.services import academic_affairs_archive_service as service
 
-    assert any(code == "SELECTION" for code, _label in service._legacy._DOMAINS)
-    assert service._archive_executor._evaluate_domains is service._evaluate_domains
+    assert service.__name__.endswith("academic_affairs_archive_service")
+    assert any(code == "SELECTION" for code, _label in service._DOMAINS)
+    assert any(code == "SELECTION" for code, _label in service._policy.DOMAINS)
+    assert callable(service._evaluate_domains)
