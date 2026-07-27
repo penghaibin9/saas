@@ -1,0 +1,40 @@
+name: Student Affairs Integration
+
+on:
+  push:
+    branches:
+      - codex/student-affairs-integration-20260727
+
+permissions:
+  contents: write
+
+jobs:
+  merge-diagnosis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: codex/student-affairs-integration-20260727
+      - name: Merge feature branch and report conflicts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin codex/student-affairs-four-end-hardening-20260726
+          set +e
+          git merge --no-ff --no-commit origin/codex/student-affairs-four-end-hardening-20260726
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::group::CONFLICT_FILES"
+            git diff --name-only --diff-filter=U
+            echo "::endgroup::"
+            echo "::group::STATUS"
+            git status --short
+            echo "::endgroup::"
+            exit 1
+          fi
+          echo "Merge has no textual conflicts."
+          git merge --abort || true
