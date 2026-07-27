@@ -1,26 +1,15 @@
-"""补考重修免修学生身份最终保护层。
+"""补考重修免修学生身份历史兼容入口。
 
-学生入口缺少真实StudentProfile时返回业务404，禁止在重修/免修申请中继续访问None属性形成500。
+学生本人解析已收口到 ``academic_affairs_makeup_service._student``，无法建立唯一绑定时直接404。
 """
 from __future__ import annotations
 
-from app.core.exceptions import not_found
+from . import academic_affairs_makeup_service as _canonical
 
-from . import academic_affairs_makeup_term_facade as _base
-
-_legacy = _base._legacy
-_original_student = _legacy._student
+_base = _canonical
+_legacy = _canonical
+_required_student = _canonical._student
 
 
 def __getattr__(name):
-    return getattr(_base, name)
-
-
-def _required_student(db):
-    student = _original_student(db)
-    if not student:
-        raise not_found("学生档案不存在")
-    return student
-
-
-_legacy._student = _required_student
+    return getattr(_canonical, name)
