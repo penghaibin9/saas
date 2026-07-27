@@ -11,3 +11,4 @@ from . import academic_affairs_autoschedule_final_service as academic_affairs_au
 from . import academic_affairs_schedule_final_service as academic_affairs_schedule_service
 from . import academic_affairs_exam_facade as academic_affairs_exam_service
 from . import academic_affairs_textbook_final_facade as academic_affairs_textbook_service
+from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
