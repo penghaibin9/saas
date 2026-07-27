@@ -1,4 +1,8 @@
-"""按域注册 /api/v1 路由（路径/依赖与历史 router.py 完全一致，仅拆分维护）。"""
+"""按域显式注册 /api/v1 路由。
+
+禁止依赖包导入副作用修改 Router；所有新增路由必须在这里明确登记。
+重复路径必须先合并回原 Router，不能通过运行时删除旧 APIRoute 抢占。
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -12,16 +16,17 @@ from app.core.security import require_staff
 def _require_aa_route_user(user=Depends(require_module("academicAffairs"))):
     from app.core.exceptions import no_permission
     from app.core.security import STAFF_USER_TYPES
-    ut = (user.get("userType") or "").strip().upper()
-    if ut == "STUDENT":
+
+    user_type = (user.get("userType") or "").strip().upper()
+    if user_type == "STUDENT":
         return user
-    if ut not in STAFF_USER_TYPES:
+    if user_type not in STAFF_USER_TYPES:
         raise no_permission("该接口仅教职工可用，请使用个人/家长门户")
     return user
 
 
 def build_deps():
-    """统一模块门禁依赖；禁止在注册处再手工拼装导致漂移。"""
+    """统一模块门禁依赖，禁止在注册处重复拼装。"""
     return {
         "gd": [
             Depends(require_staff),
@@ -72,23 +77,26 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_visit_plan,
     )
 
-    d = deps["intern"]
-    api_router.include_router(internship.router, dependencies=d)
-    api_router.include_router(internship_position.router, dependencies=d)
-    api_router.include_router(internship_agreement_template.router, dependencies=d)
-    api_router.include_router(internship_student.router, dependencies=d)
-    api_router.include_router(internship_match.router, dependencies=d)
-    api_router.include_router(internship_participant.router, dependencies=d)
-    api_router.include_router(internship_application.router, dependencies=d)
-    api_router.include_router(internship_archive.router, dependencies=d)
-    api_router.include_router(internship_stats.router, dependencies=d)
-    api_router.include_router(internship_plan.router, dependencies=d)
-    api_router.include_router(internship_insurance.router, dependencies=d)
-    api_router.include_router(internship_process.router, dependencies=d)
-    api_router.include_router(internship_communication.router, dependencies=d)
-    api_router.include_router(internship_visit_plan.router, dependencies=d)
-    api_router.include_router(internship_complaint.router, dependencies=d)
-    api_router.include_router(internship_compliance.router, dependencies=d)
+    dependency = deps["intern"]
+    for module in (
+        internship,
+        internship_position,
+        internship_agreement_template,
+        internship_student,
+        internship_match,
+        internship_participant,
+        internship_application,
+        internship_archive,
+        internship_stats,
+        internship_plan,
+        internship_insurance,
+        internship_process,
+        internship_communication,
+        internship_visit_plan,
+        internship_complaint,
+        internship_compliance,
+    ):
+        api_router.include_router(module.router, dependencies=dependency)
 
 
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
@@ -99,24 +107,45 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
 
 
+def _academic_affairs_extension_routers():
+    """返回已确认无重复路径、无运行时替换的教务扩展 Router。
+
+    成绩身份和排课规则仍与历史路径重叠，完成原 Router 合并前不得注册。
+    考场异常、教材写闭环和教师移动批量成绩仍依赖待收口 Facade，完成 Service 合并前不得注册。
+    """
+    from app.modules.academic_affairs.routers import (
+        dashboard_readiness_router,
+        dynamic_grade_router,
+        program_quality_router,
+        semester_pilot_router,
+        stats_snapshot_router,
+        student_exam_router,
+        teaching_class_router,
+        teaching_task_workbench_router,
+        term_detail_router,
+    )
+
+    return (
+        dashboard_readiness_router,
+        dynamic_grade_router,
+        program_quality_router,
+        semester_pilot_router,
+        stats_snapshot_router,
+        student_exam_router,
+        teaching_class_router,
+        teaching_task_workbench_router,
+        term_detail_router,
+    )
+
+
 def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
-    from app.modules.academic_affairs.routers import (
-        academic_affairs,
-        exam_incident_closure_router,
-        program_quality_router,
-        student_exam_router,
-        teaching_task_workbench_router,
-        textbook_closure_router,
-    )
+    from app.modules.academic_affairs.routers import academic_affairs
 
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
-    api_router.include_router(program_quality_router.router, dependencies=deps["aa"])
-    api_router.include_router(exam_incident_closure_router.router, dependencies=deps["aa"])
-    api_router.include_router(teaching_task_workbench_router.router, dependencies=deps["aa"])
-    api_router.include_router(student_exam_router.router, dependencies=deps["aa"])
-    api_router.include_router(textbook_closure_router.router, dependencies=deps["aa"])
+    for module in _academic_affairs_extension_routers():
+        api_router.include_router(module.router, dependencies=deps["aa"])
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
@@ -142,24 +171,51 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
         graduation_topic_round,
     )
 
-    d = deps["gd"]
-    for r in (
-        graduation, graduation_batch, graduation_student, graduation_topic,
-        graduation_topic_round, graduation_topic_change, graduation_mentor,
-        graduation_taskbook, graduation_guidance, graduation_midterm,
-        graduation_student_eval, graduation_review, graduation_defense_score,
-        graduation_grade, graduation_risk, graduation_archive, graduation_stats,
-        graduation_template, graduation_more,
+    dependency = deps["gd"]
+    for module in (
+        graduation,
+        graduation_batch,
+        graduation_student,
+        graduation_topic,
+        graduation_topic_round,
+        graduation_topic_change,
+        graduation_mentor,
+        graduation_taskbook,
+        graduation_guidance,
+        graduation_midterm,
+        graduation_student_eval,
+        graduation_review,
+        graduation_defense_score,
+        graduation_grade,
+        graduation_risk,
+        graduation_archive,
+        graduation_stats,
+        graduation_template,
+        graduation_more,
     ):
-        api_router.include_router(r.router, dependencies=d)
+        api_router.include_router(module.router, dependencies=dependency)
 
 
 def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
-        audit, dashboard, feedback, implementation, import_export,
-        migration, mobile, mobile_export, mobile_orientation_teacher,
-        national_standards, notification, onboarding, org_directory, platform, stats, system,
-        transfer, user_preference,
+        audit,
+        dashboard,
+        feedback,
+        implementation,
+        import_export,
+        migration,
+        mobile,
+        mobile_export,
+        mobile_orientation_teacher,
+        national_standards,
+        notification,
+        onboarding,
+        org_directory,
+        platform,
+        stats,
+        system,
+        transfer,
+        user_preference,
     )
     from app.api.v1 import message as message_simple
     from app.api.v1 import message_center as message_center_api
@@ -187,7 +243,9 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(mobile_orientation_teacher.router)
     api_router.include_router(mobile.router)
     api_router.include_router(student_portal_router)
+
     from app.api.v1 import student_portal_admin
+
     api_router.include_router(student_portal_admin.router)
     api_router.include_router(onboarding.router)
     api_router.include_router(implementation.router)
@@ -201,16 +259,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
 
 
 def register_all_routes(api_router: APIRouter) -> None:
-    """注册顺序与拆分前 router.py 一致。"""
-    from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
-    from app.modules.academic_affairs.routers import (
-        academic_affairs,
-        exam_incident_closure_router,
-        program_quality_router,
-        student_exam_router,
-        teaching_task_workbench_router,
-        textbook_closure_router,
-    )
+    """注册顺序与拆分前 router.py 保持一致。"""
+    from app.api.v1 import approval, excel, student
     from app.modules.employment.routers import employment
 
     deps = build_deps()
@@ -218,17 +268,9 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(student.router)
     api_router.include_router(approval.router)
     register_internship_routes(api_router, deps)
-    api_router.include_router(orientation.router, dependencies=deps["orientation"])
-    api_router.include_router(campus_service.router, dependencies=deps["cs"])
-    api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
+    register_student_affairs_routes(api_router, deps)
+    register_academic_affairs_routes(api_router, deps)
     register_graduation_routes(api_router, deps)
     api_router.include_router(excel.router)
     api_router.include_router(employment.router, dependencies=deps["employment"])
-    api_router.include_router(student_affairs.router, dependencies=deps["sa"])
-    api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
-    api_router.include_router(program_quality_router.router, dependencies=deps["aa"])
-    api_router.include_router(exam_incident_closure_router.router, dependencies=deps["aa"])
-    api_router.include_router(teaching_task_workbench_router.router, dependencies=deps["aa"])
-    api_router.include_router(student_exam_router.router, dependencies=deps["aa"])
-    api_router.include_router(textbook_closure_router.router, dependencies=deps["aa"])
     register_platform_routes(api_router)
