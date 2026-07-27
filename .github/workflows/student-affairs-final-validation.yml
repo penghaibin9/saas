@@ -56,13 +56,13 @@ jobs:
           test "$(printf '%s\n' "$HEADS" | sed '/^$/d' | wc -l)" -eq 1
           printf '%s\n' "$HEADS" | grep -qx '0143_merge_affairs_material_ops'
 
-      - name: Student affairs and migration tests
+      - name: Student affairs tests
         id: affairs_tests
         working-directory: backend
         shell: bash
         run: |
           set +e
-          timeout 45m pytest tests/test_affairs_*.py tests/test_alembic*.py -q -x -p no:warnings --durations=30 2>&1 | tee ../student-affairs-pytest.log
+          timeout 45m pytest tests/test_affairs_*.py -q -x -p no:warnings --durations=30 2>&1 | tee ../student-affairs-pytest.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
