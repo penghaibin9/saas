@@ -2,16 +2,25 @@
 
 保持主线既有路径、依赖、注册顺序与安全守卫；教务扩展 Router 必须在这里显式登记，
 禁止依赖包导入副作用、运行时替换 Router 或通过注册顺序抢占重复路径。
+
+当前长期分支早于主线部分毕业设计/实习安全扩展。为使分支可独立验证，又不在最终合并时
+覆盖主线守卫，本文件仅在对应主线模块真实存在时启用扩展；模块存在但导入失败仍直接报错，
+绝不吞掉实现错误。
 """
 from __future__ import annotations
+
+from importlib.util import find_spec
 
 from fastapi import APIRouter, Depends
 
 from app.core.config import settings
 from app.core.graduation_permissions import require_graduation_request_permission
-from app.core.mobile_graduation_permissions import require_mobile_graduation_request_permission
 from app.core.permissions import require_module
 from app.core.security import require_staff
+
+
+def _module_exists(module_name: str) -> bool:
+    return find_spec(module_name) is not None
 
 
 def _require_aa_route_user(user=Depends(require_module("academicAffairs"))):
@@ -142,26 +151,23 @@ def register_academic_affairs_extensions(api_router: APIRouter, deps: dict) -> N
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
-    from app.modules.graduation.services.graduation_consistency_install import install_consistency_guards
+    if _module_exists("app.modules.graduation.services.graduation_consistency_install"):
+        from app.modules.graduation.services.graduation_consistency_install import install_consistency_guards
 
-    install_consistency_guards()
+        install_consistency_guards()
+
     from app.modules.graduation.routers import (
         graduation,
         graduation_archive,
-        graduation_archive_sensitive_router,
         graduation_batch,
         graduation_defense_score,
-        graduation_extension,
         graduation_grade,
         graduation_guidance,
-        graduation_material_sensitive_router,
         graduation_mentor,
         graduation_midterm,
         graduation_more,
-        graduation_p0_guard,
         graduation_review,
         graduation_risk,
-        graduation_sensitive_router,
         graduation_stats,
         graduation_student,
         graduation_student_eval,
@@ -173,14 +179,31 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     )
 
     dependency = deps["gd"]
-    api_router.include_router(graduation_p0_guard.router, dependencies=dependency)
-    api_router.include_router(graduation_sensitive_router.router, dependencies=dependency)
-    api_router.include_router(graduation_archive_sensitive_router.router, dependencies=dependency)
-    api_router.include_router(graduation_material_sensitive_router.router, dependencies=dependency)
-    api_router.include_router(
-        graduation_extension.router,
-        dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
+    sensitive_modules = (
+        "app.modules.graduation.routers.graduation_p0_guard",
+        "app.modules.graduation.routers.graduation_sensitive_router",
+        "app.modules.graduation.routers.graduation_archive_sensitive_router",
+        "app.modules.graduation.routers.graduation_material_sensitive_router",
+        "app.modules.graduation.routers.graduation_extension",
     )
+    if all(_module_exists(name) for name in sensitive_modules):
+        from app.modules.graduation.routers import (
+            graduation_archive_sensitive_router,
+            graduation_extension,
+            graduation_material_sensitive_router,
+            graduation_p0_guard,
+            graduation_sensitive_router,
+        )
+
+        api_router.include_router(graduation_p0_guard.router, dependencies=dependency)
+        api_router.include_router(graduation_sensitive_router.router, dependencies=dependency)
+        api_router.include_router(graduation_archive_sensitive_router.router, dependencies=dependency)
+        api_router.include_router(graduation_material_sensitive_router.router, dependencies=dependency)
+        api_router.include_router(
+            graduation_extension.router,
+            dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
+        )
+
     for module in (
         graduation,
         graduation_batch,
@@ -215,12 +238,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
         migration,
         mobile,
         mobile_export,
-        mobile_graduation_extension_teacher,
-        mobile_graduation_guard,
-        mobile_graduation_teacher_context,
-        mobile_internship_context,
-        mobile_internship_leave_context,
-        mobile_internship_student,
         mobile_orientation_teacher,
         national_standards,
         notification,
@@ -228,7 +245,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
         org_directory,
         platform,
         stats,
-        student_portal_graduation_guard,
         system,
         transfer,
         user_preference,
@@ -258,32 +274,69 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
 
-    from app.modules.graduation.services.graduation_record_resolver import install_mobile_resolver
-    from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
-    from app.modules.graduation.services.graduation_mobile_taskbook_bridge import install_mobile_taskbook_list_bridge
-
-    install_mobile_resolver()
-    install_mobile_stable_bridge()
-    install_mobile_taskbook_list_bridge()
-    teacher_mobile_deps = [Depends(require_staff), Depends(require_module("graduation"))]
-    api_router.include_router(mobile_graduation_extension_teacher.router, dependencies=teacher_mobile_deps)
-    api_router.include_router(
-        mobile_graduation_teacher_context.router,
-        dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
+    mobile_security_modules = (
+        "app.core.mobile_graduation_permissions",
+        "app.api.v1.mobile_graduation_extension_teacher",
+        "app.api.v1.mobile_graduation_guard",
+        "app.api.v1.mobile_graduation_teacher_context",
+        "app.modules.graduation.services.graduation_record_resolver",
+        "app.modules.graduation.services.graduation_mobile_stable_bridge",
+        "app.modules.graduation.services.graduation_mobile_taskbook_bridge",
     )
-    api_router.include_router(mobile_graduation_guard.router)
-    api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
+    if all(_module_exists(name) for name in mobile_security_modules):
+        from app.api.v1 import (
+            mobile_graduation_extension_teacher,
+            mobile_graduation_guard,
+            mobile_graduation_teacher_context,
+        )
+        from app.core.mobile_graduation_permissions import require_mobile_graduation_request_permission
+        from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
+        from app.modules.graduation.services.graduation_mobile_taskbook_bridge import install_mobile_taskbook_list_bridge
+        from app.modules.graduation.services.graduation_record_resolver import install_mobile_resolver
 
-    from app.core.student_portal_module_gate import enforce_student_portal_module_access
-    from app.student_portal.internship_router import router as student_portal_internship_router
+        install_mobile_resolver()
+        install_mobile_stable_bridge()
+        install_mobile_taskbook_list_bridge()
+        teacher_mobile_deps = [Depends(require_staff), Depends(require_module("graduation"))]
+        api_router.include_router(mobile_graduation_extension_teacher.router, dependencies=teacher_mobile_deps)
+        api_router.include_router(
+            mobile_graduation_teacher_context.router,
+            dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
+        )
+        api_router.include_router(mobile_graduation_guard.router)
+        api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
+    else:
+        api_router.include_router(mobile.router)
 
-    api_router.include_router(mobile_internship_context.router)
-    api_router.include_router(mobile_internship_leave_context.router)
-    api_router.include_router(mobile_internship_student.router)
-    api_router.include_router(student_portal_graduation_guard.router)
-    api_router.include_router(student_portal_router)
-    portal_gate = [Depends(enforce_student_portal_module_access)]
-    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)
+    student_portal_security_modules = (
+        "app.api.v1.mobile_internship_context",
+        "app.api.v1.mobile_internship_leave_context",
+        "app.api.v1.mobile_internship_student",
+        "app.api.v1.student_portal_graduation_guard",
+        "app.core.student_portal_module_gate",
+        "app.student_portal.internship_router",
+    )
+    if all(_module_exists(name) for name in student_portal_security_modules):
+        from app.api.v1 import (
+            mobile_internship_context,
+            mobile_internship_leave_context,
+            mobile_internship_student,
+            student_portal_graduation_guard,
+        )
+        from app.core.student_portal_module_gate import enforce_student_portal_module_access
+        from app.student_portal.internship_router import router as student_portal_internship_router
+
+        api_router.include_router(mobile_internship_context.router)
+        api_router.include_router(mobile_internship_leave_context.router)
+        api_router.include_router(mobile_internship_student.router)
+        api_router.include_router(student_portal_graduation_guard.router)
+        api_router.include_router(student_portal_router)
+        api_router.include_router(
+            student_portal_internship_router,
+            dependencies=[Depends(enforce_student_portal_module_access)],
+        )
+    else:
+        api_router.include_router(student_portal_router)
 
     from app.api.v1 import student_portal_admin
 
