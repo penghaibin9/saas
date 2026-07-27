@@ -1,4 +1,4 @@
-import { realRequest } from '@/services/request'
+import { realDownload, realRequest, realUpload } from '@/services/request'
 
 /**
  * 学工四端专用契约。
@@ -23,7 +23,18 @@ export const affairsContractApi = {
     method: 'POST', data: { newEndTime, reason, version }
   }),
 
-  // 学生宿舍与活动
+  // 学生材料缺项与逐版本补交
+  getMyMaterialRequirements: () => realRequest('/mobile/affairs/material-requirements'),
+  uploadMaterialFile: (filePath) => realUpload('/files', filePath, {
+    formData: { bizType: 'MATERIAL_SUPPLEMENT' }
+  }),
+  submitMaterialVersion: (requirementId, fileId, note, version) =>
+    realRequest(`/mobile/affairs/material-requirements/${requirementId}/submissions`, {
+      method: 'POST', data: { fileId, note: note || '', version }
+    }),
+  downloadMaterialFile: (fileId) => realDownload(`/files/download/${fileId}`),
+
+  // 宿舍正式调宿
   getDormTransferOptions: () => realRequest('/mobile/affairs/dorm/transfer-options'),
   getDormTransferRooms: (buildingId) => realRequest(`/mobile/affairs/dorm/transfer-buildings/${buildingId}/rooms`),
   getDormTransferBeds: (roomId) => realRequest(`/mobile/affairs/dorm/transfer-rooms/${roomId}/beds`),
@@ -74,6 +85,26 @@ export const affairsContractApi = {
   }),
   closeRisk: (riskId, conclusion, version) => realRequest(`/mobile/teacher/affairs/risk/${riskId}/close`, {
     method: 'POST', data: { conclusion, version }
+  }),
+
+  // 教师材料审核和安全批量提醒
+  getMaterialRequirements: (status = '') => realRequest('/student-affairs/material-requirements', {
+    data: { status, page: 1, pageSize: 100 }
+  }),
+  reviewMaterialRequirement: (requirementId, action, reason, version) =>
+    realRequest(`/student-affairs/material-requirements/${requirementId}/review`, {
+      method: 'POST', data: { action, reason: reason || '', version }
+    }),
+  createMaterialReminderBatch: (items, idempotencyKey) => realRequest('/student-affairs/batch-jobs', {
+    method: 'POST',
+    data: { jobType: 'MATERIAL_REMIND', idempotencyKey, items }
+  }),
+  getMaterialBatchJobs: () => realRequest('/student-affairs/batch-jobs', {
+    data: { page: 1, pageSize: 50 }
+  }),
+  getMaterialBatchJob: (jobId) => realRequest(`/student-affairs/batch-jobs/${jobId}`),
+  retryMaterialBatchFailed: (jobId) => realRequest(`/student-affairs/batch-jobs/${jobId}/retry-failed`, {
+    method: 'POST'
   }),
 
   // 教师宿舍、谈话、心理、活动签到
