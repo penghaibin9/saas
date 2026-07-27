@@ -49,9 +49,14 @@ const closureFiles = [
 ]
 closureFiles.forEach(([file, label]) => requireFile(file, label))
 
+// 2026-07-27 收口：PC 毕设 API 已重构为 callStrict/listStrict 生产路径——
+// 失败统一走 toErr() 透出业务码/503001，不存在 mock 业务数据回退，比旧版
+// canUseMockFallback() 守卫更严格。直接校验这条不回退的真实代码不变量。
 const pcApi = read('frontend/src/modules/graduation/api/graduation.api.js')
-if (!pcApi.includes('canUseMockFallback()')) failures.push('PC 毕设 API 未经生产 mock fallback 闸门')
-if (/catch\s*\([^)]*\)\s*\{[^}]*return\s+mockFn\(\)/s.test(pcApi) && !pcApi.includes('if (canUseMockFallback()) return mockFn()')) {
+if (!/function\s+toErr\s*\([^)]*\)\s*\{/.test(pcApi) || !pcApi.includes('code: 503001')) {
+  failures.push('PC 毕设 API 缺少生产失败透出业务码/503001 的 toErr 实现')
+}
+if (/catch\s*\([^)]*\)\s*\{[^}]*return\s+mockFn\(\)/s.test(pcApi)) {
   failures.push('PC 毕设 API 存在无条件 mock 回退')
 }
 
