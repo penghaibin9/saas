@@ -1,7 +1,7 @@
-"""V2-02 教学班管理写动作最终层。
+"""教学班存量回填管理 Service。
 
-正式回填采用单事务全有或全无：先完成当前数据范围内全部教学任务名单对账，存在任何未就绪项时
-零写入；已有正式版本成员一致则幂等跳过，成员不一致则阻断，绝不覆盖人工或选课版本。
+正式回填单事务全有或全无：先完成当前范围内全部教学任务名单对账，任何未就绪项都零写入；
+已有正式版本成员一致则幂等跳过，成员不一致则阻断，绝不覆盖人工或选课版本。
 """
 from __future__ import annotations
 
@@ -9,19 +9,14 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
 from app.services.db_service import _tid, session
 
-from . import academic_affairs_teaching_class_query_service as _base
-from . import academic_affairs_teaching_class_lock_service as _teaching_class
-from .academic_affairs_task_security_facade import _scope
-
-
-def __getattr__(name):
-    return getattr(_base, name)
+from . import academic_affairs_task_service as task_service
+from . import academic_affairs_teaching_class_service as teaching_class_service
 
 
 def _scoped_tasks(db, user, term_id: int):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
-    scope = _scope(user, db)
+    scope = task_service._scope(user, db)
     batches = db.query(AaTeachingTaskBatch).filter(
         AaTeachingTaskBatch.tenant_id == _tid(),
         AaTeachingTaskBatch.term_id == int(term_id),
@@ -41,15 +36,11 @@ def _scoped_tasks(db, user, term_id: int):
     for row in tasks:
         batch = batch_by_id.get(int(row.batch_id))
         in_college = bool(
-            scope.college_ids
-            and batch
-            and batch.college_id
+            scope.college_ids and batch and batch.college_id
             and int(batch.college_id) in scope.college_ids
         )
         in_class = bool(
-            scope.class_ids
-            and row.class_id
-            and int(row.class_id) in scope.class_ids
+            scope.class_ids and row.class_id and int(row.class_id) in scope.class_ids
         )
         if in_college or in_class:
             allowed.append(row)
@@ -61,7 +52,7 @@ def _preview_rows(db, tasks):
 
     report = []
     for task in tasks:
-        legacy = _teaching_class._legacy_resolve_roster(db, int(task.id))
+        legacy = teaching_class_service._legacy_resolve_roster(db, int(task.id))
         legacy_ids = sorted({int(value) for value in (legacy.get("studentIds") or [])})
         teaching_class = db.query(AaTeachingClass).filter(
             AaTeachingClass.tenant_id == _tid(),
@@ -69,14 +60,12 @@ def _preview_rows(db, tasks):
             AaTeachingClass.is_deleted.is_(False),
         ).first()
         current = (
-            _teaching_class._new_roster_dto(db, teaching_class)
-            if teaching_class and teaching_class.current_roster_version_id
-            else None
+            teaching_class_service._new_roster_dto(db, teaching_class)
+            if teaching_class and teaching_class.current_roster_version_id else None
         )
         authoritative = (
-            _teaching_class.resolve_teaching_task_roster(db, int(task.id))
-            if teaching_class and teaching_class.current_roster_version_id
-            else None
+            teaching_class_service.resolve_teaching_task_roster(db, int(task.id))
+            if teaching_class and teaching_class.current_roster_version_id else None
         )
 
         existing_projected = bool(current and current.get("ready"))
@@ -97,15 +86,12 @@ def _preview_rows(db, tasks):
 
         ready_for_backfill = bool(
             not blocked_reason
-            and (
-                existing_projected
-                or (legacy.get("ready") and legacy_ids)
-            )
+            and (existing_projected or (legacy.get("ready") and legacy_ids))
         )
         report.append({
             "teachingTaskId": str(task.id),
             "courseName": task.course_name or "",
-            "className": task.teaching_class_name or task.class_name or "",
+            "className": task.teaching_class_name or str(getattr(task, "class_name", None) or ""),
             "legacyReady": bool(legacy.get("ready")),
             "legacySource": legacy.get("source") or "",
             "legacyMemberCount": len(legacy_ids),
@@ -126,10 +112,8 @@ def _public_report(term_id: int, dry_run: bool, rows):
     ready_count = sum(1 for row in items if row["readyForBackfill"])
     existing_count = sum(1 for row in items if row["existingProjected"] and row["readyForBackfill"])
     return {
-        "termId": str(term_id),
-        "dryRun": bool(dry_run),
-        "taskCount": len(items),
-        "readyCount": ready_count,
+        "termId": str(term_id), "dryRun": bool(dry_run),
+        "taskCount": len(items), "readyCount": ready_count,
         "blockedCount": len(items) - ready_count,
         "alreadyProjectedCount": existing_count,
         "toCreateCount": ready_count - existing_count,
@@ -138,7 +122,7 @@ def _public_report(term_id: int, dry_run: bool, rows):
 
 
 def backfill_teaching_classes(user, term_id: int, dry_run=True, reason=""):
-    reason_text = (reason or "").strip()
+    reason_text = str(reason or "").strip()
     if not dry_run and len(reason_text) < 5:
         raise AppException("VALIDATION_ERROR", "执行教学班回填必须填写不少于5字的原因")
 
@@ -154,7 +138,6 @@ def backfill_teaching_classes(user, term_id: int, dry_run=True, reason=""):
         if not tasks:
             db.rollback()
             raise AppException("DATA_CONFLICT", "当前学期和数据范围没有可回填的教学任务", http_status=409)
-
         blocked = [row for row in report_rows if not row["readyForBackfill"]]
         if blocked:
             db.rollback()
@@ -171,38 +154,32 @@ def backfill_teaching_classes(user, term_id: int, dry_run=True, reason=""):
             if row["existingProjected"]:
                 skipped_count += 1
                 continue
-            teaching_class = _teaching_class.ensure_teaching_class_for_task(
+            teaching_class = teaching_class_service.ensure_teaching_class_for_task(
                 db, int(task.id), initialize_admin_roster=False,
             )
             source_type = "SELECTION_LOCK" if row["legacySource"] == "SELECTION_LOCKED" else "ADMIN_CLASS"
             source_id = int(row["batchIds"][0]) if row["batchIds"] else task.class_id
-            _teaching_class.create_roster_version(
-                db,
-                teaching_class,
-                row["studentIds"],
-                source_type=source_type,
-                source_id=source_id,
+            teaching_class_service.create_roster_version(
+                db, teaching_class, row["studentIds"],
+                source_type=source_type, source_id=source_id,
                 reason=f"V2-02存量回填：{reason_text}",
             )
             created_count += 1
 
-        ctx = get_current_user_ctx() or {}
+        context = get_current_user_ctx() or {}
         db.add(AffairsAuditTrail(
-            tenant_id=_tid(),
-            biz_type="AA_TEACHING_CLASS",
-            biz_id=int(term_id),
-            action="TEACHING_CLASS_BACKFILL",
-            operator=str(ctx.get("userId") or ctx.get("loginName") or ""),
-            role_name=str(ctx.get("currentRoleCode") or ""),
+            tenant_id=_tid(), biz_type="AA_TEACHING_CLASS",
+            biz_id=int(term_id), action="TEACHING_CLASS_BACKFILL",
+            operator=str(context.get("userId") or context.get("loginName") or ""),
+            role_name=str(context.get("currentRoleCode") or ""),
             detail=(
                 f"termId={term_id};taskCount={result['taskCount']};created={created_count};"
                 f"skipped={skipped_count};reason={reason_text}"
             )[:990],
         ))
         db.commit()
-        result["dryRun"] = False
-        result["createdCount"] = created_count
-        result["skippedCount"] = skipped_count
-        result["reason"] = reason_text
-        result["audited"] = True
+        result.update({
+            "dryRun": False, "createdCount": created_count,
+            "skippedCount": skipped_count, "reason": reason_text, "audited": True,
+        })
         return result
