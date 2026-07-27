@@ -133,14 +133,13 @@ def transition(user, exam_id, action) -> dict:
 # ══════════ 报名 ══════════
 
 def _student_profile(db):
-    from app.models import StudentProfile
-    ctx = get_current_user_ctx() or {}
-    p = db.query(StudentProfile).filter(StudentProfile.tenant_id == _tid(),
-                                        StudentProfile.student_no == ctx.get("studentNo"),
-                                        StudentProfile.is_deleted.is_(False)).first()
-    if not p:
-        raise not_found("学生档案不存在")
-    return p
+    """只使用当前账号的稳定学生主档绑定，禁止信任 token 中可变学号。"""
+    from app.services.mobile_student_identity_facade import resolve_student
+
+    profile = resolve_student(db, get_current_user_ctx() or {})
+    if not profile:
+        raise not_found("当前账号尚未绑定唯一学生档案")
+    return profile
 
 
 def student_register(user, exam_id) -> dict:
