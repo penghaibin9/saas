@@ -1,4 +1,4 @@
-import { request } from './request'
+import { downloadFile, request, uploadFile } from './request'
 
 const enc = encodeURIComponent
 
@@ -24,6 +24,14 @@ export const affairsFourEndApi = {
   getReturnedFunding: (id) => request(`/mobile/affairs/funding/${enc(id)}/editable`),
   updateReturnedFunding: (id, body) => request(`/mobile/affairs/funding/${enc(id)}/returned`, { method: 'PUT', body }),
   resubmitFunding: (id, version) => request(`/mobile/affairs/funding/${enc(id)}/resubmit`, { method: 'POST', body: { version } }),
+
+  // 材料缺项与逐版本补交
+  myMaterialRequirements: (params = {}) => request('/mobile/affairs/material-requirements', { params }),
+  uploadMaterialFile: (file) => uploadFile('/files', file),
+  submitMaterialVersion: (requirementId, fileId, version, note = '') => request(`/mobile/affairs/material-requirements/${enc(requirementId)}/submissions`, {
+    method: 'POST', body: { fileId, version, note }
+  }),
+  downloadMaterial: (fileId, fileName = '补交材料') => downloadFile(`/files/download/${enc(fileId)}`, fileName),
 
   // 宿舍正式调宿
   dormTransferOptions: () => request('/mobile/affairs/dorm/transfer-options'),
