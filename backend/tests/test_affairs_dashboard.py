@@ -166,7 +166,7 @@ def test_dashboard_todo_scoped_to_assignee(client, db_mode):
     assert "dormException" not in keys
     assert "overdueLeave" in keys
     card = next(c for c in r["data"]["summaryCards"] if c["key"] == "pendingLeave")
-    assert card.get("drillPath") == "/admin/campus-service/leave"
+    assert card.get("drillPath") == "/admin/student-affairs/leave"
 
 
 def test_dashboard_admin_scope_label_schoolwide(client, db_mode):
