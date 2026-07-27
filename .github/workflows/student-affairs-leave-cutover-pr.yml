@@ -41,21 +41,41 @@ jobs:
       - name: Static re-audit
         shell: bash
         run: |
-          set -euo pipefail
-          ! git grep -n "serviceKey: ['\"]LEAVE['\"]" -- student-portal/src miniapp/src
-          ! git grep -n "/campus-service/leaves" -- backend/app frontend/src student-portal/src miniapp/src
-          ! git grep -n "affairs_test_compat\|affairs_test_diagnostics\|affairs_test_legacy_inputs" -- backend/pytest.ini backend/tests
-          git grep -n "/admin/student-affairs/leave" -- frontend/src/config frontend/src/modules/campusService
-          git grep -n "portal/affairs/leave\|mobile/affairs/leave" -- backend/app/api/v1/affairs_leave_self_api.py student-portal/src miniapp/src
-          python -m compileall -q backend/app
-          node --check student-portal/src/services/portalApi.js
-          node --check miniapp/src/services/realApi.js
-          node --check miniapp/src/services/studentApi.js
+          set +e
+          : > leave-static-audit.log
+          failed=0
+          check() {
+            label="$1"
+            shift
+            echo "===== ${label} =====" | tee -a leave-static-audit.log
+            "$@" >> leave-static-audit.log 2>&1
+            code=$?
+            echo "exit=${code}" | tee -a leave-static-audit.log
+            if [ "$code" -ne 0 ]; then failed=1; fi
+          }
+          check no_legacy_service_key bash -lc '! git grep -n "serviceKey: ['"'"'\"]LEAVE['"'"'\"]" -- student-portal/src miniapp/src'
+          check no_legacy_campus_leave_api bash -lc '! git grep -n "/campus-service/leaves" -- backend/app frontend/src student-portal/src miniapp/src'
+          check no_fake_test_adapter_refs bash -lc '! git grep -n "affairs_test_compat\|affairs_test_diagnostics\|affairs_test_legacy_inputs" -- backend/pytest.ini backend/tests'
+          check new_admin_leave_routes bash -lc 'git grep -n "/admin/student-affairs/leave" -- frontend/src/config frontend/src/modules/campusService'
+          check new_self_leave_routes bash -lc 'git grep -n "portal/affairs/leave\|mobile/affairs/leave" -- backend/app/api/v1/affairs_leave_self_api.py student-portal/src miniapp/src'
+          check backend_compile python -m compileall -q backend/app
+          check portal_api_syntax node --check student-portal/src/services/portalApi.js
+          check miniapp_real_api_syntax node --check miniapp/src/services/realApi.js
+          check miniapp_student_api_syntax node --check miniapp/src/services/studentApi.js
+          cat leave-static-audit.log
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: leave-static-audit
+          path: leave-static-audit.log
+          retention-days: 1
       - name: Commit cutover changes
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -u
+          git diff --cached --check
           git commit -m "refactor(student-affairs): complete leave cutover and remove fake adapters"
           git push origin HEAD:codex/student-affairs-leave-cutover-20260727
