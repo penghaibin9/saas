@@ -5,19 +5,51 @@ from types import SimpleNamespace
 import pytest
 
 
-def test_public_makeup_service_is_grade_identity_facade():
+def test_public_makeup_service_is_final_course_identity_guard():
     from app.modules.academic_affairs import services
 
-    assert services.academic_affairs_makeup_service.__name__.endswith(
+    service = services.academic_affairs_makeup_service
+    assert service.__name__.endswith(
+        "academic_affairs_makeup_course_identity_guard"
+    )
+    assert service._base.__name__.endswith(
+        "academic_affairs_makeup_course_identity_facade"
+    )
+    assert service._base._base.__name__.endswith(
         "academic_affairs_makeup_grade_identity_facade"
     )
-    assert services.academic_affairs_makeup_service._base.__name__.endswith(
-        "academic_affairs_makeup_identity_facade"
+    assert service.finish_makeup_batch.__module__.endswith(
+        "academic_affairs_makeup_course_identity_facade"
     )
-    assert services.academic_affairs_makeup_service.finish_makeup_batch.__module__.endswith(
-        "academic_affairs_makeup_grade_identity_facade"
+    assert service.makeup_pending.__module__.endswith(
+        "academic_affairs_makeup_course_identity_guard"
     )
-    assert services.academic_affairs_makeup_service._legacy.finish_makeup_batch is services.academic_affairs_makeup_service.finish_makeup_batch
+    assert service._legacy.finish_makeup_batch is service.finish_makeup_batch
+    assert service._legacy.makeup_pending is service.makeup_pending
+
+
+def test_v2_04_write_routes_replace_legacy_course_name_endpoints():
+    from app.modules.academic_affairs.routers import academic_affairs
+
+    expected = {
+        "/academic-affairs/makeup/batches/{batch_id}/enroll",
+        "/academic-affairs/retake/apply",
+        "/academic-affairs/exemption/apply",
+    }
+    matches = [
+        route for route in academic_affairs.router.routes
+        if "POST" in set(getattr(route, "methods", set()) or set())
+        and getattr(route, "path", "") in expected
+    ]
+
+    assert {route.path for route in matches} == expected
+    assert len(matches) == 3
+    assert all(route.endpoint.__module__.endswith("grade_identity_router") for route in matches)
+    assert not any(
+        getattr(route, "path", "") == "/academic-affairs/makeup/batches/{bid}/enroll"
+        and "POST" in set(getattr(route, "methods", set()) or set())
+        for route in academic_affairs.router.routes
+    )
 
 
 def test_origin_failed_grade_requires_unique_effective_identity(monkeypatch):
