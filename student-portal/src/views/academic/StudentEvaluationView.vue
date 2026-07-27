@@ -31,7 +31,7 @@
           <span>待我提交</span><b>{{ pendingCount }}</b>
         </article>
         <article class="summary-card">
-          <span>本人已提交</span><b>{{ submittedCount }}</b>
+          <span>本人已提交</span><b>{{ completedCount }}</b>
         </article>
       </section>
 
@@ -114,7 +114,7 @@ const drafts = reactive({})
 
 const tasks = computed(() => Array.isArray(worklist.value.list) ? worklist.value.list : [])
 const pendingCount = computed(() => tasks.value.filter((task) => task.canSubmit === true && task.submitted !== true).length)
-const submittedCount = computed(() => tasks.value.filter((task) => task.submitted === true).length)
+const completedCount = computed(() => tasks.value.filter((task) => task.submitted === true).length)
 
 function ensureDraft(task) {
   const key = String(task.taskId || '')
@@ -143,7 +143,7 @@ function taskStatusText(task) {
 function taskStatusTone(task) {
   if (task.submitted) return 'success'
   if (task.canSubmit) return 'primary'
-  return 'neutral'
+  return 'default'
 }
 
 function canSubmit(task) {
@@ -218,7 +218,7 @@ onMounted(load)
 .task-card__actions span { color: var(--t4); font-size: 12px; }
 .task-card__done, .task-card__closed { margin-top: 14px; padding: 12px 14px; border-radius: 10px; font-size: 12.5px; }
 .task-card__done { background: var(--ok-bg); color: var(--ok-fg); }
-.task-card__closed { background: var(--bg2); color: var(--t3); }
+.task-card__closed { background: var(--draft-bg); color: var(--t3); }
 .evaluation-note { display: flex; gap: 12px; margin-top: 14px; color: var(--t3); font-size: 12.5px; }
 .evaluation-note strong { color: var(--t1); white-space: nowrap; }
 @media (max-width: 720px) {
