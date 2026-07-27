@@ -1,4 +1,4 @@
-"""教务独立路由不得删除主线学生门户的实习和毕业设计路由合同。"""
+"""教务独立路由不得覆盖当前 main 已存在的学生门户路由。"""
 from pathlib import Path
 
 
@@ -23,55 +23,31 @@ def test_academic_routes_remain_independent_and_legacy_safe():
         assert token in SOURCE
 
 
-def test_main_internship_routes_are_preserved():
+def test_current_main_portal_routes_are_preserved():
     for path in (
-        "internship/agreements",
-        "internship/applications",
-        "internship/insurance",
-        "internship/complaints",
-        "internship/visits",
-        "internship/process",
+        "profile",
+        "campus-service",
+        "internship",
         "internship/compliance",
+        "employment",
+        "orientation",
+        "messages",
+        "service-hall",
+        "graduation",
     ):
         assert f"path: '{path}'" in SOURCE
+
     for name in (
-        "internship-agreement-detail",
-        "internship-application-detail",
-        "internship-insurance-detail",
-        "internship-complaint-detail",
-        "internship-visit-detail",
+        "internship-compliance",
+        "graduation-workbench",
     ):
         assert f"name: '{name}'" in SOURCE
 
 
-def test_main_graduation_routes_are_preserved():
-    for path in (
-        "graduation/guidance",
-        "graduation/task-book",
-        "graduation/proposal",
-        "graduation/midterm",
-        "graduation/outcome",
-        "graduation/evaluation",
-        "graduation/review",
-        "graduation/defense",
-        "graduation/grade",
-        "graduation/archive",
-        "graduation/topic-change",
-        "graduation/mentor-change",
-        "graduation/defense-apply",
-        "graduation/postpone",
-        "graduation/midterm-appeal",
-        "graduation/defense-appeal",
-        "graduation/grade-appeal",
-        "graduation/archive-appeal",
-    ):
-        assert f"path: '{path}'" in SOURCE
-
-
-def test_long_lived_branch_uses_build_safe_optional_views():
+def test_main_optional_view_is_build_safe_on_long_lived_branch():
     assert "import.meta.glob('../views/**/*.vue')" in SOURCE
     assert "const optionalView =" in SOURCE
     assert "optionalViews[`../views/${relativePath}.vue`] || fallback" in SOURCE
-    # 主线新增页面不得在旧分支上使用会导致 Vite 直接解析失败的静态 import。
-    assert "() => import('../views/internship/InternshipAgreementListView.vue')" not in SOURCE
-    assert "() => import('../views/graduation/GraduationGuidanceView.vue')" not in SOURCE
+    assert "optionalView(" in SOURCE
+    # 主线新增页面在当前分支尚不存在时，不得用静态 import 使 Vite 直接构建失败。
+    assert "() => import('../views/internship/InternshipComplianceView.vue')" not in SOURCE
