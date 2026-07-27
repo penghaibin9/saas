@@ -78,11 +78,29 @@ def test_teacher_attendance_page_clears_previous_roster_before_loading_detail():
         root / "miniapp/src/pages/teacher/academic-affairs/attendance.vue"
     ).read_text(encoding="utf-8")
 
+    assert "this.active = { ...session }" in page
     assert "this.items = []" in page
     assert "this.detailLoading = true" in page
-    assert "this.closeSession()" in page
+    assert "this.active = null" in page
     assert "名单加载失败，请稍后重试" in page
     assert "v-if=\"detailLoading\"" in page
     assert "提交后教师端不可直接修改" in page
     assert "const confirmed = await this.confirmModal" in page
     assert "classId: this.form.classId ? Number(this.form.classId) : undefined" in page
+
+
+def test_teacher_attendance_page_serializes_row_writes_before_submit_or_back():
+    root = Path(__file__).resolve().parents[2]
+    page = (
+        root / "miniapp/src/pages/teacher/academic-affairs/attendance.vue"
+    ).read_text(encoding="utf-8")
+
+    assert "marking: {}" in page
+    assert "hasPendingMarks()" in page
+    assert "this.marking[studentId]" in page
+    assert "this.marking[studentId] = true" in page
+    assert "this.marking[studentId] = false" in page
+    assert "this.hasPendingMarks" in page
+    assert "仍有考勤标记正在保存" in page
+    assert "正在保存标记…" in page
+    assert "at__seg.is-pending" in page
