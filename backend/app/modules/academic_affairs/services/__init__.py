@@ -19,8 +19,8 @@ from . import academic_affairs_teaching_class_runtime_guard as academic_affairs_
 from . import academic_affairs_scheduling_rule_policy as academic_affairs_scheduling_rule_policy
 from . import academic_affairs_scheduling_rule_transport as academic_affairs_scheduling_rule_transport
 from . import academic_affairs_scheduling_rule_final_facade as academic_affairs_scheduling_rule_final_facade
-# 最终归档链：旧9域 + 选课 + 补考重修免修 + 评教 + 教材，共13域。
-from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
+# 最终归档链：13域语义门禁 + 首批四域结构化证据，继续复用原归档表与状态机。
+from . import academic_affairs_archive_core_semantic_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
 # R9以副作用给考勤创建动作冻结名单版本，公开模块名保持兼容。
 from . import academic_affairs_attendance_roster_identity_facade as academic_affairs_attendance_roster_identity_facade
