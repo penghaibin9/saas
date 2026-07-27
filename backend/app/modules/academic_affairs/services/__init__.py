@@ -31,6 +31,8 @@ from . import academic_affairs_exam_roster_identity_facade as academic_affairs_e
 # V2-04/P0-11：课程身份、修读次数、名单版本和有效成绩策略欠账统一公开。
 from . import academic_affairs_grade_policy_facade as academic_affairs_grade_service
 from . import academic_affairs_grade_roster_identity_guard as academic_affairs_grade_roster_identity_guard
+# P0-10/P0-11：当前学期缺策略快照或LEGACY_NAME_KEY时，成绩域禁止归档。
+from . import academic_affairs_archive_grade_policy_guard as academic_affairs_archive_grade_policy_guard
 # R10动态成绩项在原成绩任务、名单、审核、发布链上扩展，不另建成绩主账。
 from . import academic_affairs_dynamic_grade_service as academic_affairs_dynamic_grade_service
 from . import academic_affairs_makeup_course_identity_guard as academic_affairs_makeup_service
