@@ -67,11 +67,3 @@ class AaStatsSnapshot(PKMixin, TenantMixin, CommonMixin, Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     generated_by: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="FROZEN")
-
-
-# 确保 Base.metadata.create_all 注册 R11 试点表与P0-11有效成绩策略快照表。
-from app.models.academic_affairs_r11 import (  # noqa: E402,F401
-    AaSemesterPilot,
-    AaSemesterPilotCheckpoint,
-)
-from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicySnapshot  # noqa: E402,F401
