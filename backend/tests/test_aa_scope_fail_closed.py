@@ -1,4 +1,4 @@
-"""受限教务身份未配置范围时不得通过主动传collegeId扩大权限。"""
+"""受限教务身份未配置范围时不得通过主动传 collegeId 扩大权限。"""
 from types import SimpleNamespace
 
 import pytest
@@ -36,3 +36,37 @@ def test_tenant_all_passes_without_ranges():
 
     scope = SimpleNamespace(all=True, college_ids=set(), class_ids=set(), blocked=False)
     service._validate_college_param(scope, 999)
+
+
+def test_router_package_uses_fail_closed_stats_public_service():
+    from app.modules.academic_affairs import services
+
+    assert services.academic_affairs_stats_service.__name__.endswith(
+        "academic_affairs_stats_public_service"
+    )
+
+
+def test_teacher_workload_detail_is_self_only(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_stats_public_service as service
+
+    monkeypatch.setattr(service, "_precheck", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        service._legacy,
+        "workload_detail",
+        lambda _user, teacher_key, _college_id, _page, _page_size: ([teacher_key], 1),
+    )
+    user = {
+        "currentRoleCode": "ACADEMIC_TEACHER",
+        "loginName": "T001",
+        "userId": "u_T001",
+        "activeContextId": "ctx_T001",
+    }
+
+    with pytest.raises(AppException) as exc:
+        service.workload_detail(user, "T002")
+    assert exc.value.http_status == 403
+
+    items, total = service.workload_detail(user, "T001")
+    assert items == ["T001"]
+    assert total == 1
