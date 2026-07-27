@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 120
     env:
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      # 仍使用真实 MySQL；会话只建表一次，每个用例关闭外键后清空全部业务数据。
+      FAST_TEST_SCHEMA: "1"
     services:
       mysql:
         image: mysql:8.0
