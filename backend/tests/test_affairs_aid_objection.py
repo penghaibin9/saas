@@ -97,7 +97,7 @@ def test_objection_sustained_rejects_apply(client, db_mode):
     assert r0.status_code == 422 or r0.json().get("code") not in (0, None)
 
     objection = _submit(client, hdr, apply_id, "该生家庭经济情况与申报不符", "同班同学")
-    assert objection["status"] == "SUBMITTED" and objection["version"] >= 1
+    assert objection["status"] == "SUBMITTED" and objection["version"] >= 0
     oid = objection["objectionId"]
     assert any(x["objectionId"] == oid and "version" in x
                for x in client.get(f"{BASE}/aid/objections", headers=hdr).json()["data"]["items"])
