@@ -13,14 +13,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _route_matrix(app) -> set[tuple[str, str]]:
     rows: set[tuple[str, str]] = set()
-    for route in app.routes:
-        path = str(getattr(route, "path", "") or "")
-        for method in set(getattr(route, "methods", set()) or set()):
-            method = str(method).upper()
-            if method not in ("HEAD", "OPTIONS"):
-                rows.add((method, path))
+    for path, operations in app.openapi().get("paths", {}).items():
+        for method in operations:
+            verb = str(method).upper()
+            if verb not in {"HEAD", "OPTIONS", "PARAMETERS"}:
+                rows.add((verb, str(path)))
     return rows
-
 
 def test_four_end_core_flow_routes_are_all_registered(client, db_mode):
     routes = _route_matrix(client.app)

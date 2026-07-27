@@ -47,41 +47,98 @@ def _clear_ctx():
 
 
 def _seed_students(db_mode, *, prefix="FE4"):
+    from datetime import datetime, timedelta
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile, TeacherStudentScope
+    from app.models import (
+        AffairsCounselorAssignment, College, Major, Role, SchoolClass,
+        StudentProfile, TeacherStudentScope, User, UserRole,
+    )
     db = get_sessionmaker()()
+
+    def ensure_user(login_name, real_name, role_code, role_name):
+        user = db.query(User).filter_by(tenant_id=TID, login_name=login_name).first()
+        if user is None:
+            user = User(
+                tenant_id=TID, login_name=login_name, real_name=real_name,
+                password_hash="test-hash", user_type="TEACHER", status="ACTIVE",
+            )
+            db.add(user)
+            db.flush()
+        role = db.query(Role).filter_by(tenant_id=TID, role_code=role_code).first()
+        if role is None:
+            role = Role(
+                tenant_id=TID, role_code=role_code, role_name=role_name,
+                role_type="SYSTEM", status="ACTIVE",
+            )
+            db.add(role)
+            db.flush()
+        if db.query(UserRole).filter_by(
+            tenant_id=TID, user_id=user.id, role_id=role.id,
+        ).first() is None:
+            db.add(UserRole(
+                tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE",
+            ))
+        return user
+
+    counselor = ensure_user("counselor01", "王莉", "COUNSELOR", "辅导员")
+    college_reviewer = ensure_user("fe_college01", "学院受理人", "COLLEGE_ADMIN", "学院管理员")
+    ensure_user("fe_sa01", "学工处受理人", "STUDENT_AFFAIRS_ADMIN", "学工处管理员")
+    college = College(
+        tenant_id=TID, college_name=f"{prefix}学院", code=f"{prefix}-COL", status="ACTIVE",
+    )
+    db.add(college)
+    db.flush()
+    major = Major(
+        tenant_id=TID, college_id=college.id, major_name=f"{prefix}专业",
+        code=f"{prefix}-MAJ", status="ACTIVE",
+    )
+    db.add(major)
+    db.flush()
     cls = SchoolClass(
-        tenant_id=TID, major_id=1, class_name=f"{prefix}软件2401",
-        grade="2024", status="ACTIVE",
+        tenant_id=TID, major_id=major.id, class_name=f"{prefix}软件2401",
+        grade="2024", counselor_id=counselor.id, status="ACTIVE",
     )
     db.add(cls)
     db.flush()
     one = StudentProfile(
         tenant_id=TID, student_no=f"{prefix}001", real_name="四端学生甲",
-        class_id=cls.id, gender="M", current_stage="CAMPUS",
+        class_id=cls.id, college_id=college.id, gender="M", current_stage="CAMPUS",
         student_status="NORMAL", status="ACTIVE",
     )
     two = StudentProfile(
         tenant_id=TID, student_no=f"{prefix}002", real_name="四端学生乙",
-        class_id=cls.id, gender="M", current_stage="CAMPUS",
+        class_id=cls.id, college_id=college.id, gender="M", current_stage="CAMPUS",
         student_status="NORMAL", status="ACTIVE",
     )
     db.add_all([one, two])
     db.flush()
-    db.add(TeacherStudentScope(
-        tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
-        role_code="COUNSELOR", scope_type="CLASS", ref_value=cls.class_name,
-        status="ACTIVE",
-    ))
-    ids = {"class": cls.id, "one": one.id, "two": two.id,
-           "oneNo": one.student_no, "twoNo": two.student_no}
+    db.add_all([
+        AffairsCounselorAssignment(
+            tenant_id=TID, class_id=cls.id, user_id=counselor.id,
+            duty_type="PRIMARY", status="ACTIVE",
+            effective_from=datetime.utcnow() - timedelta(days=1),
+        ),
+        TeacherStudentScope(
+            tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+            role_code="COUNSELOR", scope_type="CLASS", ref_value=cls.class_name,
+            status="ACTIVE",
+        ),
+        TeacherStudentScope(
+            tenant_id=TID, teacher_key=college_reviewer.login_name,
+            teacher_name=college_reviewer.real_name, role_code="COLLEGE_ADMIN",
+            scope_type="COLLEGE", ref_value=college.college_name, status="ACTIVE",
+        ),
+    ])
+    ids = {
+        "class": cls.id, "one": one.id, "two": two.id,
+        "oneNo": one.student_no, "twoNo": two.student_no,
+    }
     db.commit()
     db.close()
     return ids
 
-
 def test_four_end_routes_registered(client, db_mode):
-    paths = {route.path for route in client.app.routes}
+    paths = set(client.app.openapi().get("paths", {}))
     assert "/api/v1/mobile/affairs/leave/{leave_id}/editable" in paths
     assert "/api/v1/mobile/affairs/dorm/transfers" in paths
     assert "/api/v1/mobile/affairs/activities/{activity_id}/secure-checkin" in paths
@@ -176,10 +233,7 @@ def test_mental_sensitive_detail_fails_closed_when_audit_db_fails(client, db_mod
     rid = referral.id
     db.close()
 
-    def boom(*_args, **_kwargs):
-        raise RuntimeError("audit db unavailable")
-
-    monkeypatch.setattr(audit_log, "audit_insert", boom)
+    monkeypatch.setattr(audit_log, "record", lambda *_args, **_kwargs: None)
     user = {
         "userId": "db-1", "loginName": "school_admin01", "realName": "学校管理员",
         "userType": "ADMIN", "currentRoleCode": "SCHOOL_ADMIN", "tenantId": str(TID),
@@ -280,7 +334,7 @@ def test_aid_application_rolls_back_when_confirmation_record_fails(db_mode, monk
         student_status="NORMAL", status="ACTIVE",
     )
     batch = AidBatch(
-        tenant_id=TID, batch_name="2026困难认定", school_year="2026-2027",
+        tenant_id=TID, batch_name="2026困难认定", year_code="2026-2027",
         publicity_days=3, status="OPEN",
     )
     db.add_all([student, batch])

@@ -15,30 +15,45 @@ def _hdr(client, login_name):
 
 
 def _seed_classes(db_mode):
-    """在 db_mode（DB 已启用）之上补种：2 班 + 5 生 + 辅导员范围限定 A 班。"""
+    """在 db_mode 之上补种 2 班 + 5 生，并返回真实学生主键。"""
     from app.db.session import get_sessionmaker
     from app.models import SchoolClass, StudentProfile, TeacherStudentScope
     db = get_sessionmaker()()
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
     b = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
-    db.add(a); db.add(b); db.flush()
+    db.add_all([a, b])
+    db.flush()
+    students_a = []
+    students_b = []
     for i in range(3):
-        db.add(StudentProfile(tenant_id=TID, student_no=f"A{i:03d}", real_name=f"甲{i}",
-                              class_id=a.id, current_stage="ORIENTATION",
-                              student_status="NORMAL", status="ACTIVE"))
+        row = StudentProfile(
+            tenant_id=TID, student_no=f"A{i:03d}", real_name=f"甲{i}",
+            class_id=a.id, current_stage="ORIENTATION",
+            student_status="NORMAL", status="ACTIVE",
+        )
+        db.add(row)
+        students_a.append(row)
     for i in range(2):
-        db.add(StudentProfile(tenant_id=TID, student_no=f"B{i:03d}", real_name=f"乙{i}",
-                              class_id=b.id, current_stage="ORIENTATION",
-                              student_status="NORMAL", status="ACTIVE"))
-    # 辅导员 counselor01（王莉）数据范围 = A 班
-    db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
-                               role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101",
-                               status="ACTIVE"))
+        row = StudentProfile(
+            tenant_id=TID, student_no=f"B{i:03d}", real_name=f"乙{i}",
+            class_id=b.id, current_stage="ORIENTATION",
+            student_status="NORMAL", status="ACTIVE",
+        )
+        db.add(row)
+        students_b.append(row)
+    db.flush()
+    db.add(TeacherStudentScope(
+        tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+        role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101",
+        status="ACTIVE",
+    ))
     db.commit()
-    ids = {"A": a.id, "B": b.id}
+    ids = {
+        "A": a.id, "B": b.id,
+        "A_STUDENT": students_a[0].id, "B_STUDENT": students_b[0].id,
+    }
     db.close()
     return ids
-
 
 def test_dashboard_three_role_views(client, db_mode):
     _seed_classes(db_mode)
@@ -81,16 +96,16 @@ def test_class_scope_filter(client, db_mode):
 def test_cadre_appoint_and_list(client, db_mode):
     ids = _seed_classes(db_mode)
     hdr = _hdr(client, "counselor01")
-    body = {"studentId": "1", "position": "MONITOR", "termCode": "2026-1"}
+    body = {"studentId": str(ids["A_STUDENT"]), "position": "MONITOR", "termCode": "2026-1"}
     r = client.post(f"/api/v1/student-affairs/classes/{ids['A']}/cadres", json=body, headers=hdr).json()
     assert r["code"] == 0 and r["data"]["position"] == "MONITOR"
     # 历史欠账：任命/列表须带学生姓名+学号（此前只回 studentId 内部主键）。id=1 为基础种子学生赵一凡。
-    assert r["data"]["studentName"] == "赵一凡" and r["data"]["studentNo"] == "2023115001"
+    assert r["data"]["studentName"] == "甲0" and r["data"]["studentNo"] == "A000"
     # 列表可见 + 带姓名学号
     r2 = client.get(f"/api/v1/student-affairs/classes/{ids['A']}/cadres", headers=hdr).json()
     assert len(r2["data"]["items"]) == 1
-    assert r2["data"]["items"][0]["studentName"] == "赵一凡"
-    assert r2["data"]["items"][0]["studentNo"] == "2023115001"
+    assert r2["data"]["items"][0]["studentName"] == "甲0"
+    assert r2["data"]["items"][0]["studentNo"] == "A000"
     # 同班同职务重复任命 → 409
     r3 = client.post(f"/api/v1/student-affairs/classes/{ids['A']}/cadres", json=body, headers=hdr)
     assert r3.status_code == 409
@@ -114,7 +129,7 @@ def test_school_admin_any_class(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     # 学工处可对任意班任命
     r = client.post(f"/api/v1/student-affairs/classes/{ids['B']}/cadres",
-                    json={"studentId": "9", "position": "STUDY"}, headers=hdr)
+                    json={"studentId": str(ids["B_STUDENT"]), "position": "STUDY"}, headers=hdr)
     assert r.json()["code"] == 0
 
 

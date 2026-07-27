@@ -15,26 +15,118 @@ def _hdr(client, login_name):
 
 
 def _seed(db_mode):
-    """2 班 + 学生（含 counselor 范围限定 A 班），返回学生/班级 id。"""
+    from datetime import datetime, timedelta
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile, TeacherStudentScope
+    from app.models import (
+        AffairsCounselorAssignment, College, Major, Role, SchoolClass,
+        StudentProfile, TeacherStudentScope, User, UserRole,
+    )
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
-    b = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
-    db.add(a); db.add(b); db.flush()
-    sa = StudentProfile(tenant_id=TID, student_no="A001", real_name="甲一", class_id=a.id,
-                        current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
-    sb = StudentProfile(tenant_id=TID, student_no="B001", real_name="乙一", class_id=b.id,
-                        current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
-    db.add(sa); db.add(sb); db.flush()
-    db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
-                               role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101",
-                               status="ACTIVE"))
+
+    def ensure_user(login_name, real_name):
+        row = db.query(User).filter_by(tenant_id=TID, login_name=login_name).first()
+        if row is None:
+            row = User(
+                tenant_id=TID, login_name=login_name, real_name=real_name,
+                password_hash="test-hash", user_type="TEACHER", status="ACTIVE",
+            )
+            db.add(row)
+            db.flush()
+        else:
+            row.status = "ACTIVE"
+            row.is_deleted = False
+        return row
+
+    def ensure_role(role_code, role_name):
+        row = db.query(Role).filter_by(tenant_id=TID, role_code=role_code).first()
+        if row is None:
+            row = Role(
+                tenant_id=TID, role_code=role_code, role_name=role_name,
+                role_type="SYSTEM", status="ACTIVE",
+            )
+            db.add(row)
+            db.flush()
+        else:
+            row.status = "ACTIVE"
+            row.is_deleted = False
+        return row
+
+    def bind(user, role):
+        row = db.query(UserRole).filter_by(
+            tenant_id=TID, user_id=user.id, role_id=role.id,
+        ).first()
+        if row is None:
+            db.add(UserRole(
+                tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE",
+            ))
+        else:
+            row.status = "ACTIVE"
+            row.is_deleted = False
+
+    counselor = ensure_user("counselor01", "王莉")
+    college_reviewer = ensure_user("leave_college01", "学院学工受理人")
+    sa_reviewer = ensure_user("leave_sa01", "学工处受理人")
+    bind(counselor, ensure_role("COUNSELOR", "辅导员"))
+    bind(college_reviewer, ensure_role("COLLEGE_ADMIN", "学院管理员"))
+    bind(sa_reviewer, ensure_role("STUDENT_AFFAIRS_ADMIN", "学工处管理员"))
+
+    college = College(
+        tenant_id=TID, college_name="请假测试学院", code="LEAVE-COLLEGE", status="ACTIVE",
+    )
+    db.add(college)
+    db.flush()
+    major = Major(
+        tenant_id=TID, college_id=college.id, major_name="请假测试专业",
+        code="LEAVE-MAJOR", status="ACTIVE",
+    )
+    db.add(major)
+    db.flush()
+    a = SchoolClass(
+        tenant_id=TID, major_id=major.id, class_name="A班", grade="2024",
+        counselor_id=counselor.id, status="ACTIVE",
+    )
+    b = SchoolClass(
+        tenant_id=TID, major_id=major.id, class_name="B班", grade="2024",
+        counselor_id=counselor.id, status="ACTIVE",
+    )
+    db.add_all([a, b])
+    db.flush()
+    sa = StudentProfile(
+        tenant_id=TID, student_no="A001", real_name="甲一", class_id=a.id,
+        college_id=college.id, gender="M", current_stage="CAMPUS",
+        student_status="NORMAL", status="ACTIVE",
+    )
+    sb = StudentProfile(
+        tenant_id=TID, student_no="B001", real_name="乙一", class_id=b.id,
+        college_id=college.id, gender="F", current_stage="CAMPUS",
+        student_status="NORMAL", status="ACTIVE",
+    )
+    db.add_all([sa, sb])
+    db.flush()
+    effective = datetime.utcnow() - timedelta(days=1)
+    db.add_all([
+        AffairsCounselorAssignment(
+            tenant_id=TID, class_id=a.id, user_id=counselor.id,
+            duty_type="PRIMARY", status="ACTIVE", effective_from=effective,
+        ),
+        AffairsCounselorAssignment(
+            tenant_id=TID, class_id=b.id, user_id=counselor.id,
+            duty_type="PRIMARY", status="ACTIVE", effective_from=effective,
+        ),
+        TeacherStudentScope(
+            tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+            role_code="COUNSELOR", scope_type="CLASS", ref_value="A班", status="ACTIVE",
+        ),
+        TeacherStudentScope(
+            tenant_id=TID, teacher_key=college_reviewer.login_name,
+            teacher_name=college_reviewer.real_name, role_code="COLLEGE_ADMIN",
+            scope_type="COLLEGE", ref_value=college.college_name, status="ACTIVE",
+        ),
+    ])
     db.commit()
-    ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
+    ids = {"a": a.id, "b": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
     return ids
-
 
 def _apply(client, hdr, sid, start, end, ltype="PERSONAL"):
     return client.post("/api/v1/student-affairs/leave", headers=hdr, json={

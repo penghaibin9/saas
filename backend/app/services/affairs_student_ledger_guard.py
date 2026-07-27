@@ -23,7 +23,7 @@ def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
-    from app.models import CsAuditTrail, CsDiscipline, CsGrant, CsLeave, CsServiceStudent, CsWorkOrder
+    from app.models import CsAuditTrail, CsDiscipline, CsGrant, CsServiceStudent, CsWorkOrder
     from app.services import affairs_four_end_contract as contract
     from app.services import campus_service_service as service
     from app.services import shadow_student_service as shadow
@@ -143,7 +143,6 @@ def install() -> None:
                     model.is_deleted.is_(False),
                 ]
 
-            leaves = db.scalars(select(CsLeave).where(*common(CsLeave)).order_by(CsLeave.id.desc())).all()
             grants = db.scalars(select(CsGrant).where(*common(CsGrant)).order_by(CsGrant.id.desc())).all()
             disciplines = db.scalars(select(CsDiscipline).where(*common(CsDiscipline)).order_by(CsDiscipline.id.desc())).all()
             orders = db.scalars(select(CsWorkOrder).where(*common(CsWorkOrder)).order_by(CsWorkOrder.id.desc())).all()
@@ -154,7 +153,6 @@ def install() -> None:
             profiles = shadow.load_profiles(db, [row])
             return {
                 "student": service._stu_row(row, db=db, profiles=profiles),
-                "leaves": [service._leave_row(item, row) for item in leaves],
                 "grants": [service._grant_row(item, row) for item in grants],
                 "disciplines": [service._disc_row(item, row) for item in disciplines],
                 "workOrders": [service._wo_row(item, row) for item in orders],

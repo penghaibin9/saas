@@ -41,16 +41,18 @@ def test_students_and_detail(client, auth_headers, db_mode):
     assert lst["code"] == 0 and lst["data"]["total"] == 1
     assert lst["data"]["items"][0]["careLevelLabel"] == "重点关注"
     det = client.get(f"/api/v1/campus-service/students/{ids['student']}", headers=auth_headers).json()
-    assert det["code"] == 0 and len(det["data"]["leaves"]) == 1 and len(det["data"]["workOrders"]) == 1
+    assert det["code"] == 0 and "leaves" not in det["data"] and len(det["data"]["workOrders"]) == 1
 
 
 def test_void_student(client, auth_headers, db_mode):
     ids = _seed(db_mode)
+    detail = client.get(f"/api/v1/campus-service/students/{ids['student']}", headers=auth_headers).json()["data"]
+    version = detail["student"]["version"]
     bad = client.post(f"/api/v1/campus-service/students/{ids['student']}/void", headers=auth_headers,
-                      json={"reason": "x"}).json()
+                      json={"reason": "x", "version": version}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/campus-service/students/{ids['student']}/void", headers=auth_headers,
-                     json={"reason": "重复台账予以作废"}).json()
+                     json={"reason": "重复台账予以作废", "version": version}).json()
     assert ok["code"] == 0
 
 
@@ -102,7 +104,7 @@ def test_discipline_legacy_write_retired(client, auth_headers, db_mode):
                      disc_type="WARNING", reason="历史存量处分记录", status="EFFECTIVE",
                      record_status="ACTIVE")
     db.add(d); db.commit()
-    did = d.id
+    did, dver = d.id, int(d.version or 0)
     db.close()
 
     lst = client.get("/api/v1/campus-service/disciplines", headers=auth_headers).json()
@@ -116,7 +118,7 @@ def test_discipline_legacy_write_retired(client, auth_headers, db_mode):
                    json={"status": "REVOKED"}).json()
     assert u["code"] != 0 and u["bizCode"] == "DATA_CONFLICT"
     v = client.post(f"/api/v1/campus-service/disciplines/{did}/void", headers=auth_headers,
-                    json={"reason": "处分决定撤销"}).json()
+                    json={"reason": "处分决定撤销", "version": dver}).json()
     assert v["code"] != 0 and v["bizCode"] == "DATA_CONFLICT"
 
 
@@ -125,8 +127,10 @@ def test_work_order_closed_loop(client, auth_headers, db_mode):
     asg = client.post("/api/v1/campus-service/work-orders/assign", headers=auth_headers,
                       json={"ids": [str(ids["wo"])], "handler": "王学工"}).json()
     assert asg["code"] == 0 and asg["data"]["count"] == 1
+    detail = client.get(f"/api/v1/campus-service/work-orders/{ids['wo']}", headers=auth_headers).json()["data"]
+    version = detail["order"]["version"]
     h = client.post(f"/api/v1/campus-service/work-orders/{ids['wo']}/handle", headers=auth_headers,
-                    json={"note": "已开具证明并交付学生", "close": True, "version": 0}).json()
+                    json={"note": "已开具证明并交付学生", "close": True, "version": version}).json()
     assert h["code"] == 0 and h["data"]["status"] == "COMPLETED"
     det = client.get(f"/api/v1/campus-service/work-orders/{ids['wo']}", headers=auth_headers).json()
     assert det["code"] == 0 and len(det["data"]["order"]["trail"]) >= 1
