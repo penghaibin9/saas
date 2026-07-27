@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout 45m pytest tests/test_affairs_*.py -q -x -p no:warnings --durations=30 2>&1 | tee ../student-affairs-pytest.log
+          timeout 45m pytest tests/test_affairs_*.py -q -p no:warnings --durations=30 2>&1 | tee ../student-affairs-pytest.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
