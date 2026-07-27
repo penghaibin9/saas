@@ -84,6 +84,7 @@ jobs:
           tests/test_aa_selection_round_archive_guard.py
           tests/test_aa_makeup_archive_guard.py
           tests/test_aa_evaluation_archive_guard.py
+          tests/test_aa_evaluation_student_anonymity.py
           tests/test_aa_textbook_archive_guard.py
           tests/test_aa_exam_closure.py
           tests/test_aa_teaching_roster_unification.py
