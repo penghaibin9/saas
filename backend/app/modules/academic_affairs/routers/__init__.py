@@ -9,6 +9,7 @@ from .mobile_grade_entry_router import router as mobile_grade_entry_router
 from .scheduling_rule_router import router as scheduling_rule_router
 from .stats_snapshot_router import router as stats_snapshot_router
 from .teaching_class_router import router as teaching_class_router
+from .term_detail_router import router as term_detail_router
 
 
 def _legacy_scheduling_rule_route(route) -> bool:
@@ -58,6 +59,7 @@ if not any(path == "/academic-affairs/scheduling/rules" for path, _methods in _e
 if not any(path == "/academic-affairs/teaching-classes" for path, _methods in _existing):
     academic_affairs.router.include_router(teaching_class_router)
 _append_routes(dashboard_readiness_router)
+_append_routes(term_detail_router)
 _append_routes(grade_identity_router)
 _append_routes(dynamic_grade_router)
 _append_routes(stats_snapshot_router)
