@@ -59,20 +59,39 @@ def patch_remaining_callers() -> None:
             path.write_text(updated, encoding="utf-8")
 
 
+def repair_generated_mobile_syntax() -> None:
+    path = Path("backend/app/services/mobile_affairs_service.py")
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(
+        '                "allowedActions": actions := (\n',
+        '                "allowedActions": (actions := (\n',
+        1,
+    )
+    text = text.replace(
+        '                ),\n                "canResubmit": "RESUBMIT" in actions,\n',
+        '                )),\n                "canResubmit": "RESUBMIT" in actions,\n',
+        1,
+    )
+    path.write_text(text, encoding="utf-8")
+
+
 def audit_versions() -> None:
     path = Path("student-portal/src/views/affairs/AffairsView.vue")
-    if not path.exists():
-        return
-    text = path.read_text(encoding="utf-8")
-    required = (
-        "affairsLeaveApply({",
-        "affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '', version: lv.version })",
-        "affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假', version: lv.version })",
-        "version: lv.version",
-    )
-    for needle in required:
-        if needle not in text:
-            raise RuntimeError(f"student portal leave version contract missing: {needle}")
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+        required = (
+            "affairsLeaveApply({",
+            "affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '', version: lv.version })",
+            "affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假', version: lv.version })",
+            "version: lv.version",
+        )
+        for needle in required:
+            if needle not in text:
+                raise RuntimeError(f"student portal leave version contract missing: {needle}")
+
+    mobile = Path("backend/app/services/mobile_affairs_service.py").read_text(encoding="utf-8")
+    if '"allowedActions": (actions := (' not in mobile:
+        raise RuntimeError("mobile leave allowedActions syntax was not repaired")
 
 
 if __name__ == "__main__":
@@ -83,6 +102,7 @@ if __name__ == "__main__":
     base.second_cut()
     print("CUTOVER_STAGE third_cut", flush=True)
     base.third_cut()
+    repair_generated_mobile_syntax()
     print("CUTOVER_STAGE audit", flush=True)
     base.audit()
     audit_versions()
