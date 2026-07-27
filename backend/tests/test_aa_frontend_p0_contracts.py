@@ -88,6 +88,20 @@ def test_student_selection_uses_dedicated_server_authoritative_workspace():
     assert "window.prompt" not in view
 
 
+def test_student_recheck_uses_dedicated_published_grade_workspace():
+    router = _read("student-portal/src/router/index.js")
+    view = _read("student-portal/src/views/academic/StudentRecheckView.vue")
+
+    assert "StudentRecheckView.vue" in router
+    assert "academicSection('academic/recheck'" not in router
+    assert "portalApi.academicGradeRecheck()" in view
+    assert "portalApi.academicTranscript()" in view
+    assert "portalApi.academicGradeRecheckSubmit" in view
+    assert "grade.gradeId != null" in view
+    assert "同一成绩存在在途申请时不可重复提交" in view
+    assert "RETURNED" not in view
+
+
 def test_student_evaluation_uses_dedicated_secure_workspace():
     router = _read("student-portal/src/router/index.js")
     view = _read("student-portal/src/views/academic/StudentEvaluationView.vue")
@@ -103,13 +117,15 @@ def test_student_evaluation_uses_dedicated_secure_workspace():
     assert "portalApi.academicEvaluationSubmit" in view
 
 
-def test_student_home_counts_only_actionable_evaluation_tasks():
+def test_student_home_counts_only_real_actionable_states():
     source = _read("student-portal/src/views/academic/StudentAcademicHomeView.vue")
 
     assert "function actionableEvaluationRows(data)" in source
     assert "row.canSubmit === true && row.submitted !== true" in source
     assert "const evaluation = actionableEvaluationRows(val(1))" in source
     assert "route: '/academic/makeup'" in source
+    assert "portalApi.academicGradeRecheck()" not in source
+    assert "修改成绩复查申请" not in source
 
 
 def test_admin_menu_is_fail_closed_and_cache_signature_is_identity_complete():
