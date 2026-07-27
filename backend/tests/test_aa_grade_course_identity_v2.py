@@ -1,5 +1,6 @@
 """V2-04 正式成绩课程身份、课程版本和修读次数回归。"""
 from importlib import util
+from inspect import signature
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +11,7 @@ def test_academic_grade_has_formal_identity_fields_and_indexes():
     assert {
         "course_id", "course_code", "course_version", "attempt_no",
         "grade_task_id", "grade_record_id", "teaching_task_id",
-        "teaching_class_id", "roster_version_id",
+        "teaching_class_id", "roster_version_id", "source_biz_type", "source_biz_id",
     } <= set(AcademicGrade.__mapper__.attrs.keys())
     index_names = {index.name for index in AcademicGrade.__table__.indexes}
     assert {
@@ -74,40 +75,48 @@ def test_makeup_source_attempt_requires_governed_original_grade():
     assert "身份回填" in str(exc.value)
 
 
-def test_public_grade_service_is_v2_identity_facade():
-    from app.modules.academic_affairs import services
+def test_public_grade_service_is_canonical_and_exposes_governed_nodes():
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as service
 
-    assert services.academic_affairs_grade_service.__name__.endswith(
-        "academic_affairs_grade_identity_facade"
-    )
-    assert services.academic_affairs_grade_service._base.__name__.endswith(
-        "academic_affairs_grade_term_facade"
-    )
-    assert services.academic_affairs_grade_service.publish_grades.__module__.endswith(
-        "academic_affairs_grade_identity_facade"
-    )
-    assert services.academic_affairs_grade_service._legacy.publish_grades is services.academic_affairs_grade_service.publish_grades
+    assert service.__name__.endswith("academic_affairs_grade_service")
+    assert service._core.__name__.endswith("academic_affairs_grade_core_service")
+    assert callable(service.create_grade_task)
+    assert callable(service.submit_task)
+    assert callable(service.publish_grades)
+    assert callable(service.effective_grade_rows)
+    assert callable(service.identity_debt)
+    assert "allow_replace" in signature(service.freeze_consumer_snapshot).parameters
 
 
-def test_publish_source_contains_all_formal_identity_assignments():
+def test_publish_source_contains_all_formal_identity_assignments_and_r9_check():
     source_path = (
         Path(__file__).resolve().parents[1]
-        / "app/modules/academic_affairs/services/academic_affairs_grade_identity_facade.py"
+        / "app/modules/academic_affairs/services/academic_affairs_grade_service.py"
     )
     source = source_path.read_text(encoding="utf-8")
     for assignment in (
-        "course_id=course_meta[\"courseId\"]",
-        "course_code=course_meta[\"courseCode\"]",
-        "course_version=course_meta[\"courseVersion\"]",
+        'course_id=course_meta["courseId"]',
+        'course_code=course_meta["courseCode"]',
+        'course_version=course_meta["courseVersion"]',
         "attempt_no=attempt_no",
         "grade_task_id=task.id",
         "grade_record_id=record.id",
+        'source_biz_type="GRADE_RECORD"',
+        "source_biz_id=record.id",
         "teaching_task_id=task.teaching_task_id",
-        "teaching_class_id=roster_meta[\"teachingClassId\"]",
-        "roster_version_id=roster_meta[\"rosterVersionId\"]",
+        'teaching_class_id=int(frozen["teachingClassId"])',
+        'roster_version_id=int(frozen["rosterVersionId"])',
     ):
         assert assignment in source
-    assert "教学任务尚未投影独立教学班和正式名单版本" in source
+    assert "require_consumer_snapshot_current" in source
+    assert "freeze_effective_grade_policy" in source
+
+
+def test_grade_identity_router_uses_unique_nonduplicate_create_path():
+    from app.modules.academic_affairs.routers.grade_task_identity_router import router
+
+    paths = [route.path for route in router.routes]
+    assert paths == ["/academic-affairs/grade-tasks/identity"]
 
 
 def test_0128_migration_follows_teaching_class_migration_and_is_idempotent():
