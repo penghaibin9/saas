@@ -166,6 +166,6 @@ def confirm_with_evidence(user: dict, *, expected_version=None, confirm: bool = 
             "signId": str(sign.id), "contentHash": content_hash,
             "provider": sign.provider, "signedAt": _iso(sign.signed_at),
             "legalEffect": False, "confirmationType": "EVIDENCE_LOG",
-            "taskbookVersion": version,
+            "taskbookVersion": version, "status": taskbook.status,
             "taskbook": _taskbook_payload(taskbook, gd_student),
         }

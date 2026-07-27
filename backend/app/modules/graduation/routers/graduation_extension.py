@@ -111,6 +111,7 @@ def gd_defense_delay_schedule(
     record_id: str, body: dict = Body(...),
     user=Depends(require_permission("graduationDesign.defense.groupManage")),
 ):
+    # action_svc.schedule_delay validates the write payload, then delegates to safety_svc.schedule_delay.
     return success(action_svc.schedule_delay(
         record_id, body.get("defenseGroupId"), body.get("plannedDefenseDate"),
     ), message="延期答辩已重新排期，原答辩组与新答辩组均需重新发布")

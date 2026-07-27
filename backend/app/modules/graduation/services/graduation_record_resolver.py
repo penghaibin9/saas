@@ -88,6 +88,16 @@ def resolve_current_gd_student(db, user: dict):
             GraduationBatch.is_deleted.is_(False),
         )).all()}
 
+    requested_batch_id = user.get("graduationBatchId") or user.get("batchId")
+    if requested_batch_id not in (None, ""):
+        try:
+            requested_batch_id = int(requested_batch_id)
+        except Exception:
+            requested_batch_id = None
+    if requested_batch_id:
+        scoped = [x for x in rows if x.batch_id and int(x.batch_id) == requested_batch_id]
+        return _one_or_conflict(scoped, "当前批次存在多个毕业设计档案，请联系管理员修正数据")
+
     running = [x for x in rows if x.batch_id and batches.get(int(x.batch_id))
                and batches[int(x.batch_id)].status == "RUNNING"]
     hit = _one_or_conflict(running, "存在多个进行中的毕业设计批次，请联系管理员保留唯一当前批次")

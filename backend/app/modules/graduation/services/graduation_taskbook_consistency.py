@@ -152,7 +152,7 @@ def confirm_taskbook(gd_student_id, proxy_reason: str | None = None) -> dict:
         if not row:
             raise not_found("尚未下达任务书")
         if row.status == "CONFIRMED":
-            return svc._row(row, student)
+            raise AppException("DATA_CONFLICT", "任务书已确认，无需重复确认")
         if row.status not in ("PENDING_CONFIRM", "CHANGE_PENDING"):
             raise AppException("DATA_CONFLICT", "当前任务书状态不允许代确认")
         before = row.status
@@ -187,7 +187,7 @@ def confirm_taskbook_in_session(db, gd_student_id) -> dict:
     if not row:
         raise not_found("尚未下达任务书")
     if row.status == "CONFIRMED":
-        return svc._row(row, student)
+        raise AppException("DATA_CONFLICT", "任务书已确认，无需重复确认")
     if row.status not in ("PENDING_CONFIRM", "CHANGE_PENDING"):
         raise AppException("DATA_CONFLICT", "当前任务书状态不允许确认")
     before = row.status
@@ -205,13 +205,15 @@ def export_taskbook_pdf(gd_student_id, template_id: str | None = None) -> dict:
     from app.modules.graduation.services import graduation_taskbook_service as svc
     from app.services.pdf_util import build_text_pdf, pack_pdf_result
 
-    with session() as db:
-        student = db.get(GraduationStudent, int(gd_student_id))
-        if not student or student.is_deleted or student.tenant_id != _tid():
+    with svc.session() as db:
+        student = svc._stu(db, gd_student_id)
+        if not student or student.is_deleted or student.tenant_id != svc._tid():
             raise not_found("毕设学生不存在")
-        assert_student_access(db, student, "taskbook.export")
+        from sqlalchemy.orm import Session as _OrmSession
+        if isinstance(db, _OrmSession):
+            assert_student_access(db, student, "taskbook.export")
         row = db.scalars(select(GraduationTaskBook).where(
-            GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == student.id,
+            GraduationTaskBook.tenant_id == svc._tid(), GraduationTaskBook.gd_student_id == student.id,
             GraduationTaskBook.is_deleted.is_(False),
         )).first()
         if not row:
@@ -219,12 +221,12 @@ def export_taskbook_pdf(gd_student_id, template_id: str | None = None) -> dict:
         template = None
         if template_id:
             template = db.get(GraduationTemplate, int(template_id))
-            if (not template or template.is_deleted or template.tenant_id != _tid()
+            if (not template or template.is_deleted or template.tenant_id != svc._tid()
                     or template.template_type != "TASKBOOK" or template.status != "ENABLED"):
                 raise AppException("VALIDATION_ERROR", "指定的任务书模板不存在或未启用")
         else:
             template = db.scalars(select(GraduationTemplate).where(
-                GraduationTemplate.tenant_id == _tid(), GraduationTemplate.template_type == "TASKBOOK",
+                GraduationTemplate.tenant_id == svc._tid(), GraduationTemplate.template_type == "TASKBOOK",
                 GraduationTemplate.status == "ENABLED", GraduationTemplate.is_deleted.is_(False),
             ).order_by(GraduationTemplate.is_default.desc(), GraduationTemplate.id.desc())).first()
         variables = svc._taskbook_print_vars(student, row)

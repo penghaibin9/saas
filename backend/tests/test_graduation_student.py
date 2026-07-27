@@ -5,6 +5,9 @@ from __future__ import annotations
 from conftest import make_org_class
 
 import base64
+from uuid import uuid4
+
+from sqlalchemy import select
 
 GD_STU = "/api/v1/graduation/gd-students"
 GD_BATCH = "/api/v1/graduation/batches"
@@ -28,9 +31,10 @@ def _topic(client, h, title="测试课题A", capacity=2):
     from app.db.session import get_sessionmaker
     from app.models import GraduationTopic
     MAIN_TID = 1000000000000000001
+    bid = getattr(client, "_active_batch_id", None) or _batch(client, h, f"GD-STU-TOP-{uuid4().hex[:8]}")
     db = get_sessionmaker()()
     try:
-        t = GraduationTopic(tenant_id=MAIN_TID, title=title, source="教师申报", source_type="TEACHER",
+        t = GraduationTopic(tenant_id=MAIN_TID, batch_id=int(bid), title=title, source="教师申报", source_type="TEACHER",
                             advisor_name="王芳", major_name="软件技术", capacity=capacity, selected=0,
                             review_status="APPROVED", status="CONFIRMED")
         db.add(t)
@@ -91,13 +95,44 @@ def test_unassign_releases(client, auth_headers, db_mode):
 
 
 def test_stage_machine(client, auth_headers, db_mode):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationArchiveRecord, GraduationProposal, GraduationRiskCase, GraduationTaskBook
+
     tid = _topic(client, auth_headers, "状态机测试", capacity=2)
     rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-040"))
     assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["code"] != 0
     client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid})
     client.post(f"{GD_STU}/{rid}/assign-advisor", headers=auth_headers, json={"advisorName": "李老师"})
+    db = get_sessionmaker()()
+    try:
+        db.add(GraduationTaskBook(
+            tenant_id=1000000000000000001, gd_student_id=int(rid), status="CONFIRMED",
+            objective="目标", content="内容", confirmed_at=datetime.utcnow(), history_json=[],
+        ))
+        db.add(GraduationProposal(
+            tenant_id=1000000000000000001, gd_student_id=int(rid), version="v1",
+            status="APPROVED", submit_at=datetime.utcnow(),
+        ))
+        db.add(GraduationArchiveRecord(
+            tenant_id=1000000000000000001, gd_student_id=int(rid), status="FILED",
+            missing_items=[], checklist_json=[], manifest_hash="test-manifest",
+        ))
+        db.commit()
+    finally:
+        db.close()
     assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "GUIDING"
     assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "MIDTERM"
+    db = get_sessionmaker()()
+    try:
+        for risk in db.scalars(select(GraduationRiskCase).where(
+            GraduationRiskCase.gd_student_id == int(rid),
+            GraduationRiskCase.is_deleted.is_(False),
+        )).all():
+            risk.status = "CLOSED"
+        db.commit()
+    finally:
+        db.close()
     assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ARCHIVE"}).json()["data"]["stage"] == "ARCHIVED"
     assert client.put(f"{GD_STU}/{rid}", headers=auth_headers, json={"advisorName": "x"}).json()["code"] != 0
 
@@ -187,7 +222,8 @@ def test_subpanels_eligibility_group_defense_grad_qual(client, auth_headers, db_
     assert d["code"] == 0 and d["data"]["defenseGroupId"] == gid
     q = client.post(f"{GD_STU}/{rid}/grad-qual", headers=auth_headers,
                     json={"status": "PASS", "note": "教务预审通过", "reason": "联动"}).json()
-    assert q["code"] == 0 and q["data"]["gradQualStatus"] == "PASS"
+    assert q["code"] != 0 and "不再直接裁决" in q["message"]
+    client._active_batch_id = str(bid)
     lst = client.get(f"{GD_STU}", headers=auth_headers, params={"eligibility": "QUALIFIED"}).json()
     assert lst["code"] == 0 and any(x["id"] == rid for x in lst["data"]["items"])
     groups = client.get(f"{GD_STU}/groups", headers=auth_headers).json()
@@ -195,11 +231,23 @@ def test_subpanels_eligibility_group_defense_grad_qual(client, auth_headers, db_
 
 
 def test_batch_group_and_archive(client, auth_headers, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationArchiveRecord
+
     r1 = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-081"))
     r2 = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-082"))
     bg = client.post(f"{GD_STU}/batch-group", headers=auth_headers,
                      json={"recordIds": [r1, r2], "groupName": "批量组A", "reason": "批量"}).json()
     assert bg["code"] == 0 and bg["data"]["updated"] == 2
+    db = get_sessionmaker()()
+    try:
+        db.add(GraduationArchiveRecord(
+            tenant_id=1000000000000000001, gd_student_id=int(r1), status="FILED",
+            missing_items=[], checklist_json=[], manifest_hash="test-manifest",
+        ))
+        db.commit()
+    finally:
+        db.close()
     ba = client.post(f"{GD_STU}/batch-archive", headers=auth_headers,
                      json={"recordIds": [r1], "reason": "结业归档"}).json()
     assert ba["code"] == 0 and ba["data"]["archived"] == 1

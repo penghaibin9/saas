@@ -30,6 +30,10 @@ def _teacher_token(real_name):
         "currentRoleCode": "GD_MENTOR", "clientType": "MP"})}
 
 
+def _items(data):
+    return data.get("items", []) if isinstance(data, dict) else data
+
+
 def test_student_taskbook_midterm_grade_and_teacher_guidance(client, auth_headers, db_mode):
     h = auth_headers
     student_no, student_name = "MB001", "移动测试生"
@@ -55,7 +59,7 @@ def test_student_taskbook_midterm_grade_and_teacher_guidance(client, auth_header
     assert grade_before["published"] is False
 
     th = _teacher_token("移动导师")
-    my_students = client.get(f"{MOBILE}/teacher/graduation/my-students", headers=th).json()["data"]
+    my_students = _items(client.get(f"{MOBILE}/teacher/graduation/my-students", headers=th).json()["data"])
     assert any(s["gdStudentId"] == str(gid) for s in my_students)
 
     add_guidance = client.post(f"{MOBILE}/teacher/graduation/{gid}/guidance", headers=th,

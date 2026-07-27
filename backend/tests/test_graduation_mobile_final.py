@@ -122,7 +122,8 @@ def test_final_review_reject_needs_reason(client, auth_headers, db_mode):
     name = "成果退回生"
     _gd_student_with_topic(client, h, "FN002", name, advisor="成果李老师")
     sh = _stu_token(name)
-    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿"})
+    fid = _upload(client, sh)
+    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [fid]})
     finals = client.get(f"{MOBILE}/teacher/graduation", headers=h).json()["data"]["finalDetail"]
     fdid = next(f["id"] for f in finals if f["studentName"] == name)
     # 退回不填原因 → 校验失败

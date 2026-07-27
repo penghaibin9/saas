@@ -298,6 +298,17 @@ def _preview(mode: str, batch_id) -> dict:
     with session() as db:
         batch = svc._require_batch(db, batch_id)
         snapshot = _snapshot(db, batch, mode)
+        skip_reasons: dict[str, int] = {}
+        for row in snapshot["rows"]:
+            reasons = []
+            if row["missing"]:
+                reasons.append("missing_materials")
+            if row["openRisks"] > 0:
+                reasons.append("open_risks")
+            if mode == "GENERATE" and row["archiveStatus"] in ("SUBMITTED", "FILED"):
+                reasons.append("already_submitted")
+            for reason in reasons:
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
         executable = sum(1 for row in snapshot["rows"] if not row["missing"] and row["openRisks"] == 0
                          and (mode != "GENERATE" or row["archiveStatus"] not in ("SUBMITTED", "FILED")))
         payload = _token_payload(mode, batch, snapshot)
@@ -305,6 +316,7 @@ def _preview(mode: str, batch_id) -> dict:
             "batchId": str(batch.id), "batchName": batch.batch_name,
             "candidateCount": len(snapshot["rows"]), "executableCount": executable,
             "skippedCount": len(snapshot["rows"]) - executable,
+            "skipReasons": [{"reason": k, "count": v} for k, v in sorted(skip_reasons.items()) if v],
             "hasAbnormal": executable != len(snapshot["rows"]),
             "snapshotHash": payload["snapshotHash"], "previewToken": _sign_token(payload),
             "expiresInSeconds": 600, "generatedAt": datetime.now(timezone.utc).isoformat(),

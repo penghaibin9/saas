@@ -2933,7 +2933,9 @@ def graduation_midterm_queue(user: dict) -> list:
         return []
     scope = resolve_teacher_scope(u)
     from app.modules.graduation.services import graduation_midterm_service as mt
-    rows, _ = _safe_list(mt.list_midterms, 1, 100)
+    batch_id = u.get("graduationBatchId") or u.get("batchId")
+    kwargs = {"batch_id": batch_id} if batch_id else {}
+    rows, _ = _safe_list(mt.list_midterms, 1, 100, **kwargs)
     actionable = {"PENDING", "RECTIFY_SUBMITTED"}
     out = []
     for r in rows:

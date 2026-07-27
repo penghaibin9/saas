@@ -175,7 +175,7 @@ def _locked_submit_final(gd_student_id, final_type, attachments=None) -> dict:
 
 
 def _locked_withdraw_choices(round_id, gd_student_id) -> dict:
-    """学生退选：缺失轮次返回 404，状态与批次在同一事务核验，重复请求幂等。"""
+    """学生退选：缺失轮次返回 404，状态与批次在同一事务核验。"""
     from app.modules.graduation.services import graduation_topic_round_service as rounds
 
     with session() as db:
@@ -213,10 +213,10 @@ def _locked_withdraw_choices(round_id, gd_student_id) -> dict:
             raise AppException("DATA_CONFLICT", "已被确认/匹配的选题不可自助退选，请走课题变更流程")
         active = [row for row in rows if row.status != "WITHDRAWN"]
         if not active:
-            return {"withdrawn": 0, "alreadyWithdrawn": True}
+            raise not_found("当前没有可退选的志愿")
         for row in active:
             row.status = "WITHDRAWN"
-            row.is_deleted = False
+            row.is_deleted = True
             row.submission_version = int(row.submission_version or 0) + 1
         rounds._audit(
             db, round_row.id, "WITHDRAW_CHOICES",
