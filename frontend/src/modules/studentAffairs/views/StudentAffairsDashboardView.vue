@@ -77,7 +77,7 @@
       <div class="sa-grid sa-grid--two">
         <AppSectionCard title="常用学工业务">
           <div class="sa-actions">
-            <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/campus-service/leave')">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/student-affairs/leave')">
               请假审批
             </AppPermissionButton>
             <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="go('/admin/student-affairs/dorm/exception')">
@@ -150,8 +150,8 @@ const FALLBACK_DRILL = {
   studentTotal: '/admin/student/list',
   classTotal: '/admin/campus-service/classes',
   pendingTodo: '/admin/approval/todos',
-  pendingLeave: '/admin/campus-service/leave',
-  overdueLeave: '/admin/campus-service/leave-ledger?status=OVERDUE',
+  pendingLeave: '/admin/student-affairs/leave',
+  overdueLeave: '/admin/student-affairs/leave/ledger?status=OVERDUE',
   pendingAid: '/admin/student-affairs/aid?status=REVIEW',
   pendingFunding: '/admin/student-affairs/funding?status=REVIEW',
   pendingDiscipline: '/admin/student-affairs/discipline?status=REVIEW',

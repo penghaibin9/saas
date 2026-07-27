@@ -13,7 +13,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
     "student.leave.detail": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["leaveId"],
-        "pc": "/admin/campus-service/leave",
+        "pc": "/admin/student-affairs/leave",
         "studentPc": "/leave",
         "studentMini": "/pages/student/my-applications/index",
         "teacherMini": "/pages/teacher/approvals/index",

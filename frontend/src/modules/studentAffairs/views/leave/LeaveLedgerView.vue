@@ -66,7 +66,7 @@
 
 <script>
 /**
- * 请假台账（/admin/campus-service/leave-ledger）。
+ * 请假台账（/admin/student-affairs/leave/ledger）。
  * 全状态请假记录，按数据范围裁剪；筛选（状态/类型/关键词/日期区间，日期默认不限）；
  * 导出 Excel 台账（公共导出底座，水印 + 导出审计）。真实对接 /student-affairs/leave 与 /leave/export。
  */

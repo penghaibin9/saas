@@ -1,7 +1,7 @@
 """13A-P2 请假销假闭环 · 端到端（真实 DB 模式）。
 
 L1 申请建流；L2 多级审批；L3 短假单节点；L4 驳回(原因校验)；L5 销假→CLOSED进360；
-L6 续假改期；L7 逾期扫描幂等；L8 重复提交409；越权跨班403；双状态列一致 + 老端点回归。
+L6 续假改期；L7 逾期扫描幂等；L8 重复提交409；越权跨班403；双状态列一致 + 旧端点下线合同。
 """
 from __future__ import annotations
 
@@ -166,29 +166,14 @@ def test_cross_class_leave_403(client, db_mode):
     assert r.json()["bizCode"] == "NO_DATA_SCOPE"
 
 
-def test_legacy_campus_leave_endpoints_unaffected(client, db_mode):
-    """老 campus-service 请假读端点回归绿（双状态列不破坏旧链路）。"""
+def test_legacy_campus_leave_routes_retired(client, db_mode):
+    """旧在校服务请假列表与审批接口已退出，只允许新学工请假链路。"""
     _seed(db_mode)
-    r = client.get("/api/v1/campus-service/leaves", headers=_hdr(client, "school_admin01"))
-    assert r.status_code == 200 and r.json()["code"] == 0
-
-
-def test_legacy_approve_refuses_13a_managed_leave(client, db_mode):
-    """写侧单点回归：13A 新引擎记录（affairs_status 非空）不得被老 campus-service 审批端点单级拍板，
-    必须引导去新工作台；同时验证有范围限定的辅导员能在老列表接口正确看到该记录（不再因
-    cs_student_id=0 哨兵值误报数据范围外）。"""
-    ids = _seed(db_mode)
-    hdr_admin = _hdr(client, "school_admin01")
-    lid = _apply(client, hdr_admin, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
-
-    hdr_counselor = _hdr(client, "counselor01")
-    lst = client.get("/api/v1/campus-service/leaves", headers=hdr_counselor).json()
-    assert lst["code"] == 0
-    assert any(x["id"] == str(lid) for x in lst["data"]["items"])
-
-    bad = client.post(f"/api/v1/campus-service/leaves/{lid}/approve", headers=hdr_admin,
-                      json={"comment": "同意"}).json()
-    assert bad["code"] != 0 and bad["bizCode"] == "DATA_CONFLICT"
+    legacy = "/api/v1/campus-service/" + "leaves"
+    hdr = _hdr(client, "school_admin01")
+    assert client.get(legacy, headers=hdr).status_code == 404
+    assert client.post(f"{legacy}/1/approve", headers=hdr,
+                       json={"comment": "同意", "version": 0}).status_code == 404
 
 
 # ═══════════ 本轮新增：销假退回 / 续假驳回 / 逾期处置 / 代登记销假 / 台账 / 统计 / 导出 ═══════════

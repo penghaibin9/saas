@@ -734,7 +734,7 @@ def get_dashboard() -> dict:
                      "trend": f"宿舍异常 {open_de}", "trendQuality": "bad" if open_wo else "good"},
                 ],
                 "todos": [
-                    {"id": "t1", "label": "待审批请假", "value": pend_leave, "link": "/admin/campus-service/leave"},
+                    {"id": "t1", "label": "待审批请假", "value": pend_leave, "link": "/admin/student-affairs/leave"},
                     {"id": "t2", "label": "待审核资助", "value": pend_grant, "link": "/admin/campus-service/grants"},
                     {"id": "t3", "label": "待处理工单", "value": open_wo, "link": "/admin/campus-service/work-orders"},
                 ],

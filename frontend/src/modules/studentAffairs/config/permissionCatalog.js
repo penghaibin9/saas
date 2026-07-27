@@ -25,7 +25,7 @@ export const STUDENT_AFFAIRS_PERMISSION_CATALOG = [
   permission('studentAffairs.counselorEval.manage', '辅导员考评维护', 'counselorEval', 'MEDIUM', ROLE_TEMPLATES.manage, [], ['POST|PATCH /student-affairs/counselor-eval/*']),
   permission('studentAffairs.orientation.view', '数字迎新查看', 'orientation', 'MEDIUM', ROLE_TEMPLATES.read, ['/admin/orientation'], ['GET /orientation/*']),
 
-  permission('studentAffairs.leave.view', '请假查看', 'leave', 'MEDIUM', ROLE_TEMPLATES.read, ['/admin/campus-service/leave', '/admin/campus-service/leave-stats'], ['GET /student-affairs/leaves']),
+  permission('studentAffairs.leave.view', '请假查看', 'leave', 'MEDIUM', ROLE_TEMPLATES.read, ['/admin/student-affairs/leave', '/admin/student-affairs/leave/stats'], ['GET /student-affairs/leaves']),
   permission('studentAffairs.leave.create', '请假发起', 'leave', 'MEDIUM', ROLE_TEMPLATES.read, [], ['POST /student-affairs/leaves']),
   permission('studentAffairs.leave.approve', '请假审批', 'leave', 'HIGH', ROLE_TEMPLATES.manage, [], ['POST /student-affairs/leaves/*/approve']),
   permission('studentAffairs.leave.export', '请假导出', 'leave', 'HIGH', ROLE_TEMPLATES.manage, [], ['GET /student-affairs/leaves/export']),

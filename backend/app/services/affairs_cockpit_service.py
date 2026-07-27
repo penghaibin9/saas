@@ -126,7 +126,7 @@ def cockpit(user) -> dict:
         "class", "班级管理", "/admin/campus-service/classes", lambda _user: _dashboard_card("classTotal"), user,
         highlight_from=None)
     leave = _safe_domain(
-        "leave", "请假管理", "/admin/campus-service/leave-stats", _leave_metrics, user,
+        "leave", "请假管理", "/admin/student-affairs/leave/stats", _leave_metrics, user,
         highlight_from="pendingReview", highlight_label="待审批")
     dorm = _safe_domain(
         "dorm", "宿舍管理", "/admin/student-affairs/dorm/stats", dorm_svc.occupancy_stats, user,

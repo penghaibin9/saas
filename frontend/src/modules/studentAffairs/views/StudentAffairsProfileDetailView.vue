@@ -227,7 +227,7 @@ export default {
       this.$router.push({ path: '/admin/student-affairs/risk', query: { studentId: this.studentId, status: 'OPEN' } })
     },
     goLeave() {
-      this.$router.push({ path: '/admin/campus-service/leave-ledger', query: { studentId: this.studentId } })
+      this.$router.push({ path: '/admin/student-affairs/leave/ledger', query: { studentId: this.studentId } })
     },
     goDorm() {
       this.$router.push({
