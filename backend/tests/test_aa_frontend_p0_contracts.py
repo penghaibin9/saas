@@ -58,3 +58,13 @@ def test_academic_layout_has_error_retry_and_back_instead_of_endless_loading():
     assert "this.ctx = null" in source
     assert "this.error = (err && err.message)" in source
     assert "权限上下文读取失败" in source
+
+
+def test_teacher_pc_admin_grade_supplement_uses_identity_endpoint_and_required_class():
+    api_source = _read("frontend/src/modules/academicAffairs/api/grade-identity.api.js")
+    view_source = _read("frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue")
+
+    assert "/academic-affairs/grade-tasks/identity" in api_source
+    assert "gradeIdentityApi.createGradeTask(payload)" in view_source
+    assert "请选择明确行政班" in view_source
+    assert "特殊补录必选" in view_source
