@@ -17,22 +17,36 @@ def test_mobile_makeup_options_do_not_group_by_course_name_or_highest_score():
 
 
 def test_student_options_return_exact_course_and_attempt_identity():
-    root = Path(__file__).resolve().parents[2]
-    source = (
-        root / "backend/app/modules/academic_affairs/services/mobile_academic_gaps_service.py"
-    ).read_text(encoding="utf-8")
+    from app.modules.academic_affairs import services
 
+    mobile = services.mobile_academic_affairs_service
+    source = Path(mobile.__file__).read_text(encoding="utf-8")
     for field in ("courseId", "courseCode", "courseVersion", "attemptNo", "gradeId"):
         assert f'"{field}"' in source
-    assert '"policyCode": "LATEST_FORMAL_SOURCE_V1"' in source
+    assert "effective_grade_rows(rows)" in source
+    assert "identityDebtCount" in source
 
 
-def test_recognition_self_service_uses_unified_account_binding():
+def test_recognition_self_service_uses_unified_account_binding_and_source_link():
+    from app.modules.academic_affairs import services
+
+    recognition = services.academic_affairs_recognition_service
+    source = Path(recognition.__file__).read_text(encoding="utf-8")
+
+    assert "mobile_student_identity_facade import resolve_student" in source
+    assert "代录学号命中多份学生档案" in source
+    assert 'source_biz_type="RECOGNITION"' in source
+    assert "source_biz_id=row.id" in source
+    assert "setattr(" not in source
+    assert "_base._resolve_student =" not in source
+
+
+def test_recognition_guard_is_compatibility_export_only():
     root = Path(__file__).resolve().parents[2]
     source = (
         root / "backend/app/modules/academic_affairs/services/academic_affairs_recognition_identity_guard.py"
     ).read_text(encoding="utf-8")
 
-    assert "mobile_student_identity_facade import resolve_student" in source
-    assert "_base._resolve_student = _resolve_student" in source
-    assert "代录学号命中多份学生档案" in source
+    assert "academic_affairs_recognition_public_service" in source
+    assert "_base._resolve_student =" not in source
+    assert "_base.review =" not in source
