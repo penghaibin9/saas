@@ -119,7 +119,7 @@ def test_activity_unconfirm_no_duplicate_credit(client, db_mode):
     n = db.scalar(select(func.count()).select_from(AffairsActivityCredit).where(
         AffairsActivityCredit.tenant_id == TID, AffairsActivityCredit.activity_id == int(aid)))
     db.close()
-    assert n == 1  # 撤销删除后重算，仍只 1 条（唯一约束+删重建）
+    assert n == 1  # append-only：原活动流水仍只 1 条，撤销和恢复以独立调整流水留痕
 
 
 def test_activity_validation_and_state(client, db_mode):
@@ -171,10 +171,15 @@ def test_activity_stats(client, db_mode):
 def test_volunteer_record_flow(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
-    rid = client.post(f"{BASE}/volunteer/records", headers=hdr, json={
+    created = client.post(f"{BASE}/volunteer/records", headers=hdr, json={
         "studentId": sid, "serviceName": "社区图书整理", "hours": 6,
-        "orgName": "社区服务中心"}).json()["data"]["recordId"]
-    c = client.post(f"{BASE}/volunteer/records/{rid}/confirm", headers=hdr).json()
+        "orgName": "社区服务中心"}).json()["data"]
+    rid = created["recordId"]
+    c = client.post(
+        f"{BASE}/volunteer/records/{rid}/confirm",
+        headers=hdr,
+        json={"version": created["version"]},
+    ).json()
     assert c["code"] == 0 and c["data"]["status"] == "CONFIRMED"
     # 二课台账出现志愿时长学分（source=VOLUNTEER_RECORD）
     led = client.get(f"{BASE}/second-class/ledger", headers=hdr,
@@ -191,17 +196,26 @@ def test_volunteer_record_flow(client, db_mode):
         StudentStageEvent.to_stage == "VOLUNTEER_CONFIRMED")).all()
     db.close()
     assert len(ev) >= 1
-    # 重复认定 → 业务错
-    assert client.post(f"{BASE}/volunteer/records/{rid}/confirm", headers=hdr).json()["code"] != 0
+    # 重复认定 → 业务错；携带最新 version，确保验证的是状态而非缺版本。
+    assert client.post(
+        f"{BASE}/volunteer/records/{rid}/confirm",
+        headers=hdr,
+        json={"version": c["data"]["version"]},
+    ).json()["code"] != 0
     # 时长<=0 拒绝
     r0 = client.post(f"{BASE}/volunteer/records", headers=hdr,
                      json={"studentId": sid, "serviceName": "x", "hours": 0})
     assert r0.status_code == 422 or r0.json().get("code") not in (0, None)
     # 驳回闭环
-    rid2 = client.post(f"{BASE}/volunteer/records", headers=hdr,
-                       json={"studentId": sid, "serviceName": "临时", "hours": 2}).json()["data"]["recordId"]
-    assert client.post(f"{BASE}/volunteer/records/{rid2}/reject", headers=hdr,
-                       json={"reason": "材料不足需补充证明"}).json()["code"] == 0
+    created2 = client.post(f"{BASE}/volunteer/records", headers=hdr,
+                           json={"studentId": sid, "serviceName": "临时", "hours": 2}).json()["data"]
+    rid2 = created2["recordId"]
+    rejected = client.post(
+        f"{BASE}/volunteer/records/{rid2}/reject",
+        headers=hdr,
+        json={"reason": "材料不足需补充证明", "version": created2["version"]},
+    ).json()
+    assert rejected["code"] == 0 and rejected["data"]["status"] == "REJECTED"
 
 
 def test_second_class_category(client, db_mode):
