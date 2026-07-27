@@ -57,7 +57,7 @@
                 <text class="t-md">{{ item.realName }}</text>
                 <text class="at__sub">{{ item.studentNo }}</text>
               </view>
-              <view class="at__seg">
+              <view class="at__seg" :class="{ 'is-pending': marking[item.studentId] }">
                 <text
                   v-for="option in STATUS_OPTS" :key="option.value"
                   class="at__seg-item" :class="{ 'is-active': item.status === option.value }"
@@ -69,8 +69,8 @@
         </template>
 
         <MobileSafeAreaBar v-if="!detailLoading && active.status === 'DRAFT' && items.length">
-          <button class="btn btn-primary flex-1" :disabled="submitting" @click="submitSession">
-            {{ submitting ? '提交中…' : '提交考勤（提交后不可再改）' }}
+          <button class="btn btn-primary flex-1" :disabled="submitting || hasPendingMarks" @click="submitSession">
+            {{ submitting ? '提交中…' : hasPendingMarks ? '正在保存标记…' : '提交考勤（提交后不可再改）' }}
           </button>
         </MobileSafeAreaBar>
       </view>
@@ -98,7 +98,7 @@ export default {
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
       taskOptions: [], taskIndex: 0,
       form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', sessionType: '' },
-      active: null, items: [], detailLoading: false, submitting: false, STATUS_OPTS
+      active: null, items: [], detailLoading: false, marking: {}, submitting: false, STATUS_OPTS
     }
   },
   computed: {
@@ -107,6 +107,9 @@ export default {
     },
     selectedTask() {
       return (this.taskOptions || [])[this.taskIndex] || null
+    },
+    hasPendingMarks() {
+      return Object.values(this.marking).some(Boolean)
     }
   },
   onLoad() { this.load(); this.loadTasks() },
@@ -170,36 +173,46 @@ export default {
         .finally(() => { this.creating = false })
     },
     closeSession() {
+      if (this.hasPendingMarks) {
+        toast('仍有考勤标记正在保存，请稍候')
+        return
+      }
       this.active = null
       this.items = []
+      this.marking = {}
       this.detailLoading = false
     },
     openSession(session) {
       this.active = { ...session }
       this.items = []
+      this.marking = {}
       this.detailLoading = true
       teacherApi.getAttendanceDetail(session.sessionId).then((data) => {
         this.active = data
         this.items = (data && data.items) || []
       }).catch((error) => {
-        this.closeSession()
+        this.active = null
+        this.items = []
+        this.marking = {}
         toast(error && error.biz ? normalizeError(error).text : '名单加载失败，请稍后重试')
       }).finally(() => { this.detailLoading = false })
     },
     mark(item, status) {
-      if (this.detailLoading || item.status === status) return
+      const studentId = item.studentId
+      if (this.detailLoading || this.marking[studentId] || item.status === status) return
       const previous = item.status
       item.status = status
-      teacherApi.markAttendance(this.active.sessionId, item.studentId, status).then((data) => {
+      this.marking[studentId] = true
+      teacherApi.markAttendance(this.active.sessionId, studentId, status).then((data) => {
         this.active.presentCount = data.presentCount
         this.active.absentCount = data.absentCount
       }).catch((error) => {
         item.status = previous
         toast(error && error.biz ? normalizeError(error).text : '标记失败，请稍后重试')
-      })
+      }).finally(() => { this.marking[studentId] = false })
     },
     async submitSession() {
-      if (this.submitting || this.detailLoading || !this.active || !this.items.length) return
+      if (this.submitting || this.detailLoading || this.hasPendingMarks || !this.active || !this.items.length) return
       const confirmed = await this.confirmModal(
         '提交本场考勤',
         `即将提交${this.active.courseName || '本课程'}共${this.items.length}人的考勤结果。提交后教师端不可直接修改，确认继续？`,
@@ -209,7 +222,9 @@ export default {
       this.submitting = true
       teacherApi.submitAttendanceSession(this.active.sessionId).then(() => {
         uni.showToast({ title: '考勤已提交', icon: 'success' })
-        this.closeSession()
+        this.active = null
+        this.items = []
+        this.marking = {}
         this.load()
       }).catch((error) => toast(error && error.biz ? normalizeError(error).text : '提交失败，请稍后重试'))
         .finally(() => { this.submitting = false })
@@ -228,6 +243,7 @@ export default {
 .at__back { display: inline-block; font-size: var(--font-size-sm); color: var(--brand-primary); margin-bottom: var(--space-3); }
 .at__row { align-items: center; }
 .at__seg { display: flex; flex-shrink: 0; border: 1px solid var(--border-base); border-radius: var(--radius-md); overflow: hidden; }
+.at__seg.is-pending { opacity: .55; pointer-events: none; }
 .at__seg-item { font-size: var(--font-size-xs); color: var(--text-secondary); padding: 6px 8px; }
 .at__seg-item.is-active { background: var(--brand-primary); color: #fff; }
 </style>
