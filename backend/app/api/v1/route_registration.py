@@ -110,12 +110,13 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 def _academic_affairs_extension_routers():
     """只返回已确认独立、无重复路径、无导入副作用的教务扩展 Router。
 
-    看板、学期详情、教学班、教学任务工作台、成绩身份、排课规则、考场异常、
-    教材闭环和教师移动批量成绩仍依赖待收口包装层；合并回原 Service 前不注册，
-    避免清理期暴露运行时才失败的半成品入口。
+    成绩稳定身份创建使用独立 ``/grade-tasks/identity``，不与旧创建路径重复。
+    看板、学期详情、教学班、教学任务工作台、排课规则、考场异常、教材闭环和
+    教师移动批量成绩仍须先合并回正式 Service，再逐项显式注册。
     """
     from app.modules.academic_affairs.routers import (
         dynamic_grade_router,
+        grade_task_identity_router,
         program_quality_router,
         semester_pilot_router,
         stats_snapshot_router,
@@ -124,6 +125,7 @@ def _academic_affairs_extension_routers():
 
     return (
         dynamic_grade_router,
+        grade_task_identity_router,
         program_quality_router,
         semester_pilot_router,
         stats_snapshot_router,
