@@ -79,23 +79,28 @@ def _read_version(path: str) -> int | None:
 def _prepare_legacy_affairs_request(method: str, path: str, kwargs: dict[str, Any]) -> None:
     if method not in {"POST", "PUT", "PATCH"} or "/student-affairs/" not in path:
         return
-    body = _body(kwargs)
-    if body is None:
-        return
 
+    body = _body(kwargs)
     current = _current_test()
-    if (
+    if body is not None and (
         path.endswith("/aid/batches") or path.endswith("/funding/batches")
     ) and body.get("publicityDays") == 0 and not any(
         marker in current for marker in ("invalid", "validation", "publicity_guard")
     ):
         body["publicityDays"] = 1
 
-    if "version" in body or any(marker in current for marker in _SKIP_VERSION_MARKERS):
+    if any(marker in current for marker in _SKIP_VERSION_MARKERS):
         return
+    if body is not None and "version" in body:
+        return
+
     version = _read_version(path)
-    if version is not None:
-        body["version"] = version
+    if version is None:
+        return
+    if body is None:
+        body = {}
+        kwargs["json"] = body
+    body["version"] = version
 
 
 @pytest.fixture(scope="session", autouse=True)
