@@ -57,7 +57,8 @@ from . import academic_affairs_stats_snapshot_service as academic_affairs_stats_
 from . import academic_affairs_graduation_evidence_facade as academic_affairs_graduation_evidence_facade
 from . import academic_affairs_task_teaching_class_facade as academic_affairs_task_service
 from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook_service
-# AA-DASHBOARD-01：移除学校页面施工卡；非校级范围停止复用全校统计。
+# AA-DASHBOARD-01：readiness真实模型守卫；移除施工卡；非校级范围停止复用全校统计。
+from . import academic_affairs_dashboard_readiness_runtime_guard as academic_affairs_dashboard_readiness_runtime_guard
 from . import academic_affairs_dashboard_scope_facade as academic_affairs_dashboard_scope_facade
 # V2-05/R5：稳定身份/当前周 → 教师微信成绩闭环 → 学生考试时区与历史可见最终安全层。
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_facade
