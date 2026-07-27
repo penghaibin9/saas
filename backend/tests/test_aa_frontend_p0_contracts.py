@@ -35,6 +35,16 @@ def test_student_grade_query_copy_never_uses_inner_html_or_official_wording():
     assert ".sp-tab:nth-child(5)" in legacy
 
 
+def test_student_section_route_fails_closed_and_hides_legacy_entry():
+    source = _read("student-portal/src/views/academic/AcademicSectionRouteView.vue")
+
+    assert "activationError" in source
+    assert "未找到“${target}”业务面板" in source
+    assert "标题是A、内容是B" in source
+    assert "兼容综合页" not in source
+    assert "router.push('/academic/all')" not in source
+
+
 def test_admin_menu_is_fail_closed_and_cache_signature_is_identity_complete():
     source = _read("frontend/src/config/adminMenu.js")
 
