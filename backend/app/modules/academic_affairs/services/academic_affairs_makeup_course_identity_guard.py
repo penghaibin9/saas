@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 
 from app.core.exceptions import AppException, not_found
-
 from . import academic_affairs_makeup_course_identity_facade as _base
+from . import academic_affairs_makeup_facade as _scope
 from . import academic_affairs_makeup_term_facade as _term
 from . import academic_affairs_grade_identity_facade as _grade
 
@@ -16,12 +16,23 @@ def __getattr__(name):
     return getattr(_base, name)
 
 
+def _visible_student_map(ctx, db, pairs):
+    """把联查学生按当前教务数据范围裁剪；空范围必须返回空。"""
+    raw_students = {
+        int(student.id): student
+        for _grade_row, student in (pairs or [])
+        if student is not None
+    }
+    visible = _scope._filter_students_by_scope(ctx, db, list(raw_students.values()))
+    return {int(student.id): student for student in visible}
+
+
 def makeup_pending(user, term=None, page=1, page_size=50):
     """按统一有效成绩口径返回补考候选；稳定身份欠账显式展示但不可纳入。"""
     from app.models import AcademicGrade, AcademicStudent
 
     with _legacy.session() as db:
-        _legacy._ctx(user, db)
+        ctx = _legacy._ctx(user, db)
         query = db.query(AcademicGrade, AcademicStudent).join(
             AcademicStudent,
             AcademicGrade.acad_student_id == AcademicStudent.id,
@@ -34,22 +45,24 @@ def makeup_pending(user, term=None, page=1, page_size=50):
         if term:
             query = query.filter(AcademicGrade.term == str(term))
         pairs = query.all()
-        student_by_grade = {int(grade.id): student for grade, student in pairs}
+        visible_students = _visible_student_map(ctx, db, pairs)
         effective = _grade.effective_grade_rows([grade for grade, _student in pairs])
         items = []
         for grade in effective:
             if str(grade.pass_status or "").upper() not in {"FAIL", "FAILED"}:
                 continue
-            student = student_by_grade.get(int(grade.id))
+            student = visible_students.get(int(grade.acad_student_id))
+            if not student:
+                continue
             identity_ready = bool(
                 grade.course_id and grade.course_code and grade.course_version and grade.attempt_no
             )
             items.append({
                 "gradeId": str(grade.id),
                 "acadStudentId": str(grade.acad_student_id),
-                "studentNo": student.student_no if student else "",
-                "studentName": student.name if student else "",
-                "className": student.class_name if student else "",
+                "studentNo": student.student_no,
+                "studentName": student.name,
+                "className": student.class_name,
                 "courseId": str(grade.course_id or ""),
                 "courseCode": grade.course_code or "",
                 "courseVersion": int(grade.course_version or 0) or None,
