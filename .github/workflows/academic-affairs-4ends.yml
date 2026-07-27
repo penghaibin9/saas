@@ -78,6 +78,7 @@ jobs:
         run: >-
           pytest -q
           tests/test_aa_route_registration_main_compat.py
+          tests/test_aa_route_uniqueness.py
           tests/test_aa_student_portal_route_main_compat.py
           tests/test_aa_miniapp_main_compat.py
           tests/test_aa_archive_semantic_gates.py
