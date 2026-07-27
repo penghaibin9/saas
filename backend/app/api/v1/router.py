@@ -107,8 +107,6 @@ install_student_application_lock()
 # 必须在核心申诉实现完成后安装，包装具体受理人待办和结果消息。
 install_appeal_todo_reconciliation()
 install_appeal_repair()
-# 将补偿队列接入现有学工周期扫描，避免一次孤立失败长期等待人工或下一次写请求。
-install_appeal_repair_scheduler()
 # SELF 必须先由服务端账号关系解析，后续画像、二课和申诉只能访问本人。
 install_self_scope_guard()
 # 核心审计安全门必须在既有兼容层之后安装，避免后续补丁再次放宽数据口径。
@@ -148,3 +146,5 @@ install_affairs_operations_final_guard()
 install_teacher_workbench_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
 install_affairs_four_end_terminal_guard(api_router)
+# 补偿调度器必须最后安装，包装所有安全门最终替换后的周期扫描函数；否则后续安装器会覆盖包装。
+install_appeal_repair_scheduler()
