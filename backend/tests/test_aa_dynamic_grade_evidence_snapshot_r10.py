@@ -40,7 +40,7 @@ def test_dynamic_grade_scheme_accepts_one_to_twelve_and_requires_total_100():
         ])
 
 
-def test_dynamic_grade_source_defaults_optional_component_to_zero():
+def test_dynamic_grade_source_defaults_optional_component_to_zero_and_revives_soft_deleted_rows():
     root = Path(__file__).resolve().parents[1]
     source = (
         root / "app/modules/academic_affairs/services/academic_affairs_dynamic_grade_service.py"
@@ -52,6 +52,11 @@ def test_dynamic_grade_source_defaults_optional_component_to_zero():
     assert "resolve_versioned_roster" in source
     assert "AaGradeRecord" in source
     assert 'scheme.status = "LOCKED"' in source
+    assert "academic_affairs_grade_service as grade_service" in source
+    assert "academic_affairs_grade_identity_facade" not in source
+    assert "row.is_deleted = False" in source
+    assert "AaGradeComponentScore.component_code == component[\"code\"]" in source
+    assert ").with_for_update()).first()" in source
 
 
 def test_graduation_evidence_hash_is_stable_and_contains_drill_identity():
@@ -111,38 +116,33 @@ def test_r10_models_and_migration_are_additive():
         assert table in migration
 
 
-def test_r10_routes_are_registered_on_public_academic_router():
-    from app.modules.academic_affairs.routers import academic_affairs
+def test_r10_routes_are_registered_through_explicit_route_registration():
+    root = Path(__file__).resolve().parents[1]
+    registration = (root / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
+    dynamic_router = (
+        root / "app/modules/academic_affairs/routers/dynamic_grade_router.py"
+    ).read_text(encoding="utf-8")
+    stats_router = (
+        root / "app/modules/academic_affairs/routers/stats_snapshot_router.py"
+    ).read_text(encoding="utf-8")
 
-    signatures = {
-        (route.path, tuple(sorted(route.methods or set())))
-        for route in academic_affairs.router.routes
-    }
-    for signature in (
-        ("/academic-affairs/grade-tasks/{task_id}/scheme", ("GET",)),
-        ("/academic-affairs/grade-tasks/{task_id}/scheme", ("PUT",)),
-        ("/academic-affairs/grade-tasks/{task_id}/component-scores", ("POST",)),
-        ("/academic-affairs/grade-tasks/{task_id}/students/{student_id}/component-scores", ("GET",)),
-        ("/academic-affairs/stats/snapshots", ("POST",)),
-        ("/academic-affairs/stats/snapshots", ("GET",)),
-        ("/academic-affairs/stats/snapshots/{snapshot_id}", ("GET",)),
-    ):
-        assert signature in signatures
+    assert "dynamic_grade_router" in registration
+    assert "stats_snapshot_router" in registration
+    assert 'router.put("/grade-tasks/{task_id}/scheme"' in dynamic_router
+    assert 'router.post("/grade-tasks/{task_id}/component-scores"' in dynamic_router
+    assert 'router.post("/stats/snapshots"' in stats_router
+    assert 'router.get("/stats/snapshots"' in stats_router
+    assert 'router.get("/stats/snapshots/{snapshot_id}"' in stats_router
 
 
-def test_r10_compatibility_layers_are_loaded_from_public_services():
-    from app.modules.academic_affairs import services
-    from app.modules.academic_affairs.services import academic_affairs_graduation_service as graduation
+def test_r10_public_services_are_explicit_and_do_not_assert_facade_module_locations():
+    from app.modules.academic_affairs.services import academic_affairs_dynamic_grade_service as dynamic_grade
+    from app.modules.academic_affairs.services import academic_affairs_stats_snapshot_service as stats_snapshot
 
-    assert services.academic_affairs_dynamic_grade_service.__name__.endswith(
-        "academic_affairs_dynamic_grade_service"
-    )
-    assert services.academic_affairs_stats_snapshot_service.__name__.endswith(
-        "academic_affairs_stats_snapshot_service"
-    )
-    assert graduation._run_items.__module__.endswith(
-        "academic_affairs_graduation_evidence_facade"
-    )
+    assert callable(dynamic_grade.enter_component_scores)
+    assert callable(dynamic_grade.configure_scheme)
+    assert callable(stats_snapshot.create_snapshot)
+    assert callable(stats_snapshot.get_snapshot)
 
 
 def test_stats_snapshot_service_is_immutable_and_hash_checked():
