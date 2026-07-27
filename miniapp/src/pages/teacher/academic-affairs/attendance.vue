@@ -42,28 +42,33 @@
       </view>
 
       <view class="page-pad" v-if="active">
-        <text class="at__back" @click="active = null">‹ 返回场次列表</text>
+        <text class="at__back" @click="closeSession">‹ 返回场次列表</text>
         <view class="card row-between">
           <text class="t-md t-bold">{{ active.courseName || '（未命名课程）' }}</text>
           <MobileStatusTag :status="active.status" />
         </view>
-        <view class="list-group">
-          <view v-for="item in items" :key="item.studentId" class="list-row at__row">
-            <view class="flex-1">
-              <text class="t-md">{{ item.realName }}</text>
-              <text class="at__sub">{{ item.studentNo }}</text>
-            </view>
-            <view class="at__seg">
-              <text
-                v-for="option in STATUS_OPTS" :key="option.value"
-                class="at__seg-item" :class="{ 'is-active': item.status === option.value }"
-                @click="active.status === 'DRAFT' && mark(item, option.value)"
-              >{{ option.label }}</text>
+
+        <MobileGlobalState v-if="detailLoading" state="loading" title="正在读取本场考勤名单" />
+        <template v-else>
+          <MobileGlobalState v-if="!items.length" state="empty" title="本场暂无学生名单" description="请检查教学任务正式名单是否已锁定。" />
+          <view class="list-group" v-else>
+            <view v-for="item in items" :key="item.studentId" class="list-row at__row">
+              <view class="flex-1">
+                <text class="t-md">{{ item.realName }}</text>
+                <text class="at__sub">{{ item.studentNo }}</text>
+              </view>
+              <view class="at__seg">
+                <text
+                  v-for="option in STATUS_OPTS" :key="option.value"
+                  class="at__seg-item" :class="{ 'is-active': item.status === option.value }"
+                  @click="active.status === 'DRAFT' && mark(item, option.value)"
+                >{{ option.label }}</text>
+              </view>
             </view>
           </view>
-        </view>
+        </template>
 
-        <MobileSafeAreaBar v-if="active.status === 'DRAFT'">
+        <MobileSafeAreaBar v-if="!detailLoading && active.status === 'DRAFT' && items.length">
           <button class="btn btn-primary flex-1" :disabled="submitting" @click="submitSession">
             {{ submitting ? '提交中…' : '提交考勤（提交后不可再改）' }}
           </button>
@@ -93,7 +98,7 @@ export default {
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
       taskOptions: [], taskIndex: 0,
       form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', sessionType: '' },
-      active: null, items: [], submitting: false, STATUS_OPTS
+      active: null, items: [], detailLoading: false, submitting: false, STATUS_OPTS
     }
   },
   computed: {
@@ -115,6 +120,15 @@ export default {
     onTaskPick(event) {
       this.taskIndex = Number(event.detail.value)
       this.applyTask(this.taskOptions[this.taskIndex])
+    },
+    confirmModal(title, content, confirmText = '确定') {
+      return new Promise((resolve) => {
+        uni.showModal({
+          title, content, confirmText, cancelText: '取消',
+          success: (result) => resolve(!!result.confirm),
+          fail: () => resolve(false)
+        })
+      })
     },
     loadTasks() {
       teacherApi.getAttendanceClassOptions().then((data) => {
@@ -140,7 +154,7 @@ export default {
       this.creating = true
       teacherApi.createAttendanceSession({
         teachingTaskId: Number(this.form.teachingTaskId),
-        classId: Number(this.form.classId),
+        classId: this.form.classId ? Number(this.form.classId) : undefined,
         sessionDate: this.form.sessionDate,
         slotNo: this.form.slotNo ? Number(this.form.slotNo) : undefined,
         sessionType: this.form.sessionType || undefined
@@ -155,15 +169,25 @@ export default {
       }).catch((error) => toast(error && error.biz ? normalizeError(error).text : '创建失败，请稍后重试'))
         .finally(() => { this.creating = false })
     },
+    closeSession() {
+      this.active = null
+      this.items = []
+      this.detailLoading = false
+    },
     openSession(session) {
-      this.active = session
+      this.active = { ...session }
+      this.items = []
+      this.detailLoading = true
       teacherApi.getAttendanceDetail(session.sessionId).then((data) => {
         this.active = data
-        this.items = data.items || []
-      }).catch(() => toast('加载失败'))
+        this.items = (data && data.items) || []
+      }).catch((error) => {
+        this.closeSession()
+        toast(error && error.biz ? normalizeError(error).text : '名单加载失败，请稍后重试')
+      }).finally(() => { this.detailLoading = false })
     },
     mark(item, status) {
-      if (item.status === status) return
+      if (this.detailLoading || item.status === status) return
       const previous = item.status
       item.status = status
       teacherApi.markAttendance(this.active.sessionId, item.studentId, status).then((data) => {
@@ -174,12 +198,18 @@ export default {
         toast(error && error.biz ? normalizeError(error).text : '标记失败，请稍后重试')
       })
     },
-    submitSession() {
-      if (this.submitting || !this.active) return
+    async submitSession() {
+      if (this.submitting || this.detailLoading || !this.active || !this.items.length) return
+      const confirmed = await this.confirmModal(
+        '提交本场考勤',
+        `即将提交${this.active.courseName || '本课程'}共${this.items.length}人的考勤结果。提交后教师端不可直接修改，确认继续？`,
+        '确认提交'
+      )
+      if (!confirmed) return
       this.submitting = true
       teacherApi.submitAttendanceSession(this.active.sessionId).then(() => {
         uni.showToast({ title: '考勤已提交', icon: 'success' })
-        this.active = null
+        this.closeSession()
         this.load()
       }).catch((error) => toast(error && error.biz ? normalizeError(error).text : '提交失败，请稍后重试'))
         .finally(() => { this.submitting = false })
