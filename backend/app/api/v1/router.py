@@ -42,6 +42,7 @@ from app.services.affairs_four_end_terminal_guard import install as install_affa
 from app.services.affairs_funding_ext_guard import install as install_funding_ext_guard
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
+from app.services.affairs_operations_final_guard import install as install_affairs_operations_final_guard
 from app.services.affairs_operations_service import install as install_affairs_operations
 from app.services.affairs_publicity_guard import install as install_publicity_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
@@ -138,6 +139,8 @@ install_student_contract()
 install_student_contract_security_guard()
 # 正式材料缺项/补交版本必须在学生合同安全门后接入，保留本人附件过滤并补充结构化缺项。
 install_affairs_operations()
+# 材料附件下载与教师队列计数的终态对象级安全门。
+install_affairs_operations_final_guard()
 # 教师学工首页复用通用待办可见性，并返回真实逐条跨业务待办。
 install_teacher_workbench_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
