@@ -100,7 +100,7 @@ def test_non_school_dashboard_aggregates_are_fail_closed():
     ).read_text(encoding="utf-8")
 
     assert 'if scope_type == "TENANT_ALL"' in source
-    assert 'scopeRestricted": True' in source
+    assert '"scopeRestricted": True' in source
     assert "学校级汇总已 fail-closed" in source
     assert "_COLLEGE_SAFE_KEYS" in scope
     assert "全校考务、成绩与预警汇总不向学院范围放大" in scope
@@ -153,11 +153,29 @@ def test_readiness_api_and_xlsx_export_are_real_endpoints():
     assert "requestBlob" in frontend_api
 
 
-def test_formal_dashboard_response_no_longer_returns_live_pending_module_cards():
+def test_dashboard_public_entry_is_side_effect_free():
     source = (
         ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_dashboard_scope_facade.py"
     ).read_text(encoding="utf-8")
+    package = (
+        ROOT / "backend/app/modules/academic_affairs/services/__init__.py"
+    ).read_text(encoding="utf-8")
 
     assert 'data.pop("moduleCards", None)' in source
-    assert "_base.dashboard = dashboard" in source
-    assert "_base.dashboard_reminders = dashboard_reminders" in source
+    assert "_base.dashboard =" not in source
+    assert "_base.dashboard_reminders =" not in source
+    assert "academic_affairs_dashboard_scope_facade as academic_affairs_service" in package
+
+
+def test_readiness_runtime_compatibility_has_no_model_monkey_patch():
+    final = (
+        ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_dashboard_readiness_final_service.py"
+    ).read_text(encoding="utf-8")
+    guard = (
+        ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_dashboard_readiness_runtime_guard.py"
+    ).read_text(encoding="utf-8")
+
+    assert "AaScheduleChange.term_id" not in final
+    assert "_operation_risks(db, term)" in final
+    assert "_base._operation_risks =" not in guard
+    assert "_canonical._operation_risks" in guard
