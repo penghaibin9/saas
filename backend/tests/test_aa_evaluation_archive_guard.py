@@ -1,4 +1,4 @@
-"""评教学期写保护与归档闭环回归。"""
+"""评教学期写保护、匿名提交与归档闭环回归。"""
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -56,29 +56,35 @@ def test_public_evaluation_and_archive_services_point_to_final_layers():
         for code, _label in services.academic_affairs_archive_service._DOMAINS
     )
     assert services.academic_affairs_evaluation_service.__name__.endswith(
-        "academic_affairs_evaluation_term_facade"
+        "academic_affairs_evaluation_public_service"
     )
     assert services.academic_affairs_evaluation_service.submit_evaluation.__module__.endswith(
-        "academic_affairs_evaluation_term_facade"
+        "academic_affairs_evaluation_public_service"
     )
     assert services.academic_affairs_evaluation_service.review_appeal.__module__.endswith(
         "academic_affairs_evaluation_term_facade"
     )
 
 
-def test_evaluation_public_service_has_no_legacy_function_replacement():
+def test_evaluation_services_have_no_legacy_function_replacement():
     root = Path(__file__).resolve().parents[1]
-    source = (
+    term_source = (
         root / "app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py"
     ).read_text(encoding="utf-8")
+    public_source = (
+        root / "app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py"
+    ).read_text(encoding="utf-8")
 
-    for token in (
-        "_legacy._get_batch =",
-        "setattr(_legacy",
-        "_legacy.create_batch =",
-        "_legacy.submit_appeal =",
-        "_legacy.review_appeal =",
-    ):
-        assert token not in source
-    assert "def _writable_batch" in source
-    assert "_guard_term(db, batch.term_id)" in source
+    for source in (term_source, public_source):
+        for token in (
+            "_legacy._get_batch =",
+            "setattr(_legacy",
+            "_legacy.create_batch =",
+            "_legacy.submit_appeal =",
+            "_legacy.review_appeal =",
+        ):
+            assert token not in source
+    assert "def _writable_batch" in term_source
+    assert "_guard_term(db, batch.term_id)" in term_source
+    assert "resolve_versioned_roster" in public_source
+    assert "ANONYMOUS_STUDENT" in public_source
