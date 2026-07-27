@@ -11,9 +11,15 @@ def read(path: str) -> str:
 def test_student_service_ledger_identity_is_read_only_and_versioned():
     text = read("backend/app/services/affairs_student_ledger_guard.py")
     assert 'path.startswith("/api/v1/campus-service/students/")' in text
-    assert '"name", "studentNo", "studentId", "classId", "className"' in text
+    # 身份字段的只读约束由主档比较器统一执行，不再绑定旧字段元组字面量。
+    assert "shadow.assert_identity_immutable" in text
+    assert "没有可保存的服务字段" in text
+    assert 'payload["careLevel"]' in text
+    assert 'payload["building"]' in text
+    assert 'payload["room"]' in text
+    assert 'payload["counselor"]' in text
     assert "atomic_versioned_update" in text
-    assert 'StudentProfile.tenant_id == _tid()' not in text  # target scope is enforced through require_student
+    assert 'StudentProfile.tenant_id == _tid()' not in text
     assert 'build_affairs_context(get_current_user_ctx() or {}, db).require_student' in text
     assert 'CsServiceStudent.tenant_id == _tid()' in text
 
