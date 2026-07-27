@@ -76,6 +76,28 @@ def test_real_account_uses_link_service_with_monitored_legacy_fallback(monkeypat
     }
 
 
+def test_u_prefix_is_also_treated_as_real_database_account(monkeypatch):
+    from app.services import mobile_student_identity_facade as service
+
+    row = _student(44)
+    db = _Db([row])
+    seen = {}
+    monkeypatch.setattr(service._legacy, "_tid", lambda: 1)
+
+    def resolve(_db, **kwargs):
+        seen.update(kwargs)
+        return 44
+
+    monkeypatch.setattr(service.link_service, "get_student_id_by_user", resolve)
+
+    assert service.resolve_student(db, {
+        "userId": "u_144",
+        "loginName": "20260044",
+        "realName": "不能按姓名猜",
+    }) is row
+    assert seen["user_id"] == 144
+
+
 def test_real_account_without_binding_fails_closed_before_name_guess(monkeypatch):
     from app.services import mobile_student_identity_facade as service
 
