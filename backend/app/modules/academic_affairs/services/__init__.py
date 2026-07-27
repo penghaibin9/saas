@@ -4,5 +4,8 @@
 调用方必须显式导入所需 Service；兼容逻辑应合并回对应原 Service 或由其显式调用纯策略/校验器。
 """
 
-# 选课域在整文件收口后的最终契约入口。该别名是普通模块引用，不改写任何函数对象。
+# 各域最终公开入口。均为普通模块别名，不改写其它模块函数对象。
 from . import academic_affairs_selection_final_service as academic_affairs_selection_service
+from . import academic_affairs_scheduling_public_service as academic_affairs_scheduling_service
+from . import academic_affairs_autoschedule_final_service as academic_affairs_autoschedule_service
+from . import academic_affairs_schedule_final_service as academic_affairs_schedule_service
