@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_dynamic_grade_service as service
+from app.modules.academic_affairs.services import academic_affairs_dynamic_grade_roster_service as roster_service
 
 router = APIRouter(prefix="/academic-affairs/grade-tasks", tags=["教务中心-动态成绩"])
 
@@ -49,6 +50,14 @@ def dynamic_grade_scheme_update(
         service.configure_scheme(task_id, user, [item.model_dump() for item in body.components]),
         message="成绩项方案已保存",
     )
+
+
+@router.get("/{task_id}/component-roster", summary="动态成绩项正式名单与分项回显")
+def dynamic_grade_component_roster(
+    task_id: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.grade.input")),
+):
+    return success(roster_service.component_roster(task_id, user))
 
 
 @router.post("/{task_id}/component-scores", summary="录入学生动态分项成绩")
