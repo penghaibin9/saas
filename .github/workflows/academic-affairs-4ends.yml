@@ -6,6 +6,7 @@ on:
     paths:
       - 'backend/alembic/versions/**'
       - 'backend/app/models/academic_affairs_teaching_class.py'
+      - 'backend/app/models/academic_affairs_roster_consumer.py'
       - 'backend/app/models/__init__.py'
       - 'backend/app/api/v1/route_registration.py'
       - 'backend/app/modules/academic_affairs/**'
@@ -97,6 +98,9 @@ jobs:
           tests/test_aa_mobile_schedule_week.py
           tests/test_aa_mobile_grade_entry_v2.py
           tests/test_aa_home_task_routes_v2.py
+          tests/test_aa_program_opening_r7.py
+          tests/test_aa_teaching_class_migration_r8.py
+          tests/test_aa_roster_consumers_r9.py
           tests/test_aa_effective_grade_identity.py
           tests/test_aa_makeup_effective_candidates.py
           tests/test_aa_makeup_student_identity.py
