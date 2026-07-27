@@ -135,7 +135,7 @@ def test_r9_migrations_preserve_initial_snapshot_then_enable_history():
 def test_grade_resubmit_explicitly_allows_snapshot_replacement_only_after_return():
     root = Path(__file__).resolve().parents[1]
     source = (
-        root / "app/modules/academic_affairs/services/academic_affairs_grade_term_facade.py"
+        root / "app/modules/academic_affairs/services/academic_affairs_grade_service.py"
     ).read_text(encoding="utf-8")
 
     assert 'was_returned = task.status == "RETURNED"' in source
