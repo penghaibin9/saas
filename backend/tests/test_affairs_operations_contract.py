@@ -47,10 +47,21 @@ def test_material_supplement_is_versioned_and_object_scoped():
     assert 'file.biz_type = "MATERIAL_REQUIREMENT"' in service
     assert 'file.visibility = "STUDENT_SELF"' in service
     assert "只能提交本人上传的文件" in service
-    assert "build_affairs_context(user or {}, db).require_student" in guard
+    assert "operations._require_student_scope" in guard
     assert "MATERIAL_REQUIREMENT" in guard
     assert "文件授权必须 fail-closed" in guard
     assert "row.current_submission_id = None" in guard
+
+
+def test_dorm_material_scope_is_limited_to_managed_buildings():
+    guard = _read("backend/app/services/affairs_operations_final_guard.py")
+
+    assert 'ctx.scope_type != "DORM_BUILDING"' in guard
+    assert "ctx.dorm_building_ids" in guard
+    assert 'DormBed.status == "OCCUPIED"' in guard
+    assert "DormTransfer.to_bed_id" in guard
+    assert "该学生的住宿或调宿记录不在您的楼栋范围内" in guard
+    assert 'visible_biz_types &= {"DORM_TRANSFER"}' in guard
 
 
 def test_material_and_batch_endpoints_are_complete():
