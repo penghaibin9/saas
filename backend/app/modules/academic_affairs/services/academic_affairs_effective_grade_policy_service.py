@@ -72,7 +72,6 @@ def grade_identity_key(row):
             course_code,
             str(getattr(row, "course_version", None) or ""),
         )
-    # 明确标记欠账并带记录ID；即使名称/性质/学分相同也不合并。
     return (
         student_id,
         "LEGACY_NAME_KEY",
@@ -84,13 +83,22 @@ def grade_identity_key(row):
 
 
 def _attempt_rank(row):
+    """同一课程身份：先选最新修读次数，再选该次修读中优先级最高的正式来源。
+
+    分数完全不参与选择；记录ID只作为同口径重复脏数据的最后确定性兜底。
+    """
     source = str(getattr(row, "source", None) or "LEGACY").upper()
     exam_type = str(getattr(row, "exam_type", None) or "NORMAL").upper()
     record_status = str(getattr(row, "record_status", None) or "ACTIVE").upper()
     pass_status = str(getattr(row, "pass_status", None) or "PENDING").upper()
+    try:
+        attempt_no = int(getattr(row, "attempt_no", None) or 0)
+    except (TypeError, ValueError):
+        attempt_no = 0
     row_id = int(getattr(row, "id", None) or 0)
     return (
         1 if record_status == "ACTIVE" else 0,
+        attempt_no,
         SOURCE_PRIORITY.get(source, 20),
         EXAM_PRIORITY.get(exam_type, 15),
         1 if pass_status in {"PASSED", "FAILED", "FAIL"} else 0,
@@ -99,7 +107,7 @@ def _attempt_rank(row):
 
 
 def resolve_effective_grade(rows):
-    """返回按稳定课程身份与正式来源排序后的有效成绩行。"""
+    """返回按稳定课程身份、修读次数与正式来源排序后的有效成绩行。"""
     selected = {}
     legacy_ids = []
     for row in rows or []:
@@ -123,6 +131,7 @@ def policy_payload() -> dict:
         "policyVersion": POLICY_VERSION,
         "identityOrder": ["COURSE_ID", "COURSE_CODE", "LEGACY_NAME_KEY"],
         "legacyMerge": "NEVER",
+        "selectionOrder": ["RECORD_STATUS", "ATTEMPT_NO", "SOURCE_PRIORITY", "EXAM_PRIORITY"],
         "sourcePriority": SOURCE_PRIORITY,
         "examPriority": EXAM_PRIORITY,
         "scoreComparison": "DISABLED",
