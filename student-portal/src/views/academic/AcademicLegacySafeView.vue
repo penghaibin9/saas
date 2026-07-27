@@ -3,10 +3,11 @@
     <section class="legacy-safe__notice" role="status">
       <div>
         <strong>综合教务兼容页</strong>
-        <p>旧课表算法和客户端“官方成绩单”入口已停用。请使用独立课表、成绩工作区；学校正式证明须由服务端生成并验真。</p>
+        <p>旧课表、客户端“官方成绩单”和旧评教面板已停用。请使用对应独立工作区；学校正式证明须由服务端生成并验真。</p>
       </div>
       <div class="legacy-safe__actions">
         <button type="button" class="legacy-safe__action is-secondary" @click="goSchedule">进入课表工作区</button>
+        <button type="button" class="legacy-safe__action is-secondary" @click="goEvaluation">进入评教工作区</button>
         <button type="button" class="legacy-safe__action" @click="goGrades">进入成绩工作区</button>
       </div>
     </section>
@@ -22,6 +23,7 @@ import AcademicView from './AcademicView.vue'
 const router = useRouter()
 const root = ref(null)
 const goSchedule = () => router.push('/academic/schedule')
+const goEvaluation = () => router.push('/academic/evaluation')
 const goGrades = () => router.push('/academic/grades')
 
 onMounted(async () => {
@@ -60,11 +62,12 @@ onMounted(async () => {
 }
 .legacy-safe__action.is-secondary { border: 1px solid #93c5fd; background: #fff; color: #1d4ed8; }
 
-/* 旧综合页第1项是错误课表，第5项是客户端拼HTML的成绩单；仅保留源码追溯，不再暴露交互入口。 */
+/* 旧综合页第1项是错误课表、第5项是客户端拼HTML成绩单、第6项是过期评教合同；仅保留源码追溯。 */
 .legacy-safe :deep(.sp-tabs .sp-tab:nth-child(1)),
-.legacy-safe :deep(.sp-tabs .sp-tab:nth-child(5)) { display: none !important; }
+.legacy-safe :deep(.sp-tabs .sp-tab:nth-child(5)),
+.legacy-safe :deep(.sp-tabs .sp-tab:nth-child(6)) { display: none !important; }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .legacy-safe__notice { align-items: flex-start; flex-direction: column; margin: 12px 12px 0; }
   .legacy-safe__actions { width: 100%; flex-direction: column; }
   .legacy-safe__action { width: 100%; }
