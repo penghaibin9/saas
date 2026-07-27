@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# 仅用于把旧请假测试改成真实页面合同；禁止作为 pytest 运行时请求适配器加载。
 from pathlib import Path
 import re
 
