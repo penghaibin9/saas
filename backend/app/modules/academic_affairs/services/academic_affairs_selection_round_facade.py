@@ -1,4 +1,4 @@
-"""选课轮次服务学期写保护层。
+"""选课轮次正式公开 Service。
 
 轮次属于选课批次的子状态机。新建、开轮、关轮、摇号必须在同一写事务内校验所属学期未归档。
 除此之外，严格保留原服务的函数名、开放规则、确定性摇号、容量原子更新、DTO和审计口径。
@@ -184,9 +184,3 @@ def draw_round(user, round_id) -> dict:
             "totalWinners": total_win,
             "totalLosers": total_lose,
         }
-
-
-_legacy.create_round = create_round
-_legacy.open_round = open_round
-_legacy.close_round = close_round
-_legacy.draw_round = draw_round
