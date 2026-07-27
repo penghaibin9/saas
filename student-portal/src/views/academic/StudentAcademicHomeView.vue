@@ -130,7 +130,7 @@ async function load() {
   if (deferrals.length) next.push({ key: 'defer', icon: '🗓', title: '补充缓考材料', description: '存在退回待修改的缓考申请', badge: `${deferrals.length}项`, tone: 'warn', route: '/academic/exam' })
   if (rechecks.length) next.push({ key: 'recheck', icon: '🔍', title: '修改成绩复查申请', description: '存在退回待补充说明的复查申请', badge: `${rechecks.length}项`, tone: 'warn', route: '/academic/recheck' })
   const retakeCount = (makeup.retakeOptions || []).length
-  if (retakeCount) next.push({ key: 'makeup', icon: '📝', title: '处理补考重修', description: '存在可报名的当前有效未通过课程', badge: `${retakeCount}门`, tone: 'warn', route: '/academic/exam' })
+  if (retakeCount) next.push({ key: 'makeup', icon: '📝', title: '处理补考重修', description: '存在可报名的当前有效未通过课程', badge: `${retakeCount}门`, tone: 'warn', route: '/academic/makeup' })
   tasks.value = next
   loading.value = false
 }
