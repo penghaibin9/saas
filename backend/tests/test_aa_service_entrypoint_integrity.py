@@ -55,7 +55,7 @@ EXPECTED_ENTRYPOINTS = {
         "app.modules.academic_affairs.services.academic_affairs_major_split_public_service"
     ),
     "mobile_academic_affairs_service": (
-        "app.modules.academic_affairs.services.mobile_academic_affairs_facade"
+        "app.modules.academic_affairs.services.mobile_academic_affairs_public_service"
     ),
 }
 
@@ -118,6 +118,7 @@ IMPORT_ORDERS = [
         "app.modules.academic_affairs.services.mobile_academic_grade_entry_closure_service",
         "app.modules.academic_affairs.services.mobile_academic_exam_safety_facade",
         "app.modules.academic_affairs.services.mobile_academic_affairs_facade",
+        "app.modules.academic_affairs.services.mobile_academic_affairs_public_service",
     ],
 ]
 
