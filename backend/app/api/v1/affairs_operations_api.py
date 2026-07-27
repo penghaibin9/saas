@@ -37,7 +37,7 @@ class MaterialReviewBody(BaseModel):
 
 class BatchMaterialItem(BaseModel):
     requirementId: int = Field(..., ge=1)
-    version: Optional[int] = Field(None, ge=0)
+    version: int = Field(..., ge=0, description="该材料缺项当前乐观锁版本")
 
 
 class BatchJobCreate(BaseModel):
