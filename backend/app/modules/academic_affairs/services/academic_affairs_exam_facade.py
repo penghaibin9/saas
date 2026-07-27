@@ -1,10 +1,7 @@
-"""考务服务兼容入口。
+"""考务生产门禁兼容入口。
 
-不重写排考、发布、监考和缓考状态机，只补生产门禁：
-- 人工铺位只能从教学任务官方名单选择；
-- 发布前逐课程校验“官方名单=全部考场座位并集”，且每个考场有监考；
-- 考试结束前完成到考状态、缓考和异常闭环；
-- 归档再次执行同一检查，禁止绕过。
+保留既有排考、发布、监考和缓考状态机，只补官方名单铺位、发布完整性、考试结束与归档闭环。
+本模块不修改正式 Service 函数对象；包级公开入口显式选择本模块，旧直接导入仍可读取原 Service。
 """
 from __future__ import annotations
 
@@ -65,7 +62,7 @@ def assign_seats(user, room_id, student_ids):
         requested = [int(value) for value in student_ids if str(value).isdigit()]
         if len(requested) != len(set(requested)):
             raise AppException("VALIDATION_ERROR", "铺位名单内学生重复")
-        official_ids = set(int(value) for value in official["studentIds"])
+        official_ids = {int(value) for value in official["studentIds"]}
         outside = sorted(set(requested) - official_ids)
         if outside:
             raise AppException(
@@ -157,7 +154,7 @@ def _check_arrangement_complete(db, batch_id):
         if not official["ready"]:
             problems.append(f"{label}：{official['note']}")
             continue
-        official_ids = set(int(value) for value in official["studentIds"])
+        official_ids = {int(value) for value in official["studentIds"]}
         if not official_ids:
             problems.append(f"{label}：正式考生名单为空")
 
@@ -209,12 +206,7 @@ def _check_arrangement_complete(db, batch_id):
 
 
 def _batch_closure_issues(db, batch_id: int) -> dict:
-    from app.models import (
-        AaDeferredExam,
-        AaExamCourse,
-        AaExamIncident,
-        AaExamRoomStudent,
-    )
+    from app.models import AaDeferredExam, AaExamCourse, AaExamIncident, AaExamRoomStudent
 
     courses = db.query(AaExamCourse).filter(
         AaExamCourse.tenant_id == _legacy._tid(),
@@ -308,7 +300,7 @@ def finish_batch(user, bid):
 
 
 def archive_batch(user, bid):
-    """FINISHED→ARCHIVED 前再次校验，防止直接改库或历史漏检后绕过。"""
+    """FINISHED→ARCHIVED 前再次校验，防止历史漏检后绕过。"""
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
@@ -384,10 +376,3 @@ def resolve_incident(user, incident_id: int, action: str, reason: str = "", disc
             "disciplineCaseRef": incident.discipline_case_ref,
             "resolvedAt": datetime.utcnow().isoformat(),
         }
-
-
-# 原服务内部或完整路径导入仍应消费统一名单、结束和归档实现。
-_legacy.assign_seats = assign_seats
-_legacy._check_arrangement_complete = _check_arrangement_complete
-_legacy.finish_batch = finish_batch
-_legacy.archive_batch = archive_batch
