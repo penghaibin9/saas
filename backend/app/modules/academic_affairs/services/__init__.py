@@ -28,8 +28,8 @@ from . import academic_affairs_evaluation_term_facade as academic_affairs_evalua
 from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
 # R9考务确认、铺位、发布检查统一消费冻结名单版本。
 from . import academic_affairs_exam_roster_identity_facade as academic_affairs_exam_roster_identity_facade
-# V2-04/R9：正式成绩冻结courseId、修读次数和统一名单版本。
-from . import academic_affairs_grade_identity_facade as academic_affairs_grade_service
+# V2-04/P0-11：课程身份、修读次数、名单版本和有效成绩策略欠账统一公开。
+from . import academic_affairs_grade_policy_facade as academic_affairs_grade_service
 from . import academic_affairs_grade_roster_identity_guard as academic_affairs_grade_roster_identity_guard
 # R10动态成绩项在原成绩任务、名单、审核、发布链上扩展，不另建成绩主账。
 from . import academic_affairs_dynamic_grade_service as academic_affairs_dynamic_grade_service
