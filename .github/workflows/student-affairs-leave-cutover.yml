@@ -1,0 +1,231 @@
+name: Student Affairs Leave Cutover
+
+on:
+  push:
+    branches:
+      - codex/student-affairs-leave-cutover-20260727
+
+permissions:
+  contents: write
+
+jobs:
+  cutover:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/student-affairs-leave-cutover-20260727
+          fetch-depth: 0
+
+      - name: First cut - remove legacy leave calls
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  if new in text:
+                      return text
+                  raise SystemExit(f'missing anchor: {label}')
+              return text.replace(old, new, 1)
+
+          # Student PC: dedicated leave create API, no serviceKey=LEAVE.
+          p = 'student-portal/src/services/portalApi.js'
+          s = read(p)
+          s = replace_once(s,
+              "  affairsLeave: () => request('/portal/affairs/leave'),\n",
+              "  affairsLeave: () => request('/portal/affairs/leave'),\n  affairsLeaveApply: (body) => request('/portal/affairs/leave', { method: 'POST', body }),\n",
+              'portal leave apply')
+          write(p, s)
+
+          p = 'student-portal/src/views/affairs/AffairsFourEndView.vue'
+          s = read(p)
+          s = replace_once(s,
+              "portalApi.affairsServiceApply({ serviceKey: 'LEAVE', ...leaveForm })",
+              "portalApi.affairsLeaveApply({ ...leaveForm })",
+              'student pc legacy leave call')
+          write(p, s)
+
+          # Miniapp: dedicated leave create API.
+          p = 'miniapp/src/services/realApi.js'
+          s = read(p)
+          anchor = "export const affairsLeaveMy = () => realRequest('/mobile/affairs/leave/my')"
+          if anchor not in s:
+              matches = re.findall(r"export const affairsLeaveMy[^\n]*", s)
+              raise SystemExit(f'missing miniapp leave anchor: {matches[:3]}')
+          s = replace_once(s, anchor,
+              anchor + "\nexport const affairsLeaveApply = (body) =>\n  realRequest('/mobile/affairs/leave', { method: 'POST', data: body || {} })",
+              'miniapp leave apply')
+          write(p, s)
+
+          p = 'miniapp/src/services/studentApi.js'
+          s = read(p)
+          s = replace_once(s,
+              "  getMyLeaves: () => real.affairsLeaveMy(),\n",
+              "  getMyLeaves: () => real.affairsLeaveMy(),\n  applyLeave: (body) => real.affairsLeaveApply(body),\n",
+              'studentApi applyLeave')
+          write(p, s)
+
+          p = 'miniapp/src/pages/student/affairs/leave.vue'
+          s = read(p)
+          s = replace_once(s,
+              "studentApi.submitServiceApply({ serviceKey: 'LEAVE', ...payload })",
+              "studentApi.applyLeave(payload)",
+              'miniapp legacy leave call')
+          write(p, s)
+
+          # Formal menu/search paths now point to STUDENT_AFFAIRS routes.
+          p = 'frontend/src/config/navPlan.js'
+          s = read(p)
+          replacements = {
+              "'/admin/campus-service/leave'": "'/admin/student-affairs/leave'",
+              "'/admin/campus-service/leave-extensions'": "'/admin/student-affairs/leave/followup'",
+              "'/admin/campus-service/leave-ledger'": "'/admin/student-affairs/leave/ledger'",
+              "'/admin/campus-service/leave-stats'": "'/admin/student-affairs/leave/stats'",
+          }
+          for old, new in replacements.items():
+              if old not in s and new not in s:
+                  raise SystemExit(f'missing nav path {old}')
+              s = s.replace(old, new)
+          write(p, s)
+
+          p = 'frontend/src/config/adminMenu.js'
+          s = read(p)
+          s = s.replace("path: '/admin/campus-service', label: '学工中心 / 在校服务'",
+                        "path: '/admin/student-affairs/leave', label: '学工中心 / 请假销假'")
+          write(p, s)
+
+          # Old campus-service leave API is removed, not proxied.
+          p = 'backend/app/api/v1/campus_service.py'
+          s = read(p)
+          pattern = re.compile(r"\n# 请假\n.*?\n# 资助\n", re.S)
+          s, count = pattern.subn("\n# 请假旧接口已退出；正式接口统一为 /student-affairs/leave/*。\n\n# 资助\n", s, count=1)
+          if count != 1:
+              raise SystemExit('failed to remove legacy campus leave routes')
+          write(p, s)
+
+          # Old campus-service leave service implementation is removed. Keep shared version parser for grants.
+          p = 'backend/app/services/campus_service_service.py'
+          s = read(p)
+          replacement = '''\n# ═══ 请假旧实现已退出 ═══\n# 请假唯一实现：app.services.affairs_leave_service。历史 CsLeave 数据仍保留。\n\ndef _parse_versioned_item(raw):\n    if isinstance(raw, dict):\n        return raw.get("id"), raw.get("version")\n    if isinstance(raw, (list, tuple)) and len(raw) >= 2:\n        return raw[0], raw[1]\n    return raw, None\n\n\n# ═══ 资助 ═══\n'''
+          pattern = re.compile(r"\n# ═══ 请假 ═══\n.*?\n# ═══ 资助 ═══\n", re.S)
+          s, count = pattern.subn(replacement, s, count=1)
+          if count != 1:
+              raise SystemExit('failed to remove legacy campus leave service')
+          write(p, s)
+
+          # Student detail no longer renders legacy leave DTO; direct users to formal leave ledger.
+          s = read(p)
+          s = re.sub(r"\n\s*leaves = db\.scalars\(select\(CsLeave\).*?\.all\(\)\n", "\n", s, count=1, flags=re.S)
+          s = s.replace('                "leaves": [_leave_row(x, s) for x in leaves],\n', '')
+          write(p, s)
+
+          # Static hard fail: formal UI/client code must not call old leave API.
+          forbidden = {
+              'student-portal/src': ["serviceKey: 'LEAVE'", '/campus-service/leaves'],
+              'miniapp/src': ["serviceKey: 'LEAVE'", '/campus-service/leaves'],
+              'frontend/src': ['/admin/campus-service/leave'],
+          }
+          for root, needles in forbidden.items():
+              for file in Path(root).rglob('*'):
+                  if not file.is_file() or file.suffix not in {'.js', '.vue', '.ts'}:
+                      continue
+                  text = file.read_text(encoding='utf-8', errors='ignore')
+                  for needle in needles:
+                      if needle in text and 'campusService.routes.js' not in str(file):
+                          raise SystemExit(f'legacy leave call remains: {file}: {needle}')
+          PY
+          git add backend/app/api/v1/campus_service.py backend/app/services/campus_service_service.py frontend/src/config/navPlan.js frontend/src/config/adminMenu.js student-portal/src/services/portalApi.js student-portal/src/views/affairs/AffairsFourEndView.vue miniapp/src/services/realApi.js miniapp/src/services/studentApi.js miniapp/src/pages/student/affairs/leave.vue
+          git commit -m "refactor(student-affairs): cut leave over to formal service"
+
+      - name: Second cut - remove pytest fake compatibility
+        shell: bash
+        run: |
+          rm -f backend/affairs_test_compat.py backend/affairs_test_diagnostics.py backend/affairs_test_legacy_inputs.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/pytest.ini')
+          s = p.read_text(encoding='utf-8')
+          lines = [line for line in s.splitlines() if not line.strip().startswith('addopts =')]
+          p.write_text('\n'.join(lines).rstrip() + '\n', encoding='utf-8')
+          PY
+          git add -u backend/affairs_test_compat.py backend/affairs_test_diagnostics.py backend/affairs_test_legacy_inputs.py backend/pytest.ini
+          git commit -m "test(student-affairs): remove legacy request adapters"
+
+      - name: Third cut - absorb leave runtime patches
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path): return Path(path).read_text(encoding='utf-8')
+          def write(path, text): Path(path).write_text(text, encoding='utf-8')
+
+          # Formal management DTO owns version and allowedActions.
+          p = 'backend/app/services/affairs_leave_service.py'
+          s = read(p)
+          if 'def _allowed_actions(' not in s:
+              anchor = 'def _row(x, s=None) -> dict:\n'
+              helper = '''def _allowed_actions(status: str | None) -> list[str]:\n    state = str(status or "")\n    if state in _REVIEW_NODES:\n        return ["APPROVE", "RETURN", "REJECT"]\n    if state == "APPROVED":\n        return ["SUBMIT_CANCEL", "SUBMIT_EXTENSION", "PROXY_CANCEL"]\n    if state == "WAIT_CANCEL_LEAVE":\n        return ["CONFIRM_CANCEL", "RETURN_CANCEL"]\n    if state == "EXTENSION_REVIEW":\n        return ["APPROVE_EXTENSION", "REJECT_EXTENSION"]\n    if state == "OVERDUE":\n        return ["SUBMIT_CANCEL", "SUBMIT_EXTENSION", "HANDLE_OVERDUE"]\n    if state == "RETURNED":\n        return ["EDIT_RETURNED", "RESUBMIT"]\n    return []\n\n\n'''
+              if anchor not in s: raise SystemExit('missing leave _row anchor')
+              s = s.replace(anchor, helper + anchor, 1)
+          if '"allowedActions": _allowed_actions(x.affairs_status),' not in s:
+              s = s.replace('        "id": str(x.id), "studentId": str(x.student_id or ""),\n',
+                            '        "id": str(x.id), "studentId": str(x.student_id or ""),\n        "version": int(x.version or 0), "allowedActions": _allowed_actions(x.affairs_status),\n', 1)
+          write(p, s)
+
+          # Formal student self-view owns version/actions; booleans are projections only.
+          p = 'backend/app/services/mobile_affairs_service.py'
+          s = read(p)
+          old = '''                "reason": x.reason or "",\n                "returnReason": getattr(x, "return_reason", None) or "",\n                "canResubmit": (x.affairs_status or "") == "RETURNED",\n                "canCancel": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),\n                "canExtend": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),\n'''
+          new = '''                "reason": x.reason or "",\n                "returnReason": getattr(x, "return_reason", None) or "",\n                "version": int(x.version or 0),\n                "allowedActions": actions := (\n                    ["EDIT_RETURNED", "RESUBMIT"] if (x.affairs_status or "") == "RETURNED" else\n                    (["SUBMIT_CANCEL", "SUBMIT_EXTENSION"] if (x.affairs_status or "") in ("APPROVED", "OVERDUE") else [])\n                ),\n                "canResubmit": "RESUBMIT" in actions,\n                "canCancel": "SUBMIT_CANCEL" in actions,\n                "canExtend": "SUBMIT_EXTENSION" in actions,\n'''
+          if old not in s:
+              raise SystemExit('missing mobile leave DTO anchor')
+          s = s.replace(old, new, 1)
+          write(p, s)
+
+          # Remove leave-specific monkey patches after formal implementations own the contract.
+          p = 'backend/app/services/affairs_four_end_contract.py'
+          s = read(p)
+          s = re.sub(r'\ndef _patch_core_rows\(\) -> None:.*?\n\ndef _patch_student_views\(\) -> None:',
+                     '\n\ndef _patch_student_views() -> None:', s, count=1, flags=re.S)
+          s = s.replace('    original_leave_my = aff.leave_my\n', '')
+          s = s.replace('        "leave_my": original_leave_my,\n', '')
+          s = re.sub(r'\n    def leave_my\(user\):.*?\n    def aid_my\(user\):',
+                     '\n    def aid_my(user):', s, count=1, flags=re.S)
+          s = s.replace('    aff.leave_my = leave_my\n', '')
+          s = s.replace('    _patch_core_rows()\n', '')
+          write(p, s)
+          PY
+          git add backend/app/services/affairs_leave_service.py backend/app/services/mobile_affairs_service.py backend/app/services/affairs_four_end_contract.py
+          git commit -m "refactor(student-affairs): move leave contract into formal services"
+
+      - name: Static re-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! git grep -n "serviceKey: ['\"]LEAVE['\"]" -- student-portal/src miniapp/src
+          ! git grep -n "/campus-service/leaves" -- backend/app frontend/src student-portal/src miniapp/src
+          ! git grep -n "affairs_test_compat\|affairs_test_diagnostics\|affairs_test_legacy_inputs" -- backend/pytest.ini backend/tests || true
+          git grep -n "/admin/student-affairs/leave" -- frontend/src/config frontend/src/modules/campusService
+          git grep -n "portal/affairs/leave\|mobile/affairs/leave" -- backend/app/api/v1/affairs_leave_self_api.py student-portal/src miniapp/src
+          python -m compileall -q backend/app
+          node --check student-portal/src/services/portalApi.js
+          node --check miniapp/src/services/realApi.js
+          node --check miniapp/src/services/studentApi.js
+
+      - name: Push isolated cutover commits
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git push origin HEAD:codex/student-affairs-leave-cutover-20260727
