@@ -1,12 +1,18 @@
 """学工材料与安全批次终态安全门。
 
 - 材料审核附件按“业务权限 + 学生数据范围”做对象级授权；
-- 教师材料队列在计数和分页前按业务权限过滤，禁止跨域数量泄露。
+- 教师材料队列在计数和分页前按业务权限过滤，禁止跨域数量泄露；
+- 批次幂等键绑定同一请求，失败尝试次数即使事务回滚也可靠累计；
+- 材料重新开启新一轮时仅保留历史版本，不把旧验收件冒充本轮当前件。
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import func, select
 
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException
 from app.core.permissions import has_permission
 from app.services.db_service import _tid, session
 
@@ -116,6 +122,124 @@ def _install_teacher_requirement_scope_guard(operations) -> None:
     operations.list_teacher_requirements = list_teacher_requirements
 
 
+def _install_batch_reliability_guard(operations) -> None:
+    from app.models.affairs_operations import AffairsBatchJob, AffairsBatchJobItem
+
+    original_create_batch = operations.create_batch_job
+    original_execute_item = operations._execute_batch_item
+    original_audit = operations._audit
+
+    def audit(db, biz_id: int, action: str, detail: str = "") -> None:
+        if not str(action or "").startswith("BATCH_"):
+            original_audit(db, biz_id, action, detail)
+            return
+        from app.models import AffairsAuditTrail
+
+        user = get_current_user_ctx() or {}
+        db.add(AffairsAuditTrail(
+            tenant_id=_tid(), biz_type="BATCH_JOB", biz_id=int(biz_id),
+            action=action, operator=user.get("realName") or operations._user_key(user),
+            role_name=user.get("currentRoleCode") or "", detail=(detail or "")[:1000],
+            occurred_at=datetime.utcnow(),
+        ))
+
+    def _request_ids(payload: dict) -> list[int]:
+        items = payload.get("items") or []
+        versions = [item.get("version") for item in items]
+        if any(not isinstance(version, int) or isinstance(version, bool) or version < 0 for version in versions):
+            raise AppException("VALIDATION_ERROR", "批量提醒每一条都必须携带当前材料版本")
+        return [int(item.get("requirementId") or 0) for item in items]
+
+    def _assert_same_request(job, requested_ids: list[int]) -> None:
+        stored = [int(value) for value in ((job.request_json or {}).get("requirementIds") or [])]
+        if stored != requested_ids:
+            raise AppException("IDEMPOTENCY_CONFLICT", "同一幂等键不能用于不同的批次记录")
+
+    def create_batch_job(user: dict, payload: dict) -> dict:
+        requested_ids = _request_ids(payload)
+        job_type = str(payload.get("jobType") or "").strip().upper()
+        key = str(payload.get("idempotencyKey") or "").strip()
+        with session() as db:
+            existed = db.scalars(select(AffairsBatchJob).where(
+                AffairsBatchJob.tenant_id == _tid(),
+                AffairsBatchJob.job_type == job_type,
+                AffairsBatchJob.idempotency_key == key,
+                AffairsBatchJob.is_deleted.is_(False),
+            )).first()
+            if existed:
+                _assert_same_request(existed, requested_ids)
+        result = original_create_batch(user, payload)
+        result_id = str(result.get("batchJobId") or "")
+        if result_id.isdigit():
+            with session() as db:
+                job = db.get(AffairsBatchJob, int(result_id))
+                if job and job.tenant_id == _tid() and not job.is_deleted:
+                    _assert_same_request(job, requested_ids)
+        return result
+
+    def execute_batch_item(item_id: int, user: dict) -> None:
+        before = 0
+        with session() as db:
+            row = db.get(AffairsBatchJobItem, int(item_id))
+            if row and row.tenant_id == _tid() and not row.is_deleted:
+                before = int(row.attempt_count or 0)
+        original_execute_item(item_id, user)
+        # 原执行器失败时业务事务会回滚，RUNNING 与 attempt_count 也会一起回滚；
+        # 这里在独立事务中补齐失败尝试事实，保证重试审计准确。
+        with session() as db:
+            row = db.scalars(select(AffairsBatchJobItem).where(
+                AffairsBatchJobItem.tenant_id == _tid(),
+                AffairsBatchJobItem.id == int(item_id),
+                AffairsBatchJobItem.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if row and row.status == "FAILED" and int(row.attempt_count or 0) <= before:
+                row.attempt_count = before + 1
+                row.started_at = row.started_at or row.completed_at or datetime.utcnow()
+                row.version = int(row.version or 0) + 1
+                db.commit()
+
+    operations._audit = audit
+    operations.create_batch_job = create_batch_job
+    operations._execute_batch_item = execute_batch_item
+
+
+def _install_material_round_guard(operations) -> None:
+    from app.models import User
+    from app.models.affairs_operations import AffairsMaterialRequirement
+
+    original = operations.create_material_requirement
+
+    def create_material_requirement(user: dict, payload: dict) -> dict:
+        result = original(user, payload)
+        requirement_id = str(result.get("requirementId") or "")
+        if result.get("created") or result.get("status") != "MISSING" or not result.get("currentSubmissionId"):
+            return result
+        if not requirement_id.isdigit():
+            return result
+        # 重新开启新一轮时清空“当前提交”，但历史版本行全部保留。
+        with session() as db:
+            row = db.scalars(select(AffairsMaterialRequirement).where(
+                AffairsMaterialRequirement.tenant_id == _tid(),
+                AffairsMaterialRequirement.id == int(requirement_id),
+                AffairsMaterialRequirement.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if not row or row.status != "MISSING" or not row.current_submission_id:
+                return result
+            row.current_submission_id = None
+            row.version = int(row.version or 0) + 1
+            db.commit(); db.refresh(row)
+            submissions = operations._submission_rows(db, [row.id]).get(int(row.id), [])
+            owner = db.get(User, int(row.review_owner_id)) if row.review_owner_id else None
+            refreshed = operations._requirement_dict(
+                row, submissions, student_view=False,
+                owner_name=(owner.real_name if owner else ""),
+            )
+            refreshed["created"] = False
+            return refreshed
+
+    operations.create_material_requirement = create_material_requirement
+
+
 def install() -> None:
     global _INSTALLED
     if _INSTALLED:
@@ -124,4 +248,6 @@ def install() -> None:
 
     _install_material_file_access_guard(operations)
     _install_teacher_requirement_scope_guard(operations)
+    _install_batch_reliability_guard(operations)
+    _install_material_round_guard(operations)
     _INSTALLED = True
