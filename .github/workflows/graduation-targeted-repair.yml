@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: graduation-targeted-validation-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   graduation-validation:
@@ -48,8 +48,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue")
-          text = path.read_text(encoding="utf-8")
+          text = Path("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue").read_text(encoding="utf-8")
           assert "grade.status === 'REVIEWED'" in text
           assert "grade.status === 'CALCULATED' && grade.reviewedAt" not in text
           assert "{ value: 'REVIEWED', label: '已复核' }" in text
@@ -112,8 +111,7 @@ jobs:
           def connect():
               return pymysql.connect(
                   host="127.0.0.1", port=3306, user="root", password="root",
-                  database="student_lifecycle_migration", autocommit=False,
-                  charset="utf8mb4",
+                  database="student_lifecycle_migration", autocommit=False, charset="utf8mb4",
               )
 
           seed = connect()
