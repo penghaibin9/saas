@@ -42,11 +42,3 @@ class AaRosterConsumerSnapshot(PKMixin, TenantMixin, CommonMixin, Base):
             name="uk_aa_roster_consumer_version",
         ),
     )
-
-
-# 确保 Base.metadata.create_all 同时注册 R10 兼容扩展表。
-from app.models.academic_affairs_r10 import (  # noqa: E402,F401
-    AaGradeComponentScore,
-    AaGradeSchemeSnapshot,
-    AaStatsSnapshot,
-)
