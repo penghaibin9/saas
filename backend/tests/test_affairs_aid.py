@@ -6,6 +6,8 @@ A4 公示扫描幂等；A5 敏感四连测(默认脱敏/越权403+审计/授权r
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -37,11 +39,13 @@ def _seed(db_mode):
     return ids
 
 
-def _open_batch(client, hdr, publicity_days=0):
-    return client.post(f"{BASE}/aid/batches", headers=hdr, json={
+def _open_batch(client, hdr, publicity_days=1):
+    result = client.post(f"{BASE}/aid/batches", headers=hdr, json={
         "batchName": "2026春困难认定", "schoolYear": "2025-2026",
         "publicityDays": publicity_days, "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
-        "publish": True}).json()["data"]["batchId"]
+        "publish": True}).json()
+    assert result["code"] == 0, result
+    return result["data"]["batchId"]
 
 
 def _apply(client, hdr, batch_id, sid, level="DIFFICULT"):
@@ -51,11 +55,35 @@ def _apply(client, hdr, batch_id, sid, level="DIFFICULT"):
         "memberCount": 4, "annualIncome": "25000", "specialTags": ["单亲"]})
 
 
+def _review(client, hdr, item, *, action="APPROVE", level=None, reason=""):
+    body = {"action": action, "version": item["version"]}
+    if level:
+        body["level"] = level
+    if reason:
+        body["reason"] = reason
+    result = client.post(f"{BASE}/aid/applications/{item['applyId']}/review", headers=hdr, json=body).json()
+    assert result["code"] == 0, result
+    return result["data"]
+
+
+def _expire_publicity(apply_id):
+    """测试时间推进：正式规则仍为公示至少1天，仅把测试记录回拨到已到期。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AidApply
+    db = get_sessionmaker()()
+    row = db.get(AidApply, int(apply_id))
+    row.publicity_at = datetime.utcnow() - timedelta(days=2)
+    db.commit(); db.close()
+
+
 def _approve_to_publicity(client, hdr, aid_id):
+    current = client.get(f"{BASE}/aid/applications/{aid_id}", headers=hdr).json()["data"]
     for _ in range(3):
-        client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr, json={"action": "APPROVE"})
-    return client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
-                       json={"action": "APPROVE", "level": "DIFFICULT"}).json()
+        current = _review(client, hdr, current)
+    current = _review(client, hdr, current, level="DIFFICULT")
+    assert current["status"] == "PUBLICITY"
+    _expire_publicity(aid_id)
+    return current
 
 
 def test_a1_apply_creates_workflow(client, db_mode):
@@ -67,7 +95,7 @@ def test_a1_apply_creates_workflow(client, db_mode):
     d = r["data"]
     assert d["status"] == "CLASS_REVIEW"
     assert d["familyEconomy"]["detailMasked"] is True
-    assert "annualIncome" not in d["familyEconomy"]  # 明细不出
+    assert "annualIncome" not in d["familyEconomy"]
     from app.db.session import get_sessionmaker
     from app.models import UnifiedTodo, WorkflowInstance
     db = get_sessionmaker()()
@@ -82,16 +110,16 @@ def test_a2_full_flow_to_difficult_library(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     bid = _open_batch(client, hdr)
     aid_id = _apply(client, hdr, bid, ids["sa"]).json()["data"]["applyId"]
-    r = _approve_to_publicity(client, hdr, aid_id)
-    assert r["data"]["status"] == "PUBLICITY"
-    assert r["data"]["finalLevel"] == "DIFFICULT"
-    # 人工确认公示 → APPROVED
-    c = client.post(f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr).json()
-    assert c["data"]["status"] == "APPROVED"
-    # 进困难库
+    current = _approve_to_publicity(client, hdr, aid_id)
+    assert current["finalLevel"] == "DIFFICULT"
+    c = client.post(
+        f"{BASE}/aid/applications/{aid_id}/publicity-confirm",
+        headers=hdr,
+        json={"version": current["version"]},
+    ).json()
+    assert c["code"] == 0 and c["data"]["status"] == "APPROVED"
     lib = client.get(f"{BASE}/aid/difficult-students", headers=hdr).json()["data"]["items"]
     assert any(s["studentId"] == str(ids["sa"]) and s["level"] == "DIFFICULT" for s in lib)
-    # 进 360 + 写等级历史
     from app.db.session import get_sessionmaker
     from app.models import AidLevelHistory, StudentStageEvent
     db = get_sessionmaker()()
@@ -104,25 +132,25 @@ def test_a3_reject_reason_required(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     bid = _open_batch(client, hdr)
-    aid_id = _apply(client, hdr, bid, ids["sa"]).json()["data"]["applyId"]
-    # 原因 <5 字 → 400
-    assert client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
-                       json={"action": "REJECT", "reason": "不行"}).status_code == 400
-    r = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
-                    json={"action": "REJECT", "reason": "材料不齐，无法认定"}).json()
-    assert r["data"]["status"] == "REJECTED"
+    item = _apply(client, hdr, bid, ids["sa"]).json()["data"]
+    assert client.post(f"{BASE}/aid/applications/{item['applyId']}/review", headers=hdr,
+                       json={"action": "REJECT", "reason": "不行", "version": item["version"]}).status_code == 400
+    r = client.post(f"{BASE}/aid/applications/{item['applyId']}/review", headers=hdr,
+                    json={"action": "REJECT", "reason": "材料不齐，无法认定",
+                          "version": item["version"]}).json()
+    assert r["code"] == 0 and r["data"]["status"] == "REJECTED"
 
 
 def test_a4_publicity_scan_idempotent(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    bid = _open_batch(client, hdr, publicity_days=0)  # 0 天 → 即刻可确认
+    bid = _open_batch(client, hdr, publicity_days=1)
     aid_id = _apply(client, hdr, bid, ids["sa"]).json()["data"]["applyId"]
     _approve_to_publicity(client, hdr, aid_id)
     r = client.post(f"{BASE}/aid/scan-publicity", headers=hdr).json()
     assert r["data"]["count"] == 1
     r2 = client.post(f"{BASE}/aid/scan-publicity", headers=hdr).json()
-    assert r2["data"]["count"] == 0  # 幂等
+    assert r2["data"]["count"] == 0
     d = client.get(f"{BASE}/aid/applications/{aid_id}", headers=hdr).json()["data"]
     assert d["status"] == "APPROVED"
 
@@ -132,21 +160,17 @@ def test_a5_sensitive_family_economy(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = _open_batch(client, admin)
     aid_id = _apply(client, admin, bid, ids["sa"]).json()["data"]["applyId"]
-    # ① 列表默认脱敏：只出区间，不出真实收入
     lst = client.get(f"{BASE}/aid/applications", headers=admin).json()["data"]["items"]
     fe = next(a["familyEconomy"] for a in lst if a["applyId"] == aid_id)
     assert fe["annualIncomeRange"] == "2-4万" and "annualIncome" not in fe
-    # ② 辅导员在 CLASS_REVIEW/COUNSELOR_REVIEW 节点可 reveal（高校惯例主持评议）；非本班仍靠范围 403
     ok_c = client.post(f"{BASE}/aid/applications/{aid_id}/reveal",
                        headers=_hdr(client, "counselor01"), json={"reason": "核实家庭情况"})
     assert ok_c.status_code == 200
     assert ok_c.json()["data"]["familyEconomy"]["annualIncome"] == "25000"
-    # ③ 学工处 reveal → 完整值
     ok = client.post(f"{BASE}/aid/applications/{aid_id}/reveal", headers=admin,
                      json={"reason": "评审需核实家庭经济"}).json()
     assert ok["data"]["familyEconomy"]["annualIncome"] == "25000"
     assert ok["data"]["familyEconomy"]["detailMasked"] is False
-    # ④ 两次成功访问均落 SENSITIVE_VIEW 审计
     from app.db.session import get_sessionmaker
     from app.models import SecurityAuditLog
     db = get_sessionmaker()()
@@ -167,47 +191,46 @@ def test_a7_cross_class_403(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     bid = _open_batch(client, admin)
-    aid_id = _apply(client, admin, bid, ids["sb"]).json()["data"]["applyId"]  # B 班
+    aid_id = _apply(client, admin, bid, ids["sb"]).json()["data"]["applyId"]
     r = client.get(f"{BASE}/aid/applications/{aid_id}", headers=_hdr(client, "counselor01"))
     assert r.status_code == 403
     assert r.json()["bizCode"] == "NO_DATA_SCOPE"
 
 
 def test_a8_counselor_review_scoped_to_counselor_review_node(client, db_mode):
-    """辅导员持 counselorReview：可审批班级评议+辅导员初审；学院/学校终审仍须 approve。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     counselor = _hdr(client, "counselor01")
     bid = _open_batch(client, admin)
-    aid_id = _apply(client, admin, bid, ids["sa"]).json()["data"]["applyId"]  # A 班，counselor01 本班学生
-    assert client.get(f"{BASE}/aid/applications/{aid_id}", headers=admin).json()["data"]["status"] == "CLASS_REVIEW"
+    current = _apply(client, admin, bid, ids["sa"]).json()["data"]
+    assert current["status"] == "CLASS_REVIEW"
 
-    # ① CLASS_REVIEW：辅导员可主持班级评议通过 → COUNSELOR_REVIEW
-    r1 = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=counselor, json={"action": "APPROVE"})
+    r1 = client.post(f"{BASE}/aid/applications/{current['applyId']}/review", headers=counselor,
+                     json={"action": "APPROVE", "version": current["version"]})
     assert r1.status_code == 200
-    assert r1.json()["data"]["status"] == "COUNSELOR_REVIEW"
+    current = r1.json()["data"]
+    assert current["status"] == "COUNSELOR_REVIEW"
 
-    # ② COUNSELOR_REVIEW：可查看完整家庭经济
-    reveal = client.post(f"{BASE}/aid/applications/{aid_id}/reveal", headers=counselor,
+    reveal = client.post(f"{BASE}/aid/applications/{current['applyId']}/reveal", headers=counselor,
                          json={"reason": "初审核实家庭情况"})
     assert reveal.status_code == 200
     assert reveal.json()["data"]["familyEconomy"]["annualIncome"] == "25000"
 
-    # ③ COUNSELOR_REVIEW：辅导员可评审通过，推进到 COLLEGE_REVIEW
-    r2 = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=counselor,
-                     json={"action": "APPROVE", "level": "DIFFICULT"}).json()
-    assert r2["data"]["status"] == "COLLEGE_REVIEW"
-    assert r2["data"]["suggestLevel"] == "DIFFICULT"
+    r2 = client.post(f"{BASE}/aid/applications/{current['applyId']}/review", headers=counselor,
+                     json={"action": "APPROVE", "level": "DIFFICULT", "version": current["version"]}).json()
+    current = r2["data"]
+    assert current["status"] == "COLLEGE_REVIEW"
+    assert current["suggestLevel"] == "DIFFICULT"
 
-    # ④ 节点已流转到 COLLEGE_REVIEW：辅导员评审与 reveal 均恢复 403
-    r3 = client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=counselor, json={"action": "APPROVE"})
+    r3 = client.post(f"{BASE}/aid/applications/{current['applyId']}/review", headers=counselor,
+                     json={"action": "APPROVE", "version": current["version"]})
     assert r3.status_code == 403
-    r4 = client.post(f"{BASE}/aid/applications/{aid_id}/reveal", headers=counselor, json={"reason": "复核"})
+    r4 = client.post(f"{BASE}/aid/applications/{current['applyId']}/reveal", headers=counselor,
+                     json={"reason": "复核"})
     assert r4.status_code == 403
 
 
 def test_a_apply_non_digit_ids_400_not_500(client, db_mode):
-    """历史欠账收口：studentId/batchId 非数字此前 int() 抛 500，现应 400 VALIDATION_ERROR。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     bid = _open_batch(client, admin)
