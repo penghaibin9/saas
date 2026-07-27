@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import re
 
-from scripts.maintenance import student_affairs_leave_cutover as base
+
+def _load_base():
+    script = Path(__file__).with_name("student_affairs_leave_cutover.py")
+    spec = spec_from_file_location("student_affairs_leave_cutover", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载施工脚本：{script}")
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+base = _load_base()
 
 
 def patch_remaining_callers() -> None:
