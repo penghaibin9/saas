@@ -1,0 +1,49 @@
+name: Student Affairs Leave Cutover PR
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-audit:
+    if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/student-affairs-leave-cutover-20260727
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply first second and third cuts
+        run: python scripts/maintenance/student_affairs_leave_cutover.py
+      - name: Static re-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! git grep -n "serviceKey: ['\"]LEAVE['\"]" -- student-portal/src miniapp/src
+          ! git grep -n "/campus-service/leaves" -- backend/app frontend/src student-portal/src miniapp/src
+          ! git grep -n "affairs_test_compat\|affairs_test_diagnostics\|affairs_test_legacy_inputs" -- backend/pytest.ini backend/tests
+          git grep -n "/admin/student-affairs/leave" -- frontend/src/config frontend/src/modules/campusService
+          git grep -n "portal/affairs/leave\|mobile/affairs/leave" -- backend/app/api/v1/affairs_leave_self_api.py student-portal/src miniapp/src
+          python -m compileall -q backend/app
+          node --check student-portal/src/services/portalApi.js
+          node --check miniapp/src/services/realApi.js
+          node --check miniapp/src/services/studentApi.js
+      - name: Commit cutover changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(student-affairs): complete leave cutover and remove fake adapters"
+          git push origin HEAD:codex/student-affairs-leave-cutover-20260727
