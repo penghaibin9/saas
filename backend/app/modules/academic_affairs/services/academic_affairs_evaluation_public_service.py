@@ -5,8 +5,9 @@
 2. 学生必须属于该教学任务当前正式教学班名单；
 3. 同一学生对同一任务只能提交一次，同时不在评价记录和审计中保存明文身份。
 
-去重凭证使用服务端密钥生成不可逆 HMAC，写入答卷保留字段；教师、学院和普通导出无法
-据此反查学生。非学生评价继续使用既有 evaluator_key 本人校验与单任务幂等规则。
+去重凭证使用静态数据密钥生成不可逆 HMAC，写入答卷保留字段；教师、学院和普通导出无法
+据此反查学生。凭证不依赖 JWT 签名密钥，轮换登录令牌密钥不会使历史去重失效。
+非学生评价继续使用既有 evaluator_key 本人校验与单任务幂等规则。
 """
 from __future__ import annotations
 
@@ -39,10 +40,22 @@ def _is_student_user(user) -> bool:
     return user_type == "STUDENT" or role == "STUDENT"
 
 
+def _anonymous_token_key() -> bytes:
+    """匿名去重凭证必须独立于短周期登录 JWT；静态字段密钥在数据存续期内保持稳定。"""
+    key = str(settings.FIELD_ENCRYPTION_KEY or "").strip()
+    if not key:
+        raise AppException(
+            "CONFIG_ERROR",
+            "匿名评教凭证密钥未配置",
+            http_status=500,
+        )
+    return key.encode("utf-8")
+
+
 def _submission_token(task_id: int, student_id: int) -> str:
     material = f"{_tid()}:{int(task_id)}:{int(student_id)}".encode("utf-8")
     return hmac.new(
-        settings.JWT_SECRET.encode("utf-8"),
+        _anonymous_token_key(),
         material,
         hashlib.sha256,
     ).hexdigest()
