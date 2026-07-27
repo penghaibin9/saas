@@ -510,6 +510,7 @@ def _wo_row(x: CsWorkOrder, stu=None) -> dict:
             "type": x.wo_type, "typeLabel": L_WO_T.get(x.wo_type, x.wo_type),
             "priority": x.priority, "handler": x.handler or "",
             "status": x.status, "statusLabel": L_WO_S.get(x.status, x.status),
+            "version": int(x.version or 0),
             "detail": x.detail or "", "createTime": _iso(x.created_at),
             "updateTime": _iso(x.updated_at), "closeTime": _iso(x.close_time) or ""}
 

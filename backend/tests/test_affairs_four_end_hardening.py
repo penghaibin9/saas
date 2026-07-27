@@ -175,7 +175,8 @@ def test_student_leave_and_teacher_mobile_share_version_contract(client, db_mode
         f"{MB}/teacher/affairs/leaves/{leave_id}/approve",
         headers=counselor, json={"comment": "同意"},
     )
-    assert missing.status_code == 409
+    assert missing.status_code == 400
+    assert missing.json()["bizCode"] == "VALIDATION_ERROR"
 
     ok = client.post(
         f"{MB}/teacher/affairs/leaves/{leave_id}/approve",
