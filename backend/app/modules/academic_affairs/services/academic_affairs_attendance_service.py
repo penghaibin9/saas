@@ -1,11 +1,12 @@
-"""课堂考勤服务。
+"""课堂考勤正式 Service。
 
-数据范围只认稳定工号族标识；姓名仅用于展示，绝不参与权限匹配。历史场次缺少
-``teacher_key`` 时，普通教师只读/写均 fail-closed，由教务管理员修复归属。
+普通教师创建场次必须绑定当前学期本人已确认教学任务，名单统一使用教学任务正式名单；
+管理员可在明确行政班上代建。教师归属只认稳定工号族标识，姓名仅用于展示。
 """
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from sqlalchemy import select
@@ -15,8 +16,11 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
 
+from .academic_affairs_teaching_roster_service import resolve_teaching_task_roster
+
 _STATUS_OK = ("PRESENT", "LATE", "ABSENT", "LEAVE")
 _ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}
+_ATTENDANCE_TASK_STATUSES = {"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY"}
 
 
 def _op():
@@ -95,63 +99,113 @@ def _row(item) -> dict:
 
 
 def create_session(user, body) -> dict:
-    """按行政班创建考勤快照；普通教师必须命中本人教学任务。"""
-    from app.models import AaAttendanceSession, AaTeachingTask, StudentProfile
+    """按当前学期真实教学任务创建考勤；普通教师不得按任意行政班绕过授课关系。"""
+    from app.models import (
+        AaAttendanceSession,
+        AaTeachingTask,
+        AaTeachingTaskBatch,
+        AaTerm,
+        StudentProfile,
+    )
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
 
     body = body or {}
-    class_id = body.get("classId")
-    if not class_id:
-        raise AppException("VALIDATION_ERROR", "行政班必填")
+    role = _role(user)
+    task_id = body.get("teachingTaskId")
     session_date = str(body.get("sessionDate") or "").strip()
     if not session_date:
         raise AppException("VALIDATION_ERROR", "考勤日期必填")
     slot_no = body.get("slotNo")
-    role = _role(user)
 
     with session() as db:
-        matched_task = None
-        if role not in _ADMIN_ROLES:
-            keys = _teacher_keys(user)
-            if not keys:
-                raise AppException("NO_DATA_SCOPE", "当前账号缺少稳定教师工号", http_status=403)
-            matched_task = db.scalars(select(AaTeachingTask).where(
-                AaTeachingTask.tenant_id == _tid(),
-                AaTeachingTask.class_id == int(class_id),
-                AaTeachingTask.teacher_key.in_(sorted(keys)),
-                AaTeachingTask.is_deleted.is_(False),
-                AaTeachingTask.status != "MERGED",
-            )).first()
-            if not matched_task:
-                raise AppException("NO_DATA_SCOPE", "该行政班不在您的授课范围内", http_status=403)
+        current_term = db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(),
+            AaTerm.is_current.is_(True),
+            AaTerm.is_deleted.is_(False),
+        )).first()
+        if not current_term:
+            raise AppException("DATA_CONFLICT", "当前学校尚未设置当前学期")
+        guard_term_writable(db, current_term.id)
 
-        students = db.scalars(select(StudentProfile).where(
-            StudentProfile.tenant_id == _tid(),
-            StudentProfile.class_id == int(class_id),
-            StudentProfile.is_deleted.is_(False),
-        )).all()
-        if not students:
-            raise not_found("该行政班暂无学生名单")
+        task = None
+        roster_source = "ADMIN_MANUAL"
+        if task_id:
+            task = db.get(AaTeachingTask, int(task_id))
+            if not task or task.is_deleted or task.tenant_id != _tid():
+                raise not_found("教学任务不存在")
+            if str(task.status or "").upper() not in _ATTENDANCE_TASK_STATUSES:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "教学任务须经教师确认并进入可执行状态后才能用于课堂考勤",
+                )
+            batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
+            if not batch or batch.is_deleted or batch.tenant_id != _tid():
+                raise not_found("教学任务批次不存在")
+            if int(batch.term_id or 0) != int(current_term.id):
+                raise AppException("DATA_CONFLICT", "只能为当前学期教学任务创建考勤")
+            if role not in _ADMIN_ROLES:
+                keys = _teacher_keys(user)
+                if not keys or not task.teacher_key or task.teacher_key not in keys:
+                    raise AppException("NO_DATA_SCOPE", "该教学任务不属于当前教师", http_status=403)
+        elif role not in _ADMIN_ROLES:
+            raise AppException("VALIDATION_ERROR", "请选择当前学期本人教学任务后再点名")
 
-        roster = [{
-            "studentId": str(student.id),
-            "studentNo": student.student_no,
-            "realName": student.real_name,
-            "status": "PRESENT",
-        } for student in students]
+        class_id = int(task.class_id) if task and task.class_id else int(body.get("classId") or 0)
+        if task and body.get("classId") and int(body.get("classId")) != class_id:
+            raise AppException("VALIDATION_ERROR", "教学任务与行政班不一致")
+
+        if task:
+            official = resolve_teaching_task_roster(db, task.id)
+            if not official["ready"]:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"教学任务名单尚不可用：{official['note']}",
+                    details=official,
+                    http_status=409,
+                )
+            roster_source = official["source"]
+            roster = [{
+                "studentId": item["studentId"],
+                "studentNo": item["studentNo"],
+                "realName": item["realName"],
+                "status": "PRESENT",
+            } for item in official["items"]]
+            if not class_id:
+                class_ids = {
+                    int(item["classId"]) for item in official["items"]
+                    if str(item.get("classId") or "").isdigit()
+                }
+                class_id = next(iter(class_ids)) if len(class_ids) == 1 else 0
+        else:
+            if not class_id:
+                raise AppException("VALIDATION_ERROR", "请选择行政班或教学任务")
+            students = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.class_id == class_id,
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+            roster = [{
+                "studentId": str(student.id),
+                "studentNo": student.student_no,
+                "realName": student.real_name,
+                "status": "PRESENT",
+            } for student in students]
+
+        if not roster:
+            raise not_found("该教学任务暂无可用学生名单")
 
         teacher_key = (
-            matched_task.teacher_key
-            if matched_task is not None
-            else str(body.get("teacherKey") or "").strip() or _primary_teacher_key(user)
+            task.teacher_key if task else
+            str(body.get("teacherKey") or "").strip() or _primary_teacher_key(user)
         )
         if not teacher_key:
             raise AppException("VALIDATION_ERROR", "无法确定考勤场次教师工号")
 
         item = AaAttendanceSession(
             tenant_id=_tid(),
-            class_id=int(class_id),
-            course_name=body.get("courseName") or getattr(matched_task, "course_name", None),
-            term_code=body.get("termCode") or getattr(matched_task, "term_code", None),
+            class_id=class_id,
+            course_name=(task.course_name if task else str(body.get("courseName") or "").strip() or None),
+            term_code=f"{current_term.year_code}-{current_term.term_no}",
             teacher_key=teacher_key,
             session_date=session_date,
             slot_no=int(slot_no) if slot_no else None,
@@ -164,7 +218,12 @@ def create_session(user, body) -> dict:
         )
         db.add(item)
         db.flush()
-        _audit(db, item.id, "CREATE", f"{item.course_name or ''} {session_date}")
+        _audit(
+            db,
+            item.id,
+            "CREATE",
+            f"task={task.id if task else '-'};source={roster_source};course={item.course_name or ''};date={session_date}",
+        )
         db.commit()
         db.refresh(item)
         return _row(item)
@@ -270,7 +329,7 @@ def get_session(session_id, user) -> dict:
 
 
 def mark_attendance(session_id, user, body) -> dict:
-    """标记单生考勤状态，仅DRAFT可改。"""
+    """标记单生考勤状态，仅 DRAFT 可改。"""
     from app.models import AaAttendanceSession
 
     with session() as db:
@@ -326,6 +385,5 @@ def submit_session(session_id, user) -> dict:
         from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_attendance_warnings
         scan_attendance_warnings(user)
     except Exception:
-        import logging
         logging.getLogger(__name__).exception("attendance submit → scan_attendance_warnings failed")
     return row
