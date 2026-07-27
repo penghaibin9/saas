@@ -16,13 +16,15 @@ def __getattr__(name):
 
 
 def evaluation_tasks(user: dict) -> dict:
-    items = evaluation.my_student_tasks(user, include_closed=True)
+    all_items = evaluation.my_student_tasks(user, include_closed=True)
+    # 旧学生 PC 评教卡只区分“可提交/已提交”，因此关闭但未提交的任务不伪装成可操作按钮。
+    items = [item for item in all_items if item.get("canSubmit") or item.get("submitted")]
     pending = sum(1 for item in items if item.get("canSubmit"))
     return {
         "list": items,
         "total": len(items),
         "pending": pending,
-        "note": "仅展示当前账号在正式教学班名单内的评教任务；答卷匿名保存。",
+        "note": "仅展示本人正式教学班内可提交或已完成的评教任务；答卷匿名保存。",
     }
 
 
