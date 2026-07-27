@@ -1,4 +1,4 @@
-"""选课轮次归档写保护与原状态机接口名回归。"""
+"""选课轮次归档写保护与正式公开入口回归。"""
 from types import SimpleNamespace
 
 
@@ -34,10 +34,10 @@ def test_public_round_service_keeps_real_function_names_and_facade():
     assert not hasattr(service, "draw_lottery")
 
 
-def test_round_facade_preserves_legacy_draw_contract_symbols():
+def test_round_facade_preserves_constants_without_mutating_legacy_functions():
     from app.modules.academic_affairs.services import academic_affairs_selection_round_facade as service
 
     assert service._legacy._REC_PENDING
     assert service._legacy._REC_SELECTED
     assert service._legacy._REC_LOST
-    assert service._legacy.draw_round is service.draw_round
+    assert service._legacy.draw_round is not service.draw_round
