@@ -1,7 +1,7 @@
 """AA-DASHBOARD-01 readiness 最终数据范围层。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from app.core.affairs_security import build_affairs_context
 from app.services.db_service import session
@@ -21,7 +21,35 @@ _COLLEGE_SAFE_KEYS = {
 }
 
 
+def _exam_deadline(data: dict) -> str | None:
+    term = data.get("term") or {}
+    raw_start = str(term.get("startDate") or "")[:10]
+    exam_week = term.get("examWeekStart")
+    if not raw_start or not exam_week:
+        return None
+    try:
+        start = date.fromisoformat(raw_start)
+        return (start + timedelta(days=(int(exam_week) - 1) * 7)).isoformat()
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_deadlines(data: dict, items: list[dict]) -> list[dict]:
+    exam_deadline = _exam_deadline(data)
+    output = []
+    for source in items:
+        row = dict(source)
+        if row.get("key") in {"EXAM_NOT_PUBLISHED", "EXAM_COURSE_INCOMPLETE"} and exam_deadline:
+            row["deadline"] = exam_deadline
+            row["deadlineLabel"] = exam_deadline
+        output.append(row)
+    return output
+
+
 def _recalculate(data: dict, items: list[dict], *, scope_type: str, scope_note: str) -> dict:
+    items = _normalize_deadlines(data, items)
+    if data.get("stage") == "ARCHIVED":
+        items = []
     items = sorted(items, key=lambda row: (
         _base._SEVERITY_ORDER.get(row.get("severity"), 9),
         row.get("deadline") or "9999-12-31",
@@ -30,16 +58,13 @@ def _recalculate(data: dict, items: list[dict], *, scope_type: str, scope_note: 
     blocker_count = sum(int(row.get("count") or 0) for row in items if row.get("severity") == "BLOCKER")
     risk_count = sum(int(row.get("count") or 0) for row in items if row.get("severity") == "RISK")
     status = "BLOCKED" if blocker_count else ("RISK" if risk_count else "NORMAL")
-    if data.get("stage") == "ARCHIVED":
-        status = "NORMAL"
-        items = []
-        blocker_count = risk_count = 0
     conclusion = {
         "BLOCKED": "本学期当前阶段不可继续，请先处理阻断项",
         "RISK": "本学期可以继续，但存在需要尽快处理的风险",
         "NORMAL": "本学期当前阶段运行正常，可以继续",
     }[status]
     if data.get("stage") == "ARCHIVED":
+        status = "NORMAL"
         conclusion = "本学期已经完成正式归档，业务数据保持只读"
     return {
         **data,
@@ -56,9 +81,9 @@ def _recalculate(data: dict, items: list[dict], *, scope_type: str, scope_note: 
     }
 
 
-def _restricted(user, scope_type: str, message: str) -> dict:
+def _restricted(user, scope_type: str, message: str, term_id=None) -> dict:
     with session() as db:
-        term = _base._load_term(db, None)
+        term = _base._load_term(db, term_id)
         today = _base._local_today(db)
         stage, week = _base._stage(term, today)
     item = _base._item(
@@ -79,6 +104,8 @@ def _restricted(user, scope_type: str, message: str) -> dict:
             "status": term.status if term else None,
             "startDate": _base._iso(term.start_date) if term else None,
             "endDate": _base._iso(term.end_date) if term else None,
+            "teachingWeeks": term.teaching_weeks if term else None,
+            "examWeekStart": term.exam_week_start if term else None,
         },
         "stage": stage,
         "stageLabel": _base._STAGE_LABELS[stage],
@@ -104,7 +131,11 @@ def readiness(user, term_id=None) -> dict:
 
     if scope_type == "COLLEGE":
         if not college_ids:
-            return _restricted(user, scope_type, "当前学院角色未取得任何学院数据范围，已停止加载教务汇总。")
+            return _restricted(
+                user, scope_type,
+                "当前学院角色未取得任何学院数据范围，已停止加载教务汇总。",
+                term_id,
+            )
         data = _base.readiness(user, term_id)
         safe_items = [row for row in (data.get("items") or []) if row.get("key") in _COLLEGE_SAFE_KEYS]
         return _recalculate(
@@ -118,6 +149,7 @@ def readiness(user, term_id=None) -> dict:
         user,
         scope_type,
         "当前角色仅可处理本人或本班业务；学校级 readiness、全校成绩、考务和预警数量已 fail-closed。",
+        term_id,
     )
 
 
