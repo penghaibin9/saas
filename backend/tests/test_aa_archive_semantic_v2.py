@@ -1,4 +1,4 @@
-"""P0-10：首批四域语义归档结构化合同。"""
+"""P0-10：十三域语义归档结构化合同。"""
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,15 +73,19 @@ def test_persisted_rule_summary_fits_existing_varchar_300_and_round_trips():
     assert parsed["evidence"] == []
 
 
-def test_public_archive_service_is_structured_semantic_facade():
-    from app.modules.academic_affairs import services
+def test_public_archive_service_is_single_explicit_entry():
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as service
 
-    assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_core_semantic_facade"
-    )
-    assert services.academic_affairs_archive_service._archive_executor._evaluate_domains is (
-        services.academic_affairs_archive_service._evaluate_domains
-    )
+    assert service.__name__.endswith("academic_affairs_archive_service")
+    assert len(service._DOMAINS) == 13
+    assert {code for code, _label in service._DOMAINS} == {
+        "STUDENT_STATUS", "REGISTRATION", "STATUS_CHANGE", "PROGRAM",
+        "TEACHING_TASK", "SCHEDULE", "SELECTION", "EXAM", "GRADE",
+        "MAKEUP", "EVALUATION", "TEXTBOOK", "GRADUATION",
+    }
+    assert callable(service._evaluate_domains)
+    assert callable(service.run_check)
+    assert callable(service.precheck)
 
 
 def test_archive_precheck_page_shows_semantic_status_and_drill_route():
@@ -99,9 +103,9 @@ def test_archive_precheck_page_shows_semantic_status_and_drill_route():
 
 def test_global_force_button_is_not_reintroduced():
     root = Path(__file__).resolve().parents[2]
-    service = (
-        root / "backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py"
+    core = (
+        root / "backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py"
     ).read_text(encoding="utf-8")
 
-    assert "整体强制归档已停用" in service
-    assert "仅语义完整性检查通过（READY）的批次可确认归档" in service
+    assert "整体强制归档已停用" in core
+    assert "仅语义完整性检查通过（READY）的批次可确认归档" in core
