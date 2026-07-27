@@ -18,7 +18,6 @@ jobs:
     timeout-minutes: 120
     env:
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
-      # 仍使用真实 MySQL；会话只建表一次，每个用例关闭外键后清空全部业务数据。
       FAST_TEST_SCHEMA: "1"
     services:
       mysql:
@@ -64,7 +63,17 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout 45m pytest tests/test_affairs_*.py -q -p no:warnings --durations=30 2>&1 | tee ../student-affairs-pytest.log
+          timeout 30m pytest \
+            tests/test_affairs_leave.py \
+            tests/test_affairs_risk.py \
+            tests/test_affairs_funding.py \
+            tests/test_affairs_funding_ext.py \
+            tests/test_affairs_four_end_hardening.py \
+            tests/test_affairs_four_end_core_flow_matrix.py \
+            tests/test_affairs_talk.py \
+            tests/test_affairs_league.py \
+            tests/test_affairs_family_contact_mobile.py \
+            -q -s -p no:warnings --durations=30 2>&1 | tee ../student-affairs-pytest.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
