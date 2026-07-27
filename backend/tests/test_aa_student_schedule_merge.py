@@ -1,4 +1,6 @@
 """学生课表只能合并同一发布批次，并按课表事实去重。"""
+from datetime import date, datetime
+from types import SimpleNamespace
 
 
 def _item(item_id, *, source="CLASS_DERIVED", weekday=1, slot=1, course="高等数学"):
@@ -65,3 +67,97 @@ def test_public_schedule_service_points_to_batch_safe_facade():
     assert services.academic_affairs_schedule_service.student_view.__module__.endswith(
         "academic_affairs_schedule_facade"
     )
+
+
+def _slot(slot_id=1, slot_no=1, start="08:00", end="08:45"):
+    return SimpleNamespace(
+        id=slot_id,
+        slot_no=slot_no,
+        slot_name=f"第{slot_no}节",
+        start_time=start,
+        end_time=end,
+        campus_code=None,
+        enabled=True,
+        status="ENABLED",
+    )
+
+
+def _band(
+    band_id=1,
+    *,
+    slot_id=1,
+    campus="MAIN",
+    start="08:10",
+    end="08:55",
+    effective_start=datetime(2026, 5, 1),
+    effective_end=datetime(2026, 9, 30),
+    status="ENABLED",
+):
+    return SimpleNamespace(
+        id=band_id,
+        slot_id=slot_id,
+        band_name="夏令作息",
+        campus_code=campus,
+        start_time=start,
+        end_time=end,
+        effective_start=effective_start,
+        effective_end=effective_end,
+        status=status,
+    )
+
+
+def test_effective_time_band_overrides_base_slot_time():
+    from app.modules.academic_affairs.services.mobile_academic_affairs_facade import (
+        resolve_schedule_time_bands,
+    )
+
+    rows = resolve_schedule_time_bands([_slot()], [_band()], date(2026, 7, 1))
+
+    assert rows == [{
+        "slotNo": 1,
+        "slotName": "第1节",
+        "startTime": "08:10",
+        "endTime": "08:55",
+        "bandName": "夏令作息",
+        "campusCode": "MAIN",
+        "source": "TIME_BAND",
+    }]
+
+
+def test_expired_time_band_falls_back_to_base_slot_time():
+    from app.modules.academic_affairs.services.mobile_academic_affairs_facade import (
+        resolve_schedule_time_bands,
+    )
+
+    rows = resolve_schedule_time_bands([_slot()], [_band()], date(2026, 12, 1))
+
+    assert rows[0]["startTime"] == "08:00"
+    assert rows[0]["endTime"] == "08:45"
+    assert rows[0]["source"] == "TIME_SLOT"
+
+
+def test_multiple_campus_time_bands_are_retained_without_guessing():
+    from app.modules.academic_affairs.services.mobile_academic_affairs_facade import (
+        resolve_schedule_time_bands,
+    )
+
+    rows = resolve_schedule_time_bands(
+        [_slot()],
+        [_band(1, campus="MAIN"), _band(2, campus="EAST", start="08:30", end="09:15")],
+        date(2026, 7, 1),
+    )
+
+    assert {row["campusCode"] for row in rows} == {"MAIN", "EAST"}
+    assert {row["startTime"] for row in rows} == {"08:10", "08:30"}
+
+
+def test_student_pc_schedule_consumes_backend_time_band_contract():
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "student-portal/src/views/academic/StudentScheduleView.vue"
+    text = path.read_text(encoding="utf-8")
+
+    assert "schedule.value.timeBands" in text
+    assert "function slotLabel" in text
+    assert "按校区作息" in text
+    assert "第${item.slotNo}节" not in text
