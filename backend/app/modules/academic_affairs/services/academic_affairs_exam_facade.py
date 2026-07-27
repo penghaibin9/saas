@@ -1,17 +1,23 @@
-"""考务生产门禁兼容入口。
+"""考务统一公开入口。
 
-保留既有排考、发布、监考和缓考状态机，只补官方名单铺位、发布完整性、考试结束与归档闭环。
-本模块不修改正式 Service 函数对象；包级公开入口显式选择本模块，旧直接导入仍可读取原 Service。
+复用既有考务状态机，集中补齐正式学期写保护、名单版本冻结、铺位完整性、发布门禁、
+考试结束和归档闭环。本模块不修改其它模块函数对象，也不依赖导入顺序安装规则。
 """
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_exam_service as _legacy
-from .academic_affairs_teaching_roster_service import resolve_teaching_task_roster
+from .academic_affairs_roster_consumer_service import (
+    freeze_consumer_snapshot,
+    get_consumer_snapshot,
+    require_consumer_snapshot_current,
+    resolve_versioned_roster,
+)
 
 
 def __getattr__(name):
@@ -22,6 +28,93 @@ def _status(value) -> str:
     return str(value or "").strip().upper()
 
 
+def create_batch(user, body):
+    """建考务批次必须绑定正式且仍可写学期。"""
+    from app.models import AaExamBatch
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+
+    term_id = getattr(body, "termId", None)
+    if not term_id:
+        raise AppException("VALIDATION_ERROR", "考务批次必须绑定正式学期termId")
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        guard_term_writable(db, int(term_id))
+        name = (getattr(body, "batchName", None) or "").strip()
+        if not name:
+            raise _legacy._bad("批次名称必填")
+        batch = AaExamBatch(
+            tenant_id=_legacy._tid(),
+            batch_name=name,
+            term_id=int(term_id),
+            exam_type=getattr(body, "examType", None) or "FINAL",
+            exam_week_start=getattr(body, "examWeekStart", None),
+            exam_week_end=getattr(body, "examWeekEnd", None),
+            college_scope_json=(
+                json.dumps(body.collegeScope, ensure_ascii=False)
+                if getattr(body, "collegeScope", None) else None
+            ),
+            status=_legacy._B_DRAFT,
+        )
+        db.add(batch)
+        db.flush()
+        _legacy._audit(db, "EXAM_BATCH", batch.id, "EXAM_BATCH_CREATE", f"建考试批次 {name}")
+        db.commit()
+        return _legacy._batch_dto(batch)
+
+
+def confirm_course(user, cid, action):
+    """学院确认课程时冻结当前正式名单；退回/移除不生成快照。"""
+    action = _status(action)
+    with _legacy.session() as db:
+        context = _legacy._ctx(user, db)
+        course = _legacy._get_course(db, int(cid))
+        _legacy._check_college_scope(context, course.college_id)
+        if course.status != "PENDING_CONFIRM":
+            raise _legacy._invalid("仅待确认课程可操作")
+        if action not in {"CONFIRM", "REMOVE", "REJECT"}:
+            raise AppException("VALIDATION_ERROR", "考试课程确认动作非法")
+        roster_identity = None
+        if action == "CONFIRM":
+            if not course.teaching_task_id:
+                raise AppException("DATA_CONFLICT", "考试课程未关联教学任务，不能确认")
+            official = resolve_versioned_roster(db, int(course.teaching_task_id))
+            course.expected_students = int(official["memberCount"])
+            course.status = "CONFIRMED"
+            roster_identity = freeze_consumer_snapshot(
+                db,
+                "EXAM_COURSE",
+                int(course.id),
+                int(course.teaching_task_id),
+                roster=official,
+            )
+        else:
+            course.status = "REMOVED"
+        _legacy._audit(
+            db,
+            "EXAM_COURSE",
+            course.id,
+            "EXAM_COURSE_CONFIRM",
+            f"{action} {course.course_name};rosterVersion={roster_identity['rosterVersionId'] if roster_identity else '-'}",
+        )
+        db.commit()
+        result = _legacy._course_dto(course)
+        result["expectedStudents"] = course.expected_students
+        result["rosterIdentity"] = roster_identity
+        return result
+
+
+def list_courses(user, bid, page=1, page_size=100):
+    rows, total = _legacy.list_courses(user, bid, page, page_size)
+    with _legacy.session() as db:
+        for row in rows:
+            row["rosterIdentity"] = get_consumer_snapshot(
+                db,
+                "EXAM_COURSE",
+                int(row["examCourseId"]),
+            )
+    return rows, total
+
+
 def _effective_room_capacity(room) -> int:
     capacity = int(getattr(room, "capacity", 0) or 0)
     if _status(getattr(room, "seat_mode", None)) == "SPACED":
@@ -30,8 +123,8 @@ def _effective_room_capacity(room) -> int:
 
 
 def assign_seats(user, room_id, student_ids):
-    """人工铺位必须是官方名单子集，同一课程跨考场不可重复。"""
-    from app.models import AaExamRoom, AaExamRoomStudent
+    """铺位只允许当前冻结名单成员，同一课程跨考场不可重复。"""
+    from app.models import AaExamRoom, AaExamRoomStudent, StudentProfile
 
     with _legacy.session() as db:
         context = _legacy._ctx(user, db)
@@ -51,23 +144,21 @@ def assign_seats(user, room_id, student_ids):
         if not course.teaching_task_id:
             raise AppException("DATA_CONFLICT", "考试课程未关联教学任务，无法核验考生名单")
 
-        official = resolve_teaching_task_roster(db, int(course.teaching_task_id))
-        if not official["ready"]:
-            raise AppException(
-                "DATA_CONFLICT",
-                f"考试课程官方名单尚不可用：{official['note']}",
-                details=official,
-                http_status=409,
-            )
+        snapshot, _current = require_consumer_snapshot_current(
+            db,
+            "EXAM_COURSE",
+            int(course.id),
+            int(course.teaching_task_id),
+        )
         requested = [int(value) for value in student_ids if str(value).isdigit()]
         if len(requested) != len(set(requested)):
             raise AppException("VALIDATION_ERROR", "铺位名单内学生重复")
-        official_ids = {int(value) for value in official["studentIds"]}
-        outside = sorted(set(requested) - official_ids)
+        frozen_ids = {int(value) for value in snapshot["studentIds"]}
+        outside = sorted(set(requested) - frozen_ids)
         if outside:
             raise AppException(
                 "VALIDATION_ERROR",
-                f"有 {len(outside)} 名学生不在教学任务正式名单",
+                f"有 {len(outside)} 名学生不在考试课程冻结名单",
                 details={"studentIds": [str(value) for value in outside]},
             )
 
@@ -89,8 +180,22 @@ def assign_seats(user, room_id, student_ids):
         usable_capacity = _effective_room_capacity(room)
         if len(requested) > usable_capacity:
             raise _legacy._conflict(f"考生数 {len(requested)} 超过考场有效容量 {usable_capacity}")
-        profile_by_id = {int(item["studentId"]): item for item in official["items"]}
-        ordered = sorted(requested, key=lambda value: (profile_by_id[value]["studentNo"], value))
+
+        profiles = db.query(StudentProfile).filter(
+            StudentProfile.tenant_id == _legacy._tid(),
+            StudentProfile.id.in_(requested or [0]),
+            StudentProfile.is_deleted.is_(False),
+        ).all()
+        profile_by_id = {int(profile.id): profile for profile in profiles}
+        missing_profiles = sorted(set(requested) - set(profile_by_id))
+        if missing_profiles:
+            raise AppException(
+                "DATA_CONFLICT",
+                "冻结名单存在已失效学生主档，须先完成名单治理",
+                details={"studentIds": [str(value) for value in missing_profiles]},
+                http_status=409,
+            )
+        ordered = sorted(requested, key=lambda value: (profile_by_id[value].student_no or "", value))
         if _status(room.seat_mode) == "RANDOM":
             ordered = sorted(
                 requested,
@@ -109,8 +214,8 @@ def assign_seats(user, room_id, student_ids):
                 exam_room_id=room.id,
                 exam_course_id=course.id,
                 student_id=student_id,
-                student_no=profile["studentNo"],
-                student_name=profile["realName"],
+                student_no=profile.student_no,
+                student_name=profile.real_name,
                 seat_no=seat_no,
                 admission_no=f"{course.id}{seat_no:04d}",
                 attendance_status="NOT_STARTED",
@@ -121,19 +226,19 @@ def assign_seats(user, room_id, student_ids):
             "EXAM_ROOM",
             room.id,
             "EXAM_SEAT_ASSIGN",
-            f"{room.seat_mode} 铺位 {len(ordered)} 人 roster={official['source']}",
+            f"{room.seat_mode} 铺位 {len(ordered)} 人 rosterVersion={snapshot['rosterVersionId']}",
         )
         db.commit()
         return {
             "examRoomId": str(room.id),
             "seatCount": len(ordered),
             "seatMode": room.seat_mode,
-            "rosterSource": official["source"],
+            "rosterIdentity": snapshot,
         }
 
 
 def _check_arrangement_complete(db, batch_id):
-    """发布前校验每门课程的时间、官方名单、座位全集与逐考场监考。"""
+    """发布前校验时间、冻结名单、座位全集、有效容量和逐考场监考。"""
     from app.models import AaExamCourse, AaExamInvigilator, AaExamRoom, AaExamRoomStudent
 
     courses = db.query(AaExamCourse).filter(
@@ -150,13 +255,21 @@ def _check_arrangement_complete(db, batch_id):
         if not course.teaching_task_id:
             problems.append(f"{label}：未关联教学任务")
             continue
-        official = resolve_teaching_task_roster(db, int(course.teaching_task_id))
-        if not official["ready"]:
-            problems.append(f"{label}：{official['note']}")
+        try:
+            snapshot, _current = require_consumer_snapshot_current(
+                db,
+                "EXAM_COURSE",
+                int(course.id),
+                int(course.teaching_task_id),
+            )
+        except AppException as exc:
+            problems.append(f"{label}：{getattr(exc, 'message', None) or str(exc)}")
             continue
-        official_ids = {int(value) for value in official["studentIds"]}
+        official_ids = {int(value) for value in snapshot["studentIds"]}
         if not official_ids:
-            problems.append(f"{label}：正式考生名单为空")
+            problems.append(f"{label}：冻结考生名单为空")
+        if int(course.expected_students or 0) != int(snapshot["memberCount"]):
+            problems.append(f"{label}：预计考生数与冻结名单人数不一致")
 
         rooms = db.query(AaExamRoom).filter(
             AaExamRoom.exam_course_id == course.id,
@@ -180,7 +293,7 @@ def _check_arrangement_complete(db, batch_id):
         if duplicate_count:
             problems.append(f"{label}：跨考场重复安排 {duplicate_count} 人")
         if missing:
-            problems.append(f"{label}：仍有 {len(missing)} 名正式考生未铺位")
+            problems.append(f"{label}：仍有 {len(missing)} 名冻结考生未铺位")
         if extra:
             problems.append(f"{label}：有 {len(extra)} 名名单外考生")
 
@@ -203,6 +316,33 @@ def _check_arrangement_complete(db, batch_id):
             if not invigilator_count:
                 problems.append(f"{label}：考场{room.room_seq}无监考")
     return courses, problems
+
+
+def publish_batch(user, bid):
+    """发布前必须通过冻结名单、铺位和监考完整性检查。"""
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _legacy._get_batch(db, int(bid))
+        if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
+            raise _legacy._invalid(f"仅 COURSE_CONFIRMED/ARRANGED 批次可发布，当前 {batch.status}")
+        courses, problems = _check_arrangement_complete(db, batch.id)
+        if problems:
+            raise _legacy._invalid(
+                "编排不完整，不可发布：" + "；".join(problems[:5]) + ("…" if len(problems) > 5 else "")
+            )
+        if not courses:
+            raise _legacy._bad("批次无已确认考试课程")
+        batch.status = _legacy._B_PUBLISHED
+        batch.published_at = datetime.utcnow()
+        sent = _legacy._notify_publish(db, batch, courses)
+        _legacy._audit(db, "EXAM_BATCH", batch.id, "EXAM_BATCH_PUBLISH", f"发布，推送 {sent} 条考试通知")
+        db.commit()
+        try:
+            from app.services.message_event_outbox_service import process_pending_outbox
+            process_pending_outbox(limit=50, worker_id="aa-exam-inline")
+        except Exception:  # noqa: BLE001
+            pass
+        return _legacy._batch_dto(batch)
 
 
 def _batch_closure_issues(db, batch_id: int) -> dict:
@@ -283,7 +423,6 @@ def _closure_error(issues: dict) -> AppException | None:
 
 
 def finish_batch(user, bid):
-    """PUBLISHED→FINISHED 前执行考生、缓考和异常闭环检查。"""
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
@@ -300,7 +439,6 @@ def finish_batch(user, bid):
 
 
 def archive_batch(user, bid):
-    """FINISHED→ARCHIVED 前再次校验，防止历史漏检后绕过。"""
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
@@ -319,7 +457,6 @@ def archive_batch(user, bid):
 
 
 def resolve_incident(user, incident_id: int, action: str, reason: str = "", discipline_case_ref: str = "") -> dict:
-    """考场异常闭环：HANDOFF移交线索、CLOSE确认缺考联动、VOID作废误登记。"""
     from app.models import AaExamIncident
 
     action = _status(action)
