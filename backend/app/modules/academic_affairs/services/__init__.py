@@ -50,9 +50,10 @@ from . import academic_affairs_stats_snapshot_service as academic_affairs_stats_
 from . import academic_affairs_graduation_evidence_facade as academic_affairs_graduation_evidence_facade
 from . import academic_affairs_task_teaching_class_facade as academic_affairs_task_service
 from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook_service
-# V2-05/R5：保留移动教务稳定身份/当前周 facade，再由最终层接管教师微信成绩批量保存与质量门禁。
+# V2-05/R5：稳定身份/当前周 → 教师微信成绩闭环 → 学生考试时区与历史可见最终安全层。
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_facade
-from . import mobile_academic_grade_entry_closure_service as mobile_academic_affairs_service
+from . import mobile_academic_grade_entry_closure_service as mobile_academic_grade_entry_closure_service
+from . import mobile_academic_exam_safety_facade as mobile_academic_affairs_service
 
 sys.modules[f"{__name__}.academic_affairs_archive_service"] = academic_affairs_archive_service
 sys.modules[f"{__name__}.academic_affairs_attendance_service"] = academic_affairs_attendance_service
