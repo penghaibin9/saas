@@ -118,7 +118,7 @@ class CsDiscipline(PKMixin, TenantMixin, CommonMixin, Base):
 class CsWorkOrder(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_work_order"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     wo_type: Mapped[str] = mapped_column(String(50), nullable=False, default="CONSULT")
     priority: Mapped[str] = mapped_column(String(50), nullable=False, default="MEDIUM")
