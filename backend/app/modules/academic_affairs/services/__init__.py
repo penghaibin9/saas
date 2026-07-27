@@ -7,6 +7,7 @@
 # 各域最终公开入口。均为普通模块别名，不改写其它模块函数对象。
 from . import academic_affairs_dashboard_scope_facade as academic_affairs_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
+from . import academic_affairs_stats_public_service as academic_affairs_stats_service
 from . import academic_affairs_selection_final_service as academic_affairs_selection_service
 from . import academic_affairs_scheduling_public_service as academic_affairs_scheduling_service
 from . import academic_affairs_autoschedule_final_service as academic_affairs_autoschedule_service
