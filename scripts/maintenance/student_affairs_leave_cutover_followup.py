@@ -109,14 +109,78 @@ def patch_route_ownership() -> None:
     sa_path.write_text(sa, encoding="utf-8")
 
 
+def block_generic_leave_entrypoints() -> None:
+    mobile_path = Path("backend/app/api/v1/mobile.py")
+    mobile = mobile_path.read_text(encoding="utf-8")
+    old = '''@router.post("/campus-service/apply", summary="提交在校服务申请（本人）")
+def campus_service_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.campus_service_apply(user, body))
+'''
+    new = '''@router.post("/campus-service/apply", summary="提交在校服务申请（本人，不含请假）")
+def campus_service_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    if str((body or {}).get("serviceKey") or "").strip().upper() == "LEAVE":
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "请假已迁移到 /mobile/affairs/leave 专用入口")
+    return success(stu.campus_service_apply(user, body))
+'''
+    if old in mobile:
+        mobile = mobile.replace(old, new, 1)
+    elif new not in mobile:
+        raise RuntimeError("mobile generic service entry anchor missing")
+    mobile_path.write_text(mobile, encoding="utf-8")
+
+    portal_path = Path("backend/app/student_portal/router.py")
+    portal = portal_path.read_text(encoding="utf-8")
+    old = '''@router.post("/affairs/service-apply", summary="通用学工事务申请（请假/咨询/工单，本人）")
+def affairs_service_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(affairs.service_apply(user, body))
+'''
+    new = '''@router.post("/affairs/service-apply", summary="通用学工事务申请（咨询/工单，本人；不含请假）")
+def affairs_service_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    if str((body or {}).get("serviceKey") or "").strip().upper() == "LEAVE":
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "请假已迁移到 /portal/affairs/leave 专用入口")
+    return success(affairs.service_apply(user, body))
+'''
+    if old in portal:
+        portal = portal.replace(old, new, 1)
+    elif new not in portal:
+        raise RuntimeError("portal generic service entry anchor missing")
+    portal_path.write_text(portal, encoding="utf-8")
+
+    service_path = Path("backend/app/student_portal/services/affairs_service.py")
+    service = service_path.read_text(encoding="utf-8")
+    old = '''def service_apply(user: dict, body: dict) -> dict:
+    """通用学工事务申请（请假/咨询/工单，复用现有学生写入口 campus_service_apply）。"""
+    return stu.campus_service_apply(user, body or {})
+'''
+    new = '''def service_apply(user: dict, body: dict) -> dict:
+    """通用咨询/工单入口；请假必须走 affairs_leave_service 专用状态机。"""
+    body = body or {}
+    if str(body.get("serviceKey") or "").strip().upper() == "LEAVE":
+        raise AppException("VALIDATION_ERROR", "请假已迁移到专用入口")
+    return stu.campus_service_apply(user, body)
+'''
+    if old in service:
+        service = service.replace(old, new, 1)
+    elif new not in service:
+        raise RuntimeError("portal generic service implementation anchor missing")
+    service = service.replace(
+        "学工学生自视图已在 mobile_affairs_service（aff：leave_my/funding_my/aid_my/discipline_my/\noverview_my，均经 aff._me 收口本人+非学生403）。学生写入口为 campus_service_apply（通用事务申请：\n请假/咨询/工单）。本刀 PC 接出：学工自视图聚合 + 通用事务申请 + 打印回执/请假条。",
+        "学工学生自视图已在 mobile_affairs_service（aff：leave_my/funding_my/aid_my/discipline_my/\noverview_my，均经 aff._me 收口本人+非学生403）。请假使用专用 affairs_leave_service；\ncampus_service_apply 仅保留咨询/工单。本刀 PC 接出学工自视图聚合、专用请假和打印回执。",
+    )
+    service_path.write_text(service, encoding="utf-8")
+
+
 def absorb_leave_runtime_contract() -> None:
     mobile_path = Path("backend/app/services/mobile_affairs_service.py")
     mobile = mobile_path.read_text(encoding="utf-8")
-    mobile = mobile.replace(
-        "    from app.models import CsLeave, CsServiceStudent\n",
-        "    from app.models import CsLeave, CsServiceStudent\n    from app.services import affairs_leave_service as leave_svc\n",
-        1,
-    )
+    if "from app.services import affairs_leave_service as leave_svc" not in mobile:
+        mobile = mobile.replace(
+            "    from app.models import CsLeave, CsServiceStudent\n",
+            "    from app.models import CsLeave, CsServiceStudent\n    from app.services import affairs_leave_service as leave_svc\n",
+            1,
+        )
     mobile = re.sub(
         r"    L = \{\"DRAFT\": \"草稿\".*?\n         \"OVERDUE\": \"逾期未销假\", \"CANCELLED\": \"已取消\"\}\n",
         '    L = {**leave_svc.L_AFF, "PENDING_REVIEW": "待审批"}\n',
@@ -124,11 +188,12 @@ def absorb_leave_runtime_contract() -> None:
         count=1,
         flags=re.S,
     )
-    mobile = mobile.replace(
-        "        for x in rows:\n            st = x.affairs_status or x.status\n            items.append({\n",
-        "        for x in rows:\n            st = x.affairs_status or x.status\n            actions = leave_svc._allowed_actions(x.affairs_status)\n            items.append({\n",
-        1,
-    )
+    if "actions = leave_svc._allowed_actions(x.affairs_status)" not in mobile:
+        mobile = mobile.replace(
+            "        for x in rows:\n            st = x.affairs_status or x.status\n            items.append({\n",
+            "        for x in rows:\n            st = x.affairs_status or x.status\n            actions = leave_svc._allowed_actions(x.affairs_status)\n            items.append({\n",
+            1,
+        )
     mobile = re.sub(
         r'                "allowedActions": \(actions := \(\n.*?\n                \)\),\n',
         '                "allowedActions": actions,\n',
@@ -159,7 +224,7 @@ def absorb_leave_runtime_contract() -> None:
 def write_cutover_contract_test() -> None:
     test_path = Path("backend/tests/test_affairs_leave_cutover_contract.py")
     test_path.write_text(
-        '''from pathlib import Path\n\n\nROOT = Path(__file__).resolve().parents[2]\n\n\ndef read(path: str) -> str:\n    return (ROOT / path).read_text(encoding="utf-8")\n\n\ndef test_legacy_leave_routes_and_fake_test_adapters_are_gone():\n    assert "/campus-service/leaves" not in read("backend/app/api/v1/campus_service.py")\n    assert "请假旧接口已退出" in read("backend/app/api/v1/campus_service.py")\n    for path in (\n        "backend/affairs_test_compat.py",\n        "backend/affairs_test_diagnostics.py",\n        "backend/affairs_test_legacy_inputs.py",\n    ):\n        assert not (ROOT / path).exists()\n    assert "affairs_test_" not in read("backend/pytest.ini")\n\n\ndef test_dedicated_self_leave_endpoints_and_callers_are_single_source():\n    api = read("backend/app/api/v1/affairs_leave_self_api.py")\n    assert '@router.post("/portal/affairs/leave"' in api\n    assert '@router.post("/mobile/affairs/leave"' in api\n    assert "leave_svc.apply_leave" in api\n    portal = read("student-portal/src/services/portalApi.js")\n    mini = read("miniapp/src/services/realApi.js")\n    assert "request('/portal/affairs/leave', { method: 'POST', body })" in portal\n    assert "realRequest('/mobile/affairs/leave', { method: 'POST', data: body || {} })" in mini\n    for root in ("student-portal/src", "miniapp/src"):\n        for file in (ROOT / root).rglob("*"):\n            if file.is_file() and file.suffix in {".js", ".vue", ".ts"}:\n                assert "serviceKey: 'LEAVE'" not in file.read_text(encoding="utf-8", errors="ignore")\n\n\ndef test_formal_management_routes_belong_to_student_affairs_tree():\n    student_routes = read("frontend/src/modules/studentAffairs/studentAffairs.routes.js")\n    campus_routes = read("frontend/src/modules/campusService/campusService.routes.js")\n    for path in ("leave", "leave/followup", "leave/ledger", "leave/stats"):\n        assert f"path: '{path}'" in student_routes\n    assert "LeaveApprovalWorkbenchView.vue" in student_routes\n    assert "path: '/admin/student-affairs/leave'" not in campus_routes\n    assert "redirect: '/admin/student-affairs/leave'" in campus_routes\n\n\ndef test_leave_version_and_allowed_actions_are_formal_not_monkey_patched():\n    leave_service = read("backend/app/services/affairs_leave_service.py")\n    mobile_service = read("backend/app/services/mobile_affairs_service.py")\n    contract = read("backend/app/services/affairs_four_end_contract.py")\n    assert '"version": int(x.version or 0)' in leave_service\n    assert '"allowedActions": _allowed_actions(x.affairs_status)' in leave_service\n    assert "actions = leave_svc._allowed_actions(x.affairs_status)" in mobile_service\n    optimistic = contract.split("def _patch_optimistic_lock() -> None:", 1)[1].split(\n        "def _teacher_permissions", 1\n    )[0]\n    assert "affairs_leave_service" not in optimistic\n''',
+        '''from pathlib import Path\n\n\nROOT = Path(__file__).resolve().parents[2]\n\n\ndef read(path: str) -> str:\n    return (ROOT / path).read_text(encoding="utf-8")\n\n\ndef test_legacy_leave_routes_and_fake_test_adapters_are_gone():\n    assert "/campus-service/leaves" not in read("backend/app/api/v1/campus_service.py")\n    assert "请假旧接口已退出" in read("backend/app/api/v1/campus_service.py")\n    for path in (\n        "backend/affairs_test_compat.py",\n        "backend/affairs_test_diagnostics.py",\n        "backend/affairs_test_legacy_inputs.py",\n    ):\n        assert not (ROOT / path).exists()\n    assert "affairs_test_" not in read("backend/pytest.ini")\n\n\ndef test_dedicated_self_leave_endpoints_and_callers_are_single_source():\n    api = read("backend/app/api/v1/affairs_leave_self_api.py")\n    assert '@router.post("/portal/affairs/leave"' in api\n    assert '@router.post("/mobile/affairs/leave"' in api\n    assert "leave_svc.apply_leave" in api\n    portal = read("student-portal/src/services/portalApi.js")\n    mini = read("miniapp/src/services/realApi.js")\n    assert "request('/portal/affairs/leave', { method: 'POST', body })" in portal\n    assert "realRequest('/mobile/affairs/leave', { method: 'POST', data: body || {} })" in mini\n    for root in ("student-portal/src", "miniapp/src"):\n        for file in (ROOT / root).rglob("*"):\n            if file.is_file() and file.suffix in {".js", ".vue", ".ts"}:\n                assert "serviceKey: 'LEAVE'" not in file.read_text(encoding="utf-8", errors="ignore")\n\n\ndef test_generic_service_entrypoints_reject_leave():\n    mobile = read("backend/app/api/v1/mobile.py")\n    portal = read("backend/app/student_portal/router.py")\n    service = read("backend/app/student_portal/services/affairs_service.py")\n    assert "请假已迁移到 /mobile/affairs/leave 专用入口" in mobile\n    assert "请假已迁移到 /portal/affairs/leave 专用入口" in portal\n    assert "请假已迁移到专用入口" in service\n\n\ndef test_formal_management_routes_belong_to_student_affairs_tree():\n    student_routes = read("frontend/src/modules/studentAffairs/studentAffairs.routes.js")\n    campus_routes = read("frontend/src/modules/campusService/campusService.routes.js")\n    for path in ("leave", "leave/followup", "leave/ledger", "leave/stats"):\n        assert f"path: '{path}'" in student_routes\n    assert "LeaveApprovalWorkbenchView.vue" in student_routes\n    assert "path: '/admin/student-affairs/leave'" not in campus_routes\n    assert "redirect: '/admin/student-affairs/leave'" in campus_routes\n\n\ndef test_leave_version_and_allowed_actions_are_formal_not_monkey_patched():\n    leave_service = read("backend/app/services/affairs_leave_service.py")\n    mobile_service = read("backend/app/services/mobile_affairs_service.py")\n    contract = read("backend/app/services/affairs_four_end_contract.py")\n    assert '"version": int(x.version or 0)' in leave_service\n    assert '"allowedActions": _allowed_actions(x.affairs_status)' in leave_service\n    assert "actions = leave_svc._allowed_actions(x.affairs_status)" in mobile_service\n    optimistic = contract.split("def _patch_optimistic_lock() -> None:", 1)[1].split(\n        "def _teacher_permissions", 1\n    )[0]\n    assert "affairs_leave_service" not in optimistic\n''',
         encoding="utf-8",
     )
 
@@ -183,6 +248,15 @@ def audit_versions() -> None:
     if "affairs_leave_service" in optimistic:
         raise RuntimeError("leave service still depends on optimistic-lock monkey patch")
 
+    for path in (
+        "backend/app/api/v1/mobile.py",
+        "backend/app/student_portal/router.py",
+        "backend/app/student_portal/services/affairs_service.py",
+    ):
+        text = Path(path).read_text(encoding="utf-8")
+        if "请假已迁移" not in text:
+            raise RuntimeError(f"legacy generic leave entry is not blocked: {path}")
+
 
 if __name__ == "__main__":
     print("CUTOVER_STAGE first_cut", flush=True)
@@ -192,6 +266,7 @@ if __name__ == "__main__":
     print("CUTOVER_STAGE third_cut", flush=True)
     base.third_cut()
     patch_route_ownership()
+    block_generic_leave_entrypoints()
     absorb_leave_runtime_contract()
     write_cutover_contract_test()
     print("CUTOVER_STAGE audit", flush=True)
