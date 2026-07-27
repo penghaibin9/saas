@@ -18,6 +18,31 @@ def test_anonymous_token_is_deterministic_but_not_plain_identity(monkeypatch):
     assert len(first) == 64
 
 
+def test_anonymous_token_does_not_change_when_jwt_secret_rotates(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+
+    monkeypatch.setattr(service, "_tid", lambda: 88)
+    monkeypatch.setattr(service.settings, "FIELD_ENCRYPTION_KEY", "stable-anonymous-data-key")
+    monkeypatch.setattr(service.settings, "JWT_SECRET", "jwt-secret-before")
+    before = service._submission_token(12, 345)
+    monkeypatch.setattr(service.settings, "JWT_SECRET", "jwt-secret-after")
+    after = service._submission_token(12, 345)
+
+    assert before == after
+
+
+def test_missing_anonymous_token_key_fails_closed(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+
+    monkeypatch.setattr(service.settings, "FIELD_ENCRYPTION_KEY", "")
+    with pytest.raises(AppException) as exc:
+        service._anonymous_token_key()
+
+    assert exc.value.http_status == 500
+    assert "凭证密钥未配置" in exc.value.message
+
+
 def test_reserved_anonymous_token_cannot_be_overridden_by_client():
     from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
 
@@ -110,4 +135,6 @@ def test_student_audit_never_uses_current_account_operator():
     assert 'operator="ANONYMOUS_STUDENT"' in source
     assert 'detail="学生匿名评教提交"' in source
     assert "query.with_for_update()" in source
-    assert "answers_json.like(token_pattern)" in source
+    assert "answers_json.like(_token_pattern(" in source
+    assert "settings.JWT_SECRET.encode" not in source
+    assert "settings.FIELD_ENCRYPTION_KEY" in source
