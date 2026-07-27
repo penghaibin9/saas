@@ -15,6 +15,7 @@ from app.api.v1.affairs_activity_mobile import router as affairs_activity_mobile
 from app.api.v1.affairs_appeal_mobile import router as affairs_appeal_mobile_router
 from app.api.v1.affairs_appeal_repair_api import router as affairs_appeal_repair_router
 from app.api.v1.affairs_four_end import router as affairs_four_end_router
+from app.api.v1.affairs_operations_api import router as affairs_operations_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
 from app.services.affairs_activity_accounting_guard import install as install_activity_accounting_guard
@@ -41,6 +42,7 @@ from app.services.affairs_four_end_terminal_guard import install as install_affa
 from app.services.affairs_funding_ext_guard import install as install_funding_ext_guard
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
+from app.services.affairs_operations_service import install as install_affairs_operations
 from app.services.affairs_publicity_guard import install as install_publicity_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
@@ -80,6 +82,7 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
 
 for supplemental_router in (
     affairs_four_end_router,
+    affairs_operations_router,
     affairs_student_dorm_router,
     affairs_activity_mobile_router,
     affairs_appeal_mobile_router,
@@ -133,6 +136,8 @@ install_dorm_node_guard()
 install_student_contract()
 # 最终安全门收紧学生时间线、附件可见性、稳定标识和可执行动作。
 install_student_contract_security_guard()
+# 正式材料缺项/补交版本必须在学生合同安全门后接入，保留本人附件过滤并补充结构化缺项。
+install_affairs_operations()
 # 教师学工首页复用通用待办可见性，并返回真实逐条跨业务待办。
 install_teacher_workbench_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
