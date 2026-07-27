@@ -1,5 +1,5 @@
 """V2 PageId AA-DASHBOARD-01：教务看板阶段 readiness 合同。"""
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -66,12 +66,13 @@ def test_exam_deadline_is_computed_forward_from_term_start():
     assert deadline == "2026-12-29"
 
 
-def test_archived_term_never_keeps_old_blocker_counts():
+def test_archived_term_never_keeps_old_blocker_counts(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_dashboard_readiness_final_service as service
 
+    monkeypatch.setattr(service, "_mark_current", lambda data: data)
     data = service._recalculate(
         {
-            "term": {"termId": None, "termLabel": "历史学期"},
+            "term": {"termId": None, "termLabel": "历史学期", "isCurrent": False},
             "stage": "ARCHIVED",
         },
         [{
