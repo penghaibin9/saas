@@ -46,7 +46,22 @@ def _normalize_deadlines(data: dict, items: list[dict]) -> list[dict]:
     return output
 
 
+def _mark_current(data: dict) -> dict:
+    enriched = dict(data or {})
+    term = dict(enriched.get("term") or {})
+    selected_id = str(term.get("termId") or "")
+    with session() as db:
+        current = _base._load_term(db, None)
+    current_id = str(current.id) if current else ""
+    term["isCurrent"] = bool(selected_id and selected_id == current_id)
+    term["currentTermId"] = current_id or None
+    term["currentTermLabel"] = _base._term_label(current) if current else None
+    enriched["term"] = term
+    return enriched
+
+
 def _recalculate(data: dict, items: list[dict], *, scope_type: str, scope_note: str) -> dict:
+    data = _mark_current(data)
     items = _normalize_deadlines(data, items)
     if data.get("stage") == "ARCHIVED":
         items = []
