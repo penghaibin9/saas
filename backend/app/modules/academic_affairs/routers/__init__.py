@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from . import academic_affairs as academic_affairs
 from .grade_identity_router import router as grade_identity_router
+from .mobile_grade_entry_router import router as mobile_grade_entry_router
 from .scheduling_rule_router import router as scheduling_rule_router
 from .teaching_class_router import router as teaching_class_router
 
@@ -43,6 +44,13 @@ if not any(path == "/academic-affairs/scheduling/rules" for path, _methods in _e
 if not any(path == "/academic-affairs/teaching-classes" for path, _methods in _existing):
     academic_affairs.router.include_router(teaching_class_router)
 for route in grade_identity_router.routes:
+    signature = (getattr(route, "path", ""), tuple(sorted(getattr(route, "methods", set()) or set())))
+    if signature not in _existing:
+        academic_affairs.router.routes.append(route)
+        _existing.add(signature)
+# V2 R5 的路由前缀是 /mobile/teacher/academic。直接追加 APIRoute，保持既有移动 URL，
+# 同时复用 route_registration 给 academic_affairs.router 挂载的模块门禁。
+for route in mobile_grade_entry_router.routes:
     signature = (getattr(route, "path", ""), tuple(sorted(getattr(route, "methods", set()) or set())))
     if signature not in _existing:
         academic_affairs.router.routes.append(route)
