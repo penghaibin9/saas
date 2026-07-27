@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from glob import glob
 import os
 import subprocess
 import sys
@@ -128,9 +129,22 @@ def select(files: list[str]) -> list[str]:
     return out
 
 
+def existing_targets(targets: list[str]) -> list[str]:
+    """剔除不存在的精确路径或无匹配通配符，避免 pytest 把它们当成错误参数。"""
+    existing: list[str] = []
+    for target in targets:
+        has_glob = any(ch in target for ch in "*?[")
+        if (has_glob and glob(target)) or (not has_glob and os.path.exists(target)):
+            existing.append(target)
+    return existing
+
+
 def main() -> int:
     files = _changed_files()
-    targets = select(files)
+    targets = existing_targets(select(files))
+    if not targets:
+        print("CI 未找到任何存在的 pytest 目标", file=sys.stderr)
+        return 2
     print(" ".join(targets))
     print(f"# changed={len(files)} targets={len(targets)}", file=sys.stderr)
     return 0
