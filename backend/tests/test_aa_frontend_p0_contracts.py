@@ -31,8 +31,9 @@ def test_student_grade_query_copy_never_uses_inner_html_or_official_wording():
     assert "textContent" in grades
     assert "innerHTML" not in grades
     assert "Official Academic Transcript" not in grades
-    assert "旧课表算法和客户端“官方成绩单”入口已停用" in legacy
+    assert "旧课表、客户端“官方成绩单”和旧评教面板已停用" in legacy
     assert ".sp-tab:nth-child(5)" in legacy
+    assert ".sp-tab:nth-child(6)" in legacy
 
 
 def test_student_section_route_fails_closed_and_hides_legacy_entry():
@@ -40,9 +41,20 @@ def test_student_section_route_fails_closed_and_hides_legacy_entry():
 
     assert "activationError" in source
     assert "未找到“${target}”业务面板" in source
+    assert "未找到“${subTarget}”子工作区" in source
     assert "标题是A、内容是B" in source
+    assert "academicSubTab" in source
+    assert "button.sp-tab" in source
     assert "兼容综合页" not in source
     assert "router.push('/academic/all')" not in source
+
+
+def test_makeup_route_opens_actionable_nested_workbench():
+    router = _read("student-portal/src/router/index.js")
+
+    assert "academicSubTab: subTab" in router
+    assert "'academic/makeup'" in router
+    assert "'补考重修申请'" in router
 
 
 def test_student_evaluation_uses_dedicated_secure_workspace():
