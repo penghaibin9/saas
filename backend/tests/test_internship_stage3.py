@@ -83,7 +83,9 @@ def _seed_risk(rec_id, level="MEDIUM"):
         db.close()
 
 
-def _seed_evidence(rec_id, name="请假证明.pdf"):
+def _seed_evidence(stu_id, name="请假证明.pdf"):
+    """biz_id 须为 StudentProfile.id（file_service._student_owns_file 按此核对本人归属），
+    不能用 InternshipRecord.id，否则学生本人访问自己上传的证据也会被判无权访问。"""
     from uuid import uuid4
 
     from app.db.session import get_sessionmaker
@@ -92,7 +94,7 @@ def _seed_evidence(rec_id, name="请假证明.pdf"):
     try:
         row = FileObject(
             tenant_id=TID, file_key=f"stage3/{uuid4().hex}.pdf", file_name=name,
-            ext="pdf", size_bytes=2048, biz_type="INTERNSHIP", biz_id=str(rec_id),
+            ext="pdf", size_bytes=2048, biz_type="INTERNSHIP", biz_id=str(stu_id),
             visibility="BIZ_SCOPED", status="STORED")
         db.add(row); db.flush(); file_id = str(row.id); db.commit()
         return file_id
@@ -217,7 +219,7 @@ def test_attachment_valid_fileid_resolved(client, db_mode):
 def test_leave_apply_withdraw_and_review(client, db_mode):
     ids = _seed(db_mode)
     student = _student("S3-A", batch_id=ids["batch"])
-    evidence_id = _seed_evidence(ids["rec_a"])
+    evidence_id = _seed_evidence(ids["stu_a"])
     # 学生 S3-A 按当前批次提交 3 天病假及真实证明
     ap = client.post(f"{MOBILE_CONTEXT}/leaves",
                      json={"leaveType": "SICK", "startDate": "2026-07-10", "endDate": "2026-07-12",
@@ -263,7 +265,7 @@ def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
 def test_leave_approve_writes_leave_checkins(client, db_mode):
     ids = _seed(db_mode)
     student = _student("S3-A", batch_id=ids["batch"])
-    evidence_id = _seed_evidence(ids["rec_a"], "连续请假证明.pdf")
+    evidence_id = _seed_evidence(ids["stu_a"], "连续请假证明.pdf")
     response = client.post(f"{MOBILE_CONTEXT}/leaves",
                            json={"leaveType": "PERSONAL", "startDate": "2026-07-10", "endDate": "2026-07-12",
                                  "reason": "家庭事务需要处理", "evidenceFileId": evidence_id}, headers=student)

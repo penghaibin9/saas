@@ -328,9 +328,9 @@ def internship_my_plan(user=Depends(get_current_user)):
 
 
 @internship_mobile.post("/plan/acknowledge", summary="确认本人实习计划书")
-def internship_plan_ack(user=Depends(get_current_user)):
+def internship_plan_ack(body: dict = Body(default={}), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_service as plan
-    return success(plan.student_acknowledge(user), message="已确认实习计划")
+    return success(plan.student_acknowledge(user, body or {}), message="已确认实习计划")
 
 
 @internship_mobile.get("/plan/tasks", summary="本人实习计划任务及完成度")

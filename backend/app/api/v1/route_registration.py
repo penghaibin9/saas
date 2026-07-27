@@ -50,7 +50,8 @@ def register_core_routes(api_router: APIRouter) -> None:
 def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.internship.routers import (
         internship, internship_agreement_template, internship_application, internship_archive,
-        internship_communication, internship_complaint, internship_compliance, internship_insurance,
+        internship_communication, internship_complaint, internship_compliance,
+        internship_enterprise_eval_versioned, internship_insurance,
         internship_match, internship_participant, internship_plan, internship_position,
         internship_process, internship_stats, internship_student, internship_visit_plan,
     )
@@ -60,6 +61,7 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_match, internship_participant, internship_application, internship_archive,
         internship_stats, internship_plan, internship_insurance, internship_process,
         internship_communication, internship_visit_plan, internship_complaint, internship_compliance,
+        internship_enterprise_eval_versioned,
     ):
         api_router.include_router(r.router, dependencies=d)
 

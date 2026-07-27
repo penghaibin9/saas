@@ -334,7 +334,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "internship.score.view", "internship.score.manage",
         "internship.application.view", "internship.application.review",
         # 三方协议：导师对本人指导学生生成/下发/记录企业签署/学校确认/驳回/作废/归档/电子签（跨学生由 service 拦 403）
-        "internship.agreement.view", "internship.agreement.manage",
+        "internship.agreement.view", "internship.agreement.manage", "internship.agreement.sign",
         "internship.enterprise.view", "internship.position.view",
         "internship.match.intention.view", "internship.match.recommend.view", "internship.match.result.view",
         "internship.stats.view",

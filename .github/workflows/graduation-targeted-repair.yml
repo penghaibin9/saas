@@ -15,13 +15,13 @@ concurrency:
 
 jobs:
   graduation-validation:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/graduation-p0-cross-client-latest-20260726'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_migration?charset=utf8mb4
       PYTHONUNBUFFERED: "1"
+      FAST_TEST_SCHEMA: "1"
     services:
       mysql:
         image: mysql:8.0

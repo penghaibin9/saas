@@ -66,12 +66,15 @@ def test_plan_publish_and_ack(client, db_mode):
     assert save.status_code == 200 and save.json()["code"] == 0
     assert len(save.json()["data"]["tasks"]) == 2
     assert save.json()["data"]["tasks"][0]["name"] == "岗前安全培训"
-    pub = client.post(f"{INT}/plans/batch/{ids['batch_id']}/publish", headers=_admin(client))
+    pub = client.post(f"{INT}/plans/batch/{ids['batch_id']}/publish",
+                     json={"expectedVersion": save.json()["data"]["version"]}, headers=_admin(client))
     assert pub.status_code == 200 and pub.json()["data"]["ackCount"] >= 1
     my = client.get(f"{MOB}/internship/plan", headers=_student())
     assert my.status_code == 200 and my.json()["data"]["title"]
     assert len(my.json()["data"]["tasks"]) == 2
-    ack = client.post(f"{MOB}/internship/plan/acknowledge", headers=_student())
+    ack = client.post(f"{MOB}/internship/plan/acknowledge", headers=_student(), json={
+        "planVersion": my.json()["data"]["version"], "expectedVersion": my.json()["data"]["ackVersion"],
+    })
     assert ack.status_code == 200 and ack.json()["data"]["status"] == "ACKNOWLEDGED"
 
 
@@ -85,19 +88,29 @@ def test_plan_tasks_validation(client, db_mode):
 
 
 def test_insurance_submit_and_verify(client, db_mode):
+    import io
     ids = _seed_batch(db_mode)
+    stu_h = _student()
+    # bizType 用 INTERNSHIP（对应 internship.student.material.view）而非通用 ATTACHMENT，
+    # 后者只映射学工域权限，指导教师核验时会因文件鉴权失败拿不到凭证
+    up = client.post("/api/v1/files/upload", headers=stu_h,
+                     files={"file": ("policy.txt", io.BytesIO(b"insurance-policy-scan"), "text/plain")},
+                     data={"bizType": "INTERNSHIP"})
+    assert up.status_code == 200, up.text
+    file_id = up.json()["data"]["fileId"]
     sub = client.post(f"{MOB}/internship/insurance",
                       json={"policyNo": "INS-2026-001", "insurerName": "某保险公司",
                             "coverageType": "实习责任险", "effectiveDate": "2026-07-01",
-                            "expiryDate": "2027-06-30"},
-                      headers=_student())
+                            "expiryDate": "2027-06-30", "fileId": file_id},
+                      headers=stu_h)
     assert sub.status_code == 200 and sub.json()["data"]["status"] == "PENDING_VERIFY"
     lst = client.get(f"{INT}/insurances", params={"status": "PENDING_VERIFY", "batchId": ids["batch_id"]},
                      headers=_mentor("刘强"))
     assert lst.status_code == 200
-    iid = lst.json()["data"]["items"][0]["id"]
+    item = lst.json()["data"]["items"][0]
+    iid = item["id"]
     ver = client.post(f"{INT}/insurances/{iid}/verify",
-                      json={"action": "APPROVE", "comment": "保单有效"},
+                      json={"action": "APPROVE", "comment": "保单有效", "expectedVersion": item["version"]},
                       headers=_mentor("刘强"))
     assert ver.status_code == 200 and ver.json()["data"]["status"] == "VERIFIED"
 
