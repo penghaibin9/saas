@@ -1,47 +1,29 @@
-"""R7 培养方案校验器与开课差异最终回归。"""
+"""R7 培养方案校验器与开课差异行为回归。"""
 from pathlib import Path
 from types import SimpleNamespace
 
 
 def test_opening_status_detects_hours_and_teacher_gaps():
-    from app.modules.academic_affairs.services.academic_affairs_program_opening_closure_service import (
-        _task_row_status,
-    )
+    from app.modules.academic_affairs.services.academic_affairs_program_governance_service import _task_row_status
 
     program_course = SimpleNamespace(course_id=1, credit_snapshot=3)
     catalog = SimpleNamespace(credit=3, hours_total=48)
 
-    status, _message = _task_row_status(
-        program_course,
-        catalog,
-        [SimpleNamespace(total_hours=32, teacher_key="T001")],
-    )
+    status, _ = _task_row_status(program_course, catalog, [SimpleNamespace(total_hours=32, teacher_key="T001")])
     assert status == "HOURS_MISMATCH"
-
-    status, _message = _task_row_status(
-        program_course,
-        catalog,
-        [SimpleNamespace(total_hours=48, teacher_key="")],
-    )
+    status, _ = _task_row_status(program_course, catalog, [SimpleNamespace(total_hours=48, teacher_key="")])
     assert status == "NO_TEACHER"
-
-    status, message = _task_row_status(
-        program_course,
-        catalog,
-        [SimpleNamespace(total_hours=48, teacher_key="T001")],
-    )
+    status, message = _task_row_status(program_course, catalog, [SimpleNamespace(total_hours=48, teacher_key="T001")])
     assert status == "READY"
     assert "学时一致" in message
 
 
 def test_opening_summary_separates_blockers_from_missing_teacher():
-    from app.modules.academic_affairs.services.academic_affairs_program_opening_closure_service import _summary
+    from app.modules.academic_affairs.services.academic_affairs_program_governance_service import _summary
 
     result = _summary([
-        {"status": "READY"},
-        {"status": "NO_TEACHER"},
-        {"status": "HOURS_MISMATCH"},
-        {"status": "OVER_OPENED"},
+        {"status": "READY"}, {"status": "NO_TEACHER"},
+        {"status": "HOURS_MISMATCH"}, {"status": "OVER_OPENED"},
     ])
     assert result["total"] == 4
     assert result["ready"] == 1
@@ -52,39 +34,36 @@ def test_opening_summary_separates_blockers_from_missing_teacher():
     assert result["canGenerateOrConfirm"] is False
 
 
-def test_r7_source_includes_all_active_program_states_and_no_term_guessing():
+def test_governance_source_includes_active_states_and_no_term_guessing():
     root = Path(__file__).resolve().parents[1]
-    source = (root / "app/modules/academic_affairs/services/academic_affairs_program_opening_closure_service.py").read_text(encoding="utf-8")
+    source = (root / "app/modules/academic_affairs/services/academic_affairs_program_governance_service.py").read_text(encoding="utf-8")
 
     assert '{"PUBLISHED", "ENABLED", "FROZEN"}' in source
     assert "系统未猜测全部课程" in source
     assert "AaProgram.status.in_" in source
     assert "HOURS_MISMATCH" in source
-    assert "_allowed_major_ids" in source
     assert "allowed_class_ids" in source
 
 
-def test_program_submit_gate_rechecks_data_scope_in_same_transaction():
+def test_program_submit_gate_rechecks_scope_and_locks_row():
     root = Path(__file__).resolve().parents[1]
-    source = (root / "app/modules/academic_affairs/services/academic_affairs_program_quality_facade.py").read_text(encoding="utf-8")
+    source = (root / "app/modules/academic_affairs/services/academic_affairs_program_service.py").read_text(encoding="utf-8")
 
-    assert "_ensure_program_scope(db, user, int(program_id))" in source
+    assert "governance._ensure_program_scope(db, user, int(program_id))" in source
     assert ".with_for_update().first()" in source
     assert '"PROGRAM_VALIDATION_BLOCKED"' in source
     assert '"issues": blockers[:20]' in source
+    assert "sys.modules" not in source
 
 
-def test_public_program_quality_service_points_to_r7_closure():
-    from app.modules.academic_affairs import services
+def test_public_program_quality_router_uses_governance_service():
+    from app.modules.academic_affairs.routers import program_quality_router
 
-    quality = services.academic_affairs_program_quality_service
-    assert quality.__name__.endswith("academic_affairs_program_opening_closure_service")
-    assert quality.opening_differences.__module__.endswith(
-        "academic_affairs_program_opening_closure_service"
+    assert program_quality_router.quality_svc.__name__.endswith(
+        "academic_affairs_program_governance_service"
     )
-    # 结构校验仍委托既有完整校验链，不重建第二套校验器。
-    assert quality.validate_program.__module__.endswith(
-        "academic_affairs_program_quality_complete_service"
+    assert program_quality_router.quality_svc.opening_differences.__module__.endswith(
+        "academic_affairs_program_governance_service"
     )
 
 
