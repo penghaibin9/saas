@@ -15,8 +15,8 @@ def test_leave_flow_tests_seed_real_assignees_and_org_relations():
         "College",
         "Major",
         "UserRole",
-        'role_code="COLLEGE_ADMIN"',
-        'role_code="STUDENT_AFFAIRS_ADMIN"',
+        "COLLEGE_ADMIN",
+        "STUDENT_AFFAIRS_ADMIN",
         'scope_type="COLLEGE"',
     ):
         assert marker in source
