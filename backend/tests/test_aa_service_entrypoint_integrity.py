@@ -18,6 +18,9 @@ EXPECTED_ENTRYPOINTS = {
     "academic_affairs_attendance_service": (
         "app.modules.academic_affairs.services.academic_affairs_attendance_public_service"
     ),
+    "academic_affairs_stats_service": (
+        "app.modules.academic_affairs.services.academic_affairs_stats_public_service"
+    ),
     "academic_affairs_selection_service": (
         "app.modules.academic_affairs.services.academic_affairs_selection_final_service"
     ),
@@ -59,6 +62,11 @@ IMPORT_ORDERS = [
         "app.modules.academic_affairs.services.academic_affairs_attendance_facade",
         "app.modules.academic_affairs.services.academic_affairs_attendance_roster_identity_facade",
         "app.modules.academic_affairs.services.academic_affairs_attendance_public_service",
+    ],
+    [
+        "app.modules.academic_affairs.services.academic_affairs_stats_service",
+        "app.modules.academic_affairs.services.academic_affairs_stats_facade",
+        "app.modules.academic_affairs.services.academic_affairs_stats_public_service",
     ],
     [
         "app.modules.academic_affairs.services.academic_affairs_level_exam_identity_guard",
