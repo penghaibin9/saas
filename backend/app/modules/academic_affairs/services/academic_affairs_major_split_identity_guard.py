@@ -1,23 +1,18 @@
-"""P0-05 专业分流学生本人身份守卫。"""
+"""专业分流学生身份历史兼容入口。
+
+稳定身份与学生自助写事务已收口到 ``academic_affairs_major_split_public_service``；
+本文件仅保留旧导入路径，不再修改原 Service。
+"""
 from __future__ import annotations
 
-from app.core.context import get_current_user_ctx
-from app.core.exceptions import not_found
+from . import academic_affairs_major_split_public_service as _canonical
 
-from . import academic_affairs_major_split_service as _base
+_base = _canonical
+_student_profile = _canonical._student_profile
+submit_volunteer = _canonical.submit_volunteer
+student_open_batches = _canonical.student_open_batches
+my_volunteer = _canonical.my_volunteer
 
 
 def __getattr__(name):
-    return getattr(_base, name)
-
-
-def _student_profile(db, user=None):
-    from app.services.mobile_student_identity_facade import resolve_student
-
-    profile = resolve_student(db, user or get_current_user_ctx() or {})
-    if not profile:
-        raise not_found("当前账号尚未绑定唯一学生档案")
-    return profile
-
-
-_base._student_profile = _student_profile
+    return getattr(_canonical, name)
