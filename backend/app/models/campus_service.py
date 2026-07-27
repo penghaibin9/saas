@@ -75,7 +75,7 @@ class CsGrant(PKMixin, TenantMixin, CommonMixin, Base):
 
 class CsDormRecord(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_dorm_record"
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     building: Mapped[str | None] = mapped_column(String(100))
     room: Mapped[str | None] = mapped_column(String(50))
     bed: Mapped[str | None] = mapped_column(String(20))
