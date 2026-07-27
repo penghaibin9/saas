@@ -57,6 +57,22 @@ def test_makeup_route_opens_actionable_nested_workbench():
     assert "'补考重修申请'" in router
 
 
+def test_student_registration_uses_dedicated_actionable_workspace():
+    router = _read("student-portal/src/router/index.js")
+    view = _read("student-portal/src/views/academic/StudentRegistrationView.vue")
+
+    assert "StudentRegistrationView.vue" in router
+    assert "academicSection('academic/registration'" not in router
+    assert "portalApi.academicRegistration()" in view
+    assert "portalApi.academicRegistrationRegister" in view
+    assert "portalApi.academicRegistrationDefer" in view
+    assert "batch.blockReason" in view
+    assert "batch.canRegister" in view
+    assert "batch.canDefer" in view
+    assert "暂缓原因（至少 2 字）" in view
+    assert "window.prompt" not in view
+
+
 def test_student_evaluation_uses_dedicated_secure_workspace():
     router = _read("student-portal/src/router/index.js")
     view = _read("student-portal/src/views/academic/StudentEvaluationView.vue")
@@ -78,6 +94,7 @@ def test_student_home_counts_only_actionable_evaluation_tasks():
     assert "function actionableEvaluationRows(data)" in source
     assert "row.canSubmit === true && row.submitted !== true" in source
     assert "const evaluation = actionableEvaluationRows(val(1))" in source
+    assert "route: '/academic/makeup'" in source
 
 
 def test_admin_menu_is_fail_closed_and_cache_signature_is_identity_complete():
