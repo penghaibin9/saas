@@ -1,21 +1,20 @@
-"""评教服务最终学期写保护层。
+"""评教服务最终公开入口。
 
-评教批次拥有强 ``term_id``。所有真实写动作均在原事务内回链批次并执行
+评教批次拥有强 ``term_id``。所有真实写动作都在自身事务内回链批次并执行
 ``guard_term_writable``：建批次、生成任务、窗口流转、提交评价、核算/发布结果、提交/处理申诉。
+本模块不覆盖旧 Service 函数，不依赖导入顺序安装写保护。
 """
 from __future__ import annotations
 
 import json
-from contextvars import ContextVar
+from datetime import datetime
 
 from app.core.affairs_security import _derive_keys, no_data_scope
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 
 from . import academic_affairs_evaluation_facade as _base
 
 _legacy = _base._legacy
-_BATCH_WRITE = ContextVar("aa_evaluation_batch_write", default=False)
-_original_get_batch = _legacy._get_batch
 
 
 def __getattr__(name):
@@ -30,24 +29,10 @@ def _guard_term(db, term_id):
     guard_term_writable(db, int(term_id))
 
 
-def _get_batch(db, batch_id):
-    batch = _original_get_batch(db, int(batch_id))
-    if _BATCH_WRITE.get():
-        _guard_term(db, batch.term_id)
+def _writable_batch(db, batch_id):
+    batch = _legacy._get_batch(db, int(batch_id))
+    _guard_term(db, batch.term_id)
     return batch
-
-
-def _wrap_batch(fn):
-    def wrapped(*args, **kwargs):
-        token = _BATCH_WRITE.set(True)
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            _BATCH_WRITE.reset(token)
-    wrapped.__name__ = fn.__name__
-    wrapped.__doc__ = fn.__doc__
-    wrapped.__module__ = __name__
-    return wrapped
 
 
 def create_batch(user, body):
@@ -91,6 +76,296 @@ def create_batch(user, body):
         return _legacy._batch_dto(row)
 
 
+def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
+    from app.models import AaEvaluationTask, AaTeachingTask
+
+    evaluator_type = (evaluator_type or "STUDENT").upper()
+    if evaluator_type != "STUDENT":
+        raise _legacy._bad(
+            "本入口仅支持 STUDENT 评教；SELF/PEER/SUPERVISOR 请使用 /role-tasks 并指定 evaluatorKey"
+        )
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _writable_batch(db, bid)
+        if batch.status != _legacy._B_DRAFT:
+            raise _legacy._invalid("仅 DRAFT 批次可生成应评任务")
+        count = 0
+        for teaching_task_id in [int(value) for value in teaching_task_ids if str(value).isdigit()]:
+            teaching_task = db.query(AaTeachingTask).filter(
+                AaTeachingTask.id == teaching_task_id,
+                AaTeachingTask.tenant_id == _legacy._tid(),
+            ).first()
+            if not teaching_task:
+                continue
+            duplicate = db.query(AaEvaluationTask).filter(
+                AaEvaluationTask.tenant_id == _legacy._tid(),
+                AaEvaluationTask.batch_id == batch.id,
+                AaEvaluationTask.teaching_task_id == teaching_task_id,
+                AaEvaluationTask.evaluator_type == evaluator_type,
+            ).first()
+            if duplicate:
+                continue
+            db.add(AaEvaluationTask(
+                tenant_id=_legacy._tid(),
+                batch_id=batch.id,
+                teaching_task_id=teaching_task_id,
+                course_id=getattr(teaching_task, "course_id", None),
+                course_name=getattr(teaching_task, "course_name", None),
+                class_id=getattr(teaching_task, "class_id", None),
+                teacher_key=getattr(teaching_task, "teacher_key", None),
+                teacher_name=getattr(teaching_task, "teacher_name", None),
+                evaluator_type=evaluator_type,
+                status="PENDING",
+            ))
+            count += 1
+        _legacy._audit(db, batch.id, "EVAL_TASK_GENERATE", f"{evaluator_type} {count} 条应评任务")
+        db.commit()
+        return {"batchId": str(batch.id), "taskCount": count, "evaluatorType": evaluator_type}
+
+
+def generate_role_tasks(user, bid, evaluator_type, assignments):
+    from app.models import AaEvaluationTask, AaTeachingTask
+
+    evaluator_type = str(evaluator_type or "").upper()
+    if evaluator_type not in _legacy._ROLE_EVAL_TYPES:
+        raise _legacy._bad("非法评价类型，仅支持 SELF/PEER/SUPERVISOR")
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _writable_batch(db, bid)
+        if batch.status != _legacy._B_DRAFT:
+            raise _legacy._invalid("仅 DRAFT 批次可生成应评任务")
+        count = 0
+        for assignment in assignments or []:
+            teaching_task_id = (
+                assignment.get("teachingTaskId")
+                if isinstance(assignment, dict)
+                else getattr(assignment, "teachingTaskId", None)
+            )
+            if not (teaching_task_id and str(teaching_task_id).isdigit()):
+                continue
+            teaching_task_id = int(teaching_task_id)
+            teaching_task = db.query(AaTeachingTask).filter(
+                AaTeachingTask.id == teaching_task_id,
+                AaTeachingTask.tenant_id == _legacy._tid(),
+            ).first()
+            if not teaching_task:
+                continue
+            evaluator_key = (
+                assignment.get("evaluatorKey")
+                if isinstance(assignment, dict)
+                else getattr(assignment, "evaluatorKey", None)
+            )
+            evaluator_key = str(evaluator_key or "").strip()
+            if evaluator_type == "SELF":
+                evaluator_key = evaluator_key or str(getattr(teaching_task, "teacher_key", None) or "")
+            if not evaluator_key:
+                raise _legacy._bad(f"{evaluator_type} 类型必须指定评价人 evaluatorKey")
+            duplicate = db.query(AaEvaluationTask).filter(
+                AaEvaluationTask.tenant_id == _legacy._tid(),
+                AaEvaluationTask.batch_id == batch.id,
+                AaEvaluationTask.teaching_task_id == teaching_task_id,
+                AaEvaluationTask.evaluator_type == evaluator_type,
+                AaEvaluationTask.evaluator_key == evaluator_key,
+            ).first()
+            if duplicate:
+                continue
+            db.add(AaEvaluationTask(
+                tenant_id=_legacy._tid(),
+                batch_id=batch.id,
+                teaching_task_id=teaching_task_id,
+                course_id=getattr(teaching_task, "course_id", None),
+                course_name=getattr(teaching_task, "course_name", None),
+                class_id=getattr(teaching_task, "class_id", None),
+                teacher_key=getattr(teaching_task, "teacher_key", None),
+                teacher_name=getattr(teaching_task, "teacher_name", None),
+                evaluator_type=evaluator_type,
+                evaluator_key=evaluator_key,
+                status="PENDING",
+            ))
+            count += 1
+        _legacy._audit(db, batch.id, "EVAL_TASK_GENERATE", f"{evaluator_type} {count} 条应评任务")
+        db.commit()
+        return {"batchId": str(batch.id), "evaluatorType": evaluator_type, "taskCount": count}
+
+
+def publish_batch(user, bid):
+    from app.models import AaEvaluationTask
+
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _writable_batch(db, bid)
+        if batch.status != _legacy._B_DRAFT:
+            raise _legacy._invalid("仅 DRAFT 批次可发布")
+        count = db.query(AaEvaluationTask).filter(
+            AaEvaluationTask.batch_id == batch.id,
+            AaEvaluationTask.tenant_id == _legacy._tid(),
+        ).count()
+        if not count:
+            raise _legacy._bad("批次无应评任务，不可发布")
+        batch.status = _legacy._B_PUBLISHED
+        _legacy._audit(db, batch.id, "EVAL_BATCH_PUBLISH", "发布")
+        db.commit()
+        return _legacy._batch_dto(batch)
+
+
+def open_batch(user, bid):
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _writable_batch(db, bid)
+        if batch.status != _legacy._B_PUBLISHED:
+            raise _legacy._invalid(f"仅 PUBLISHED 批次可OPEN，当前 {batch.status}")
+        batch.status = _legacy._B_OPEN
+        _legacy._audit(db, batch.id, "EVAL_BATCH_OPEN", "OPEN")
+        db.commit()
+        return _legacy._batch_dto(batch)
+
+
+def archive_batch(user, bid):
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _writable_batch(db, bid)
+        if batch.status == _legacy._B_ARCHIVED:
+            return _legacy._batch_dto(batch)
+        if batch.status != _legacy._B_RESULT:
+            raise _legacy._invalid("仅 RESULT_READY 批次可归档")
+        batch.status = _legacy._B_ARCHIVED
+        _legacy._audit(db, batch.id, "EVAL_BATCH_ARCHIVE", "归档")
+        db.commit()
+        return _legacy._batch_dto(batch)
+
+
+def close_and_score(user, bid):
+    from app.models import AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
+
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _writable_batch(db, bid)
+        if batch.status != _legacy._B_OPEN:
+            raise _legacy._invalid("仅 OPEN 批次可关闭核算")
+        tasks = db.query(AaEvaluationTask).filter(
+            AaEvaluationTask.batch_id == batch.id,
+            AaEvaluationTask.tenant_id == _legacy._tid(),
+        ).all()
+        aggregate = {}
+        metadata = {}
+        for task in tasks:
+            records = db.query(AaEvaluationRecord).filter(
+                AaEvaluationRecord.task_id == task.id,
+                AaEvaluationRecord.tenant_id == _legacy._tid(),
+            ).all()
+            scores = [float(record.objective_score) for record in records if record.objective_score is not None]
+            aggregate.setdefault(task.teaching_task_id, {}).setdefault(task.evaluator_type, []).extend(scores)
+            metadata[task.teaching_task_id] = (task.teacher_key, task.teacher_name, task.course_name)
+        for teaching_task_id, by_type in aggregate.items():
+            def average(evaluator_type):
+                values = by_type.get(evaluator_type, [])
+                return (round(sum(values) / len(values), 2) if values else None), len(values)
+
+            student_average, student_count = average("STUDENT")
+            self_average, _self_count = average("SELF")
+            peer_average, peer_count = average("PEER")
+            supervisor_average, supervisor_count = average("SUPERVISOR")
+            composite = _legacy._composite(
+                student_average,
+                self_average,
+                peer_average,
+                supervisor_average,
+            )
+            teacher_key, teacher_name, course_name = metadata[teaching_task_id]
+            result = db.query(AaEvaluationResult).filter(
+                AaEvaluationResult.tenant_id == _legacy._tid(),
+                AaEvaluationResult.batch_id == batch.id,
+                AaEvaluationResult.teaching_task_id == teaching_task_id,
+            ).first()
+            if not result:
+                result = AaEvaluationResult(
+                    tenant_id=_legacy._tid(),
+                    batch_id=batch.id,
+                    teaching_task_id=teaching_task_id,
+                    teacher_key=teacher_key,
+                    teacher_name=teacher_name,
+                    course_name=course_name,
+                    published=False,
+                )
+                db.add(result)
+            result.student_avg = student_average
+            result.student_count = student_count
+            result.self_score = self_average
+            result.peer_avg = peer_average
+            result.peer_count = peer_count
+            result.supervisor_avg = supervisor_average
+            result.supervisor_count = supervisor_count
+            result.composite_score = composite
+            result.level = _legacy._level(composite if composite is not None else student_average)
+        batch.status = _legacy._B_RESULT
+        batch.result_published_at = datetime.utcnow()
+        _legacy._audit(db, batch.id, "EVAL_BATCH_SCORE", f"多来源核算 {len(aggregate)} 门结果")
+        db.commit()
+        return _legacy._batch_dto(batch)
+
+
+def publish_results(user, bid):
+    from app.models import AaEvaluationResult
+
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _writable_batch(db, bid)
+        if batch.status != _legacy._B_RESULT:
+            raise _legacy._invalid("仅 RESULT_READY 批次可发布结果")
+        db.query(AaEvaluationResult).filter(
+            AaEvaluationResult.batch_id == batch.id,
+            AaEvaluationResult.tenant_id == _legacy._tid(),
+        ).update({AaEvaluationResult.published: True}, synchronize_session=False)
+        _legacy._audit(db, batch.id, "EVAL_RESULT_PUBLISH", "发布结果")
+        db.commit()
+        return {"batchId": str(batch.id), "published": True}
+
+
+def submit_evaluation(user, task_id, answers, objective_score, comment=None):
+    from app.models import AaEvaluationRecord, AaEvaluationTask
+
+    with _legacy.session() as db:
+        _legacy._ctx(user, db)
+        task = db.query(AaEvaluationTask).filter(
+            AaEvaluationTask.id == int(task_id),
+            AaEvaluationTask.tenant_id == _legacy._tid(),
+        ).first()
+        if not task:
+            raise not_found("应评任务不存在")
+        if task.evaluator_type != "STUDENT":
+            keys = _derive_keys(user)
+            if not task.evaluator_key or task.evaluator_key not in keys:
+                raise no_permission("仅本任务指定的评价人本人可提交")
+            if task.status == "SUBMITTED":
+                raise _legacy._invalid("该任务已提交，不可重复提交")
+        batch = _writable_batch(db, task.batch_id)
+        if batch.status != _legacy._B_OPEN:
+            raise _legacy._invalid("评教窗口未开放")
+        record = AaEvaluationRecord(
+            tenant_id=_legacy._tid(),
+            batch_id=batch.id,
+            task_id=task.id,
+            teacher_key=task.teacher_key,
+            evaluator_type=task.evaluator_type,
+            answers_json=json.dumps(answers, ensure_ascii=False) if answers else None,
+            objective_score=objective_score,
+            comment=comment,
+        )
+        db.add(record)
+        task.submitted_count = (task.submitted_count or 0) + 1
+        if task.evaluator_type != "STUDENT":
+            task.status = "SUBMITTED"
+        db.flush()
+        _legacy._audit(
+            db,
+            task.id,
+            "EVAL_SUBMIT",
+            f"{task.evaluator_type} 提交" + ("(匿名)" if task.evaluator_type == "STUDENT" else ""),
+        )
+        db.commit()
+        return {"taskId": str(task.id), "submittedCount": task.submitted_count}
+
+
 def submit_appeal(user, result_id, reason):
     from app.models import AaEvaluationAppeal, AaEvaluationBatch, AaEvaluationResult
 
@@ -98,7 +373,7 @@ def submit_appeal(user, result_id, reason):
     if len(reason) < 5:
         raise _legacy._bad("申诉理由必填且不少于5字")
     with _legacy.session() as db:
-        ctx = _legacy._ctx(user, db)
+        context = _legacy._ctx(user, db)
         result = db.query(AaEvaluationResult).filter(
             AaEvaluationResult.id == int(result_id),
             AaEvaluationResult.tenant_id == _legacy._tid(),
@@ -114,7 +389,7 @@ def submit_appeal(user, result_id, reason):
         if not batch:
             raise AppException("DATA_CONFLICT", "评价结果未关联有效评教批次", http_status=409)
         _guard_term(db, batch.term_id)
-        if ctx.scope_type != "TENANT_ALL":
+        if context.scope_type != "TENANT_ALL":
             if not result.teacher_key or result.teacher_key not in _derive_keys(user):
                 raise no_data_scope("仅可对本人的评价结果发起申诉")
         active = db.query(AaEvaluationAppeal).filter(
@@ -184,24 +459,3 @@ def review_appeal(user, appeal_id, action, reason=""):
         _legacy._audit(db, appeal.id, "EVAL_APPEAL_REVIEW", action)
         db.commit()
         return {"appealId": str(appeal.id), "status": appeal.status}
-
-
-# 原服务所有批次型写动作都通过_get_batch；ContextVar确保校验发生在同一事务内。
-_legacy._get_batch = _get_batch
-for _name in (
-    "generate_tasks",
-    "generate_role_tasks",
-    "publish_batch",
-    "open_batch",
-    "archive_batch",
-    "close_and_score",
-    "publish_results",
-    "submit_evaluation",
-):
-    _wrapped = _wrap_batch(getattr(_legacy, _name))
-    globals()[_name] = _wrapped
-    setattr(_legacy, _name, _wrapped)
-
-_legacy.create_batch = create_batch
-_legacy.submit_appeal = submit_appeal
-_legacy.review_appeal = review_appeal
