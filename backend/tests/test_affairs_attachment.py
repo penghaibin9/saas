@@ -16,54 +16,101 @@ def _hdr(client, login):
 
 
 def _upload(client, hdr) -> str:
-    r = client.post("/api/v1/files/upload", headers=hdr,
-                    files={"file": ("stage.pdf", b"%PDF-1.4 league material bytes", "application/pdf")})
-    assert r.status_code == 200, r.text
-    return r.json()["data"]["fileId"]
+    response = client.post(
+        "/api/v1/files/upload",
+        headers=hdr,
+        files={"file": ("stage.pdf", b"%PDF-1.4 league material bytes", "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["fileId"]
+
+
+def _seed_league_dev(db_mode) -> int:
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsLeagueDev
+
+    db = get_sessionmaker()()
+    row = AffairsLeagueDev(
+        tenant_id=1000000000000000001,
+        student_id=int(db_mode["student"]),
+        dev_type="PARTY",
+        current_stage="APPLICANT",
+        branch_name="测试党支部",
+        status="ONGOING",
+    )
+    db.add(row); db.commit(); db.refresh(row)
+    row_id = int(row.id)
+    db.close()
+    return row_id
+
+
+def _link(client, hdr, biz_id, file_id, note=""):
+    response = client.post(
+        f"{BASE}/attachments",
+        headers=hdr,
+        json={"bizType": "LEAGUE", "bizId": biz_id, "fileId": file_id, "note": note},
+    ).json()
+    return response
 
 
 def test_attachment_authorized_flow_and_audit(client, db_mode):
-    """学工处：上传→关联党团材料→列表→授权下载 200，并写 SENSITIVE_EXPORT 审计。"""
+    """学工处：上传→关联真实党团材料→列表→授权下载 200，并写 SENSITIVE_EXPORT 审计。"""
     from app.db.session import get_sessionmaker
     from app.models import SecurityAuditLog
+
     hdr = _hdr(client, "sa_admin01")
-    fid = _upload(client, hdr)
-    # 关联（LEAGUE 需 league.manage；学工处 studentAffairs.* 命中）
-    a = client.post(f"{BASE}/attachments", headers=hdr,
-                    json={"bizType": "LEAGUE", "bizId": 1, "fileId": fid, "note": "阶段材料"}).json()
-    assert a["code"] == 0, a
-    att_id = a["data"]["attachmentId"]
-    # 列表（脱敏：只回名称+id，无路径）
-    lst = client.get(f"{BASE}/attachments?bizType=LEAGUE&bizId=1", headers=hdr).json()["data"]["items"]
-    assert any(x["attachmentId"] == att_id for x in lst)
-    assert "fileKey" not in (lst[0] if lst else {}) and "path" not in (lst[0] if lst else {})
-    # 授权下载 200
-    dl = client.get(f"{BASE}/attachments/{att_id}/download", headers=hdr)
-    assert dl.status_code == 200, dl.text
-    # 审计落库：SENSITIVE_EXPORT / affairs_attachment:LEAGUE
+    biz_id = _seed_league_dev(db_mode)
+    file_id = _upload(client, hdr)
+    linked = _link(client, hdr, biz_id, file_id, "阶段材料")
+    assert linked["code"] == 0, linked
+    attachment_id = linked["data"]["attachmentId"]
+
+    items = client.get(
+        f"{BASE}/attachments?bizType=LEAGUE&bizId={biz_id}", headers=hdr,
+    ).json()["data"]["items"]
+    assert any(item["attachmentId"] == attachment_id for item in items)
+    assert "fileKey" not in (items[0] if items else {})
+    assert "path" not in (items[0] if items else {})
+
+    download = client.get(f"{BASE}/attachments/{attachment_id}/download", headers=hdr)
+    assert download.status_code == 200, download.text
+
     db = get_sessionmaker()()
     try:
-        n = db.query(SecurityAuditLog).filter_by(
-            action="SENSITIVE_EXPORT", resource="affairs_attachment:LEAGUE").count()
+        count = db.query(SecurityAuditLog).filter_by(
+            action="SENSITIVE_EXPORT", resource="affairs_attachment:LEAGUE",
+        ).count()
     finally:
         db.close()
-    assert n >= 1, "授权下载业务材料必须写 SENSITIVE_EXPORT 安全审计"
+    assert count >= 1, "授权下载业务材料必须写 SENSITIVE_EXPORT 安全审计"
 
 
 def test_attachment_link_denied_for_wrong_role(client, db_mode):
-    """越权关联：辅导员无 league.manage → 关联党团材料 403。"""
-    hdr_admin = _hdr(client, "sa_admin01")
-    fid = _upload(client, hdr_admin)
-    r = client.post(f"{BASE}/attachments", headers=_hdr(client, "counselor01"),
-                    json={"bizType": "LEAGUE", "bizId": 2, "fileId": fid})
-    assert r.status_code == 403 and r.json()["bizCode"] == "NO_PERMISSION"
+    """越权关联：真实业务对象存在，但辅导员无 league.manage，仍返回403。"""
+    admin = _hdr(client, "sa_admin01")
+    biz_id = _seed_league_dev(db_mode)
+    file_id = _upload(client, admin)
+    response = client.post(
+        f"{BASE}/attachments",
+        headers=_hdr(client, "counselor01"),
+        json={"bizType": "LEAGUE", "bizId": biz_id, "fileId": file_id},
+    )
+    assert response.status_code == 403
+    assert response.json()["bizCode"] == "NO_PERMISSION"
 
 
 def test_attachment_download_denied_for_wrong_role(client, db_mode):
-    """越权下载：宿管无 league.view → 下载党团材料 403（且不泄露文件）。"""
-    hdr_admin = _hdr(client, "sa_admin01")
-    fid = _upload(client, hdr_admin)
-    att_id = client.post(f"{BASE}/attachments", headers=hdr_admin,
-                         json={"bizType": "LEAGUE", "bizId": 3, "fileId": fid}).json()["data"]["attachmentId"]
-    r = client.get(f"{BASE}/attachments/{att_id}/download", headers=_hdr(client, "dorm01"))
-    assert r.status_code == 403 and r.json()["bizCode"] == "NO_PERMISSION"
+    """越权下载：真实党团材料已关联，宿管无 league.view，下载仍返回403。"""
+    admin = _hdr(client, "sa_admin01")
+    biz_id = _seed_league_dev(db_mode)
+    file_id = _upload(client, admin)
+    linked = _link(client, admin, biz_id, file_id)
+    assert linked["code"] == 0, linked
+    attachment_id = linked["data"]["attachmentId"]
+
+    response = client.get(
+        f"{BASE}/attachments/{attachment_id}/download",
+        headers=_hdr(client, "dorm01"),
+    )
+    assert response.status_code == 403
+    assert response.json()["bizCode"] == "NO_PERMISSION"
