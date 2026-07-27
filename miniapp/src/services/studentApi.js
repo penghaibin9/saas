@@ -1,5 +1,6 @@
 /** 学生端数据服务：真实后端优先（主链：首页/档案/消息），其余仍 mock；失败自动回退。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
+import { callOptionalInternship, loadInternshipDashboard } from './internshipApiCompat'
 import * as real from './realApi'
 import * as M from '@/mock'
 
@@ -27,10 +28,31 @@ export const studentApi = {
     realFirstStrict('student.academic',
       () => real.enrichAcademic(M.studentAcademic),
       () => mockRequest(M.studentAcademic)),
-  getInternship: () => real.enrichInternship(),
-  getInternshipConsents: () => real.internshipConsentsMy(),
-  getInternshipSafetyCourses: () => real.internshipSafetyCoursesMy(),
-  getInternshipSafetyCompletions: () => real.internshipSafetyCompletionsMy(),
+  getInternship: (batchId) => loadInternshipDashboard(batchId, () => real.enrichInternship()),
+  getInternshipCompliance: (operation, batchId) =>
+    callOptionalInternship('studentInternshipCompliance', [operation, batchId]),
+  getInternshipConsents: () =>
+    callOptionalInternship('studentInternshipConsents', [], () => real.internshipConsentsMy()),
+  getInternshipConsentDetail: (id) =>
+    callOptionalInternship('studentInternshipConsentDetail', [id]),
+  viewInternshipConsent: (id) =>
+    callOptionalInternship('studentInternshipConsentView', [id]),
+  confirmInternshipConsent: (id, body) =>
+    callOptionalInternship('studentInternshipConsentConfirm', [id, body]),
+  rejectInternshipConsent: (id, body) =>
+    callOptionalInternship('studentInternshipConsentReject', [id, body]),
+  getInternshipSafetyCourses: (batchId) =>
+    callOptionalInternship('studentInternshipSafetyCourses', [batchId], () => real.internshipSafetyCoursesMy()),
+  getInternshipSafetyCompletions: (batchId) =>
+    callOptionalInternship('studentInternshipSafetyCompletions', [batchId], () => real.internshipSafetyCompletionsMy()),
+  getInternshipSafetyCourseDetail: (id) =>
+    callOptionalInternship('studentInternshipSafetyCourseDetail', [id]),
+  startInternshipSafetyCourse: (id) =>
+    callOptionalInternship('studentInternshipSafetyStart', [id]),
+  submitInternshipSafetyCourse: (id, body) =>
+    callOptionalInternship('studentInternshipSafetySubmit', [id, body]),
+  commitInternshipSafety: (id, body) =>
+    callOptionalInternship('studentInternshipSafetyCommit', [id, body]),
   getGraduation: () => real.enrichGraduation(),
   // 毕业设计·选题/任务书/开题/中期/成果/答辩/成绩（真实接口，无 mock 兜底，业务错误透出）
   getGraduationActiveRound: () => real.gdActiveRound(),
@@ -44,7 +66,11 @@ export const studentApi = {
   getGraduationFinal: () => real.gdFinal(),
   submitGraduationFinal: (body) => real.gdSubmitFinal(body),
   getGraduationTaskbook: () => real.gdTaskbook(),
-  confirmGraduationTaskbook: () => real.gdTaskbookConfirm(),
+  // 必须携带页面实际展示的版本；主线后端据此拒绝过期页面确认新版本任务书。
+  confirmGraduationTaskbook: (taskbookVersion) =>
+    realRequest('/mobile/graduation/taskbook/confirm', {
+      method: 'POST', data: { taskbookVersion }
+    }),
   getGraduationMidterm: () => real.gdMidterm(),
   submitGraduationMidtermRectify: (content) => real.gdMidtermRectify(content),
   getGraduationDefense: () => real.gdDefense(),
@@ -191,4 +217,5 @@ export const studentApi = {
   submitEvaluation: (body) => real.acadEvaluationSubmit(body),
   exportMyData: () => realRequest('/mobile/me/export-data')
 }
+
 export default studentApi
