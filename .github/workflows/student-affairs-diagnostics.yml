@@ -25,7 +25,10 @@ jobs:
           git clone -q --depth 1 --branch "$SOURCE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
           cd repo/frontend
           npm ci --silent
-          node --test tests/studentAffairs.fourEndReview.test.mjs tests/studentAffairs.fourEndUiAudit.test.mjs
+          node --test \
+            tests/studentAffairs.fourEndReview.test.mjs \
+            tests/studentAffairs.fourEndUiAudit.test.mjs \
+            tests/studentAffairs.teacherWorkbench.test.mjs
 
   student-portal-lint:
     runs-on: ubuntu-latest
@@ -58,7 +61,7 @@ jobs:
     env:
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
     steps:
-      - name: Run route and student contract tests
+      - name: Run route, student and teacher contracts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -80,4 +83,5 @@ jobs:
             tests/test_affairs_four_end_terminal_guard.py \
             tests/test_affairs_student_contract_service.py \
             tests/test_affairs_student_contract_security_guard.py \
+            tests/test_affairs_teacher_workbench_guard.py \
             -q -p no:warnings
