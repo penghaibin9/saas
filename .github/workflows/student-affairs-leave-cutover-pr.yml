@@ -14,6 +14,8 @@ jobs:
     if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727' || github.ref_name == 'codex/student-affairs-leave-cutover-20260727'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,7 +52,23 @@ jobs:
           ! git grep -n "path: '/admin/student-affairs/leave'" -- frontend/src/modules/campusService/campusService.routes.js
           git grep -n "redirect: '/admin/student-affairs/leave'" -- frontend/src/modules/campusService/campusService.routes.js
           git grep -n "portal/affairs/leave\|mobile/affairs/leave" -- backend/app/api/v1/affairs_leave_self_api.py student-portal/src miniapp/src
-          python -m compileall -q backend/app backend/tests/test_affairs_leave_cutover_contract.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          roots = [Path('backend/app'), Path('backend/tests')]
+          targets = [
+              Path('scripts/maintenance/student_affairs_leave_cutover.py'),
+              Path('scripts/maintenance/student_affairs_leave_cutover_followup.py'),
+              Path('scripts/maintenance/student_affairs_leave_cutover_finalize.py'),
+              Path('scripts/maintenance/student_affairs_leave_identity_cutover.py'),
+          ]
+          for root in roots:
+              targets.extend(root.rglob('*.py'))
+          for path in targets:
+              ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+          PY
+          ! find scripts backend -type f -name '*.pyc' -print -quit | grep .
+          ! find scripts backend -type d -name '__pycache__' -print -quit | grep .
           node --check student-portal/src/services/portalApi.js
           node --check miniapp/src/services/realApi.js
           node --check miniapp/src/services/studentApi.js
@@ -59,7 +77,35 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend frontend student-portal miniapp scripts/maintenance
+          git add \
+            backend/alembic/versions/0144_affairs_leave_identity_cutover.py \
+            backend/app/api/v1/affairs_leave_self_api.py \
+            backend/app/api/v1/campus_service.py \
+            backend/app/api/v1/mobile.py \
+            backend/app/api/v1/router.py \
+            backend/app/models/campus_service.py \
+            backend/app/services/affairs_four_end_contract.py \
+            backend/app/services/affairs_leave_service.py \
+            backend/app/services/campus_service_service.py \
+            backend/app/services/mobile_affairs_service.py \
+            backend/app/student_portal/router.py \
+            backend/app/student_portal/services/affairs_service.py \
+            backend/pytest.ini \
+            backend/tests/test_affairs_leave_cutover_contract.py \
+            backend/tests/test_affairs_leave_identity_cutover_contract.py \
+            frontend/src/config/adminMenu.js \
+            frontend/src/config/navPlan.js \
+            frontend/src/modules/campusService/campusService.routes.js \
+            frontend/src/modules/studentAffairs/studentAffairs.routes.js \
+            miniapp/src/pages/student/affairs/leave.vue \
+            miniapp/src/services/realApi.js \
+            miniapp/src/services/studentApi.js \
+            student-portal/src/services/portalApi.js \
+            student-portal/src/views/affairs/AffairsFourEndView.vue \
+            scripts/maintenance/student_affairs_leave_cutover.py \
+            scripts/maintenance/student_affairs_leave_cutover_followup.py \
+            scripts/maintenance/student_affairs_leave_cutover_finalize.py \
+            scripts/maintenance/student_affairs_leave_identity_cutover.py
           if git diff --cached --quiet; then
             echo "No cutover changes to commit"
           else
