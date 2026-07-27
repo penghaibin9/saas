@@ -52,11 +52,11 @@ def test_public_evaluation_and_archive_services_point_to_final_layers():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_textbook_facade"
+        "academic_affairs_archive_service"
     )
     assert any(
         code == "EVALUATION"
-        for code, _label in services.academic_affairs_archive_service._legacy._DOMAINS
+        for code, _label in services.academic_affairs_archive_service._DOMAINS
     )
     assert services.academic_affairs_evaluation_service.__name__.endswith(
         "academic_affairs_evaluation_term_facade"
