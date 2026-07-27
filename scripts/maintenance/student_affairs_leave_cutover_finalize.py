@@ -1,6 +1,20 @@
 from __future__ import annotations
 
-from scripts.maintenance import student_affairs_leave_cutover_followup as cutover
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
+
+
+def _load_cutover():
+    script = Path(__file__).with_name("student_affairs_leave_cutover_followup.py")
+    spec = spec_from_file_location("student_affairs_leave_cutover_followup", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载施工脚本：{script}")
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+cutover = _load_cutover()
 
 
 if __name__ == "__main__":
