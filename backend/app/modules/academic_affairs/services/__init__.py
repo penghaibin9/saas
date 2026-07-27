@@ -28,6 +28,8 @@ from . import academic_affairs_exam_roster_identity_facade as academic_affairs_e
 # V2-04/R9：正式成绩冻结courseId、修读次数和统一名单版本。
 from . import academic_affairs_grade_identity_facade as academic_affairs_grade_service
 from . import academic_affairs_grade_roster_identity_guard as academic_affairs_grade_roster_identity_guard
+# R10动态成绩项在原成绩任务、名单、审核、发布链上扩展，不另建成绩主账。
+from . import academic_affairs_dynamic_grade_service as academic_affairs_dynamic_grade_service
 from . import academic_affairs_makeup_course_identity_guard as academic_affairs_makeup_service
 from . import academic_affairs_recognition_identity_guard as academic_affairs_recognition_identity_guard
 from . import mobile_academic_grade_identity_facade as mobile_academic_grade_identity_facade
@@ -40,6 +42,9 @@ from . import academic_affairs_selection_facade as academic_affairs_selection_se
 from . import academic_affairs_selection_roster_migration_facade as academic_affairs_selection_roster_migration_facade
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_stats_facade as academic_affairs_stats_service
+# R10统计冻结快照与毕业逐项证据均是兼容叠加层。
+from . import academic_affairs_stats_snapshot_service as academic_affairs_stats_snapshot_service
+from . import academic_affairs_graduation_evidence_facade as academic_affairs_graduation_evidence_facade
 from . import academic_affairs_task_teaching_class_facade as academic_affairs_task_service
 from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook_service
 # V2-05/R5：保留移动教务稳定身份/当前周 facade，再由最终层接管教师微信成绩批量保存与质量门禁。
