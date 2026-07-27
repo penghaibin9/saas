@@ -10,9 +10,10 @@ import sys
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
 from . import academic_affairs_teaching_class_lock_service as academic_affairs_teaching_class_service
 from . import academic_affairs_teaching_class_runtime_guard as academic_affairs_teaching_class_runtime_guard
-# V2-03：在总路由导入 scheduling/autoschedule 之前，注入中文规则目录、最终校验和旧请求体兼容层。
+# V2-03：先装载目录和旧请求体兼容，再由最终安全层接管规则写入、引擎读取和教师不可排时间。
 from . import academic_affairs_scheduling_rule_policy as academic_affairs_scheduling_rule_policy
 from . import academic_affairs_scheduling_rule_transport as academic_affairs_scheduling_rule_transport
+from . import academic_affairs_scheduling_rule_final_facade as academic_affairs_scheduling_rule_final_facade
 # 最终归档链：旧9域 + 选课 + 补考重修免修 + 评教 + 教材，共13域。
 from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
