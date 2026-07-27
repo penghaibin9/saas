@@ -1,6 +1,7 @@
 """毕业设计合并前最小静态合同。
 
-只锁定本轮复审发现的两个回归点；不替代 MySQL、pytest、构建和真实页面验收。
+锁定本轮复审发现的回归点，并确认专项工作流持续覆盖 MySQL 迁移、
+毕业设计测试与三端构建；不替代真实页面验收。
 """
 from __future__ import annotations
 
@@ -37,3 +38,19 @@ def test_teacher_mobile_lists_are_collected_before_batch_pagination():
     assert "mobile.graduation_grade_queue = grades" in source
     assert 'status="CALCULATED"' in source
     assert '{"PENDING", "RECTIFY_SUBMITTED"}' in source
+
+
+def test_targeted_workflow_covers_all_premerge_commands():
+    workflow = read(".github/workflows/graduation-targeted-repair.yml")
+    for command in (
+        "alembic heads",
+        "alembic upgrade head",
+        "pytest tests/test_graduation*.py",
+        "npm run lint",
+        "npm run build",
+        "npm run build:h5",
+        "npm run build:mp-weixin",
+    ):
+        assert command in workflow
+    assert "working-directory: student-portal" in workflow
+    assert "MySQL 毕设核心行锁并发验证" in workflow

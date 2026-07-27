@@ -1,20 +1,21 @@
 name: Graduation Targeted Validation
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/graduation-p0-cross-client-latest-20260726
+      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: graduation-targeted-validation-${{ github.ref }}
-  cancel-in-progress: false
+  group: graduation-targeted-validation
+  cancel-in-progress: true
 
 jobs:
   graduation-validation:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/graduation-p0-cross-client-latest-20260726'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -44,8 +45,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue")
-          text = path.read_text(encoding="utf-8")
+          text = Path("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue").read_text(encoding="utf-8")
           assert "grade.status === 'REVIEWED'" in text
           assert "grade.status === 'CALCULATED' && grade.reviewedAt" not in text
           assert "{ value: 'REVIEWED', label: '已复核' }" in text
@@ -79,6 +79,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
+          exec > >(tee /tmp/alembic-validation.log) 2>&1
           alembic heads | tee /tmp/alembic-heads.txt
           HEAD_COUNT=$(grep -c '(head)' /tmp/alembic-heads.txt || true)
           if [ "$HEAD_COUNT" -ne 1 ]; then
@@ -87,6 +88,15 @@ jobs:
           fi
           alembic upgrade head
           alembic current
+
+      - name: 上传 Alembic 诊断日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-alembic-log
+          path: /tmp/alembic-validation.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: MySQL 毕设核心行锁并发验证
         run: |
@@ -98,8 +108,7 @@ jobs:
           def connect():
               return pymysql.connect(
                   host="127.0.0.1", port=3306, user="root", password="root",
-                  database="student_lifecycle_migration", autocommit=False,
-                  charset="utf8mb4",
+                  database="student_lifecycle_migration", autocommit=False, charset="utf8mb4",
               )
 
           seed = connect()
