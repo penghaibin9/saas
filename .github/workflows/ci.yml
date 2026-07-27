@@ -149,14 +149,7 @@ jobs:
         run: npm test
       - run: npm run build
       - name: 禁止 PC 产物携带固定演示凭据
-        run: |
-          MATCHES=$(grep -R -n -I -E '密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password["'"'":= ]+123456' dist || true)
-          if [ -n "$MATCHES" ]; then
-            echo "$MATCHES"
-            echo "❌ PC 生产包包含固定演示凭据"
-            exit 1
-          fi
-          echo "✅ PC 生产包未发现固定演示凭据"
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
 
   student-portal:
     name: 学生 PC 门户 lint + build
@@ -175,14 +168,7 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - name: 禁止学生门户产物携带固定演示凭据
-        run: |
-          MATCHES=$(grep -R -n -I -E '密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password["'"'":= ]+123456' dist || true)
-          if [ -n "$MATCHES" ]; then
-            echo "$MATCHES"
-            echo "❌ 学生门户生产包包含固定演示凭据"
-            exit 1
-          fi
-          echo "✅ 学生门户生产包未发现固定演示凭据"
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
 
   miniapp:
     name: 小程序生产 build
@@ -201,14 +187,7 @@ jobs:
       - run: npm run build:h5
       - run: npm run build:mp-weixin
       - name: 禁止生产包携带固定演示凭据
-        run: |
-          MATCHES=$(grep -R -n -I -E '密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password["'"'":= ]+123456' dist/build/mp-weixin || true)
-          if [ -n "$MATCHES" ]; then
-            echo "$MATCHES"
-            echo "❌ 小程序生产包包含固定演示凭据"
-            exit 1
-          fi
-          echo "✅ 小程序生产包未发现固定演示凭据"
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
 
   forbidden-files:
     name: 禁止文件检查
