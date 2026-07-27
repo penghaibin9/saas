@@ -57,8 +57,26 @@ jobs:
           printf '%s\n' "$HEADS" | grep -qx '0143_merge_affairs_material_ops'
 
       - name: Student affairs and migration tests
+        id: affairs_tests
         working-directory: backend
-        run: timeout 45m pytest tests/test_affairs_*.py tests/test_alembic*.py -q -p no:warnings --durations=30
+        shell: bash
+        run: |
+          set +e
+          timeout 45m pytest tests/test_affairs_*.py tests/test_alembic*.py -q -x -p no:warnings --durations=30 2>&1 | tee ../student-affairs-pytest.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: student-affairs-pytest-log
+          path: student-affairs-pytest.log
+          retention-days: 1
+
+      - name: Stop on student affairs test failure
+        if: steps.affairs_tests.outputs.status != '0'
+        run: exit 1
 
       - name: Internship regression gate
         working-directory: backend
