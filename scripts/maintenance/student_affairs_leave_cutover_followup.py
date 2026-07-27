@@ -4,6 +4,33 @@ from pathlib import Path
 import re
 
 
+ADMIN_ROUTE_REPLACEMENTS = (
+    ("/admin/campus-service/leave-extensions", "/admin/student-affairs/leave/followup"),
+    ("/admin/campus-service/leave-ledger", "/admin/student-affairs/leave/ledger"),
+    ("/admin/campus-service/leave-stats", "/admin/student-affairs/leave/stats"),
+    ("/admin/campus-service/leave", "/admin/student-affairs/leave"),
+)
+
+
+def replace_admin_leave_routes() -> None:
+    roots = (
+        Path("backend/app"), Path("backend/tests"), Path("frontend/src"), Path("frontend/tests"),
+        Path("student-portal/src"), Path("miniapp/src"),
+    )
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix not in {".py", ".js", ".mjs", ".ts", ".vue"}:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            updated = text
+            for old, new in ADMIN_ROUTE_REPLACEMENTS:
+                updated = updated.replace(old, new)
+            if updated != text:
+                path.write_text(updated, encoding="utf-8")
+
+
 def patch_remaining_callers() -> None:
     for path in Path("student-portal/src").rglob("*.vue"):
         text = path.read_text(encoding="utf-8")
@@ -45,16 +72,45 @@ def patch_remaining_callers() -> None:
             path.write_text(updated, encoding="utf-8")
 
 
+def repair_leave_test_contracts() -> None:
+    path = Path("backend/tests/test_affairs_leave.py")
+    text = path.read_text(encoding="utf-8")
+    replacement = '''def test_legacy_campus_leave_routes_retired(client, db_mode):
+    """旧在校服务请假列表与审批接口已退出，只允许新学工请假链路。"""
+    _seed(db_mode)
+    legacy = "/api/v1/campus-service/" + "leaves"
+    hdr = _hdr(client, "school_admin01")
+    assert client.get(legacy, headers=hdr).status_code == 404
+    assert client.post(f"{legacy}/1/approve", headers=hdr,
+                       json={"comment": "同意", "version": 0}).status_code == 404
+
+
+'''
+    text, count = re.subn(
+        r"def test_legacy_campus_leave_endpoints_unaffected\(.*?\n(?=# ═══════════ 本轮新增)",
+        replacement,
+        text,
+        count=1,
+        flags=re.S,
+    )
+    if count != 1 and "def test_legacy_campus_leave_routes_retired" not in text:
+        raise RuntimeError("failed to rewrite legacy leave endpoint tests")
+    text = text.replace("双状态列一致 + 老端点回归。", "双状态列一致 + 旧端点下线合同。")
+    path.write_text(text, encoding="utf-8")
+
+
 def validate_first_cut() -> None:
     campus_api = Path("backend/app/api/v1/campus_service.py").read_text(encoding="utf-8")
     campus_service = Path("backend/app/services/campus_service_service.py").read_text(encoding="utf-8")
     if "请假旧接口已退出" not in campus_api:
         raise RuntimeError("legacy campus-service leave API block is not retired")
     if any(route in campus_api for route in ('@router.get("/leaves', '@router.post("/leaves')):
-        raise RuntimeError("legacy /campus-service/leaves routes still exist")
+        raise RuntimeError("legacy campus-service leave routes still exist")
     if "请假旧实现已退出" not in campus_service:
         raise RuntimeError("legacy campus-service leave service block is not retired")
+    replace_admin_leave_routes()
     patch_remaining_callers()
+    repair_leave_test_contracts()
 
 
 def remove_fake_test_adapters() -> None:
