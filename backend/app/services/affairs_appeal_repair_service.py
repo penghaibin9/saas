@@ -80,7 +80,9 @@ def _claim(limit: int) -> list[dict]:
         ).order_by(IdempotencyRecord.id).with_for_update(skip_locked=True).limit(limit)).all()
         claimed = []
         for row in rows:
-            payload = row.result_json if isinstance(row.result_json, dict) else {}
+            # SQLAlchemy 普通 JSON 列不会追踪字典原地修改；必须复制后重新赋值，
+            # 否则返回给执行器的 attempts 已递增，但数据库仍保留旧值。
+            payload = dict(row.result_json) if isinstance(row.result_json, dict) else {}
             attempts = int(payload.get("attempts") or 0)
             if attempts >= _MAX_ATTEMPTS:
                 row.state = "DEAD"
@@ -100,7 +102,8 @@ def _finish(record_id: int, ok: bool, error: str = "") -> None:
         row = db.get(IdempotencyRecord, int(record_id))
         if not row or row.tenant_id != _tid() or row.operation != _OPERATION:
             return
-        payload = row.result_json if isinstance(row.result_json, dict) else {}
+        # 同 _claim：复制 JSON 后重新赋值，确保 lastError/attempts 状态真正持久化。
+        payload = dict(row.result_json) if isinstance(row.result_json, dict) else {}
         if error:
             payload["lastError"] = error[:120]
         row.result_json = payload
