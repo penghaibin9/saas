@@ -5,7 +5,7 @@ import hashlib
 import json
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Index, Integer, String, Text, UniqueConstraint, event, select
+from sqlalchemy import BigInteger, Index, Integer, String, Text, UniqueConstraint, event, inspect, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -50,8 +50,32 @@ def _canonical(payload) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+_GRADE_SNAPSHOT_FIELDS = {
+    "acad_student_id",
+    "course_id",
+    "course_code",
+    "course_version",
+    "attempt_no",
+    "course_name",
+    "nature",
+    "credit_value",
+    "score",
+    "pass_status",
+    "record_status",
+    "source",
+    "exam_type",
+    "source_biz_type",
+    "source_biz_id",
+    "grade_record_id",
+    "teaching_task_id",
+    "teaching_class_id",
+    "roster_version_id",
+}
+
+
 def _write_snapshot(connection, target, *, operation: str) -> None:
-    """Core insert保持与AcademicGrade同一数据库事务，不再依赖各业务入口逐个调用。"""
+    """Core insert保持与AcademicGrade同一数据库事务，并与显式冻结使用同一事件幂等键。"""
+    from app.core.exceptions import AppException
     from app.modules.academic_affairs.services.academic_affairs_effective_grade_policy_service import (
         POLICY_CODE,
         POLICY_VERSION,
@@ -59,9 +83,11 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
         policy_payload,
     )
 
+    if not getattr(target, "id", None) or not getattr(target, "tenant_id", None):
+        return
     identity = identity_snapshot(target)
     event_type = str(getattr(target, "source", None) or operation or "CHANGE").upper()
-    if operation == "UPDATE" and event_type not in {"RECHECK", "CHANGE", "MAKEUP", "CLEARANCE", "RETAKE"}:
+    if operation == "UPDATE" and event_type not in {"RECHECK", "CHANGE", "MAKEUP", "CLEARANCE", "RETAKE", "DEFERRED"}:
         event_type = "CHANGE"
     source_biz_type = str(
         getattr(target, "source_biz_type", None)
@@ -86,15 +112,33 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
     policy_hash = hashlib.sha256(
         _canonical({"policy": policy, "decision": decision}).encode("utf-8")
     ).hexdigest()
-    event_key = f"AUTO:{target.id}:{event_type}:{policy_hash[:24]}"[:160]
+    event_key = f"{event_type}:{source_biz_type}:{int(source_biz_id)}"[:160]
 
     table = AaEffectiveGradePolicySnapshot.__table__
-    exists = connection.execute(select(table.c.id).where(
+    existing = connection.execute(select(
+        table.c.id,
+        table.c.academic_grade_id,
+        table.c.policy_hash,
+        table.c.is_deleted,
+    ).where(
         table.c.tenant_id == int(target.tenant_id),
         table.c.event_key == event_key,
-        table.c.is_deleted.is_(False),
     )).first()
-    if exists:
+    if existing:
+        if existing.is_deleted:
+            raise AppException(
+                "DATA_CONFLICT",
+                "有效成绩策略快照曾被软删除，禁止静默重建同一事件",
+                details={"eventKey": event_key, "snapshotId": str(existing.id)},
+                http_status=409,
+            )
+        if existing.policy_hash != policy_hash or int(existing.academic_grade_id) != int(target.id):
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "同一成绩策略事件已存在但内容发生变化，禁止覆盖历史快照",
+                details={"eventKey": event_key, "snapshotId": str(existing.id)},
+                http_status=409,
+            )
         return
     now = datetime.utcnow()
     connection.execute(table.insert().values(
@@ -123,8 +167,21 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
     ))
 
 
-# 模型模块在app.models初始化时只注册一次；所有正式成绩写入口自动覆盖。
+def _after_grade_insert(_mapper, connection, target) -> None:
+    _write_snapshot(connection, target, operation="INSERT")
+
+
+def _after_grade_update(_mapper, connection, target) -> None:
+    state = inspect(target)
+    if not any(state.attrs[name].history.has_changes() for name in _GRADE_SNAPSHOT_FIELDS if name in state.attrs):
+        return
+    _write_snapshot(connection, target, operation="UPDATE")
+
+
+# 模型模块在app.models初始化时显式注册；命名监听器允许检查并避免测试reload造成重复绑定。
 from app.models.academic import AcademicGrade  # noqa: E402
 
-event.listen(AcademicGrade, "after_insert", lambda _m, conn, target: _write_snapshot(conn, target, operation="INSERT"))
-event.listen(AcademicGrade, "after_update", lambda _m, conn, target: _write_snapshot(conn, target, operation="UPDATE"))
+if not event.contains(AcademicGrade, "after_insert", _after_grade_insert):
+    event.listen(AcademicGrade, "after_insert", _after_grade_insert)
+if not event.contains(AcademicGrade, "after_update", _after_grade_update):
+    event.listen(AcademicGrade, "after_update", _after_grade_update)
