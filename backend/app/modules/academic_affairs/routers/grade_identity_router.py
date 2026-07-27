@@ -1,22 +1,19 @@
 """V2-04 成绩身份写入口。
 
-替换旧总路由中只接收 courseName 的三个端点：
-- 补考纳入必须从候选成绩选择 gradeId；
-- 重修报名必须从学生本人当前有效挂科成绩选择 gradeId；
-- 免修申请必须选择课程库具体 courseId。
-URL与权限保持不变。
+替换旧总路由中会丢失稳定身份的端点，URL与权限保持不变。
 """
 from __future__ import annotations
 
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from app.core.exceptions import AppException
+from app.core.permissions import require_permission
 from app.core.response import success
 from app.core.security import get_current_user
-from app.core.permissions import require_permission
-from app.core.exceptions import AppException
+from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_service
 from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup_service
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩身份"])
@@ -26,6 +23,34 @@ def _student_only(user: dict = Depends(get_current_user)) -> dict:
     if str(user.get("userType") or "").upper() != "STUDENT":
         raise AppException("NO_PERMISSION", "仅学生本人可提交该申请", http_status=403)
     return user
+
+
+class GradeTaskIdentityCreateBody(BaseModel):
+    teachingTaskId: Optional[int] = Field(default=None, gt=0)
+    termId: Optional[int] = Field(default=None, gt=0)
+    termCode: Optional[str] = None
+    courseId: Optional[int] = Field(default=None, gt=0, description="管理员特殊补录必须选择具体课程版本")
+    courseName: Optional[str] = None
+    classId: Optional[int] = Field(default=None, gt=0)
+    credit: Optional[float] = Field(default=None, ge=0)
+    usualRatio: int = Field(default=30, ge=0, le=100)
+    midtermRatio: int = Field(default=0, ge=0, le=100)
+    finalRatio: int = Field(default=70, ge=0, le=100)
+    passLine: int = Field(default=60, ge=0, le=100)
+    adminSupplementReason: Optional[str] = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_identity(self):
+        if self.usualRatio + self.midtermRatio + self.finalRatio != 100:
+            raise ValueError("平时、期中、期末比例之和必须为100")
+        if not self.teachingTaskId:
+            if not self.termId:
+                raise ValueError("脱离教学任务补录必须绑定正式termId")
+            if not self.courseId:
+                raise ValueError("脱离教学任务补录必须选择课程库具体courseId")
+            if len((self.adminSupplementReason or "").strip()) < 5:
+                raise ValueError("管理员特殊补录原因不少于5字")
+        return self
 
 
 class MakeupIdentityEnrollBody(BaseModel):
@@ -47,6 +72,14 @@ class ExemptionIdentityApplyBody(BaseModel):
     materialFileIds: list[int] = Field(default_factory=list)
 
 
+@router.post("/grade-tasks", summary="新建绑定稳定课程身份的成绩录入任务")
+def grade_task_identity_create(
+    body: GradeTaskIdentityCreateBody,
+    user=Depends(require_permission("academicAffairs.grade.input")),
+):
+    return success(grade_service.create_grade_task(body, user), message="已创建")
+
+
 @router.post("/makeup/batches/{batch_id}/enroll", summary="按原失败成绩纳入补考名单")
 def makeup_identity_enroll(
     body: MakeupIdentityEnrollBody,
@@ -55,11 +88,7 @@ def makeup_identity_enroll(
 ):
     return success(
         makeup_service.enroll_makeup_by_grade(
-            user,
-            batch_id,
-            body.gradeId,
-            body.acadStudentId,
-            body.originScore,
+            user, batch_id, body.gradeId, body.acadStudentId, body.originScore,
         ),
         message="已纳入",
     )
