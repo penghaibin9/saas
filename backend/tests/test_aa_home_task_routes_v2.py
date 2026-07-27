@@ -80,6 +80,27 @@ def test_teacher_and_student_wechat_academic_homes_are_task_oriented():
         assert route in student
 
 
+def test_teacher_wechat_pages_consume_workbench_task_ids():
+    root = Path(__file__).resolve().parents[2]
+    pages = {
+        "academic_task": root / "miniapp/src/pages/teacher/academic-task/index.vue",
+        "schedule_review": root / "miniapp/src/pages/teacher/academic-affairs/schedule-change-review.vue",
+        "defer": root / "miniapp/src/pages/teacher/exam-defer/index.vue",
+        "warning": root / "miniapp/src/pages/teacher/academic-warning/index.vue",
+        "grade": root / "miniapp/src/pages/teacher/academic-affairs/grade-entry.vue",
+    }
+    sources = {name: path.read_text(encoding="utf-8") for name, path in pages.items()}
+
+    assert "options.id || options.taskId" in sources["academic_task"]
+    assert "options.id || options.changeId" in sources["schedule_review"]
+    assert "options.id || options.deferId" in sources["defer"]
+    assert "options.id || options.warningId" in sources["warning"]
+    assert "options.id || options.taskId" in sources["grade"]
+    for name in ("academic_task", "schedule_review", "defer", "warning"):
+        assert "focusTarget" in sources[name]
+        assert "is-target" in sources[name]
+
+
 def test_admin_pc_keeps_real_todo_workbench_and_drill_routes():
     root = Path(__file__).resolve().parents[2]
     dashboard = (root / "frontend/src/modules/academicAffairs/views/AaDashboardView.vue").read_text(encoding="utf-8")
