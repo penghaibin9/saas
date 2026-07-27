@@ -6,10 +6,14 @@ import pytest
 from app.core.exceptions import AppException
 
 
+def _mobile():
+    from app.modules.academic_affairs import services
+
+    return services.mobile_academic_affairs_service
+
+
 def test_mobile_grade_normalization_accepts_zero_and_rejects_bad_values():
-    from app.modules.academic_affairs.services.mobile_academic_grade_entry_closure_service import (
-        normalize_mobile_grade_row,
-    )
+    normalize_mobile_grade_row = _mobile().normalize_mobile_grade_row
 
     row = normalize_mobile_grade_row({
         "studentId": "9",
@@ -41,11 +45,7 @@ def test_mobile_grade_normalization_accepts_zero_and_rejects_bad_values():
 
 
 def test_quality_report_explains_missing_incomplete_special_and_outside_roster():
-    from app.modules.academic_affairs.services.mobile_academic_grade_entry_closure_service import (
-        build_grade_quality_report,
-    )
-
-    report = build_grade_quality_report(
+    report = _mobile().build_grade_quality_report(
         [
             {"studentId": "1", "studentNo": "S001", "realName": "甲"},
             {"studentId": "2", "studentNo": "S002", "realName": "乙"},
@@ -76,10 +76,7 @@ def test_quality_report_explains_missing_incomplete_special_and_outside_roster()
 
 
 def test_quality_report_ready_requires_all_required_parts():
-    from app.modules.academic_affairs.services.mobile_academic_grade_entry_closure_service import (
-        build_grade_quality_report,
-    )
-
+    build_grade_quality_report = _mobile().build_grade_quality_report
     incomplete = build_grade_quality_report(
         [{"studentId": "1", "studentNo": "S001", "realName": "甲"}],
         [{"studentId": "1", "usualScore": 80, "midtermScore": None, "finalScore": 90,
@@ -106,22 +103,39 @@ def test_quality_report_ready_requires_all_required_parts():
     assert ready["canSubmit"] is True
 
 
-def test_public_mobile_service_and_router_use_r5_final_layer():
-    from app.modules.academic_affairs import services
+def test_public_mobile_service_and_router_use_one_explicit_entry():
     from app.modules.academic_affairs.routers import academic_affairs
 
-    assert services.mobile_academic_affairs_service.__name__.endswith(
-        "mobile_academic_grade_entry_closure_service"
-    )
-    assert services.mobile_academic_affairs_service.teacher_grade_batch_save.__module__.endswith(
-        "mobile_academic_grade_entry_closure_service"
-    )
+    mobile = _mobile()
+    assert mobile.__name__.endswith("mobile_academic_affairs_facade")
+    for name in (
+        "schedule_my", "teacher_schedule_my", "teacher_attendance_class_options",
+        "makeup_options_my", "retake_apply_my", "exemption_apply_my",
+        "teacher_grade_batch_save", "teacher_grade_quality_report",
+        "teacher_grade_submit_task",
+    ):
+        assert callable(getattr(mobile, name))
+
     routes = {
         (route.path, tuple(sorted(route.methods or set())))
         for route in academic_affairs.router.routes
     }
     assert ("/mobile/teacher/academic/grade-tasks/{task_id}/batch-save", ("POST",)) in routes
     assert ("/mobile/teacher/academic/grade-tasks/{task_id}/quality-report", ("GET",)) in routes
+
+
+def test_old_mobile_wrappers_do_not_patch_other_modules():
+    root = Path(__file__).resolve().parents[1]
+    for filename in (
+        "mobile_academic_grade_identity_facade.py",
+        "mobile_academic_grade_entry_closure_service.py",
+        "mobile_academic_exam_safety_facade.py",
+    ):
+        source = (root / "app/modules/academic_affairs/services" / filename).read_text(encoding="utf-8")
+        assert " = retake_apply_my" not in source
+        assert " = exemption_apply_my" not in source
+        assert " = recognition_submit_my" not in source
+        assert "_gaps.makeup_options_my" not in source
 
 
 def test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report():
