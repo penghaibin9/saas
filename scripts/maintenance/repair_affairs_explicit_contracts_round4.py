@@ -118,12 +118,16 @@ def explicit_version_calls(text: str) -> tuple[str, int]:
             if any(marker in lower_name for marker in MISSING_VERSION_MARKERS):
                 continue
             start = absolute(rows, func.lineno, func.col_offset)
-            end = absolute(rows, func.end_lineno, func.end_col_offset)
-            replacements.append((start, end, "post_versioned"))
+            end = absolute(rows, node.args[0].lineno, node.args[0].col_offset)
+            replacements.append((start, end, "post_versioned(client, "))
 
     for start, end, replacement in sorted(replacements, reverse=True):
         text = text[:start] + replacement + text[end:]
     return text, len(replacements)
+
+
+def repair_existing_helper_calls(text: str) -> tuple[str, int]:
+    return re.subn(r"\bpost_versioned\((?!\s*client\s*,)", "post_versioned(client, ", text)
 
 
 def add_import(text: str) -> str:
@@ -162,11 +166,12 @@ def inject_before_return(text: str, function_name: str, statement: str) -> str:
 def patch_test_file(path: Path) -> int:
     text = path.read_text(encoding="utf-8")
     text = patch_publicity(text)
-    text, count = explicit_version_calls(text)
-    if count:
+    text, repaired = repair_existing_helper_calls(text)
+    text, created = explicit_version_calls(text)
+    if repaired or created:
         text = add_import(text)
     path.write_text(text, encoding="utf-8")
-    return count
+    return repaired + created
 
 
 def patch_assignees() -> None:
@@ -222,6 +227,10 @@ def audit() -> None:
                 if not isinstance(node, ast.Call) or not node.args:
                     continue
                 func = node.func
+                if isinstance(func, ast.Name) and func.id == "post_versioned":
+                    if not isinstance(node.args[0], ast.Name) or node.args[0].id != "client":
+                        unresolved.append(f"{name}:{function.name}:post_versioned missing client")
+                    continue
                 if not (
                     isinstance(func, ast.Attribute)
                     and func.attr == "post"
@@ -249,7 +258,7 @@ def main() -> None:
     patch_assignees()
     patch_known_inputs()
     audit()
-    print(f"explicit student-affairs test contracts repaired: {total} versioned calls")
+    print(f"explicit student-affairs test contracts repaired: {total} calls")
 
 
 if __name__ == "__main__":
