@@ -48,6 +48,11 @@ def _submission_token(task_id: int, student_id: int) -> str:
     ).hexdigest()
 
 
+def _token_pattern(task_id: int, student_id: int) -> str:
+    token = _submission_token(task_id, student_id)
+    return f'%"{_RESERVED_TOKEN_KEY}":"{token}"%'
+
+
 def _encode_student_answers(answers, token: str) -> str:
     payload = dict(answers or {})
     payload[_RESERVED_TOKEN_KEY] = token
@@ -75,9 +80,18 @@ def _anonymous_audit(db, task_id: int) -> None:
     ))
 
 
-def _student_submission_context(db, user, task) -> tuple[object, dict, str]:
+def _resolve_student(db, user):
     if not _is_student_user(user):
-        raise no_permission("学生评教任务仅允许学生本人提交")
+        raise no_permission("学生评教任务仅允许学生本人访问")
+    from app.services.mobile_student_identity_facade import resolve_student
+
+    profile = resolve_student(db, user or {})
+    if not profile:
+        raise not_found("当前账号尚未绑定唯一学生档案")
+    return profile
+
+
+def _student_submission_context(db, user, task) -> tuple[object, dict, str]:
     if not getattr(task, "teaching_task_id", None):
         raise AppException(
             "DATA_CONFLICT",
@@ -85,12 +99,9 @@ def _student_submission_context(db, user, task) -> tuple[object, dict, str]:
             http_status=409,
         )
 
-    from app.services.mobile_student_identity_facade import resolve_student
     from .academic_affairs_roster_consumer_service import resolve_versioned_roster
 
-    profile = resolve_student(db, user or {})
-    if not profile:
-        raise not_found("当前账号尚未绑定唯一学生档案")
+    profile = _resolve_student(db, user)
     roster = resolve_versioned_roster(db, int(task.teaching_task_id))
     student_ids = {
         int(value) for value in (roster.get("studentIds") or [])
@@ -100,6 +111,75 @@ def _student_submission_context(db, user, task) -> tuple[object, dict, str]:
         raise no_permission("当前学生不在该课程正式教学班名单中")
     token = _submission_token(int(task.id), int(profile.id))
     return profile, roster, token
+
+
+def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
+    """返回当前学生正式教学班内的评教任务，供学生 PC/小程序获得真实 taskId。"""
+    from app.models import (
+        AaEvaluationBatch,
+        AaEvaluationRecord,
+        AaEvaluationTask,
+        AaTeachingClass,
+        AaTeachingClassMember,
+    )
+
+    with session() as db:
+        profile = _resolve_student(db, user)
+        query = db.query(AaEvaluationTask, AaEvaluationBatch).join(
+            AaEvaluationBatch,
+            AaEvaluationBatch.id == AaEvaluationTask.batch_id,
+        ).join(
+            AaTeachingClass,
+            AaTeachingClass.teaching_task_id == AaEvaluationTask.teaching_task_id,
+        ).join(
+            AaTeachingClassMember,
+            (AaTeachingClassMember.teaching_class_id == AaTeachingClass.id)
+            & (AaTeachingClassMember.roster_version_id == AaTeachingClass.current_roster_version_id),
+        ).filter(
+            AaEvaluationTask.tenant_id == _tid(),
+            AaEvaluationTask.evaluator_type == "STUDENT",
+            AaEvaluationTask.is_deleted.is_(False),
+            AaEvaluationBatch.tenant_id == _tid(),
+            AaEvaluationBatch.is_deleted.is_(False),
+            AaTeachingClass.tenant_id == _tid(),
+            AaTeachingClass.is_deleted.is_(False),
+            AaTeachingClass.roster_status == "LOCKED",
+            AaTeachingClassMember.tenant_id == _tid(),
+            AaTeachingClassMember.student_id == int(profile.id),
+            AaTeachingClassMember.status == "ACTIVE",
+            AaTeachingClassMember.is_deleted.is_(False),
+        )
+        if batch_id:
+            query = query.filter(AaEvaluationBatch.id == int(batch_id))
+        if not include_closed:
+            query = query.filter(AaEvaluationBatch.status.in_([_legacy._B_PUBLISHED, _legacy._B_OPEN]))
+        rows = query.order_by(
+            AaEvaluationBatch.id.desc(),
+            AaEvaluationTask.id.desc(),
+        ).all()
+
+        output = []
+        for task, batch in rows:
+            submitted = db.query(AaEvaluationRecord.id).filter(
+                AaEvaluationRecord.tenant_id == _tid(),
+                AaEvaluationRecord.task_id == task.id,
+                AaEvaluationRecord.evaluator_type == "STUDENT",
+                AaEvaluationRecord.answers_json.like(_token_pattern(task.id, profile.id)),
+                AaEvaluationRecord.is_deleted.is_(False),
+            ).first() is not None
+            output.append({
+                "taskId": str(task.id),
+                "batchId": str(batch.id),
+                "batchName": batch.batch_name,
+                "teachingTaskId": str(task.teaching_task_id),
+                "courseName": task.course_name,
+                "teacherName": task.teacher_name,
+                "windowStatus": batch.status,
+                "anonymous": bool(batch.anonymous),
+                "submitted": submitted,
+                "canSubmit": batch.status == _legacy._B_OPEN and not submitted,
+            })
+        return output
 
 
 def submit_evaluation(user, task_id, answers, objective_score, comment=None):
@@ -124,13 +204,12 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             raise _legacy._invalid("评教窗口未开放")
 
         if task.evaluator_type == "STUDENT":
-            _profile, roster, token = _student_submission_context(db, user, task)
-            token_pattern = f'%"{_RESERVED_TOKEN_KEY}":"{token}"%'
+            profile, roster, token = _student_submission_context(db, user, task)
             duplicate = db.query(AaEvaluationRecord).filter(
                 AaEvaluationRecord.tenant_id == _tid(),
                 AaEvaluationRecord.task_id == task.id,
                 AaEvaluationRecord.evaluator_type == "STUDENT",
-                AaEvaluationRecord.answers_json.like(token_pattern),
+                AaEvaluationRecord.answers_json.like(_token_pattern(task.id, profile.id)),
                 AaEvaluationRecord.is_deleted.is_(False),
             ).first()
             if duplicate:
