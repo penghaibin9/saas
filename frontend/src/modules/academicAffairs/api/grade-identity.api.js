@@ -13,6 +13,12 @@ async function call(fn) {
 }
 
 export const gradeIdentityApi = {
+  createGradeTask(body) {
+    return call(() => request('/academic-affairs/grade-tasks/identity', {
+      method: 'POST',
+      body
+    }))
+  },
   myMakeupOptions() {
     return call(() => request('/mobile/academic/makeup/options'))
   },
