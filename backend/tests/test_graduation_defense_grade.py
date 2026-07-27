@@ -10,22 +10,74 @@ GD_STU = "/api/v1/graduation/gd-students"
 STU = "/api/v1/students"
 
 
+def _judge_headers(no, name):
+    from app.core.security import create_access_token
+    suffix = "JA" if name == "评委甲" else "JB"
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{no}-{suffix}", "realName": name, "userType": "TEACHER",
+        "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
+        "currentRoleCode": "GD_DEFENSE_EXPERT", "clientType": "PC",
+        "loginName": f"{no}-{suffix}",
+    })}
+
+
 def _gd_student(client, h, no, name):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationDefenseGroup, GraduationMentor, GraduationStudent
+
     sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    db = get_sessionmaker()()
+    try:
+        judge_a = GraduationMentor(
+            tenant_id=1000000000000000001, teacher_no=f"{no}-JA",
+            teacher_name="评委甲", qualification_status="QUALIFIED",
+        )
+        judge_b = GraduationMentor(
+            tenant_id=1000000000000000001, teacher_no=f"{no}-JB",
+            teacher_name="评委乙", qualification_status="QUALIFIED",
+        )
+        db.add_all([judge_a, judge_b])
+        db.flush()
+        group = GraduationDefenseGroup(
+            tenant_id=1000000000000000001, batch_id=int(client._active_batch_id),
+            group_name=f"{no}答辩组", chair="评委甲", chair_mentor_id=judge_a.id,
+            members_json=[{"mentorId": judge_b.id, "name": "评委乙", "teacherNo": judge_b.teacher_no}],
+            published=True, student_count=1,
+        )
+        db.add(group)
+        db.flush()
+        stu = db.get(GraduationStudent, int(gid))
+        stu.defense_group_id = group.id
+        stu.defense_group = group.group_name
+        stu.stage = "DEFENSE"
+        db.commit()
+        client._defense_judges = {
+            **getattr(client, "_defense_judges", {}),
+            (str(gid), "评委甲"): str(judge_a.id),
+            (str(gid), "评委乙"): str(judge_b.id),
+        }
+        return gid
+    finally:
+        db.close()
 
 
 def test_defense_score_entry_absent_and_confirm(client, auth_headers, db_mode):
     h = auth_headers
-    gid = _gd_student(client, h, "DS001", "答辩测试生")
+    no = "DS001"
+    gid = _gd_student(client, h, no, "答辩测试生")
 
-    bad = client.post(f"{GD_SCORE}/entry", headers=h, json={"gdStudentId": gid, "judgeName": "评委甲"})
+    mid_a = client._defense_judges[(str(gid), "评委甲")]
+    mid_b = client._defense_judges[(str(gid), "评委乙")]
+    judge_a_h = _judge_headers(no, "评委甲")
+    judge_b_h = _judge_headers(no, "评委乙")
+    bad = client.post(f"{GD_SCORE}/entry", headers=judge_a_h, json={"gdStudentId": gid, "judgeName": "评委甲", "judgeMentorId": mid_a})
     assert bad.json()["code"] != 0  # 未缺席须评分
 
-    e1 = client.post(f"{GD_SCORE}/entry", headers=h, json={"gdStudentId": gid, "judgeName": "评委甲", "score": 88})
+    e1 = client.post(f"{GD_SCORE}/entry", headers=judge_a_h, json={"gdStudentId": gid, "judgeName": "评委甲", "judgeMentorId": mid_a, "score": 88})
     assert e1.json()["data"]["status"] == "SCORED"
-    e2 = client.post(f"{GD_SCORE}/entry", headers=h, json={
-        "gdStudentId": gid, "judgeName": "评委乙", "absent": True, "absentReason": "临时公务"})
+    e2 = client.post(f"{GD_SCORE}/entry", headers=judge_b_h, json={
+        "gdStudentId": gid, "judgeName": "评委乙", "judgeMentorId": mid_b, "absent": True, "absentReason": "临时公务"})
     assert e2.json()["data"]["absent"] is True
 
     confirm = client.post(f"{GD_SCORE}/{gid}/confirm", headers=h)
@@ -35,7 +87,7 @@ def test_defense_score_entry_absent_and_confirm(client, auth_headers, db_mode):
     lst = client.get(GD_SCORE, headers=h, params={"gdStudentId": gid}).json()["data"]["items"]
     assert all(x["status"] == "CONFIRMED" for x in lst)
 
-    dup_update = client.post(f"{GD_SCORE}/entry", headers=h, json={"gdStudentId": gid, "judgeName": "评委甲", "score": 90})
+    dup_update = client.post(f"{GD_SCORE}/entry", headers=judge_a_h, json={"gdStudentId": gid, "judgeName": "评委甲", "judgeMentorId": mid_a, "score": 90})
     assert dup_update.json()["code"] != 0  # 已确认不可修改
 
     stats = client.get(f"{GD_SCORE}/stats", headers=h).json()["data"]
@@ -44,8 +96,12 @@ def test_defense_score_entry_absent_and_confirm(client, auth_headers, db_mode):
 
 def test_second_defense_requires_first_round_confirmed(client, auth_headers, db_mode):
     h = auth_headers
-    gid = _gd_student(client, h, "DS101", "二辩测试生")
-    client.post(f"{GD_SCORE}/entry", headers=h, json={"gdStudentId": gid, "judgeName": "评委甲", "score": 55})
+    no = "DS101"
+    gid = _gd_student(client, h, no, "二辩测试生")
+    mid_a = client._defense_judges[(str(gid), "评委甲")]
+    mid_b = client._defense_judges[(str(gid), "评委乙")]
+    client.post(f"{GD_SCORE}/entry", headers=_judge_headers(no, "评委甲"), json={"gdStudentId": gid, "judgeName": "评委甲", "judgeMentorId": mid_a, "score": 55})
+    client.post(f"{GD_SCORE}/entry", headers=_judge_headers(no, "评委乙"), json={"gdStudentId": gid, "judgeName": "评委乙", "judgeMentorId": mid_b, "score": 58})
 
     too_early = client.post(f"{GD_SCORE}/{gid}/second-defense", headers=h, json={"reason": "分数不理想需二辩"})
     assert too_early.json()["code"] != 0

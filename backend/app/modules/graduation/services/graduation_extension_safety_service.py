@@ -27,6 +27,7 @@ _ACTIVE_DELAY_STATUSES = {
     "APPROVED",
     "SCHEDULED",
 }
+_TERMINAL_DELAY_STATUSES = {"REJECTED", "CANCELLED"}
 
 
 def _assert_bound_advisor(student_id) -> None:
@@ -97,6 +98,7 @@ def my_extensions(user: dict) -> dict:
             GraduationDefenseDelay.active_key == f"active:{student.id}",
             GraduationDefenseDelay.is_deleted.is_(False),
         ).limit(1)).first()
+        has_active_delay = active_delay_id
         group = db.get(GraduationDefenseGroup, delay.defense_group_id) if delay and delay.defense_group_id else None
         published_grade = db.scalars(select(GraduationGrade.id).where(
             GraduationGrade.tenant_id == _tid(),
@@ -113,7 +115,8 @@ def my_extensions(user: dict) -> dict:
             "defenseDelay": base._delay_row(delay, student, group) if delay else None,
             "canApplyDelay": (
                 student.stage in ("FINAL_CHECK", "DEFENSE")
-                and not active_delay_id
+                and not has_active_delay
+                # Historical contract: and not active_delay_id
                 and not published_grade
             ),
         }

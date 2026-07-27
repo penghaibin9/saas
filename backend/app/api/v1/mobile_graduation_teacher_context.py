@@ -145,7 +145,10 @@ def _change_student(request_id: str, batch_id: int) -> GraduationStudent:
 
 
 def _paged_service(fn: Callable, user: dict, batch_id: int, page: int, page_size: int) -> dict:
-    return _filter_rows(fn(user), batch_id, page=page, page_size=page_size)
+    scoped_user = dict(user or {})
+    scoped_user["graduationBatchId"] = str(batch_id)
+    scoped_user["batchId"] = str(batch_id)
+    return _filter_rows(fn(scoped_user), batch_id, page=page, page_size=page_size)
 
 
 @router.get("/batches", summary="教师·可处理的毕业设计批次")

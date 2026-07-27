@@ -132,6 +132,14 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "答辩安排通知",
         "require_ack": False,
     },
+    "GRADUATION_DESIGN.PLAGIARISM_DISPUTE_REVIEWED": {
+        "source_module": "graduation",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "GRADUATION_PLAGIARISM_DISPUTE_REVIEWED",
+        "title": "查重复查审核结果",
+        "require_ack": False,
+    },
     "COURSE.SCHEDULE_CHANGED": {
         "source_module": "academic-affairs",
         "category": "REMINDER",

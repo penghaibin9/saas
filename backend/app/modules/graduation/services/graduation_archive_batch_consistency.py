@@ -34,12 +34,19 @@ def preview_batch_file(batch_id=None, archive_batch_no: str | None = None) -> di
             1 for row in snapshot["rows"]
             if not row["missing"] and row["openRisks"] == 0
         )
+        skip_reasons: dict[str, int] = {}
+        for row in snapshot["rows"]:
+            if row["missing"]:
+                skip_reasons["missing_materials"] = skip_reasons.get("missing_materials", 0) + 1
+            if row["openRisks"] > 0:
+                skip_reasons["open_risks"] = skip_reasons.get("open_risks", 0) + 1
         payload = consistency._token_payload("FILE", batch, snapshot)
         return {
             "batchId": str(batch.id), "batchName": batch.batch_name,
             "archiveBatchNo": archive_no,
             "candidateCount": len(snapshot["rows"]), "executableCount": executable,
             "skippedCount": len(snapshot["rows"]) - executable,
+            "skipReasons": [{"reason": k, "count": v} for k, v in sorted(skip_reasons.items()) if v],
             "hasAbnormal": executable != len(snapshot["rows"]),
             "snapshotHash": payload["snapshotHash"],
             "previewToken": consistency._sign_token(payload),

@@ -290,8 +290,9 @@ def test_mobile_teacher_confirm_reject_and_change_review(client, auth_headers, d
 
     teacher_tok = _teacher_token("李导师")
     pending = client.get("/api/v1/mobile/teacher/graduation/choices/pending", headers=teacher_tok).json()
-    assert pending["code"] == 0 and len(pending["data"]) == 1
-    choice_id = pending["data"][0]["id"]
+    items = pending["data"].get("items", []) if isinstance(pending.get("data"), dict) else pending["data"]
+    assert pending["code"] == 0 and len(items) == 1
+    choice_id = items[0]["id"]
 
     # 越权：其他老师不能审核不属于自己的题目志愿
     other_teacher_tok = _teacher_token("路人甲")
@@ -311,7 +312,8 @@ def test_mobile_teacher_confirm_reject_and_change_review(client, auth_headers, d
 
     pending_cr = client.get("/api/v1/mobile/teacher/graduation/change-requests/pending",
                             headers=teacher_tok).json()
-    assert pending_cr["code"] == 0 and any(x["id"] == cr["id"] for x in pending_cr["data"])
+    pending_cr_items = pending_cr["data"].get("items", []) if isinstance(pending_cr.get("data"), dict) else pending_cr["data"]
+    assert pending_cr["code"] == 0 and any(x["id"] == cr["id"] for x in pending_cr_items)
 
     rev = client.post(f"/api/v1/mobile/teacher/graduation/change-requests/{cr['id']}/review",
                       headers=teacher_tok, json={"action": "APPROVE"}).json()

@@ -3,7 +3,7 @@
     <view class="gddq__head">
       <view class="gddq__head-main">
         <text class="gddq__title">延期答辩待审核</text>
-        <text class="gddq__hint">当前批次 · 仅本人稳定绑定的指导学生</text>
+        <text class="gddq__hint">仅显示当前批次、本人指导学生</text>
       </view>
       <view class="gddq__count"><text>{{ rows.length }}</text><text>待处理</text></view>
     </view>

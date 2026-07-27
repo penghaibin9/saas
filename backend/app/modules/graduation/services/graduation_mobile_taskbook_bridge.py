@@ -28,6 +28,10 @@ def _collect(fetch_page) -> list:
     return items[:expected] if expected else items
 
 
+def _batch_id(user: dict):
+    return (user or {}).get("graduationBatchId") or (user or {}).get("batchId")
+
+
 def install_mobile_taskbook_list_bridge() -> None:
     global _INSTALLED
     if _INSTALLED:
@@ -50,14 +54,16 @@ def install_mobile_taskbook_list_bridge() -> None:
                 rows = value.get("list")
             return rows if isinstance(rows, list) else []
         from app.modules.graduation.services import graduation_taskbook_service as svc
-        return _collect(lambda page, size: svc.list_taskbooks(page, size))
+        batch_id = _batch_id(user)
+        return _collect(lambda page, size: svc.list_taskbooks(page, size, batch_id=batch_id))
 
     def midterms(user: dict) -> list:
         original_midterms(user)  # 教师身份与演示模式行为保持不变。
         if not db_enabled():
             return []
         from app.modules.graduation.services import graduation_midterm_service as svc
-        rows = _collect(lambda page, size: svc.list_midterms(page, size))
+        batch_id = _batch_id(user)
+        rows = _collect(lambda page, size: svc.list_midterms(page, size, batch_id=batch_id))
         return [row for row in rows if row.get("status") in {"PENDING", "RECTIFY_SUBMITTED"}]
 
     def grades(user: dict) -> list:
@@ -65,7 +71,8 @@ def install_mobile_taskbook_list_bridge() -> None:
         if not db_enabled():
             return []
         from app.modules.graduation.services import graduation_grade_service as svc
-        return _collect(lambda page, size: svc.list_grades(page, size, status="CALCULATED"))
+        batch_id = _batch_id(user)
+        return _collect(lambda page, size: svc.list_grades(page, size, status="CALCULATED", batch_id=batch_id))
 
     mobile.graduation_taskbook_list = taskbooks
     mobile.graduation_midterm_queue = midterms

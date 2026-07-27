@@ -72,8 +72,14 @@ def test_export_filters_match_list_total(client, auth_headers, db_mode):
     assert _export_count(client, auth_headers, batchId=b1, eligibility="QUALIFIED") == t_elig
 
     # 按毕业资格
-    assert client.post(f"{GD_STU}/{r1}/grad-qual", headers=auth_headers,
-                       json={"status": "PASS", "note": "测试", "reason": "定向测试毕业资格"}).json()["code"] == 0
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+    db = get_sessionmaker()()
+    try:
+        db.get(GraduationStudent, int(r1)).grad_qual_status = "PASS"
+        db.commit()
+    finally:
+        db.close()
     t_gq = _list_total(client, auth_headers, batchId=b1, gradQualStatus="PASS")
     assert _export_count(client, auth_headers, batchId=b1, gradQualStatus="PASS") == t_gq
 

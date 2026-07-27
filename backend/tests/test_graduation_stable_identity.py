@@ -66,7 +66,7 @@ def test_defense_group_writes_mentor_ids(client, auth_headers, db_mode):
     assert data["secretaryMentorId"] == str(sec_id)
     assert data["chair"] == "组长甲"
     assert data["secretary"] == "秘书甲"
-    mids = {str(x.get("mentorId")) for x in data["members"]}
+    mids = {str(x.get("mentorId")) for x in data["memberDetails"]}
     assert str(m1) in mids and str(m2) in mids
 
 

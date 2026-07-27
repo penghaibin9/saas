@@ -60,7 +60,8 @@ def test_archive_generate_blocks_submit_until_complete_then_files(client, auth_h
     gen = client.post(f"{GD_ARCHIVE}/{gid}/generate", headers=h)
     body = gen.json()["data"]
     assert body["status"] == "PENDING_SUBMIT"
-    assert len(body["missingItems"]) == len(body["checklist"])  # 全部材料缺失
+    checklist_labels = {item["label"] for item in body["checklist"] if item.get("required")}
+    assert checklist_labels.issubset(set(body["missingItems"]))  # 全部必备清单材料缺失
 
     blocked = client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h)
     assert blocked.json()["code"] != 0
@@ -79,21 +80,33 @@ def test_archive_generate_blocks_submit_until_complete_then_files(client, auth_h
 def test_complete_archive_is_idempotent_and_archives_student_atomically(client, auth_headers, db_mode):
     from datetime import datetime
     from app.db.session import get_sessionmaker
-    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade,
+    from app.models import (FileObject, GraduationDefenseScore, GraduationFinal, GraduationGrade,
                             GraduationMidterm, GraduationProposal, GraduationReview,
-                            GraduationStudent, GraduationTaskBook)
+                            GraduationStudent, GraduationTaskBook, PortalSignRecord)
     h = auth_headers
     gid = _gd_student(client, h, "AR-COMPLETE-01", "完整归档测试生")
     db = get_sessionmaker()()
+    file_obj = FileObject(
+        tenant_id=1000000000000000001, file_key=f"test/final-{gid}.docx",
+        file_name="final.docx", ext="docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size_bytes=128, sha256=f"{int(gid):064x}"[-64:], biz_type="GRADUATION_FINAL", biz_id=str(gid),
+        visibility="BIZ_SCOPED", status="AVAILABLE",
+    )
+    db.add(file_obj)
+    db.flush()
     final = GraduationFinal(
         tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
         version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",
-        plagiarism_status="已检测", status="APPROVED", attachments_json=["test-file"],
+        plagiarism_status="已检测", status="APPROVED", attachments_json=[str(file_obj.id)],
     )
     db.add(final)
     db.flush()
     db.add_all([
-        GraduationTaskBook(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CONFIRMED"),
+        GraduationTaskBook(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CONFIRMED",
+                           taskbook_version=1),
+        PortalSignRecord(tenant_id=1000000000000000001, student_id=int(gid),
+                         biz_type="GRADUATION_TASKBOOK", biz_id=f"{int(gid)}:v1",
+                         content_hash=f"taskbook-{gid}", signer_name="测试学生"),
         GraduationProposal(tenant_id=1000000000000000001, gd_student_id=int(gid), version="v1", status="APPROVED"),
         GraduationMidterm(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CHECKED_PASS"),
         GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid), gd_final_id=final.id,

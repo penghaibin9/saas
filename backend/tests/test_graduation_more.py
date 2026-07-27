@@ -63,6 +63,10 @@ def test_proposal_defense_requires_approved(client, auth_headers, db_mode):
     h = auth_headers
     sid = client.post(STU, headers=h, json={"studentNo": "PD2", "realName": "未批开题生", "classId": make_org_class()}).json()["data"]["id"]
     gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    tid = client.post(GD_TOPIC, headers=h, json={"title": "未批开题生题", "sourceType": "TEACHER",
+                     "advisorName": "李老师", "capacity": 1, "submitReview": True}).json()["data"]["id"]
+    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
     sh = _stu_token("未批开题生")
     client.post(f"{MOBILE}/graduation/proposal", headers=sh, json={"background": "背景足够长", "plan": "方案足够长"})
     pid = next(r for r in client.get(PROP, headers=h, params={"status": "PENDING_REVIEW"}).json()["data"]["items"]
@@ -73,12 +77,27 @@ def test_proposal_defense_requires_approved(client, auth_headers, db_mode):
 
 
 def test_peer_review_flow(client, auth_headers, db_mode):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationFinal
+
     h = auth_headers
     g1 = _gd_student(client, h, "PR1", "互查被评")
     g2 = _gd_student(client, h, "PR2", "互查评人")
 
     self_assign = client.post(f"{PEER}/assign", headers=h, json={"gdStudentId": g1, "reviewerGdStudentId": g1})
     assert self_assign.json()["code"] != 0  # 不能互查本人
+
+    db = get_sessionmaker()()
+    try:
+        db.add(GraduationFinal(
+            tenant_id=MAIN, gd_student_id=int(g1), final_type="定稿",
+            version="v1", submit_at=datetime.utcnow(), status="APPROVED",
+            plagiarism_rate="10.0%", plagiarism_status="已检测", attachments_json=[],
+        ))
+        db.commit()
+    finally:
+        db.close()
 
     a = client.post(f"{PEER}/assign", headers=h, json={"gdStudentId": g1, "reviewerGdStudentId": g2})
     pid = a.json()["data"]["id"]

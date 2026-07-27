@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_alembic_has_single_head_after_graduation_merge():
     cfg = Config(str(ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == ["0141_merge_gd_intern_affairs_heads"]
+    assert script.get_heads() == ["0142_gd_excellent_delay"]
 
 
 def test_teacher_mobile_graduation_endpoints_have_explicit_action_permissions():
