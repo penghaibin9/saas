@@ -5,6 +5,8 @@ MB1 学生只见本人请假；MB2 学生隔离；MB3 处分仅数量；MB4 自�
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 MB = "/api/v1/mobile"
@@ -93,9 +95,9 @@ def test_mb3_discipline_count_only(client, db_mode):
     admin = _hdr(client, "school_admin01")
     cid = client.post(f"{BASE}/discipline/cases", headers=admin, json={
         "studentId": str(ids["zhang"]), "discType": "WARNING", "reason": "违纪事实说明足够长"}).json()["data"]["caseId"]
-    client.post(f"{BASE}/discipline/cases/{cid}/submit", headers=admin)
-    client.post(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
+    post_versioned(f"{BASE}/discipline/cases/{cid}/submit", headers=admin)
+    post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
+    post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
     d = client.get(f"{MB}/affairs/discipline/my", headers=_stu_token("张三", "MB13A01")).json()["data"]
     assert d["activeCount"] == 1 and "detailNote" in d  # 仅数量+提示，无明细
 

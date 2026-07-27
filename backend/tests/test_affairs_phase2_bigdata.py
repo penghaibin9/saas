@@ -76,7 +76,7 @@ def _seed(client, headers):
         {
             "batchName": "二阶段困难认定批次",
             "schoolYear": "2025-2026",
-            "publicityDays": 0,
+            "publicityDays": 1,
             "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
             "publish": True,
         },
@@ -100,7 +100,7 @@ def _seed(client, headers):
         {
             "projectId": str(project_id),
             "schoolYear": "2025-2026",
-            "publicityDays": 0,
+            "publicityDays": 1,
             "quota": COUNT,
             "publish": True,
         },

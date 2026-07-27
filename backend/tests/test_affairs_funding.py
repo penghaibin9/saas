@@ -5,6 +5,8 @@ F4 助学金困难库在库→放行→GRANTED；F5 重复申请409；F6 越权�
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -33,6 +35,7 @@ def _seed(db_mode):
     db.commit()
     ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
+    ensure_workflow_assignees([ids["sa"], ids["sb"]])
     return ids
 
 
@@ -41,7 +44,7 @@ def _open_project_batch(client, hdr, ptype="SCHOLARSHIP", amount=3000):
         "projectName": f"{ptype}项目", "projectType": ptype, "amount": amount,
         "quota": 10}).json()["data"]["projectId"]
     bid = client.post(f"{BASE}/funding/batches", headers=hdr, json={
-        "projectId": str(pid), "schoolYear": "2025-2026", "publicityDays": 0,
+        "projectId": str(pid), "schoolYear": "2025-2026", "publicityDays": 1,
         "quota": 10, "publish": True}).json()["data"]["batchId"]
     return bid
 
@@ -54,21 +57,21 @@ def _fund_apply(client, hdr, bid, sid):
 def _make_difficult(client, hdr, sid):
     """把学生推入困难库（认定通过）。"""
     bid = client.post(f"{BASE}/aid/batches", headers=hdr, json={
-        "batchName": "困难认定", "schoolYear": "2025-2026", "publicityDays": 0,
+        "batchName": "困难认定", "schoolYear": "2025-2026", "publicityDays": 1,
         "levelConfig": {}, "publish": True}).json()["data"]["batchId"]
     aid_id = client.post(f"{BASE}/aid/applications", headers=hdr, json={
         "batchId": str(bid), "studentId": str(sid), "applyLevel": "DIFFICULT",
         "statement": "家庭经济困难需要资助支持完成学业"}).json()["data"]["applyId"]
     for _ in range(3):
-        client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
+        post_versioned(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr, json={"action": "APPROVE"})
+    post_versioned(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
                 json={"action": "APPROVE", "level": "DIFFICULT"})
-    client.post(f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr)
+    post_versioned(f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr)
 
 
 def _approve_to_publicity(client, hdr, app_id):
     for _ in range(3):
-        client.post(f"{BASE}/funding/applications/{app_id}/review", headers=hdr, json={"action": "APPROVE"})
+        post_versioned(f"{BASE}/funding/applications/{app_id}/review", headers=hdr, json={"action": "APPROVE"})
 
 
 def test_f1_scholarship_apply_creates_workflow(client, db_mode):
@@ -94,7 +97,7 @@ def test_f2_full_flow_granted_360(client, db_mode):
     _approve_to_publicity(client, hdr, app_id)
     d = client.get(f"{BASE}/funding/applications/{app_id}", headers=hdr).json()["data"]
     assert d["status"] == "PUBLICITY"
-    c = client.post(f"{BASE}/funding/applications/{app_id}/publicity-confirm", headers=hdr).json()
+    c = post_versioned(f"{BASE}/funding/applications/{app_id}/publicity-confirm", headers=hdr).json()
     assert c["data"]["status"] == "GRANTED"
     from app.db.session import get_sessionmaker
     from app.models import StudentStageEvent
@@ -168,7 +171,7 @@ def test_f8_review_approve_without_workflow_instance_not_500(client, db_mode):
     app_id = x.id
     db.close()
     admin = _hdr(client, "school_admin01")
-    r = client.post(f"{BASE}/funding/applications/{app_id}/review", headers=admin,
+    r = post_versioned(f"{BASE}/funding/applications/{app_id}/review", headers=admin,
                     json={"action": "APPROVE"})
     assert r.status_code == 200, f"无 workflow 实例的申请审核通过不应 500，实得 {r.status_code}"
     assert r.json()["data"]["status"] == "COLLEGE_REVIEW"  # COUNSELOR_REVIEW → 下一节点

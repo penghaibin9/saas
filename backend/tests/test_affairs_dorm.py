@@ -5,6 +5,8 @@ M4 调宿审批执行(原床释放/新床占用)；M5 检查异常→回写异�
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -222,7 +224,7 @@ def test_m11_dorm_write_scope_blocks_cross_building(client, db_mode):
     assert client.post(f"{BASE}/dorm/beds/{bed_a}/checkin", headers=dorm,
                        json={"studentId": str(ids["sm"])}).status_code == 200
     # 宿管对 A 楼床位退宿（自己负责）→ 200
-    assert client.post(f"{BASE}/dorm/beds/{bed_a}/checkout", headers=dorm).status_code == 200
+    assert post_versioned(f"{BASE}/dorm/beds/{bed_a}/checkout", headers=dorm).status_code == 200
 
     # 宿管建 B 楼检查任务 → 403
     assert client.post(f"{BASE}/dorm/check-tasks", headers=dorm, json={

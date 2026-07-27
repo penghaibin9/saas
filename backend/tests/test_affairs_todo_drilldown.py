@@ -43,7 +43,7 @@ def _seed(db_mode):
 def _open_batch(client, hdr):
     r = client.post(f"{BASE}/aid/batches", headers=hdr, json={
         "batchName": "下钻批次", "schoolYear": "2025-2026",
-        "publicityDays": 0, "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
+        "publicityDays": 1, "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
         "publish": True}).json()
     assert r.get("code") == 0, r
     return r["data"]["batchId"]

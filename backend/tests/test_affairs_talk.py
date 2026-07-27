@@ -5,6 +5,8 @@ T5 心理类明细按角色隐藏；T6 完整号码查看必填原因+审计；�
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -49,7 +51,7 @@ def test_t1_create_record_360(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     tid = _create_talk(client, hdr, ids["sa"])
-    r = client.post(f"{BASE}/talks/{tid}/record", headers=hdr,
+    r = post_versioned(f"{BASE}/talks/{tid}/record", headers=hdr,
                     json={"content": _content(), "result": "GOOD", "needFollowUp": False}).json()
     assert r["data"]["status"] == "COMPLETED"
     from app.db.session import get_sessionmaker
@@ -63,7 +65,7 @@ def test_t2_content_min_length(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     tid = _create_talk(client, hdr, ids["sa"])
-    assert client.post(f"{BASE}/talks/{tid}/record", headers=hdr,
+    assert post_versioned(f"{BASE}/talks/{tid}/record", headers=hdr,
                        json={"content": "太短", "result": "GOOD", "needFollowUp": False}).status_code == 400
 
 
@@ -71,9 +73,9 @@ def test_t3_follow_to_risk(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     tid = _create_talk(client, hdr, ids["sa"])
-    client.post(f"{BASE}/talks/{tid}/record", headers=hdr,
+    post_versioned(f"{BASE}/talks/{tid}/record", headers=hdr,
                 json={"content": _content(), "result": "NEED_HELP", "needFollowUp": True})
-    r = client.post(f"{BASE}/talks/{tid}/follow-up", headers=hdr,
+    r = post_versioned(f"{BASE}/talks/{tid}/follow-up", headers=hdr,
                     json={"action": "TO_RISK", "content": "发现学业风险，转风险跟进"}).json()
     assert r["data"]["relatedRiskId"]
     from app.db.session import get_sessionmaker
@@ -87,9 +89,9 @@ def test_t4_follow_to_home_school(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     tid = _create_talk(client, hdr, ids["sa"])
-    client.post(f"{BASE}/talks/{tid}/record", headers=hdr,
+    post_versioned(f"{BASE}/talks/{tid}/record", headers=hdr,
                 json={"content": _content(), "result": "GOOD", "needFollowUp": True})
-    r = client.post(f"{BASE}/talks/{tid}/follow-up", headers=hdr,
+    r = post_versioned(f"{BASE}/talks/{tid}/follow-up", headers=hdr,
                     json={"action": "TO_HOME_SCHOOL", "content": "已联系家长沟通"}).json()
     assert r["data"]["relatedContactId"]
 
@@ -98,7 +100,7 @@ def test_t5_psychology_masked_by_role(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     tid = _create_talk(client, admin, ids["sa"], ttype="PSYCHOLOGY")
-    client.post(f"{BASE}/talks/{tid}/record", headers=admin,
+    post_versioned(f"{BASE}/talks/{tid}/record", headers=admin,
                 json={"content": "心理咨询详细谈话内容，涉及个人隐私与敏感信息，需严格保密处理不外泄",
                       "result": "GOOD", "needFollowUp": False})
     # 学工处见全文

@@ -4,6 +4,8 @@ P1 画像汇总各域沉淀；P2 时间线合并 P2-P5 进360事件倒序；越�
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -47,7 +49,7 @@ def _leave_closed(client, hdr, sid):
 def _talk_done(client, hdr, sid):
     tid = client.post(f"{BASE}/talks", headers=hdr, json={
         "studentIds": [str(sid)], "talkType": "DAILY", "topic": "谈话"}).json()["data"]["talkIds"][0]
-    client.post(f"{BASE}/talks/{tid}/record", headers=hdr,
+    post_versioned(f"{BASE}/talks/{tid}/record", headers=hdr,
                 json={"content": "与学生进行了深入交流，全面了解其近期学习和生活情况，整体状态良好情绪稳定",
                       "result": "GOOD", "needFollowUp": False})
 

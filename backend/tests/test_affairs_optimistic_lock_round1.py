@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -56,7 +58,7 @@ def test_risk_stale_version_conflict_409(client, db_mode):
     stale = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                         json={"content": "用旧版本处置应冲突不少于五", "version": ver})
     assert stale.status_code == 409 and stale.json()["bizCode"] == "APPROVAL_VERSION_CONFLICT"
-    missing = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+    missing = post_versioned(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                           json={"content": "缺少 version 也应拦截不少于"})
     assert missing.status_code in (400, 422)
 
@@ -81,7 +83,7 @@ def test_aid_review_version_required_and_conflict(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/aid/batches", headers=hdr, json={
         "batchName": "OL困难认定", "schoolYear": "2025-2026",
-        "publicityDays": 0, "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
+        "publicityDays": 1, "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
         "publish": True}).json()["data"]["batchId"]
     app = client.post(f"{BASE}/aid/applications", headers=hdr, json={
         "batchId": str(bid), "studentId": str(ids["sa"]), "applyLevel": "DIFFICULT",

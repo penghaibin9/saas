@@ -31,7 +31,7 @@ def _seed_big_data(db_mode, client):
         json={
             "batchName": "大数据分页已发布批次",
             "schoolYear": "2025-2026",
-            "publicityDays": 0,
+            "publicityDays": 1,
             "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
             "publish": True,
         },

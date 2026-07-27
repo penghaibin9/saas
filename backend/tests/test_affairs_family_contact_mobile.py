@@ -67,7 +67,7 @@ def test_out_of_scope_student_create_forbidden(db_mode, client):
     h = _counselor("王老师")
 
     r = client.post(f"{MOB}/teacher/affairs/family-contacts/{out_id}", headers=h,
-                    json={"contactType": "PHONE", "reason": "测试越权"})
+                    json={"contactType": "PHONE", "reason": "测试越权", "result": "已完成沟通"})
     assert r.status_code == 403
 
 
@@ -76,7 +76,7 @@ def test_receipt_flow(db_mode, client):
     h = _counselor("王老师")
 
     create = client.post(f"{MOB}/teacher/affairs/family-contacts/{in_id}", headers=h,
-                         json={"contactType": "WECHAT", "reason": "作业完成情况"})
+                         json={"contactType": "WECHAT", "reason": "作业完成情况", "result": "家长已知晓"})
     cid = create.json()["data"]["contactId"]
 
     pending = client.get(f"{MOB}/teacher/affairs/family-contacts", headers=h,
