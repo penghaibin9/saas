@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="毕业预审结果"
-    subtitle="七项供数三态 + 学院初审 → 教务终审（终审写学籍终态，强制二次确认）"
+    subtitle="十一项逐项证据 + 学院初审 → 教务终审（证据来源、主键、哈希和下钻入口完整留痕）"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,6 +10,12 @@
     </template>
 
     <div class="mp-stack">
+      <AppInlineAlert
+        type="info"
+        title="逐项证据不是一句结论"
+        description="每一项都保留来源域、来源主键、检查时点和内容哈希；终审人员可下钻到正式业务台账核对。"
+      />
+
       <AppSectionCard v-if="rosters" title="三名单">
         <div class="aa-roster-row">
           <span class="aa-roster-chip is-grad">毕业 {{ (rosters.graduated || []).length }}</span>
@@ -25,7 +31,7 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无预审结果" description="到批次页执行「圈定应届生 + 七项预审」后再来复核" />
+      <EmptyState v-else-if="!rows.length" title="暂无预审结果" description="到批次页执行「圈定应届生 + 十一项预审」后再来复核" />
       <div v-else class="aa-result-list">
         <AppSectionCard v-for="r in rows" :key="r.resultId" :title="r.realName || ('学生 ' + r.studentId)">
           <template #header-extra>
@@ -33,10 +39,19 @@
             <AppStatusTag :type="r.conclusion ? 'success' : 'default'" dot>{{ statusLabel(r.status) }}</AppStatusTag>
           </template>
           <div class="aa-items">
-            <div v-for="it in r.items" :key="it.item" class="aa-item">
-              <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
-              <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
+            <div v-for="it in r.items" :key="it.evidenceHash || it.item" class="aa-item">
+              <div class="aa-item__head">
+                <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
+                <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
+                <button v-if="it.drillRoute" class="mp-link aa-item__drill" @click="drillEvidence(it)">核对来源 ›</button>
+              </div>
               <span v-if="it.evidence" class="aa-item__ev">{{ it.evidence }}</span>
+              <div v-if="it.sourceType || it.evidenceHash" class="aa-item__lineage">
+                <span>来源：{{ sourceLabel(it.sourceType) }}</span>
+                <span v-if="it.sourceIds?.length">主键：{{ it.sourceIds.join('、') }}</span>
+                <span v-if="it.checkedAt">检查：{{ formatTime(it.checkedAt) }}</span>
+                <span v-if="it.evidenceHash" :title="it.evidenceHash">哈希：{{ shortHash(it.evidenceHash) }}</span>
+              </div>
             </div>
           </div>
           <div class="aa-result-actions">
@@ -70,17 +85,24 @@
 </template>
 
 <script>
-/** 毕业预审结果 + 复核（/admin/academic-affairs/graduation/:batchId/results）。 */
+/** 毕业预审结果 + 逐项证据复核（/admin/academic-affairs/graduation/:batchId/results）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { GRAD_ITEM_LABEL, GRAD_ITEM_RESULT, gradItemColor, OVERALL_LABEL, overallColor, CONCLUSION_LABEL, GRAD_STATUS_LABEL } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
 
+const SOURCE_LABELS = {
+  STUDENT_PROFILE: '学生主档', ACADEMIC_GRADE: '正式成绩主账', PROGRAM_AND_GRADE: '培养方案与正式成绩',
+  INTERNSHIP_RECORD: '岗位实习台账', GRADUATION_STUDENT: '毕业设计台账',
+  DISCIPLINE_RECORD: '处分台账', EMPLOYMENT_STUDENT: '就业去向台账',
+  ARCHIVE_PACKAGE: '学生归档包', TEXTBOOK_FEE_LEDGER: '教材费用台账', UNKNOWN: '待治理来源'
+}
+
 export default {
   name: 'AaGraduationResultView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -109,6 +131,14 @@ export default {
     overallLabel(o) { return OVERALL_LABEL[o] || o || '' },
     statusLabel(s) { return GRAD_STATUS_LABEL[s] || s || '' },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
+    sourceLabel(value) { return SOURCE_LABELS[value] || value || '—' },
+    shortHash(value) { return value ? `${String(value).slice(0, 10)}…` : '—' },
+    formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 19) : '—' },
+    drillEvidence(item) {
+      const route = String(item.drillRoute || '')
+      if (!route.startsWith('/admin/')) { toast.error('证据下钻地址无效'); return }
+      this.$router.push(route)
+    },
     canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },
     search() { this.pagination.page = 1; this.load() },
     async loadRosters() {
@@ -152,16 +182,12 @@ export default {
 .aa-roster-chip.is-grad { background: var(--success-50, #eafff3); color: var(--success-600, #16a34a); }
 .aa-roster-chip.is-comp { background: var(--fill-100, #f2f3f5); color: var(--text-700, #4e5969); }
 .aa-roster-chip.is-delay { background: var(--warning-50, #fffbeb); color: var(--warning-600, #d97706); }
-.aa-filter { display: flex; gap: 12px; align-items: center; }
-.aa-filter :deep(.app-select) { width: 220px; }
-.aa-select { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
-.aa-result-list { display: flex; flex-direction: column; gap: 12px; }
-.aa-items { display: flex; flex-wrap: wrap; gap: 8px 20px; }
-.aa-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.aa-item__label { color: var(--text-700, #4e5969); min-width: 64px; }
-.aa-item__ev { color: var(--text-400, #8a9099); font-size: 12px; }
-.aa-result-actions { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.aa-final-tag { color: var(--success-600, #16a34a); font-size: 13px; }
-.aa-final-form { display: flex; flex-direction: column; gap: 8px; }
-.aa-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.aa-filter { display: flex; gap: 12px; align-items: center; }.aa-filter :deep(.app-select) { width: 220px; }
+.aa-result-list { display: flex; flex-direction: column; gap: 12px; }.aa-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 14px; }
+.aa-item { padding: 10px 12px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--fill-50, #fafafa); font-size: 13px; }
+.aa-item__head { display: flex; align-items: center; gap: 8px; }.aa-item__label { color: var(--text-700, #4e5969); min-width: 64px; font-weight: 600; }.aa-item__drill { margin: 0 0 0 auto; }
+.aa-item__ev { display: block; margin-top: 7px; color: var(--text-600, #64748b); font-size: 12px; line-height: 1.5; }
+.aa-item__lineage { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-200, #e5e7eb); color: var(--text-400, #8a9099); font-size: 11px; }
+.aa-result-actions { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-final-tag { color: var(--success-600, #16a34a); font-size: 13px; }.aa-final-form { display: flex; flex-direction: column; gap: 8px; }.aa-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+@media (max-width: 900px) { .aa-items { grid-template-columns: 1fr; } }
 </style>
