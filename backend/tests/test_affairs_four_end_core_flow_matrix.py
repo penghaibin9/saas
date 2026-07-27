@@ -25,6 +25,8 @@ def _route_matrix(app) -> set[tuple[str, str]]:
 def test_four_end_core_flow_routes_are_all_registered(client, db_mode):
     routes = _route_matrix(client.app)
     expected = {
+        ("POST", "/api/v1/portal/affairs/leave"),
+        ("POST", "/api/v1/mobile/affairs/leave"),
         ("GET", "/api/v1/mobile/affairs/leave/my"),
         ("GET", "/api/v1/mobile/affairs/leave/{leave_id}/editable"),
         ("PUT", "/api/v1/mobile/affairs/leave/{leave_id}/returned"),
