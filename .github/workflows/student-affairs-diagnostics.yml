@@ -57,24 +57,21 @@ jobs:
     timeout-minutes: 30
     env:
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: student_lifecycle_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=15
     steps:
       - name: Run new backend contract tests
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -e
+          docker run -d --name affairs-mysql \
+            -e MYSQL_ROOT_PASSWORD=root \
+            -e MYSQL_DATABASE=student_lifecycle_test \
+            -p 3306:3306 mysql:8.0 >/dev/null 2>&1
+          trap 'docker rm -f affairs-mysql >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec affairs-mysql mysqladmin ping -h 127.0.0.1 -uroot -proot --silent >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
           git clone -q --depth 1 --branch "$SOURCE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
           cd repo/backend
           python -m pip install -q -r requirements.txt cryptography
