@@ -180,11 +180,12 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
         }
         if (body.code !== 0) {
           if (body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
-            // 401：单飞刷新后重试一次；再失败则透出（requireAuthOrRedirect 已在刷新失败时触发）
+            // 401：单飞刷新后重试一次。刷新成功后必须透出重试请求的真实 403/409/422 等错误，
+            // 不能再伪装成原始 401；只有刷新本身失败才会由 _refreshOnce() 清会话并跳登录。
             _refreshOnce()
               .then(() => realRequest(path, { method, data, auth, _retried: true }))
               .then(resolve)
-              .catch(() => reject({ code: body.code, biz: true, message: body.message || '登录已失效', traceId: body.traceId }))
+              .catch(reject)
             return
           }
           reject({ code: body.code, biz: true, message: body.message || '业务错误', traceId: body.traceId })
