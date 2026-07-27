@@ -111,6 +111,7 @@ jobs:
           tests/test_aa_teaching_class_v2_runtime.py
           tests/test_aa_scheduling_rule_v2.py
           tests/test_aa_scheduling_rule_v2_ui.py
+          tests/test_aa_scheduling_rule_v2_final.py
           tests/test_security_student_identity.py
           --maxfail=1
 
