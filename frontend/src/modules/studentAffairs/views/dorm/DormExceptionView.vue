@@ -8,33 +8,48 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载宿舍异常..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
+      <section class="sa-summary-strip dorm-exception-summary">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">异常处置重点</span>
+          <h2 class="sa-summary-strip__title">优先处理待处置和夜不归宿等高风险异常，完成事实核查、处置说明和闭环留痕</h2>
+          <p class="sa-summary-strip__text">当前范围异常合计 {{ statusCounts === null ? '—' : (statusCounts.ALL || 0) }} 条。异常记录来自宿舍检查等业务，处置时应说明核查结果、处理措施和后续安排。</p>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="宿舍异常处置流程">
+        <div class="sa-workflow-step" data-step="1"><strong>识别异常</strong><br>查看类型、发生时间和原始说明</div>
+        <div class="sa-workflow-step" data-step="2"><strong>核查事实</strong><br>联系学生、宿舍成员或值班人员</div>
+        <div class="sa-workflow-step" data-step="3"><strong>记录处置</strong><br>填写处理措施和后续要求</div>
+        <div class="sa-workflow-step" data-step="4"><strong>完成闭环</strong><br>异常转为已处置并保留审计</div>
+      </div>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
-      <AppSectionCard title="异常列表">
+      <AppSectionCard title="异常列表与处置">
+        <p class="dorm-exception-hint">默认按当前数据范围展示。切换到“待处置”集中处理未闭环记录；长异常说明会自动换行，不再挤压操作列。</p>
         <div v-if="statusFilterLabel" class="sa-student-filter">
           <span>{{ statusFilterLabel }}</span>
           <button type="button" class="mp-link" @click="clearStatusFilter">清除状态筛选</button>
         </div>
-        <div class="sa-toolbar">
+        <div class="sa-toolbar sa-filter-bar">
           <AppSelect v-model="filterStatus" class="sa-filter" :options="STATUS_OPTIONS" placeholder="" @change="onStatusChange" />
         </div>
         <DataTable v-if="items.length || pagination.total > 0" :columns="exceptionColumns" :rows="items" row-key="exceptionId"
                    :pagination="pagination" @page-change="onPageChange">
-          <template #cell-type="{ row }">{{ typeLabel(row.excType) }}</template>
-          <template #cell-detail="{ row }">{{ row.detail || '—' }}</template>
+          <template #cell-type="{ row }"><strong>{{ typeLabel(row.excType) }}</strong></template>
+          <template #cell-detail="{ row }"><span class="dorm-exception-detail sa-cell-wrap">{{ row.detail || '—' }}</span></template>
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'HANDLED' ? 'success' : 'warning'" :label="row.status === 'HANDLED' ? '已处置' : '待处置'" /></template>
-          <template #cell-createdAt="{ row }">{{ (row.createdAt || '').slice(0, 16) }}</template>
+          <template #cell-createdAt="{ row }"><span class="dorm-exception-time">{{ (row.createdAt || '').slice(0, 16) || '—' }}</span></template>
           <template #cell-actions="{ row }">
             <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.exception.handle')" v-if="row.status !== 'HANDLED'" code="studentAffairs.dorm.exception.handle" size="sm" :loading="actioning" @click="handle(row)">处置</AppPermissionButton>
             <span v-else class="sa-muted">已闭环</span>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前范围内暂无宿舍异常</p>
+        <p v-else class="sa-empty">当前范围内暂无宿舍异常。可调整状态筛选，或返回宿舍检查页查看检查记录。</p>
       </AppSectionCard>
     </AppGlobalState>
 
-    <!-- 处置说明：原生 prompt 无法多行、无快捷用语；分组按本条异常类型置顶对应话术 -->
     <AppConfirmDialog
       v-model:visible="dlg.visible" :title="`处置宿舍异常 · ${typeLabel(dlg.excType)}`" type="primary"
       confirm-text="确认处置" require-reason :reason-min-length="5" reason-label="处置说明（≥5 字）"
@@ -54,7 +69,6 @@ import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { resolveTodoStatus } from '@/modules/studentAffairs/utils/todoFilterSemantics'
-
 
 const EXCEPTION_COLUMNS = [
   { key: 'type', title: '类型' },
@@ -169,18 +183,14 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-toolbar { margin-bottom: var(--space-4); }
-.sa-toolbar select { min-width: 160px; border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-surface); padding: var(--space-2) var(--space-3); }
-.sa-filter { width: 160px; }
-.sa-student-filter {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
-  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md); background: var(--warning-50, #fffbeb);
-  border: 1px solid var(--warning-200, #fde68a); font-size: var(--font-size-sm); color: var(--text-primary);
-}
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.dorm-exception-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.sa-toolbar { margin-bottom: var(--space-3); }
+.sa-filter { width: 180px; }
+.sa-student-filter { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); border: 1px solid var(--warning-200, #fde68a); font-size: var(--font-size-sm); color: var(--text-primary); }
+.dorm-exception-detail { color: var(--text-secondary); }
+.dorm-exception-time { color: var(--text-tertiary); font-size: var(--font-size-xs); white-space: nowrap; }
 .sa-muted { color: var(--text-tertiary); }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 </style>

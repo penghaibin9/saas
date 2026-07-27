@@ -1,198 +1,326 @@
 <template>
   <AppPageShell
     title="资助发放台账"
-    subtitle="按批次为已获资助学生生成发放记录，登记银行发放状态。金额按角色脱敏，不显示银行卡全号。"
+    subtitle="按批次生成发放记录，登记银行发放结果。列表、统计和操作均遵守当前数据范围。"
     role-name="学工处 / 资助老师"
     data-scope-name="资助范围（辅导员限本班）"
     watermark-purpose="资助发放台账"
   >
-    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载发放台账..." @retry="load"
-                    @back="$router.push('/admin/student-affairs/funding')">
+    <AppGlobalState
+      :state="pageState"
+      :description="errorMessage"
+      loading-text="正在加载发放台账..."
+      @retry="load"
+      @back="$router.push('/admin/student-affairs/funding')"
+    >
       <div class="sa-toolbar">
         <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
+          <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
         </div>
         <div class="fd-gen">
           <AppFundingBatchPicker v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" />
-          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.disburse.manage')" code="studentAffairs.funding.disburse.manage" :loading="acting==='gen'" :disabled="!genBatchId" @click="generate">生成发放台账</AppPermissionButton>
+          <AppPermissionButton
+            :allowed="canBtn('studentAffairs.funding.disburse.manage')"
+            code="studentAffairs.funding.disburse.manage"
+            :loading="acting === 'gen'"
+            :disabled="!genBatchId || !!batchError"
+            @click="openGenerate"
+          >生成发放台账</AppPermissionButton>
         </div>
       </div>
 
+      <AppInlineAlert v-if="secondaryError" type="warning" :description="secondaryError" />
+
       <AppSectionCard title="发放记录">
         <div class="fd-filters">
-          <button v-for="f in statusFilters" :key="f.key" type="button" class="fd-chip"
-                  :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
+          <button
+            v-for="filter in statusFilters"
+            :key="filter.key"
+            type="button"
+            class="fd-chip"
+            :class="{ 'is-on': activeStatus === filter.key }"
+            @click="setStatus(filter.key)"
+          >{{ filter.label }}</button>
         </div>
         <DataTable v-if="items.length" :columns="disbursementColumns" :rows="items" row-key="disbursementId">
-          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span></template>
+          <template #cell-student="{ row }">
+            <span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span>
+            <div class="mp-cell-sub">{{ row.studentNo || '' }}</div>
+          </template>
           <template #cell-projectType="{ row }">{{ typeLabel(row.projectType) }}</template>
           <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
           <template #cell-bankLast4="{ row }">{{ row.bankLast4 ? ('****' + row.bankLast4) : '—' }}</template>
           <template #cell-status="{ row }">
             <StatusTag :type="statusType(row.bankStatus)" :label="row.bankStatusLabel || row.bankStatus" dot />
-            <em v-if="row.bankStatus==='FAILED' && row.failReason" class="fd-reason">{{ row.failReason }}</em>
+            <em v-if="row.bankStatus === 'FAILED' && row.failReason" class="fd-reason">{{ row.failReason }}</em>
           </template>
           <template #cell-actions="{ row }">
             <div class="fd-ops">
-              <template v-if="row.bankStatus!=='ISSUED'">
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.disburse.manage')" code="studentAffairs.funding.disburse.manage" size="sm" :loading="acting===row.disbursementId" @click="issue(row)">标记发放</AppPermissionButton>
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.disburse.manage')" v-if="row.bankStatus==='PENDING'" code="studentAffairs.funding.disburse.manage" size="sm" variant="secondary" danger @click="fail(row)">置失败</AppPermissionButton>
-              </template>
-              <span v-else class="fd-dash">已发放</span>
+              <AppPermissionButton
+                v-if="allows(row, 'ISSUE')"
+                :allowed="canBtn('studentAffairs.funding.disburse.manage')"
+                code="studentAffairs.funding.disburse.manage"
+                size="sm"
+                :loading="acting === row.disbursementId"
+                :disabled="!hasVersion(row)"
+                @click="issue(row)"
+              >标记发放</AppPermissionButton>
+              <AppPermissionButton
+                v-if="allows(row, 'FAIL')"
+                :allowed="canBtn('studentAffairs.funding.disburse.manage')"
+                code="studentAffairs.funding.disburse.manage"
+                size="sm"
+                variant="secondary"
+                danger
+                :disabled="!hasVersion(row)"
+                @click="fail(row)"
+              >置失败</AppPermissionButton>
+              <span v-if="!allows(row, 'ISSUE') && !allows(row, 'FAIL')" class="fd-dash">{{ row.bankStatus === 'ISSUED' ? '已发放' : '—' }}</span>
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无发放记录，选批次「生成发放台账」</p>
+        <p v-else class="sa-empty">当前筛选下暂无发放记录</p>
+        <AppPagination
+          v-if="pagination.total > pagination.pageSize"
+          v-model:page="pagination.page"
+          v-model:pageSize="pagination.pageSize"
+          :total="pagination.total"
+          @change="loadRecords"
+        />
       </AppSectionCard>
     </AppGlobalState>
 
-    <!-- 标记发放：原为「批次号→银行卡后4位」2 连原生弹窗。
-         银行卡后 4 位属敏感信息，走浏览器原生框既无格式约束、也无任何用途说明。 -->
     <AppConfirmDialog
-      v-model:visible="issDlg.visible" :title="`标记为已发放 · ${issDlg.who}`" type="primary"
-      confirm-text="确认发放" :submitting="acting === issDlg.disbursementId" @confirm="submitIssue"
+      v-model:visible="genDlg.visible"
+      title="生成资助发放台账"
+      type="warning"
+      message="系统会为所选批次全部已获资助学生生成待发放记录。该操作仅限全域管理员，重复请求不会重复生成。"
+      confirm-text="确认生成"
+      :submitting="acting === 'gen'"
+      @confirm="generate"
+    />
+
+    <AppConfirmDialog
+      v-model:visible="issDlg.visible"
+      :title="`标记为已发放 · ${issDlg.who}`"
+      type="primary"
+      message="确认后将写入正式发放流水、学生成长时间线并发送到账通知。请依据银行回单填写批次号。"
+      confirm-text="确认发放"
+      :submitting="acting === issDlg.disbursementId"
+      @confirm="submitIssue"
     >
-      <AppFormItem label="发放批次号">
-        <AppTextInput v-model="issDlg.disburseNo" placeholder="可空；如银行回单批次号" :maxlength="64" />
+      <AppFormItem label="发放批次号" required>
+        <AppTextInput v-model="issDlg.disburseNo" placeholder="必填，如银行回单批次号" :maxlength="100" />
       </AppFormItem>
       <AppFormItem label="银行卡后 4 位">
-        <AppTextInput v-model="issDlg.bankLast4" placeholder="可空；只填最后 4 位数字" :maxlength="4" />
-        <p class="fd-hint">仅用于核对到账账户，系统只存后 4 位，不存完整卡号。请勿填写完整卡号。</p>
+        <AppTextInput v-model="issDlg.bankLast4" placeholder="选填，只填最后 4 位数字" :maxlength="4" />
+        <p class="fd-hint">仅用于核对到账账户，系统只存后4位。严禁填写完整卡号。</p>
       </AppFormItem>
       <AppInlineAlert v-if="issDlg.error" type="danger" :description="issDlg.error" />
     </AppConfirmDialog>
 
-    <!-- 发放失败原因 -->
     <AppConfirmDialog
-      v-model:visible="failDlg.visible" :title="`标记发放失败 · ${failDlg.who}`" type="danger"
-      confirm-text="确认置失败" require-reason :reason-min-length="5" reason-label="失败原因（≥5 字）"
-      description="置为失败后该笔发放可重新处理。原因将记入发放台账。"
-      :submitting="acting === failDlg.disbursementId" @confirm="submitFail"
+      v-model:visible="failDlg.visible"
+      :title="`标记发放失败 · ${failDlg.who}`"
+      type="danger"
+      confirm-text="确认置失败"
+      require-reason
+      :reason-min-length="5"
+      reason-label="失败原因（5-500字）"
+      message="置为失败后该笔记录可重新发放，失败原因会写入台账并通知学生当前正在处理中。"
+      :submitting="acting === failDlg.disbursementId"
+      @confirm="submitFail"
     />
   </AppPageShell>
 </template>
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppStatusTag, AppFundingBatchPicker, AppTextInput
+  AppConfirmDialog, AppFormItem, AppFundingBatchPicker, AppGlobalState, AppInlineAlert,
+  AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+  AppStatusTag, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
-import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
-
+import { toast } from '@/utils/toast'
 
 const DISBURSEMENT_COLUMNS = [
-  { key: 'student', title: '学生' },
-  { key: 'projectType', title: '项目' },
-  { key: 'amount', title: '金额' },
-  { key: 'bankLast4', title: '卡号后4位' },
-  { key: 'status', title: '发放状态' },
-  { key: 'actions', title: '操作', align: 'right', width: '180px' }
+  { key: 'student', title: '学生' }, { key: 'projectType', title: '项目' },
+  { key: 'amount', title: '金额' }, { key: 'bankLast4', title: '卡号后4位' },
+  { key: 'status', title: '发放状态' }, { key: 'actions', title: '操作', align: 'right', width: '190px' }
 ]
 const STATUS_FILTERS = [
   { key: '', label: '全部' }, { key: 'PENDING', label: '待发放' },
-  { key: 'ISSUED', label: '已发放' }, { key: 'FAILED', label: '发放失败' }
+  { key: 'ISSUED', label: '已发放' }, { key: 'FAILED', label: '发放失败' },
+  { key: 'RETURNED', label: '银行退回' }
 ]
 
 export default {
   name: 'FundingDisbursementView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppFundingBatchPicker, AppTextInput, StatusTag: AppStatusTag, DataTable
+    AppConfirmDialog, AppFormItem, AppFundingBatchPicker, AppGlobalState, AppInlineAlert,
+    AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+    StatusTag: AppStatusTag, AppTextInput, DataTable
   },
   data() {
     return {
       disbursementColumns: DISBURSEMENT_COLUMNS,
-      issDlg: { visible: false, disbursementId: '', who: '', disburseNo: '', bankLast4: '', error: '' },
-      failDlg: { visible: false, disbursementId: '', who: '' },
-      loading: true, acting: '', errorMessage: '', items: [], batches: [], stats: {},
-      activeStatus: '', statusFilters: STATUS_FILTERS, genBatchId: ''
+      statusFilters: STATUS_FILTERS,
+      issDlg: { visible: false, disbursementId: '', who: '', disburseNo: '', bankLast4: '', error: '', version: null },
+      failDlg: { visible: false, disbursementId: '', who: '', version: null },
+      genDlg: { visible: false },
+      loading: true,
+      acting: '',
+      errorMessage: '',
+      batchError: '',
+      statsError: '',
+      items: [],
+      batches: [],
+      stats: null,
+      activeStatus: '',
+      genBatchId: '',
+      pagination: { page: 1, pageSize: 50, total: 0 }
     }
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    secondaryError() { return [this.batchError, this.statsError].filter(Boolean).join('；') },
     batchOptions() {
-      return this.batches.map((b) => ({ value: b.batchId, label: `${b.schoolYear} · ${this.typeLabel(b.projectType)}（${b.status}）` }))
+      return this.batches.map((batch) => ({
+        value: batch.batchId,
+        label: `${batch.schoolYear} · ${this.typeLabel(batch.projectType)}（${batch.status}）`
+      }))
     },
     metricCards() {
-      const s = (k) => (this.stats.byStatus || []).find((x) => x.key === k)
-      const cnt = (k) => { const r = s(k); return r ? r.count : 0 }
+      const find = (key) => this.stats && (this.stats.byStatus || []).find((row) => row.key === key)
+      const count = (key) => { const row = find(key); return row ? row.count : (this.stats ? 0 : '—') }
       const cards = [
-        { key: 't', label: '发放记录数', value: this.stats.total || 0, accent: 'primary' },
-        { key: 'i', label: '已发放', value: cnt('ISSUED'), accent: 'success' },
-        { key: 'p', label: '待发放', value: cnt('PENDING'), accent: 'warning' }
+        { key: 't', label: '发放记录数', value: this.stats ? this.stats.total : '—', accent: 'primary' },
+        { key: 'i', label: '已发放', value: count('ISSUED'), accent: 'success' },
+        { key: 'p', label: '待发放', value: count('PENDING'), accent: 'warning' },
+        { key: 'f', label: '失败/退回', value: this.stats ? Number(count('FAILED') || 0) + Number(count('RETURNED') || 0) : '—', accent: 'risk' }
       ]
-      if (this.stats.issuedAmountTotal != null) cards.push({ key: 'a', label: '已发放金额合计', value: '¥' + this.stats.issuedAmountTotal, accent: 'primary' })
+      if (this.stats && this.stats.issuedAmountTotal != null) {
+        cards.push({ key: 'a', label: '已发放金额合计', value: `¥${this.stats.issuedAmountTotal}`, accent: 'primary' })
+      }
       return cards
     }
   },
   mounted() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
+    allows(row, action) {
+      if (Array.isArray(row?.allowedActions)) return row.allowedActions.includes(action)
+      const fallback = { PENDING: ['ISSUE', 'FAIL'], FAILED: ['ISSUE'], RETURNED: ['ISSUE', 'FAIL'] }
+      return (fallback[row?.bankStatus] || []).includes(action)
+    },
     async load() {
-      this.loading = true; this.errorMessage = ''
-      // 待服务端全量统计：发放列表仅加载 API 单页上限。
-      const [ds, bs, st] = await Promise.all([
-        studentAffairsApi.getFundingDisbursements({ bankStatus: this.activeStatus, pageSize: 200 }),
-        studentAffairsApi.getFundingBatches({ pageSize: 200 }),
-        studentAffairsApi.getDisbursementStats()
-      ])
-      if (ds.code === 0 && ds.data) this.items = ds.data.items || []
-      else this.errorMessage = ds.message || '发放台账加载失败'
-      this.batches = (bs.code === 0 && bs.data) ? (bs.data.items || []) : []
-      this.stats = (st.code === 0 && st.data) ? st.data : {}
+      this.loading = true
+      await Promise.all([this.loadRecords(), this.loadBatches(), this.loadStats()])
       this.loading = false
     },
-    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
+    async loadRecords() {
+      this.errorMessage = ''
+      const response = await studentAffairsApi.getFundingDisbursements({
+        bankStatus: this.activeStatus,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize
+      })
+      if (response.code !== 0 || !response.data) {
+        this.items = []
+        this.pagination.total = 0
+        this.errorMessage = response.message || '发放台账加载失败'
+        return
+      }
+      this.items = response.data.items || []
+      this.pagination.total = response.data.total != null ? response.data.total : this.items.length
+    },
+    async loadBatches() {
+      this.batchError = ''
+      const response = await studentAffairsApi.getFundingBatches({ page: 1, pageSize: 200 })
+      if (response.code === 0 && response.data) this.batches = response.data.items || []
+      else { this.batches = []; this.batchError = response.message || '资助批次加载失败，暂不能生成发放台账' }
+    },
+    async loadStats() {
+      this.statsError = ''
+      const response = await studentAffairsApi.getDisbursementStats()
+      if (response.code === 0 && response.data) this.stats = response.data
+      else { this.stats = null; this.statsError = response.message || '发放统计加载失败' }
+    },
+    setStatus(key) {
+      if (this.activeStatus === key) return
+      this.activeStatus = key
+      this.pagination.page = 1
+      this.loadRecords()
+    },
+    openGenerate() { if (this.genBatchId && !this.batchError) this.genDlg.visible = true },
     async generate() {
       this.acting = 'gen'
-      const res = await studentAffairsApi.generateDisbursements(this.genBatchId)
+      const response = await studentAffairsApi.generateDisbursements(this.genBatchId)
       this.acting = ''
-      if (res.code === 0) { toast.success(`已生成 ${res.data.generated || 0} 条发放记录`); this.load() }
-      else toast.error(res.message || '生成失败')
+      if (response.code === 0) {
+        this.genDlg.visible = false
+        toast.success(`已生成 ${response.data.generated || 0} 条，已有 ${response.data.existing || 0} 条`)
+        await Promise.all([this.loadRecords(), this.loadStats()])
+      } else toast.error(response.message || '生成失败')
     },
-    issue(d) {
+    issue(row) {
+      if (!this.allows(row, 'ISSUE') || !this.hasVersion(row)) return
       this.issDlg = {
-        visible: true, disbursementId: d.disbursementId, version: d.version,
-        who: d.realName || d.studentNo || '该笔',
-        disburseNo: '', bankLast4: '', error: ''
+        visible: true, disbursementId: row.disbursementId, version: row.version,
+        who: row.realName || row.studentNo || '该笔', disburseNo: '', bankLast4: '', error: ''
       }
     },
     async submitIssue() {
-      const d = this.issDlg
-      const last4 = d.bankLast4.trim()
-      // 原生 prompt 对「仅存后4位」毫无约束，粘完整卡号也照单全收；这里挡在前面。
-      if (last4 && !/^\d{4}$/.test(last4)) { d.error = '银行卡后 4 位须为 4 位数字；请勿填写完整卡号'; return }
-      d.error = ''
-      this.acting = d.disbursementId
-      const res = await studentAffairsApi.issueDisbursement(d.disbursementId, {
-        disburseNo: d.disburseNo.trim() || undefined,
-        bankLast4: last4 || undefined,
-        version: d.version
+      const dialog = this.issDlg
+      const number = dialog.disburseNo.trim()
+      const last4 = dialog.bankLast4.trim()
+      if (number.length < 2 || number.length > 100) { dialog.error = '发放批次号需2-100字'; return }
+      if (last4 && !/^\d{4}$/.test(last4)) { dialog.error = '银行卡后4位须为4位数字；请勿填写完整卡号'; return }
+      dialog.error = ''
+      this.acting = dialog.disbursementId
+      const response = await studentAffairsApi.issueDisbursement(dialog.disbursementId, {
+        disburseNo: number, bankLast4: last4 || undefined, version: dialog.version
       })
       this.acting = ''
-      if (res.code === 0) { d.visible = false; toast.success('已标记发放'); this.load() }
-      else { d.error = res.message || '标记失败' }
+      if (response.code === 0) {
+        dialog.visible = false
+        toast.success('已标记发放并通知学生')
+        await Promise.all([this.loadRecords(), this.loadStats()])
+      } else {
+        dialog.error = response.message || '标记失败'
+        if (response.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.loadRecords()
+      }
     },
-    fail(d) {
+    fail(row) {
+      if (!this.allows(row, 'FAIL') || !this.hasVersion(row)) return
       this.failDlg = {
-        visible: true, disbursementId: d.disbursementId, version: d.version,
-        who: d.realName || d.studentNo || '该笔'
+        visible: true, disbursementId: row.disbursementId, version: row.version,
+        who: row.realName || row.studentNo || '该笔'
       }
     },
     async submitFail({ reason }) {
-      const d = this.failDlg
-      this.acting = d.disbursementId
-      const res = await studentAffairsApi.failDisbursement(d.disbursementId, reason.trim(), d.version)
+      const dialog = this.failDlg
+      const text = (reason || '').trim()
+      if (text.length < 5 || text.length > 500) { toast.error('失败原因需5-500字'); return }
+      this.acting = dialog.disbursementId
+      const response = await studentAffairsApi.failDisbursement(dialog.disbursementId, text, dialog.version)
       this.acting = ''
-      if (res.code === 0) { d.visible = false; toast.success('已置失败'); this.load() } else toast.error(res.message || '操作失败')
+      if (response.code === 0) {
+        dialog.visible = false
+        toast.success('已置失败并通知学生')
+        await Promise.all([this.loadRecords(), this.loadStats()])
+      } else {
+        toast.error(response.message || '操作失败')
+        if (response.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.loadRecords()
+      }
     },
-    typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || t || '' },
-    amountText(a) { return (a == null || a === '') ? '—' : (typeof a === 'number' ? ('¥' + a) : a) },
-    statusType(s) { return ({ PENDING: 'warning', ISSUED: 'success', FAILED: 'danger', RETURNED: 'default' })[s] || 'default' }
+    typeLabel(type) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[type] || type || '' },
+    amountText(amount) { return (amount == null || amount === '') ? '—' : (typeof amount === 'number' ? `¥${amount}` : amount) },
+    statusType(status) { return ({ PENDING: 'warning', ISSUED: 'success', FAILED: 'danger', RETURNED: 'default' })[status] || 'default' }
   }
 }
 </script>
@@ -202,15 +330,14 @@ export default {
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
 .fd-gen { display: flex; gap: var(--space-2); align-items: center; }
 .fd-genpick { width: 260px; }
-.fd-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
 .fd-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .fd-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .fd-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-.fd-reason { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
-.fd-ops { display: flex; gap: 6px; }
-.fd-dash { color: var(--text-tertiary); font-size: var(--font-size-sm); }
-.fd-hint { margin: var(--space-1) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+.fd-reason { display: block; color: var(--danger-600); font-size: var(--font-size-xs); margin-top: 2px; }
+.fd-ops { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.fd-dash { color: var(--text-tertiary); }
+.fd-hint { margin: var(--space-2) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } .fd-gen { width: 100%; } .fd-genpick { flex: 1; } }
 @import '@/styles/module-page.css';
 </style>

@@ -21,8 +21,8 @@
     <MobileGlobalState v-else-if="loading" state="loading" title="加载中" />
     <MobileGlobalState v-else state="empty" title="消息不存在或已过期" description="请返回消息列表重新查看。" />
 
-    <MobileSafeAreaBar v-if="m && (m.actionable || showAck)">
-      <button v-if="m.actionable" class="btn btn-primary flex-1" @click="handle">去处理</button>
+    <MobileSafeAreaBar v-if="m && (canHandle || showAck)">
+      <button v-if="canHandle" class="btn btn-primary flex-1" @click="handle">去处理</button>
       <button v-if="showAck" class="btn btn-primary flex-1" :disabled="acking" @click="ack">
         {{ acking ? '提交中…' : '确认已阅' }}
       </button>
@@ -35,6 +35,34 @@ import { popDetail } from '@/utils/msgStash'
 import { go, toast } from '@/utils/nav'
 import { studentApi } from '@/services/studentApi'
 
+const ACTION_ROUTES = {
+  STUDENT_AFFAIRS: '/pages/student/affairs/index',
+  STUDENT_AFFAIRS_LEAVE: '/pages/student/affairs/leave',
+  STUDENT_AFFAIRS_AID: '/pages/student/affairs/aid',
+  STUDENT_AFFAIRS_FUNDING: '/pages/student/affairs/funding',
+  STUDENT_AFFAIRS_DISCIPLINE: '/pages/student/affairs/discipline',
+  STUDENT_AFFAIRS_DORM: '/pages/student/affairs/dorm',
+  STUDENT_AFFAIRS_ACTIVITY: '/pages/student/affairs/activity',
+  STUDENT_APPLICATIONS: '/pages/student/my-applications/index',
+  INTERNSHIP: '/pages/student/internship/index',
+  GRADUATION: '/pages/student/graduation/index',
+  ACADEMIC: '/pages/student/academic-affairs/index',
+  ORIENTATION: '/pages/student/orientation/index',
+  EMPLOYMENT: '/pages/student/employment/index'
+}
+
+const MODULE_ROUTES = {
+  'student-affairs': '/pages/student/affairs/index',
+  campusService: '/pages/student/affairs/index',
+  'campus-service': '/pages/student/affairs/index',
+  internship: '/pages/student/internship/index',
+  graduation: '/pages/student/graduation/index',
+  'academic-affairs': '/pages/student/academic-affairs/index',
+  academic: '/pages/student/academic-affairs/index',
+  orientation: '/pages/student/orientation/index',
+  employment: '/pages/student/employment/index'
+}
+
 export default {
   data() { return { m: null, acking: false, loading: false } },
   computed: {
@@ -42,7 +70,8 @@ export default {
       if (!this.m) return false
       if (this.m.withdrawn || this.m.acked) return false
       return !!(this.m.receipt || this.m.requireAck)
-    }
+    },
+    canHandle() { return !!this.resolveTarget() }
   },
   onLoad(query) {
     const stashed = popDetail()
@@ -66,6 +95,23 @@ export default {
   },
   methods: {
     formatTime(t) { return t ? String(t).slice(0, 16).replace('T', ' ') : '' },
+    resolveTarget() {
+      if (!this.m || this.m.withdrawn) return ''
+      const params = this.m.actionParams && typeof this.m.actionParams === 'object' ? this.m.actionParams : {}
+      const materialRequirementId = params.materialRequirementId || params.requirementId || ''
+      if (materialRequirementId) {
+        return `/pages/student/affairs/index?materialRequirementId=${encodeURIComponent(String(materialRequirementId))}`
+      }
+      const key = String(this.m.actionKey || '').trim().toUpperCase()
+      let route = ACTION_ROUTES[key] || ''
+      const biz = String(params.businessType || params.bizType || '').trim().toUpperCase()
+      if (!route && biz) route = ACTION_ROUTES[`STUDENT_AFFAIRS_${biz}`] || ACTION_ROUTES[biz] || ''
+      if (!route && this.m.status === 'RETURNED') route = ACTION_ROUTES.STUDENT_APPLICATIONS
+      if (!route) route = MODULE_ROUTES[String(this.m.module || '').trim()] || ''
+      const recordId = params.recordId || params.bizId || params.applyId || params.applicationId || params.caseId || params.leaveId || ''
+      if (route && recordId) route += `${route.includes('?') ? '&' : '?'}recordId=${encodeURIComponent(String(recordId))}`
+      return route
+    },
     async ack() {
       if (!this.m || this.acking) return
       const raw = String(this.m.messageId || this.m.id || '').replace('msg-', '')
@@ -87,13 +133,12 @@ export default {
       }
     },
     handle() {
-      if (!this.m) return
-      if (this.m.status === 'RETURNED') return go('/pages/student/my-applications/index')
-      const mod = this.m.module || ''
-      if (mod.indexOf('实习') >= 0) return go('/pages/teacher/internship-review/index')
-      if (mod.indexOf('风险') >= 0 || mod.indexOf('预警') >= 0) return go('/pages/teacher/risk-students/index')
-      if (mod.indexOf('毕业') >= 0) return go('/pages/teacher/graduation-guide/index')
-      go('/pages/student/campus-service/index')
+      const target = this.resolveTarget()
+      if (!target) {
+        toast('该消息暂未配置安全的学生端处理入口')
+        return
+      }
+      go(target)
     }
   }
 }

@@ -13,28 +13,40 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
+      <section class="sa-summary-strip mental-stats-summary" :class="{ 'has-crisis': stats && stats.openCrisis }">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">聚合管理结论</span>
+          <h2 class="sa-summary-strip__title">
+            当前关注在册 {{ (stats && stats.total) || 0 }} 条，在办危机 {{ (stats && stats.openCrisis) || 0 }} 条，回访中 {{ (stats && stats.byStatus && stats.byStatus.FOLLOWING) || 0 }} 条
+          </h2>
+          <p class="sa-summary-strip__text">本页只展示数量分布，不提供姓名、学号、咨询记录、诊断或个体明细。发现危机数量异常时，应由具备专项权限的人员进入危机工作区处置。</p>
+        </div>
+      </section>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
       </div>
 
       <div class="sa-grid sa-grid--two">
-        <AppSectionCard title="按状态分布">
+        <AppSectionCard title="按处置状态分布">
+          <p class="mental-stats-hint">了解转介、回访、危机升级和关闭的数量结构，不支持点击查看个人。</p>
           <DataTable v-if="statusRows.length" :columns="statusColumns" :rows="statusRows" row-key="key">
             <template #cell-label="{ row }"><AppStatusTag :type="row.kind" :label="row.label" /></template>
-            <template #cell-value="{ row }">{{ row.value }}</template>
+            <template #cell-value="{ row }"><strong class="mental-stat-number">{{ row.value }}</strong></template>
           </DataTable>
-          <p v-else class="sa-empty">暂无数据</p>
+          <p v-else class="sa-empty">当前数据范围内暂无状态分布数据。</p>
         </AppSectionCard>
 
         <AppSectionCard title="按关注等级分布">
+          <p class="mental-stats-hint">用于识别一般关注、重点关注与危机记录的整体结构，不展示任何事由或明细。</p>
           <DataTable v-if="levelRows.length" :columns="levelColumns" :rows="levelRows" row-key="key">
             <template #cell-label="{ row }"><AppStatusTag :type="row.kind" :label="row.label" /></template>
-            <template #cell-value="{ row }">{{ row.value }}</template>
+            <template #cell-value="{ row }"><strong class="mental-stat-number">{{ row.value }}</strong></template>
           </DataTable>
-          <p v-else class="sa-empty">暂无数据</p>
+          <p v-else class="sa-empty">当前数据范围内暂无关注等级分布。</p>
         </AppSectionCard>
       </div>
-      <p class="sa-note">本页仅呈现聚合数量，不含任何学生姓名、咨询记录或诊断信息。</p>
+      <p class="sa-note">隐私边界：本页仅呈现聚合数量，不含任何学生姓名、咨询记录、诊断信息或可反推个体的明细。</p>
     </AppGlobalState>
   </AppPageShell>
 </template>
@@ -116,31 +128,13 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-.sa-grid--two {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
-}
-.sa-note {
-  color: var(--text-tertiary);
-  margin-top: var(--space-4);
-}
-.sa-empty {
-  color: var(--text-tertiary);
-  padding: var(--space-4);
-  text-align: center;
-}
-@media (max-width: 960px) {
-  .sa-grid--metrics,
-  .sa-grid--two {
-    grid-template-columns: 1fr;
-  }
-}
+.mental-stats-summary.has-crisis { border-color: var(--danger-200, #fecaca); background: var(--danger-50, #fef2f2); }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.sa-grid--two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.mental-stats-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.mental-stat-number { color: var(--primary-700); font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
+.sa-note { margin: var(--space-4) 0 0; padding: 10px 12px; border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.65; }
+@media (max-width: 960px) { .sa-grid--metrics, .sa-grid--two { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .sa-grid--metrics, .sa-grid--two { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 </style>

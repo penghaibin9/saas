@@ -11,7 +11,9 @@
       :description="loadError"
       @retry="goLogin"
     />
-    <router-view v-else-if="ctx" :ctx="ctx" />
+    <div v-else-if="ctx" class="student-affairs-ui-scope">
+      <router-view :ctx="ctx" />
+    </div>
     <LoadingState v-else text="正在加载学工中心…" />
   </BasePortalLayout>
 </template>
@@ -69,3 +71,5 @@ export default {
   }
 }
 </script>
+
+<style src="@/modules/studentAffairs/styles/usability.css"></style>

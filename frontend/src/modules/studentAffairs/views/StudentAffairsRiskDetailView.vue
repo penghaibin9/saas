@@ -22,8 +22,23 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/risk')"
     >
+      <section class="sa-summary-strip risk-summary">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">当前风险结论</span>
+          <h2 class="sa-summary-strip__title">{{ detail.title || '风险记录' }}</h2>
+          <p class="sa-summary-strip__text">
+            {{ detail.realName || '未命名学生' }} · {{ detail.studentNo || detail.studentId }}；
+            当前状态：{{ detail.statusLabel || detail.status || '—' }}；责任人：{{ ownerLabel(detail) }}。
+          </p>
+        </div>
+        <div class="risk-summary__level">
+          <span>风险等级</span>
+          <AppRiskTag :level="detail.riskLevel" />
+        </div>
+      </section>
+
       <div class="sa-detail-layout">
-        <AppSectionCard title="风险档案">
+        <AppSectionCard title="风险档案与来源证据">
           <div class="sa-heading">
             <div>
               <h2>{{ detail.title || '风险记录' }}</h2>
@@ -34,13 +49,14 @@
 
           <AppDescriptionList :items="detailItems" :columns="2" bordered>
             <template #detail>
-              <span v-if="detail.mentalMasked" class="sa-masked">心理关注明细已按角色脱敏</span>
+              <span v-if="detail.mentalMasked" class="sa-masked">心理来源明细已按角色脱敏</span>
               <AppSensitiveText v-else :value="detail.detail" />
             </template>
           </AppDescriptionList>
         </AppSectionCard>
 
-        <AppSectionCard title="处置动作">
+        <AppSectionCard title="当前可执行动作">
+          <p class="sa-action-hint">按钮由后端状态机和当前权限共同决定。先确认责任人、风险等级和已有处置记录，再执行分派、升级或关闭。</p>
           <div class="sa-actions">
             <AppPermissionButton v-if="canAct('ASSIGN')" :allowed="canBtn('studentAffairs.risk.assign')" code="studentAffairs.risk.assign" variant="secondary" :loading="actioning" @click="assign">
               分派
@@ -66,6 +82,11 @@
             <AppPermissionButton v-if="canAct('REOPEN')" :allowed="canBtn('studentAffairs.risk.reopen')" code="studentAffairs.risk.reopen" variant="secondary" :loading="actioning" @click="reopen">
               重开
             </AppPermissionButton>
+          </div>
+          <div v-if="!detail.allowedActions || !detail.allowedActions.length" class="sa-terminal-hint">当前状态暂无可执行动作，请查看处置记录或返回列表。</div>
+          <div class="sa-audit-head">
+            <strong>处置时间线</strong>
+            <span>每次状态变化、责任人和处置说明均保留审计</span>
           </div>
           <AppAuditTrail class="sa-audit" :records="auditRecords" compact :show-ip="false" />
         </AppSectionCard>
@@ -114,7 +135,6 @@ import {
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
-
 
 export default {
   name: 'StudentAffairsRiskDetailView',
@@ -289,8 +309,18 @@ export default {
 <style scoped>
 .sa-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
   gap: var(--space-4);
+}
+.risk-summary__level {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.risk-summary__level > span {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
 }
 .sa-heading {
   display: flex;
@@ -298,6 +328,8 @@ export default {
   justify-content: space-between;
   gap: var(--space-4);
   margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
 }
 .sa-heading h2 {
   margin: 0 0 var(--space-1);
@@ -308,13 +340,46 @@ export default {
   margin: 0;
   color: var(--text-tertiary);
 }
+.sa-action-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.65;
+}
 .sa-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+.sa-terminal-hint {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-base);
+  border-radius: var(--radius-md);
+  background: var(--bg-section);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+.sa-audit-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-light);
+}
+.sa-audit-head strong {
+  color: var(--text-primary);
+}
+.sa-audit-head span {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  text-align: right;
+}
 .sa-audit {
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
 }
 .sa-masked {
   color: var(--text-tertiary);
@@ -322,6 +387,17 @@ export default {
 @media (max-width: 960px) {
   .sa-detail-layout {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .risk-summary__level {
+    justify-content: flex-start;
+  }
+  .sa-audit-head {
+    flex-direction: column;
+  }
+  .sa-audit-head span {
+    text-align: left;
   }
 }
 </style>

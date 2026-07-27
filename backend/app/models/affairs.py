@@ -73,3 +73,13 @@ class AffairsLeaveExtension(PKMixin, TenantMixin, CommonMixin, Base):
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="SUBMITTED",
                                         comment="SUBMITTED/APPROVED/REJECTED/CANCELLED")
+
+
+# 由全局 app.models 导入本模块时同步注册学工材料补交与安全批次四张表。
+# 业务服务直接从 affairs_operations 导入，避免继续扩大本文件职责。
+from app.models.affairs_operations import (  # noqa: E402,F401
+    AffairsBatchJob,
+    AffairsBatchJobItem,
+    AffairsMaterialRequirement,
+    AffairsMaterialSubmission,
+)

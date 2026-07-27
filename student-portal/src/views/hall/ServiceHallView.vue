@@ -2,7 +2,7 @@
   <div class="sp-page">
     <div class="search">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#98A0AE" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" /></svg>
-      <input v-model.trim="kw" placeholder="搜索办事项，如：选课、请假、成绩单、去向登记…" />
+      <input v-model.trim="kw" placeholder="搜索办事项，如：选课、请假、材料补交、成绩单、去向登记…" />
     </div>
 
     <template v-if="kw">
@@ -62,12 +62,13 @@ const HOT = [
   { name: '实习周报提交', cat: '毕业就业', path: 'internship', c: 'gradEmp' }, { name: '去向登记', cat: '毕业就业', path: 'employment', c: 'gradEmp' },
   { name: '毕业设计整改重交', cat: '毕业就业', path: 'graduation', c: 'gradEmp' }, { name: '三方协议打印', cat: '毕业就业', path: 'internship', c: 'gradEmp' },
   { name: '请假销假', cat: '学工事务', path: 'campus-service', c: 'affairs' }, { name: '困难认定', cat: '学工事务', path: 'campus-service', c: 'affairs' },
-  { name: '奖助勤贷补申请', cat: '学工事务', path: 'campus-service', c: 'affairs' }, { name: '心理自评', cat: '学工事务', path: 'campus-service', c: 'affairs' }
+  { name: '材料补交', cat: '学工事务', path: 'materials', c: 'affairs' }, { name: '奖助勤贷补申请', cat: '学工事务', path: 'campus-service', c: 'affairs' },
+  { name: '心理自评', cat: '学工事务', path: 'campus-service', c: 'affairs' }
 ]
 const hotShown = computed(() => (cat.value === 'all' ? HOT : HOT.filter((h) => h.c === cat.value)))
 const filtered = computed(() => HOT.filter((h) => h.name.includes(kw.value)))
 
-function countOf(key) { return { academic: 8, graduation: 10, internship: 6, employment: 4, campusService: 7, profile: 3, orientation: 4 }[key] || 1 }
+function countOf(key) { return { academic: 8, graduation: 10, internship: 6, employment: 4, campusService: 8, profile: 3, orientation: 4 }[key] || 1 }
 function go(path) { router.push('/' + path) }
 
 onMounted(async () => {

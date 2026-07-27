@@ -14,11 +14,30 @@
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载房源台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">当前房源结论</span>
+          <h2 class="sa-summary-strip__title">{{ buildings.length }} 栋楼、{{ occ.totalBeds || 0 }} 张床位，当前空床 {{ occ.vacantBeds || 0 }} 张</h2>
+          <p class="sa-summary-strip__text">先选择楼栋查看房间，再选择房间查看具体床位。新建楼栋或一键铺床前，请核对性别限制、层数、房间数和每间床位数。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">新建楼栋</AppPermissionButton>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="宿舍房源管理流程">
+        <div class="sa-workflow-step" data-step="1"><strong>维护楼栋</strong><br>设置楼名、性别限制和宿管范围</div>
+        <div class="sa-workflow-step" data-step="2"><strong>生成房间</strong><br>按层数和每层房数铺设房间</div>
+        <div class="sa-workflow-step" data-step="3"><strong>生成床位</strong><br>按每间床位数形成床位台账</div>
+        <div class="sa-workflow-step" data-step="4"><strong>核对容量</strong><br>确认空床、入住数和房间状态</div>
+      </div>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
 
-      <AppSectionCard title="楼栋列表">
+      <AppSectionCard title="一、选择楼栋">
+        <p class="dorm-resource-hint">点击“查看房间”进入楼栋下钻；选中行会高亮。空床/总床可帮助判断当前容量。</p>
         <DataTable
           v-if="buildings.length"
           :columns="buildingColumns"
@@ -28,9 +47,9 @@
         >
           <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.buildingName }}</span></template>
           <template #cell-code="{ row }">{{ row.buildingCode || '—' }}</template>
-          <template #cell-gender="{ row }">{{ genderLabel(row.genderLimit) }}</template>
+          <template #cell-gender="{ row }"><span class="dorm-gender">{{ genderLabel(row.genderLimit) }}</span></template>
           <template #cell-floorCount="{ row }">{{ row.floorCount || '—' }}</template>
-          <template #cell-beds="{ row }">{{ row.vacantBeds }}/{{ row.totalBeds }}</template>
+          <template #cell-beds="{ row }"><strong class="dorm-capacity">{{ row.vacantBeds }}/{{ row.totalBeds }}</strong></template>
           <template #cell-manager="{ row }">{{ row.managerTeacherKey || '未指派' }}</template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
@@ -39,10 +58,11 @@
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无楼栋，点右上「新建楼栋」</p>
+        <p v-else class="sa-empty">暂无楼栋。点击右上角“新建楼栋”建立第一栋宿舍资源。</p>
       </AppSectionCard>
 
-      <AppSectionCard v-if="curBuilding" :title="`房间 · ${curBuildingName}`">
+      <AppSectionCard v-if="curBuilding" :title="`二、房间 · ${curBuildingName}`">
+        <p class="dorm-resource-hint">选择房间查看床位。空床数与容量并列展示，便于快速识别满员房间。</p>
         <DataTable
           v-if="rooms.length"
           :columns="roomColumns"
@@ -53,49 +73,44 @@
           <template #cell-roomNo="{ row }"><span class="mp-cell-main">{{ row.roomNo }}</span></template>
           <template #cell-floorNo="{ row }">{{ row.floorNo }}</template>
           <template #cell-capacity="{ row }">{{ row.capacity }}</template>
-          <template #cell-vacantBeds="{ row }">{{ row.vacantBeds }}</template>
+          <template #cell-vacantBeds="{ row }"><strong :class="row.vacantBeds ? 'dorm-vacant' : 'dorm-full'">{{ row.vacantBeds }}</strong></template>
           <template #cell-status="{ row }">{{ row.status }}</template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openRoom(row)">床位</AppPermissionButton>
+            <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openRoom(row)">查看床位</AppPermissionButton>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">该楼暂无房间，点「铺床」生成</p>
+        <p v-else class="sa-empty">该楼暂无房间。可使用“铺床”按层数、房间数和床位数自动生成。</p>
       </AppSectionCard>
 
-      <AppSectionCard v-if="curRoom" :title="`床位 · ${curRoomNo}`">
+      <AppSectionCard v-if="curRoom" :title="`三、床位 · ${curRoomNo}`">
+        <div class="bed-legend"><span class="is-vacant">空床</span><span class="is-occupied">已入住</span></div>
         <div class="sa-beds">
           <span v-for="bd in beds" :key="bd.bedId" class="sa-bed" :class="bd.status === 'OCCUPIED' ? 'sa-bed--occ' : 'sa-bed--vac'">
-            {{ bd.bedNo }} · {{ bd.status === 'OCCUPIED' ? (bd.occupantName || '已住') : '空床' }}
+            <strong>{{ bd.bedNo }}</strong><small>{{ bd.status === 'OCCUPIED' ? (bd.occupantName || '已住') : '空床' }}</small>
           </span>
-          <span v-if="!beds.length" class="sa-empty">该房暂无床位</span>
+          <span v-if="!beds.length" class="sa-empty">该房暂无床位。</span>
         </div>
       </AppSectionCard>
     </AppGlobalState>
 
     <AppDrawer :visible="buildDlg.visible" title="新增楼栋" @close="buildDlg.visible = false">
       <div class="dr-form">
+        <div class="dorm-form-note">新建楼栋后可选择一键铺满。提交前请核对性别限制和容量参数，避免生成错误房间结构。</div>
         <AppFormItem label="楼栋名称" required>
           <AppTextInput v-model="buildDlg.name" placeholder="如：1 号楼 / 西苑 3 栋" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="性别限制" required>
           <AppSelect v-model="buildDlg.gender" :options="GENDER_LIMITS" :disabled="actioning" />
         </AppFormItem>
-        <label class="dr-check">
+        <label class="dr-check" :class="{ 'is-on': buildDlg.autoFill }">
           <input v-model="buildDlg.autoFill" type="checkbox" :disabled="actioning" />
-          一键铺满整栋（按下面的层数 × 每层房数 × 每间床位自动建房间与床位）
+          <span><strong>一键铺满整栋</strong><small>按层数 × 每层房数 × 每间床位自动建房间与床位</small></span>
         </label>
         <template v-if="buildDlg.autoFill">
-          <AppFormItem label="层数" required>
-            <AppNumberInput v-model="buildDlg.floors" :min="1" :max="50" :disabled="actioning" />
-          </AppFormItem>
-          <AppFormItem label="每层房数" required>
-            <AppNumberInput v-model="buildDlg.roomsPerFloor" :min="1" :max="100" :disabled="actioning" />
-          </AppFormItem>
-          <AppFormItem label="每间床位" required>
-            <AppNumberInput v-model="buildDlg.bedsPerRoom" :min="1" :max="12" :disabled="actioning" />
-          </AppFormItem>
-          <p class="dr-hint">将建 {{ buildDlg.floors * buildDlg.roomsPerFloor }} 间房、
-            {{ buildDlg.floors * buildDlg.roomsPerFloor * buildDlg.bedsPerRoom }} 个床位。</p>
+          <AppFormItem label="层数" required><AppNumberInput v-model="buildDlg.floors" :min="1" :max="50" :disabled="actioning" /></AppFormItem>
+          <AppFormItem label="每层房数" required><AppNumberInput v-model="buildDlg.roomsPerFloor" :min="1" :max="100" :disabled="actioning" /></AppFormItem>
+          <AppFormItem label="每间床位" required><AppNumberInput v-model="buildDlg.bedsPerRoom" :min="1" :max="12" :disabled="actioning" /></AppFormItem>
+          <p class="dr-hint">预计生成 {{ buildDlg.floors * buildDlg.roomsPerFloor }} 间房、{{ buildDlg.floors * buildDlg.roomsPerFloor * buildDlg.bedsPerRoom }} 个床位。</p>
         </template>
         <AppInlineAlert v-if="buildDlg.error" type="danger" :description="buildDlg.error" />
       </div>
@@ -107,17 +122,11 @@
 
     <AppDrawer :visible="genDlg.visible" :title="`一键铺满 · ${genDlg.buildingName}`" @close="genDlg.visible = false">
       <div class="dr-form">
-        <AppFormItem label="层数" required>
-          <AppNumberInput v-model="genDlg.floors" :min="1" :max="50" :disabled="actioning" />
-        </AppFormItem>
-        <AppFormItem label="每层房数" required>
-          <AppNumberInput v-model="genDlg.roomsPerFloor" :min="1" :max="100" :disabled="actioning" />
-        </AppFormItem>
-        <AppFormItem label="每间床位" required>
-          <AppNumberInput v-model="genDlg.bedsPerRoom" :min="1" :max="12" :disabled="actioning" />
-        </AppFormItem>
-        <p class="dr-hint">将建 {{ genDlg.floors * genDlg.roomsPerFloor }} 间房、
-          {{ genDlg.floors * genDlg.roomsPerFloor * genDlg.bedsPerRoom }} 个床位。</p>
+        <div class="dorm-form-note">系统将按以下参数批量创建房间和床位。请确认目标楼栋与容量参数无误。</div>
+        <AppFormItem label="层数" required><AppNumberInput v-model="genDlg.floors" :min="1" :max="50" :disabled="actioning" /></AppFormItem>
+        <AppFormItem label="每层房数" required><AppNumberInput v-model="genDlg.roomsPerFloor" :min="1" :max="100" :disabled="actioning" /></AppFormItem>
+        <AppFormItem label="每间床位" required><AppNumberInput v-model="genDlg.bedsPerRoom" :min="1" :max="12" :disabled="actioning" /></AppFormItem>
+        <p class="dr-hint">预计生成 {{ genDlg.floors * genDlg.roomsPerFloor }} 间房、{{ genDlg.floors * genDlg.roomsPerFloor * genDlg.bedsPerRoom }} 个床位。</p>
         <AppInlineAlert v-if="genDlg.error" type="danger" :description="genDlg.error" />
       </div>
       <template #footer>
@@ -136,8 +145,6 @@ import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
-
-/** 性别限制（后端 genderLimit）——原为 window.prompt 让用户手打 MALE/FEMALE/MIXED */
 const GENDER_LIMITS = [
   { value: 'MIXED', label: '混合' },
   { value: 'MALE', label: '男寝' },
@@ -174,9 +181,7 @@ export default {
       GENDER_LIMITS,
       loading: true, actioning: false, errorMessage: '', buildings: [], occ: {},
       curBuilding: '', curBuildingName: '', rooms: [], curRoom: '', curRoomNo: '', beds: [],
-      // 建楼栋：原为「楼名→性别→是否铺满→层数→每层房数→每间床位」6 连 prompt
       buildDlg: { visible: false, name: '', gender: 'MIXED', autoFill: false, floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
-      // 一键铺满：原为 3 连 prompt
       genDlg: { visible: false, buildingId: '', buildingName: '', floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
     }
   },
@@ -245,7 +250,6 @@ export default {
       }))
       if (ok) d.visible = false
     },
-    /** @returns {boolean} 是否成功（失败保留弹窗与已填内容） */
     async runAction(fn) {
       this.actioning = true
       this.errorMessage = ''
@@ -260,17 +264,33 @@ export default {
 
 <style scoped>
 .dr-form { display: flex; flex-direction: column; gap: var(--space-3); }
-.dr-check { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); color: var(--text-secondary); }
-.dr-hint { margin: 0; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-/* 选中楼栋/房间高亮：类由 DataTable 的 row-class 挂在子组件内部 <tr> 上，父级 scoped 样式须 :deep() 穿透 */
+.dorm-form-note { padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
+.dr-check { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--font-size-sm); }
+.dr-check.is-on { border-color: var(--primary-200); background: var(--primary-50); }
+.dr-check span { display: grid; gap: 2px; }
+.dr-check strong { color: var(--text-primary); }
+.dr-check small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.dr-hint { margin: 0; padding: 9px 11px; border-radius: var(--radius-md); background: var(--bg-section); color: var(--text-secondary); font-size: var(--font-size-xs); }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.dorm-resource-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
 :deep(.dt__tr.sa-sel) .dt__td { background: var(--primary-50, var(--bg-subtle)); }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-.sa-beds { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.sa-bed { border: 1px solid var(--border-light); border-radius: var(--radius-base); padding: var(--space-2) var(--space-3); font-size: var(--font-size-sm); }
+:deep(.dt__tr.sa-sel) .dt__td:first-child { box-shadow: inset 3px 0 0 var(--primary-500); }
+.dorm-gender { padding: 2px 7px; border-radius: var(--radius-full); background: var(--bg-section); color: var(--text-secondary); font-size: var(--font-size-xs); }
+.dorm-capacity, .dorm-vacant { color: var(--success-700, #15803d); font-variant-numeric: tabular-nums; }
+.dorm-full { color: var(--warning-700, #b45309); font-variant-numeric: tabular-nums; }
+.bed-legend { display: flex; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.bed-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.bed-legend span::before { content: ''; width: 8px; height: 8px; border-radius: 50%; }
+.bed-legend .is-vacant::before { background: var(--success-500, #22c55e); }
+.bed-legend .is-occupied::before { background: var(--warning-500, #f59e0b); }
+.sa-beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--space-2); }
+.sa-bed { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font-size: var(--font-size-sm); }
+.sa-bed strong { font-size: var(--font-size-base); }
+.sa-bed small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sa-bed--occ { background: var(--warning-50); color: var(--warning-700); }
 .sa-bed--vac { background: var(--success-50); color: var(--success-700); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } .sa-beds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @import '@/styles/module-page.css';
 </style>
