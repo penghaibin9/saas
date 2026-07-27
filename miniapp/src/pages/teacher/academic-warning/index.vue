@@ -11,8 +11,10 @@
       <view class="page-pad" v-if="list">
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待处理预警"
           description="学生触发学业预警后会出现在这里，可关闭或升级为风险。" />
+        <MobileGlobalState v-else-if="!filteredList.length" state="empty" title="当前筛选无预警" description="可切换上方预警等级查看其他记录。" />
         <view class="stack" v-else>
-          <view v-for="w in filteredList" :key="w.id" class="card aw">
+          <view v-for="w in filteredList" :key="w.id || w.warningId" class="card aw" :class="{ 'is-target': isTarget(w) }">
+            <text v-if="isTarget(w)" class="aw__target">从工作台直达的预警</text>
             <view class="row-between">
               <view class="flex-1">
                 <view class="row" style="gap:6px;">
@@ -30,8 +32,8 @@
               <text class="aw__meta-item aw__meta-status">{{ w.statusLabel || w.status }}</text>
             </view>
             <view class="aw__actions" v-if="w.status === 'PENDING_HANDLE' || w.status === 'ACTIVE'">
-              <button class="aw__escalate flex-1" @click="handle(w, 'ESCALATE')">升级为风险</button>
-              <button class="aw__close flex-1" @click="handle(w, 'CLOSE')">关闭预警</button>
+              <button class="aw__escalate flex-1" :disabled="actingId === warningId(w)" @click="handle(w, 'ESCALATE')">升级为风险</button>
+              <button class="aw__close flex-1" :disabled="actingId === warningId(w)" @click="handle(w, 'CLOSE')">关闭预警</button>
             </view>
           </view>
         </view>
@@ -47,8 +49,15 @@ import { toast } from '@/utils/nav'
 const LEVELS = [{ key: 'HIGH', label: '高' }, { key: 'MEDIUM', label: '中' }, { key: 'LOW', label: '低' }]
 
 export default {
-  data() { return { list: null, state: 'loading', acting: false, levelFilter: 'all' } },
-  onLoad() { this.load() },
+  data() {
+    return {
+      list: null, state: 'loading', actingId: '', levelFilter: 'all', targetWarningId: ''
+    }
+  },
+  onLoad(options = {}) {
+    this.targetWarningId = String(options.id || options.warningId || '')
+    this.load()
+  },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -65,16 +74,35 @@ export default {
     }
   },
   methods: {
+    warningId(item) { return String((item && (item.warningId || item.id)) || '') },
+    isTarget(item) { return !!this.targetWarningId && this.warningId(item) === this.targetWarningId },
     levelTone(lv) { return lv === 'HIGH' ? 'danger' : lv === 'MEDIUM' ? 'warning' : 'default' },
+    focusTarget(rows) {
+      if (!this.targetWarningId) return rows
+      const index = rows.findIndex((item) => this.isTarget(item))
+      if (index < 0) {
+        toast('该学业预警不存在、已处理或不在当前数据范围内')
+        this.targetWarningId = ''
+        return rows
+      }
+      const target = rows[index]
+      this.levelFilter = 'all'
+      if (index === 0) return rows
+      return [target, ...rows.slice(0, index), ...rows.slice(index + 1)]
+    },
     load(done) {
       this.state = 'loading'
       teacherApi.getAcademicWarnings()
-        .then((d) => { this.list = (d && d.list) || []; this.state = 'ready' })
+        .then((d) => {
+          this.list = this.focusTarget((d && (d.list || d.items)) || [])
+          this.state = 'ready'
+        })
         .catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
     },
     handle(w, action) {
-      if (this.acting) return
+      const id = this.warningId(w)
+      if (!id || this.actingId) return
       const close = action === 'CLOSE'
       uni.showModal({
         title: close ? '关闭预警' : '升级为风险',
@@ -85,16 +113,16 @@ export default {
           if (!r.confirm) return
           const note = (r.content || '').trim()
           if (note.length < 5) { toast('说明至少 5 个字'); return }
-          this.acting = true
-          teacherApi.handleWarning(w.id, action, note)
-            .then(() => { toast(close ? '预警已关闭' : '已升级为风险'); this.load() })
+          this.actingId = id
+          teacherApi.handleWarning(id, action, note)
+            .then(() => { toast(close ? '预警已关闭' : '已升级为风险'); this.targetWarningId = ''; this.load() })
             .catch((e) => {
               const code = e && String(e.code)
-              if (code && code.startsWith('409')) { toast('该预警已被处理，正在刷新'); this.load() }
+              if (code && code.startsWith('409')) { toast('该预警已被处理，正在刷新'); this.targetWarningId = ''; this.load() }
               else if (code && code.startsWith('403')) toast((e && e.message) || '不在你的数据范围内')
               else toast((e && e.message) || '处理失败，请重试')
             })
-            .finally(() => { this.acting = false })
+            .finally(() => { this.actingId = '' })
         }
       })
     }
@@ -107,6 +135,8 @@ export default {
 .aw__chip { font-size: var(--font-size-sm); padding: 6px 13px; border-radius: var(--radius-full); background: var(--gray-50); color: var(--text-secondary); font-weight: var(--font-weight-medium); }
 .aw__chip.is-on { background: var(--teacher-600); color: #fff; }
 .aw { display: flex; flex-direction: column; gap: var(--space-2); }
+.aw.is-target { border: 1px solid var(--teacher-500); box-shadow: 0 0 0 2px var(--teacher-50); }
+.aw__target { color: var(--teacher-700); font-size: var(--font-size-xs); font-weight: 600; }
 .aw__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .aw__time { font-size: var(--font-size-xs); color: var(--text-tertiary); flex-shrink: 0; }
 .aw__reason { background: var(--gray-50); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
