@@ -5,10 +5,16 @@ const optionalViews = import.meta.glob('../views/**/*.vue')
 const optionalView = (relativePath, fallback) =>
   optionalViews[`../views/${relativePath}.vue`] || fallback
 
-const academicSection = (path, name, tab, title, description) => ({
+const academicSection = (path, name, tab, title, description, subTab = '') => ({
   path,
   name,
-  meta: { modulePath: 'academic', academicTab: tab, academicTitle: title, academicDescription: description },
+  meta: {
+    modulePath: 'academic',
+    academicTab: tab,
+    academicSubTab: subTab,
+    academicTitle: title,
+    academicDescription: description
+  },
   component: () => import('../views/academic/AcademicSectionRouteView.vue')
 })
 
@@ -38,7 +44,7 @@ const routes = [
       academicSection('academic/recheck', 'academic-recheck', '成绩复查', '成绩复查', '对本人已发布成绩申请复查并查看处理结果'),
       academicSection('academic/status', 'academic-status', '学籍异动', '学籍与异动', '查看当前学籍并发起休学、复学、转专业等申请'),
       academicSection('academic/exam', 'academic-exam', '考试/缓考/免修', '考试、缓考与补重修', '查看考试安排，处理缓考、补考、重修和免修事项'),
-      academicSection('academic/makeup', 'academic-makeup', '考试/缓考/免修', '补考重修', '从当前有效未通过课程发起补考重修或免修申请'),
+      academicSection('academic/makeup', 'academic-makeup', '考试/缓考/免修', '补考重修', '从当前有效未通过课程发起补考重修或免修申请', '补考重修申请'),
       academicSection('academic/attendance', 'academic-attendance', '我的考勤', '课堂考勤', '查看本人课堂考勤记录和汇总'),
       academicSection('academic/calendar', 'academic-calendar', '校历', '校历', '查看当前学期教学周、节假日和考试周'),
       academicSection('academic/clearance', 'academic-clearance', '清考结果', '清考结果', '查看本人清考课程和最终结果'),
