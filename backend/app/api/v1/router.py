@@ -53,6 +53,7 @@ from app.services.affairs_student_contract_security_guard import install as inst
 from app.services.affairs_student_contract_service import install as install_student_contract
 from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
+from app.services.affairs_teacher_workbench_guard import install as install_teacher_workbench_guard
 
 
 def _route_signature(route) -> tuple[str, frozenset[str]]:
@@ -132,5 +133,7 @@ install_dorm_node_guard()
 install_student_contract()
 # 最终安全门收紧学生时间线、附件可见性、稳定标识和可执行动作。
 install_student_contract_security_guard()
+# 教师学工首页复用通用待办可见性，并返回真实逐条跨业务待办。
+install_teacher_workbench_guard()
 # 终态安全门在所有兼容层之后执行：强制学生本人身份，并机械检查教师移动读写权限登记。
 install_affairs_four_end_terminal_guard(api_router)
