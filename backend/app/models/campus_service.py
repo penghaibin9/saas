@@ -87,7 +87,7 @@ class CsDormRecord(PKMixin, TenantMixin, CommonMixin, Base):
 class CsDormException(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_dorm_exception"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     exc_type: Mapped[str] = mapped_column(String(50), nullable=False, default="NIGHT_OUT")
     happen_time: Mapped[datetime | None] = mapped_column(DateTime)
     detail: Mapped[str | None] = mapped_column(String(500))
