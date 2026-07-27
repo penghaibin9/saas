@@ -77,6 +77,59 @@ def _encode_student_answers(answers, token: str) -> str:
     )
 
 
+def _require_anonymous_student_batch(batch, *, has_student_tasks: bool = True) -> None:
+    """学生任务只能进入匿名批次；在生成、发布、开放和提交四个阶段重复校验。"""
+    if has_student_tasks and not bool(getattr(batch, "anonymous", False)):
+        raise AppException(
+            "DATA_CONFLICT",
+            "学生评教批次必须启用匿名模式，请修正批次配置后再继续",
+            http_status=409,
+        )
+
+
+def _batch_has_student_tasks(db, batch_id: int) -> bool:
+    from app.models import AaEvaluationTask
+
+    return db.query(AaEvaluationTask.id).filter(
+        AaEvaluationTask.tenant_id == _tid(),
+        AaEvaluationTask.batch_id == int(batch_id),
+        AaEvaluationTask.evaluator_type == "STUDENT",
+        AaEvaluationTask.is_deleted.is_(False),
+    ).first() is not None
+
+
+def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
+    evaluator_type = str(evaluator_type or "STUDENT").upper()
+    if evaluator_type == "STUDENT":
+        with session() as db:
+            _legacy._require_school(_legacy._ctx(user, db))
+            batch = _base._writable_batch(db, bid)
+            _require_anonymous_student_batch(batch)
+    return _base.generate_tasks(user, bid, teaching_task_ids, evaluator_type)
+
+
+def publish_batch(user, bid):
+    with session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _base._writable_batch(db, bid)
+        _require_anonymous_student_batch(
+            batch,
+            has_student_tasks=_batch_has_student_tasks(db, batch.id),
+        )
+    return _base.publish_batch(user, bid)
+
+
+def open_batch(user, bid):
+    with session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _base._writable_batch(db, bid)
+        _require_anonymous_student_batch(
+            batch,
+            has_student_tasks=_batch_has_student_tasks(db, batch.id),
+        )
+    return _base.open_batch(user, bid)
+
+
 def _anonymous_audit(db, task_id: int) -> None:
     """只记录发生过匿名提交，不写当前学生账号、学号、姓名或可反查摘要。"""
     from app.models import AffairsAuditTrail
@@ -225,12 +278,7 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             raise _legacy._invalid("评教窗口未开放")
 
         if task.evaluator_type == "STUDENT":
-            if not bool(batch.anonymous):
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "学生评教批次未启用匿名模式，已拒绝提交，请联系教务处修正批次配置",
-                    http_status=409,
-                )
+            _require_anonymous_student_batch(batch)
             profile, roster, token = _student_submission_context(db, user, task)
             duplicate = db.query(AaEvaluationRecord).filter(
                 AaEvaluationRecord.tenant_id == _tid(),
