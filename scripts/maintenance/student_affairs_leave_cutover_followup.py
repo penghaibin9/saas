@@ -22,22 +22,57 @@ def patch_remaining_callers() -> None:
     for path in Path("student-portal/src").rglob("*.vue"):
         text = path.read_text(encoding="utf-8")
         updated = re.sub(
-            r"portalApi\.affairsServiceApply\(\{\s*serviceKey:\s*['\"]LEAVE['\"]\s*,\s*\.\.\.([^}]+)\}\)",
-            r"portalApi.affairsLeaveApply({ ...\1 })",
+            r"portalApi\.affairsServiceApply\(\{\s*serviceKey:\s*['\"]LEAVE['\"]\s*,\s*(.*?)\}\)",
+            r"portalApi.affairsLeaveApply({\1})",
             text,
+            flags=re.S,
         )
         if updated != text:
             path.write_text(updated, encoding="utf-8")
 
+    affairs_view = Path("student-portal/src/views/affairs/AffairsView.vue")
+    if affairs_view.exists():
+        text = affairs_view.read_text(encoding="utf-8")
+        text = text.replace(
+            "await portalApi.affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '' })",
+            "await portalApi.affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '', version: lv.version })",
+        )
+        text = text.replace(
+            "await portalApi.affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假' })",
+            "await portalApi.affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假', version: lv.version })",
+        )
+        text = text.replace(
+            "      newEndTime: extendForm.newEndTime,\n      reason: extendForm.reason.trim()\n",
+            "      newEndTime: extendForm.newEndTime,\n      reason: extendForm.reason.trim(),\n      version: lv.version\n",
+        )
+        affairs_view.write_text(text, encoding="utf-8")
+
     for path in Path("miniapp/src").rglob("*.vue"):
         text = path.read_text(encoding="utf-8")
         updated = re.sub(
-            r"studentApi\.submitServiceApply\(\{\s*serviceKey:\s*['\"]LEAVE['\"]\s*,\s*\.\.\.([^}]+)\}\)",
-            r"studentApi.applyLeave(\1)",
+            r"studentApi\.submitServiceApply\(\{\s*serviceKey:\s*['\"]LEAVE['\"]\s*,\s*(.*?)\}\)",
+            r"studentApi.applyLeave({\1})",
             text,
+            flags=re.S,
         )
         if updated != text:
             path.write_text(updated, encoding="utf-8")
+
+
+def audit_versions() -> None:
+    path = Path("student-portal/src/views/affairs/AffairsView.vue")
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    required = (
+        "affairsLeaveApply({",
+        "affairsLeaveResubmit(leaveId, { reason: lv.reason || leaveForm.reason || '', version: lv.version })",
+        "affairsLeaveCancel(leaveId, { proofNote: '学生本人申请销假', version: lv.version })",
+        "version: lv.version",
+    )
+    for needle in required:
+        if needle not in text:
+            raise RuntimeError(f"student portal leave version contract missing: {needle}")
 
 
 if __name__ == "__main__":
@@ -50,4 +85,5 @@ if __name__ == "__main__":
     base.third_cut()
     print("CUTOVER_STAGE audit", flush=True)
     base.audit()
+    audit_versions()
     print("leave cutover follow-up audit passed", flush=True)
