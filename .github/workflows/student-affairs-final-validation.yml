@@ -73,15 +73,17 @@ jobs:
         run: |
           set +e
           set -o pipefail
-          timeout 25m pytest \
+          timeout 35m pytest \
+            tests/test_affairs_leave.py \
             tests/test_affairs_leave_cutover_contract.py \
             tests/test_affairs_leave_identity_cutover_contract.py \
+            tests/test_affairs_dashboard.py \
+            tests/test_campus_service.py \
             tests/test_affairs_four_end_core_flow_matrix.py \
             tests/test_affairs_four_end_hardening.py \
             tests/test_affairs_four_end_review_round2.py \
             tests/test_affairs_four_end_terminal_guard.py \
             tests/test_affairs_route_mount_contract.py \
-            -k 'leave or cutover or route_mount' \
             -q -s -p no:warnings --durations=30 2>&1 | tee ../student-affairs-leave-pytest.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
