@@ -131,9 +131,10 @@ def test_grade_change_running_blocks_even_when_tasks_published():
     assert "在途成绩更正 1 条" in result["remark"]
 
 
-def test_public_archive_service_points_to_policy_facade():
+def test_public_archive_service_points_to_canonical_executor():
     from app.modules.academic_affairs import services
 
-    assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_policy_facade"
-    )
+    service = services.academic_affairs_archive_service
+    assert service.__name__.endswith("academic_affairs_archive_service")
+    assert callable(service._evaluate_domains)
+    assert service._policy.evaluate_domains
