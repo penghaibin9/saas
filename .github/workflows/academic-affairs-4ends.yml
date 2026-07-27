@@ -96,6 +96,7 @@ jobs:
           tests/test_aa_mobile_teacher_identity.py
           tests/test_aa_mobile_schedule_week.py
           tests/test_aa_mobile_grade_entry_v2.py
+          tests/test_aa_home_task_routes_v2.py
           tests/test_aa_effective_grade_identity.py
           tests/test_aa_makeup_effective_candidates.py
           tests/test_aa_makeup_student_identity.py
