@@ -1,7 +1,7 @@
 """培养方案最终质量门禁 facade。
 
-除 submit_program 外全部复用既有培养方案服务；提交审核在同一事务内执行 V2-01 结构化校验，
-存在 BLOCKER 时禁止进入学院审核。
+除 submit_program 外全部复用既有培养方案服务；提交审核在同一事务内执行 R7 结构化校验，
+存在 BLOCKER 时禁止进入学院审核；提交前必须再次验证当前学院/班级数据范围，不能因 facade 绕过旧服务安全层。
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from app.services.db_service import _tid, session
 
 from . import academic_affairs_program_service as _legacy
 from .academic_affairs_program_binding_quality_service import validate_program_db
+from .academic_affairs_program_quality_security_service import _ensure_program_scope
 
 
 def __getattr__(name):
@@ -20,6 +21,8 @@ def submit_program(program_id, user) -> dict:
     from app.models import AaProgram
 
     with session() as db:
+        # facade 自己持有事务和状态迁移，因此必须在同一事务内重做数据范围校验。
+        _ensure_program_scope(db, user, int(program_id))
         program = db.query(AaProgram).filter(
             AaProgram.id == int(program_id),
             AaProgram.tenant_id == _tid(),
@@ -38,6 +41,11 @@ def submit_program(program_id, user) -> dict:
             raise AppException(
                 "PROGRAM_VALIDATION_BLOCKED",
                 f"方案存在 {len(blockers)} 个阻断项：{preview}{suffix}",
+                details={
+                    "programId": str(program.id),
+                    "blockerCount": len(blockers),
+                    "issues": blockers[:20],
+                },
                 http_status=409,
             )
 
@@ -54,7 +62,7 @@ def submit_program(program_id, user) -> dict:
             db,
             program.id,
             "SUBMIT",
-            f"validator=V2-01;creditSum={validation['creditSum']};warnings={validation['counts']['warning']}",
+            f"validator=R7;creditSum={validation['creditSum']};warnings={validation['counts']['warning']}",
         )
         db.commit()
         db.refresh(program)
