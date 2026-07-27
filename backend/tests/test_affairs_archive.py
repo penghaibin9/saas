@@ -1,6 +1,6 @@
 """13A-P6 学工归档 · 端到端（真实 DB 模式）。
 
-V1 批次→收集档案包→逐级流转→ARCHIVED 登记 t_export_task 水印包。
+批次→收集真实档案包→逐级流转→ARCHIVED，并登记真实归档清单导出任务。
 """
 from __future__ import annotations
 
@@ -31,47 +31,90 @@ def _seed(db_mode):
     return ids
 
 
-def test_v1_archive_full_flow(client, db_mode):
+def _create_batch(client, hdr, name):
+    response = client.post(f"{BASE}/archive/batches", headers=hdr, json={
+        "batchName": name, "yearCode": "2026",
+    }).json()
+    assert response["code"] == 0, response
+    return response["data"]
+
+
+def test_archive_full_flow(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    bid = client.post(f"{BASE}/archive/batches", headers=hdr, json={
-        "batchName": "2026届学工归档", "yearCode": "2026"}).json()["data"]["batchId"]
-    c = client.post(f"{BASE}/archive/batches/{bid}/collect", headers=hdr,
-                    json={"studentIds": [str(ids["s1"]), str(ids["s2"])]}).json()
-    assert c["data"]["packagesCreated"] == 2 and c["data"]["status"] == "COLLECTING"
-    # COLLECTING→COLLEGE_REVIEW→SA_CONFIRM→ARCHIVED
-    for _ in range(3):
-        r = client.post(f"{BASE}/archive/batches/{bid}/advance", headers=hdr, json={"action": "APPROVE"}).json()
-    assert r["data"]["status"] == "ARCHIVED"
-    # 水印包登记 t_export_task + 档案包归档
-    d = client.get(f"{BASE}/archive/batches/{bid}", headers=hdr).json()["data"]
-    assert all(p["status"] == "ARCHIVED" and p["exportTaskId"] for p in d["packages"])
+    batch = _create_batch(client, hdr, "2026届学工归档")
+    bid = batch["batchId"]
+
+    collected_response = client.post(
+        f"{BASE}/archive/batches/{bid}/collect",
+        headers=hdr,
+        json={
+            "studentIds": [str(ids["s1"]), str(ids["s2"])],
+            "version": batch["version"],
+        },
+    ).json()
+    assert collected_response["code"] == 0, collected_response
+    collected = collected_response["data"]
+    assert collected["packagesCreated"] == 2
+    assert collected["status"] == "COLLECTING"
+    assert collected["packagesGenerated"] == 2
+    assert collected["packagesPending"] == 0
+
+    current = collected
+    for expected_status in ("COLLEGE_REVIEW", "SA_CONFIRM", "ARCHIVED"):
+        response = client.post(
+            f"{BASE}/archive/batches/{bid}/advance",
+            headers=hdr,
+            json={"action": "APPROVE", "version": current["version"]},
+        ).json()
+        assert response["code"] == 0, response
+        current = response["data"]
+        assert current["status"] == expected_status
+
+    detail = client.get(f"{BASE}/archive/batches/{bid}", headers=hdr).json()["data"]
+    assert all(
+        package["status"] == "ARCHIVED"
+        and package["exportTaskId"]
+        and package["packageFileId"]
+        and package["missingItems"] == []
+        for package in detail["packages"]
+    )
+
     from app.db.session import get_sessionmaker
     from app.models import ExportTask
     db = get_sessionmaker()()
-    assert db.query(ExportTask).filter_by(module_code="affairs_archive").count() == 1
-    task = db.query(ExportTask).filter_by(module_code="affairs_archive").one()
-    assert task.status == "PENDING", "占位导出任务不得冒充 SUCCESS"
+    task = db.query(ExportTask).filter_by(
+        module_code="student-affairs", export_mode="ARCHIVE_MANIFEST",
+    ).one()
+    assert task.status == "SUCCESS"
+    assert task.row_count == 2
+    assert task.file_hash and len(task.file_hash) == 64
+    assert task.remark and task.remark.endswith(".xlsx")
     db.close()
 
 
 def test_archive_batches_list(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    b1 = client.post(f"{BASE}/archive/batches", headers=hdr,
-                     json={"batchName": "批次A", "yearCode": "2026"}).json()["data"]["batchId"]
-    b2 = client.post(f"{BASE}/archive/batches", headers=hdr,
-                     json={"batchName": "批次B", "yearCode": "2026"}).json()["data"]["batchId"]
-    client.post(f"{BASE}/archive/batches/{b1}/collect", headers=hdr,
-                json={"studentIds": [str(ids["s1"])]})
-    r = client.get(f"{BASE}/archive/batches", headers=hdr).json()
-    assert r["code"] == 0
-    items = r["data"]["items"]
+    batch1 = _create_batch(client, hdr, "批次A")
+    batch2 = _create_batch(client, hdr, "批次B")
+    b1, b2 = batch1["batchId"], batch2["batchId"]
+
+    collected = client.post(
+        f"{BASE}/archive/batches/{b1}/collect",
+        headers=hdr,
+        json={"studentIds": [str(ids["s1"])], "version": batch1["version"]},
+    ).json()
+    assert collected["code"] == 0, collected
+
+    response = client.get(f"{BASE}/archive/batches", headers=hdr).json()
+    assert response["code"] == 0
+    items = response["data"]["items"]
     assert len(items) >= 2
-    by_id = {x["batchId"]: x for x in items}
+    by_id = {item["batchId"]: item for item in items}
     assert str(b1) in by_id and str(b2) in by_id
-    assert by_id[str(b1)]["packageCount"] == 1   # b1 收集了 1 个档案包
+    assert by_id[str(b1)]["packageCount"] == 1
     assert by_id[str(b2)]["packageCount"] == 0
-    # 状态筛选
-    r2 = client.get(f"{BASE}/archive/batches?status=DRAFT", headers=hdr).json()
-    assert all(x["status"] == "DRAFT" for x in r2["data"]["items"])
+
+    drafts = client.get(f"{BASE}/archive/batches?status=DRAFT", headers=hdr).json()
+    assert all(item["status"] == "DRAFT" for item in drafts["data"]["items"])
