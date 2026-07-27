@@ -24,7 +24,7 @@ async function call(fn) {
 
 export const academicAffairsTermDetailApi = {
   get(termId) {
-    return call(() => request(`${BASE}/${termId}`))
+    return call(() => request(`${BASE}/${termId}/workspace`))
   },
   preview(termId, body) {
     return call(() => request(`${BASE}/${termId}/impact-preview`, { method: 'POST', body }))
