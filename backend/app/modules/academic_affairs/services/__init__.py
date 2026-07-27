@@ -19,4 +19,4 @@ from . import academic_affairs_exam_facade as academic_affairs_exam_service
 from . import academic_affairs_textbook_final_facade as academic_affairs_textbook_service
 from . import academic_affairs_recognition_public_service as academic_affairs_recognition_service
 from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
-from . import mobile_academic_affairs_facade as mobile_academic_affairs_service
+from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
