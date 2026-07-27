@@ -1,21 +1,7 @@
 from __future__ import annotations
 
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import re
-
-
-def _load_base():
-    script = Path(__file__).with_name("student_affairs_leave_cutover.py")
-    spec = spec_from_file_location("student_affairs_leave_cutover", script)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"无法加载施工脚本：{script}")
-    module = module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-base = _load_base()
 
 
 def patch_remaining_callers() -> None:
@@ -59,63 +45,53 @@ def patch_remaining_callers() -> None:
             path.write_text(updated, encoding="utf-8")
 
 
-def first_cut_rerunnable() -> None:
+def validate_first_cut() -> None:
     campus_api = Path("backend/app/api/v1/campus_service.py").read_text(encoding="utf-8")
     campus_service = Path("backend/app/services/campus_service_service.py").read_text(encoding="utf-8")
-    already_cut = (
-        "请假旧接口已退出" in campus_api
-        and "请假旧实现已退出" in campus_service
-    )
-    if not already_cut:
-        base.first_cut()
+    if "请假旧接口已退出" not in campus_api:
+        raise RuntimeError("legacy campus-service leave API block is not retired")
+    if any(route in campus_api for route in ('@router.get("/leaves', '@router.post("/leaves')):
+        raise RuntimeError("legacy /campus-service/leaves routes still exist")
+    if "请假旧实现已退出" not in campus_service:
+        raise RuntimeError("legacy campus-service leave service block is not retired")
     patch_remaining_callers()
 
 
-def second_cut_rerunnable() -> None:
-    base.second_cut()
-    pytest_ini = Path("backend/pytest.ini").read_text(encoding="utf-8")
-    if "affairs_test_compat" in pytest_ini or "affairs_test_diagnostics" in pytest_ini:
+def remove_fake_test_adapters() -> None:
+    for path in (
+        "backend/affairs_test_compat.py",
+        "backend/affairs_test_diagnostics.py",
+        "backend/affairs_test_legacy_inputs.py",
+    ):
+        Path(path).unlink(missing_ok=True)
+    pytest_path = Path("backend/pytest.ini")
+    text = pytest_path.read_text(encoding="utf-8")
+    lines = [line for line in text.splitlines() if not line.strip().startswith("addopts =")]
+    pytest_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    final = pytest_path.read_text(encoding="utf-8")
+    if any(name in final for name in ("affairs_test_compat", "affairs_test_diagnostics", "affairs_test_legacy_inputs")):
         raise RuntimeError("pytest fake compatibility plugin remains enabled")
 
 
-def third_cut_rerunnable() -> None:
+def validate_third_cut() -> None:
     leave_text = Path("backend/app/services/affairs_leave_service.py").read_text(encoding="utf-8")
     mobile_text = Path("backend/app/services/mobile_affairs_service.py").read_text(encoding="utf-8")
     contract_text = Path("backend/app/services/affairs_four_end_contract.py").read_text(encoding="utf-8")
-
-    leave_terminal = (
-        "def _allowed_actions(" in leave_text
-        and '"version": int(x.version or 0)' in leave_text
-        and '"allowedActions": _allowed_actions(x.affairs_status)' in leave_text
-    )
-    mobile_terminal = (
-        "from app.services import affairs_leave_service as leave_svc" in mobile_text
-        and "actions = leave_svc._allowed_actions(x.affairs_status)" in mobile_text
-        and '"version": int(x.version or 0)' in mobile_text
-        and '"allowedActions": actions' in mobile_text
-    )
-    contract_terminal = (
-        "def _patch_core_rows" not in contract_text
-        and "original_leave_my" not in contract_text
-        and "aff.leave_my = leave_my" not in contract_text
-    )
-
-    if not (leave_terminal and mobile_terminal and contract_terminal):
-        base.third_cut()
-
-    leave_text = Path("backend/app/services/affairs_leave_service.py").read_text(encoding="utf-8")
-    mobile_text = Path("backend/app/services/mobile_affairs_service.py").read_text(encoding="utf-8")
-    contract_text = Path("backend/app/services/affairs_four_end_contract.py").read_text(encoding="utf-8")
-    if not (
-        "def _allowed_actions(" in leave_text
-        and '"version": int(x.version or 0)' in leave_text
-        and '"allowedActions": _allowed_actions(x.affairs_status)' in leave_text
-        and "actions = leave_svc._allowed_actions(x.affairs_status)" in mobile_text
-        and '"allowedActions": actions' in mobile_text
-        and "def _patch_core_rows" not in contract_text
-        and "original_leave_my" not in contract_text
-    ):
-        raise RuntimeError("leave runtime patch absorption is incomplete")
+    required = {
+        "formal leave allowedActions": "def _allowed_actions(" in leave_text,
+        "formal leave version": '"version": int(x.version or 0)' in leave_text,
+        "formal leave DTO actions": '"allowedActions": _allowed_actions(x.affairs_status)' in leave_text,
+        "mobile leave service import": "from app.services import affairs_leave_service as leave_svc" in mobile_text,
+        "mobile leave actions": "actions = leave_svc._allowed_actions(x.affairs_status)" in mobile_text,
+        "mobile leave version": '"version": int(x.version or 0)' in mobile_text,
+        "mobile leave DTO actions": '"allowedActions": actions' in mobile_text,
+        "no core row monkey patch": "def _patch_core_rows" not in contract_text,
+        "no leave_my monkey patch capture": "original_leave_my" not in contract_text,
+        "no leave_my monkey patch assignment": "aff.leave_my = leave_my" not in contract_text,
+    }
+    missing = [name for name, ok in required.items() if not ok]
+    if missing:
+        raise RuntimeError("leave runtime patch absorption is incomplete: " + ", ".join(missing))
 
 
 def audit_versions() -> None:
@@ -133,7 +109,7 @@ def audit_versions() -> None:
                 raise RuntimeError(f"student portal leave version contract missing: {needle}")
 
 
-def audit_test_contracts() -> None:
+def collect_legacy_hits() -> list[str]:
     forbidden = (
         "/campus-service/leaves",
         "serviceKey: 'LEAVE'",
@@ -144,7 +120,10 @@ def audit_test_contracts() -> None:
         "affairs_test_legacy_inputs",
     )
     hits: list[str] = []
-    roots = [Path("backend/tests"), Path("frontend/tests"), Path("student-portal/src"), Path("miniapp/src")]
+    roots = [
+        Path("backend/app"), Path("backend/tests"), Path("frontend/src"), Path("frontend/tests"),
+        Path("student-portal/src"), Path("miniapp/src"),
+    ]
     for root in roots:
         if not root.exists():
             continue
@@ -155,20 +134,24 @@ def audit_test_contracts() -> None:
             for needle in forbidden:
                 if needle in text:
                     hits.append(f"{path}: {needle}")
+    return hits
+
+
+def audit_all() -> None:
+    audit_versions()
+    hits = collect_legacy_hits()
     Path("leave-test-audit.txt").write_text("\n".join(hits) + ("\n" if hits else ""), encoding="utf-8")
     if hits:
-        raise RuntimeError("legacy leave test/caller contracts remain:\n" + "\n".join(hits[:100]))
+        raise RuntimeError("legacy leave production/test contracts remain:\n" + "\n".join(hits[:200]))
 
 
 if __name__ == "__main__":
     print("CUTOVER_STAGE first_cut", flush=True)
-    first_cut_rerunnable()
+    validate_first_cut()
     print("CUTOVER_STAGE second_cut", flush=True)
-    second_cut_rerunnable()
+    remove_fake_test_adapters()
     print("CUTOVER_STAGE third_cut", flush=True)
-    third_cut_rerunnable()
+    validate_third_cut()
     print("CUTOVER_STAGE audit", flush=True)
-    base.audit()
-    audit_versions()
-    audit_test_contracts()
+    audit_all()
     print("leave cutover follow-up audit passed", flush=True)
