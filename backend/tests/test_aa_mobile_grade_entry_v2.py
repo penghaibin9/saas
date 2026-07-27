@@ -153,3 +153,17 @@ def test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_r
     assert "beforeBack" in nav
     assert "/batch-save" in api
     assert "/quality-report" in api
+
+
+def test_logout_purges_sensitive_grade_drafts_and_identity_is_not_mock_only():
+    root = Path(__file__).resolve().parents[2]
+    session = (root / "miniapp/src/stores/session.js").read_text(encoding="utf-8")
+    cleanup = (root / "miniapp/src/services/sensitiveDraftStorage.js").read_text(encoding="utf-8")
+
+    assert "clearSensitiveLocalDrafts()" in session
+    assert "aa-grade-entry-draft:" in cleanup
+    assert "uni.getStorageInfoSync()" in cleanup
+    assert "uni.removeStorageSync(key)" in cleanup
+    for field in ("tenantId", "userId", "activeContextId", "roleCode"):
+        assert field in session
+    assert "identity: {" in session
