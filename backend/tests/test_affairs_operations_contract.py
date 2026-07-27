@@ -50,6 +50,7 @@ def test_material_supplement_is_versioned_and_object_scoped():
     assert "build_affairs_context(user or {}, db).require_student" in guard
     assert "MATERIAL_REQUIREMENT" in guard
     assert "文件授权必须 fail-closed" in guard
+    assert "row.current_submission_id = None" in guard
 
 
 def test_material_and_batch_endpoints_are_complete():
@@ -81,6 +82,7 @@ def test_safe_batch_is_low_risk_idempotent_and_retryable_per_item():
     assert "批量提醒每一条都必须携带当前材料版本" in guard
     assert 'row.status == "FAILED"' in guard
     assert "row.attempt_count = before + 1" in guard
+    assert 'biz_type="BATCH_JOB"' in guard
 
 
 def test_dorm_exception_returns_risk_responsibility_and_actions_without_auto_close():
@@ -102,6 +104,38 @@ def test_install_order_preserves_student_contract_security_and_final_file_guard(
     assert router.index("install_student_contract_security_guard()") < router.index("install_affairs_operations()")
     assert router.index("install_affairs_operations()") < router.index("install_affairs_operations_final_guard()")
     assert "affairs_operations_router" in router
+
+
+def test_student_portal_has_real_material_upload_versions_and_notice_deep_link():
+    api = _read("student-portal/src/services/affairsFourEndApi.js")
+    page = _read("student-portal/src/views/affairs/MaterialSupplementView.vue")
+    routes = _read("student-portal/src/router/index.js")
+    hall = _read("student-portal/src/views/hall/ServiceHallView.vue")
+    messages = _read("student-portal/src/views/messages/MessagesView.vue")
+
+    assert "myMaterialRequirements" in api
+    assert "uploadMaterialFile" in api
+    assert "submitMaterialVersion" in api
+    assert "version.versionNo" in page
+    assert "历史版本不会被覆盖" in page
+    assert "path: 'materials'" in routes
+    assert "材料补交" in hall
+    assert "materialRequirementId" in messages
+    assert "/materials?requirementId=" in messages
+
+
+def test_teacher_pc_has_material_queue_review_and_failed_only_batch_retry():
+    api = _read("frontend/src/modules/studentAffairs/api/operations.api.js")
+    page = _read("frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue")
+    routes = _read("frontend/src/router/index.js")
+
+    assert "createRequirement" in api
+    assert "reviewRequirement" in api
+    assert "createBatchJob" in api
+    assert "retryFailed" in api
+    assert "逐条校验权限、范围、状态和版本" in page
+    assert "验收" in page and "退回" in page and "免交" in page
+    assert "/admin/student-affairs/material-operations" in routes
 
 
 def test_temporary_student_affairs_diagnostics_workflow_is_removed():
