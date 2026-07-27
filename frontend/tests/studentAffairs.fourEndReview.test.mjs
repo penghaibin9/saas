@@ -50,6 +50,21 @@ test('student portal clears forms only after a successful command', () => {
   assert.match(source, /setTimeout\(\(\) => closeModal\(\), 0\)/)
 })
 
+test('student portal affairs loads tabs on demand and refreshes only the affected tab', () => {
+  const source = read('student-portal/src/views/affairs/AffairsFourEndView.vue')
+  assert.match(source, /const TAB_LOADERS = \{/)
+  assert.match(source, /leave:\s*\[\{ load: \(\) => portalApi\.affairsLeave\(\)/)
+  assert.match(source, /watch\(tab, \(key\) => \{ loadTab\(key\) \}, \{ immediate: true \}\)/)
+  assert.match(source, /const inflight = new Map\(\)/)
+  assert.match(source, /if \(inflight\.has\(key\)\) return inflight\.get\(key\)/)
+  assert.match(source, /if \(!viewActive \|\| loadEpoch\[key\] !== epoch\) return/)
+  assert.match(source, /await loadTab\(refreshKey, \{ force: true \}\)/)
+  assert.match(source, /'请假提交失败', 'leave'/)
+  assert.match(source, /'调宿提交失败', 'dorm'/)
+  assert.doesNotMatch(source, /const tasks = \{ leave: portalApi\.affairsLeave\(\), aid: portalApi\.affairsAid\(\)/)
+  assert.doesNotMatch(source, /await reload\(\)/)
+})
+
 test('teacher editable decisions reopen with the previous text after non-conflict failure', () => {
   const leave = read('miniapp/src/pages/teacher/affairs-leave/index.vue')
   const review = read('miniapp/src/pages/teacher/affairs-review/index.vue')
