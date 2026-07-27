@@ -17,8 +17,10 @@ MB = "/api/v1/mobile"
 def _teacher_token(*, student_no: str = "") -> dict:
     from app.core.security import create_access_token
 
+    # 本测试只验证“已认证教师不能进入学生本人路由”。db-* 账号会额外触发真实账号/角色
+    # 逐请求复核，若未完整造 User/UserRole 会先 401，反而测不到目标 403 边界。
     payload = {
-        "userId": "db-90001",
+        "userId": "test-teacher-90001",
         "loginName": "teacher-with-student-fields",
         "realName": "测试教师",
         "userType": "TEACHER",
