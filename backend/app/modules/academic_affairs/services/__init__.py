@@ -35,6 +35,9 @@ from . import academic_affairs_grade_roster_identity_guard as academic_affairs_g
 from . import academic_affairs_dynamic_grade_service as academic_affairs_dynamic_grade_service
 from . import academic_affairs_makeup_course_identity_guard as academic_affairs_makeup_service
 from . import academic_affairs_recognition_identity_guard as academic_affairs_recognition_identity_guard
+# P0-05学生自助边界：等级考试、专业分流均安装稳定账号解析守卫。
+from . import academic_affairs_level_exam_identity_guard as academic_affairs_level_exam_identity_guard
+from . import academic_affairs_major_split_identity_guard as academic_affairs_major_split_identity_guard
 from . import mobile_academic_grade_identity_facade as mobile_academic_grade_identity_facade
 from . import academic_affairs_program_quality_facade as academic_affairs_program_service
 # R7：完整结构校验继续复用既有层，开课差异由最终闭环统一生效状态、学时和范围口径。
