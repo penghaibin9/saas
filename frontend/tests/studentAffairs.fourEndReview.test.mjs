@@ -78,6 +78,18 @@ test('student portal request serializes pagination query parameters', () => {
   assert.match(affairs, /myCreditAppeals: \(page = 1, pageSize = 100\)/)
 })
 
+test('student clients preserve the real error after refreshing an expired token', () => {
+  const mini = read('miniapp/src/services/request.js')
+  const portal = read('student-portal/src/services/request.js')
+  assert.match(mini, /\.then\(resolve\)\s*\.catch\(reject\)/)
+  assert.doesNotMatch(mini, /\.catch\(\(\) => reject\(\{ code: body\.code/)
+  assert.match(portal, /let refreshing = null/)
+  assert.match(portal, /async function refreshOnce\(\)/)
+  assert.match(portal, /return request\(path, \{ method, body, auth, params, query, _retried: true \}\)/)
+  assert.match(portal, /return uploadFile\(path, file, \{ auth, _retried: true \}\)/)
+  assert.match(portal, /return downloadFile\(path, fallbackName, true\)/)
+})
+
 test('both student clients reject empty or non-positive credit claims', () => {
   const mini = read('miniapp/src/services/affairsAppealApi.js')
   const portal = read('student-portal/src/services/affairsFourEndApi.js')
