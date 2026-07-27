@@ -28,8 +28,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin codex/student-affairs-four-end-hardening-20260726
+          set +e
           git merge --no-ff --no-commit origin/codex/student-affairs-four-end-hardening-20260726
           status=$?
+          set -e
           {
             echo "merge_status=$status"
             echo "CONFLICT_FILES"
