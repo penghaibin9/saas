@@ -1,977 +1,1353 @@
-"""13B 补考重修缓考免修 service（SM-12，四条线）。
+"""补考、清考、重修、免修唯一公开 Service。
 
-补考(批次5态)：成绩发布后不及格名单 → 建批次 → 学生报名 → 发布 → 录入成绩 → FINISHED 按计分规则回写。
-重修(申请6态,单节点)：可重修课程 → 报名(次数上限校验) → 教务处审批 → 编入跟班。
-免修(申请7态,三级审批)：申请(已获成绩422+每学期上限) → 任课教师→学院→教务处。
-缓考合流：只读读取考务包 AaDeferredExam(APPROVED) → 并入下一补考批次(写 t_acad_makeup.batch_id)。
+原统计、提醒、导出等兼容能力保存在 ``academic_affairs_makeup_core_service``；本文件显式收口：
+- 学生本人只通过稳定账号绑定解析；
+- 补考/清考候选只消费统一有效成绩；
+- 名单只按 gradeId/courseId 纳入，禁止课程名猜测；
+- 补考、清考和缓考结果保存稳定课程、修读次数、来源业务、教学任务与名单版本；
+- 正式成绩写入时显式冻结有效成绩策略并刷新学业聚合；
+- 重修编班在同一事务生成新的正式教学班名单版本；
+- 所有写动作在同一事务校验学期未归档。
 
-计分规则 academicAffairs.makeup.scoreRule=CAP60；重修上限 academicAffairs.retake.maxCount=2；
-免修每学期上限 academicAffairs.exemption.maxCount=2（读规则中心，缺省显式默认值）。
+不修改其它模块函数，不依赖 Facade 导入顺序。
 """
 from __future__ import annotations
 
 import json
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import select
 
-from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
-from app.services.db_service import _iso, _tid, session
+from app.core.exceptions import AppException, no_data_scope, not_found
 
-_MB_DRAFT, _MB_ARRANGED, _MB_PUBLISHED = "DRAFT", "ARRANGED", "PUBLISHED"
-_MB_SCORING, _MB_REVIEWED, _MB_FINISHED = "SCORING", "REVIEWED", "FINISHED"
-_RT_SUBMITTED, _RT_REVIEW, _RT_APPROVED = "SUBMITTED", "ACADEMIC_REVIEW", "APPROVED"
-_RT_REJECTED, _RT_ENROLLED, _RT_FINISHED = "REJECTED", "ENROLLED", "FINISHED"
-_EX_SUBMITTED, _EX_TEACHER, _EX_COLLEGE = "SUBMITTED", "TEACHER_REVIEW", "COLLEGE_REVIEW"
-_EX_ACADEMIC, _EX_APPROVED, _EX_REJECTED, _EX_CANCELLED = "ACADEMIC_REVIEW", "APPROVED", "REJECTED", "CANCELLED"
-_EX_CHAIN = {_EX_SUBMITTED: _EX_TEACHER, _EX_TEACHER: _EX_COLLEGE, _EX_COLLEGE: _EX_ACADEMIC, _EX_ACADEMIC: _EX_APPROVED}
+from . import academic_affairs_grade_service as grade_service
+from . import academic_affairs_makeup_core_service as _core
+from . import academic_affairs_teaching_class_service as teaching_class_service
+from .academic_affairs_effective_grade_policy_service import freeze_effective_grade_policy
+from .academic_affairs_grade_identity_service import next_study_attempt_no, source_attempt_no
+from .academic_affairs_roster_consumer_service import consumer_counts, get_consumer_snapshot
 
-
-def _conflict(m):
-    return AppException("DATA_CONFLICT", m, http_status=409)
+_ELIGIBLE_STUDENT_STATUSES = {"NORMAL", "REGISTERED", "ON_CAMPUS"}
 
 
-def _invalid(m):
-    return AppException("DATA_CONFLICT", m, http_status=409)
+def __getattr__(name):
+    """未重写的统计、提醒和导出能力显式复用稳定 core。"""
+    return getattr(_core, name)
 
 
-def _bad(m):
-    return AppException("VALIDATION_ERROR", m)
+def _value(body, name, default=None):
+    if isinstance(body, dict):
+        return body.get(name, default)
+    return getattr(body, name, default)
 
 
-def _op():
-    ctx = get_current_user_ctx() or {}
-    return str(ctx.get("userId") or ctx.get("loginName") or "")
+def _term_code(term) -> str:
+    return f"{term.year_code}-{term.term_no}"
 
 
-def _role():
-    ctx = get_current_user_ctx() or {}
-    return str(ctx.get("currentRoleCode") or "")
+def _guard_term_id(db, term_id):
+    from . import academic_affairs_archive_service as archive_service
+
+    if not term_id:
+        raise AppException("DATA_CONFLICT", "业务记录未绑定正式学期termId", http_status=409)
+    archive_service.guard_term_writable(db, int(term_id))
 
 
-def _audit(db, biz_type, biz_id, action, detail=""):
-    from app.models import AffairsAuditTrail
-    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=biz_id, action=action,
-                             operator=_op(), role_name=_role(), detail=detail[:990], occurred_at=datetime.utcnow()))
+def _guard_code(db, term_code):
+    from . import academic_affairs_archive_service as archive_service
+
+    return archive_service.guard_term_code_writable(db, str(term_code or "").strip())
 
 
-def _rule(key, default):
-    from app.services.platform_service import get_config_json
-    cfg = get_config_json(_tid(), "ACAD_RULE", key)
-    if cfg is not None:
-        if isinstance(cfg, dict) and "value" in cfg:
-            return cfg["value"]
-        if not isinstance(cfg, dict):
-            return cfg
-    return default
+def _current_term(db):
+    from app.models import AaTerm
+
+    term = db.query(AaTerm).filter(
+        AaTerm.tenant_id == _core._tid(),
+        AaTerm.is_current.is_(True),
+        AaTerm.is_deleted.is_(False),
+    ).first()
+    if not term:
+        raise AppException("DATA_CONFLICT", "学校尚未设置当前办理学期", http_status=409)
+    _guard_term_id(db, term.id)
+    return term
 
 
-def _ctx(user, db):
-    return build_affairs_context(user, db)
+def _selected_term(db, requested_code=None):
+    code = str(requested_code or "").strip()
+    return _guard_code(db, code) if code else _current_term(db)
 
 
-def _require_school(ctx):
-    if ctx.scope_type != "TENANT_ALL":
-        raise no_data_scope("仅教务处可执行该操作")
+def _guard_batch(db, batch):
+    term = None
+    if getattr(batch, "term_code", None):
+        term = _guard_code(db, batch.term_code)
+    if getattr(batch, "term_id", None):
+        _guard_term_id(db, batch.term_id)
+        if term is not None and int(term.id) != int(batch.term_id):
+            raise AppException(
+                "DATA_CONFLICT",
+                "补考批次termId与termCode指向不同学期，请先修复基础数据",
+                http_status=409,
+            )
+    elif term is not None:
+        batch.term_id = term.id
+    else:
+        raise AppException("DATA_CONFLICT", "补考批次未绑定正式学期", http_status=409)
+    return term
 
 
-def _student(db):
-    from app.models import StudentProfile
-    ctx = get_current_user_ctx() or {}
-    return db.query(StudentProfile).filter(StudentProfile.tenant_id == _tid(),
-                                           StudentProfile.student_no == ctx.get("studentNo")).first()
+def _student(db, user=None):
+    """学生本人只认稳定studentId/账号绑定；无法证明唯一身份时fail-closed。"""
+    from app.services.mobile_student_identity_facade import resolve_student
+
+    profile = resolve_student(db, user or get_current_user_ctx() or {})
+    if not profile:
+        raise not_found("当前账号尚未绑定唯一学生档案")
+    return profile
 
 
-# ══════════ 补考 ══════════
+def _academic_student_for_profile(db, profile_id):
+    from app.models import AcademicStudent
 
-def _mb_dto(b):
-    return {"batchId": str(b.id), "batchName": b.batch_name, "termCode": b.term_code,
-            "kind": getattr(b, "kind", "MAKEUP") or "MAKEUP",
-            "targetGrades": [x for x in (b.target_grades or "").split(",") if x] if getattr(b, "target_grades", None) else [],
-            "examBatchRef": str(b.exam_batch_ref) if b.exam_batch_ref else None,
-            "scoreRule": b.score_rule, "status": b.status, "publishedAt": _iso(b.published_at)}
+    return db.query(AcademicStudent).filter(
+        AcademicStudent.tenant_id == _core._tid(),
+        AcademicStudent.student_id == int(profile_id),
+        AcademicStudent.is_deleted.is_(False),
+    ).first()
 
 
-def _get_mb(db, bid):
-    from app.models import AaMakeupBatch
-    b = db.query(AaMakeupBatch).filter(AaMakeupBatch.id == bid, AaMakeupBatch.tenant_id == _tid(),
-                                       AaMakeupBatch.is_deleted.is_(False)).first()
-    if not b:
-        raise not_found("补考批次不存在")
-    return b
+def _scope_students(ctx, db, students):
+    allowed = ctx.allowed_class_ids(db)
+    if allowed is None:
+        return list(students or [])
+    allowed_ids = {str(int(value)) for value in allowed if str(value).isdigit()}
+    if not allowed_ids:
+        return []
+    return [row for row in (students or []) if str(row.class_id or "") in allowed_ids]
+
+
+def _effective_failed_rows(rows):
+    return [
+        row for row in grade_service.effective_grade_rows(rows)
+        if str(row.pass_status or "").upper() in {"FAIL", "FAILED"}
+    ]
+
+
+def _effective_failed_grade(db, academic_student_id: int, grade_id: int):
+    from app.models import AcademicGrade
+
+    rows = db.query(AcademicGrade).filter(
+        AcademicGrade.tenant_id == _core._tid(),
+        AcademicGrade.acad_student_id == int(academic_student_id),
+        AcademicGrade.record_status == "ACTIVE",
+        AcademicGrade.is_deleted.is_(False),
+    ).all()
+    effective = _effective_failed_rows(rows)
+    selected = next((row for row in effective if int(row.id) == int(grade_id)), None)
+    if not selected:
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "所选成绩已不是当前有效挂科结果，请刷新候选名单",
+            details={"effectiveFailedGradeIds": [str(row.id) for row in effective]},
+            http_status=409,
+        )
+    if not selected.course_id or not selected.course_code or not selected.course_version or not selected.attempt_no:
+        raise AppException(
+            "DATA_CONFLICT",
+            "所选挂科成绩缺少courseId、课程版本或修读次数，请先完成成绩身份治理",
+            details={"gradeId": str(selected.id)},
+            http_status=409,
+        )
+    source_attempt_no(selected)
+    return selected
 
 
 def makeup_pending(user, term=None, page=1, page_size=50):
-    """成绩发布后不及格学生名单（补考候选，读 t_acad_grade FAILED）。"""
+    """范围内当前有效挂科成绩；已被补考/清考/更正覆盖的旧失败行不再出现。"""
     from app.models import AcademicGrade, AcademicStudent
-    with session() as db:
-        _ctx(user, db)
-        q = db.query(AcademicGrade, AcademicStudent).join(
-            AcademicStudent, AcademicGrade.acad_student_id == AcademicStudent.id).filter(
-            AcademicGrade.tenant_id == _tid(), AcademicGrade.pass_status.in_(["FAIL", "FAILED"]),
-            AcademicGrade.record_status == "ACTIVE")
-        rows = q.all()
-        items = [{"gradeId": str(g.id), "acadStudentId": str(g.acad_student_id),
-                  "studentNo": s.student_no, "studentName": s.name, "courseName": g.course_name,
-                  "score": g.score, "className": s.class_name} for g, s in rows]
+
+    with _core.session() as db:
+        ctx = _core._ctx(user, db)
+        students = _scope_students(
+            ctx,
+            db,
+            db.query(AcademicStudent).filter(
+                AcademicStudent.tenant_id == _core._tid(),
+                AcademicStudent.is_deleted.is_(False),
+            ).all(),
+        )
+        student_by_id = {int(row.id): row for row in students}
+        query = db.query(AcademicGrade).filter(
+            AcademicGrade.tenant_id == _core._tid(),
+            AcademicGrade.acad_student_id.in_(list(student_by_id) or [0]),
+            AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False),
+        )
+        if term:
+            query = query.filter(AcademicGrade.term == term)
+        failed = _effective_failed_rows(query.all())
+        items = []
+        for grade in failed:
+            student = student_by_id.get(int(grade.acad_student_id))
+            if not student:
+                continue
+            identity_ready = bool(
+                grade.course_id and grade.course_code and grade.course_version and grade.attempt_no
+            )
+            items.append({
+                "gradeId": str(grade.id),
+                "acadStudentId": str(grade.acad_student_id),
+                "studentNo": student.student_no,
+                "studentName": student.name,
+                "className": student.class_name,
+                "courseId": str(grade.course_id or ""),
+                "courseCode": grade.course_code or "",
+                "courseVersion": grade.course_version,
+                "attemptNo": grade.attempt_no,
+                "courseName": grade.course_name,
+                "score": grade.score,
+                "effectiveSource": grade.source,
+                "identityReady": identity_ready,
+            })
+        items.sort(key=lambda row: (row["courseCode"] or row["courseName"] or "", row["studentNo"] or ""))
         total = len(items)
-        return items[(page - 1) * page_size: page * page_size], total
+        start = (max(1, int(page)) - 1) * int(page_size)
+        return items[start:start + int(page_size)], total
 
 
 def create_makeup_batch(user, body):
-    from app.models import AaMakeupBatch
-    with session() as db:
-        _require_school(_ctx(user, db))
-        name = (getattr(body, "batchName", None) or "").strip()
+    from app.models import AaExamBatch, AaMakeupBatch
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        name = str(_value(body, "batchName") or "").strip()
         if not name:
-            raise _bad("批次名称必填")
-        b = AaMakeupBatch(tenant_id=_tid(), batch_name=name, term_code=getattr(body, "termCode", None),
-                          exam_batch_ref=int(body.examBatchRef) if getattr(body, "examBatchRef", None) else None,
-                          score_rule=_rule("makeup_score_rule", "CAP60"), status=_MB_DRAFT)
-        db.add(b); db.flush()
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_BATCH_CREATE", name)
+            raise _core._bad("批次名称必填")
+        term = _selected_term(db, _value(body, "termCode"))
+        exam_ref = int(_value(body, "examBatchRef")) if _value(body, "examBatchRef") else None
+        if exam_ref:
+            exam = db.query(AaExamBatch).filter(
+                AaExamBatch.id == exam_ref,
+                AaExamBatch.tenant_id == _core._tid(),
+                AaExamBatch.is_deleted.is_(False),
+            ).first()
+            if not exam:
+                raise not_found("考务批次不存在")
+            if int(exam.term_id or 0) != int(term.id):
+                raise AppException("DATA_CONFLICT", "补考批次与考务批次不属于同一学期", http_status=409)
+        batch = AaMakeupBatch(
+            tenant_id=_core._tid(),
+            batch_name=name,
+            term_id=term.id,
+            term_code=_term_code(term),
+            exam_batch_ref=exam_ref,
+            score_rule=_core._rule("makeup_score_rule", "CAP60"),
+            status=_core._MB_DRAFT,
+        )
+        db.add(batch)
+        db.flush()
+        _core._audit(db, "AA_MAKEUP", batch.id, "MAKEUP_BATCH_CREATE", name)
         db.commit()
-        return _mb_dto(b)
+        return _core._mb_dto(batch)
 
 
-def list_makeup_batches(user, status=None, page=1, page_size=20, kind=None):
+def create_clearance_batch(user, body):
     from app.models import AaMakeupBatch
-    with session() as db:
-        _ctx(user, db)
-        q = db.query(AaMakeupBatch).filter(AaMakeupBatch.tenant_id == _tid(), AaMakeupBatch.is_deleted.is_(False))
-        if status:
-            q = q.filter(AaMakeupBatch.status == status)
-        if kind:
-            q = q.filter(AaMakeupBatch.kind == kind)
-        rows = q.order_by(AaMakeupBatch.id.desc()).all()
-        return [_mb_dto(b) for b in rows[(page - 1) * page_size: page * page_size]], len(rows)
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        name = str(_value(body, "batchName") or "").strip()
+        if not name:
+            raise _core._bad("批次名称必填")
+        grades = [
+            str(value).strip() for value in (_value(body, "targetGrades", []) or [])
+            if str(value).strip()
+        ]
+        if not grades:
+            raise _core._bad("清考必须限定毕业年级（如2022）")
+        term = _selected_term(db, _value(body, "termCode"))
+        batch = AaMakeupBatch(
+            tenant_id=_core._tid(),
+            batch_name=name,
+            kind="CLEARANCE",
+            target_grades=",".join(grades),
+            term_id=term.id,
+            term_code=_term_code(term),
+            score_rule="CAP60",
+            status=_core._MB_DRAFT,
+        )
+        db.add(batch)
+        db.flush()
+        _core._audit(db, "AA_MAKEUP", batch.id, "CLEARANCE_BATCH_CREATE", f"{name} 年级{grades}")
+        db.commit()
+        return _core._mb_dto(batch)
 
 
 def link_exam_batch(user, batch_id, exam_batch_id):
-    """补考批次挂考务批次编排（施工卡：exam_batch_ref 关联，考场/监考走考务包）。校验考务批次存在。"""
     from app.models import AaExamBatch
-    with session() as db:
-        _require_school(_ctx(user, db))
-        b = _get_mb(db, batch_id)
-        if b.status not in (_MB_DRAFT, _MB_ARRANGED):
-            raise _invalid("仅 DRAFT/ARRANGED 补考批次可挂考务编排")
-        eb = db.query(AaExamBatch).filter(AaExamBatch.id == int(exam_batch_id), AaExamBatch.tenant_id == _tid(),
-                                          AaExamBatch.is_deleted.is_(False)).first()
-        if not eb:
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        batch = _core._get_mb(db, int(batch_id))
+        term = _guard_batch(db, batch)
+        if batch.status not in {_core._MB_DRAFT, _core._MB_ARRANGED}:
+            raise _core._invalid("仅DRAFT/ARRANGED补考批次可挂考务编排")
+        exam = db.query(AaExamBatch).filter(
+            AaExamBatch.id == int(exam_batch_id),
+            AaExamBatch.tenant_id == _core._tid(),
+            AaExamBatch.is_deleted.is_(False),
+        ).first()
+        if not exam:
             raise not_found("考务批次不存在")
-        b.exam_batch_ref = eb.id
-        if b.status == _MB_DRAFT:
-            b.status = _MB_ARRANGED
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_LINK_EXAM", f"挂考务批次 {eb.batch_name}")
+        if int(exam.term_id or 0) != int((term.id if term else batch.term_id) or 0):
+            raise AppException("DATA_CONFLICT", "补考批次与考务批次不属于同一学期", http_status=409)
+        batch.exam_batch_ref = exam.id
+        if batch.status == _core._MB_DRAFT:
+            batch.status = _core._MB_ARRANGED
+        _core._audit(db, "AA_MAKEUP", batch.id, "MAKEUP_LINK_EXAM", f"挂考务批次{exam.batch_name}")
         db.commit()
-        return _mb_dto(b)
+        return _core._mb_dto(batch)
+
+
+def enroll_makeup_by_grade(user, batch_id, grade_id, acad_student_id, origin_score=None):
+    from app.models import AcademicMakeup
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        batch = _core._get_mb(db, int(batch_id))
+        _guard_batch(db, batch)
+        if batch.status not in {_core._MB_DRAFT, _core._MB_ARRANGED}:
+            raise _core._invalid("仅DRAFT/ARRANGED批次可纳入名单")
+        grade = _effective_failed_grade(db, int(acad_student_id), int(grade_id))
+        duplicate = db.query(AcademicMakeup).filter(
+            AcademicMakeup.tenant_id == _core._tid(),
+            AcademicMakeup.batch_id == batch.id,
+            AcademicMakeup.origin_grade_id == grade.id,
+            AcademicMakeup.is_deleted.is_(False),
+        ).first()
+        if duplicate:
+            return {
+                "makeupId": str(duplicate.id),
+                "status": duplicate.status,
+                "originGradeId": str(grade.id),
+                "idempotent": True,
+            }
+        row = AcademicMakeup(
+            tenant_id=_core._tid(),
+            acad_student_id=int(acad_student_id),
+            kind=batch.kind or "MAKEUP",
+            origin_grade_id=grade.id,
+            course_id=grade.course_id,
+            course_code=grade.course_code,
+            course_version=grade.course_version,
+            attempt_no=source_attempt_no(grade),
+            teaching_task_id=grade.teaching_task_id,
+            teaching_class_id=grade.teaching_class_id,
+            roster_version_id=grade.roster_version_id,
+            course_name=grade.course_name,
+            term=grade.term,
+            origin_score=grade.score if origin_score is None else int(origin_score),
+            batch_id=batch.id,
+            status="PENDING_EXAM",
+            record_status="ACTIVE",
+        )
+        db.add(row)
+        db.flush()
+        if batch.status == _core._MB_DRAFT:
+            batch.status = _core._MB_ARRANGED
+        _core._audit(
+            db,
+            "AA_MAKEUP",
+            row.id,
+            "MAKEUP_ENROLL_IDENTITY",
+            (
+                f"originGradeId={grade.id};courseId={grade.course_id};version={grade.course_version};"
+                f"attemptNo={grade.attempt_no}"
+            ),
+        )
+        db.commit()
+        return {
+            "makeupId": str(row.id),
+            "status": row.status,
+            "originGradeId": str(grade.id),
+            "courseId": str(grade.course_id),
+            "courseCode": grade.course_code,
+            "courseVersion": grade.course_version,
+            "attemptNo": grade.attempt_no,
+            "idempotent": False,
+        }
 
 
 def enroll_makeup(user, batch_id, acad_student_id, course_name, origin_score=None):
-    """将不及格学生纳入补考批次名单（t_acad_makeup + batch_id）。教务处操作。"""
-    from app.models import AcademicMakeup
-    with session() as db:
-        _require_school(_ctx(user, db))
-        b = _get_mb(db, batch_id)
-        if b.status not in (_MB_DRAFT, _MB_ARRANGED):
-            raise _invalid("仅 DRAFT/ARRANGED 批次可纳入名单")
-        dup = db.query(AcademicMakeup).filter(AcademicMakeup.tenant_id == _tid(),
-                                              AcademicMakeup.batch_id == b.id,
-                                              AcademicMakeup.acad_student_id == int(acad_student_id),
-                                              AcademicMakeup.course_name == course_name).first()
-        if dup:
-            return {"makeupId": str(dup.id), "status": dup.status}
-        m = AcademicMakeup(tenant_id=_tid(), acad_student_id=int(acad_student_id), course_name=course_name,
-                           origin_score=origin_score, batch_id=b.id, kind=(b.kind or "MAKEUP"),
-                           status="PENDING_EXAM", record_status="ACTIVE")
-        db.add(m); db.flush()
-        b.status = _MB_ARRANGED
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_ENROLL", f"纳入 {course_name}")
-        db.commit()
-        return {"makeupId": str(m.id), "status": m.status}
+    raise AppException(
+        "VALIDATION_ERROR",
+        "旧的按课程名称纳入补考入口已停用，请从补考候选名单提交gradeId",
+    )
 
 
-def publish_makeup_batch(user, batch_id):
-    with session() as db:
-        _require_school(_ctx(user, db))
-        b = _get_mb(db, batch_id)
-        if b.status != _MB_ARRANGED:
-            raise _invalid("仅 ARRANGED 批次可发布")
-        b.status = _MB_PUBLISHED
-        b.published_at = datetime.utcnow()
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_BATCH_PUBLISH", "发布")
-        db.commit()
-        return _mb_dto(b)
-
-
-def enter_makeup_score(user, makeup_id, score):
-    """录入补考成绩（批次 PUBLISHED→SCORING）。"""
-    from app.models import AcademicMakeup
-    with session() as db:
-        _require_school(_ctx(user, db))
-        m = db.query(AcademicMakeup).filter(AcademicMakeup.id == makeup_id, AcademicMakeup.tenant_id == _tid()).first()
-        if not m:
-            raise not_found("补考记录不存在")
-        b = _get_mb(db, m.batch_id)
-        if b.status not in (_MB_PUBLISHED, _MB_SCORING):
-            raise _invalid("批次未发布，不可录入")
-        m.final_score = int(score)
-        m.status = "SCORED"
-        if b.status == _MB_PUBLISHED:
-            b.status = _MB_SCORING
-        _audit(db, "AA_MAKEUP", m.id, "MAKEUP_SCORE", f"补考成绩 {score}")
-        db.commit()
-        return {"makeupId": str(m.id), "finalScore": m.final_score, "status": m.status}
-
-
-def college_review_scores(user, batch_id):
-    """补考成绩录入接 R1 同构审核链（施工卡 D-09）：录入(SCORING)→学院审(REVIEWED)→教务发布回写(FINISHED)。
-    学院审：所有补考记录须已 SCORED；SCORING→REVIEWED。"""
-    from app.models import AcademicMakeup
-    with session() as db:
-        _require_school(_ctx(user, db))
-        b = _get_mb(db, batch_id)
-        if b.status != _MB_SCORING:
-            raise _invalid("仅 SCORING 批次可学院审核")
-        pend = db.query(AcademicMakeup).filter(AcademicMakeup.batch_id == b.id, AcademicMakeup.tenant_id == _tid(),
-                                               AcademicMakeup.status != "SCORED", AcademicMakeup.batch_id.isnot(None)).count()
-        if pend:
-            raise _invalid(f"尚有 {pend} 条补考成绩未录入，不可提交学院审核")
-        b.status = _MB_REVIEWED
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_COLLEGE_REVIEW", "补考成绩学院审核通过")
-        db.commit()
-        return _mb_dto(b)
-
-
-def finish_makeup_batch(user, batch_id):
-    """REVIEWED→FINISHED（教务发布）：按计分规则回写 t_acad_grade(source=MAKEUP)（幂等）。接 R1 三级审核链末端。"""
-    from app.models import AcademicGrade, AcademicMakeup
-    with session() as db:
-        _require_school(_ctx(user, db))
-        b = _get_mb(db, batch_id)
-        if b.status == _MB_FINISHED:
-            return _mb_dto(b)
-        if b.status != _MB_REVIEWED:
-            raise _invalid("仅学院审核通过(REVIEWED)的批次可教务发布回写")
-        recs = db.query(AcademicMakeup).filter(AcademicMakeup.batch_id == b.id, AcademicMakeup.tenant_id == _tid(),
-                                               AcademicMakeup.status == "SCORED").all()
-        cap = 60 if b.score_rule == "CAP60" else 100
-        src = "CLEARANCE" if (getattr(b, "kind", None) == "CLEARANCE") else "MAKEUP"
-        affected = set()
-        for m in recs:
-            fs = m.final_score or 0
-            passed = fs >= 60
-            recorded = min(fs, cap) if passed else fs
-            # 学分从原修成绩行带出：补考/清考针对的就是原挂科课程，原行(PUBLISH等)已带真实学分。
-            # 不带则回写行 credit_value=0，通过后学分被吞成 0，毕业学分核算失真(修 P0-1)。
-            credit = db.query(func.max(AcademicGrade.credit_value)).filter(
-                AcademicGrade.tenant_id == _tid(),
-                AcademicGrade.acad_student_id == m.acad_student_id,
-                AcademicGrade.course_name == m.course_name,
-                AcademicGrade.credit_value.isnot(None)).scalar() or 0
-            # 回写一条成绩行（幂等：同 acad_student+course+source 更新；补考/清考各自独立 source）
-            g = db.query(AcademicGrade).filter(AcademicGrade.tenant_id == _tid(),
-                                               AcademicGrade.acad_student_id == m.acad_student_id,
-                                               AcademicGrade.course_name == m.course_name,
-                                               AcademicGrade.source == src).first()
-            if g:
-                g.score = recorded
-                g.pass_status = "PASSED" if passed else "FAILED"
-                if credit and not (g.credit_value or 0):
-                    g.credit_value = credit
-            else:
-                db.add(AcademicGrade(tenant_id=_tid(), acad_student_id=m.acad_student_id, course_name=m.course_name,
-                                     credit_value=credit,
-                                     score=recorded, pass_status="PASSED" if passed else "FAILED",
-                                     source=src, record_status="ACTIVE"))
-            affected.add(int(m.acad_student_id))
-        db.flush()
-        # 回写后刷新学生学业台账(GPA/已得学分/未通过门数)，否则预警/毕业/分流读旧数据(修 P0-2)。
-        from app.models import AcademicStudent
-        from app.modules.academic_affairs.services.academic_affairs_grade_service import _refresh_aggregates
-        for aid in affected:
-            a = db.get(AcademicStudent, aid)
-            if a and not a.is_deleted:
-                _refresh_aggregates(db, a)
-        b.status = _MB_FINISHED
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_BATCH_FINISH",
-               f"回写 {len(recs)} 条{'清考' if src == 'CLEARANCE' else '补考'}成绩，刷新 {len(affected)} 生台账")
-        db.commit()
-        return _mb_dto(b)
-
-
-# ══════════ 毕业清考（对标商业教务 6-6：应届生未通过课程的最后一次考核机会）══════════
-
-def create_clearance_batch(user, body):
-    """建毕业清考批次：kind=CLEARANCE + 限定年级；计分固定 CAP60（清考通过按60记，不给高分投机）。"""
-    from app.models import AaMakeupBatch
-    with session() as db:
-        _require_school(_ctx(user, db))
-        name = (getattr(body, "batchName", None) or "").strip()
-        if not name:
-            raise _bad("批次名称必填")
-        grades = [str(x).strip() for x in (getattr(body, "targetGrades", None) or []) if str(x).strip()]
-        if not grades:
-            raise _bad("清考必须限定毕业年级（如 2022）")
-        b = AaMakeupBatch(tenant_id=_tid(), batch_name=name, kind="CLEARANCE",
-                          target_grades=",".join(grades), term_code=getattr(body, "termCode", None),
-                          score_rule="CAP60", status=_MB_DRAFT)
-        db.add(b); db.flush()
-        _audit(db, "AA_MAKEUP", b.id, "CLEARANCE_BATCH_CREATE", f"{name} 年级{grades}")
-        db.commit()
-        return _mb_dto(b)
-
-
-def _clearance_candidates(db, grades):
-    """自动圈定：限定年级在读学生中，同课程按最高分去重后仍 FAILED 的课程。
-
-    口径与学生台账汇总(_refresh_aggregates)一致：重修/补考已通过的课程不再进清考，
-    只捞"到今天为止最好成绩仍不及格"的课程——这是清考的法定对象。
-    """
+def _clearance_candidates(db, target_grades):
     from app.models import AcademicGrade, AcademicStudent, StudentProfile
+
     profiles = db.query(StudentProfile).filter(
-        StudentProfile.tenant_id == _tid(), StudentProfile.grade.in_(grades),
-        StudentProfile.student_status == "NORMAL", StudentProfile.is_deleted.is_(False)).all()
-    pid_map = {p.id: p for p in profiles}
-    if not pid_map:
-        return []
-    acads = db.query(AcademicStudent).filter(
-        AcademicStudent.tenant_id == _tid(),
-        AcademicStudent.student_id.in_(list(pid_map))).all()
-    out = []
-    for a in acads:
+        StudentProfile.tenant_id == _core._tid(),
+        StudentProfile.grade.in_(target_grades or ["__none__"]),
+        StudentProfile.student_status.in_(sorted(_ELIGIBLE_STUDENT_STATUSES)),
+        StudentProfile.is_deleted.is_(False),
+    ).all()
+    profile_by_id = {int(row.id): row for row in profiles}
+    students = db.query(AcademicStudent).filter(
+        AcademicStudent.tenant_id == _core._tid(),
+        AcademicStudent.student_id.in_(list(profile_by_id) or [0]),
+        AcademicStudent.is_deleted.is_(False),
+    ).all()
+    output = []
+    for student in students:
         rows = db.query(AcademicGrade).filter(
-            AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == a.id,
-            AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False)).all()
-        best = {}
-        for g in rows:
-            key = (g.course_name or "").strip()
-            if not key:
-                continue
-            cur = best.get(key)
-            if cur is None or (g.score or -1) > (cur.score or -1):
-                best[key] = g
-        p = pid_map.get(a.student_id)
-        for course, g in best.items():
-            if g.pass_status == "FAILED":
-                out.append({"acadStudentId": str(a.id), "studentNo": a.student_no,
-                            "studentName": a.name, "grade": (p.grade if p else None),
-                            "courseName": course, "bestScore": g.score})
-    return out
+            AcademicGrade.tenant_id == _core._tid(),
+            AcademicGrade.acad_student_id == student.id,
+            AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False),
+        ).all()
+        for grade in _effective_failed_rows(rows):
+            ready = bool(grade.course_id and grade.course_code and grade.course_version and grade.attempt_no)
+            profile = profile_by_id.get(int(student.student_id))
+            output.append({
+                "gradeId": str(grade.id),
+                "acadStudentId": str(student.id),
+                "studentNo": student.student_no,
+                "studentName": student.name,
+                "grade": profile.grade if profile else None,
+                "courseId": str(grade.course_id or ""),
+                "courseCode": grade.course_code or "",
+                "courseVersion": grade.course_version,
+                "attemptNo": grade.attempt_no,
+                "courseName": grade.course_name,
+                "effectiveScore": grade.score,
+                "identityReady": ready,
+            })
+    output.sort(key=lambda row: (row["studentNo"] or "", row["courseCode"] or row["courseName"] or ""))
+    return output
 
 
 def clearance_scan(user, batch_id, dry_run=False):
-    """扫描并圈定清考名单（幂等；dry_run 只看不落）。"""
     from app.models import AcademicMakeup
-    with session() as db:
-        _require_school(_ctx(user, db))
-        b = _get_mb(db, batch_id)
-        if (getattr(b, "kind", None) or "MAKEUP") != "CLEARANCE":
-            raise _invalid("仅清考批次可执行名单扫描")
-        if b.status not in (_MB_DRAFT, _MB_ARRANGED):
-            raise _invalid("仅 DRAFT/ARRANGED 批次可圈定名单")
-        grades = [x for x in (b.target_grades or "").split(",") if x]
-        cands = _clearance_candidates(db, grades)
-        added, skipped = 0, 0
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        batch = _core._get_mb(db, int(batch_id))
+        _guard_batch(db, batch)
+        if (batch.kind or "MAKEUP") != "CLEARANCE":
+            raise _core._invalid("仅清考批次可执行名单扫描")
+        if batch.status not in {_core._MB_DRAFT, _core._MB_ARRANGED}:
+            raise _core._invalid("仅DRAFT/ARRANGED批次可圈定名单")
+        target_grades = [value for value in str(batch.target_grades or "").split(",") if value]
+        candidates = _clearance_candidates(db, target_grades)
+        debts = [row for row in candidates if not row["identityReady"]]
+        if debts and not dry_run:
+            raise AppException(
+                "DATA_CONFLICT",
+                f"清考候选中有{len(debts)}条成绩缺少课程身份或修读次数，已取消圈定",
+                details={"items": debts[:100]},
+                http_status=409,
+            )
+        added = skipped = 0
         if not dry_run:
-            for c in cands:
-                dup = db.query(AcademicMakeup).filter(
-                    AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id,
-                    AcademicMakeup.acad_student_id == int(c["acadStudentId"]),
-                    AcademicMakeup.course_name == c["courseName"]).first()
-                if dup:
+            for candidate in candidates:
+                duplicate = db.query(AcademicMakeup).filter(
+                    AcademicMakeup.tenant_id == _core._tid(),
+                    AcademicMakeup.batch_id == batch.id,
+                    AcademicMakeup.origin_grade_id == int(candidate["gradeId"]),
+                    AcademicMakeup.is_deleted.is_(False),
+                ).first()
+                if duplicate:
                     skipped += 1
                     continue
-                db.add(AcademicMakeup(tenant_id=_tid(), acad_student_id=int(c["acadStudentId"]),
-                                      course_name=c["courseName"], origin_score=c["bestScore"],
-                                      batch_id=b.id, kind="CLEARANCE",
-                                      status="PENDING_EXAM", record_status="ACTIVE"))
+                db.add(AcademicMakeup(
+                    tenant_id=_core._tid(),
+                    acad_student_id=int(candidate["acadStudentId"]),
+                    kind="CLEARANCE",
+                    origin_grade_id=int(candidate["gradeId"]),
+                    course_id=int(candidate["courseId"]),
+                    course_code=candidate["courseCode"],
+                    course_version=int(candidate["courseVersion"]),
+                    attempt_no=int(candidate["attemptNo"]),
+                    course_name=candidate["courseName"],
+                    origin_score=candidate["effectiveScore"],
+                    batch_id=batch.id,
+                    status="PENDING_EXAM",
+                    record_status="ACTIVE",
+                ))
                 added += 1
-            if added and b.status == _MB_DRAFT:
-                b.status = _MB_ARRANGED
-            _audit(db, "AA_MAKEUP", b.id, "CLEARANCE_SCAN", f"圈定{added}条(跳过{skipped})")
+            if added and batch.status == _core._MB_DRAFT:
+                batch.status = _core._MB_ARRANGED
+            _core._audit(
+                db,
+                "AA_MAKEUP",
+                batch.id,
+                "CLEARANCE_SCAN_IDENTITY",
+                f"added={added};skipped={skipped};identityDebt={len(debts)}",
+            )
             db.commit()
-        return {"batchId": str(b.id), "dryRun": dry_run, "candidates": len(cands),
-                "added": (0 if dry_run else added), "skipped": (0 if dry_run else skipped),
-                "items": cands}
+        return {
+            "batchId": str(batch.id),
+            "dryRun": bool(dry_run),
+            "candidates": len(candidates),
+            "identityDebtCount": len(debts),
+            "added": 0 if dry_run else added,
+            "skipped": 0 if dry_run else skipped,
+            "items": candidates,
+        }
 
 
-def clearance_records(user, batch_id, page=1, page_size=100):
-    """清考批次名单（含成绩录入状态）。收敛 TENANT_ALL,防越范围读全校清考不及格明细(修数据范围红线)。"""
-    from app.models import AcademicMakeup, AcademicStudent
-    with session() as db:
-        _require_school(_ctx(user, db))
-        b = _get_mb(db, batch_id)
-        rows = db.query(AcademicMakeup, AcademicStudent).join(
-            AcademicStudent, AcademicMakeup.acad_student_id == AcademicStudent.id).filter(
-            AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id,
-            AcademicMakeup.is_deleted.is_(False)).order_by(AcademicMakeup.id).all()
-        items = [{"makeupId": str(m.id), "acadStudentId": str(m.acad_student_id),
-                  "studentNo": s.student_no, "studentName": s.name,
-                  "courseName": m.course_name, "originScore": m.origin_score,
-                  "finalScore": m.final_score, "status": m.status} for m, s in rows]
-        return items[(page - 1) * page_size: page * page_size], len(items)
+def publish_makeup_batch(user, batch_id):
+    from app.models import AcademicMakeup
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        batch = _core._get_mb(db, int(batch_id))
+        _guard_batch(db, batch)
+        if batch.status != _core._MB_ARRANGED:
+            raise _core._invalid("仅ARRANGED批次可发布")
+        records = db.query(AcademicMakeup).filter(
+            AcademicMakeup.tenant_id == _core._tid(),
+            AcademicMakeup.batch_id == batch.id,
+            AcademicMakeup.is_deleted.is_(False),
+        ).all()
+        if not records:
+            raise AppException("DATA_CONFLICT", "补考批次没有有效名单，不可发布", http_status=409)
+        identity_debt = [
+            row for row in records
+            if not row.course_id or not row.course_code or not row.course_version or not row.attempt_no
+        ]
+        if identity_debt:
+            raise AppException(
+                "DATA_CONFLICT",
+                f"补考名单有{len(identity_debt)}条缺少稳定课程身份，禁止发布",
+                details={"makeupIds": [str(row.id) for row in identity_debt[:100]]},
+                http_status=409,
+            )
+        batch.status = _core._MB_PUBLISHED
+        batch.published_at = datetime.utcnow()
+        _core._audit(db, "AA_MAKEUP", batch.id, "MAKEUP_BATCH_PUBLISH", f"名单{len(records)}条")
+        db.commit()
+        return _core._mb_dto(batch)
 
 
-# ══════════ 重修 ══════════
+def enter_makeup_score(user, makeup_id, score):
+    from app.models import AcademicMakeup
 
-def _rt_dto(r):
-    return {"applyId": str(r.id), "studentId": str(r.student_id), "studentName": r.student_name,
-            "courseName": r.course_name, "termCode": r.term_code, "reason": r.reason,
-            "retakeCount": r.retake_count, "reviewReason": r.review_reason, "status": r.status}
+    if isinstance(score, bool):
+        raise AppException("VALIDATION_ERROR", "补考成绩须为0-100整数")
+    try:
+        numeric = float(score)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "补考成绩须为0-100整数") from exc
+    if not numeric.is_integer() or numeric < 0 or numeric > 100:
+        raise AppException("VALIDATION_ERROR", "补考成绩须为0-100整数")
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        row = db.query(AcademicMakeup).filter(
+            AcademicMakeup.id == int(makeup_id),
+            AcademicMakeup.tenant_id == _core._tid(),
+            AcademicMakeup.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
+            raise not_found("补考记录不存在")
+        batch = _core._get_mb(db, int(row.batch_id))
+        _guard_batch(db, batch)
+        if batch.status not in {_core._MB_PUBLISHED, _core._MB_SCORING}:
+            raise _core._invalid("批次未发布，不可录入")
+        row.final_score = int(numeric)
+        row.status = "SCORED"
+        if batch.status == _core._MB_PUBLISHED:
+            batch.status = _core._MB_SCORING
+        _core._audit(db, "AA_MAKEUP", row.id, "MAKEUP_SCORE", f"成绩{row.final_score}")
+        db.commit()
+        return {"makeupId": str(row.id), "finalScore": row.final_score, "status": row.status}
+
+
+def college_review_scores(user, batch_id):
+    from app.models import AcademicMakeup
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        batch = _core._get_mb(db, int(batch_id))
+        _guard_batch(db, batch)
+        if batch.status != _core._MB_SCORING:
+            raise _core._invalid("仅SCORING批次可学院审核")
+        records = db.query(AcademicMakeup).filter(
+            AcademicMakeup.tenant_id == _core._tid(),
+            AcademicMakeup.batch_id == batch.id,
+            AcademicMakeup.is_deleted.is_(False),
+        ).all()
+        if not records:
+            raise AppException("DATA_CONFLICT", "批次没有成绩记录", http_status=409)
+        pending = [row for row in records if row.status != "SCORED" or row.final_score is None]
+        if pending:
+            raise _core._invalid(f"尚有{len(pending)}条补考成绩未录入，不可提交学院审核")
+        batch.status = _core._MB_REVIEWED
+        _core._audit(db, "AA_MAKEUP", batch.id, "MAKEUP_COLLEGE_REVIEW", f"审核{len(records)}条")
+        db.commit()
+        return _core._mb_dto(batch)
+
+
+def _regular_origin(db, row):
+    if not row.origin_grade_id:
+        raise AppException("DATA_CONFLICT", "补考/清考名单未冻结originGradeId", http_status=409)
+    origin = _effective_failed_grade(db, int(row.acad_student_id), int(row.origin_grade_id))
+    expected = (
+        int(origin.course_id or 0),
+        str(origin.course_code or ""),
+        int(origin.course_version or 0),
+        int(origin.attempt_no or 0),
+    )
+    frozen = (
+        int(row.course_id or 0),
+        str(row.course_code or ""),
+        int(row.course_version or 0),
+        int(row.attempt_no or 0),
+    )
+    if expected != frozen:
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "补考名单冻结课程身份与原成绩不一致，请先治理数据",
+            details={"makeupId": str(row.id), "originGradeId": str(origin.id)},
+            http_status=409,
+        )
+    return {
+        "courseId": int(origin.course_id),
+        "courseCode": origin.course_code,
+        "courseVersion": int(origin.course_version),
+        "attemptNo": int(origin.attempt_no),
+        "courseName": origin.course_name,
+        "nature": origin.nature,
+        "credit": origin.credit_value,
+        "gradeTaskId": origin.grade_task_id,
+        "teachingTaskId": origin.teaching_task_id,
+        "teachingClassId": origin.teaching_class_id,
+        "rosterVersionId": origin.roster_version_id,
+        "sourceBizType": "CLEARANCE" if row.kind == "CLEARANCE" else "MAKEUP",
+        "sourceBizId": int(row.id),
+        "gradeSource": "CLEARANCE" if row.kind == "CLEARANCE" else "MAKEUP",
+        "examType": "CLEARANCE" if row.kind == "CLEARANCE" else "MAKEUP",
+    }
+
+
+def _deferred_identity(db, row):
+    from app.models import AaCourse
+
+    if row.kind != "DEFERRED" or row.source_biz_type != "DEFERRED_EXAM" or not row.source_biz_id:
+        raise AppException("DATA_CONFLICT", "缓考后续考试缺少精确来源回链", http_status=409)
+    if not all((row.course_id, row.course_code, row.course_version, row.attempt_no,
+                row.teaching_task_id, row.teaching_class_id, row.roster_version_id)):
+        raise AppException("DATA_CONFLICT", "缓考后续考试缺少课程或名单版本身份", http_status=409)
+    course = db.query(AaCourse).filter(
+        AaCourse.id == int(row.course_id),
+        AaCourse.tenant_id == _core._tid(),
+        AaCourse.is_deleted.is_(False),
+    ).first()
+    if not course:
+        raise not_found("缓考对应课程版本不存在")
+    if str(course.course_code or "") != str(row.course_code or "") or int(course.version or 0) != int(row.course_version):
+        raise AppException("APPROVAL_VERSION_CONFLICT", "缓考冻结课程版本与课程库当前行不一致", http_status=409)
+    return {
+        "courseId": int(row.course_id),
+        "courseCode": row.course_code,
+        "courseVersion": int(row.course_version),
+        "attemptNo": int(row.attempt_no),
+        "courseName": row.course_name,
+        "nature": course.nature or "REQUIRED",
+        "credit": course.credit or 0,
+        "gradeTaskId": None,
+        "teachingTaskId": int(row.teaching_task_id),
+        "teachingClassId": int(row.teaching_class_id),
+        "rosterVersionId": int(row.roster_version_id),
+        "sourceBizType": "DEFERRED_EXAM",
+        "sourceBizId": int(row.source_biz_id),
+        "gradeSource": "DEFERRED",
+        "examType": "DEFERRED",
+    }
+
+
+def finish_makeup_batch(user, batch_id):
+    """REVIEWED→FINISHED：按冻结来源幂等生成正式成绩并显式冻结策略快照。"""
+    from app.models import AcademicGrade, AcademicMakeup, AcademicStudent
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        batch = _core._get_mb(db, int(batch_id))
+        _guard_batch(db, batch)
+        if batch.status == _core._MB_FINISHED:
+            return _core._mb_dto(batch)
+        if batch.status != _core._MB_REVIEWED:
+            raise _core._invalid("仅学院审核通过(REVIEWED)的批次可教务发布回写")
+        records = db.query(AcademicMakeup).filter(
+            AcademicMakeup.tenant_id == _core._tid(),
+            AcademicMakeup.batch_id == batch.id,
+            AcademicMakeup.status == "SCORED",
+            AcademicMakeup.is_deleted.is_(False),
+        ).order_by(AcademicMakeup.id).all()
+        if not records:
+            raise AppException("DATA_CONFLICT", "批次没有已审核成绩，禁止结束", http_status=409)
+
+        cap = 60 if batch.score_rule == "CAP60" else 100
+        affected = set()
+        projected = 0
+        source_counts = {}
+        for row in records:
+            identity = _deferred_identity(db, row) if row.kind == "DEFERRED" else _regular_origin(db, row)
+            final_score = int(row.final_score or 0)
+            passed = final_score >= 60
+            recorded_score = min(final_score, cap) if passed else final_score
+            grade = db.query(AcademicGrade).filter(
+                AcademicGrade.tenant_id == _core._tid(),
+                AcademicGrade.source_biz_type == identity["sourceBizType"],
+                AcademicGrade.source_biz_id == identity["sourceBizId"],
+                AcademicGrade.is_deleted.is_(False),
+            ).with_for_update().first()
+            if not grade:
+                grade = AcademicGrade(
+                    tenant_id=_core._tid(),
+                    acad_student_id=row.acad_student_id,
+                    course_id=identity["courseId"],
+                    course_code=identity["courseCode"],
+                    course_version=identity["courseVersion"],
+                    attempt_no=identity["attemptNo"],
+                    grade_task_id=identity["gradeTaskId"],
+                    source_biz_type=identity["sourceBizType"],
+                    source_biz_id=identity["sourceBizId"],
+                    teaching_task_id=identity["teachingTaskId"],
+                    teaching_class_id=identity["teachingClassId"],
+                    roster_version_id=identity["rosterVersionId"],
+                    course_name=identity["courseName"],
+                    term=batch.term_code,
+                    nature=identity["nature"],
+                    credit_value=identity["credit"],
+                    score=recorded_score,
+                    pass_status="PASSED" if passed else "FAILED",
+                    exam_type=identity["examType"],
+                    source=identity["gradeSource"],
+                    record_status="ACTIVE",
+                )
+                db.add(grade)
+                db.flush()
+            else:
+                grade.acad_student_id = row.acad_student_id
+                grade.course_id = identity["courseId"]
+                grade.course_code = identity["courseCode"]
+                grade.course_version = identity["courseVersion"]
+                grade.attempt_no = identity["attemptNo"]
+                grade.grade_task_id = identity["gradeTaskId"]
+                grade.teaching_task_id = identity["teachingTaskId"]
+                grade.teaching_class_id = identity["teachingClassId"]
+                grade.roster_version_id = identity["rosterVersionId"]
+                grade.course_name = identity["courseName"]
+                grade.term = batch.term_code
+                grade.nature = identity["nature"]
+                grade.credit_value = identity["credit"]
+                grade.score = recorded_score
+                grade.pass_status = "PASSED" if passed else "FAILED"
+                grade.exam_type = identity["examType"]
+                grade.source = identity["gradeSource"]
+                grade.record_status = "ACTIVE"
+            freeze_effective_grade_policy(
+                db,
+                grade,
+                event_type=identity["gradeSource"],
+                source_biz_type=identity["sourceBizType"],
+                source_biz_id=identity["sourceBizId"],
+            )
+            row.status = "FINISHED"
+            affected.add(int(row.acad_student_id))
+            projected += 1
+            source_counts[identity["gradeSource"]] = source_counts.get(identity["gradeSource"], 0) + 1
+            _core._audit(
+                db,
+                "AA_MAKEUP",
+                row.id,
+                "MAKEUP_GRADE_IDENTITY",
+                (
+                    f"source={identity['gradeSource']};sourceBiz={identity['sourceBizType']}:{identity['sourceBizId']};"
+                    f"courseId={identity['courseId']};attemptNo={identity['attemptNo']};"
+                    f"rosterVersionId={identity['rosterVersionId'] or ''}"
+                ),
+            )
+
+        for academic_student_id in affected:
+            student = db.get(AcademicStudent, academic_student_id)
+            if student and not student.is_deleted:
+                grade_service._refresh_aggregates(db, student)
+        batch.status = _core._MB_FINISHED
+        _core._audit(
+            db,
+            "AA_MAKEUP",
+            batch.id,
+            "MAKEUP_BATCH_FINISH",
+            f"projected={projected};students={len(affected)};sources={source_counts}",
+        )
+        db.commit()
+        return {
+            **_core._mb_dto(batch),
+            "identityProjected": projected,
+            "sourceCounts": source_counts,
+        }
 
 
 def retake_apply(user, body):
-    """学生重修报名：优先 gradeId（挂科成绩）锁定课程；次数上限校验（默2），同课程在途唯一。"""
-    from app.models import AaRetakeApply, AcademicGrade, AcademicStudent
-    with session() as db:
-        s = _student(db)
-        if not s:
-            raise not_found("学生档案不存在")
-        course_name = (getattr(body, "courseName", None) or "").strip()
-        term = getattr(body, "termCode", None)
-        grade_id = getattr(body, "gradeId", None)
-        if grade_id:
-            g = db.get(AcademicGrade, int(grade_id))
-            acad = db.query(AcademicStudent).filter(
-                AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == s.id,
-                AcademicStudent.is_deleted.is_(False)).first()
-            if (not g or g.is_deleted or g.tenant_id != _tid()
-                    or not acad or g.acad_student_id != acad.id
-                    or (g.pass_status or "").upper() not in ("FAIL", "FAILED")):
-                raise _bad("请从挂科课程列表选择有效成绩后再报名重修")
-            course_name = (g.course_name or "").strip()
-            term = term or g.term
-        if not course_name:
-            raise _bad("请从挂科课程列表选择课程（课程名必填）")
-        max_count = int(_rule("retake_max_count", 2))
-        done = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(),
-                                              AaRetakeApply.student_id == s.id,
-                                              AaRetakeApply.course_name == course_name,
-                                              AaRetakeApply.status.notin_([_RT_REJECTED]),
-                                              AaRetakeApply.is_deleted.is_(False)).all()
-        active = [r for r in done if r.status in (_RT_SUBMITTED, _RT_REVIEW)]
-        if active:
-            raise _conflict("该课程本学期已有在途重修申请")
-        if len(done) >= max_count:
-            raise _bad(f"该课程重修次数已达上限 {max_count} 次")
-        r = AaRetakeApply(tenant_id=_tid(), student_id=s.id, student_no=s.student_no, student_name=s.real_name,
-                          course_name=course_name, term_code=term, reason=getattr(body, "reason", None),
-                          retake_count=len(done) + 1, status=_RT_SUBMITTED)
-        db.add(r); db.flush()
-        _audit(db, "AA_RETAKE", r.id, "RETAKE_APPLY", f"重修报名 {course_name}")
+    from app.models import AaRetakeApply
+
+    with _core.session() as db:
+        student = _student(db, user)
+        term = _current_term(db)
+        requested = str(_value(body, "termCode") or "").strip()
+        code = _term_code(term)
+        if requested and requested != code:
+            raise AppException("VALIDATION_ERROR", "重修报名只能绑定当前办理学期")
+        academic_student = _academic_student_for_profile(db, student.id)
+        if not academic_student:
+            raise not_found("学生学业档案不存在")
+        grade_id = _value(body, "gradeId")
+        if not grade_id:
+            raise AppException("VALIDATION_ERROR", "请从本人当前有效挂科成绩选择gradeId")
+        grade = _effective_failed_grade(db, academic_student.id, int(grade_id))
+        history = db.query(AaRetakeApply).filter(
+            AaRetakeApply.tenant_id == _core._tid(),
+            AaRetakeApply.student_id == student.id,
+            AaRetakeApply.course_id == grade.course_id,
+            AaRetakeApply.status.notin_([_core._RT_REJECTED]),
+            AaRetakeApply.is_deleted.is_(False),
+        ).all()
+        if any(row.status in {_core._RT_SUBMITTED, _core._RT_REVIEW, _core._RT_APPROVED} for row in history):
+            raise _core._conflict("该课程已有在途重修申请")
+        maximum = int(_core._rule("retake_max_count", 2))
+        if len(history) >= maximum:
+            raise _core._bad(f"该课程重修次数已达上限{maximum}次")
+        row = AaRetakeApply(
+            tenant_id=_core._tid(),
+            student_id=student.id,
+            student_no=student.student_no,
+            student_name=student.real_name,
+            acad_student_id=academic_student.id,
+            course_id=grade.course_id,
+            course_name=grade.course_name,
+            term_code=code,
+            reason=_value(body, "reason"),
+            retake_count=len(history) + 1,
+            status=_core._RT_SUBMITTED,
+        )
+        db.add(row)
+        db.flush()
+        _core._audit(
+            db,
+            "AA_RETAKE",
+            row.id,
+            "RETAKE_APPLY_IDENTITY",
+            (
+                f"originGradeId={grade.id};courseId={grade.course_id};courseCode={grade.course_code};"
+                f"courseVersion={grade.course_version};attemptNo={grade.attempt_no}"
+            ),
+        )
         db.commit()
-        return _rt_dto(r)
+        result = _core._rt_dto(row)
+        result.update({
+            "originGradeId": str(grade.id),
+            "courseId": str(grade.course_id),
+            "courseCode": grade.course_code,
+            "courseVersion": grade.course_version,
+            "originAttemptNo": grade.attempt_no,
+        })
+        return result
 
 
 def retake_review(user, apply_id, action, reason=""):
-    """教务处单节点审批（SUBMITTED→APPROVED/REJECTED）。APPROVED 编入跟班（ENROLLED）。"""
     from app.models import AaRetakeApply
-    with session() as db:
-        _require_school(_ctx(user, db))
-        r = db.query(AaRetakeApply).filter(AaRetakeApply.id == apply_id, AaRetakeApply.tenant_id == _tid()).first()
-        if not r:
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        row = db.query(AaRetakeApply).filter(
+            AaRetakeApply.id == int(apply_id),
+            AaRetakeApply.tenant_id == _core._tid(),
+            AaRetakeApply.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
             raise not_found("重修申请不存在")
-        if r.status not in (_RT_SUBMITTED, _RT_REVIEW):
+        _guard_code(db, row.term_code)
+        if row.status not in {_core._RT_SUBMITTED, _core._RT_REVIEW}:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请已处理", http_status=409)
-        if action == "APPROVE":
-            r.status = _RT_APPROVED
-        elif action == "REJECT":
-            reason = (reason or "").strip()
-            if len(reason) < 5:
-                raise _bad("驳回原因必填且不少于5字")
-            r.status = _RT_REJECTED
-            r.review_reason = reason
+        action_code = str(action or "").upper()
+        if action_code == "APPROVE":
+            row.status = _core._RT_APPROVED
+        elif action_code == "REJECT":
+            reason_text = str(reason or "").strip()
+            if len(reason_text) < 5:
+                raise _core._bad("驳回原因必填且不少于5字")
+            row.status = _core._RT_REJECTED
+            row.review_reason = reason_text
         else:
-            raise _bad("非法审批动作")
-        _audit(db, "AA_RETAKE", r.id, "RETAKE_REVIEW", f"{action}")
+            raise _core._bad("非法审批动作")
+        _core._audit(db, "AA_RETAKE", row.id, "RETAKE_REVIEW", action_code)
         db.commit()
-        return _rt_dto(r)
+        return _core._rt_dto(row)
 
 
 def retake_enroll(user, apply_id, teaching_task_ref=None):
-    """APPROVED→ENROLLED：编入教学任务跟班。"""
-    from app.models import AaRetakeApply
-    with session() as db:
-        _require_school(_ctx(user, db))
-        r = db.query(AaRetakeApply).filter(AaRetakeApply.id == apply_id, AaRetakeApply.tenant_id == _tid()).first()
-        if not r:
+    """重修编班同时生成新名单版本；已有下游消费者时禁止静默换版。"""
+    from app.models import AaRetakeApply, AaTeachingTask, AaTeachingTaskBatch
+
+    if not teaching_task_ref:
+        raise AppException("VALIDATION_ERROR", "重修必须编入真实教学任务")
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        row = db.query(AaRetakeApply).filter(
+            AaRetakeApply.id == int(apply_id),
+            AaRetakeApply.tenant_id == _core._tid(),
+            AaRetakeApply.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
             raise not_found("重修申请不存在")
-        if r.status != _RT_APPROVED:
-            raise _invalid("仅 APPROVED 申请可编入跟班")
-        r.status = _RT_ENROLLED
-        r.teaching_task_ref = int(teaching_task_ref) if teaching_task_ref else None
-        _audit(db, "AA_RETAKE", r.id, "RETAKE_ENROLL", "编入跟班")
+        term = _guard_code(db, row.term_code)
+        if row.status == _core._RT_ENROLLED and int(row.teaching_task_ref or 0) == int(teaching_task_ref):
+            roster = teaching_class_service.resolve_teaching_task_roster(db, int(teaching_task_ref))
+            return {**_core._rt_dto(row), "rosterIdentity": roster, "idempotent": True}
+        if row.status != _core._RT_APPROVED:
+            raise _core._invalid("仅APPROVED申请可编入跟班")
+        if not row.course_id:
+            raise AppException("DATA_CONFLICT", "重修申请缺少courseId，请退回后重新申请", http_status=409)
+        task = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == int(teaching_task_ref),
+            AaTeachingTask.tenant_id == _core._tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        ).first()
+        if not task:
+            raise not_found("教学任务不存在")
+        task_batch = db.query(AaTeachingTaskBatch).filter(
+            AaTeachingTaskBatch.id == task.batch_id,
+            AaTeachingTaskBatch.tenant_id == _core._tid(),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        ).first()
+        if not task_batch or int(task_batch.term_id or 0) != int(term.id):
+            raise AppException("DATA_CONFLICT", "重修申请与跟班教学任务不属于同一学期", http_status=409)
+        if int(task.course_id or 0) != int(row.course_id):
+            raise AppException("DATA_CONFLICT", "跟班教学任务课程版本与重修申请不一致", http_status=409)
+
+        teaching_class = teaching_class_service.ensure_teaching_class_for_task(db, int(task.id))
+        current = teaching_class_service.resolve_teaching_task_roster(db, int(task.id))
+        current_ids = {int(value) for value in current.get("studentIds") or []}
+        if int(row.student_id) not in current_ids:
+            consumers = consumer_counts(db, teaching_class_id=int(teaching_class.id))
+            if int(consumers.get("TOTAL") or 0) > 0:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该教学班名单已被考勤、考务或成绩消费，不能静默加入重修学生；请先退回下游任务并走名单换版流程",
+                    details={"consumers": consumers, "teachingClassId": str(teaching_class.id)},
+                    http_status=409,
+                )
+            version, _created = teaching_class_service.create_roster_version(
+                db,
+                teaching_class,
+                sorted(current_ids | {int(row.student_id)}),
+                source_type="RETAKE",
+                source_id=int(row.id),
+                member_source_ids={int(row.student_id): int(row.id)},
+                reason=f"重修申请{row.id}编入教学任务{task.id}",
+            )
+        else:
+            from app.models import AaTeachingClassRosterVersion
+
+            version = db.get(AaTeachingClassRosterVersion, int(current["rosterVersionId"]))
+        row.status = _core._RT_ENROLLED
+        row.teaching_task_ref = task.id
+        _core._audit(
+            db,
+            "AA_RETAKE",
+            row.id,
+            "RETAKE_ENROLL_IDENTITY",
+            (
+                f"taskId={task.id};courseId={task.course_id};teachingClassId={teaching_class.id};"
+                f"rosterVersionId={version.id}"
+            ),
+        )
         db.commit()
-        return _rt_dto(r)
+        result = _core._rt_dto(row)
+        result.update({
+            "teachingClassId": str(teaching_class.id),
+            "rosterVersionId": str(version.id),
+            "rosterVersionNo": version.version_no,
+            "memberCount": version.member_count,
+            "idempotent": False,
+        })
+        return result
 
 
 def retake_list(user, status=None, student_only=False, page=1, page_size=50):
     from app.models import AaRetakeApply
-    ctx = get_current_user_ctx() or {}
-    with session() as db:
-        _ctx(user, db)
-        q = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(), AaRetakeApply.is_deleted.is_(False))
+
+    with _core.session() as db:
+        _core._ctx(user, db)
+        query = db.query(AaRetakeApply).filter(
+            AaRetakeApply.tenant_id == _core._tid(),
+            AaRetakeApply.is_deleted.is_(False),
+        )
         if student_only:
-            q = q.filter(AaRetakeApply.student_no == ctx.get("studentNo"))
+            student = _student(db, user)
+            query = query.filter(AaRetakeApply.student_id == int(student.id))
         if status:
-            q = q.filter(AaRetakeApply.status == status)
-        rows = q.order_by(AaRetakeApply.id.desc()).all()
-        return [_rt_dto(r) for r in rows[(page - 1) * page_size: page * page_size]], len(rows)
-
-
-# ══════════ 免修（三级审批） ══════════
-
-def _ex_dto(e):
-    return {"exemptionId": str(e.id), "studentId": str(e.student_id), "studentName": e.student_name,
-            "courseName": e.course_name, "termCode": e.term_code, "reason": e.reason,
-            "currentNode": e.current_node, "returnReason": e.return_reason, "status": e.status}
+            query = query.filter(AaRetakeApply.status == status)
+        rows = query.order_by(AaRetakeApply.id.desc()).all()
+        total = len(rows)
+        start = (max(1, int(page)) - 1) * int(page_size)
+        return [_core._rt_dto(row) for row in rows[start:start + int(page_size)]], total
 
 
 def exemption_apply(user, body):
-    """学生免修申请：已获成绩课程 422；每学期免修上限（默2）。"""
-    from app.models import AaExemption, AcademicGrade, AcademicStudent
-    with session() as db:
-        s = _student(db)
-        if not s:
-            raise not_found("学生档案不存在")
-        course_name = (getattr(body, "courseName", None) or "").strip()
-        term = getattr(body, "termCode", None)
-        if not course_name:
-            raise _bad("课程名必填")
-        # 已获成绩课程不可免修
-        acad = db.query(AcademicStudent).filter(AcademicStudent.tenant_id == _tid(),
-                                                AcademicStudent.student_id == s.id).first()
-        if acad:
-            passed = db.query(AcademicGrade).filter(AcademicGrade.tenant_id == _tid(),
-                                                    AcademicGrade.acad_student_id == acad.id,
-                                                    AcademicGrade.course_name == course_name,
-                                                    AcademicGrade.pass_status == "PASSED").first()
+    from app.models import AaCourse, AaExemption, AcademicGrade, FileObject
+
+    with _core.session() as db:
+        student = _student(db, user)
+        term = _current_term(db)
+        requested = str(_value(body, "termCode") or "").strip()
+        term_code = _term_code(term)
+        if requested and requested != term_code:
+            raise AppException("VALIDATION_ERROR", "免修申请只能绑定当前办理学期")
+        course_id = _value(body, "courseId")
+        if not course_id:
+            raise AppException("VALIDATION_ERROR", "免修申请必须选择课程库具体courseId")
+        course = db.query(AaCourse).filter(
+            AaCourse.id == int(course_id),
+            AaCourse.tenant_id == _core._tid(),
+            AaCourse.is_deleted.is_(False),
+        ).first()
+        if not course or not course.course_code or not course.version:
+            raise not_found("课程版本不存在或缺少稳定课程身份")
+        academic_student = _academic_student_for_profile(db, student.id)
+        if academic_student:
+            grades = db.query(AcademicGrade).filter(
+                AcademicGrade.tenant_id == _core._tid(),
+                AcademicGrade.acad_student_id == academic_student.id,
+                AcademicGrade.record_status == "ACTIVE",
+                AcademicGrade.is_deleted.is_(False),
+            ).all()
+            passed = [
+                row for row in grade_service.effective_grade_rows(grades)
+                if str(row.pass_status or "").upper() == "PASSED"
+                and (
+                    int(row.course_id or 0) == int(course.id)
+                    or str(row.course_code or "") == str(course.course_code)
+                )
+            ]
             if passed:
-                raise _bad("该课程已获及格成绩，不可申请免修")
-        max_count = int(_rule("exemption_max_count", 2))
-        term_applies = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(),
-                                                    AaExemption.student_id == s.id,
-                                                    AaExemption.term_code == term,
-                                                    AaExemption.status.notin_([_EX_REJECTED, _EX_CANCELLED]),
-                                                    AaExemption.is_deleted.is_(False)).count()
-        if term and term_applies >= max_count:
-            raise _bad(f"本学期免修申请已达上限 {max_count} 门")
-        # 免修材料附件接 t_file_object：校验传入的 file_id 均为本租户真实文件对象
-        material_ids = getattr(body, "materialFileIds", None)
-        if material_ids:
-            from app.models import FileObject
-            ids = material_ids if isinstance(material_ids, list) else [material_ids]
-            int_ids = [int(x) for x in ids if str(x).isdigit()]
-            if int_ids:
-                found = db.query(FileObject).filter(FileObject.tenant_id == _tid(),
-                                                    FileObject.id.in_(int_ids)).count()
-                if found != len(int_ids):
-                    raise _bad("免修材料附件包含无效文件，请重新上传")
-            material_ids = json.dumps([str(x) for x in ids], ensure_ascii=False)
-        e = AaExemption(tenant_id=_tid(), student_id=s.id, student_no=s.student_no, student_name=s.real_name,
-                        course_name=course_name, term_code=term, college_id=getattr(s, "college_id", None),
-                        reason=getattr(body, "reason", None), material_file_ids=material_ids,
-                        current_node="TEACHER", status=_EX_TEACHER)
-        db.add(e); db.flush()
-        _audit(db, "AA_EXEMPTION", e.id, "EXEMPTION_APPLY", f"免修申请 {course_name}")
+                raise _core._bad("该课程已获及格成绩，不可申请免修")
+        maximum = int(_core._rule("exemption_max_count", 2))
+        used = db.query(AaExemption).filter(
+            AaExemption.tenant_id == _core._tid(),
+            AaExemption.student_id == student.id,
+            AaExemption.term_code == term_code,
+            AaExemption.status.notin_([_core._EX_REJECTED, _core._EX_CANCELLED]),
+            AaExemption.is_deleted.is_(False),
+        ).count()
+        if used >= maximum:
+            raise _core._bad(f"本学期免修申请已达上限{maximum}门")
+        raw_ids = _value(body, "materialFileIds", []) or []
+        ids = raw_ids if isinstance(raw_ids, list) else [raw_ids]
+        int_ids = [int(value) for value in ids if str(value).isdigit()]
+        if len(int_ids) != len(ids):
+            raise _core._bad("免修材料附件ID格式不正确")
+        if int_ids:
+            found = db.query(FileObject).filter(
+                FileObject.tenant_id == _core._tid(),
+                FileObject.id.in_(int_ids),
+            ).count()
+            if found != len(set(int_ids)):
+                raise _core._bad("免修材料附件包含无效文件，请重新上传")
+        row = AaExemption(
+            tenant_id=_core._tid(),
+            student_id=student.id,
+            student_no=student.student_no,
+            student_name=student.real_name,
+            course_id=course.id,
+            course_name=course.course_name,
+            term_code=term_code,
+            college_id=getattr(student, "college_id", None),
+            reason=_value(body, "reason"),
+            material_file_ids=json.dumps([str(value) for value in int_ids], ensure_ascii=False) if int_ids else None,
+            current_node=_core._EX_TEACHER,
+            status=_core._EX_TEACHER,
+        )
+        db.add(row)
+        db.flush()
+        _core._audit(
+            db,
+            "AA_EXEMPTION",
+            row.id,
+            "EXEMPTION_APPLY_IDENTITY",
+            f"courseId={course.id};courseCode={course.course_code};version={course.version}",
+        )
         db.commit()
-        return _ex_dto(e)
+        result = _core._ex_dto(row)
+        result.update({
+            "courseId": str(course.id),
+            "courseCode": course.course_code,
+            "courseVersion": course.version,
+        })
+        return result
 
 
 def exemption_review(user, exemption_id, action, reason=""):
-    """三级审批任一节点：APPROVE 推进/终 APPROVED；RETURN 退回；REJECT 驳回。"""
-    from app.models import AaExemption
-    with session() as db:
-        _ctx(user, db)
-        e = db.query(AaExemption).filter(AaExemption.id == exemption_id, AaExemption.tenant_id == _tid()).first()
-        if not e:
+    from app.models import AaCourse, AaExemption, AcademicGrade
+
+    with _core.session() as db:
+        _core._ctx(user, db)
+        row = db.query(AaExemption).filter(
+            AaExemption.id == int(exemption_id),
+            AaExemption.tenant_id == _core._tid(),
+            AaExemption.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
             raise not_found("免修申请不存在")
-        if e.status not in _EX_CHAIN:
+        _guard_code(db, row.term_code)
+        if row.status not in _core._EX_CHAIN:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请已处理", http_status=409)
-        if action == "APPROVE":
-            e.status = _EX_CHAIN[e.status]
-            e.current_node = e.status
-        elif action == "RETURN":
-            reason = (reason or "").strip()
-            if len(reason) < 5:
-                raise _bad("退回原因必填且不少于5字")
-            e.status = _EX_SUBMITTED
-            e.return_reason = reason
-        elif action == "REJECT":
-            e.status = _EX_REJECTED
-            e.return_reason = (reason or "").strip()
-        else:
-            raise _bad("非法审批动作")
-        _audit(db, "AA_EXEMPTION", e.id, "EXEMPTION_REVIEW", f"{action}->{e.status}")
+        action_code = str(action or "").upper()
+        if action_code in {"RETURN", "REJECT"}:
+            reason_text = str(reason or "").strip()
+            if len(reason_text) < 5:
+                raise _core._bad("退回/驳回原因必填且不少于5字")
+            row.status = _core._EX_SUBMITTED if action_code == "RETURN" else _core._EX_REJECTED
+            row.current_node = _core._EX_SUBMITTED if action_code == "RETURN" else None
+            row.return_reason = reason_text
+            _core._audit(db, "AA_EXEMPTION", row.id, "EXEMPTION_REVIEW", f"{action_code}->{row.status}")
+            db.commit()
+            return _core._ex_dto(row)
+        if action_code != "APPROVE":
+            raise _core._bad("非法审批动作")
+
+        next_status = _core._EX_CHAIN[row.status]
+        if next_status == _core._EX_APPROVED:
+            if not row.course_id:
+                raise AppException("DATA_CONFLICT", "免修申请缺少courseId，请退回后重新提交", http_status=409)
+            course = db.query(AaCourse).filter(
+                AaCourse.id == int(row.course_id),
+                AaCourse.tenant_id == _core._tid(),
+                AaCourse.is_deleted.is_(False),
+            ).first()
+            if not course or not course.course_code or not course.version:
+                raise AppException("DATA_CONFLICT", "免修目标课程版本无效", http_status=409)
+            academic_student = _academic_student_for_profile(db, row.student_id)
+            if not academic_student:
+                academic_student = grade_service._core._acad_student_id(db, row.student_id, row.student_name or "")
+            active = db.query(AcademicGrade).filter(
+                AcademicGrade.tenant_id == _core._tid(),
+                AcademicGrade.acad_student_id == academic_student.id,
+                AcademicGrade.record_status == "ACTIVE",
+                AcademicGrade.is_deleted.is_(False),
+            ).all()
+            if any(
+                str(item.pass_status or "").upper() == "PASSED"
+                and (
+                    int(item.course_id or 0) == int(course.id)
+                    or str(item.course_code or "") == str(course.course_code)
+                )
+                for item in grade_service.effective_grade_rows(active)
+            ):
+                raise AppException("APPROVAL_VERSION_CONFLICT", "审批期间该课程已取得及格成绩，申请不再有效", http_status=409)
+            grade = db.query(AcademicGrade).filter(
+                AcademicGrade.tenant_id == _core._tid(),
+                AcademicGrade.source_biz_type == "EXEMPTION",
+                AcademicGrade.source_biz_id == row.id,
+                AcademicGrade.is_deleted.is_(False),
+            ).with_for_update().first()
+            if not grade:
+                attempt_no = next_study_attempt_no(db, academic_student.id, course.course_code)
+                grade = AcademicGrade(
+                    tenant_id=_core._tid(),
+                    acad_student_id=academic_student.id,
+                    course_id=course.id,
+                    course_code=course.course_code,
+                    course_version=int(course.version),
+                    attempt_no=attempt_no,
+                    source_biz_type="EXEMPTION",
+                    source_biz_id=row.id,
+                    course_name=course.course_name,
+                    term=row.term_code,
+                    nature=course.nature or "REQUIRED",
+                    credit_value=course.credit or 0,
+                    score=None,
+                    pass_status="PASSED",
+                    exam_type="EXEMPTION",
+                    source="EXEMPTION",
+                    record_status="ACTIVE",
+                )
+                db.add(grade)
+                db.flush()
+            freeze_effective_grade_policy(
+                db,
+                grade,
+                event_type="EXEMPTION",
+                source_biz_type="EXEMPTION",
+                source_biz_id=row.id,
+            )
+            grade_service._refresh_aggregates(db, academic_student)
+        row.status = next_status
+        row.current_node = None if next_status == _core._EX_APPROVED else next_status
+        _core._audit(
+            db,
+            "AA_EXEMPTION",
+            row.id,
+            "EXEMPTION_REVIEW",
+            f"APPROVE->{row.status};courseId={row.course_id}",
+        )
         db.commit()
-        return _ex_dto(e)
+        return _core._ex_dto(row)
 
 
 def exemption_list(user, status=None, student_only=False, page=1, page_size=50):
     from app.models import AaExemption
-    ctx = get_current_user_ctx() or {}
-    with session() as db:
-        _ctx(user, db)
-        q = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
+
+    with _core.session() as db:
+        _core._ctx(user, db)
+        query = db.query(AaExemption).filter(
+            AaExemption.tenant_id == _core._tid(),
+            AaExemption.is_deleted.is_(False),
+        )
         if student_only:
-            q = q.filter(AaExemption.student_no == ctx.get("studentNo"))
+            student = _student(db, user)
+            query = query.filter(AaExemption.student_id == int(student.id))
         if status:
-            q = q.filter(AaExemption.status == status)
-        rows = q.order_by(AaExemption.id.desc()).all()
-        return [_ex_dto(e) for e in rows[(page - 1) * page_size: page * page_size]], len(rows)
-
-
-# ══════════ 缓考合流（只读 + 并入补考批次） ══════════
-
-def deferred_pool(user, page=1, page_size=50):
-    """缓考 APPROVED 学生池（读考务包 AaDeferredExam），供并入下一补考批次。"""
-    from app.models import AaDeferredExam
-    with session() as db:
-        _ctx(user, db)
-        rows = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(),
-                                               AaDeferredExam.status == "APPROVED",
-                                               AaDeferredExam.is_deleted.is_(False)).order_by(AaDeferredExam.id.desc()).all()
-        items = [{"deferId": str(d.id), "studentId": str(d.student_id), "studentName": d.student_name,
-                  "examCourseId": str(d.exam_course_id), "courseName": d.course_name,
-                  "nextBatchRef": d.next_batch_ref} for d in rows]
-        return items[(page - 1) * page_size: page * page_size], len(items)
+            query = query.filter(AaExemption.status == status)
+        rows = query.order_by(AaExemption.id.desc()).all()
+        total = len(rows)
+        start = (max(1, int(page)) - 1) * int(page_size)
+        return [_core._ex_dto(row) for row in rows[start:start + int(page_size)]], total
 
 
 def merge_deferred(user, defer_id, batch_id):
-    """把缓考 APPROVED 学生并入补考批次（写 t_acad_makeup.batch_id，标记 next_batch_ref）。"""
-    from app.models import AaDeferredExam, AcademicMakeup, AcademicStudent
-    with session() as db:
-        _require_school(_ctx(user, db))
-        d = db.query(AaDeferredExam).filter(AaDeferredExam.id == defer_id, AaDeferredExam.tenant_id == _tid()).first()
-        if not d:
+    """缓考并入后续考试：冻结缓考来源、课程版本、当前修读次数和考试课程名单版本。"""
+    from app.models import (
+        AaCourse,
+        AaDeferredExam,
+        AaExamBatch,
+        AaExamCourse,
+        AaTeachingTask,
+        AcademicMakeup,
+    )
+
+    with _core.session() as db:
+        _core._require_school(_core._ctx(user, db))
+        deferred = db.query(AaDeferredExam).filter(
+            AaDeferredExam.id == int(defer_id),
+            AaDeferredExam.tenant_id == _core._tid(),
+            AaDeferredExam.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not deferred:
             raise not_found("缓考记录不存在")
-        if d.status != "APPROVED":
-            raise _invalid("仅 APPROVED 缓考可并入补考批次")
-        b = _get_mb(db, batch_id)
-        acad = db.query(AcademicStudent).filter(AcademicStudent.tenant_id == _tid(),
-                                                AcademicStudent.student_id == d.student_id).first()
-        m = AcademicMakeup(tenant_id=_tid(), acad_student_id=acad.id if acad else d.student_id,
-                           course_name=d.course_name or "缓考课程", batch_id=b.id,
-                           status="PENDING_EXAM", record_status="ACTIVE")
-        db.add(m)
-        d.next_batch_ref = str(b.id)
-        if b.status == _MB_DRAFT:
-            b.status = _MB_ARRANGED
-        _audit(db, "AA_MAKEUP", b.id, "DEFERRED_MERGE", f"缓考 {d.student_name} 并入补考批次")
-        db.commit()
-        return {"deferId": str(d.id), "batchId": str(b.id), "merged": True}
+        if deferred.status != "APPROVED":
+            raise _core._invalid("仅APPROVED缓考可并入补考批次")
+        batch = _core._get_mb(db, int(batch_id))
+        _guard_batch(db, batch)
+        if batch.status not in {_core._MB_DRAFT, _core._MB_ARRANGED}:
+            raise _core._invalid("仅DRAFT/ARRANGED批次可并入缓考")
 
-
-# ══════════ 统计分析（三级施工卡 10-统计分析 §7）══════════
-
-def _scope_college_ids(ctx, college_id=None):
-    """返回本次查询应过滤的学院 id 集合；None=不限（全租户角色未传学院）。传学院越权则拒绝。"""
-    if college_id:
-        cid = int(college_id)
-        if ctx.scope_type == "COLLEGE" and cid not in ctx.college_ids:
-            raise no_data_scope("该学院不在您的数据范围内")
-        return {cid}
-    if ctx.scope_type == "COLLEGE":
-        return set(ctx.college_ids) if ctx.college_ids else set()
-    return None
-
-
-def _profile_ids_by_college(db, college_ids):
-    """college_ids=None→不限(None)；空集→fail-closed(空集)；否则按 StudentProfile.college_id 过滤。"""
-    if college_ids is None:
-        return None
-    from app.models import StudentProfile
-    if not college_ids:
-        return set()
-    rows = db.query(StudentProfile.id).filter(StudentProfile.tenant_id == _tid(),
-                                               StudentProfile.college_id.in_(college_ids)).all()
-    return {r[0] for r in rows}
-
-
-def _acad_ids_by_profile(db, profile_ids):
-    """StudentProfile.id 集合 → AcademicStudent(t_acad_student).id 集合；None 透传（不限）。"""
-    if profile_ids is None:
-        return None
-    from app.models import AcademicStudent
-    if not profile_ids:
-        return set()
-    rows = db.query(AcademicStudent.id).filter(AcademicStudent.tenant_id == _tid(),
-                                                AcademicStudent.student_id.in_(profile_ids)).all()
-    return {r[0] for r in rows}
-
-
-def _line_stat(rows, is_pass):
-    """{count, passRate}：passRate 分母=已有终态判定结果的行数（None=未终态/不计入分母）。"""
-    judged = [is_pass(r) for r in rows]
-    scored = [j for j in judged if j is not None]
-    passed = len([j for j in scored if j])
-    rate = round(passed / len(scored), 4) if scored else None
-    return {"count": len(rows), "passRate": rate}
-
-
-def _group_by(rows, keyfn):
-    counts: dict = {}
-    for r in rows:
-        k = keyfn(r)
-        k = str(k) if k not in (None, "") else "未知"
-        counts[k] = counts.get(k, 0) + 1
-    return [{"key": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])]
-
-
-def aggregate_stats(user, term=None, college_id=None, dimension=None):
-    """四条线统计聚合：补考/重修/免修/缓考各自人数(批次数)+通过率；dimension=course/term/college 时
-    附加下钻分组（V1：不新建统计表，实时聚合既有四表，见二级总包 §8 性能提示）。"""
-    from app.models import AaDeferredExam, AaExemption, AaMakeupBatch, AaRetakeApply, AcademicMakeup
-    with session() as db:
-        ctx = _ctx(user, db)
-        college_ids = _scope_college_ids(ctx, college_id)
-        profile_ids = _profile_ids_by_college(db, college_ids)
-        acad_ids = _acad_ids_by_profile(db, profile_ids)
-
-        batch_term = dict(db.query(AaMakeupBatch.id, AaMakeupBatch.term_code)
-                          .filter(AaMakeupBatch.tenant_id == _tid()).all())
-
-        # 补考：t_acad_makeup（batch_id 非空=四条线口径），学期按批次 term_code 过滤
-        mq = db.query(AcademicMakeup).filter(AcademicMakeup.tenant_id == _tid(),
-                                             AcademicMakeup.batch_id.isnot(None))
-        if acad_ids is not None:
-            mq = mq.filter(AcademicMakeup.acad_student_id.in_(acad_ids or [-1]))
-        if term:
-            bids = [bid for bid, tc in batch_term.items() if tc == term]
-            mq = mq.filter(AcademicMakeup.batch_id.in_(bids or [-1]))
-        makeup_rows = mq.all()
-        makeup_stat = _line_stat(makeup_rows, lambda m: (m.final_score >= 60) if m.final_score is not None else None)
-
-        # 重修：t_aa_retake_apply（APPROVED/ENROLLED/FINISHED=通过，REJECTED=不通过，在途不计分母）
-        rq = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(), AaRetakeApply.is_deleted.is_(False))
-        if profile_ids is not None:
-            rq = rq.filter(AaRetakeApply.student_id.in_(profile_ids or [-1]))
-        if term:
-            rq = rq.filter(AaRetakeApply.term_code == term)
-        retake_rows = rq.all()
-        _rt_terminal = ("APPROVED", "ENROLLED", "FINISHED", "REJECTED")
-        retake_stat = _line_stat(retake_rows, lambda r: (r.status != "REJECTED") if r.status in _rt_terminal else None)
-
-        # 免修：t_aa_exemption（有 college_id 直接列，APPROVED=通过）
-        eq = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
-        if college_ids is not None:
-            eq = eq.filter(AaExemption.college_id.in_(college_ids or [-1]))
-        if term:
-            eq = eq.filter(AaExemption.term_code == term)
-        exemption_rows = eq.all()
-        _ex_terminal = (_EX_APPROVED, _EX_REJECTED, _EX_CANCELLED)
-        exemption_stat = _line_stat(exemption_rows, lambda e: (e.status == _EX_APPROVED) if e.status in _ex_terminal else None)
-
-        # 缓考：t_aa_deferred_exam（只读，APPROVED=已并入下一批次视为"通过"）
-        dq = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(), AaDeferredExam.is_deleted.is_(False))
-        if profile_ids is not None:
-            dq = dq.filter(AaDeferredExam.student_id.in_(profile_ids or [-1]))
-        deferred_rows = dq.all()
-        deferred_stat = _line_stat(deferred_rows, lambda d: (d.status == "APPROVED") if d.status in ("APPROVED", "REJECTED") else None)
-
-        result = {"makeup": makeup_stat, "retake": retake_stat,
-                  "deferred": deferred_stat, "exemption": exemption_stat}
-        if dimension == "course":
-            result["groups"] = {
-                "makeup": _group_by(makeup_rows, lambda m: m.course_name),
-                "retake": _group_by(retake_rows, lambda r: r.course_name),
-                "deferred": _group_by(deferred_rows, lambda d: d.course_name),
-                "exemption": _group_by(exemption_rows, lambda e: e.course_name),
+        duplicate = db.query(AcademicMakeup).filter(
+            AcademicMakeup.tenant_id == _core._tid(),
+            AcademicMakeup.source_biz_type == "DEFERRED_EXAM",
+            AcademicMakeup.source_biz_id == deferred.id,
+            AcademicMakeup.is_deleted.is_(False),
+        ).first()
+        if duplicate:
+            if int(duplicate.batch_id or 0) != int(batch.id):
+                raise AppException("DATA_CONFLICT", "该缓考已并入其它后续考试批次", http_status=409)
+            return {
+                "deferId": str(deferred.id),
+                "batchId": str(batch.id),
+                "makeupId": str(duplicate.id),
+                "merged": True,
+                "idempotent": True,
             }
-        elif dimension == "term":
-            # 缓考无 term_code 建模（V1 未建模，分组统一置"未知"，如实登记不冒充数据）
-            result["groups"] = {
-                "makeup": _group_by(makeup_rows, lambda m: batch_term.get(m.batch_id)),
-                "retake": _group_by(retake_rows, lambda r: r.term_code),
-                "deferred": _group_by(deferred_rows, lambda d: None),
-                "exemption": _group_by(exemption_rows, lambda e: e.term_code),
-            }
-        elif dimension == "college":
-            from app.models import AcademicStudent, StudentProfile
-            acad_to_profile = dict(db.query(AcademicStudent.id, AcademicStudent.student_id).filter(
-                AcademicStudent.tenant_id == _tid(),
-                AcademicStudent.id.in_({m.acad_student_id for m in makeup_rows} or [-1])).all())
-            profile_ids_needed = (set(acad_to_profile.values())
-                                  | {r.student_id for r in retake_rows} | {d.student_id for d in deferred_rows})
-            profile_college = dict(db.query(StudentProfile.id, StudentProfile.college_id).filter(
-                StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(profile_ids_needed or [-1])).all())
-            result["groups"] = {
-                "makeup": _group_by(makeup_rows, lambda m: profile_college.get(acad_to_profile.get(m.acad_student_id))),
-                "retake": _group_by(retake_rows, lambda r: profile_college.get(r.student_id)),
-                "deferred": _group_by(deferred_rows, lambda d: profile_college.get(d.student_id)),
-                "exemption": _group_by(exemption_rows, lambda e: e.college_id),
-            }
-        return result
 
-
-def stats_detail(user, term=None, college_id=None, line=None, page=1, page_size=50):
-    """下钻明细（三级施工卡 10-统计分析 §7 GET /makeup/stats/detail）。"""
-    from app.models import AaDeferredExam, AaExemption, AaMakeupBatch, AaRetakeApply, AcademicMakeup
-    line = (line or "makeup").strip()
-    with session() as db:
-        ctx = _ctx(user, db)
-        college_ids = _scope_college_ids(ctx, college_id)
-        profile_ids = _profile_ids_by_college(db, college_ids)
-        acad_ids = _acad_ids_by_profile(db, profile_ids)
-        if line == "makeup":
-            q = db.query(AcademicMakeup, AaMakeupBatch).outerjoin(
-                AaMakeupBatch, AcademicMakeup.batch_id == AaMakeupBatch.id).filter(
-                AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id.isnot(None))
-            if acad_ids is not None:
-                q = q.filter(AcademicMakeup.acad_student_id.in_(acad_ids or [-1]))
-            if term:
-                q = q.filter(AaMakeupBatch.term_code == term)
-            rows = q.order_by(AcademicMakeup.id.desc()).all()
-            items = [{"makeupId": str(m.id), "courseName": m.course_name, "termCode": b.term_code if b else None,
-                     "status": m.status, "finalScore": m.final_score, "batchId": str(m.batch_id)} for m, b in rows]
-        elif line == "retake":
-            q = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(), AaRetakeApply.is_deleted.is_(False))
-            if profile_ids is not None:
-                q = q.filter(AaRetakeApply.student_id.in_(profile_ids or [-1]))
-            if term:
-                q = q.filter(AaRetakeApply.term_code == term)
-            items = [_rt_dto(r) for r in q.order_by(AaRetakeApply.id.desc()).all()]
-        elif line == "exemption":
-            q = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
-            if college_ids is not None:
-                q = q.filter(AaExemption.college_id.in_(college_ids or [-1]))
-            if term:
-                q = q.filter(AaExemption.term_code == term)
-            items = [_ex_dto(r) for r in q.order_by(AaExemption.id.desc()).all()]
-        elif line == "deferred":
-            q = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(), AaDeferredExam.is_deleted.is_(False))
-            if profile_ids is not None:
-                q = q.filter(AaDeferredExam.student_id.in_(profile_ids or [-1]))
-            items = [{"deferId": str(d.id), "studentName": d.student_name, "courseName": d.course_name,
-                     "status": d.status} for d in q.order_by(AaDeferredExam.id.desc()).all()]
-        else:
-            raise _bad("line 参数非法（makeup/retake/exemption/deferred）")
-        total = len(items)
-        return items[(page - 1) * page_size: page * page_size], total
-
-
-def export_makeup_stats_xlsx(user, term=None, college_id=None, purpose="") -> bytes:
-    """四条线统计导出 xlsx（三级施工卡 10-统计分析 §11：水印+用途必填+审计；对齐「教务统计」
-    export_stats_xlsx 同一套 xlsx 生成/水印/审计惯例，未接 6 大业务域通用导出——该框架列结构
-    固定为"学生台账"型（姓名/学号/班级…），与本卡"四条线聚合数字"型导出不匹配，如实登记为
-    与三级卡 §7 `/export/domain/academic-makeup` 字面表述的实现差异）。"""
-    if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
-        raise _bad("导出用途必填（≥5 字）")
-    data = aggregate_stats(user, term, college_id, None)
-    from app.services.xlsx_util import build_ledger_xlsx
-    watermark = f"导出人：{_op()}  时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose.strip()}"
-    headers = ["条线", "人数/批次数", "通过率(%)"]
-    labels = {"makeup": "补考", "retake": "重修", "deferred": "缓考", "exemption": "免修"}
-    rows = []
-    for key, label in labels.items():
-        d = data[key]
-        rate = round(d["passRate"] * 100, 1) if d["passRate"] is not None else "-"
-        rows.append([label, d["count"], rate])
-    content = build_ledger_xlsx("补考重修缓考免修统计", headers, rows, watermark=watermark)
-    with session() as db:
-        _audit(db, "AA_MAKEUP", None, "MAKEUP_STATS_EXPORT", f"统计导出 用途={purpose.strip()[:100]}")
+        exam_course = db.query(AaExamCourse).filter(
+            AaExamCourse.id == int(deferred.exam_course_id),
+            AaExamCourse.tenant_id == _core._tid(),
+            AaExamCourse.is_deleted.is_(False),
+        ).first()
+        if not exam_course or not exam_course.teaching_task_id:
+            raise AppException("DATA_CONFLICT", "缓考对应考试课程未关联教学任务", http_status=409)
+        exam_batch = db.query(AaExamBatch).filter(
+            AaExamBatch.id == int(exam_course.batch_id),
+            AaExamBatch.tenant_id == _core._tid(),
+            AaExamBatch.is_deleted.is_(False),
+        ).first()
+        if not exam_batch or int(exam_batch.term_id or 0) != int(batch.term_id or 0):
+            raise AppException("DATA_CONFLICT", "缓考原考试与后续考试批次不属于同一学期", http_status=409)
+        if batch.exam_batch_ref and int(batch.exam_batch_ref) != int(exam_batch.id):
+            raise AppException("DATA_CONFLICT", "补考批次已绑定其它考务批次，不能混入该缓考", http_status=409)
+        task = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == int(exam_course.teaching_task_id),
+            AaTeachingTask.tenant_id == _core._tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        ).first()
+        if not task:
+            raise not_found("缓考对应教学任务不存在")
+        course = db.query(AaCourse).filter(
+            AaCourse.id == int(task.course_id),
+            AaCourse.tenant_id == _core._tid(),
+            AaCourse.is_deleted.is_(False),
+        ).first()
+        if not course or not course.course_code or not course.version:
+            raise AppException("DATA_CONFLICT", "缓考对应课程缺少稳定身份", http_status=409)
+        exam_roster = get_consumer_snapshot(db, "EXAM_COURSE", int(exam_course.id))
+        if not exam_roster:
+            raise AppException("DATA_CONFLICT", "缓考原考试课程缺少冻结名单版本，禁止按当前行政班猜测", http_status=409)
+        if int(deferred.student_id) not in {int(value) for value in exam_roster.get("studentIds") or []}:
+            raise AppException("DATA_CONFLICT", "缓考学生不在原考试课程冻结名单中", http_status=409)
+        academic_student = _academic_student_for_profile(db, deferred.student_id)
+        if not academic_student:
+            raise not_found("缓考学生学业档案不存在")
+        attempt_no = next_study_attempt_no(db, academic_student.id, course.course_code)
+        row = AcademicMakeup(
+            tenant_id=_core._tid(),
+            acad_student_id=academic_student.id,
+            kind="DEFERRED",
+            source_biz_type="DEFERRED_EXAM",
+            source_biz_id=deferred.id,
+            course_id=course.id,
+            course_code=course.course_code,
+            course_version=int(course.version),
+            attempt_no=attempt_no,
+            teaching_task_id=task.id,
+            teaching_class_id=int(exam_roster["teachingClassId"]),
+            roster_version_id=int(exam_roster["rosterVersionId"]),
+            course_name=course.course_name,
+            term=batch.term_code,
+            batch_id=batch.id,
+            status="PENDING_EXAM",
+            record_status="ACTIVE",
+        )
+        db.add(row)
+        db.flush()
+        deferred.next_batch_ref = str(batch.id)
+        if batch.status == _core._MB_DRAFT:
+            batch.status = _core._MB_ARRANGED
+        _core._audit(
+            db,
+            "AA_MAKEUP",
+            row.id,
+            "DEFERRED_MERGE_IDENTITY",
+            (
+                f"deferId={deferred.id};examCourseId={exam_course.id};courseId={course.id};"
+                f"attemptNo={attempt_no};rosterVersionId={exam_roster['rosterVersionId']}"
+            ),
+        )
         db.commit()
-    return content
-
-
-# ══════════ 材料归档（三级施工卡 11-材料归档 §7）══════════
-
-def print_data(user, batch_id):
-    """补考安排表打印页数据：批次+学生名单+（若挂考务批次，按课程名 best-effort 匹配）时间考场。
-    仅 PUBLISHED 及以后状态可打印；学院角色范围内无匹配学生时拒绝（越权）。"""
-    from app.models import AcademicMakeup, AcademicStudent
-    with session() as db:
-        ctx = _ctx(user, db)
-        b = _get_mb(db, batch_id)
-        if b.status not in (_MB_PUBLISHED, _MB_SCORING, _MB_REVIEWED, _MB_FINISHED):
-            raise _invalid("补考批次尚未发布，暂不可打印安排表")
-        rows = db.query(AcademicMakeup, AcademicStudent).join(
-            AcademicStudent, AcademicMakeup.acad_student_id == AcademicStudent.id).filter(
-            AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id).all()
-        if ctx.scope_type == "COLLEGE":
-            from app.models import College
-            allowed_names = ({c.college_name for c in db.query(College).filter(
-                College.tenant_id == _tid(), College.id.in_(ctx.college_ids)).all()} if ctx.college_ids else set())
-            rows = [(m, s) for m, s in rows if s.college_name in allowed_names]
-            if not rows:
-                raise no_data_scope("该补考批次不在您的数据范围内")
-        # 若挂考务批次，按课程名 best-effort 匹配考场/时间（缺失不阻断，前端显示"待补充"）
-        exam_map = {}
-        if b.exam_batch_ref:
-            from app.models import AaExamCourse
-            for c in db.query(AaExamCourse).filter(AaExamCourse.tenant_id == _tid(),
-                                                    AaExamCourse.batch_id == b.exam_batch_ref,
-                                                    AaExamCourse.is_deleted.is_(False)).all():
-                exam_map[c.course_name] = {"examDate": c.exam_date, "startTime": c.start_time, "endTime": c.end_time}
-        students = [{"studentNo": s.student_no, "studentName": s.name, "courseName": m.course_name,
-                    "status": m.status, "finalScore": m.final_score,
-                    **(exam_map.get(m.course_name) or {"examDate": None, "startTime": None, "endTime": None})}
-                   for m, s in rows]
-        _audit(db, "AA_MAKEUP", b.id, "MAKEUP_PRINT", f"打印补考安排表 {b.batch_name}")
-        db.commit()
-        return {"batchId": str(b.id), "batchName": b.batch_name, "termCode": b.term_code,
-                "status": b.status, "publishedAt": _iso(b.published_at), "students": students}
-
-
-def mark_archived(user, exemption_id):
-    """标记免修材料已归档。仅审批已终态（APPROVED/REJECTED/CANCELLED）的申请可标记；已归档幂等。"""
-    from app.models import AaExemption
-    with session() as db:
-        ctx = _ctx(user, db)
-        e = db.query(AaExemption).filter(AaExemption.id == exemption_id, AaExemption.tenant_id == _tid()).first()
-        if not e:
-            raise not_found("免修申请不存在")
-        if ctx.scope_type == "COLLEGE" and e.college_id and int(e.college_id) not in ctx.college_ids:
-            raise no_data_scope("该学生不在您的数据范围内")
-        if e.status not in (_EX_APPROVED, _EX_REJECTED, _EX_CANCELLED):
-            raise _invalid("仅审批已终态的免修申请可标记归档")
-        if e.archive_status == "ARCHIVED":
-            return {"exemptionId": str(e.id), "archiveStatus": e.archive_status}
-        e.archive_status = "ARCHIVED"
-        _audit(db, "AA_EXEMPTION", e.id, "EXEMPTION_ARCHIVE", "标记材料已归档")
-        db.commit()
-        return {"exemptionId": str(e.id), "archiveStatus": e.archive_status}
-
-
-def archive_list(user, term=None, status=None, page=1, page_size=50):
-    """免修材料归档列表（教务处/学院教务员）：附材料文件名（查 t_file_object，仅限已终态申请可见原件）。"""
-    from app.models import AaExemption
-    with session() as db:
-        ctx = _ctx(user, db)
-        college_ids = _scope_college_ids(ctx, None)
-        q = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
-        if college_ids is not None:
-            q = q.filter(AaExemption.college_id.in_(college_ids or [-1]))
-        if term:
-            q = q.filter(AaExemption.term_code == term)
-        if status:
-            q = q.filter(AaExemption.archive_status == status)
-        rows = q.order_by(AaExemption.id.desc()).all()
-        all_file_ids: set[int] = set()
-        for e in rows:
-            if e.material_file_ids:
-                try:
-                    all_file_ids.update(int(x) for x in json.loads(e.material_file_ids) if str(x).isdigit())
-                except (ValueError, TypeError):
-                    pass
-        file_map = {}
-        if all_file_ids:
-            from app.models import FileObject
-            file_map = {f.id: {"fileId": str(f.id), "fileName": f.file_name, "sizeBytes": f.size_bytes}
-                       for f in db.query(FileObject).filter(FileObject.tenant_id == _tid(),
-                                                             FileObject.id.in_(all_file_ids)).all()}
-        items = []
-        for e in rows:
-            file_ids = []
-            if e.material_file_ids:
-                try:
-                    file_ids = [int(x) for x in json.loads(e.material_file_ids) if str(x).isdigit()]
-                except (ValueError, TypeError):
-                    file_ids = []
-            items.append({**_ex_dto(e), "archiveStatus": e.archive_status or "NOT_ARCHIVED",
-                         "materialFiles": [file_map[fid] for fid in file_ids if fid in file_map]})
-        total = len(items)
-        return items[(page - 1) * page_size: page * page_size], total
+        return {
+            "deferId": str(deferred.id),
+            "batchId": str(batch.id),
+            "makeupId": str(row.id),
+            "courseId": str(course.id),
+            "attemptNo": attempt_no,
+            "rosterVersionId": str(exam_roster["rosterVersionId"]),
+            "merged": True,
+            "idempotent": False,
+        }
