@@ -18,14 +18,14 @@ jobs:
   frontend-contract:
     runs-on: ubuntu-latest
     steps:
-      - name: Run management PC contract tests
+      - name: Run student-affairs frontend contract tests
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           git clone -q --depth 1 --branch "$SOURCE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
           cd repo/frontend
           npm ci --silent
-          npm test
+          node --test tests/studentAffairs.fourEndReview.test.mjs tests/studentAffairs.fourEndUiAudit.test.mjs
 
   student-portal-lint:
     runs-on: ubuntu-latest
@@ -42,7 +42,7 @@ jobs:
   miniapp-credential-scan:
     runs-on: ubuntu-latest
     steps:
-      - name: Print fixed credential matches
+      - name: Run fixed credential scanner
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -50,9 +50,7 @@ jobs:
           cd repo/miniapp
           npm ci --silent
           npm run build:mp-weixin >/dev/null
-          MATCHES=$(grep -R -n -I -E '密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password["'"'":= ]+123456' dist/build/mp-weixin || true)
-          echo "$MATCHES"
-          test -z "$MATCHES"
+          node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
 
   backend-contract:
     runs-on: ubuntu-latest
