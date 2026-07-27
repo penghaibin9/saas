@@ -97,11 +97,11 @@ def _user(teacher="T001"):
 
 
 def _prepare(monkeypatch, db):
-    from app.modules.academic_affairs.services import academic_affairs_attendance_facade as service
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as service
 
-    monkeypatch.setattr(service._legacy, "session", lambda: _session(db))
-    monkeypatch.setattr(service._legacy, "_tid", lambda: 1)
-    monkeypatch.setattr(service._legacy, "_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "session", lambda: _session(db))
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    monkeypatch.setattr(service, "_audit", lambda *_args, **_kwargs: None)
     return service
 
 
@@ -175,9 +175,9 @@ def test_client_cannot_replace_task_class(monkeypatch):
     assert "教学任务与行政班不一致" in exc.value.message
 
 
-def test_public_attendance_service_points_to_task_binding_facade():
-    from app.modules.academic_affairs import services
+def test_public_attendance_service_is_canonical_and_facade_is_only_compatibility_export():
+    from app.modules.academic_affairs.services import academic_affairs_attendance_facade as compatibility
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as service
 
-    assert services.academic_affairs_attendance_service.create_session.__module__.endswith(
-        "academic_affairs_attendance_facade"
-    )
+    assert service.create_session.__module__.endswith("academic_affairs_attendance_service")
+    assert compatibility.create_session is service.create_session
