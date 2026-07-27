@@ -100,7 +100,7 @@ class CsDormException(PKMixin, TenantMixin, CommonMixin, Base):
 class CsDiscipline(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_discipline"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     disc_type: Mapped[str] = mapped_column(String(50), nullable=False, default="WARNING")
     reason: Mapped[str | None] = mapped_column(String(500))
     decide_date: Mapped[datetime | None] = mapped_column(DateTime)
