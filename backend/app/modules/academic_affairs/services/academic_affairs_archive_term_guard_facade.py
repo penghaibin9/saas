@@ -1,18 +1,14 @@
-"""教务归档最终学期解析与写保护层。
+"""历史 termCode 写保护兼容入口。
 
-历史业务表仍有只保存 ``term_code`` 的模型。本层提供唯一解析入口：必须在本租户正式 AaTerm 中精确
-匹配 ``{year_code}-{term_no}``，再复用既有 ``guard_term_writable``。业务服务禁止自行切字符串。
+历史业务表仍可能只保存 ``term_code``。本文件只负责在当前租户 AaTerm 中精确解析，
+再调用正式归档 Service 的学期写保护；不再依赖其它 Facade。
 """
 from __future__ import annotations
 
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
 
-from . import academic_affairs_archive_selection_facade as _base
-
-
-def __getattr__(name):
-    return getattr(_base, name)
+from . import academic_affairs_archive_service as _canonical
 
 
 def resolve_term_by_code(db, term_code, *, required: bool = True):
@@ -39,5 +35,9 @@ def guard_term_code_writable(db, term_code, *, required: bool = True):
     term = resolve_term_by_code(db, term_code, required=required)
     if term is None:
         return None
-    _base.guard_term_writable(db, term.id)
+    _canonical.guard_term_writable(db, term.id)
     return term
+
+
+def __getattr__(name):
+    return getattr(_canonical, name)
