@@ -127,11 +127,15 @@ def _secure_application_view(original):
         data = original(user)
         apps = data.get("applications") or []
         appeal_case_map: dict[int, int] = {}
+        # 只有已生成申诉记录的条目才把 recordId 当作 appealId 查询；
+        # 尚未申诉的 EFFECTIVE 案件虽然数字可能与另一申诉同号，也绝不能被错误映射。
         ids = {
             int(item.get("recordId"))
             for item in apps
             if item.get("bizType") == "DISCIPLINE_APPEAL"
             and str(item.get("recordId") or "").isdigit()
+            and "SUBMIT_APPEAL" not in (item.get("allowedActions") or [])
+            and item.get("status") != "EFFECTIVE"
         }
         if ids:
             from app.models import DisciplineAppeal
