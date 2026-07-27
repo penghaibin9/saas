@@ -1,4 +1,4 @@
-"""V2-01 培养方案质量与开课差异回归。"""
+"""V2-01/R7 培养方案质量与开课差异回归。"""
 from types import SimpleNamespace
 
 
@@ -142,8 +142,8 @@ def test_public_program_services_use_complete_quality_layers():
         "academic_affairs_program_quality_facade"
     )
     quality = services.academic_affairs_program_quality_service
-    assert quality.__name__.endswith("academic_affairs_program_quality_complete_service")
-    assert quality._ui.__name__.endswith("academic_affairs_program_quality_ui_service")
+    assert quality.__name__.endswith("academic_affairs_program_opening_closure_service")
+    assert quality._complete.__name__.endswith("academic_affairs_program_quality_complete_service")
     assert quality.validate_program_db.__module__.endswith(
         "academic_affairs_program_binding_quality_service"
     )
