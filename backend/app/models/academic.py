@@ -79,10 +79,23 @@ class AcademicGrade(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AcademicMakeup(PKMixin, TenantMixin, CommonMixin, Base):
+    """补考/清考名单事实。
+
+    V2-04起纳入名单时冻结原正式成绩与课程身份，后续发布不再按课程名反查。
+    """
     __tablename__ = "t_acad_makeup"
+    __table_args__ = (
+        Index("ix_acad_makeup_origin_grade", "tenant_id", "origin_grade_id"),
+        Index("ix_acad_makeup_course_attempt", "tenant_id", "acad_student_id", "course_id", "attempt_no"),
+    )
     acad_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, default="MAKEUP", index=True,
                                       comment="MAKEUP 常规补考 / CLEARANCE 毕业清考")
+    origin_grade_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="→ t_acad_grade 原失败成绩")
+    course_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, comment="原失败成绩具体课程版本")
+    course_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    course_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempt_no: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="继承原修读次数")
     course_name: Mapped[str] = mapped_column(String(200), nullable=False)
     term: Mapped[str | None] = mapped_column(String(50))
     origin_score: Mapped[int | None] = mapped_column(Integer)
@@ -91,7 +104,6 @@ class AcademicMakeup(PKMixin, TenantMixin, CommonMixin, Base):
     remind_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     record_status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     void_reason: Mapped[str | None] = mapped_column(String(500))
-    # 13B-SM-12.1 补考批次回链（融合设计 §5.3；nullable，历史行零回填）
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_makeup_batch 补考批次")
     final_score: Mapped[int | None] = mapped_column(Integer, comment="补考最终成绩(计分规则封顶后)")
 
@@ -105,7 +117,6 @@ class AcademicRetake(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ENROLLING")
     record_status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     void_reason: Mapped[str | None] = mapped_column(String(500))
-    # 13B-SM-12.2 重修申请回链（融合设计 §5.3；nullable）
     apply_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_retake_apply 重修申请")
 
 
@@ -120,7 +131,6 @@ class AcademicWarning(PKMixin, TenantMixin, CommonMixin, Base):
     level: Mapped[str] = mapped_column(String(50), nullable=False, default="MEDIUM")
     reason: Mapped[str | None] = mapped_column(String(500))
     source_rule: Mapped[str | None] = mapped_column(String(100))
-    # ── 13B-P5 加列（nullable）：预警规则引擎来源标识，供扫描幂等去重与规则追溯 ──
     source_code: Mapped[str | None] = mapped_column(String(50), index=True,
                                                    comment="来源 EXAM_FAIL/CREDIT_GAP…")
     rule_code: Mapped[str | None] = mapped_column(String(50), comment="触发规则编码")
