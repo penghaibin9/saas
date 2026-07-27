@@ -97,8 +97,11 @@ def test_teacher_wechat_pages_consume_workbench_task_ids():
     assert "options.id || options.warningId" in sources["warning"]
     assert "options.id || options.taskId" in sources["grade"]
     for name in ("academic_task", "schedule_review", "defer", "warning"):
-        assert "focusTarget" in sources[name]
-        assert "is-target" in sources[name]
+        source = sources[name]
+        assert "focusTarget" in source
+        assert "is-target" in source
+        assert "从工作台直达" in source
+        assert "不存在、已处理或不在" in source
 
 
 def test_admin_pc_keeps_real_todo_workbench_and_drill_routes():
