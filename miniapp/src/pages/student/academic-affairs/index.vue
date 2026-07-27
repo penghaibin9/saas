@@ -143,6 +143,10 @@ function unfinished(rows) {
   const done = new Set(['DONE', 'COMPLETED', 'APPROVED', 'REGISTERED', 'SUBMITTED', 'PUBLISHED', 'CLOSED'])
   return (rows || []).filter((row) => !done.has(String(row.status || row.registrationStatus || '').toUpperCase()))
 }
+function pendingEvaluationCount(data) {
+  if (data && Number.isFinite(Number(data.pending))) return Number(data.pending)
+  return rowsOf(data).filter((row) => row && row.canSubmit === true && row.submitted !== true).length
+}
 
 export default {
   data() {
@@ -223,7 +227,7 @@ export default {
       this.examLoaded = results[1].status === 'fulfilled'
       this.examItems = this.examLoaded ? rowsOf(results[1].value) : []
       this.warningCount = results[2].status === 'fulfilled' ? unfinished(rowsOf(results[2].value)).length : 0
-      this.evaluationCount = results[3].status === 'fulfilled' ? rowsOf(results[3].value).length : 0
+      this.evaluationCount = results[3].status === 'fulfilled' ? pendingEvaluationCount(results[3].value) : 0
       this.registrationCount = results[4].status === 'fulfilled' ? unfinished(rowsOf(results[4].value)).length : 0
       this.returnedDeferCount = results[5].status === 'fulfilled'
         ? rowsOf(results[5].value).filter((row) => String(row.status || '').toUpperCase() === 'RETURNED').length : 0
