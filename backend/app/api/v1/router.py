@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from fastapi.routing import APIRoute
 
 from app.api.v1.route_registration import register_all_routes
 
@@ -53,12 +54,39 @@ from app.services.affairs_student_contract_service import install as install_stu
 from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
 
-api_router.include_router(affairs_four_end_router)
-api_router.include_router(affairs_student_dorm_router)
-api_router.include_router(affairs_activity_mobile_router)
-api_router.include_router(affairs_appeal_mobile_router)
-api_router.include_router(affairs_appeal_repair_router)
-api_router.include_router(affairs_student_returned_router)
+
+def _route_signature(route) -> tuple[str, frozenset[str]]:
+    return str(getattr(route, "path", "")), frozenset(str(x).upper() for x in (getattr(route, "methods", None) or ()))
+
+
+def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
+    """确定性挂载已构建好的补充 APIRoute。
+
+    当前 FastAPI 依赖范围内，项目运行环境出现 ``include_router`` 未复制这些后置构建路由的情况；
+    子路由没有额外 prefix 或 include 级 dependencies，APIRoute 已包含端点依赖、响应模型、标签与方法，
+    因此按 path+method 去重后直接加入聚合器。随后终态安全门仍会逐条验证权限登记，禁止静默漏挂。
+    """
+    existing = {_route_signature(route) for route in parent.routes if isinstance(route, APIRoute)}
+    for route in child.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        signature = _route_signature(route)
+        if signature in existing:
+            continue
+        parent.routes.append(route)
+        existing.add(signature)
+
+
+for supplemental_router in (
+    affairs_four_end_router,
+    affairs_student_dorm_router,
+    affairs_activity_mobile_router,
+    affairs_appeal_mobile_router,
+    affairs_appeal_repair_router,
+    affairs_student_returned_router,
+):
+    _mount_supplemental_router(api_router, supplemental_router)
+
 install_affairs_four_end_contract()
 install_sensitive_audit_guard()
 install_returned_view_projection()
