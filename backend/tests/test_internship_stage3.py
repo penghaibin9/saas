@@ -3,7 +3,7 @@
 - 风险处置：handle→follow→escalate→close 状态机；跨导师 owner 403；数据范围收敛；审计。
 - 指导转风险：guidance toRisk=True 自动生成 t_risk_record 风险单（source=guidance）。
 - 附件：无效 fileId 被拒 400；有效 fileId（预置 t_file_object）可挂载并在详情还原。
-- 请假：学生申请/撤回（mobile）+ 教师审批（owner 403 + 数据范围）。
+- 请假：学生按当前批次申请/撤回/销假 + 教师按版本审批（owner 403 + 数据范围 + 材料查看）。
 """
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from datetime import datetime
 
 TID = 1000000000000000001
 INT = "/api/v1/internship"
+MOBILE_CONTEXT = "/api/v1/mobile/internship/context"
+TEACHER_CONTEXT = "/api/v1/mobile/teacher/internship/context"
 
 
 def _admin(client):
@@ -27,11 +29,14 @@ def _mentor(name, tid=TID):
         "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
 
 
-def _student(sno, tid=TID):
+def _student(sno, tid=TID, batch_id=None):
     from app.core.security import create_access_token
-    return {"Authorization": "Bearer " + create_access_token({
+    headers = {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{sno}", "realName": "学生", "userType": "STUDENT", "tid": "x",
         "tenantId": str(tid), "studentNo": sno, "currentRoleCode": "STUDENT", "clientType": "MP"})}
+    if batch_id is not None:
+        headers["X-Internship-Batch-Id"] = str(batch_id)
+    return headers
 
 
 def _seed(db_mode):
@@ -74,6 +79,23 @@ def _seed_risk(rec_id, level="MEDIUM"):
                        status="PENDING_HANDLE")
         db.add(r); db.flush(); rid = r.id; db.commit()
         return rid
+    finally:
+        db.close()
+
+
+def _seed_evidence(rec_id, name="请假证明.pdf"):
+    from uuid import uuid4
+
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject
+    db = get_sessionmaker()()
+    try:
+        row = FileObject(
+            tenant_id=TID, file_key=f"stage3/{uuid4().hex}.pdf", file_name=name,
+            ext="pdf", size_bytes=2048, biz_type="INTERNSHIP", biz_id=str(rec_id),
+            visibility="BIZ_SCOPED", status="STORED")
+        db.add(row); db.flush(); file_id = str(row.id); db.commit()
+        return file_id
     finally:
         db.close()
 
@@ -194,45 +216,63 @@ def test_attachment_valid_fileid_resolved(client, db_mode):
 
 def test_leave_apply_withdraw_and_review(client, db_mode):
     ids = _seed(db_mode)
-    # 学生 S3-A 申请
-    ap = client.post("/api/v1/mobile/internship/leave",
+    student = _student("S3-A", batch_id=ids["batch"])
+    evidence_id = _seed_evidence(ids["rec_a"])
+    # 学生 S3-A 按当前批次提交 3 天病假及真实证明
+    ap = client.post(f"{MOBILE_CONTEXT}/leaves",
                      json={"leaveType": "SICK", "startDate": "2026-07-10", "endDate": "2026-07-12",
-                           "reason": "感冒发烧需就医"}, headers=_student("S3-A"))
-    assert ap.status_code == 200 and ap.json()["data"]["days"] == 3
-    lid = ap.json()["data"]["id"]
+                           "reason": "感冒发烧需就医", "evidenceFileId": evidence_id}, headers=student)
+    assert ap.status_code == 200 and ap.json()["data"]["days"] == 3, ap.json()
+    leave = ap.json()["data"]
+    lid = leave["id"]
     # 教师数据范围：刘强看 1，王芳看 0
     assert client.get(f"{INT}/leaves", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
     assert client.get(f"{INT}/leaves", headers=_mentor("王芳"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 0
     # 越权审批：王芳审批刘强学生请假 → 403
-    assert client.post(f"{INT}/leaves/{lid}/review", json={"action": "APPROVE", "expectedVersion": 0},
+    assert client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/review",
+                       json={"action": "APPROVE", "expectedVersion": leave["version"]},
                        headers=_mentor("王芳")).status_code == 403
-    # 刘强审批通过
-    ok = client.post(f"{INT}/leaves/{lid}/review", json={"action": "APPROVE", "expectedVersion": 0}, headers=_mentor("刘强"))
+    # 有证明时必须先由当前审批人真实查看并写审计
+    viewed = client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/evidence-viewed", headers=_mentor("刘强"))
+    assert viewed.status_code == 200 and viewed.json()["data"]["evidenceViewed"] is True, viewed.json()
+    # 刘强按版本审批通过
+    ok = client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/review",
+                     json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
     assert ok.status_code == 200 and ok.json()["data"]["status"] == "APPROVED", ok.json()
 
 
 def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
     ids = _seed(db_mode)
+    student = _student("S3-A", batch_id=ids["batch"])
     # 结束早于开始 → 400
-    bad = client.post("/api/v1/mobile/internship/leave",
+    bad = client.post(f"{MOBILE_CONTEXT}/leaves",
                       json={"startDate": "2026-07-12", "endDate": "2026-07-10", "reason": "事假"},
-                      headers=_student("S3-A"))
+                      headers=student)
     assert bad.status_code == 400
-    ap = client.post("/api/v1/mobile/internship/leave",
-                     json={"startDate": "2026-07-10", "endDate": "2026-07-10", "reason": "家中有事"},
-                     headers=_student("S3-A")).json()["data"]
+    response = client.post(f"{MOBILE_CONTEXT}/leaves",
+                           json={"startDate": "2026-07-10", "endDate": "2026-07-10", "reason": "家中有事"},
+                           headers=student)
+    assert response.status_code == 200, response.json()
+    leave = response.json()["data"]
     # 驳回需原因≥5字
-    assert client.post(f"{INT}/leaves/{ap['id']}/review", json={"action": "REJECT", "comment": "no"},
+    assert client.post(f"{TEACHER_CONTEXT}/leaves/{leave['id']}/review",
+                       json={"action": "REJECT", "comment": "no", "expectedVersion": leave["version"]},
                        headers=_mentor("刘强")).status_code == 400
 
 
 def test_leave_approve_writes_leave_checkins(client, db_mode):
     ids = _seed(db_mode)
-    ap = client.post("/api/v1/mobile/internship/leave",
-                     json={"startDate": "2026-07-10", "endDate": "2026-07-12", "reason": "感冒发烧就医"},
-                     headers=_student("S3-A")).json()["data"]
-    ok = client.post(f"{INT}/leaves/{ap['id']}/review",
-                     json={"action": "APPROVE", "expectedVersion": 0}, headers=_mentor("刘强"))
+    student = _student("S3-A", batch_id=ids["batch"])
+    evidence_id = _seed_evidence(ids["rec_a"], "连续请假证明.pdf")
+    response = client.post(f"{MOBILE_CONTEXT}/leaves",
+                           json={"leaveType": "PERSONAL", "startDate": "2026-07-10", "endDate": "2026-07-12",
+                                 "reason": "家庭事务需要处理", "evidenceFileId": evidence_id}, headers=student)
+    assert response.status_code == 200, response.json()
+    leave = response.json()["data"]
+    viewed = client.post(f"{TEACHER_CONTEXT}/leaves/{leave['id']}/evidence-viewed", headers=_mentor("刘强"))
+    assert viewed.status_code == 200, viewed.json()
+    ok = client.post(f"{TEACHER_CONTEXT}/leaves/{leave['id']}/review",
+                     json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
     assert ok.status_code == 200 and ok.json()["data"]["leaveDays"] == 3, ok.json()
     # 打卡台账显示这 3 天为「请假」
     checkins = client.get(f"{INT}/checkins", headers=_mentor("刘强"),
@@ -280,34 +320,47 @@ def test_guidance_notify_counselor_sends_message(client, db_mode):
 
 def test_leave_student_withdraw(client, db_mode):
     ids = _seed(db_mode)
-    ap = client.post("/api/v1/mobile/internship/leave",
-                     json={"startDate": "2026-07-10", "endDate": "2026-07-11", "reason": "个人事务处理"},
-                     headers=_student("S3-A")).json()["data"]
-    w = client.post(f"/api/v1/mobile/internship/leave/{ap['id']}/withdraw", headers=_student("S3-A"))
-    assert w.status_code == 200 and w.json()["data"]["status"] == "WITHDRAWN"
+    student = _student("S3-A", batch_id=ids["batch"])
+    response = client.post(f"{MOBILE_CONTEXT}/leaves",
+                           json={"startDate": "2026-07-10", "endDate": "2026-07-11", "reason": "个人事务处理"},
+                           headers=student)
+    assert response.status_code == 200, response.json()
+    leave = response.json()["data"]
+    w = client.post(f"{MOBILE_CONTEXT}/leaves/{leave['id']}/withdraw",
+                    json={"expectedVersion": leave["version"]}, headers=student)
+    assert w.status_code == 200 and w.json()["data"]["status"] == "WITHDRAWN", w.json()
 
 
 def test_leave_overdue_creates_one_risk_and_student_can_return(client, db_mode):
-    _seed(db_mode)
-    student = _student("S3-A")
-    apply = client.post("/api/v1/mobile/internship/leave", json={
-        "startDate": "2026-07-01", "endDate": "2026-07-02", "reason": "病后恢复观察",
+    ids = _seed(db_mode)
+    student = _student("S3-A", batch_id=ids["batch"])
+    apply = client.post(f"{MOBILE_CONTEXT}/leaves", json={
+        "leaveType": "PERSONAL", "startDate": "2026-07-01", "endDate": "2026-07-02",
+        "reason": "病后恢复观察",
     }, headers=student)
-    assert apply.status_code == 200
-    leave_id = apply.json()["data"]["id"]
-    approved = client.post(f"{INT}/leaves/{leave_id}/review",
-                           json={"action": "APPROVE", "expectedVersion": 0}, headers=_mentor("刘强"))
+    assert apply.status_code == 200, apply.json()
+    leave = apply.json()["data"]
+    leave_id = leave["id"]
+    approved = client.post(f"{TEACHER_CONTEXT}/leaves/{leave_id}/review",
+                           json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
     assert approved.status_code == 200, approved.json()
     refreshed = client.post(f"{INT}/leaves/overdue/refresh", headers=_admin(client)).json()["data"]
     assert refreshed["markedOverdue"] == 1 and refreshed["risksCreated"] == 1
     # Idempotent recurring invocation must not create another risk card.
     repeat = client.post(f"{INT}/leaves/overdue/refresh", headers=_admin(client)).json()["data"]
     assert repeat["markedOverdue"] == 0 and repeat["risksCreated"] == 0
-    returned = client.post(f"/api/v1/mobile/internship/leave/{leave_id}/return",
-                           json={"returnNote": "已于今日返岗"}, headers=student)
-    assert returned.status_code == 200 and returned.json()["data"] == {
-        "id": leave_id, "status": "RETURNED", "statusLabel": "已销假", "wasOverdue": True,
-    }
+    current_rows = client.get(f"{MOBILE_CONTEXT}/leaves", headers=student).json()["data"]
+    current = next(item for item in current_rows if item["id"] == leave_id)
+    returned = client.post(f"{MOBILE_CONTEXT}/leaves/{leave_id}/return",
+                           json={"returnNote": "已于今日返岗", "expectedVersion": current["version"]}, headers=student)
+    assert returned.status_code == 200, returned.json()
+    returned_data = returned.json()["data"]
+    assert returned_data["id"] == leave_id
+    assert returned_data["status"] == "RETURNED"
+    assert returned_data["statusLabel"] == "已销假"
+    assert returned_data["wasOverdue"] is True
     detail = client.get(f"{INT}/leaves/{leave_id}", headers=_mentor("刘强")).json()["data"]
     assert detail["overdue"] is False and detail["returnNote"] == "已于今日返岗"
-    assert {x["action"] for x in detail["auditTrail"]} >= {"APPLY", "REVIEW_APPROVE", "MARK_OVERDUE", "RETURN"}
+    assert {x["action"] for x in detail["auditTrail"]} >= {
+        "APPLY", "REVIEW_APPROVE", "MARK_OVERDUE", "RETURN_VERSIONED",
+    }
