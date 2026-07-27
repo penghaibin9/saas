@@ -65,6 +65,18 @@ test('student portal affairs loads tabs on demand and refreshes only the affecte
   assert.doesNotMatch(source, /await reload\(\)/)
 })
 
+test('student portal action booleans are projections of server allowedActions', () => {
+  const main = read('student-portal/src/main.js')
+  const source = read('student-portal/src/services/affairsAllowedActions.js')
+  assert.match(main, /services\/affairsAllowedActions/)
+  assert.match(source, /Array\.isArray\(row\?\.allowedActions\)/)
+  assert.match(source, /allowedActions\.includes\(action\)/)
+  assert.match(source, /canResubmit: hasAny\(row, \['EDIT_RETURNED', 'RESUBMIT'\]/)
+  assert.match(source, /canCancel: has\(row, 'SUBMIT_CANCEL'/)
+  assert.match(source, /canObject: has\(row, 'SUBMIT_OBJECTION'/)
+  assert.match(source, /canAppeal: has\(row, 'SUBMIT_APPEAL'/)
+})
+
 test('teacher editable decisions reopen with the previous text after non-conflict failure', () => {
   const leave = read('miniapp/src/pages/teacher/affairs-leave/index.vue')
   const review = read('miniapp/src/pages/teacher/affairs-review/index.vue')
