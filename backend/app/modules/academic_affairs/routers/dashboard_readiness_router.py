@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.permissions import require_permission
 from app.core.response import success
-from app.modules.academic_affairs.services import academic_affairs_dashboard_readiness_service as service
+from app.modules.academic_affairs.services import academic_affairs_dashboard_readiness_final_service as service
 
 router = APIRouter(prefix="/academic-affairs/dashboard", tags=["教务看板 readiness"])
 _VIEW = "academicAffairs.dashboard.view"
