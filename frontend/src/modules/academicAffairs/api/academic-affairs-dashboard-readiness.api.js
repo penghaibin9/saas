@@ -1,4 +1,4 @@
-import { request, requestBlob } from '@/services/api'
+import { request, requestBlob } from '@/services/http/client'
 
 const q = (params = {}) => {
   const search = new URLSearchParams()
