@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
@@ -22,7 +22,7 @@ class GradeComponentBody(BaseModel):
 
 
 class GradeSchemeBody(BaseModel):
-    components: list[GradeComponentBody] = Field(..., min_length=2, max_length=12)
+    components: list[GradeComponentBody] = Field(..., min_length=1, max_length=12)
 
 
 class DynamicScoreBody(BaseModel):
