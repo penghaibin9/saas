@@ -49,9 +49,9 @@ def test_eval_weighted_recomputed_on_adjust(client, db_mode):
         "periodCode": "2025-2026-ADJ", "counselorKey": "tADJ", "scores": {a: 60}}).json()["data"]
     eid = e["evalId"]
     assert float(e["weightedTotalScore"]) == 60.0
-    post_versioned(f"{BASE}/counselor-eval/evals/{eid}/publish", headers=hdr)
-    post_versioned(f"{BASE}/counselor-eval/evals/{eid}/appeal", headers=hdr,
+    post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/publish", headers=hdr)
+    post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal", headers=hdr,
                 json={"reason": "对复核指标评分有异议申请复核"})
-    r = post_versioned(f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr, json={
+    r = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr, json={
         "result": "ADJUSTED", "opinion": "经复核上调得分", "scores": {a: 95}}).json()["data"]
     assert float(r["weightedTotalScore"]) == 95.0, r

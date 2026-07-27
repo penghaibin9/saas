@@ -63,15 +63,15 @@ def _make_difficult(client, hdr, sid):
         "batchId": str(bid), "studentId": str(sid), "applyLevel": "DIFFICULT",
         "statement": "家庭经济困难需要资助支持完成学业"}).json()["data"]["applyId"]
     for _ in range(3):
-        post_versioned(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr, json={"action": "APPROVE"})
-    post_versioned(f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
+        post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=hdr, json={"action": "APPROVE"})
+    post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
                 json={"action": "APPROVE", "level": "DIFFICULT"})
-    post_versioned(f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr)
+    post_versioned(client, f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr)
 
 
 def _approve_to_publicity(client, hdr, app_id):
     for _ in range(3):
-        post_versioned(f"{BASE}/funding/applications/{app_id}/review", headers=hdr, json={"action": "APPROVE"})
+        post_versioned(client, f"{BASE}/funding/applications/{app_id}/review", headers=hdr, json={"action": "APPROVE"})
 
 
 def test_f1_scholarship_apply_creates_workflow(client, db_mode):
@@ -97,7 +97,7 @@ def test_f2_full_flow_granted_360(client, db_mode):
     _approve_to_publicity(client, hdr, app_id)
     d = client.get(f"{BASE}/funding/applications/{app_id}", headers=hdr).json()["data"]
     assert d["status"] == "PUBLICITY"
-    c = post_versioned(f"{BASE}/funding/applications/{app_id}/publicity-confirm", headers=hdr).json()
+    c = post_versioned(client, f"{BASE}/funding/applications/{app_id}/publicity-confirm", headers=hdr).json()
     assert c["data"]["status"] == "GRANTED"
     from app.db.session import get_sessionmaker
     from app.models import StudentStageEvent
@@ -171,7 +171,7 @@ def test_f8_review_approve_without_workflow_instance_not_500(client, db_mode):
     app_id = x.id
     db.close()
     admin = _hdr(client, "school_admin01")
-    r = post_versioned(f"{BASE}/funding/applications/{app_id}/review", headers=admin,
+    r = post_versioned(client, f"{BASE}/funding/applications/{app_id}/review", headers=admin,
                     json={"action": "APPROVE"})
     assert r.status_code == 200, f"无 workflow 实例的申请审核通过不应 500，实得 {r.status_code}"
     assert r.json()["data"]["status"] == "COLLEGE_REVIEW"  # COUNSELOR_REVIEW → 下一节点

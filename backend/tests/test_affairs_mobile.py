@@ -95,9 +95,9 @@ def test_mb3_discipline_count_only(client, db_mode):
     admin = _hdr(client, "school_admin01")
     cid = client.post(f"{BASE}/discipline/cases", headers=admin, json={
         "studentId": str(ids["zhang"]), "discType": "WARNING", "reason": "违纪事实说明足够长"}).json()["data"]["caseId"]
-    post_versioned(f"{BASE}/discipline/cases/{cid}/submit", headers=admin)
-    post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
-    post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/submit", headers=admin)
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
     d = client.get(f"{MB}/affairs/discipline/my", headers=_stu_token("张三", "MB13A01")).json()["data"]
     assert d["activeCount"] == 1 and "detailNote" in d  # 仅数量+提示，无明细
 

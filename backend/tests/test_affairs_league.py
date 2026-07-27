@@ -26,19 +26,19 @@ def test_league_dev_full_flow(client, db_mode):
     assert client.post(f"{BASE}/party-league/dev", headers=hdr,
                        json={"studentId": sid, "devType": "PARTY"}).json()["code"] != 0
     # 不能回退/相等
-    assert post_versioned(f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
+    assert post_versioned(client, f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
                        json={"toStage": "APPLICANT"}).json()["code"] != 0
     # 逐级推进
     for stage in ("ACTIVIST", "DEVELOPMENT_TARGET", "PROBATIONARY"):
-        r = post_versioned(f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
+        r = post_versioned(client, f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
                         json={"toStage": stage, "materialFileId": 1}).json()
         assert r["code"] == 0 and r["data"]["currentStage"] == stage and r["data"]["status"] == "ONGOING"
     # 转正 → COMPLETED
-    r2 = post_versioned(f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
+    r2 = post_versioned(client, f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
                      json={"toStage": "FULL_MEMBER"}).json()
     assert r2["data"]["currentStage"] == "FULL_MEMBER" and r2["data"]["status"] == "COMPLETED"
     # COMPLETED 后不可再推进
-    assert post_versioned(f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
+    assert post_versioned(client, f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
                        json={"toStage": "FULL_MEMBER"}).json()["code"] != 0
     # 阶段时间线：5 条(建档 APPLICANT + 4 次推进)，材料仅标记 hasMaterial，无明文字段
     stages = client.get(f"{BASE}/party-league/dev/{did}/stages", headers=hdr).json()["data"]["items"]
@@ -56,17 +56,17 @@ def test_league_dev_terminate_and_validation(client, db_mode):
     did = client.post(f"{BASE}/party-league/dev", headers=hdr,
                       json={"studentId": sid, "devType": "LEAGUE"}).json()["data"]["devId"]
     # 终止原因过短 → 拒绝
-    assert post_versioned(f"{BASE}/party-league/dev/{did}/terminate", headers=hdr,
+    assert post_versioned(client, f"{BASE}/party-league/dev/{did}/terminate", headers=hdr,
                        json={"reason": "短"}).json()["code"] != 0
     # 正常终止
-    t = post_versioned(f"{BASE}/party-league/dev/{did}/terminate", headers=hdr,
+    t = post_versioned(client, f"{BASE}/party-league/dev/{did}/terminate", headers=hdr,
                     json={"reason": "本人申请退出发展流程"}).json()
     assert t["code"] == 0 and t["data"]["status"] == "TERMINATED"
     # 终止后不可推进
-    assert post_versioned(f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
+    assert post_versioned(client, f"{BASE}/party-league/dev/{did}/advance", headers=hdr,
                        json={"toStage": "ACTIVIST"}).json()["code"] != 0
     # 非法阶段码
     did2 = client.post(f"{BASE}/party-league/dev", headers=hdr,
                        json={"studentId": sid, "devType": "PARTY"}).json()["data"]["devId"]
-    r = post_versioned(f"{BASE}/party-league/dev/{did2}/advance", headers=hdr, json={"toStage": "XXX"})
+    r = post_versioned(client, f"{BASE}/party-league/dev/{did2}/advance", headers=hdr, json={"toStage": "XXX"})
     assert r.status_code == 422 or r.json().get("code") not in (0, None)

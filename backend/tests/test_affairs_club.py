@@ -28,7 +28,7 @@ def test_club_full_flow(client, db_mode):
     assert client.post(f"{BASE}/clubs/{cid}/members", headers=hdr,
                        json={"studentId": sid}).json()["code"] != 0
     # 审批通过
-    r = post_versioned(f"{BASE}/clubs/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()
+    r = post_versioned(client, f"{BASE}/clubs/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "ACTIVE"
     # 加成员
     mid = client.post(f"{BASE}/clubs/{cid}/members", headers=hdr,
@@ -54,8 +54,8 @@ def test_club_full_flow(client, db_mode):
     lst2 = client.get(f"{BASE}/clubs", headers=hdr).json()
     assert any(c["clubId"] == cid and c["memberCount"] == 0 for c in lst2["data"]["items"])
     # 注销原因过短 → 拒绝；正常注销
-    assert post_versioned(f"{BASE}/clubs/{cid}/disband", headers=hdr, json={"reason": "短"}).json()["code"] != 0
-    d = post_versioned(f"{BASE}/clubs/{cid}/disband", headers=hdr,
+    assert post_versioned(client, f"{BASE}/clubs/{cid}/disband", headers=hdr, json={"reason": "短"}).json()["code"] != 0
+    d = post_versioned(client, f"{BASE}/clubs/{cid}/disband", headers=hdr,
                     json={"reason": "社团连续两年未开展活动，按管理办法注销"}).json()
     assert d["code"] == 0 and d["data"]["status"] == "DISBANDED"
 

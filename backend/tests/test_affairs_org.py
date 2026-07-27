@@ -36,7 +36,7 @@ def test_org_full_flow(client, db_mode):
     res = client.get(f"{BASE}/students/{sid}/cadre-resume", headers=hdr).json()
     assert any(r["source"] == "ORG" and r["position"] == "主席" for r in res["data"]["items"])
     # 卸任
-    assert post_versioned(f"{BASE}/organizations/positions/{pid}/dismiss", headers=hdr).json()["code"] == 0
+    assert post_versioned(client, f"{BASE}/organizations/positions/{pid}/dismiss", headers=hdr).json()["code"] == 0
     pos2 = client.get(f"{BASE}/organizations/{oid}/positions", headers=hdr).json()
     assert len(pos2["data"]["items"]) == 0
     # 卸任后可重新任命同职（唯一约束仅约束 ACTIVE）

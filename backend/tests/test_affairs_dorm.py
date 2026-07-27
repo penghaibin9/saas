@@ -224,7 +224,7 @@ def test_m11_dorm_write_scope_blocks_cross_building(client, db_mode):
     assert client.post(f"{BASE}/dorm/beds/{bed_a}/checkin", headers=dorm,
                        json={"studentId": str(ids["sm"])}).status_code == 200
     # 宿管对 A 楼床位退宿（自己负责）→ 200
-    assert post_versioned(f"{BASE}/dorm/beds/{bed_a}/checkout", headers=dorm).status_code == 200
+    assert post_versioned(client, f"{BASE}/dorm/beds/{bed_a}/checkout", headers=dorm).status_code == 200
 
     # 宿管建 B 楼检查任务 → 403
     assert client.post(f"{BASE}/dorm/check-tasks", headers=dorm, json={

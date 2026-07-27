@@ -46,11 +46,11 @@ def _register(client, hdr, sid, disc_type="WARNING"):
 
 
 def _to_effective(client, hdr, cid, severe=False):
-    post_versioned(f"{BASE}/discipline/cases/{cid}/submit", headers=hdr)
-    post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # COLLEGE
-    r = post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # SA
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/submit", headers=hdr)
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # COLLEGE
+    r = post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # SA
     if severe:
-        r = post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # SCHOOL
+        r = post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # SCHOOL
     return r.json()
 
 
@@ -58,7 +58,7 @@ def test_d1_register_submit_creates_workflow(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     cid = _register(client, hdr, ids["sa"]).json()["data"]["caseId"]
-    r = post_versioned(f"{BASE}/discipline/cases/{cid}/submit", headers=hdr).json()
+    r = post_versioned(client, f"{BASE}/discipline/cases/{cid}/submit", headers=hdr).json()
     assert r["data"]["status"] == "COLLEGE_REVIEW"
     from app.db.session import get_sessionmaker
     from app.models import WorkflowInstance
@@ -90,11 +90,11 @@ def test_d3_severe_goes_school_review(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     cid = _register(client, hdr, ids["sa"], "EXPEL").json()["data"]["caseId"]
-    post_versioned(f"{BASE}/discipline/cases/{cid}/submit", headers=hdr)
-    post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # COLLEGE
-    r = post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()  # SA
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/submit", headers=hdr)
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # COLLEGE
+    r = post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()  # SA
     assert r["data"]["status"] == "SCHOOL_REVIEW"  # 严重处分转校级
-    r2 = post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()
+    r2 = post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()
     assert r2["data"]["status"] == "EFFECTIVE"
 
 
@@ -102,15 +102,15 @@ def test_d4_reject_and_effective_immutable(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     cid = _register(client, hdr, ids["sa"]).json()["data"]["caseId"]
-    post_versioned(f"{BASE}/discipline/cases/{cid}/submit", headers=hdr)
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/submit", headers=hdr)
     # 原因<5字 → 400
-    assert post_versioned(f"{BASE}/discipline/cases/{cid}/review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=hdr,
                        json={"action": "REJECT", "reason": "不"}).status_code == 400
     # 生效后再审 → 409
     _to_effective(client, hdr, _register(client, hdr, ids["sa"]).json()["data"]["caseId"])
     cid2 = _register(client, hdr, ids["sb"] if False else ids["sa"]).json()["data"]["caseId"]  # 另一单
     _to_effective(client, hdr, cid2)
-    assert post_versioned(f"{BASE}/discipline/cases/{cid2}/review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/discipline/cases/{cid2}/review", headers=hdr,
                        json={"action": "APPROVE"}).status_code == 409
 
 
@@ -120,12 +120,12 @@ def test_d5_remove_flow(client, db_mode):
     cid = _register(client, hdr, ids["sa"]).json()["data"]["caseId"]
     _to_effective(client, hdr, cid)
     # 发起解除 → REMOVE_REVIEW
-    r = post_versioned(f"{BASE}/discipline/cases/{cid}/remove", headers=hdr,
+    r = post_versioned(client, f"{BASE}/discipline/cases/{cid}/remove", headers=hdr,
                     json={"reason": "表现良好，申请解除处分"}).json()
     assert r["data"]["status"] == "REMOVE_REVIEW"
     # 辅→院→处 三级审批
     for _ in range(3):
-        r = post_versioned(f"{BASE}/discipline/cases/{cid}/remove-review", headers=hdr,
+        r = post_versioned(client, f"{BASE}/discipline/cases/{cid}/remove-review", headers=hdr,
                         json={"action": "APPROVE"}).json()
     assert r["data"]["status"] == "REMOVED"
     # 投影 record_status 更新 + 对账（生效数=0，投影ACTIVE=0）
@@ -143,7 +143,7 @@ def test_d6_remove_before_effective_409(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     cid = _register(client, hdr, ids["sa"]).json()["data"]["caseId"]
-    assert post_versioned(f"{BASE}/discipline/cases/{cid}/remove", headers=hdr,
+    assert post_versioned(client, f"{BASE}/discipline/cases/{cid}/remove", headers=hdr,
                        json={"reason": "尚未生效就申请解除"}).status_code == 409
 
 

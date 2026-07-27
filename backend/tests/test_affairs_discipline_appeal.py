@@ -35,10 +35,10 @@ def test_deliver_and_appeal_flow(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _seed_case(db_mode["student"], "EFFECTIVE")
     # 送达方式非法
-    assert post_versioned(f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
+    assert post_versioned(client, f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
                        json={"method": "XXX"}).json()["code"] != 0
     # 登记送达
-    d = post_versioned(f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
+    d = post_versioned(client, f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
                     json={"method": "DIRECT", "remark": "本人签收"}).json()
     assert d["code"] == 0 and d["data"]["deliveryMethod"] == "DIRECT" and d["data"]["deliveredAt"]
     # 申诉理由过短
@@ -56,14 +56,14 @@ def test_deliver_and_appeal_flow(client, db_mode):
     lst = client.get(f"{BASE}/discipline/appeals", headers=hdr).json()
     assert any(x["appealId"] == aid for x in lst["data"]["items"])
     # 复核结论非法 / 意见过短
-    assert post_versioned(f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
                        json={"result": "XX", "opinion": "维持原处分决定不变"}).json()["code"] != 0
     # 复核维持
-    r = post_versioned(f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
+    r = post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
                     json={"result": "UPHELD", "opinion": "经复核事实清楚证据充分，维持原处分"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "UPHELD" and r["data"]["result"] == "UPHELD"
     # 已结案不可再复核
-    assert post_versioned(f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
                        json={"result": "REVOKED", "opinion": "再次复核撤销处分"}).json()["code"] != 0
 
 
@@ -86,7 +86,7 @@ def test_appeal_revoked_actually_removes_case(client, db_mode):
     a = client.post(f"{BASE}/discipline/cases/{cid}/appeal", headers=hdr,
                     json={"reason": "对处分认定事实有异议，申请复核"}).json()
     aid = a["data"]["appealId"]
-    r = post_versioned(f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
+    r = post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
                     json={"result": "REVOKED", "opinion": "经复核事实认定有误，撤销原处分"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "REVOKED" and r["data"]["result"] == "REVOKED"
 
@@ -101,7 +101,7 @@ def test_appeal_revoked_actually_removes_case(client, db_mode):
 def test_non_effective_blocks(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _seed_case(db_mode["student"], "REGISTERED")
-    assert post_versioned(f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
+    assert post_versioned(client, f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
                        json={"method": "MAIL"}).json()["code"] != 0
     assert client.post(f"{BASE}/discipline/cases/{cid}/appeal", headers=hdr,
                        json={"reason": "登记态不应可申诉"}).json()["code"] != 0

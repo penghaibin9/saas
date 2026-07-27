@@ -49,7 +49,7 @@ def _leave_closed(client, hdr, sid):
 def _talk_done(client, hdr, sid):
     tid = client.post(f"{BASE}/talks", headers=hdr, json={
         "studentIds": [str(sid)], "talkType": "DAILY", "topic": "谈话"}).json()["data"]["talkIds"][0]
-    post_versioned(f"{BASE}/talks/{tid}/record", headers=hdr,
+    post_versioned(client, f"{BASE}/talks/{tid}/record", headers=hdr,
                 json={"content": "与学生进行了深入交流，全面了解其近期学习和生活情况，整体状态良好情绪稳定",
                       "result": "GOOD", "needFollowUp": False})
 

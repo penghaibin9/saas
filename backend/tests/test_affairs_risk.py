@@ -223,7 +223,7 @@ def test_r13_optimistic_lock_stale_version_409(client, db_mode):
     stale = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                         json={"content": "并发场景下的处置尝试", "version": 0})
     assert stale.status_code == 409 and stale.json()["bizCode"] == "APPROVAL_VERSION_CONFLICT"
-    missing = post_versioned(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+    missing = post_versioned(client, f"{BASE}/risk/records/{rid}/process", headers=hdr,
                           json={"content": "不带 version 的处置"})
     assert missing.status_code in (400, 422)
     ok = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
@@ -252,7 +252,7 @@ def test_r13_assign_owner_not_exist_400(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    r = post_versioned(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "999999999"})
+    r = post_versioned(client, f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "999999999"})
     assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
 
 
@@ -261,7 +261,7 @@ def test_r14_assign_owner_non_digit_400_not_500(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    r = post_versioned(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "abc"})
+    r = post_versioned(client, f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": "abc"})
     assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
 
 
@@ -270,7 +270,7 @@ def test_r15_assign_owner_without_disposal_role_400(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    r = post_versioned(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+    r = post_versioned(client, f"{BASE}/risk/records/{rid}/assign", headers=hdr,
                     json={"ownerId": str(ids["noRole"])})
     assert r.status_code == 400 and r.json()["bizCode"] == "VALIDATION_ERROR"
 
@@ -280,12 +280,12 @@ def test_r16_transfer_owner_validated(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     rid = _create(client, hdr, ids["sa"]).json()["data"]["riskId"]
-    post_versioned(f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
-    post_versioned(f"{BASE}/risk/records/{rid}/process", headers=hdr, json={"content": "首次处置记录"})
-    bad = post_versioned(f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
+    post_versioned(client, f"{BASE}/risk/records/{rid}/assign", headers=hdr, json={"ownerId": str(ids["owner"])})
+    post_versioned(client, f"{BASE}/risk/records/{rid}/process", headers=hdr, json={"content": "首次处置记录"})
+    bad = post_versioned(client, f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
                       json={"newOwnerId": "999999999", "reason": "转给不存在账号"})
     assert bad.status_code == 400 and bad.json()["bizCode"] == "VALIDATION_ERROR"
-    ok = post_versioned(f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
+    ok = post_versioned(client, f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
                      json={"newOwnerId": str(ids["owner"]), "reason": "工作交接"}).json()
     assert ok["data"]["status"] == "ASSIGNED" and ok["data"]["ownerId"] == str(ids["owner"])
 
@@ -300,7 +300,7 @@ def test_r17_list_stats_independent_of_page_size(client, db_mode):
                       level="HIGH" if i == 0 else "MEDIUM").json()["data"]["riskId"]
         created.append(rid)
         if i < 2:
-            ar = post_versioned(f"{BASE}/risk/records/{rid}/assign", headers=hdr,
+            ar = post_versioned(client, f"{BASE}/risk/records/{rid}/assign", headers=hdr,
                              json={"ownerId": str(ids["owner"])}).json()
             assert ar["code"] == 0 and ar["data"]["ownerId"] == str(ids["owner"])
             assert ar["data"]["ownerName"] == "风险责任人"
