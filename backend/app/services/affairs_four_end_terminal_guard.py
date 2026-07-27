@@ -146,6 +146,10 @@ def _direct_permission_codes(path: str) -> tuple[str, ...] | None:
 def _permission_problem(path: str, method: str, required: tuple[str, ...]) -> str | None:
     if not required or _SENTINEL in required:
         return "未登记权限"
+    # dashboard.view 只允许两个总览路由使用。其他教师移动路径若仍回落到总览权限，
+    # 说明新增接口没有登记真实业务权限；读写一律 fail-closed。
+    if path not in _DASHBOARD_PATHS and required == ("studentAffairs.dashboard.view",):
+        return "未登记权限"
     unknown = sorted(set(required) - _MOBILE_CATALOG_CODES)
     if unknown:
         return "权限码未进入PC目录:" + ",".join(unknown)
