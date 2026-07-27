@@ -59,6 +59,18 @@ def patch_remaining_callers() -> None:
             path.write_text(updated, encoding="utf-8")
 
 
+def first_cut_rerunnable() -> None:
+    campus_api = Path("backend/app/api/v1/campus_service.py").read_text(encoding="utf-8")
+    campus_service = Path("backend/app/services/campus_service_service.py").read_text(encoding="utf-8")
+    already_cut = (
+        "请假旧接口已退出" in campus_api
+        and "请假旧实现已退出" in campus_service
+    )
+    if not already_cut:
+        base.first_cut()
+    patch_remaining_callers()
+
+
 def repair_generated_mobile_syntax() -> None:
     path = Path("backend/app/services/mobile_affairs_service.py")
     text = path.read_text(encoding="utf-8")
@@ -96,8 +108,7 @@ def audit_versions() -> None:
 
 if __name__ == "__main__":
     print("CUTOVER_STAGE first_cut", flush=True)
-    base.first_cut()
-    patch_remaining_callers()
+    first_cut_rerunnable()
     print("CUTOVER_STAGE second_cut", flush=True)
     base.second_cut()
     print("CUTOVER_STAGE third_cut", flush=True)
