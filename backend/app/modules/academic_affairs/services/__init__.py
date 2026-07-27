@@ -19,10 +19,15 @@ from . import academic_affairs_scheduling_rule_final_facade as academic_affairs_
 # 最终归档链：旧9域 + 选课 + 补考重修免修 + 评教 + 教材，共13域。
 from . import academic_affairs_archive_textbook_facade as academic_affairs_archive_service
 from . import academic_affairs_attendance_facade as academic_affairs_attendance_service
+# R9以副作用给考勤创建动作冻结名单版本，公开模块名保持兼容。
+from . import academic_affairs_attendance_roster_identity_facade as academic_affairs_attendance_roster_identity_facade
 from . import academic_affairs_evaluation_term_facade as academic_affairs_evaluation_service
 from . import academic_affairs_exam_term_facade as academic_affairs_exam_service
-# V2-04：正式成绩冻结courseId/课程版本/修读次数/教学班名单版本与业务来源。
+# R9考务确认、铺位、发布检查统一消费冻结名单版本。
+from . import academic_affairs_exam_roster_identity_facade as academic_affairs_exam_roster_identity_facade
+# V2-04/R9：正式成绩冻结courseId、修读次数和统一名单版本。
 from . import academic_affairs_grade_identity_facade as academic_affairs_grade_service
+from . import academic_affairs_grade_roster_identity_guard as academic_affairs_grade_roster_identity_guard
 from . import academic_affairs_makeup_course_identity_guard as academic_affairs_makeup_service
 from . import academic_affairs_recognition_identity_guard as academic_affairs_recognition_identity_guard
 from . import mobile_academic_grade_identity_facade as mobile_academic_grade_identity_facade
@@ -49,7 +54,7 @@ sys.modules[f"{__name__}.academic_affairs_grade_service"] = academic_affairs_gra
 sys.modules[f"{__name__}.academic_affairs_makeup_service"] = academic_affairs_makeup_service
 sys.modules[f"{__name__}.academic_affairs_program_service"] = academic_affairs_program_service
 sys.modules[f"{__name__}.academic_affairs_program_quality_service"] = academic_affairs_program_quality_service
-# R8独立教学班、教师关系和名单版本最终服务。
+# R8/R9独立教学班、教师关系和名单版本最终服务。
 sys.modules[f"{__name__}.academic_affairs_teaching_class_service"] = academic_affairs_teaching_class_service
 sys.modules[f"{__name__}.academic_affairs_schedule_service"] = academic_affairs_schedule_service
 sys.modules[f"{__name__}.academic_affairs_selection_service"] = academic_affairs_selection_service
