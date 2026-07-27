@@ -25,7 +25,29 @@ jobs:
         with:
           node-version: '20'
       - name: Apply first second and third cuts
-        run: python scripts/maintenance/student_affairs_leave_cutover.py
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY' 2>&1 | tee leave-cutover.log
+          import traceback
+          from scripts.maintenance import student_affairs_leave_cutover as task
+          for name in ('first_cut', 'second_cut', 'third_cut', 'audit'):
+              print(f'CUTOVER_STAGE {name}', flush=True)
+              try:
+                  getattr(task, name)()
+              except Exception:
+                  traceback.print_exc()
+                  raise
+          PY
+          status=${PIPESTATUS[0]}
+          tail -n 80 leave-cutover.log
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: leave-cutover-log
+          path: leave-cutover.log
+          retention-days: 1
       - name: Static re-audit
         shell: bash
         run: |
