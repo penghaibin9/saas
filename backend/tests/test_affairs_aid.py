@@ -19,20 +19,85 @@ def _hdr(client, login_name):
 
 
 def _seed(db_mode):
+    """建立真实学院、班级、账号、角色和逐级受理关系。
+
+    生产代码对没有具体受理人的节点 fail-closed；测试不能再只写一条文本 scope
+    就假装存在辅导员/学院/学校审批人。
+    """
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile, TeacherStudentScope
+    from app.models import (
+        AffairsCounselorAssignment, College, Major, Role, SchoolClass,
+        StudentProfile, TeacherStudentScope, User, UserRole,
+    )
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
-    b = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
+    college = College(tenant_id=TID, college_name="软件学院", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(tenant_id=TID, college_id=college.id, major_name="软件技术", status="ACTIVE")
+    db.add(major); db.flush()
+
+    a = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2101", grade="2021", status="ACTIVE")
+    b = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2102", grade="2021", status="ACTIVE")
     db.add(a); db.add(b); db.flush()
-    sa = StudentProfile(tenant_id=TID, student_no="A001", real_name="甲一", class_id=a.id,
-                        current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
-    sb = StudentProfile(tenant_id=TID, student_no="B001", real_name="乙一", class_id=b.id,
-                        current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
+
+    counselor_user = User(
+        tenant_id=TID, login_name="counselor01", real_name="王莉",
+        password_hash="test-only", user_type="TEACHER", status="ACTIVE",
+    )
+    college_user = User(
+        tenant_id=TID, login_name="college_admin01", real_name="学院管理员",
+        password_hash="test-only", user_type="TEACHER", status="ACTIVE",
+    )
+    school_user = User(
+        tenant_id=TID, login_name="school_admin01", real_name="学校管理员",
+        password_hash="test-only", user_type="SCHOOL_ADMIN", status="ACTIVE",
+    )
+    db.add_all([counselor_user, college_user, school_user]); db.flush()
+
+    roles = {}
+    for code, name in (
+        ("COUNSELOR", "辅导员"),
+        ("COLLEGE_ADMIN", "学院管理员"),
+        ("SCHOOL_ADMIN", "学校管理员"),
+    ):
+        role = Role(tenant_id=TID, role_code=code, role_name=name, role_type="SYSTEM", status="ACTIVE")
+        db.add(role); db.flush()
+        roles[code] = role
+    db.add_all([
+        UserRole(tenant_id=TID, user_id=counselor_user.id, role_id=roles["COUNSELOR"].id, status="ACTIVE"),
+        UserRole(tenant_id=TID, user_id=college_user.id, role_id=roles["COLLEGE_ADMIN"].id, status="ACTIVE"),
+        UserRole(tenant_id=TID, user_id=school_user.id, role_id=roles["SCHOOL_ADMIN"].id, status="ACTIVE"),
+    ])
+
+    now = datetime.utcnow()
+    db.add_all([
+        AffairsCounselorAssignment(
+            tenant_id=TID, class_id=a.id, user_id=counselor_user.id,
+            duty_type="PRIMARY", status="ACTIVE", effective_from=now - timedelta(days=1),
+        ),
+        AffairsCounselorAssignment(
+            tenant_id=TID, class_id=b.id, user_id=counselor_user.id,
+            duty_type="PRIMARY", status="ACTIVE", effective_from=now - timedelta(days=1),
+        ),
+        TeacherStudentScope(
+            tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+            role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101", status="ACTIVE",
+        ),
+        TeacherStudentScope(
+            tenant_id=TID, teacher_key="college_admin01", teacher_name="学院管理员",
+            role_code="COLLEGE_ADMIN", scope_type="COLLEGE", ref_value=college.college_name, status="ACTIVE",
+        ),
+    ])
+
+    sa = StudentProfile(
+        tenant_id=TID, student_no="A001", real_name="甲一", class_id=a.id, college_id=college.id,
+        current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE",
+    )
+    sb = StudentProfile(
+        tenant_id=TID, student_no="B001", real_name="乙一", class_id=b.id, college_id=college.id,
+        current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE",
+    )
     db.add(sa); db.add(sb); db.flush()
-    db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
-                               role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101",
-                               status="ACTIVE"))
     db.commit()
     ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
@@ -91,7 +156,7 @@ def test_a1_apply_creates_workflow(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     bid = _open_batch(client, hdr)
     r = _apply(client, hdr, bid, ids["sa"]).json()
-    assert r["code"] == 0
+    assert r["code"] == 0, r
     d = r["data"]
     assert d["status"] == "CLASS_REVIEW"
     assert d["familyEconomy"]["detailMasked"] is True
