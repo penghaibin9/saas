@@ -6,6 +6,9 @@ from __future__ import annotations
 
 import sys
 
+# P0-05：仅在教务域安装统一学生身份解析，不扩大到其它中心的公共服务初始化。
+from app.services import mobile_student_identity_facade as mobile_student_identity_facade
+
 # 先加载兼容名单策略、V2-02最终教学班策略与真实模型属性守卫。
 from . import academic_affairs_teaching_roster_policy as academic_affairs_teaching_roster_policy
 from . import academic_affairs_teaching_class_lock_service as academic_affairs_teaching_class_service
