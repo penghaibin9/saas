@@ -112,9 +112,11 @@ function levelText(m) {
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '' }
 function messageTarget(m) {
   if (!m || m.withdrawn) return '/messages'
+  const params = m.actionParams && typeof m.actionParams === 'object' ? m.actionParams : {}
+  const materialRequirementId = params.materialRequirementId || params.requirementId || ''
+  if (materialRequirementId) return `/materials?requirementId=${encodeURIComponent(String(materialRequirementId))}`
   const key = String(m.actionKey || '').trim().toUpperCase()
   let target = ACTION_ROUTES[key] || ''
-  const params = m.actionParams && typeof m.actionParams === 'object' ? m.actionParams : {}
   const biz = String(params.businessType || params.bizType || '').trim().toUpperCase()
   if (!target && biz) target = ACTION_ROUTES[`STUDENT_AFFAIRS_${biz}`] || ACTION_ROUTES[biz] || ''
   if (!target && m.status === 'RETURNED') target = ACTION_ROUTES.STUDENT_APPLICATIONS
