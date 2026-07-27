@@ -12,40 +12,166 @@ permissions:
   contents: write
 
 jobs:
-  merge-diagnosis:
-    if: github.event_name == 'push' || github.head_ref == 'codex/student-affairs-integration-20260727'
+  integrate:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: codex/student-affairs-integration-20260727
-      - name: Merge feature branch and write conflict report
-        id: merge
+      - name: Merge and resolve the four verified conflicts
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin codex/student-affairs-four-end-hardening-20260726
+
           set +e
           git merge --no-ff --no-commit origin/codex/student-affairs-four-end-hardening-20260726
-          status=$?
+          merge_status=$?
           set -e
-          {
-            echo "merge_status=$status"
-            echo "CONFLICT_FILES"
+          if [ "$merge_status" -eq 0 ]; then
+            echo "Feature merged without textual conflicts."
+          fi
+
+          actual_conflicts="$(git diff --name-only --diff-filter=U | sort)"
+          expected_conflicts="$(printf '%s\n' \
+            '.github/workflows/ci.yml' \
+            'miniapp/src/services/request.js' \
+            'student-portal/.eslintrc.cjs' \
+            'student-portal/src/services/request.js' | sort)"
+          if [ "$actual_conflicts" != "$expected_conflicts" ]; then
+            echo "Unexpected conflict set:"
+            printf '%s\n' "$actual_conflicts"
+            exit 1
+          fi
+
+          # CI 与 ESLint：学工分支是在同一主线基础上增加合同测试、学生门户 job 与安全扫描器。
+          git checkout --theirs -- .github/workflows/ci.yml student-portal/.eslintrc.cjs
+
+          # 小程序请求层：以学工的刷新/上传/下载安全实现为底，补回 main 的实习批次上下文。
+          git checkout --theirs -- miniapp/src/services/request.js
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('miniapp/src/services/request.js')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              "const REFRESH_KEY = 'gx_refresh_v1'\nconst state",
+              "const REFRESH_KEY = 'gx_refresh_v1'\nconst INTERNSHIP_BATCH_KEY = 'gx_student_internship_batch_v1'\nconst state",
+              1,
+          )
+          helper = """function selectedInternshipBatchId(path) {
+            if (!String(path || '').startsWith('/mobile/internship')) return ''
+            try {
+              const value = String(uni.getStorageSync(INTERNSHIP_BATCH_KEY) || '').trim()
+              return /^\\d+$/.test(value) ? value : ''
+            } catch (e) {
+              return ''
+            }
+          }
+
+          """
+          text = text.replace('function parseUnifiedBody(raw) {', helper + 'function parseUnifiedBody(raw) {', 1)
+          needle = """    const token = auth ? getToken() : ''
+              if (token) header.Authorization = 'Bearer ' + token
+              uni.request({"""
+          replacement = """    const token = auth ? getToken() : ''
+              if (token) header.Authorization = 'Bearer ' + token
+              const internshipBatchId = selectedInternshipBatchId(path)
+              if (internshipBatchId) header['X-Internship-Batch-Id'] = internshipBatchId
+              uni.request({"""
+          if needle not in text:
+              raise SystemExit('miniapp realRequest insertion point not found')
+          text = text.replace(needle, replacement, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          # 学生门户请求层：保留学工的单飞刷新和表单保护，补回 main 的实习批次请求头。
+          git checkout --theirs -- student-portal/src/services/request.js
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('student-portal/src/services/request.js')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              "const REFRESH_KEY = 'sp_refresh_v1'\nconst API_PREFIX",
+              "const REFRESH_KEY = 'sp_refresh_v1'\nconst INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'\nconst API_PREFIX",
+              1,
+          )
+          text = text.replace(
+              "try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY) } catch { /* ignore */ }",
+              "try {\n    localStorage.removeItem(TOKEN_KEY)\n    localStorage.removeItem(REFRESH_KEY)\n    localStorage.removeItem(INTERNSHIP_BATCH_KEY)\n  } catch { /* ignore */ }",
+              1,
+          )
+          helper = """function selectedInternshipBatch(path) {
+            if (!String(path || '').startsWith('/portal/internship')) return ''
+            try {
+              const value = String(localStorage.getItem(INTERNSHIP_BATCH_KEY) || '').trim()
+              return /^\\d+$/.test(value) ? value : ''
+            } catch { return '' }
+          }
+
+          function addInternshipBatchHeader(headers, path) {
+            const batchId = selectedInternshipBatch(path)
+            if (batchId) headers['X-Internship-Batch-Id'] = batchId
+          }
+
+          """
+          text = text.replace('function withQuery(path, params) {', helper + 'function withQuery(path, params) {', 1)
+          auth_line = "  if (auth && token) headers.Authorization = `Bearer ${token}`\n"
+          if text.count(auth_line) < 2:
+              raise SystemExit('student portal authenticated header insertion points not found')
+          text = text.replace(auth_line, auth_line + '  addInternshipBatchHeader(headers, path)\n', 2)
+          download_line = "  if (token) headers.Authorization = `Bearer ${token}`\n"
+          if download_line not in text:
+              raise SystemExit('student portal download header insertion point not found')
+          text = text.replace(download_line, download_line + '  addInternshipBatchHeader(headers, path)\n', 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          # 当前 main 到 0142；学工 0127 从 0126 分叉，增加图合并迁移恢复单一 head。
+          cat > backend/alembic/versions/0143_merge_affairs_material_ops.py <<'PY'
+          """Merge latest main with student-affairs material operations branch.
+
+          Revision ID: 0143_merge_affairs_material_ops
+          Revises: 0142_gd_excellent_delay, 0127_affairs_material_batch_ops
+          """
+
+          revision = "0143_merge_affairs_material_ops"
+          down_revision = (
+              "0142_gd_excellent_delay",
+              "0127_affairs_material_batch_ops",
+          )
+          branch_labels = None
+          depends_on = None
+
+
+          def upgrade():
+              pass
+
+
+          def downgrade():
+              pass
+          PY
+
+          git add \
+            .github/workflows/ci.yml \
+            miniapp/src/services/request.js \
+            student-portal/.eslintrc.cjs \
+            student-portal/src/services/request.js \
+            backend/alembic/versions/0143_merge_affairs_material_ops.py
+          git rm .github/workflows/student-affairs-integration.yml
+
+          if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+            echo "Unresolved conflicts remain"
             git diff --name-only --diff-filter=U
-            echo "STATUS"
-            git status --short
-          } > integration-conflicts.txt
-          exit 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: student-affairs-integration-conflicts
-          path: integration-conflicts.txt
-          retention-days: 1
-      - name: Fail when conflicts exist
-        shell: bash
-        run: |
-          test "$(sed -n '1p' integration-conflicts.txt)" = "merge_status=0"
+            exit 1
+          fi
+          git diff --check
+          node --check miniapp/src/services/request.js
+          node --check student-portal/src/services/request.js
+          python -m compileall -q backend/app backend/tests backend/alembic/versions/0127_affairs_material_batch_ops.py backend/alembic/versions/0143_merge_affairs_material_ops.py
+
+          git commit -m "merge: integrate student affairs onto latest main"
+          git push origin HEAD:codex/student-affairs-integration-20260727
