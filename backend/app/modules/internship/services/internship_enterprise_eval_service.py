@@ -1,10 +1,4 @@
-"""岗位实习 · 企业评价（P2-B）。企业导师五维评价 + 学校审核。
-
-来源 source：企业导师本人提交(ENTERPRISE，门户权限预留) / 学校录入企业纸质评价(SCHOOL_RECORDED)。
-学校录入须填企业导师姓名（可附签署扫描件），source 可追溯，避免学校代填假闭环。
-审核：submit_status SUBMITTED；school_review_status PENDING→APPROVED/RETURNED。
-owner + 数据范围复用 internship_service。审计 target_type=ENT_EVAL。
-"""
+"""岗位实习企业评价：纸质材料代录、独立审核、退回重交和完整版本链。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,12 +6,13 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord,
-                        StudentProfile)
+from app.core.permissions import is_super_admin
+from app.models import (
+    InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord, StudentProfile,
+)
 from app.services.db_service import _as_id, _iso, _tid, session
 
 REVIEW_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "RETURNED": "已退回"}
-# 四端统一口径：「学校录入」= 教师代录企业纸质评价，不得展示为「企业已评」
 SOURCE_LABEL = {
     "ENTERPRISE_ONLINE": "企业在线提交",
     "SCHOOL_RECORDED": "学校根据企业纸质材料录入",
@@ -26,33 +21,60 @@ SOURCE_LABEL = {
     "SYSTEM_GENERATED": "系统生成",
     "LEGACY_UNKNOWN": "历史来源未知",
 }
-SCORE_FIELDS = [("attendanceScore", "attendance_score", "出勤"), ("skillScore", "skill_score", "技能"),
-                ("attitudeScore", "attitude_score", "态度"), ("collaborationScore", "collaboration_score", "协作"),
-                ("safetyScore", "safety_score", "安全纪律")]
-_ENTERPRISE_ROLES = {"ENTERPRISE_MENTOR", "ENTERPRISE_CONTACT"}
+SCORE_FIELDS = [
+    ("attendanceScore", "attendance_score", "出勤"),
+    ("skillScore", "skill_score", "技能"),
+    ("attitudeScore", "attitude_score", "态度"),
+    ("collaborationScore", "collaboration_score", "协作"),
+    ("safetyScore", "safety_score", "安全纪律"),
+]
+_REVIEW_ROLES = {
+    "SCHOOL_ADMIN", "COLLEGE_ADMIN", "INTERNSHIP_ADMIN",
+    "INTERN_ADMIN", "COLLEGE_INTERNSHIP_ADMIN",
+}
 
 
 def _op_name(user) -> str:
     return (user or {}).get("realName") or "系统"
 
 
-def _trail(db, eid, action, detail=None, operator="系统"):
-    db.add(InternshipAuditTrail(tenant_id=_tid(), target_id=eid, target_type="ENT_EVAL",
-                                action=action, operator_name=operator, detail_json=detail or {},
-                                occurred_at=datetime.utcnow()))
+def _user_id(user) -> str:
+    return str((user or {}).get("userId") or "")
 
 
-def _get(db, eid) -> InternshipEnterpriseEval:
-    e = db.get(InternshipEnterpriseEval, _as_id(eid))
-    if not e or e.is_deleted or e.tenant_id != _tid():
+def _role_code(user) -> str:
+    return str(
+        (user or {}).get("currentRoleCode") or
+        (user or {}).get("roleCode") or
+        (user or {}).get("userType") or ""
+    ).strip().upper()
+
+
+def _is_review_admin(user) -> bool:
+    return is_super_admin(user or {}) or _role_code(user) in _REVIEW_ROLES
+
+
+def _trail(db, target_id, action, detail=None, operator="系统"):
+    db.add(InternshipAuditTrail(
+        tenant_id=_tid(), target_id=target_id, target_type="ENT_EVAL",
+        action=action, operator_name=operator, detail_json=detail or {},
+        occurred_at=datetime.utcnow()))
+
+
+def _get(db, eval_id, *, lock=False):
+    query = select(InternshipEnterpriseEval).where(
+        InternshipEnterpriseEval.id == _as_id(eval_id),
+        InternshipEnterpriseEval.tenant_id == _tid(),
+        InternshipEnterpriseEval.is_deleted.is_(False),
+    )
+    row = db.scalar(query.with_for_update() if lock else query)
+    if not row:
         raise not_found("企业评价不存在")
-    return e
+    return row
 
 
-def _ctx(db, e):
-    rec = db.get(InternshipRecord, e.internship_id)
-    stu = db.get(StudentProfile, e.student_id)
-    return rec, stu
+def _ctx(db, row):
+    return db.get(InternshipRecord, row.internship_id), db.get(StudentProfile, row.student_id)
 
 
 def _scope_ctx(user):
@@ -60,118 +82,248 @@ def _scope_ctx(user):
     return _current_scope(user), _rec_in_scope
 
 
-def _total(e) -> int:
-    return e.attendance_score + e.skill_score + e.attitude_score + e.collaboration_score + e.safety_score
+def _assert_scope(db, row, user, message):
+    record, student = _ctx(db, row)
+    scope, in_scope = _scope_ctx(user)
+    if not in_scope(scope, db, record, student):
+        raise no_permission(message)
+    return record, student
 
 
-def _row(e, rec, stu):
+def _total(row):
+    return sum(int(getattr(row, attr) or 0) for _json, attr, _label in SCORE_FIELDS)
+
+
+def _snapshot(row):
     return {
-        "id": str(e.id), "internId": str(e.internship_id),
-        "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
-        "advisorName": rec.advisor_name if rec else "", "positionName": e.position_name or (rec.position_name if rec else ""),
-        "mentorName": e.mentor_name or "", "attendanceScore": e.attendance_score, "skillScore": e.skill_score,
-        "attitudeScore": e.attitude_score, "collaborationScore": e.collaboration_score, "safetyScore": e.safety_score,
-        "avgScore": round(_total(e) / 5, 1), "recommendHire": bool(e.recommend_hire),
-        "source": e.source_type or e.source,
-        "sourceLabel": SOURCE_LABEL.get(e.source_type or e.source, "历史来源未知"),
-        "reviewStatus": e.school_review_status, "reviewStatusLabel": REVIEW_LABEL.get(e.school_review_status),
-        "createdAt": _iso(e.created_at) or "",
+        "mentorName": row.mentor_name or "",
+        "scores": {json_key: int(getattr(row, attr) or 0)
+                   for json_key, attr, _ in SCORE_FIELDS},
+        "overallComment": row.overall_comment or "",
+        "recommendHire": bool(row.recommend_hire),
+        "sourceFileId": row.source_file_id or row.file_id or "",
+        "reviewStatus": row.school_review_status,
+        "reviewComment": row.school_review_comment or "",
+        "recordedByUserId": str(row.recorded_by_user_id or ""),
+        "version": int(row.version or 0),
     }
 
 
-def _validate_scores(b):
-    vals = {}
-    for jk, col, label in SCORE_FIELDS:
-        v = b.get(jk)
-        if v is None or str(v) == "":
+def _row(row, record, student):
+    return {
+        "id": str(row.id), "internId": str(row.internship_id),
+        "studentName": student.real_name if student else "-",
+        "studentNo": student.student_no if student else "-",
+        "advisorName": record.advisor_name if record else "",
+        "positionName": row.position_name or (record.position_name if record else ""),
+        "mentorName": row.mentor_name or "",
+        "attendanceScore": row.attendance_score, "skillScore": row.skill_score,
+        "attitudeScore": row.attitude_score, "collaborationScore": row.collaboration_score,
+        "safetyScore": row.safety_score, "avgScore": round(_total(row) / 5, 1),
+        "overallComment": row.overall_comment or "",
+        "recommendHire": bool(row.recommend_hire),
+        "source": row.source_type or row.source or "LEGACY_UNKNOWN",
+        "sourceLabel": SOURCE_LABEL.get(row.source_type or row.source or "LEGACY_UNKNOWN", "历史来源未知"),
+        "sourceFileId": row.source_file_id or row.file_id or "",
+        "reviewStatus": row.school_review_status,
+        "reviewStatusLabel": REVIEW_LABEL.get(row.school_review_status, row.school_review_status),
+        "reviewComment": row.school_review_comment or "",
+        "recordedByName": row.recorded_by_name or "",
+        "recordedByUserId": str(row.recorded_by_user_id or ""),
+        "reviewedByName": row.reviewed_by_name or "",
+        "createdAt": _iso(row.created_at) or "",
+        "version": int(row.version or 0),
+    }
+
+
+def _validate_scores(body):
+    values = {}
+    for json_key, column, label in SCORE_FIELDS:
+        value = body.get(json_key)
+        if value is None or str(value) == "":
             raise AppException("VALIDATION_ERROR", f"{label}评分必填")
         try:
-            iv = int(v)
+            parsed = int(value)
         except (TypeError, ValueError):
             raise AppException("VALIDATION_ERROR", f"{label}评分必须是 0-100 的整数")
-        if not 0 <= iv <= 100:
+        if not 0 <= parsed <= 100:
             raise AppException("VALIDATION_ERROR", f"{label}评分必须在 0-100 之间")
-        vals[col] = iv
-    return vals
+        values[column] = parsed
+    return values
 
 
 def _validate_file(file_id):
-    fid = (file_id or "").strip()
-    if not fid:
-        return None
+    value = str(file_id or "").strip()
+    if not value:
+        raise AppException("VALIDATION_ERROR", "学校代录企业评价必须绑定企业纸质评价扫描件")
     from app.services import file_service
-    if not file_service.get_file_meta(fid):
+    meta = file_service.get_file_meta(value)
+    if not meta:
         raise AppException("VALIDATION_ERROR", "评价扫描件不存在或无权访问，请重新上传")
-    return fid
+    return value
+
+
+def _validate_source(body):
+    requested = str(body.get("sourceType") or "SCHOOL_RECORDED").upper()
+    if requested == "ENTERPRISE_ONLINE":
+        raise no_permission("当前未接入企业独立账号，不能标记为企业在线提交")
+    return "SCHOOL_RECORDED"
+
+
+def _editable_values(body):
+    mentor = str(body.get("mentorName") or "").strip()
+    if not mentor:
+        raise AppException("VALIDATION_ERROR", "企业导师姓名必填（评价来源可追溯）")
+    file_id = _validate_file(body.get("sourceFileId") or body.get("fileId"))
+    source = _validate_source(body)
+    return {
+        "mentor_name": mentor,
+        "overall_comment": str(body.get("overallComment") or "").strip() or None,
+        "recommend_hire": bool(body.get("recommendHire")),
+        "source": source, "source_type": source,
+        "file_id": file_id, "source_file_id": file_id,
+        "source_remark": str(body.get("sourceRemark") or "").strip() or None,
+        **_validate_scores(body),
+    }
+
+
+def _assert_review_authority(user):
+    if not _is_review_admin(user):
+        raise no_permission("企业评价学校审核仅限学校或学院授权管理员")
 
 
 def create(user, body) -> dict:
-    b = body or {}
-    iid = b.get("internshipId") or b.get("internId")
-    if not iid:
+    payload = body or {}
+    internship_id = payload.get("internshipId") or payload.get("internId")
+    if not internship_id:
         raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
-    if not (b.get("mentorName") or "").strip():
-        raise AppException("VALIDATION_ERROR", "企业导师姓名必填（评价来源可追溯）")
-    scores = _validate_scores(b)
-    file_id = _validate_file(b.get("sourceFileId") or b.get("fileId"))
-    if not file_id:
-        raise AppException("VALIDATION_ERROR", "学校代录企业评价必须绑定企业纸质评价扫描件")
-    source = "SCHOOL_RECORDED"
-    if (b.get("sourceType") or source) == "ENTERPRISE_ONLINE":
-        raise AppException("NO_PERMISSION", "当前未接入企业独立账号，不能标记为企业在线提交")
+    values = _editable_values(payload)
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        rec = db.get(InternshipRecord, _as_id(iid))
-        if not rec or rec.is_deleted or rec.tenant_id != _tid():
+        record = db.get(InternshipRecord, _as_id(internship_id))
+        if not record or record.is_deleted or record.tenant_id != _tid():
             raise not_found("实习记录不存在")
-        stu = db.get(StudentProfile, rec.student_id)
-        if not in_scope(scope, db, rec, stu):
-            raise no_permission("只能为本人指导/授权学生录入企业评价")
-        dup = db.scalars(select(InternshipEnterpriseEval).where(
-            InternshipEnterpriseEval.tenant_id == _tid(), InternshipEnterpriseEval.internship_id == rec.id,
-            InternshipEnterpriseEval.is_deleted.is_(False))).first()
-        if dup:
+        student = db.get(StudentProfile, record.student_id)
+        if not in_scope(scope, db, record, student):
+            raise no_permission("只能为本人指导或授权范围内学生录入企业评价")
+        duplicate = db.scalars(select(InternshipEnterpriseEval).where(
+            InternshipEnterpriseEval.tenant_id == _tid(),
+            InternshipEnterpriseEval.internship_id == record.id,
+            InternshipEnterpriseEval.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if duplicate:
+            if duplicate.school_review_status == "RETURNED":
+                raise AppException("DATA_CONFLICT", "该评价已退回，请在原记录上修改重交")
             raise AppException("DATA_CONFLICT", "该学生已有企业评价，请勿重复录入")
-        e = InternshipEnterpriseEval(
-            tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id, batch_id=rec.batch_id,
-            position_name=rec.position_name, mentor_name=(b.get("mentorName") or "").strip(),
-            overall_comment=b.get("overallComment"), recommend_hire=bool(b.get("recommendHire")),
-            source=source, source_type=source, submit_status="SUBMITTED",
-            school_review_status="PENDING", file_id=file_id, source_file_id=file_id,
-            recorded_by_user_id=str((user or {}).get("userId") or ""),
-            recorded_by_name=_op_name(user), recorded_at=datetime.utcnow(),
-            enterprise_contact_id=_as_id(b["enterpriseContactId"]) if b.get("enterpriseContactId") else None,
-            source_remark=(b.get("sourceRemark") or "").strip() or None, **scores)
-        db.add(e); db.flush()
-        _trail(db, e.id, "CREATE", {"sourceType": source, "sourceFileId": file_id,
-                                    "mentor": e.mentor_name, "avg": round(_total(e) / 5, 1)},
-               operator=_op_name(user))
+        row = InternshipEnterpriseEval(
+            tenant_id=_tid(), internship_id=record.id, student_id=record.student_id,
+            batch_id=record.batch_id, position_name=record.position_name,
+            submit_status="SUBMITTED", school_review_status="PENDING",
+            recorded_by_user_id=_user_id(user), recorded_by_name=_op_name(user),
+            recorded_at=datetime.utcnow(),
+            enterprise_contact_id=_as_id(payload["enterpriseContactId"])
+            if payload.get("enterpriseContactId") else None,
+            **values,
+        )
+        db.add(row)
+        db.flush()
+        _trail(db, row.id, "CREATE", {
+            "sourceType": row.source_type, "sourceFileId": row.source_file_id,
+            "mentor": row.mentor_name, "avg": round(_total(row) / 5, 1),
+            "actorUserId": _user_id(user), "actorRole": _role_code(user),
+            "afterStatus": "PENDING", "newVersion": int(row.version or 0),
+        }, operator=_op_name(user))
         db.commit()
-        return {"id": str(e.id), "source": source}
+        return {"id": str(row.id), "source": row.source_type,
+                "reviewStatus": "PENDING", "version": int(row.version or 0)}
 
 
-def review(user, eid, action: str, comment: str = "") -> dict:
-    if action not in ("APPROVE", "RETURN"):
-        raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
-    if action == "RETURN" and (not comment or len(comment.strip()) < 5):
-        raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
-    scope, in_scope = _scope_ctx(user)
+def resubmit(user, eval_id, body) -> dict:
+    payload = body or {}
+    if payload.get("expectedVersion") is None:
+        raise AppException("DATA_CONFLICT", "修改重交必须携带当前版本")
+    values = _editable_values(payload)
     with session() as db:
-        e = _get(db, eid)
-        rec, stu = _ctx(db, e)
-        if not in_scope(scope, db, rec, stu):
-            raise no_permission("只能审核本人数据范围内的企业评价")
-        if e.school_review_status != "PENDING":
-            raise AppException("DATA_CONFLICT", "该评价已审核，请刷新")
-        e.school_review_status = "APPROVED" if action == "APPROVE" else "RETURNED"
-        e.school_review_comment = (comment or "").strip() or None
-        e.reviewed_by_name = _op_name(user)
-        e.reviewed_at = datetime.utcnow()
-        e.version += 1
-        _trail(db, e.id, f"REVIEW_{action}", {"comment": (comment or "").strip()}, operator=_op_name(user))
+        row = _get(db, eval_id, lock=True)
+        _assert_scope(db, row, user, "只能修改本人指导或授权范围内企业评价")
+        if row.school_review_status != "RETURNED":
+            raise AppException("DATA_CONFLICT", "仅已退回企业评价可修改重交")
+        if int(payload["expectedVersion"]) != int(row.version or 0):
+            raise AppException("DATA_CONFLICT", "企业评价版本已变化，请刷新后重试")
+        actor_id = _user_id(user)
+        if (actor_id and actor_id != str(row.recorded_by_user_id or "")
+                and not _is_review_admin(user)):
+            raise no_permission("仅原录入人或学校/学院授权管理员可修改重交")
+        before = _snapshot(row)
+        for key, value in values.items():
+            setattr(row, key, value)
+        row.submit_status = "SUBMITTED"
+        row.school_review_status = "PENDING"
+        row.school_review_comment = None
+        row.reviewed_by_name = None
+        row.reviewed_at = None
+        row.recorded_by_user_id = actor_id
+        row.recorded_by_name = _op_name(user)
+        row.recorded_at = datetime.utcnow()
+        row.version = int(row.version or 0) + 1
+        _trail(db, row.id, "RESUBMIT", {
+            "before": before,
+            "after": {
+                "mentorName": row.mentor_name,
+                "scores": {json_key: int(getattr(row, attr) or 0)
+                           for json_key, attr, _ in SCORE_FIELDS},
+                "avgScore": round(_total(row) / 5, 1),
+                "sourceFileId": row.source_file_id,
+                "recordedByUserId": actor_id,
+                "reviewStatus": row.school_review_status,
+                "version": int(row.version or 0),
+            },
+            "actorRole": _role_code(user),
+        }, operator=_op_name(user))
         db.commit()
-        return {"id": str(e.id), "reviewStatus": e.school_review_status,
-                "reviewStatusLabel": REVIEW_LABEL[e.school_review_status]}
+        return {"id": str(row.id), "reviewStatus": row.school_review_status,
+                "reviewStatusLabel": REVIEW_LABEL[row.school_review_status],
+                "version": int(row.version or 0)}
+
+
+def review(user, eval_id, action: str, comment: str = "", expected_version=None) -> dict:
+    normalized = str(action or "").upper()
+    if normalized not in ("APPROVE", "RETURN"):
+        raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
+    reason = str(comment or "").strip()
+    if normalized == "RETURN" and len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+    if expected_version is None:
+        raise AppException("DATA_CONFLICT", "审核必须携带当前企业评价版本")
+    _assert_review_authority(user)
+    with session() as db:
+        row = _get(db, eval_id, lock=True)
+        _assert_scope(db, row, user, "只能审核本人数据范围内的企业评价")
+        if row.school_review_status != "PENDING":
+            raise AppException("DATA_CONFLICT", "该评价已被处理，请刷新")
+        if int(expected_version) != int(row.version or 0):
+            raise AppException("DATA_CONFLICT", "企业评价版本已变化，请刷新后重试")
+        actor_id = _user_id(user)
+        if actor_id and str(row.recorded_by_user_id or "") == actor_id:
+            raise no_permission("企业评价录入人与审核人必须分离，不得审核本人录入记录")
+        before_status = row.school_review_status
+        row.school_review_status = "APPROVED" if normalized == "APPROVE" else "RETURNED"
+        row.school_review_comment = reason or None
+        row.reviewed_by_name = _op_name(user)
+        row.reviewed_at = datetime.utcnow()
+        row.version = int(row.version or 0) + 1
+        _trail(db, row.id, f"REVIEW_{normalized}", {
+            "comment": reason, "actorUserId": actor_id,
+            "actorRole": _role_code(user),
+            "recordedByUserId": str(row.recorded_by_user_id or ""),
+            "beforeStatus": before_status,
+            "afterStatus": row.school_review_status,
+            "newVersion": int(row.version or 0),
+        }, operator=_op_name(user))
+        db.commit()
+        return {"id": str(row.id), "reviewStatus": row.school_review_status,
+                "reviewStatusLabel": REVIEW_LABEL[row.school_review_status],
+                "version": int(row.version or 0)}
 
 
 def list_evals(page, page_size, review_status=None, keyword=None, batch_id=None, user=None):
@@ -181,42 +333,46 @@ def list_evals(page, page_size, review_status=None, keyword=None, batch_id=None,
         _, record_ids = batch_record_ids(db, batch_id)
         if not record_ids:
             return [], 0
-        q = select(InternshipEnterpriseEval).where(InternshipEnterpriseEval.tenant_id == _tid(),
-                                                   InternshipEnterpriseEval.is_deleted.is_(False),
-                                                   InternshipEnterpriseEval.internship_id.in_(record_ids))
+        query = select(InternshipEnterpriseEval).where(
+            InternshipEnterpriseEval.tenant_id == _tid(),
+            InternshipEnterpriseEval.is_deleted.is_(False),
+            InternshipEnterpriseEval.internship_id.in_(record_ids),
+        )
         if review_status:
-            q = q.where(InternshipEnterpriseEval.school_review_status == review_status)
-        rows = db.scalars(q.order_by(InternshipEnterpriseEval.id.desc())).all()
+            query = query.where(InternshipEnterpriseEval.school_review_status == review_status)
+        rows = db.scalars(query.order_by(InternshipEnterpriseEval.id.desc())).all()
         items = []
-        for e in rows:
-            rec, stu = _ctx(db, e)
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
+        for row in rows:
+            record, student = _ctx(db, row)
+            if keyword and (not student or keyword.strip() not in (student.real_name or "")):
                 continue
-            if not in_scope(scope, db, rec, stu):
+            if not in_scope(scope, db, record, student):
                 continue
-            items.append(_row(e, rec, stu))
+            items.append(_row(row, record, student))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
 
 
-def get_eval(eid, user=None) -> dict:
+def get_eval(eval_id, user=None) -> dict:
     from app.services import file_service
-    scope, in_scope = _scope_ctx(user)
     with session() as db:
-        e = _get(db, eid)
-        rec, stu = _ctx(db, e)
-        if not in_scope(scope, db, rec, stu):
-            raise no_permission("该企业评价不在你的数据范围内")
+        row = _get(db, eval_id)
+        record, student = _assert_scope(
+            db, row, user, "该企业评价不在你的数据范围内")
         trail = db.scalars(select(InternshipAuditTrail).where(
-            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "ENT_EVAL",
-            InternshipAuditTrail.target_id == e.id).order_by(InternshipAuditTrail.id)).all()
-        return {**_row(e, rec, stu), "overallComment": e.overall_comment or "",
-                "reviewComment": e.school_review_comment or "",
-                "attachment": file_service.attachment_view(e.file_id),
-                "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
-                                "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
-                               for t in trail]}
+            InternshipAuditTrail.tenant_id == _tid(),
+            InternshipAuditTrail.target_type == "ENT_EVAL",
+            InternshipAuditTrail.target_id == row.id,
+        ).order_by(InternshipAuditTrail.id)).all()
+        return {
+            **_row(row, record, student),
+            "attachment": file_service.attachment_view(row.source_file_id or row.file_id),
+            "auditTrail": [{
+                "action": item.action, "operator": item.operator_name or "",
+                "detail": item.detail_json or {}, "occurredAt": _iso(item.occurred_at),
+            } for item in trail],
+        }
 
 
 def export_evals(review_status=None, keyword=None, batch_id=None, user=None) -> dict:
@@ -225,12 +381,20 @@ def export_evals(review_status=None, keyword=None, batch_id=None, user=None) -> 
     items, _ = load_export_rows(
         list_evals, review_status=review_status, keyword=keyword,
         batch_id=batch_id, user=user)
-    headers = ["学号", "姓名", "岗位", "企业导师", "出勤", "技能", "态度", "协作", "安全纪律",
-               "均分", "建议录用", "来源", "审核状态"]
-    rows = [[it["studentNo"], it["studentName"], it["positionName"], it["mentorName"],
-             it["attendanceScore"], it["skillScore"], it["attitudeScore"], it["collaborationScore"],
-             it["safetyScore"], it["avgScore"], "是" if it["recommendHire"] else "否",
-             it["sourceLabel"], it["reviewStatusLabel"]] for it in items]
-    wm = f"岗位实习中心·企业评价台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
-    content = xlsx_util.build_ledger_xlsx("企业评价台账", headers, rows, watermark=wm)
+    headers = [
+        "学号", "姓名", "岗位", "企业导师", "出勤", "技能", "态度", "协作", "安全纪律",
+        "均分", "建议录用", "来源", "录入人", "审核人", "审核状态", "退回/审核意见",
+    ]
+    rows = [[
+        item["studentNo"], item["studentName"], item["positionName"], item["mentorName"],
+        item["attendanceScore"], item["skillScore"], item["attitudeScore"],
+        item["collaborationScore"], item["safetyScore"], item["avgScore"],
+        "是" if item["recommendHire"] else "否", item["sourceLabel"],
+        item["recordedByName"], item["reviewedByName"], item["reviewStatusLabel"],
+        item["reviewComment"],
+    ] for item in items]
+    watermark = (
+        f"岗位实习中心·企业评价台账 · 导出人：{_op_name(user)} · "
+        f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx("企业评价台账", headers, rows, watermark=watermark)
     return xlsx_util.pack_xlsx_result(content, "企业评价台账.xlsx", len(items))

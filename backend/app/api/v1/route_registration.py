@@ -115,6 +115,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
         audit, dashboard, feedback, implementation, import_export,
         migration, mobile, mobile_export, mobile_graduation_extension_teacher,
         mobile_graduation_guard, mobile_graduation_teacher_context, mobile_orientation_teacher,
+        mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
         national_standards, notification, onboarding, org_directory, platform, stats,
         student_portal_graduation_guard, system, transfer, user_preference,
     )
@@ -157,8 +158,16 @@ def register_platform_routes(api_router: APIRouter) -> None:
     )
     api_router.include_router(mobile_graduation_guard.router)
     api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
+    from app.core.mobile_internship_permission_gate import enforce_teacher_internship_mobile_permission
+    from app.core.student_portal_module_gate import enforce_student_portal_module_access
+    from app.student_portal.internship_router import router as student_portal_internship_router
+    api_router.include_router(mobile_internship_context.router)
+    api_router.include_router(mobile_internship_leave_context.router)
+    api_router.include_router(mobile_internship_student.router)
     api_router.include_router(student_portal_graduation_guard.router)
     api_router.include_router(student_portal_router)
+    portal_gate = [Depends(enforce_student_portal_module_access)]
+    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)
     from app.api.v1 import student_portal_admin
     api_router.include_router(student_portal_admin.router)
     api_router.include_router(onboarding.router)

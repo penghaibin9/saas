@@ -1,8 +1,7 @@
 /**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
- * 查看类走 /mobile/me/* 与 /mobile/{domain}/my；PC 重活（长表单/大表格/材料/证明/打印）走 /portal/*。
+ * 查看类走 /mobile/me/* 与 /mobile/{domain}/my；PC 重活走 /portal/*。
  * 后端 /portal/* 由服务层 _require_student + SELF 数据范围收口，仅本人可读写。
- * 禁止：/admin/*、/students、/students/{id}、/approvals/*、/todos 全量、/auth/mock-login。
  */
 import { downloadFile, request, uploadFile } from './request'
 
@@ -13,21 +12,11 @@ const q = (obj) => {
   return parts.length ? `?${parts.join('&')}` : ''
 }
 
-// 仅缓存本页最近一次真实加载并展示的任务书版本；确认时禁止重新 GET 后偷换成未阅读的新版本。
-let renderedGraduationTaskbookVersion = null
-
 export const portalApi = {
-  // ── 认证 / 通用查看 ──
   login: (loginName, password, tenantCode) =>
     request('/auth/login', {
-      method: 'POST',
-      auth: false,
-      body: {
-        loginName,
-        password,
-        ...(tenantCode ? { tenantCode } : {}),
-        clientType: 'PC'
-      }
+      method: 'POST', auth: false,
+      body: { loginName, password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC' }
     }),
   portalConfig: () => request('/mobile/me/portal-config'),
   overview: () => request('/mobile/me/overview'),
@@ -35,20 +24,14 @@ export const portalApi = {
   todos: () => request('/mobile/me/todos'),
   messages: () => request('/mobile/me/messages'),
   domainMy: (domain) => request(`/mobile/${domain}/my`),
-
-  // ── 首页工作台聚合（PC）──
   homeOverview: () => request('/portal/home/overview'),
 
-  // ── 我的档案（学籍只读 + 敏感明文授权 + 家长授权代理）──
   profileEnrollment: () => request('/portal/profile/enrollment'),
-  profileSensitive: (field, reason) =>
-    request('/portal/profile/sensitive', { method: 'POST', body: { field, reason } }),
+  profileSensitive: (field, reason) => request('/portal/profile/sensitive', { method: 'POST', body: { field, reason } }),
   listGuardians: () => request('/portal/parent/guardians'),
   bindGuardian: (body) => request('/portal/parent/guardians', { method: 'POST', body }),
-  revokeGuardian: (linkId) =>
-    request(`/portal/parent/guardians/${encodeURIComponent(linkId)}/revoke`, { method: 'POST' }),
+  revokeGuardian: (linkId) => request(`/portal/parent/guardians/${encodeURIComponent(linkId)}/revoke`, { method: 'POST' }),
 
-  // ── 教务学业（成绩单/课表/选课/学籍/考试/缓考/补重修免修/毕业自查）──
   academicTranscript: () => request('/portal/academic/transcript'),
   academicTranscriptPrint: (body) => request('/portal/academic/transcript/print', { method: 'POST', body }),
   academicSchedule: () => request('/portal/academic/schedule'),
@@ -64,8 +47,7 @@ export const portalApi = {
   academicExam: () => request('/portal/academic/exam'),
   academicExamDefer: (status) => request(`/portal/academic/exam/defer${q({ status })}`),
   academicExamDeferApply: (body) => request('/portal/academic/exam/defer/apply', { method: 'POST', body }),
-  academicExamDeferResubmit: (deferId) =>
-    request(`/portal/academic/exam/defer/${encodeURIComponent(deferId)}/resubmit`, { method: 'POST' }),
+  academicExamDeferResubmit: (deferId) => request(`/portal/academic/exam/defer/${encodeURIComponent(deferId)}/resubmit`, { method: 'POST' }),
   academicMakeup: () => request('/portal/academic/makeup'),
   academicMakeupOptions: () => request('/portal/academic/makeup/options'),
   academicRetakeApply: (body) => request('/portal/academic/retake/apply', { method: 'POST', body }),
@@ -84,13 +66,10 @@ export const portalApi = {
   academicGradeRecheck: () => request('/portal/academic/grade-recheck'),
   academicGradeRecheckSubmit: (body) => request('/portal/academic/grade-recheck', { method: 'POST', body }),
   academicTextbook: () => request('/portal/academic/textbook'),
-  academicTextbookSign: (recordId) =>
-    request(`/portal/academic/textbook/${encodeURIComponent(recordId)}/sign`, { method: 'POST' }),
+  academicTextbookSign: (recordId) => request(`/portal/academic/textbook/${encodeURIComponent(recordId)}/sign`, { method: 'POST' }),
   academicLevelExam: () => request('/portal/academic/level-exam'),
-  academicLevelRegister: (examId) =>
-    request(`/portal/academic/level-exam/${encodeURIComponent(examId)}/register`, { method: 'POST' }),
-  academicLevelCancel: (examId) =>
-    request(`/portal/academic/level-exam/${encodeURIComponent(examId)}/cancel`, { method: 'POST' }),
+  academicLevelRegister: (examId) => request(`/portal/academic/level-exam/${encodeURIComponent(examId)}/register`, { method: 'POST' }),
+  academicLevelCancel: (examId) => request(`/portal/academic/level-exam/${encodeURIComponent(examId)}/cancel`, { method: 'POST' }),
   academicMajorSplit: () => request('/portal/academic/major-split'),
   academicMajorSplitSubmit: (body) => request('/portal/academic/major-split/submit', { method: 'POST', body }),
   academicCredits: () => request('/portal/academic/credits'),
@@ -98,15 +77,11 @@ export const portalApi = {
   academicRecognition: () => request('/portal/academic/recognition'),
   academicRecognitionSubmit: (body) => request('/portal/academic/recognition', { method: 'POST', body }),
 
-  // ── 学工事务（在校服务）──
   affairsOverview: () => request('/portal/affairs/overview'),
   affairsLeave: () => request('/portal/affairs/leave'),
-  affairsLeaveResubmit: (leaveId, body = {}) =>
-    request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/resubmit`, { method: 'POST', body }),
-  affairsLeaveCancel: (leaveId, body = {}) =>
-    request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/cancel`, { method: 'POST', body }),
-  affairsLeaveExtend: (leaveId, body = {}) =>
-    request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/extension`, { method: 'POST', body }),
+  affairsLeaveResubmit: (leaveId, body = {}) => request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/resubmit`, { method: 'POST', body }),
+  affairsLeaveCancel: (leaveId, body = {}) => request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/cancel`, { method: 'POST', body }),
+  affairsLeaveExtend: (leaveId, body = {}) => request(`/portal/affairs/leave/${encodeURIComponent(leaveId)}/extension`, { method: 'POST', body }),
   affairsDorm: () => request('/portal/affairs/dorm'),
   affairsTalk: () => request('/portal/affairs/talk'),
   affairsFunding: () => request('/portal/affairs/funding'),
@@ -127,27 +102,35 @@ export const portalApi = {
   affairsAidObjection: (body) => request('/portal/affairs/aid/objection', { method: 'POST', body }),
   affairsActivities: (page = 1, pageSize = 20) => request(`/portal/affairs/activities${q({ page, pageSize })}`),
   affairsActivitiesMy: () => request('/portal/affairs/activities/my'),
-  affairsActivityEnroll: (activityId) =>
-    request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
+  affairsActivityEnroll: (activityId) => request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
-  // ── 岗位实习 ──
+  // ── 岗位实习：所有 /portal/internship/* 后端统一校验模块购买授权 ──
   internshipMy: () => request('/portal/internship/my'),
+  internshipCompliance: (operation = 'ONBOARD', batchId = '') => request(`/portal/internship/compliance${q({ operation, batchId })}`),
+  internshipConsents: () => request('/portal/internship/consents'),
+  internshipConsentDetail: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}`),
+  internshipConsentView: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}/view`, { method: 'POST' }),
+  internshipConsentConfirm: (id, body) => request(`/portal/internship/consents/${encodeURIComponent(id)}/confirm`, { method: 'POST', body }),
+  internshipConsentReject: (id, body) => request(`/portal/internship/consents/${encodeURIComponent(id)}/reject`, { method: 'POST', body }),
+  internshipSafetyCourses: () => request('/portal/internship/safety/courses'),
+  internshipSafetyCompletions: () => request('/portal/internship/safety/completions'),
+  internshipSafetyDetail: (id) => request(`/portal/internship/safety/courses/${encodeURIComponent(id)}/detail`),
+  internshipSafetyStart: (id) => request(`/portal/internship/safety/courses/${encodeURIComponent(id)}/start`, { method: 'POST' }),
+  internshipSafetySubmit: (id, body) => request(`/portal/internship/safety/courses/${encodeURIComponent(id)}/submit`, { method: 'POST', body }),
+  internshipSafetyCommit: (id, body) => request(`/portal/internship/safety/completions/${encodeURIComponent(id)}/commit`, { method: 'POST', body }),
   internshipWeeklySubmit: (body) => request('/portal/internship/weekly/submit', { method: 'POST', body }),
   internshipReportSubmit: (body) => request('/portal/internship/report/submit', { method: 'POST', body }),
   internshipAgreementPrint: (body) => request('/portal/internship/agreement/print', { method: 'POST', body }),
   internshipScoreAppeal: (body) => request('/portal/internship/score/appeal', { method: 'POST', body }),
   internshipLeaves: () => request('/portal/internship/leaves'),
   internshipLeaveApply: (body) => request('/portal/internship/leaves/apply', { method: 'POST', body }),
-  internshipLeaveReturn: (leaveId, body) =>
-    request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/return`, { method: 'POST', body }),
-  internshipLeaveWithdraw: (leaveId) =>
-    request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/withdraw`, { method: 'POST' }),
+  internshipLeaveReturn: (leaveId, body) => request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/return`, { method: 'POST', body }),
+  internshipLeaveWithdraw: (leaveId) => request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/withdraw`, { method: 'POST' }),
   internshipCheckin: (body) => request('/portal/internship/checkin', { method: 'POST', body }),
   internshipSelfEval: (body) => request('/portal/internship/self-eval', { method: 'POST', body }),
   internshipMakeupApply: (body) => request('/portal/internship/makeup', { method: 'POST', body }),
   internshipMakeups: () => request('/portal/internship/makeup'),
-  internshipMakeupWithdraw: (id) =>
-    request(`/portal/internship/makeup/${encodeURIComponent(id)}/withdraw`, { method: 'POST' }),
+  internshipMakeupWithdraw: (id) => request(`/portal/internship/makeup/${encodeURIComponent(id)}/withdraw`, { method: 'POST' }),
   internshipIntentionMy: () => request('/portal/internship/intention'),
   internshipIntentionSave: (body) => request('/portal/internship/intention', { method: 'POST', body }),
   internshipIntentionSubmit: () => request('/portal/internship/intention/submit', { method: 'POST' }),
@@ -158,31 +141,25 @@ export const portalApi = {
   internshipChanges: () => request('/portal/internship/change'),
   internshipAgreements: () => request('/portal/internship/agreements'),
   internshipAgreementDetail: (id) => request(`/portal/internship/agreements/${encodeURIComponent(id)}`),
-  internshipAgreementConfirm: (id, body) =>
-    request(`/portal/internship/agreements/${encodeURIComponent(id)}/confirm`, { method: 'POST', body }),
+  internshipAgreementConfirm: (id, body) => request(`/portal/internship/agreements/${encodeURIComponent(id)}/confirm`, { method: 'POST', body }),
   internshipInsurance: () => request('/portal/internship/insurance'),
   internshipInsuranceSave: (body) => request('/portal/internship/insurance', { method: 'POST', body }),
   internshipPlan: () => request('/portal/internship/plan'),
   internshipPlanAck: () => request('/portal/internship/plan/acknowledge', { method: 'POST' }),
-  internshipEnterprises: (city = '') =>
-    request(`/portal/internship/enterprises${city ? `?city=${encodeURIComponent(city)}` : ''}`),
+  internshipEnterprises: (city = '') => request(`/portal/internship/enterprises${city ? `?city=${encodeURIComponent(city)}` : ''}`),
   internshipHelp: (body) => request('/portal/internship/help', { method: 'POST', body }),
 
-  // ── 就业服务 ──
   employmentMy: () => request('/portal/employment/my'),
   employmentDestination: (body) => request('/portal/employment/destination', { method: 'POST', body }),
   employmentDestinationPrint: (body) => request('/portal/employment/destination/print', { method: 'POST', body }),
 
-  // ── 迎新报到 ──
   orientationMy: () => request('/portal/orientation/my'),
   orientationCollect: (body) => request('/portal/orientation/collect', { method: 'POST', body }),
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),
   orientationPrint: (body) => request('/portal/orientation/print', { method: 'POST', body }),
 
-  // ── 办事大厅 ──
   serviceHallCatalog: () => request('/portal/service-hall/catalog'),
 
-  // ── 消息中心（PC 分页 + 已读 + 偏好）──
   messagesInbox: (page = 1, pageSize = 20) => request(`/portal/messages${q({ page, pageSize })}`),
   messageRead: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/read`, { method: 'POST' }),
   messagesReadAll: () => request('/portal/messages/read-all', { method: 'POST' }),
@@ -190,21 +167,12 @@ export const portalApi = {
   messagePreferences: () => request('/portal/messages/preferences'),
   messageSetPreference: (body) => request('/portal/messages/preferences', { method: 'POST', body }),
 
-  // ── PC 重活公共底座：电子签署 + 打印/导出留痕 ──
   commonSign: (body) => request('/portal/common/sign', { method: 'POST', body }),
   commonPrintLog: (body) => request('/portal/common/print-log', { method: 'POST', body }),
   commonExportLog: (body) => request('/portal/common/export-log', { method: 'POST', body }),
 
-  // ── 毕业设计学生工作台（PC 签署/成绩走 portal；过程读写走 mobile 本人接口）──
-  graduationTaskbook: async () => {
-    const data = await request('/portal/graduation/taskbook')
-    renderedGraduationTaskbookVersion = data?.hasData ? data.taskbookVersion : null
-    return data
-  },
-  signGraduationTaskbook: (taskbookVersion = renderedGraduationTaskbookVersion) =>
-    request('/portal/graduation/taskbook/sign', {
-      method: 'POST', body: { confirm: true, taskbookVersion }
-    }),
+  graduationTaskbook: () => request('/portal/graduation/taskbook'),
+  signGraduationTaskbook: () => request('/portal/graduation/taskbook/sign', { method: 'POST', body: { confirm: true } }),
   graduationProposal: () => request('/portal/graduation/proposal'),
   submitGraduationProposal: (body) => request('/portal/graduation/proposal/submit', { method: 'POST', body }),
   graduationMidterm: () => request('/portal/graduation/midterm'),

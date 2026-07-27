@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     TIMEZONE_OFFSET_HOURS: int = 8
     TENANT_TIMEZONE: str = "Asia/Shanghai"  # IANA；API 无偏移时间按此解释
     APP_VERSION: str = "1.0.0"
+    # 家长门户公网根地址，例如 https://school.example.com；监护人确认短信使用。
+    GUARDIAN_PORTAL_BASE_URL: str = ""
 
     # ── 认证（开发可用安全默认 JWT；生产由 assert_* 强制强密钥 + 关 mock-login）──
     JWT_SECRET: str = "school-lifecycle-dev-secret-change-me-please-32"
@@ -153,6 +155,7 @@ class Settings(BaseSettings):
     SMS_TEMPLATE_TODO: str = ""         # 待办提醒模板ID
     SMS_TEMPLATE_REJECTED: str = ""     # 退回提醒模板ID
     SMS_TEMPLATE_WARNING: str = ""      # 预警提醒模板ID
+    SMS_TEMPLATE_GUARDIAN_CONSENT: str = ""
     SMS_RATE_LIMIT_PER_MINUTE: int = 30 # 每租户每分钟发送上限
     SMS_MAX_RETRY: int = 2              # 发送失败重试次数
 
@@ -221,6 +224,10 @@ class Settings(BaseSettings):
         if self.DEPLOYMENT_MODE == "production":
             return True
         return self.APP_ENV == "production"
+
+    @property
+    def db_enabled(self) -> bool:
+        return bool(self.DB_ENABLED)
 
     @property
     def mock_login_enabled(self) -> bool:
