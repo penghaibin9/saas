@@ -1,9 +1,6 @@
 name: Graduation Targeted Validation
 
 on:
-  push:
-    branches:
-      - fix/graduation-p0-cross-client-latest-20260726
   pull_request:
     branches:
       - main
@@ -13,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: graduation-targeted-validation-${{ github.ref }}
+  group: graduation-targeted-validation
   cancel-in-progress: true
 
 jobs:
