@@ -2,6 +2,15 @@ name: 教务四端专项验证
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'student-portal/**'
+      - 'miniapp/**'
+      - '.github/workflows/academic-affairs-4ends.yml'
 
 permissions:
   contents: read
@@ -77,12 +86,14 @@ jobs:
           tests/test_aa_mobile_teacher_identity.py
           tests/test_aa_mobile_schedule_week.py
           tests/test_aa_mobile_grade_entry_v2.py
+          tests/test_aa_mobile_effective_grade_policy.py
           tests/test_aa_home_task_routes_v2.py
           tests/test_aa_program_opening_r7.py
           tests/test_aa_teaching_class_migration_r8.py
           tests/test_aa_roster_consumers_r9.py
           tests/test_aa_dynamic_grade_evidence_snapshot_r10.py
           tests/test_aa_effective_grade_identity.py
+          tests/test_aa_effective_grade_policy_snapshot.py
           tests/test_aa_makeup_effective_candidates.py
           tests/test_aa_makeup_student_identity.py
           tests/test_aa_makeup_candidate_scope.py
@@ -99,6 +110,7 @@ jobs:
           tests/test_aa_scheduling_rule_v2.py
           tests/test_aa_scheduling_rule_v2_ui.py
           tests/test_aa_scheduling_rule_v2_final.py
+          tests/test_aa_dashboard_readiness_v2.py
           tests/test_security_student_identity.py
           --maxfail=1
 
