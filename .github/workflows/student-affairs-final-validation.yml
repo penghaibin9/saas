@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: student-affairs-final-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   final-validation:
     if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727'
