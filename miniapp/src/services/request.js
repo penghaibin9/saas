@@ -2,6 +2,7 @@
  * 统一请求封装（P10：上线质量收口版）
  * ------------------------------------------------------------
  * - realRequest()：uni.request 调后端，解析统一响应 {code,bizCode,message,data,traceId}。
+ * - realUpload()/realDownload()：文件上传下载沿用同一 token 与 401 单飞刷新。
  * - 401 刷新单飞：多接口同时 401 只发一次 /auth/refresh，其余排队等结果。
  * - refresh 失败：清 token 并跳转登录页（不再进入奇怪状态）。
  * - realFirst / realFirstStrict：读接口仅网络失败才回退 mock；
@@ -25,7 +26,7 @@ export function getToken() {
 }
 
 export function setRefreshToken(token) {
-  try { uni.setStorageSync(REFRESH_KEY, token || '') } catch (e) { /* 忽略 */ }
+  try { uni.setStorageSync(REFRESH_KEY, token || '') } catch (e) { /* 忽略存储失败 */ }
 }
 
 export function getRefreshToken() {
@@ -159,6 +160,11 @@ function _refreshOnce() {
   return _refreshing
 }
 
+function parseUnifiedBody(raw) {
+  if (raw && typeof raw === 'object') return raw
+  try { return JSON.parse(String(raw || '')) } catch (e) { return null }
+}
+
 /** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
 export function realRequest(path, { method = 'GET', data, auth = true, _retried = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -202,6 +208,84 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
   })
 }
 
+/** 文件上传：使用真实 /files 两步式合同，401 后单飞刷新并仅重试一次。 */
+export function realUpload(path, filePath, {
+  name = 'file', formData = {}, auth = true, _retried = false
+} = {}) {
+  return new Promise((resolve, reject) => {
+    if (!filePath) {
+      reject({ code: 422001, biz: true, message: '请选择要上传的文件' })
+      return
+    }
+    const header = {}
+    const token = auth ? getToken() : ''
+    if (token) header.Authorization = 'Bearer ' + token
+    uni.uploadFile({
+      url: ENV.apiBaseUrl + ENV.apiPrefix + path,
+      filePath,
+      name,
+      formData,
+      header,
+      timeout: Math.max(ENV.requestTimeout || 10000, 30000),
+      success: (res) => {
+        const body = parseUnifiedBody(res.data)
+        if (!body || typeof body.code !== 'number') {
+          reject({ code: 'BAD_RESPONSE', message: '上传响应结构异常' })
+          return
+        }
+        if (body.code !== 0) {
+          if (body.code === 401001 && auth && !_retried) {
+            _refreshOnce()
+              .then(() => realUpload(path, filePath, { name, formData, auth, _retried: true }))
+              .then(resolve)
+              .catch(reject)
+            return
+          }
+          reject({ code: body.code, biz: true, message: body.message || '上传失败', traceId: body.traceId })
+          return
+        }
+        resolve(body.data)
+      },
+      fail: (err) => {
+        markOffline()
+        reject({ code: 'NETWORK', message: (err && err.errMsg) || '上传失败' })
+      }
+    })
+  })
+}
+
+/** 文件下载：返回临时文件路径；401 后单飞刷新并仅重试一次。 */
+export function realDownload(path, { auth = true, _retried = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const header = {}
+    const token = auth ? getToken() : ''
+    if (token) header.Authorization = 'Bearer ' + token
+    uni.downloadFile({
+      url: ENV.apiBaseUrl + ENV.apiPrefix + path,
+      header,
+      timeout: Math.max(ENV.requestTimeout || 10000, 30000),
+      success: (res) => {
+        if (res.statusCode === 200 && res.tempFilePath) {
+          resolve({ tempFilePath: res.tempFilePath })
+          return
+        }
+        if (res.statusCode === 401 && auth && !_retried) {
+          _refreshOnce()
+            .then(() => realDownload(path, { auth, _retried: true }))
+            .then(resolve)
+            .catch(reject)
+          return
+        }
+        reject({ code: res.statusCode === 403 ? 403001 : 404001, biz: true, message: '文件不存在或无权下载' })
+      },
+      fail: (err) => {
+        markOffline()
+        reject({ code: 'NETWORK', message: (err && err.errMsg) || '下载失败' })
+      }
+    })
+  })
+}
+
 /**
  * 真实优先（读接口）：仅在网络失败时回退 mock 骨架；
  * 业务错误（401/403/409/422/404）一律透出，由页面处理，绝不假装成功。
@@ -229,7 +313,7 @@ export function request(options) {
 }
 
 export default {
-  mockRequest, realRequest, realFirst, realFirstStrict, request,
+  mockRequest, realRequest, realUpload, realDownload, realFirst, realFirstStrict, request,
   setToken, getToken, clearTokens, safeToast, toastError, normalizeError,
   createSubmitLock, requireAuthOrRedirect, isBusinessError, isNetworkError
 }
