@@ -35,6 +35,10 @@ const activationError = ref('')
 const title = computed(() => route.meta.academicTitle || '教务服务')
 const description = computed(() => route.meta.academicDescription || '当前学生本人教务事项')
 
+function textOf(element) {
+  return String(element && element.textContent || '').trim()
+}
+
 async function activatePanel() {
   activationError.value = ''
   await nextTick()
@@ -43,13 +47,24 @@ async function activatePanel() {
     activationError.value = '路由未声明对应的教务业务面板。'
     return
   }
-  const buttons = [...(root.value?.querySelectorAll('.sp-tabs .sp-tab') || [])]
-  const button = buttons.find((item) => String(item.textContent || '').trim() === target)
-  if (!button) {
+  const mainButtons = [...(root.value?.querySelectorAll('.sp-tabs .sp-tab') || [])]
+  const mainButton = mainButtons.find((item) => textOf(item) === target)
+  if (!mainButton) {
     activationError.value = `未找到“${target}”业务面板，请联系管理员检查路由配置。`
     return
   }
-  button.click()
+  mainButton.click()
+
+  const subTarget = String(route.meta.academicSubTab || '').trim()
+  if (!subTarget) return
+  await nextTick()
+  const allButtons = [...(root.value?.querySelectorAll('button.sp-tab') || [])]
+  const subButton = allButtons.find((item) => !mainButtons.includes(item) && textOf(item) === subTarget)
+  if (!subButton) {
+    activationError.value = `未找到“${subTarget}”子工作区，请联系管理员检查路由配置。`
+    return
+  }
+  subButton.click()
 }
 
 onMounted(activatePanel)
