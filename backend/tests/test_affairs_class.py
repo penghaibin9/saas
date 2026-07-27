@@ -58,13 +58,10 @@ def test_c1_class_list_metrics(client, db_mode):
 def test_c2_class_list_filters(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    # 关键词
     kw = client.get("/api/v1/student-affairs/classes?keyword=2101", headers=hdr).json()
     assert kw["data"]["total"] == 1 and kw["data"]["items"][0]["classId"] == str(ids["A"])
-    # 学院筛选
     col = client.get(f"/api/v1/student-affairs/classes?collegeId={ids['col']}", headers=hdr).json()
     assert col["data"]["total"] == 2
-    # 年级筛选（无匹配）
     g = client.get("/api/v1/student-affairs/classes?grade=2099", headers=hdr).json()
     assert g["data"]["total"] == 0
 
@@ -96,20 +93,16 @@ def test_c5_class_profile_cross_class_403(client, db_mode):
 def test_c6_material_crud(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    # 非法类型 → 400
     assert client.post(f"/api/v1/student-affairs/classes/{ids['A']}/materials", headers=hdr,
                        json={"materialType": "BAD", "title": "x"}).status_code == 400
-    # 新增
     r = client.post(f"/api/v1/student-affairs/classes/{ids['A']}/materials", headers=hdr,
                     json={"materialType": "CLASS_MEETING", "title": "第3周主题班会记录",
                           "materialAt": "2026-03-10", "remark": "全员到齐"}).json()
     assert r["code"] == 0
     mid = r["data"]["id"]
     assert r["data"]["materialTypeLabel"] == "班会记录"
-    # 列表
     lst = client.get(f"/api/v1/student-affairs/classes/{ids['A']}/materials", headers=hdr).json()
     assert lst["data"]["total"] == 1
-    # 作废
     assert client.delete(f"/api/v1/student-affairs/classes/materials/{mid}", headers=hdr).json()["code"] == 0
     lst2 = client.get(f"/api/v1/student-affairs/classes/{ids['A']}/materials", headers=hdr).json()
     assert lst2["data"]["total"] == 0
@@ -118,7 +111,6 @@ def test_c6_material_crud(client, db_mode):
 def test_c7_material_invalid_file(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    # 无效 file_id → 400
     assert client.post(f"/api/v1/student-affairs/classes/{ids['A']}/materials", headers=hdr,
                        json={"materialType": "OTHER", "title": "带附件", "fileId": "f-nonexistent"}
                        ).status_code == 400
@@ -133,33 +125,64 @@ def test_c8_material_cross_class_403(client, db_mode):
 
 
 def test_c9_counselor_assessment_flow(client, db_mode):
-    ids = _seed(db_mode)
+    _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    # 建周期
-    p = client.post("/api/v1/student-affairs/counselor-assessment/periods", headers=hdr,
-                    json={"periodName": "2025-2026上 辅导员考评", "semester": "2025-1"}).json()
-    assert p["code"] == 0
-    pid = p["data"]["id"]
-    # 生成指标（2 位辅导员：A班 999001 / B班 999002）
-    col = client.post(f"/api/v1/student-affairs/counselor-assessment/periods/{pid}/collect",
-                      headers=hdr).json()
-    assert col["data"]["counselors"] == 2
-    lst = client.get(f"/api/v1/student-affairs/counselor-assessment/periods/{pid}/assessments",
-                     headers=hdr).json()
-    assert len(lst["data"]["items"]) == 2
-    a_row = next(x for x in lst["data"]["items"] if x["counselorId"] == "999001")
-    assert a_row["classCount"] == 1 and a_row["studentCount"] == 2 and a_row["autoScore"] is not None
-    # 学院评分 → 综合分 + 排名
-    sc = client.post(f"/api/v1/student-affairs/counselor-assessment/assessments/{a_row['id']}/score",
-                     headers=hdr, json={"collegeScore": 92}).json()
-    assert sc["data"]["status"] == "SCORED" and sc["data"]["totalScore"] is not None
-    assert sc["data"]["rankNo"] in (1, 2)
-    # 评分越界 → 拒绝（Pydantic le=100 + 服务端双校验）
-    assert client.post(f"/api/v1/student-affairs/counselor-assessment/assessments/{a_row['id']}/score",
-                       headers=hdr, json={"collegeScore": 150}).status_code in (400, 422)
-    # 发布 → PUBLISHED，再 collect → 409
-    pub = client.post(f"/api/v1/student-affairs/counselor-assessment/periods/{pid}/publish",
-                      headers=hdr).json()
-    assert pub["data"]["status"] == "PUBLISHED"
-    assert client.post(f"/api/v1/student-affairs/counselor-assessment/periods/{pid}/collect",
-                       headers=hdr).status_code == 409
+    period_response = client.post(
+        "/api/v1/student-affairs/counselor-assessment/periods",
+        headers=hdr,
+        json={"periodName": "2025-2026上 辅导员考评", "semester": "2025-1"},
+    ).json()
+    assert period_response["code"] == 0
+    period = period_response["data"]
+    period_id = period["id"]
+
+    collected = client.post(
+        f"/api/v1/student-affairs/counselor-assessment/periods/{period_id}/collect",
+        headers=hdr,
+    ).json()
+    assert collected["data"]["counselors"] == 2
+
+    listed = client.get(
+        f"/api/v1/student-affairs/counselor-assessment/periods/{period_id}/assessments",
+        headers=hdr,
+    ).json()
+    assert len(listed["data"]["items"]) == 2
+    assessment = next(
+        item for item in listed["data"]["items"] if item["counselorId"] == "999001"
+    )
+    assert assessment["classCount"] == 1
+    assert assessment["studentCount"] == 2
+    assert assessment["autoScore"] is not None
+
+    scored_response = client.post(
+        f"/api/v1/student-affairs/counselor-assessment/assessments/{assessment['id']}/score",
+        headers=hdr,
+        json={"collegeScore": 92, "version": assessment["version"]},
+    ).json()
+    assert scored_response["code"] == 0, scored_response
+    scored = scored_response["data"]
+    assert scored["status"] == "SCORED" and scored["totalScore"] is not None
+    assert scored["rankNo"] in (1, 2)
+
+    assert client.post(
+        f"/api/v1/student-affairs/counselor-assessment/assessments/{assessment['id']}/score",
+        headers=hdr,
+        json={"collegeScore": 150, "version": scored["version"]},
+    ).status_code in (400, 422)
+
+    periods = client.get(
+        "/api/v1/student-affairs/counselor-assessment/periods",
+        headers=hdr,
+    ).json()["data"]["items"]
+    current_period = next(item for item in periods if item["id"] == str(period_id))
+    published_response = client.post(
+        f"/api/v1/student-affairs/counselor-assessment/periods/{period_id}/publish",
+        headers=hdr,
+        json={"version": current_period["version"]},
+    ).json()
+    assert published_response["code"] == 0, published_response
+    assert published_response["data"]["status"] == "PUBLISHED"
+    assert client.post(
+        f"/api/v1/student-affairs/counselor-assessment/periods/{period_id}/collect",
+        headers=hdr,
+    ).status_code == 409
