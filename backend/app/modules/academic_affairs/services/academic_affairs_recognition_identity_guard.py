@@ -1,14 +1,42 @@
-"""V2-04 成绩认定最终来源回链层。"""
+"""V2-04 成绩认定最终来源回链与学生身份守卫层。"""
 from __future__ import annotations
 
 from datetime import datetime
 
+from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_recognition_service as _base
 from . import academic_affairs_grade_identity_facade as _grade
 from .academic_affairs_grade_identity_service import next_study_attempt_no
+
+
+def _resolve_student(db, *, student_no=None):
+    """学生自助使用稳定账号绑定；教务代录可按显式学号精确定位。"""
+    if student_no is None:
+        from app.services.mobile_student_identity_facade import resolve_student
+
+        profile = resolve_student(db, get_current_user_ctx() or {})
+        if not profile:
+            raise not_found("当前账号尚未绑定唯一学生档案")
+        return profile
+
+    from app.models import StudentProfile
+    rows = db.query(StudentProfile).filter(
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.student_no == str(student_no).strip(),
+        StudentProfile.is_deleted.is_(False),
+    ).all()
+    if not rows:
+        raise not_found("代录学号对应的学生档案不存在")
+    if len(rows) != 1:
+        raise AppException(
+            "DATA_CONFLICT",
+            "代录学号命中多份学生档案，请先修复学生主档唯一性",
+            http_status=409,
+        )
+    return rows[0]
 
 
 def review(user, recognition_id, action, reason="") -> dict:
@@ -97,4 +125,6 @@ def review(user, recognition_id, action, reason="") -> dict:
         return _base._dto(row)
 
 
+# 学生提交、我的列表和审核均共享安全解析/来源回链。
+_base._resolve_student = _resolve_student
 _base.review = review
