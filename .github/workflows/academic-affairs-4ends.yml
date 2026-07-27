@@ -2,6 +2,15 @@ name: 教务四端专项验证
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - refactor/academic-affairs-4ends
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'student-portal/**'
+      - 'miniapp/**'
+      - '.github/workflows/academic-affairs-4ends.yml'
   pull_request:
     branches:
       - main
