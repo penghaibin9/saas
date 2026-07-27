@@ -45,8 +45,37 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import { portalApi } from '../../services/portalApi'
+import { request } from '../../services/request'
 import { useUiStore } from '../../stores/ui'
 import { MODULES } from '../../platform/moduleRegistry'
+
+const ACTION_ROUTES = {
+  STUDENT_AFFAIRS: '/campus-service',
+  STUDENT_AFFAIRS_LEAVE: '/campus-service?tab=leave',
+  STUDENT_AFFAIRS_AID: '/campus-service?tab=aid',
+  STUDENT_AFFAIRS_FUNDING: '/campus-service?tab=funding',
+  STUDENT_AFFAIRS_DISCIPLINE: '/campus-service?tab=discipline',
+  STUDENT_AFFAIRS_DORM: '/campus-service?tab=dorm',
+  STUDENT_AFFAIRS_ACTIVITY: '/campus-service?tab=activity',
+  STUDENT_APPLICATIONS: '/campus-service?tab=applications',
+  INTERNSHIP: '/internship',
+  GRADUATION: '/graduation',
+  ACADEMIC: '/academic',
+  ORIENTATION: '/orientation',
+  EMPLOYMENT: '/employment'
+}
+
+const MODULE_ROUTES = {
+  'student-affairs': '/campus-service',
+  campusService: '/campus-service',
+  'campus-service': '/campus-service',
+  internship: '/internship',
+  graduation: '/graduation',
+  'academic-affairs': '/academic',
+  academic: '/academic',
+  orientation: '/orientation',
+  employment: '/employment'
+}
 
 const ui = useUiStore()
 const router = useRouter()
@@ -68,7 +97,7 @@ const shownList = computed(() => {
   return g[tab.value] || (data.value.list || [])
 })
 
-function modName(key) { return MODULES.find((m) => m.key === key)?.title || '系统' }
+function modName(key) { return MODULES.find((m) => m.key === key || m.domain === key)?.title || '系统' }
 function toneOf(m) {
   if (m && (m.emergency || m.level === 'high')) return 'danger'
   if (m && m.level === 'mid') return 'warn'
@@ -81,6 +110,23 @@ function levelText(m) {
   return '通知'
 }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '' }
+function messageTarget(m) {
+  if (!m || m.withdrawn) return '/messages'
+  const key = String(m.actionKey || '').trim().toUpperCase()
+  let target = ACTION_ROUTES[key] || ''
+  const params = m.actionParams && typeof m.actionParams === 'object' ? m.actionParams : {}
+  const biz = String(params.businessType || params.bizType || '').trim().toUpperCase()
+  if (!target && biz) target = ACTION_ROUTES[`STUDENT_AFFAIRS_${biz}`] || ACTION_ROUTES[biz] || ''
+  if (!target && m.status === 'RETURNED') target = ACTION_ROUTES.STUDENT_APPLICATIONS
+  if (!target) target = MODULE_ROUTES[String(m.module || '').trim()] || ''
+  if (!target) {
+    const mod = MODULES.find((x) => x.key === m.link || x.path === m.link || x.domain === m.link)
+    target = mod ? `/${mod.path}` : '/messages'
+  }
+  const recordId = params.recordId || params.bizId || params.applyId || params.applicationId || params.caseId || params.leaveId || ''
+  if (recordId && target !== '/messages') target += `${target.includes('?') ? '&' : '?'}recordId=${encodeURIComponent(String(recordId))}`
+  return target
+}
 
 async function load() {
   loading.value = true
@@ -113,9 +159,11 @@ async function go(m) {
       ui.notify('已确认回执')
     } catch (e) { /* 非强制 */ }
   }
-  const link = m.link || m.module
-  const mod = MODULES.find((x) => x.key === link || x.path === link)
-  router.push('/' + (mod ? mod.path : (link || 'home')))
+  let detail = m
+  if (isUnified && /^\d+$/.test(mid)) {
+    try { detail = await request(`/mobile/me/messages/${mid}`) } catch (e) { /* 列表数据安全降级 */ }
+  }
+  router.push(messageTarget(detail))
 }
 async function togglePref(p) {
   busy.value = true
