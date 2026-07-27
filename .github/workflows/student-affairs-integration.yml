@@ -20,25 +20,30 @@ jobs:
         with:
           fetch-depth: 0
           ref: codex/student-affairs-integration-20260727
-      - name: Merge feature branch and report conflicts
+      - name: Merge feature branch and write conflict report
+        id: merge
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin codex/student-affairs-four-end-hardening-20260726
-          set +e
           git merge --no-ff --no-commit origin/codex/student-affairs-four-end-hardening-20260726
           status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            echo "::group::CONFLICT_FILES"
+          {
+            echo "merge_status=$status"
+            echo "CONFLICT_FILES"
             git diff --name-only --diff-filter=U
-            echo "::endgroup::"
-            echo "::group::STATUS"
+            echo "STATUS"
             git status --short
-            echo "::endgroup::"
-            exit 1
-          fi
-          echo "Merge has no textual conflicts."
-          git merge --abort || true
+          } > integration-conflicts.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-integration-conflicts
+          path: integration-conflicts.txt
+          retention-days: 1
+      - name: Fail when conflicts exist
+        shell: bash
+        run: |
+          test "$(sed -n '1p' integration-conflicts.txt)" = "merge_status=0"
