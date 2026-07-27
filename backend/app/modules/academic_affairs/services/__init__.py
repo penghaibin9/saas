@@ -60,6 +60,8 @@ from . import academic_affairs_textbook_lock_facade as academic_affairs_textbook
 # AA-DASHBOARD-01：readiness真实模型守卫；移除施工卡；非校级范围停止复用全校统计。
 from . import academic_affairs_dashboard_readiness_runtime_guard as academic_affairs_dashboard_readiness_runtime_guard
 from . import academic_affairs_dashboard_scope_facade as academic_affairs_dashboard_scope_facade
+# AA-TERM-01：完整详情、关联影响、审计时间线与安全修改最终语义。
+from . import academic_affairs_term_detail_final_service as academic_affairs_term_detail_final_service
 # V2-05/R5：稳定身份/当前周 → 教师微信成绩闭环 → 学生考试时区与历史可见最终安全层。
 from . import mobile_academic_affairs_facade as mobile_academic_affairs_facade
 from . import mobile_academic_grade_entry_closure_service as mobile_academic_grade_entry_closure_service
