@@ -7,15 +7,14 @@ from fastapi import APIRouter, Depends, Path
 
 from app.core.permissions import require_permission
 from app.core.response import success
-from app.modules.academic_affairs.services import academic_affairs_program_quality_service as quality_svc
+from app.modules.academic_affairs.services import academic_affairs_program_governance_service as quality_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-培养方案质量"])
-
 _VIEW = require_permission("academicAffairs.program.view")
 
 
 @router.get("/programs/{program_id}/validation", summary="培养方案结构化校验")
-def program_validation(program_id: int = Path(...), user=Depends(_VIEW)):
+def program_validation(program_id: int = Path(..., gt=0), user=Depends(_VIEW)):
     return success(quality_svc.validate_program(user, program_id))
 
 
