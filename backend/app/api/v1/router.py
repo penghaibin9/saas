@@ -21,6 +21,7 @@ from app.api.v1.affairs_student_returned import router as affairs_student_return
 from app.services.affairs_activity_accounting_guard import install as install_activity_accounting_guard
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
+from app.services.affairs_activity_reconfirm_guard import install as install_activity_reconfirm_guard
 from app.services.affairs_activity_reliability_service import install as install_activity_reliability
 from app.services.affairs_appeal_repair_scheduler import install as install_appeal_repair_scheduler
 from app.services.affairs_appeal_repair_service import install as install_appeal_repair
@@ -123,6 +124,8 @@ install_archive_guard()
 install_archive_file_guard()
 install_talk_guard()
 install_activity_accounting_guard()
+# append-only 撤销确认后，重新确认需要追加正向恢复流水并恢复报名状态。
+install_activity_reconfirm_guard()
 install_activity_authority_guard()
 install_student_ledger_guard()
 install_discipline_integrity_guard()
