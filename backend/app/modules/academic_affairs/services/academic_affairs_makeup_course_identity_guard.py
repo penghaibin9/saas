@@ -1,4 +1,4 @@
-"""V2-04 补考重修免修最终安全层：修正免修申请查询与附件校验。"""
+"""V2-04 补考重修免修最终安全层。"""
 from __future__ import annotations
 
 import json
@@ -14,6 +14,59 @@ _legacy = _base._legacy
 
 def __getattr__(name):
     return getattr(_base, name)
+
+
+def makeup_pending(user, term=None, page=1, page_size=50):
+    """按统一有效成绩口径返回补考候选；稳定身份欠账显式展示但不可纳入。"""
+    from app.models import AcademicGrade, AcademicStudent
+
+    with _legacy.session() as db:
+        _legacy._ctx(user, db)
+        query = db.query(AcademicGrade, AcademicStudent).join(
+            AcademicStudent,
+            AcademicGrade.acad_student_id == AcademicStudent.id,
+        ).filter(
+            AcademicGrade.tenant_id == _legacy._tid(),
+            AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False),
+            AcademicStudent.is_deleted.is_(False),
+        )
+        if term:
+            query = query.filter(AcademicGrade.term == str(term))
+        pairs = query.all()
+        student_by_grade = {int(grade.id): student for grade, student in pairs}
+        effective = _grade.effective_grade_rows([grade for grade, _student in pairs])
+        items = []
+        for grade in effective:
+            if str(grade.pass_status or "").upper() not in {"FAIL", "FAILED"}:
+                continue
+            student = student_by_grade.get(int(grade.id))
+            identity_ready = bool(
+                grade.course_id and grade.course_code and grade.course_version and grade.attempt_no
+            )
+            items.append({
+                "gradeId": str(grade.id),
+                "acadStudentId": str(grade.acad_student_id),
+                "studentNo": student.student_no if student else "",
+                "studentName": student.name if student else "",
+                "className": student.class_name if student else "",
+                "courseId": str(grade.course_id or ""),
+                "courseCode": grade.course_code or "",
+                "courseVersion": int(grade.course_version or 0) or None,
+                "attemptNo": int(grade.attempt_no or 0) or None,
+                "courseName": grade.course_name,
+                "termCode": grade.term or "",
+                "score": grade.score,
+                "identityReady": identity_ready,
+                "blockReason": "" if identity_ready else "缺少courseId、课程版本或修读次数",
+            })
+        items.sort(key=lambda row: (
+            row["studentNo"] or "",
+            row["courseCode"] or row["courseName"] or "",
+            int(row["attemptNo"] or 0),
+        ))
+        total = len(items)
+        return items[(page - 1) * page_size: page * page_size], total
 
 
 def exemption_apply(user, body):
@@ -80,18 +133,12 @@ def exemption_apply(user, body):
         material_json = json.dumps([str(value) for value in file_ids], ensure_ascii=False) if file_ids else None
 
         row = AaExemption(
-            tenant_id=_legacy._tid(),
-            student_id=student.id,
-            student_no=student.student_no,
-            student_name=student.real_name,
-            course_id=course.id,
-            course_name=course.course_name,
-            term_code=term_code,
+            tenant_id=_legacy._tid(), student_id=student.id,
+            student_no=student.student_no, student_name=student.real_name,
+            course_id=course.id, course_name=course.course_name, term_code=term_code,
             college_id=getattr(student, "college_id", None),
-            reason=getattr(body, "reason", None),
-            material_file_ids=material_json,
-            current_node=_legacy._EX_TEACHER,
-            status=_legacy._EX_TEACHER,
+            reason=getattr(body, "reason", None), material_file_ids=material_json,
+            current_node=_legacy._EX_TEACHER, status=_legacy._EX_TEACHER,
         )
         db.add(row)
         db.flush()
@@ -105,4 +152,5 @@ def exemption_apply(user, body):
 
 # 完整路径与中间facade统一指向安全实现。
 for module in (_base, _base._base, _term, _legacy):
+    module.makeup_pending = makeup_pending
     module.exemption_apply = exemption_apply
