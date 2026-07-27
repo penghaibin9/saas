@@ -12,6 +12,9 @@ from pathlib import Path
 
 
 EXPECTED_ENTRYPOINTS = {
+    "academic_affairs_service": (
+        "app.modules.academic_affairs.services.academic_affairs_dashboard_scope_facade"
+    ),
     "academic_affairs_selection_service": (
         "app.modules.academic_affairs.services.academic_affairs_selection_final_service"
     ),
@@ -33,6 +36,9 @@ EXPECTED_ENTRYPOINTS = {
     "academic_affairs_recognition_service": (
         "app.modules.academic_affairs.services.academic_affairs_recognition_public_service"
     ),
+    "academic_affairs_major_split_service": (
+        "app.modules.academic_affairs.services.academic_affairs_major_split_public_service"
+    ),
     "mobile_academic_affairs_service": (
         "app.modules.academic_affairs.services.mobile_academic_affairs_facade"
     ),
@@ -40,6 +46,17 @@ EXPECTED_ENTRYPOINTS = {
 
 IMPORT_ORDERS = [
     [],
+    [
+        "app.modules.academic_affairs.services.academic_affairs_service",
+        "app.modules.academic_affairs.services.academic_affairs_dashboard_scope_facade",
+        "app.modules.academic_affairs.services.academic_affairs_dashboard_readiness_runtime_guard",
+    ],
+    [
+        "app.modules.academic_affairs.services.academic_affairs_level_exam_identity_guard",
+        "app.modules.academic_affairs.services.academic_affairs_major_split_service",
+        "app.modules.academic_affairs.services.academic_affairs_major_split_identity_guard",
+        "app.modules.academic_affairs.services.academic_affairs_major_split_public_service",
+    ],
     [
         "app.modules.academic_affairs.services.academic_affairs_exam_service",
         "app.modules.academic_affairs.services.academic_affairs_exam_term_facade",
