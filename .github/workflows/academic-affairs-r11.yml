@@ -1,24 +1,6 @@
 name: 教务R11真实学期试点闸门
 
 on:
-  pull_request:
-    branches: [main, master]
-    paths:
-      - 'backend/alembic/versions/0129_aa_roster_consumer_snapshot.py'
-      - 'backend/alembic/versions/0130_aa_dynamic_grade_stats_snapshot.py'
-      - 'backend/alembic/versions/0131_aa_real_semester_pilot.py'
-      - 'backend/app/models/academic_affairs_roster_consumer.py'
-      - 'backend/app/models/academic_affairs_r10.py'
-      - 'backend/app/models/academic_affairs_r11.py'
-      - 'backend/app/modules/academic_affairs/**'
-      - 'backend/tests/test_aa_roster_consumers_r9.py'
-      - 'backend/tests/test_aa_dynamic_grade_evidence_snapshot_r10.py'
-      - 'backend/tests/test_aa_semester_pilot_r11.py'
-      - 'frontend/src/modules/academicAffairs/**'
-      - 'student-portal/**'
-      - 'miniapp/src/pages/student/academic-affairs/**'
-      - 'miniapp/src/pages/teacher/academic-affairs/**'
-      - '.github/workflows/academic-affairs-r11.yml'
   workflow_dispatch:
 
 permissions:
