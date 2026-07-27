@@ -4,7 +4,7 @@
 - 没有显式可见性列的附件仅返回学生本人上传的元数据；
 - 处分申请始终以案件 ID 为稳定标识；
 - 调宿退回没有真实编辑重提接口时不返回假动作；
-- 历史消息动作键统一转换为四端标准键。
+- 新消息写入与历史消息读取都统一为四端标准动作键。
 """
 from __future__ import annotations
 
@@ -41,6 +41,35 @@ _LEGACY_MESSAGE_ACTIONS = {
     "student.affairs.dorm": "AFFAIRS_DORM",
     "student.affairs.activity": "AFFAIRS_ACTIVITY",
 }
+_BIZ_MESSAGE_ACTIONS = {
+    "LEAVE": "AFFAIRS_LEAVE",
+    "LEAVE_REQUEST": "AFFAIRS_LEAVE",
+    "AID": "AFFAIRS_AID",
+    "AID_APPLY": "AFFAIRS_AID",
+    "AID_OBJECTION": "AFFAIRS_AID",
+    "FUNDING": "AFFAIRS_FUNDING",
+    "FUNDING_APPLICATION": "AFFAIRS_FUNDING",
+    "FUNDING_APPEAL": "AFFAIRS_FUNDING",
+    "FUNDING_DISBURSEMENT": "AFFAIRS_FUNDING",
+    "DISCIPLINE": "AFFAIRS_DISCIPLINE",
+    "DISCIPLINE_APPEAL": "AFFAIRS_DISCIPLINE",
+    "DORM": "AFFAIRS_DORM",
+    "DORM_TRANSFER": "AFFAIRS_DORM",
+    "ACTIVITY": "AFFAIRS_ACTIVITY",
+    "SECOND_CLASS": "AFFAIRS_ACTIVITY",
+    "SECOND_CLASS_APPEAL": "AFFAIRS_ACTIVITY",
+    "CREDIT_APPEAL": "AFFAIRS_ACTIVITY",
+    "WORKORDER": "AFFAIRS_APPLICATIONS",
+    "GRANT": "AFFAIRS_APPLICATIONS",
+}
+
+
+def _biz(value: Any) -> str:
+    return str(value or "").strip().upper().replace("-", "_")
+
+
+def _action_for_biz(value: Any) -> str | None:
+    return _BIZ_MESSAGE_ACTIONS.get(_biz(value))
 
 
 def _safe_status_token(value: Any) -> str:
@@ -105,7 +134,7 @@ def _secure_materials(db, *, biz_types: Iterable[str], biz_id: int, status: str)
     from app.models import AffairsAttachment
 
     owner_ids = _owner_ids(db)
-    variants = {str(x or "").strip().upper().replace("-", "_") for x in biz_types if x}
+    variants = {_biz(x) for x in biz_types if x}
     rows = []
     if owner_ids:
         rows = db.scalars(select(AffairsAttachment).where(
@@ -184,23 +213,44 @@ def _secure_application_view(original):
     return my_applications
 
 
-def _canonical_message_action(item: dict, contract) -> None:
+def _canonical_message_action(item: dict, contract=None) -> None:
     current = str(item.get("actionKey") or "").strip()
     if current in _CANONICAL_MESSAGE_ACTIONS:
         return
-    canonical = _LEGACY_MESSAGE_ACTIONS.get(current)
-    biz_type = contract._biz(item.get("bizType") or "")
-    if not canonical:
-        canonical = contract._ACTION_KEY_BY_BIZ.get(biz_type)
+    canonical = _LEGACY_MESSAGE_ACTIONS.get(current) or _action_for_biz(item.get("bizType"))
+    if not canonical and contract is not None:
+        canonical = getattr(contract, "_ACTION_KEY_BY_BIZ", {}).get(_biz(item.get("bizType")))
     if not canonical:
         return
     record_id = str(item.get("recordId") or (item.get("actionParams") or {}).get("recordId") or "")
     params = dict(item.get("actionParams") or {})
-    params.setdefault("bizType", biz_type)
+    params.setdefault("bizType", _biz(item.get("bizType")))
     if record_id:
         params.setdefault("recordId", record_id)
     item["actionKey"] = canonical
     item["actionParams"] = params
+
+
+def _secure_message_producers(outbox) -> None:
+    original = outbox.emit_message_event
+
+    def emit_message_event(db, **kwargs):
+        if str(kwargs.get("source_module") or "") == "student-affairs":
+            biz_type = _biz(kwargs.get("source_biz_type"))
+            current = str(kwargs.get("action_key") or "").strip()
+            canonical = (
+                current if current in _CANONICAL_MESSAGE_ACTIONS
+                else _LEGACY_MESSAGE_ACTIONS.get(current) or _action_for_biz(biz_type)
+            )
+            if canonical:
+                params = dict(kwargs.get("action_params") or {})
+                params.setdefault("bizType", biz_type)
+                params.setdefault("recordId", str(kwargs.get("source_biz_id") or ""))
+                kwargs["action_key"] = canonical
+                kwargs["action_params"] = params
+        return original(db, **kwargs)
+
+    outbox.emit_message_event = emit_message_event
 
 
 def _secure_message_views(student, contract) -> None:
@@ -228,10 +278,12 @@ def install() -> None:
     if _INSTALLED:
         return
     from app.services import affairs_student_contract_service as contract
+    from app.services import message_event_outbox_service as outbox
     from app.services import mobile_student_service as student
 
     contract._timeline = _secure_timeline
     contract._materials = _secure_materials
     student.my_applications = _secure_application_view(student.my_applications)
+    _secure_message_producers(outbox)
     _secure_message_views(student, contract)
     _INSTALLED = True
