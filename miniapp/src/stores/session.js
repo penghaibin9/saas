@@ -1,40 +1,29 @@
 /**
- * 会话状态
- * ------------------------------------------------------------
- * 统一维护：当前登录用户、当前角色/身份、数据范围、权限按钮。
- * 教师端支持多身份切换；真实身份快照只保存非敏感标识，不保存令牌。
+ * 会话状态。
+ * 统一维护当前登录用户、当前角色/身份与真实身份快照；具体业务权限由服务端上下文下发。
  */
 import { defineStore } from 'pinia'
 import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
 import { clearTokens, shouldTryReal } from '@/services/request'
-import { clearSensitiveLocalDrafts } from '@/services/sensitiveDraftStorage'
+import { useInternshipContextStore } from '@/stores/internshipContext'
 
 const STORAGE_KEY = 'gx_session_v1'
-
-const emptyIdentity = () => ({
-  tenantId: null,
-  userId: null,
-  activeContextId: null,
-  studentId: null,
-  studentNo: null,
-  realName: null,
-  roleCode: null,
-  roleName: null
-})
+const STUDENT_INTERNSHIP_BATCH_KEY = 'gx_student_internship_batch_v1'
 
 export const useSessionStore = defineStore('session', {
   state: () => ({
     logged: false,
-    // 真实后端登录返回（token 已由 request 层单独保存）
     realUser: null,
     currentRole: ROLE.STUDENT,
-    // 展示对象仍兼容旧页面结构，但真实登录后必须由服务端字段覆盖。
     mockUser: null,
     availableRoles: [],
     availableContexts: [],
-    identity: emptyIdentity()
+    identity: {
+      userId: null, studentId: null, studentNo: null, realName: null,
+      roleCode: null, roleName: null
+    }
   }),
   getters: {
     roleConfig: (s) => getRoleConfig(s.currentRole),
@@ -48,11 +37,15 @@ export const useSessionStore = defineStore('session', {
     can(action) {
       return hasAction(this.currentRole, action)
     },
-    /** 建立会话。账号密码/微信登录已持有真实 token 时只建立 UI 会话，绝不覆盖令牌。 */
+    clearBusinessContexts() {
+      useInternshipContextStore().clear()
+      try { uni.removeStorageSync(STUDENT_INTERNSHIP_BATCH_KEY) } catch (e) {}
+    },
     async login(roleKey, { skipRealLogin = false } = {}) {
       if (!skipRealLogin) {
         throw { code: 'LOGIN_REQUIRED', biz: true, message: '请使用学校账号登录' }
       }
+      this.clearBusinessContexts()
       const cfg = getRoleConfig(roleKey)
       this.currentRole = roleKey
       this.logged = true
@@ -66,7 +59,6 @@ export const useSessionStore = defineStore('session', {
       this.persist()
       return cfg.homeRoute
     },
-    /** 把真实登录响应的身份字段落到稳定 identity，供页面自校验和本机敏感草稿隔离。 */
     applyRealUser(d) {
       this.realUser = d || null
       if (!d) return
@@ -74,24 +66,20 @@ export const useSessionStore = defineStore('session', {
       this.availableContexts = d.availableContexts || d.contexts || []
       this.identity = {
         ...this.identity,
-        tenantId: d.tenantId != null ? d.tenantId : this.identity.tenantId,
         userId: d.userId != null ? d.userId : this.identity.userId,
-        activeContextId: d.activeContextId || role.contextId || this.identity.activeContextId,
         realName: d.displayName || d.realName || this.identity.realName,
         roleCode: role.roleCode || this.identity.roleCode,
         roleName: role.roleName || this.identity.roleName
       }
-      // 用真实姓名覆盖 UI 展示对象，杜绝首页/工作台/个人中心显示演示姓名。
       if (this.mockUser) {
         this.mockUser = {
           ...this.mockUser,
           name: d.displayName || d.realName || this.mockUser.name,
           tenantName: d.tenantName || this.mockUser.tenantName || ''
         }
+        this.persist()
       }
-      this.persist()
     },
-    /** /mobile/me/profile 回填 studentId/studentNo。 */
     setStudentIdentity(p) {
       if (!p) return
       this.identity = {
@@ -100,9 +88,7 @@ export const useSessionStore = defineStore('session', {
         studentNo: p.studentNo || this.identity.studentNo,
         realName: p.name || this.identity.realName
       }
-      this.persist()
     },
-    /** 学生真实档案回填 UI 展示对象。 */
     hydrateStudentProfile(p) {
       if (!p) return
       const base = p.base || {}
@@ -118,34 +104,44 @@ export const useSessionStore = defineStore('session', {
       }
       this.identity = {
         ...this.identity,
-        studentId: base.studentId != null ? base.studentId : this.identity.studentId,
         studentNo: base.studentNo || this.identity.studentNo,
         realName: base.name || this.identity.realName
       }
       this.persist()
     },
-    /** 教师端切换身份。新 token 生效后才 resolve，调用方必须 await 后再刷新数据。 */
     async switchRole(roleKey) {
-      this.currentRole = roleKey
-      this.persist()
-      if (shouldTryReal()) {
-        const cfg = getRoleConfig(roleKey)
-        const ctx = this.availableContexts.find((item) =>
-          item.roleCode === roleKey || item.roleCode === cfg.roleCode || item.contextType === roleKey)
-        if (!ctx) throw { code: 'NO_CONTEXT', biz: true, message: '当前账号没有该身份' }
-        const d = await switchRoleReal(ctx.contextId || ctx.id, 'MP')
-        this.applyRealUser(d)
+      const previousRole = this.currentRole
+      const previousIdentity = { ...this.identity }
+      this.clearBusinessContexts()
+      try {
+        if (shouldTryReal()) {
+          const cfg = getRoleConfig(roleKey)
+          const ctx = this.availableContexts.find((item) =>
+            item.roleCode === roleKey || item.roleCode === cfg.roleCode || item.contextType === roleKey)
+          if (!ctx) throw { code: 'NO_CONTEXT', biz: true, message: '当前账号没有该身份' }
+          const d = await switchRoleReal(ctx.contextId || ctx.id, 'MP')
+          this.currentRole = roleKey
+          this.applyRealUser(d)
+        } else {
+          this.currentRole = roleKey
+        }
+        this.persist()
+      } catch (e) {
+        this.currentRole = previousRole
+        this.identity = previousIdentity
+        this.persist()
+        throw e
       }
     },
     logout() {
+      this.clearBusinessContexts()
       this.logged = false
       this.mockUser = null
       this.availableRoles = []
       this.availableContexts = []
       this.realUser = null
-      this.identity = emptyIdentity()
-      // 成绩草稿含学生姓名与分数，共用设备退出时必须清除，禁止被下一账号恢复。
-      clearSensitiveLocalDrafts()
+      this.identity = { userId: null, studentId: null, studentNo: null, realName: null,
+        roleCode: null, roleName: null }
       clearTokens()
       try { uni.removeStorageSync(STORAGE_KEY) } catch (e) {}
     },
@@ -157,16 +153,6 @@ export const useSessionStore = defineStore('session', {
           currentRole: this.currentRole,
           availableRoles: this.availableRoles,
           isTeacher: getRoleConfig(this.currentRole).side === 'teacher',
-          identity: {
-            tenantId: this.identity.tenantId,
-            userId: this.identity.userId,
-            activeContextId: this.identity.activeContextId,
-            studentId: this.identity.studentId,
-            studentNo: this.identity.studentNo,
-            realName: this.identity.realName,
-            roleCode: this.identity.roleCode,
-            roleName: this.identity.roleName
-          },
           user: {
             name: u.name, studentNo: u.studentNo, className: u.className,
             college: u.college, major: u.major, grade: u.grade, tenantName: u.tenantName
@@ -183,13 +169,10 @@ export const useSessionStore = defineStore('session', {
           this.currentRole = s.currentRole
           this.availableRoles = s.availableRoles || []
           this.logged = true
-          this.identity = { ...emptyIdentity(), ...(s.identity || {}) }
           const skeleton = s.isTeacher ? { ...mockTeacherUser } : { ...mockStudentUser }
           const saved = s.user || {}
           const overlay = {}
-          Object.keys(saved).forEach((key) => {
-            if (saved[key] !== undefined && saved[key] !== null) overlay[key] = saved[key]
-          })
+          Object.keys(saved).forEach((k) => { if (saved[k] !== undefined && saved[k] !== null) overlay[k] = saved[k] })
           this.mockUser = { ...skeleton, ...overlay }
         }
       } catch (e) {}
