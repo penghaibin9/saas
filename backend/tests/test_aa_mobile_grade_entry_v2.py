@@ -107,7 +107,7 @@ def test_public_mobile_service_and_router_use_one_explicit_entry():
     from app.modules.academic_affairs.routers import academic_affairs
 
     mobile = _mobile()
-    assert mobile.__name__.endswith("mobile_academic_affairs_facade")
+    assert mobile.__name__.endswith("mobile_academic_affairs_public_service")
     for name in (
         "schedule_my", "teacher_schedule_my", "teacher_attendance_class_options",
         "makeup_options_my", "retake_apply_my", "exemption_apply_my",
