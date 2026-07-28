@@ -34,7 +34,7 @@ unsafe = '''def replace_once(path: str, old: str, new: str) -> None:
     match = matches[0]
     file.write_text(text[:match.start()] + new + text[match.end():], encoding="utf-8")
 '''
-safe = '''def _whitespace_tolerant_pattern(value: str) -> str:
+previous_safe = '''def _whitespace_tolerant_pattern(value: str) -> str:
     """Ignore indentation changes without allowing spaces to consume neighbouring newlines."""
     parts = re.split(r"(\\n|[ \\t]+)", value)
     out = []
@@ -65,14 +65,48 @@ def replace_once(path: str, old: str, new: str) -> None:
     match = matches[0]
     file.write_text(text[:match.start()] + new + text[match.end():], encoding="utf-8")
 '''
+final_safe = '''def _whitespace_tolerant_pattern(value: str) -> str:
+    """Ignore indentation changes without consuming the indentation of the following line."""
+    parts = re.split(r"(\\n|[ \\t]+)", value)
+    out = []
+    for part in parts:
+        if part == "\\n":
+            # May absorb trailing spaces before the newline, never leading spaces after it.
+            out.append(r"[ \\t]*\\n")
+        elif part and all(char in " \\t" for char in part):
+            out.append(r"[ \\t]+")
+        else:
+            out.append(re.escape(part))
+    return "".join(out)
 
-if safe not in text:
-    if unsafe in text:
-        text = text.replace(unsafe, safe, 1)
+
+def replace_once(path: str, old: str, new: str) -> None:
+    file = Path(path)
+    text = file.read_text(encoding="utf-8")
+    if new in text:
+        return
+    if old in text:
+        file.write_text(text.replace(old, new, 1), encoding="utf-8")
+        return
+    pattern = _whitespace_tolerant_pattern(old)
+    matches = list(re.finditer(pattern, text))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"round8 anchor missing/ambiguous: {path}: matches={len(matches)} old={old[:120]!r}"
+        )
+    match = matches[0]
+    file.write_text(text[:match.start()] + new + text[match.end():], encoding="utf-8")
+'''
+
+if final_safe not in text:
+    if previous_safe in text:
+        text = text.replace(previous_safe, final_safe, 1)
+    elif unsafe in text:
+        text = text.replace(unsafe, final_safe, 1)
     elif original in text:
-        text = text.replace(original, safe, 1)
+        text = text.replace(original, final_safe, 1)
     else:
         raise RuntimeError("round8 replace_once implementation anchor missing")
 
 path.write_text(text, encoding="utf-8")
-print("round8 newline-safe matcher installed", flush=True)
+print("round8 indentation-safe matcher installed", flush=True)
