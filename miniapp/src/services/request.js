@@ -192,13 +192,11 @@ function appendQuery(path, key, value) {
   if (new RegExp(`[?&]${key}=`).test(path)) return path
   return `${path}${path.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`
 }
-
 function replaceQuery(path, key, value) {
   const re = new RegExp(`([?&])${key}=[^&]*`)
   if (re.test(path)) return path.replace(re, `$1${key}=${encodeURIComponent(value)}`)
   return appendQuery(path, key, value)
 }
-
 function withTeacherGraduationContext(path) {
   if (!path.startsWith(GD_TEACHER_PREFIX) || path.startsWith(`${GD_TEACHER_PREFIX}/batches`)) return path
   const batch = getTeacherGraduationBatch()
@@ -216,7 +214,6 @@ function attachPageMeta(items, meta) {
   Object.defineProperty(items, '_pageMeta', { value: meta, enumerable: false, configurable: true })
   return items
 }
-
 function normalizeTeacherGraduationData(path, data) {
   const pathname = path.split('?')[0]
   if (pathname === GD_TASKBOOK_PATH && data && Array.isArray(data.items)) {
