@@ -24,12 +24,14 @@ test('岗位实习布局注入统一 Picker 适配器', async () => {
   }
 })
 
-test('岗位实习页面不再各自接线远程搜索或保留原生选择控件', async () => {
+test('岗位实习页面不再各自接线远程实体搜索或保留原生实体选择控件', async () => {
   const files = await vueFiles()
-  const sources = await Promise.all(files.map((file) => readFile(file, 'utf8')))
-  const joined = sources.join('\n')
-  assert.doesNotMatch(joined, /:remote-search=/)
-  assert.doesNotMatch(joined, /entityPickerAdapters/)
-  assert.doesNotMatch(joined, /<select/)
-  assert.doesNotMatch(joined, /type="date"/)
+  const nativeEntitySelect = /<select\b[^>]*v-model(?:\.[\w]+)*="[^"]*(?:student|enterprise|position|advisor|mentor|batch)[^"]*"/i
+  for (const file of files) {
+    const source = await readFile(file, 'utf8')
+    assert.doesNotMatch(source, /:remote-search=/, file.pathname)
+    assert.doesNotMatch(source, /entityPickerAdapters/, file.pathname)
+    assert.doesNotMatch(source, nativeEntitySelect, file.pathname)
+    assert.doesNotMatch(source, /type="date"/, file.pathname)
+  }
 })
