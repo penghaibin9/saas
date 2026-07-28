@@ -116,27 +116,33 @@ def test_r10_models_and_migration_are_additive():
 
 
 def test_r10_routes_are_registered_through_domain_bundle():
+    from app.modules.academic_affairs.routers import dynamic_grade_router, stats_snapshot_router
+
     root = Path(__file__).resolve().parents[1]
     registration = (root / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
     bundle = (
         root / "app/modules/academic_affairs/routers/academic_affairs_bundle.py"
-    ).read_text(encoding="utf-8")
-    dynamic_router = (
-        root / "app/modules/academic_affairs/routers/dynamic_grade_router.py"
-    ).read_text(encoding="utf-8")
-    stats_router = (
-        root / "app/modules/academic_affairs/routers/stats_snapshot_router.py"
     ).read_text(encoding="utf-8")
 
     assert 'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])' in registration
     assert "dynamic_grade_router" in bundle
     assert "stats_snapshot_router" in bundle
     assert "router.include_router(module.router)" in bundle
-    assert 'router.put("/grade-tasks/{task_id}/scheme"' in dynamic_router
-    assert 'router.post("/grade-tasks/{task_id}/component-scores"' in dynamic_router
-    assert 'router.post("/stats/snapshots"' in stats_router
-    assert 'router.get("/stats/snapshots"' in stats_router
-    assert 'router.get("/stats/snapshots/{snapshot_id}"' in stats_router
+
+    dynamic_routes = {
+        (route.path, tuple(sorted(route.methods or set())))
+        for route in dynamic_grade_router.router.routes
+    }
+    assert ("/academic-affairs/grade-tasks/{task_id}/scheme", ("PUT",)) in dynamic_routes
+    assert ("/academic-affairs/grade-tasks/{task_id}/component-scores", ("POST",)) in dynamic_routes
+
+    stats_routes = {
+        (route.path, tuple(sorted(route.methods or set())))
+        for route in stats_snapshot_router.router.routes
+    }
+    assert ("/academic-affairs/stats/snapshots", ("POST",)) in stats_routes
+    assert ("/academic-affairs/stats/snapshots", ("GET",)) in stats_routes
+    assert ("/academic-affairs/stats/snapshots/{snapshot_id}", ("GET",)) in stats_routes
 
 
 def test_r10_public_services_are_explicit_and_do_not_assert_facade_module_locations():
