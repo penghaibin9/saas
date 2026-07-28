@@ -1339,6 +1339,10 @@ class CheckinBody(BaseModel):
     studentId: str = Field(..., min_length=1)
 
 
+class DormCheckoutBody(BaseModel):
+    version: int = Field(..., description="当前床位乐观锁版本（必填）")
+
+
 class TransferSubmit(BaseModel):
     studentId: str = Field(..., min_length=1)
     toBedId: str = Field(..., min_length=1)
@@ -1409,9 +1413,9 @@ def dorm_checkin(body: CheckinBody, bedId: int = Path(...),
 
 
 @router.post("/dorm/beds/{bedId}/checkout", summary="退宿（释放床位）")
-def dorm_checkout(bedId: int = Path(...),
+def dorm_checkout(body: DormCheckoutBody, bedId: int = Path(...),
                   user=Depends(require_permission("studentAffairs.dorm.allocation.manage"))):
-    return success(dorm_svc.checkout(bedId, user), message="已退宿")
+    return success(dorm_svc.checkout(bedId, user, body.version), message="已退宿")
 
 
 class DormConfigBody(BaseModel):
@@ -1801,6 +1805,7 @@ class EvalAppealReviewBody(BaseModel):
     result: str = Field(..., description="UPHELD/ADJUSTED")
     opinion: str = Field(..., min_length=5)
     scores: Optional[dict] = None
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 @router.get("/counselor-eval/indicators", summary="辅导员考评指标列表")

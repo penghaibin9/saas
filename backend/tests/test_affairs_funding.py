@@ -5,7 +5,7 @@ F4 助学金困难库在库→放行→GRANTED；F5 重复申请409；F6 越权�
 """
 from __future__ import annotations
 
-from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+from affairs_contract_test_support import expire_publicity, ensure_owner_scope, ensure_workflow_assignees, post_versioned
 
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
@@ -66,6 +66,7 @@ def _make_difficult(client, hdr, sid):
         post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=hdr, json={"action": "APPROVE"})
     post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
                 json={"action": "APPROVE", "level": "DIFFICULT"})
+    expire_publicity("AidApply", aid_id)
     post_versioned(client, f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr)
 
 
@@ -97,6 +98,7 @@ def test_f2_full_flow_granted_360(client, db_mode):
     _approve_to_publicity(client, hdr, app_id)
     d = client.get(f"{BASE}/funding/applications/{app_id}", headers=hdr).json()["data"]
     assert d["status"] == "PUBLICITY"
+    expire_publicity("FundingApplication", app_id)
     c = post_versioned(client, f"{BASE}/funding/applications/{app_id}/publicity-confirm", headers=hdr).json()
     assert c["data"]["status"] == "GRANTED"
     from app.db.session import get_sessionmaker

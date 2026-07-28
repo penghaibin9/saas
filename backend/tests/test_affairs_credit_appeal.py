@@ -33,7 +33,7 @@ def test_credit_appeal_approve_creates_credit(client, db_mode):
     # 列表
     assert any(x["appealId"] == aid for x in client.get(f"{BASE}/second-class/appeals", headers=hdr).json()["data"]["items"])
     # 审核通过 → 生成 MANUAL_ADJUST 学分
-    r = post_versioned(client, f"{BASE}/second-class/appeals/{aid}/review", headers=hdr, json={"action": "APPROVE"}).json()
+    r = post_versioned(client, f"{BASE}/second-class/appeals/{aid}/review", headers=hdr, json={"action": "APPROVE", "opinion": "经核实同意补记积分"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "APPROVED"
     led = client.get(f"{BASE}/second-class/ledger", headers=hdr).json()
     assert any(x["studentId"] == str(sid) and x["source"] == "MANUAL_ADJUST" for x in led["data"]["items"])

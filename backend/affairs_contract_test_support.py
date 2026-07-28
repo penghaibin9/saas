@@ -33,7 +33,7 @@ _VERSION_ROUTES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"/student-affairs/dorm/exceptions/(\d+)/handle$"), "CsDormException"),
     (re.compile(r"/student-affairs/dorm/beds/(\d+)/checkout$"), "DormBed"),
     (re.compile(r"/student-affairs/risk/records/(\d+)/(?:assign|process|follow|transfer|escalate|takeover|close|reopen)$"), "AffairsRiskRecord"),
-    (re.compile(r"/student-affairs/talks/(\d+)/(?:record|follow-up)$"), "TalkPlan"),
+    (re.compile(r"/student-affairs/talks/(\d+)/(?:record|follow-up)$"), "TalkRecord"),
     (re.compile(r"/student-affairs/party-league/dev/(\d+)/(?:advance|terminate)$"), "AffairsLeagueDev"),
     (re.compile(r"/student-affairs/organizations/(\d+)/(?:review|disband)$"), "AffairsStudentOrg"),
     (re.compile(r"/student-affairs/organizations/positions/(\d+)/dismiss$"), "AffairsOrgPosition"),
@@ -85,8 +85,34 @@ def versioned_payload(url: str, body: dict[str, Any] | None = None) -> dict[str,
 
 
 def post_versioned(client, url: str, *, headers=None, json=None, **kwargs):
-    """显式模拟真实页面：读取当前详情版本后提交写操作。"""
-    return client.post(url, headers=headers, json=versioned_payload(url, json), **kwargs)
+    """显式模拟真实页面：读取当前详情版本后提交写操作。
+
+    同时发送 JSON version 和 x-expected-version，覆盖无 Pydantic Body 的历史端点；
+    生产接口仍必须显式校验版本，本助手不会重试或吞掉冲突。
+    """
+    payload = versioned_payload(url, json)
+    request_headers = dict(headers or {})
+    request_headers.setdefault("x-expected-version", str(payload["version"]))
+    return client.post(url, headers=request_headers, json=payload, **kwargs)
+
+
+def expire_publicity(model_name: str, entity_id: int, *, days: int = 2) -> None:
+    """显式把测试公示记录推进到到期状态，不允许生产创建 0 天公示。"""
+    from app import models
+    from app.db.session import get_sessionmaker
+
+    model = getattr(models, model_name)
+    db = get_sessionmaker()()
+    try:
+        row = db.get(model, int(entity_id))
+        assert row is not None and not getattr(row, "is_deleted", False), (
+            f"测试公示记录不存在：{model_name}#{entity_id}"
+        )
+        assert hasattr(row, "publicity_at"), f"模型没有 publicity_at：{model_name}"
+        row.publicity_at = datetime.utcnow() - timedelta(days=max(1, int(days)))
+        db.commit()
+    finally:
+        db.close()
 
 
 def _ensure_role_user(db, role_code: str):

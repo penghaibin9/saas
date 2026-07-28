@@ -27,16 +27,20 @@ def _seed(db_mode):
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
     sf = StudentProfile(tenant_id=TID, student_no="F001", real_name="女生乙", class_id=a.id, gender="F",
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
-    db.add(sm); db.add(sf); db.flush()
-    ids = {"A": a.id, "sm": sm.id, "sf": sf.id}
+    sm2 = StudentProfile(tenant_id=TID, student_no="M002", real_name="男生丙", class_id=a.id, gender="M",
+                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
+    db.add_all([sm, sf, sm2]); db.flush()
+    ids = {"A": a.id, "sm": sm.id, "sf": sf.id, "sm2": sm2.id}
     db.commit()
     db.close()
+    ensure_workflow_assignees([ids["sm"], ids["sf"], ids["sm2"]])
     return ids
 
 
 def _make_building(client, hdr, gender="MALE"):
     bid = client.post(f"{BASE}/dorm/buildings", headers=hdr, json={
-        "buildingName": "紫荆1号楼", "buildingCode": "ZJ01", "genderLimit": gender}).json()["data"]["buildingId"]
+        "buildingName": "紫荆1号楼", "buildingCode": "ZJ01", "genderLimit": gender,
+        "managerTeacherKey": "dorm01"}).json()["data"]["buildingId"]
     client.post(f"{BASE}/dorm/buildings/{bid}/generate", headers=hdr,
                 json={"floors": 2, "roomsPerFloor": 3, "bedsPerRoom": 4})
     return bid
@@ -68,7 +72,7 @@ def test_m2_cascade_checkin_writeback(client, db_mode):
     assert len(beds) == 4 and all(b["status"] == "VACANT" for b in beds)
     # 入住第一张床
     r = client.post(f"{BASE}/dorm/beds/{beds[0]['bedId']}/checkin", headers=hdr,
-                    json={"studentId": str(ids["sm"])}).json()
+                    json={"studentId": str(ids["sm2"])}).json()
     assert r["data"]["status"] == "OCCUPIED"
     # 房间空床 -1
     rooms = client.get(f"{BASE}/dorm/buildings/{bid}/rooms?floor=1", headers=hdr).json()["data"]["items"]
@@ -104,11 +108,11 @@ def test_m4_transfer_executes(client, db_mode):
     old_bed, new_bed = beds1[0]["bedId"], beds2[0]["bedId"]
     client.post(f"{BASE}/dorm/beds/{old_bed}/checkin", headers=hdr, json={"studentId": str(ids["sm"])})
     transfer = client.post(f"{BASE}/dorm/transfers", headers=hdr, json={
-        "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "调宿"}).json()["data"]
+        "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "学生申请调整宿舍床位"}).json()["data"]
     tid = transfer["transferId"]
     first = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={
         "action": "APPROVE", "version": transfer["version"]}).json()["data"]  # 辅导员
-    r = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={
+    r = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=_hdr(client, "dorm01"), json={
         "action": "APPROVE", "version": first["version"]}).json()  # 宿管→执行
     assert r["data"]["status"] == "EXECUTED"
     # 原床释放、新床占用
