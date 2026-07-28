@@ -33,11 +33,14 @@ _EXTENSION_ROUTER_MODULES = (
 
 
 def build_router() -> APIRouter:
-    """在注册时读取已完成初始化的真实子 Router，避免循环导入阶段缓存半成品模块。"""
+    """在注册时读取包内已完成初始化的真实子 Router，避开循环导入留下的旧模块引用。"""
     router = APIRouter()
     router.include_router(base_router.router)
+    package = importlib.import_module(__package__)
     for module_name in _EXTENSION_ROUTER_MODULES:
-        module = importlib.import_module(f"{__package__}.{module_name}")
+        module = getattr(package, module_name, None)
+        if module is None:
+            module = importlib.import_module(f"{__package__}.{module_name}")
         router.include_router(module.router)
     return router
 
