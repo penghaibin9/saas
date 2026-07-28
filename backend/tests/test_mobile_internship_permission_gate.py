@@ -1,4 +1,6 @@
 """Regression locks for teacher mini-program internship permission routing."""
+from pathlib import Path
+
 import pytest
 
 from app.core.exceptions import AppException
@@ -7,6 +9,24 @@ from app.core.mobile_internship_permission_gate import (
     resolve_teacher_internship_permission,
 )
 from app.api.v1.mobile_internship_context import _choose_default_batch
+
+ROOT = Path(__file__).resolve().parents[1]
+TID = 1000000000000000001
+
+
+def _teacher_token(role: str):
+    from app.core.security import create_access_token
+
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"mobile-{role}",
+        "realName": role,
+        "userType": "TEACHER",
+        "tid": "x",
+        "tenantId": str(TID),
+        "activeContextId": "ctx",
+        "currentRoleCode": role,
+        "clientType": "MINIAPP",
+    })}
 
 
 @pytest.mark.parametrize(("method", "path", "expected"), [
@@ -51,6 +71,34 @@ def test_unregistered_teacher_internship_route_fails_closed(path):
     with pytest.raises(AppException) as exc:
         resolve_teacher_internship_permission("POST", path)
     assert exc.value.code == "NO_PERMISSION"
+
+
+def test_permission_gate_is_installed_on_real_mobile_router():
+    source = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
+    start = source.index("api_router.include_router(\n        mobile.router,")
+    end = source.index("\n    from app.core.student_portal_module_gate", start)
+    registration = source[start:end]
+    assert "Depends(enforce_teacher_internship_mobile_permission)" in registration
+
+
+def test_view_only_teacher_cannot_review_weekly_report_via_real_route(client, db_mode):
+    response = client.post(
+        "/api/v1/mobile/teacher/internship/weekly/999999/review",
+        headers=_teacher_token("COUNSELOR"),
+        json={"action": "APPROVE", "comment": "越权审核"},
+    )
+    assert response.status_code == 403
+    assert response.json()["code"] == 403001
+
+
+def test_view_only_teacher_cannot_handle_attendance_via_real_route(client, db_mode):
+    response = client.post(
+        "/api/v1/mobile/teacher/internship/exception/999999/handle",
+        headers=_teacher_token("COUNSELOR"),
+        json={"action": "REASONABLE", "comment": "越权处置"},
+    )
+    assert response.status_code == 403
+    assert response.json()["code"] == 403001
 
 
 @pytest.mark.parametrize("path", [

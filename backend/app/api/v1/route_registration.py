@@ -159,8 +159,14 @@ def register_platform_routes(api_router: APIRouter) -> None:
         dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
     )
     api_router.include_router(mobile_graduation_guard.router)
-    api_router.include_router(mobile.router, dependencies=[Depends(require_mobile_graduation_request_permission)])
     from app.core.mobile_internship_permission_gate import enforce_teacher_internship_mobile_permission
+    api_router.include_router(
+        mobile.router,
+        dependencies=[
+            Depends(require_mobile_graduation_request_permission),
+            Depends(enforce_teacher_internship_mobile_permission),
+        ],
+    )
     from app.core.student_portal_module_gate import enforce_student_portal_module_access
     from app.student_portal.internship_router import router as student_portal_internship_router
     api_router.include_router(mobile_internship_context.router)
