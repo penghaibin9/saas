@@ -4,9 +4,13 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_all_teacher_affairs_mobile_writes_have_explicit_permission(client):
@@ -107,8 +111,6 @@ def test_activity_scope_matching_is_fail_closed():
 
 
 def test_appeal_dashboard_read_path_does_not_reconcile_or_write():
-    from pathlib import Path
-
-    source = Path("app/services/affairs_appeal_dashboard_service.py").read_text(encoding="utf-8")
+    source = (ROOT / "backend/app/services/affairs_appeal_dashboard_service.py").read_text(encoding="utf-8")
     assert "reconcile_appeal_todos" not in source
     assert ".commit(" not in source
