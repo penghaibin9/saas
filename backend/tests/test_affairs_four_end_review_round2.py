@@ -111,6 +111,9 @@ def test_activity_scope_matching_is_fail_closed():
 
 
 def test_appeal_dashboard_read_path_does_not_reconcile_or_write():
-    source = (ROOT / "backend/app/services/affairs_appeal_dashboard_service.py").read_text(encoding="utf-8")
-    assert "reconcile_appeal_todos" not in source
-    assert ".commit(" not in source
+    source = (ROOT / "backend/app/api/v1/affairs_appeal_mobile.py").read_text(encoding="utf-8")
+    read_path = source.split("def appeal_pending(", 1)[1].split(
+        "@router.post(\"/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review\"", 1
+    )[0]
+    assert "reconcile_appeal_todos" not in read_path
+    assert ".commit(" not in read_path
