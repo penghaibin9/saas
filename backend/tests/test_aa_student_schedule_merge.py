@@ -67,7 +67,7 @@ def test_public_schedule_service_uses_final_entry_and_canonical_student_view():
     public = services.academic_affairs_schedule_service
     assert public.__name__.endswith("academic_affairs_schedule_final_service")
     assert public.student_view.__module__.endswith("academic_affairs_schedule_service")
-    assert callable(public.publish_batch)
+    assert callable(public.publish)
     assert callable(public.pre_publish)
 
 
