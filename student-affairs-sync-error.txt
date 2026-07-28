@@ -1,16 +1,18 @@
 status=1
 base=6f49bb483abcbf0932c99f7637ee8d97b835fbb0
-head=4fd44930d72f3f8df7be29727fff560610c074fb
+head=b161acd8ebd3b8ae63d59d3ceb67a0a7736f1021
 log_tail:
 request resolver anchor fixed
 student affairs remaining round5 repair passed
 student affairs sensitive scope round6 passed
 student affairs bigdata round7 passed
-Traceback (most recent call last):
-  File "/home/runner/work/saas/saas/scripts/maintenance/repair_affairs_runtime_tests_round8.py", line 214, in <module>
-    patch_optimistic_and_todo()
-  File "/home/runner/work/saas/saas/scripts/maintenance/repair_affairs_runtime_tests_round8.py", line 121, in patch_optimistic_and_todo
-    replace_once(
-  File "/home/runner/work/saas/saas/scripts/maintenance/repair_affairs_runtime_tests_round8.py", line 10, in replace_once
-    raise RuntimeError(f"round8 anchor missing: {path}: {old[:120]!r}")
-RuntimeError: round8 anchor missing: backend/tests/test_affairs_optimistic_lock_round1.py: '    missing = post_versioned(client, f"{BASE}/risk/records/{rid}/process", headers=hdr,\n                           json='
+round8 whitespace matcher installed
+student affairs runtime round8 passed
+student affairs funding round9 passed
+student affairs cockpit round10 passed
+*** Error compiling 'backend/tests/test_affairs_optimistic_lock_round1.py'...
+  File "backend/tests/test_affairs_optimistic_lock_round1.py", line 62
+    assert stale.status_code == 409 and stale.json()["bizCode"] == "APPROVAL_VERSION_CONFLICT"    missing = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
+                                                                                                  ^^^^^^^
+SyntaxError: invalid syntax
+
