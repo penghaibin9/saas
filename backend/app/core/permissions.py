@@ -276,17 +276,23 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "graduationDesign.proposal.*", "graduationDesign.guidance.*",
         "graduationDesign.midterm.review", "graduationDesign.final.*",
         "graduationDesign.risk.view",
+        # 优秀成果专业复核；延期答辩专业复核（groupManage）
+        "graduationDesign.grade.view", "graduationDesign.grade.review",
+        "graduationDesign.defense.view", "graduationDesign.defense.groupManage",
     },
     "GD_MENTOR": {
         *_WORKBENCH_SELF,
         "graduationDesign.dashboard.view", "graduationDesign.student.view",
         "graduationDesign.topic.view", "graduationDesign.topic.create",
-        "graduationDesign.topic.assign", "graduationDesign.taskbook.view",
+        "graduationDesign.topic.assign", "graduationDesign.topic.review",
+        "graduationDesign.taskbook.view",
         "graduationDesign.taskbook.issue", "graduationDesign.taskbook.update",
         "graduationDesign.proposal.view", "graduationDesign.proposal.review",
         "graduationDesign.guidance.*", "graduationDesign.midterm.review",
         "graduationDesign.final.view", "graduationDesign.final.review",
-        "graduationDesign.risk.view",
+        "graduationDesign.defense.view", "graduationDesign.risk.view",
+        # 优秀成果导师提名 + 移动端成绩待复核队列（与 PC 动作码对齐）
+        "graduationDesign.grade.view", "graduationDesign.grade.review",
     },
     "GD_REVIEWER": {
         *_WORKBENCH_SELF, "graduationDesign.dashboard.view", "graduationDesign.student.view",
@@ -328,7 +334,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "internship.score.view", "internship.score.manage",
         "internship.application.view", "internship.application.review",
         # 三方协议：导师对本人指导学生生成/下发/记录企业签署/学校确认/驳回/作废/归档/电子签（跨学生由 service 拦 403）
-        "internship.agreement.view", "internship.agreement.manage",
+        "internship.agreement.view", "internship.agreement.manage", "internship.agreement.sign",
         "internship.enterprise.view", "internship.position.view",
         "internship.match.intention.view", "internship.match.recommend.view", "internship.match.result.view",
         "internship.stats.view",
