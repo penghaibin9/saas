@@ -63,12 +63,16 @@ def test_student_evaluation_router_is_explicitly_registered():
     router = _read(
         "app/modules/academic_affairs/routers/student_evaluation_router.py"
     )
+    bundle = _read(
+        "app/modules/academic_affairs/routers/academic_affairs_bundle.py"
+    )
     registration = _read("app/api/v1/route_registration.py")
 
     assert 'prefix="/academic-affairs/evaluation"' in router
     assert '@router.get("/my-student-tasks"' in router
-    assert "student_evaluation_router" in registration
-    assert "api_router.include_router(module.router" in registration
+    assert "student_evaluation_router" in bundle
+    assert "router.include_router(module.router)" in bundle
+    assert 'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])' in registration
 
 
 def test_existing_pc_and_miniapp_contracts_stay_compatible():
