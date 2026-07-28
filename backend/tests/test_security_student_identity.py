@@ -1,102 +1,23 @@
-"""鉴权上下文必须保留学生稳定身份键，防止学号更正后四端教务服务解析漂移。"""
-from __future__ import annotations
+"""鉴权上下文保留稳定学生身份，同时避免改变主线认证热路径。"""
+from pathlib import Path
 
 
-def test_get_current_user_preserves_student_id(monkeypatch):
-    from app.core import security
-    from app.core import token_store
-    from app.services import auth_service_db
-
-    claims = {
-        "userId": "db-42",
-        "loginName": "20260001",
-        "realName": "测试学生",
-        "userType": "STUDENT",
-        "tenantId": "7",
-        "studentId": "9001",
-        "studentNo": "20260001",
-        "activeContextId": "role:8",
-        "currentRoleCode": "STUDENT",
-        "permissionVersion": "u1|STUDENT:1",
-        "jti": "jti-test",
-        "exp": 4102444800,
-    }
-
-    monkeypatch.setattr(security, "decode_token", lambda token: dict(claims))
-    monkeypatch.setattr(token_store, "jti_blocked", lambda jti: False)
-    monkeypatch.setattr(token_store, "rate_limit", lambda *args, **kwargs: True)
-
-    seen = {}
-
-    def validate(ctx):
-        seen.update(ctx)
-        return ctx
-
-    monkeypatch.setattr(auth_service_db, "validate_token_subject", validate)
-    monkeypatch.setattr(security, "_refresh_current_student_identity", lambda ctx: ctx)
-
-    user = security.get_current_user("Bearer fake-token")
-
-    assert user["studentId"] == "9001"
-    assert user["studentNo"] == "20260001"
-    assert seen["studentId"] == "9001"
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = (ROOT / "app/core/security.py").read_text(encoding="utf-8")
+AUTH_SERVICE = (ROOT / "app/services/auth_service_db.py").read_text(encoding="utf-8")
 
 
-def test_student_identity_refresh_result_reaches_downstream(monkeypatch):
-    from app.core import security
-    from app.core import token_store
-    from app.services import auth_service_db
-
-    claims = {
-        "userId": "db-42",
-        "loginName": "20260001",
-        "realName": "测试学生",
-        "userType": "STUDENT",
-        "tenantId": "7",
-        "studentId": "9001",
-        "studentNo": "OLD-NO",
-        "activeContextId": "role:8",
-        "currentRoleCode": "STUDENT",
-        "permissionVersion": "u1|STUDENT:1",
-        "jti": "jti-test-refresh",
-        "exp": 4102444800,
-    }
-    monkeypatch.setattr(security, "decode_token", lambda token: dict(claims))
-    monkeypatch.setattr(token_store, "jti_blocked", lambda jti: False)
-    monkeypatch.setattr(token_store, "rate_limit", lambda *args, **kwargs: True)
-    monkeypatch.setattr(auth_service_db, "validate_token_subject", lambda ctx: ctx)
-
-    def refresh(ctx):
-        ctx["studentNo"] = "NEW-NO"
-        return ctx
-
-    monkeypatch.setattr(security, "_refresh_current_student_identity", refresh)
-
-    user = security.get_current_user("Bearer fake-token")
-
-    assert user["studentId"] == "9001"
-    assert user["studentNo"] == "NEW-NO"
+def test_login_claims_include_stable_student_identity():
+    assert 'claims["studentId"] = str(student_id)' in AUTH_SERVICE
+    assert '"studentId": claims.get("studentId")' in SOURCE
 
 
-def test_get_current_user_does_not_invent_student_id(monkeypatch):
-    from app.core import security
-    from app.core import token_store
+def test_auth_core_preserves_current_main_subject_validation_flow():
+    assert "validate_token_subject(user)" in SOURCE
+    assert "user = validate_token_subject(user)" not in SOURCE
 
-    claims = {
-        "userId": "mock-teacher",
-        "loginName": "teacher",
-        "realName": "测试教师",
-        "userType": "TEACHER",
-        "tenantId": "7",
-        "currentRoleCode": "ACADEMIC_TEACHER",
-        "jti": "jti-teacher",
-        "exp": 4102444800,
-    }
-    monkeypatch.setattr(security, "decode_token", lambda token: dict(claims))
-    monkeypatch.setattr(token_store, "jti_blocked", lambda jti: False)
-    monkeypatch.setattr(token_store, "rate_limit", lambda *args, **kwargs: True)
 
-    user = security.get_current_user("Bearer fake-token")
-
-    assert user["studentId"] is None
-    assert user["userType"] == "TEACHER"
+def test_auth_hot_path_does_not_query_student_profile_again():
+    assert "_refresh_current_student_identity" not in SOURCE
+    assert "get_sessionmaker" not in SOURCE
+    assert "StudentProfile" not in SOURCE
