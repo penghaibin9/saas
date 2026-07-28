@@ -75,63 +75,74 @@ jobs:
         run: python -c "from app.db.session import get_engine; from app.models.base import Base; import app.models; Base.metadata.create_all(bind=get_engine())"
       - name: 教务P0/P1/V2定向测试
         working-directory: backend
-        run: >-
-          pytest -q
-          tests/test_aa_main_migration_compat.py
-          tests/test_aa_route_registration_main_compat.py
-          tests/test_aa_route_uniqueness.py
-          tests/test_aa_student_portal_route_main_compat.py
-          tests/test_aa_miniapp_main_compat.py
-          tests/test_aa_archive_semantic_gates.py
-          tests/test_aa_archive_status_change_gate.py
-          tests/test_aa_archive_workflow_policy.py
-          tests/test_aa_archive_selection_gate.py
-          tests/test_aa_selection_round_archive_guard.py
-          tests/test_aa_makeup_archive_guard.py
-          tests/test_aa_evaluation_archive_guard.py
-          tests/test_aa_evaluation_student_anonymity.py
-          tests/test_aa_evaluation_batch_anonymity.py
-          tests/test_aa_evaluation_client_entrypoints.py
-          tests/test_aa_textbook_archive_guard.py
-          tests/test_aa_exam_closure.py
-          tests/test_aa_teaching_roster_unification.py
-          tests/test_aa_frontend_p0_contracts.py
-          tests/test_aa_task_workbench.py
-          tests/test_aa_evaluation_appeal_scope.py
-          tests/test_aa_attendance_teacher_identity.py
-          tests/test_aa_attendance_task_binding.py
-          tests/test_aa_mobile_teacher_identity.py
-          tests/test_aa_mobile_schedule_week.py
-          tests/test_aa_mobile_grade_entry_v2.py
-          tests/test_aa_mobile_effective_grade_policy.py
-          tests/test_aa_home_task_routes_v2.py
-          tests/test_aa_program_opening_r7.py
-          tests/test_aa_teaching_class_migration_r8.py
-          tests/test_aa_roster_consumers_r9.py
-          tests/test_aa_dynamic_grade_evidence_snapshot_r10.py
-          tests/test_aa_effective_grade_identity.py
-          tests/test_aa_effective_grade_policy_snapshot.py
-          tests/test_aa_makeup_effective_candidates.py
-          tests/test_aa_makeup_student_identity.py
-          tests/test_aa_makeup_candidate_scope.py
-          tests/test_aa_task_teaching_weeks.py
-          tests/test_aa_task_scope_security.py
-          tests/test_aa_scope_fail_closed.py
-          tests/test_aa_student_schedule_merge.py
-          tests/test_aa_student_exam_time.py
-          tests/test_aa_student_identity_legacy_entry_guards.py
-          tests/test_aa_graduation_program_resolution.py
-          tests/test_aa_program_quality_v2.py
-          tests/test_aa_program_generation_gate_v2.py
-          tests/test_aa_teaching_class_v2.py
-          tests/test_aa_teaching_class_v2_runtime.py
-          tests/test_aa_scheduling_rule_v2.py
-          tests/test_aa_scheduling_rule_v2_ui.py
-          tests/test_aa_scheduling_rule_v2_final.py
-          tests/test_aa_dashboard_readiness_v2.py
-          tests/test_aa_service_entrypoint_integrity.py
-          tests/test_security_student_identity.py
-          --maxfail=1
+        shell: bash
+        run: |
+          set +e
+          pytest -q \
+            tests/test_aa_main_migration_compat.py \
+            tests/test_aa_route_registration_main_compat.py \
+            tests/test_aa_route_uniqueness.py \
+            tests/test_aa_student_portal_route_main_compat.py \
+            tests/test_aa_miniapp_main_compat.py \
+            tests/test_aa_archive_semantic_gates.py \
+            tests/test_aa_archive_status_change_gate.py \
+            tests/test_aa_archive_workflow_policy.py \
+            tests/test_aa_archive_selection_gate.py \
+            tests/test_aa_selection_round_archive_guard.py \
+            tests/test_aa_makeup_archive_guard.py \
+            tests/test_aa_evaluation_archive_guard.py \
+            tests/test_aa_evaluation_student_anonymity.py \
+            tests/test_aa_evaluation_batch_anonymity.py \
+            tests/test_aa_evaluation_client_entrypoints.py \
+            tests/test_aa_textbook_archive_guard.py \
+            tests/test_aa_exam_closure.py \
+            tests/test_aa_teaching_roster_unification.py \
+            tests/test_aa_frontend_p0_contracts.py \
+            tests/test_aa_task_workbench.py \
+            tests/test_aa_evaluation_appeal_scope.py \
+            tests/test_aa_attendance_teacher_identity.py \
+            tests/test_aa_attendance_task_binding.py \
+            tests/test_aa_mobile_teacher_identity.py \
+            tests/test_aa_mobile_schedule_week.py \
+            tests/test_aa_mobile_grade_entry_v2.py \
+            tests/test_aa_mobile_effective_grade_policy.py \
+            tests/test_aa_home_task_routes_v2.py \
+            tests/test_aa_program_opening_r7.py \
+            tests/test_aa_teaching_class_migration_r8.py \
+            tests/test_aa_roster_consumers_r9.py \
+            tests/test_aa_dynamic_grade_evidence_snapshot_r10.py \
+            tests/test_aa_effective_grade_identity.py \
+            tests/test_aa_effective_grade_policy_snapshot.py \
+            tests/test_aa_makeup_effective_candidates.py \
+            tests/test_aa_makeup_student_identity.py \
+            tests/test_aa_makeup_candidate_scope.py \
+            tests/test_aa_task_teaching_weeks.py \
+            tests/test_aa_task_scope_security.py \
+            tests/test_aa_scope_fail_closed.py \
+            tests/test_aa_student_schedule_merge.py \
+            tests/test_aa_student_exam_time.py \
+            tests/test_aa_student_identity_legacy_entry_guards.py \
+            tests/test_aa_graduation_program_resolution.py \
+            tests/test_aa_program_quality_v2.py \
+            tests/test_aa_program_generation_gate_v2.py \
+            tests/test_aa_teaching_class_v2.py \
+            tests/test_aa_teaching_class_v2_runtime.py \
+            tests/test_aa_scheduling_rule_v2.py \
+            tests/test_aa_scheduling_rule_v2_ui.py \
+            tests/test_aa_scheduling_rule_v2_final.py \
+            tests/test_aa_dashboard_readiness_v2.py \
+            tests/test_aa_service_entrypoint_integrity.py \
+            tests/test_security_student_identity.py \
+            --maxfail=1 2>&1 | tee backend-targeted.log
+          exit ${PIPESTATUS[0]}
+      - name: 上传后端失败诊断
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-backend-diagnostics
+          path: backend/backend-targeted.log
+          if-no-files-found: ignore
+          retention-days: 3
 
   teacher-pc:
     name: 教师/教务PC · test + lint + build
@@ -148,9 +159,32 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npm test
-      - run: npm run lint
-      - run: npm run build
+      - name: 单元测试
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee teacher-pc-test.log
+          exit ${PIPESTATUS[0]}
+      - name: 代码检查
+        shell: bash
+        run: |
+          set +e
+          npm run lint 2>&1 | tee teacher-pc-lint.log
+          exit ${PIPESTATUS[0]}
+      - name: 生产构建
+        shell: bash
+        run: |
+          set +e
+          npm run build 2>&1 | tee teacher-pc-build.log
+          exit ${PIPESTATUS[0]}
+      - name: 上传教师PC失败诊断
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-teacher-pc-diagnostics
+          path: frontend/teacher-pc-*.log
+          if-no-files-found: ignore
+          retention-days: 3
 
   student-pc:
     name: 学生PC · lint + build
@@ -167,8 +201,26 @@ jobs:
           cache: npm
           cache-dependency-path: student-portal/package-lock.json
       - run: npm ci
-      - run: npm run lint
-      - run: npm run build
+      - name: 代码检查
+        shell: bash
+        run: |
+          set +e
+          npm run lint 2>&1 | tee student-pc-lint.log
+          exit ${PIPESTATUS[0]}
+      - name: 生产构建
+        shell: bash
+        run: |
+          set +e
+          npm run build 2>&1 | tee student-pc-build.log
+          exit ${PIPESTATUS[0]}
+      - name: 上传学生PC失败诊断
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-student-pc-diagnostics
+          path: student-portal/student-pc-*.log
+          if-no-files-found: ignore
+          retention-days: 3
 
   wechat-miniapp:
     name: 学生/教师微信小程序 · H5 + 微信构建
@@ -185,5 +237,23 @@ jobs:
           cache: npm
           cache-dependency-path: miniapp/package-lock.json
       - run: npm ci
-      - run: npm run build:h5
-      - run: npm run build:mp-weixin
+      - name: H5构建
+        shell: bash
+        run: |
+          set +e
+          npm run build:h5 2>&1 | tee miniapp-h5-build.log
+          exit ${PIPESTATUS[0]}
+      - name: 微信小程序构建
+        shell: bash
+        run: |
+          set +e
+          npm run build:mp-weixin 2>&1 | tee miniapp-weixin-build.log
+          exit ${PIPESTATUS[0]}
+      - name: 上传小程序失败诊断
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-miniapp-diagnostics
+          path: miniapp/miniapp-*.log
+          if-no-files-found: ignore
+          retention-days: 3
