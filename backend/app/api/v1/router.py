@@ -24,6 +24,7 @@ from app.services.affairs_activity_authority_guard import install as install_act
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_activity_reconfirm_guard import install as install_activity_reconfirm_guard
 from app.services.affairs_activity_reliability_service import install as install_activity_reliability
+from app.services.affairs_aid_list_argument_guard import install as install_aid_list_argument_guard
 from app.services.affairs_appeal_repair_scheduler import install as install_appeal_repair_scheduler
 from app.services.affairs_appeal_repair_service import install as install_appeal_repair
 from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
@@ -35,6 +36,7 @@ from app.services.affairs_counselor_handover_guard import install as install_cou
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
 from app.services.affairs_data_integrity_guard import install as install_data_integrity_guard
 from app.services.affairs_discipline_integrity_guard import install as install_discipline_integrity_guard
+from app.services.affairs_dorm_checkout_guard import install as install_dorm_checkout_guard
 from app.services.affairs_dorm_node_guard import install as install_dorm_node_guard
 from app.services.affairs_dorm_projection_service import install as install_dorm_projection
 from app.services.affairs_dorm_reliability_service import install as install_dorm_reliability
@@ -49,6 +51,7 @@ from app.services.affairs_operations_service import install as install_affairs_o
 from app.services.affairs_publicity_guard import install as install_publicity_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
+from app.services.affairs_risk_transfer_guard import install as install_risk_transfer_guard
 from app.services.affairs_self_scope_guard import install as install_self_scope_guard
 from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
 from app.services.affairs_stats_integrity_guard import install as install_stats_integrity_guard
@@ -91,6 +94,7 @@ for supplemental_router in (
     _mount_supplemental_router(api_router, supplemental_router)
 
 install_affairs_four_end_contract()
+install_aid_list_argument_guard()
 install_sensitive_audit_guard()
 install_returned_view_projection()
 install_activity_checkin_code()
@@ -98,6 +102,7 @@ install_activity_reliability()
 install_credit_appeal_reliability()
 install_dorm_reliability()
 install_dorm_projection()
+install_dorm_checkout_guard()
 install_atomic_student_applications()
 install_student_application_lock()
 install_appeal_todo_reconciliation()
@@ -106,6 +111,7 @@ install_self_scope_guard()
 install_data_integrity_guard()
 install_counselor_handover_guard()
 install_risk_evidence_guard()
+install_risk_transfer_guard()
 install_counselor_eval_guard()
 install_funding_ext_guard()
 install_publicity_guard()
