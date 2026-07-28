@@ -25,7 +25,7 @@ def test_mental_attention_level_order_prefers_crisis():
     assert "_LEVEL_ORDER" in src or "GENERAL" in src
 
 
-def test_cockpit_domain_error_not_fake_zero():
+def test_cockpit_domain_error_not_fake_zero(db_mode):
     from app.services import affairs_cockpit_service as cockpit
 
     def boom(_user):

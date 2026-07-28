@@ -150,7 +150,7 @@ def test_f7_amount_desensitized_by_role(client, db_mode):
     _fund_apply(client, admin, bid, ids["sa"])
     # 学工处见真实金额
     items = client.get(f"{BASE}/funding/applications", headers=admin).json()["data"]["items"]
-    assert any(a["amount"] == 3000 for a in items)
+    assert any(float(a["amount"]) == 3000 for a in items)
 
 
 def test_f8_review_approve_without_workflow_instance_not_500(client, db_mode):

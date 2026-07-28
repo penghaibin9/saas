@@ -17,7 +17,7 @@ def _hdr(client, login_name):
 
 def _seed_granted(sid, n=2):
     from app.db.session import get_sessionmaker
-    from app.models import FundingApplication, FundingBatch, FundingProject
+    from app.models import FundingApplication, FundingBatch, FundingProject, StudentProfile
     db = get_sessionmaker()()
     p = FundingProject(tenant_id=TID, project_name="国家助学金", project_type="GRANT",
                        amount=3300, quota=10, status="ENABLED")
@@ -25,9 +25,21 @@ def _seed_granted(sid, n=2):
     b = FundingBatch(tenant_id=TID, project_id=p.id, project_type="GRANT", year_code="2025-2026",
                      quota=10, status="OPEN")
     db.add(b); db.flush()
-    for i in range(n):
-        db.add(FundingApplication(tenant_id=TID, batch_id=b.id, student_id=(sid if i == 0 else 900000 + i),
-                                  apply_source="SELF", project_type="GRANT", amount=3300, status="GRANTED"))
+    base_student = db.get(StudentProfile, int(sid))
+    assert base_student is not None
+    student_ids = [int(sid)]
+    for i in range(1, n):
+        other = StudentProfile(
+            tenant_id=TID, student_no=f"DISB{sid}-{i}", real_name=f"发放测试学生{i}",
+            class_id=base_student.class_id, college_id=base_student.college_id,
+            current_stage=base_student.current_stage or "ON_CAMPUS",
+            student_status="NORMAL", status="ACTIVE", is_deleted=False, version=0,
+        )
+        db.add(other); db.flush(); student_ids.append(int(other.id))
+    for student_id in student_ids:
+        db.add(FundingApplication(tenant_id=TID, batch_id=b.id, student_id=student_id,
+                                  apply_source="SELF", project_type="GRANT", amount=3300,
+                                  status="GRANTED", is_deleted=False, version=0))
     db.commit()
     bid = b.id
     db.close()
@@ -50,7 +62,7 @@ def test_disbursement_full_flow(client, db_mode):
     d1, d2 = items[0]["disbursementId"], items[1]["disbursementId"]
     # 标记已发放
     iss = client.post(f"{BASE}/funding/disbursements/{d1}/issue", headers=hdr,
-                      json={"disburseNo": "FB2026-001", "bankLast4": "6222888888886411"}).json()
+                      json={"disburseNo": "FB2026-001", "bankLast4": "6411"}).json()
     assert iss["code"] == 0 and iss["data"]["bankStatus"] == "ISSUED"
     assert iss["data"]["bankLast4"] == "6411"  # 仅后4位
     # 重复发放 → 冲突

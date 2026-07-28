@@ -42,6 +42,8 @@ def _seed(db_mode):
     db.commit()
     ids = {"sa": sa.id, "owner": owner.id}
     db.close()
+    ensure_workflow_assignees(ids["sa"])
+    ensure_owner_scope("ol_owner01", ids["sa"])
     return ids
 
 
@@ -58,7 +60,7 @@ def test_risk_stale_version_conflict_409(client, db_mode):
     stale = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                         json={"content": "用旧版本处置应冲突不少于五", "version": ver})
     assert stale.status_code == 409 and stale.json()["bizCode"] == "APPROVAL_VERSION_CONFLICT"
-    missing = post_versioned(client, f"{BASE}/risk/records/{rid}/process", headers=hdr,
+    missing = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                           json={"content": "缺少 version 也应拦截不少于"})
     assert missing.status_code in (400, 422)
 

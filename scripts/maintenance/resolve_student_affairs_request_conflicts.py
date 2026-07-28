@@ -78,17 +78,11 @@ function cleanupStaleGraduationTemps() {
   })
 }
 '''
-    text = insert_once(
-        text,
-        "}\n\nfunction selectedInternshipBatch(path)",
-        helper_block + "\nfunction selectedInternshipBatch(path)",
-        "student portal graduation temp helpers",
-    )
-    # insert_once above duplicates function name from anchor; normalize once.
-    text = text.replace(
-        "function selectedInternshipBatch(path)\nfunction selectedInternshipBatch(path)",
-        "function selectedInternshipBatch(path)",
-    )
+    marker = "\n\nfunction selectedInternshipBatch(path) {"
+    if "function readTempFiles()" not in text:
+        if marker not in text:
+            raise RuntimeError("missing student portal helper insertion marker")
+        text = text.replace(marker, helper_block + marker, 1)
     text = replace_once(
         text,
         "} = {}) {\n  const headers = { 'Content-Type': 'application/json' }",

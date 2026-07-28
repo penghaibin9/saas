@@ -37,10 +37,10 @@ def test_work_study_flow(client, db_mode):
     assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
                        json={"monthCode": "2025-10", "subsidyAmount": 100}).json()["code"] != 0
     assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
-                       json={"monthCode": "2025-11", "rating": "GOOD", "subsidyAmount": 500}).json()["code"] == 0
+                       json={"monthCode": "2025-11", "rating": "GOOD", "subsidyAmount": 500, "workHours": 48}).json()["code"] == 0
     # FAIL 不计补贴
     assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
-                       json={"monthCode": "2025-12", "rating": "FAIL", "subsidyAmount": 999}).json()["data"]["subsidyAmount"] == 0
+                       json={"monthCode": "2025-12", "rating": "FAIL", "subsidyAmount": 999, "workHours": 32}).json()["data"]["subsidyAmount"] == 0
     mon = client.get(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr).json()["data"]["items"]
     assert len(mon) == 3
     recs = client.get(f"{BASE}/work-study/records", headers=hdr, params={"postId": pid}).json()["data"]["items"]
@@ -54,7 +54,7 @@ def test_loan_flow(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
     lid = client.post(f"{BASE}/loans", headers=hdr, json={
-        "studentId": sid, "loanType": "ORIGIN", "bankName": "农行", "bankLast4": "6222000012346411",
+        "studentId": sid, "loanType": "ORIGIN", "bankName": "农行", "bankLast4": "6411",
         "yearCode": "2025-2026", "amount": 8000}).json()["data"]["loanId"]
     lst = client.get(f"{BASE}/loans", headers=hdr).json()["data"]["items"]
     row = next(x for x in lst if x["loanId"] == lid)
@@ -84,6 +84,6 @@ def test_fee_reduction_flow(client, db_mode):
     assert iss["code"] == 0 and iss["data"]["status"] == "ISSUED"
     # 驳回意见过短
     fid2 = client.post(f"{BASE}/fee-reductions", headers=hdr, json={
-        "studentId": sid, "itemType": "REDUCTION", "reason": "申请学费减免理由充分"}).json()["data"]["feeId"]
+        "studentId": sid, "itemType": "REDUCTION", "amount": 1500, "reason": "申请学费减免理由充分"}).json()["data"]["feeId"]
     assert post_versioned(client, f"{BASE}/fee-reductions/{fid2}/review", headers=hdr, json={"action": "REJECT", "opinion": "短"}).json()["code"] != 0
     assert post_versioned(client, f"{BASE}/fee-reductions/{fid2}/review", headers=hdr, json={"action": "REJECT", "opinion": "不符合减免条件予以驳回"}).json()["data"]["status"] == "REJECTED"

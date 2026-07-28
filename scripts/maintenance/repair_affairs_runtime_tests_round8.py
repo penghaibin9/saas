@@ -1,4 +1,20 @@
 from pathlib import Path
+import re
+
+
+def _whitespace_tolerant_pattern(value: str) -> str:
+    """Ignore indentation changes without consuming the indentation of the following line."""
+    parts = re.split(r"(\n|[ \t]+)", value)
+    out = []
+    for part in parts:
+        if part == "\n":
+            # May absorb trailing spaces before the newline, never leading spaces after it.
+            out.append(r"[ \t]*\n")
+        elif part and all(char in " \t" for char in part):
+            out.append(r"[ \t]+")
+        else:
+            out.append(re.escape(part))
+    return "".join(out)
 
 
 def replace_once(path: str, old: str, new: str) -> None:
@@ -6,9 +22,17 @@ def replace_once(path: str, old: str, new: str) -> None:
     text = file.read_text(encoding="utf-8")
     if new in text:
         return
-    if old not in text:
-        raise RuntimeError(f"round8 anchor missing: {path}: {old[:120]!r}")
-    file.write_text(text.replace(old, new, 1), encoding="utf-8")
+    if old in text:
+        file.write_text(text.replace(old, new, 1), encoding="utf-8")
+        return
+    pattern = _whitespace_tolerant_pattern(old)
+    matches = list(re.finditer(pattern, text))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"round8 anchor missing/ambiguous: {path}: matches={len(matches)} old={old[:120]!r}"
+        )
+    match = matches[0]
+    file.write_text(text[:match.start()] + new + text[match.end():], encoding="utf-8")
 
 
 def patch_mobile() -> None:

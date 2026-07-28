@@ -36,14 +36,8 @@ def strict_sensitive_view_audit(student_id, reason: str, resource: str) -> None:
         )
 
 
-def explicit_detail_permission(user, student_id, scope_ids) -> bool:
-    """角色名称不能代替权限；通配与自定义角色均复用统一权限执行层。"""
-    if not has_permission(user, "studentAffairs.risk.psyDetail.view"):
-        return False
-    if scope_ids is None:
-        return True
-    return int(student_id) in {int(x) for x in scope_ids}
-
+# 明细角色与逐生范围由 affairs_mental_service._can_view_detail 正式实现；
+# 本守卫只负责把审计改为 fail-closed，禁止再次覆盖角色边界。
 
 def install() -> None:
     from app.services import affairs_mental_service as mental

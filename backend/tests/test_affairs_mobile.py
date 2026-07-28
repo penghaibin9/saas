@@ -5,6 +5,8 @@ MB1 学生只见本人请假；MB2 学生隔离；MB3 处分仅数量；MB4 自�
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
 
 TID = 1000000000000000001
@@ -43,15 +45,20 @@ def _seed(db_mode):
     ids = {"A": a.id, "zhang": zhang.id, "li": li.id}
     db.commit()
     db.close()
+    ensure_workflow_assignees([ids["zhang"], ids["li"]])
     return ids
 
 
 def _make_leave(client, hdr, sid, approve=False):
+    start = datetime.utcnow() + timedelta(days=10)
+    end = start + timedelta(days=1)
     lid = client.post(f"{BASE}/leave", headers=hdr, json={
-        "studentId": str(sid), "leaveType": "PERSONAL", "startTime": "2026-03-01",
-        "endTime": "2026-03-02", "reason": "回家有事"}).json()["data"]["id"]
+        "studentId": str(sid), "leaveType": "PERSONAL",
+        "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+        "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+        "reason": "学生因家庭事务申请短期请假"}).json()["data"]["id"]
     if approve:
-        client.post(f"{BASE}/leave/{lid}/approve", headers=hdr)
+        post_versioned(client, f"{BASE}/leave/{lid}/approve", headers=hdr)
     return lid
 
 

@@ -4,6 +4,8 @@ P1 画像汇总各域沉淀；P2 时间线合并 P2-P5 进360事件倒序；越�
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
 
 TID = 1000000000000000001
@@ -34,16 +36,23 @@ def _seed(db_mode):
     db.commit()
     ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
+    ensure_workflow_assignees([ids["sa"], ids["sb"]])
     return ids
 
 
 def _leave_closed(client, hdr, sid):
+    start = datetime.utcnow() + timedelta(days=10)
+    end = start + timedelta(days=1)
     lid = client.post(f"{BASE}/leave", headers=hdr, json={
-        "studentId": str(sid), "leaveType": "PERSONAL", "startTime": "2026-03-01",
-        "endTime": "2026-03-02", "reason": "回家有事"}).json()["data"]["id"]
-    client.post(f"{BASE}/leave/{lid}/approve", headers=hdr)
-    client.post(f"{BASE}/leave/{lid}/cancel", headers=hdr, json={"proofNote": "已返校"})
-    client.post(f"{BASE}/leave/{lid}/cancel-confirm", headers=hdr, json={"note": "确认返校"})
+        "studentId": str(sid), "leaveType": "PERSONAL",
+        "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+        "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+        "reason": "学生因家庭事务申请短期请假"}).json()["data"]["id"]
+    post_versioned(client, f"{BASE}/leave/{lid}/approve", headers=hdr)
+    post_versioned(client, f"{BASE}/leave/{lid}/cancel", headers=hdr,
+                   json={"proofNote": "学生已经返校并提交销假说明"})
+    post_versioned(client, f"{BASE}/leave/{lid}/cancel-confirm", headers=hdr,
+                   json={"note": "辅导员确认学生已经安全返校"})
 
 
 def _talk_done(client, hdr, sid):

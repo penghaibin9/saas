@@ -129,7 +129,7 @@ def test_r5_escalate_and_scan_idempotent(client, db_mode):
     ver = _ver(client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                            json={"content": "首次处置记录", "version": ver}))
     r = client.post(f"{BASE}/risk/records/{rid}/escalate", headers=hdr,
-                    json={"reason": "情况恶化", "version": ver}).json()
+                    json={"reason": "风险情况持续恶化需要升级", "version": ver}).json()
     assert r["data"]["status"] == "ESCALATED" and r["data"]["riskLevel"] == "MEDIUM"  # LOW→MEDIUM
     # 超时扫描幂等（无 ASSIGNED 超时项 → 0）
     r2 = client.post(f"{BASE}/risk/scan-timeout", headers=hdr).json()
@@ -223,7 +223,7 @@ def test_r13_optimistic_lock_stale_version_409(client, db_mode):
     stale = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                         json={"content": "并发场景下的处置尝试", "version": 0})
     assert stale.status_code == 409 and stale.json()["bizCode"] == "APPROVAL_VERSION_CONFLICT"
-    missing = post_versioned(client, f"{BASE}/risk/records/{rid}/process", headers=hdr,
+    missing = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
                           json={"content": "不带 version 的处置"})
     assert missing.status_code in (400, 422)
     ok = client.post(f"{BASE}/risk/records/{rid}/process", headers=hdr,
@@ -286,7 +286,7 @@ def test_r16_transfer_owner_validated(client, db_mode):
                       json={"newOwnerId": "999999999", "reason": "转给不存在账号"})
     assert bad.status_code == 400 and bad.json()["bizCode"] == "VALIDATION_ERROR"
     ok = post_versioned(client, f"{BASE}/risk/records/{rid}/transfer", headers=hdr,
-                     json={"newOwnerId": str(ids["owner"]), "reason": "工作交接"}).json()
+                     json={"newOwnerId": str(ids["owner"]), "reason": "工作职责调整后办理交接"}).json()
     assert ok["data"]["status"] == "ASSIGNED" and ok["data"]["ownerId"] == str(ids["owner"])
 
 

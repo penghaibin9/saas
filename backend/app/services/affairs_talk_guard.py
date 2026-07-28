@@ -132,7 +132,7 @@ def install() -> None:
                 raise AppException("VALIDATION_ERROR", "无效操作")
             row.version = int(row.version or 0) + 1
             db.commit(); db.refresh(row)
-            return talk_row(row, user, student)
+            return talk._talk_row(row, user, student)
 
     def create_contact(student_id, user, body):
         kind = str(getattr(body, "contactType", None) or "PHONE").upper()
@@ -152,8 +152,6 @@ def install() -> None:
         return data
 
     talk._students_by_ids = students_by_ids
-    talk._can_view_psy = can_view_psy
-    talk._talk_row = talk_row
     talk.create_talk = create_talk
     talk.record_talk = record_talk
     talk.follow_up = follow_up
