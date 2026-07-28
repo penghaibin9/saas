@@ -1,8 +1,51 @@
-/** 学生端数据服务：真实后端优先（主链：首页/档案/消息），其余仍 mock；失败自动回退。 */
+/** 学生端数据服务：关键业务走真实接口，岗位实习禁止回落 mock 假状态。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
-import { callOptionalInternship, loadInternshipDashboard } from './internshipApiCompat'
 import * as real from './realApi'
+import * as internship from './internshipApi'
 import * as M from '@/mock'
+
+function mapInternshipDashboard(r) {
+  if (!r || !r.hasData) {
+    return {
+      hasBatch: false,
+      needSelect: !!r?.needSelect,
+      candidates: r?.candidates || [],
+      message: r?.message || '暂无实习记录',
+      _real: true,
+      company: '', post: '', schoolMentor: '', companyMentor: '', batch: '', batchId: '',
+      timeline: [], weekly: { week: '第 1 周', submitted: false, lastFeedback: '' },
+      checkin: { done: false, time: '', totalDays: 0, place: '', note: '仅在点击时采集定位，不后台定位' },
+      status: { todayCheckin: 'PENDING', weekly: 'PENDING_SUBMIT', agreement: 'PENDING', insurance: 'PENDING', onboard: 'PENDING', leave: 'NONE' }
+    }
+  }
+  return {
+    hasBatch: true, needSelect: false, candidates: r.candidates || [],
+    historyMode: !!r.historyMode, recordId: r.recordId || '', batchId: r.batchId || '',
+    batch: r.batchName || '实习批次', company: r.enterpriseName || '', post: r.positionName || '',
+    schoolMentor: r.advisorName || '待分配', companyMentor: r.enterpriseMentor || '待分配',
+    statusText: r.recordStatus || '', timeline: r.timeline || [], _real: true,
+    weekly: {
+      week: `第 ${Number(r.weekly?.weekNumber || 1)} 周`,
+      submitted: !!r.weekly?.submitted,
+      lastFeedback: r.weekly?.lastFeedback || ''
+    },
+    checkin: {
+      done: !!r.todayCheckin?.done,
+      time: r.todayCheckin?.time || '',
+      totalDays: Number(r.todayCheckin?.totalDays || 0),
+      place: r.workLocation || r.enterpriseName || '实习地点待定',
+      note: '仅在点击时采集定位，不后台定位'
+    },
+    status: {
+      todayCheckin: r.todayCheckin?.done ? 'COMPLETED' : 'PENDING',
+      weekly: r.weekly?.submitted ? 'COMPLETED' : 'PENDING_SUBMIT',
+      agreement: r.agreementStatus || 'PENDING',
+      insurance: r.insuranceStatus || 'PENDING',
+      onboard: r.recordStatus || 'PENDING',
+      leave: r.leaveStatus || 'NONE'
+    }
+  }
+}
 
 export const studentApi = {
   getHome: () =>
@@ -28,33 +71,20 @@ export const studentApi = {
     realFirstStrict('student.academic',
       () => real.enrichAcademic(M.studentAcademic),
       () => mockRequest(M.studentAcademic)),
-  getInternship: (batchId) => loadInternshipDashboard(batchId, () => real.enrichInternship()),
-  getInternshipCompliance: (operation, batchId) =>
-    callOptionalInternship('studentInternshipCompliance', [operation, batchId]),
-  getInternshipConsents: () =>
-    callOptionalInternship('studentInternshipConsents', [], () => real.internshipConsentsMy()),
-  getInternshipConsentDetail: (id) =>
-    callOptionalInternship('studentInternshipConsentDetail', [id]),
-  viewInternshipConsent: (id) =>
-    callOptionalInternship('studentInternshipConsentView', [id]),
-  confirmInternshipConsent: (id, body) =>
-    callOptionalInternship('studentInternshipConsentConfirm', [id, body]),
-  rejectInternshipConsent: (id, body) =>
-    callOptionalInternship('studentInternshipConsentReject', [id, body]),
-  getInternshipSafetyCourses: (batchId) =>
-    callOptionalInternship('studentInternshipSafetyCourses', [batchId], () => real.internshipSafetyCoursesMy()),
-  getInternshipSafetyCompletions: (batchId) =>
-    callOptionalInternship('studentInternshipSafetyCompletions', [batchId], () => real.internshipSafetyCompletionsMy()),
-  getInternshipSafetyCourseDetail: (id) =>
-    callOptionalInternship('studentInternshipSafetyCourseDetail', [id]),
-  startInternshipSafetyCourse: (id) =>
-    callOptionalInternship('studentInternshipSafetyStart', [id]),
-  submitInternshipSafetyCourse: (id, body) =>
-    callOptionalInternship('studentInternshipSafetySubmit', [id, body]),
-  commitInternshipSafety: (id, body) =>
-    callOptionalInternship('studentInternshipSafetyCommit', [id, body]),
+  getInternship: (batchId) => internship.studentInternshipDashboard(batchId).then(mapInternshipDashboard),
+  getInternshipCompliance: (operation, batchId) => internship.studentInternshipCompliance(operation, batchId),
+  getInternshipConsents: () => internship.studentInternshipConsents(),
+  getInternshipConsentDetail: (id) => internship.studentInternshipConsentDetail(id),
+  viewInternshipConsent: (id) => internship.studentInternshipConsentView(id),
+  confirmInternshipConsent: (id, body) => internship.studentInternshipConsentConfirm(id, body),
+  rejectInternshipConsent: (id, body) => internship.studentInternshipConsentReject(id, body),
+  getInternshipSafetyCourses: (batchId) => internship.studentInternshipSafetyCourses(batchId),
+  getInternshipSafetyCompletions: (batchId) => internship.studentInternshipSafetyCompletions(batchId),
+  getInternshipSafetyCourseDetail: (id) => internship.studentInternshipSafetyCourseDetail(id),
+  startInternshipSafetyCourse: (id) => internship.studentInternshipSafetyStart(id),
+  submitInternshipSafetyCourse: (id, body) => internship.studentInternshipSafetySubmit(id, body),
+  commitInternshipSafety: (id, body) => internship.studentInternshipSafetyCommit(id, body),
   getGraduation: () => real.enrichGraduation(),
-  // 毕业设计·选题/任务书/开题/中期/成果/答辩/成绩（真实接口，无 mock 兜底，业务错误透出）
   getGraduationActiveRound: () => real.gdActiveRound(),
   getGraduationTopics: (batchId) => real.gdTopics(batchId),
   getMyGraduationChangeRequests: () => real.gdMyChangeRequests(),
@@ -66,7 +96,7 @@ export const studentApi = {
   getGraduationFinal: () => real.gdFinal(),
   submitGraduationFinal: (body) => real.gdSubmitFinal(body),
   getGraduationTaskbook: () => real.gdTaskbook(),
-  // 必须携带页面实际展示的版本；主线后端据此拒绝过期页面确认新版本任务书。
+  // 必须携带页面实际展示的版本；后端据此拒绝过期页面确认新版本任务书。
   confirmGraduationTaskbook: (taskbookVersion) =>
     realRequest('/mobile/graduation/taskbook/confirm', {
       method: 'POST', data: { taskbookVersion }
@@ -80,7 +110,6 @@ export const studentApi = {
   submitGraduationPeer: (pid, opinion) => real.gdPeerSubmit(pid, opinion),
   rectifyGraduationPeer: (pid, note) => real.gdPeerRectify(pid, note),
   getGraduationArchive: () => real.gdArchive(),
-  // 就业去向：真实接口，无 mock 兜底（旧 intention/recommendedJobs/steps 字段无真实数据源，页面已不再展示）
   getEmployment: () => real.employmentMy(),
   getApplications: () =>
     realFirst('student.applications',
@@ -90,7 +119,6 @@ export const studentApi = {
     realFirstStrict('student.messages',
       () => real.selfMessages({ tabs: M.studentMessageTabs, groups: M.studentMessages }),
       () => mockRequest({ tabs: M.studentMessageTabs, groups: M.studentMessages })),
-  // 写操作：业务错误（401/403/409/422）透出，不兜底成成功
   submitServiceApply: (body) => real.submitServiceApply(body),
   submitWeeklyReport: (body) => real.submitWeeklyReport(body),
   submitCheckin: (body) => real.submitCheckin(body),
@@ -99,8 +127,6 @@ export const studentApi = {
   markMessageRead: (id) => real.markMessageRead(id),
   getMessageDetail: (id) => real.getMessageDetail(id),
   ackMessageReceipt: (id) => real.ackMessageReceipt(id),
-  // 岗位实习·学生自助（三方协议 / 请假 / 意向 / 自评 / 调岗退岗 / 保险 / 计划 / 过程报告）
-  // 真实优先无 mock 兜底，业务错误（401/403/409/422）透出
   getInternshipAgreements: () => real.internshipAgreements(),
   getInternshipAgreementDetail: (id) => real.internshipAgreementDetail(id),
   confirmInternshipAgreement: (id, body) => real.confirmInternshipAgreement(id, body),
@@ -131,7 +157,6 @@ export const studentApi = {
   ackInternshipPlan: () => real.ackInternshipPlan(),
   submitInternshipPlanTask: (sortOrder, body) => real.submitInternshipPlanTask(sortOrder, body),
   submitProcessReport: (body) => real.submitProcessReport(body),
-  // 13A 学工中心（P7 多端收口，真实优先无 mock 兜底，业务错误透出）
   getAffairsOverview: () => real.affairsOverview(),
   getMyLeaves: () => real.affairsLeaveMy(),
   resubmitLeave: (leaveId, body) => real.affairsLeaveResubmit(leaveId, body),
@@ -152,18 +177,14 @@ export const studentApi = {
   getDormRooms: (buildingId, floor) => real.affairsDormRooms(buildingId, floor),
   getDormBeds: (roomId) => real.affairsDormBeds(roomId),
   selfSelectBed: (bedId) => real.affairsDormSelfSelect(bedId),
-  // 学工中心·学生活动与第二课堂（真实接口，无 mock 兜底）
   getMyActivities: () => real.affairsMyActivities(),
   enrollActivity: (activityId, action) => real.affairsActivityEnroll(activityId, action),
   checkinActivity: (activityId, method) => real.affairsActivityCheckin(activityId, method),
-  // 心理健康自评（真实接口，无 mock 兜底）
   getPsySurveyQuestions: () => real.psySurveyQuestions(),
   submitPsySurvey: (answers, wantsContact) => real.psySurveySubmit(answers, wantsContact),
   getPsySurveyHistory: () => real.psySurveyHistory(),
-  // 消息通知设置（真实接口，无 mock 兜底）
   getNotifyPreferences: () => real.notifyPreferences(),
   setNotifyPreference: (key, enabled) => real.notifySetPreference(key, enabled),
-  // 13B 教务中心（P7 真实优先无 mock 兜底）
   getMySchedule: () => real.acadScheduleMy(),
   getMyTranscript: () => real.acadTranscriptMy(),
   getMyAcadStatus: () => real.acadStatusMy(),
@@ -172,7 +193,6 @@ export const studentApi = {
   printMyTranscript: (reason) => real.acadTranscriptPrint(reason),
   printMySchedule: (reason) => real.acadSchedulePrint(reason),
   getMyGraduation: () => real.acadGraduationMy(),
-  // 教务中心·学分修读/学业预警/补考重修/网上选课（真实接口，无 mock 兜底）
   getMyCredits: () => real.acadCreditsMy(),
   getMyWarnings: () => real.acadWarningMy(),
   getMyMakeup: () => real.acadMakeupMy(),
@@ -191,31 +211,24 @@ export const studentApi = {
   enrollSelection: (selectionCourseId) => real.acadSelectionEnroll(selectionCourseId),
   dropSelection: (selectionCourseId) => real.acadSelectionDrop(selectionCourseId),
   getMySelections: (batchId) => real.acadSelectionMy(batchId),
-  // 学生考试与缓考：切换到时区安全、本人名单校验的v2接口；旧接口保留兼容但不再由新页面调用。
-  getMyExamSchedule: () => realRequest('/mobile/academic/exam-v2/my'),
-  getMyDeferOptions: () => realRequest('/mobile/academic/exam-v2/defer-options'),
+  getMyExamSchedule: () => real.acadExamMy(),
+  getMyDeferOptions: () => real.acadExamDeferOptions(),
   getMyDeferrals: (status) => real.acadExamDeferMy(status),
-  applyDefer: (examCourseId, reasonType, reason) =>
-    realRequest('/mobile/academic/exam-v2/defer/apply', { method: 'POST', data: { examCourseId, reasonType, reason } }),
+  applyDefer: (examCourseId, reasonType, reason) => real.acadExamDeferApply(examCourseId, reasonType, reason),
   resubmitDefer: (deferId) => real.acadExamDeferResubmit(deferId),
-  // 成绩认定/课程替代（学生自助，对标正方 3.16/3.27）
   getMyRecognition: () => real.acadRecognitionMy(),
   submitRecognition: (body) => real.acadRecognitionSubmit(body),
   getMyRecheck: () => real.acadRecheckMy(),
   submitRecheck: (body) => real.acadRecheckSubmit(body),
   getMyTextbook: () => real.acadTextbookMy(),
   signTextbook: (recordId) => real.acadTextbookSign(recordId),
-  // 等级考务报名（学生自助，对标正方 3.13）
   getMyLevelExam: () => real.acadLevelExamMy(),
   registerLevelExam: (examId) => real.acadLevelRegister(examId),
   cancelLevelExam: (examId) => real.acadLevelCancel(examId),
-  // 专业分流志愿（学生自助）
   getMyMajorSplit: () => real.acadMajorSplitMy(),
   submitMajorSplit: (batchId, choices) => real.acadMajorSplitSubmit(batchId, choices),
-  // 学生评教（匿名）
   getMyEvaluationTasks: () => real.acadEvaluationTasks(),
   submitEvaluation: (body) => real.acadEvaluationSubmit(body),
   exportMyData: () => realRequest('/mobile/me/export-data')
 }
-
 export default studentApi
