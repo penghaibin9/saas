@@ -108,7 +108,7 @@ export async function fetchLayoutContext() {
     readonlyTenant = !!ctx.readonlyTenant
     readonlyReason = ctx.readonlyReason || (
       readonlyTenant
-        ? '正式演示环境为只读，数据不可修改。需要动手体验请用沙箱账号登录（admin2 / teacher2 / student2，密码 123456）'
+        ? '正式演示环境为只读，数据不可修改。需要动手体验请用沙箱账号登录（admin2 / teacher2 / student2，登录密码见沙箱账号说明文档）'
         : ''
     )
   } catch {
