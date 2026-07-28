@@ -49,11 +49,11 @@ _EXTENSION_ROUTERS = (
 
 def build_router() -> APIRouter:
     """按当前已完成初始化的子 Router 重建聚合器，避免循环导入阶段复制到空路由表。"""
-    combined = APIRouter()
-    combined.include_router(base_router.router)
+    router = APIRouter()
+    router.include_router(base_router.router)
     for module in _EXTENSION_ROUTERS:
-        combined.include_router(module.router)
-    return combined
+        router.include_router(module.router)
+    return router
 
 
 router = build_router()
