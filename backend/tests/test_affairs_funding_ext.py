@@ -38,9 +38,10 @@ def test_work_study_flow(client, db_mode):
                        json={"monthCode": "2025-10", "subsidyAmount": 100}).json()["code"] != 0
     assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
                        json={"monthCode": "2025-11", "rating": "GOOD", "subsidyAmount": 500, "workHours": 48}).json()["code"] == 0
-    # FAIL 不计补贴
-    assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
-                       json={"monthCode": "2025-12", "rating": "FAIL", "subsidyAmount": 999, "workHours": 32}).json()["data"]["subsidyAmount"] == 0
+    # Decimal 金额按 API 金额字符串合同返回；数值语义必须为 0。
+    failed_month = client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
+                               json={"monthCode": "2025-12", "rating": "FAIL", "subsidyAmount": 999, "workHours": 32}).json()["data"]
+    assert float(failed_month["subsidyAmount"]) == 0
     mon = client.get(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr).json()["data"]["items"]
     assert len(mon) == 3
     recs = client.get(f"{BASE}/work-study/records", headers=hdr, params={"postId": pid}).json()["data"]["items"]
@@ -59,11 +60,16 @@ def test_loan_flow(client, db_mode):
     lst = client.get(f"{BASE}/loans", headers=hdr).json()["data"]["items"]
     row = next(x for x in lst if x["loanId"] == lid)
     assert row["bankLast4"] == "6411" and row["status"] == "REGISTERED"
-    # 推进 登记→回执→核对→确认
+    # 推进 登记→回执→核对→确认：每一步显式提交上一响应中可见的 version。
+    version = row["version"]
     for exp in ("RECEIPT", "VERIFIED", "CONFIRMED"):
-        assert client.post(f"{BASE}/loans/{lid}/advance", headers=hdr).json()["data"]["status"] == exp
+        response = client.post(f"{BASE}/loans/{lid}/advance", headers=hdr,
+                               json={"version": version}).json()
+        assert response["code"] == 0 and response["data"]["status"] == exp
+        version = response["data"]["version"]
     # 已确认不可再推进
-    assert client.post(f"{BASE}/loans/{lid}/advance", headers=hdr).json()["code"] != 0
+    assert client.post(f"{BASE}/loans/{lid}/advance", headers=hdr,
+                       json={"version": version}).json()["code"] != 0
     # 非法类型
     assert client.post(f"{BASE}/loans", headers=hdr, json={"studentId": sid, "loanType": "XX"}).json()["code"] != 0
 
