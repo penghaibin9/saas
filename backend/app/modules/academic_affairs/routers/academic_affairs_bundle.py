@@ -28,10 +28,7 @@ from . import (
 )
 
 
-router = APIRouter()
-router.include_router(base_router.router)
-
-for module in (
+_EXTENSION_ROUTERS = (
     dashboard_readiness_router,
     dynamic_grade_router,
     exam_incident_closure_router,
@@ -47,5 +44,16 @@ for module in (
     teaching_task_workbench_router,
     term_detail_router,
     textbook_closure_router,
-):
-    router.include_router(module.router)
+)
+
+
+def build_router() -> APIRouter:
+    """按当前已完成初始化的子 Router 重建聚合器，避免循环导入阶段复制到空路由表。"""
+    combined = APIRouter()
+    combined.include_router(base_router.router)
+    for module in _EXTENSION_ROUTERS:
+        combined.include_router(module.router)
+    return combined
+
+
+router = build_router()
