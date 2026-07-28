@@ -20,3 +20,21 @@ from . import academic_affairs_textbook_final_facade as academic_affairs_textboo
 from . import academic_affairs_recognition_public_service as academic_affairs_recognition_service
 from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
+
+# V2-03 最终规则安全层必须成为包级可见入口，并显式绑定到公开排课/自动排课服务。
+from . import academic_affairs_scheduling_rule_final_facade
+
+academic_affairs_autoschedule_service._load_params = (
+    academic_affairs_scheduling_rule_final_facade.load_effective_params
+)
+academic_affairs_scheduling_service.save_rule = academic_affairs_scheduling_rule_final_facade.save_rule
+academic_affairs_scheduling_service.delete_rule = academic_affairs_scheduling_rule_final_facade.delete_rule
+academic_affairs_scheduling_service.submit_availability = (
+    academic_affairs_scheduling_rule_final_facade.submit_availability
+)
+academic_affairs_scheduling_service.list_availability = (
+    academic_affairs_scheduling_rule_final_facade.list_availability
+)
+academic_affairs_scheduling_service.review_availability = (
+    academic_affairs_scheduling_rule_final_facade.review_availability
+)
