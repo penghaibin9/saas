@@ -21,7 +21,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply pending round5 repairs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply pending contract repairs
         run: |
           set -euo pipefail
           python scripts/maintenance/repair_affairs_remaining_round5.py
@@ -32,29 +35,30 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "fix(student-affairs): apply remaining round5 contracts"
           fi
-      - name: Merge latest main or record exact conflicts
+      - name: Merge latest main with deterministic conflict resolution
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          rm -f student-affairs-main-conflicts.txt
+          git rm -f --ignore-unmatch student-affairs-main-conflicts.txt
           set +e
           git merge --no-ff --no-commit origin/main
           status=$?
           set -e
-          if [ "$status" -eq 0 ]; then
-            git commit -m "chore(student-affairs): sync latest main"
-          else
-            git diff --name-only --diff-filter=U | sort > /tmp/conflicts.txt
-            git merge --abort
-            {
-              echo "base=$(git rev-parse origin/main)"
-              echo "head_before_sync=$(git rev-parse HEAD)"
-              echo "conflicts:"
-              cat /tmp/conflicts.txt
-            } > student-affairs-main-conflicts.txt
-            git add student-affairs-main-conflicts.txt
-            git commit -m "chore(student-affairs): record latest main conflicts"
+          if [ "$status" -ne 0 ]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+            expected=("miniapp/src/services/request.js" "student-portal/src/services/request.js")
+            if [ "${conflicts[*]}" != "${expected[*]}" ]; then
+              printf 'Unexpected conflicts:\n%s\n' "${conflicts[*]}"
+              exit 1
+            fi
+            git checkout --ours -- "${expected[@]}"
+            python scripts/maintenance/resolve_student_affairs_request_conflicts.py
+            git add "${expected[@]}" scripts/maintenance/resolve_student_affairs_request_conflicts.py
           fi
+          node --check student-portal/src/services/request.js
+          node --check miniapp/src/services/request.js
+          git add -u
+          git commit -m "chore(student-affairs): sync latest main and preserve request contracts"
       - name: Push branch result
         run: git push origin HEAD:codex/student-affairs-leave-cutover-20260727
