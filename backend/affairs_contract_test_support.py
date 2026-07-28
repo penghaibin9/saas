@@ -16,7 +16,7 @@ from sqlalchemy import select
 TID = 1000000000000000001
 
 _VERSION_ROUTES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"/student-affairs/leave/(\d+)/(?:approve|reject)$"), "CsLeave"),
+    (re.compile(r"/student-affairs/leave/(\d+)/(?:approve|reject|cancel)$"), "CsLeave"),
     (re.compile(r"/student-affairs/activities/(\d+)/(?:publish|transition|confirm|unconfirm|archive)$"), "AffairsActivity"),
     (re.compile(r"/student-affairs/volunteer/records/(\d+)/(?:confirm|reject)$"), "AffairsVolunteerRecord"),
     (re.compile(r"/student-affairs/second-class/appeals/(\d+)/review$"), "AffairsCreditAppeal"),
@@ -199,8 +199,10 @@ def ensure_role_user(role_code: str, login_name: str | None = None, real_name: s
 
 
 def role_headers(role_code: str, login_name: str | None = None, real_name: str | None = None) -> dict[str, str]:
-    """签发测试专用真实角色令牌；userId 使用 db-<User.id>，可命中真实待办受理人。"""
+    """签发测试受理人令牌；u_<User.id> 可命中真实待办，同时不伪造完整控制面租户。"""
+    from app.core.config import settings
     from app.core.security import create_access_token
+    from app.core.tenant_context import get_mock_tenant
     from app.db.session import get_sessionmaker
 
     db = get_sessionmaker()()
@@ -212,9 +214,11 @@ def role_headers(role_code: str, login_name: str | None = None, real_name: str |
         name = str(user.real_name or login)
     finally:
         db.close()
+    tenant = get_mock_tenant(settings.DEFAULT_TENANT_CODE) or {}
     token = create_access_token({
-        "userId": f"db-{uid}", "loginName": login, "realName": name,
-        "userType": "TEACHER", "tid": "test-school", "tenantId": str(TID),
+        "userId": f"u_{uid}", "loginName": login, "realName": name,
+        "userType": "TEACHER", "tid": tenant.get("tenantCode") or settings.DEFAULT_TENANT_CODE,
+        "tenantId": str(TID), "tenantName": tenant.get("tenantName") or "",
         "activeContextId": f"ctx_{login}", "currentRoleCode": role_code,
         "clientType": "PC",
     })
