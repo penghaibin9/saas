@@ -1,6 +1,20 @@
 """教学任务官方名单优先级与四域入口回归。"""
 from types import SimpleNamespace
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _tenant_context():
+    """教学名单解析始终运行在显式租户请求上下文中。"""
+    from app.core.context import set_tenant
+
+    set_tenant({"tenantId": "1"})
+    try:
+        yield
+    finally:
+        set_tenant(None)
+
 
 class _Query:
     def __init__(self, rows):
