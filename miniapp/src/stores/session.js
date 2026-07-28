@@ -7,6 +7,7 @@ import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
 import { clearTokens, shouldTryReal } from '@/services/request'
+import { clearSensitiveLocalDrafts } from '@/services/sensitiveDraftStorage'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 
 const STORAGE_KEY = 'gx_session_v1'
@@ -38,6 +39,7 @@ export const useSessionStore = defineStore('session', {
       return hasAction(this.currentRole, action)
     },
     clearBusinessContexts() {
+      clearSensitiveLocalDrafts()
       useInternshipContextStore().clear()
       try { uni.removeStorageSync(STUDENT_INTERNSHIP_BATCH_KEY) } catch (e) {}
     },
