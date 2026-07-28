@@ -8,6 +8,7 @@
 const TOKEN_KEY = 'sp_token_v1'
 const REFRESH_KEY = 'sp_refresh_v1'
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
+const GD_TEMP_FILES_KEY = 'sp_gd_temp_files_v1'
 const API_PREFIX = '/api/v1'
 
 const API_BASE = (() => {
@@ -34,8 +35,54 @@ export function clearSession() {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_KEY)
     localStorage.removeItem(INTERNSHIP_BATCH_KEY)
+    localStorage.removeItem(GD_TEMP_FILES_KEY)
   } catch { /* ignore */ }
 }
+
+function readTempFiles() {
+  try { return JSON.parse(localStorage.getItem(GD_TEMP_FILES_KEY) || '{}') || {} } catch { return {} }
+}
+function writeTempFiles(value) {
+  try { localStorage.setItem(GD_TEMP_FILES_KEY, JSON.stringify(value || {})) } catch { /* ignore */ }
+}
+function rememberTempFile(fileId) {
+  if (!fileId) return
+  const value = readTempFiles()
+  value[String(fileId)] = Date.now()
+  writeTempFiles(value)
+}
+function markTempFilesBound(fileIds) {
+  const ids = new Set((fileIds || []).map(String))
+  if (!ids.size) return
+  const value = readTempFiles()
+  ids.forEach((id) => delete value[id])
+  writeTempFiles(value)
+}
+
+/** 学生放弃一个未绑定的毕业设计临时材料（已绑定的会 409，忽略即可）。 */
+export async function abandonTemporaryGraduationMaterial(fileId) {
+  if (!fileId) return null
+  const data = await request(`/portal/graduation/materials/${fileId}/abandon`, { method: 'POST' })
+  const value = readTempFiles()
+  delete value[String(fileId)]
+  writeTempFiles(value)
+  return data
+}
+
+let cleanupStarted = false
+/** 每个页面会话只清一次：超过 24 小时仍未绑定业务的毕设临时材料自动放弃。 */
+function cleanupStaleGraduationTemps() {
+  if (cleanupStarted) return
+  cleanupStarted = true
+  const now = Date.now()
+  const cutoff = 24 * 60 * 60 * 1000
+  const value = readTempFiles()
+  Object.entries(value).forEach(([fileId, at]) => {
+    if (now - Number(at || 0) < cutoff) return
+    abandonTemporaryGraduationMaterial(fileId).catch(() => { /* 已绑定文件会 409 */ })
+  })
+}
+
 
 function selectedInternshipBatch(path) {
   if (!String(path || '').startsWith('/portal/internship')) return ''
@@ -119,6 +166,7 @@ function isUnauthorized(res, payload) {
 export async function request(path, {
   method = 'GET', body, auth = true, params, query, _retried = false
 } = {}) {
+  cleanupStaleGraduationTemps()
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -147,6 +195,10 @@ export async function request(path, {
   if (payload.code !== 0) {
     const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true; throw e
   }
+  const cleanPath = String(path || '').split('?')[0]
+  if (method === 'POST' && ['/portal/graduation/proposal', '/portal/graduation/final'].includes(cleanPath)) {
+    markTempFilesBound(body && body.attachments)
+  }
   return payload.data
 }
 
@@ -155,6 +207,7 @@ export async function request(path, {
  * 不给调用方暴露后台接口，也不把文件内容混入普通 JSON 请求。
  */
 export async function uploadFile(path, file, { auth = true, _retried = false } = {}) {
+  cleanupStaleGraduationTemps()
   const headers = {}
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -181,6 +234,9 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
   }
   if (payload.code !== 0) {
     const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true; throw e
+  }
+  if (String(path).includes('bizType=GRADUATION_MATERIAL') && payload.data?.fileId) {
+    rememberTempFile(payload.data.fileId)
   }
   return payload.data
 }
