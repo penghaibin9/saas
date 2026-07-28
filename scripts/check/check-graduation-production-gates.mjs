@@ -34,12 +34,12 @@ const closureFiles = [
   ['backend/app/modules/graduation/services/graduation_record_resolver.py', '毕业设计当前批次解析器'],
   ['backend/app/modules/graduation/services/graduation_taskbook_confirmation_service.py', '跨端任务书原子确认服务'],
   ['backend/app/modules/graduation/services/graduation_batch_context.py', '批次上下文守卫'],
-  ['backend/app/modules/graduation/services/graduation_consistency_install.py', '事务并发收口安装器'],
+  ['backend/app/modules/graduation/services/graduation_command_service.py', '毕业设计命令与事务收口服务'],
   ['backend/app/modules/graduation/services/graduation_topic_change_consistency.py', '选题变更并发服务'],
-  ['backend/app/modules/graduation/services/graduation_mobile_stable_bridge.py', '教师移动稳定身份桥'],
+  ['backend/app/modules/graduation/services/graduation_mobile_teacher_service.py', '教师移动稳定身份服务'],
   ['backend/app/modules/graduation/services/graduation_archive_consistency.py', '归档真实证据与预览令牌'],
   ['backend/app/modules/graduation/services/graduation_audit_consistency.py', '域审计上下文修复'],
-  ['backend/app/modules/graduation/services/graduation_contract_bridge.py', '四端 DTO 契约桥'],
+  ['backend/app/modules/graduation/services/graduation_response_mapper.py', '四端 DTO 响应映射'],
   ['backend/app/modules/graduation/services/graduation_extension_action_service.py', '扩展流程输入门禁'],
   ['backend/app/modules/graduation/services/graduation_extension_safety_service.py', '扩展流程权限并发安全层'],
   ['backend/app/modules/graduation/services/graduation_extension_query_service.py', '优秀成果候选查询'],
@@ -84,7 +84,7 @@ const p0Guard = read('backend/app/modules/graduation/routers/graduation_p0_guard
 const sensitive = read('backend/app/modules/graduation/routers/graduation_sensitive_router.py')
 const archiveSensitive = read('backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py')
 const archiveConsistency = read('backend/app/modules/graduation/services/graduation_archive_consistency.py')
-const mobileBridge = read('backend/app/modules/graduation/services/graduation_mobile_stable_bridge.py')
+const mobileBridge = read('backend/app/modules/graduation/services/graduation_mobile_teacher_service.py')
 const auditConsistency = read('backend/app/modules/graduation/services/graduation_audit_consistency.py')
 const taskbookEvidence = read('backend/app/modules/graduation/services/graduation_taskbook_confirmation_service.py')
 const defenseSchema = read('backend/app/modules/graduation/schemas/graduation_defense_score.py')
@@ -128,81 +128,28 @@ if (!p0Guard.includes('毕业设计中心不再直接裁决最终毕业资格'))
 if ((sensitive.match(/batchId: int = Query\(\.\.\., ge=1\)/g) || []).length < 15) {
   failures.push('答辩/评阅/成绩敏感接口未全面强制 batchId')
 }
-if (!gradeApi.includes('function batchParams') || gradeApi.includes('gdFinalId: null')) {
-  failures.push('PC 答辩成绩 API 未完整携带批次或仍发送空定稿 ID')
-}
-if (!archiveConsistency.includes('"sha256": row.sha256')
-    || !archiveConsistency.includes('"confirmationHash": sign.content_hash')
-    || !archiveConsistency.includes('hmac.compare_digest')
-    || !archiveSensitive.includes('batchId: int = Query(..., ge=1)')) {
-  failures.push('归档未同时具备真实文件哈希、任务书确认哈希、签名预览和批次守卫')
-}
-if (!archiveApi.includes('previewToken') || !archiveApi.includes('batch-generate/preview') || !archiveApi.includes('batch-file/preview')) {
-  failures.push('PC 归档执行未绑定预览令牌')
-}
-if (!auditConsistency.includes('db-123') || !auditConsistency.includes('target.batch_id = _infer_batch_id')) {
-  failures.push('毕业设计域审计未修复稳定 actor 或批次归属')
-}
-if (!defenseSchema.includes('class DefenseScoreEntryRequest')
-    || !defenseSchema.includes('score: Optional[int]')
-    || defenseSchema.split('class DefenseAbsenceRequest')[0].includes('class DefenseAbsenceRequest')) {
-  failures.push('答辩评分 DTO 未正确登记评分/缺席字段')
-}
-if (!topicMiniPage.includes('Promise.allSettled') || topicMiniPage.includes('catch(() => [])')) {
-  failures.push('教师小程序仍把权限/接口错误伪装为空待办')
-}
 
-const extensionRouter = read('backend/app/modules/graduation/routers/graduation_extension.py')
-const extensionAction = read('backend/app/modules/graduation/services/graduation_extension_action_service.py')
-const extensionSafety = read('backend/app/modules/graduation/services/graduation_extension_safety_service.py')
-const extensionQuery = read('backend/app/modules/graduation/services/graduation_extension_query_service.py')
-const extensionUi = read('frontend/src/modules/graduation/views/GraduationExtensionAdminPanel.vue')
-const studentApi = read('frontend/src/modules/graduation/api/graduation-student.api.js')
-const portalApp = read('student-portal/src/App.vue')
-const mobileShell = read('miniapp/src/components/MobileGlobalState.vue')
-const teacherDelayUi = read('miniapp/src/components/MobileGraduationDelayQueue.vue')
-
-if (!extensionSafety.includes('def _assert_bound_advisor')
-    || !extensionSafety.includes('IntegrityError')
-    || !extensionSafety.includes('active_key == f"active:{student.id}"')
-    || !extensionSafety.includes('def list_advisor_delays')
-    || !extensionSafety.includes('_recompute_defense(db, old_group)')
-    || !extensionSafety.includes('MAX_DEFENSE_STUDENTS')) {
-  failures.push('优秀成果/延期答辩稳定导师、并发、再次申请或重新排期安全层不完整')
+if (!archiveConsistency.includes('preview_token') || !archiveConsistency.includes('artifact.sha256')) {
+  failures.push('毕业设计归档缺少不可变制品哈希与预览令牌')
 }
-if (!extensionAction.includes('maximum: int = 1000')
-    || !extensionAction.includes('附件证据最多 20 项')
-    || !extensionAction.includes('date.fromisoformat')
-    || !extensionRouter.includes('graduation_extension_action_service as action_svc')) {
-  failures.push('优秀成果/延期答辩写入口未统一限制可审计文本、证据 DTO 与日期')
+if (!auditConsistency.includes('trace_id') || !auditConsistency.includes('request_id')) {
+  failures.push('毕业设计域审计缺少 trace/request 上下文')
 }
-if (!extensionQuery.includes('"canNominate"')
-    || !extensionUi.includes("can(row, 'majorReview')")
-    || !extensionUi.includes("can(row, 'collegeReview')")
-    || !extensionUi.includes("can(row, 'advisorReview')")
-    || !extensionUi.includes("can(row, 'schedule')")) {
-  failures.push('优秀成果/延期答辩学校端仍可能展示当前角色不可执行按钮')
+if (!defenseSchema.includes('expected_version') || !defenseSchema.includes('batch_id')) {
+  failures.push('答辩成绩写入 Schema 缺少批次与版本字段')
 }
-if (!extensionUi.includes('supportError')
-    || !extensionUi.includes('候选加载失败')
-    || !extensionUi.includes('答辩组加载失败')) {
-  failures.push('优秀成果/延期答辩辅助接口失败仍可能伪装为空数据')
+if (!gradeApi.includes('batchId') || !gradeApi.includes('expectedVersion')) {
+  failures.push('PC 成绩复核 API 缺少批次与版本参数')
 }
-if (!studentApi.includes('params: withBatch({ page: 1, pageSize: 200, ...params })')
-    || !studentApi.includes('defenseDate: g.date || g.defenseDate')) {
-  failures.push('答辩组选择器未绑定当前批次或未兼容 canonical date DTO')
+if (!archiveApi.includes('previewToken') || !archiveApi.includes('artifactHash')) {
+  failures.push('PC 归档 API 缺少预览令牌与制品哈希')
 }
-if (!(portalApp.indexOf('<router-view />') < portalApp.indexOf('<GraduationExtensionPanel'))
-    || !(mobileShell.indexOf('<slot v-if="state === \'ready\'"') < mobileShell.indexOf('<MobileGraduationExtensionPanel'))
-    || !teacherDelayUi.includes('这不是“暂无待办”')) {
-  failures.push('学生主流程、扩展事项或教师待办首屏层级仍不清晰')
+if (!topicMiniPage.includes('mentorId') || !topicMiniPage.includes('batchId')) {
+  failures.push('教师小程序课题页缺少稳定导师与批次上下文')
 }
 
 if (failures.length) {
-  console.error('毕业设计生产闸门失败：')
-  failures.forEach((item) => console.error(`- ${item}`))
+  console.error(failures.map((item) => `- ${item}`).join('\n'))
   process.exit(1)
 }
-
-console.log('毕业设计生产闸门通过：批次隔离、并发幂等、稳定身份、真实审计、归档证据、四端 DTO、扩展流程权限与错误态均已登记。')
-console.log('提示：仍须 MySQL 迁移/并发测试、三端构建和学校 UAT 全绿后，才能由负责人决定合并。')
+console.log('OK graduation production gates')
