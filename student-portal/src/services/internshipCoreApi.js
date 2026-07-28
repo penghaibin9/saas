@@ -20,6 +20,52 @@ export const internshipCoreApi = {
       method: 'POST', body: { expectedVersion }
     })
   },
+  leaves() {
+    return request('/portal/internship/context/leaves')
+  },
+  applyLeave(body) {
+    return request('/portal/internship/context/leaves', { method: 'POST', body })
+  },
+  withdrawLeave(id, expectedVersion) {
+    return request(`/portal/internship/context/leaves/${encode(id)}/withdraw`, {
+      method: 'POST', body: { expectedVersion }
+    })
+  },
+  returnLeave(id, body) {
+    return request(`/portal/internship/context/leaves/${encode(id)}/return`, {
+      method: 'POST', body
+    })
+  },
+  makeups() {
+    return request('/portal/internship/context/makeups')
+  },
+  applyMakeup(body) {
+    return request('/portal/internship/context/makeups', { method: 'POST', body })
+  },
+  withdrawMakeup(id, expectedVersion) {
+    return request(`/portal/internship/context/makeups/${encode(id)}/withdraw`, {
+      method: 'POST', body: { expectedVersion }
+    })
+  },
+  agreements() {
+    return request('/portal/internship/context/agreements')
+  },
+  agreement(id) {
+    return request(`/portal/internship/context/agreements/${encode(id)}`)
+  },
+  confirmAgreement(id, body) {
+    return request(`/portal/internship/context/agreements/${encode(id)}/confirm`, {
+      method: 'POST', body
+    })
+  },
+  plan() {
+    return request('/portal/internship/context/plan')
+  },
+  acknowledgePlan(planVersion, expectedVersion) {
+    return request('/portal/internship/context/plan/acknowledge', {
+      method: 'POST', body: { planVersion, expectedVersion }
+    })
+  },
   positions(city = '') {
     const query = city ? `?city=${encode(city)}` : ''
     return request(`/portal/internship/enterprises${query}`)

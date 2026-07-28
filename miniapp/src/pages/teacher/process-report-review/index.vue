@@ -96,7 +96,7 @@ export default {
   data() {
     return {
       list: null, state: 'loading', expanded: '', detail: {}, loadingDetail: '', actingId: '',
-      batches: [], batchId: '', batchIndex: 0
+      batches: [], batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false
     }
   },
   computed: {
@@ -113,6 +113,7 @@ export default {
     }
   },
   onLoad() { this.load() },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -121,6 +122,8 @@ export default {
     fmt(value) { return value ? String(value).slice(0, 16).replace('T', ' ') : '—' },
     async load(done) {
       this.state = 'loading'
+      this.page = 1
+      this.hasMore = false
       try {
         const context = useInternshipContextStore()
         context.restore()
@@ -131,8 +134,9 @@ export default {
         this.expanded = ''
         this.detail = {}
         if (!this.batchId) { this.list = []; this.state = 'ready'; return }
-        const data = await teacherInternshipProcessReports(this.batchId)
-        this.list = (data && data.list) || []
+        const data = await teacherInternshipProcessReports(this.batchId, 1, 20)
+        this.list = (data && (data.items || data.list)) || []
+        this.hasMore = !!data?.hasMore
         this.state = 'ready'
       } catch (e) {
         this.list = []
@@ -145,7 +149,21 @@ export default {
       const context = useInternshipContextStore()
       context.selectBatch(batch && batch.id)
       this.batchId = context.selectedBatchId
+      this.list = []
       await this.load()
+    },
+    async loadMore() {
+      if (!this.batchId || !this.hasMore || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        const nextPage = this.page + 1
+        const data = await teacherInternshipProcessReports(selectedBatch, nextPage, 20)
+        if (selectedBatch !== this.batchId) return
+        this.list = [...(this.list || []), ...(data?.items || [])]
+        this.page = nextPage
+        this.hasMore = !!data?.hasMore
+      } finally { this.loadingMore = false }
     },
     async toggle(r) {
       if (this.expanded === r.id) { this.expanded = ''; return }
@@ -161,7 +179,7 @@ export default {
       } finally { this.loadingDetail = '' }
     },
     review(r, action) {
-      if (!this.canReview || this.actingId) return
+      if (!this.canReview || this.actingId || this.state !== 'ready') return
       const reject = action === 'RETURN'
       uni.showModal({
         title: reject ? '退回报告' : '通过报告',
@@ -174,7 +192,7 @@ export default {
           if (reject && comment.length < 5) { toast('退回原因至少5个字'); return }
           this.actingId = r.id
           try {
-            await teacherInternshipProcessReportReview(r.id, {
+            await teacherInternshipProcessReportReview(r.id, this.batchId, {
               action, comment, expectedVersion: r.version, batchId: this.batchId
             })
             toast(reject ? '已退回学生修改' : '报告已通过')

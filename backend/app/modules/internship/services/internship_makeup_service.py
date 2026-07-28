@@ -295,7 +295,8 @@ def mark_evidence_viewed(user, makeup_id) -> dict:
                 "evidenceViewed": True, "evidenceFileId": evidence_file_id}
 
 
-def review(user, makeup_id, action: str, comment: str = "", *, expected_version=None) -> dict:
+def review(user, makeup_id, action: str, comment: str = "", *, expected_version=None,
+           expected_batch_id=None) -> dict:
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
@@ -307,6 +308,8 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
         stu = db.get(StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能审批本人指导学生的补卡申请")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(rec, expected_batch_id)
         if m.status != "PENDING":
             raise AppException("DATA_CONFLICT", "该申请已处理，请刷新")
         evidence_file_id = _evidence_file_id(db, m)

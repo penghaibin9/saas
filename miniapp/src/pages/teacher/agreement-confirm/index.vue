@@ -84,9 +84,13 @@ import { useInternshipContextStore } from '@/stores/internshipContext'
 
 export default {
   data() {
-    return { list: null, state: 'loading', batches: [], batchId: '', batchIndex: 0 }
+    return {
+      list: null, state: 'loading', batches: [], batchId: '', batchIndex: 0,
+      page: 1, hasMore: false, loadingMore: false
+    }
   },
   onLoad() { this.load() },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -109,6 +113,8 @@ export default {
     },
     async load(done) {
       this.state = 'loading'
+      this.page = 1
+      this.hasMore = false
       try {
         const context = useInternshipContextStore()
         context.restore()
@@ -117,8 +123,9 @@ export default {
         this.batchId = context.selectedBatchId || ''
         this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
         if (!this.batchId) { this.list = []; this.state = 'ready'; return }
-        const data = await teacherInternshipAgreements(this.batchId)
-        this.list = (data && data.list) || []
+        const data = await teacherInternshipAgreements(this.batchId, 1, 20)
+        this.list = (data && (data.items || data.list)) || []
+        this.hasMore = !!data?.hasMore
         this.state = 'ready'
       } catch (e) {
         this.list = []
@@ -131,7 +138,21 @@ export default {
       const context = useInternshipContextStore()
       context.selectBatch(batch && batch.id)
       this.batchId = context.selectedBatchId
+      this.list = []
       await this.load()
+    },
+    async loadMore() {
+      if (!this.batchId || !this.hasMore || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        const nextPage = this.page + 1
+        const data = await teacherInternshipAgreements(selectedBatch, nextPage, 20)
+        if (selectedBatch !== this.batchId) return
+        this.list = [...(this.list || []), ...(data?.items || [])]
+        this.page = nextPage
+        this.hasMore = !!data?.hasMore
+      } finally { this.loadingMore = false }
     }
   }
 }

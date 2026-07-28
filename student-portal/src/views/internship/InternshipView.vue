@@ -100,7 +100,7 @@
                   <StatusTag :text="lv.statusLabel || lv.status" :tone="lv.status==='APPROVED'||lv.status==='RETURNED'?'success':lv.status==='REJECTED'?'danger':'warn'" />
                 </div>
                 <div style="display:flex;gap:8px">
-                  <button v-if="lv.status==='PENDING'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="withdrawLeave(lv.id)">撤回</button>
+                  <button v-if="lv.status==='PENDING'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="withdrawLeave(lv)">撤回</button>
                   <button v-if="lv.status==='APPROVED'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="returnLeave(lv.id)">办理销假</button>
                 </div>
               </div>
@@ -127,7 +127,7 @@
               <div v-for="m in makeups" :key="m.id" class="repitem" style="flex-direction:column;align-items:stretch;gap:6px">
                 <div style="display:flex;justify-content:space-between;align-items:center">
                   <span>{{ m.checkinDate }} · {{ m.statusLabel || m.status }}</span>
-                  <button v-if="m.status === 'PENDING'" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawMakeup(m.id)">撤回</button>
+                  <button v-if="m.status === 'PENDING'" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawMakeup(m)">撤回</button>
                 </div>
                 <div class="sp-muted" style="font-size:12px">{{ m.reason }}</div>
               </div>
@@ -166,8 +166,13 @@
               <option value="SELF_ARRANGED">自主实习</option>
             </select>
             <template v-if="appForm.applicationType === 'POSITION'">
-              <div class="sp-fieldlabel">岗位 ID</div>
-              <input v-model.trim="appForm.positionId" class="sp-inp" style="margin-bottom:12px" placeholder="填写拟申请岗位编号" />
+              <div class="sp-fieldlabel">选择岗位</div>
+              <select v-model="appForm.positionId" class="sp-inp" style="margin-bottom:12px">
+                <option value="">请选择企业岗位</option>
+                <option v-for="position in enterprises" :key="position.id" :value="String(position.id)">
+                  {{ position.companyName }} · {{ position.title }} · {{ position.workLocation || '地点待定' }}
+                </option>
+              </select>
             </template>
             <template v-else>
               <div class="sp-fieldlabel">企业名称</div>
@@ -180,8 +185,9 @@
               <input v-model.trim="appForm.contactName" class="sp-inp" style="margin-bottom:12px" />
               <div class="sp-fieldlabel">联系人电话</div>
               <input v-model.trim="appForm.contactPhone" class="sp-inp" style="margin-bottom:12px" placeholder="手机号" />
-              <div class="sp-fieldlabel">证明材料文件 ID</div>
-              <input v-model.trim="appForm.evidenceFileId" class="sp-inp" style="margin-bottom:12px" placeholder="文件中心上传后的 fileId" />
+              <div class="sp-fieldlabel">自主实习证明材料</div>
+              <input type="file" class="sp-inp" style="margin-bottom:6px" :disabled="busy" @change="uploadApplicationEvidence" />
+              <p class="sp-muted" style="margin-bottom:12px">{{ appForm.evidenceFileId ? '材料已上传' : '请上传盖章证明或接收函' }}</p>
             </template>
             <div class="sp-fieldlabel">申请说明</div>
             <textarea v-model.trim="appForm.applicationNote" class="sp-inp" style="margin-bottom:12px" placeholder="不少于 5 字" />
@@ -254,8 +260,9 @@
             <input v-model="insForm.effectiveDate" type="date" class="sp-inp" style="margin-bottom:12px" />
             <div class="sp-fieldlabel">失效日</div>
             <input v-model="insForm.expiryDate" type="date" class="sp-inp" style="margin-bottom:12px" />
-            <div class="sp-fieldlabel">保单扫描件文件 ID</div>
-            <input v-model.trim="insForm.fileId" class="sp-inp" style="margin-bottom:12px" />
+            <div class="sp-fieldlabel">保单扫描件</div>
+            <input type="file" class="sp-inp" style="margin-bottom:6px" :disabled="busy" @change="uploadInsurancePolicy" />
+            <p class="sp-muted" style="margin-bottom:12px">{{ insForm.fileId ? '保单文件已上传' : '请上传保单扫描件' }}</p>
             <button class="sp-btn" :disabled="busy" @click="saveInsurance">提交保险</button>
           </section>
           <section class="sp-card">
@@ -396,6 +403,7 @@ import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
 import FlowSteps from '../../components/FlowSteps.vue'
 import { portalApi } from '../../services/portalApi'
+import { internshipCoreApi } from '../../services/internshipCoreApi'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
@@ -484,14 +492,14 @@ const metrics = computed(() => [
 
 async function loadLeaves() {
   try {
-    const d = await portalApi.internshipLeaves()
+    const d = await internshipCoreApi.leaves()
     leaves.value = d?.items || d?.list || (Array.isArray(d) ? d : [])
   } catch { leaves.value = [] }
 }
 async function loadExtras() {
   try {
-    const mk = await portalApi.internshipMakeups()
-    makeups.value = mk?.items || []
+    const mk = await internshipCoreApi.makeups()
+    makeups.value = mk?.items || mk?.list || (Array.isArray(mk) ? mk : [])
   } catch { makeups.value = [] }
   try {
     const it = await portalApi.internshipIntentionMy()
@@ -506,20 +514,20 @@ async function loadExtras() {
     intentionForm.intentionNote = intentionMeta.value.intentionNote || ''
   } catch { intentionMeta.value = {}; intentionFlags.value = { canEdit: true, canSubmit: true, canWithdraw: false } }
   try {
-    const apps = await portalApi.internshipApplications()
-    applications.value = apps?.items || []
+    const apps = await internshipCoreApi.applications()
+    applications.value = apps?.items || (Array.isArray(apps) ? apps : [])
   } catch { applications.value = [] }
   try {
     const ch = await portalApi.internshipChanges()
     changes.value = ch?.items || []
   } catch { changes.value = [] }
   try {
-    const ag = await portalApi.internshipAgreements()
+    const ag = await internshipCoreApi.agreements()
     agreements.value = ag?.items || (Array.isArray(ag) ? ag : [])
     activeAgreement.value = agreements.value.find((x) => x.status === 'PENDING_STUDENT') || agreements.value[0] || null
   } catch { agreements.value = []; activeAgreement.value = null }
   try {
-    insuranceMeta.value = await portalApi.internshipInsurance()
+    insuranceMeta.value = await internshipCoreApi.insurance()
     if (insuranceMeta.value) {
       insForm.policyNo = insuranceMeta.value.policyNo || ''
       insForm.insurerName = insuranceMeta.value.insurerName || ''
@@ -530,7 +538,7 @@ async function loadExtras() {
     }
   } catch { insuranceMeta.value = null }
   try {
-    planMeta.value = await portalApi.internshipPlan()
+    planMeta.value = await internshipCoreApi.plan()
   } catch { planMeta.value = null }
   await loadEnterprises()
 }
@@ -564,16 +572,16 @@ async function doCheckin() {
 async function submitMakeup() {
   busy.value = true
   try {
-    await portalApi.internshipMakeupApply({ ...makeupForm })
+    await internshipCoreApi.applyMakeup({ ...makeupForm })
     ui.notify('补卡申请已提交')
     makeupForm.reason = ''
     await loadExtras()
   } catch (e) { ui.notify(e?.message || '补卡失败') } finally { busy.value = false }
 }
-async function withdrawMakeup(id) {
+async function withdrawMakeup(item) {
   busy.value = true
   try {
-    await portalApi.internshipMakeupWithdraw(id)
+    await internshipCoreApi.withdrawMakeup(item.id, item.version)
     ui.notify('已撤回'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
@@ -599,9 +607,26 @@ async function withdrawIntention() {
     ui.notify('意向已撤回'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
+async function uploadApplicationEvidence(event) {
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  busy.value = true
+  try {
+    const uploaded = await internshipCoreApi.uploadApplicationEvidence(file)
+    appForm.evidenceFileId = uploaded?.fileId || uploaded?.id || ''
+    if (!appForm.evidenceFileId) throw new Error('上传响应缺少文件标识')
+    ui.notify('证明材料已上传')
+  } catch (e) {
+    appForm.evidenceFileId = ''
+    ui.notify(e?.message || '证明材料上传失败')
+  } finally {
+    busy.value = false
+    if (event?.target) event.target.value = ''
+  }
+}
 async function submitApplication() {
   if (appForm.applicationType === 'POSITION' && !appForm.positionId) {
-    return ui.notify('岗位志愿须填写岗位 ID')
+    return ui.notify('请选择拟申请岗位')
   }
   if (appForm.applicationType === 'SELF_ARRANGED') {
     if ((appForm.companyName || '').trim().length < 2) return ui.notify('请填写企业名称')
@@ -609,7 +634,7 @@ async function submitApplication() {
     if ((appForm.workAddress || '').trim().length < 5) return ui.notify('请填写工作地址')
     if ((appForm.contactName || '').trim().length < 2) return ui.notify('请填写联系人')
     if (!(appForm.contactPhone || '').trim()) return ui.notify('请填写联系电话')
-    if (!(appForm.evidenceFileId || '').trim()) return ui.notify('请填写证明材料文件 ID')
+    if (!(appForm.evidenceFileId || '').trim()) return ui.notify('请先上传证明材料')
   }
   if ((appForm.applicationNote || '').trim().length < 5) {
     return ui.notify('申请说明不少于 5 字')
@@ -627,7 +652,8 @@ async function submitApplication() {
       contactPhone: appForm.contactPhone,
       evidenceFileId: appForm.evidenceFileId
     }
-    await portalApi.internshipApplicationSubmit(body)
+    const saved = await internshipCoreApi.saveApplication(body)
+    await internshipCoreApi.submitApplication(saved.id, saved.version)
     ui.notify('申请已提交'); appForm.applicationNote = ''; await loadExtras()
   } catch (e) { ui.notify(e?.message || '申请失败') } finally { busy.value = false }
 }
@@ -647,16 +673,16 @@ async function submitChange() {
 async function submitLeave() {
   busy.value = true
   try {
-    await portalApi.internshipLeaveApply({ ...leaveForm })
+    await internshipCoreApi.applyLeave({ ...leaveForm })
     ui.notify('请假申请已提交')
     Object.assign(leaveForm, { reason: '' })
     await loadLeaves()
   } catch (e) { ui.notify(e?.message || '请假提交失败') } finally { busy.value = false }
 }
-async function withdrawLeave(id) {
+async function withdrawLeave(item) {
   busy.value = true
   try {
-    await portalApi.internshipLeaveWithdraw(id)
+    await internshipCoreApi.withdrawLeave(item.id, item.version)
     ui.notify('已撤回'); await loadLeaves()
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
@@ -665,7 +691,8 @@ async function returnLeave(id) {
   if (note.length < 2) return ui.notify('销假说明至少 2 字')
   busy.value = true
   try {
-    await portalApi.internshipLeaveReturn(id, { note })
+    const item = leaves.value.find((row) => String(row.id) === String(id))
+    await internshipCoreApi.returnLeave(id, { note, expectedVersion: item?.version })
     ui.notify('销假已登记'); await loadLeaves()
   } catch (e) { ui.notify(e?.message || '销假失败') } finally { busy.value = false }
 }
@@ -678,22 +705,42 @@ async function confirmAgreement(action) {
       busy.value = false
       return ui.notify('驳回原因不少于 5 字')
     }
-    await portalApi.internshipAgreementConfirm(activeAgreement.value.id, { action, reason })
+    const detail = await internshipCoreApi.agreement(activeAgreement.value.id)
+    await internshipCoreApi.confirmAgreement(activeAgreement.value.id, {
+      action, reason, expectedVersion: detail.version
+    })
     ui.notify(action === 'CONFIRM' ? '协议已确认' : '协议已驳回')
     await loadExtras(); await load()
   } catch (e) { ui.notify(e?.message || '协议操作失败') } finally { busy.value = false }
 }
+async function uploadInsurancePolicy(event) {
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  busy.value = true
+  try {
+    const uploaded = await internshipCoreApi.uploadInsurancePolicy(file)
+    insForm.fileId = uploaded?.fileId || uploaded?.id || ''
+    if (!insForm.fileId) throw new Error('上传响应缺少文件标识')
+    ui.notify('保单文件已上传')
+  } catch (e) {
+    insForm.fileId = ''
+    ui.notify(e?.message || '保单上传失败')
+  } finally {
+    busy.value = false
+    if (event?.target) event.target.value = ''
+  }
+}
 async function saveInsurance() {
   busy.value = true
   try {
-    await portalApi.internshipInsuranceSave({ ...insForm })
+    await internshipCoreApi.saveInsurance({ ...insForm })
     ui.notify('保险信息已提交'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '保险提交失败') } finally { busy.value = false }
 }
 async function ackPlan() {
   busy.value = true
   try {
-    await portalApi.internshipPlanAck()
+    await internshipCoreApi.acknowledgePlan(planMeta.value?.version, planMeta.value?.ackVersion)
     ui.notify('已确认实习计划'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
 }
@@ -724,7 +771,7 @@ async function submitReport() {
 async function submitSelfEval() {
   busy.value = true
   try {
-    await portalApi.internshipSelfEval({
+    await internshipCoreApi.submitSelfEval({
       performance: evalForm.performance,
       reflection: evalForm.reflection,
       problems: evalForm.problems

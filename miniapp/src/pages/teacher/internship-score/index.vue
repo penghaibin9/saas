@@ -170,11 +170,13 @@ export default {
       tab: 'list', list: null, state: 'loading',
       students: [], studentIndex: 0,
       batches: [], batchId: '', batchIndex: 0,
+      page: 1, hasMore: false, loadingMore: false,
       scores: { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' },
       submitting: false, SCORE_FIELDS
     }
   },
   onLoad() { this.load() },
+  onReachBottom() { if (this.tab === 'list') this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -206,6 +208,8 @@ export default {
     },
     async load(done) {
       this.state = 'loading'
+      this.page = 1
+      this.hasMore = false
       try {
         const context = useInternshipContextStore()
         context.restore()
@@ -221,8 +225,22 @@ export default {
     },
     async loadScores() {
       if (!this.batchId) { this.list = []; return }
-      const data = await teacherInternshipScores(this.batchId)
-      this.list = (data && data.list) || []
+      const data = await teacherInternshipScores(this.batchId, 1, 20)
+      this.list = (data && (data.items || data.list)) || []
+      this.hasMore = !!data?.hasMore
+    },
+    async loadMore() {
+      if (!this.batchId || !this.hasMore || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        const nextPage = this.page + 1
+        const data = await teacherInternshipScores(selectedBatch, nextPage, 20)
+        if (selectedBatch !== this.batchId) return
+        this.list = [...(this.list || []), ...(data?.items || [])]
+        this.page = nextPage
+        this.hasMore = !!data?.hasMore
+      } finally { this.loadingMore = false }
     },
     async onComputeTab() {
       this.tab = 'compute'
@@ -236,6 +254,7 @@ export default {
       context.selectBatch(batch && batch.id)
       this.batchId = context.selectedBatchId
       this.students = []
+      this.list = []
       this.studentIndex = 0
       this.state = 'loading'
       try {

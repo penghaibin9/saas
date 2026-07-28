@@ -261,7 +261,7 @@ def list_progress(page, page_size, batch_id=None, status=None, keyword=None,
 
 
 def review_progress(prog_id, action: str, comment: str = "", user=None,
-                    *, expected_version=None) -> dict:
+                    *, expected_version=None, expected_batch_id=None) -> dict:
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     action = str(action or "").upper()
     if action not in ("APPROVE", "REJECT"):
@@ -279,6 +279,8 @@ def review_progress(prog_id, action: str, comment: str = "", user=None,
         student = db.get(StudentProfile, progress.student_id)
         if not _rec_in_scope(_current_scope(user), db, record, student):
             raise no_permission("只能处理本人指导学生的任务完成确认")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(record, expected_batch_id)
         _expected(expected_version, progress.version)
         if progress.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅待确认任务可批阅")

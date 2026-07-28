@@ -1,5 +1,6 @@
 """Regression locks for teacher mini-program internship permission routing."""
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,6 +10,7 @@ from app.core.mobile_internship_permission_gate import (
     resolve_teacher_internship_permission,
 )
 from app.api.v1.mobile_internship_context import _choose_default_batch
+from app.modules.internship.services.internship_batch_context import assert_record_batch
 
 ROOT = Path(__file__).resolve().parents[1]
 TID = 1000000000000000001
@@ -126,3 +128,63 @@ def test_latest_non_voided_batch_is_fallback():
         {"id": "8", "status": "VOIDED"},
     ]
     assert _choose_default_batch(items) == "9"
+
+
+def test_teacher_context_lists_are_real_paginated_contracts():
+    source = (ROOT / "app/api/v1/mobile_internship_context.py").read_text(encoding="utf-8")
+    assert "list_scores(1, 200" not in source
+    assert "list_agreements(\n        1, 200" not in source
+    assert "list_evals(1, 200" not in source
+    assert "list_makeups(1, 200" not in source
+    assert "list_leaves(1, 200" not in source
+    assert "list_progress(1, 200" not in source
+    assert "list_applications(\n        1, 200" not in source
+    assert '"items": items' in source
+    assert '"hasMore": int(page) * int(page_size) < int(total or 0)' in source
+
+
+def test_current_batch_record_is_accepted():
+    assert assert_record_batch(SimpleNamespace(batch_id=8), 8) == 8
+
+
+def test_old_id_from_previous_batch_is_rejected():
+    with pytest.raises(AppException) as exc:
+        assert_record_batch(SimpleNamespace(batch_id=7), 8)
+    assert exc.value.code == "DATA_CONFLICT"
+    assert "不属于当前实习批次" in exc.value.message
+
+
+def test_teacher_pages_append_next_page_on_reach_bottom():
+    pages = [
+        "agreement-confirm/index.vue",
+        "enterprise-eval/index.vue",
+        "internship-application/index.vue",
+        "process-report-review/index.vue",
+        "plan-task-review/index.vue",
+        "student-eval/index.vue",
+        "internship-score/index.vue",
+    ]
+    for relative in pages:
+        source = (ROOT.parent / "miniapp/src/pages/teacher" / relative).read_text(encoding="utf-8")
+        assert "onReachBottom()" in source, relative
+        assert "hasMore" in source, relative
+        assert "loadMore()" in source, relative
+    approval = (ROOT.parent / "miniapp/src/pages/teacher/internship-approval/index.vue").read_text(
+        encoding="utf-8"
+    )
+    assert "onReachBottom()" in approval
+
+
+def test_student_portal_uses_context_writes_and_upload_controls():
+    view = (ROOT.parent / "student-portal/src/views/internship/InternshipView.vue").read_text(
+        encoding="utf-8"
+    )
+    assert "internshipCoreApi.saveApplication(body)" in view
+    assert "internshipCoreApi.submitApplication(saved.id, saved.version)" in view
+    assert "internshipCoreApi.withdrawLeave(item.id, item.version)" in view
+    assert "internshipCoreApi.withdrawMakeup(item.id, item.version)" in view
+    assert "internshipCoreApi.acknowledgePlan(planMeta.value?.version, planMeta.value?.ackVersion)" in view
+    assert "expectedVersion: detail.version" in view
+    assert "岗位 ID" not in view
+    assert "证明材料文件 ID" not in view
+    assert "保单扫描件文件 ID" not in view

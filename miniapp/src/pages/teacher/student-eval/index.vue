@@ -134,7 +134,7 @@ export default {
   data() {
     return {
       list: [], state: 'loading', expanded: '', details: {}, drafts: {}, acting: false,
-      batches: [], batchId: '', batchIndex: 0
+      batches: [], batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false
     }
   },
   computed: {
@@ -160,6 +160,7 @@ export default {
     }
   },
   onLoad() { this.load() },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -175,6 +176,8 @@ export default {
     },
     async load(done) {
       this.state = 'loading'
+      this.page = 1
+      this.hasMore = false
       try {
         this.context.restore()
         await this.context.load(true)
@@ -183,8 +186,9 @@ export default {
         this.batchIndex = Math.max(0, this.batches.findIndex((x) => String(x.id) === String(this.batchId)))
         if (!this.batchId) this.list = []
         else {
-          const data = await teacherInternshipStudentEvals(this.batchId)
-          this.list = data?.list || []
+          const data = await teacherInternshipStudentEvals(this.batchId, 1, 20)
+          this.list = data?.items || data?.list || []
+          this.hasMore = !!data?.hasMore
         }
         this.expanded = ''
         this.details = {}
@@ -196,7 +200,21 @@ export default {
     async onBatch(e) {
       this.batchIndex = Number(e.detail.value)
       this.context.selectBatch(this.batches[this.batchIndex]?.id)
+      this.list = []
       await this.load()
+    },
+    async loadMore() {
+      if (!this.batchId || !this.hasMore || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        const nextPage = this.page + 1
+        const data = await teacherInternshipStudentEvals(selectedBatch, nextPage, 20)
+        if (selectedBatch !== this.batchId) return
+        this.list = [...this.list, ...(data?.items || [])]
+        this.page = nextPage
+        this.hasMore = !!data?.hasMore
+      } finally { this.loadingMore = false }
     },
     async toggle(item) {
       if (this.expanded === item.id) { this.expanded = ''; return }
@@ -218,13 +236,13 @@ export default {
       return detail
     },
     async saveOpinion(item) {
-      if (this.acting || !this.canAdvisor) return
+      if (this.acting || !this.canAdvisor || this.state !== 'ready') return
       const draft = this.drafts[item.id] || {}
       if (String(draft.advisorOpinion || '').trim().length < 5) return toast('指导教师意见至少5个字')
       this.acting = true
       try {
         const detail = this.details[item.id]
-        await teacherInternshipStudentEvalAdvisorComment(item.id, {
+        await teacherInternshipStudentEvalAdvisorComment(item.id, this.batchId, {
           advisorOpinion: String(draft.advisorOpinion).trim(),
           mentorOpinion: String(draft.mentorOpinion || '').trim(),
           expectedVersion: detail.version
@@ -239,7 +257,7 @@ export default {
       } finally { this.acting = false }
     },
     review(item, action) {
-      if (this.acting || !this.canReview) return
+      if (this.acting || !this.canReview || this.state !== 'ready') return
       const returned = action === 'RETURN'
       uni.showModal({
         title: returned ? '学校退回鉴定' : '学校审核通过',
@@ -253,7 +271,7 @@ export default {
           this.acting = true
           try {
             const detail = this.details[item.id]
-            await teacherInternshipStudentEvalReview(item.id, {
+            await teacherInternshipStudentEvalReview(item.id, this.batchId, {
               action, comment, expectedVersion: detail.version
             })
             toast(returned ? '已退回学生修改' : '学校审核已通过')

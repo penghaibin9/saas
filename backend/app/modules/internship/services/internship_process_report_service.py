@@ -180,7 +180,8 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
         return {"id": str(row.id), "status": row.status, "message": f"{TYPE_LABEL[rt]}提交成功"}
 
 
-def review_report(rid, action: str, comment: str = "", user=None, *, expected_version=None) -> dict:
+def review_report(rid, action: str, comment: str = "", user=None, *, expected_version=None,
+                  expected_batch_id=None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     if action == "RETURN" and len((comment or "").strip()) < 5:
@@ -195,6 +196,8 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
         if not in_scope(scope, db, rec, stu):
             from app.core.exceptions import no_permission
             raise no_permission("不在数据范围内")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(rec, expected_batch_id)
         if r.status not in ("PENDING_REVIEW", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可批阅")
         status = "APPROVED" if action == "APPROVE" else "RETURNED"

@@ -100,7 +100,10 @@ import { toast } from '@/utils/nav'
 
 export default {
   data() {
-    return { list: null, state: 'loading', actingId: '', previewingId: '', batches: [], batchId: '', batchIndex: 0 }
+    return {
+      list: null, state: 'loading', actingId: '', previewingId: '', batches: [],
+      batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false
+    }
   },
   computed: {
     batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
@@ -115,6 +118,7 @@ export default {
     }
   },
   onLoad() { this.load() },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -133,6 +137,8 @@ export default {
     },
     async load(done) {
       this.state = 'loading'
+      this.page = 1
+      this.hasMore = false
       try {
         const context = useInternshipContextStore()
         context.restore()
@@ -141,8 +147,9 @@ export default {
         this.batchId = context.selectedBatchId || ''
         this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
         if (!this.batchId) { this.list = []; this.state = 'ready'; return }
-        const data = await teacherInternshipApplications(this.batchId)
-        this.list = (data && data.list) || []
+        const data = await teacherInternshipApplications(this.batchId, 1, 20)
+        this.list = (data && (data.items || data.list)) || []
+        this.hasMore = !!data?.hasMore
         this.state = 'ready'
       } catch (e) {
         this.list = []
@@ -157,7 +164,21 @@ export default {
       const context = useInternshipContextStore()
       context.selectBatch(batch && batch.id)
       this.batchId = context.selectedBatchId
+      this.list = []
       await this.load()
+    },
+    async loadMore() {
+      if (!this.batchId || !this.hasMore || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        const nextPage = this.page + 1
+        const data = await teacherInternshipApplications(selectedBatch, nextPage, 20)
+        if (selectedBatch !== this.batchId) return
+        this.list = [...(this.list || []), ...(data?.items || [])]
+        this.page = nextPage
+        this.hasMore = !!data?.hasMore
+      } finally { this.loadingMore = false }
     },
     async previewEvidence(item) {
       if (!item.evidenceFileId || this.previewingId) return
@@ -167,7 +188,7 @@ export default {
       finally { this.previewingId = '' }
     },
     review(a, action) {
-      if (!this.canReview || this.actingId) return
+      if (!this.canReview || this.actingId || this.state !== 'ready') return
       if (action === 'APPROVE' && !this.canApprove(a)) {
         toast(a.applicationType === 'SELF_ARRANGED' && !a.evidenceFileId
           ? '自主实习证明材料缺失，不能通过'
@@ -186,7 +207,7 @@ export default {
           if (reject && comment.length < 5) { toast('驳回原因至少5个字'); return }
           this.actingId = a.id
           try {
-            await teacherInternshipApplicationReview(a.id, {
+            await teacherInternshipApplicationReview(a.id, this.batchId, {
               action,
               comment,
               expectedVersion: a.version,
