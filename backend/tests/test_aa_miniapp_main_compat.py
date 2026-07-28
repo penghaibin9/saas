@@ -70,9 +70,12 @@ def test_main_internship_student_api_contracts_are_preserved():
         "studentInternshipConsentConfirm",
         "studentInternshipSafetyCommit",
         "studentInternshipApplicationSubmit",
-        "expectedVersion",
+        "studentInternshipLeaveReturn",
+        "studentInternshipMakeupWithdraw",
+        "studentInternshipPlanTaskSubmit",
     ):
         assert token in INTERNSHIP_API
+    assert "data: body || {}" in INTERNSHIP_API
 
 
 def test_main_graduation_student_api_contracts_are_preserved():
