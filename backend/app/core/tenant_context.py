@@ -15,7 +15,20 @@ from app.core.config import settings
 from app.core.context import set_tenant
 
 # mock 租户注册表（将来由 t_tenant 表提供）。key = tenantCode
+# 2026-07-28：生产库已收敛为单一体验沙箱（demo / demo-school / hnsh 三个演示租户已删除），
+# DEFAULT_TENANT_CODE 随之改为 sandbox-school。
+# 下方 demo / demo-school / hnsh 条目保留，因为它们是 mock 登录与 pytest 套件的租户夹具
+# （测试在独立测试库自建 tenant_id=1000000000000000001 的主租户），与生产库租户无关；
+# 删除会让 229 个测试文件的夹具解析不到租户。
+# sandbox-school 的 tenantId 必须与库内 t_tenant.id 一致：历史上此处写 1000000000000000007，
+# 而真实建站落在 1000000000000000004，会让 mock 登录的沙箱会话看不到任何数据。
 _MOCK_TENANTS = {
+    "sandbox-school": {
+        "tenantId": "1000000000000000004",
+        "tenantCode": "sandbox-school",
+        "tenantName": "体验沙箱学校",
+        "status": "ACTIVE",
+    },
     "demo": {
         "tenantId": "1000000000000000001",
         "tenantCode": "demo",
@@ -26,12 +39,6 @@ _MOCK_TENANTS = {
         "tenantId": "1000000000000000003",
         "tenantCode": "demo-school",
         "tenantName": "演示职业技术学校",
-        "status": "ACTIVE",
-    },
-    "sandbox-school": {
-        "tenantId": "1000000000000000007",
-        "tenantCode": "sandbox-school",
-        "tenantName": "体验沙箱学校",
         "status": "ACTIVE",
     },
     "hnsh": {

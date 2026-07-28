@@ -122,7 +122,28 @@ def get_active_context(user: dict) -> dict:
 
 
 # ── 租户品牌（tenantBrandConfig 唯一来源，对齐契约 1.5）──
+# 2026-07-28：生产库收敛为单一体验沙箱，DEFAULT_TENANT_CODE 改为 sandbox-school。
+# 登录页 /authz/tenant/brand 只读本表，取不到即 TENANT_NOT_FOUND，因此必须始终保有
+# DEFAULT_TENANT_CODE 对应的条目；sandbox-school 取值与库内 t_tenant_brand_config 一致。
+# demo / hnsh 条目保留供 mock 登录与 pytest 夹具使用（测试租户与生产租户无关）。
 MOCK_BRAND: dict[str, dict] = {
+    "sandbox-school": {
+        "tenantId": "1000000000000000004",
+        "platformName": "高校学生全生命周期管理平台",
+        "platformSubtitle": "学生成长一体化管理",
+        "browserTitle": "高校学生全生命周期管理平台",
+        "logoLightUrl": "/static/brand/demo/logo-light.png",
+        "logoDarkUrl": "/static/brand/demo/logo-dark.png",
+        "faviconUrl": "/static/brand/demo/favicon.ico",
+        "badgeUrl": "/static/brand/demo/badge.png",
+        "loginBgUrl": "/static/brand/demo/login-bg.jpg",
+        "campusLineUrl": "/static/brand/demo/campus-line.svg",
+        "primaryColor": "#2563EB",
+        "secondaryColor": "#0EA5E9",
+        "defaultTheme": "academy_blue",
+        "motto": "厚德 精技 笃行",
+        "watermarkText": "沙箱职校",
+    },
     "demo": {
         "tenantId": "1000000000000000001",
         "platformName": "职校学生全生命周期平台",
