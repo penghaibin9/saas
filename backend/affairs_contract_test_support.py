@@ -16,6 +16,7 @@ from sqlalchemy import select
 TID = 1000000000000000001
 
 _VERSION_ROUTES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"/student-affairs/leave/(\d+)/(?:approve|reject)$"), "CsLeave"),
     (re.compile(r"/student-affairs/activities/(\d+)/(?:publish|transition|confirm|unconfirm|archive)$"), "AffairsActivity"),
     (re.compile(r"/student-affairs/volunteer/records/(\d+)/(?:confirm|reject)$"), "AffairsVolunteerRecord"),
     (re.compile(r"/student-affairs/second-class/appeals/(\d+)/review$"), "AffairsCreditAppeal"),
@@ -53,6 +54,22 @@ _NODE_ROLE = {
     "SA_OFFICE_REVIEW": "STUDENT_AFFAIRS_ADMIN",
     "SA_OFFICE_FINAL": "STUDENT_AFFAIRS_ADMIN",
     "SCHOOL_REVIEW": "SCHOOL_ADMIN",
+}
+
+_ROLE_LOGIN = {
+    "COUNSELOR": "counselor01",
+    "COLLEGE_ADMIN": "college_admin01",
+    "STUDENT_AFFAIRS_ADMIN": "sa_admin01",
+    "SCHOOL_ADMIN": "school_admin01",
+    "DORM_MANAGER": "dorm01",
+}
+
+_ROLE_NAME = {
+    "COUNSELOR": "测试辅导员",
+    "COLLEGE_ADMIN": "测试学院管理员",
+    "STUDENT_AFFAIRS_ADMIN": "测试学工处管理员",
+    "SCHOOL_ADMIN": "测试学校管理员",
+    "DORM_MANAGER": "测试宿管",
 }
 
 
@@ -115,7 +132,7 @@ def expire_publicity(model_name: str, entity_id: int, *, days: int = 2) -> None:
         db.close()
 
 
-def _ensure_role_user(db, role_code: str):
+def _ensure_role_user(db, role_code: str, login_name: str | None = None, real_name: str | None = None):
     from app.models import Role, User, UserRole
 
     role = db.scalars(select(Role).where(
@@ -125,7 +142,8 @@ def _ensure_role_user(db, role_code: str):
     )).first()
     if role is None:
         role = Role(
-            tenant_id=TID, role_code=role_code, role_name=f"测试{role_code}",
+            tenant_id=TID, role_code=role_code,
+            role_name=_ROLE_NAME.get(role_code, f"测试{role_code}"),
             role_type="SYSTEM", status="ACTIVE",
         )
         db.add(role)
@@ -134,20 +152,21 @@ def _ensure_role_user(db, role_code: str):
         role.status = "ACTIVE"
         role.is_deleted = False
 
-    login_name = f"pytest_{role_code.lower()}"
+    login = login_name or _ROLE_LOGIN.get(role_code, f"pytest_{role_code.lower()}")
     user = db.scalars(select(User).where(
         User.tenant_id == TID,
-        User.login_name == login_name,
-        User.is_deleted.is_(False),
+        User.login_name == login,
     )).first()
     if user is None:
         user = User(
-            tenant_id=TID, login_name=login_name, real_name=f"测试{role_code}",
+            tenant_id=TID, login_name=login,
+            real_name=real_name or _ROLE_NAME.get(role_code, f"测试{role_code}"),
             password_hash="test-only", user_type="TEACHER", status="ACTIVE",
         )
         db.add(user)
         db.flush()
     else:
+        user.real_name = real_name or user.real_name or _ROLE_NAME.get(role_code, f"测试{role_code}")
         user.status = "ACTIVE"
         user.is_deleted = False
 
@@ -166,13 +185,49 @@ def _ensure_role_user(db, role_code: str):
     return user
 
 
+def ensure_role_user(role_code: str, login_name: str | None = None, real_name: str | None = None) -> int:
+    """建立可核验的真实数据库角色用户，返回 User.id。"""
+    from app.db.session import get_sessionmaker
+
+    db = get_sessionmaker()()
+    try:
+        user = _ensure_role_user(db, role_code, login_name=login_name, real_name=real_name)
+        db.commit()
+        return int(user.id)
+    finally:
+        db.close()
+
+
+def role_headers(role_code: str, login_name: str | None = None, real_name: str | None = None) -> dict[str, str]:
+    """签发测试专用真实角色令牌；userId 使用 db-<User.id>，可命中真实待办受理人。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+
+    db = get_sessionmaker()()
+    try:
+        user = _ensure_role_user(db, role_code, login_name=login_name, real_name=real_name)
+        db.commit()
+        uid = int(user.id)
+        login = str(user.login_name)
+        name = str(user.real_name or login)
+    finally:
+        db.close()
+    token = create_access_token({
+        "userId": f"db-{uid}", "loginName": login, "realName": name,
+        "userType": "TEACHER", "tid": "test-school", "tenantId": str(TID),
+        "activeContextId": f"ctx_{login}", "currentRoleCode": role_code,
+        "clientType": "PC",
+    })
+    return {"Authorization": f"Bearer {token}"}
+
+
 def ensure_workflow_assignees(
     student_ids: int | Iterable[int],
     nodes: Iterable[str] = (
         "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW",
         "SA_OFFICE_REVIEW", "SA_OFFICE_FINAL", "SCHOOL_REVIEW",
     ),
-) -> None:
+) -> dict[str, int]:
     """为测试学生显式建立真实用户、角色、辅导员责任和学院范围。"""
     from app.db.session import get_sessionmaker
     from app.models import (
@@ -240,6 +295,7 @@ def ensure_workflow_assignees(
                         status="ACTIVE",
                     ))
         db.commit()
+        return {role_code: int(user.id) for role_code, user in role_users.items()}
     finally:
         db.close()
 
