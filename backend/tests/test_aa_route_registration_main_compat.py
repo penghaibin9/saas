@@ -1,4 +1,4 @@
-"""教务扩展不得覆盖主线路由、权限或请求上下文安全守卫。"""
+"""教务扩展不得覆盖最新 main 的路由、权限、上下文和模型注册安全边界。"""
 import re
 from pathlib import Path
 
@@ -11,31 +11,40 @@ BUNDLE = (ROOT / "app/modules/academic_affairs/routers/academic_affairs_bundle.p
 PERMISSIONS = (ROOT / "app/core/permissions.py").read_text(encoding="utf-8")
 CONTEXT = (ROOT / "app/core/context.py").read_text(encoding="utf-8")
 MIDDLEWARE = (ROOT / "app/middleware/context.py").read_text(encoding="utf-8")
+MODELS_INIT = (ROOT / "app/models/__init__.py").read_text(encoding="utf-8")
 
 
-def test_graduation_and_internship_main_security_routes_are_preserved():
+def test_latest_main_graduation_internship_and_student_affairs_routes_are_preserved():
     for token in (
         "require_mobile_graduation_request_permission",
-        "install_consistency_guards()",
         "graduation_p0_guard.router",
         "graduation_sensitive_router.router",
         "graduation_archive_sensitive_router.router",
         "graduation_material_sensitive_router.router",
-        "install_mobile_resolver()",
-        "install_mobile_stable_bridge()",
-        "install_mobile_taskbook_list_bridge()",
         "mobile_graduation_guard.router",
+        "mobile_graduation_teacher_context.router",
         "mobile_internship_context.router",
         "mobile_internship_leave_context.router",
         "mobile_internship_student.router",
         "student_portal_graduation_guard.router",
         "student_portal_internship_router",
         "enforce_student_portal_module_access",
+        "enforce_teacher_internship_mobile_permission",
+        'api_router.include_router(student_affairs.router, dependencies=deps["sa"])',
     ):
         assert token in SOURCE
 
+    # 这些旧施工期 monkey-patch 安装器不属于最新 main 注册合同，禁止重新带回。
+    for obsolete in (
+        "install_consistency_guards()",
+        "install_mobile_resolver()",
+        "install_mobile_stable_bridge()",
+        "install_mobile_taskbook_list_bridge()",
+    ):
+        assert obsolete not in SOURCE
 
-def test_shared_main_registry_contains_no_branch_compatibility_fork():
+
+def test_shared_main_registry_contains_only_narrow_academic_bundle_extension():
     for forbidden in (
         "find_spec",
         "_module_exists",
@@ -43,16 +52,21 @@ def test_shared_main_registry_contains_no_branch_compatibility_fork():
         "register_academic_affairs_extensions",
         "mobile_security_modules",
         "student_portal_security_modules",
+        "sys.modules",
+        "routes.remove",
     ):
         assert forbidden not in SOURCE
+
+    assert SOURCE.count("academic_affairs_bundle as academic_affairs") >= 2
+    assert SOURCE.count("academic_affairs.build_router()") >= 2
     assert 'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])' in SOURCE
 
 
-def test_academic_extensions_are_aggregated_inside_the_domain_package():
+def test_academic_extensions_are_aggregated_inside_domain_package():
     assert "academic_affairs_bundle as academic_affairs" not in PACKAGE
-    assert SOURCE.count("academic_affairs_bundle as academic_affairs") >= 2
     assert "不得提前加载聚合器" in PACKAGE
     assert "router.include_router(base_router.router)" in BUNDLE
+    assert "def build_router()" in BUNDLE
     for token in (
         "dashboard_readiness_router",
         "dynamic_grade_router",
@@ -71,8 +85,6 @@ def test_academic_extensions_are_aggregated_inside_the_domain_package():
         "textbook_closure_router",
     ):
         assert token in BUNDLE
-    assert "sys.modules" not in BUNDLE
-    assert "routes.remove" not in BUNDLE
 
 
 def test_existing_main_registration_order_is_unchanged():
@@ -85,6 +97,7 @@ def test_existing_main_registration_order_is_unchanged():
         "api_router.include_router(excel.router)",
         'api_router.include_router(employment.router, dependencies=deps["employment"])',
         'api_router.include_router(student_affairs.router, dependencies=deps["sa"])',
+        "academic_affairs.router = academic_affairs.build_router()",
         'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])',
         "register_platform_routes(api_router)",
     ]
@@ -92,12 +105,13 @@ def test_existing_main_registration_order_is_unchanged():
     assert positions == sorted(positions)
 
 
-def test_current_main_permission_additions_are_preserved():
+def test_current_main_cross_domain_permissions_are_preserved():
     for token in (
         '"graduationDesign.topic.assign", "graduationDesign.topic.review"',
         '"graduationDesign.defense.view", "graduationDesign.defense.groupManage"',
         '"graduationDesign.grade.view", "graduationDesign.grade.review"',
         '"internship.agreement.view", "internship.agreement.manage", "internship.agreement.sign"',
+        '"studentAffairs.aid.counselorReview"',
     ):
         assert token in PERMISSIONS
 
@@ -142,3 +156,24 @@ def test_request_middleware_keeps_fail_closed_tenant_guards():
     assert "_demo_tenant_readonly_deny(request)" in MIDDLEWARE
     assert '"TENANT_GUARD_UNAVAILABLE"' in MIDDLEWARE
     assert '"MODULE_EXPIRED_READONLY"' in MIDDLEWARE
+
+
+def test_academic_extension_models_register_through_one_shared_import():
+    assert MODELS_INIT.count("from app.models.academic_affairs_registry import *") == 1
+
+    from app.models import (
+        AaEffectiveGradePolicySnapshot,
+        AaGradeComponentScore,
+        AaSemesterPilot,
+        AaTeachingClass,
+        Base,
+    )
+
+    expected = {
+        AaTeachingClass.__table__.name,
+        AaGradeComponentScore.__table__.name,
+        AaSemesterPilot.__table__.name,
+        AaEffectiveGradePolicySnapshot.__table__.name,
+    }
+    assert expected <= set(Base.metadata.tables)
+    assert "t_aa_teaching_class" in expected
