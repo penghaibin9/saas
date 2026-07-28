@@ -18,6 +18,8 @@ jobs:
     if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727' || github.ref_name == 'codex/student-affairs-leave-cutover-20260727'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,12 +88,17 @@ jobs:
       - name: Commit repair chain
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type f -name '*.pyc' -delete
+          git add -u
           git add backend/app backend/tests backend/pytest.ini backend/affairs_contract_test_support.py frontend/src frontend/tests student-portal/src miniapp/src scripts/maintenance
           if git diff --cached --quiet; then
             echo "No repair changes to commit"
           else
             git commit -m "fix(student-affairs): complete explicit contracts after main sync"
+            git pull --rebase origin codex/student-affairs-leave-cutover-20260727
             git push origin HEAD:codex/student-affairs-leave-cutover-20260727
           fi
