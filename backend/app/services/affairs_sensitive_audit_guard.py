@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from app.core.exceptions import AppException
-from app.core.permissions import has_permission
 
 
 def strict_sensitive_view_audit(student_id, reason: str, resource: str) -> None:
@@ -39,7 +38,7 @@ def strict_sensitive_view_audit(student_id, reason: str, resource: str) -> None:
 # 明细角色与逐生范围由 affairs_mental_service._can_view_detail 正式实现；
 # 本守卫只负责把审计改为 fail-closed，禁止再次覆盖角色边界。
 
+
 def install() -> None:
     from app.services import affairs_mental_service as mental
     mental._sensitive_view_audit = strict_sensitive_view_audit
-    mental._can_view_detail = explicit_detail_permission
