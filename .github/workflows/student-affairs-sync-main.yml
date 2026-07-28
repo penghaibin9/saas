@@ -1,0 +1,60 @@
+name: Student Affairs Sync Main
+
+on:
+  push:
+    branches:
+      - codex/student-affairs-leave-cutover-20260727
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/student-affairs-leave-cutover-20260727
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply pending round5 repairs
+        run: |
+          set -euo pipefail
+          python scripts/maintenance/repair_affairs_remaining_round5.py
+          python -m compileall -q backend/app backend/tests backend/affairs_contract_test_support.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/app backend/tests backend/affairs_contract_test_support.py scripts/maintenance
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(student-affairs): apply remaining round5 contracts"
+          fi
+      - name: Merge latest main or record exact conflicts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          rm -f student-affairs-main-conflicts.txt
+          set +e
+          git merge --no-ff --no-commit origin/main
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            git commit -m "chore(student-affairs): sync latest main"
+          else
+            git diff --name-only --diff-filter=U | sort > /tmp/conflicts.txt
+            git merge --abort
+            {
+              echo "base=$(git rev-parse origin/main)"
+              echo "head_before_sync=$(git rev-parse HEAD)"
+              echo "conflicts:"
+              cat /tmp/conflicts.txt
+            } > student-affairs-main-conflicts.txt
+            git add student-affairs-main-conflicts.txt
+            git commit -m "chore(student-affairs): record latest main conflicts"
+          fi
+      - name: Push branch result
+        run: git push origin HEAD:codex/student-affairs-leave-cutover-20260727
