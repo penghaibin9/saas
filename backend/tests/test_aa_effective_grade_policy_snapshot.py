@@ -107,7 +107,9 @@ def test_makeup_and_clearance_use_exact_source_business_record_in_canonical_serv
 def test_recheck_uses_unified_student_identity_and_exact_source_link_without_module_location_assertion():
     source = (ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py").read_text(encoding="utf-8")
 
-    assert "resolve_student(db, user)" in source
+    assert "mobile_student_identity_facade import resolve_student" in source
+    assert "resolve_student(db, get_current_user_ctx() or {})" in source
+    assert "profile = _resolve_student(db)" in source
     assert 'grade.source_biz_type = "RECHECK"' in source
     assert "grade.source_biz_id = row.id" in source
     assert "StudentProfile.student_no ==" not in source
