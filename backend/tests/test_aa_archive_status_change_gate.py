@@ -2,6 +2,20 @@
 from datetime import date, datetime
 from types import SimpleNamespace
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _tenant_context():
+    """归档策略通过真实请求上下文解析当前租户。"""
+    from app.core.context import set_tenant
+
+    set_tenant({"tenantId": "1"})
+    try:
+        yield
+    finally:
+        set_tenant(None)
+
 
 class _Query:
     def __init__(self, *, first=None, rows=None):
