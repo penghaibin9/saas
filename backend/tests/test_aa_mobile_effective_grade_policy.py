@@ -20,10 +20,14 @@ def test_student_options_return_exact_course_and_attempt_identity():
     from app.modules.academic_affairs import services
 
     mobile = services.mobile_academic_affairs_service
-    source = Path(mobile.__file__).read_text(encoding="utf-8")
+    assert callable(mobile.makeup_options_my)
+    root = Path(__file__).resolve().parents[2]
+    source = (
+        root / "backend/app/modules/academic_affairs/services/mobile_academic_gaps_service.py"
+    ).read_text(encoding="utf-8")
     for field in ("courseId", "courseCode", "courseVersion", "attemptNo", "gradeId"):
         assert f'"{field}"' in source
-    assert "effective_grade_rows(rows)" in source
+    assert "resolve_effective_grade(rows)" in source
     assert "identityDebtCount" in source
 
 
