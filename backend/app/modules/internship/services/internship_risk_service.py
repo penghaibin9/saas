@@ -257,16 +257,20 @@ def student_help_report(user, body=None) -> dict:
                 "message": "求助已提交，指导教师将跟进"}
 
 
-def list_risks(page, page_size, level=None, status=None, keyword=None, user=None, batch_id=None):
-    from app.modules.internship.services.internship_batch_context import resolve_batch
+def list_risks(page, page_size, level=None, status=None, keyword=None, user=None, batch_id=None,
+              require_batch: bool = True):
+    """require_batch=False 供教师个人风险待办（跨批次汇总本人指导范围）使用；
+    台账列表/导出等按批次台账场景必须显式传批次，保持 require_batch 默认 True。"""
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        batch = resolve_batch(db, batch_id, for_write=False)
-        rec_ids = list(db.scalars(select(InternshipRecord.id).where(
+        rec_query = select(InternshipRecord.id).where(
             InternshipRecord.tenant_id == _tid(),
-            InternshipRecord.is_deleted.is_(False),
-            InternshipRecord.batch_id == batch.id,
-        )).all()) or [0]
+            InternshipRecord.is_deleted.is_(False))
+        if require_batch or (batch_id is not None and str(batch_id).strip() != ""):
+            from app.modules.internship.services.internship_batch_context import resolve_batch
+            batch = resolve_batch(db, batch_id, for_write=False)
+            rec_query = rec_query.where(InternshipRecord.batch_id == batch.id)
+        rec_ids = list(db.scalars(rec_query).all()) or [0]
         q = select(RiskRecord).where(
             RiskRecord.tenant_id == _tid(),
             RiskRecord.is_deleted.is_(False),

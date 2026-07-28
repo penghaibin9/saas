@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     # ── 多租户（对齐 DB 冻结册：单库/单 schema + tenant_id 行级隔离）──
     TENANCY_MODE: str = "single"         # single(私有化单校) / multi(SaaS 多校)
-    DEFAULT_TENANT_CODE: str = "demo"
+    DEFAULT_TENANT_CODE: str = "sandbox-school"
 
     # ── 微信小程序一键登录（jscode2session）──
     WX_APPID: str = ""                   # 小程序 AppID；未配置则微信登录端点返回"未配置"错误，不影响账号密码登录

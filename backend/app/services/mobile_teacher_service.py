@@ -2283,8 +2283,8 @@ def internship_risks_pending(user: dict) -> dict:
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.modules.internship.services import internship_risk_service as risk_svc
-    pending, _ = risk_svc.list_risks(1, 50, status="PENDING_HANDLE", user=u)
-    processing, _ = risk_svc.list_risks(1, 50, status="PROCESSING", user=u)
+    pending, _ = risk_svc.list_risks(1, 50, status="PENDING_HANDLE", user=u, require_batch=False)
+    processing, _ = risk_svc.list_risks(1, 50, status="PROCESSING", user=u, require_batch=False)
     items = list(pending) + list(processing)
     return {"list": items, "total": len(items)}
 

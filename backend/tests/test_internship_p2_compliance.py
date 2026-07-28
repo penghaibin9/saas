@@ -165,8 +165,15 @@ def test_safety_cannot_bypass_with_passed_true(client, auth_headers, db_mode):
         db.commit()
     finally:
         db.close()
+    # 课程要求 requireCommitment，须先确认安全承诺（按课程内容哈希+版本）才能提交
+    my_courses = client.get("/api/v1/mobile/internship/safety/courses", headers=stu_h).json()["data"]
+    content_hash = next(c["contentHash"] for c in my_courses if c["id"] == course_id)
+    commit = client.post(f"/api/v1/mobile/internship/safety/completions/{cid}/commit", headers=stu_h,
+                         json={"expectedVersion": 0, "contentHash": content_hash}).json()
+    assert commit["code"] == 0, commit
+    # 不自报 studiedMinutes，服务端按 started_at 到提交的真实流逝时间折算（可信时长 = min(自报, 真实流逝)）
     submit = client.post(f"/api/v1/mobile/internship/safety/courses/{course_id}/submit", headers=stu_h,
-                         json={"studiedMinutes": 10, "expectedVersion": 0}).json()
+                         json={"expectedVersion": commit["data"]["version"]}).json()
     assert submit["code"] == 0, submit
     fail = client.post(f"{CMP}/safety/completions/{cid}/review", headers=h, json={
         "score": 50, "studiedMinutes": 10, "commitment": False, "passed": True,
@@ -174,17 +181,26 @@ def test_safety_cannot_bypass_with_passed_true(client, auth_headers, db_mode):
     }).json()
     assert fail["code"] == 0, fail
     assert fail["data"]["passed"] is False
-    # 未通过可重新提交学习记录再审（maxAttempts=3 未超限）
+    # 未通过（FAILED）须先重新开始（RESTART）才能回到 IN_PROGRESS 重新学习提交（maxAttempts=3 未超限）
+    restart = client.post(f"/api/v1/mobile/internship/safety/courses/{course_id}/start", headers=stu_h).json()
+    assert restart["code"] == 0, restart
+    db = get_sessionmaker()()
+    try:
+        row = db.get(InternshipSafetyCompletion, int(cid))
+        row.started_at = datetime.utcnow() - timedelta(minutes=70)
+        db.commit()
+    finally:
+        db.close()
+    # 课程 requireCommitment=True：重新开始后 commitment_confirmed 会被重置，须再次确认安全承诺
+    recommit = client.post(f"/api/v1/mobile/internship/safety/completions/{cid}/commit", headers=stu_h,
+                           json={"contentHash": content_hash, "expectedVersion": restart["data"]["version"]}).json()
+    assert recommit["code"] == 0, recommit
     resubmit = client.post(f"/api/v1/mobile/internship/safety/courses/{course_id}/submit", headers=stu_h,
-                           json={"studiedMinutes": 60, "expectedVersion": fail["data"]["version"]}).json()
+                           json={"expectedVersion": recommit["data"]["version"]}).json()
     assert resubmit["code"] == 0, resubmit
-    # 课程 requireCommitment=True：还须学生本人完成安全承诺，否则通过率永远算不出 True
-    commit = client.post(f"/api/v1/mobile/internship/safety/completions/{cid}/commit", headers=stu_h,
-                         json={"contentHash": "commitment-ack", "expectedVersion": resubmit["data"]["version"]}).json()
-    assert commit["code"] == 0, commit
     ok = client.post(f"{CMP}/safety/completions/{cid}/review", headers=h, json={
         "score": 90, "studiedMinutes": 60, "commitment": True,
-        "expectedVersion": commit["data"]["version"],
+        "expectedVersion": resubmit["data"]["version"],
     }).json()
     assert ok["code"] == 0, ok
     assert ok["data"]["passed"] is True
@@ -362,10 +378,10 @@ def test_enterprise_access_required_blocks_assign(client, auth_headers, db_mode)
         pytest.skip(str(pos))
     pid = pos["data"]["id"]
     client.post(f"{POS}/{pid}/status", headers=h, json={"action": "SUBMIT"})
-    client.post(f"{POS}/{pid}/status", headers=h, json={"action": "PUBLISH"})
-    fail = client.post(f"{IST}/{iid}/assign", headers=h, json={"positionId": pid, "expectedVersion": 0}).json()
+    # 企业未通过准入考察前，岗位连「上架」都应被同一条企业准入规则拦住（比分配更早的门禁）
+    fail = client.post(f"{POS}/{pid}/status", headers=h, json={"action": "PUBLISH"}).json()
     assert fail["code"] != 0
-    # 补考察后可分配
+    # 补考察后才能上架并分配
     insp = client.post(f"{CMP}/inspections", headers=h, json={
         "companyId": eid, "batchId": bid, "inspectionType": "DOCUMENT", "conclusion": "合格",
     }).json()
@@ -375,5 +391,7 @@ def test_enterprise_access_required_blocks_assign(client, auth_headers, db_mode)
         "comment": "准入通过", "validUntil": "2099-12-31T00:00:00",
     }).json()
     assert rev["code"] == 0, rev
+    publish = client.post(f"{POS}/{pid}/status", headers=h, json={"action": "PUBLISH"}).json()
+    assert publish["code"] == 0, publish
     ok = client.post(f"{IST}/{iid}/assign", headers=h, json={"positionId": pid, "expectedVersion": 0}).json()
     assert ok["code"] == 0, ok

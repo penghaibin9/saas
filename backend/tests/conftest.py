@@ -10,6 +10,10 @@ from urllib.parse import parse_qsl, urlsplit
 os.environ["APP_ENV"] = "test"
 os.environ["DB_ENABLED"] = "false"
 os.environ["DATABASE_URL"] = ""
+# 测试套件在独立测试库里自建租户，约定主租户 = demo(MAIN_TENANT_ID 1000000000000000001)，
+# 与生产库里的真实租户无关。生产默认租户已于 2026-07-28 收敛为 sandbox-school，故此处
+# 必须显式钉住测试自己的租户约定，否则 mock-login 会解析到沙箱租户而与夹具数据跨租户不可见。
+os.environ["DEFAULT_TENANT_CODE"] = "demo"
 # MySQL-only 收口：优先使用显式 TEST_DATABASE_URL。
 # 若进程环境未提供，则兜底读取 backend/.env 中的 TEST_DATABASE_URL，避免拼出 saas_user:@...。
 if "TEST_DATABASE_URL" not in os.environ:

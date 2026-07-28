@@ -557,7 +557,8 @@ def enterprise_eval_detail(eval_id: str, user=Depends(require_permission("intern
 @router.post("/enterprise-evals/{eval_id}/review", summary="学校审核企业评价（通过/退回，退回原因≥5字）")
 def enterprise_eval_review(eval_id: str, body: dict = Body(...), user=Depends(require_permission("internship.eval.enterprise.review"))):
     b = body or {}
-    result = ee.review(user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "")
+    result = ee.review(user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "",
+                       expected_version=b.get("expectedVersion"))
     audit_log.record("审核企业评价", f"internship-enterprise-eval:{eval_id}", detail=result)
     return success(result, message="审核完成")
 

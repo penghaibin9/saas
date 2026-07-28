@@ -557,3 +557,18 @@ def by_enterprise(user=None, batch_id=None):
         return _aggregate(
             pairs, db, user,
             lambda record: record.enterprise_name or "未分配企业")
+
+
+def export_archives(keyword=None, batch_id=None, user=None) -> dict:
+    from app.services import xlsx_util
+    from app.modules.internship.services.internship_export_util import load_export_rows
+    items, _ = load_export_rows(
+        list_by_student, keyword=keyword, batch_id=batch_id, user=user)
+    headers = ["学号", "姓名", "指导教师", "实习企业", "记录状态", "完整度(%)", "是否已归档", "归档时间"]
+    rows = [[item["studentNo"], item["studentName"], item["advisorName"], item["enterpriseName"],
+             item["recordStatus"], item["completeness"], "是" if item["archived"] else "否",
+             item["archivedAt"]] for item in items]
+    watermark = (f"岗位实习中心·归档台账 · 导出人：{_op_name(user)} · "
+                 f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx("归档台账", headers, rows, watermark=watermark)
+    return xlsx_util.pack_xlsx_result(content, "归档台账.xlsx", len(items))

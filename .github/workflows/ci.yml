@@ -41,6 +41,8 @@ jobs:
     env:
       # 后端测试为 MySQL-only（conftest 拒绝回落 SQLite）；CI 提供 MySQL 服务库
       TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
+      # 会话级建表：每用例只清数据不重建约250张表结构，避免 db_mode 单测11秒级建表开销撑爆硬超时
+      FAST_TEST_SCHEMA: "1"
     services:
       mysql:
         image: mysql:8.0

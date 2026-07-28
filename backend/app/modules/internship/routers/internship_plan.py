@@ -37,8 +37,8 @@ def plan_save(batch_id: int, body: dict = Body(...), user=Depends(require_permis
 
 
 @router.post("/plans/batch/{batch_id}/publish", summary="发布实习计划书（生成学生确认+任务进度）")
-def plan_publish(batch_id: int, user=Depends(require_permission(_P_PLAN_MANAGE))):
-    return success(plan_svc.publish_plan(batch_id, user=user), message="计划书已发布")
+def plan_publish(batch_id: int, body: dict = Body(default={}), user=Depends(require_permission(_P_PLAN_MANAGE))):
+    return success(plan_svc.publish_plan(batch_id, body or {}, user=user), message="计划书已发布")
 
 
 @router.get("/plans/batch/{batch_id}/task-summary", summary="计划任务完成度汇总（按批次）")
@@ -68,4 +68,5 @@ def plan_task_progress_list(page: int = Query(1, ge=1), pageSize: int = Query(20
 @router.post("/plan-task-progress/{prog_id}/review", summary="审核学生任务完成度（APPROVE/RETURN）")
 def plan_task_review(prog_id: int, body: dict = Body(...), user=Depends(require_permission(_P_TASK_REVIEW))):
     b = body or {}
-    return success(task_svc.review_progress(prog_id, b.get("action", ""), b.get("comment", ""), user=user))
+    return success(task_svc.review_progress(prog_id, b.get("action", ""), b.get("comment", ""),
+                                             user=user, expected_version=b.get("expectedVersion")))
