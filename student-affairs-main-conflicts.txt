@@ -1,5 +1,5 @@
 base=6f49bb483abcbf0932c99f7637ee8d97b835fbb0
-head_before_sync=5ab86ccd1c901e5d4260d99e8a58d3a83ff01a6f
+head_before_sync=6f673393f7dca4f41f8a273495e0428cdd9fd1b1
 conflicts:
 miniapp/src/services/request.js
 student-portal/src/services/request.js
