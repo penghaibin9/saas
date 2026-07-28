@@ -1,6 +1,10 @@
 """教务中心 Router 包。
 
-本包不在导入阶段删除、追加或重排 APIRoute。所有 Router 必须在
-``app.api.v1.route_registration`` 中显式注册，重复路径必须在原 Router 中完成迁移，
-不得依赖首条路由抢占或运行时替换。
+新增教务 Router 在模块内部聚合，由主线既有的单一 ``academic_affairs.router``
+注册入口统一挂载。这里不删除、重排或运行时替换 APIRoute，也不要求修改
+``app.api.v1.route_registration``。
 """
+
+from . import academic_affairs_bundle as academic_affairs
+
+__all__ = ["academic_affairs"]
