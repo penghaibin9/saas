@@ -158,7 +158,7 @@ const trustedMinutes = computed(() => {
 })
 const canSubmitSafety = computed(() => !!completion.value && completion.value.status === 'IN_PROGRESS' && (!courseDetail.value.requireCommitment || completion.value.commitmentConfirmed) && trustedMinutes.value >= Number(courseDetail.value.requiredMinutes || 0))
 
-function persistBatch() { try { selectedBatchId.value ? localStorage.setItem(STORAGE_KEY, selectedBatchId.value) : localStorage.removeItem(STORAGE_KEY) } catch {} }
+function persistBatch() { try { selectedBatchId.value ? localStorage.setItem(STORAGE_KEY, selectedBatchId.value) : localStorage.removeItem(STORAGE_KEY) } catch { /* localStorage 可能被浏览器策略禁用，保留内存态继续办理。 */ } }
 function selectBatch(id) { selectedBatchId.value = String(id || ''); persistBatch(); selectedConsent.value = null; selectedCourse.value = null; load() }
 function changeBatch() { persistBatch(); selectedConsent.value = null; selectedCourse.value = null; load() }
 function fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' }
@@ -194,7 +194,7 @@ async function startSafety(){ if(!selectedCourse.value||busy.value||safetyNoAtte
 async function commitSafety(){ if(!completion.value||completion.value.status!=='IN_PROGRESS'||busy.value||compliance.value.historyMode)return;if(!confirm('确认本人已阅读当前课程版本正文并承诺遵守岗位安全规程？'))return;busy.value=true;try{await api.safetyCommit(completion.value.id,{expectedVersion:completion.value.version,contentHash:courseDetail.value.contentHash,deviceDigest:deviceDigest()});ui.notify('安全承诺已确认');await selectCourse(selectedCourse.value)}catch(e){ui.notify(e?.message||'确认失败，请刷新后重试');if(String(e?.code||'').includes('CONFLICT'))await selectCourse(selectedCourse.value)}finally{busy.value=false} }
 async function submitSafety(){if(!canSubmitSafety.value||busy.value||compliance.value.historyMode)return;busy.value=true;try{await api.safetySubmit(selectedCourse.value.id,{expectedVersion:completion.value.version,studiedMinutes:trustedMinutes.value,answers:{readAndUnderstood:true}});ui.notify('学习结果已提交审核');await selectCourse(selectedCourse.value);await load()}catch(e){ui.notify(e?.message||'提交失败，请重试');if(String(e?.code||'').includes('CONFLICT'))await selectCourse(selectedCourse.value)}finally{busy.value=false}}
 
-onMounted(()=>{try{selectedBatchId.value=localStorage.getItem(STORAGE_KEY)||''}catch{};load();timer=setInterval(()=>{now.value=Date.now()},15000)})
+onMounted(()=>{try{selectedBatchId.value=localStorage.getItem(STORAGE_KEY)||''}catch{ /* localStorage 可能被浏览器策略禁用。 */ }load();timer=setInterval(()=>{now.value=Date.now()},15000)})
 onBeforeUnmount(()=>{if(timer)clearInterval(timer)})
 </script>
 
