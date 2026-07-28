@@ -37,22 +37,22 @@ def test_locked_manual_drop_projects_new_roster_version_in_same_transaction():
     assert "for_update=True" in admin_drop
 
 
-def test_public_selection_and_teaching_class_paths_are_patched_without_breaking_names():
+def test_public_selection_and_teaching_class_paths_use_canonical_entrypoints():
     from app.modules.academic_affairs import services
-    from app.modules.academic_affairs.services import academic_affairs_teaching_class_lock_service as lock
-
-    assert services.academic_affairs_teaching_class_service.__name__.endswith(
-        "academic_affairs_teaching_class_lock_service"
+    from app.modules.academic_affairs.services import (
+        academic_affairs_teaching_class_compat_migration_service as compat,
     )
-    assert lock.create_roster_version.__module__.endswith(
+
+    teaching_class = services.academic_affairs_teaching_class_service
+    assert teaching_class.__name__.endswith("academic_affairs_teaching_class_service")
+    assert teaching_class.create_roster_version is compat.create_roster_version
+    assert teaching_class.create_roster_version.__module__.endswith(
         "academic_affairs_teaching_class_compat_migration_service"
     )
-    assert services.academic_affairs_selection_service.__name__.endswith(
-        "academic_affairs_selection_facade"
-    )
-    assert services.academic_affairs_selection_service.adjust_record.__module__.endswith(
-        "academic_affairs_selection_roster_migration_facade"
-    )
+
+    selection = services.academic_affairs_selection_service
+    assert selection.__name__.endswith("academic_affairs_selection_final_service")
+    assert selection.admin_drop.__module__.endswith("academic_affairs_selection_service")
 
 
 def test_migration_remains_additive_and_keeps_history_tables():
