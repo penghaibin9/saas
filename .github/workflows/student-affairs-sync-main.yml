@@ -6,6 +6,10 @@ on:
       - codex/student-affairs-leave-cutover-20260727
   workflow_dispatch:
 
+concurrency:
+  group: student-affairs-sync-main-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
