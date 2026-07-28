@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.core.exceptions import AppException
 
 
@@ -116,9 +115,12 @@ def test_r10_models_and_migration_are_additive():
         assert table in migration
 
 
-def test_r10_routes_are_registered_through_explicit_route_registration():
+def test_r10_routes_are_registered_through_domain_bundle():
     root = Path(__file__).resolve().parents[1]
     registration = (root / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
+    bundle = (
+        root / "app/modules/academic_affairs/routers/academic_affairs_bundle.py"
+    ).read_text(encoding="utf-8")
     dynamic_router = (
         root / "app/modules/academic_affairs/routers/dynamic_grade_router.py"
     ).read_text(encoding="utf-8")
@@ -126,8 +128,10 @@ def test_r10_routes_are_registered_through_explicit_route_registration():
         root / "app/modules/academic_affairs/routers/stats_snapshot_router.py"
     ).read_text(encoding="utf-8")
 
-    assert "dynamic_grade_router" in registration
-    assert "stats_snapshot_router" in registration
+    assert 'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])' in registration
+    assert "dynamic_grade_router" in bundle
+    assert "stats_snapshot_router" in bundle
+    assert "router.include_router(module.router)" in bundle
     assert 'router.put("/grade-tasks/{task_id}/scheme"' in dynamic_router
     assert 'router.post("/grade-tasks/{task_id}/component-scores"' in dynamic_router
     assert 'router.post("/stats/snapshots"' in stats_router
