@@ -37,6 +37,7 @@ from app.services.affairs_credit_appeal_reliability import install as install_cr
 from app.services.affairs_data_integrity_guard import install as install_data_integrity_guard
 from app.services.affairs_discipline_integrity_guard import install as install_discipline_integrity_guard
 from app.services.affairs_dorm_checkout_guard import install as install_dorm_checkout_guard
+from app.services.affairs_dorm_message_event_guard import install as install_dorm_message_event_guard
 from app.services.affairs_dorm_node_guard import install as install_dorm_node_guard
 from app.services.affairs_dorm_projection_service import install as install_dorm_projection
 from app.services.affairs_dorm_reliability_service import install as install_dorm_reliability
@@ -129,6 +130,7 @@ install_history_import_guard()
 install_history_dry_run_guard()
 install_stats_integrity_guard()
 install_affairs_four_end_review_guard()
+install_dorm_message_event_guard()
 install_dorm_node_guard()
 install_dorm_transfer_scope_guard()
 install_student_contract()
