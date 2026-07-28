@@ -3,29 +3,31 @@ from pathlib import Path
 
 
 def test_student_pc_todo_route_resolves_exact_academic_workspaces():
-    from app.student_portal.services.home_service import _todo_route
+    from app.student_portal import services
 
-    assert _todo_route(
+    assert services.home_service.__name__.endswith("academic_home_todo_facade")
+    todo_route = services.home_service._todo_route
+    assert todo_route(
         source_module="academic-affairs",
         source_biz_type="AA_GRADE_RECHECK",
         todo_type="GRADE_RECHECK_RETURNED",
     ) == "/academic/recheck"
-    assert _todo_route(
+    assert todo_route(
         source_module="academic-affairs",
         source_biz_type="AA_REGISTRATION",
         todo_type="REGISTRATION_PENDING",
     ) == "/academic/registration"
-    assert _todo_route(
+    assert todo_route(
         source_module="academic-affairs",
         source_biz_type="AA_WARNING",
         todo_type="WARNING_FOLLOW",
     ) == "/academic/warning"
-    assert _todo_route(
+    assert todo_route(
         source_module="academic-affairs",
         source_biz_type="AA_UNKNOWN",
         todo_type="UNKNOWN",
     ) == "/academic"
-    assert _todo_route(source_module="internship") == "/internship"
+    assert todo_route(source_module="internship") == "/internship"
 
 
 def test_student_pc_has_task_home_and_independent_academic_routes():
