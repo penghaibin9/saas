@@ -84,6 +84,8 @@ jobs:
             tests/test_aa_model_extension_compat.py \
             tests/test_aa_route_registration_main_compat.py \
             tests/test_aa_route_uniqueness.py \
+            tests/test_aa_shared_exception_compat.py \
+            tests/test_aa_source_branch_dependency_closure.py \
             tests/test_aa_student_portal_route_main_compat.py \
             tests/test_aa_miniapp_main_compat.py \
             tests/test_aa_archive_semantic_gates.py \
@@ -135,7 +137,7 @@ jobs:
             tests/test_aa_dashboard_readiness_v2.py \
             tests/test_aa_service_entrypoint_integrity.py \
             tests/test_security_student_identity.py \
-            --maxfail=1 2>&1 | tee backend-targeted.log
+            2>&1 | tee backend-targeted.log
           exit ${PIPESTATUS[0]}
       - name: 上传后端失败诊断
         if: failure()
@@ -212,7 +214,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          npm run lint -- --ignore-pattern src/views/internship/InternshipComplianceView.vue 2>&1 | tee student-pc-lint.log
+          npm run lint 2>&1 | tee student-pc-lint.log
           exit ${PIPESTATUS[0]}
       - name: 生产构建
         shell: bash
