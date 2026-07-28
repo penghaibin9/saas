@@ -1,6 +1,6 @@
-status=31
+status=1
 base=6f49bb483abcbf0932c99f7637ee8d97b835fbb0
-head=88492319823fed451f13f8872a38be25c66f301b
+head=2cf786a6b3096dac89d78fa68094de5110f0f182
 log_tail:
 request resolver anchor fixed
 student affairs remaining round5 repair passed
@@ -11,36 +11,15 @@ student affairs runtime round8 passed
 student affairs funding round9 passed
 student affairs cockpit round10 passed
 student affairs residual round11 passed
-[codex/student-affairs-leave-cutover-20260727 88492319] fix(student-affairs): apply explicit contracts through round11
- 41 files changed, 275 insertions(+), 57 deletions(-)
- create mode 100644 backend/tests/test_affairs_bigdata_status_contract.py
- create mode 100644 backend/tests/test_affairs_cockpit_truth_contract.py
- create mode 100644 backend/tests/test_affairs_funding_input_contract.py
- create mode 100644 backend/tests/test_affairs_residual_contract_round11.py
- create mode 100644 backend/tests/test_affairs_runtime_contract_round8.py
- create mode 100644 backend/tests/test_affairs_sensitive_role_contract.py
- create mode 100644 scripts/maintenance/__pycache__/fix_request_resolver_anchor.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/fix_round8_whitespace_matching.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_bigdata_round7.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_cockpit_round10.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_explicit_contracts_round4.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_explicit_contracts_round5.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_funding_round9.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_leave_tests.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_remaining_round5.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_residual_round11.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_runtime_tests_round8.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_sensitive_scope_round6.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_validation_round2.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/repair_affairs_validation_round3.cpython-312.pyc
- create mode 100644 scripts/maintenance/__pycache__/resolve_student_affairs_request_conflicts.cpython-312.pyc
-From https://github.com/penghaibin9/saas
- * branch              main       -> FETCH_HEAD
-Auto-merging .github/workflows/ci.yml
-Auto-merging backend/app/api/v1/mobile.py
-Auto-merging miniapp/src/services/request.js
-CONFLICT (content): Merge conflict in miniapp/src/services/request.js
-Auto-merging student-portal/src/services/portalApi.js
-Automatic merge failed; fix conflicts and then commit the result.
-Unexpected conflicts:
-miniapp/src/services/request.js
+*** Error compiling 'backend/tests/test_affairs_phase2_bigdata.py'...
+  File "backend/tests/test_affairs_phase2_bigdata.py", line 150
+    is_deleted=False, version=0,
+    ^^^^^^^^^^^^^^^^
+SyntaxError: keyword argument repeated: is_deleted
+
+*** Error compiling 'backend/tests/test_affairs_round2_bigdata.py'...
+  File "backend/tests/test_affairs_round2_bigdata.py", line 93
+    is_deleted=False, version=0,
+    ^^^^^^^^^^^^^^^^
+SyntaxError: keyword argument repeated: is_deleted
+
