@@ -35,7 +35,7 @@ jobs:
             python scripts/maintenance/repair_affairs_validation_round2.py
             python scripts/maintenance/repair_affairs_validation_round3.py
             python scripts/maintenance/repair_affairs_explicit_contracts_round4.py
-            python scripts/maintenance/repair_affairs_explicit_contracts_round5.py
+            python scripts/maintenance/repair_affairs_remaining_round5.py
           } 2>&1 | tee leave-cutover.log
           status=${PIPESTATUS[0]}
           tail -n 360 leave-cutover.log
@@ -72,6 +72,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No cutover changes to commit"
           else
-            git commit -m "test(student-affairs): make legacy contracts explicit"
+            git commit -m "fix(student-affairs): repair remaining explicit contracts"
             git push origin HEAD:codex/student-affairs-leave-cutover-20260727
           fi
