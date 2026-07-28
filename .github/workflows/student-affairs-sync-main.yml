@@ -32,6 +32,7 @@ jobs:
         shell: bash
         run: |
           set +e
+          echo "student-affairs-sync-revision=12"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm -f student-affairs-sync-error.txt student-affairs-main-conflicts.txt
