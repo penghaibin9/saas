@@ -88,7 +88,7 @@ export default {
     },
     logout() {
       uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: (r) => {
-        if (r.confirm) { useSessionStore().logout(); relaunch('/pages/login/index') }
+        if (r.confirm) { useSessionStore().logout(); relaunch('/pages/login/teacher/index') }
       } })
     }
   }

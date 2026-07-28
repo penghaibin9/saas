@@ -1,99 +1,66 @@
 <template>
-  <div class="login">
-    <!-- 左：视觉区 -->
-    <div class="visual">
-      <div class="visual__photo">
-        <div class="visual__grid" />
-        <div class="visual__scan" />
-        <div class="visual__fade" />
+  <main class="login-page">
+    <section class="brand-panel" aria-labelledby="student-login-title">
+      <div class="brand-mark">
+        <span v-if="!brandLogo">校</span><img v-else :src="brandLogo" alt="">
+        <strong>{{ platformName }}</strong><small>学生服务门户</small>
       </div>
-      <div class="visual__top">
-        <div style="display:flex;align-items:center;gap:11px">
-          <span class="vlogo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5 12 4.5l9.5 4-9.5 4z" /><path d="M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13" /></svg></span>
-          <span style="color:#fff;font-size:15px;font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.2)">{{ schoolName }}</span>
-        </div>
-        <div class="vstatus"><span class="vstatus__dot" />系统运行正常</div>
+      <div class="brand-copy">
+        <p class="eyebrow">学生个人服务入口</p>
+        <h1 id="student-login-title">校园里的每件事，<br>都能找到进度和结果。</h1>
+        <p class="lead">查课表与成绩、提交材料、办理申请、查看审批进度。登录后只呈现与你本人相关的信息和待办。</p>
+        <div class="capabilities"><span>统一办事入口</span><span>全过程进度可查</span><span>消息与结果直达</span></div>
       </div>
-      <div class="vtags">
-        <span class="vtag">🔒 数据加密传输</span><span class="vtag">👁 仅本人可见</span>
+      <div class="service-map" aria-label="学生服务能力">
+        <div><b>办事务</b><small>申请、补交、修改</small></div>
+        <i /><div><b>交材料</b><small>上传、替换、归档</small></div>
+        <i /><div><b>查结果</b><small>成绩、审批、证明</small></div>
+        <i /><div><b>看进度</b><small>当前节点和下一步</small></div>
       </div>
-      <div class="visual__bottom">
-        <div style="color:#fff;font-size:32px;font-weight:700;line-height:1.35;max-width:460px;text-shadow:0 2px 12px rgba(0,0,0,.18)">你好呀，欢迎回来<br>继续你的校园时光</div>
-        <div style="color:rgba(255,255,255,.82);font-size:14px;margin-top:12px;max-width:420px;line-height:1.7">重任务、传材料、下证明、填长表单——学生 PC 门户陪你办完在校的每一件事。</div>
-        <div class="idcard">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:10.5px;letter-spacing:1.5px;color:rgba(255,255,255,.75);font-weight:600">STUDENT ID</span><span style="font-size:10px;padding:2px 8px;border-radius:5px;background:rgba(255,255,255,.22);color:#fff">在校学生</span></div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <span class="idav">{{ (demoName).slice(0,1) }}</span>
-            <div><div style="color:#fff;font-size:15px;font-weight:600">{{ demoName }}</div><div style="color:rgba(255,255,255,.75);font-size:11.5px;margin-top:2px">数字媒体技术 · 学生门户</div></div>
-          </div>
-          <div class="idbar" />
-        </div>
-      </div>
-    </div>
+    </section>
 
-    <!-- 右：表单 -->
-    <div class="form">
-      <div style="width:100%;max-width:320px">
-        <div style="font-size:11px;font-weight:700;letter-spacing:1.6px;color:#8A94A6">STUDENT PORTAL</div>
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:9px">
-          <span style="font-size:27px;font-weight:700;color:#11151A;letter-spacing:-.3px">登录</span>
-          <div style="display:flex;align-items:center;gap:9px">
-            <a class="modet" :class="{ on: mode==='account' }" @click="mode='account'">账号密码</a>
-            <span style="color:#DFE3E8;font-size:12px">/</span>
-            <a class="modet" :class="{ on: mode==='qr' }" @click="mode='qr'">微信扫码</a>
-          </div>
-        </div>
-        <div style="margin-top:7px;font-size:13.5px;color:#8A94A6;line-height:1.6">{{ mode==='qr' ? '打开微信扫一扫，快速登录学生服务门户' : ('使用学号和密码访问' + schoolName + '学生服务门户') }}</div>
+    <section class="form-panel">
+      <div class="login-card">
+        <p class="card-eyebrow">STUDENT PORTAL</p>
+        <h2>学生登录</h2>
+        <p class="card-intro">使用学校分配的学号、手机号或统一身份账号进入个人服务门户。</p>
+        <div class="entry-note"><span />登录后仅展示本人数据和本人事项</div>
 
-        <div v-if="mode==='account'" style="display:flex;flex-direction:column;gap:16px;margin-top:26px">
-          <div>
-            <div class="flabel">学校编码（多校账号时必填）</div>
-            <input v-model.trim="tenantCode" class="finput" placeholder="如 sandbox-school / demo-school" @keyup.enter="doLogin" />
+        <form @submit.prevent="doLogin">
+          <label for="student-account">学号 / 手机号</label>
+          <input id="student-account" v-model.trim="loginName" autocomplete="username" placeholder="请输入学号或手机号">
+          <div class="label-row"><label for="student-password">密码</label><button class="text-button" type="button" @click="forgotPassword">忘记密码</button></div>
+          <div class="password-field">
+            <input id="student-password" v-model="password" :type="showPwd ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
+            <button type="button" class="eye-button" :aria-label="showPwd ? '隐藏密码' : '显示密码'" @click="showPwd = !showPwd">{{ showPwd ? '隐藏' : '显示' }}</button>
           </div>
-          <div>
-            <div class="flabel">账号</div>
-            <input v-model.trim="loginName" class="finput" placeholder="学号 / 账号" @keyup.enter="doLogin" />
-          </div>
-          <div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px"><span class="flabel" style="margin:0">密码</span><button class="showpwd" @click="showPwd=!showPwd">{{ showPwd ? '隐藏' : '显示' }}</button></div>
-            <input v-model="password" :type="showPwd ? 'text' : 'password'" class="finput" placeholder="密码" @keyup.enter="doLogin" />
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:-4px">
-            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#4E5969;cursor:pointer"><input type="checkbox" checked style="accent-color:var(--pri)">记住我</label>
-            <a style="font-size:12.5px;cursor:pointer;color:#8A94A6">忘记密码?</a>
-          </div>
-          <div v-if="error" class="ferror"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D92D20" stroke-width="2" stroke-linecap="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>{{ error }}</div>
-          <button class="fbtn" :disabled="loading" @click="doLogin"><span v-if="loading" class="spin" />{{ loading ? '登录中…' : '登 录' }}</button>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px"><span style="flex:1;height:1px;background:#EAECF0" /><span style="font-size:12px;color:#98A2B3">或</span><span style="flex:1;height:1px;background:#EAECF0" /></div>
-          <button class="fbtn2" @click="ui.notify('统一身份认证登录对接学校 CAS 后启用')">统一身份认证登录</button>
-        </div>
+          <label class="remember"><input v-model="remember" type="checkbox">记住账号</label>
 
-        <div v-else style="display:flex;flex-direction:column;align-items:center;margin-top:26px">
-          <div class="qr"><div v-for="n in 40" :key="n" class="qrd" :style="qrStyle(n)" /></div>
-          <div style="margin-top:16px;font-size:13.5px;color:#384250;font-weight:600">请使用微信扫一扫</div>
-          <div style="margin-top:4px;font-size:12px;color:#98A2B3">对接微信开放平台后为真实二维码</div>
-          <button class="fbtn2" style="margin-top:16px" @click="mode='account'">使用账号密码登录</button>
-        </div>
+          <details class="tenant-details">
+            <summary>切换学校或填写学校编码</summary>
+            <label for="student-tenant">学校编码 <small>仅多校同账号时填写</small></label>
+            <input id="student-tenant" v-model.trim="tenantCode" autocomplete="organization" placeholder="请输入学校编码">
+          </details>
 
-        <div class="demo">
-          <div style="font-size:12px;color:#8A94A6;margin-bottom:8px">演示体验账号（仅演示环境展示）</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px">
-            <button v-for="a in demoAccounts" :key="a.loginName" class="demobtn" @click="fill(a)">{{ a.label }}：{{ a.loginName }}</button>
-          </div>
-        </div>
-        <div style="margin-top:20px;text-align:center;font-size:11.5px;color:#C6CCD6">连接已加密 · 与学生小程序为同一套账号 · 数据范围仅本人</div>
+          <label class="agreement"><input v-model="agree" type="checkbox">我已阅读并同意学校提供的用户协议与隐私政策</label>
+          <p v-if="error" class="error" role="alert">{{ error }}</p>
+          <button class="submit-button" :disabled="loading" type="submit">{{ loading ? '登录中…' : '进入学生服务门户' }}</button>
+        </form>
+        <p class="help-text">首次登录、学号更正或账号无法关联本人档案，请联系辅导员或学校管理员。</p>
       </div>
-    </div>
-  </div>
+      <footer><span>技术支持：湖南跃科信息工程有限公司</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2026031107号</a></footer>
+    </section>
+  </main>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../../stores/session'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useUiStore } from '../../stores/ui'
 
+const REMEMBER_KEY = 'student_portal_login_name'
 const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
@@ -102,90 +69,78 @@ const ui = useUiStore()
 
 const loginName = ref('')
 const password = ref('')
-const tenantCode = ref('')
+const tenantCode = ref(typeof route.query.tenant === 'string' ? route.query.tenant : '')
 const error = ref('')
 const loading = ref(false)
 const showPwd = ref(false)
-const mode = ref('account')
+const remember = ref(false)
+const agree = ref(false)
+const platformName = computed(() => cfg.brand?.platformName || cfg.portalName || '学生服务门户')
+const brandLogo = computed(() => cfg.brand?.logo || '')
 
-const schoolName = computed(() => cfg.brand?.schoolName || '学生服务门户')
-const demoName = computed(() => '张同学')
-const demoAccounts = [
-  { label: '演示职业技术学校', loginName: 'student', password: '123456', tenantCode: 'demo-school' },
-  { label: '体验沙箱学校', loginName: 'student2', password: '123456', tenantCode: 'sandbox-school' }
-]
-function fill(a) {
-  loginName.value = a.loginName
-  password.value = a.password
-  tenantCode.value = a.tenantCode || ''
-  error.value = ''
-}
-function qrStyle(n) {
-  const cols = 8
-  const x = (n % cols) * 18 + 14, y = Math.floor(n / cols) * 18 + 14
-  const on = (n * 7 + 3) % 3 !== 0
-  return { left: x + 'px', top: y + 'px', opacity: on ? 1 : 0 }
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(REMEMBER_KEY) || ''
+    if (saved) {
+      loginName.value = saved
+      remember.value = true
+    }
+  } catch {
+    // 隐私模式可能禁用本地存储，不影响登录。
+  }
+})
+
+function forgotPassword() {
+  ui.notify('请联系辅导员或学校管理员重置密码')
 }
 
 async function doLogin() {
-  if (!loginName.value || !password.value) { error.value = '请输入账号与密码'; return }
-  loading.value = true
   error.value = ''
+  if (!agree.value) {
+    error.value = '请先勾选同意用户协议与隐私政策'
+    return
+  }
+  if (!loginName.value || !password.value) {
+    error.value = '请输入学号 / 手机号和密码'
+    return
+  }
+  loading.value = true
   try {
     await session.login(loginName.value, password.value, tenantCode.value || undefined)
+    try {
+      if (remember.value) localStorage.setItem(REMEMBER_KEY, loginName.value)
+      else localStorage.removeItem(REMEMBER_KEY)
+    } catch {
+      // 记住账号失败不阻断真实认证链路。
+    }
     cfg.reset()
     await cfg.load()
     const redirect = route.query.redirect
     router.replace(typeof redirect === 'string' ? redirect : '/home')
   } catch (e) {
-    error.value = e?.notStudent ? '请使用学生账号登录学生门户' : (e?.message || '登录失败')
-  } finally { loading.value = false }
+    error.value = e?.notStudent ? '该账号不是学生账号，请使用教师端入口' : (e?.message || '登录失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
 <style scoped>
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes scanline { 0%,100% { top: 0%; opacity: 0; } 8% { opacity: 1; } 50% { top: 98%; opacity: 1; } 92% { opacity: 0; } }
-@keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
-@keyframes floatCard { 0%,100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(-3deg) translateY(-8px); } }
-@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-
-.login { min-height: 100vh; width: 100%; display: flex; }
-.visual { flex: 1.25; position: relative; overflow: hidden; background: linear-gradient(135deg, var(--g2), var(--g1)); min-width: 0; }
-.visual__photo { position: absolute; top: 0; left: 0; right: 0; height: 58%; overflow: hidden; }
-.visual__grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px); background-size: 32px 32px; }
-.visual__scan { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.95), transparent); box-shadow: 0 0 14px 2px rgba(255,255,255,.7); animation: scanline 4s ease-in-out infinite; }
-.visual__fade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,20,50,.12) 0%, rgba(8,16,42,.05) 55%, var(--g2) 100%); }
-.visual__top { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 11px; padding: 34px 40px 0; z-index: 1; }
-.vlogo { width: 38px; height: 38px; flex: none; border-radius: 11px; background: rgba(255,255,255,.16); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.28); }
-.vstatus { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255,255,255,.14); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.25); border-radius: 20px; font-size: 11px; color: #fff; white-space: nowrap; }
-.vstatus__dot { width: 7px; height: 7px; border-radius: 50%; background: #4ADE80; box-shadow: 0 0 6px 1px #4ADE80; animation: pulseDot 2s ease-in-out infinite; }
-.vtags { position: absolute; left: 40px; top: calc(58% - 40px); display: flex; gap: 8px; z-index: 1; }
-.vtag { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; background: rgba(255,255,255,.14); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.25); border-radius: 20px; font-size: 11px; color: #fff; white-space: nowrap; }
-.visual__bottom { position: absolute; top: 58%; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 44px 46px; }
-.idcard { position: relative; margin-top: 34px; width: 250px; background: rgba(255,255,255,.14); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.32); border-radius: 16px; padding: 18px 20px; box-shadow: 0 20px 46px -14px rgba(0,0,0,.45); animation: floatCard 5s ease-in-out infinite; }
-.idav { width: 42px; height: 42px; flex: none; border-radius: 11px; background: rgba(255,255,255,.9); color: var(--pri); font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-.idbar { margin-top: 14px; height: 14px; border-radius: 3px; background: repeating-linear-gradient(90deg, rgba(255,255,255,.9) 0 2px, transparent 2px 4px, rgba(255,255,255,.5) 4px 5px, transparent 5px 8px); }
-
-.form { width: 452px; flex: none; display: flex; align-items: center; justify-content: center; padding: 40px; background: #fff; }
-.form > div { animation: fadeUp .4s ease; }
-.modet { cursor: pointer; font-size: 12.5px; font-weight: 700; color: #8A94A6; }
-.modet.on { color: #11151A; }
-.flabel { font-size: 12.5px; font-weight: 600; color: #384250; margin-bottom: 7px; }
-.finput { width: 100%; height: 44px; border: 1.5px solid #DFE3E8; border-radius: 8px; padding: 0 13px; font-size: 14.5px; box-sizing: border-box; color: #11151A; transition: border-color .12s, box-shadow .12s; }
-.finput:focus { outline: none; border-color: var(--pri); box-shadow: 0 0 0 3.5px var(--pri-50); }
-.showpwd { all: unset; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--pri); }
-.ferror { display: flex; gap: 8px; padding: 10px 12px; background: #FDECEC; border: 1px solid #F7C9C1; border-radius: 9px; color: #B42318; font-size: 12.5px; }
-.fbtn { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; height: 44px; border-radius: 8px; background: var(--pri); color: #fff; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
-.fbtn:hover { background: var(--pri-h); }
-.fbtn:disabled { opacity: .7; cursor: not-allowed; }
-.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; animation: spin .7s linear infinite; }
-.fbtn2 { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; height: 44px; border: 1.5px solid #DFE3E8; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: #384250; }
-.fbtn2:hover { background: #F9FAFB; border-color: #C9CED6; }
-.qr { position: relative; width: 168px; height: 168px; border: 1.5px solid #E5E8EE; border-radius: 14px; background: #fff; overflow: hidden; }
-.qrd { position: absolute; width: 8px; height: 8px; background: #11151A; border-radius: 1px; }
-.demo { margin-top: 22px; padding-top: 16px; border-top: 1px dashed #E5E6EB; }
-.demobtn { all: unset; cursor: pointer; font-size: 12px; border: 1px solid #DFE3E8; background: #fff; border-radius: 6px; padding: 6px 10px; }
-.demobtn:hover { border-color: var(--pri); color: var(--pri); }
-@media (max-width: 860px) { .visual { display: none; } .form { width: 100%; } }
+* { box-sizing: border-box; }
+.login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(480px, .92fr); color: #10233f; background: #f4f7fb; font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.brand-panel { position: relative; min-height: 100vh; overflow: hidden; padding: clamp(32px, 5vw, 72px); color: #fff; background: linear-gradient(142deg, #174a78, #1b708f 58%, #1a9a9a); }
+.brand-panel::before { content: ""; position: absolute; inset: 0; opacity: .22; background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,.4) 1px, transparent 0); background-size: 28px 28px; mask-image: linear-gradient(#000, transparent 82%); }
+.brand-mark { position: relative; z-index: 1; display: grid; grid-template-columns: 40px auto; grid-template-rows: auto auto; column-gap: 12px; align-items: center; }.brand-mark span,.brand-mark img { grid-row: 1 / 3; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgba(255,255,255,.34); border-radius: 12px; background: rgba(255,255,255,.14); }.brand-mark strong { font-size: 14px; }.brand-mark small { color: rgba(255,255,255,.68); font-size: 11px; }
+.brand-copy { position: relative; z-index: 1; max-width: 650px; margin-top: clamp(80px, 13vh, 130px); }.eyebrow,.card-eyebrow { margin: 0 0 18px; font-size: 12px; font-weight: 750; letter-spacing: .14em; }.eyebrow { color: #d9f4f1; }.brand-copy h1 { margin: 0; font-size: clamp(38px, 4.4vw, 60px); line-height: 1.18; letter-spacing: -.04em; }.lead { max-width: 600px; margin: 24px 0 0; color: rgba(255,255,255,.82); font-size: 16px; line-height: 1.9; }
+.capabilities { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; }.capabilities span { padding: 9px 14px; border: 1px solid rgba(255,255,255,.23); border-radius: 999px; background: rgba(255,255,255,.09); font-size: 12px; }
+.service-map { position: absolute; left: clamp(32px, 5vw, 72px); right: clamp(32px, 5vw, 72px); bottom: 54px; z-index: 1; display: flex; align-items: center; max-width: 670px; padding: 16px 18px; border: 1px solid rgba(255,255,255,.22); border-radius: 18px; background: rgba(13,76,98,.25); backdrop-filter: blur(8px); }.service-map div { min-width: 100px; }.service-map b,.service-map small { display: block; }.service-map b { font-size: 13px; }.service-map small { margin-top: 4px; color: rgba(255,255,255,.65); font-size: 10px; }.service-map i { flex: 1; height: 1px; margin: 0 10px; background: rgba(255,255,255,.3); }
+.form-panel { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 30px; background: radial-gradient(circle at 50% 0, #eaf8f5, transparent 42%), #f4f7fb; }.login-card { width: min(430px, 100%); padding: 34px 38px 30px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; box-shadow: 0 24px 70px -38px rgba(16,35,63,.35); }
+.card-eyebrow { margin-bottom: 8px; color: #0f766e; }.login-card h2 { margin: 0; font-size: 26px; }.card-intro { margin: 10px 0 18px; color: #718096; font-size: 13px; line-height: 1.65; }.entry-note { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 9px 11px; border-radius: 9px; color: #40536d; background: #eaf8f5; font-size: 12px; }.entry-note span { width: 7px; height: 7px; border-radius: 50%; background: #0f9f6e; }
+form > label,.tenant-details label,.label-row label { display: block; margin: 14px 0 7px; color: #34465f; font-size: 12px; font-weight: 650; }input:not([type=checkbox]) { width: 100%; height: 44px; padding: 0 13px; border: 1px solid #dbe3ed; border-radius: 9px; outline: none; color: #10233f; font: inherit; }.password-field { position: relative; }.password-field input { padding-right: 58px; }.eye-button { position: absolute; right: 10px; top: 0; height: 44px; border: 0; color: #536780; background: none; cursor: pointer; }input:focus { border-color: #15948b; box-shadow: 0 0 0 3px rgba(21,148,139,.12); }
+.label-row { display: flex; align-items: flex-end; justify-content: space-between; }.text-button { border: 0; color: #0f766e; background: none; cursor: pointer; font-size: 12px; }.remember,.agreement { display: flex; align-items: flex-start; gap: 8px; font-weight: 400; cursor: pointer; }.remember input,.agreement input { margin: 2px 0 0; accent-color: #15948b; }.agreement { color: #718096; line-height: 1.5; }
+.tenant-details { margin-top: 14px; padding: 11px 13px; border: 1px solid #e5eaf1; border-radius: 10px; background: #f8fafc; }.tenant-details summary { color: #536780; cursor: pointer; font-size: 12px; }.tenant-details small { margin-left: 5px; color: #94a3b8; font-weight: 400; }.error { margin: 12px 0 0; padding: 9px 11px; border-radius: 8px; color: #b42318; background: #fff1f0; font-size: 12px; }.submit-button { width: 100%; height: 46px; margin-top: 16px; border: 0; border-radius: 10px; color: #fff; background: linear-gradient(135deg, #15948b, #0f766e); font-size: 14px; font-weight: 700; cursor: pointer; }.submit-button:disabled { opacity: .65; cursor: wait; }
+.help-text { margin: 18px 0 0; color: #8290a3; text-align: center; font-size: 11px; }footer { display: flex; gap: 12px; color: #8290a3; font-size: 11px; }footer a { color: inherit; text-decoration: none; }
+@media (max-width: 980px) { .login-page { grid-template-columns: 1fr; }.brand-panel { display: none; }.form-panel { min-height: 100vh; }.login-card { width: 440px; } }
+@media (max-width: 520px) { .form-panel { width: 100%; min-width: 0; justify-content: flex-start; padding: 28px 16px 18px; }.login-card { width: 100%; padding: 27px 22px 24px; border-radius: 16px; }.login-card h2 { font-size: 23px; }footer { margin-top: auto; flex-direction: column; align-items: center; gap: 3px; } }
+@media (max-height: 780px) and (min-width: 981px) { .brand-copy { margin-top: 55px; }.service-map { bottom: 25px; }.form-panel { padding: 18px 30px; }.login-card { padding-top: 25px; padding-bottom: 22px; }.card-intro,.entry-note { margin-bottom: 12px; }form > label,.tenant-details label,.label-row label { margin-top: 10px; }.tenant-details { margin-top: 10px; }.submit-button { margin-top: 12px; } }
 </style>
