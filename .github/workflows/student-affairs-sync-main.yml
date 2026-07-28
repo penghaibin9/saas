@@ -35,10 +35,11 @@ jobs:
             set -euo pipefail
             python scripts/maintenance/fix_request_resolver_anchor.py
             python scripts/maintenance/repair_affairs_remaining_round5.py
+            python scripts/maintenance/repair_affairs_sensitive_scope_round6.py
             python -m compileall -q backend/app backend/tests backend/affairs_contract_test_support.py scripts/maintenance
             git add backend/app backend/tests backend/affairs_contract_test_support.py scripts/maintenance
             if ! git diff --cached --quiet; then
-              git commit -m "fix(student-affairs): apply remaining contracts and resolver fix"
+              git commit -m "fix(student-affairs): apply remaining and sensitive contracts"
             fi
             git fetch origin main
             set +e
