@@ -112,3 +112,66 @@ jobs:
           name: student-affairs-failure-diagnostic-log
           path: student-affairs-failure-diagnostic.log
           retention-days: 2
+
+  ui-diagnose:
+    if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727' && contains(github.event.pull_request.title, '[UI-DIAG]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/student-affairs-leave-cutover-20260727
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run three-client diagnostics
+        id: clients
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+
+          (
+            cd frontend
+            npm ci
+            npm run lint
+            npm test
+            npm run build
+            node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+          ) 2>&1 | tee management-pc-diagnostic.log
+          management_status=${PIPESTATUS[0]}
+
+          (
+            cd student-portal
+            npm ci
+            npm run lint
+            npm run build
+            node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+          ) 2>&1 | tee student-pc-diagnostic.log
+          student_status=${PIPESTATUS[0]}
+
+          (
+            cd miniapp
+            npm ci
+            npm run build:h5
+            npm run build:mp-weixin
+            node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+          ) 2>&1 | tee miniapp-diagnostic.log
+          miniapp_status=${PIPESTATUS[0]}
+
+          echo "management_status=$management_status" >> "$GITHUB_OUTPUT"
+          echo "student_status=$student_status" >> "$GITHUB_OUTPUT"
+          echo "miniapp_status=$miniapp_status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: student-affairs-three-client-diagnostic-logs
+          path: |
+            management-pc-diagnostic.log
+            student-pc-diagnostic.log
+            miniapp-diagnostic.log
+          retention-days: 2
+      - name: Stop on client failure
+        if: steps.clients.outputs.management_status != '0' || steps.clients.outputs.student_status != '0' || steps.clients.outputs.miniapp_status != '0'
+        run: exit 1
