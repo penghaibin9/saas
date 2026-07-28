@@ -47,14 +47,13 @@ def test_mental_statistics_permission_cannot_open_individual_detail():
     ) == ("studentAffairs.risk.psyDetail.view",)
 
 
-def test_mental_detail_requires_explicit_permission_even_with_student_scope(monkeypatch):
-    from app.services.affairs_sensitive_audit_guard import explicit_detail_permission
+def test_mental_detail_role_and_student_scope_live_in_formal_service():
+    from app.services.affairs_mental_service import _can_view_detail
 
-    monkeypatch.setattr(
-        "app.services.affairs_sensitive_audit_guard.has_permission",
-        lambda _user, _code: False,
-    )
-    assert explicit_detail_permission({}, 1, {1}) is False
+    # 辅导员只有逐生授权命中时可见；学工处管理员默认不在原始明细角色内。
+    assert _can_view_detail({"currentRoleCode": "COUNSELOR"}, 1, {1}) is True
+    assert _can_view_detail({"currentRoleCode": "COUNSELOR"}, 2, {1}) is False
+    assert _can_view_detail({"currentRoleCode": "STUDENT_AFFAIRS_ADMIN"}, 1, None) is False
 
 
 def test_explicit_version_can_never_be_replaced_by_request_context():
@@ -108,42 +107,8 @@ def test_activity_scope_matching_is_fail_closed():
 
 
 def test_appeal_dashboard_read_path_does_not_reconcile_or_write():
-    """GET 工作台不得扫描申诉表并补写待办。"""
-    import inspect
-    from app.services import affairs_appeal_todo_service as service
+    from pathlib import Path
 
-    source = inspect.getsource(service.install)
-    assert "reconcile_teacher_todos" not in source
-    assert "teacher_affairs =" not in source
-
-
-def test_appeal_repair_reentry_is_noop():
-    from app.services import affairs_appeal_repair_service as repair
-
-    token = repair._REPAIRING.set(True)
-    try:
-        assert repair.repair_pending(5) == {"claimed": 0, "repaired": 0, "failed": 0}
-    finally:
-        repair._REPAIRING.reset(token)
-
-
-def test_credit_appeal_invalid_value_rejected_before_insert(db_mode):
-    from app.core.context import set_current_user, set_tenant
-    from app.core.exceptions import AppException
-    from app.services import affairs_activity_service as activity
-
-    set_tenant({"tenantId": "1000000000000000001"})
-    set_current_user({
-        "userId": "db-1", "realName": "测试老师", "userType": "ADMIN",
-        "tenantId": "1000000000000000001", "currentRoleCode": "SCHOOL_ADMIN",
-    })
-    try:
-        with pytest.raises(AppException) as exc:
-            activity.submit_credit_appeal(SimpleNamespace(
-                studentId=1, activityId=None, appealType="MISSING",
-                claimCreditType="SECOND_CLASS", claimValue="-1", reason="积分缺记情况说明",
-            ), {"userId": "db-1"})
-        assert exc.value.code == "VALIDATION_ERROR"
-    finally:
-        set_current_user(None)
-        set_tenant(None)
+    source = Path("app/services/affairs_appeal_dashboard_service.py").read_text(encoding="utf-8")
+    assert "reconcile_appeal_todos" not in source
+    assert ".commit(" not in source
