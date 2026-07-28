@@ -45,10 +45,13 @@ def test_public_selection_and_teaching_class_paths_use_canonical_entrypoints():
 
     teaching_class = services.academic_affairs_teaching_class_service
     assert teaching_class.__name__.endswith("academic_affairs_teaching_class_service")
-    assert teaching_class.create_roster_version is compat.create_roster_version
     assert teaching_class.create_roster_version.__module__.endswith(
+        "academic_affairs_teaching_class_service"
+    )
+    assert compat.create_roster_version.__module__.endswith(
         "academic_affairs_teaching_class_compat_migration_service"
     )
+    assert teaching_class.create_roster_version is not compat.create_roster_version
 
     selection = services.academic_affairs_selection_service
     assert selection.__name__.endswith("academic_affairs_selection_final_service")
