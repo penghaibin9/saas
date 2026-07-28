@@ -112,5 +112,5 @@ def test_admin_pc_keeps_real_todo_workbench_and_drill_routes():
 
     assert 'id="adb-todos"' in dashboard
     assert "点击直达处理页面" in dashboard
-    assert "t.drillRoute" in dashboard
+    assert "todo.drillRoute" in dashboard
     assert "getDashboardReminders" in dashboard
