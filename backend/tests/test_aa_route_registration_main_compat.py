@@ -49,7 +49,9 @@ def test_shared_main_registry_contains_no_branch_compatibility_fork():
 
 
 def test_academic_extensions_are_aggregated_inside_the_domain_package():
-    assert "academic_affairs_bundle as academic_affairs" in PACKAGE
+    assert "academic_affairs_bundle as academic_affairs" not in PACKAGE
+    assert SOURCE.count("academic_affairs_bundle as academic_affairs") >= 2
+    assert "不得提前加载聚合器" in PACKAGE
     assert "router.include_router(base_router.router)" in BUNDLE
     for token in (
         "dashboard_readiness_router",
@@ -58,6 +60,7 @@ def test_academic_extensions_are_aggregated_inside_the_domain_package():
         "grade_task_identity_router",
         "mobile_grade_entry_router",
         "program_quality_router",
+        "scheduling_rule_router",
         "semester_pilot_router",
         "stats_snapshot_router",
         "student_evaluation_router",
