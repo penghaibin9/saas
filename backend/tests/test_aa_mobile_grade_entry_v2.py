@@ -104,7 +104,7 @@ def test_quality_report_ready_requires_all_required_parts():
 
 
 def test_public_mobile_service_and_router_use_one_explicit_entry():
-    from app.modules.academic_affairs.routers import academic_affairs
+    from app.modules.academic_affairs.routers import mobile_grade_entry_router
 
     mobile = _mobile()
     assert mobile.__name__.endswith("mobile_academic_affairs_public_service")
@@ -118,7 +118,7 @@ def test_public_mobile_service_and_router_use_one_explicit_entry():
 
     routes = {
         (route.path, tuple(sorted(route.methods or set())))
-        for route in academic_affairs.router.routes
+        for route in mobile_grade_entry_router.router.routes
     }
     assert ("/mobile/teacher/academic/grade-tasks/{task_id}/batch-save", ("POST",)) in routes
     assert ("/mobile/teacher/academic/grade-tasks/{task_id}/quality-report", ("GET",)) in routes
