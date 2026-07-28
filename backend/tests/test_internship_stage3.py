@@ -232,14 +232,14 @@ def test_leave_apply_withdraw_and_review(client, db_mode):
     assert client.get(f"{INT}/leaves", headers=_mentor("王芳"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 0
     # 越权审批：王芳审批刘强学生请假 → 403
     assert client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/review",
-                       json={"action": "APPROVE", "expectedVersion": leave["version"]},
+                       json={"batchId": ids["batch"], "action": "APPROVE", "expectedVersion": leave["version"]},
                        headers=_mentor("王芳")).status_code == 403
     # 有证明时必须先由当前审批人真实查看并写审计
     viewed = client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/evidence-viewed", headers=_mentor("刘强"))
     assert viewed.status_code == 200 and viewed.json()["data"]["evidenceViewed"] is True, viewed.json()
     # 刘强按版本审批通过
     ok = client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/review",
-                     json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
+                     json={"batchId": ids["batch"], "action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
     assert ok.status_code == 200 and ok.json()["data"]["status"] == "APPROVED", ok.json()
 
 
@@ -258,7 +258,7 @@ def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
     leave = response.json()["data"]
     # 驳回需原因≥5字
     assert client.post(f"{TEACHER_CONTEXT}/leaves/{leave['id']}/review",
-                       json={"action": "REJECT", "comment": "no", "expectedVersion": leave["version"]},
+                       json={"batchId": ids["batch"], "action": "REJECT", "comment": "no", "expectedVersion": leave["version"]},
                        headers=_mentor("刘强")).status_code == 400
 
 
@@ -274,7 +274,7 @@ def test_leave_approve_writes_leave_checkins(client, db_mode):
     viewed = client.post(f"{TEACHER_CONTEXT}/leaves/{leave['id']}/evidence-viewed", headers=_mentor("刘强"))
     assert viewed.status_code == 200, viewed.json()
     ok = client.post(f"{TEACHER_CONTEXT}/leaves/{leave['id']}/review",
-                     json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
+                     json={"batchId": ids["batch"], "action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
     assert ok.status_code == 200 and ok.json()["data"]["leaveDays"] == 3, ok.json()
     # 打卡台账显示这 3 天为「请假」
     checkins = client.get(f"{INT}/checkins", headers=_mentor("刘强"),
@@ -329,7 +329,7 @@ def test_leave_student_withdraw(client, db_mode):
     assert response.status_code == 200, response.json()
     leave = response.json()["data"]
     w = client.post(f"{MOBILE_CONTEXT}/leaves/{leave['id']}/withdraw",
-                    json={"expectedVersion": leave["version"]}, headers=student)
+                    json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "expectedVersion": leave["version"]}, headers=student)
     assert w.status_code == 200 and w.json()["data"]["status"] == "WITHDRAWN", w.json()
 
 
@@ -344,7 +344,7 @@ def test_leave_overdue_creates_one_risk_and_student_can_return(client, db_mode):
     leave = apply.json()["data"]
     leave_id = leave["id"]
     approved = client.post(f"{TEACHER_CONTEXT}/leaves/{leave_id}/review",
-                           json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
+                           json={"batchId": ids["batch"], "action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
     assert approved.status_code == 200, approved.json()
     refreshed = client.post(f"{INT}/leaves/overdue/refresh", headers=_admin(client)).json()["data"]
     assert refreshed["markedOverdue"] == 1 and refreshed["risksCreated"] == 1
@@ -354,7 +354,7 @@ def test_leave_overdue_creates_one_risk_and_student_can_return(client, db_mode):
     current_rows = client.get(f"{MOBILE_CONTEXT}/leaves", headers=student).json()["data"]
     current = next(item for item in current_rows if item["id"] == leave_id)
     returned = client.post(f"{MOBILE_CONTEXT}/leaves/{leave_id}/return",
-                           json={"returnNote": "已于今日返岗", "expectedVersion": current["version"]}, headers=student)
+                           json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "returnNote": "已于今日返岗", "expectedVersion": current["version"]}, headers=student)
     assert returned.status_code == 200, returned.json()
     returned_data = returned.json()["data"]
     assert returned_data["id"] == leave_id
