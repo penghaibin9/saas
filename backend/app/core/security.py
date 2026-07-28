@@ -125,8 +125,6 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
-        # 学号允许更正；studentId 是学生账号与学生主档之间的稳定身份键。
-        "studentId": claims.get("studentId"),
         "studentNo": claims.get("studentNo"),
         "collegeId": claims.get("collegeId"),
         "collegeIds": claims.get("collegeIds"),
