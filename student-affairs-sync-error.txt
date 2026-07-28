@@ -1,6 +1,6 @@
 status=1
 base=6f49bb483abcbf0932c99f7637ee8d97b835fbb0
-head=16c205e93a3b452548412e6e4a35b880db52ada2
+head=11fa58cfff8c2160891074d7ba170466566ba93b
 log_tail:
 request resolver anchor fixed
 student affairs remaining round5 repair passed
