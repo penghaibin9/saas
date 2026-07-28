@@ -30,20 +30,22 @@ def test_student_pc_todo_route_resolves_exact_academic_workspaces():
 
 def test_student_pc_has_task_home_and_independent_academic_routes():
     root = Path(__file__).resolve().parents[2]
-    router = (root / "student-portal/src/router/index.js").read_text(encoding="utf-8")
+    shared_router = (root / "student-portal/src/router/index.js").read_text(encoding="utf-8")
+    academic_routes = (root / "student-portal/src/router/academicRoutes.js").read_text(encoding="utf-8")
+    main = (root / "student-portal/src/main.js").read_text(encoding="utf-8")
     home = (root / "student-portal/src/views/academic/StudentAcademicHomeView.vue").read_text(encoding="utf-8")
     wrapper = (root / "student-portal/src/views/academic/AcademicSectionRouteView.vue").read_text(encoding="utf-8")
 
-    assert "StudentAcademicHomeView.vue" in router
+    assert "StudentAcademicHomeView.vue" in academic_routes
     for route in (
-        "academic/registration", "academic/selection", "academic/evaluation",
-        "academic/recheck", "academic/status", "academic/exam", "academic/makeup",
-        "academic/attendance", "academic/calendar", "academic/clearance",
-        "academic/credits", "academic/warning", "academic/textbook",
-        "academic/level-exam", "academic/major-split", "academic/recognition",
-        "academic/graduation",
+        "registration", "selection", "evaluation", "recheck", "status", "exam", "makeup",
+        "attendance", "calendar", "clearance", "credits", "warning", "textbook",
+        "level-exam", "major-split", "recognition", "graduation",
     ):
-        assert route in router
+        assert f"'{route}'" in academic_routes
+    assert "installAcademicRoutes(router)" in main
+    assert "./router/academicRoutes" in main
+    assert "StudentAcademicHomeView.vue" not in shared_router
     assert "Promise.allSettled" in home
     assert "当前需要我处理" in home
     assert "academicTab" in wrapper
