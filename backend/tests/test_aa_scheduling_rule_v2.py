@@ -157,7 +157,7 @@ def test_aggregated_router_contains_one_correct_rule_route_per_method():
     from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
     from app.modules.academic_affairs.routers import scheduling_rule_router
 
-    routes = academic_affairs.router.routes
+    routes = academic_affairs.build_router().routes
     source_routes = [
         (getattr(route, "path", ""), sorted(getattr(route, "methods", set()) or set()))
         for route in scheduling_rule_router.router.routes
