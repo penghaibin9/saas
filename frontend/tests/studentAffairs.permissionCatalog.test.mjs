@@ -54,12 +54,13 @@ test('关键普通菜单页面导航与路由权限一致', async () => {
 
 test('学生画像兼容入口使用隐藏 DETAIL + permissionAny，覆盖路由权限', async () => {
   const { nav, routes } = await sources()
-  const profileBlock = nav.split("H('学生360详情', '/admin/student-affairs/profile'")[1]?.split('\n', 1)[0] || ''
-  assert.match(profileBlock, /'DETAIL'/)
-  assert.match(profileBlock, /permissionAny:\s*_STU_VIEW_ANY/)
-  const anyBlock = nav.split('const _STU_VIEW_ANY = [')[1]?.split(']', 1)[0] || ''
+  assert.match(
+    nav,
+    /H\('学生360详情',\s*'\/admin\/student-affairs\/profile',\s*null,\s*'DETAIL',\s*\{\s*permissionAny:\s*_STU_VIEW_ANY\s*\}\)/
+  )
   const routePermission = routePermissionForPath(routes, 'profile')
-  assert.match(anyBlock, new RegExp(`['"]${routePermission.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`))
+  const escapedRoutePermission = routePermission.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  assert.match(nav, new RegExp(`const _STU_VIEW_ANY = \\[[\\s\\S]*?['"]${escapedRoutePermission}['"][\\s\\S]*?\\]`))
 })
 
 test('权限目录不登记虚构 back 或 refresh 码', () => {
