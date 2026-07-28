@@ -2,6 +2,7 @@
   <div class="sp-page">
     <StateBlock v-if="loading" type="loading" text="正在加载工作台…" />
     <template v-else>
+      <!-- 阶段横幅 -->
       <section class="hero">
         <div class="hero__glow" />
         <div class="hero__row">
@@ -18,11 +19,12 @@
           <div style="display:flex;flex-direction:column;gap:10px;flex:none;align-items:flex-end">
             <div style="font-size:12.5px;color:var(--t3)">当前阶段</div>
             <div class="hero__stage"><span class="dot" />{{ stageLabel }}</div>
-            <button v-if="ctaModule" class="hero__cta" @click="goTarget(ctaModule)">{{ ctaText }} →</button>
+            <button v-if="ctaModule" class="hero__cta" @click="goModule(ctaModule)">{{ ctaText }} →</button>
           </div>
         </div>
       </section>
 
+      <!-- 4 指标卡 -->
       <div class="metrics">
         <div v-for="m in metrics" :key="m.title" class="metric">
           <div class="metric__t">{{ m.title }}</div>
@@ -34,6 +36,7 @@
         </div>
       </div>
 
+      <!-- 待办中心 + 右列 -->
       <div class="cols">
         <section class="card">
           <div class="card__head">
@@ -42,7 +45,7 @@
           </div>
           <StateBlock v-if="!todos.length" type="empty" text="暂无待办，一切就绪" />
           <div v-else style="display:flex;flex-direction:column;gap:10px">
-            <button v-for="t in todos" :key="t.id" class="todo" @click="goTarget(t.route || t.link || t.module)">
+            <button v-for="t in todos" :key="t.id" class="todo" @click="goModule(t.module)">
               <span class="todo__tag" :style="modTagStyle(t.module)">{{ modName(t.module) }}</span>
               <div style="flex:1;min-width:0">
                 <div class="todo__title">{{ t.title }}</div>
@@ -57,7 +60,7 @@
           <section class="card">
             <div class="card__head"><span class="card__title">消息速览</span><a style="font-size:12.5px;color:var(--pri);cursor:pointer" @click="goMsg">全部</a></div>
             <StateBlock v-if="!msgs.length" type="empty" text="暂无新消息" />
-            <button v-for="m in msgs" :key="m.id" class="msg" @click="goTarget(m.link || m.module)">
+            <button v-for="m in msgs" :key="m.id" class="msg" @click="goModule(m.link || m.module)">
               <span class="msg__dot" :style="{ background: m.read ? '#C9CED6' : 'var(--pri)' }" />
               <div style="flex:1;min-width:0">
                 <div class="msg__title" :style="{ fontWeight: m.read ? 400 : 600 }">{{ m.title }}</div>
@@ -78,10 +81,11 @@
         </div>
       </div>
 
+      <!-- 快捷入口 6 宫格 -->
       <section class="card" style="margin-top:18px">
         <div class="card__title" style="margin-bottom:14px">快捷入口</div>
         <div class="quick">
-          <button v-for="q in quick" :key="q.key" class="quick__i" @click="goTarget(q.key)">
+          <button v-for="q in quick" :key="q.key" class="quick__i" @click="goModule(q.key)">
             <span class="quick__ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="q.d1" /><path :d="q.d2" /></svg></span>
             <span style="font-size:12.5px;color:var(--t2)">{{ q.label }}</span>
           </button>
@@ -138,27 +142,22 @@ const metrics = computed(() => {
   ]
 })
 
-const ctaModule = computed(() => topAlert.value?.route || topAlert.value?.domain || todos.value[0]?.route || todos.value[0]?.module || null)
+const ctaModule = computed(() => topAlert.value?.domain || (todos.value[0]?.module) || null)
 const ctaText = computed(() => (topAlert.value ? '去处理预警' : todos.value.length ? '去处理待办' : ''))
 const quick = computed(() => MODULES.filter((m) => m.key !== 'dashboard').slice(0, 6))
 
 const STATUS_LABELS = { CHECKED_IN: '已报到', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验' }
 function statusLabel(s) { return STATUS_LABELS[s] || s || '进行中' }
-function modName(key) { return moduleByKey(key)?.title || (String(key || '').includes('academic') ? '教务学业' : '系统') }
+function modName(key) { return moduleByKey(key)?.title || '系统' }
 function modTagStyle(key) {
-  const map = { academic: ['#F0ECFF', '#6D53E0'], 'academic-affairs': ['#F0ECFF', '#6D53E0'], internship: ['#E9F7EF', '#0C8A3E'], employment: ['#FFF4E5', '#B25E00'], campusService: ['#FDEEF3', '#C2416B'] }
+  const map = { academic: ['#F0ECFF', '#6D53E0'], internship: ['#E9F7EF', '#0C8A3E'], employment: ['#FFF4E5', '#B25E00'], campusService: ['#FDEEF3', '#C2416B'] }
   const [bg, color] = map[key] || ['var(--pri-50)', 'var(--pri)']
   return { background: bg, color }
 }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(5, 16) : '' }
-function goTarget(target) {
-  const raw = String(target || 'home').trim()
-  if (raw.startsWith('/')) {
-    router.push(raw)
-    return
-  }
-  const mod = MODULES.find((m) => m.key === raw || m.path === raw)
-  router.push('/' + (mod ? mod.path : raw.replace(/^\/+/, '')))
+function goModule(key) {
+  const mod = MODULES.find((m) => m.key === key || m.path === key)
+  router.push('/' + (mod ? mod.path : (key || 'home')))
 }
 function goMsg() { router.push('/messages') }
 
@@ -192,10 +191,12 @@ onMounted(load)
 .hero__stage .dot, .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pri); }
 .hero__cta { all: unset; cursor: pointer; text-align: center; padding: 10px 16px; border-radius: 10px; background: var(--pri); color: #fff; font-size: 13.5px; font-weight: 600; box-shadow: 0 4px 12px rgba(37,99,235,.24); }
 .hero__cta:hover { background: var(--pri-h); }
+
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 18px; }
 .metric { background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 18px 18px 15px; }
 .metric__t { font-size: 13px; color: var(--t3); }
 .metric__v { font-size: 28px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+
 .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start; }
 .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 20px 22px; }
 .card__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
@@ -217,5 +218,6 @@ onMounted(load)
 .quick__i { all: unset; cursor: pointer; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 15px 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .quick__i:hover { border-color: #C9D8FF; background: #F6F9FF; }
 .quick__ic { width: 38px; height: 38px; border-radius: 11px; background: var(--pri-50); color: var(--pri); display: flex; align-items: center; justify-content: center; }
+
 @media (max-width: 900px) { .metrics { grid-template-columns: repeat(2, 1fr); } .cols { grid-template-columns: 1fr; } .quick { grid-template-columns: repeat(3, 1fr); } }
 </style>

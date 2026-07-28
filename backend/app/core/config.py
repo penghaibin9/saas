@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     # ── 多租户（对齐 DB 冻结册：单库/单 schema + tenant_id 行级隔离）──
     TENANCY_MODE: str = "single"         # single(私有化单校) / multi(SaaS 多校)
-    DEFAULT_TENANT_CODE: str = "demo"
+    DEFAULT_TENANT_CODE: str = "sandbox-school"
 
     # ── 微信小程序一键登录（jscode2session）──
     WX_APPID: str = ""                   # 小程序 AppID；未配置则微信登录端点返回"未配置"错误，不影响账号密码登录
@@ -143,8 +143,8 @@ class Settings(BaseSettings):
     FILE_STORAGE_BACKEND: str = "local"
     COS_REGION: str = ""                # 如 ap-guangzhou（COS 桶所在地域）
     COS_BUCKET: str = ""                # 如 student-files-1250000000（含 APPID 后缀）
-    COS_SECRET_ID: str = ""             # 腾讯云访问密钥 SecretId；仅经 .env 注入，禁止进仓库
-    COS_SECRET_KEY: str = ""            # 腾讯云访问密钥 SecretKey；仅经 .env 注入，禁止进仓库
+    COS_SECRET_ID: str = ""             # 腾讯云访问密钥 SecretId；仅经 .env / 环境变量注入，禁止进仓库
+    COS_SECRET_KEY: str = ""            # 腾讯云访问密钥 SecretKey；仅经 .env / 环境变量注入，禁止进仓库
 
     # ── 短信/通知（P13-B；默认关闭，测试环境永不真实发送）──
     SMS_ENABLED: str = "false"          # "true" 才真实发送；否则记录 SKIPPED
