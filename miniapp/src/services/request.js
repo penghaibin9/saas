@@ -14,6 +14,7 @@ import { ENV } from '@/config/env'
 
 const TOKEN_KEY = 'gx_token_v1'
 const REFRESH_KEY = 'gx_refresh_v1'
+const TEACHER_GRADUATION_BATCH_KEY = 'gx_teacher_graduation_batch_v1'
 const state = { offlineUntil: 0, warned: false }
 
 export function setToken(token) {
@@ -35,6 +36,31 @@ export function getRefreshToken() {
 export function clearTokens() {
   setToken('')
   setRefreshToken('')
+}
+
+export function getTeacherGraduationBatch() {
+  try {
+    const raw = uni.getStorageSync(TEACHER_GRADUATION_BATCH_KEY)
+    if (!raw) return null
+    const value = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return value && /^\d+$/.test(String(value.id || '')) ? value : null
+  } catch (e) {
+    return null
+  }
+}
+
+export function setTeacherGraduationBatch(batch) {
+  try {
+    if (!batch || !/^\d+$/.test(String(batch.id || ''))) {
+      uni.removeStorageSync(TEACHER_GRADUATION_BATCH_KEY)
+      return
+    }
+    uni.setStorageSync(TEACHER_GRADUATION_BATCH_KEY, JSON.stringify({
+      id: String(batch.id),
+      name: String(batch.name || ''),
+      status: String(batch.status || '')
+    }))
+  } catch (e) { /* 忽略本地缓存失败 */ }
 }
 
 export function shouldTryReal() {
@@ -230,5 +256,6 @@ export function request(options) {
 export default {
   mockRequest, realRequest, realFirst, realFirstStrict, request,
   setToken, getToken, clearTokens, safeToast, toastError, normalizeError,
-  createSubmitLock, requireAuthOrRedirect, isBusinessError, isNetworkError
+  createSubmitLock, requireAuthOrRedirect, isBusinessError, isNetworkError,
+  getTeacherGraduationBatch, setTeacherGraduationBatch
 }
