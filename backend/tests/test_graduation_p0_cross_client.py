@@ -71,6 +71,16 @@ def test_taskbook_confirmation_uses_versioned_evidence_key():
     assert 'taskbook.status not in ("PENDING_CONFIRM", "CHANGE_PENDING", "CONFIRMED")' in source
 
 
+def test_student_portal_legacy_service_delegates_to_authoritative_confirmation():
+    source = (ROOT / "app/student_portal/services/graduation_service.py").read_text(encoding="utf-8")
+    start = source.index("def taskbook_sign(")
+    end = source.index("\ndef taskbook_print(", start)
+    body = source[start:end]
+    assert "confirm_with_evidence(" in body
+    assert "confirm_taskbook_in_session" not in body
+    assert "create_sign_record_in_session" not in body
+
+
 def test_guidance_void_locks_row_and_checks_student_scope():
     source = (ROOT / "app/modules/graduation/services/graduation_p0_service.py").read_text(encoding="utf-8")
     assert ".with_for_update()" in source

@@ -1,12 +1,9 @@
 """学生 PC 门户 · 毕业设计（第2期）。
 
-第2期首刀：任务书 PC 电子确认 + 打印。复用 mobile_student_service 的 graduation_taskbook /
-graduation_taskbook_confirm（本人 + 现有毕设表），签署走 PC 重活底座 common_service.sign
-（以任务书快照为内容做可靠留痕），再置任务书确认态。不重复建毕设表。
+任务书读取复用 mobile_student_service；电子确认统一委托毕业设计任务书权威确认服务，
+以“学生 + 任务书版本 + 规范化内容哈希”原子落签名、状态和审计，不重复维护签署事务。
 """
 from __future__ import annotations
-
-import json
 
 from app.core.exceptions import AppException
 from app.services import mobile_student_service as stu
@@ -19,47 +16,20 @@ def taskbook(user: dict) -> dict:
 
 
 def taskbook_sign(user: dict, body: dict) -> dict:
-    """任务书 PC 电子确认：以任务书快照为内容电子签署（可靠留痕）+ 置确认态。"""
-    body = body or {}
-    if not bool(body.get("confirm")):
-        raise AppException("VALIDATION_ERROR", "请先勾选确认后再签署任务书")
-    detail = stu.graduation_taskbook(user)  # 内部 _require_student，非学生 403
-    if not detail.get("hasData"):
-        raise AppException("DATA_NOT_FOUND", detail.get("message") or "导师尚未下达任务书")
-    # 以任务书快照为签署内容（防篡改：确认时内容与日后比对一致）
-    content = json.dumps(detail, sort_keys=True, ensure_ascii=False, default=str)
-    biz_id = str(detail.get("gdStudentId") or detail.get("id") or "")
-    from app.modules.graduation.services import graduation_taskbook_service as tb_svc
-    from app.services.mobile_student_service import _session, resolve_student
-    with _session() as db:
-        master = resolve_student(db, user)
-        if not master:
-            raise AppException("DATA_NOT_FOUND", "未找到你的学生档案，无法签署")
-        confirmed = tb_svc.confirm_taskbook_in_session(db, biz_id)
-        from sqlalchemy import select
-        from app.models import PortalSignRecord
-        from app.services.db_service import _tid
-        existing = db.scalars(select(PortalSignRecord).where(
-            PortalSignRecord.tenant_id == _tid(),
-            PortalSignRecord.student_id == master.id,
-            PortalSignRecord.biz_type == "GRADUATION_TASKBOOK",
-            PortalSignRecord.biz_id == biz_id,
-        ).order_by(PortalSignRecord.id.desc())).first()
-        if existing and confirmed.get("status") == "CONFIRMED":
-            return {"signId": str(existing.id), "contentHash": existing.content_hash,
-                    "provider": existing.provider, "signedAt": str(existing.signed_at),
-                    "legalEffect": existing.provider != "reliable_log",
-                    "confirmationType": "EVIDENCE_LOG", "taskbook": confirmed}
-        if str(confirmed.get("taskbookVersion")) != str(detail.get("taskbookVersion")):
-            raise AppException("DATA_CONFLICT", "任务书版本已变化，请刷新后重新确认")
-        sign = common.create_sign_record_in_session(
-            db, user, {"bizType": "GRADUATION_TASKBOOK", "bizId": biz_id,
-                       "content": content, "confirm": True}, master)
-        db.commit()
-    return {"signId": sign["signId"], "contentHash": sign["contentHash"],
-            "provider": sign["provider"], "signedAt": sign["signedAt"],
-            "legalEffect": sign["legalEffect"], "confirmationType": "EVIDENCE_LOG",
-            "taskbook": confirmed}
+    """学生 PC 任务书确认统一走带版本和内容哈希的权威服务。"""
+    from app.modules.graduation.services.graduation_taskbook_confirmation_service import (
+        confirm_with_evidence,
+    )
+
+    payload = body or {}
+    return confirm_with_evidence(
+        user,
+        expected_version=(
+            payload.get("taskbookVersion")
+            or payload.get("expectedVersion")
+        ),
+        confirm=bool(payload.get("confirm")),
+    )
 
 
 def taskbook_print(user: dict, body: dict) -> dict:
