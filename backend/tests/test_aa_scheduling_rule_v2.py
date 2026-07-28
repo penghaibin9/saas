@@ -149,8 +149,8 @@ def test_services_package_loads_final_rule_policy_before_router_consumers():
 
     assert auto.rule_catalog.__module__.endswith("academic_affairs_scheduling_rule_policy")
     assert scheduling._rule_dto.__module__.endswith("academic_affairs_scheduling_rule_policy")
-    assert scheduling.delete_rule.__module__.endswith("academic_affairs_scheduling_rule_policy")
-    assert scheduling.save_rule.__module__.endswith("academic_affairs_scheduling_rule_transport")
+    assert scheduling.delete_rule.__module__.endswith("academic_affairs_scheduling_rule_final_facade")
+    assert scheduling.save_rule.__module__.endswith("academic_affairs_scheduling_rule_final_facade")
 
 
 def test_aggregated_router_contains_one_correct_rule_route_per_method():
