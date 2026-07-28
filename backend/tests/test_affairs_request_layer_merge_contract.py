@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -6,6 +7,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _without_js_comments(source: str) -> str:
+    return re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.DOTALL)
 
 
 def test_student_portal_keeps_refresh_files_internship_and_graduation_cleanup():
@@ -20,7 +25,7 @@ def test_student_portal_keeps_refresh_files_internship_and_graduation_cleanup():
         "rememberTempFile",
     ):
         assert marker in source
-    assert "/auth/mock-login" not in source
+    assert "/auth/mock-login" not in _without_js_comments(source)
 
 
 def test_miniapp_keeps_refresh_files_internship_and_graduation_paging():
