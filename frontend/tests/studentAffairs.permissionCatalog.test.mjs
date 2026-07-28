@@ -59,11 +59,11 @@ test('学生画像兼容入口使用隐藏 DETAIL + permissionAny，覆盖路由
   assert.match(profileBlock, /permissionAny:\s*_STU_VIEW_ANY/)
   const anyBlock = nav.split("const _STU_VIEW_ANY = [", 1)[1]?.split(']', 1)[0] || ''
   const routePermission = routePermissionForPath(routes, 'profile')
-  assert.match(anyBlock, new RegExp(`['\"]${routePermission.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['\"]`))
+  assert.match(anyBlock, new RegExp(`['"]${routePermission.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`))
 })
 
 test('权限目录不登记虚构 back 或 refresh 码', () => {
   for (const { permissionCode } of STUDENT_AFFAIRS_PERMISSION_CATALOG) {
     assert.ok(!/\.(?:back|refresh)$/i.test(permissionCode), permissionCode)
   }
-})
+}
