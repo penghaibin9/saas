@@ -1,4 +1,4 @@
-"""教务独立路由不得覆盖当前 main 已存在的学生门户路由与接口。"""
+"""教务独立路由不得覆盖最新 main 已存在的学生门户路由与接口。"""
 from pathlib import Path
 
 
@@ -83,10 +83,15 @@ def test_main_internship_compliance_contract_is_preserved():
 def test_main_internship_and_graduation_support_facades_exist():
     for token in (
         "/portal/internship/context/applications",
-        "expectedVersion",
+        "/portal/internship/context/changes",
+        "/portal/internship/context/reports",
+        "/portal/internship/context/weekly-reports",
         "INTERNSHIP_APPLICATION_EVIDENCE",
         "INTERNSHIP_INSURANCE_POLICY",
     ):
         assert token in CORE_API
+    # 版本字段属于调用方 body，不应由公共 API 门面私自补造或覆盖。
+    assert "method: 'POST', body" in CORE_API
+    assert "method: 'PUT', body" in CORE_API
     assert "/portal/graduation/extensions/my" in GRADUATION_EXTENSION_API
     assert "/portal/graduation/defense-delay/apply" in GRADUATION_EXTENSION_API
