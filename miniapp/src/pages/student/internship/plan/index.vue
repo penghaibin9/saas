@@ -58,6 +58,7 @@ import {
   studentInternshipPlanTasks,
   studentInternshipPlanTaskSubmit
 } from '@/services/internshipApi'
+import { studentApi } from '@/services/studentApi'
 import { chooseSingleFile, uploadBusinessFile } from '@/services/fileApi'
 import { toast } from '@/utils/nav'
 
@@ -65,6 +66,7 @@ export default {
   data() {
     return {
       pageState: 'loading', plan: null, tasks: [],
+      context: {},
       summary: { total: 0, approved: 0, rate: 0 },
       submitting: false, uploading: false
     }
@@ -74,10 +76,15 @@ export default {
     async load() {
       this.pageState = 'loading'
       try {
-        const [plan, taskData] = await Promise.all([
+        const [plan, taskData, dashboard] = await Promise.all([
           studentInternshipPlan(),
-          studentInternshipPlanTasks().catch(() => null)
+          studentInternshipPlanTasks().catch(() => null),
+          studentApi.getInternship()
         ])
+        this.context = {
+          batchId: dashboard?.batchId || '',
+          internshipId: dashboard?.recordId || dashboard?.internshipId || ''
+        }
         this.plan = plan
         const sourceTasks = (taskData && taskData.tasks) || (plan && plan.tasks) || []
         this.tasks = sourceTasks.map((t) => ({
@@ -101,6 +108,7 @@ export default {
       this.submitting = 'ack'
       try {
         await studentInternshipPlanAcknowledge({
+          ...this.context,
           planId: this.plan.id || this.plan.planId,
           expectedVersion: this.plan.ackVersion || 0,
           planVersion: this.plan.version || this.plan.planVersion

@@ -71,6 +71,7 @@ import {
   studentInternshipMakeups,
   studentInternshipMakeupWithdraw
 } from '@/services/internshipApi'
+import { studentApi } from '@/services/studentApi'
 import { chooseSingleFile, uploadBusinessFile } from '@/services/fileApi'
 import { toast } from '@/utils/nav'
 
@@ -83,6 +84,7 @@ export default {
   data() {
     return {
       list: [], pageState: 'loading', formVisible: false,
+      context: {},
       submitting: false, uploading: false, makeupTypeIndex: 0,
       form: { checkinDate: '', reason: '', makeupType: 'MISSING', evidenceFileId: '', fileName: '' }
     }
@@ -102,8 +104,15 @@ export default {
     async loadList(done) {
       this.pageState = 'loading'
       try {
-        const rows = await studentInternshipMakeups()
+        const [rows, dashboard] = await Promise.all([
+          studentInternshipMakeups(),
+          studentApi.getInternship()
+        ])
         this.list = Array.isArray(rows) ? rows : (rows?.items || [])
+        this.context = {
+          batchId: dashboard?.batchId || '',
+          internshipId: dashboard?.recordId || dashboard?.internshipId || ''
+        }
         this.pageState = 'ready'
       } catch (error) {
         this.pageState = 'error'
@@ -147,6 +156,7 @@ export default {
       this.submitting = true
       try {
         await studentInternshipMakeupApply({
+          ...this.context,
           checkinDate: this.form.checkinDate,
           reason: this.form.reason.trim(),
           makeupType: this.form.makeupType,
@@ -167,7 +177,10 @@ export default {
           if (!result.confirm) return
           this.submitting = true
           try {
-            await studentInternshipMakeupWithdraw(item.id, item.version)
+            await studentInternshipMakeupWithdraw(item.id, {
+              ...this.context,
+              expectedVersion: item.version
+            })
             toast('已撤回')
             await this.loadList()
           } catch (error) {

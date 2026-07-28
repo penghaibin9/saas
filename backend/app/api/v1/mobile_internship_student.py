@@ -11,11 +11,17 @@ from app.modules.internship.services import internship_plan_service as plans
 from app.modules.internship.services import internship_plan_task_service as plan_tasks
 from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_application_context_service as applications
+from app.modules.internship.services import internship_student_change_context_service as changes
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_dashboard_service as dashboard
 from app.modules.internship.services import internship_student_leave_context_service as leaves
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
+from app.modules.internship.services import internship_student_report_context_service as reports
+from app.modules.internship.services import internship_student_eval_service as student_evals
+from app.modules.internship.services.internship_student_context_guard import (
+    require_context_fields,
+)
 
 router = APIRouter(
     prefix="/mobile/internship",
@@ -71,8 +77,13 @@ def my_safety_course_detail(course_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/context/applications", summary="本人所选批次正式实习申请")
-def my_selected_applications(user=Depends(get_current_user)):
-    return success(applications.list_my(user))
+def my_selected_applications(
+    batchId: int | None = Query(default=None, ge=1),
+    internshipId: int | None = Query(default=None, ge=1),
+    user=Depends(get_current_user),
+):
+    return success(applications.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
 
 
 @router.put("/context/applications", summary="按版本保存本人正式实习申请草稿")
@@ -90,7 +101,7 @@ def submit_selected_application(
     user=Depends(get_current_user),
 ):
     return success(applications.submit(
-        user, application_id, (body or {}).get("expectedVersion")),
+        user, application_id, body or {}),
         message="申请已提交审核")
 
 
@@ -101,13 +112,18 @@ def withdraw_selected_application(
     user=Depends(get_current_user),
 ):
     return success(applications.withdraw(
-        user, application_id, (body or {}).get("expectedVersion")),
+        user, application_id, body or {}),
         message="申请已撤回")
 
 
 @router.get("/context/leaves", summary="本人所选批次实习请假列表")
-def my_selected_leaves(user=Depends(get_current_user)):
-    return success(leaves.list_my(user))
+def my_selected_leaves(
+    batchId: int | None = Query(default=None, ge=1),
+    internshipId: int | None = Query(default=None, ge=1),
+    user=Depends(get_current_user),
+):
+    return success(leaves.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
 
 
 @router.post("/context/leaves", summary="本人发起实习请假")
@@ -125,7 +141,7 @@ def withdraw_selected_leave(
     user=Depends(get_current_user),
 ):
     return success(leaves.withdraw(
-        user, leave_id, (body or {}).get("expectedVersion")), message="请假已撤回")
+        user, leave_id, body or {}), message="请假已撤回")
 
 
 @router.post("/context/leaves/{leave_id}/return", summary="按版本办理本人销假")
@@ -138,8 +154,13 @@ def return_selected_leave(
 
 
 @router.get("/context/makeups", summary="本人所选批次补卡申请列表")
-def my_selected_makeups(user=Depends(get_current_user)):
-    return success(makeups.list_my(user))
+def my_selected_makeups(
+    batchId: int | None = Query(default=None, ge=1),
+    internshipId: int | None = Query(default=None, ge=1),
+    user=Depends(get_current_user),
+):
+    return success(makeups.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
 
 
 @router.post("/context/makeups", summary="本人发起合规补卡申请")
@@ -157,7 +178,7 @@ def withdraw_selected_makeup(
     user=Depends(get_current_user),
 ):
     return success(makeups.withdraw(
-        user, makeup_id, (body or {}).get("expectedVersion")), message="补卡已撤回")
+        user, makeup_id, body or {}), message="补卡已撤回")
 
 
 @router.get("/context/plan", summary="本人当前已发布实习计划及回执版本")
@@ -170,6 +191,7 @@ def acknowledge_selected_plan(
     body: dict = Body(...),
     user=Depends(get_current_user),
 ):
+    require_context_fields(body or {})
     return success(plans.student_acknowledge(user, body or {}), message="已确认当前版本实习计划")
 
 
@@ -210,6 +232,93 @@ def confirm_selected_agreement(
     user=Depends(get_current_user),
 ):
     payload = body or {}
+    require_context_fields(payload)
     return success(agreements.student_confirm(
         user, agreement_id, str(payload.get("action") or "").upper(),
         payload.get("reason") or "", body=payload), message="协议办理完成")
+
+
+@router.get("/context/changes", summary="本人当前批次调岗、换单位与退岗申请")
+def my_selected_changes(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(changes.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/changes", summary="按当前批次和版本发起实习变更")
+def apply_selected_change(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(changes.apply(user, body or {}), message="变更申请已提交")
+
+
+@router.post("/context/changes/{change_id}/withdraw", summary="按当前批次和版本撤回实习变更")
+def withdraw_selected_change(
+    change_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(
+        changes.withdraw(user, change_id, body or {}),
+        message="变更申请已撤回",
+    )
+
+
+@router.get("/context/reports", summary="本人当前批次月报与实习总结")
+def my_selected_reports(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(reports.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/reports", summary="按当前批次和版本提交月报或实习总结")
+def submit_selected_report(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(reports.submit(user, body or {}), message="过程报告已提交")
+
+
+@router.get("/context/weekly-reports", summary="本人当前批次周报")
+def my_selected_weekly_reports(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(reports.list_weekly(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/weekly-reports", summary="按当前批次和版本提交周报")
+def submit_selected_weekly_report(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(
+        reports.submit_weekly(user, body or {}),
+        message="周报已提交",
+    )
+
+
+@router.get("/context/self-eval", summary="本人当前批次实习自评")
+def my_selected_self_eval(user=Depends(get_current_user)):
+    return success(student_evals.my_eval(user))
+
+
+@router.post("/context/self-eval", summary="按当前批次和版本提交实习自评")
+def submit_selected_self_eval(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(
+        student_evals.student_submit(user, body or {}),
+        message="实习自评已提交",
+    )

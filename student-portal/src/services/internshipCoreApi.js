@@ -2,33 +2,35 @@
 import { request, uploadFile } from './request'
 
 const encode = (value) => encodeURIComponent(String(value ?? ''))
+const contextQuery = ({ batchId, internshipId }) =>
+  `?batchId=${encode(batchId)}&internshipId=${encode(internshipId)}`
 
 export const internshipCoreApi = {
-  applications() {
-    return request('/portal/internship/context/applications')
+  applications(context) {
+    return request(`/portal/internship/context/applications${contextQuery(context)}`)
   },
   saveApplication(body) {
     return request('/portal/internship/context/applications', { method: 'PUT', body })
   },
-  submitApplication(id, expectedVersion) {
+  submitApplication(id, body) {
     return request(`/portal/internship/context/applications/${encode(id)}/submit`, {
-      method: 'POST', body: { expectedVersion }
+      method: 'POST', body
     })
   },
-  withdrawApplication(id, expectedVersion) {
+  withdrawApplication(id, body) {
     return request(`/portal/internship/context/applications/${encode(id)}/withdraw`, {
-      method: 'POST', body: { expectedVersion }
+      method: 'POST', body
     })
   },
-  leaves() {
-    return request('/portal/internship/context/leaves')
+  leaves(context) {
+    return request(`/portal/internship/context/leaves${contextQuery(context)}`)
   },
   applyLeave(body) {
     return request('/portal/internship/context/leaves', { method: 'POST', body })
   },
-  withdrawLeave(id, expectedVersion) {
+  withdrawLeave(id, body) {
     return request(`/portal/internship/context/leaves/${encode(id)}/withdraw`, {
-      method: 'POST', body: { expectedVersion }
+      method: 'POST', body
     })
   },
   returnLeave(id, body) {
@@ -36,15 +38,15 @@ export const internshipCoreApi = {
       method: 'POST', body
     })
   },
-  makeups() {
-    return request('/portal/internship/context/makeups')
+  makeups(context) {
+    return request(`/portal/internship/context/makeups${contextQuery(context)}`)
   },
   applyMakeup(body) {
     return request('/portal/internship/context/makeups', { method: 'POST', body })
   },
-  withdrawMakeup(id, expectedVersion) {
+  withdrawMakeup(id, body) {
     return request(`/portal/internship/context/makeups/${encode(id)}/withdraw`, {
-      method: 'POST', body: { expectedVersion }
+      method: 'POST', body
     })
   },
   agreements() {
@@ -61,10 +63,33 @@ export const internshipCoreApi = {
   plan() {
     return request('/portal/internship/context/plan')
   },
-  acknowledgePlan(planVersion, expectedVersion) {
+  acknowledgePlan(body) {
     return request('/portal/internship/context/plan/acknowledge', {
-      method: 'POST', body: { planVersion, expectedVersion }
+      method: 'POST', body
     })
+  },
+  changes(context) {
+    return request(`/portal/internship/context/changes${contextQuery(context)}`)
+  },
+  applyChange(body) {
+    return request('/portal/internship/context/changes', { method: 'POST', body })
+  },
+  withdrawChange(id, body) {
+    return request(`/portal/internship/context/changes/${encode(id)}/withdraw`, {
+      method: 'POST', body
+    })
+  },
+  reports(context) {
+    return request(`/portal/internship/context/reports${contextQuery(context)}`)
+  },
+  submitReport(body) {
+    return request('/portal/internship/context/reports', { method: 'POST', body })
+  },
+  weeklyReports(context) {
+    return request(`/portal/internship/context/weekly-reports${contextQuery(context)}`)
+  },
+  submitWeeklyReport(body) {
+    return request('/portal/internship/context/weekly-reports', { method: 'POST', body })
   },
   positions(city = '') {
     const query = city ? `?city=${encode(city)}` : ''
@@ -83,10 +108,10 @@ export const internshipCoreApi = {
     return request('/portal/internship/insurance', { method: 'POST', body })
   },
   selfEval() {
-    return request('/portal/internship/self-eval')
+    return request('/portal/internship/context/self-eval')
   },
   submitSelfEval(body) {
-    return request('/portal/internship/self-eval', { method: 'POST', body })
+    return request('/portal/internship/context/self-eval', { method: 'POST', body })
   }
 }
 

@@ -12,6 +12,9 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission
 from app.models import InternshipApplication
 from app.modules.internship.services import internship_application_service as legacy
+from app.modules.internship.services.internship_student_context_guard import (
+    require_explicit_context,
+)
 from app.services.db_service import _as_id, _tid, session
 
 _EDITABLE = {"DRAFT", "REJECTED", "WITHDRAWN"}
@@ -32,14 +35,23 @@ def _expected(payload: dict, current: int, *, required: bool) -> int:
     return value
 
 
-def _student_record(db, user, *, for_write: bool):
+def _student_record(db, user, *, for_write: bool, payload: dict):
+    if payload:
+        record, student, _batch_id = require_explicit_context(
+            db, user, payload, for_write=for_write)
+        return record, student
     return legacy._record_for_student(
         db, (user or {}).get("studentNo"), for_write=for_write)
 
 
-def list_my(user: dict) -> list[dict]:
+def list_my(user: dict, *, batch_id=None, internship_id=None) -> list[dict]:
     with session() as db:
-        record, student = _student_record(db, user, for_write=False)
+        payload = (
+            {"batchId": batch_id, "internshipId": internship_id}
+            if batch_id is not None or internship_id is not None else {}
+        )
+        record, student = _student_record(
+            db, user, for_write=False, payload=payload)
         rows = db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == _tid(),
             InternshipApplication.record_id == record.id,
@@ -58,7 +70,8 @@ def save(user: dict, body: dict) -> dict:
         raise AppException(
             "VALIDATION_ERROR", "applicationType 必须是 POSITION 或 SELF_ARRANGED")
     with session() as db:
-        record, student = _student_record(db, user, for_write=True)
+        record, student = _student_record(
+            db, user, for_write=True, payload=payload)
         if record.status not in ("PREPARING", "READY"):
             raise AppException("DATA_CONFLICT", "当前实习状态不可新增或修改申请")
         if record.position_id or record.destination_type == "SELF_ARRANGED":
@@ -153,9 +166,11 @@ def save(user: dict, body: dict) -> dict:
         return legacy._row(db, row, record, student)
 
 
-def submit(user: dict, app_id, expected_version) -> dict:
+def submit(user: dict, app_id, body: dict) -> dict:
+    payload = body or {}
     with session() as db:
-        record, student = _student_record(db, user, for_write=True)
+        record, student = _student_record(
+            db, user, for_write=True, payload=payload)
         row = db.scalar(select(InternshipApplication).where(
             InternshipApplication.id == _as_id(app_id),
             InternshipApplication.tenant_id == _tid(),
@@ -165,7 +180,7 @@ def submit(user: dict, app_id, expected_version) -> dict:
             raise AppException("NOT_FOUND", "实习申请不存在")
         if row.record_id != record.id or row.student_id != student.id:
             raise no_permission("只能提交本人的实习申请")
-        _expected({"expectedVersion": expected_version}, row.version, required=True)
+        _expected(payload, row.version, required=True)
         if row.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅草稿申请可提交")
         if len(str(row.application_note or "").strip()) < 5:
@@ -197,9 +212,11 @@ def submit(user: dict, app_id, expected_version) -> dict:
         return legacy._row(db, row, record, student)
 
 
-def withdraw(user: dict, app_id, expected_version) -> dict:
+def withdraw(user: dict, app_id, body: dict) -> dict:
+    payload = body or {}
     with session() as db:
-        record, student = _student_record(db, user, for_write=True)
+        record, student = _student_record(
+            db, user, for_write=True, payload=payload)
         row = db.scalar(select(InternshipApplication).where(
             InternshipApplication.id == _as_id(app_id),
             InternshipApplication.tenant_id == _tid(),
@@ -209,7 +226,7 @@ def withdraw(user: dict, app_id, expected_version) -> dict:
             raise AppException("NOT_FOUND", "实习申请不存在")
         if row.record_id != record.id or row.student_id != student.id:
             raise no_permission("只能撤回本人的实习申请")
-        _expected({"expectedVersion": expected_version}, row.version, required=True)
+        _expected(payload, row.version, required=True)
         if row.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待审核申请可撤回")
         row.status = "WITHDRAWN"

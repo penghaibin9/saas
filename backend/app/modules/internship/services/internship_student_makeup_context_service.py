@@ -8,6 +8,9 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipCheckin, InternshipMakeup
 from app.modules.internship.services import internship_makeup_service as legacy
+from app.modules.internship.services.internship_student_context_guard import (
+    require_explicit_context,
+)
 from app.services.db_service import _as_id, _tid, session
 
 _ALLOWED_TYPES = {"MISSING", "OUT_OF_RANGE"}
@@ -43,8 +46,28 @@ def _locked(db, makeup_id) -> InternshipMakeup:
     return row
 
 
-def list_my(user: dict) -> dict:
-    return legacy.my_makeups(user)
+def list_my(user: dict, *, batch_id=None, internship_id=None) -> dict:
+    if batch_id is None and internship_id is None:
+        return legacy.my_makeups(user)
+    with session() as db:
+        record, student, _batch_id = require_explicit_context(
+            db,
+            user,
+            {"batchId": batch_id, "internshipId": internship_id},
+            for_write=False,
+        )
+        rows = db.scalars(select(InternshipMakeup).where(
+            InternshipMakeup.tenant_id == _tid(),
+            InternshipMakeup.internship_id == record.id,
+            InternshipMakeup.is_deleted.is_(False),
+        ).order_by(InternshipMakeup.id.desc())).all()
+        return {
+            "items": [
+                legacy._row(row, record, student, db=db, user=user)
+                for row in rows
+            ],
+            "total": len(rows),
+        }
 
 
 def apply(user: dict, body: dict) -> dict:
@@ -61,7 +84,8 @@ def apply(user: dict, body: dict) -> dict:
     if legacy._evidence_required(makeup_type) and not evidence_file_id:
         raise AppException("VALIDATION_ERROR", legacy._evidence_requirement_label(makeup_type))
     with session() as db:
-        record, student = legacy._student_record(db, user, for_write=True)
+        record, student, _batch_id = require_explicit_context(
+            db, user, payload, for_write=True)
         if record.status not in ("ONBOARD", "ASSESSING"):
             raise AppException("DATA_CONFLICT", "仅在岗或考核中的学生可以申请补卡")
         start = getattr(record, "intern_start_date", None)
@@ -117,13 +141,15 @@ def apply(user: dict, body: dict) -> dict:
         }
 
 
-def withdraw(user: dict, makeup_id, expected_version) -> dict:
+def withdraw(user: dict, makeup_id, body: dict) -> dict:
+    payload = body or {}
     with session() as db:
         row = _locked(db, makeup_id)
-        record, _student = legacy._student_record(db, user, for_write=True)
+        record, _student, _batch_id = require_explicit_context(
+            db, user, payload, for_write=True)
         if not record or row.internship_id != record.id:
             raise no_permission("只能撤回本人的补卡申请")
-        _expected(expected_version, row.version)
+        _expected(payload.get("expectedVersion"), row.version)
         if row.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待审核补卡申请可撤回")
         row.status = "WITHDRAWN"

@@ -213,8 +213,13 @@
               <option value="WITHDRAW_POST">退岗</option>
             </select>
             <template v-if="changeForm.changeType === 'CHANGE_POSITION'">
-              <div class="sp-fieldlabel">目标岗位编号（必填）</div>
-              <input v-model.trim="changeForm.targetPositionId" class="sp-inp" style="margin-bottom:12px" placeholder="岗位库 ID，审核通过后落岗" />
+              <div class="sp-fieldlabel">目标岗位（必选）</div>
+              <select v-model="changeForm.targetPositionId" class="sp-inp" style="margin-bottom:12px">
+                <option value="">请选择目标岗位</option>
+                <option v-for="position in enterprises" :key="position.id" :value="String(position.id)">
+                  {{ position.companyName }} · {{ position.title }} · {{ position.workLocation || '地点待定' }}
+                </option>
+              </select>
             </template>
             <template v-if="changeForm.changeType === 'CHANGE_ENTERPRISE' || changeForm.changeType === 'SELF_ARRANGED'">
               <div class="sp-fieldlabel">目标企业名称</div>
@@ -458,6 +463,7 @@ const insuranceMeta = ref(null)
 const planMeta = ref(null)
 const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
 const appealReason = ref('')
+const selfEvalMeta = ref(null)
 
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
 const studentName = computed(() => session.user?.realName || '同学')
@@ -478,6 +484,15 @@ const intentionCanEdit = computed(() => intentionFlags.value.canEdit !== false &
 const intentionCanSubmit = computed(() => intentionFlags.value.canSubmit || ['DRAFT', '', undefined, null].includes(intentionMeta.value.status))
 const intentionCanWithdraw = computed(() => intentionFlags.value.canWithdraw || intentionMeta.value.status === 'SUBMITTED')
 
+function currentInternshipContext() {
+  const batchId = my.value.batchId
+  const internshipId = my.value.recordId || my.value.internshipId
+  if (!batchId || !internshipId) {
+    throw new Error('当前实习批次上下文已失效，请刷新页面后重试')
+  }
+  return { batchId, internshipId }
+}
+
 const flowSteps = computed(() => {
   const order = ['协议签署', '岗前培训', '在岗实习', '考核评价', '归档']
   const cur = my.value.status === 'ENDED' ? 4 : 2
@@ -492,13 +507,13 @@ const metrics = computed(() => [
 
 async function loadLeaves() {
   try {
-    const d = await internshipCoreApi.leaves()
+    const d = await internshipCoreApi.leaves(currentInternshipContext())
     leaves.value = d?.items || d?.list || (Array.isArray(d) ? d : [])
   } catch { leaves.value = [] }
 }
 async function loadExtras() {
   try {
-    const mk = await internshipCoreApi.makeups()
+    const mk = await internshipCoreApi.makeups(currentInternshipContext())
     makeups.value = mk?.items || mk?.list || (Array.isArray(mk) ? mk : [])
   } catch { makeups.value = [] }
   try {
@@ -514,13 +529,24 @@ async function loadExtras() {
     intentionForm.intentionNote = intentionMeta.value.intentionNote || ''
   } catch { intentionMeta.value = {}; intentionFlags.value = { canEdit: true, canSubmit: true, canWithdraw: false } }
   try {
-    const apps = await internshipCoreApi.applications()
+    const apps = await internshipCoreApi.applications(currentInternshipContext())
     applications.value = apps?.items || (Array.isArray(apps) ? apps : [])
   } catch { applications.value = [] }
   try {
-    const ch = await portalApi.internshipChanges()
+    const ch = await internshipCoreApi.changes(currentInternshipContext())
     changes.value = ch?.items || []
   } catch { changes.value = [] }
+  try {
+    const [weekly, reports] = await Promise.all([
+      internshipCoreApi.weeklyReports(currentInternshipContext()),
+      internshipCoreApi.reports(currentInternshipContext())
+    ])
+    my.value.weeklyReports = weekly?.items || []
+    my.value.processReports = reports?.items || []
+  } catch {
+    my.value.weeklyReports = []
+    my.value.processReports = []
+  }
   try {
     const ag = await internshipCoreApi.agreements()
     agreements.value = ag?.items || (Array.isArray(ag) ? ag : [])
@@ -540,6 +566,9 @@ async function loadExtras() {
   try {
     planMeta.value = await internshipCoreApi.plan()
   } catch { planMeta.value = null }
+  try {
+    selfEvalMeta.value = await internshipCoreApi.selfEval()
+  } catch { selfEvalMeta.value = null }
   await loadEnterprises()
 }
 async function loadEnterprises() {
@@ -572,7 +601,10 @@ async function doCheckin() {
 async function submitMakeup() {
   busy.value = true
   try {
-    await internshipCoreApi.applyMakeup({ ...makeupForm })
+    await internshipCoreApi.applyMakeup({
+      ...makeupForm,
+      ...currentInternshipContext()
+    })
     ui.notify('补卡申请已提交')
     makeupForm.reason = ''
     await loadExtras()
@@ -581,7 +613,10 @@ async function submitMakeup() {
 async function withdrawMakeup(item) {
   busy.value = true
   try {
-    await internshipCoreApi.withdrawMakeup(item.id, item.version)
+    await internshipCoreApi.withdrawMakeup(item.id, {
+      ...currentInternshipContext(),
+      expectedVersion: item.version
+    })
     ui.notify('已撤回'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
@@ -642,6 +677,7 @@ async function submitApplication() {
   busy.value = true
   try {
     const body = {
+      ...currentInternshipContext(),
       applicationType: appForm.applicationType,
       applicationNote: appForm.applicationNote,
       positionId: appForm.applicationType === 'POSITION' ? appForm.positionId : undefined,
@@ -653,7 +689,10 @@ async function submitApplication() {
       evidenceFileId: appForm.evidenceFileId
     }
     const saved = await internshipCoreApi.saveApplication(body)
-    await internshipCoreApi.submitApplication(saved.id, saved.version)
+    await internshipCoreApi.submitApplication(saved.id, {
+      ...currentInternshipContext(),
+      expectedVersion: saved.version
+    })
     ui.notify('申请已提交'); appForm.applicationNote = ''; await loadExtras()
   } catch (e) { ui.notify(e?.message || '申请失败') } finally { busy.value = false }
 }
@@ -666,14 +705,28 @@ async function submitChange() {
   }
   busy.value = true
   try {
-    await portalApi.internshipChangeApply({ ...changeForm })
+    const context = currentInternshipContext()
+    const selected = enterprises.value.find(
+      (item) => String(item.id) === String(changeForm.targetPositionId)
+    )
+    await internshipCoreApi.applyChange({
+      ...changeForm,
+      ...context,
+      expectedVersion: 0,
+      targetEnterpriseId: selected?.companyId || undefined,
+      targetEnterpriseName: selected?.companyName || changeForm.targetEnterpriseName,
+      targetPositionName: selected?.title || changeForm.targetPositionName
+    })
     ui.notify('变更申请已提交'); changeForm.reason = ''; await loadExtras()
   } catch (e) { ui.notify(e?.message || '变更申请失败') } finally { busy.value = false }
 }
 async function submitLeave() {
   busy.value = true
   try {
-    await internshipCoreApi.applyLeave({ ...leaveForm })
+    await internshipCoreApi.applyLeave({
+      ...leaveForm,
+      ...currentInternshipContext()
+    })
     ui.notify('请假申请已提交')
     Object.assign(leaveForm, { reason: '' })
     await loadLeaves()
@@ -682,7 +735,10 @@ async function submitLeave() {
 async function withdrawLeave(item) {
   busy.value = true
   try {
-    await internshipCoreApi.withdrawLeave(item.id, item.version)
+    await internshipCoreApi.withdrawLeave(item.id, {
+      ...currentInternshipContext(),
+      expectedVersion: item.version
+    })
     ui.notify('已撤回'); await loadLeaves()
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
@@ -692,7 +748,11 @@ async function returnLeave(id) {
   busy.value = true
   try {
     const item = leaves.value.find((row) => String(row.id) === String(id))
-    await internshipCoreApi.returnLeave(id, { note, expectedVersion: item?.version })
+    await internshipCoreApi.returnLeave(id, {
+      ...currentInternshipContext(),
+      note,
+      expectedVersion: item?.version
+    })
     ui.notify('销假已登记'); await loadLeaves()
   } catch (e) { ui.notify(e?.message || '销假失败') } finally { busy.value = false }
 }
@@ -707,7 +767,10 @@ async function confirmAgreement(action) {
     }
     const detail = await internshipCoreApi.agreement(activeAgreement.value.id)
     await internshipCoreApi.confirmAgreement(activeAgreement.value.id, {
-      action, reason, expectedVersion: detail.version
+      ...currentInternshipContext(),
+      action,
+      reason,
+      expectedVersion: detail.version
     })
     ui.notify(action === 'CONFIRM' ? '协议已确认' : '协议已驳回')
     await loadExtras(); await load()
@@ -740,7 +803,11 @@ async function saveInsurance() {
 async function ackPlan() {
   busy.value = true
   try {
-    await internshipCoreApi.acknowledgePlan(planMeta.value?.version, planMeta.value?.ackVersion)
+    await internshipCoreApi.acknowledgePlan({
+      ...currentInternshipContext(),
+      planVersion: planMeta.value?.version,
+      expectedVersion: planMeta.value?.ackVersion
+    })
     ui.notify('已确认实习计划'); await loadExtras()
   } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
 }
@@ -756,15 +823,44 @@ async function submitHelp() {
 async function submitWeekly() {
   if (!weeklyForm.week) return ui.notify('请填写周次')
   busy.value = true
-  try { await portalApi.internshipWeeklySubmit({ weekNo: weeklyForm.week, workContent: weeklyForm.workContent, harvestContent: weeklyForm.harvestContent, planContent: weeklyForm.planContent }); ui.notify('周报已提交'); Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' }); load() }
+  try {
+    const context = currentInternshipContext()
+    const existing = (my.value.weeklyReports || []).find(
+      (item) => Number(item.weekNo || item.week) === Number(weeklyForm.week)
+    )
+    await internshipCoreApi.submitWeeklyReport({
+      ...context,
+      expectedVersion: existing?.version ?? 0,
+      weekNo: weeklyForm.week,
+      workContent: weeklyForm.workContent,
+      harvestContent: weeklyForm.harvestContent,
+      planContent: weeklyForm.planContent
+    })
+    ui.notify('周报已提交')
+    Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' })
+    await load()
+  }
   catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitReport() {
   busy.value = true
   try {
-    const RT = { 月报: 'MONTHLY', 实习总结: 'SUMMARY', 周报: 'WEEKLY' }
-    await portalApi.internshipReportSubmit({ reportType: RT[reportTab.value] || 'MONTHLY', periodKey: reportForm.title || reportTab.value, content: reportForm.content })
-    ui.notify(reportTab.value + '已提交'); reportForm.content = ''; load()
+    const RT = { 月报: 'MONTHLY', 实习总结: 'SUMMARY' }
+    const reportType = RT[reportTab.value] || 'MONTHLY'
+    const periodKey = reportType === 'SUMMARY' ? 'FINAL' : (reportForm.title || reportTab.value)
+    const existing = (my.value.processReports || []).find(
+      (item) => item.reportType === reportType && item.periodKey === periodKey
+    )
+    await internshipCoreApi.submitReport({
+      ...currentInternshipContext(),
+      reportType,
+      periodKey,
+      content: reportForm.content,
+      expectedVersion: existing?.version ?? 0
+    })
+    ui.notify(reportTab.value + '已提交')
+    Object.assign(reportForm, { title: '', content: '' })
+    await load()
   }
   catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
@@ -772,9 +868,11 @@ async function submitSelfEval() {
   busy.value = true
   try {
     await internshipCoreApi.submitSelfEval({
-      performance: evalForm.performance,
-      reflection: evalForm.reflection,
-      problems: evalForm.problems
+      ...currentInternshipContext(),
+      expectedVersion: selfEvalMeta.value?.version ?? 0,
+      selfSummary: evalForm.performance,
+      selfHarvest: evalForm.reflection,
+      selfProblem: evalForm.problems
     })
     ui.notify('自评已提交'); Object.assign(evalForm, { performance: '', reflection: '', problems: '' }); load()
   } catch (e) { ui.notify(e?.message || '自评提交失败') } finally { busy.value = false }

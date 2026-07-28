@@ -77,6 +77,7 @@ export default {
   data() {
     return {
       pageState: 'loading', submitting: false, uploading: false, historyMode: false,
+      context: {},
       typeIndex: 0, typeLabels: TYPES.map((x) => x.label), positions: [], positionIndex: 0,
       evidenceFileName: '', history: [], editableApplication: null,
       form: { companyName: '', positionName: '', workAddress: '', contactName: '', contactPhone: '', evidenceFileId: '', applicationNote: '' }
@@ -99,6 +100,10 @@ export default {
           studentInternshipApplications(), studentApi.getInternshipEnterprises(), studentApi.getInternship()
         ])
         this.history = Array.isArray(rows) ? rows : rows?.items || []
+        this.context = {
+          batchId: dashboard?.batchId || '',
+          internshipId: dashboard?.recordId || dashboard?.internshipId || ''
+        }
         this.positions = (library?.items || []).filter((x) => Number(x.remaining || 0) > 0)
         this.historyMode = !!dashboard?.historyMode
         const editable = this.history.find((x) => ['DRAFT', 'REJECTED', 'WITHDRAWN'].includes(x.status)) || null
@@ -137,7 +142,11 @@ export default {
     },
     payload() {
       const applicationType = TYPES[this.typeIndex].value
-      const body = { applicationType, applicationNote: String(this.form.applicationNote || '').trim() }
+      const body = {
+        ...this.context,
+        applicationType,
+        applicationNote: String(this.form.applicationNote || '').trim()
+      }
       if (this.editableApplication) {
         body.id = this.editableApplication.id
         body.expectedVersion = this.editableApplication.version
@@ -176,7 +185,10 @@ export default {
       this.submitting = true
       try {
         const saved = await studentInternshipApplicationSave(this.payload())
-        await studentInternshipApplicationSubmit(saved.id, saved.version)
+        await studentInternshipApplicationSubmit(saved.id, {
+          ...this.context,
+          expectedVersion: saved.version
+        })
         toast('申请已提交审核')
         await this.load()
       } catch (e) {
@@ -190,7 +202,14 @@ export default {
         success: async (result) => {
           if (!result.confirm) return
           this.submitting = true
-          try { await studentInternshipApplicationWithdraw(item.id, item.version); toast('已撤回'); await this.load() }
+          try {
+            await studentInternshipApplicationWithdraw(item.id, {
+              ...this.context,
+              expectedVersion: item.version
+            })
+            toast('已撤回')
+            await this.load()
+          }
           catch (e) { toast(e?.message || '撤回失败'); await this.load() }
           finally { this.submitting = false }
         }

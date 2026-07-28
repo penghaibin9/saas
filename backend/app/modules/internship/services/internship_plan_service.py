@@ -287,7 +287,14 @@ def student_acknowledge(user, body=None) -> dict:
     from app.modules.internship.services.internship_agreement_service import _student_record
     payload = body or {}
     with session() as db:
-        record, student = _student_record(db, user, for_write=True)
+        if payload.get("batchId") is not None or payload.get("internshipId") is not None:
+            from app.modules.internship.services.internship_student_context_guard import (
+                require_explicit_context,
+            )
+            record, student, _batch_id = require_explicit_context(
+                db, user, payload, for_write=True)
+        else:
+            record, student = _student_record(db, user, for_write=True)
         plan = db.scalar(select(InternshipBatchPlan).where(
             InternshipBatchPlan.tenant_id == _tid(),
             InternshipBatchPlan.batch_id == record.batch_id,

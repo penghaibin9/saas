@@ -145,22 +145,22 @@ export const studentInternshipApplications = () =>
   realRequest('/mobile/internship/context/applications')
 export const studentInternshipApplicationSave = (body) =>
   realRequest('/mobile/internship/context/applications', { method: 'PUT', data: body || {} })
-export const studentInternshipApplicationSubmit = (applicationId, expectedVersion) =>
+export const studentInternshipApplicationSubmit = (applicationId, body) =>
   realRequest(`/mobile/internship/context/applications/${enc(applicationId)}/submit`, {
-    method: 'POST', data: { expectedVersion }
+    method: 'POST', data: body || {}
   })
-export const studentInternshipApplicationWithdraw = (applicationId, expectedVersion) =>
+export const studentInternshipApplicationWithdraw = (applicationId, body) =>
   realRequest(`/mobile/internship/context/applications/${enc(applicationId)}/withdraw`, {
-    method: 'POST', data: { expectedVersion }
+    method: 'POST', data: body || {}
   })
 
 export const studentInternshipLeaves = () =>
   realRequest('/mobile/internship/context/leaves')
 export const studentInternshipLeaveApply = (body) =>
   realRequest('/mobile/internship/context/leaves', { method: 'POST', data: body || {} })
-export const studentInternshipLeaveWithdraw = (leaveId, expectedVersion) =>
+export const studentInternshipLeaveWithdraw = (leaveId, body) =>
   realRequest(`/mobile/internship/context/leaves/${enc(leaveId)}/withdraw`, {
-    method: 'POST', data: { expectedVersion }
+    method: 'POST', data: body || {}
   })
 export const studentInternshipLeaveReturn = (leaveId, body) =>
   realRequest(`/mobile/internship/context/leaves/${enc(leaveId)}/return`, { method: 'POST', data: body || {} })
@@ -169,9 +169,9 @@ export const studentInternshipMakeups = () =>
   realRequest('/mobile/internship/context/makeups')
 export const studentInternshipMakeupApply = (body) =>
   realRequest('/mobile/internship/context/makeups', { method: 'POST', data: body || {} })
-export const studentInternshipMakeupWithdraw = (makeupId, expectedVersion) =>
+export const studentInternshipMakeupWithdraw = (makeupId, body) =>
   realRequest(`/mobile/internship/context/makeups/${enc(makeupId)}/withdraw`, {
-    method: 'POST', data: { expectedVersion }
+    method: 'POST', data: body || {}
   })
 
 export const studentInternshipPlan = () =>

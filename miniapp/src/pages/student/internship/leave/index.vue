@@ -79,6 +79,7 @@ import {
   studentInternshipLeaveReturn,
   studentInternshipLeaveWithdraw
 } from '@/services/internshipApi'
+import { studentApi } from '@/services/studentApi'
 import { chooseSingleFile, uploadBusinessFile } from '@/services/fileApi'
 import { toast } from '@/utils/nav'
 
@@ -92,6 +93,7 @@ export default {
   data() {
     return {
       list: [], pageState: 'loading', formVisible: false,
+      context: {},
       submitting: false, uploading: false, leaveTypeIndex: 0,
       form: { leaveType: 'PERSONAL', startDate: '', endDate: '', reason: '', fileId: '', fileName: '' }
     }
@@ -120,8 +122,15 @@ export default {
     async loadList(done) {
       this.pageState = 'loading'
       try {
-        const rows = await studentInternshipLeaves()
+        const [rows, dashboard] = await Promise.all([
+          studentInternshipLeaves(),
+          studentApi.getInternship()
+        ])
         this.list = Array.isArray(rows) ? rows : (rows?.items || [])
+        this.context = {
+          batchId: dashboard?.batchId || '',
+          internshipId: dashboard?.recordId || dashboard?.internshipId || ''
+        }
         this.pageState = 'ready'
       } catch (error) {
         this.pageState = 'error'
@@ -167,6 +176,7 @@ export default {
       this.submitting = true
       try {
         await studentInternshipLeaveApply({
+          ...this.context,
           leaveType: this.form.leaveType,
           startDate: this.form.startDate,
           endDate: this.form.endDate,
@@ -188,7 +198,10 @@ export default {
           if (!result.confirm) return
           this.submitting = true
           try {
-            await studentInternshipLeaveWithdraw(item.id, item.version)
+            await studentInternshipLeaveWithdraw(item.id, {
+              ...this.context,
+              expectedVersion: item.version
+            })
             toast('已撤回')
             await this.loadList()
           } catch (error) {
@@ -208,7 +221,11 @@ export default {
           if (note.length < 2) return toast('销假说明至少2字')
           this.submitting = true
           try {
-            await studentInternshipLeaveReturn(item.id, { note, expectedVersion: item.version })
+            await studentInternshipLeaveReturn(item.id, {
+              ...this.context,
+              note,
+              expectedVersion: item.version
+            })
             toast('销假已登记')
             await this.loadList()
           } catch (error) {
