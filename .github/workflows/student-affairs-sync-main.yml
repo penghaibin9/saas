@@ -38,10 +38,11 @@ jobs:
             python scripts/maintenance/repair_affairs_sensitive_scope_round6.py
             python scripts/maintenance/repair_affairs_bigdata_round7.py
             python scripts/maintenance/repair_affairs_runtime_tests_round8.py
+            python scripts/maintenance/repair_affairs_funding_round9.py
             python -m compileall -q backend/app backend/tests backend/affairs_contract_test_support.py scripts/maintenance
             git add backend/app backend/tests backend/affairs_contract_test_support.py scripts/maintenance
             if ! git diff --cached --quiet; then
-              git commit -m "fix(student-affairs): apply remaining contracts through round8"
+              git commit -m "fix(student-affairs): apply remaining contracts through round9"
             fi
             git fetch origin main
             set +e
@@ -73,7 +74,7 @@ jobs:
               echo "base=$(git rev-parse origin/main 2>/dev/null || true)"
               echo "head=$(git rev-parse HEAD)"
               echo "log_tail:"
-              tail -n 240 /tmp/student-affairs-sync.log
+              tail -n 280 /tmp/student-affairs-sync.log
             } > student-affairs-sync-error.txt
             git add student-affairs-sync-error.txt
             git commit -m "chore(student-affairs): record main sync failure"
