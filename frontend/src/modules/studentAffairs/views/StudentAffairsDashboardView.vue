@@ -23,6 +23,43 @@
       @retry="load"
       @back="$router.push('/workbench')"
     >
+      <div class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">当前工作范围 · {{ scopeLabel }}</span>
+          <h3 class="sa-summary-strip__title">先处理待办和未关闭风险，再进入各业务台账</h3>
+          <p class="sa-summary-strip__text">{{ riskSummary }} 今日待办、请假审批和重点学生提醒均按当前身份的数据范围汇总。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
+            查看未关闭风险
+          </AppPermissionButton>
+        </div>
+      </div>
+
+      <div class="sa-grid sa-grid--priority">
+        <AppSectionCard title="今日优先处理">
+          <ul class="sa-list">
+            <li v-for="item in todoItems" :key="item.key">
+              <span>
+                <strong>{{ item.label }}</strong>
+                <small>{{ item.hint }}</small>
+              </span>
+              <AppStatusTag :type="item.count > 0 ? 'warning' : 'success'" :label="`${item.count} 件`" />
+            </li>
+          </ul>
+        </AppSectionCard>
+
+        <AppSectionCard title="学生风险结论">
+          <div class="sa-risk-row">
+            <AppRiskTag :level="riskLevel" />
+            <span>{{ riskSummary }}</span>
+          </div>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
+            进入风险预警
+          </AppPermissionButton>
+        </AppSectionCard>
+      </div>
+
       <div class="sa-grid sa-grid--metrics">
         <AppMetricCard
           v-for="card in metricCards"
@@ -38,40 +75,9 @@
       </div>
 
       <div class="sa-grid sa-grid--two">
-        <AppSectionCard title="今日待办">
-          <ul class="sa-list">
-            <li v-for="item in todoItems" :key="item.key">
-              <span>
-                <strong>{{ item.label }}</strong>
-                <small>{{ item.hint }}</small>
-              </span>
-              <AppStatusTag :type="item.count > 0 ? 'warning' : 'success'" :label="`${item.count} 件`" />
-            </li>
-          </ul>
-        </AppSectionCard>
-
-        <AppSectionCard title="学生风险概览">
-          <div class="sa-risk-row">
-            <AppRiskTag :level="riskLevel" />
-            <span>{{ riskSummary }}</span>
-          </div>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
-            进入风险预警
-          </AppPermissionButton>
-        </AppSectionCard>
-
-        <AppSectionCard title="数字迎新摘要">
-          <div class="sa-bridge">
-            <p>查看迎新批次、报到进度和异常学生等相关业务。</p>
-            <AppPermissionButton :allowed="canBtn('orientation.dashboard.view') || canBtn('studentAffairs.orientation.view')" code="studentAffairs.orientation.view" variant="secondary" @click="go('/admin/orientation')">
-              打开数字迎新
-            </AppPermissionButton>
-          </div>
-        </AppSectionCard>
-
         <AppSectionCard title="常用学工业务">
           <div class="sa-actions">
-            <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/campus-service/leave')">
+            <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/student-affairs/leave')">
               请假审批
             </AppPermissionButton>
             <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="go('/admin/student-affairs/dorm/exception')">
@@ -79,6 +85,15 @@
             </AppPermissionButton>
             <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
               风险预警
+            </AppPermissionButton>
+          </div>
+        </AppSectionCard>
+
+        <AppSectionCard title="数字迎新摘要">
+          <div class="sa-bridge">
+            <p>查看迎新批次、报到进度和异常学生等相关业务。</p>
+            <AppPermissionButton :allowed="canBtn('orientation.dashboard.view') || canBtn('studentAffairs.orientation.view')" code="studentAffairs.orientation.view" variant="secondary" @click="go('/admin/orientation')">
+              打开数字迎新
             </AppPermissionButton>
           </div>
         </AppSectionCard>
@@ -135,8 +150,8 @@ const FALLBACK_DRILL = {
   studentTotal: '/admin/student/list',
   classTotal: '/admin/campus-service/classes',
   pendingTodo: '/admin/approval/todos',
-  pendingLeave: '/admin/campus-service/leave',
-  overdueLeave: '/admin/campus-service/leave-ledger?status=OVERDUE',
+  pendingLeave: '/admin/student-affairs/leave',
+  overdueLeave: '/admin/student-affairs/leave/ledger?status=OVERDUE',
   pendingAid: '/admin/student-affairs/aid?status=REVIEW',
   pendingFunding: '/admin/student-affairs/funding?status=REVIEW',
   pendingDiscipline: '/admin/student-affairs/discipline?status=REVIEW',
@@ -262,7 +277,11 @@ export default {
   gap: var(--space-4);
 }
 .sa-grid--metrics {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.sa-grid--priority {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  margin-bottom: var(--space-4);
 }
 .sa-grid--two {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -279,6 +298,12 @@ export default {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-light);
+}
+.sa-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 .sa-list small {
   display: block;
@@ -293,6 +318,10 @@ export default {
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+.sa-risk-row {
+  margin-bottom: var(--space-3);
+  line-height: 1.6;
+}
 .sa-bridge p {
   flex-basis: 100%;
   margin: 0;
@@ -305,5 +334,8 @@ export default {
   gap: 4px;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+}
+@media (max-width: 960px) {
+  .sa-grid--priority { grid-template-columns: 1fr; }
 }
 </style>
