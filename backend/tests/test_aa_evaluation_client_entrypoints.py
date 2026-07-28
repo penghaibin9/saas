@@ -85,8 +85,8 @@ def test_existing_pc_and_miniapp_contracts_stay_compatible():
         ROOT.parent / "miniapp/src/services/realApi.js"
     ).read_text(encoding="utf-8")
 
-    assert '@router.get("/evaluation/tasks"' in portal_router
-    assert '@router.post("/evaluation/submit"' in portal_router
+    assert '@router.get("/academic/evaluation/tasks"' in portal_router
+    assert '@router.post("/academic/evaluation/submit"' in portal_router
     assert "academicEvaluationTasks: () => request('/portal/academic/evaluation/tasks')" in portal_api
     assert "academicEvaluationSubmit" in portal_api
     assert "realRequest('/mobile/academic/evaluation/tasks')" in mini_api
