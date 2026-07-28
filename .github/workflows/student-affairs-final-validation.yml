@@ -4,6 +4,11 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ concurrency:
 
 jobs:
   final-validation:
-    if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727'
+    if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727' && contains(github.event.pull_request.title, '[FINAL]')
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
