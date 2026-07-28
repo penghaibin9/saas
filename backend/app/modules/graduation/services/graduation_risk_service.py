@@ -538,3 +538,10 @@ def risk_stats(batch_id=None) -> dict:
                 }
         return {"total": total, "openCount": open_count, "criticalOpenCount": critical, "byCode": by_code,
                 "batchId": str(batch_id) if batch_id else None, "lastScan": last_scan}
+
+
+from app.modules.graduation.services.graduation_risk_consistency import (
+    accept_risk,
+    close_risk,
+    process_risk,
+)

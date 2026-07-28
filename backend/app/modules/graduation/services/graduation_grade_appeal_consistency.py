@@ -11,9 +11,6 @@ from app.modules.graduation.services.graduation_scope_service import assert_stud
 from app.services.db_service import _tid, session
 from app.services.message_event_outbox_service import emit_message_event
 
-_INSTALLED = False
-
-
 def review_appeal(appeal_id, action, comment=None) -> dict:
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
@@ -112,12 +109,3 @@ def review_appeal(appeal_id, action, comment=None) -> dict:
             "outboxId": outbox_id,
         })
         return result
-
-
-def install_grade_appeal_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from app.modules.graduation.services import graduation_more_service as service
-    service.review_appeal = review_appeal
-    _INSTALLED = True

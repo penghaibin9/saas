@@ -12,9 +12,6 @@ from app.modules.graduation.policies import taskbook_policy
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 from app.services.db_service import _iso, _tid, session
 
-_INSTALLED = False
-
-
 def taskbook_stats(batch_id=None) -> dict:
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "请先选择毕业设计批次")
@@ -248,17 +245,3 @@ def export_taskbook_pdf(gd_student_id, template_id: str | None = None) -> dict:
         packed = pack_pdf_result(pdf_bytes, f"任务书_{student.name}_{safe_no}.pdf")
         packed.update({"templateSource": source, "gdStudentId": str(student.id), "taskbookId": str(row.id)})
         return packed
-
-
-def install_taskbook_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    _INSTALLED = True
-    from app.modules.graduation.services import graduation_taskbook_service as svc
-    svc.taskbook_stats = taskbook_stats
-    svc.issue_taskbook = issue_taskbook
-    svc.change_taskbook = change_taskbook
-    svc.confirm_taskbook = confirm_taskbook
-    svc.confirm_taskbook_in_session = confirm_taskbook_in_session
-    svc.export_taskbook_pdf = export_taskbook_pdf

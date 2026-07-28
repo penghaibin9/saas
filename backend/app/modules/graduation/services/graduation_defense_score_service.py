@@ -17,6 +17,7 @@ from app.core.permissions import has_permission
 from app.models import (GraduationAuditTrail, GraduationDefenseExpert, GraduationDefenseGroup,
                         GraduationDefenseScore, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 from app.modules.graduation.policies import defense_policy
 
@@ -242,6 +243,7 @@ def judge_pending() -> list[dict]:
         return out
 
 
+@_conflict_guard
 def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent=False,
                 absent_reason=None, defense_group_id=None, expert_id=None, judge_mentor_id=None,
                 permission_action="score") -> dict:
@@ -327,6 +329,7 @@ def enter_score(gd_student_id, judge_name: str, score=None, comment=None, absent
         return _row(d, stu)
 
 
+@_conflict_guard
 def confirm_scores(gd_student_id) -> dict:
     with session() as db:
         from app.modules.graduation.services import graduation_identity as gid
@@ -526,3 +529,12 @@ def defense_score_stats(batch_id=None) -> dict:
             *base, GraduationDefenseScore.round_no > 1)) or 0)
         return {"total": total, "confirmed": confirmed, "absent": absent, "secondRoundCount": second_round,
                 "batchId": str(batch_id) if batch_id else None}
+
+
+# 稳定评委席位查询是正式服务绑定，不依赖应用启动安装器。
+from app.modules.graduation.services.graduation_mobile_teacher_service import (
+    judge_pending,
+)
+from app.modules.graduation.services.graduation_defense_round_consistency import (
+    create_second_defense,
+)

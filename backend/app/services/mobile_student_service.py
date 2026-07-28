@@ -928,37 +928,11 @@ def _pick_latest_non_archived_gd(rows):
 
 
 def _resolve_gd_student(db, u: dict):
-    """解析当前登录学生对应的毕设学生档案 t_gd_student（student_id → 学号 → 姓名唯一）。
-
-    多批次时经 `_pick_latest_non_archived_gd` 取最近未归档档，避免门禁/提交落在旧档。
-    student_id 未回填时仍按学号有序挑选，不走无序 `.first()`。
-    """
-    from app.models import GraduationStudent
-    stu = resolve_student(db, u)
-    if not stu:
-        return None
-    tid = _tid()
-    base = [
-        GraduationStudent.tenant_id == tid,
-        GraduationStudent.is_deleted.is_(False),
-    ]
-    rows = []
-    if getattr(stu, "id", None) is not None:
-        rows = list(db.scalars(
-            select(GraduationStudent).where(*base, GraduationStudent.student_id == stu.id)
-            .order_by(GraduationStudent.id.desc())
-        ).all())
-    if not rows:
-        sn = getattr(stu, "student_no", None)
-        if sn:
-            rows = list(db.scalars(
-                select(GraduationStudent).where(*base, GraduationStudent.student_no == sn)
-                .order_by(GraduationStudent.id.desc())
-            ).all())
-    if not rows:
-        # 仅剩姓名唯一回退（防同名串号）；多批次主路径已在上方按 id/学号收口
-        return _resolve_domain_student(db, GraduationStudent, stu)
-    return _pick_latest_non_archived_gd(rows)
+    """按批次真值解析当前学生档案；所有运行入口执行同一实现。"""
+    from app.modules.graduation.services.graduation_record_resolver import (
+        resolve_current_gd_student,
+    )
+    return resolve_current_gd_student(db, u)
 
 
 
@@ -1345,7 +1319,10 @@ def graduation_defense(user: dict) -> dict:
         if not g:
             return _empty("你暂无毕设记录")
     from app.modules.graduation.services import graduation_service as gd_svc
-    return gd_svc.student_defense_view(g.id)
+    from app.modules.graduation.services.graduation_response_mapper import (
+        normalize_defense_members,
+    )
+    return normalize_defense_members(gd_svc.student_defense_view(g.id))
 
 
 def graduation_grade(user: dict) -> dict:

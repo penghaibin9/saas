@@ -10,9 +10,6 @@ from app.models import GraduationFinal, GraduationProposal, GraduationStudent
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _tid, session
 
-_INSTALLED = False
-
-
 def hold_proposal_defense(proposal_id, result, comment=None) -> dict:
     from app.modules.graduation.services import graduation_service as svc
 
@@ -80,13 +77,3 @@ def remind_final(gd_student_id, channel="站内消息") -> dict:
             "reminded": True, "deliveryStatus": "DELIVERED",
             "messageId": str(message.id), "todoId": None,
         }
-
-
-def install_material_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    _INSTALLED = True
-    from app.modules.graduation.services import graduation_service as svc
-    svc.hold_proposal_defense = hold_proposal_defense
-    svc.remind_final = remind_final

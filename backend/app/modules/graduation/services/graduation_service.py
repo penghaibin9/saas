@@ -16,8 +16,10 @@ from app.modules.graduation.services import graduation_student_service as gd_stu
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, can_access_student, has_full_scope,
 )
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.core.field_crypto import mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 
 # 学生阶段中文名。COMPLETED 由 graduation_grade_service.publish() 真实写入（该文件 L276），
 # 此前本表漏登记，导致：① 学生列表 stageLabel 回落显示英文 "COMPLETED"；② 看板流程条按 L_STAGE
@@ -482,6 +484,7 @@ def final_stats(batch_id=None) -> dict:
                 "batchId": str(batch_id) if batch_id else None}
 
 
+@_conflict_guard
 def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) -> dict:
     """学生提交/重交开题报告。已有待审/已通过时不可重复提交；被驳回后可重交（版本自增 + is_resubmit）。"""
     attachment_ids = _validate_final_attachments(attachments, require_nonempty=False)
@@ -585,6 +588,7 @@ def remind_proposal(gd_student_id, channel="站内消息") -> dict:
                 "deliveryStatus": "DELIVERED", "messageId": str(message.id), "todoId": None}
 
 
+@sanitize_xlsx_export
 def export_proposals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     """开题材料台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
     enforce_permission(get_current_user_ctx() or {}, "graduationDesign.proposal.export")
@@ -766,6 +770,7 @@ def submit_final(gd_student_id, final_type, attachments=None) -> dict:
         return {"id": str(f.id), "finalType": final_type, "version": version, "status": "PENDING_REVIEW"}
 
 
+@_conflict_guard
 def review_final(fid, action, comment=None) -> dict:
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
@@ -859,6 +864,7 @@ def remind_final(gd_student_id, channel="站内消息") -> dict:
                 "deliveryStatus": "DELIVERED", "messageId": str(message.id), "todoId": None}
 
 
+@sanitize_xlsx_export
 def export_finals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     """成果提交台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
     enforce_permission(get_current_user_ctx() or {}, "graduationDesign.final.export")
@@ -1310,6 +1316,7 @@ def notify_defense_group(gid, user=None) -> dict:
                 "message": msg}
 
 
+@sanitize_xlsx_export
 def export_defense_xlsx(batch_id=None) -> dict:
     """答辩安排台账 Excel 导出（一组一行；与列表同一 batch_id 口径）。"""
     enforce_permission(get_current_user_ctx() or {}, "graduationDesign.defense.view")
@@ -1372,9 +1379,13 @@ def student_defense_view(gd_student_id) -> dict:
         if not g.published:
             return {"hasData": True, "assigned": True, "published": False,
                     "groupName": g.group_name, "message": "答辩安排编制中，发布后可见时间地点"}
-        return {"hasData": True, "assigned": True, "published": True, "groupName": g.group_name,
-                "date": g.defense_date or "待定", "location": g.location or "待定",
-                "chair": g.chair or "", "members": g.members_json or [], "secretary": g.secretary or ""}
+        payload = {"hasData": True, "assigned": True, "published": True, "groupName": g.group_name,
+                   "date": g.defense_date or "待定", "location": g.location or "待定",
+                   "chair": g.chair or "", "members": g.members_json or [], "secretary": g.secretary or ""}
+        from app.modules.graduation.services.graduation_response_mapper import (
+            normalize_defense_members,
+        )
+        return normalize_defense_members(payload)
 
 
 # ═══ 审计 + 看板 ═══
@@ -1541,3 +1552,25 @@ def get_dashboard(batch_id=None) -> dict:
                      "route": "/admin/graduation/risk-archive", "hint": "受理并处置过程风险"},
                 ],
                 "riskAlerts": risk_alerts}
+
+
+# 高风险写命令在正式 Service 中静态绑定到带行锁的实现。
+from app.modules.graduation.services.graduation_command_service import (
+    review_proposal,
+    submit_final,
+)
+from app.modules.graduation.services.graduation_defense_group_consistency import (
+    assign_students as assign_defense_students,
+    create_group as create_defense_group,
+    notify_group as notify_defense_group,
+    publish_group as publish_defense,
+    unassign_students as unassign_defense_students,
+    update_group as update_defense_group,
+)
+from app.modules.graduation.services.graduation_material_consistency import (
+    hold_proposal_defense,
+    remind_final,
+)
+from app.modules.graduation.services.graduation_material_access_consistency import (
+    resolve_material_download,
+)

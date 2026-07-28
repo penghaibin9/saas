@@ -12,6 +12,10 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipLeave, InternshipRecord, RiskRecord, StudentProfile
 from app.modules.internship.services import internship_leave_service as legacy
+from app.modules.internship.services.internship_student_context_guard import (
+    require_context_fields,
+    require_explicit_context,
+)
 from app.services.db_service import _as_id, _tid, session
 
 
@@ -35,21 +39,38 @@ def _locked(db, leave_id) -> InternshipLeave:
     return row
 
 
-def list_my(user: dict) -> list[dict]:
-    return legacy.my_leaves(user)
+def list_my(user: dict, *, batch_id=None, internship_id=None) -> list[dict]:
+    if batch_id is None and internship_id is None:
+        return legacy.my_leaves(user)
+    with session() as db:
+        record, student, _batch_id = require_explicit_context(
+            db,
+            user,
+            {"batchId": batch_id, "internshipId": internship_id},
+            for_write=False,
+        )
+        rows = db.scalars(select(InternshipLeave).where(
+            InternshipLeave.tenant_id == _tid(),
+            InternshipLeave.internship_id == record.id,
+            InternshipLeave.is_deleted.is_(False),
+        ).order_by(InternshipLeave.id.desc())).all()
+        return [legacy._row(row, record, student, db=db, user=user) for row in rows]
 
 
 def apply(user: dict, body: dict) -> dict:
+    require_context_fields(body or {})
     return legacy.apply(user, body or {})
 
 
-def withdraw(user: dict, leave_id, expected_version) -> dict:
+def withdraw(user: dict, leave_id, body: dict) -> dict:
+    payload = body or {}
     with session() as db:
         row = _locked(db, leave_id)
-        record, _student = legacy._student_record(db, user, for_write=True)
+        record, _student, _batch_id = require_explicit_context(
+            db, user, payload, for_write=True)
         if not record or row.internship_id != record.id:
             raise no_permission("只能撤回本人的请假申请")
-        _expected(expected_version, row.version)
+        _expected(payload.get("expectedVersion"), row.version)
         if row.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待审批请假可撤回")
         row.status = "WITHDRAWN"
@@ -75,7 +96,8 @@ def return_my(user: dict, leave_id, body: dict) -> dict:
     file_id = legacy._validate_file(payload.get("fileId") or payload.get("returnFileId"))
     with session() as db:
         row = _locked(db, leave_id)
-        record, _student = legacy._student_record(db, user, for_write=True)
+        record, _student, _batch_id = require_explicit_context(
+            db, user, payload, for_write=True)
         if not record or row.internship_id != record.id:
             raise no_permission("只能办理本人的实习销假")
         _expected(payload.get("expectedVersion"), row.version)

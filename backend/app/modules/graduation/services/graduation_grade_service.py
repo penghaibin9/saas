@@ -18,6 +18,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseScore,
                         GraduationFinal, GraduationGrade, GraduationReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 from app.modules.graduation.policies import grade_policy
 
@@ -212,6 +213,7 @@ def get_grade(gd_student_id) -> dict:
         }
 
 
+@_conflict_guard
 def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defense_score=None) -> dict:
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
@@ -254,6 +256,7 @@ def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defe
         return _row(g, stu)
 
 
+@_conflict_guard
 def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
@@ -283,6 +286,7 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
         return _row(g, stu)
 
 
+@_conflict_guard
 def publish_grade(gd_student_id) -> dict:
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
@@ -309,6 +313,7 @@ def publish_grade(gd_student_id) -> dict:
         return _row(g, stu)
 
 
+@_conflict_guard
 def withdraw_grade(gd_student_id, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "撤回原因必填且不少于 5 字")

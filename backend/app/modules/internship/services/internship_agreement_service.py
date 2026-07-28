@@ -520,9 +520,17 @@ def student_confirm(user, aid, action: str, reason="", body=None) -> dict:
         raise AppException("VALIDATION_ERROR", "action 必须是 CONFIRM/REJECT")
     if action == "REJECT" and (not reason or len(reason.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+    payload = body or {}
     with session() as db:
         a = _get(db, aid)
-        rec, _ = _student_record(db, user)
+        if payload.get("batchId") is not None or payload.get("internshipId") is not None:
+            from app.modules.internship.services.internship_student_context_guard import (
+                require_explicit_context,
+            )
+            rec, _, _batch_id = require_explicit_context(
+                db, user, payload, for_write=True)
+        else:
+            rec, _ = _student_record(db, user)
         if not rec or a.internship_id != rec.id:
             raise no_permission("只能确认本人的协议")
         if a.status != "PENDING_STUDENT":
@@ -532,7 +540,7 @@ def student_confirm(user, aid, action: str, reason="", body=None) -> dict:
                   {"student_confirm_status": "REJECTED", "status": "REJECTED",
                    "reject_reason": reason.strip()})
         new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
-                                   expected_version=extract_expected_version(body),
+                                   expected_version=extract_expected_version(payload),
                                    expected_status="PENDING_STUDENT", values=values)
         _trail(db, a.id, f"STUDENT_{action}", {"reason": (reason or "").strip()},
                operator=(user or {}).get("realName") or "学生")

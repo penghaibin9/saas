@@ -100,7 +100,9 @@ export default {
   data: () => ({
     tab: 'makeup', makeups: [], leaves: [], overdues: [], state: 'loading',
     batches: [], batchId: '', batchIndex: 0,
-    actingKeys: {}, viewingKeys: {}, viewedEvidence: {}
+    actingKeys: {}, viewingKeys: {}, viewedEvidence: {},
+    makeupPage: 1, leavePage: 1, makeupHasMore: false, leaveHasMore: false,
+    loadingMore: false
   }),
   computed: {
     context() { return useInternshipContextStore() },
@@ -118,12 +120,11 @@ export default {
       return Object.values(this.actingKeys).some(Boolean) || Object.values(this.viewingKeys).some(Boolean)
     }
   },
-  onLoad(options) {
-    if (['makeup', 'leave', 'overdue'].includes(options?.tab)) this.tab = options.tab
-    this.load()
-  },
-  onPullDownRefresh() { this.load(() => uni.stopPullDownRefresh()) },
   methods: {
+    open(options) {
+      if (['makeup', 'leave', 'overdue'].includes(options?.tab)) this.tab = options.tab
+      this.load()
+    },
     recordKey(kind, id) { return `${kind}:${id}` },
     isActing(kind, id) { return !!this.actingKeys[this.recordKey(kind, id)] },
     isViewing(kind, id) { return !!this.viewingKeys[this.recordKey(kind, id)] },
@@ -139,6 +140,10 @@ export default {
     },
     async load(done) {
       this.state = 'loading'
+      this.makeupPage = 1
+      this.leavePage = 1
+      this.makeupHasMore = false
+      this.leaveHasMore = false
       try {
         this.context.restore()
         await this.context.load(true)
@@ -154,8 +159,10 @@ export default {
           teacherInternshipLeaves(this.batchId),
           realRequest(`/mobile/teacher/internship/context/leaves/overdue${query}`)
         ])
-        this.makeups = makeupData?.list || []
-        this.leaves = leaveData?.list || []
+        this.makeups = makeupData?.items || makeupData?.list || []
+        this.leaves = leaveData?.items || leaveData?.list || []
+        this.makeupHasMore = !!makeupData?.hasMore
+        this.leaveHasMore = !!leaveData?.hasMore
         this.overdues = overdueData?.list || []
         this.state = 'ready'
       } catch (error) {
@@ -167,7 +174,32 @@ export default {
       if (this.hasActiveOperation) return
       this.batchIndex = Number(event.detail.value)
       this.context.selectBatch(this.batches[this.batchIndex]?.id)
+      this.makeups = []
+      this.leaves = []
+      this.overdues = []
       await this.load()
+    },
+    async loadMore() {
+      if (!this.batchId || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        if (this.tab === 'makeup' && this.makeupHasMore) {
+          const page = this.makeupPage + 1
+          const data = await teacherInternshipMakeups(selectedBatch, page, 20)
+          if (selectedBatch !== this.batchId) return
+          this.makeups = [...this.makeups, ...(data?.items || [])]
+          this.makeupPage = page
+          this.makeupHasMore = !!data?.hasMore
+        } else if (this.tab === 'leave' && this.leaveHasMore) {
+          const page = this.leavePage + 1
+          const data = await teacherInternshipLeaves(selectedBatch, page, 20)
+          if (selectedBatch !== this.batchId) return
+          this.leaves = [...this.leaves, ...(data?.items || [])]
+          this.leavePage = page
+          this.leaveHasMore = !!data?.hasMore
+        }
+      } finally { this.loadingMore = false }
     },
     async viewEvidence({ kind, item }) {
       const key = this.recordKey(kind, item.id)
@@ -187,7 +219,7 @@ export default {
     review({ kind, item, action }) {
       const key = this.recordKey(kind, item.id)
       const canReview = kind === 'makeup' ? this.canReviewMakeup : this.canReviewLeave
-      if (!canReview) return toast('当前身份没有该类审批权限')
+      if (!canReview || this.state !== 'ready') return toast('当前身份没有该类审批权限或批次正在切换')
       if (this.isActing(kind, item.id) || this.isViewing(kind, item.id)) return
       if (action === 'APPROVE') {
         if (item.evidenceRequired && !item.evidenceFileId) return toast('缺少规则要求的证明材料，不能通过')
@@ -206,8 +238,8 @@ export default {
           this.setKey('actingKeys', key, true)
           try {
             const body = { action, comment, expectedVersion: item.version }
-            if (kind === 'makeup') await teacherInternshipMakeupReview(item.id, body)
-            else await teacherInternshipLeaveReview(item.id, body)
+            if (kind === 'makeup') await teacherInternshipMakeupReview(item.id, this.batchId, body)
+            else await teacherInternshipLeaveReview(item.id, this.batchId, body)
             toast(reject ? '已驳回' : '已通过')
             await this.load()
           } catch (error) {

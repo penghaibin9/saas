@@ -351,7 +351,8 @@ def _rollback_approved_application(app_id, cancelled_siblings, user: dict | None
 
 
 def review_application(app_id, action: str, comment: str = "", user: dict | None = None,
-                       *, expected_version=None, record_expected_version=None) -> dict:
+                       *, expected_version=None, record_expected_version=None,
+                       expected_batch_id=None) -> dict:
     from app.modules.internship.services.internship_version import (
         extract_expected_version, versioned_update,
     )
@@ -375,6 +376,8 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             InternshipRecord.is_deleted.is_(False)).with_for_update())
         stu = db.get(StudentProfile, app.student_id)
         _scope_check(db, rec, stu, user)
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(rec, expected_batch_id)
         if app.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待审核申请可处理")
         if action == "REJECT":

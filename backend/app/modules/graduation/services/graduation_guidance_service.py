@@ -259,3 +259,11 @@ def cancel_plan(plan_id, reason: str) -> dict:
         _audit(db, p.id, "取消指导计划", reason.strip())
         db.commit()
         return {"id": str(p.id), "cancelled": True}
+
+
+from app.modules.graduation.services.graduation_process_consistency import (
+    cancel_plan,
+    checkin_plan,
+    list_guidance,
+    list_plans,
+)

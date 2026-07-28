@@ -192,7 +192,7 @@ def _assert_review_authority(user):
         raise no_permission("企业评价学校审核仅限学校或学院授权管理员")
 
 
-def create(user, body) -> dict:
+def create(user, body, *, expected_batch_id=None) -> dict:
     payload = body or {}
     internship_id = payload.get("internshipId") or payload.get("internId")
     if not internship_id:
@@ -206,6 +206,8 @@ def create(user, body) -> dict:
         student = db.get(StudentProfile, record.student_id)
         if not in_scope(scope, db, record, student):
             raise no_permission("只能为本人指导或授权范围内学生录入企业评价")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(record, expected_batch_id)
         duplicate = db.scalars(select(InternshipEnterpriseEval).where(
             InternshipEnterpriseEval.tenant_id == _tid(),
             InternshipEnterpriseEval.internship_id == record.id,
@@ -238,14 +240,16 @@ def create(user, body) -> dict:
                 "reviewStatus": "PENDING", "version": int(row.version or 0)}
 
 
-def resubmit(user, eval_id, body) -> dict:
+def resubmit(user, eval_id, body, *, expected_batch_id=None) -> dict:
     payload = body or {}
     if payload.get("expectedVersion") is None:
         raise AppException("DATA_CONFLICT", "修改重交必须携带当前版本")
     values = _editable_values(payload)
     with session() as db:
         row = _get(db, eval_id, lock=True)
-        _assert_scope(db, row, user, "只能修改本人指导或授权范围内企业评价")
+        record, _student = _assert_scope(db, row, user, "只能修改本人指导或授权范围内企业评价")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(record, expected_batch_id)
         if row.school_review_status != "RETURNED":
             raise AppException("DATA_CONFLICT", "仅已退回企业评价可修改重交")
         if int(payload["expectedVersion"]) != int(row.version or 0):
@@ -286,7 +290,8 @@ def resubmit(user, eval_id, body) -> dict:
                 "version": int(row.version or 0)}
 
 
-def review(user, eval_id, action: str, comment: str = "", expected_version=None) -> dict:
+def review(user, eval_id, action: str, comment: str = "", expected_version=None,
+           expected_batch_id=None) -> dict:
     normalized = str(action or "").upper()
     if normalized not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
@@ -298,7 +303,9 @@ def review(user, eval_id, action: str, comment: str = "", expected_version=None)
     _assert_review_authority(user)
     with session() as db:
         row = _get(db, eval_id, lock=True)
-        _assert_scope(db, row, user, "只能审核本人数据范围内的企业评价")
+        record, _student = _assert_scope(db, row, user, "只能审核本人数据范围内的企业评价")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(record, expected_batch_id)
         if row.school_review_status != "PENDING":
             raise AppException("DATA_CONFLICT", "该评价已被处理，请刷新")
         if int(expected_version) != int(row.version or 0):

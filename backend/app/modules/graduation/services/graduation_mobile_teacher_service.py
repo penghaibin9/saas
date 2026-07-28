@@ -1,7 +1,7 @@
-"""教师微信小程序毕业设计稳定身份桥接。
+"""教师移动端毕业设计稳定身份领域服务。
 
 旧聚合 Service 曾在接口权限通过后再次用 advisor_name/reviewer_name 与 realName
-做范围过滤，导致同名越权、改名后待办消失。这里在路由注册时替换这些函数，
+做范围过滤，导致同名越权、改名后待办消失。本服务由正式聚合 Service 静态引用，
 统一使用 mentor_id/reviewer_mentor_id/答辩席位 stable id。
 """
 from __future__ import annotations
@@ -30,7 +30,6 @@ from app.modules.graduation.services.graduation_scope_service import (
 )
 from app.services.db_service import _tid, session
 
-_INSTALLED = False
 _ADMIN_ROLES = {
     "PLATFORM_SUPER_ADMIN", "SAAS_ADMIN", "SCHOOL_ADMIN", "GRADUATION_ADMIN",
     "GD_ADMIN", "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN", "COLLEGE_ADMIN", "GD_GRADE_ADMIN",
@@ -307,28 +306,18 @@ def _stable_topic_audit(db, biz_id, action, detail=""):
     ))
 
 
-def install_mobile_stable_bridge() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    _INSTALLED = True
-
-    from app.services import mobile_teacher_service as mobile
-    from app.modules.graduation.services import graduation_defense_score_service as defense
-    from app.modules.graduation.services import graduation_topic_change_service as changes
-
-    mobile.graduation_my_students = _my_students
-    mobile.graduation_guidance_create = _guidance_create
-    mobile._require_gd_student_scope = _require_student_scope
-    mobile.proposal_detail = _proposal_detail
-    mobile.proposal_review = _proposal_review
-    mobile.final_detail = _final_detail
-    mobile.final_review = _final_review
-    mobile.graduation_choices_pending = _choices_pending
-    mobile.graduation_choice_review = _choice_review
-    mobile.graduation_change_requests_pending = _topic_change_rows
-    mobile.graduation_change_request_review = _topic_change_review
-    mobile.graduation_my_reviews = _review_tasks
-    mobile.graduation_review_submit = _review_submit
-    defense.judge_pending = _stable_judge_pending
-    changes._audit = _stable_topic_audit
+my_students = _my_students
+guidance_create = _guidance_create
+require_student_scope = _require_student_scope
+proposal_detail = _proposal_detail
+proposal_review = _proposal_review
+final_detail = _final_detail
+final_review = _final_review
+choices_pending = _choices_pending
+choice_review = _choice_review
+topic_change_rows = _topic_change_rows
+topic_change_review = _topic_change_review
+review_tasks = _review_tasks
+review_submit = _review_submit
+judge_pending = _stable_judge_pending
+topic_audit = _stable_topic_audit

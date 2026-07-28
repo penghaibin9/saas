@@ -1292,6 +1292,7 @@ def affairs_academic_defer_review(user: dict, defer_id: str, action: str, reason
 # ——均已按 evaluator_key/teacher_key 自校验；submit_appeal PC 端未校验 result 归属，
 # 移动端在此补一道校验，不改 PC） ══════════
 
+
 def affairs_academic_evaluation_open_batches(user: dict) -> dict:
     """评教窗口列表（status 可选，缺省返回全部；仅批次元信息，非敏感数据，PC 端本身也不做
     调用者范围收敛，教师需要看到有哪些窗口在开放/已出结果）。"""
@@ -3201,4 +3202,28 @@ def affairs_academic_status_change_review(user: dict, change_id: str, action: st
 # academic_affairs_evaluation_service 的 list_my_role_tasks/submit_evaluation/list_results
 # ——均已按 evaluator_key/teacher_key 自校验；submit_appeal PC 端未校验 result 归属，
 # 移动端在此补一道校验，不改 PC） ══════════
+
+
+# 毕业设计移动端的最终实现由权威领域/查询 Service 静态绑定。
+# 路由注册不再重新赋值这些函数，因此直接单测、脚本和 FastAPI 行为一致。
+from app.modules.graduation.services.graduation_mobile_teacher_query_service import (
+    grades as graduation_grade_queue,
+    midterms as graduation_midterm_queue,
+    taskbooks as graduation_taskbook_list,
+)
+from app.modules.graduation.services.graduation_mobile_teacher_service import (
+    choice_review as graduation_choice_review,
+    choices_pending as graduation_choices_pending,
+    final_detail,
+    final_review,
+    guidance_create as graduation_guidance_create,
+    my_students as graduation_my_students,
+    proposal_detail,
+    proposal_review,
+    require_student_scope as _require_gd_student_scope,
+    review_submit as graduation_review_submit,
+    review_tasks as graduation_my_reviews,
+    topic_change_review as graduation_change_request_review,
+    topic_change_rows as graduation_change_requests_pending,
+)
 

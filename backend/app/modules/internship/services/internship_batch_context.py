@@ -67,3 +67,16 @@ def batch_record_ids(db, batch_id, *, for_write: bool = False) -> tuple[Internsh
         InternshipRecord.batch_id == batch.id,
     )).all())
     return batch, ids
+
+
+def assert_record_batch(record, expected_batch_id) -> int | None:
+    """在写事务内确认被锁定记录仍属于调用方当前选择的批次。"""
+    if expected_batch_id is None:
+        return None
+    bid = parse_required_batch_id(expected_batch_id)
+    if not record or int(getattr(record, "batch_id", 0) or 0) != bid:
+        raise AppException(
+            "DATA_CONFLICT",
+            "该记录不属于当前实习批次，请刷新批次上下文",
+        )
+    return bid

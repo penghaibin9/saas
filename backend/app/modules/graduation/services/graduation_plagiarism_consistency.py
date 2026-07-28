@@ -8,11 +8,9 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationFinal, GraduationPlagiarismCheck, GraduationStudent
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.services.db_service import _tid, session
 from app.services.message_event_outbox_service import emit_message_event
-
-_INSTALLED = False
-
 
 def dispute_plagiarism(pid, reason: str) -> dict:
     note = str(reason or "").strip()
@@ -51,6 +49,7 @@ def dispute_plagiarism(pid, reason: str) -> dict:
         return service._plag_row(check, student)
 
 
+@_conflict_guard
 def review_dispute(pid, action: str, comment: str | None = None) -> dict:
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
@@ -148,13 +147,3 @@ def review_dispute(pid, action: str, comment: str | None = None) -> dict:
             "notificationQueued": bool(outbox_id), "outboxId": outbox_id,
         })
         return result
-
-
-def install_plagiarism_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from app.modules.graduation.services import graduation_review_service as service
-    service.dispute_plagiarism = dispute_plagiarism
-    service.review_dispute = review_dispute
-    _INSTALLED = True

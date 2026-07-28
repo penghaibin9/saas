@@ -179,7 +179,14 @@ def apply(user, body) -> dict:
     if _evidence_required(leave_type, days) and not file_id:
         raise AppException("VALIDATION_ERROR", _evidence_requirement_label(leave_type, days))
     with session() as db:
-        rec, stu = _student_record(db, user, for_write=True)
+        if b.get("batchId") is not None or b.get("internshipId") is not None:
+            from app.modules.internship.services.internship_student_context_guard import (
+                require_explicit_context,
+            )
+            rec, stu, _batch_id = require_explicit_context(
+                db, user, b, for_write=True)
+        else:
+            rec, stu = _student_record(db, user, for_write=True)
         if rec.status not in ("ONBOARD", "ASSESSING"):
             raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以申请请假")
         dup = db.scalars(select(InternshipLeave).where(
@@ -330,7 +337,8 @@ def mark_evidence_viewed(user, leave_id) -> dict:
                 "evidenceViewed": True, "evidenceFileId": str(lv.file_id)}
 
 
-def review(user, leave_id, action: str, comment: str = "", *, expected_version=None) -> dict:
+def review(user, leave_id, action: str, comment: str = "", *, expected_version=None,
+           expected_batch_id=None) -> dict:
     from app.modules.internship.services.internship_version import (
         extract_expected_version, versioned_update,
     )
@@ -346,6 +354,8 @@ def review(user, leave_id, action: str, comment: str = "", *, expected_version=N
         stu = db.get(StudentProfile, lv.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能审批本人指导学生的请假申请")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(rec, expected_batch_id)
         if action == "APPROVE":
             if _evidence_required(lv.leave_type, lv.days) and not lv.file_id:
                 raise AppException("DATA_CONFLICT", "该请假按规则必须上传证明材料，当前不能通过")

@@ -23,6 +23,7 @@ from app.services import excel
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 from app.core.field_crypto import mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 
 STAGE_LABEL = {
     "TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
@@ -974,6 +975,7 @@ def import_confirm(rows: list[dict], preview_token: str | None = None) -> dict:
     return {"created": result.get("created", 0), "jobId": result.get("jobId")}
 
 
+@sanitize_xlsx_export
 def export_students_xlsx(keyword=None, class_id=None, batch_id=None, stage=None, risk_level=None,
                          advisor_name=None, has_topic=None, eligibility=None, student_group=None,
                          has_defense_group=None, grad_qual_status=None, material_complete=None,

@@ -190,20 +190,42 @@ def teacher_graduation_batches(user=Depends(get_current_user)):
 def teacher_graduation(
     batchId: int = Query(..., ge=1), page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100), user=Depends(get_current_user),
+    studentPage: int | None = Query(None, ge=1),
+    proposalPage: int | None = Query(None, ge=1),
+    finalPage: int | None = Query(None, ge=1),
 ):
     batch_id = _require_batch(batchId)
-    raw = tea.graduation(user) or {}
-    students = _filter_rows(raw.get("students") or [], batch_id, page=page, page_size=pageSize)
-    proposals = _filter_rows(raw.get("reviewDetail") or [], batch_id, page=page, page_size=pageSize)
-    finals = _filter_rows(raw.get("finalDetail") or [], batch_id, page=page, page_size=pageSize)
+    from app.modules.graduation.services import graduation_service as graduation
+    from app.modules.graduation.services import graduation_student_service as students_service
+
+    student_page = studentPage or page
+    proposal_page = proposalPage or page
+    final_page = finalPage or page
+    students, student_total = students_service.list_students(
+        student_page, pageSize, batch_id=batch_id)
+    proposals, proposal_total = graduation.list_proposals(
+        proposal_page, pageSize, status="PENDING_REVIEW", batch_id=batch_id)
+    finals, final_total = graduation.list_finals(
+        final_page, pageSize, status="PENDING_REVIEW", batch_id=batch_id)
     return success({
         "batchId": str(batch_id),
-        "students": students["items"], "studentTotal": students["total"],
-        "reviewDetail": proposals["items"], "proposalTotal": proposals["total"],
-        "finalDetail": finals["items"], "finalTotal": finals["total"],
-        "page": students["page"], "pageSize": students["pageSize"],
-        "hasMore": students["hasMore"] or proposals["hasMore"] or finals["hasMore"],
-        "hasData": bool(students["total"] or proposals["total"] or finals["total"]),
+        "students": students, "studentTotal": student_total,
+        "reviewDetail": proposals, "proposalTotal": proposal_total,
+        "finalDetail": finals, "finalTotal": final_total,
+        "studentPage": student_page,
+        "proposalPage": proposal_page,
+        "finalPage": final_page,
+        "page": page,
+        "pageSize": pageSize,
+        "studentHasMore": student_page * pageSize < student_total,
+        "proposalHasMore": proposal_page * pageSize < proposal_total,
+        "finalHasMore": final_page * pageSize < final_total,
+        "hasMore": (
+            student_page * pageSize < student_total
+            or proposal_page * pageSize < proposal_total
+            or final_page * pageSize < final_total
+        ),
+        "hasData": bool(student_total or proposal_total or final_total),
     })
 
 

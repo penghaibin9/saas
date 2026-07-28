@@ -20,9 +20,6 @@ from app.models import (
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _tid, session
 
-_INSTALLED = False
-
-
 def request_change(gd_student_id, new_topic_id, reason: str, requested_by: str = "") -> dict:
     from app.modules.graduation.services import graduation_topic_change_service as svc
 
@@ -159,13 +156,3 @@ def review_change(request_id, action: str, comment: str = "", reviewer_name: str
         gd_todo.todo_done(db, biz_id=record.id, todo_type=gd_todo.TODO_TOPIC_CHANGE)
         db.commit()
         return svc._row_of(db, record)
-
-
-def install_topic_change_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    _INSTALLED = True
-    from app.modules.graduation.services import graduation_topic_change_service as svc
-    svc.request_change = request_change
-    svc.review_change = review_change

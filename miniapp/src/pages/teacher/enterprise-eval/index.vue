@@ -125,6 +125,7 @@ export default {
       tab: 'list', state: 'loading', submitting: false, uploading: false,
       list: [], students: [], studentIndex: 0, batches: [], batchId: '', batchIndex: 0,
       sourceFileName: '', editingEval: null,
+      page: 1, hasMore: false, loadingMore: false,
       scoreFields: [{ key: 'attendanceScore', label: '出勤' }, { key: 'skillScore', label: '技能' }, { key: 'attitudeScore', label: '态度' }, { key: 'collaborationScore', label: '协作' }, { key: 'safetyScore', label: '安全纪律' }],
       form: EMPTY_FORM()
     }
@@ -149,6 +150,7 @@ export default {
     }
   },
   onLoad() { this.load() },
+  onReachBottom() { if (this.tab === 'list') this.loadMore() },
   onPullDownRefresh() { this.load(() => uni.stopPullDownRefresh()) },
   methods: {
     statusTone(status) { return status === 'APPROVED' ? 'success' : status === 'RETURNED' ? 'danger' : 'warning' },
@@ -162,6 +164,8 @@ export default {
     showList() { this.tab = 'list'; this.editingEval = null; this.form = EMPTY_FORM(); this.sourceFileName = '' },
     async load(done) {
       this.state = 'loading'
+      this.page = 1
+      this.hasMore = false
       try {
         this.context.restore(); await this.context.load(true)
         this.batches = this.context.batches || []; this.batchId = this.context.selectedBatchId || ''
@@ -171,7 +175,26 @@ export default {
       } catch (e) { this.state = 'error'; toast((e && e.message) || '企业评价数据加载失败') }
       finally { done && done() }
     },
-    async loadList() { if (!this.batchId) { this.list = []; return }; const data = await teacherInternshipEnterpriseEvals(this.batchId); this.list = data?.list || [] },
+    async loadList() {
+      if (!this.batchId) { this.list = []; return }
+      this.page = 1
+      const data = await teacherInternshipEnterpriseEvals(this.batchId, 1, 20)
+      this.list = data?.items || data?.list || []
+      this.hasMore = !!data?.hasMore
+    },
+    async loadMore() {
+      if (!this.batchId || !this.hasMore || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        const nextPage = this.page + 1
+        const data = await teacherInternshipEnterpriseEvals(selectedBatch, nextPage, 20)
+        if (selectedBatch !== this.batchId) return
+        this.list = [...this.list, ...(data?.items || [])]
+        this.page = nextPage
+        this.hasMore = !!data?.hasMore
+      } finally { this.loadingMore = false }
+    },
     async loadStudents() {
       if (!this.batchId) { this.students = []; return }
       const data = await teacherInternshipMyStudents(this.batchId)
@@ -181,6 +204,7 @@ export default {
     async onBatch(e) {
       this.batchIndex = Number(e.detail.value); const batch = this.batches[this.batchIndex]
       this.context.selectBatch(batch?.id); this.batchId = this.context.selectedBatchId; this.editingEval = null; this.form = EMPTY_FORM(); this.state = 'loading'
+      this.list = []
       try { await Promise.all([this.loadList(), this.canCreate ? this.loadStudents() : Promise.resolve()]); this.state = 'ready' }
       catch (err) { this.state = 'error'; toast(err?.message || '批次数据加载失败') }
     },
@@ -219,20 +243,20 @@ export default {
       else body.internshipId = student.id
       this.submitting = true
       const action = this.editingEval
-        ? () => teacherInternshipEnterpriseEvalResubmit(this.editingEval.id, body)
-        : () => teacherInternshipEnterpriseEvalCreate(body)
+        ? () => teacherInternshipEnterpriseEvalResubmit(this.editingEval.id, this.batchId, body)
+        : () => teacherInternshipEnterpriseEvalCreate(this.batchId, body)
       submitLock.run(action).then(() => {
         toast(this.editingEval ? '企业评价已修改重交' : '企业评价已代录，等待独立审核')
         this.showList(); return this.load()
       }).catch((e) => { if (e?.code !== 'LOCKED') toast(normalizeError(e).text) }).finally(() => { this.submitting = false })
     },
     review(item, action) {
-      if (!this.canReview || this.submitting || this.isOwnRecord(item)) return
+      if (!this.canReview || this.submitting || this.state !== 'ready' || this.isOwnRecord(item)) return
       uni.showModal({ title: action === 'APPROVE' ? '审核通过' : '退回评价', editable: true, placeholderText: action === 'RETURN' ? '请输入退回原因（至少5字）' : '可填写审核意见', success: (res) => {
         if (!res.confirm) return
         const comment = String(res.content || '').trim(); if (action === 'RETURN' && comment.length < 5) return toast('退回原因至少5字')
         this.submitting = true
-        teacherInternshipEnterpriseEvalReview(item.id, { action, comment, expectedVersion: item.version }).then(() => { toast('审核完成'); return this.loadList() }).catch((e) => toast(normalizeError(e).text)).finally(() => { this.submitting = false })
+        teacherInternshipEnterpriseEvalReview(item.id, this.batchId, { action, comment, expectedVersion: item.version }).then(() => { toast('审核完成'); return this.loadList() }).catch((e) => toast(normalizeError(e).text)).finally(() => { this.submitting = false })
       } })
     }
   }

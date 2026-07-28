@@ -14,11 +14,9 @@ from app.models import (
     GraduationStudent,
 )
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.services.db_service import _iso, _tid, session
 from app.services.file_content_security import is_downloadable_status
-
-_INSTALLED = False
-
 
 def _version_number(value) -> int:
     match = re.search(r"(\d+)", str(value or ""))
@@ -104,6 +102,7 @@ def peer_row(db, peer: GraduationPeerReview) -> dict:
     }
 
 
+@_conflict_guard
 def assign_peer(gd_student_id, reviewer_gd_student_id) -> dict:
     """将同批次、同数据范围的两名学生绑定到目标学生最新已通过定稿。"""
     if str(gd_student_id) == str(reviewer_gd_student_id):
@@ -226,15 +225,3 @@ def rectify_peer(peer_id, note) -> dict:
         service._audit(db, "PEER_REVIEW", peer.id, "提交互查整改", content)
         db.commit()
         return peer_row(db, peer)
-
-
-def install_peer_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from app.modules.graduation.services import graduation_more_service as service
-    service._peer_row = peer_row
-    service.assign_peer = assign_peer
-    service.submit_peer = submit_peer
-    service.rectify_peer = rectify_peer
-    _INSTALLED = True

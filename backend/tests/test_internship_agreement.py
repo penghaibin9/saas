@@ -99,7 +99,12 @@ def test_full_three_party_flow(client, db_mode):
 
     student_confirm = client.post(
         f"{MOBILE}/{agreement_id}/confirm",
-        json={"action": "CONFIRM", "expectedVersion": version},
+        json={
+            "action": "CONFIRM",
+            "expectedVersion": version,
+            "batchId": ids["batch"],
+            "internshipId": ids["rec_a"],
+        },
         headers=_student("AG-A", ids["batch"]))
     assert student_confirm.status_code == 200
     version = student_confirm.json()["data"]["version"]
@@ -150,7 +155,8 @@ def test_student_reject_and_legacy_route_is_disabled(client, db_mode):
     result = client.post(
         f"{MOBILE}/{agreement_id}/confirm",
         json={"action": "REJECT", "reason": "岗位与专业不符，暂不确认",
-              "expectedVersion": version}, headers=student_headers)
+              "expectedVersion": version, "batchId": ids["batch"],
+              "internshipId": ids["rec_a"]}, headers=student_headers)
     assert result.status_code == 200
     assert result.json()["data"]["status"] == "REJECTED"
 

@@ -170,7 +170,14 @@ def student_submit(user, body) -> dict:
     if len(summary) < 20:
         raise AppException("VALIDATION_ERROR", "实习总结至少20个字")
     with session() as db:
-        record, student = _student_record(db, user, for_write=True)
+        if payload.get("batchId") is not None or payload.get("internshipId") is not None:
+            from app.modules.internship.services.internship_student_context_guard import (
+                require_explicit_context,
+            )
+            record, student, _batch_id = require_explicit_context(
+                db, user, payload, for_write=True)
+        else:
+            record, student = _student_record(db, user, for_write=True)
         row = db.scalar(select(InternshipStudentEval).where(
             InternshipStudentEval.tenant_id == _tid(),
             InternshipStudentEval.internship_id == record.id,
@@ -217,7 +224,7 @@ def student_submit(user, body) -> dict:
 
 # ═══════════ 指导教师 / 学校管理员 ═══════════
 
-def advisor_comment(user, eval_id, body) -> dict:
+def advisor_comment(user, eval_id, body, *, expected_batch_id=None) -> dict:
     enforce_permission(user or {}, "internship.eval.advisor.manage")
     payload = body or {}
     opinion = str(payload.get("advisorOpinion") or "").strip()
@@ -229,6 +236,8 @@ def advisor_comment(user, eval_id, body) -> dict:
         record, student = _ctx(db, row)
         if not in_scope(scope, db, record, student):
             raise no_permission("只能对本人指导学生填写意见")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(record, expected_batch_id)
         _expected(payload, row.version, required=True)
         if row.submit_status != "SUBMITTED" or row.school_review_status != "PENDING":
             raise AppException("DATA_CONFLICT", "当前鉴定状态不可填写指导意见")
@@ -252,7 +261,8 @@ def _assert_school_reviewer(user):
         raise no_permission("学生鉴定学校审核仅限学校或学院授权管理员")
 
 
-def review(user, eval_id, action: str, comment: str = "", expected_version=None) -> dict:
+def review(user, eval_id, action: str, comment: str = "", expected_version=None,
+           expected_batch_id=None) -> dict:
     enforce_permission(user or {}, "internship.eval.self.review")
     _assert_school_reviewer(user)
     action = str(action or "").upper()
@@ -266,6 +276,8 @@ def review(user, eval_id, action: str, comment: str = "", expected_version=None)
         record, student = _ctx(db, row)
         if not in_scope(scope, db, record, student):
             raise no_permission("只能审核本人数据范围内的学生鉴定")
+        from app.modules.internship.services.internship_batch_context import assert_record_batch
+        assert_record_batch(record, expected_batch_id)
         _expected({"expectedVersion": expected_version}, row.version,
                   required=expected_version is not None)
         if row.submit_status != "SUBMITTED" or row.school_review_status != "PENDING":

@@ -12,25 +12,7 @@ from functools import wraps
 
 from openpyxl import load_workbook
 
-_INSTALLED = False
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
-_SERVICE_MODULES = (
-    "graduation_service",
-    "graduation_batch_service",
-    "graduation_student_service",
-    "graduation_topic_service",
-    "graduation_topic_round_service",
-    "graduation_taskbook_service",
-    "graduation_guidance_service",
-    "graduation_midterm_service",
-    "graduation_review_service",
-    "graduation_defense_score_service",
-    "graduation_grade_service",
-    "graduation_risk_service",
-    "graduation_archive_service",
-    "graduation_mentor_service",
-    "graduation_more_service",
-)
 
 
 def sanitize_xlsx_result(result):
@@ -73,7 +55,7 @@ def sanitize_xlsx_result(result):
     return packed
 
 
-def _wrap(fn):
+def sanitize_xlsx_export(fn):
     if getattr(fn, "_gd_xlsx_sanitized", False):
         return fn
 
@@ -83,22 +65,3 @@ def _wrap(fn):
 
     wrapped._gd_xlsx_sanitized = True
     return wrapped
-
-
-def install_graduation_export_security() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    import importlib
-
-    for short_name in _SERVICE_MODULES:
-        try:
-            module = importlib.import_module(f"app.modules.graduation.services.{short_name}")
-        except ModuleNotFoundError:
-            continue
-        for name, value in list(vars(module).items()):
-            lowered = name.lower()
-            if not callable(value) or not (lowered.startswith("export") or "_export" in lowered):
-                continue
-            setattr(module, name, _wrap(value))
-    _INSTALLED = True

@@ -1,6 +1,7 @@
 """Regression guards for graduation cross-client P0 fixes."""
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -69,6 +70,82 @@ def test_taskbook_confirmation_uses_versioned_evidence_key():
     assert 'sign_biz_id = f"{gd_student.id}:v{version}"' in source
     assert "PortalSignRecord.content_hash == content_hash" in source
     assert 'taskbook.status not in ("PENDING_CONFIRM", "CHANGE_PENDING", "CONFIRMED")' in source
+
+
+def test_student_portal_legacy_service_delegates_to_authoritative_confirmation():
+    source = (ROOT / "app/student_portal/services/graduation_service.py").read_text(encoding="utf-8")
+    start = source.index("def taskbook_sign(")
+    end = source.index("\ndef taskbook_print(", start)
+    body = source[start:end]
+    assert "confirm_with_evidence(" in body
+    assert "confirm_taskbook_in_session" not in body
+    assert "create_sign_record_in_session" not in body
+
+
+def test_teacher_graduation_workbench_queries_batch_before_pagination():
+    source = (ROOT / "app/api/v1/mobile_graduation_teacher_context.py").read_text(encoding="utf-8")
+    start = source.index("def teacher_graduation(")
+    end = source.index("\n\n@router.get(\"/my-students\"", start)
+    body = source[start:end]
+    assert "tea.graduation(" not in body
+    assert "students_service.list_students(" in body
+    assert "graduation.list_proposals(" in body
+    assert "graduation.list_finals(" in body
+    assert body.count("batch_id=batch_id") == 3
+    assert '"studentHasMore"' in body
+    assert '"proposalHasMore"' in body
+    assert '"finalHasMore"' in body
+
+
+def test_graduation_services_are_not_replaced_by_runtime_installers():
+    services = ROOT / "app/modules/graduation/services"
+    forbidden_files = {
+        "graduation_consistency_install.py",
+        "graduation_contract_bridge.py",
+        "graduation_mobile_stable_bridge.py",
+        "graduation_mobile_taskbook_bridge.py",
+        "graduation_runtime_settings.py",
+    }
+    assert forbidden_files.isdisjoint({path.name for path in services.glob("*.py")})
+
+    service_aliases = {
+        "svc", "service", "mobile", "rounds", "guidance", "midterm", "defense", "changes",
+    }
+    violations = []
+    for path in services.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("install_"):
+                violations.append(f"{path.name}:{node.lineno}:{node.name}")
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id in service_aliases
+                    and isinstance(node.value, (ast.Name, ast.Lambda))
+                ):
+                    violations.append(f"{path.name}:{node.lineno}:{target.value.id}.{target.attr}")
+    assert violations == []
+
+    registration = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
+    assert "install_consistency_guards" not in registration
+    assert "install_mobile_stable_bridge" not in registration
+    assert "install_mobile_taskbook_list_bridge" not in registration
+
+
+def test_mobile_teacher_aggregate_resolves_to_authoritative_services():
+    from app.services import mobile_teacher_service as mobile
+
+    assert mobile.proposal_review.__module__.endswith("graduation_mobile_teacher_service")
+    assert mobile.graduation_my_students.__module__.endswith("graduation_mobile_teacher_service")
+    assert mobile.graduation_taskbook_list.__module__.endswith(
+        "graduation_mobile_teacher_query_service"
+    )
+    assert mobile.graduation_grade_queue.__module__.endswith(
+        "graduation_mobile_teacher_query_service"
+    )
 
 
 def test_guidance_void_locks_row_and_checks_student_scope():

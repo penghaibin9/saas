@@ -8,9 +8,6 @@ from app.models import GraduationRiskCase, GraduationStudent
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _tid, session
 
-_INSTALLED = False
-
-
 def _locked(db, risk_id, action):
     risk = db.scalars(select(GraduationRiskCase).where(
         GraduationRiskCase.id == int(risk_id),
@@ -90,14 +87,3 @@ def close_risk(risk_id, reason: str) -> dict:
         service._audit(db, risk.id, "关闭风险", content)
         db.commit()
         return service._row(risk, student)
-
-
-def install_risk_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from app.modules.graduation.services import graduation_risk_service as service
-    service.accept_risk = accept_risk
-    service.process_risk = process_risk
-    service.close_risk = close_risk
-    _INSTALLED = True

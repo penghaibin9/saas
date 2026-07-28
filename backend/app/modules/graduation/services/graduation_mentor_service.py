@@ -20,6 +20,7 @@ from app.models import (GraduationAuditTrail, GraduationMentor, GraduationMentor
                         GraduationMentorEval, GraduationStudent)
 from app.services import excel
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 
 QUAL_LABEL = {"PENDING_REVIEW": "待审核", "QUALIFIED": "已认证", "REJECTED": "已驳回",
@@ -626,6 +627,7 @@ def import_confirm(rows: list[dict], preview_token: str | None = None) -> dict:
     return {"created": result.get("created", 0), "jobId": result.get("jobId")}
 
 
+@sanitize_xlsx_export
 def export_mentors_xlsx(keyword=None, qualification_status=None, mentor_type=None) -> dict:
     items, _ = list_mentors(1, 100000, keyword=keyword, qualification_status=qualification_status,
                             mentor_type=mentor_type)

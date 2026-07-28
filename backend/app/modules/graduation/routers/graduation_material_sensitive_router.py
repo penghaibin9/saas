@@ -21,12 +21,10 @@ from app.modules.graduation.schemas.graduation_extra import ProposalDefenseBody
 from app.modules.graduation.services import graduation_service as svc
 from app.modules.graduation.services import graduation_student_service as student_svc
 from app.modules.graduation.services.graduation_batch_context import assert_student_batch, load_student_in_batch, require_batch_id
-from app.modules.graduation.services.graduation_contract_bridge import _normalize_members
-from app.modules.graduation.services.graduation_material_consistency import install_material_consistency
+from app.modules.graduation.services.graduation_response_mapper import _normalize_members
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services.db_service import _iso, _tid, session
 
-install_material_consistency()
 router = APIRouter(prefix="/graduation", tags=["毕业设计-材料与答辩批次安全"])
 
 

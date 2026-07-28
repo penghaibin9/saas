@@ -25,7 +25,7 @@ def test_new_python_files_are_syntax_valid():
         "backend/app/modules/graduation/services/graduation_extension_query_service.py",
         "backend/app/modules/graduation/services/graduation_extension_safety_service.py",
         "backend/app/modules/graduation/services/graduation_material_temp_service.py",
-        "backend/app/modules/graduation/services/graduation_mobile_taskbook_bridge.py",
+        "backend/app/modules/graduation/services/graduation_mobile_teacher_query_service.py",
         "backend/alembic/versions/0142_gd_excellent_delay_workflows.py",
     ]
     for filename in files:
@@ -80,13 +80,16 @@ def test_teacher_delay_write_checks_current_batch():
 
 
 def test_taskbook_legacy_dto_is_not_silently_emptied():
-    bridge = read("backend/app/modules/graduation/services/graduation_mobile_taskbook_bridge.py")
+    bridge = read("backend/app/modules/graduation/services/graduation_mobile_teacher_query_service.py")
     request = read("miniapp/src/services/request.js")
     registration = read("backend/app/api/v1/route_registration.py")
-    assert 'value.get("list")' in bridge
+    assert "svc.list_taskbooks" in bridge
     assert "GD_TASKBOOK_PATH" in request
     assert "list: data.items" in request
-    assert "install_mobile_taskbook_list_bridge()" in registration
+    assert "install_mobile_taskbook_list_bridge()" not in registration
+    assert "graduation_mobile_teacher_query_service import" in read(
+        "backend/app/services/mobile_teacher_service.py"
+    )
 
 
 def test_student_partial_failures_are_visible_on_both_clients():

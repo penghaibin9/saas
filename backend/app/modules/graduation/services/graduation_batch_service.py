@@ -18,6 +18,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationAuditTrail, GraduationBatch
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 
 STATUS_LABEL = {"DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
                 "ARCHIVED": "已归档", "VOIDED": "已作废"}
@@ -344,6 +345,7 @@ def batch_stats() -> dict:
 
 # ═══════════ Excel 台账导出（openpyxl 直连，不依赖 xlsx_util）═══════════
 
+@sanitize_xlsx_export
 def export_batches_xlsx(keyword=None, status=None) -> dict:
     """毕设批次台账导出（.xlsx，按当前筛选，含抬头/来源行；调用方写审计）。"""
     from openpyxl import Workbook

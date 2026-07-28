@@ -103,6 +103,42 @@ def test_position_application_review_uses_real_assignment(client, auth_headers, 
         db.close()
 
 
+def test_teacher_context_rejects_application_id_from_previous_batch(
+    client, auth_headers, db_mode,
+):
+    stale_batch = _mk_batch(client, auth_headers)
+    current_batch = _mk_batch(client, auth_headers)
+    _record(db_mode, "APP-BATCH-001", batch_id=current_batch)
+    position_id = _published_position(client, auth_headers, batch_id=current_batch)
+    student = _student_header("APP-BATCH-001")
+    draft = client.put(f"{MOB}/internship/applications", headers=student, json={
+        "applicationType": "POSITION", "volunteerNo": 1, "positionId": position_id,
+        "applicationNote": "申请当前批次岗位",
+    }).json()["data"]
+    submitted = client.post(
+        f"{MOB}/internship/applications/{draft['id']}/submit", headers=student
+    ).json()["data"]
+    payload = {
+        "action": "APPROVE",
+        "expectedVersion": submitted["version"],
+        "recordExpectedVersion": submitted["recordVersion"],
+    }
+
+    stale = client.post(
+        f"{MOB}/teacher/internship/context/applications/{draft['id']}/review",
+        params={"batchId": stale_batch}, headers=auth_headers, json=payload,
+    ).json()
+    assert stale["code"] == 409001
+    assert "不属于当前实习批次" in stale["message"]
+
+    current = client.post(
+        f"{MOB}/teacher/internship/context/applications/{draft['id']}/review",
+        params={"batchId": current_batch}, headers=auth_headers, json=payload,
+    ).json()
+    assert current["code"] == 0
+    assert current["data"]["status"] == "APPROVED"
+
+
 def test_self_arranged_application_requires_evidence_and_is_audited(client, auth_headers, db_mode):
     _record(db_mode, "APP-SELF-001")
     student = _student_header("APP-SELF-001")

@@ -187,3 +187,12 @@ def midterm_stats(batch_id=None) -> dict:
             GraduationStudent.id.in_(scope_ids or [-1]))) or 0)
         return {"total": total, "byStatus": by_status, "studentsAtMidtermStage": not_started,
                 "batchId": str(batch_id) if batch_id else None}
+
+
+from app.modules.graduation.services.graduation_process_consistency import (
+    conduct_check,
+    get_midterm,
+    list_midterms,
+    review_rectification,
+    submit_rectification,
+)
