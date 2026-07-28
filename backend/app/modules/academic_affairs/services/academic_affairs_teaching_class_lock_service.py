@@ -230,9 +230,4 @@ def sync_batch_teaching_classes(db, batch_id: int) -> dict:
     }
 
 
-# 基础服务和原名单模块同时替换，保证后续消费者及完整路径导入命中同一最终策略。
-_base.create_roster_version = create_roster_version
-_base.ensure_teaching_class_for_task = ensure_teaching_class_for_task
-_base.resolve_teaching_task_roster = resolve_teaching_task_roster
-_base.project_selection_batch_locked = project_selection_batch_locked
-_base._roster_base.resolve_teaching_task_roster = resolve_teaching_task_roster
+# 旧模块仅保留兼容导入路径，不再覆盖正式 Service 或名单解析入口。
