@@ -153,9 +153,4 @@ def project_selection_batch_locked(db, batch_id: int) -> dict:
     return {"batchId": str(batch_id), "projected": projected}
 
 
-# 所有旧导入路径切到同一R8版本写入器。
-_lock.create_roster_version = create_roster_version
-_lock.project_selection_batch_locked = project_selection_batch_locked
-_lock._base.create_roster_version = create_roster_version
-_lock._base.project_selection_batch_locked = project_selection_batch_locked
-_lock._base._roster_base.apply_locked_roster_projection = _lock._base.apply_locked_roster_projection
+# 旧迁移模块保留原导入路径和增强实现，但不得覆盖正式 Service。
