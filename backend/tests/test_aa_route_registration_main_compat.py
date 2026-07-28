@@ -1,4 +1,4 @@
-"""教务扩展不得覆盖主线路由安全守卫，也不得继续修改共享注册文件。"""
+"""教务扩展不得覆盖主线路由、权限或请求上下文安全守卫。"""
 from pathlib import Path
 
 
@@ -6,6 +6,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
 PACKAGE = (ROOT / "app/modules/academic_affairs/routers/__init__.py").read_text(encoding="utf-8")
 BUNDLE = (ROOT / "app/modules/academic_affairs/routers/academic_affairs_bundle.py").read_text(encoding="utf-8")
+PERMISSIONS = (ROOT / "app/core/permissions.py").read_text(encoding="utf-8")
+CONTEXT = (ROOT / "app/core/context.py").read_text(encoding="utf-8")
+MIDDLEWARE = (ROOT / "app/middleware/context.py").read_text(encoding="utf-8")
 
 
 def test_graduation_and_internship_main_security_routes_are_preserved():
@@ -82,3 +85,52 @@ def test_existing_main_registration_order_is_unchanged():
     ]
     positions = [SOURCE.index(token) for token in ordered]
     assert positions == sorted(positions)
+
+
+def test_current_main_permission_additions_are_preserved():
+    for token in (
+        '"graduationDesign.topic.assign", "graduationDesign.topic.review"',
+        '"graduationDesign.defense.view", "graduationDesign.defense.groupManage"',
+        '"graduationDesign.grade.view", "graduationDesign.grade.review"',
+        '"internship.agreement.view", "internship.agreement.manage", "internship.agreement.sign"',
+    ):
+        assert token in PERMISSIONS
+
+
+def test_academic_teacher_permission_is_explicit_and_fail_closed():
+    assert '"ACADEMIC_TEACHER": {' in PERMISSIONS
+    assert '"ACADEMIC_TEACHER": {"academicAffairs.*"' not in PERMISSIONS
+    for token in (
+        '"academicAffairs.grade.input"',
+        '"academicAffairs.grade.submit"',
+        '"academicAffairs.schedule.teacherConfirm"',
+        '"academicAffairs.selection.rosterView"',
+        '"academicAffairs.evaluation.view"',
+    ):
+        assert token in PERMISSIONS
+    assert "ROLE_PERMISSION_DENY: dict[str, set[str]] = {}" in PERMISSIONS
+
+
+def test_internship_batch_context_is_preserved_end_to_end():
+    for token in (
+        "set_current_internship_batch_id",
+        "get_current_internship_batch_id",
+        'ContextVar("internship_batch_id", default=None)',
+    ):
+        assert token in CONTEXT
+
+    for token in (
+        "set_current_internship_batch_id(_resolve_internship_batch_id(request))",
+        'request.headers.get("x-internship-batch-id")',
+        'path.startswith("/api/v1/mobile/internship")',
+        'path.startswith("/api/v1/portal/internship")',
+        '"internshipBatchId": _resolve_internship_batch_id(request) or ""',
+    ):
+        assert token in MIDDLEWARE
+
+
+def test_request_middleware_keeps_fail_closed_tenant_guards():
+    assert "_expired_tenant_readonly_deny(request)" in MIDDLEWARE
+    assert "_demo_tenant_readonly_deny(request)" in MIDDLEWARE
+    assert '"TENANT_GUARD_UNAVAILABLE"' in MIDDLEWARE
+    assert '"MODULE_EXPIRED_READONLY"' in MIDDLEWARE
