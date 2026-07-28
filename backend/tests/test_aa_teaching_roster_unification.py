@@ -26,6 +26,9 @@ class _Query:
     def order_by(self, *_args, **_kwargs):
         return self
 
+    def first(self):
+        return self.rows[0] if self.rows else None
+
     def all(self):
         return list(self.rows)
 
