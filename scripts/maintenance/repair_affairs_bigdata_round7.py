@@ -4,9 +4,10 @@ from pathlib import Path
 def replace_all(path: str, old: str, new: str) -> None:
     file = Path(path)
     text = file.read_text(encoding="utf-8")
+    # old may be a strict substring of new; check the completed form first.
+    if new in text:
+        return
     if old not in text:
-        if new in text:
-            return
         raise RuntimeError(f"bigdata repair anchor missing: {path}: {old!r}")
     file.write_text(text.replace(old, new), encoding="utf-8")
 
