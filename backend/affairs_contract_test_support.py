@@ -16,7 +16,7 @@ from sqlalchemy import select
 TID = 1000000000000000001
 
 _VERSION_ROUTES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"/student-affairs/leave/(\d+)/(?:approve|reject|cancel)$"), "CsLeave"),
+    (re.compile(r"/student-affairs/leave/(\d+)/(?:approve|reject|cancel|cancel-confirm)$"), "CsLeave"),
     (re.compile(r"/student-affairs/activities/(\d+)/(?:publish|transition|confirm|unconfirm|archive)$"), "AffairsActivity"),
     (re.compile(r"/student-affairs/volunteer/records/(\d+)/(?:confirm|reject)$"), "AffairsVolunteerRecord"),
     (re.compile(r"/student-affairs/second-class/appeals/(\d+)/review$"), "AffairsCreditAppeal"),
@@ -199,28 +199,49 @@ def ensure_role_user(role_code: str, login_name: str | None = None, real_name: s
 
 
 def role_headers(role_code: str, login_name: str | None = None, real_name: str | None = None) -> dict[str, str]:
-    """签发测试受理人令牌；u_<User.id> 可命中真实待办，同时不伪造完整控制面租户。"""
-    from app.core.config import settings
+    """签发真实数据库角色令牌，并显式准备测试租户控制面记录。"""
     from app.core.security import create_access_token
-    from app.core.tenant_context import get_mock_tenant
     from app.db.session import get_sessionmaker
+    from app.models import Role, Tenant
 
     db = get_sessionmaker()()
     try:
+        tenant = db.get(Tenant, TID)
+        if tenant is None:
+            tenant = Tenant(
+                id=TID, tenant_code="pytest-student-affairs",
+                school_name="学工测试学校", short_name="学工测试",
+                deploy_mode="SAAS", db_mode="SHARED", status="ACTIVE",
+            )
+            db.add(tenant)
+            db.flush()
+        else:
+            tenant.status = "ACTIVE"
+            tenant.is_deleted = False
+            tenant.tenant_code = tenant.tenant_code or "pytest-student-affairs"
+            tenant.school_name = tenant.school_name or "学工测试学校"
+
         user = _ensure_role_user(db, role_code, login_name=login_name, real_name=real_name)
+        role = db.scalars(select(Role).where(
+            Role.tenant_id == TID,
+            Role.role_code == role_code,
+            Role.is_deleted.is_(False),
+        )).first()
+        assert role is not None, f"测试角色不存在：{role_code}"
         db.commit()
         uid = int(user.id)
         login = str(user.login_name)
         name = str(user.real_name or login)
+        role_id = int(role.id)
+        tenant_code = str(tenant.tenant_code)
+        tenant_name = str(tenant.school_name)
     finally:
         db.close()
-    tenant = get_mock_tenant(settings.DEFAULT_TENANT_CODE) or {}
     token = create_access_token({
-        "userId": f"u_{uid}", "loginName": login, "realName": name,
-        "userType": "TEACHER", "tid": tenant.get("tenantCode") or settings.DEFAULT_TENANT_CODE,
-        "tenantId": str(TID), "tenantName": tenant.get("tenantName") or "",
-        "activeContextId": f"ctx_{login}", "currentRoleCode": role_code,
-        "clientType": "PC",
+        "userId": f"db-{uid}", "loginName": login, "realName": name,
+        "userType": "TEACHER", "tid": tenant_code, "tenantId": str(TID),
+        "tenantName": tenant_name, "activeContextId": f"role:{role_id}",
+        "currentRoleCode": role_code, "clientType": "PC",
     })
     return {"Authorization": f"Bearer {token}"}
 
