@@ -40,6 +40,7 @@ from app.services.affairs_dorm_checkout_guard import install as install_dorm_che
 from app.services.affairs_dorm_node_guard import install as install_dorm_node_guard
 from app.services.affairs_dorm_projection_service import install as install_dorm_projection
 from app.services.affairs_dorm_reliability_service import install as install_dorm_reliability
+from app.services.affairs_dorm_transfer_scope_guard import install as install_dorm_transfer_scope_guard
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
 from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
 from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
@@ -129,6 +130,7 @@ install_history_dry_run_guard()
 install_stats_integrity_guard()
 install_affairs_four_end_review_guard()
 install_dorm_node_guard()
+install_dorm_transfer_scope_guard()
 install_student_contract()
 install_student_contract_security_guard()
 install_affairs_operations()
