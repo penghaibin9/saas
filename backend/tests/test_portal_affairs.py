@@ -126,10 +126,10 @@ def test_funding_aid_apply_guards_and_self(client, db_mode):
                     json={"batchId": "999999", "confirm": True,
                           "statement": "家庭经济困难情况说明满足申请材料字数要求"}).json()
     assert r["code"] == 404001
-    # 困难认定同理(到达真实服务并被业务拒绝:等级非法或批次不存在,均证明已强制本人+落到真实服务)
+    # 困难认定使用正式枚举并满足长文本合同，验证不存在批次由真实服务返回错误。
     assert client.post(f"{PORTAL}/aid/apply", headers=h,
-                       json={"batchId": "999999", "applyLevel": "一般困难", "confirm": True,
-                             "statement": "家庭经济困难情况说明满足十字要求"}).json()["code"] != 0
+                       json={"batchId": "999999", "applyLevel": "GENERAL", "confirm": True,
+                             "statement": "家庭经济困难情况说明满足十字要求"}).json()["code"] == 404001
 
 
 def test_activities_view(client, db_mode):
@@ -175,7 +175,7 @@ def test_non_student_rejected(client, db_mode):
                        json={"batchId": "1", "confirm": True,
                              "statement": "家庭经济困难情况说明满足申请材料字数要求"}).json()["code"] == 403001
     assert client.post(f"{PORTAL}/aid/apply", headers=admin,
-                       json={"batchId": "1", "applyLevel": "一般困难", "confirm": True,
+                       json={"batchId": "1", "applyLevel": "GENERAL", "confirm": True,
                              "statement": "x" * 20}).json()["code"] == 403001
 
 
