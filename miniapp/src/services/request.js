@@ -2,12 +2,14 @@
  * 统一请求封装（上线质量收口版）
  * - 401 刷新单飞；业务错误不回退假成功；写操作支持提交锁。
  * - 学生岗位实习请求自动携带当前选择批次，所有子页面共享同一业务上下文。
+ * - 教师毕设：显式批次、后端分页传输、前端逐页合并（最多 20 页，超限明确标记）。
  */
 import { ENV } from '@/config/env'
 
 const TOKEN_KEY = 'gx_token_v1'
 const REFRESH_KEY = 'gx_refresh_v1'
 const INTERNSHIP_BATCH_KEY = 'gx_student_internship_batch_v1'
+const GD_TEACHER_BATCH_KEY = 'gx_gd_teacher_batch_v1'
 const state = { offlineUntil: 0, warned: false }
 
 export function setToken(token) {
@@ -26,9 +28,28 @@ export function getRefreshToken() {
   try { return uni.getStorageSync(REFRESH_KEY) || '' } catch (e) { return '' }
 }
 
+/** 教师小程序当前毕业设计批次。对象形状：{ id, name, status }。 */
+export function setTeacherGraduationBatch(batch) {
+  try {
+    const value = batch && batch.id
+      ? { id: String(batch.id), name: batch.name || batch.batchName || '', status: batch.status || '' }
+      : null
+    if (value) uni.setStorageSync(GD_TEACHER_BATCH_KEY, value)
+    else uni.removeStorageSync(GD_TEACHER_BATCH_KEY)
+  } catch (e) { /* 忽略本地缓存失败，页面仍会要求重新选择 */ }
+}
+
+export function getTeacherGraduationBatch() {
+  try {
+    const value = uni.getStorageSync(GD_TEACHER_BATCH_KEY)
+    return value && value.id ? value : null
+  } catch (e) { return null }
+}
+
 export function clearTokens() {
   setToken('')
   setRefreshToken('')
+  setTeacherGraduationBatch(null)
 }
 
 export function shouldTryReal() {
@@ -150,8 +171,126 @@ function selectedInternshipBatchId(path) {
   }
 }
 
+/* ── 教师毕业设计批次上下文与分页 ── */
+const GD_TEACHER_PREFIX = '/mobile/teacher/graduation'
+const GD_TASKBOOK_PATH = `${GD_TEACHER_PREFIX}/taskbooks`
+const GD_TEACHER_PAGED_PATHS = new Set([
+  GD_TEACHER_PREFIX,
+  `${GD_TEACHER_PREFIX}/my-students`,
+  `${GD_TEACHER_PREFIX}/midterm/queue`,
+  `${GD_TEACHER_PREFIX}/reviews/my`,
+  `${GD_TEACHER_PREFIX}/defense/arrangements`,
+  `${GD_TEACHER_PREFIX}/grade/queue`,
+  `${GD_TEACHER_PREFIX}/choices/pending`,
+  `${GD_TEACHER_PREFIX}/change-requests/pending`,
+  GD_TASKBOOK_PATH,
+  `${GD_TEACHER_PREFIX}/defense/pending`
+])
+const GD_MAX_AUTO_PAGES = 20
+
+function appendQuery(path, key, value) {
+  if (new RegExp(`[?&]${key}=`).test(path)) return path
+  return `${path}${path.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`
+}
+function replaceQuery(path, key, value) {
+  const re = new RegExp(`([?&])${key}=[^&]*`)
+  if (re.test(path)) return path.replace(re, `$1${key}=${encodeURIComponent(value)}`)
+  return appendQuery(path, key, value)
+}
+function withTeacherGraduationContext(path) {
+  if (!path.startsWith(GD_TEACHER_PREFIX) || path.startsWith(`${GD_TEACHER_PREFIX}/batches`)) return path
+  const batch = getTeacherGraduationBatch()
+  if (!batch || !batch.id) throw { code: 422001, biz: true, message: '请先选择毕业设计批次' }
+  let value = appendQuery(path, 'batchId', batch.id)
+  const pathname = value.split('?')[0]
+  if (GD_TEACHER_PAGED_PATHS.has(pathname)) {
+    value = appendQuery(value, 'page', 1)
+    value = appendQuery(value, 'pageSize', 100)
+  }
+  return value
+}
+
+function attachPageMeta(items, meta) {
+  Object.defineProperty(items, '_pageMeta', { value: meta, enumerable: false, configurable: true })
+  return items
+}
+function normalizeTeacherGraduationData(path, data) {
+  const pathname = path.split('?')[0]
+  if (pathname === GD_TASKBOOK_PATH && data && Array.isArray(data.items)) {
+    return {
+      list: data.items,
+      total: data.total || data.items.length,
+      page: data.page || 1,
+      pageSize: data.pageSize || data.items.length,
+      hasMore: !!data.hasMore,
+      truncated: !!data.truncated
+    }
+  }
+  if (GD_TEACHER_PAGED_PATHS.has(pathname) && pathname !== GD_TEACHER_PREFIX && data && Array.isArray(data.items)) {
+    return attachPageMeta(data.items, {
+      total: data.total || data.items.length,
+      page: data.page || 1,
+      pageSize: data.pageSize || data.items.length,
+      hasMore: !!data.hasMore,
+      truncated: !!data.truncated
+    })
+  }
+  return data
+}
+
+async function collectTeacherGraduationPages(path, first, options) {
+  const pathname = path.split('?')[0]
+  if (!GD_TEACHER_PAGED_PATHS.has(pathname) || !first || !first.hasMore) {
+    return normalizeTeacherGraduationData(path, first)
+  }
+
+  let page = Number(first.page || 1)
+  let current = first
+  let calls = 1
+  if (pathname === GD_TEACHER_PREFIX) {
+    const merged = {
+      ...first,
+      students: [...(first.students || [])],
+      reviewDetail: [...(first.reviewDetail || [])],
+      finalDetail: [...(first.finalDetail || [])]
+    }
+    while (current.hasMore && calls < GD_MAX_AUTO_PAGES) {
+      page += 1; calls += 1
+      const nextPath = replaceQuery(path, 'page', page)
+      current = await realRequest(nextPath, { ...options, _rawPage: true })
+      merged.students.push(...((current && current.students) || []))
+      merged.reviewDetail.push(...((current && current.reviewDetail) || []))
+      merged.finalDetail.push(...((current && current.finalDetail) || []))
+    }
+    merged.hasMore = !!(current && current.hasMore)
+    merged.truncated = merged.hasMore
+    return merged
+  }
+
+  const items = [...(first.items || [])]
+  while (current.hasMore && calls < GD_MAX_AUTO_PAGES) {
+    page += 1; calls += 1
+    const nextPath = replaceQuery(path, 'page', page)
+    current = await realRequest(nextPath, { ...options, _rawPage: true })
+    items.push(...((current && current.items) || []))
+  }
+  return normalizeTeacherGraduationData(path, {
+    ...first,
+    items,
+    total: Number(first.total || items.length),
+    page: 1,
+    pageSize: items.length,
+    hasMore: !!(current && current.hasMore),
+    truncated: !!(current && current.hasMore)
+  })
+}
+
 /** 真实后端请求：返回统一响应 data；code!==0 抛业务错误。 */
-export function realRequest(path, { method = 'GET', data, auth = true, _retried = false } = {}) {
+export function realRequest(path, {
+  method = 'GET', data, auth = true, _retried = false, _rawPage = false
+} = {}) {
+  let effectivePath
+  try { effectivePath = withTeacherGraduationContext(path) } catch (e) { return Promise.reject(e) }
   return new Promise((resolve, reject) => {
     const header = { 'Content-Type': 'application/json' }
     const token = auth ? getToken() : ''
@@ -159,7 +298,7 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
     const internshipBatchId = selectedInternshipBatchId(path)
     if (internshipBatchId) header['X-Internship-Batch-Id'] = internshipBatchId
     uni.request({
-      url: ENV.apiBaseUrl + ENV.apiPrefix + path,
+      url: ENV.apiBaseUrl + ENV.apiPrefix + effectivePath,
       method,
       data: data || {},
       header,
@@ -174,7 +313,7 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
         if (body.code !== 0) {
           if (body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
             _refreshOnce()
-              .then(() => realRequest(path, { method, data, auth, _retried: true }))
+              .then(() => realRequest(path, { method, data, auth, _retried: true, _rawPage }))
               .then(resolve)
               .catch(() => reject({ code: body.code, biz: true, message: body.message || '登录已失效', traceId: body.traceId }))
             return
@@ -183,7 +322,9 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
           return
         }
         state.warned = false
-        resolve(body.data)
+        if (_rawPage || method !== 'GET') { resolve(body.data); return }
+        collectTeacherGraduationPages(effectivePath, body.data, { method, data, auth, _retried })
+          .then(resolve).catch(reject)
       },
       fail: (err) => {
         markOffline()

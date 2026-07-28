@@ -147,7 +147,7 @@ def test_self_arranged_application_requires_evidence_and_is_audited(client, auth
 
 
 def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
-    """落岗失败不得留下「已通过但未落实」：申请应回到待审并记 APPROVE_ROLLBACK。"""
+    """落岗失败不得留下「已通过但未落实」：审批与落岗同事务原子执行，失败整体回滚，申请回到待审。"""
     from sqlalchemy import select
 
     from app.db.session import get_sessionmaker
@@ -193,7 +193,9 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
     assert body["code"] != 0, body
     detail = client.get(f"{APP}/{app_id}", headers=auth_headers).json()["data"]
     assert detail["status"] == "PENDING_REVIEW"
-    assert "APPROVE_ROLLBACK" in {x["action"] for x in detail["auditTrail"]}
+    # 落岗校验与审批在同一事务原子执行：失败时整个事务回滚，从未真正写入过
+    # APPROVED 状态，因此审计留痕里不应出现 APPROVE（比"先通过再补偿回滚"更强的保证）
+    assert "APPROVE" not in {x["action"] for x in detail["auditTrail"]}
 
     db = get_sessionmaker()()
     try:

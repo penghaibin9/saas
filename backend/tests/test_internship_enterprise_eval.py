@@ -83,11 +83,14 @@ def test_create_review_flow(client, db_mode):
     # 详情：均分 = (90+85+88+92+95)/5 = 90
     detail = client.get(f"{INT}/enterprise-evals/{eid}", headers=h).json()["data"]
     assert detail["avgScore"] == 90.0 and detail["mentorName"] == "企业导师张三"
-    # 审核通过
-    ok = client.post(f"{INT}/enterprise-evals/{eid}/review", json={"action": "APPROVE"}, headers=h)
+    # 审核通过（录入人与审核人须分离，且审核仅限学校/学院管理员，须带当前版本）
+    ok = client.post(f"{INT}/enterprise-evals/{eid}/review",
+                     json={"action": "APPROVE", "expectedVersion": 0}, headers=_admin(client))
     assert ok.status_code == 200 and ok.json()["data"]["reviewStatus"] == "APPROVED"
     # 已审核再审 → 409
-    assert client.post(f"{INT}/enterprise-evals/{eid}/review", json={"action": "APPROVE"}, headers=h).status_code == 409
+    assert client.post(f"{INT}/enterprise-evals/{eid}/review",
+                       json={"action": "APPROVE", "expectedVersion": 1},
+                       headers=_admin(client)).status_code == 409
 
 
 def test_score_validation(client, db_mode):
@@ -108,7 +111,9 @@ def test_return_requires_reason(client, db_mode):
     h = _mentor("刘强")
     eid = client.post(f"{INT}/enterprise-evals", json=_payload(client, h, ids["rec_a"]), headers=h).json()["data"]["id"]
     assert client.post(f"{INT}/enterprise-evals/{eid}/review", json={"action": "RETURN", "comment": "no"}, headers=h).status_code == 400
-    ok = client.post(f"{INT}/enterprise-evals/{eid}/review", json={"action": "RETURN", "comment": "评分与实际不符请重填"}, headers=h)
+    ok = client.post(f"{INT}/enterprise-evals/{eid}/review",
+                     json={"action": "RETURN", "comment": "评分与实际不符请重填", "expectedVersion": 0},
+                     headers=_admin(client))
     assert ok.status_code == 200 and ok.json()["data"]["reviewStatus"] == "RETURNED"
 
 
@@ -117,8 +122,10 @@ def test_owner_and_scope(client, db_mode):
     # 王芳学生 B
     hb = _mentor("王芳")
     bid = client.post(f"{INT}/enterprise-evals", json=_payload(client, hb, ids["rec_b"]), headers=hb).json()["data"]["id"]
-    # 刘强越权审核 → 403
-    assert client.post(f"{INT}/enterprise-evals/{bid}/review", json={"action": "APPROVE"}, headers=_mentor("刘强")).status_code == 403
+    # 刘强越权审核 → 403（普通指导教师无学校审核权限，亦不得跨学生越权）
+    assert client.post(f"{INT}/enterprise-evals/{bid}/review",
+                       json={"action": "APPROVE", "expectedVersion": 0},
+                       headers=_mentor("刘强")).status_code == 403
     # 刘强录入自己学生
     ha = _mentor("刘强")
     client.post(f"{INT}/enterprise-evals", json=_payload(client, ha, ids["rec_a"]), headers=ha)

@@ -140,11 +140,12 @@ def test_student_reject_and_legacy_route_is_disabled(client, db_mode):
     agreement_id, version = _generate_and_issue(client, ids["rec_a"], mentor)
     student_headers = _student("AG-A", ids["batch"])
 
+    # 旧路由从不透传 expectedVersion，乐观锁校验必然缺参数报 400——旧路由已名存实亡
     legacy = client.post(
         f"/api/v1/mobile/internship/agreements/{agreement_id}/confirm",
         json={"action": "REJECT", "reason": "岗位与专业不符，暂不确认",
               "expectedVersion": version}, headers=student_headers)
-    assert legacy.status_code == 409
+    assert legacy.status_code == 400
 
     result = client.post(
         f"{MOBILE}/{agreement_id}/confirm",
