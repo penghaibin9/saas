@@ -20,7 +20,6 @@ _EXTENSION_ROUTER_MODULES = (
     "grade_task_identity_router",
     "mobile_grade_entry_router",
     "program_quality_router",
-    "scheduling_rule_router",
     "semester_pilot_router",
     "stats_snapshot_router",
     "student_evaluation_router",
@@ -34,6 +33,8 @@ _EXTENSION_ROUTER_MODULES = (
 
 def build_router() -> APIRouter:
     """在注册时读取包内已完成初始化的真实子 Router，避开循环导入留下的旧模块引用。"""
+    from app.modules.academic_affairs.routers import scheduling_rule_router as live_rule_router
+
     router = APIRouter()
     router.include_router(base_router.router)
     package = importlib.import_module(__package__)
@@ -42,6 +43,7 @@ def build_router() -> APIRouter:
         if module is None:
             module = importlib.import_module(f"{__package__}.{module_name}")
         router.include_router(module.router)
+    router.include_router(live_rule_router.router)
     return router
 
 
