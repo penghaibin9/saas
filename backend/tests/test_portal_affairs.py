@@ -86,8 +86,12 @@ def _seed_effective_case(no):
 
 def test_discipline_appeal(client, db_mode):
     """修复后契约：申诉必须带本人生效处分的 caseId，且写入真实 DisciplineAppeal 表（老师端可见）。"""
+    from affairs_contract_test_support import ensure_role_user
+
     _seed("SA-011", "学工十一")
     case_id, sid = _seed_effective_case("SA-011")
+    # 正式申诉工作流必须有真实学工处受理人，测试显式准备控制面角色关系。
+    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
     h = _stu_token("学工十一", "SA-011")
     ok = client.post(f"{PORTAL}/discipline/appeal", headers=h,
                      json={"caseId": str(case_id),
@@ -117,9 +121,10 @@ def test_funding_aid_apply_guards_and_self(client, db_mode):
                        json={"confirm": True}).json()["code"] != 0
     assert client.post(f"{PORTAL}/funding/apply", headers=h,
                        json={"batchId": "1"}).json()["code"] != 0
-    # 齐了但批次不存在 → 到达底层返回不存在(证明已强制本人+落到真实服务)
+    # 请求体满足正式长文本合同，但批次不存在 → 到达底层返回不存在。
     r = client.post(f"{PORTAL}/funding/apply", headers=h,
-                    json={"batchId": "999999", "confirm": True, "statement": "家庭困难"}).json()
+                    json={"batchId": "999999", "confirm": True,
+                          "statement": "家庭经济困难情况说明满足申请材料字数要求"}).json()
     assert r["code"] == 404001
     # 困难认定同理(到达真实服务并被业务拒绝:等级非法或批次不存在,均证明已强制本人+落到真实服务)
     assert client.post(f"{PORTAL}/aid/apply", headers=h,
@@ -165,8 +170,10 @@ def test_non_student_rejected(client, db_mode):
     assert client.post(f"{PORTAL}/print", headers=admin, json={}).json()["code"] == 403001
     assert client.get(f"{PORTAL}/psy/questions", headers=admin).json()["code"] == 403001
     assert client.get(f"{PORTAL}/applications", headers=admin).json()["code"] == 403001
+    # 使用完整合法请求体，确保请求进入身份门禁而不是先被字段校验拦截。
     assert client.post(f"{PORTAL}/funding/apply", headers=admin,
-                       json={"batchId": "1", "confirm": True}).json()["code"] == 403001
+                       json={"batchId": "1", "confirm": True,
+                             "statement": "家庭经济困难情况说明满足申请材料字数要求"}).json()["code"] == 403001
     assert client.post(f"{PORTAL}/aid/apply", headers=admin,
                        json={"batchId": "1", "applyLevel": "一般困难", "confirm": True,
                              "statement": "x" * 20}).json()["code"] == 403001
