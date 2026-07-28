@@ -75,8 +75,8 @@
           <button class="fbtn2" style="margin-top:16px" @click="mode='account'">使用账号密码登录</button>
         </div>
 
-        <div class="demo">
-          <div style="font-size:12px;color:#8A94A6;margin-bottom:8px">演示体验账号（仅演示环境展示）</div>
+        <div v-if="demoAccounts.length" class="demo">
+          <div style="font-size:12px;color:#8A94A6;margin-bottom:8px">演示体验账号（仅开发环境展示，不自动填充密码）</div>
           <div style="display:flex;flex-wrap:wrap;gap:8px">
             <button v-for="a in demoAccounts" :key="a.loginName" class="demobtn" @click="fill(a)">{{ a.label }}：{{ a.loginName }}</button>
           </div>
@@ -110,13 +110,18 @@ const mode = ref('account')
 
 const schoolName = computed(() => cfg.brand?.schoolName || '学生服务门户')
 const demoName = computed(() => '张同学')
-const demoAccounts = [
-  { label: '演示职业技术学校', loginName: 'student', password: '123456', tenantCode: 'demo-school' },
-  { label: '体验沙箱学校', loginName: 'student2', password: '123456', tenantCode: 'sandbox-school' }
-]
+const demoAccounts = computed(() => {
+  if (import.meta.env.PROD) return []
+  const raw = String(import.meta.env.VITE_DEMO_STUDENT_ACCOUNTS || '').trim()
+  if (!raw) return []
+  return raw.split(',').map((entry) => {
+    const [label, account, schoolCode] = entry.split('|').map((part) => String(part || '').trim())
+    return { label: label || '演示账号', loginName: account, tenantCode: schoolCode }
+  }).filter((account) => account.loginName)
+})
 function fill(a) {
   loginName.value = a.loginName
-  password.value = a.password
+  password.value = ''
   tenantCode.value = a.tenantCode || ''
   error.value = ''
 }
