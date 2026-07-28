@@ -1,0 +1,24 @@
+status=1
+base=6f49bb483abcbf0932c99f7637ee8d97b835fbb0
+head=971b9905613eb4e86e440c2137fab6674bfd1248
+log_tail:
+student affairs remaining round5 repair passed
+From https://github.com/penghaibin9/saas
+ * branch              main       -> FETCH_HEAD
+Auto-merging .github/workflows/ci.yml
+Auto-merging backend/app/api/v1/mobile.py
+Auto-merging miniapp/src/services/request.js
+CONFLICT (content): Merge conflict in miniapp/src/services/request.js
+Auto-merging student-portal/src/services/portalApi.js
+Auto-merging student-portal/src/services/request.js
+CONFLICT (content): Merge conflict in student-portal/src/services/request.js
+Automatic merge failed; fix conflicts and then commit the result.
+request conflict resolution passed
+/home/runner/work/saas/saas/student-portal/src/services/request.js:44
+function readTempFiles() {
+^^^^^^^^
+
+SyntaxError: Unexpected token 'function'
+    at checkSyntax (node:internal/main/check_syntax:74:5)
+
+Node.js v20.20.2
