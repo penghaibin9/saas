@@ -61,12 +61,14 @@ def test_legacy_rows_without_item_id_use_schedule_fact_key():
     assert rows[1]["slotNo"] == 2
 
 
-def test_public_schedule_service_points_to_batch_safe_facade():
+def test_public_schedule_service_uses_final_entry_and_canonical_student_view():
     from app.modules.academic_affairs import services
 
-    assert services.academic_affairs_schedule_service.student_view.__module__.endswith(
-        "academic_affairs_schedule_facade"
-    )
+    public = services.academic_affairs_schedule_service
+    assert public.__name__.endswith("academic_affairs_schedule_final_service")
+    assert public.student_view.__module__.endswith("academic_affairs_schedule_service")
+    assert callable(public.publish_batch)
+    assert callable(public.pre_publish)
 
 
 def _slot(slot_id=1, slot_no=1, start="08:00", end="08:45"):
