@@ -60,16 +60,26 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
-      /* PC-10-MODULE-MENU-BRIDGE-P0-FIX：默认入口改为 PC 管理端工作台（10 模块入口可见），
-         菜单数据源 config/adminMenu.js；旧产品体验页保留在 /dev/preview 仅作存档 */
+      /* PORTAL-ROOT：主域名根路径 = 对外统一门户首页（公开，不需登录）。
+         门户只做身份分流与产品导航，不实现认证、不调业务接口。
+         教师/管理端工作台已迁至 /workbench，旧地址 / 不再直达工作台。 */
       path: '/',
+      name: 'portal-home',
+      component: () => import('../views/PortalHomeView.vue'),
+      meta: { public: true, title: '高校学生全生命周期管理平台' }
+    },
+    {
+      /* PC-10-MODULE-MENU-BRIDGE-P0-FIX：PC 管理端工作台（10 模块入口可见），
+         菜单数据源 config/adminMenu.js；旧产品体验页保留在 /dev/preview 仅作存档。
+         PORTAL-ROOT 后由 / 迁到 /workbench，登录后默认落点即此路由。 */
+      path: '/workbench',
       name: 'admin-workbench',
       component: () => import('../views/AdminWorkbenchView.vue')
     },
     {
       /* /admin 裸路径兜底：重定向到管理端工作台，避免白屏 */
       path: '/admin',
-      redirect: '/'
+      redirect: '/workbench'
     },
     {
       /* 材料补交与安全批次独立工作区：沿用学工布局，不扩张正式菜单树。 */
@@ -222,7 +232,7 @@ router.beforeEach(async (to, from, next) => {
   }
   // P6：生产构建封闭 /dev/*（组件预览、旧 UI 存档），避免学校环境直链打开开发页
   if (to.meta?.requiresDev && import.meta.env.PROD) {
-    next({ path: '/', replace: true })
+    next({ path: '/workbench', replace: true })
     return
   }
   const isPlatform = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
