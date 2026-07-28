@@ -18,6 +18,7 @@ from app.models import (GraduationArchiveRecord, GraduationAuditTrail, Graduatio
                         GraduationFinal, GraduationGrade, GraduationMidterm, GraduationProposal,
                         GraduationRiskCase, GraduationStudent, GraduationTaskBook)
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 
 STATUS_LABEL = {"NOT_GENERATED": "待生成", "PENDING_SUBMIT": "待提交", "SUBMITTED": "已提交",
@@ -516,6 +517,7 @@ def archive_stats(batch_id=None) -> dict:
                 "archiveRate": rate, "batchId": str(batch_id) if batch_id else None}
 
 
+@sanitize_xlsx_export
 def export_archives_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     enforce_permission(get_current_user_ctx() or {}, "graduationDesign.archive.export")
     if not batch_id:
@@ -549,3 +551,21 @@ def export_archives_xlsx(status=None, keyword=None, batch_id=None) -> dict:
     return {"filename": f"毕设归档台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
             "contentBase64": base64.b64encode(buf.getvalue()).decode("ascii"), "rowCount": total,
             "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+
+
+# 归档规则、签名预览与批量备案直接绑定正式实现。
+_base_check_completeness = _check_completeness
+from app.modules.graduation.services.graduation_archive_consistency import (
+    _manifest_hash,
+    batch_generate_submit,
+    preview_batch_generate,
+)
+from app.modules.graduation.services.graduation_archive_batch_consistency import (
+    batch_file,
+    preview_batch_file,
+)
+
+
+def _check_completeness(db, student):
+    from app.modules.graduation.services.graduation_archive_consistency import _rule_check
+    return _rule_check(db, student, base_check=_base_check_completeness)

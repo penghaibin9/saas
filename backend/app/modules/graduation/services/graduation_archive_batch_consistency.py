@@ -7,9 +7,6 @@ from app.core.exceptions import AppException
 from app.models import GraduationArchiveRecord, GraduationStudent
 from app.services.db_service import session
 
-_INSTALLED = False
-
-
 def _archive_no(value) -> str:
     text = str(value or "").strip()
     if not text:
@@ -108,13 +105,3 @@ def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token
             "filed": filed, "skipped": skipped, "archiveBatchNo": archive_no,
             "batchId": str(batch.id), "batchName": batch.batch_name,
         }
-
-
-def install_archive_batch_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from app.modules.graduation.services import graduation_archive_service as service
-    service.preview_batch_file = preview_batch_file
-    service.batch_file = batch_file
-    _INSTALLED = True

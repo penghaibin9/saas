@@ -17,6 +17,7 @@ from app.core.exceptions import AppException, not_found
 from app.core.permissions import enforce_permission
 from app.models import GraduationAuditTrail, GraduationStudent, GraduationTaskBook
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 from app.modules.graduation.policies import taskbook_policy
 
@@ -221,6 +222,7 @@ def taskbook_stats() -> dict:
         return {"total": total, "byStatus": by_status, "noTaskbookYet": max(0, no_taskbook)}
 
 
+@sanitize_xlsx_export
 def export_taskbooks_xlsx(status=None, batch_id=None) -> dict:
     enforce_permission(get_current_user_ctx() or {}, "graduationDesign.taskbook.export")
     if not batch_id:
@@ -367,3 +369,13 @@ def export_taskbook_pdf(gd_student_id, template_id: str | None = None) -> dict:
         packed["gdStudentId"] = str(stu.id)
         packed["taskbookId"] = str(t.id)
         return packed
+
+
+from app.modules.graduation.services.graduation_taskbook_consistency import (
+    change_taskbook,
+    confirm_taskbook,
+    confirm_taskbook_in_session,
+    export_taskbook_pdf,
+    issue_taskbook,
+    taskbook_stats,
+)

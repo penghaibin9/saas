@@ -20,7 +20,7 @@ def _register(module: str, code: str, *names: str) -> None:
         GRADUATION_ENDPOINT_PERMISSION_OVERRIDES[f"{module}.{name}"] = code
 
 
-def install_graduation_permission_extensions() -> None:
+def register_graduation_permission_extensions() -> None:
     global _INSTALLED
     if _INSTALLED:
         return

@@ -245,8 +245,6 @@ def create_appeal(gd_student_id, reason) -> dict:
         _audit(db, "GRADE_APPEAL", a.id, "提交成绩申诉", s.name)
         db.commit()
         return _appeal_row(db, a)
-
-
 def list_appeals(status=None) -> list:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
@@ -291,3 +289,12 @@ def review_appeal(aid, action, comment=None) -> dict:
                (comment or "").strip())
         db.commit()
         return _appeal_row(db, a)
+
+
+from app.modules.graduation.services.graduation_grade_appeal_consistency import review_appeal
+from app.modules.graduation.services.graduation_peer_consistency import (
+    assign_peer,
+    peer_row as _peer_row,
+    rectify_peer,
+    submit_peer,
+)

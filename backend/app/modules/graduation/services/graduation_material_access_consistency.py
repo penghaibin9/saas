@@ -25,9 +25,6 @@ from app.services.db_service import _tid, session
 from app.services.file_content_security import is_downloadable_status
 from app.services.storage import get_backend
 
-_INSTALLED = False
-
-
 def _attachment_id(raw) -> str:
     if isinstance(raw, dict):
         return str(raw.get("fileId") or raw.get("id") or "")
@@ -103,12 +100,3 @@ def resolve_material_download(file_id: str):
     if not path or not path.exists():
         return None
     return path, filename or path.name
-
-
-def install_material_access_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from app.modules.graduation.services import graduation_service as service
-    service.resolve_material_download = resolve_material_download
-    _INSTALLED = True

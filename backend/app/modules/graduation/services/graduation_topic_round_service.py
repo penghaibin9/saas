@@ -11,6 +11,8 @@ from app.core.permissions import enforce_permission
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic,
                         GraduationTopicChoice, GraduationTopicRound)
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.modules.graduation.services import graduation_student_service as gd_stu_svc
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, has_full_scope,
@@ -142,8 +144,6 @@ def create_round(body) -> dict:
         db.commit()
         batch = db.get(GraduationBatch, r.batch_id) if r.batch_id else None
         return _row_round(r, batch if batch and not batch.is_deleted else None)
-
-
 def open_round(rid) -> dict:
     with session() as db:
         r = _get_round(db, rid)
@@ -196,6 +196,7 @@ def list_choices(round_id, gd_student_id=None) -> list[dict]:
         return [_choice_row(c, stu_map.get(c.gd_student_id), topic_map.get(c.topic_id)) for c in choices]
 
 
+@_conflict_guard
 def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import: bool = False) -> dict:
     if not choices:
         raise AppException("VALIDATION_ERROR", "请至少选择一个志愿")
@@ -323,6 +324,7 @@ def list_pending_choices_for_advisor(advisor_name: str) -> list[dict]:
         return [_choice_row(c, stu_map.get(c.gd_student_id), topic_map.get(c.topic_id)) for c in choices]
 
 
+@_conflict_guard
 def confirm_choice(choice_id, operator_name: str = "") -> dict:
     """教师/管理员·确认志愿：录入该学生到题目（复用 assign_topic 校验+容量），
     并把该生在同一轮次内其余 PENDING 志愿自动关闭为 REJECTED（一人一题，避免重复处理）。"""
@@ -556,6 +558,7 @@ def build_round_export_spec():
     )
 
 
+@sanitize_xlsx_export
 def export_rounds_xlsx(batch_id=None, status=None) -> dict:
     enforce_permission(get_current_user_ctx() or {}, "graduationDesign.topic.export")
     if not batch_id:
@@ -583,6 +586,7 @@ def build_choice_export_spec():
     )
 
 
+@sanitize_xlsx_export
 def export_choices_xlsx(round_id, *, matched_only=False) -> dict:
     from app.core.context import get_current_user_ctx
     from app.services import excel
@@ -814,3 +818,30 @@ def active_round(batch_id=None) -> dict | None:
             return None
         batch = db.get(GraduationBatch, r.batch_id) if r.batch_id else None
         return _row_round(r, batch if batch and not batch.is_deleted else None)
+
+
+# 正式 Service 在定义完基础导入契约后静态绑定安全版本。
+from app.modules.graduation.services.graduation_command_service import withdraw_choices
+
+_base_choice_import_business_validate = _choice_import_business_validate
+_base_choice_import_spec = _choice_import_spec
+
+
+def _choice_import_business_validate(round_id: str, row: dict, row_no: int):
+    from app.modules.graduation.services.graduation_topic_import_consistency import (
+        validate_open_round,
+    )
+    return validate_open_round(
+        round_id, row, row_no, base_validate=_base_choice_import_business_validate,
+    )
+
+
+def _choice_import_spec(round_id: str):
+    from app.modules.graduation.services.graduation_topic_import_consistency import (
+        open_only_spec,
+    )
+    return open_only_spec(
+        round_id,
+        base_spec=_base_choice_import_spec,
+        base_validate=_base_choice_import_business_validate,
+    )

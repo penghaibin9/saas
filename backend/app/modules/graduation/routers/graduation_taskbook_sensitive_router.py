@@ -10,10 +10,8 @@ from app.core.security import get_current_user
 from app.modules.graduation.schemas.graduation_taskbook import TaskBookChangeRequest, TaskBookIssue
 from app.modules.graduation.services import graduation_taskbook_service as svc
 from app.modules.graduation.services.graduation_batch_context import load_student_in_batch, require_batch_id
-from app.modules.graduation.services.graduation_taskbook_consistency import install_taskbook_consistency
 from app.services.db_service import session
 
-install_taskbook_consistency()
 router = APIRouter(tags=["毕业设计-任务书批次安全"])
 
 from app.modules.graduation.routers import graduation_process_sensitive_router

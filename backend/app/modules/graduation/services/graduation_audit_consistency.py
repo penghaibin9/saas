@@ -128,7 +128,7 @@ def _before_insert(_mapper, connection, target: GraduationAuditTrail) -> None:
         target.batch_id = _infer_batch_id(connection, target)
 
 
-def install_audit_consistency() -> None:
+def register_graduation_audit_listener() -> None:
     global _INSTALLED
     if _INSTALLED:
         return

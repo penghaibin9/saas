@@ -19,6 +19,7 @@ from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, has_full_scope)
 from app.modules.graduation.policies import review_policy
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 
 PLAG_STATUS_LABEL = {"CHECKING": "检测中", "DONE": "已完成", "FAILED": "失败"}
 REVIEW_STATUS_LABEL = {"ASSIGNED": "待评阅", "REVIEWING": "评阅中", "COMPLETED": "已完成", "RETURNED": "已退回"}
@@ -80,6 +81,7 @@ def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None, 
         return items, total
 
 
+@_conflict_guard
 def submit_plagiarism(gd_student_id, gd_final_id=None, threshold: int = 30) -> dict:
     with session() as db:
         stu = _stu(db, gd_student_id)
@@ -285,6 +287,7 @@ def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=No
         return items, total
 
 
+@_conflict_guard
 def assign_review(gd_student_id, reviewer_name: str | None = None, gd_final_id=None,
                   reviewer_mentor_id=None) -> dict:
     with session() as db:
@@ -342,6 +345,7 @@ def assign_review(gd_student_id, reviewer_name: str | None = None, gd_final_id=N
         return _review_row(r, stu)
 
 
+@_conflict_guard
 def submit_review(rid, score: int, opinion: str) -> dict:
     with session() as db:
         from app.modules.graduation.services import graduation_identity as gid
@@ -408,3 +412,9 @@ def review_stats(batch_id=None) -> dict:
                           *base, GraduationReview.status == s)) or 0)} for s in REVIEW_STATUS_LABEL]
         return {"total": total, "byStatus": by_status,
                 "batchId": str(batch_id) if batch_id else None}
+
+
+from app.modules.graduation.services.graduation_plagiarism_consistency import (
+    dispute_plagiarism,
+    review_dispute,
+)

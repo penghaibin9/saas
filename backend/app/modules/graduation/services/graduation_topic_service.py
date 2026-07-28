@@ -15,6 +15,7 @@ from app.core.permissions import enforce_permission
 from app.models import GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic
 from app.services import excel
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 
 SOURCE_LABEL = {"TEACHER": "教师申报", "ENTERPRISE": "企业题目", "STUDENT": "学生自拟", "ADMIN": "管理员录入"}
 REVIEW_LABEL = {"DRAFT": "草稿", "PENDING_REVIEW": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回"}
@@ -448,6 +449,7 @@ def build_history_export_spec() -> excel.ExportSpec:
     )
 
 
+@sanitize_xlsx_export
 def export_topic_history_xlsx(keyword=None, topic_id=None, action=None) -> dict:
     items, _ = list_topic_history(1, 100000, keyword=keyword, topic_id=topic_id, action=action)
     user = get_current_user_ctx() or {}
@@ -680,6 +682,7 @@ def import_confirm(rows: list[dict], preview_token: str | None = None) -> dict:
     return {"created": result.get("created", 0), "jobId": result.get("jobId")}
 
 
+@sanitize_xlsx_export
 def export_topics_xlsx(keyword=None, batch_id=None, source_type=None, category=None,
                        review_status=None, status=None, is_full=None, archive_view=None,
                        has_requirements=None, has_attachments=None, missing_category=None) -> dict:

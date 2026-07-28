@@ -45,7 +45,6 @@ from app.modules.graduation.services import (
     graduation_stats_service as stats,
     graduation_student_service as students,
 )
-from app.modules.graduation.services.graduation_archive_consistency import install_archive_consistency
 from app.modules.graduation.services.graduation_batch_context import (
     assert_student_batch,
     load_student_in_batch,
@@ -54,7 +53,6 @@ from app.modules.graduation.services.graduation_batch_context import (
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services.db_service import _tid, session
 
-install_archive_consistency()
 router = APIRouter(prefix="/graduation", tags=["毕业设计-批次安全接口"])
 
 

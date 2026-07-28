@@ -26,20 +26,29 @@ def test_new_consistency_modules_import_without_cycles():
         assert importlib.import_module(module)
 
 
-def test_runtime_installs_permissions_archive_and_all_state_guards():
-    runtime = text("backend/app/modules/graduation/services/graduation_runtime_settings.py")
-    for call in (
-        "install_graduation_permission_extensions()",
-        "install_archive_consistency()",
-        "install_archive_batch_consistency()",
-        "install_material_access_consistency()",
-        "install_topic_import_consistency()",
-        "install_graduation_export_security()",
-        "install_defense_round_consistency()",
-        "install_grade_appeal_consistency()",
-        "install_peer_consistency()",
-    ):
-        assert call in runtime
+def test_formal_services_bind_archive_and_state_guards_without_runtime_installer():
+    bindings = {
+        "backend/app/modules/graduation/services/graduation_archive_service.py": (
+            "graduation_archive_consistency import",
+            "graduation_archive_batch_consistency import",
+        ),
+        "backend/app/modules/graduation/services/graduation_service.py": (
+            "graduation_material_access_consistency import",
+            "graduation_defense_group_consistency import",
+        ),
+        "backend/app/modules/graduation/services/graduation_defense_score_service.py": (
+            "graduation_defense_round_consistency import",
+        ),
+        "backend/app/modules/graduation/services/graduation_more_service.py": (
+            "graduation_grade_appeal_consistency import",
+            "graduation_peer_consistency import",
+        ),
+    }
+    for path, expected in bindings.items():
+        source = text(path)
+        for fragment in expected:
+            assert fragment in source
+    assert not (ROOT / "backend/app/modules/graduation/services/graduation_runtime_settings.py").exists()
 
 
 def test_batch_archive_routes_consume_preview_token_before_dynamic_student_path():
@@ -69,7 +78,9 @@ def test_xlsx_formula_injection_is_neutralized_in_public_and_legacy_exports():
     assert safe_excel_value(88) == 88
     legacy = text("backend/app/modules/graduation/services/graduation_export_security.py")
     assert "cell.data_type == \"f\"" in legacy
-    assert "install_graduation_export_security" in legacy
+    assert "def sanitize_xlsx_export" in legacy
+    service = text("backend/app/modules/graduation/services/graduation_service.py")
+    assert service.count("@sanitize_xlsx_export") >= 3
 
 
 def test_second_defense_is_exactly_round_two_and_rejects_stale_grade_states():

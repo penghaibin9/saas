@@ -24,8 +24,10 @@ STATUS_TONE = {"PENDING": "warning", "APPROVED": "success", "REJECTED": "danger"
 
 
 def _audit(db, biz_id, action, detail=""):
-    db.add(GraduationAuditTrail(tenant_id=_tid(), biz_type="TOPIC_CHANGE", biz_id=str(biz_id),
-                                action=action, operator="系统", detail=detail, occurred_at=datetime.now(timezone.utc)))
+    from app.modules.graduation.services.graduation_mobile_teacher_service import (
+        topic_audit,
+    )
+    return topic_audit(db, biz_id, action, detail)
 
 
 def _row(r: GraduationTopicChangeRequest, stu: GraduationStudent | None = None,
@@ -88,8 +90,6 @@ def get_change_request(request_id) -> dict:
         r = _get(db, request_id)
         assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "topic.change.detail")
         return _row_of(db, r)
-
-
 def list_pending_for_advisor(advisor_name: str) -> list[dict]:
     """教师端·与本人相关（原题目或新题目导师为本人）的待审变更申请。"""
     if not advisor_name:
@@ -148,8 +148,6 @@ def request_change(gd_student_id, new_topic_id, reason: str, requested_by: str =
         gd_todo.push_topic_change_todo(db, r, stu)
         db.commit()
         return _row_of(db, r)
-
-
 def review_change(request_id, action: str, comment: str = "", reviewer_name: str = "") -> dict:
     action = (action or "").upper()
     if action not in ("APPROVE", "REJECT"):
@@ -201,3 +199,9 @@ def review_change(request_id, action: str, comment: str = "", reviewer_name: str
         gd_todo.todo_done(db, biz_id=r.id, todo_type=gd_todo.TODO_TOPIC_CHANGE)
         db.commit()
         return _row_of(db, r)
+
+
+from app.modules.graduation.services.graduation_topic_change_consistency import (
+    request_change,
+    review_change,
+)

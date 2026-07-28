@@ -1,7 +1,7 @@
 """教师微信小程序毕业设计动作权限。
 
 聚合移动 Router 不在 PC 毕设 Router 的依赖链内，因此这里显式复用 PC 动作权限码。
-身份范围由 graduation_mobile_stable_bridge 使用 mentor_id/reviewer_mentor_id/评委席位
+身份范围由 graduation_mobile_teacher_service 使用 mentor_id/reviewer_mentor_id/评委席位
 完成；同名教师不再被临时封死，也不再回退姓名授权。
 """
 from __future__ import annotations

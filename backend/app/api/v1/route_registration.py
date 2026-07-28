@@ -81,8 +81,6 @@ def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
-    from app.modules.graduation.services.graduation_consistency_install import install_consistency_guards
-    install_consistency_guards()
     from app.modules.graduation.routers import (
         graduation, graduation_archive, graduation_archive_sensitive_router, graduation_batch,
         graduation_defense_score, graduation_extension, graduation_grade, graduation_guidance,
@@ -146,12 +144,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
 
-    from app.modules.graduation.services.graduation_record_resolver import install_mobile_resolver
-    from app.modules.graduation.services.graduation_mobile_stable_bridge import install_mobile_stable_bridge
-    from app.modules.graduation.services.graduation_mobile_taskbook_bridge import install_mobile_taskbook_list_bridge
-    install_mobile_resolver()
-    install_mobile_stable_bridge()
-    install_mobile_taskbook_list_bridge()
     teacher_mobile_deps = [Depends(require_staff), Depends(require_module("graduation"))]
     api_router.include_router(mobile_graduation_extension_teacher.router, dependencies=teacher_mobile_deps)
     api_router.include_router(

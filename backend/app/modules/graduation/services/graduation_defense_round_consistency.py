@@ -16,11 +16,10 @@ from app.models import (
     GraduationStudent,
 )
 from app.modules.graduation.policies import defense_policy
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.services.db_service import _tid, session
 
-_INSTALLED = False
-
-
+@_conflict_guard
 def create_second_defense(gd_student_id, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "二次答辩原因必填且不少于 5 字")
@@ -129,12 +128,3 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
             "gdStudentId": str(student.id), "newRound": 2,
             "pendingJudges": [name for name, _, _ in unique_judges],
         }
-
-
-def install_defense_round_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from app.modules.graduation.services import graduation_defense_score_service as service
-    service.create_second_defense = create_second_defense
-    _INSTALLED = True

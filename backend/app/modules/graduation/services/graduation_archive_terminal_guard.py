@@ -92,7 +92,7 @@ def _before_flush(session: Session, _flush_context, _instances) -> None:
                 )
 
 
-def install_archive_terminal_guard() -> None:
+def register_graduation_archive_guard() -> None:
     global _INSTALLED
     if _INSTALLED:
         return

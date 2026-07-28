@@ -23,19 +23,19 @@ def test_extension_models_are_registered_in_alembic_metadata():
 
 def test_teacher_mobile_lists_are_collected_before_batch_pagination():
     source = read(
-        "backend/app/modules/graduation/services/graduation_mobile_taskbook_bridge.py"
+        "backend/app/modules/graduation/services/graduation_mobile_teacher_query_service.py"
     )
     ast.parse(
         source,
         filename=(
             "backend/app/modules/graduation/services/"
-            "graduation_mobile_taskbook_bridge.py"
+            "graduation_mobile_teacher_query_service.py"
         ),
     )
     assert "def _collect" in source
-    assert "mobile.graduation_taskbook_list = taskbooks" in source
-    assert "mobile.graduation_midterm_queue = midterms" in source
-    assert "mobile.graduation_grade_queue = grades" in source
+    assert "def taskbooks" in source
+    assert "def midterms" in source
+    assert "def grades" in source
     assert 'status="CALCULATED"' in source
     assert '{"PENDING", "RECTIFY_SUBMITTED"}' in source
 

@@ -1,6 +1,6 @@
-"""毕业设计剩余事务一致性与并发冲突安装器。
+"""毕业设计事务命令与并发冲突边界。
 
-不复制已经正确的状态机，只替换仍不一致的旧实现：
+正式领域 Service 静态引用这里的高风险命令实现：
 - 开题批阅必须锁定开题行；
 - 成果提交必须先锁定学生，再锁定该生全部成果；
 - 选题志愿退选锁定轮次、学生与志愿，缺失轮次返回 404；
@@ -30,8 +30,15 @@ from app.models import (
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _tid, session
 
-_INSTALLED = False
+from app.modules.graduation.services.graduation_archive_terminal_guard import (
+    register_graduation_archive_guard,
+)
+from app.modules.graduation.services.graduation_audit_consistency import (
+    register_graduation_audit_listener,
+)
 
+register_graduation_audit_listener()
+register_graduation_archive_guard()
 
 def _conflict_guard(fn):
     if getattr(fn, "_gd_conflict_guard", False):
@@ -226,44 +233,6 @@ def _locked_withdraw_choices(round_id, gd_student_id) -> dict:
         return {"withdrawn": len(active), "alreadyWithdrawn": False}
 
 
-def install_consistency_guards() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-
-    from app.modules.graduation.services.graduation_runtime_settings import install_runtime_settings
-    from app.modules.graduation.services.graduation_audit_consistency import install_audit_consistency
-    from app.modules.graduation.services.graduation_topic_change_consistency import install_topic_change_consistency
-    from app.modules.graduation.services.graduation_defense_group_consistency import install_defense_group_consistency
-
-    install_runtime_settings()
-    install_audit_consistency()
-    install_topic_change_consistency()
-    install_defense_group_consistency()
-    _INSTALLED = True
-
-    from app.modules.graduation.services import (
-        graduation_defense_score_service as defense,
-        graduation_grade_service as grade,
-        graduation_more_service as more,
-        graduation_review_service as review,
-        graduation_service as gd,
-        graduation_topic_round_service as rounds,
-    )
-
-    gd.review_proposal = _conflict_guard(_locked_review_proposal)
-    gd.submit_final = _conflict_guard(_locked_submit_final)
-    rounds.withdraw_choices = _conflict_guard(_locked_withdraw_choices)
-    for module, names in (
-        (gd, ("submit_proposal", "review_final", "create_defense_group", "update_defense_group",
-              "assign_defense_students", "unassign_defense_students", "publish_defense")),
-        (rounds, ("submit_choices", "confirm_choice")),
-        (review, ("submit_plagiarism", "review_dispute", "assign_review", "submit_review")),
-        (defense, ("enter_score", "confirm_scores", "create_second_defense")),
-        (grade, ("calculate_grade", "review_grade", "publish_grade", "withdraw_grade")),
-        (more, ("assign_peer", "submit_grade_appeal")),
-    ):
-        for name in names:
-            fn = getattr(module, name, None)
-            if callable(fn):
-                setattr(module, name, _conflict_guard(fn))
+review_proposal = _conflict_guard(_locked_review_proposal)
+submit_final = _conflict_guard(_locked_submit_final)
+withdraw_choices = _conflict_guard(_locked_withdraw_choices)

@@ -119,9 +119,3 @@ def resolve_current_gd_student(db, user: dict):
         return hit
 
     return sorted(rows, key=lambda x: int(x.id or 0), reverse=True)[0]
-
-
-def install_mobile_resolver() -> None:
-    """Compatibility bridge until mobile_student_service imports this directly."""
-    from app.services import mobile_student_service
-    mobile_student_service._resolve_gd_student = resolve_current_gd_student

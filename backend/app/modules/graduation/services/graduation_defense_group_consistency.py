@@ -17,10 +17,8 @@ from app.models import (
     MessageEventOutbox,
 )
 from app.modules.graduation.services.graduation_scope_service import assert_student_access, can_access_student, has_full_scope
+from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.services.db_service import _tid, session
-
-_INSTALLED = False
-
 
 def _locked_group(db, group_id, *, batch_id=None) -> GraduationDefenseGroup:
     row = db.scalars(select(GraduationDefenseGroup).where(
@@ -49,6 +47,7 @@ def _require_batch(db, batch_id) -> GraduationBatch:
     return row
 
 
+@_conflict_guard
 def create_group(group_name, defense_date=None, location=None, chair=None,
                  members=None, secretary=None, batch_id=None,
                  chair_mentor_id=None, secretary_mentor_id=None,
@@ -90,6 +89,7 @@ def create_group(group_name, defense_date=None, location=None, chair=None,
         return svc.get_defense_group_detail(group.id)
 
 
+@_conflict_guard
 def update_group(group_id, group_name=None, defense_date=None, location=None, chair=None,
                  members=None, secretary=None, chair_mentor_id=None,
                  secretary_mentor_id=None, member_mentor_ids=None,
@@ -129,6 +129,7 @@ def update_group(group_id, group_name=None, defense_date=None, location=None, ch
         return svc.get_defense_group_detail(group.id)
 
 
+@_conflict_guard
 def assign_students(group_id, student_ids, *, batch_id=None) -> dict:
     from app.modules.graduation.services import graduation_service as svc
 
@@ -185,6 +186,7 @@ def assign_students(group_id, student_ids, *, batch_id=None) -> dict:
         return svc.get_defense_group_detail(group.id)
 
 
+@_conflict_guard
 def unassign_students(group_id, student_ids, *, batch_id=None) -> dict:
     from app.modules.graduation.services import graduation_service as svc
 
@@ -213,6 +215,7 @@ def unassign_students(group_id, student_ids, *, batch_id=None) -> dict:
         return svc.get_defense_group_detail(group.id)
 
 
+@_conflict_guard
 def publish_group(group_id, *, batch_id=None) -> dict:
     from app.modules.graduation.services import graduation_service as svc
 
@@ -319,17 +322,3 @@ def notify_group(group_id, user=None, *, batch_id=None) -> dict:
             # 旧前端兼容：notified 只代表真实送达，不再代表排队数量。
             "notified": delivered,
         }
-
-
-def install_defense_group_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    _INSTALLED = True
-    from app.modules.graduation.services import graduation_service as svc
-    svc.create_defense_group = create_group
-    svc.update_defense_group = update_group
-    svc.assign_defense_students = assign_students
-    svc.unassign_defense_students = unassign_students
-    svc.publish_defense = publish_group
-    svc.notify_defense_group = notify_group

@@ -15,9 +15,6 @@ from app.models import GraduationGuidance, GraduationGuidancePlan, GraduationMid
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
 from app.services.db_service import _iso, _tid, session
 
-_INSTALLED = False
-
-
 def list_guidance(page, page_size, gd_student_id=None, keyword=None, batch_id=None):
     from app.modules.graduation.services import graduation_guidance_service as svc
     if not batch_id:
@@ -262,20 +259,3 @@ def cancel_plan(plan_id, reason):
         svc._audit(db, plan.id, "取消指导计划", value)
         db.commit()
         return {"id": str(plan.id), "cancelled": True}
-
-
-def install_process_consistency() -> None:
-    global _INSTALLED
-    if _INSTALLED: return
-    _INSTALLED = True
-    from app.modules.graduation.services import graduation_guidance_service as guidance
-    from app.modules.graduation.services import graduation_midterm_service as midterm
-    guidance.list_guidance = list_guidance
-    guidance.list_plans = list_plans
-    guidance.checkin_plan = checkin_plan
-    guidance.cancel_plan = cancel_plan
-    midterm.list_midterms = list_midterms
-    midterm.get_midterm = get_midterm
-    midterm.conduct_check = conduct_check
-    midterm.submit_rectification = submit_rectification
-    midterm.review_rectification = review_rectification

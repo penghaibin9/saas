@@ -35,8 +35,6 @@ from app.models import (
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, can_access_student
 from app.services.db_service import _iso, _tid, session
 
-_INSTALLED = False
-_ORIGINAL_CHECK = None
 _DEFAULT_REQUIRED = ["taskbook", "proposal", "midterm", "final", "review", "defenseScore", "grade"]
 
 
@@ -196,8 +194,8 @@ def _manifest_hash(db, student: GraduationStudent, archive_batch_no: str) -> str
     return payload["manifestHash"]
 
 
-def _rule_check(db, student: GraduationStudent):
-    checklist, _ = _ORIGINAL_CHECK(db, student)
+def _rule_check(db, student: GraduationStudent, *, base_check):
+    checklist, _ = base_check(db, student)
     required = set(_required_items(db, student))
     normalized = []
     for item in checklist:
@@ -399,18 +397,3 @@ def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token
         db.commit()
         return {"filed": filed, "skipped": skipped, "archiveBatchNo": archive_no,
                 "batchId": str(batch.id), "batchName": batch.batch_name}
-
-
-def install_archive_consistency() -> None:
-    global _INSTALLED, _ORIGINAL_CHECK
-    if _INSTALLED:
-        return
-    _INSTALLED = True
-    from app.modules.graduation.services import graduation_archive_service as svc
-    _ORIGINAL_CHECK = svc._check_completeness
-    svc._check_completeness = _rule_check
-    svc._manifest_hash = _manifest_hash
-    svc.preview_batch_generate = preview_batch_generate
-    svc.preview_batch_file = preview_batch_file
-    svc.batch_generate_submit = batch_generate_submit
-    svc.batch_file = batch_file

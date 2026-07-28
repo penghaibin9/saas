@@ -5,12 +5,7 @@
 """
 from __future__ import annotations
 
-from functools import wraps
-
-_INSTALLED = False
-
-
-def _normalize_members(payload: dict | None) -> dict | None:
+def normalize_defense_members(payload: dict | None) -> dict | None:
     if not isinstance(payload, dict):
         return payload
     result = dict(payload)
@@ -37,21 +32,4 @@ def _normalize_members(payload: dict | None) -> dict | None:
     return result
 
 
-def _wrap(fn):
-    @wraps(fn)
-    def wrapped(*args, **kwargs):
-        return _normalize_members(fn(*args, **kwargs))
-    return wrapped
-
-
-def install_contract_bridge() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    _INSTALLED = True
-
-    from app.services import mobile_student_service as student_mobile
-    from app.modules.graduation.services import graduation_service as graduation
-
-    student_mobile.graduation_defense = _wrap(student_mobile.graduation_defense)
-    graduation.student_defense_view = _wrap(graduation.student_defense_view)
+_normalize_members = normalize_defense_members

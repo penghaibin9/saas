@@ -17,11 +17,9 @@ from app.modules.graduation.schemas.graduation_midterm import MidtermCheckReques
 from app.modules.graduation.services import graduation_guidance_service as guidance
 from app.modules.graduation.services import graduation_midterm_service as midterm
 from app.modules.graduation.services.graduation_batch_context import assert_student_batch, load_student_in_batch, require_batch_id
-from app.modules.graduation.services.graduation_process_consistency import install_process_consistency
 from app.modules.graduation.services.graduation_p0_service import void_guidance_scoped
 from app.services.db_service import _tid, session
 
-install_process_consistency()
 router = APIRouter(tags=["毕业设计-过程批次安全"])
 
 

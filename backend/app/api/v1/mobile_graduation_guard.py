@@ -8,11 +8,9 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.graduation.services import graduation_extension_action_service as extension_action_svc
 from app.modules.graduation.services import graduation_extension_safety_service as extension_safety_svc
-from app.modules.graduation.services.graduation_contract_bridge import install_contract_bridge
 from app.modules.graduation.services.graduation_material_temp_service import abandon_temporary_material
 from app.modules.graduation.services.graduation_taskbook_confirmation_service import confirm_with_evidence
 
-install_contract_bridge()
 router = APIRouter(prefix="/mobile/graduation", tags=["移动端聚合-毕业设计高风险修复"])
 
 
