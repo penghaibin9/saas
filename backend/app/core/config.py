@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     TIMEZONE_OFFSET_HOURS: int = 8
     TENANT_TIMEZONE: str = "Asia/Shanghai"  # IANA；API 无偏移时间按此解释
     APP_VERSION: str = "1.0.0"
+    # 家长门户公网根地址，例如 https://school.example.com；监护人确认短信使用。
+    GUARDIAN_PORTAL_BASE_URL: str = ""
 
     # ── 认证（开发可用安全默认 JWT；生产由 assert_* 强制强密钥 + 关 mock-login）──
     JWT_SECRET: str = "school-lifecycle-dev-secret-change-me-please-32"
@@ -141,8 +143,8 @@ class Settings(BaseSettings):
     FILE_STORAGE_BACKEND: str = "local"
     COS_REGION: str = ""                # 如 ap-guangzhou（COS 桶所在地域）
     COS_BUCKET: str = ""                # 如 student-files-1250000000（含 APPID 后缀）
-    COS_SECRET_ID: str = ""             # 腾讯云访问密钥 SecretId；仅经 .env / 环境变量注入，禁止进仓库
-    COS_SECRET_KEY: str = ""            # 腾讯云访问密钥 SecretKey；仅经 .env / 环境变量注入，禁止进仓库
+    COS_SECRET_ID: str = ""             # 腾讯云访问密钥 SecretId；仅经 .env 注入，禁止进仓库
+    COS_SECRET_KEY: str = ""            # 腾讯云访问密钥 SecretKey；仅经 .env 注入，禁止进仓库
 
     # ── 短信/通知（P13-B；默认关闭，测试环境永不真实发送）──
     SMS_ENABLED: str = "false"          # "true" 才真实发送；否则记录 SKIPPED
@@ -153,6 +155,7 @@ class Settings(BaseSettings):
     SMS_TEMPLATE_TODO: str = ""         # 待办提醒模板ID
     SMS_TEMPLATE_REJECTED: str = ""     # 退回提醒模板ID
     SMS_TEMPLATE_WARNING: str = ""      # 预警提醒模板ID
+    SMS_TEMPLATE_GUARDIAN_CONSENT: str = ""
     SMS_RATE_LIMIT_PER_MINUTE: int = 30 # 每租户每分钟发送上限
     SMS_MAX_RETRY: int = 2              # 发送失败重试次数
 
@@ -221,6 +224,10 @@ class Settings(BaseSettings):
         if self.DEPLOYMENT_MODE == "production":
             return True
         return self.APP_ENV == "production"
+
+    @property
+    def db_enabled(self) -> bool:
+        return bool(self.DB_ENABLED)
 
     @property
     def mock_login_enabled(self) -> bool:
