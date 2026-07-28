@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
+REGISTER_ALL_ROUTES = SOURCE[SOURCE.index("def register_all_routes("):]
 PACKAGE = (ROOT / "app/modules/academic_affairs/routers/__init__.py").read_text(encoding="utf-8")
 BUNDLE = (ROOT / "app/modules/academic_affairs/routers/academic_affairs_bundle.py").read_text(encoding="utf-8")
 PERMISSIONS = (ROOT / "app/core/permissions.py").read_text(encoding="utf-8")
@@ -83,7 +84,7 @@ def test_existing_main_registration_order_is_unchanged():
         'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])',
         "register_platform_routes(api_router)",
     ]
-    positions = [SOURCE.index(token) for token in ordered]
+    positions = [REGISTER_ALL_ROUTES.index(token) for token in ordered]
     assert positions == sorted(positions)
 
 
