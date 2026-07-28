@@ -18,28 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  internship-stage3-diagnose:
-    if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727' && contains(github.event.pull_request.title, '[INT-DIAG]')
+  control-graduation-diagnose:
+    if: github.head_ref == 'codex/student-affairs-leave-cutover-20260727' && contains(github.event.pull_request.title, '[CTRL-DIAG]')
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    env:
-      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
-      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
-      FAST_TEST_SCHEMA: "1"
-      PYTHONDONTWRITEBYTECODE: "1"
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: student_lifecycle_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=20
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,33 +29,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install cryptography
-      - name: Apply migrations
-        working-directory: backend
-        run: alembic upgrade head
-      - name: Run internship stage3 regression
-        id: stage3
-        working-directory: backend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run control-plane and graduation diagnostics
+        id: gates
         shell: bash
         run: |
           set +e
           set -o pipefail
-          pytest tests/test_internship_stage3.py -q -s -p no:warnings 2>&1 | tee ../internship-stage3-diagnostic.log
+          (
+            set -euo pipefail
+            python scripts/check/validate-module-manifest.py
+            node scripts/check/generate-capability-registry.mjs
+            python scripts/check/check-control-plane-contracts.py
+            python scripts/check/check-student-sensitive-contracts.py
+            node scripts/check/check-graduation-production-gates.mjs
+          ) 2>&1 | tee control-graduation-diagnostic.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: internship-stage3-diagnostic-log
-          path: internship-stage3-diagnostic.log
+          name: control-graduation-diagnostic-log
+          path: control-graduation-diagnostic.log
           retention-days: 2
-      - name: Stop on stage3 failure
-        if: steps.stage3.outputs.status != '0'
+      - name: Stop on gate failure
+        if: steps.gates.outputs.status != '0'
         run: exit 1
