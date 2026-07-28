@@ -148,8 +148,8 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
         raise _core._invalid("同一课程代码已存在在途选课记录")
 
     passed_codes = _passed_course_codes(db, student)
-    current_code = str(course.course_code or "").strip().upper()
-    if current_code and current_code in passed_codes:
+    target_code = str(course.course_code or "").strip().upper()
+    if target_code and target_code in passed_codes:
         raise _core._invalid("该课程已修读通过，不可重复选课")
 
     source_course = db.query(AaCourse).filter(
@@ -157,14 +157,18 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
         AaCourse.course_code == course.course_code,
         AaCourse.is_deleted.is_(False),
     ).order_by(AaCourse.version.desc(), AaCourse.id.desc()).first()
-    prerequisites = []
+    prerequisites = set()
     if source_course and source_course.prerequisite_json:
         try:
             parsed = json.loads(source_course.prerequisite_json)
-            prerequisites = parsed if isinstance(parsed, list) else []
+            prerequisites = {
+                str(code).strip().upper()
+                for code in parsed
+                if str(code).strip()
+            } if isinstance(parsed, list) else set()
         except (TypeError, ValueError):
-            prerequisites = []
-    missing = [str(code).strip().upper() for code in prerequisites if str(code).strip().upper() not in passed_codes]
+            prerequisites = set()
+    missing = sorted(prerequisites - passed_codes)
     if missing:
         raise _core._invalid(f"未满足先修课程：{','.join(missing)}")
 
