@@ -66,4 +66,4 @@ test('权限目录不登记虚构 back 或 refresh 码', () => {
   for (const { permissionCode } of STUDENT_AFFAIRS_PERMISSION_CATALOG) {
     assert.ok(!/\.(?:back|refresh)$/i.test(permissionCode), permissionCode)
   }
-}
+})
