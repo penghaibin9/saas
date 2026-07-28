@@ -6,6 +6,9 @@ ROOT = Path(__file__).resolve().parents[2]
 STUDENT_API = (ROOT / "miniapp/src/services/studentApi.js").read_text(encoding="utf-8")
 INTERNSHIP_API = (ROOT / "miniapp/src/services/internshipApi.js").read_text(encoding="utf-8")
 ACADEMIC_API = (ROOT / "miniapp/src/services/academicStudentApi.js").read_text(encoding="utf-8")
+SESSION_STORE = (ROOT / "miniapp/src/stores/session.js").read_text(encoding="utf-8")
+SESSION_PLUGIN = (ROOT / "miniapp/src/stores/sessionAcademicPlugin.js").read_text(encoding="utf-8")
+MINIAPP_MAIN = (ROOT / "miniapp/src/main.js").read_text(encoding="utf-8")
 EXAM_PAGE = (
     ROOT / "miniapp/src/pages/student/academic-affairs/exam.vue"
 ).read_text(encoding="utf-8")
@@ -116,6 +119,38 @@ def test_academic_exam_v2_is_isolated_from_shared_student_api():
     assert "'/mobile/academic/exam-v2/defer/apply'" in ACADEMIC_API
     assert "data: { examCourseId, reasonType, reason }" in ACADEMIC_API
     assert "academicStudentApi as studentApi" in EXAM_PAGE
+
+
+def test_main_session_business_context_and_role_rollback_are_preserved():
+    for token in (
+        "useInternshipContextStore",
+        "clearBusinessContexts()",
+        "STUDENT_INTERNSHIP_BATCH_KEY",
+        "const previousRole = this.currentRole",
+        "const previousIdentity = { ...this.identity }",
+        "this.currentRole = previousRole",
+        "this.identity = previousIdentity",
+    ):
+        assert token in SESSION_STORE
+    assert "clearSensitiveLocalDrafts" not in SESSION_STORE
+    assert "tenantId:" not in SESSION_STORE
+    assert "activeContextId:" not in SESSION_STORE
+
+
+def test_academic_identity_enhancement_is_isolated_in_pinia_plugin():
+    assert "pinia.use(academicSessionPlugin)" in MINIAPP_MAIN
+    assert "store.$id !== 'session'" in SESSION_PLUGIN
+    for token in (
+        "tenantId",
+        "activeContextId",
+        "studentId",
+        "clearSensitiveLocalDrafts()",
+        "baseApplyRealUser",
+        "baseSetStudentIdentity",
+        "baseHydrateStudentProfile",
+        "baseLogout",
+    ):
+        assert token in SESSION_PLUGIN
 
 
 def test_student_evaluation_contract_remains_available_to_current_pages():
