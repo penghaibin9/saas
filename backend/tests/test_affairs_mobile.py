@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+from affairs_contract_test_support import ensure_workflow_assignees, post_versioned, role_headers
 
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
@@ -144,7 +144,8 @@ def test_mb5_teacher_affairs_cards(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _make_leave(client, admin, ids["zhang"])  # 产生 LEAVE_APPROVAL 待办
-    r = client.get(f"{MB}/teacher/affairs", headers=_hdr(client, "counselor01")).json()
+    # 真实待办按 assignee_id 查询，必须使用可解析为数据库 User.id 的真实辅导员令牌。
+    r = client.get(f"{MB}/teacher/affairs", headers=role_headers("COUNSELOR")).json()
     assert r["code"] == 0 and r["data"]["total"] >= 1
     assert any(c["todoType"] == "LEAVE_APPROVAL" for c in r["data"]["cards"])
 
