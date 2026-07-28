@@ -1,24 +1,16 @@
 status=1
 base=6f49bb483abcbf0932c99f7637ee8d97b835fbb0
-head=4f512f1b10c9b00207fdaedb7542eaf30fe3b0c4
+head=b38ff73900b46aaac1ba5b19cc860846e678d1c7
 log_tail:
+request resolver anchor fixed
 student affairs remaining round5 repair passed
-From https://github.com/penghaibin9/saas
- * branch              main       -> FETCH_HEAD
-Auto-merging .github/workflows/ci.yml
-Auto-merging backend/app/api/v1/mobile.py
-Auto-merging miniapp/src/services/request.js
-CONFLICT (content): Merge conflict in miniapp/src/services/request.js
-Auto-merging student-portal/src/services/portalApi.js
-Auto-merging student-portal/src/services/request.js
-CONFLICT (content): Merge conflict in student-portal/src/services/request.js
-Automatic merge failed; fix conflicts and then commit the result.
-request conflict resolution passed
-/home/runner/work/saas/saas/student-portal/src/services/request.js:44
-function readTempFiles() {
-^^^^^^^^
-
-SyntaxError: Unexpected token 'function'
-    at checkSyntax (node:internal/main/check_syntax:74:5)
-
-Node.js v20.20.2
+student affairs sensitive scope round6 passed
+student affairs bigdata round7 passed
+Traceback (most recent call last):
+  File "/home/runner/work/saas/saas/scripts/maintenance/repair_affairs_runtime_tests_round8.py", line 214, in <module>
+    patch_optimistic_and_todo()
+  File "/home/runner/work/saas/saas/scripts/maintenance/repair_affairs_runtime_tests_round8.py", line 121, in patch_optimistic_and_todo
+    replace_once(
+  File "/home/runner/work/saas/saas/scripts/maintenance/repair_affairs_runtime_tests_round8.py", line 10, in replace_once
+    raise RuntimeError(f"round8 anchor missing: {path}: {old[:120]!r}")
+RuntimeError: round8 anchor missing: backend/tests/test_affairs_optimistic_lock_round1.py: '    missing = post_versioned(client, f"{BASE}/risk/records/{rid}/process", headers=hdr,\n                           json='
