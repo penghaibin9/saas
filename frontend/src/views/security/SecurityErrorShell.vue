@@ -37,12 +37,12 @@ export default {
   },
   methods: {
     goHome() {
-      this.$router.push('/')
+      this.$router.push('/workbench')
     },
     relogin() {
       // 登录页占位：认证后端接入前先回首页
       toast.info('登录页将在认证服务接入后开放，已返回首页')
-      this.$router.push('/')
+      this.$router.push('/workbench')
     }
   }
 }

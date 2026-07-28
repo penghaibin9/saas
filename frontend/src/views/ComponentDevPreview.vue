@@ -550,7 +550,7 @@
         </div>
       </details>
 
-      <p class="dev-back"><router-link to="/">← 返回产品概览首页</router-link></p>
+      <p class="dev-back"><router-link to="/workbench">← 返回产品概览首页</router-link></p>
     </section>
 
     <!-- 弹层 -->

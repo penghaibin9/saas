@@ -239,7 +239,8 @@ export default {
         toast.success(`欢迎，${data.displayName}（${data.currentRole.roleName}）`)
         // 平台超管不进入学校工作台；即使误用通用登录页，也统一进入控制面。
         const redirect = this.$route.query.redirect
-        this.$router.push(isPlatformSuperAdmin() ? '/admin/platform/overview' : (redirect || '/'))
+        // PORTAL-ROOT：/ 已是对外门户，登录成功的默认落点改为管理端工作台 /workbench
+        this.$router.push(isPlatformSuperAdmin() ? '/admin/platform/overview' : (redirect || '/workbench'))
       } catch (e) {
         this.error = e.message || '登录失败，请稍后重试'
       } finally {

@@ -160,7 +160,7 @@ export default {
     goBack() {
       const back = this.$router.options.history.state.back
       if (back && String(back).startsWith('/admin')) this.$router.back()
-      else this.$router.push('/')
+      else this.$router.push('/workbench')
     },
     onMenu(item) {
       if (item && item.path && item.path !== this.$route.path) this.$router.push(item.path)
