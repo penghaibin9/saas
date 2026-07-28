@@ -1,4 +1,5 @@
 """教务扩展不得覆盖主线路由、权限或请求上下文安全守卫。"""
+import re
 from pathlib import Path
 
 
@@ -116,9 +117,12 @@ def test_internship_batch_context_is_preserved_end_to_end():
     for token in (
         "set_current_internship_batch_id",
         "get_current_internship_batch_id",
-        'ContextVar("internship_batch_id", default=None)',
     ):
         assert token in CONTEXT
+    assert re.search(
+        r'ContextVar\(\s*"internship_batch_id"\s*,\s*default=None\s*\)',
+        CONTEXT,
+    )
 
     for token in (
         "set_current_internship_batch_id(_resolve_internship_batch_id(request))",
