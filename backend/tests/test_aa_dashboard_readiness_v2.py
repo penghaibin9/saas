@@ -138,8 +138,8 @@ def test_readiness_api_and_xlsx_export_are_real_endpoints():
     router = (
         ROOT / "backend/app/modules/academic_affairs/routers/dashboard_readiness_router.py"
     ).read_text(encoding="utf-8")
-    router_init = (
-        ROOT / "backend/app/modules/academic_affairs/routers/__init__.py"
+    bundle = (
+        ROOT / "backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py"
     ).read_text(encoding="utf-8")
     frontend_api = (
         ROOT / "frontend/src/modules/academicAffairs/api/academic-affairs-dashboard-readiness.api.js"
@@ -148,7 +148,7 @@ def test_readiness_api_and_xlsx_export_are_real_endpoints():
     assert '@router.get("/readiness"' in router
     assert '@router.get("/readiness/export"' in router
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in router
-    assert "_append_routes(dashboard_readiness_router)" in router_init
+    assert '"dashboard_readiness_router"' in bundle
     assert "/academic-affairs/dashboard/readiness" in frontend_api
     assert "requestBlob" in frontend_api
 
