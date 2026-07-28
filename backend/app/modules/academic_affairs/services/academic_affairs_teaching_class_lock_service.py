@@ -235,5 +235,4 @@ _base.create_roster_version = create_roster_version
 _base.ensure_teaching_class_for_task = ensure_teaching_class_for_task
 _base.resolve_teaching_task_roster = resolve_teaching_task_roster
 _base.project_selection_batch_locked = project_selection_batch_locked
-_base.sync_batch_teaching_classes = sync_batch_teaching_classes
 _base._roster_base.resolve_teaching_task_roster = resolve_teaching_task_roster
