@@ -222,7 +222,7 @@ def test_leave_apply_withdraw_and_review(client, db_mode):
     evidence_id = _seed_evidence(ids["stu_a"])
     # 学生 S3-A 按当前批次提交 3 天病假及真实证明
     ap = client.post(f"{MOBILE_CONTEXT}/leaves",
-                     json={"batchId": ids["batch"], "leaveType": "SICK", "startDate": "2026-07-10", "endDate": "2026-07-12",
+                     json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "leaveType": "SICK", "startDate": "2026-07-10", "endDate": "2026-07-12",
                            "reason": "感冒发烧需就医", "evidenceFileId": evidence_id}, headers=student)
     assert ap.status_code == 200 and ap.json()["data"]["days"] == 3, ap.json()
     leave = ap.json()["data"]
@@ -248,11 +248,11 @@ def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
     student = _student("S3-A", batch_id=ids["batch"])
     # 结束早于开始 → 400
     bad = client.post(f"{MOBILE_CONTEXT}/leaves",
-                      json={"batchId": ids["batch"], "startDate": "2026-07-12", "endDate": "2026-07-10", "reason": "事假"},
+                      json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "startDate": "2026-07-12", "endDate": "2026-07-10", "reason": "事假"},
                       headers=student)
     assert bad.status_code == 400
     response = client.post(f"{MOBILE_CONTEXT}/leaves",
-                           json={"batchId": ids["batch"], "startDate": "2026-07-10", "endDate": "2026-07-10", "reason": "家中有事"},
+                           json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "startDate": "2026-07-10", "endDate": "2026-07-10", "reason": "家中有事"},
                            headers=student)
     assert response.status_code == 200, response.json()
     leave = response.json()["data"]
@@ -267,7 +267,7 @@ def test_leave_approve_writes_leave_checkins(client, db_mode):
     student = _student("S3-A", batch_id=ids["batch"])
     evidence_id = _seed_evidence(ids["stu_a"], "连续请假证明.pdf")
     response = client.post(f"{MOBILE_CONTEXT}/leaves",
-                           json={"batchId": ids["batch"], "leaveType": "PERSONAL", "startDate": "2026-07-10", "endDate": "2026-07-12",
+                           json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "leaveType": "PERSONAL", "startDate": "2026-07-10", "endDate": "2026-07-12",
                                  "reason": "家庭事务需要处理", "evidenceFileId": evidence_id}, headers=student)
     assert response.status_code == 200, response.json()
     leave = response.json()["data"]
@@ -324,7 +324,7 @@ def test_leave_student_withdraw(client, db_mode):
     ids = _seed(db_mode)
     student = _student("S3-A", batch_id=ids["batch"])
     response = client.post(f"{MOBILE_CONTEXT}/leaves",
-                           json={"batchId": ids["batch"], "startDate": "2026-07-10", "endDate": "2026-07-11", "reason": "个人事务处理"},
+                           json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "startDate": "2026-07-10", "endDate": "2026-07-11", "reason": "个人事务处理"},
                            headers=student)
     assert response.status_code == 200, response.json()
     leave = response.json()["data"]
@@ -337,7 +337,7 @@ def test_leave_overdue_creates_one_risk_and_student_can_return(client, db_mode):
     ids = _seed(db_mode)
     student = _student("S3-A", batch_id=ids["batch"])
     apply = client.post(f"{MOBILE_CONTEXT}/leaves", json={
-        "batchId": ids["batch"], "leaveType": "PERSONAL", "startDate": "2026-07-01", "endDate": "2026-07-02",
+        "batchId": ids["batch"], "internshipId": ids["rec_a"], "leaveType": "PERSONAL", "startDate": "2026-07-01", "endDate": "2026-07-02",
         "reason": "病后恢复观察",
     }, headers=student)
     assert apply.status_code == 200, apply.json()
