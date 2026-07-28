@@ -56,7 +56,7 @@ def test_both_clients_read_real_roster_worklist_and_secure_submit():
     assert '"submitted": submitted' in public
     assert '"canSubmit": batch.status == _legacy._B_OPEN and not submitted' in public
     assert "query.distinct().order_by" in public
-    assert "学生评教批次未启用匿名模式" in public
+    assert "学生评教批次必须启用匿名模式" in public
 
 
 def test_student_evaluation_router_is_explicitly_registered():
