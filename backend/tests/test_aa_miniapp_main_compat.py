@@ -4,10 +4,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STUDENT_API = (ROOT / "miniapp/src/services/studentApi.js").read_text(encoding="utf-8")
-COMPAT = (ROOT / "miniapp/src/services/internshipApiCompat.js").read_text(encoding="utf-8")
+INTERNSHIP_API = (ROOT / "miniapp/src/services/internshipApi.js").read_text(encoding="utf-8")
+ACADEMIC_API = (ROOT / "miniapp/src/services/academicStudentApi.js").read_text(encoding="utf-8")
+EXAM_PAGE = (
+    ROOT / "miniapp/src/pages/student/academic-affairs/exam.vue"
+).read_text(encoding="utf-8")
 
 
 def test_main_internship_student_api_contracts_are_preserved():
+    assert "import * as internship from './internshipApi'" in STUDENT_API
     for method in (
         "getInternship",
         "getInternshipCompliance",
@@ -55,6 +60,17 @@ def test_main_internship_student_api_contracts_are_preserved():
     ):
         assert f"{method}:" in STUDENT_API
 
+    for token in (
+        "teacherInternshipContext",
+        "studentInternshipDashboard",
+        "studentInternshipCompliance",
+        "studentInternshipConsentConfirm",
+        "studentInternshipSafetyCommit",
+        "studentInternshipApplicationSubmit",
+        "expectedVersion",
+    ):
+        assert token in INTERNSHIP_API
+
 
 def test_main_graduation_student_api_contracts_are_preserved():
     for method in (
@@ -84,26 +100,22 @@ def test_main_graduation_student_api_contracts_are_preserved():
         assert f"{method}:" in STUDENT_API
 
 
-def test_optional_internship_module_does_not_break_old_branch_build():
-    assert "import.meta.glob('./*.js')" in COMPAT
-    assert "optionalServiceModules['./internshipApi.js']" in COMPAT
-    assert "callOptionalInternship" in STUDENT_API
-    assert "loadInternshipDashboard" in STUDENT_API
-    assert "import * as internship from './internshipApi'" not in STUDENT_API
-    assert "INTERNSHIP_API_NOT_AVAILABLE" in COMPAT
-
-
 def test_graduation_taskbook_confirmation_carries_visible_version():
     assert "confirmGraduationTaskbook: (taskbookVersion)" in STUDENT_API
     assert "data: { taskbookVersion }" in STUDENT_API
     assert "confirmGraduationTaskbook: () => real.gdTaskbookConfirm()" not in STUDENT_API
 
 
-def test_academic_exam_pages_use_identity_safe_v2_endpoints():
-    assert "'/mobile/academic/exam-v2/my'" in STUDENT_API
-    assert "'/mobile/academic/exam-v2/defer-options'" in STUDENT_API
-    assert "'/mobile/academic/exam-v2/defer/apply'" in STUDENT_API
-    assert "data: { examCourseId, reasonType, reason }" in STUDENT_API
+def test_academic_exam_v2_is_isolated_from_shared_student_api():
+    assert "'/mobile/academic/exam-v2/my'" not in STUDENT_API
+    assert "'/mobile/academic/exam-v2/defer-options'" not in STUDENT_API
+    assert "'/mobile/academic/exam-v2/defer/apply'" not in STUDENT_API
+    assert "...baseStudentApi" in ACADEMIC_API
+    assert "'/mobile/academic/exam-v2/my'" in ACADEMIC_API
+    assert "'/mobile/academic/exam-v2/defer-options'" in ACADEMIC_API
+    assert "'/mobile/academic/exam-v2/defer/apply'" in ACADEMIC_API
+    assert "data: { examCourseId, reasonType, reason }" in ACADEMIC_API
+    assert "academicStudentApi as studentApi" in EXAM_PAGE
 
 
 def test_student_evaluation_contract_remains_available_to_current_pages():
