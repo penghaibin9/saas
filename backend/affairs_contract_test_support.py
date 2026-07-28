@@ -155,7 +155,6 @@ def _ensure_role_user(db, role_code: str):
         UserRole.tenant_id == TID,
         UserRole.user_id == user.id,
         UserRole.role_id == role.id,
-        UserRole.is_deleted.is_(False),
     )).first()
     if link is None:
         db.add(UserRole(
@@ -184,7 +183,12 @@ def ensure_workflow_assignees(
     ids = [int(student_ids)] if isinstance(student_ids, int) else [int(value) for value in student_ids]
     db = get_sessionmaker()()
     try:
-        users = {node: _ensure_role_user(db, _NODE_ROLE[node]) for node in set(nodes) if node in _NODE_ROLE}
+        requested_nodes = {node for node in nodes if node in _NODE_ROLE}
+        role_users = {
+            role_code: _ensure_role_user(db, role_code)
+            for role_code in {_NODE_ROLE[node] for node in requested_nodes}
+        }
+        users = {node: role_users[_NODE_ROLE[node]] for node in requested_nodes}
         for student_id in ids:
             student = db.get(StudentProfile, student_id)
             assert student is not None and not student.is_deleted, f"测试学生不存在：{student_id}"
