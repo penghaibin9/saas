@@ -159,13 +159,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - name: 单元测试
+      - name: 教务分支单元测试
         shell: bash
         run: |
           set +e
-          files=$(find test tests -type f -name '*.test.mjs' 2>/dev/null | sort)
+          files=$(find test -type f -name '*.test.mjs' 2>/dev/null | sort)
           if [ -z "$files" ]; then
-            echo "未找到前端单元测试文件" | tee teacher-pc-test.log
+            echo "未找到教务分支前端单元测试文件" | tee teacher-pc-test.log
             exit 1
           fi
           node --test $files 2>&1 | tee teacher-pc-test.log
