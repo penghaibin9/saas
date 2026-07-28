@@ -154,7 +154,7 @@ def test_services_package_loads_final_rule_policy_before_router_consumers():
 
 
 def test_aggregated_router_contains_one_correct_rule_route_per_method():
-    from app.modules.academic_affairs.routers import academic_affairs
+    from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
 
     routes = academic_affairs.router.routes
 
