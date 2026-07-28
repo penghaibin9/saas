@@ -9,6 +9,18 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _tenant_context():
+    """归档规则始终运行在显式租户请求上下文中。"""
+    from app.core.context import set_tenant
+
+    set_tenant({"tenantId": "1"})
+    try:
+        yield
+    finally:
+        set_tenant(None)
+
+
 class _FakeQuery:
     def __init__(self, *, rows=None, count=0, first=None):
         self._rows = list(rows or [])
