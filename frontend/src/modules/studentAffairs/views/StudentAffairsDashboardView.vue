@@ -21,7 +21,7 @@
       :description="errorMessage"
       loading-text="正在加载学工看板真实数据…"
       @retry="load"
-      @back="$router.push('/')"
+      @back="$router.push('/workbench')"
     >
       <div class="sa-summary-strip">
         <div class="sa-summary-strip__content">
