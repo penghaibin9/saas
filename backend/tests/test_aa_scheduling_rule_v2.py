@@ -155,8 +155,18 @@ def test_services_package_loads_final_rule_policy_before_router_consumers():
 
 def test_aggregated_router_contains_one_correct_rule_route_per_method():
     from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
+    from app.modules.academic_affairs.routers import scheduling_rule_router
 
     routes = academic_affairs.router.routes
+    source_routes = [
+        (getattr(route, "path", ""), sorted(getattr(route, "methods", set()) or set()))
+        for route in scheduling_rule_router.router.routes
+    ]
+    bundle_routes = [
+        (getattr(route, "path", ""), sorted(getattr(route, "methods", set()) or set()))
+        for route in routes
+        if "scheduling" in getattr(route, "path", "") or "rules" in getattr(route, "path", "")
+    ]
 
     def count(path, method):
         return sum(
@@ -164,7 +174,9 @@ def test_aggregated_router_contains_one_correct_rule_route_per_method():
             if getattr(route, "path", "") == path and method in set(getattr(route, "methods", set()) or set())
         )
 
-    assert count("/academic-affairs/scheduling/rules", "GET") == 1
-    assert count("/academic-affairs/scheduling/rules", "PUT") == 1
-    assert count("/academic-affairs/scheduling/rules/{rule_id}", "DELETE") == 1
-    assert count("/academic-affairs/scheduling/rules/{ruleId}", "DELETE") == 0
+    diagnostic = {"sourceRoutes": source_routes, "bundleRoutes": bundle_routes}
+    assert any(path == "/academic-affairs/scheduling/rules" and "GET" in methods for path, methods in source_routes), diagnostic
+    assert count("/academic-affairs/scheduling/rules", "GET") == 1, diagnostic
+    assert count("/academic-affairs/scheduling/rules", "PUT") == 1, diagnostic
+    assert count("/academic-affairs/scheduling/rules/{rule_id}", "DELETE") == 1, diagnostic
+    assert count("/academic-affairs/scheduling/rules/{ruleId}", "DELETE") == 0, diagnostic
