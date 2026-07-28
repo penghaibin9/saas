@@ -54,10 +54,10 @@ test('关键普通菜单页面导航与路由权限一致', async () => {
 
 test('学生画像兼容入口使用隐藏 DETAIL + permissionAny，覆盖路由权限', async () => {
   const { nav, routes } = await sources()
-  const profileBlock = nav.split("H('学生360详情', '/admin/student-affairs/profile'", 1)[1]?.split('\n', 1)[0] || ''
+  const profileBlock = nav.split("H('学生360详情', '/admin/student-affairs/profile'")[1]?.split('\n', 1)[0] || ''
   assert.match(profileBlock, /'DETAIL'/)
   assert.match(profileBlock, /permissionAny:\s*_STU_VIEW_ANY/)
-  const anyBlock = nav.split("const _STU_VIEW_ANY = [", 1)[1]?.split(']', 1)[0] || ''
+  const anyBlock = nav.split('const _STU_VIEW_ANY = [')[1]?.split(']', 1)[0] || ''
   const routePermission = routePermissionForPath(routes, 'profile')
   assert.match(anyBlock, new RegExp(`['"]${routePermission.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`))
 })
