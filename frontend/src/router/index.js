@@ -82,6 +82,20 @@ const router = createRouter({
       redirect: '/workbench'
     },
     {
+      /* 材料补交与安全批次独立工作区：沿用学工布局，不扩张正式菜单树。 */
+      path: '/admin/student-affairs/material-operations',
+      component: () => import('@/modules/studentAffairs/views/AdminStudentAffairsLayout.vue'),
+      meta: { moduleCode: 'STUDENT_AFFAIRS' },
+      children: [
+        {
+          path: '',
+          name: 'student-affairs-material-operations',
+          component: () => import('@/modules/studentAffairs/views/MaterialOperationsView.vue'),
+          meta: { moduleCode: 'STUDENT_AFFAIRS', title: '材料缺项与安全批次', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
+        }
+      ]
+    },
+    {
       /* 旧入口兼容（PC-NAV-6MODULE-REGROUP）：/admin/system/log（单数）→ 现行日志中心，避免旧书签 404 */
       path: '/admin/system/log',
       redirect: '/admin/system/logs'
