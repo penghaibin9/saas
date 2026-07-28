@@ -43,7 +43,10 @@ def build_router() -> APIRouter:
         if module is None:
             module = importlib.import_module(f"{__package__}.{module_name}")
         router.include_router(module.router)
-    router.include_router(live_rule_router.router)
+
+    # 该独立路由会在服务 Facade 初始化期间经历循环导入；此时 include_router 可能读取到
+    # 尚未装配完成的旧 APIRouter。注册阶段直接复制当前真实 APIRoute，随后由上层统一附加模块依赖。
+    router.routes.extend(list(live_rule_router.router.routes))
     return router
 
 
