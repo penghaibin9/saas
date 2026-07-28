@@ -25,16 +25,16 @@ def test_r8_compat_layer_allows_only_selection_empty_version():
 def test_locked_manual_drop_projects_new_roster_version_in_same_transaction():
     root = Path(__file__).resolve().parents[1]
     source = (
-        root / "app/modules/academic_affairs/services/academic_affairs_selection_roster_migration_facade.py"
+        root / "app/modules/academic_affairs/services/academic_affairs_selection_service.py"
     ).read_text(encoding="utf-8")
 
-    drop_at = source.index("AaSelectionRecord.status: _base._legacy._REC_DROPPED")
-    project_at = source.index("project_selection_course_locked")
-    commit_at = source.index("db.commit()")
+    admin_drop = source[source.index("def admin_drop("):source.index("def reselect(")]
+    drop_at = admin_drop.index("record.status = _REC_DROPPED")
+    project_at = admin_drop.index("roster_projection.apply_admin_drop")
+    commit_at = admin_drop.index("db.commit()")
     assert drop_at < project_at < commit_at
-    assert "rosterVersionId" in source
-    assert "memberCount" in source
-    assert ".with_for_update().first()" in source
+    assert "consumer_counts" in admin_drop
+    assert "for_update=True" in admin_drop
 
 
 def test_public_selection_and_teaching_class_paths_are_patched_without_breaking_names():
