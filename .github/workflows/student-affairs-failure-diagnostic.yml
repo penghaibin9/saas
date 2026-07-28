@@ -58,5 +58,22 @@ jobs:
         working-directory: backend
         run: alembic upgrade head
       - name: Run internship stage3 regression
+        id: stage3
         working-directory: backend
-        run: pytest tests/test_internship_stage3.py -q -s -p no:warnings
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          pytest tests/test_internship_stage3.py -q -s -p no:warnings 2>&1 | tee ../internship-stage3-diagnostic.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: internship-stage3-diagnostic-log
+          path: internship-stage3-diagnostic.log
+          retention-days: 2
+      - name: Stop on stage3 failure
+        if: steps.stage3.outputs.status != '0'
+        run: exit 1
