@@ -17,7 +17,7 @@ def test_student_schedule_uses_seven_days_backend_slots_and_time_bands():
     assert "timeBands" in source
     assert "slotLabel(item)" in source
     assert "按校区作息" in source
-    assert "v-for=\"item in dayItems(day.value)\"" in source
+    assert 'v-for="item in dayItems(day.value)"' in source
     assert "item.weekParity === 'ODD'" in source
     assert "item.weekParity === 'EVEN'" in source
 
@@ -50,19 +50,19 @@ def test_student_section_route_fails_closed_and_hides_legacy_entry():
 
 
 def test_makeup_route_opens_actionable_nested_workbench():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
 
     assert "academicSubTab: subTab" in router
-    assert "'academic/makeup'" in router
+    assert "academicSection('makeup'" in router
     assert "'补考重修申请'" in router
 
 
 def test_student_registration_uses_dedicated_actionable_workspace():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
     view = _read("student-portal/src/views/academic/StudentRegistrationView.vue")
 
     assert "StudentRegistrationView.vue" in router
-    assert "academicSection('academic/registration'" not in router
+    assert "academicSection('registration'" not in router
     assert "portalApi.academicRegistration()" in view
     assert "portalApi.academicRegistrationRegister" in view
     assert "portalApi.academicRegistrationDefer" in view
@@ -74,11 +74,11 @@ def test_student_registration_uses_dedicated_actionable_workspace():
 
 
 def test_student_selection_uses_dedicated_server_authoritative_workspace():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
     view = _read("student-portal/src/views/academic/StudentSelectionView.vue")
 
     assert "StudentSelectionView.vue" in router
-    assert "academicSection('academic/selection'" not in router
+    assert "academicSection('selection'" not in router
     assert "portalApi.academicCourseSelection()" in view
     assert "portalApi.academicSelectionRecords()" in view
     assert "portalApi.academicEnroll" in view
@@ -89,11 +89,11 @@ def test_student_selection_uses_dedicated_server_authoritative_workspace():
 
 
 def test_student_recheck_uses_dedicated_published_grade_workspace():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
     view = _read("student-portal/src/views/academic/StudentRecheckView.vue")
 
     assert "StudentRecheckView.vue" in router
-    assert "academicSection('academic/recheck'" not in router
+    assert "academicSection('recheck'" not in router
     assert "portalApi.academicGradeRecheck()" in view
     assert "portalApi.academicTranscript()" in view
     assert "portalApi.academicGradeRecheckSubmit" in view
@@ -103,12 +103,12 @@ def test_student_recheck_uses_dedicated_published_grade_workspace():
 
 
 def test_student_evaluation_uses_dedicated_secure_workspace():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
     view = _read("student-portal/src/views/academic/StudentEvaluationView.vue")
 
-    assert "academic/evaluation" in router
+    assert "path: 'evaluation'" in router
     assert "StudentEvaluationView.vue" in router
-    assert "academicSection('academic/evaluation'" not in router
+    assert "academicSection('evaluation'" not in router
     assert "task.canSubmit === true" in view
     assert "task.submitted === true" in view
     assert "task.canSubmit !== true || task.submitted === true" in view
