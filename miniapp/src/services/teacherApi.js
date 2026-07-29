@@ -7,13 +7,12 @@ export const teacherApi = {
   /** 与 PC 同源：/todos/summary + teacher-mobile todos；生产不得回落 mock 假工作台 */
   getWorkbench: (roleKey) =>
     realFirstStrict('teacher.workbench',
-      () => real.enrichTeacherWorkbench(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor),
-      () => {
-        if (import.meta.env && import.meta.env.PROD) {
-          return Promise.reject(new Error('生产环境教师工作台不可回落演示数据'))
-        }
-        return mockRequest(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor)
-      }),
+      () => real.teacherWorkbenchReal(roleKey),
+      () => mockRequest(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor)),
+  getTodosPage: (group = 'all', page = 1, pageSize = 20) =>
+    realFirstStrict('teacher.todos.page',
+      () => real.teacherTodosPage(group, page, pageSize),
+      () => mockRequest({ filters: M.todoFilters, list: M.teacherTodos })),
   getTodos: () => realFirst('teacher.todos', () => real.teacherTodosReal(), () => mockRequest({ filters: M.todoFilters, list: M.teacherTodos })),
   getApprovals: () => realFirst('teacher.approvals', () => real.teacherApprovalsReal(M.approvals), () => mockRequest(M.approvals)),
   actApproval: (id, type, reason) => real.actApproval(id, type, reason),
@@ -25,6 +24,10 @@ export const teacherApi = {
   createFollowup: (body) => real.createFollowupReal(body),
   getAffairs: () => real.teacherAffairs(),
   getMySchedule: () => real.acadTeacherScheduleMy(),
+  getRiskStudentsPage: (level = 'all', page = 1, pageSize = 20) =>
+    realFirstStrict('teacher.risk.page',
+      () => real.teacherRiskStudentsPage(level, page, pageSize),
+      () => mockRequest({ list: M.students.filter((s) => s.risk === 'HIGH' || s.risk === 'MEDIUM') })),
   getRiskStudents: () => realFirst('teacher.risk', () => real.teacherRiskStudents(), () => mockRequest(M.students.filter((s) => s.risk === 'HIGH' || s.risk === 'MEDIUM'))),
   getStudents: () => mockRequest(M.students),
   getStudent360: (id) => realFirstStrict('teacher.student360', () => real.teacherStudent360(id), () => mockRequest(M.student360[id] || null)),

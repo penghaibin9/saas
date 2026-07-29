@@ -12,6 +12,7 @@
  * - 日志绝不输出 token / 手机号 / 身份证。
  */
 import { ENV } from '@/config/env'
+import { markMobileViewsDirty } from '@/utils/viewFreshness'
 
 const TOKEN_KEY = 'gx_token_v1'
 const REFRESH_KEY = 'gx_refresh_v1'
@@ -246,36 +247,9 @@ function normalizeTeacherGraduationData(path, data) {
   return data
 }
 async function collectTeacherGraduationPages(path, first, options) {
-  const pathname = path.split('?')[0]
-  if (!GD_TEACHER_PAGED_PATHS.has(pathname) || !first || !first.hasMore) {
-    return normalizeTeacherGraduationData(path, first)
-  }
-  let page = Number(first.page || 1)
-  let current = first
-  let calls = 1
-  if (pathname === GD_TEACHER_PREFIX) {
-    const merged = { ...first, students: [...(first.students || [])],
-      reviewDetail: [...(first.reviewDetail || [])], finalDetail: [...(first.finalDetail || [])] }
-    while (current.hasMore && calls < GD_MAX_AUTO_PAGES) {
-      page += 1; calls += 1
-      current = await realRequest(replaceQuery(path, 'page', page), { ...options, _rawPage: true })
-      merged.students.push(...((current && current.students) || []))
-      merged.reviewDetail.push(...((current && current.reviewDetail) || []))
-      merged.finalDetail.push(...((current && current.finalDetail) || []))
-    }
-    merged.hasMore = !!(current && current.hasMore)
-    merged.truncated = merged.hasMore
-    return merged
-  }
-  const items = [...(first.items || [])]
-  while (current.hasMore && calls < GD_MAX_AUTO_PAGES) {
-    page += 1; calls += 1
-    current = await realRequest(replaceQuery(path, 'page', page), { ...options, _rawPage: true })
-    items.push(...((current && current.items) || []))
-  }
-  return normalizeTeacherGraduationData(path, { ...first, items, total: Number(first.total || items.length),
-    page: 1, pageSize: items.length, hasMore: !!(current && current.hasMore),
-    truncated: !!(current && current.hasMore) })
+  // 移动列表只返回当前服务端页，禁止请求层静默循环抓取最多 20 页。
+  // 需要更多数据的页面必须显式上拉并携带 page/pageSize。
+  return normalizeTeacherGraduationData(path, first)
 }
 
 
@@ -284,10 +258,26 @@ function parseUnifiedBody(raw) {
   try { return JSON.parse(String(raw || '')) } catch (e) { return null }
 }
 
-/** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
-export function realRequest(path, { method = 'GET', data, auth = true, _retried = false, _rawPage = false } = {}) {
-  let effectivePath
-  try { effectivePath = withTeacherGraduationContext(path) } catch (e) { return Promise.reject(e) }
+/* GET 请求单飞：相同身份、路径和查询在并发期间只发送一次。
+ * 写操作不共享 Promise；完全相同的并发写请求会被明确拒绝，避免双击重复落库。 */
+const _getInflight = new Map()
+const _mutationInflight = new Set()
+
+function stablePayload(value) {
+  if (!value || typeof value !== 'object') return String(value || '')
+  const out = {}
+  Object.keys(value).sort().forEach((key) => { out[key] = value[key] })
+  try { return JSON.stringify(out) } catch (e) { return '' }
+}
+
+function inflightKey(method, effectivePath, data, auth) {
+  const identity = auth ? getToken() : 'public'
+  return `${method}|${effectivePath}|${stablePayload(data)}|${identity}`
+}
+
+function executeRealRequest(path, effectivePath, {
+  method, data, auth, _retried, _rawPage
+}) {
   return new Promise((resolve, reject) => {
     const header = { 'Content-Type': 'application/json' }
     const token = auth ? getToken() : ''
@@ -304,7 +294,7 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
         const body = res.data
         if (!body || typeof body.code !== 'number') {
           markOffline()
-          reject({ code: 'BAD_RESPONSE', message: '响应结构异常' })
+          reject({ code: 'BAD_RESPONSE', message: '响应结构异常', httpStatus: res.statusCode })
           return
         }
         if (body.code !== 0) {
@@ -315,10 +305,17 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
               .catch(reject)
             return
           }
-          reject({ code: body.code, biz: true, message: body.message || '业务错误', traceId: body.traceId })
+          reject({
+            code: body.code,
+            biz: true,
+            message: body.message || '业务错误',
+            traceId: body.traceId,
+            httpStatus: res.statusCode
+          })
           return
         }
         state.warned = false
+        if (method !== 'GET') markMobileViewsDirty(path)
         if (_rawPage || method !== 'GET') { resolve(body.data); return }
         collectTeacherGraduationPages(effectivePath, body.data, { method, data, auth, _retried })
           .then(resolve).catch(reject)
@@ -330,6 +327,41 @@ export function realRequest(path, { method = 'GET', data, auth = true, _retried 
     })
   })
 }
+
+/** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
+export function realRequest(path, {
+  method = 'GET', data, auth = true, _retried = false, _rawPage = false
+} = {}) {
+  const normalizedMethod = String(method || 'GET').toUpperCase()
+  let effectivePath
+  try { effectivePath = withTeacherGraduationContext(path) } catch (e) { return Promise.reject(e) }
+
+  // 401 刷新后的重试和内部显式分页必须绕过原单飞槽位，避免等待自身 Promise。
+  if (_retried || _rawPage) {
+    return executeRealRequest(path, effectivePath, {
+      method: normalizedMethod, data, auth, _retried, _rawPage
+    })
+  }
+
+  const key = inflightKey(normalizedMethod, effectivePath, data, auth)
+  if (normalizedMethod === 'GET') {
+    if (_getInflight.has(key)) return _getInflight.get(key)
+    const pending = executeRealRequest(path, effectivePath, {
+      method: normalizedMethod, data, auth, _retried, _rawPage
+    }).finally(() => _getInflight.delete(key))
+    _getInflight.set(key, pending)
+    return pending
+  }
+
+  if (_mutationInflight.has(key)) {
+    return Promise.reject({ code: 'LOCKED', biz: true, message: '正在提交，请勿重复点击' })
+  }
+  _mutationInflight.add(key)
+  return executeRealRequest(path, effectivePath, {
+    method: normalizedMethod, data, auth, _retried, _rawPage
+  }).finally(() => _mutationInflight.delete(key))
+}
+
 
 /** 文件上传：使用真实 /files 两步式合同，401 后单飞刷新并仅重试一次。 */
 export function realUpload(path, filePath, {
