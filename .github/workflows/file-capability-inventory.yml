@@ -44,6 +44,21 @@ jobs:
         run: python -m pip install --disable-pip-version-check PyYAML==6.0.2
       - name: Validate inventory schema
         run: python scripts/audit_file_capabilities.py --check-schema
+      - name: Generate machine audit report
+        run: |
+          mkdir -p audit-artifacts
+          python scripts/audit_file_capabilities.py \
+            --report \
+            --json-report audit-artifacts/file-capability-report.json \
+            > audit-artifacts/file-capability-report.txt
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-capability-audit-report
+          path: audit-artifacts/
+          if-no-files-found: error
+          retention-days: 14
       - name: Check full existing baseline
         run: python scripts/audit_file_capabilities.py --strict-baseline
       - name: Require registration for changed file capabilities
