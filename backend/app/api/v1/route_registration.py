@@ -186,18 +186,40 @@ def register_all_routes(api_router: APIRouter) -> None:
     from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
     from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
     from app.modules.employment.routers import employment
+
+    trace: list[tuple[str, int]] = []
+
+    def mark(stage: str) -> None:
+        trace.append((stage, len(api_router.routes)))
+        api_router._route_registration_trace = list(trace)
+
     deps = build_deps()
+    mark("start")
     register_core_routes(api_router)
+    mark("core")
     api_router.include_router(student.router)
+    mark("student")
     api_router.include_router(approval.router)
+    mark("approval")
     register_internship_routes(api_router, deps)
+    mark("internship")
     api_router.include_router(orientation.router, dependencies=deps["orientation"])
+    mark("orientation")
     api_router.include_router(campus_service.router, dependencies=deps["cs"])
+    mark("campus")
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
+    mark("academic_legacy")
     register_graduation_routes(api_router, deps)
+    mark("graduation")
     api_router.include_router(excel.router)
+    mark("excel")
     api_router.include_router(employment.router, dependencies=deps["employment"])
+    mark("employment")
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
+    mark("student_affairs")
     academic_affairs.router = academic_affairs.build_router()
+    trace.append(("academic_bundle_child", len(academic_affairs.router.routes)))
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
+    mark("academic_bundle")
     register_platform_routes(api_router)
+    mark("platform")
