@@ -83,7 +83,7 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
         existing.add(signature)
 
 
-for supplemental_router in (
+_SUPPLEMENTAL_ROUTERS = (
     affairs_four_end_router,
     affairs_operations_router,
     affairs_student_dorm_router,
@@ -92,7 +92,9 @@ for supplemental_router in (
     affairs_appeal_repair_router,
     affairs_student_returned_router,
     affairs_leave_self_router,
-):
+)
+
+for supplemental_router in _SUPPLEMENTAL_ROUTERS:
     _mount_supplemental_router(api_router, supplemental_router)
 
 install_affairs_four_end_contract()
@@ -138,5 +140,35 @@ install_student_contract_security_guard()
 install_affairs_operations()
 install_affairs_operations_final_guard()
 install_teacher_workbench_guard()
+
+
+def _finalize_route_registry_after_import_cycles() -> None:
+    """所有模块完成初始化后重建父 Router，避免循环导入把半成品路由复制进 FastAPI。"""
+    rebuilt = APIRouter()
+    register_all_routes(rebuilt)
+    for supplemental_router in _SUPPLEMENTAL_ROUTERS:
+        _mount_supplemental_router(rebuilt, supplemental_router)
+
+    # 保持 api_router 对象身份不变：循环导入期间已取得引用的模块也能看到最终路由表。
+    api_router.routes[:] = rebuilt.routes
+
+    paths = {
+        str(route.path)
+        for route in api_router.routes
+        if isinstance(route, APIRoute)
+    }
+    required = {
+        "/auth/login",
+        "/academic-affairs/dashboard",
+        "/portal/academic/transcript",
+        "/mobile/academic/my",
+        "/mobile/teacher/academic/tasks",
+    }
+    missing = sorted(required - paths)
+    if missing:
+        raise RuntimeError(f"API 路由最终注册不完整: {missing}")
+
+
+_finalize_route_registry_after_import_cycles()
 install_affairs_four_end_terminal_guard(api_router)
 install_appeal_repair_scheduler()
