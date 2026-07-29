@@ -138,8 +138,8 @@ def test_stage4_route_model_and_cross_module_contracts():
     admin_menu = (ROOT / "frontend/src/config/adminMenu.js").read_text(encoding="utf-8")
     for token in ("academicAffairsRoutes", "internshipRoutes", "graduationRoutes", "studentAffairsRoutes"):
         assert token in admin_router
-    for token in ("academicAffairs", "internship", "graduation", "studentAffairs"):
-        assert token.lower() in admin_menu.lower()
+    for token in ("NAV_PLAN", "academic-affairs", "internship", "graduation", "student-affairs"):
+        assert token in admin_menu
     assert "unknown-route-fallback" in admin_main
     assert "/:pathMatch(.*)*" in admin_main
     assert "/:pathMatch(.*)*" in student_router
