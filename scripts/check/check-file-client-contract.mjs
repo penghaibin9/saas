@@ -86,6 +86,14 @@ const accessService = read('backend/app/services/file_access_service.py')
 if (!accessService.includes('raise not_found("文件不存在")')) {
   throw new Error('file access failures must be hidden as 404')
 }
+const legacyService = read('backend/app/services/file_service.py')
+if (!legacyService.includes('authorize_file_object(')) {
+  throw new Error('legacy file service must delegate DB authorization to resolver registry')
+}
+const archiveGenerator = read('backend/app/services/affairs_archive_guard.py')
+if (!archiveGenerator.includes('biz_type="AFFAIRS_ARCHIVE"')) {
+  throw new Error('student-affairs archive generation must declare AFFAIRS_ARCHIVE explicitly')
+}
 
 for (const relative of walk('backend/app', '.py')) {
   const source = read(relative)
@@ -93,10 +101,12 @@ for (const relative of walk('backend/app', '.py')) {
     /file_service\.authorize_file_access\s*=/,
     /setattr\(\s*file_service\s*,\s*["']authorize_file_access["']/,
     /file_service\.get_file_meta\s*=/,
-    /setattr\(\s*file_service\s*,\s*["']get_file_meta["']/
+    /setattr\(\s*file_service\s*,\s*["']get_file_meta["']/,
+    /file_service\.store_bytes\s*=/,
+    /setattr\(\s*file_service\s*,\s*["']store_bytes["']/
   ]
   if (forbidden.some((pattern) => pattern.test(source))) {
-    throw new Error(`${relative} reintroduces forbidden student-affairs file monkey-patch`)
+    throw new Error(`${relative} reintroduces forbidden file-service monkey-patch`)
   }
 }
 
