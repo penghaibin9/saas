@@ -61,7 +61,6 @@ jobs:
     env:
       APP_ENV: test
       JWT_SECRET: stage4-final-acceptance-secret
-      MOCK_LOGIN_ENABLED: "false"
       DB_ENABLED: "true"
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
@@ -95,6 +94,8 @@ jobs:
           pip install cryptography
       - name: Python 编译、导入、路由、模型与生产认证边界
         working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "false"
         run: |
           python -m compileall -q app tests
           python - <<'PY'
@@ -115,8 +116,10 @@ jobs:
                   seen.add(key)
 
           required = {
-              "t_aa_term", "t_aa_teaching_class",
-              "t_aa_teaching_class_roster_version", "t_aa_effective_grade_policy_snapshot",
+              "t_aa_term",
+              "t_aa_teaching_class",
+              "t_aa_teaching_class_roster_version",
+              "t_aa_effective_grade_policy_snapshot",
           }
           missing = required - set(Base.metadata.tables)
           if missing:
@@ -134,6 +137,8 @@ jobs:
           PY
       - name: Alembic 单一 head 与升级迁移安全扫描
         shell: bash
+        env:
+          MOCK_LOGIN_ENABLED: "false"
         run: |
           set -euo pipefail
           git fetch origin main --prune
@@ -146,21 +151,24 @@ jobs:
           from pathlib import Path
 
           files = subprocess.check_output(
-              ["git", "diff", "--name-only", "origin/main...HEAD", "--", "backend/alembic/versions"],
+              ["git", "diff", "--name-only", "origin/main...HEAD", "--", ":(top)backend/alembic/versions"],
               text=True,
           ).splitlines()
+          if len(files) != 9:
+              raise SystemExit(f"教务最终分支应包含 9 个新增迁移文件，实际 {len(files)}：{files}")
+
           bad = []
           for raw in files:
               path = Path("..") / raw
               if not path.exists() or path.suffix != ".py":
-                  continue
+                  raise SystemExit(f"迁移文件不存在或格式错误：{raw}")
               tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
               upgrade = next(
                   (node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "upgrade"),
                   None,
               )
               if upgrade is None:
-                  continue
+                  raise SystemExit(f"迁移缺少 upgrade()：{raw}")
               for node in ast.walk(upgrade):
                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                       if node.func.attr in {"drop_table", "drop_column"}:
@@ -175,6 +183,8 @@ jobs:
           PY
       - name: 从当前 main 数据库版本升级到最终 head
         shell: bash
+        env:
+          MOCK_LOGIN_ENABLED: "false"
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -207,6 +217,7 @@ jobs:
       - name: MySQL Base.metadata.create_all
         working-directory: backend
         env:
+          MOCK_LOGIN_ENABLED: "false"
           DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/stage4_create_all?charset=utf8mb4
         run: |
           python - <<'PY'
@@ -216,8 +227,10 @@ jobs:
           Base.metadata.create_all(bind=get_engine())
           print(f"create_all tables={len(Base.metadata.tables)}")
           PY
-      - name: 教务核心、权限身份、成绩补考名单评教归档与真实冒烟
+      - name: 教务核心、权限身份、成绩补考名单评教归档回归
         working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "true"
         shell: bash
         run: |
           set -euo pipefail
@@ -231,8 +244,12 @@ jobs:
           while IFS= read -r file; do
             case " ${COMMON[*]} " in *" $file "*) ;; *) COMMON+=("$file") ;; esac
           done < <(find tests -maxdepth 1 -type f \( -name 'test_auth*.py' -o -name 'test_*request_context*.py' -o -name 'test_*context_security*.py' \) | sort)
-          printf '附加公共认证/上下文测试：\n%s\n' "${COMMON[*]}"
           timeout 70m pytest -q tests/test_aa_*.py "${COMMON[@]}" -p no:warnings --durations=30
+      - name: 关闭模拟登录后的真实角色与路由冒烟
+        working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "false"
+        run: timeout 20m pytest -q tests/test_aa_stage4_real_smoke.py -p no:warnings --durations=20
 
   teacher-pc:
     name: 教师／教务 PC test + lint + production build
