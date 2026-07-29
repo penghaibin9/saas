@@ -466,6 +466,28 @@ entries:
   targetPhase: '4'
   notes: 'Stage 0 exhaustive source group. sources: backend/app/services/affairs_archive_guard.py. representative routes: -'
 - module: file-center
+  client: admin-pc
+  route: inventory://file-center/admin-pc
+  page: frontend/src/services/file/fileSdk.js
+  action: download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/services/file/fileSdk.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '3'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/services/file/fileSdk.js. representative routes: /files/download/${encodeURIComponent(fileId)}'
+- module: file-center
   client: backend
   route: inventory://file-center/backend
   page: backend/app/api/v1/file_contract.py; backend/app/services/file_content_security.py
@@ -509,6 +531,28 @@ entries:
   risk: P0
   targetPhase: '1'
   notes: 'Stage 0 exhaustive source group. sources: miniapp/src/services/fileApi.js. representative routes: -'
+- module: file-center
+  client: student-pc
+  route: inventory://file-center/student-pc
+  page: student-portal/src/services/fileSdk.js
+  action: upload+download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: student-portal/src/services/fileSdk.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: student-portal/src/services/fileSdk.js. representative routes: /files/download/${enc(fileId)}, /files/upload?${query.toString()}'
 - module: graduation
   client: backend
   route: inventory://graduation/backend
