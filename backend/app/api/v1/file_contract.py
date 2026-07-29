@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 
 from app.core.exceptions import AppException, not_found
 from app.services import audit_log, file_service
+from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401  注册内置 resolver
 from app.services.file_access_service import (
     STATUS_TEXT,
     file_view,
@@ -39,11 +40,12 @@ async def upload_contract(
         visibility=visibility,
     )
     if biz_id:
-        subject_type = "STUDENT" if str(user.get("userType") or "").upper() == "STUDENT" else "BUSINESS_OBJECT"
+        is_student = str(user.get("userType") or "").upper() == "STUDENT"
+        subject_type = "STUDENT" if is_student else "USER"
         subject_id = (
             user.get("studentId") or user.get("studentNo")
-            if subject_type == "STUDENT"
-            else None
+            if is_student
+            else user.get("userId") or user.get("id")
         )
         upsert_file_binding(
             meta["fileId"],
