@@ -144,6 +144,7 @@ install_teacher_workbench_guard()
 
 def _finalize_route_registry_after_import_cycles() -> None:
     """所有模块完成初始化后重建父 Router，避免循环导入把半成品路由复制进 FastAPI。"""
+    initial_count = len(api_router.routes)
     rebuilt = APIRouter()
     register_all_routes(rebuilt)
     for supplemental_router in _SUPPLEMENTAL_ROUTERS:
@@ -166,7 +167,17 @@ def _finalize_route_registry_after_import_cycles() -> None:
     }
     missing = sorted(required - paths)
     if missing:
-        raise RuntimeError(f"API 路由最终注册不完整: {missing}")
+        from app.api.v1 import academic as legacy_academic
+        from app.api.v1 import auth as auth_api
+        from app.modules.academic_affairs.routers import academic_affairs as aa_base
+
+        sample = sorted(paths)[:20]
+        raise RuntimeError(
+            "API 路由最终注册不完整: "
+            f"missing={missing}; initial={initial_count}; rebuilt={len(rebuilt.routes)}; "
+            f"auth_child={len(auth_api.router.routes)}; legacy_child={len(legacy_academic.router.routes)}; "
+            f"aa_base_child={len(aa_base.router.routes)}; sample={sample}"
+        )
 
 
 _finalize_route_registry_after_import_cycles()
