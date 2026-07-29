@@ -76,7 +76,7 @@ def _seed(client, headers):
         {
             "batchName": "二阶段困难认定批次",
             "schoolYear": "2025-2026",
-            "publicityDays": 0,
+            "publicityDays": 1,
             "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
             "publish": True,
         },
@@ -100,7 +100,7 @@ def _seed(client, headers):
         {
             "projectId": str(project_id),
             "schoolYear": "2025-2026",
-            "publicityDays": 0,
+            "publicityDays": 1,
             "quota": COUNT,
             "publish": True,
         },
@@ -145,7 +145,8 @@ def _seed(client, headers):
                     apply_level="DIFFICULT",
                     final_level="DIFFICULT",
                     statement="二阶段大数据困难认定申请说明不少于十字",
-                    status="REVIEW" if i <= half else "APPROVED",
+                    status="COUNSELOR_REVIEW" if i <= half else "APPROVED",
+                    is_deleted=False, version=0,
                 )
                 for i, s in enumerate(students, 1)
             ]
@@ -289,7 +290,7 @@ def test_phase2_bigdata_multi_domain_pagination(client, db_mode):
 
     _assert_paged(
         client, headers, f"{BASE}/aid/applications", COUNT,
-        {"batchId": ids["aid"]}, "applyId", "REVIEW", COUNT // 2,
+        {"batchId": ids["aid"]}, "applyId", "COUNSELOR_REVIEW", COUNT // 2,
     )
     _assert_paged(
         client, headers, f"{BASE}/funding/applications", COUNT,

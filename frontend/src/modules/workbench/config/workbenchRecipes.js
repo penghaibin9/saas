@@ -23,10 +23,10 @@
 
 /** 待办类型 → 业务落点（带已筛选参数，禁止空壳根路径） */
 export const TODO_TYPE_ROUTES = {
-  LEAVE_APPROVAL: '/admin/campus-service/leave?status=PENDING',
-  LEAVE_OVERDUE: '/admin/campus-service/leave-ledger?status=OVERDUE',
-  LEAVE_CANCEL: '/admin/campus-service/leave?status=CANCEL_PENDING',
-  LEAVE_EXTENSION: '/admin/campus-service/leave-extensions?status=PENDING',
+  LEAVE_APPROVAL: '/admin/student-affairs/leave?status=PENDING',
+  LEAVE_OVERDUE: '/admin/student-affairs/leave/ledger?status=OVERDUE',
+  LEAVE_CANCEL: '/admin/student-affairs/leave?status=CANCEL_PENDING',
+  LEAVE_EXTENSION: '/admin/student-affairs/leave/followup?status=PENDING',
   DISCIPLINE_APPROVAL: '/admin/student-affairs/discipline?status=PENDING',
   DISCIPLINE_REMOVE: '/admin/student-affairs/discipline?status=REMOVE_PENDING',
   AID_APPROVAL: '/admin/student-affairs/aid?status=PENDING',

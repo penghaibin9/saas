@@ -122,7 +122,7 @@
 
 <script>
 /**
- * 延期销假连续处理工作站（/admin/campus-service/leave-extensions）。
+ * 延期销假连续处理工作站（/admin/student-affairs/leave/followup）。
  * 覆盖 13A-05 状态机 §1 请假审批终态后分支：APPROVED/OVERDUE → 代登记销假/发起续假/逾期处置；
  * EXTENSION_REVIEW → 续假通过/驳回；WAIT_CANCEL_LEAVE → 销假确认/退回。真实对接 /student-affairs/leave/*。
  */

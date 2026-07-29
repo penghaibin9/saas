@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import inspect
 
+from affairs_contract_test_support import ensure_workflow_assignees
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -37,13 +39,14 @@ def _seed(db_mode):
     db.commit()
     ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
+    ensure_workflow_assignees([ids["sa"], ids["sb"]])
     return ids
 
 
 def _open_batch(client, hdr):
     r = client.post(f"{BASE}/aid/batches", headers=hdr, json={
         "batchName": "下钻批次", "schoolYear": "2025-2026",
-        "publicityDays": 0, "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
+        "publicityDays": 1, "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
         "publish": True}).json()
     assert r.get("code") == 0, r
     return r["data"]["batchId"]

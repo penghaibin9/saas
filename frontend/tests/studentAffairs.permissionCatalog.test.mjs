@@ -40,10 +40,9 @@ test('学工导航和路由引用的权限均已登记', async () => {
   assert.deepEqual(missing, [])
 })
 
-test('关键页面导航与路由权限一致', async () => {
+test('关键普通菜单页面导航与路由权限一致', async () => {
   const { nav, routes } = await sources()
   const cases = [
-    ['/admin/student-affairs/profile', 'profile'],
     ['/admin/student-affairs/activity/second-class', 'activity/second-class'],
     ['/admin/student-affairs/mental/stats', 'mental/stats'],
     ['/admin/student-affairs/aid/stats', 'aid/stats']
@@ -51,6 +50,17 @@ test('关键页面导航与路由权限一致', async () => {
   for (const [navPath, routePath] of cases) {
     assert.equal(navPermissionForPath(nav, navPath), routePermissionForPath(routes, routePath), navPath)
   }
+})
+
+test('学生画像兼容入口使用隐藏 DETAIL + permissionAny，覆盖路由权限', async () => {
+  const { nav, routes } = await sources()
+  assert.match(
+    nav,
+    /H\('学生360详情',\s*'\/admin\/student-affairs\/profile',\s*null,\s*'DETAIL',\s*\{\s*permissionAny:\s*_STU_VIEW_ANY\s*\}\)/
+  )
+  const routePermission = routePermissionForPath(routes, 'profile')
+  const escapedRoutePermission = routePermission.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  assert.match(nav, new RegExp(`const _STU_VIEW_ANY = \\[[\\s\\S]*?['"]${escapedRoutePermission}['"][\\s\\S]*?\\]`))
 })
 
 test('权限目录不登记虚构 back 或 refresh 码', () => {

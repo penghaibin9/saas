@@ -30,7 +30,7 @@
 
 <script>
 /**
- * 请假统计（/admin/campus-service/leave-stats）。
+ * 请假统计（/admin/student-affairs/leave/stats）。
  * 指标卡（人数/天数/在假/待审/待销假/逾期/已销假）+ 按班级/类型/状态下钻。真实对接 /student-affairs/leave/stats。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'

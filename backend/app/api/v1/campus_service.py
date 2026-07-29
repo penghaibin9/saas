@@ -56,35 +56,7 @@ def student_void(sid: str, body: ReasonBody, user=Depends(require_permission("ca
     return success(svc.void_student(sid, body.reason), message="已作废")
 
 
-# 请假
-@router.get("/leaves", summary="请假列表")
-def leaves(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-           keyword: Optional[str] = None, type: Optional[str] = None, status: Optional[str] = None,
-           user=Depends(require_permission("campusService.leave.view"))):
-    i, t = svc.list_leaves(page, pageSize, keyword=keyword, type=type, status=status)
-    return _p(i, t, page, pageSize)
-
-
-@router.get("/leaves/{lid}", summary="请假详情")
-def leave_detail(lid: str, user=Depends(require_permission("campusService.leave.view"))):
-    return success(svc.get_leave_detail(lid))
-
-
-@router.post("/leaves/{lid}/approve", summary="请假通过")
-def leave_approve(lid: str, body: CommentBody, user=Depends(require_permission("campusService.leave.approve"))):
-    return success(svc.approve_leave(lid, body.comment, body.version), message="已通过")
-
-
-@router.post("/leaves/{lid}/return", summary="请假退回（原因≥5字）")
-def leave_return(lid: str, body: ReasonBody, user=Depends(require_permission("campusService.leave.approve"))):
-    return success(svc.return_leave(lid, body.reason, body.version), message="已退回")
-
-
-@router.post("/leaves/batch-approve", summary="批量通过请假")
-def leave_batch(body: VersionedIdsBody, user=Depends(require_permission("campusService.leave.approve"))):
-    items = [{"id": x.id, "version": x.version} for x in (body.items or [])]
-    return success(svc.batch_approve_leaves(items), message="已批量通过")
-
+# 请假旧接口已退出；正式接口统一为 /student-affairs/leave/*。
 
 # 资助
 @router.get("/grants", summary="资助列表（金额脱敏）")

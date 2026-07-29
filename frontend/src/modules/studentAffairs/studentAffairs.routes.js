@@ -1,7 +1,7 @@
 /**
  * 学工中心 B 包 · 独立 studentAffairs 模块路由（捞自 student-affairs-b 分支）。
  * 仅保留 master 缺的 4 块：学工看板 / 学生画像 / 宿舍管理 / 风险预警。
- * 班级/请假已由 master 正式模块承接（/admin/campus-service/classes、/leave 系列），此处不重复。
+ * 班级旧入口仍兼容；请假正式路由已迁入本 STUDENT_AFFAIRS 路由树。
  * 页面真打 /student-affairs/* 端点；与 master 现行后端字段的对齐见历史欠账（B包·第3步收口）。
  */
 const studentAffairsRoutes = [
@@ -16,6 +16,30 @@ const studentAffairsRoutes = [
         name: 'student-affairs-dashboard',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsDashboardView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工看板', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
+      },
+      {
+        path: 'leave',
+        name: 'student-affairs-leave',
+        component: () => import('@/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假审批' }
+      },
+      {
+        path: 'leave/followup',
+        name: 'student-affairs-leave-followup',
+        component: () => import('@/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '销假与续假' }
+      },
+      {
+        path: 'leave/ledger',
+        name: 'student-affairs-leave-ledger',
+        component: () => import('@/modules/studentAffairs/views/leave/LeaveLedgerView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假台账' }
+      },
+      {
+        path: 'leave/stats',
+        name: 'student-affairs-leave-stats',
+        component: () => import('@/modules/studentAffairs/views/leave/LeaveStatsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', requiresAuth: true, permissionKey: 'studentAffairs.leave.view', title: '请假统计' }
       },
       {
         /* 旧「辅导员工作台」双首页 → 统一角色化工作台 /（WorkbenchView） */

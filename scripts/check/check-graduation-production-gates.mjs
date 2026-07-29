@@ -34,12 +34,12 @@ const closureFiles = [
   ['backend/app/modules/graduation/services/graduation_record_resolver.py', '毕业设计当前批次解析器'],
   ['backend/app/modules/graduation/services/graduation_taskbook_confirmation_service.py', '跨端任务书原子确认服务'],
   ['backend/app/modules/graduation/services/graduation_batch_context.py', '批次上下文守卫'],
-  ['backend/app/modules/graduation/services/graduation_consistency_install.py', '事务并发收口安装器'],
+  ['backend/app/modules/graduation/services/graduation_command_service.py', '事务并发收口服务'],
   ['backend/app/modules/graduation/services/graduation_topic_change_consistency.py', '选题变更并发服务'],
-  ['backend/app/modules/graduation/services/graduation_mobile_stable_bridge.py', '教师移动稳定身份桥'],
+  ['backend/app/modules/graduation/services/graduation_mobile_teacher_service.py', '教师移动稳定身份服务'],
   ['backend/app/modules/graduation/services/graduation_archive_consistency.py', '归档真实证据与预览令牌'],
   ['backend/app/modules/graduation/services/graduation_audit_consistency.py', '域审计上下文修复'],
-  ['backend/app/modules/graduation/services/graduation_contract_bridge.py', '四端 DTO 契约桥'],
+  ['backend/app/modules/graduation/services/graduation_response_mapper.py', '四端 DTO 响应映射'],
   ['backend/app/modules/graduation/services/graduation_extension_action_service.py', '扩展流程输入门禁'],
   ['backend/app/modules/graduation/services/graduation_extension_safety_service.py', '扩展流程权限并发安全层'],
   ['backend/app/modules/graduation/services/graduation_extension_query_service.py', '优秀成果候选查询'],
@@ -84,7 +84,7 @@ const p0Guard = read('backend/app/modules/graduation/routers/graduation_p0_guard
 const sensitive = read('backend/app/modules/graduation/routers/graduation_sensitive_router.py')
 const archiveSensitive = read('backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py')
 const archiveConsistency = read('backend/app/modules/graduation/services/graduation_archive_consistency.py')
-const mobileBridge = read('backend/app/modules/graduation/services/graduation_mobile_stable_bridge.py')
+const mobileBridge = read('backend/app/modules/graduation/services/graduation_mobile_teacher_service.py')
 const auditConsistency = read('backend/app/modules/graduation/services/graduation_audit_consistency.py')
 const taskbookEvidence = read('backend/app/modules/graduation/services/graduation_taskbook_confirmation_service.py')
 const defenseSchema = read('backend/app/modules/graduation/schemas/graduation_defense_score.py')

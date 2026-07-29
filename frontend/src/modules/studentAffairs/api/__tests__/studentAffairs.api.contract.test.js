@@ -6,7 +6,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { registerHooks } from 'node:module'
+import { register } from 'node:module'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -17,21 +17,8 @@ const calls = []
 const mockClientUrl = pathToFileURL(path.join(__dirname, 'mock-http-client.mjs')).href
 const mockConfigUrl = pathToFileURL(path.join(__dirname, 'mock-http-config.mjs')).href
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === '@/services/http/client') {
-      return { shortCircuit: true, url: mockClientUrl }
-    }
-    if (specifier === '@/services/http/config') {
-      return { shortCircuit: true, url: mockConfigUrl }
-    }
-    if (specifier.startsWith('@/')) {
-      let abs = path.join(frontendRoot, 'src', specifier.slice(2))
-      if (!path.extname(abs)) abs += '.js'
-      return { shortCircuit: true, url: pathToFileURL(abs).href }
-    }
-    return nextResolve(specifier, context)
-  }
+register('./studentAffairs.api.contract.hooks.mjs', import.meta.url, {
+  data: { frontendRoot, mockClientUrl, mockConfigUrl }
 })
 
 // 将 calls 暴露给 mock 模块（同目录 mock 文件读取 globalThis）

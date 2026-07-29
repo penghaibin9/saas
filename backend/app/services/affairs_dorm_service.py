@@ -457,7 +457,7 @@ def self_select_checkin(bed_id, user, student_id) -> dict:
     return checkin(bed_id, user, student_id)
 
 
-def checkout(bed_id, user) -> dict:
+def checkout(bed_id, user, expected_version=None) -> dict:
     with session() as db:
         from app.models import CsDormRecord, DormBed
         bed = db.get(DormBed, int(bed_id))
@@ -466,6 +466,7 @@ def checkout(bed_id, user) -> dict:
         _require_dorm_scope(db, bed.building_id, user)
         if bed.status != "OCCUPIED":
             raise AppException("DATA_CONFLICT", "该床位无人入住")
+        atomic_claim_version(db, bed, expected_version)
         if bed.cs_dorm_record_id:
             rec = db.get(CsDormRecord, int(bed.cs_dorm_record_id))
             if rec:

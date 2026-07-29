@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 BASE = "/api/v1/student-affairs"
 
 
@@ -36,21 +38,21 @@ def test_counselor_eval_full_flow(client, db_mode):
         "periodCode": "2025-2026-1", "counselorKey": "teacher01", "scores": {ind_id: 95}}).json()
     assert e2["data"]["evalId"] == eid and float(e2["data"]["totalScore"]) == 95
     # 发布
-    p = client.post(f"{BASE}/counselor-eval/evals/{eid}/publish", headers=hdr).json()
+    p = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/publish", headers=hdr).json()
     assert p["code"] == 0 and p["data"]["status"] == "PUBLISHED"
     # 发布后不可改
     assert client.post(f"{BASE}/counselor-eval/evals", headers=hdr, json={
         "periodCode": "2025-2026-1", "counselorKey": "teacher01", "scores": {ind_id: 100}}).json()["code"] != 0
     # 申诉
-    a = client.post(f"{BASE}/counselor-eval/evals/{eid}/appeal", headers=hdr,
+    a = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal", headers=hdr,
                     json={"reason": "对师德指标评分有异议申请复核"}).json()
     assert a["code"] == 0 and a["data"]["appealStatus"] == "SUBMITTED"
     # 复核调整分数
-    r = client.post(f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr, json={
+    r = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr, json={
         "result": "ADJUSTED", "opinion": "经复核上调师德得分", "scores": {ind_id: 98}}).json()
     assert r["code"] == 0 and r["data"]["appealStatus"] == "REVIEWED" and float(r["data"]["totalScore"]) == 98
     # 无待复核申诉再复核 → 冲突
-    assert client.post(f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr,
                        json={"result": "UPHELD", "opinion": "重复复核测试意见"}).json()["code"] != 0
 
 

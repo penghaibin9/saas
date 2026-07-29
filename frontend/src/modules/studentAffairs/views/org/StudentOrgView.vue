@@ -8,6 +8,24 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载学生组织..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">组织与干部履历</span>
+          <h2 class="sa-summary-strip__title">当前页共 {{ items.length }} 个组织；选择组织后维护在任成员、职务和任期</h2>
+          <p class="sa-summary-strip__text">组织任职会进入学生干部履历，供推优评先只读引用。任命前应核对组织状态、学生身份、职务名称和任期；卸任后历史记录继续保留。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="openForm">新建组织</AppPermissionButton>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="学生组织管理流程">
+        <div class="sa-workflow-step" data-step="1"><strong>建立组织</strong><br>设置名称、类型、级别和指导老师</div>
+        <div class="sa-workflow-step" data-step="2"><strong>选择组织</strong><br>查看当前组织状态与在任成员</div>
+        <div class="sa-workflow-step" data-step="3"><strong>任命干部</strong><br>登记学生、职务和任期</div>
+        <div class="sa-workflow-step" data-step="4"><strong>卸任留痕</strong><br>结束当前任职，历史履历继续保留</div>
+      </div>
+
       <div class="sa-toolbar">
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
@@ -16,57 +34,62 @@
       </div>
 
       <AppSectionCard v-if="formVisible" title="新建学生组织">
+        <div class="og-form-note">先明确组织名称、类型与级别。指导老师可选填，组织建立后再在右侧维护在任成员。</div>
         <div class="og-grid">
-          <label class="og-field"><span>组织名称 *</span><AppTextInput v-model="form.orgName" /></label>
-          <label class="og-field"><span>类型</span>
-            <AppSelect v-model="form.orgType" :options="TYPE_OPTIONS" placeholder="" /></label>
-          <label class="og-field"><span>级别</span>
-            <AppSelect v-model="form.level" :options="LEVEL_OPTIONS" placeholder="" /></label>
-          <label class="og-field"><span>指导老师</span><AppTextInput v-model="form.advisorName" /></label>
+          <label class="og-field og-field--wide"><span>组织名称 *</span><AppTextInput v-model="form.orgName" placeholder="如：校学生会 / 信息工程学院学生会" /></label>
+          <label class="og-field"><span>类型</span><AppSelect v-model="form.orgType" :options="TYPE_OPTIONS" placeholder="" /></label>
+          <label class="og-field"><span>级别</span><AppSelect v-model="form.level" :options="LEVEL_OPTIONS" placeholder="" /></label>
+          <label class="og-field"><span>指导老师</span><AppTextInput v-model="form.advisorName" placeholder="选填" /></label>
         </div>
         <p v-if="form.error" class="og-error">{{ form.error }}</p>
         <div class="og-actions">
           <button type="button" class="og-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="save">保存</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="save">保存组织</AppPermissionButton>
         </div>
       </AppSectionCard>
 
       <div class="og-layout">
         <AppSectionCard title="组织列表" class="og-list">
+          <p class="og-section-hint">选择组织后，右侧展示在任成员和任命入口。</p>
           <ul class="og-orgs">
             <li v-for="o in items" :key="o.orgId" class="og-org" :class="{ 'is-active': sel && sel.orgId === o.orgId }" @click="select(o)">
               <div class="og-org__top"><span class="og-org__name">{{ o.orgName }}</span>
                 <StatusTag :type="o.status==='ACTIVE' ? 'success' : 'default'" :label="o.status==='ACTIVE' ? '在运营' : '停用'" dot /></div>
               <div class="og-org__meta">{{ o.levelLabel }} · {{ o.orgTypeLabel }} · {{ o.advisorName || '无指导老师' }}</div>
             </li>
-            <li v-if="!items.length" class="og-empty">暂无学生组织，点右上「建组织」</li>
+            <li v-if="!items.length" class="og-empty">暂无学生组织，点击“新建组织”建立第一条组织建制。</li>
           </ul>
           <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
                          :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.orgName + ' · 在任成员') : '组织详情'" class="og-detail">
-          <p v-if="!sel" class="og-hint">从左侧选择一个组织查看/管理在任成员。</p>
+          <p v-if="!sel" class="og-hint">从左侧选择一个组织，查看当前成员、职务与任期，并进行任命或卸任。</p>
           <template v-else>
-            <div class="og-subhead">
-              <h4>在任成员（{{ positions.length }}）</h4>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" v-if="sel.status==='ACTIVE'" code="studentAffairs.org.manage" size="sm" @click="openAppoint">任命</AppPermissionButton>
+            <div class="og-selected-summary">
+              <div><span>当前组织</span><strong>{{ sel.orgName }}</strong><small>{{ sel.levelLabel }} · {{ sel.orgTypeLabel }} · {{ sel.advisorName || '无指导老师' }}</small></div>
+              <StatusTag :type="sel.status==='ACTIVE' ? 'success' : 'default'" :label="sel.status==='ACTIVE' ? '在运营' : '停用'" dot />
             </div>
-            <div v-if="apForm.visible" class="og-inline">
+            <div class="og-subhead">
+              <div><h4>在任成员（{{ positions.length }}）</h4><small>任命记录进入学生干部履历</small></div>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" v-if="sel.status==='ACTIVE'" code="studentAffairs.org.manage" size="sm" @click="openAppoint">任命成员</AppPermissionButton>
+            </div>
+            <div v-if="apForm.visible" class="og-inline sa-inline-workspace">
+              <div class="og-inline__title">登记新任职</div>
               <AppStudentPicker v-model="apForm.studentId" placeholder="按姓名 / 学号搜索学生" />
-              <AppTextInput v-model="apForm.position" placeholder="职务 如 主席/部长" />
-              <AppTextInput v-model="apForm.termCode" placeholder="任期 如 2025-2026" />
-              <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" size="sm" @click="appoint">任命</AppPermissionButton>
+              <AppTextInput v-model="apForm.position" placeholder="职务，如：主席 / 部长" />
+              <AppTextInput v-model="apForm.termCode" placeholder="任期，如：2025-2026" />
+              <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" size="sm" @click="appoint">确认任命</AppPermissionButton>
             </div>
             <DataTable v-if="positions.length" :columns="positionColumns" :rows="positions" row-key="positionId">
-              <template #cell-student="{ row }">{{ row.realName || ('#'+row.studentId) }}</template>
-              <template #cell-position="{ row }">{{ row.position }}</template>
+              <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
+              <template #cell-position="{ row }"><strong>{{ row.position }}</strong></template>
               <template #cell-term="{ row }">{{ row.termCode || '—' }}</template>
               <template #cell-actions="{ row }">
                 <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" size="sm" variant="secondary" danger @click="dismiss(row)">卸任</AppPermissionButton>
               </template>
             </DataTable>
-            <p v-else class="sa-empty">暂无在任成员</p>
+            <p v-else class="sa-empty">该组织暂无在任成员。组织处于运营状态时，可点击“任命成员”建立干部任职。</p>
           </template>
         </AppSectionCard>
       </div>
@@ -83,7 +106,6 @@ import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
-
 
 const TYPES = { STUDENT_UNION: '学生会', SOCIETY_FEDERATION: '社团联合会', SELF_GOV: '自律委员会', OTHER: '其他组织' }
 const TYPE_OPTIONS = Object.entries(TYPES).map(([value, label]) => ({ value, label }))
@@ -173,27 +195,35 @@ export default {
 
 <style scoped>
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 300px; }
-.og-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3); }
-.og-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
-.og-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
-.og-error { color: var(--danger-500,#dc2626); font-size: var(--font-size-sm); }
-.og-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); flex: 1; min-width: 300px; }
+.og-form-note { margin-bottom: var(--space-4); padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
+.og-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
+.og-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--font-size-sm); }
+.og-field--wide { grid-column: span 3; }
+.og-error { margin: 0; padding: 9px 11px; border-radius: var(--radius-md); background: var(--danger-50); color: var(--danger-700, #b91c1c); font-size: var(--font-size-sm); }
+.og-actions { display: flex; gap: var(--space-3); justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--border-light); }
 .og-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
-.og-layout { display: grid; grid-template-columns: 340px 1fr; gap: var(--space-4); }
+.og-layout { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.og-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 .og-orgs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.og-org { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; }
-.og-org.is-active { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
-.og-org__top { display: flex; justify-content: space-between; align-items: center; }
+.og-org { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; transition: border-color .12s, background .12s; }
+.og-org:hover { border-color: var(--primary-200); background: var(--primary-50); }
+.og-org.is-active { border-color: var(--color-primary); background: var(--primary-50); box-shadow: inset 3px 0 0 var(--color-primary); }
+.og-org__top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
 .og-org__name { font-weight: 600; }
-.og-org__meta { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 4px; }
-.og-empty, .og-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-.og-subhead { display: flex; justify-content: space-between; align-items: center; margin: 0 0 var(--space-2); }
+.og-org__meta { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
+.og-empty, .og-hint { color: var(--text-tertiary); padding: var(--space-5); text-align: center; line-height: 1.65; }
+.og-selected-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-3); border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); }
+.og-selected-summary > div { display: grid; gap: 3px; }
+.og-selected-summary span, .og-selected-summary small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.og-selected-summary strong { color: var(--text-primary); }
+.og-subhead { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin: 0 0 var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); }
+.og-subhead > div { display: grid; gap: 2px; }
 .og-subhead h4 { margin: 0; font-size: var(--font-size-md); }
-.og-inline { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
-.og-inline > * { flex: 1 1 180px; min-width: 180px; }
-.og-inline > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .og-grid, .og-layout { grid-template-columns: 1fr; } }
+.og-subhead small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.og-inline { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(140px, .8fr) minmax(140px, .8fr) auto; gap: var(--space-2); margin-bottom: var(--space-3); align-items: end; }
+.og-inline__title { grid-column: 1 / -1; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 700; }
+@media (max-width: 960px) { .sa-grid--metrics, .og-grid, .og-layout { grid-template-columns: 1fr; } .og-field--wide { grid-column: span 1; } .og-inline { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .og-actions { align-items: stretch; flex-direction: column-reverse; } .og-actions > * { width: 100%; } .og-selected-summary, .og-subhead { flex-direction: column; } }
 @import '@/styles/module-page.css';
 </style>

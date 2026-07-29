@@ -5,6 +5,10 @@ MB1 学生只见本人请假；MB2 学生隔离；MB3 处分仅数量；MB4 自�
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
+from affairs_contract_test_support import ensure_workflow_assignees, post_versioned, role_headers
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 MB = "/api/v1/mobile"
@@ -41,15 +45,20 @@ def _seed(db_mode):
     ids = {"A": a.id, "zhang": zhang.id, "li": li.id}
     db.commit()
     db.close()
+    ensure_workflow_assignees([ids["zhang"], ids["li"]])
     return ids
 
 
 def _make_leave(client, hdr, sid, approve=False):
+    start = datetime.utcnow() + timedelta(days=10)
+    end = start + timedelta(days=1)
     lid = client.post(f"{BASE}/leave", headers=hdr, json={
-        "studentId": str(sid), "leaveType": "PERSONAL", "startTime": "2026-03-01",
-        "endTime": "2026-03-02", "reason": "回家有事"}).json()["data"]["id"]
+        "studentId": str(sid), "leaveType": "PERSONAL",
+        "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+        "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+        "reason": "学生因家庭事务申请短期请假"}).json()["data"]["id"]
     if approve:
-        client.post(f"{BASE}/leave/{lid}/approve", headers=hdr)
+        post_versioned(client, f"{BASE}/leave/{lid}/approve", headers=hdr)
     return lid
 
 
@@ -93,9 +102,9 @@ def test_mb3_discipline_count_only(client, db_mode):
     admin = _hdr(client, "school_admin01")
     cid = client.post(f"{BASE}/discipline/cases", headers=admin, json={
         "studentId": str(ids["zhang"]), "discType": "WARNING", "reason": "违纪事实说明足够长"}).json()["data"]["caseId"]
-    client.post(f"{BASE}/discipline/cases/{cid}/submit", headers=admin)
-    client.post(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/submit", headers=admin)
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
     d = client.get(f"{MB}/affairs/discipline/my", headers=_stu_token("张三", "MB13A01")).json()["data"]
     assert d["activeCount"] == 1 and "detailNote" in d  # 仅数量+提示，无明细
 
@@ -135,7 +144,8 @@ def test_mb5_teacher_affairs_cards(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _make_leave(client, admin, ids["zhang"])  # 产生 LEAVE_APPROVAL 待办
-    r = client.get(f"{MB}/teacher/affairs", headers=_hdr(client, "counselor01")).json()
+    # 真实待办按 assignee_id 查询，必须使用可解析为数据库 User.id 的真实辅导员令牌。
+    r = client.get(f"{MB}/teacher/affairs", headers=role_headers("COUNSELOR")).json()
     assert r["code"] == 0 and r["data"]["total"] >= 1
     assert any(c["todoType"] == "LEAVE_APPROVAL" for c in r["data"]["cards"])
 

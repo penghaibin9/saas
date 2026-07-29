@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
@@ -65,6 +65,12 @@ def resolve_assignee_ids(db, node: str, *, student_id=None) -> list[int]:
         if not school_class:
             return []
         now = datetime.utcnow()
+        priority = case(
+            (AffairsCounselorAssignment.duty_type == "TEMP", 0),
+            (AffairsCounselorAssignment.duty_type == "PRIMARY", 1),
+            (AffairsCounselorAssignment.duty_type == "CO", 2),
+            else_=3,
+        )
         ids = [int(value) for value in db.scalars(select(AffairsCounselorAssignment.user_id).where(
             AffairsCounselorAssignment.tenant_id == _tid(),
             AffairsCounselorAssignment.class_id == school_class.id,
@@ -75,7 +81,7 @@ def resolve_assignee_ids(db, node: str, *, student_id=None) -> list[int]:
                 AffairsCounselorAssignment.effective_to.is_(None),
                 AffairsCounselorAssignment.effective_to > now,
             ),
-        ).order_by(AffairsCounselorAssignment.duty_type, AffairsCounselorAssignment.id)).all()]
+        ).order_by(priority, AffairsCounselorAssignment.id)).all()]
         if not ids and school_class.counselor_id:
             ids = [int(school_class.counselor_id)]
         return [uid for uid in dict.fromkeys(ids) if db.scalar(select(User.id).where(
@@ -84,8 +90,13 @@ def resolve_assignee_ids(db, node: str, *, student_id=None) -> list[int]:
         ))]
 
     candidates = _active_user_ids_for_roles(db, _NODE_ROLES.get(node, set()))
-    if node == "COLLEGE_REVIEW" and college:
-        users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(candidates or {-1}))).all()}
+    if node == "COLLEGE_REVIEW":
+        if not college:
+            return []
+        users = {u.id: u for u in db.scalars(select(User).where(
+            User.tenant_id == _tid(), User.id.in_(candidates or {-1}),
+            User.status == "ACTIVE", User.is_deleted.is_(False),
+        )).all()}
         scoped_keys = set(db.scalars(select(TeacherStudentScope.teacher_key).where(
             TeacherStudentScope.tenant_id == _tid(),
             TeacherStudentScope.scope_type == "COLLEGE",
@@ -93,9 +104,10 @@ def resolve_assignee_ids(db, node: str, *, student_id=None) -> list[int]:
             TeacherStudentScope.status == "ACTIVE",
             TeacherStudentScope.is_deleted.is_(False),
         )).all())
-        scoped = [uid for uid in candidates if str(uid) in scoped_keys or users[uid].login_name in scoped_keys]
-        if scoped:
-            return scoped
+        return [
+            uid for uid in candidates
+            if uid in users and (str(uid) in scoped_keys or users[uid].login_name in scoped_keys)
+        ]
     return candidates
 
 

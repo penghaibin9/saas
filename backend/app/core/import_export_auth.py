@@ -55,10 +55,13 @@ DOMAIN_AUTH: dict[str, DomainAuth] = {
         "employment.import", "employment.export", "employment.export",
         "EMPLOYMENT",
     ),
+    # 旧 STUDENT_AFFAIRS_HISTORY 使用进程内批次并直接写业务终态，无法保证多worker、
+    # 处分投影、住宿记录和历史等级一致性。学工历史数据必须走 /system/migration 正式迁移中心；
+    # 此处仅保留受权限和数据范围保护的导出能力。
     "student-affairs": DomainAuth(
         "student-affairs", "studentAffairs",
-        "studentAffairs.import", "studentAffairs.export", "studentAffairs.export",
-        "STUDENT_AFFAIRS_HISTORY",
+        None, "studentAffairs.export", "studentAffairs.export",
+        None,
     ),
 }
 
@@ -113,7 +116,6 @@ def assert_import_batch_owner(user: dict, operator_key: str | None, manage_perm:
     if operator_key and me and operator_key == me:
         return
     if has_permission(user, manage_perm):
-        # 学校管理员等持有导入权限者可代确认同租户批次
         return
     raise not_found("导入批次不存在或已过期，请重新校验")
 

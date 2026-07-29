@@ -68,7 +68,7 @@ def test_m2_crisis_escalate_to_risk_hub_idempotent(client, db_mode):
     risk_id = r["riskId"]
     # 幂等：再升级返回同一 riskId（不重复建风险）；仍须带 version
     r2 = client.post(f"{BASE}/mental/referrals/{rid}/escalate", headers=admin,
-                     json={"content": "重复升级", "version": r["version"]}).json()["data"]
+                     json={"content": "重复升级请求确认", "version": r["version"]}).json()["data"]
     assert r2["riskId"] == risk_id
     # 风险中枢已建 source=MENTAL·CRITICAL 记录
     from app.db.session import get_sessionmaker

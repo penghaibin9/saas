@@ -17,8 +17,12 @@ def test_risk_list_uses_sql_helpers():
     assert "_risk_stats_sql" in src
     assert "_risk_scope_join" in src
     assert "offset((page - 1) * page_size)" in src or ".offset(" in src
-    # 禁止全量 .all() 后再 Python 班级过滤的旧模式残留为主路径
-    assert "RISK_NEW_ASSIGN_HOURS" in src and "RISK_ASSIGNED_PROCESS_HOURS" in src
+    # 风险时限已统一迁移到 SLA 配置函数，禁止继续依赖旧常量。
+    assert "def _risk_new_assign_hours" in src
+    assert "def _risk_assigned_process_hours" in src
+    assert "get_risk_sla" in src
+    assert "RISK_NEW_ASSIGN_HOURS" not in src
+    assert "RISK_ASSIGNED_PROCESS_HOURS" not in src
 
 
 def test_student_affairs_pagesize_query_bounded():
@@ -26,7 +30,6 @@ def test_student_affairs_pagesize_query_bounded():
     text = Path("app/api/v1/student_affairs.py").read_text(encoding="utf-8")
     assert "pageSize: int = Query(" in text
     assert "le=200" in text
-    # 不应再有裸 pageSize: int = N
     import re
     assert not re.search(r"pageSize:\s*int\s*=\s*\d+", text)
 

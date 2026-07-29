@@ -35,7 +35,7 @@ class CsServiceStudent(PKMixin, TenantMixin, CommonMixin, Base):
 class CsLeave(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_leave"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     leave_type: Mapped[str] = mapped_column(String(50), nullable=False, default="PERSONAL")
     start_time: Mapped[datetime | None] = mapped_column(DateTime)
     end_time: Mapped[datetime | None] = mapped_column(DateTime)
@@ -60,7 +60,7 @@ class CsLeave(PKMixin, TenantMixin, CommonMixin, Base):
 class CsGrant(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_grant"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     grant_type: Mapped[str] = mapped_column(String(50), nullable=False, default="SCHOLARSHIP")
     amount: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0)
     apply_reason: Mapped[str | None] = mapped_column(String(500))
@@ -75,7 +75,7 @@ class CsGrant(PKMixin, TenantMixin, CommonMixin, Base):
 
 class CsDormRecord(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_dorm_record"
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     building: Mapped[str | None] = mapped_column(String(100))
     room: Mapped[str | None] = mapped_column(String(50))
     bed: Mapped[str | None] = mapped_column(String(20))
@@ -87,7 +87,7 @@ class CsDormRecord(PKMixin, TenantMixin, CommonMixin, Base):
 class CsDormException(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_dorm_exception"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     exc_type: Mapped[str] = mapped_column(String(50), nullable=False, default="NIGHT_OUT")
     happen_time: Mapped[datetime | None] = mapped_column(DateTime)
     detail: Mapped[str | None] = mapped_column(String(500))
@@ -100,7 +100,7 @@ class CsDormException(PKMixin, TenantMixin, CommonMixin, Base):
 class CsDiscipline(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_discipline"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     disc_type: Mapped[str] = mapped_column(String(50), nullable=False, default="WARNING")
     reason: Mapped[str | None] = mapped_column(String(500))
     decide_date: Mapped[datetime | None] = mapped_column(DateTime)
@@ -118,7 +118,7 @@ class CsDiscipline(PKMixin, TenantMixin, CommonMixin, Base):
 class CsWorkOrder(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_cs_work_order"
     code: Mapped[str | None] = mapped_column(String(50))
-    cs_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    cs_student_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     wo_type: Mapped[str] = mapped_column(String(50), nullable=False, default="CONSULT")
     priority: Mapped[str] = mapped_column(String(50), nullable=False, default="MEDIUM")

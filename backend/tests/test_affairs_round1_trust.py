@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 _ROOT = Path(__file__).resolve().parents[1]
 _APP = _ROOT / "app"
+TID = 1000000000000000001
 
 
 def test_mental_attention_level_order_prefers_crisis():
@@ -25,19 +26,37 @@ def test_mental_attention_level_order_prefers_crisis():
     assert "_LEVEL_ORDER" in src or "GENERAL" in src
 
 
-def test_cockpit_domain_error_not_fake_zero():
+def test_cockpit_domain_error_not_fake_zero(db_mode):
+    from app.core.context import set_tenant
     from app.services import affairs_cockpit_service as cockpit
 
     def boom(_user):
         raise RuntimeError("db down")
 
-    with patch("app.services.affairs_aid_service.aid_stats", boom), \
-            patch("app.services.affairs_funding_service.funding_stats", lambda u: {"total": 3, "granted": 1}), \
-            patch("app.services.affairs_discipline_service.discipline_stats",
-                  lambda u: {"total": 2, "byStatus": [{"key": "EFFECTIVE", "count": 1}], "reconcile": {"consistent": True}}), \
-            patch("app.services.affairs_activity_service.activity_stats",
-                  lambda u: {"totalActivities": 4, "creditStudents": 2}):
-        data = cockpit.cockpit({"currentRoleCode": "SA_ADMIN"})
+    dashboard = {"summaryCards": [{"key": "studentTotal", "value": 5}, {"key": "classTotal", "value": 2}]}
+    # 本测试直接调用服务而非经 HTTP 中间件，必须显式建立并清理真实请求租户上下文。
+    set_tenant({"tenantId": str(TID)})
+    try:
+        with patch("app.services.affairs_dashboard_service.get_dashboard", lambda _u: dashboard), \
+                patch("app.services.affairs_leave_service.leave_stats",
+                      lambda _u: {"metrics": [{"key": "leaveStudentCount", "value": 1},
+                                               {"key": "pendingReview", "value": 1}]}), \
+                patch("app.services.affairs_dorm_service.occupancy_stats",
+                      lambda _u: {"totalBeds": 10, "occupiedBeds": 8}), \
+                patch("app.services.affairs_risk_service.list_risks",
+                      lambda _u, page, page_size: ([], 0, {"total": 0, "highCritical": 0})), \
+                patch("app.services.affairs_aid_service.aid_stats", boom), \
+                patch("app.services.affairs_funding_service.funding_stats", lambda u: {"total": 3, "granted": 1}), \
+                patch("app.services.affairs_discipline_service.discipline_stats",
+                      lambda u: {"total": 2, "byStatus": [{"key": "EFFECTIVE", "count": 1}],
+                                 "reconcile": {"consistent": True}}), \
+                patch("app.services.affairs_activity_service.activity_stats",
+                      lambda u: {"totalActivities": 4, "creditStudents": 2}), \
+                patch("app.services.affairs_talk_service.talk_stats", lambda _u: {"total": 2, "completed": 1}), \
+                patch("app.services.affairs_mental_service.stats", lambda _u: {"total": 1, "openCrisis": 0}):
+            data = cockpit.cockpit({"currentRoleCode": "SA_ADMIN"})
+    finally:
+        set_tenant(None)
 
     aid = next(d for d in data["domains"] if d["key"] == "aid")
     funding = next(d for d in data["domains"] if d["key"] == "funding")

@@ -28,10 +28,8 @@ def leave_my(user) -> dict:
     只按 student_id 查会漏掉老记录（学生自己在「我的申请」能看到、在本页却看不到），
     这里同 my_applications 一样再按 CsServiceStudent 解析补上 cs_student_id 分支。"""
     from app.models import CsLeave, CsServiceStudent
-    L = {"DRAFT": "草稿", "COUNSELOR_REVIEW": "辅导员审批", "COLLEGE_REVIEW": "学院审批",
-         "STUDENT_AFFAIRS_REVIEW": "学工处审批", "APPROVED": "已通过", "REJECTED": "已驳回",
-         "RETURNED": "已退回", "WAIT_CANCEL_LEAVE": "待销假", "CLOSED": "已销假",
-         "OVERDUE": "逾期未销假", "CANCELLED": "已取消"}
+    from app.services import affairs_leave_service as leave_svc
+    L = {**leave_svc.L_AFF, "PENDING_REVIEW": "待审批"}
     with session() as db:
         stu = _me(db, user)
         cs = db.scalars(select(CsServiceStudent).where(
@@ -46,6 +44,7 @@ def leave_my(user) -> dict:
         items = []
         for x in rows:
             st = x.affairs_status or x.status
+            actions = leave_svc._allowed_actions(x.affairs_status)
             items.append({
                 "leaveId": str(x.id), "leaveType": x.leave_type, "days": float(x.days or 0),
                 "startTime": _iso(x.start_time), "endTime": _iso(x.end_time),
@@ -53,9 +52,11 @@ def leave_my(user) -> dict:
                 "affairsStatusLabel": L.get(x.affairs_status, x.affairs_status or ""),
                 "reason": x.reason or "",
                 "returnReason": getattr(x, "return_reason", None) or "",
-                "canResubmit": (x.affairs_status or "") == "RETURNED",
-                "canCancel": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),
-                "canExtend": (x.affairs_status or "") in ("APPROVED", "OVERDUE"),
+                "version": int(x.version or 0),
+                "allowedActions": actions,
+                "canResubmit": "RESUBMIT" in actions,
+                "canCancel": "SUBMIT_CANCEL" in actions,
+                "canExtend": "SUBMIT_EXTENSION" in actions,
             })
         return {"items": items}
 

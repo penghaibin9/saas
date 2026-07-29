@@ -8,6 +8,24 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载发展台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
+      <section class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">党团发展工作台</span>
+          <h2 class="sa-summary-strip__title">发展中 {{ statusCounts === null ? '—' : (statusCounts.ONGOING || 0) }} 人，已完成 {{ statusCounts === null ? '—' : (statusCounts.COMPLETED || 0) }} 人</h2>
+          <p class="sa-summary-strip__text">发展流程必须逐级推进，不允许跳过阶段。选择学生后核对当前阶段、历史时间线和材料，再执行下一阶段或终止。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="openForm">建立发展档案</AppPermissionButton>
+        </div>
+      </section>
+
+      <div class="sa-workflow-strip" aria-label="党员发展流程">
+        <div class="sa-workflow-step" data-step="1"><strong>建立档案</strong><br>选择学生、类型与党团支部</div>
+        <div class="sa-workflow-step" data-step="2"><strong>逐级推进</strong><br>按申请人、积极分子等顺序推进</div>
+        <div class="sa-workflow-step" data-step="3"><strong>材料留痕</strong><br>上传阶段材料并执行授权下载</div>
+        <div class="sa-workflow-step" data-step="4"><strong>完成 / 终止</strong><br>转正或终止均保留原因和历史</div>
+      </div>
+
       <div class="sa-toolbar">
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
@@ -15,27 +33,26 @@
         <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="openForm">建发展档案</AppPermissionButton>
       </div>
 
-      <AppSectionCard v-if="formVisible" title="建党团发展台账">
+      <AppSectionCard v-if="formVisible" title="建立党团发展档案">
+        <div class="lg-form-note">建立档案后默认进入首个发展阶段。党团支部可选填，但建议完整登记，便于后续材料和组织关系追溯。</div>
         <div class="lg-grid">
           <div class="lg-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
-          <label class="lg-field"><span>类型</span>
-            <AppSelect v-model="form.devType" :options="DEV_TYPE_OPTIONS" placeholder="" /></label>
-          <label class="lg-field"><span>党/团支部</span><AppTextInput v-model="form.branchName" /></label>
+          <label class="lg-field"><span>类型</span><AppSelect v-model="form.devType" :options="DEV_TYPE_OPTIONS" placeholder="" /></label>
+          <label class="lg-field"><span>党/团支部</span><AppTextInput v-model="form.branchName" placeholder="选填，如：信息工程学院学生第一党支部" /></label>
         </div>
         <p v-if="form.error" class="lg-error">{{ form.error }}</p>
         <div class="lg-actions">
           <button type="button" class="lg-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="save">建档</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="save">确认建档</AppPermissionButton>
         </div>
       </AppSectionCard>
 
       <div class="lg-layout">
         <AppSectionCard title="发展台账" class="lg-list">
-          <div class="lg-filters">
-            <AppSelect v-model="activeType" :options="devTypeFilters" placeholder="全部类型"
-                       @change="setType" />
-            <AppSelect v-model="activeStatus" :options="statusFilters" placeholder="全部状态"
-                       @change="setStatus" />
+          <p class="lg-section-hint">按类型、状态和阶段筛选。选择学生后，右侧展示完整阶段时间线和材料。</p>
+          <div class="lg-filters sa-filter-bar">
+            <AppSelect v-model="activeType" :options="devTypeFilters" placeholder="全部类型" @change="setType" />
+            <AppSelect v-model="activeStatus" :options="statusFilters" placeholder="全部状态" @change="setStatus" />
             <button v-for="f in stageFilters" :key="f.key" type="button" class="lg-chip"
                     :class="{ 'is-on': activeStage === f.key }" @click="setStage(f.key)">{{ f.label }}</button>
           </div>
@@ -45,17 +62,21 @@
                 <StatusTag :type="statusType(d.status)" :label="d.statusLabel" dot /></div>
               <div class="lg-dev__meta">{{ d.devTypeLabel }} · {{ d.currentStageLabel }} · {{ d.branchName || '未填支部' }}</div>
             </li>
-            <li v-if="!items.length" class="lg-empty">暂无发展台账</li>
+            <li v-if="!items.length" class="lg-empty">当前筛选下暂无发展档案。可清除筛选，或点击“建立发展档案”。</li>
           </ul>
           <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
                          :total="pagination.total" @change="load" />
         </AppSectionCard>
 
         <AppSectionCard :title="sel ? (sel.realName + ' · 发展阶段时间线') : '阶段详情'" class="lg-detail">
-          <p v-if="!sel" class="lg-hint">从左侧选择一条发展台账查看阶段时间线并推进。</p>
+          <p v-if="!sel" class="lg-hint">从左侧选择一条发展档案，查看当前阶段、历史材料和下一步可执行动作。</p>
           <template v-else>
+            <div class="lg-selected-summary">
+              <div><span>当前发展档案</span><strong>{{ sel.realName || ('学生#' + sel.studentId) }}</strong><small>{{ sel.devTypeLabel }} · {{ sel.branchName || '未填支部' }}</small></div>
+              <div><span>当前阶段</span><strong>{{ sel.currentStageLabel }}</strong><StatusTag :type="statusType(sel.status)" :label="sel.statusLabel" dot /></div>
+            </div>
             <div class="lg-subhead">
-              <div>当前阶段：<b>{{ sel.currentStageLabel }}</b> · <StatusTag :type="statusType(sel.status)" :label="sel.statusLabel" dot /></div>
+              <div><strong>阶段时间线</strong><small>只能推进到后端允许的下一阶段</small></div>
               <div v-if="sel.status==='ONGOING'" class="lg-adv">
                 <AppSelect v-model="advStage" class="lg-advpick" :options="nextStageOptions" placeholder="推进到…" />
                 <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" size="sm" :disabled="!advStage" @click="advance">推进</AppPermissionButton>
@@ -69,12 +90,12 @@
                   <em v-if="st.hasMaterial" class="lg-tl__mat">📎 含材料</em></span>
                 <span v-if="st.remark" class="lg-tl__remark">{{ st.remark }}</span>
               </li>
-              <li v-if="!stages.length" class="lg-empty">暂无阶段记录</li>
+              <li v-if="!stages.length" class="lg-empty">暂无阶段记录。</li>
             </ol>
 
             <div class="lg-attach">
               <div class="lg-attach__head">
-                <span>发展材料附件（授权下载留痕）</span>
+                <div><span>发展材料附件</span><small>上传和下载均按权限控制，授权下载留痕</small></div>
                 <label class="lg-upload">
                   <input type="file" class="lg-file" :disabled="uploading" @change="uploadMaterial" />
                   <span>{{ uploading ? '上传中…' : '＋ 上传材料' }}</span>
@@ -87,7 +108,7 @@
                   <AppPermissionButton :allowed="canBtn('studentAffairs.league.view')" code="studentAffairs.league.view" size="sm" variant="secondary"
                                        @click="downloadMaterial(a)">下载</AppPermissionButton>
                 </li>
-                <li v-if="!attachments.length" class="lg-empty">暂无材料附件</li>
+                <li v-if="!attachments.length" class="lg-empty">当前阶段暂无材料附件。</li>
               </ul>
             </div>
           </template>
@@ -95,7 +116,6 @@
       </div>
     </AppGlobalState>
 
-    <!-- 终止发展：无党团发展口径词条，不套用其他场景模板 -->
     <AppConfirmDialog
       v-model:visible="terDlg.visible" title="终止发展流程" type="danger" confirm-text="确认终止"
       require-reason :reason-min-length="5" reason-label="终止原因（≥5 字）"
@@ -113,7 +133,6 @@ import {
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
-
 
 const STAGES = [
   { key: 'APPLICANT', label: '入党申请人' }, { key: 'ACTIVIST', label: '入党积极分子' },
@@ -239,41 +258,52 @@ export default {
 
 <style scoped>
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 300px; }
-.lg-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3); }
-.lg-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
-.lg-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
-.lg-error { color: var(--danger-500,#dc2626); font-size: var(--font-size-sm); }
-.lg-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); flex: 1; min-width: 300px; }
+.lg-form-note { margin-bottom: var(--space-4); padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
+.lg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
+.lg-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--font-size-sm); }
+.lg-error { margin: 0; padding: 9px 11px; border-radius: var(--radius-md); background: var(--danger-50); color: var(--danger-700, #b91c1c); font-size: var(--font-size-sm); }
+.lg-actions { display: flex; gap: var(--space-3); justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--border-light); }
 .lg-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
-.lg-layout { display: grid; grid-template-columns: 360px 1fr; gap: var(--space-4); }
+.lg-layout { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.lg-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 .lg-advpick { width: 170px; }
 .lg-filters { display: flex; gap: 6px; margin-bottom: var(--space-3); flex-wrap: wrap; }
-.lg-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 3px 10px; font-size: var(--font-size-xs); cursor: pointer; }
+.lg-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 10px; font-size: var(--font-size-xs); cursor: pointer; }
 .lg-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 .lg-devs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.lg-dev { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; }
-.lg-dev.is-active { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
-.lg-dev__top { display: flex; justify-content: space-between; align-items: center; }
+.lg-dev { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; transition: border-color .12s, background .12s; }
+.lg-dev:hover { border-color: var(--primary-200); background: var(--primary-50); }
+.lg-dev.is-active { border-color: var(--color-primary); background: var(--primary-50); box-shadow: inset 3px 0 0 var(--color-primary); }
+.lg-dev__top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
 .lg-dev__name { font-weight: 600; }
-.lg-dev__meta { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 4px; }
-.lg-empty, .lg-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-.lg-subhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); flex-wrap: wrap; gap: var(--space-2); }
-.lg-adv { display: flex; gap: var(--space-2); align-items: center; }
+.lg-dev__meta { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
+.lg-empty, .lg-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; line-height: 1.65; }
+.lg-selected-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, .55fr); gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-3); border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); }
+.lg-selected-summary > div { display: grid; gap: 3px; }
+.lg-selected-summary span, .lg-selected-summary small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.lg-selected-summary strong { color: var(--text-primary); }
+.lg-subhead { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-3); flex-wrap: wrap; gap: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); }
+.lg-subhead > div:first-child { display: grid; gap: 2px; }
+.lg-subhead small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.lg-adv { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .lg-timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--border-light); }
 .lg-timeline li { padding: 0 0 var(--space-3) var(--space-4); position: relative; }
 .lg-timeline li::before { content: ''; position: absolute; left: -5px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-primary); }
 .lg-tl__stage { font-weight: 600; }
 .lg-tl__meta { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); }
 .lg-tl__mat { color: var(--color-primary); font-style: normal; margin-left: 6px; }
-.lg-attach { margin-top: var(--space-4); border-top: 1px dashed var(--border-light); padding-top: var(--space-3); }
-.lg-attach__head { display: flex; justify-content: space-between; align-items: center; font-size: var(--font-size-sm); font-weight: 600; margin-bottom: var(--space-2); }
-.lg-upload { position: relative; overflow: hidden; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: var(--radius-md); padding: 4px 12px; cursor: pointer; font-weight: 500; }
+.lg-tl__remark { display: block; margin-top: 2px; font-size: var(--font-size-sm); color: var(--text-tertiary); overflow-wrap: anywhere; }
+.lg-attach { margin-top: var(--space-4); border-top: 1px solid var(--border-light); padding-top: var(--space-3); }
+.lg-attach__head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); font-size: var(--font-size-sm); font-weight: 600; margin-bottom: var(--space-2); }
+.lg-attach__head > div { display: grid; gap: 2px; }
+.lg-attach__head small { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
+.lg-upload { position: relative; overflow: hidden; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: var(--radius-md); padding: 5px 12px; cursor: pointer; font-weight: 500; }
 .lg-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .lg-attach__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.lg-attach__list li { display: flex; align-items: center; gap: var(--space-3); }
-.lg-att__name { flex: 1; }
-.lg-att__meta { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.lg-tl__remark { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .lg-grid, .lg-layout { grid-template-columns: 1fr; } }
+.lg-attach__list li { display: flex; align-items: center; gap: var(--space-3); padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); }
+.lg-att__name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.lg-att__meta { font-size: var(--font-size-xs); color: var(--text-tertiary); white-space: nowrap; }
+@media (max-width: 960px) { .sa-grid--metrics, .lg-grid, .lg-layout { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .lg-actions { align-items: stretch; flex-direction: column-reverse; } .lg-actions > * { width: 100%; } .lg-selected-summary { grid-template-columns: 1fr; } .lg-advpick { width: 100%; } .lg-attach__head { flex-direction: column; } }
 </style>

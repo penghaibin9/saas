@@ -3,24 +3,44 @@
     role-name="学工处 / 资助老师" data-scope-name="资助范围（辅导员限本班）" watermark-purpose="减免与临时补助">
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载中..." @retry="load"
                     @back="$router.push('/admin/student-affairs/funding')">
+      <div class="sa-summary-strip">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">减免与临补台账</span>
+          <h3 class="sa-summary-strip__title">先审核申请依据，再处理已批准待发记录</h3>
+          <p class="sa-summary-strip__text">待审核、已批准待发和已发放分开统计。老师可先处理黄色待办，再核对发放结果。</p>
+        </div>
+        <div class="sa-summary-strip__actions">
+          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" @click="formVisible=true">代录申请</AppPermissionButton>
+        </div>
+      </div>
+
+      <div class="sa-workflow-strip" aria-label="减免与临补办理流程">
+        <div class="sa-workflow-step" data-step="1">登记学生、类型、金额和申请理由</div>
+        <div class="sa-workflow-step" data-step="2">审核申请依据，批准或驳回</div>
+        <div class="sa-workflow-step" data-step="3">对已批准记录登记发放结果</div>
+      </div>
+
       <div class="sa-toolbar">
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
         </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" @click="formVisible=true">代录申请</AppPermissionButton>
       </div>
-      <AppSectionCard v-if="formVisible" title="申请减免/临补">
+
+      <AppSectionCard v-if="formVisible" class="sa-inline-workspace" title="申请减免/临补">
+        <p class="fr-intro">请依据正式申请材料代录。理由应说明学生实际困难和申请依据，便于后续审核留痕。</p>
         <div class="fr-grid">
           <div class="fr-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
           <label class="fr-field"><span>类型</span><AppSelect v-model="form.itemType" :options="ITEM_TYPE_OPTIONS" placeholder="" /></label>
           <label class="fr-field"><span>金额</span><AppNumberInput v-model="form.amount" :min="0" /></label>
-          <label class="fr-field fr-wide"><span>理由 *（≥5字）</span><AppTextInput v-model="form.reason" /></label>
+          <label class="fr-field fr-wide"><span>申请理由 *（≥5字）</span><AppTextInput v-model="form.reason" placeholder="说明困难情况、申请依据和用途" /></label>
         </div>
         <p v-if="form.error" class="fr-error">{{ form.error }}</p>
         <div class="fr-actions"><button type="button" class="fr-btn" @click="formVisible=false">取消</button>
           <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" :loading="acting==='sub'" @click="submit">提交</AppPermissionButton></div>
       </AppSectionCard>
+
       <AppSectionCard title="减免/临补台账">
+        <p class="fr-section-hint">按类型筛选后处理当前记录。批准是主要操作，驳回和发放保持原有状态规则。</p>
         <div class="fr-filters">
           <button v-for="f in typeFilters" :key="f.key" type="button" class="fr-chip" :class="{ 'is-on': activeType===f.key }" @click="setType(f.key)">{{ f.label }}</button>
         </div>
@@ -41,7 +61,7 @@
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无记录</p>
+        <p v-else class="sa-empty">当前筛选下暂无减免或临时补助记录。</p>
       </AppSectionCard>
     </AppGlobalState>
 
@@ -155,22 +175,20 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 300px; }
+.fr-intro,
+.fr-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .fr-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
 .fr-wide { grid-column: span 3; }
-.fr-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
-.fr-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
+.fr-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: var(--font-size-sm); }
+.fr-field > span { color: var(--text-secondary); font-weight: var(--font-weight-medium); }
 .fr-error { color: var(--danger-500,#dc2626); font-size: var(--font-size-sm); }
-.fr-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+.fr-actions { display: flex; gap: var(--space-3); justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--border-light); }
 .fr-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
-.fr-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
 .fr-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
 .fr-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-.fr-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 220px; }
-.fr-ops { display: flex; gap: 6px; }
+.fr-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 260px; white-space: normal; line-height: 1.55; }
+.fr-ops { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .fr-muted { color: var(--text-tertiary); }
-@media (max-width: 960px) { .sa-grid--metrics, .fr-grid { grid-template-columns: 1fr; } .fr-wide { grid-column: span 1; } }
+@media (max-width: 960px) { .fr-grid { grid-template-columns: 1fr; } .fr-wide { grid-column: span 1; } }
 @import '@/styles/module-page.css';
 </style>

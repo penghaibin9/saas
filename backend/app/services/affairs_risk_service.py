@@ -302,8 +302,17 @@ def _require_takeover_authority(db, user) -> None:
     raise AppException("NO_PERMISSION", "仅上级/学工管理员可接管已升级风险")
 
 
+_MENTAL_DETAIL_ROLES = {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"}
+
+
 def _can_view_mental(user) -> bool:
-    return has_permission(user or {}, "studentAffairs.risk.psyDetail.view")
+    """心理风险原始明细使用独立角色白名单，禁止 studentAffairs.* 通配放大权限。
+
+    STUDENT_AFFAIRS_ADMIN 与 COUNSELOR 即使拥有风险处置能力，也只能查看摘要；
+    PSYCHOLOGY_TEACHER 还必须经过 PSY_STUDENT 数据范围校验。
+    """
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    return role in _MENTAL_DETAIL_ROLES
 
 
 def _sensitive_view_audit(x, reason: str) -> None:

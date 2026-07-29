@@ -19,8 +19,18 @@ def test_cockpit_ok(client, db_mode):
     keys = {x["key"] for x in d["domains"]}
     assert {"aid", "funding", "discipline", "activity"} <= keys
     assert all("route" in x and "status" in x for x in d["domains"])
-    assert all(x["status"] == "OK" for x in d["domains"])
-    assert all(x.get("total") is not None for x in d["domains"])
+    domains = {item["key"]: item for item in d["domains"]}
+    core = {"student", "class", "leave", "dorm", "risk", "aid", "funding",
+            "discipline", "activity", "talk", "mental"}
+    assert core <= set(domains)
+    assert all(domains[key]["status"] == "OK" for key in core)
+    assert all(domains[key].get("total") is not None for key in core)
+    # 尚无独立聚合口径的模块必须明确降级，禁止假装成功并返回 0。
+    for key in ("club", "organization", "partyLeague"):
+        assert domains[key]["status"] == "DEGRADED"
+        assert domains[key]["total"] is None
+        assert domains[key]["message"]
+    assert all(item["status"] != "ERROR" for item in d["domains"])
     assert "totals" in d and "disciplineReconcileConsistent" in d
 
 

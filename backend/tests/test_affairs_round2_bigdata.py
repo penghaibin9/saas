@@ -31,7 +31,7 @@ def _seed_big_data(db_mode, client):
         json={
             "batchName": "大数据分页已发布批次",
             "schoolYear": "2025-2026",
-            "publicityDays": 0,
+            "publicityDays": 1,
             "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
             "publish": True,
         },
@@ -88,7 +88,8 @@ def _seed_big_data(db_mode, client):
                 apply_level="DIFFICULT",
                 final_level="DIFFICULT",
                 statement="家庭经济困难，需要学校资助支持完成学业。",
-                status="REVIEW" if index <= 225 else "APPROVED",
+                status="COUNSELOR_REVIEW" if index <= 225 else "APPROVED",
+                is_deleted=False, version=0,
             )
             for index, student in enumerate(students[:AID_COUNT], start=1)
         ]
@@ -185,7 +186,7 @@ def test_big_data_risk_and_aid_pagination(client, db_mode):
         headers=admin,
         params={
             "batchId": seeded["batch_id"],
-            "status": "REVIEW",
+            "status": "COUNSELOR_REVIEW",
             "page": review_last_page,
             "pageSize": PAGE_SIZE,
         },

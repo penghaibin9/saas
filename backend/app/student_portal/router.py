@@ -360,8 +360,11 @@ def affairs_discipline(user=Depends(get_current_user)):
     return success(affairs.discipline(user))
 
 
-@router.post("/affairs/service-apply", summary="通用学工事务申请（请假/咨询/工单，本人）")
+@router.post("/affairs/service-apply", summary="通用学工事务申请（咨询/工单，本人；不含请假）")
 def affairs_service_apply(user=Depends(get_current_user), body: dict = Body(...)):
+    if str((body or {}).get("serviceKey") or "").strip().upper() == "LEAVE":
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "请假已迁移到 /portal/affairs/leave 专用入口")
     return success(affairs.service_apply(user, body))
 
 

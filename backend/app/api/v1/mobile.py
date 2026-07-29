@@ -113,8 +113,11 @@ def me_portal_config(user=Depends(get_current_user)):
     return success(sp.get_config(int(current_tenant_id() or 0)))
 
 
-@router.post("/campus-service/apply", summary="提交在校服务申请（本人）")
+@router.post("/campus-service/apply", summary="提交在校服务申请（本人，不含请假）")
 def campus_service_apply(body: dict = Body(...), user=Depends(get_current_user)):
+    if str((body or {}).get("serviceKey") or "").strip().upper() == "LEAVE":
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "请假已迁移到 /mobile/affairs/leave 专用入口")
     return success(stu.campus_service_apply(user, body))
 
 
@@ -1030,9 +1033,9 @@ def teacher_mental_list(level: str = None, user=Depends(get_current_user)):
     return success(tea.mental_list(user, level))
 
 
-@router.get("/teacher/mental/{ref_id}", summary="教师·心理转介详情（授权角色+原因≥5字方可见明细）")
-def teacher_mental_detail(ref_id: str, reason: str = None, user=Depends(get_current_user)):
-    return success(tea.mental_detail(user, ref_id, reason))
+@router.get("/teacher/mental/{referral_id}", summary="教师·心理转介详情（授权角色+原因≥5字方可见明细）")
+def teacher_mental_detail(referral_id: str, reason: str = None, user=Depends(get_current_user)):
+    return success(tea.mental_detail(user, referral_id, reason))
 
 
 @router.post("/teacher/mental", summary="教师·登记心理转介（人工登记，系统不做任何自动诊断）")
@@ -1040,19 +1043,19 @@ def teacher_mental_create(body: dict = Body(...), user=Depends(get_current_user)
     return success(tea.mental_create(user, body), message="转介已登记")
 
 
-@router.post("/teacher/mental/{ref_id}/follow", summary="教师·心理转介回访")
-def teacher_mental_follow(ref_id: str, body: dict = Body(...), user=Depends(get_current_user)):
-    return success(tea.mental_follow(user, ref_id, body), message="回访已记录")
+@router.post("/teacher/mental/{referral_id}/follow", summary="教师·心理转介回访")
+def teacher_mental_follow(referral_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.mental_follow(user, referral_id, body), message="回访已记录")
 
 
-@router.post("/teacher/mental/{ref_id}/escalate", summary="教师·心理危机升级（接入风险中枢）")
-def teacher_mental_escalate(ref_id: str, body: dict = Body(...), user=Depends(get_current_user)):
-    return success(tea.mental_escalate(user, ref_id, body), message="已升级为危机风险")
+@router.post("/teacher/mental/{referral_id}/escalate", summary="教师·心理危机升级（接入风险中枢）")
+def teacher_mental_escalate(referral_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.mental_escalate(user, referral_id, body), message="已升级为危机风险")
 
 
-@router.post("/teacher/mental/{ref_id}/close", summary="教师·关闭心理转介（结论≥5字）")
-def teacher_mental_close(ref_id: str, body: dict = Body(...), user=Depends(get_current_user)):
-    return success(tea.mental_close(user, ref_id, body), message="已关闭")
+@router.post("/teacher/mental/{referral_id}/close", summary="教师·关闭心理转介（结论≥5字）")
+def teacher_mental_close(referral_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(tea.mental_close(user, referral_id, body), message="已关闭")
 
 
 @router.get("/teacher/mental-stats", summary="教师·心理关注统计（仅聚合）")

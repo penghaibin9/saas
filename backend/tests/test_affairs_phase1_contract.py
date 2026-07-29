@@ -89,8 +89,8 @@ def test_risk_owner_candidates_require_handle_permission():
     assert "studentAffairs.risk.handle" in body or "studentAffairs.risk.handle" in src
 
 
-def test_risk_mental_view_uses_permission_check():
+def test_risk_mental_view_uses_explicit_role_whitelist():
     src = RISK_SERVICE.read_text(encoding="utf-8")
     body = src.split("def _can_view_mental", 1)[1].split("def _sensitive_view_audit", 1)[0]
-    assert "has_permission" in body
-    assert "studentAffairs.risk.psyDetail.view" in body
+    assert "return role in _MENTAL_DETAIL_ROLES" in body
+    assert "has_permission" not in body

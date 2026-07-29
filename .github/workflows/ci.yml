@@ -1,7 +1,6 @@
 name: CI
 
-# 每次 push / PR 自动验证：后端测试 + 前端 lint/build + 小程序构建 + 禁止文件检查。
-# 说明：小程序构建较重，拆为可选 job（continue-on-error），失败不阻断主流程但保留命令与日志。
+# 每次 push / PR 自动验证：后端测试 + 管理 PC/学生 PC + 小程序构建 + 禁止文件检查。
 
 on:
   push:
@@ -134,7 +133,7 @@ jobs:
           fi
 
   frontend:
-    name: PC 管理端 lint + build
+    name: PC 管理端 lint + test + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -148,15 +147,30 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - name: 四端前端合同测试
+        run: npm test
       - run: npm run build
       - name: 禁止 PC 产物携带固定演示凭据
-        run: |
-          PATTERN='密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password.{0,3}123456'
-          if grep -R -E "$PATTERN" dist; then
-            echo "❌ PC 生产包包含固定演示凭据"
-            exit 1
-          fi
-          echo "✅ PC 生产包未发现固定演示凭据"
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+
+  student-portal:
+    name: 学生 PC 门户 lint + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: student-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: student-portal/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: 禁止学生门户产物携带固定演示凭据
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
 
   miniapp:
     name: 小程序生产 build
@@ -175,13 +189,7 @@ jobs:
       - run: npm run build:h5
       - run: npm run build:mp-weixin
       - name: 禁止生产包携带固定演示凭据
-        run: |
-          PATTERN='密码 123456|ROLE_DEMO_ACCOUNT|DEMO_PASSWORD|password.{0,3}123456'
-          if grep -R -E "$PATTERN" dist/build/mp-weixin; then
-            echo "❌ 小程序生产包包含固定演示凭据"
-            exit 1
-          fi
-          echo "✅ 小程序生产包未发现固定演示凭据"
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
 
   forbidden-files:
     name: 禁止文件检查

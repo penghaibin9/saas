@@ -17,7 +17,7 @@ def _hdr(client, login_name):
 
 def _seed_granted(sid, n=2):
     from app.db.session import get_sessionmaker
-    from app.models import FundingApplication, FundingBatch, FundingProject
+    from app.models import FundingApplication, FundingBatch, FundingProject, StudentProfile
     db = get_sessionmaker()()
     p = FundingProject(tenant_id=TID, project_name="国家助学金", project_type="GRANT",
                        amount=3300, quota=10, status="ENABLED")
@@ -25,9 +25,21 @@ def _seed_granted(sid, n=2):
     b = FundingBatch(tenant_id=TID, project_id=p.id, project_type="GRANT", year_code="2025-2026",
                      quota=10, status="OPEN")
     db.add(b); db.flush()
-    for i in range(n):
-        db.add(FundingApplication(tenant_id=TID, batch_id=b.id, student_id=(sid if i == 0 else 900000 + i),
-                                  apply_source="SELF", project_type="GRANT", amount=3300, status="GRANTED"))
+    base_student = db.get(StudentProfile, int(sid))
+    assert base_student is not None
+    student_ids = [int(sid)]
+    for i in range(1, n):
+        other = StudentProfile(
+            tenant_id=TID, student_no=f"DISB{sid}-{i}", real_name=f"发放测试学生{i}",
+            class_id=base_student.class_id, college_id=base_student.college_id,
+            current_stage=base_student.current_stage or "ON_CAMPUS",
+            student_status="NORMAL", status="ACTIVE", is_deleted=False, version=0,
+        )
+        db.add(other); db.flush(); student_ids.append(int(other.id))
+    for student_id in student_ids:
+        db.add(FundingApplication(tenant_id=TID, batch_id=b.id, student_id=student_id,
+                                  apply_source="SELF", project_type="GRANT", amount=3300,
+                                  status="GRANTED", is_deleted=False, version=0))
     db.commit()
     bid = b.id
     db.close()
@@ -47,22 +59,27 @@ def test_disbursement_full_flow(client, db_mode):
     lst = client.get(f"{BASE}/funding/disbursements", headers=hdr, params={"batchId": bid}).json()
     items = lst["data"]["items"]
     assert len(items) == 2 and all(x["bankStatus"] == "PENDING" for x in items)
-    d1, d2 = items[0]["disbursementId"], items[1]["disbursementId"]
-    # 标记已发放
+    row1, row2 = items[0], items[1]
+    d1, d2 = row1["disbursementId"], row2["disbursementId"]
+    # 标记已发放：显式提交列表中可见版本
     iss = client.post(f"{BASE}/funding/disbursements/{d1}/issue", headers=hdr,
-                      json={"disburseNo": "FB2026-001", "bankLast4": "6222888888886411"}).json()
+                      json={"disburseNo": "FB2026-001", "bankLast4": "6411",
+                            "version": row1["version"]}).json()
     assert iss["code"] == 0 and iss["data"]["bankStatus"] == "ISSUED"
     assert iss["data"]["bankLast4"] == "6411"  # 仅后4位
-    # 重复发放 → 冲突
-    assert client.post(f"{BASE}/funding/disbursements/{d1}/issue", headers=hdr, json={}).json()["code"] != 0
+    # 重复发放 → 状态冲突（使用服务返回的新版本，避免把状态冲突误测成版本冲突）
+    assert client.post(f"{BASE}/funding/disbursements/{d1}/issue", headers=hdr,
+                       json={"version": iss["data"]["version"]}).json()["code"] != 0
     # 已发放不可置失败
     assert client.post(f"{BASE}/funding/disbursements/{d1}/fail", headers=hdr,
-                       json={"reason": "银行退回卡号有误"}).json()["code"] != 0
+                       json={"reason": "银行退回卡号有误",
+                             "version": iss["data"]["version"]}).json()["code"] != 0
     # 另一条置失败（原因≥5）
     assert client.post(f"{BASE}/funding/disbursements/{d2}/fail", headers=hdr,
-                       json={"reason": "短"}).json()["code"] != 0
+                       json={"reason": "短", "version": row2["version"]}).json()["code"] != 0
     f2 = client.post(f"{BASE}/funding/disbursements/{d2}/fail", headers=hdr,
-                     json={"reason": "银行账号信息缺失待补"}).json()
+                     json={"reason": "银行账号信息缺失待补",
+                           "version": row2["version"]}).json()
     assert f2["code"] == 0 and f2["data"]["bankStatus"] == "FAILED"
     # 发放概览
     st = client.get(f"{BASE}/funding/disbursements/stats", headers=hdr).json()["data"]

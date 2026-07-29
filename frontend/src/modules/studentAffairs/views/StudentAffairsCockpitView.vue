@@ -8,8 +8,33 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载驾驶舱..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
+      <section class="sa-summary-strip cockpit-summary" :class="{ 'has-warning': domains.some((d) => d.status !== 'OK') || reconcileOk === false }">
+        <div class="sa-summary-strip__content">
+          <span class="sa-summary-strip__eyebrow">统计健康状态</span>
+          <h2 class="sa-summary-strip__title">
+            已加载 {{ domains.length }} 个业务域，{{ domains.filter((d) => d.status === 'OK').length }} 个口径可用，{{ domains.filter((d) => d.status !== 'OK').length }} 个需关注
+          </h2>
+          <p class="sa-summary-strip__text">
+            先处理统计不可用或数据对账不一致的业务域，再依据真实指标下钻。所有数字均按当前角色数据范围聚合，不使用浏览器单页数据二次拼算。
+          </p>
+        </div>
+        <div class="cockpit-summary__status">
+          <span>处分投影对账</span>
+          <StatusTag v-if="reconcileOk !== null" :type="reconcileOk ? 'success' : 'danger'" :label="reconcileOk ? '一致' : '需核查'" dot />
+          <span v-else class="cockpit-summary__unknown">暂不可用</span>
+        </div>
+      </section>
+
+      <div class="cockpit-legend" aria-label="驾驶舱说明">
+        <span><i class="is-ok"></i>真实统计可用，可点击下钻</span>
+        <span><i class="is-warning"></i>统计降级或错误，显示原因而不显示假数字</span>
+      </div>
+
       <div class="cp-grid">
         <div v-for="d in domains" :key="d.key" class="cp-cell" :class="{ 'is-error': d.status === 'ERROR' || d.status === 'DEGRADED' }">
+          <div class="cp-cell__head">
+            <span class="cp-cell__status" :class="d.status === 'OK' ? 'is-ok' : 'is-warning'">{{ d.status === 'OK' ? '口径正常' : '需要关注' }}</span>
+          </div>
           <AppMetricCard
             v-if="d.status === 'OK'"
             :title="d.label"
@@ -21,6 +46,7 @@
           <div v-else class="cp-unavailable" @click="goRoute(d.route)">
             <div class="cp-unavailable__title">{{ d.label }}</div>
             <div class="cp-unavailable__msg">{{ d.message || '统计暂不可用' }}</div>
+            <div v-if="d.route" class="cp-unavailable__link">进入业务页核查 →</div>
           </div>
           <div v-if="d.status === 'OK' && d.highlightLabel" class="cp-cell__hl">{{ d.highlightLabel }}：<b>{{ d.highlight }}</b></div>
           <div v-if="d.status === 'OK' && metricPreview(d).length" class="cp-cell__metrics">
@@ -29,11 +55,26 @@
         </div>
       </div>
 
-      <AppSectionCard title="数据说明">
-        <div v-if="reconcileOk !== null" class="cp-recon" :class="reconcileOk ? 'is-ok' : 'is-bad'">
-          处分投影对账：<StatusTag :type="reconcileOk ? 'success' : 'danger'" :label="reconcileOk ? '一致' : '不一致（需核查）'" dot />
+      <AppSectionCard title="数据质量与使用说明">
+        <div class="cp-quality-grid">
+          <div class="cp-quality-item">
+            <span>处分投影对账</span>
+            <div v-if="reconcileOk !== null" class="cp-recon" :class="reconcileOk ? 'is-ok' : 'is-bad'">
+              <StatusTag :type="reconcileOk ? 'success' : 'danger'" :label="reconcileOk ? '一致' : '不一致（需核查）'" dot />
+            </div>
+            <div v-else class="cp-recon">统计暂不可用</div>
+          </div>
+          <div class="cp-quality-item">
+            <span>统计口径</span>
+            <strong>当前角色数据范围</strong>
+            <p>降级或错误域只显示原因，不把接口错误解释成 0。</p>
+          </div>
+          <div class="cp-quality-item">
+            <span>建议动作</span>
+            <strong>{{ domains.some((d) => d.status !== 'OK') || reconcileOk === false ? '优先核查异常域' : '可按业务需要下钻' }}</strong>
+            <p>点击正常业务域可进入对应页面查看明细和处理待办。</p>
+          </div>
         </div>
-        <div v-else class="cp-recon">处分投影对账：统计暂不可用</div>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -85,25 +126,37 @@ export default {
 </script>
 
 <style scoped>
-.cp-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.cp-cell { display: flex; flex-direction: column; gap: var(--space-1); }
+.cockpit-summary.has-warning { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
+.cockpit-summary__status { display: grid; justify-items: end; gap: 5px; min-width: 120px; }
+.cockpit-summary__status > span:first-child { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.cockpit-summary__unknown { color: var(--warning-700); font-weight: 600; }
+.cockpit-legend { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); color: var(--text-secondary); font-size: var(--font-size-xs); }
+.cockpit-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cockpit-legend i { width: 8px; height: 8px; border-radius: 50%; }
+.cockpit-legend i.is-ok { background: var(--success-500, #22c55e); }
+.cockpit-legend i.is-warning { background: var(--warning-500, #f59e0b); }
+.cp-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.cp-cell { position: relative; display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: 10px; border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-card); }
+.cp-cell.is-error { border-color: var(--warning-200, #fde68a); background: var(--warning-50, #fffbeb); }
+.cp-cell__head { display: flex; justify-content: flex-end; min-height: 20px; }
+.cp-cell__status { padding: 2px 7px; border-radius: var(--radius-full); font-size: 11px; }
+.cp-cell__status.is-ok { background: var(--success-50, #f0fdf4); color: var(--success-700, #15803d); }
+.cp-cell__status.is-warning { background: var(--warning-100, #fef3c7); color: var(--warning-800, #92400e); }
 .cp-cell__hl { font-size: var(--font-size-sm); color: var(--text-secondary); padding: 0 var(--space-1); }
 .cp-cell__hl b { color: var(--text-primary); }
 .cp-cell__metrics { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0 var(--space-1); color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .cp-cell__metrics b { color: var(--text-secondary); }
-.cp-cell__err { font-size: var(--font-size-sm); color: var(--danger, #dc2626); padding: 0 var(--space-1); }
-.cp-unavailable {
-  padding: var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px dashed var(--border-color);
-  background: var(--bg-secondary, #f8fafc);
-  cursor: pointer;
-  min-height: 88px;
-}
+.cp-unavailable { padding: var(--space-4); border-radius: var(--radius-md); border: 1px dashed var(--warning-300, #fcd34d); background: rgba(255,255,255,.72); cursor: pointer; min-height: 108px; }
 .cp-unavailable__title { font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-2); }
-.cp-unavailable__msg { font-size: var(--font-size-md); color: var(--warning, #b45309); font-weight: 600; }
-.cp-recon { padding: var(--space-3); border-radius: var(--radius-md); }
-.cp-recon.is-ok { background: rgba(34,197,94,0.08); }
-.cp-recon.is-bad { background: rgba(239,68,68,0.08); }
-@media (max-width: 960px) { .cp-grid { grid-template-columns: 1fr 1fr; } }
+.cp-unavailable__msg { font-size: var(--font-size-md); color: var(--warning-800, #92400e); font-weight: 600; line-height: 1.5; }
+.cp-unavailable__link { margin-top: var(--space-3); color: var(--primary-700); font-size: var(--font-size-xs); }
+.cp-quality-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.cp-quality-item { padding: var(--space-3); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
+.cp-quality-item > span { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.cp-quality-item > strong { display: block; margin-top: 5px; color: var(--text-primary); }
+.cp-quality-item p { margin: 5px 0 0; color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.55; }
+.cp-recon { margin-top: 6px; min-height: 24px; }
+@media (max-width: 1180px) { .cp-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 900px) { .cp-grid, .cp-quality-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .cp-grid, .cp-quality-grid { grid-template-columns: 1fr; } .cockpit-summary__status { justify-items: start; } }
 </style>

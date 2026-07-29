@@ -163,8 +163,6 @@ def list_students(page, page_size, keyword=None, class_id=None, care_level=None,
 def get_student_detail(sid) -> dict:
     with session() as db:
         s = _get_stu(db, sid)
-        leaves = db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
-                            CsLeave.cs_student_id == s.id).order_by(CsLeave.id.desc())).all()
         grants = db.scalars(select(CsGrant).where(CsGrant.tenant_id == _tid(),
                             CsGrant.cs_student_id == s.id).order_by(CsGrant.id.desc())).all()
         discs = db.scalars(select(CsDiscipline).where(CsDiscipline.tenant_id == _tid(),
@@ -174,7 +172,6 @@ def get_student_detail(sid) -> dict:
         logs = db.scalars(select(CsAuditTrail).where(CsAuditTrail.tenant_id == _tid(),
                           CsAuditTrail.biz_id == str(s.id)).order_by(CsAuditTrail.id.desc()).limit(20)).all()
         return {"student": _stu_row(s, db=db, profiles=shadow.load_profiles(db, [s])),
-                "leaves": [_leave_row(x, s) for x in leaves],
                 "grants": [_grant_row(x, s) for x in grants],
                 "disciplines": [_disc_row(x, s) for x in discs],
                 "workOrders": [_wo_row(x, s) for x in wos],
@@ -238,105 +235,8 @@ def void_student(sid, reason) -> dict:
         return {"id": str(s.id)}
 
 
-# ═══ 请假 ═══
-
-def _leave_row(x: CsLeave, stu=None) -> dict:
-    return {"id": str(x.id), "code": x.code or "", "studentId": str(x.cs_student_id),
-            "name": stu.name if stu else "", "className": stu.class_name if stu else "",
-            "type": x.leave_type, "typeLabel": L_LEAVE_T.get(x.leave_type, x.leave_type),
-            "startTime": _iso(x.start_time) or "", "endTime": _iso(x.end_time) or "",
-            "duration": x.duration or "", "reason": x.reason or "",
-            "status": x.status, "statusLabel": L_LEAVE_S.get(x.status, x.status),
-            "applyTime": _iso(x.apply_time) or "", "reviewer": x.reviewer or "",
-            "reviewTime": _iso(x.review_time) or "", "returnReason": x.return_reason or "",
-            "version": int(x.version or 0)}
-
-
-def list_leaves(page, page_size, keyword=None, type=None, status=None):
-    from app.models import StudentProfile
-    from app.services.affairs_dashboard_service import _allowed_class_ids
-    with session() as db:
-        q = select(CsLeave).where(CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False))
-        if type:
-            q = q.where(CsLeave.leave_type == type)
-        if status:
-            q = q.where(CsLeave.status == status)
-        rows = db.scalars(q.order_by(CsLeave.id.desc())).all()
-        scope_ids = _cs_scope_student_ids(db)
-        allowed_classes, _ = _allowed_class_ids(db, get_current_user_ctx() or {})
-        cs_map = _cs_students_by_ids(db, rows)
-        items = []
-        for x in rows:
-            if x.cs_student_id:
-                if scope_ids is not None and x.cs_student_id not in scope_ids:
-                    continue
-            elif allowed_classes is not None:
-                # 13A 新引擎写入的哨兵行（cs_student_id=0）：改按 student_id 的班级范围口径过滤
-                s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-                if not s or s.class_id not in allowed_classes:
-                    continue
-            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_leave_row(x, stu))
-        return _page(items, page, page_size)
-
-
-def get_leave_detail(lid) -> dict:
-    with session() as db:
-        x = db.get(CsLeave, int(lid))
-        if not x or x.is_deleted or x.tenant_id != _tid():
-            raise not_found("请假申请不存在")
-        _require_cs_scope(db, x.cs_student_id, student_id=x.student_id)
-        stu = _stu_of(db, x.cs_student_id)
-        hist = db.scalars(select(CsLeave).where(CsLeave.tenant_id == _tid(),
-                          CsLeave.cs_student_id == x.cs_student_id,
-                          CsLeave.id != x.id).order_by(CsLeave.id.desc()).limit(5)).all()
-        return {"leave": _leave_row(x, stu), "student": _stu_row(stu, db=db, profiles=shadow.load_profiles(db, [stu])) if stu else None,
-                "history": [_leave_row(h, stu) for h in hist]}
-
-
-def _leave_act(lid, target, reviewer_comment=None, need_reason=False, reason=None, action="",
-               expected_version=None):
-    if need_reason and (not reason or len(reason.strip()) < 5):
-        raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
-    ver = require_expected_version(expected_version)
-    with session() as db:
-        x = db.get(CsLeave, int(lid))
-        if not x or x.is_deleted or x.tenant_id != _tid():
-            raise not_found("请假申请不存在")
-        _require_cs_scope(db, x.cs_student_id, student_id=x.student_id)
-        # 写侧单点（13A-13B 数据表与迁移策略草案 §5.3）：affairs_status 非空＝13A 新引擎在管的记录，
-        # 只能走 /student-affairs/leave/{id}/approve 等多级审批流程；本遗留端点不得越俎代庖单级拍板，
-        # 否则会只改旧 status、不推进 workflow/不通知学生，制造两套状态机数据矛盾。
-        if x.affairs_status is not None:
-            raise AppException("DATA_CONFLICT", "该请假已接入新版多级审批流程，请到「请假销假」工作台处理审批")
-        if x.status in ("APPROVED", "RETURNED"):
-            raise AppException("DATA_CONFLICT", "该请假已处理，请刷新")
-        before = x.status
-        n, _ = _op()
-        values = {
-            "status": target,
-            "reviewer": n,
-            "review_time": datetime.utcnow(),
-        }
-        if target == "RETURNED":
-            values["return_reason"] = (reason or "").strip()
-        atomic_versioned_update(
-            db, CsLeave, entity_id=int(x.id), tenant_id=_tid(),
-            expected_version=ver, values=values, expected_status=before)
-        _audit(db, "LEAVE", x.id, action, reason or reviewer_comment or "", before, target)
-        db.commit()
-        return {"id": str(x.id), "status": target, "version": ver + 1}
-
-
-def approve_leave(lid, comment="", expected_version=None):
-    return _leave_act(lid, "APPROVED", comment, False, None, "审批通过", expected_version)
-
-
-def return_leave(lid, reason, expected_version=None):
-    return _leave_act(lid, "RETURNED", None, True, reason, "退回修改", expected_version)
-
+# ═══ 请假旧实现已退出 ═══
+# 请假唯一实现：app.services.affairs_leave_service。历史 CsLeave 数据仍保留。
 
 def _parse_versioned_item(raw):
     if isinstance(raw, dict):
@@ -344,20 +244,6 @@ def _parse_versioned_item(raw):
     if isinstance(raw, (list, tuple)) and len(raw) >= 2:
         return raw[0], raw[1]
     return raw, None
-
-
-def batch_approve_leaves(items):
-    """批量审批：每项必须为 {id, version}。无 version 的项计失败（不吞异常口径）。"""
-    cnt = 0
-    errors = []
-    for raw in items or []:
-        lid, ver = _parse_versioned_item(raw)
-        try:
-            _leave_act(lid, "APPROVED", "", False, None, "批量审批通过", ver)
-            cnt += 1
-        except AppException as e:
-            errors.append({"id": str(lid), "code": e.code, "message": e.message})
-    return {"count": cnt, "failed": errors}
 
 
 # ═══ 资助 ═══
@@ -624,6 +510,7 @@ def _wo_row(x: CsWorkOrder, stu=None) -> dict:
             "type": x.wo_type, "typeLabel": L_WO_T.get(x.wo_type, x.wo_type),
             "priority": x.priority, "handler": x.handler or "",
             "status": x.status, "statusLabel": L_WO_S.get(x.status, x.status),
+            "version": int(x.version or 0),
             "detail": x.detail or "", "createTime": _iso(x.created_at),
             "updateTime": _iso(x.updated_at), "closeTime": _iso(x.close_time) or ""}
 
@@ -848,7 +735,7 @@ def get_dashboard() -> dict:
                      "trend": f"宿舍异常 {open_de}", "trendQuality": "bad" if open_wo else "good"},
                 ],
                 "todos": [
-                    {"id": "t1", "label": "待审批请假", "value": pend_leave, "link": "/admin/campus-service/leave"},
+                    {"id": "t1", "label": "待审批请假", "value": pend_leave, "link": "/admin/student-affairs/leave"},
                     {"id": "t2", "label": "待审核资助", "value": pend_grant, "link": "/admin/campus-service/grants"},
                     {"id": "t3", "label": "待处理工单", "value": open_wo, "link": "/admin/campus-service/work-orders"},
                 ],

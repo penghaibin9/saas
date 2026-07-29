@@ -2,11 +2,7 @@
 
 分工：file 字节走 file_service（真实上传 t_file_object，含租户校验/白名单/sha256）；
 本服务只登记 (biz_type,biz_id,file_id) 回链 + 授权列表 + 授权下载。
-安全口径：
-- link/上传关联 → 需该 biz 的**管理权限**（越权 403 NO_PERMISSION）；
-- list/download → 需该 biz 的**查看权限**；列表只回展示名+id，不回路径/明文；
-- 每次下载写 t_security_audit_log(SENSITIVE_EXPORT)（敏感材料下载留痕，绝不阻塞主流程）；
-- 跨租户：file_service.get_file_meta / 本表查询均按当前租户收敛，跨租户不可达。
+安全口径：权限 + 具体业务对象 + 数据范围 + 租户必须同时满足。
 """
 from __future__ import annotations
 
@@ -17,7 +13,6 @@ from app.core.permissions import enforce_permission
 from app.services import file_service
 from app.services.db_service import _iso, _tid, audit_insert, session
 
-# biz_type → 查看权限（下载/列表门禁）
 _BIZ_VIEW = {
     "DISCIPLINE": "studentAffairs.discipline.view",
     "DISCIPLINE_APPEAL": "studentAffairs.discipline.view",
@@ -28,7 +23,6 @@ _BIZ_VIEW = {
     "LOAN": "studentAffairs.funding.view",
     "HOME_SCHOOL": "studentAffairs.homeSchool.view",
 }
-# biz_type → 管理权限（上传/关联门禁）
 _BIZ_MANAGE = {
     "DISCIPLINE": "studentAffairs.discipline.create",
     "DISCIPLINE_APPEAL": "studentAffairs.discipline.appeal.create",
@@ -55,13 +49,32 @@ def _row(a) -> dict:
             "uploadedAt": _iso(a.created_at)}
 
 
+def _require_club_scope(db, biz_id, user) -> None:
+    from app.core.affairs_security import build_affairs_context, no_data_scope
+    from app.models import AffairsClub
+
+    club = db.get(AffairsClub, int(biz_id))
+    if not club or club.is_deleted or club.tenant_id != _tid():
+        raise not_found("社团记录不存在")
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return
+    # 校级社团没有学院归属，只有全校范围角色可处理；学院角色仅能处理本院挂靠社团。
+    if ctx.scope_type == "COLLEGE" and club.college_id and int(club.college_id) in ctx.college_ids:
+        return
+    raise no_data_scope("该社团不在您的学院或学校数据范围内")
+
+
 def _require_biz_scope(db, biz_type: str, biz_id, user) -> None:
-    """Resolve the business owner and enforce the caller's student scope."""
+    """解析具体业务对象并执行学生/学院范围；未知映射绝不默认放行。"""
     from app.core.affairs_security import build_affairs_context
     from app.models import (
         AffairsLeagueDev, DisciplineAppeal, DisciplineCase, FamilyContactLog,
         FeeReduction, FundingApplication, StudentLoan,
     )
+    if biz_type == "CLUB":
+        _require_club_scope(db, biz_id, user)
+        return
     mappings = {
         "DISCIPLINE": (DisciplineCase, "student_id"),
         "DISCIPLINE_APPEAL": (DisciplineAppeal, "student_id"),
@@ -73,7 +86,7 @@ def _require_biz_scope(db, biz_type: str, biz_id, user) -> None:
     }
     mapping = mappings.get(biz_type)
     if mapping is None:
-        return
+        raise AppException("VALIDATION_ERROR", "附件业务类型尚未配置对象范围校验")
     model, student_attr = mapping
     obj = db.get(model, int(biz_id))
     if not obj or getattr(obj, "is_deleted", False) or obj.tenant_id != _tid():
@@ -85,10 +98,9 @@ def _require_biz_scope(db, biz_type: str, biz_id, user) -> None:
 
 
 def link_attachment(biz_type, biz_id, file_id, note, user) -> dict:
-    """把已上传文件(file_id)关联到业务记录。需 biz 管理权限；file 必须属当前租户。"""
     bt = _norm_biz(biz_type)
     enforce_permission(user, _BIZ_MANAGE[bt])
-    meta = file_service.get_file_meta(str(file_id), user=user)          # 租户+对象级授权
+    meta = file_service.get_file_meta(str(file_id), user=user)
     if not meta:
         raise not_found("文件不存在或无权访问")
     from app.models import AffairsAttachment
@@ -106,7 +118,6 @@ def link_attachment(biz_type, biz_id, file_id, note, user) -> dict:
 
 
 def list_attachments(biz_type, biz_id, user) -> list[dict]:
-    """列业务记录附件（脱敏：只回展示名+id，不回路径）。需 biz 查看权限。"""
     bt = _norm_biz(biz_type)
     enforce_permission(user, _BIZ_VIEW[bt])
     from app.models import AffairsAttachment
@@ -128,8 +139,6 @@ def _load(db, attachment_id):
 
 
 def download_attachment(attachment_id, user):
-    """授权下载：校验 biz 查看权限 → 写 SENSITIVE_EXPORT 审计 → 返回 (磁盘路径, 文件名)。
-    未授权在 enforce_permission 抛 403 前即拦截；文件丢失返回 None 由端点转 404。"""
     bt, fid, fname = "UNKNOWN", "", ""
     detail = {"attachmentId": str(attachment_id)}
     try:
@@ -138,7 +147,7 @@ def download_attachment(attachment_id, user):
             _require_biz_scope(db, a.biz_type, a.biz_id, user)
             bt, fid, fname = a.biz_type, str(a.file_id), a.file_name
         detail.update({"fileId": fid, "bizType": bt, "fileName": fname})
-        enforce_permission(user, _BIZ_VIEW.get(bt, "studentAffairs.dashboard.view"))
+        enforce_permission(user, _BIZ_VIEW.get(bt, "__UNKNOWN_ATTACHMENT_PERMISSION__"))
         resolved = file_service.resolve_download(fid, user=user)
         detail["hit"] = bool(resolved)
         audit_insert("SENSITIVE_EXPORT", f"affairs_attachment:{bt}", detail,

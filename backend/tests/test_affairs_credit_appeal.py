@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -31,12 +33,12 @@ def test_credit_appeal_approve_creates_credit(client, db_mode):
     # 列表
     assert any(x["appealId"] == aid for x in client.get(f"{BASE}/second-class/appeals", headers=hdr).json()["data"]["items"])
     # 审核通过 → 生成 MANUAL_ADJUST 学分
-    r = client.post(f"{BASE}/second-class/appeals/{aid}/review", headers=hdr, json={"action": "APPROVE"}).json()
+    r = post_versioned(client, f"{BASE}/second-class/appeals/{aid}/review", headers=hdr, json={"action": "APPROVE", "opinion": "经核实同意补记积分"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "APPROVED"
     led = client.get(f"{BASE}/second-class/ledger", headers=hdr).json()
     assert any(x["studentId"] == str(sid) and x["source"] == "MANUAL_ADJUST" for x in led["data"]["items"])
     # 已审核不可再核
-    assert client.post(f"{BASE}/second-class/appeals/{aid}/review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/second-class/appeals/{aid}/review", headers=hdr,
                        json={"action": "REJECT", "opinion": "重复处理测试"}).json()["code"] != 0
 
 
@@ -46,9 +48,9 @@ def test_credit_appeal_reject(client, db_mode):
     aid = client.post(f"{BASE}/second-class/appeals", headers=hdr, json={
         "studentId": sid, "claimValue": 1, "reason": "主张记错学时申请核减"}).json()["data"]["appealId"]
     # 驳回意见过短
-    assert client.post(f"{BASE}/second-class/appeals/{aid}/review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/second-class/appeals/{aid}/review", headers=hdr,
                        json={"action": "REJECT", "opinion": "短"}).json()["code"] != 0
     # 正常驳回
-    r = client.post(f"{BASE}/second-class/appeals/{aid}/review", headers=hdr,
+    r = post_versioned(client, f"{BASE}/second-class/appeals/{aid}/review", headers=hdr,
                     json={"action": "REJECT", "opinion": "经核实原记录无误，驳回申诉"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "REJECTED"

@@ -5,6 +5,10 @@ M4 调宿审批执行(原床释放/新床占用)；M5 检查异常→回写异�
 """
 from __future__ import annotations
 
+from affairs_contract_test_support import (
+    ensure_role_user, ensure_workflow_assignees, post_versioned, role_headers,
+)
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -25,16 +29,22 @@ def _seed(db_mode):
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
     sf = StudentProfile(tenant_id=TID, student_no="F001", real_name="女生乙", class_id=a.id, gender="F",
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
-    db.add(sm); db.add(sf); db.flush()
-    ids = {"A": a.id, "sm": sm.id, "sf": sf.id}
+    sm2 = StudentProfile(tenant_id=TID, student_no="M002", real_name="男生丙", class_id=a.id, gender="M",
+                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
+    db.add_all([sm, sf, sm2]); db.flush()
+    ids = {"A": a.id, "sm": sm.id, "sf": sf.id, "sm2": sm2.id}
     db.commit()
     db.close()
+    ensure_workflow_assignees([ids["sm"], ids["sf"], ids["sm2"]])
+    # 楼栋 managerTeacherKey=dorm01 必须解析到真实、启用中的数据库用户。
+    ensure_role_user("DORM_MANAGER", login_name="dorm01", real_name="宿管·李")
     return ids
 
 
 def _make_building(client, hdr, gender="MALE"):
     bid = client.post(f"{BASE}/dorm/buildings", headers=hdr, json={
-        "buildingName": "紫荆1号楼", "buildingCode": "ZJ01", "genderLimit": gender}).json()["data"]["buildingId"]
+        "buildingName": "紫荆1号楼", "buildingCode": "ZJ01", "genderLimit": gender,
+        "managerTeacherKey": "dorm01"}).json()["data"]["buildingId"]
     client.post(f"{BASE}/dorm/buildings/{bid}/generate", headers=hdr,
                 json={"floors": 2, "roomsPerFloor": 3, "bedsPerRoom": 4})
     return bid
@@ -66,7 +76,7 @@ def test_m2_cascade_checkin_writeback(client, db_mode):
     assert len(beds) == 4 and all(b["status"] == "VACANT" for b in beds)
     # 入住第一张床
     r = client.post(f"{BASE}/dorm/beds/{beds[0]['bedId']}/checkin", headers=hdr,
-                    json={"studentId": str(ids["sm"])}).json()
+                    json={"studentId": str(ids["sm2"])}).json()
     assert r["data"]["status"] == "OCCUPIED"
     # 房间空床 -1
     rooms = client.get(f"{BASE}/dorm/buildings/{bid}/rooms?floor=1", headers=hdr).json()["data"]["items"]
@@ -102,11 +112,12 @@ def test_m4_transfer_executes(client, db_mode):
     old_bed, new_bed = beds1[0]["bedId"], beds2[0]["bedId"]
     client.post(f"{BASE}/dorm/beds/{old_bed}/checkin", headers=hdr, json={"studentId": str(ids["sm"])})
     transfer = client.post(f"{BASE}/dorm/transfers", headers=hdr, json={
-        "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "调宿"}).json()["data"]
+        "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "学生申请调整宿舍床位"}).json()["data"]
     tid = transfer["transferId"]
     first = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={
         "action": "APPROVE", "version": transfer["version"]}).json()["data"]  # 辅导员
-    r = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={
+    r = client.post(f"{BASE}/dorm/transfers/{tid}/review",
+                    headers=role_headers("DORM_MANAGER", login_name="dorm01", real_name="宿管·李"), json={
         "action": "APPROVE", "version": first["version"]}).json()  # 宿管→执行
     assert r["data"]["status"] == "EXECUTED"
     # 原床释放、新床占用
@@ -197,7 +208,7 @@ def test_m11_dorm_write_scope_blocks_cross_building(client, db_mode):
     （此前仅读接口做了范围过滤，写操作全部无校验——本用例回归修复）。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    dorm = _hdr(client, "dorm01")
+    dorm = role_headers("DORM_MANAGER", login_name="dorm01", real_name="宿管·李")
     a = client.post(f"{BASE}/dorm/buildings", headers=admin, json={
         "buildingName": "紫荆A2", "genderLimit": "MALE", "managerTeacherKey": "dorm01",
         "floors": 1, "roomsPerFloor": 1, "bedsPerRoom": 2}).json()["data"]["buildingId"]
@@ -222,7 +233,7 @@ def test_m11_dorm_write_scope_blocks_cross_building(client, db_mode):
     assert client.post(f"{BASE}/dorm/beds/{bed_a}/checkin", headers=dorm,
                        json={"studentId": str(ids["sm"])}).status_code == 200
     # 宿管对 A 楼床位退宿（自己负责）→ 200
-    assert client.post(f"{BASE}/dorm/beds/{bed_a}/checkout", headers=dorm).status_code == 200
+    assert post_versioned(client, f"{BASE}/dorm/beds/{bed_a}/checkout", headers=dorm).status_code == 200
 
     # 宿管建 B 楼检查任务 → 403
     assert client.post(f"{BASE}/dorm/check-tasks", headers=dorm, json={
@@ -269,7 +280,7 @@ def test_m7_self_select_toggle(client, db_mode):
     client.put(f"{BASE}/dorm/config/self-select", headers=hdr, json={"enabled": True})
     cfg = client.get(f"{BASE}/dorm/config", headers=hdr).json()["data"]
     assert cfg["selfSelectEnabled"] is True and cfg["assignMode"] == "SELF_SELECT"
-    # 放开后学生自选成功（换到另一张床）
+    # 放开后由尚未入住的学生自选；已有床学生必须走正式调宿流程。
     r = client.post(f"{BASE}/dorm/beds/{beds[2]['bedId']}/self-select", headers=hdr,
-                    json={"studentId": str(ids["sm"])}).json()
+                    json={"studentId": str(ids["sm2"])}).json()
     assert r["data"]["status"] == "OCCUPIED"

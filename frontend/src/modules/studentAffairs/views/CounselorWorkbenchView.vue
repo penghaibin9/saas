@@ -78,7 +78,7 @@ export default {
       talkColumns: TALK_COLUMNS,
       loading: true, errorMessage: '', risks: [], talks: [],
       quickLinks: [
-        { label: '请假审批', route: '/admin/campus-service/leave' },
+        { label: '请假审批', route: '/admin/student-affairs/leave' },
         { label: '风险预警', route: '/admin/student-affairs/risk' },
         { label: '谈心谈话', route: '/admin/student-affairs/talk' },
         { label: '班级管理', route: '/admin/campus-service/classes' },
