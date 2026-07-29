@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 runner = Path(__file__).with_name("apply_miniapp_stage_a.py")
 source = runner.read_text(encoding="utf-8")
 
-teacher_pattern = re.compile(
-    r'''text = replace_once\(\n'''
-    r'''    text,\n'''
-    r'''    "export const mobileTeacherTodos = \(\) => realRequest\('/mobile/teacher/todos'\)\\n",\n'''
-    r'''.*?'''
-    r'''    "real API teacher pages",\n'''
-    r'''\)''',
-    re.S,
-)
-teacher_replacement = r'''text = replace_once(
+old_teacher = '''text = replace_once(
+    text,
+    "export const mobileTeacherTodos = () => realRequest('/mobile/teacher/todos')\\n",
+    """export const mobileTeacherTodos = () => realRequest('/mobile/teacher/todos')
+export const teacherTodosPage = (group = 'all', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/teacher/todos-page?group=${encodeURIComponent(group)}&page=${page}&pageSize=${pageSize}`)
+export const teacherRiskStudentsPage = (level = 'all', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/teacher/risk-students-page?level=${encodeURIComponent(level)}&page=${page}&pageSize=${pageSize}`)
+    .then((data) => ({
+      ...data,
+      list: (data.list || []).map((student) => ({
+        ...student,
+        risk: student.riskLevel || 'MEDIUM',
+        task: student.reason || student.riskType || '风险事项待处理',
+        pending: 1,
+        last: student.latestTime || '',
+        stage: student.riskType || ''
+      }))
+    }))
+""",
+    "real API teacher pages",
+)'''
+new_teacher = '''text = replace_once(
     text,
     "/* 教师端·工作台：真实摘要、真实待办、真实风险；任一主摘要失败必须显式报错，不回落 mock。 */",
     """/* 教师端·移动聚合兼容导出 */
@@ -42,19 +54,24 @@ export const teacherRiskStudentsPage = (level = 'all', page = 1, pageSize = 20) 
 /* 教师端·工作台：真实摘要、真实待办、真实风险；任一主摘要失败必须显式报错，不回落 mock。 */""",
     "real API teacher pages",
 )'''
-source, teacher_count = teacher_pattern.subn(lambda _match: teacher_replacement, source, count=1)
-if teacher_count != 1:
-    raise RuntimeError(f"failed to hotfix teacher page anchor: matches={teacher_count}")
+if source.count(old_teacher) != 1:
+    raise RuntimeError(f"teacher patch block matches={source.count(old_teacher)}")
+source = source.replace(old_teacher, new_teacher, 1)
 
-message_pattern = re.compile(
-    r'''text = replace_once\(\n'''
-    r'''    text,\n'''
-    r'''.*?'''
-    r'''    "real API student messages page",\n'''
-    r'''\)''',
-    re.S,
-)
-message_replacement = r'''text = replace_once(
+old_message = '''text = replace_once(
+    text,
+    """/** 本人消息详情（按 messageId，杀进程后仍可重开） */
+export const getMessageDetail = (id) =>
+""",
+    """export const selfMessagesPage = (tab = 'todo', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/me/messages-page?tab=${encodeURIComponent(tab)}&page=${page}&pageSize=${pageSize}`)
+
+/** 本人消息详情（按 messageId，杀进程后仍可重开） */
+export const getMessageDetail = (id) =>
+""",
+    "real API student messages page",
+)'''
+new_message = '''text = replace_once(
     text,
     """export const getMessageDetail = (id) =>
 """,
@@ -65,9 +82,9 @@ export const getMessageDetail = (id) =>
 """,
     "real API student messages page",
 )'''
-source, message_count = message_pattern.subn(lambda _match: message_replacement, source, count=1)
-if message_count != 1:
-    raise RuntimeError(f"failed to hotfix student message anchor: matches={message_count}")
+if source.count(old_message) != 1:
+    raise RuntimeError(f"message patch block matches={source.count(old_message)}")
+source = source.replace(old_message, new_message, 1)
 
 runner.write_text(source, encoding="utf-8")
 print("stage A runner anchors hotfixed")
