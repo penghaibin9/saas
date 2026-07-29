@@ -1,0 +1,120 @@
+name: File center access and clients
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/v1/file.py"
+      - "backend/app/api/v1/files.py"
+      - "backend/app/api/v1/file_contract.py"
+      - "backend/app/models/file.py"
+      - "backend/app/services/file_access_service.py"
+      - "backend/app/services/file_version_service.py"
+      - "backend/alembic/versions/0146_file_center_access_and_clients.py"
+      - "backend/tests/test_file_access_service.py"
+      - "backend/tests/file_access_mysql_acceptance.py"
+      - "frontend/src/services/file/**"
+      - "frontend/src/components/file/**"
+      - "student-portal/src/services/fileSdk.js"
+      - "student-portal/src/components/file/**"
+      - "miniapp/src/services/fileApi.js"
+      - "miniapp/src/services/fileSdk.js"
+      - "miniapp/src/components/file/**"
+      - "scripts/check/check-file-client-contract.mjs"
+      - ".github/workflows/file-center-access-clients.yml"
+  push:
+    branches:
+      - audit/file-capability-inventory
+    paths:
+      - "backend/app/api/v1/file.py"
+      - "backend/app/api/v1/files.py"
+      - "backend/app/api/v1/file_contract.py"
+      - "backend/app/models/file.py"
+      - "backend/app/services/file_access_service.py"
+      - "backend/app/services/file_version_service.py"
+      - "backend/alembic/versions/0146_file_center_access_and_clients.py"
+      - "backend/tests/test_file_access_service.py"
+      - "backend/tests/file_access_mysql_acceptance.py"
+      - "frontend/src/services/file/**"
+      - "frontend/src/components/file/**"
+      - "student-portal/src/services/fileSdk.js"
+      - "student-portal/src/components/file/**"
+      - "miniapp/src/services/fileApi.js"
+      - "miniapp/src/services/fileSdk.js"
+      - "miniapp/src/components/file/**"
+      - "scripts/check/check-file-client-contract.mjs"
+      - ".github/workflows/file-center-access-clients.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: file-center-access-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  access-and-clients:
+    name: MySQL 授权 + 四端 SDK 合同
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      UPLOAD_DIR: /tmp/file-center-stage2-uploads
+      FILE_STORAGE_BACKEND: local
+      CLAMAV_ENABLED: "false"
+      FILE_SCAN_REQUIRED: "false"
+      PYTHONPATH: ${{ github.workspace }}/backend
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Verify single Alembic head and upgrade MySQL
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+      - name: Compile Stage 2 backend
+        run: |
+          python -m py_compile \
+            backend/app/api/v1/file.py \
+            backend/app/api/v1/files.py \
+            backend/app/api/v1/file_contract.py \
+            backend/app/models/file.py \
+            backend/app/services/file_access_service.py \
+            backend/app/services/file_version_service.py \
+            backend/alembic/versions/0146_file_center_access_and_clients.py
+      - name: Resolver and status unit tests
+        working-directory: backend
+        run: pytest -q tests/test_file_access_service.py -p no:warnings
+      - name: Real MySQL cross-scope acceptance
+        working-directory: backend
+        run: python tests/file_access_mysql_acceptance.py
+      - name: Four-client SDK and component contract
+        run: node scripts/check/check-file-client-contract.mjs
