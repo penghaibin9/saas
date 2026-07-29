@@ -1,0 +1,154 @@
+name: 教务第四阶段施工源完整性核验
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integrate/academic-affairs-final-20260729
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-affairs-stage4-source-fidelity
+  cancel-in-progress: true
+
+jobs:
+  source-fidelity:
+    name: PR17 教务独占成果逐文件核验
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 最终验收分支
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 核对施工源教务文件完整性
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main refactor/academic-affairs-4ends --prune
+
+          MAIN=origin/main
+          SOURCE=origin/refactor/academic-affairs-4ends
+          FINAL=HEAD
+
+          is_academic_owned() {
+            case "$1" in
+              backend/alembic/versions/0127_aa_*|\
+              backend/alembic/versions/0128_aa_*|\
+              backend/alembic/versions/0129_aa_*|\
+              backend/alembic/versions/0130_aa_*|\
+              backend/alembic/versions/0131_aa_*|\
+              backend/alembic/versions/0132_aa_*|\
+              backend/alembic/versions/0133_aa_*|\
+              backend/alembic/versions/0134_aa_*|\
+              backend/app/models/academic_affairs_*|\
+              backend/app/models/academic_grade_extensions.py|\
+              backend/app/modules/academic_affairs/*|\
+              backend/app/student_portal/services/academic_*.py|\
+              backend/tests/test_aa_*.py|\
+              frontend/src/modules/academicAffairs/*|\
+              student-portal/src/router/academicRoutes.js|\
+              student-portal/src/views/academic/*|\
+              miniapp/src/pages/student/academic-affairs/*|\
+              miniapp/src/pages/teacher/academic-affairs/*|\
+              miniapp/src/pages/teacher/academic-task/*|\
+              miniapp/src/pages/teacher/academic-warning/*|\
+              miniapp/src/pages/teacher/exam-defer/*|\
+              miniapp/src/pages/teacher/my-schedule/*|\
+              miniapp/src/services/academic*.js|\
+              miniapp/src/stores/sessionAcademicPlugin.js)
+                return 0 ;;
+            esac
+            return 1
+          }
+
+          is_allowed_final_remediation() {
+            case "$1" in
+              backend/app/student_portal/services/academic_evaluation_safety_facade.py)
+                return 0 ;;
+            esac
+            return 1
+          }
+
+          : > /tmp/source-academic-files.txt
+          while IFS= read -r path; do
+            [[ -n "$path" ]] || continue
+            if is_academic_owned "$path"; then
+              echo "$path" >> /tmp/source-academic-files.txt
+            fi
+          done < <(git diff --name-only --diff-filter=ACMRT "$MAIN...$SOURCE")
+          sort -u -o /tmp/source-academic-files.txt /tmp/source-academic-files.txt
+
+          TOTAL=$(wc -l < /tmp/source-academic-files.txt)
+          if [[ "$TOTAL" -lt 250 ]]; then
+            echo "教务独占文件识别数量异常：$TOTAL，拒绝继续"
+            exit 1
+          fi
+
+          : > /tmp/missing.txt
+          : > /tmp/unexpected-diff.txt
+          : > /tmp/allowed-diff.txt
+          EXACT=0
+
+          while IFS= read -r path; do
+            [[ -n "$path" ]] || continue
+            if ! git cat-file -e "$FINAL:$path" 2>/dev/null; then
+              echo "$path" >> /tmp/missing.txt
+              continue
+            fi
+
+            SOURCE_BLOB=$(git rev-parse "$SOURCE:$path")
+            FINAL_BLOB=$(git rev-parse "$FINAL:$path")
+            if [[ "$SOURCE_BLOB" = "$FINAL_BLOB" ]]; then
+              EXACT=$((EXACT + 1))
+            elif is_allowed_final_remediation "$path"; then
+              echo "$path" >> /tmp/allowed-diff.txt
+            else
+              echo "$path" >> /tmp/unexpected-diff.txt
+            fi
+          done < /tmp/source-academic-files.txt
+
+          # 唯一允许的差异必须是最终分支补上的“先鉴权、后查任务”安全修复。
+          if grep -Fxq 'backend/app/student_portal/services/academic_evaluation_safety_facade.py' /tmp/allowed-diff.txt; then
+            grep -Fq 'from app.services.mobile_student_service import _require_student' \
+              backend/app/student_portal/services/academic_evaluation_safety_facade.py
+            test "$(grep -Fc '_require_student(user)' backend/app/student_portal/services/academic_evaluation_safety_facade.py)" -ge 2
+          fi
+
+          MISSING=$(wc -l < /tmp/missing.txt)
+          UNEXPECTED=$(wc -l < /tmp/unexpected-diff.txt)
+          ALLOWED=$(wc -l < /tmp/allowed-diff.txt)
+
+          {
+            echo '## PR #17 → PR #23 教务独占成果核验'
+            echo
+            echo "- 施工源教务独占文件：$TOTAL"
+            echo "- 内容完全一致：$EXACT"
+            echo "- 最终验收安全修复差异：$ALLOWED"
+            echo "- 缺失：$MISSING"
+            echo "- 未解释差异：$UNEXPECTED"
+            if [[ "$ALLOWED" -gt 0 ]]; then
+              echo
+              echo '### 已解释的最终安全修复'
+              sed 's/^/- `/' /tmp/allowed-diff.txt | sed 's/$/`/'
+            fi
+            if [[ "$MISSING" -gt 0 ]]; then
+              echo
+              echo '### 缺失文件'
+              sed 's/^/- `/' /tmp/missing.txt | sed 's/$/`/'
+            fi
+            if [[ "$UNEXPECTED" -gt 0 ]]; then
+              echo
+              echo '### 未解释内容差异'
+              sed 's/^/- `/' /tmp/unexpected-diff.txt | sed 's/$/`/'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$MISSING" -ne 0 || "$UNEXPECTED" -ne 0 ]]; then
+            echo "第四阶段施工源完整性未通过"
+            exit 1
+          fi
+
+          echo "第四阶段施工源完整性通过：$TOTAL 个教务独占文件全部存在，$EXACT 个内容一致，$ALLOWED 个为已验证安全修复。"
