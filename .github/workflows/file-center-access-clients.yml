@@ -8,6 +8,7 @@ on:
       - "backend/app/api/v1/file_contract.py"
       - "backend/app/models/file.py"
       - "backend/app/services/file_access_service.py"
+      - "backend/app/services/file_access_resolvers.py"
       - "backend/app/services/file_version_service.py"
       - "backend/alembic/versions/0146_file_center_access_and_clients.py"
       - "backend/tests/test_file_access_service.py"
@@ -30,6 +31,7 @@ on:
       - "backend/app/api/v1/file_contract.py"
       - "backend/app/models/file.py"
       - "backend/app/services/file_access_service.py"
+      - "backend/app/services/file_access_resolvers.py"
       - "backend/app/services/file_version_service.py"
       - "backend/alembic/versions/0146_file_center_access_and_clients.py"
       - "backend/tests/test_file_access_service.py"
@@ -108,6 +110,7 @@ jobs:
             backend/app/api/v1/file_contract.py \
             backend/app/models/file.py \
             backend/app/services/file_access_service.py \
+            backend/app/services/file_access_resolvers.py \
             backend/app/services/file_version_service.py \
             backend/alembic/versions/0146_file_center_access_and_clients.py
       - name: Resolver and status unit tests
