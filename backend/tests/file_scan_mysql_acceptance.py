@@ -5,6 +5,7 @@ import asyncio
 import io
 import os
 import shutil
+import time
 import zipfile
 from dataclasses import replace
 from pathlib import Path
@@ -113,6 +114,20 @@ def cleanup() -> None:
         db.close()
 
 
+def run_worker_until_result(worker_id: str, *, client=None, timeout_seconds: float = 3.0) -> dict:
+    """模拟常驻 worker 的真实轮询，兼容 MySQL DATETIME 秒级精度。"""
+    from app.services.file_scan_service import process_next_scan_job
+
+    deadline = time.monotonic() + timeout_seconds
+    last = {"processed": False, "reason": "not-started"}
+    while time.monotonic() < deadline:
+        last = process_next_scan_job(worker_id, client=client)
+        if last.get("processed") or last.get("error"):
+            return last
+        time.sleep(0.2)
+    return last
+
+
 def assert_scan_result(result: dict, expected: str) -> None:
     assert result.get("scanStatus") == expected, (
         f"expected {expected}, worker returned: {result!r}; queue={queue_snapshot()!r}"
@@ -128,7 +143,7 @@ def main() -> None:
     from app.core.context import set_current_user, set_tenant
     from app.services.clamav_client import ClamAVClient
     from app.services.file_scan_config import get_file_scan_config
-    from app.services.file_scan_service import assert_file_ready_for_business, process_next_scan_job
+    from app.services.file_scan_service import assert_file_ready_for_business
     from app.services.storage import reset_backend
 
     set_tenant({"tenantId": TENANT_ID, "tenantCode": "file-stage1"})
@@ -142,7 +157,7 @@ def main() -> None:
         assert infected["status"] == "QUARANTINED"
         assert infected["scanStatus"] == "PENDING"
         assert_gate(infected["fileId"], "FILE_NOT_READY")
-        result = process_next_scan_job("acceptance-real-clamav")
+        result = run_worker_until_result("acceptance-real-clamav")
         assert_scan_result(result, "INFECTED")
         infected_row = row(infected["fileId"])
         assert infected_row.status == "REJECTED"
@@ -158,7 +173,7 @@ def main() -> None:
         assert office["status"] == "QUARANTINED"
         assert office["scanRequired"] is True
         assert_gate(office["fileId"], "FILE_NOT_READY")
-        result = process_next_scan_job("acceptance-real-clamav")
+        result = run_worker_until_result("acceptance-real-clamav")
         assert_scan_result(result, "CLEAN")
         office_row = row(office["fileId"])
         assert office_row.status == "AVAILABLE"
@@ -168,14 +183,14 @@ def main() -> None:
         package = upload("evidence.zip", zip_bytes(), "application/zip", "ARCHIVE_PACKAGE")
         assert package["status"] == "QUARANTINED"
         assert package["scanRequired"] is True
-        result = process_next_scan_job("acceptance-real-clamav")
+        result = run_worker_until_result("acceptance-real-clamav")
         assert_scan_result(result, "CLEAN")
         assert row(package["fileId"]).status == "AVAILABLE"
 
         outage = upload("outage.txt", b"clean but scanner unavailable", "text/plain", "ATTACHMENT")
         base = get_file_scan_config()
         unavailable = ClamAVClient(replace(base, host="127.0.0.1", port=9, connect_timeout=0.1))
-        result = process_next_scan_job("acceptance-outage", client=unavailable)
+        result = run_worker_until_result("acceptance-outage", client=unavailable)
         assert result.get("error"), result
         outage_row = row(outage["fileId"])
         assert outage_row.status == "QUARANTINED"
