@@ -7,7 +7,7 @@ from pathlib import Path
 runner = Path(__file__).with_name("apply_miniapp_stage_a.py")
 source = runner.read_text(encoding="utf-8")
 
-pattern = re.compile(
+teacher_pattern = re.compile(
     r'''text = replace_once\(\n'''
     r'''    text,\n'''
     r'''    "export const mobileTeacherTodos = \(\) => realRequest\('/mobile/teacher/todos'\)\\n",\n'''
@@ -16,8 +16,7 @@ pattern = re.compile(
     r'''\)''',
     re.S,
 )
-
-replacement = r'''text = replace_once(
+teacher_replacement = r'''text = replace_once(
     text,
     "/* 教师端·工作台：真实摘要、真实待办、真实风险；任一主摘要失败必须显式报错，不回落 mock。 */",
     """/* 教师端·移动聚合兼容导出 */
@@ -43,9 +42,31 @@ export const teacherRiskStudentsPage = (level = 'all', page = 1, pageSize = 20) 
 /* 教师端·工作台：真实摘要、真实待办、真实风险；任一主摘要失败必须显式报错，不回落 mock。 */""",
     "real API teacher pages",
 )'''
+source, teacher_count = teacher_pattern.subn(teacher_replacement, source, count=1)
+if teacher_count != 1:
+    raise RuntimeError(f"failed to hotfix teacher page anchor: matches={teacher_count}")
 
-updated, count = pattern.subn(replacement, source, count=1)
-if count != 1:
-    raise RuntimeError(f"failed to hotfix teacher page anchor: matches={count}")
-runner.write_text(updated, encoding="utf-8")
-print("stage A runner anchor hotfixed")
+message_pattern = re.compile(
+    r'''text = replace_once\(\n'''
+    r'''    text,\n'''
+    r'''.*?'''
+    r'''    "real API student messages page",\n'''
+    r'''\)''',
+    re.S,
+)
+message_replacement = r'''text = replace_once(
+    text,
+    "export const getMessageDetail = (id) =>\n",
+    """export const selfMessagesPage = (tab = 'todo', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/me/messages-page?tab=${encodeURIComponent(tab)}&page=${page}&pageSize=${pageSize}`)
+
+export const getMessageDetail = (id) =>
+""",
+    "real API student messages page",
+)'''
+source, message_count = message_pattern.subn(message_replacement, source, count=1)
+if message_count != 1:
+    raise RuntimeError(f"failed to hotfix student message anchor: matches={message_count}")
+
+runner.write_text(source, encoding="utf-8")
+print("stage A runner anchors hotfixed")
