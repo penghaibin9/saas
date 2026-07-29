@@ -352,20 +352,24 @@ def list_all_contacts(user, receipt_status=None, page=1, page_size=50):
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        conds = [FamilyContactLog.tenant_id == _tid()]
-        if receipt_status:
-            conds.append(FamilyContactLog.receipt_status == receipt_status)
-        rows = db.scalars(select(FamilyContactLog).where(*conds).order_by(
+        rows = db.scalars(select(FamilyContactLog).where(
+            FamilyContactLog.tenant_id == _tid()).order_by(
             FamilyContactLog.id.desc())).all()
-        out = []
+        scoped = []
         for x in rows:
             s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
             if allowed is not None and (not s or s.class_id not in allowed):
                 continue
-            out.append(_fc_row(x, s))
+            scoped.append(_fc_row(x, s))
+        status_counts = {
+            "ALL": len(scoped),
+            "PENDING": sum(1 for row in scoped if row["receiptStatus"] == "PENDING"),
+            "RECEIVED": sum(1 for row in scoped if row["receiptStatus"] == "RECEIVED"),
+        }
+        out = [row for row in scoped if not receipt_status or row["receiptStatus"] == receipt_status]
         total = len(out)
         start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out[start:start + page_size], total, status_counts
 
 
 def mark_receipt(contact_id, user, note="") -> dict:

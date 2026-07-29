@@ -28,9 +28,12 @@ def test_family_receipt_flow(client, db_mode):
     sid = db_mode["student"]
     cid = _seed_contact(sid)
     # 全局列表含该条，默认待回执
-    lst = client.get(f"{BASE}/family-contacts", headers=hdr).json()["data"]["items"]
+    listed = client.get(f"{BASE}/family-contacts", headers=hdr).json()["data"]
+    lst = listed["items"]
     row = next(x for x in lst if x["contactId"] == str(cid))
     assert row["receiptStatus"] == "PENDING"
+    assert listed["statusCounts"]["ALL"] >= 1
+    assert listed["statusCounts"]["PENDING"] >= 1
     # 按待回执筛
     pend = client.get(f"{BASE}/family-contacts", headers=hdr, params={"receiptStatus": "PENDING"}).json()["data"]["items"]
     assert any(x["contactId"] == str(cid) for x in pend)
@@ -41,5 +44,9 @@ def test_family_receipt_flow(client, db_mode):
     # 重复回执 → 冲突
     assert client.post(f"{BASE}/family-contacts/{cid}/receipt", headers=hdr, json={"note": "x"}).json()["code"] != 0
     # 已回执筛得到
-    recv = client.get(f"{BASE}/family-contacts", headers=hdr, params={"receiptStatus": "RECEIVED"}).json()["data"]["items"]
+    received_data = client.get(
+        f"{BASE}/family-contacts", headers=hdr, params={"receiptStatus": "RECEIVED"}
+    ).json()["data"]
+    recv = received_data["items"]
     assert any(x["contactId"] == str(cid) for x in recv)
+    assert received_data["statusCounts"]["RECEIVED"] >= 1

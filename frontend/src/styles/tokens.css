@@ -99,6 +99,15 @@
   --primary-500: var(--pri-500);
   --primary-600: var(--pri);
   --primary-700: var(--pri-h);
+  /* 兼容历史业务页的语义命名，避免变量缺失造成文字/背景不可见。 */
+  --color-primary: var(--primary-600);
+  --color-primary-light: var(--primary-50);
+  --color-danger: var(--danger-600);
+  --color-warning: var(--warning-600);
+  --color-bg-subtle: var(--bg-section);
+  --color-border: var(--border-base);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
 
   /* ========== V1 兼容：状态语义色（不随主题变） ========== */
   --success-50: var(--ok-l);

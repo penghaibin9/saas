@@ -1305,8 +1305,8 @@ class ReceiptBody(BaseModel):
 @router.get("/family-contacts", summary="家校联系记录（全局，数据范围，可按回执状态筛）")
 def family_contacts_all(receiptStatus: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                         user=Depends(require_permission("studentAffairs.homeSchool.view"))):
-    items, total = talk_svc.list_all_contacts(user, receiptStatus, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    items, total, status_counts = talk_svc.list_all_contacts(user, receiptStatus, page, pageSize)
+    return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
 @router.post("/family-contacts/{contactId}/receipt", summary="登记家长回执（待回执→已回执）")

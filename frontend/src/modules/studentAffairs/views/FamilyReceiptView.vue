@@ -7,8 +7,22 @@
         <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
       </div>
       <AppSectionCard title="家校联系记录">
-        <div class="fr-filters">
-          <button v-for="f in statusFilters" :key="f.key" type="button" class="fr-chip" :class="{ 'is-on': activeStatus===f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
+        <div class="fr-filters" role="tablist" aria-label="回执状态筛选">
+          <button
+            v-for="f in statusFilters"
+            :key="f.key"
+            type="button"
+            role="tab"
+            class="fr-chip"
+            :class="{ 'is-on': activeStatus===f.key }"
+            :aria-selected="activeStatus===f.key"
+            :disabled="filtering"
+            @click="setStatus(f.key)"
+          >
+            <span>{{ f.label }}</span>
+            <strong>{{ filterCount(f.key) }}</strong>
+          </button>
+          <span v-if="filtering" class="fr-filtering" role="status">正在筛选…</span>
         </div>
         <DataTable v-if="items.length" :columns="contactColumns" :rows="items" row-key="contactId">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
@@ -76,7 +90,8 @@ export default {
   data() {
     return {
       contactColumns: CONTACT_COLUMNS,
-      loading: true, acting: '', errorMessage: '', all: [], items: [], statusCounts: null, activeStatus: '', statusFilters: STATUS_FILTERS,
+      loading: true, filtering: false, acting: '', errorMessage: '', items: [], statusCounts: null,
+      activeStatus: '', loadedStatus: '', statusFilters: STATUS_FILTERS,
       recDlg: { visible: false, contactId: '', who: '', note: '' }
     }
   },
@@ -94,23 +109,33 @@ export default {
   mounted() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
-    async load() {
-      this.loading = true; this.errorMessage = ''
+    async load({ preserveContent = false } = {}) {
+      if (preserveContent) this.filtering = true
+      else this.loading = true
+      this.errorMessage = ''
       const res = await studentAffairsApi.getFamilyContactsAll({ receiptStatus: this.activeStatus })
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
         this.statusCounts = res.data.statusCounts || null
-        if (!this.activeStatus) this.all = this.items
-      } else { this.errorMessage = res.message || '加载失败' }
-      // 指标始终基于全量
-      if (this.activeStatus) {
-        const full = await studentAffairsApi.getFamilyContactsAll({})
-        this.all = (full.code === 0 && full.data) ? (full.data.items || []) : this.all
-        this.statusCounts = (full.code === 0 && full.data) ? (full.data.statusCounts || null) : this.statusCounts
+        this.loadedStatus = this.activeStatus
+      } else if (preserveContent) {
+        this.activeStatus = this.loadedStatus
+        toast.error(res.message || '筛选失败，请重试')
+      } else {
+        this.errorMessage = res.message || '加载失败'
       }
       this.loading = false
+      this.filtering = false
     },
-    setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
+    setStatus(k) {
+      if (this.activeStatus === k || this.filtering) return
+      this.activeStatus = k
+      this.load({ preserveContent: true })
+    },
+    filterCount(status) {
+      if (this.statusCounts === null) return '—'
+      return this.statusCounts[status || 'ALL'] || 0
+    },
     markReceipt(c) {
       this.recDlg = { visible: true, contactId: c.contactId, who: c.realName || c.studentNo || '该生', note: '' }
     },
@@ -135,9 +160,15 @@ export default {
 
 <style scoped>
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.fr-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
-.fr-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
-.fr-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.fr-filters { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.fr-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; border: 1px solid var(--border-light); background: var(--bg-card); color: var(--text-secondary); border-radius: var(--radius-full); padding: 5px 12px 5px 14px; font-size: var(--font-size-sm); font-weight: 600; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease; }
+.fr-chip strong { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: var(--radius-full); background: var(--gray-100); color: var(--text-secondary); font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.fr-chip:hover:not(:disabled) { border-color: var(--primary-400, #60a5fa); color: var(--primary-700, #1d4ed8); }
+.fr-chip.is-on { background: var(--primary-600, #2563eb); color: var(--text-inverse, #fff); border-color: var(--primary-600, #2563eb); box-shadow: 0 4px 12px rgba(37, 99, 235, .2); }
+.fr-chip.is-on strong { background: rgba(255, 255, 255, .2); color: #fff; }
+.fr-chip:focus-visible { outline: 3px solid var(--primary-100, #dbeafe); outline-offset: 2px; }
+.fr-chip:disabled { cursor: wait; opacity: .72; }
+.fr-filtering { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fr-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 220px; }
 .fr-note { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }

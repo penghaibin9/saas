@@ -1,10 +1,25 @@
 <template>
-  <div class="app-global-state">
-    <!-- ready：正常渲染业务内容 -->
-    <slot v-if="state === 'ready'" />
+  <div
+    class="app-global-state"
+    :class="{ 'app-global-state--refreshing': state === 'loading' && hasReadyContent }"
+    :aria-busy="state === 'loading' ? 'true' : 'false'"
+  >
+    <!-- ready：正常渲染业务内容；二次刷新时保留已加载内容，避免整页闪白。 -->
+    <slot v-if="state === 'ready' || (state === 'loading' && hasReadyContent)" />
 
-    <!-- loading：骨架屏，不显示空白页面 -->
-    <div v-else-if="state === 'loading'" class="ags-panel ags-loading" aria-busy="true">
+    <!-- 已有内容后的刷新只显示轻量状态，不卸载业务区。 -->
+    <div
+      v-if="state === 'loading' && hasReadyContent"
+      class="ags-refreshing"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="ags-refreshing__spinner" aria-hidden="true" />
+      {{ loadingText }}
+    </div>
+
+    <!-- 首次 loading：使用骨架屏。 -->
+    <div v-else-if="state === 'loading'" class="ags-panel ags-loading">
       <div class="ags-skeleton ags-skeleton--title" />
       <div class="ags-skeleton" />
       <div class="ags-skeleton" />
@@ -13,7 +28,7 @@
     </div>
 
     <!-- 其余状态：图标 + 标题 + 说明 + 操作按钮 -->
-    <div v-else class="ags-panel" :class="`ags-${state}`" role="status">
+    <div v-else-if="state !== 'ready'" class="ags-panel" :class="`ags-${state}`" role="status">
       <div class="ags-icon" :class="`ags-icon--${state}`">{{ meta.icon }}</div>
       <div class="ags-title">{{ title || meta.title }}</div>
       <div class="ags-desc">{{ description || meta.description }}</div>
@@ -127,6 +142,16 @@ export default {
     loadingText: { type: String, default: '正在加载…' }
   },
   emits: ['retry', 'back', 'contact'],
+  data() {
+    return {
+      hasReadyContent: this.state === 'ready'
+    }
+  },
+  watch: {
+    state(value) {
+      if (value === 'ready') this.hasReadyContent = true
+    }
+  },
   computed: {
     meta() {
       return STATE_META[this.state] || STATE_META.error
@@ -137,7 +162,35 @@ export default {
 
 <style scoped>
 .app-global-state {
+  position: relative;
   width: 100%;
+}
+.ags-refreshing {
+  position: absolute;
+  z-index: 8;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--primary-100, #dbeafe);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-sm);
+  color: var(--primary-700, #1d4ed8);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  pointer-events: none;
+}
+.ags-refreshing__spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--primary-100, #dbeafe);
+  border-top-color: var(--primary-600, #2563eb);
+  border-radius: 50%;
+  animation: ags-spin 0.75s linear infinite;
 }
 .ags-panel {
   display: flex;
@@ -265,6 +318,17 @@ export default {
   }
   100% {
     background-position: -200% 0;
+  }
+}
+@keyframes ags-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ags-skeleton,
+  .ags-refreshing__spinner {
+    animation: none;
   }
 }
 </style>

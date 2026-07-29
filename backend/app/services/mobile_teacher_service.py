@@ -517,7 +517,7 @@ def affairs_family_contact_list(user: dict, receipt_status: str | None = None) -
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_talk_service as talk_svc
-    items, total = talk_svc.list_all_contacts(u, receipt_status, 1, 50)
+    items, total, _ = talk_svc.list_all_contacts(u, receipt_status, 1, 50)
     return {"list": items, "total": total}
 
 
