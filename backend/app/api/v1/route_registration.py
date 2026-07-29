@@ -1,6 +1,7 @@
 """按域注册 /api/v1 路由（路径/依赖与历史 router.py 完全一致，仅拆分维护）。"""
 from __future__ import annotations
 
+import copy
 import importlib
 
 from fastapi import APIRouter, Depends
@@ -41,8 +42,8 @@ def _aa_route_signature(route: APIRoute) -> tuple[str, frozenset[str]]:
     return route.path, frozenset((route.methods or set()) - {"HEAD", "OPTIONS"})
 
 
-def _prepare_academic_affairs_route_overrides() -> tuple[APIRouter, list]:
-    """构建前暂时屏蔽被扩展端点精确替换的旧路由，调用方负责恢复基础 Router。"""
+def _prepare_academic_affairs_route_overrides():
+    """临时替换模块级基础 Router，让嵌套聚合器永久引用过滤后的独立副本。"""
     from app.modules.academic_affairs.routers import academic_affairs as base_router
     from app.modules.academic_affairs.routers import academic_affairs_bundle as bundle
     from app.modules.academic_affairs.routers import scheduling_rule_router
@@ -69,13 +70,18 @@ def _prepare_academic_affairs_route_overrides() -> tuple[APIRouter, list]:
         ("/academic-affairs/scheduling/rules", frozenset({"GET"})),
         ("/academic-affairs/scheduling/rules/{rule_id}", frozenset({"DELETE"})),
     })
-    original_routes = list(base_router.router.routes)
-    base_router.router.routes[:] = [
+
+    original_router = base_router.router
+    filtered_router = copy.copy(original_router)
+    filtered_router.routes = [
         route
-        for route in original_routes
+        for route in original_router.routes
         if not isinstance(route, APIRoute) or _aa_route_signature(route) not in replacement_signatures
     ]
-    return base_router.router, original_routes
+    # FastAPI 0.139+ 的 include_router 保存子 Router 引用而非立即扁平复制。必须临时替换
+    # 整个 Router 对象，不能修改后再恢复同一个对象的 routes，否则重复路由会重新出现。
+    base_router.router = filtered_router
+    return base_router, original_router
 
 
 def register_core_routes(api_router: APIRouter) -> None:
@@ -120,11 +126,11 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
     from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
-    base_router, original_routes = _prepare_academic_affairs_route_overrides()
+    base_router, original_router = _prepare_academic_affairs_route_overrides()
     try:
         academic_affairs.router = academic_affairs.build_router()
     finally:
-        base_router.routes[:] = original_routes
+        base_router.router = original_router
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
 
@@ -246,10 +252,10 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(excel.router)
     api_router.include_router(employment.router, dependencies=deps["employment"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
-    base_router, original_routes = _prepare_academic_affairs_route_overrides()
+    base_router, original_router = _prepare_academic_affairs_route_overrides()
     try:
         academic_affairs.router = academic_affairs.build_router()
     finally:
-        base_router.routes[:] = original_routes
+        base_router.router = original_router
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
     register_platform_routes(api_router)
