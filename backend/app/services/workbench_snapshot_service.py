@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from sqlalchemy import case, func, select
 
+from app.core.exceptions import AppException
 from app.services.db_service import _tid, session
 from app.services import workbench_todo_service as todo_svc
 
@@ -62,7 +63,14 @@ def snapshot(user: dict, page_size: int = 8) -> dict:
                               .limit(size)).all()
             items = [todo_svc._todo_dict(item) for item in rows]
 
-    messages = message_svc.count_messages(user)
+    try:
+        messages = message_svc.count_messages(user)
+    except AppException as exc:
+        if exc.code != "NO_PERMISSION":
+            raise
+        # 消息权限是独立能力。没有消息查看权限时只隐藏角标，不能拖垮待办工作台。
+        messages = {"unread": 0, "pendingAck": 0}
+
     role = str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "")
     return {
         "summary": {**summary, "role": role},
