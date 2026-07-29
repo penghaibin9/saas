@@ -130,7 +130,6 @@ def main() -> None:
             "userId": 1001,
             "userType": "STUDENT",
             "studentNo": "S-100",
-            "permissions": [],
         }
         set_current_user(allowed_student)
         assert require_file_access(student_file_id, user=allowed_student, action="meta").id
@@ -139,15 +138,14 @@ def main() -> None:
             "userId": 1002,
             "userType": "STUDENT",
             "studentNo": "S-200",
-            "permissions": [],
         }
         assert_hidden(lambda: require_file_access(student_file_id, user=other_student, action="meta"))
 
         allowed_batch = {
             "userId": 2001,
             "userType": "TEACHER",
+            "currentRoleCode": "GD_COLLEGE_ADMIN",
             "allowedBatchIds": ["B-100"],
-            "permissions": ["graduationDesign.view"],
         }
         set_current_user(allowed_batch)
         assert require_file_access(batch_file_id, user=allowed_batch, action="meta").id
@@ -155,23 +153,25 @@ def main() -> None:
         other_batch = {
             "userId": 2002,
             "userType": "TEACHER",
+            "currentRoleCode": "GD_COLLEGE_ADMIN",
             "allowedBatchIds": ["B-200"],
-            "permissions": ["graduationDesign.view"],
         }
         assert_hidden(lambda: require_file_access(batch_file_id, user=other_batch, action="meta"))
 
         no_scope = {
             "userId": 2003,
             "userType": "TEACHER",
-            "permissions": ["graduationDesign.view"],
+            "currentRoleCode": "GD_COLLEGE_ADMIN",
         }
         assert_hidden(lambda: require_file_access(batch_file_id, user=no_scope, action="meta"))
 
+        # permissions 数组不是后端权威权限来源；伪造它不能让 STAFF 提权。
         no_permission = {
             "userId": 2004,
             "userType": "TEACHER",
+            "currentRoleCode": "STAFF",
             "allowedBatchIds": ["B-100"],
-            "permissions": [],
+            "permissions": ["*", "graduationDesign.view"],
         }
         assert_hidden(lambda: require_file_access(batch_file_id, user=no_permission, action="meta"))
 
