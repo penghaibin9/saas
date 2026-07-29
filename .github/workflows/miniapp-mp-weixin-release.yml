@@ -1,4 +1,4 @@
-name: 小程序阶段A补丁验证与产物
+name: 小程序阶段A验证与精确收口
 
 on:
   workflow_dispatch:
@@ -10,28 +10,19 @@ on:
       - scripts/maintenance/hotfix_stage_a_runner.py
       - scripts/maintenance/hotfix_stage_a_runner_tail.py
       - scripts/maintenance/postprocess_stage_a_patch.py
-      - .github/workflows/miniapp-mp-weixin-release.yml
-  pull_request:
-    branches:
-      - main
-    paths:
-      - miniapp/**
-      - backend/app/api/v1/mobile.py
-      - backend/app/services/mobile_student_service.py
-      - backend/app/services/mobile_teacher_service.py
-      - backend/tests/test_mobile_stage_a_contracts.py
+      - scripts/maintenance/finalize_stage_a_branch.py
       - .github/workflows/miniapp-mp-weixin-release.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: miniapp-stage-a-patch-${{ github.event.pull_request.number || github.ref }}
+  group: miniapp-stage-a-finalize
   cancel-in-progress: true
 
 jobs:
-  apply-verify-package:
-    name: 应用补丁、MySQL验证与源码产物
+  verify-and-commit:
+    name: 验证源码并精确提交
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -77,7 +68,7 @@ jobs:
           cache: npm
           cache-dependency-path: miniapp/package-lock.json
 
-      - name: 应用阶段A精确补丁
+      - name: 应用已经验证的阶段A补丁
         run: |
           python scripts/maintenance/hotfix_stage_a_runner.py
           python scripts/maintenance/hotfix_stage_a_runner_tail.py
@@ -91,7 +82,7 @@ jobs:
           CHANGED=$(git diff --name-only HEAD --)
           printf '%s\n' "$CHANGED"
           if printf '%s\n' "$CHANGED" | grep -E '(^|/)(file-center|file_center)(/|$)|miniapp/src/services/fileApi\.js|miniapp/src/services/fileCenter\.js|miniapp/src/stores/uploadQueue\.js|miniapp/src/components/file-center/|^backend/alembic/versions/|^miniapp/src/pages\.json$'; then
-            echo "阶段A触碰禁区"
+            echo "阶段A触碰公共文件中心、迁移或 pages.json 禁区"
             exit 1
           fi
 
@@ -142,33 +133,6 @@ jobs:
       - name: 差异格式检查
         run: git diff --check
 
-      - name: 上传阶段A源码补丁
-        uses: actions/upload-artifact@v4
-        with:
-          name: miniapp-stage-a-source-patch
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            backend/app/api/v1/mobile.py
-            backend/app/services/mobile_student_service.py
-            backend/app/services/mobile_teacher_service.py
-            backend/tests/test_mobile_stage_a_contracts.py
-            miniapp/package.json
-            miniapp/docs/mp-weixin-subpackage-candidates.md
-            miniapp/tests/stage-a-contract.test.mjs
-            miniapp/src/pages/student/home/index.vue
-            miniapp/src/pages/student/messages/index.vue
-            miniapp/src/pages/teacher/workbench/index.vue
-            miniapp/src/pages/teacher/todos/index.vue
-            miniapp/src/pages/teacher/risk-students/index.vue
-            miniapp/src/services/request.js
-            miniapp/src/services/realApi.js
-            miniapp/src/services/studentApi.js
-            miniapp/src/services/teacherApi.js
-            miniapp/src/stores/session.js
-            miniapp/src/stores/internshipContext.js
-            miniapp/src/utils/viewFreshness.js
-
       - name: 上传微信开发者工具导入目录
         uses: actions/upload-artifact@v4
         with:
@@ -176,3 +140,43 @@ jobs:
           path: miniapp/dist/build/mp-weixin
           if-no-files-found: error
           retention-days: 14
+
+      - name: 恢复永久闸门并精确提交
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/maintenance/finalize_stage_a_branch.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/miniapp-mp-weixin-release.yml \
+            .github/workflows/miniapp-stage-a-autofix.yml \
+            scripts/maintenance/apply_miniapp_stage_a.py \
+            scripts/maintenance/hotfix_stage_a_runner.py \
+            scripts/maintenance/hotfix_stage_a_runner_tail.py \
+            scripts/maintenance/postprocess_stage_a_patch.py \
+            scripts/maintenance/finalize_stage_a_branch.py \
+            backend/app/api/v1/mobile.py \
+            backend/app/services/mobile_student_service.py \
+            backend/app/services/mobile_teacher_service.py \
+            backend/tests/test_mobile_stage_a_contracts.py \
+            miniapp/package.json \
+            miniapp/docs/mp-weixin-subpackage-candidates.md \
+            miniapp/tests/stage-a-contract.test.mjs \
+            miniapp/src/pages/student/home/index.vue \
+            miniapp/src/pages/student/messages/index.vue \
+            miniapp/src/pages/teacher/workbench/index.vue \
+            miniapp/src/pages/teacher/todos/index.vue \
+            miniapp/src/pages/teacher/risk-students/index.vue \
+            miniapp/src/services/request.js \
+            miniapp/src/services/realApi.js \
+            miniapp/src/services/studentApi.js \
+            miniapp/src/services/teacherApi.js \
+            miniapp/src/stores/session.js \
+            miniapp/src/stores/internshipContext.js \
+            miniapp/src/utils/viewFreshness.js
+          echo "精确暂存文件："
+          git diff --cached --name-only
+          git diff --cached --check
+          git commit -m "perf(miniapp): close stage A non-file P0 issues"
+          git push origin HEAD:agent/miniapp-mp-weixin-release-hardening-20260729
