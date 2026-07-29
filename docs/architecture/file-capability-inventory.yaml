@@ -512,11 +512,11 @@ entries:
 - module: file-center
   client: shared
   route: inventory://file-center/shared
-  page: miniapp/src/services/fileApi.js
-  action: upload+download
+  page: miniapp/src/services/fileSdk.js
+  action: download
   fileCategory: MIXED
   api: multiple; see notes
-  backendService: miniapp/src/services/fileApi.js
+  backendService: miniapp/src/services/fileSdk.js
   storageMode: mixed
   authMode: existing endpoint guard; verify in target phase
   dataScope: existing business scope; verify in target phase
@@ -529,8 +529,8 @@ entries:
   archive: false
   status: needs-verification
   risk: P0
-  targetPhase: '1'
-  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/services/fileApi.js. representative routes: -'
+  targetPhase: '3'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/services/fileSdk.js. representative routes: /files/download/${enc(fileId)}, /files/download/${enc(id)}'
 - module: file-center
   client: student-pc
   route: inventory://file-center/student-pc
