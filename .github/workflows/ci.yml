@@ -291,6 +291,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             backend/app/services/mobile_teacher_service.py \
+            backend/app/services/affairs_student_contract_service.py \
             backend/tests/test_mobile.py \
             backend/tests/test_mobile_aa_student_v2.py \
             backend/tests/test_mobile_attendance.py \
