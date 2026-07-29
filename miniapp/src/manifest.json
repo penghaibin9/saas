@@ -12,8 +12,9 @@
   "quickapp": {},
   "mp-weixin": {
     "appid": "",
-    "setting": { "urlCheck": false, "es6": true, "minified": true },
+    "setting": { "urlCheck": true, "es6": true, "minified": true },
     "usingComponents": true,
+    "lazyCodeLoading": "requiredComponents",
     "__usePrivacyCheck__": false
   },
   "h5": {
