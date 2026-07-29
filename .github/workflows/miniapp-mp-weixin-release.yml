@@ -9,12 +9,19 @@ on:
       - miniapp/**
       - scripts/check/scan-fixed-demo-credentials.mjs
       - .github/workflows/miniapp-mp-weixin-release.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - miniapp/**
+      - scripts/check/scan-fixed-demo-credentials.mjs
+      - .github/workflows/miniapp-mp-weixin-release.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: miniapp-mp-weixin-release-${{ github.ref }}
+  group: miniapp-mp-weixin-release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
