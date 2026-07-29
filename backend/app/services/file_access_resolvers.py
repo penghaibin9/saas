@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import select
+
 from app.core.permissions import has_permission
 from app.services.file_access_service import (
     _FILE_VIEW_PERMISSION,
@@ -69,6 +71,32 @@ def affairs_archive_resolver(db, file_obj, bindings: list[Any], user: dict, acti
         from app.core.affairs_security import build_affairs_context
 
         build_affairs_context(user or {}, db).require_student(db, int(student_id))
+        return True
+    except Exception:
+        return False
+
+
+@register_file_resolver("MATERIAL_REQUIREMENT")
+def material_requirement_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """学工补材料附件：业务权限与材料目标学生范围必须同时成立。"""
+    raw_id = str(file_obj.biz_id or "").strip()
+    if not raw_id.isdigit() or db is None:
+        return False
+    try:
+        from app.models.affairs_operations import AffairsMaterialRequirement
+        from app.services import affairs_operations_service as operations
+
+        requirement = db.scalars(select(AffairsMaterialRequirement).where(
+            AffairsMaterialRequirement.tenant_id == int(file_obj.tenant_id),
+            AffairsMaterialRequirement.id == int(raw_id),
+            AffairsMaterialRequirement.is_deleted.is_(False),
+        )).first()
+        if not requirement:
+            return False
+        permissions = operations._BIZ_PERMISSIONS.get(requirement.biz_type, ())
+        if not any(has_permission(user or {}, code) for code in permissions):
+            return False
+        operations._require_student_scope(db, requirement.student_id, user or {})
         return True
     except Exception:
         return False
