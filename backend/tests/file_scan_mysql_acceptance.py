@@ -90,6 +90,10 @@ def cleanup() -> None:
         db.close()
 
 
+def assert_scan_result(result: dict, expected: str) -> None:
+    assert result.get("scanStatus") == expected, f"expected {expected}, worker returned: {result!r}"
+
+
 def main() -> None:
     required = ("DATABASE_URL", "UPLOAD_DIR", "CLAMAV_HOST", "CLAMAV_PORT")
     missing = [name for name in required if not os.getenv(name)]
@@ -114,7 +118,7 @@ def main() -> None:
         assert infected["scanStatus"] == "PENDING"
         assert_gate(infected["fileId"], "FILE_NOT_READY")
         result = process_next_scan_job("acceptance-real-clamav")
-        assert result["scanStatus"] == "INFECTED", result
+        assert_scan_result(result, "INFECTED")
         infected_row = row(infected["fileId"])
         assert infected_row.status == "REJECTED"
         assert infected_row.scan_status == "INFECTED"
@@ -129,7 +133,7 @@ def main() -> None:
         assert office["status"] == "QUARANTINED"
         assert_gate(office["fileId"], "FILE_NOT_READY")
         result = process_next_scan_job("acceptance-real-clamav")
-        assert result["scanStatus"] == "CLEAN", result
+        assert_scan_result(result, "CLEAN")
         office_row = row(office["fileId"])
         assert office_row.status == "AVAILABLE"
         assert office_row.storage_zone == "ACTIVE"
@@ -138,7 +142,7 @@ def main() -> None:
         package = upload("evidence.zip", zip_bytes(), "application/zip", "ARCHIVE_PACKAGE")
         assert package["status"] == "QUARANTINED"
         result = process_next_scan_job("acceptance-real-clamav")
-        assert result["scanStatus"] == "CLEAN", result
+        assert_scan_result(result, "CLEAN")
         assert row(package["fileId"]).status == "AVAILABLE"
 
         outage = upload("outage.txt", b"clean but scanner unavailable", "text/plain", "ATTACHMENT")
