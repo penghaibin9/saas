@@ -1,0 +1,379 @@
+version: file-capability-inventory/v1
+contract: docs/architecture/file-center-contract.md
+status: DRAFT
+generatedAt: "2026-07-29"
+requiredFields:
+  - module
+  - client
+  - route
+  - page
+  - action
+  - fileCategory
+  - api
+  - backendService
+  - storageMode
+  - authMode
+  - dataScope
+  - versioned
+  - scanGated
+  - preview
+  - download
+  - import
+  - export
+  - archive
+  - status
+  - risk
+  - targetPhase
+entries:
+  - module: file-center
+    client: backend
+    route: /api/v1/files
+    page: "-"
+    action: upload
+    fileCategory: ATTACHMENT
+    api: "POST /api/v1/files"
+    backendService: backend/app/services/file_service.py::store_upload
+    storageMode: configurable
+    authMode: authenticated+rate-limit+object-owner
+    dataScope: tenant+object
+    versioned: false
+    scanGated: partial
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: 1
+    notes: "正式文件创建入口；阶段 0 不裁决是否作为最终唯一入口。源码 backend/app/api/v1/files.py"
+  - module: file-center
+    client: backend
+    route: /api/v1/files/upload
+    page: "-"
+    action: upload
+    fileCategory: ATTACHMENT
+    api: "POST /api/v1/files/upload"
+    backendService: backend/app/services/file_service.py::store_upload
+    storageMode: configurable
+    authMode: authenticated+rate-limit+object-owner
+    dataScope: tenant+object
+    versioned: false
+    scanGated: partial
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: duplicate
+    risk: P1
+    targetPhase: 7
+    notes: "历史真实上传入口；阶段 0 仅登记，不删除。源码 backend/app/api/v1/file.py"
+  - module: file-center
+    client: backend
+    route: /api/v1/files/upload-placeholder
+    page: "-"
+    action: upload
+    fileCategory: PLACEHOLDER
+    api: "POST /api/v1/files/upload-placeholder"
+    backendService: backend/app/api/v1/file.py::upload_placeholder
+    storageMode: temporary
+    authMode: authenticated+non-production-only
+    dataScope: tenant
+    versioned: false
+    scanGated: false
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: legacy
+    risk: P1
+    targetPhase: 7
+    notes: "不落盘并生成假 fileId；仅非生产注册，需核实是否还有调用。"
+  - module: file-center
+    client: backend
+    route: /api/v1/files/meta/{file_id}
+    page: "-"
+    action: metadata
+    fileCategory: ALL
+    api: "GET /api/v1/files/meta/{file_id}"
+    backendService: backend/app/services/file_service.py::get_file_meta
+    storageMode: configurable
+    authMode: authenticated+object-authorization
+    dataScope: tenant+object
+    versioned: false
+    scanGated: partial
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: 1
+    notes: "源码 backend/app/api/v1/file.py"
+  - module: file-center
+    client: backend
+    route: /api/v1/files/{file_id}/url
+    page: "-"
+    action: preview-url
+    fileCategory: ALL
+    api: "GET /api/v1/files/{file_id}/url"
+    backendService: backend/app/services/file_service.py::get_file_meta
+    storageMode: configurable
+    authMode: authenticated+object-authorization
+    dataScope: tenant+object
+    versioned: false
+    scanGated: partial
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: 3
+    notes: "当前返回同域下载 API，不是对象存储签名 URL。源码 backend/app/api/v1/files.py"
+  - module: file-center
+    client: backend
+    route: /api/v1/files/download/{file_id}
+    page: "-"
+    action: download
+    fileCategory: ALL
+    api: "GET /api/v1/files/download/{file_id}"
+    backendService: backend/app/services/file_service.py::resolve_download
+    storageMode: configurable
+    authMode: authenticated+object-authorization+audit
+    dataScope: tenant+object
+    versioned: false
+    scanGated: partial
+    preview: false
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: 1
+    notes: "统一下载入口之一；源码 backend/app/api/v1/file.py"
+  - module: file-center
+    client: backend
+    route: internal
+    page: "-"
+    action: store-generated-file
+    fileCategory: GENERATED
+    api: internal
+    backendService: backend/app/services/file_service.py::store_bytes
+    storageMode: configurable
+    authMode: service-context+tenant-required
+    dataScope: tenant+object
+    versioned: false
+    scanGated: partial
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: 5
+    notes: "系统生成文件写入公共文件对象。"
+  - module: file-center
+    client: backend
+    route: internal
+    page: "-"
+    action: content-validation
+    fileCategory: ALL
+    api: internal
+    backendService: backend/app/services/file_service.py::store_upload
+    storageMode: configurable
+    authMode: service-context
+    dataScope: tenant
+    versioned: false
+    scanGated: partial
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: 1
+    notes: "超过 8MB 当前使用 Path.read_bytes() 读取全文件，阶段 1 必须消除。"
+  - module: student-affairs
+    client: backend
+    route: /api/v1/student-affairs/attachments
+    page: "-"
+    action: link
+    fileCategory: STUDENT_AFFAIRS_ATTACHMENT
+    api: "POST /api/v1/student-affairs/attachments"
+    backendService: backend/app/services/affairs_attachment_service.py
+    storageMode: configurable
+    authMode: authenticated+business-permission
+    dataScope: tenant+business-object
+    versioned: false
+    scanGated: unknown
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: 1
+    notes: "字节先走公共上传，再做业务回链；必须核实业务提交前是否统一检查文件安全状态。"
+  - module: student-affairs
+    client: backend
+    route: /api/v1/student-affairs/attachments/{attachmentId}/download
+    page: "-"
+    action: download
+    fileCategory: STUDENT_AFFAIRS_ATTACHMENT
+    api: "GET /api/v1/student-affairs/attachments/{attachmentId}/download"
+    backendService: backend/app/services/affairs_attachment_service.py::download_attachment
+    storageMode: configurable
+    authMode: authenticated+business-permission+sensitive-export-audit
+    dataScope: tenant+business-object
+    versioned: false
+    scanGated: unknown
+    preview: false
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: 3
+    notes: "业务专用下载入口，需核实是否复用公共 resolve_download。"
+  - module: graduation
+    client: student-pc
+    route: /portal/graduation/proposal
+    page: student-portal/src
+    action: upload+submit
+    fileCategory: GRADUATION_MATERIAL
+    api: "POST /api/v1/files/upload -> POST /api/v1/portal/graduation/proposal/submit"
+    backendService: backend/app/student_portal/services/graduation_service.py::submit_proposal
+    storageMode: configurable
+    authMode: student-authenticated+owner
+    dataScope: tenant+student-self
+    versioned: unknown
+    scanGated: unknown
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: true
+    status: needs-verification
+    risk: P0
+    targetPhase: 1
+    notes: "已知开题附件先上传再提交 fileId；页面精确源码路径待脚本核实。"
+  - module: graduation
+    client: student-pc
+    route: /portal/graduation/final
+    page: student-portal/src
+    action: upload+submit
+    fileCategory: GRADUATION_MATERIAL
+    api: "POST /api/v1/files/upload -> POST /api/v1/portal/graduation/final/submit"
+    backendService: backend/app/student_portal/services/graduation_service.py
+    storageMode: configurable
+    authMode: student-authenticated+owner
+    dataScope: tenant+student-self
+    versioned: true
+    scanGated: unknown
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: true
+    status: needs-verification
+    risk: P0
+    targetPhase: 1
+    notes: "论文初稿/定稿附件；精确页面和提交服务待脚本核实。"
+  - module: academic-affairs
+    client: admin-pc
+    route: aa-course-materials
+    page: frontend/src
+    action: upload+link
+    fileCategory: COURSE_MATERIAL
+    api: "POST /api/v1/files/upload"
+    backendService: backend/app/modules/academic_affairs
+    storageMode: configurable
+    authMode: authenticated+academicAffairs.course.manage
+    dataScope: tenant+course
+    versioned: unknown
+    scanGated: unknown
+    preview: unknown
+    download: true
+    import: false
+    export: false
+    archive: true
+    status: needs-verification
+    risk: P1
+    targetPhase: 1
+    notes: "课程大纲和课程材料复用 t_file_object；精确页面/API 文件待脚本核实。"
+  - module: import-export
+    client: backend
+    route: /api/v1/import/*
+    page: "-"
+    action: import
+    fileCategory: XLSX_IMPORT
+    api: "/api/v1/import/*"
+    backendService: backend/app/api/v1/import_export.py
+    storageMode: temporary
+    authMode: authenticated+domain-permission
+    dataScope: tenant+domain
+    versioned: false
+    scanGated: unknown
+    preview: false
+    download: true
+    import: true
+    export: false
+    archive: false
+    status: needs-verification
+    risk: P0
+    targetPhase: 4
+    notes: "统一导入路由聚合器；需继续拆分具体端点、模板、校验和错误回执。"
+  - module: import-export
+    client: backend
+    route: /api/v1/export/*
+    page: "-"
+    action: export
+    fileCategory: XLSX_EXPORT
+    api: "/api/v1/export/*"
+    backendService: backend/app/api/v1/import_export.py
+    storageMode: generated
+    authMode: authenticated+domain-permission
+    dataScope: tenant+domain
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: needs-verification
+    risk: P0
+    targetPhase: 5
+    notes: "统一导出路由聚合器；需核实同步/异步、审计和敏感字段。"
+  - module: system-migration
+    client: backend
+    route: /api/v1/migration/*
+    page: "-"
+    action: import+export
+    fileCategory: MIGRATION_XLSX
+    api: "/api/v1/migration/*"
+    backendService: backend/app/api/v1/migration.py
+    storageMode: temporary
+    authMode: authenticated+platform-or-school-admin
+    dataScope: tenant+domain
+    versioned: false
+    scanGated: unknown
+    preview: false
+    download: true
+    import: true
+    export: true
+    archive: true
+    status: needs-verification
+    risk: P0
+    targetPhase: 4
+    notes: "老系统数据迁移能力；需逐域登记。"
