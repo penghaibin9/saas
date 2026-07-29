@@ -1,6 +1,7 @@
 /**
  * 教师/管理 PC 工作台真实数据入口。
- * 所有业务可见性仍由后端裁定；这里只治理相同 GET 的 single-flight、短缓存与写后失效。
+ * 默认工作台摘要、分类、最近待办和消息角标共用一个后端快照；
+ * 权限与数据范围仍由后端统一裁定。
  */
 import { request } from '@/services/http'
 import { getToken } from '@/services/http/client'
@@ -23,29 +24,45 @@ function workbenchRead(name, path, options = {}, ttl = 5_000) {
   )
 }
 
-/** 待办汇总：{ role, pending, overdue, nearDeadline, doneToday } */
-export function fetchTodoSummary() {
-  return workbenchRead('todo-summary', '/todos/summary', {}, 8_000)
+export function fetchWorkbenchSnapshot() {
+  return workbenchRead(
+    'snapshot',
+    '/admin/workbench-snapshot',
+    { params: { pageSize: 8 } },
+    5_000
+  )
 }
 
-/** 待办分类计数：{ total, byType } */
-export function fetchTodoCount() {
-  return workbenchRead('todo-count', '/admin/todos/count', {}, 8_000)
+export async function fetchTodoSummary() {
+  const snapshot = await fetchWorkbenchSnapshot()
+  return snapshot?.summary || { role: '', pending: 0, overdue: 0, nearDeadline: 0, doneToday: 0 }
 }
 
-/** 待办列表：首屏固定最多 8 条，完整列表进入待办页服务端分页。 */
+export async function fetchTodoCount() {
+  const snapshot = await fetchWorkbenchSnapshot()
+  return snapshot?.count || { total: 0, byType: {} }
+}
+
 export function fetchTodoList(params = {}) {
-  const safe = { status: 'PENDING', page: 1, pageSize: 8, ...params }
-  safe.pageSize = Math.min(50, Math.max(1, Number(safe.pageSize) || 8))
-  return workbenchRead('todo-list', '/admin/todos', { params: safe }, 5_000)
+  const requested = { status: 'PENDING', page: 1, pageSize: 8, ...params }
+  requested.pageSize = Math.min(50, Math.max(1, Number(requested.pageSize) || 8))
+  const isWorkbenchDefault = requested.status === 'PENDING'
+    && Number(requested.page || 1) === 1
+    && !requested.todoType
+    && requested.pageSize <= 8
+  if (isWorkbenchDefault) {
+    return fetchWorkbenchSnapshot().then((snapshot) => snapshot?.todos || {
+      items: [], total: 0, page: 1, pageSize: requested.pageSize, hasMore: false
+    })
+  }
+  return workbenchRead('todo-list', '/admin/todos', { params: requested }, 5_000)
 }
 
-/** 未读消息数：{ unread, pendingAck } */
-export function fetchMessageCount() {
-  return workbenchRead('message-count', '/admin/messages/count', {}, 5_000)
+export async function fetchMessageCount() {
+  const snapshot = await fetchWorkbenchSnapshot()
+  return snapshot?.messages || { unread: 0, pendingAck: 0 }
 }
 
-/** 确认类待办完成后，主动失效工作台摘要；审批类仍进入各自业务页。 */
 export async function completeTodo(todoId, comment) {
   const result = await request(`/admin/todos/${todoId}/complete`, {
     method: 'POST', body: { comment }
@@ -54,10 +71,7 @@ export async function completeTodo(todoId, comment) {
   return result
 }
 
-/**
- * 门户壳上下文：品牌、当前身份、权限、数据范围和消息角标并行读取。
- * 任一非关键子请求失败只降级该板块，不串行拖慢整个壳。
- */
+/** 品牌、当前身份、权限、范围和消息角标并行读取。 */
 export async function fetchLayoutContext() {
   let brand = { schoolName: '管理端' }
   let currentRole = { roleCode: '', roleName: '', userName: '', roleType: '' }
@@ -128,12 +142,10 @@ export async function fetchLayoutContext() {
   }
 }
 
-/** 当前身份数据范围内的工作台汇总。 */
 export function fetchSchoolStats() {
   return workbenchRead('school-stats', '/stats/workbench', {}, 10_000)
 }
 
-/** 工作台点击审计，不参与读缓存。 */
 export function trackWorkbenchEvent(event, detail = {}) {
   return request('/me/telemetry', {
     method: 'POST',
@@ -141,7 +153,6 @@ export function trackWorkbenchEvent(event, detail = {}) {
   })
 }
 
-/** 本人今日课表摘要；失败只降级该板块。 */
 export async function fetchMyScheduleToday(teacherKey) {
   const key = String(teacherKey || '').trim()
   if (!key) return { items: [], teacherKey: '' }
