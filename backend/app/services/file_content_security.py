@@ -34,7 +34,6 @@ _EXT_MIME: dict[str, set[str]] = {
     "ppt": {"application/vnd.ms-powerpoint", "application/octet-stream"},
 }
 
-# Office/ZIP 需要异步杀毒；txt/csv 纳入是为了阻断 EICAR 等文本测试病毒。
 _SCAN_REQUIRED_EXT = frozenset({"zip", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "txt", "csv"})
 _SYSTEM_ZIP_BIZ = frozenset({"COMPLIANCE_EVIDENCE", "ARCHIVE_PACKAGE", "GRADUATION_MATERIAL", "INTERNSHIP"})
 
@@ -71,7 +70,16 @@ def sniff_mime(head: bytes) -> str | None:
 
 
 def is_scan_required_for_upload(ext: str | None) -> bool:
-    return (ext or "").lower() in _SCAN_REQUIRED_EXT
+    """生产/显式启用扫描时，高风险扩展必须进入隔离队列。
+
+    非生产且未配置 ClamAV 时保留历史兼容，避免测试和本地开发把所有 Office 文件永久卡住；
+    生产环境由 file_scan_config.required 强制 fail-closed。
+    """
+    if (ext or "").lower() not in _SCAN_REQUIRED_EXT:
+        return False
+    from app.services.file_scan_config import get_file_scan_config
+    config = get_file_scan_config()
+    return bool(config.required or config.enabled)
 
 
 def _zip_limits() -> tuple[int, int, int]:
