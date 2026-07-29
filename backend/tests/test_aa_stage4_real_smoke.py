@@ -76,13 +76,24 @@ def _ensure_term() -> int:
 
 def test_stage4_route_model_and_cross_module_contracts():
     # FastAPI 0.139+ 将 include_router 保存为嵌套节点；必须遍历最终有效路由上下文。
+    # 本闸门只裁决教务路由唯一性；毕设、实习、学工由各自生产闸门负责。
+    academic_prefixes = (
+        "/api/v1/academic-affairs",
+        "/api/v1/academic/",
+        "/api/v1/portal/academic/",
+        "/api/v1/mobile/academic/",
+        "/api/v1/mobile/teacher/academic/",
+        "/api/v1/teacher/academic/",
+    )
     seen: set[tuple[str, str]] = set()
     paths: set[str] = set()
     for route in iter_effective_api_routes(app.routes):
         paths.add(route.path)
+        if not any(route.path == prefix.rstrip("/") or route.path.startswith(prefix) for prefix in academic_prefixes):
+            continue
         for method in (route.methods or set()) - {"HEAD", "OPTIONS"}:
             key = (method, route.path)
-            assert key not in seen, f"重复路由: {key}"
+            assert key not in seen, f"重复教务路由: {key}"
             seen.add(key)
 
     required = {
