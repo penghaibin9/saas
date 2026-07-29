@@ -83,7 +83,7 @@ jobs:
       - run: node scripts/check/check-graduation-production-gates.mjs
 
   backend:
-    name: 后端 pytest（PR:portal子集 / 定时:全量）
+    name: 后端 pytest（PR:变更感知 / 定时:全量）
     runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:
@@ -108,6 +108,8 @@ jobs:
           --health-retries=15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
