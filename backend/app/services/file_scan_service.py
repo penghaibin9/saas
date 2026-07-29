@@ -11,6 +11,7 @@ from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.clamav_client import ClamAVClient, ClamAVError, ClamAVUnavailable
+from app.services.file_content_security import is_downloadable_status
 from app.services.file_scan_config import get_file_scan_config
 from app.services.file_scan_constants import (
     JOB_DEAD,
@@ -61,7 +62,6 @@ def enqueue_file_scan(db, file_obj) -> None:
         )
         db.add(job)
     elif job.status in {JOB_DEAD, JOB_SUCCEEDED}:
-        # attempt 是扫描审计唯一序号，重试时不能清零。
         job.status = JOB_PENDING
         job.max_attempts = max(
             int(job.max_attempts or 0),
@@ -93,7 +93,7 @@ def assert_file_ready_for_business(
             raise not_found("文件不存在")
         status = str(meta.get("status") or "").upper()
         scan_status = str(meta.get("scanStatus") or SCAN_NOT_REQUIRED).upper()
-        if status != "AVAILABLE" or scan_status not in READY_SCAN_STATES:
+        if not is_downloadable_status(status) or scan_status not in READY_SCAN_STATES:
             raise AppException("FILE_NOT_READY", "文件尚未完成安全扫描，暂不可提交", http_status=409)
         return meta
 
@@ -122,7 +122,7 @@ def assert_file_ready_for_business(
             raise AppException("FILE_REJECTED", "文件包含恶意内容，已拒绝", http_status=422)
         if row.scan_required and scan_status == SCAN_ERROR:
             raise AppException("FILE_SCAN_UNAVAILABLE", "文件安全扫描失败，暂不可提交", http_status=503)
-        if row.status != "AVAILABLE" or scan_status not in READY_SCAN_STATES:
+        if not is_downloadable_status(row.status) or scan_status not in READY_SCAN_STATES:
             raise AppException("FILE_NOT_READY", "文件尚未完成安全扫描，暂不可提交", http_status=409)
         return row
     finally:
@@ -392,7 +392,7 @@ def file_scan_status(file_id: str, *, user: dict | None = None) -> dict[str, Any
             "scanEngine": row.scan_engine,
             "scanLastError": row.scan_last_error,
             "readyForBusiness": (
-                row.status == "AVAILABLE" and scan_status in READY_SCAN_STATES
+                is_downloadable_status(row.status) and scan_status in READY_SCAN_STATES
             ),
             "scannedAt": (
                 row.scanned_at.isoformat(timespec="seconds")
