@@ -1,42 +1,52 @@
-"""文件中心正式契约：POST /files 上传，GET /files/{fileId}/url 获取安全下载路径。"""
+"""公共文件中心正式 API；历史 /files/upload 仅作为兼容别名。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
-from app.core.exceptions import AppException, not_found
 from app.core.response import success
 from app.core.security import get_current_user
-from app.services import audit_log, file_service
+from app.api.v1.file_contract import list_contract, metadata_contract, upload_contract, url_contract
+from app.services.file_access_service import file_versions
 
 router = APIRouter(prefix="/files", tags=["10·文件中心"])
 
 
-@router.post("", summary="上传文件（流式落盘 + 隔离扫描 + 对象级归属）")
-async def upload_file(file: UploadFile = File(...), bizType: str = Form("ATTACHMENT"),
-                      bizId: str | None = Form(None), user=Depends(get_current_user)):
-    from app.core.token_store import rate_limit
-    if not rate_limit(f"upload:{user.get('userId', '-')}", 20, 60):
-        raise AppException("RATE_LIMITED", "上传过于频繁（每分钟最多 20 次），请稍后再试")
-    normalized = (bizType or "ATTACHMENT").upper()
-    if normalized == "GRADUATION_MATERIAL" and not bizId:
-        from app.modules.graduation.services.graduation_material_temp_service import cleanup_stale_temporary_materials
-        cleanup_stale_temporary_materials(user, older_than_hours=24, limit=50)
-    meta = await file_service.store_upload(file, normalized, biz_id=bizId, user=user, visibility="BIZ_SCOPED")
-    audit_log.record("FILE_UPLOAD", f"file:{meta['fileId']}", {"fileName": meta.get("fileName"), "size": meta.get("sizeBytes")})
-    return success({
-        "fileId": meta["fileId"], "fileName": meta.get("fileName"),
-        "size": meta.get("sizeBytes"), "mimeType": meta.get("mimeType") or file.content_type,
-        "hash": meta.get("sha256"), "status": meta.get("status"),
-        "scanRequired": meta.get("scanRequired", False), "scanStatus": meta.get("scanStatus"),
-        "readyForBusiness": meta.get("readyForBusiness", False),
-        "temporary": normalized == "GRADUATION_MATERIAL" and not bizId,
-    })
+@router.post("", summary="上传文件（权威入口）")
+async def upload_file(
+    file: UploadFile = File(...),
+    bizType: str = Form("ATTACHMENT"),
+    bizId: str | None = Form(None),
+    user=Depends(get_current_user),
+):
+    data = await upload_contract(
+        file,
+        biz_type=bizType,
+        biz_id=bizId,
+        user=user,
+        visibility="BIZ_SCOPED",
+    )
+    return success(data, message="上传成功；高风险文件需等待安全扫描")
+
+
+@router.get("", summary="按业务对象列出安全文件")
+def list_files(
+    bizType: str = Query(..., min_length=1),
+    bizId: str = Query(..., min_length=1),
+    user=Depends(get_current_user),
+):
+    return success({"items": list_contract(bizType, bizId, user=user)})
+
+
+@router.get("/{file_id}", summary="文件元数据、状态和允许动作")
+def file_metadata(file_id: str, user=Depends(get_current_user)):
+    return success(metadata_contract(file_id, user=user))
+
+
+@router.get("/{file_id}/versions", summary="文件业务版本时间线")
+def file_version_timeline(file_id: str, user=Depends(get_current_user)):
+    return success({"items": file_versions(file_id, user=user)})
 
 
 @router.get("/{file_id}/url", summary="获取预览/下载 URL（仅安全可用文件）")
 def file_url(file_id: str, user=Depends(get_current_user)):
-    meta = file_service.get_file_meta(file_id, user=user, require_ready=True)
-    if not meta:
-        raise not_found("文件不存在或无权访问")
-    return success({"fileId": file_id, "fileName": meta.get("fileName"),
-                    "url": f"/api/v1/files/download/{file_id}", "expiresIn": 900})
+    return success(url_contract(file_id, user=user))
