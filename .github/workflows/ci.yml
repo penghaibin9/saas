@@ -152,7 +152,7 @@ jobs:
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
 
   student-portal:
-    name: 学生 PC 门户 lint + build
+    name: 学生 PC 门户 lint + test + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -166,6 +166,7 @@ jobs:
           cache-dependency-path: student-portal/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
       - name: 禁止学生门户产物携带固定演示凭据
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
