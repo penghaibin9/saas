@@ -50,7 +50,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: file-center-access-${{ github.event.pull_request.number || github.ref }}
+  group: file-center-access-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
