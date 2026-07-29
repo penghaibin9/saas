@@ -2,9 +2,9 @@ name: 小程序阶段A验证与精确收口
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
-      - agent/miniapp-mp-weixin-release-hardening-20260729
+      - main
     paths:
       - scripts/maintenance/apply_miniapp_stage_a.py
       - scripts/maintenance/hotfix_stage_a_runner.py
@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: miniapp-stage-a-finalize
+  group: miniapp-stage-a-finalize-pr-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
