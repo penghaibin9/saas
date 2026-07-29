@@ -1,0 +1,153 @@
+name: 教务第四阶段最终状态聚合
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integrate/academic-affairs-final-20260729
+
+permissions:
+  actions: read
+  contents: read
+  statuses: write
+
+concurrency:
+  group: academic-affairs-stage4-status
+  cancel-in-progress: true
+
+jobs:
+  aggregate:
+    name: 等待并汇总第四阶段全部闸门
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: 发布第四阶段运行中状态
+        shell: bash
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -d '{"state":"pending","context":"academic-affairs/stage4-final-acceptance","description":"第四阶段全量验收正在执行","target_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+
+      - name: 等待全部相关工作流完成
+        id: wait
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          API_URL: ${{ github.api_url }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          required=(
+            '教务第四阶段合并前最终验收'
+            '教务第四阶段施工源完整性核验'
+            'CI'
+            'Graduation Targeted Validation'
+          )
+
+          : > /tmp/stage4-results.tsv
+          STAGE4_URL="${SERVER_URL}/${REPOSITORY}/actions"
+
+          for attempt in $(seq 1 180); do
+            payload=$(curl --fail-with-body -sS \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${API_URL}/repos/${REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100")
+
+            : > /tmp/stage4-results.tsv
+            all_found=true
+            all_completed=true
+            any_failed=false
+
+            for name in "${required[@]}"; do
+              row=$(jq -r --arg name "$name" '
+                [.workflow_runs[] | select(.name == $name)]
+                | sort_by(.created_at) | reverse | .[0]
+                | if . == null then "MISSING\t\t\t" else [.status, (.conclusion // ""), (.id|tostring), .html_url] | @tsv end
+              ' <<< "$payload")
+              status=$(cut -f1 <<< "$row")
+              conclusion=$(cut -f2 <<< "$row")
+              run_id=$(cut -f3 <<< "$row")
+              url=$(cut -f4 <<< "$row")
+              printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$status" "$conclusion" "$run_id" "$url" >> /tmp/stage4-results.tsv
+
+              if [[ "$status" == MISSING ]]; then
+                all_found=false
+                all_completed=false
+              elif [[ "$status" != completed ]]; then
+                all_completed=false
+              elif [[ "$conclusion" != success ]]; then
+                any_failed=true
+              fi
+
+              if [[ "$name" == '教务第四阶段合并前最终验收' && -n "$url" ]]; then
+                STAGE4_URL="$url"
+              fi
+            done
+
+            echo "第 ${attempt} 次检查："
+            column -t -s $'\t' /tmp/stage4-results.tsv || cat /tmp/stage4-results.tsv
+
+            if [[ "$all_found" == true && "$all_completed" == true ]]; then
+              echo "stage4_url=$STAGE4_URL" >> "$GITHUB_OUTPUT"
+              if [[ "$any_failed" == true ]]; then
+                echo "all_success=false" >> "$GITHUB_OUTPUT"
+                exit 1
+              fi
+              echo "all_success=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            sleep 30
+          done
+
+          echo "第四阶段相关工作流在 90 分钟内未全部结束"
+          exit 1
+
+      - name: 写入第四阶段汇总
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## 教务第四阶段最终状态'
+            echo
+            if [[ -f /tmp/stage4-results.tsv ]]; then
+              echo '| 工作流 | 状态 | 结论 | Run ID |'
+              echo '|---|---|---|---:|'
+              while IFS=$'\t' read -r name status conclusion run_id url; do
+                echo "| $name | $status | ${conclusion:-等待中} | ${run_id:-—} |"
+              done < /tmp/stage4-results.tsv
+            else
+              echo '未生成工作流状态表。'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 发布第四阶段最终状态
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          STAGE4_URL: ${{ steps.wait.outputs.stage4_url }}
+        run: |
+          TARGET="${STAGE4_URL:-${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}}"
+          if [[ "$JOB_STATUS" == success ]]; then
+            STATE=success
+            DESC='第四阶段全部验收闸门通过，等待所有者决定是否合并'
+          elif [[ "$JOB_STATUS" == cancelled ]]; then
+            STATE=error
+            DESC='第四阶段验收已取消'
+          else
+            STATE=failure
+            DESC='第四阶段仍有验收闸门未通过'
+          fi
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -d "{\"state\":\"$STATE\",\"context\":\"academic-affairs/stage4-final-acceptance\",\"description\":\"$DESC\",\"target_url\":\"$TARGET\"}"
