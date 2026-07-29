@@ -1,7 +1,10 @@
 """按域注册 /api/v1 路由（路径/依赖与历史 router.py 完全一致，仅拆分维护）。"""
 from __future__ import annotations
 
+import importlib
+
 from fastapi import APIRouter, Depends
+from fastapi.routing import APIRoute
 
 from app.core.config import settings
 from app.core.graduation_permissions import require_graduation_request_permission
@@ -32,6 +35,44 @@ def build_deps():
         "aa": [Depends(_require_aa_route_user)],
         "academic_legacy": [Depends(require_staff), Depends(require_module("academicAffairs"))],
     }
+
+
+def _aa_route_signature(route: APIRoute) -> tuple[str, frozenset[str]]:
+    return route.path, frozenset((route.methods or set()) - {"HEAD", "OPTIONS"})
+
+
+def _build_academic_affairs_router() -> APIRouter:
+    """让教务扩展端点按精确方法+路径替换旧实现，禁止依赖注册顺序抢占。"""
+    from app.modules.academic_affairs.routers import academic_affairs as base_router
+    from app.modules.academic_affairs.routers import academic_affairs_bundle as bundle
+    from app.modules.academic_affairs.routers import scheduling_rule_router
+
+    package = importlib.import_module(bundle.__package__)
+    extension_routers: list[APIRouter] = []
+    for module_name in bundle._EXTENSION_ROUTER_MODULES:
+        module = getattr(package, module_name, None)
+        if module is None:
+            module = importlib.import_module(f"{bundle.__package__}.{module_name}")
+        extension_routers.append(module.router)
+    extension_routers.append(scheduling_rule_router.router)
+
+    replacement_signatures = {
+        _aa_route_signature(route)
+        for child in extension_routers
+        for route in child.routes
+        if isinstance(route, APIRoute)
+    }
+    original_routes = list(base_router.router.routes)
+    base_router.router.routes[:] = [
+        route
+        for route in original_routes
+        if not isinstance(route, APIRoute) or _aa_route_signature(route) not in replacement_signatures
+    ]
+    try:
+        return bundle.build_router()
+    finally:
+        # 仅影响本次最终 Router 构建，避免修改模块级基础 Router 供其他测试/工具直接读取。
+        base_router.router.routes[:] = original_routes
 
 
 def register_core_routes(api_router: APIRouter) -> None:
@@ -75,10 +116,8 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 
 def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
-    from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
-    academic_affairs.router = academic_affairs.build_router()
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
-    api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
+    api_router.include_router(_build_academic_affairs_router(), dependencies=deps["aa"])
 
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
@@ -184,7 +223,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
 
 def register_all_routes(api_router: APIRouter) -> None:
     from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
-    from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
     from app.modules.employment.routers import employment
     deps = build_deps()
     register_core_routes(api_router)
@@ -198,6 +236,5 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(excel.router)
     api_router.include_router(employment.router, dependencies=deps["employment"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
-    academic_affairs.router = academic_affairs.build_router()
-    api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
+    api_router.include_router(_build_academic_affairs_router(), dependencies=deps["aa"])
     register_platform_routes(api_router)
