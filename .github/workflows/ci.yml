@@ -11,6 +11,10 @@ on:
     # 每日 18:00 UTC（北京 02:00）跑后端全量；push/PR 仅跑 portal 相关快测。
     - cron: "0 18 * * *"
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   control-plane-contracts:
     name: 控制面合同检查
