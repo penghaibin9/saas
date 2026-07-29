@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
+from app.api.v1.file_contract import list_contract, metadata_contract, upload_contract, url_contract
 from app.core.response import success
 from app.core.security import get_current_user
-from app.api.v1.file_contract import list_contract, metadata_contract, upload_contract, url_contract
-from app.services.file_access_service import file_versions
+from app.services.file_version_service import file_version_timeline as build_file_version_timeline
 
 router = APIRouter(prefix="/files", tags=["10·文件中心"])
 
@@ -44,7 +44,7 @@ def file_metadata(file_id: str, user=Depends(get_current_user)):
 
 @router.get("/{file_id}/versions", summary="文件业务版本时间线")
 def file_version_timeline(file_id: str, user=Depends(get_current_user)):
-    return success({"items": file_versions(file_id, user=user)})
+    return success({"items": build_file_version_timeline(file_id, user=user)})
 
 
 @router.get("/{file_id}/url", summary="获取预览/下载 URL（仅安全可用文件）")
