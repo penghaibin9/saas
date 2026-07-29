@@ -21,7 +21,7 @@ permissions:
 
 concurrency:
   group: academic-affairs-final-integration
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   integrate:
@@ -44,7 +44,7 @@ jobs:
           --health-timeout=5s
           --health-retries=30
     env:
-      INTEGRATION_REV: '4'
+      INTEGRATION_REV: '5'
       SOURCE_BRANCH: refactor/academic-affairs-4ends
       FINAL_BRANCH: integrate/academic-affairs-final-20260729
       SECOND_STAGE_MAIN: 7ffa498e8604c4ba6961e87807dbcbc522f67baa
