@@ -468,11 +468,11 @@ entries:
 - module: file-center
   client: admin-pc
   route: inventory://file-center/admin-pc
-  page: frontend/src/services/file/fileSdk.js
-  action: download
+  page: frontend/src/components/file/FileUploader.vue; frontend/src/services/file/fileSdk.js
+  action: upload+download
   fileCategory: MIXED
   api: multiple; see notes
-  backendService: frontend/src/services/file/fileSdk.js
+  backendService: frontend/src/components/file/FileUploader.vue; frontend/src/services/file/fileSdk.js
   storageMode: mixed
   authMode: existing endpoint guard; verify in target phase
   dataScope: existing business scope; verify in target phase
@@ -485,8 +485,8 @@ entries:
   archive: false
   status: needs-verification
   risk: P0
-  targetPhase: '3'
-  notes: 'Stage 0 exhaustive source group. sources: frontend/src/services/file/fileSdk.js. representative routes: /files/download/${encodeURIComponent(fileId)}'
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/components/file/FileUploader.vue; frontend/src/services/file/fileSdk.js. representative routes: /files/download/${encodeURIComponent(fileId)}'
 - module: file-center
   client: backend
   route: inventory://file-center/backend
