@@ -40,7 +40,11 @@ async def upload_contract(
     )
     if biz_id:
         subject_type = "STUDENT" if str(user.get("userType") or "").upper() == "STUDENT" else "BUSINESS_OBJECT"
-        subject_id = user.get("studentId") or user.get("studentNo") if subject_type == "STUDENT" else None
+        subject_id = (
+            user.get("studentId") or user.get("studentNo")
+            if subject_type == "STUDENT"
+            else None
+        )
         upsert_file_binding(
             meta["fileId"],
             biz_type=normalized,
@@ -120,11 +124,20 @@ def url_contract(file_id: str, *, user: dict) -> dict:
 
 
 def download_contract(file_id: str, *, user: dict) -> FileResponse:
-    require_file_access(file_id, user=user, action="download")
-    resolved = file_service.resolve_download(file_id, user=user)
-    if not resolved:
-        raise not_found("文件不存在")
-    path, filename = resolved
+    """授权成功后直接从存储抽象解析字节，避免再落回旧硬编码权限分支。"""
+    row = require_file_access(file_id, user=user, action="download")
+    if isinstance(row, dict):
+        resolved = file_service.resolve_download(file_id, user=user)
+        if not resolved:
+            raise not_found("文件不存在")
+        path, filename = resolved
+    else:
+        from app.services.storage import get_backend
+
+        path = get_backend().fetch_local(row.file_key)
+        if not path or not path.exists():
+            raise not_found("文件不存在")
+        filename = row.file_name or path.name
     audit_log.record("FILE_DOWNLOAD", filename, detail={"fileId": file_id})
     response = FileResponse(str(path), filename=filename, content_disposition_type="attachment")
     response.headers["X-Content-Type-Options"] = "nosniff"
