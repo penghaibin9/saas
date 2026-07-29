@@ -118,7 +118,7 @@ def test_stage4_route_model_and_cross_module_contracts():
         "t_aa_term",
         "t_aa_teaching_class",
         "t_aa_teaching_class_roster_version",
-        "t_aa_effective_grade",
+        "t_aa_effective_grade_policy_snapshot",
     ):
         assert table in Base.metadata.tables, f"模型未注册: {table}"
 
