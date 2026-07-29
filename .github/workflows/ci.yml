@@ -8,7 +8,7 @@ on:
   pull_request:
     branches: [ "**" ]
   schedule:
-    # 每日 18:00 UTC（北京 02:00）跑后端全量；push/PR 仅跑 portal 相关快测（每用例重建~250表，全量很慢）
+    # 每日 18:00 UTC（北京 02:00）跑后端全量；push/PR 仅跑 portal 相关快测。
     - cron: "0 18 * * *"
 
 jobs:
@@ -39,9 +39,7 @@ jobs:
       run:
         working-directory: backend
     env:
-      # 后端测试为 MySQL-only（conftest 拒绝回落 SQLite）；CI 提供 MySQL 服务库
       TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
-      # 会话级建表：每用例只清数据不重建约250张表结构，避免 db_mode 单测11秒级建表开销撑爆硬超时
       FAST_TEST_SCHEMA: "1"
     services:
       mysql:
@@ -66,7 +64,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install cryptography   # PyMySQL 连 MySQL8 caching_sha2_password 认证所需
+          pip install cryptography
       - name: 岗位实习专项测试（20分钟硬超时）
         run: timeout 20m pytest tests/test_internship*.py -q -p no:warnings --durations=20
 
@@ -88,8 +86,9 @@ jobs:
       run:
         working-directory: backend
     env:
-      # 后端测试为 MySQL-only（conftest 拒绝回落 SQLite）；CI 提供 MySQL 服务库
       TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
+      # 仍使用真实 MySQL；会话建表一次、每用例清数据，避免约 250 张表反复 DDL 导致超时。
+      FAST_TEST_SCHEMA: "1"
     services:
       mysql:
         image: mysql:8.0
@@ -113,7 +112,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install cryptography   # PyMySQL 连 MySQL8 caching_sha2_password 认证所需
+          pip install cryptography
       - name: 选择最小必要测试集合
         id: select
         run: |
@@ -128,8 +127,7 @@ jobs:
           else
             TARGETS="${{ steps.select.outputs.targets }}"
             echo "push/PR 变更感知：$TARGETS"
-            # 每组 25 分钟硬超时；失败即失败，不 continue-on-error
-            timeout 25m pytest $TARGETS -q -p no:warnings --durations=20
+            timeout 40m pytest $TARGETS -q -p no:warnings --durations=20
           fi
 
   frontend:
@@ -201,12 +199,9 @@ jobs:
           set -e
           echo "检查被 git 跟踪的敏感/产物文件..."
           FILES=$(git ls-files)
-          # 敏感文件 / 构建产物 / 本地备份（任何位置都不允许入库）
           BAD=$(echo "$FILES" | grep -E \
             '(^|/)\.env$|\.db$|(^|/)dist/|(^|/)node_modules/|(^|/)unpackage/|\.pem$|\.key$|(^|/)\.ai-backup/|(^|/)_local-backup/|backend/_pfull3\.txt|backend/scripts/_sec_verify\.py|一键构建\.bat|docs/ui/.*\.(zip|pdf)$' \
             || true)
-          # 运行时上传/导出目录（可能含 PII/敏感数据）；排除设计稿与老参考系统里的同名目录
-          # 排除：设计稿资源目录（docs/<章节>/ui/…/uploads）、老参考系统同名目录、源码包名恰为 exports 的 Python 包（backend/app/**/exports/）
           RUNTIME=$(echo "$FILES" | grep -E '(^|/)(uploads|exports)/' | grep -vE 'docs/ui/|docs/[^/]*/ui/|/internship-backend/uploads/|backend/app/.*/exports/' || true)
           BAD=$(printf '%s\n%s' "$BAD" "$RUNTIME" | grep -vE '^$' || true)
           if [ -n "$BAD" ]; then

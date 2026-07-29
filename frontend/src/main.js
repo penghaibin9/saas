@@ -9,6 +9,15 @@ import App from './App.vue'
 import router from './router'
 import { toast } from './utils/toast'
 
+// 任何失效书签、旧链接或未知 URL 都回到工作台，避免生产环境出现空白路由页。
+if (!router.hasRoute('unknown-route-fallback')) {
+  router.addRoute({
+    path: '/:pathMatch(.*)*',
+    name: 'unknown-route-fallback',
+    redirect: '/workbench'
+  })
+}
+
 const app = createApp(App)
 // 统一轻提示兼容门面：业务页可使用 this.$message.success/error/warning/info，
 // 实际仍由全局 AppToast 渲染，不引入第二套通知组件。
