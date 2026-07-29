@@ -42,7 +42,7 @@ export const teacherRiskStudentsPage = (level = 'all', page = 1, pageSize = 20) 
 /* 教师端·工作台：真实摘要、真实待办、真实风险；任一主摘要失败必须显式报错，不回落 mock。 */""",
     "real API teacher pages",
 )'''
-source, teacher_count = teacher_pattern.subn(teacher_replacement, source, count=1)
+source, teacher_count = teacher_pattern.subn(lambda _match: teacher_replacement, source, count=1)
 if teacher_count != 1:
     raise RuntimeError(f"failed to hotfix teacher page anchor: matches={teacher_count}")
 
@@ -56,7 +56,8 @@ message_pattern = re.compile(
 )
 message_replacement = r'''text = replace_once(
     text,
-    "export const getMessageDetail = (id) =>\n",
+    """export const getMessageDetail = (id) =>
+""",
     """export const selfMessagesPage = (tab = 'todo', page = 1, pageSize = 20) =>
   realRequest(`/mobile/me/messages-page?tab=${encodeURIComponent(tab)}&page=${page}&pageSize=${pageSize}`)
 
@@ -64,7 +65,7 @@ export const getMessageDetail = (id) =>
 """,
     "real API student messages page",
 )'''
-source, message_count = message_pattern.subn(message_replacement, source, count=1)
+source, message_count = message_pattern.subn(lambda _match: message_replacement, source, count=1)
 if message_count != 1:
     raise RuntimeError(f"failed to hotfix student message anchor: matches={message_count}")
 
