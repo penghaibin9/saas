@@ -66,11 +66,11 @@ def test_legacy_selection_facades_only_reexport_canonical_services():
         academic_affairs_selection_student_guard as student_compatibility,
     )
 
-    assert compatibility._legacy is selection._base
-    assert compatibility.lock_batch is selection._base.lock_batch
-    assert compatibility.adjust_record is selection._base.adjust_record
-    assert student_compatibility._legacy is selection._base
-    assert student_compatibility._validate_enroll is selection._base._validate_enroll
+    assert compatibility._legacy is selection
+    assert compatibility.lock_batch is selection.lock_batch
+    assert compatibility.adjust_record is selection.adjust_record
+    assert student_compatibility._legacy is selection
+    assert student_compatibility._validate_enroll is selection._validate_enroll
     assert round_compatibility is rounds
     assert round_compatibility.draw_round is rounds.draw_round
 
