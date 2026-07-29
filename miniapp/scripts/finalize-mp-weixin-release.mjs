@@ -87,7 +87,7 @@ async function main() {
     es6: true,
     minified: true
   }
-  if (appid) projectConfig.appid = appid
+  projectConfig.appid = appid
   await fs.writeFile(PROJECT_JSON, `${JSON.stringify(projectConfig, null, 2)}\n`, 'utf8')
 
   let files = await walk(OUTPUT_DIR)
