@@ -39,6 +39,16 @@ replace_once(
 """,
     "teacher todos authoritative leave",
 )
+replace_once(
+    "backend/app/services/mobile_teacher_service.py",
+    "    return _domain(campus_service_service.list_leaves, \"campus-service\", user, status=\"PENDING_REVIEW\")\n",
+    """    return _domain(
+        lambda page, ps, **_kw: affairs_leave_service.list_leaves(
+            user, status="PENDING", page=page, page_size=ps),
+        "student-affairs", user)
+""",
+    "teacher campus domain authoritative leave",
+)
 
 # Contract test records the architecture decision so the legacy call cannot return.
 test_path = ROOT / "backend/tests/test_mobile_stage_a_contracts.py"
