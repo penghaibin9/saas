@@ -8,7 +8,6 @@ import json
 from datetime import datetime
 
 from sqlalchemy import select
-
 from app.core.exceptions import AppException, no_permission, not_found
 from app.modules.academic_affairs.services.mobile_academic_affairs_service import _me, _ns
 from app.services.db_service import _iso, _tid, session
@@ -137,7 +136,12 @@ def registration_defer_apply_my(user, batch_id, reason, requested_until=None) ->
 # ═══════════ 重修/免修可选课程 ═══════════
 
 def _best_grades_for_me(db, stu):
+    """消费P0-11统一有效成绩策略；禁止按课程名或最高分二次计算。"""
     from app.models import AcademicGrade, AcademicStudent
+    from app.modules.academic_affairs.services.academic_affairs_effective_grade_policy_service import (
+        resolve_effective_grade,
+    )
+
     acad = db.scalars(select(AcademicStudent).where(
         AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == stu.id,
         AcademicStudent.is_deleted.is_(False))).first()
@@ -146,27 +150,29 @@ def _best_grades_for_me(db, stu):
     rows = db.scalars(select(AcademicGrade).where(
         AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == acad.id,
         AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))).all()
-    by_course = {}
-    for g in rows:
-        key = (g.course_name or "").strip()
-        if not key:
-            continue
-        prev = by_course.get(key)
-        if prev is None or (g.score or -1) > (prev.score or -1) or (
-                (g.score or -1) == (prev.score or -1) and (g.id or 0) > (prev.id or 0)):
-            by_course[key] = g
-    return list(by_course.values()), acad
+    return resolve_effective_grade(rows), acad
 
 
 def makeup_options_my(user) -> dict:
-    """重修候选=挂科；免修候选=尚未及格的课程（禁止纯手输为主入口）。"""
+    """重修候选=统一有效成绩中的挂科；免修候选=尚未及格课程。"""
+    from app.modules.academic_affairs.services.academic_affairs_effective_grade_policy_service import (
+        grade_identity_key,
+    )
+
     with session() as db:
         stu = _me(db, user)
         best, _ = _best_grades_for_me(db, stu)
         fails, pending = [], []
         for g in best:
+            identity = grade_identity_key(g)
             item = {
                 "gradeId": str(g.id),
+                "courseId": str(g.course_id or ""),
+                "courseCode": g.course_code or "",
+                "courseVersion": g.course_version,
+                "attemptNo": g.attempt_no,
+                "identityType": identity[1],
+                "identityDebt": identity[1] == "LEGACY_NAME_KEY",
                 "courseName": g.course_name,
                 "termCode": g.term or "",
                 "score": g.score,
@@ -178,14 +184,16 @@ def makeup_options_my(user) -> dict:
                 fails.append(item)
             elif ps != "PASSED":
                 pending.append(item)
-        fails.sort(key=lambda x: (x["termCode"] or "", x["courseName"]))
-        pending.sort(key=lambda x: (x["termCode"] or "", x["courseName"]))
+        fails.sort(key=lambda x: (x["termCode"] or "", x["courseCode"] or "", x["courseName"]))
+        pending.sort(key=lambda x: (x["termCode"] or "", x["courseCode"] or "", x["courseName"]))
         return {
             "retakeOptions": fails,
             "exemptionOptions": pending or fails,
             "retakeTotal": len(fails),
             "exemptionTotal": len(pending or fails),
-            "note": "请从列表选择课程提交；手输仅作应急兜底且需与挂科/未及格记录一致。"
+            "identityDebtCount": sum(1 for item in (fails + pending) if item["identityDebt"]),
+            "policyCode": "LATEST_FORMAL_SOURCE_V1",
+            "note": "请从列表选择具体成绩记录提交；历史身份欠账课程会明确标记，不会与同名课程合并。"
             if (fails or pending) else "暂无挂科/未及格课程可选",
         }
 
@@ -288,13 +296,20 @@ def clearance_my(user) -> dict:
         batches = {}
         if batch_ids:
             batches = {b.id: b for b in db.scalars(select(AaMakeupBatch).where(
-                AaMakeupBatch.id.in_(list(batch_ids)))).all()}
+                AaMakeupBatch.tenant_id == _tid(),
+                AaMakeupBatch.id.in_(list(batch_ids)),
+                AaMakeupBatch.is_deleted.is_(False))).all()}
         items = []
         for r in rows:
             b = batches.get(r.batch_id)
             items.append({
                 "recordId": str(r.id), "batchId": str(r.batch_id or ""),
                 "batchName": b.batch_name if b else "",
+                "originGradeId": str(r.origin_grade_id or ""),
+                "courseId": str(r.course_id or ""),
+                "courseCode": r.course_code or "",
+                "courseVersion": r.course_version,
+                "attemptNo": r.attempt_no,
                 "courseName": r.course_name, "termCode": r.term or "",
                 "originScore": r.origin_score, "score": r.final_score,
                 "status": r.status, "kind": "CLEARANCE",

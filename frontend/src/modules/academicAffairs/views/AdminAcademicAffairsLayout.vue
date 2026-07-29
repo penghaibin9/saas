@@ -6,6 +6,13 @@
     @menu-select="onMenuSelect"
   >
     <router-view v-if="ctx" :ctx="ctx" />
+    <ErrorState
+      v-else-if="error"
+      title="教务中心加载失败"
+      :description="error"
+      @retry="loadContext"
+      @back="goWorkbench"
+    />
     <LoadingState v-else text="正在加载教务中心…" />
   </BasePortalLayout>
 </template>
@@ -15,34 +22,55 @@
  * AdminAcademicAffairsLayout — /admin/academic-affairs 父布局（13B 教务中心）。
  * 侧栏二级/三级菜单由 BasePortalLayout + navPlan.js（getVisibleNavPlan）渲染，禁止在此硬编码业务菜单。
  * 品牌名 / 角色 / 数据范围来自 academicAffairsApi.getContext()；ctx 下发给子路由避免重复拉取。
- * 参照 modules/internship/views/AdminInternshipLayout.vue（同一布局底座）。
+ * 上下文加载失败必须显式展示错误与重试，禁止永久停留 Loading，也禁止注入空权限上下文扩大菜单。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
+import { ErrorState, LoadingState } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsPickerAdapters } from '@/modules/academicAffairs/pickerAdapters'
 import router from '@/router'
 
 export default {
   name: 'AdminAcademicAffairsLayout',
-  components: { BasePortalLayout, LoadingState },
+  components: { BasePortalLayout, ErrorState, LoadingState },
   provide() {
     return { appPickerAdapters: academicAffairsPickerAdapters }
   },
   data() {
-    return { ctx: null }
+    return { ctx: null, error: '' }
   },
   computed: {
     brandTitle() {
       if (!this.ctx) return '管理端'
-      return this.ctx.tenantBrandConfig.schoolName + ' · 管理端'
+      const school = this.ctx.tenantBrandConfig && this.ctx.tenantBrandConfig.schoolName
+      return `${school || '学校'} · 管理端`
     }
   },
-  async created() {
-    const res = await academicAffairsApi.getContext()
-    if (res.code === 0) this.ctx = res.data
+  created() {
+    this.loadContext()
   },
   methods: {
+    async loadContext() {
+      this.error = ''
+      this.ctx = null
+      try {
+        const res = await academicAffairsApi.getContext()
+        if (!res || res.code !== 0 || !res.data) {
+          throw new Error((res && res.message) || '无法读取当前角色、权限和数据范围')
+        }
+        // 正式环境必须取得后端真实权限集；null 不是“无权限”，而是权限上下文加载失败。
+        // 若继续把它交给 navPlan，侧栏会退化为未投影的完整能力目录，因此这里必须 fail-closed。
+        if (import.meta.env && import.meta.env.PROD && !Array.isArray(res.data.permissionPatterns)) {
+          throw new Error('权限上下文读取失败。为保护学校数据，教务菜单已停止加载，请重新登录后再试。')
+        }
+        this.ctx = res.data
+      } catch (err) {
+        this.error = (err && err.message) || '请检查网络或重新登录后再试'
+      }
+    },
+    goWorkbench() {
+      router.push('/').catch(() => {})
+    },
     onMenuSelect(item) {
       if (item?.path && item.path !== this.$route.fullPath.split('#')[0]) {
         router.push(item.path).catch(() => {})

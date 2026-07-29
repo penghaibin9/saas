@@ -83,7 +83,7 @@
 </template>
 
 <script>
-import { studentApi } from '@/services/studentApi'
+import { academicStudentApi as studentApi } from '@/services/academicStudentApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 

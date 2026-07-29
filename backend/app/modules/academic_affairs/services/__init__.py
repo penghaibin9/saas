@@ -1,1 +1,40 @@
-"""教务中心 服务层。"""
+"""教务中心服务包。
+
+本包集中声明各业务域的正式公开入口。兼容模块只保留历史导入路径，Router 不得自行选择
+旧实现或依赖导入顺序抢占函数。
+"""
+
+# 各域最终公开入口。
+from . import academic_affairs_dashboard_scope_facade as academic_affairs_service
+from . import academic_affairs_archive_service
+from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
+from . import academic_affairs_stats_public_service as academic_affairs_stats_service
+from . import academic_affairs_evaluation_public_service as academic_affairs_evaluation_service
+from . import academic_affairs_selection_final_service as academic_affairs_selection_service
+from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
+from . import academic_affairs_scheduling_public_service as academic_affairs_scheduling_service
+from . import academic_affairs_autoschedule_final_service as academic_affairs_autoschedule_service
+from . import academic_affairs_schedule_final_service as academic_affairs_schedule_service
+from . import academic_affairs_exam_facade as academic_affairs_exam_service
+from . import academic_affairs_textbook_final_facade as academic_affairs_textbook_service
+from . import academic_affairs_recognition_public_service as academic_affairs_recognition_service
+from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
+from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
+
+# V2-03 最终规则安全层必须成为包级可见入口，并显式绑定到公开排课/自动排课服务。
+from . import academic_affairs_scheduling_rule_final_facade
+
+academic_affairs_autoschedule_service._load_params = (
+    academic_affairs_scheduling_rule_final_facade.load_effective_params
+)
+academic_affairs_scheduling_service.save_rule = academic_affairs_scheduling_rule_final_facade.save_rule
+academic_affairs_scheduling_service.delete_rule = academic_affairs_scheduling_rule_final_facade.delete_rule
+academic_affairs_scheduling_service.submit_availability = (
+    academic_affairs_scheduling_rule_final_facade.submit_availability
+)
+academic_affairs_scheduling_service.list_availability = (
+    academic_affairs_scheduling_rule_final_facade.list_availability
+)
+academic_affairs_scheduling_service.review_availability = (
+    academic_affairs_scheduling_rule_final_facade.review_availability
+)

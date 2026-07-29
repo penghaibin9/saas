@@ -97,7 +97,7 @@ function buildAdminMenuFromNavPlan() {
  */
 export const ADMIN_MENU = buildAdminMenuFromNavPlan()
 
-/** 角色类型 → 可见模块 moduleCode 白名单（数据范围/职责边界，可被真实权限体系替换） */
+/** 角色类型 → 可见模块 moduleCode 白名单（仅非生产降级；正式环境缺权限上下文时 fail-closed） */
 const ROLE_MODULE_ALLOW = {
   [ROLE_TYPE.PLATFORM]: ['PLATFORM'],
   [ROLE_TYPE.SCHOOL_ADMIN]: ['WORKBENCH', 'WORKFLOW', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP', 'GRADUATION', 'EMPLOYMENT', 'DATA_CENTER', 'APPROVAL', 'SYSTEM'],
@@ -111,24 +111,58 @@ function roleType(ctx) {
   return (ctx && ctx.currentRole && (ctx.currentRole.roleType || ctx.currentRole.type)) || null
 }
 
-/** 某叶子节点是否有权限：提供了权限集时以 permissionKey 命中为准，否则退回角色白名单兜底。 */
+function workbenchOnly(leaf) {
+  return !leaf.platformOnly && !leaf.sensitive && leaf.moduleCode === 'WORKBENCH'
+}
+
+/**
+ * 某叶子节点是否有权限。
+ * - 有权限集：严格按 permissionKey 命中；无 permissionKey 的公共工作台入口保留。
+ * - 正式环境缺权限集：fail-closed，只保留工作台，禁止按粗角色放大菜单。
+ * - 开发/测试环境：允许角色白名单降级，便于本地排障，但后端仍是最终权限边界。
+ */
 function canSeeLeaf(leaf, ctx) {
   const rt = roleType(ctx)
   if (leaf.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
   if (rt === ROLE_TYPE.PLATFORM && leaf.moduleCode !== 'PLATFORM') return false
   if (leaf.sensitive && rt === ROLE_TYPE.COUNSELOR) return false
+
   const patterns = ctx && ctx.permissionPatterns
-  if (Array.isArray(patterns) && leaf.permissionKey) {
-    return matchPermission(patterns, leaf.permissionKey)
+  if (Array.isArray(patterns)) {
+    if (leaf.permissionKey) return matchPermission(patterns, leaf.permissionKey)
+    return workbenchOnly(leaf)
   }
+
+  if (import.meta.env && import.meta.env.PROD) return workbenchOnly(leaf)
   if (rt) return (ROLE_MODULE_ALLOW[rt] || ['WORKBENCH']).includes(leaf.moduleCode)
-  return true
+  return workbenchOnly(leaf)
+}
+
+function contextSignature(ctx) {
+  const role = (ctx && ctx.currentRole) || {}
+  const patterns = Array.isArray(ctx && ctx.permissionPatterns)
+    ? [...ctx.permissionPatterns].sort().join(',')
+    : '__missing_permissions__'
+  return [
+    (ctx && (ctx.tenantId || ctx.tenant_id)) || (ctx && ctx.tenantBrandConfig && ctx.tenantBrandConfig.tenantId) || '',
+    (ctx && (ctx.userId || ctx.user_id)) || role.userId || '',
+    (ctx && (ctx.activeContextId || ctx.contextId)) || role.contextId || '',
+    roleType(ctx) || '__missing_role__',
+    (ctx && ctx.permissionVersion) || '',
+    (ctx && ctx.ctxKey) || '',
+    patterns
+  ].join('|')
 }
 
 const _adminMenuVisibleCache = new Map()
+
+export function clearVisibleAdminMenuCache() {
+  _adminMenuVisibleCache.clear()
+}
+
 export function getVisibleAdminMenu(ctx) {
   const rt = roleType(ctx) || '__default__'
-  const cacheKey = `${rt}|${(ctx && ctx.ctxKey) || ''}`
+  const cacheKey = contextSignature(ctx)
   if (_adminMenuVisibleCache.has(cacheKey)) return _adminMenuVisibleCache.get(cacheKey)
   const result = ADMIN_MENU
     .filter((group) => {
@@ -137,6 +171,7 @@ export function getVisibleAdminMenu(ctx) {
     })
     .map((group) => ({ ...group, children: group.children.filter((leaf) => canSeeLeaf(leaf, ctx)) }))
     .filter((group) => group.children.length > 0)
+  if (_adminMenuVisibleCache.size > 64) _adminMenuVisibleCache.clear()
   _adminMenuVisibleCache.set(cacheKey, result)
   return result
 }
@@ -163,7 +198,7 @@ export const SEARCH_ALIASES = [
   { keywords: ['工作台', '我的工作台', '首页'], path: '/', label: '工作台 / 我的工作台' },
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
-  { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/student-affairs/leave', label: '学工中心 / 请假销假' },
+  { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
   { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
   { keywords: ['岗位实习', '实习', '打卡', '周报', '实习工作台', '今日工作'], path: '/admin/internship', label: '岗位实习中心 / 今日工作' },

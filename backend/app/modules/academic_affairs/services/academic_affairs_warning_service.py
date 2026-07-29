@@ -139,6 +139,7 @@ def _push_warning_notice(db, warning, counselor_id, student_global_id, scene=NOT
     reason = warning.reason or label
     is_remind = scene == NOTICE_REMIND
     remind_n = int(warning.remind_count or 0) if is_remind else 0
+    event_code = "WARNING.REMINDED" if is_remind else "WARNING.CREATED"
     sent = 0
     if student_global_id:
         title = f"再次提醒：{label}" if is_remind else f"学业预警通知：{label}"
@@ -147,7 +148,7 @@ def _push_warning_notice(db, warning, counselor_id, student_global_id, scene=NOT
                    f"你被系统标记「{reason}」，请及时关注学业情况，必要时主动联系辅导员或任课教师。")
         emit_message_event(
             db,
-            event_code="WARNING.CREATED",
+            event_code=event_code,
             source_module="academic-affairs",
             source_biz_type="academic_warning",
             source_biz_id=int(warning.id),
@@ -162,7 +163,7 @@ def _push_warning_notice(db, warning, counselor_id, student_global_id, scene=NOT
         content = f"「{reason}」，请及时跟进处置（预警编号 {warning.id}）。"
         emit_message_event(
             db,
-            event_code="WARNING.CREATED",
+            event_code=event_code,
             source_module="academic-affairs",
             source_biz_type="academic_warning",
             source_biz_id=int(warning.id),

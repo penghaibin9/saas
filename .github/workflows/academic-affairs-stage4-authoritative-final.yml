@@ -1,0 +1,504 @@
+name: 教务第四阶段权威最终验收
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integrate/academic-affairs-final-20260729
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: academic-affairs-stage4-authoritative
+  cancel-in-progress: true
+
+jobs:
+  freeze-audit:
+    name: 最新 main 与最终分支冻结校验
+    runs-on: ubuntu-latest
+    steps:
+      - name: 发布运行中状态
+        shell: bash
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -d '{"state":"pending","context":"academic-affairs/stage4-final-acceptance","description":"第四阶段权威总闸门正在执行","target_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 校验零落后和合并基准
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          MAIN_SHA=$(git rev-parse origin/main)
+          FINAL_SHA=$(git rev-parse HEAD)
+          AHEAD=$(git rev-list --count origin/main..HEAD)
+          BEHIND=$(git rev-list --count HEAD..origin/main)
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          printf 'main=%s\nfinal=%s\nahead=%s\nbehind=%s\nmerge_base=%s\n' \
+            "$MAIN_SHA" "$FINAL_SHA" "$AHEAD" "$BEHIND" "$MERGE_BASE"
+          test "$BEHIND" -eq 0
+          test "$AHEAD" -ge 1
+          test "$MERGE_BASE" = "$MAIN_SHA"
+
+  backend-authoritative:
+    name: 教务权威合同、MySQL 迁移与真实角色冒烟
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APP_ENV: test
+      JWT_SECRET: stage4-authoritative-secret-at-least-32-bytes
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install cryptography
+      - name: 编译、路由、模型和生产认证边界
+        working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "false"
+        run: |
+          python -m compileall -q app tests
+          python - <<'PY'
+          from fastapi.routing import APIRoute
+          from fastapi.testclient import TestClient
+          from app.main import app as fastapi_app
+          import app.models as _registered_models
+          from app.models.base import Base
+
+          seen = set()
+          for route in fastapi_app.routes:
+              if not isinstance(route, APIRoute):
+                  continue
+              for method in (route.methods or set()) - {"HEAD", "OPTIONS"}:
+                  key = (method, route.path)
+                  if key in seen:
+                      raise SystemExit(f"duplicate route: {key}")
+                  seen.add(key)
+
+          required = {
+              "t_aa_term",
+              "t_aa_teaching_class",
+              "t_aa_teaching_class_roster_version",
+              "t_aa_effective_grade_policy_snapshot",
+          }
+          missing = required - set(Base.metadata.tables)
+          if missing:
+              raise SystemExit(f"unregistered models: {sorted(missing)}")
+
+          with TestClient(fastapi_app) as client:
+              response = client.post(
+                  "/api/v1/auth/mock-login",
+                  json={"loginName": "school_admin01", "password": "any"},
+              )
+              if response.status_code != 403:
+                  raise SystemExit(f"mock-login should be disabled, got {response.status_code}: {response.text}")
+
+          print(f"routes={len(seen)} tables={len(Base.metadata.tables)} mock_login=disabled")
+          PY
+      - name: Alembic 单头、迁移数量与破坏性 DDL 扫描
+        working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          python - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+
+          files = subprocess.check_output(
+              ["git", "diff", "--name-only", "origin/main...HEAD", "--", ":(top)backend/alembic/versions"],
+              text=True,
+          ).splitlines()
+          if len(files) != 9:
+              raise SystemExit(f"教务最终分支应包含9个迁移文件，实际{len(files)}：{files}")
+          bad = []
+          for raw in files:
+              path = Path("..") / raw
+              tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              upgrade = next(
+                  (node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "upgrade"),
+                  None,
+              )
+              if upgrade is None:
+                  raise SystemExit(f"迁移缺少 upgrade()：{raw}")
+              for node in ast.walk(upgrade):
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                      if node.func.attr in {"drop_table", "drop_column"}:
+                          bad.append(f"{raw}:{node.lineno}:{node.func.attr}")
+                  if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                      sql = " ".join(node.value.upper().split())
+                      if "DROP TABLE" in sql or "DROP COLUMN" in sql:
+                          bad.append(f"{raw}:{node.lineno}:raw destructive SQL")
+          if bad:
+              raise SystemExit("upgrade() 包含无保护破坏性 DDL:\n" + "\n".join(bad))
+          print(f"migration files={len(files)}; destructive upgrade DDL=0")
+          PY
+      - name: 从当前 main 数据库版本真实升级到最终 head
+        shell: bash
+        env:
+          MOCK_LOGIN_ENABLED: "false"
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host="127.0.0.1", user="root", password="root", autocommit=True)
+          try:
+              with conn.cursor() as cur:
+                  for name in ("stage4_main_upgrade", "stage4_create_all", "stage4_real_smoke"):
+                      cur.execute(f"DROP DATABASE IF EXISTS `{name}`")
+                      cur.execute(f"CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+          finally:
+              conn.close()
+          PY
+          git fetch origin main --prune
+          git worktree add --detach /tmp/stage4-main origin/main
+          (
+            cd /tmp/stage4-main/backend
+            APP_ENV=test DB_ENABLED=true MOCK_LOGIN_ENABLED=false JWT_SECRET="$JWT_SECRET" \
+            DATABASE_URL='mysql+pymysql://root:root@127.0.0.1:3306/stage4_main_upgrade?charset=utf8mb4' \
+            alembic upgrade head
+          )
+          (
+            cd backend
+            APP_ENV=test DB_ENABLED=true MOCK_LOGIN_ENABLED=false JWT_SECRET="$JWT_SECRET" \
+            DATABASE_URL='mysql+pymysql://root:root@127.0.0.1:3306/stage4_main_upgrade?charset=utf8mb4' \
+            alembic upgrade head
+            test "$(alembic heads | grep -c '(head)')" -eq 1
+          )
+          git worktree remove /tmp/stage4-main --force
+      - name: MySQL create_all
+        working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "false"
+          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/stage4_create_all?charset=utf8mb4
+        run: |
+          python - <<'PY'
+          import app.models as _registered_models
+          from app.db.session import get_engine
+          from app.models.base import Base
+          Base.metadata.create_all(bind=get_engine())
+          print(f"create_all tables={len(Base.metadata.tables)}")
+          PY
+      - name: 最终生产合同测试集合
+        working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "true"
+        shell: bash
+        run: |
+          set -euo pipefail
+          TESTS=(
+            tests/test_aa_main_migration_compat.py
+            tests/test_aa_model_extension_compat.py
+            tests/test_aa_route_registration_main_compat.py
+            tests/test_aa_route_uniqueness.py
+            tests/test_aa_shared_exception_compat.py
+            tests/test_aa_source_branch_dependency_closure.py
+            tests/test_aa_student_portal_route_main_compat.py
+            tests/test_aa_miniapp_main_compat.py
+            tests/test_aa_main_permission_middleware_compat.py
+            tests/test_aa_archive_semantic_gates.py
+            tests/test_aa_archive_status_change_gate.py
+            tests/test_aa_archive_workflow_policy.py
+            tests/test_aa_archive_selection_gate.py
+            tests/test_aa_selection_round_archive_guard.py
+            tests/test_aa_makeup_archive_guard.py
+            tests/test_aa_evaluation_archive_guard.py
+            tests/test_aa_evaluation_student_anonymity.py
+            tests/test_aa_evaluation_batch_anonymity.py
+            tests/test_aa_evaluation_client_entrypoints.py
+            tests/test_aa_textbook_archive_guard.py
+            tests/test_aa_exam_closure.py
+            tests/test_aa_teaching_roster_unification.py
+            tests/test_aa_frontend_p0_contracts.py
+            tests/test_aa_task_workbench.py
+            tests/test_aa_evaluation_appeal_scope.py
+            tests/test_aa_attendance_teacher_identity.py
+            tests/test_aa_attendance_task_binding.py
+            tests/test_aa_mobile_teacher_identity.py
+            tests/test_aa_mobile_schedule_week.py
+            tests/test_aa_mobile_grade_entry_v2.py
+            tests/test_aa_mobile_effective_grade_policy.py
+            tests/test_aa_home_task_routes_v2.py
+            tests/test_aa_program_opening_r7.py
+            tests/test_aa_teaching_class_migration_r8.py
+            tests/test_aa_roster_consumers_r9.py
+            tests/test_aa_dynamic_grade_evidence_snapshot_r10.py
+            tests/test_aa_effective_grade_identity.py
+            tests/test_aa_effective_grade_policy_snapshot.py
+            tests/test_aa_makeup_effective_candidates.py
+            tests/test_aa_makeup_student_identity.py
+            tests/test_aa_makeup_candidate_scope.py
+            tests/test_aa_task_teaching_weeks.py
+            tests/test_aa_task_scope_security.py
+            tests/test_aa_scope_fail_closed.py
+            tests/test_aa_student_schedule_merge.py
+            tests/test_aa_student_exam_time.py
+            tests/test_aa_student_identity_legacy_entry_guards.py
+            tests/test_aa_graduation_program_resolution.py
+            tests/test_aa_program_quality_v2.py
+            tests/test_aa_program_generation_gate_v2.py
+            tests/test_aa_teaching_class_v2.py
+            tests/test_aa_teaching_class_v2_runtime.py
+            tests/test_aa_scheduling_rule_v2.py
+            tests/test_aa_scheduling_rule_v2_ui.py
+            tests/test_aa_scheduling_rule_v2_final.py
+            tests/test_aa_dashboard_readiness_v2.py
+            tests/test_aa_service_entrypoint_integrity.py
+            tests/test_aa_selection_canonical_service.py
+            tests/test_aa_stage4_migration_upgrade_safety.py
+            tests/test_security_student_identity.py
+            tests/test_portal_academic.py
+            tests/test_p1_tenant_readonly_guard.py
+            tests/test_p1_config_guards.py
+            tests/test_p1_health_ops.py
+          )
+          timeout 70m pytest -q "${TESTS[@]}" -p no:warnings --durations=30
+      - name: 生产关闭 mock-login 的独立真实三角色与路由冒烟
+        working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: "false"
+          DB_ENABLED: "true"
+          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/stage4_real_smoke?charset=utf8mb4
+        run: |
+          python - <<'PY'
+          from importlib.util import module_from_spec, spec_from_file_location
+          from pathlib import Path
+
+          from sqlalchemy import select
+          import app.models as _registered_models
+          from app.db.session import get_engine, get_sessionmaker
+          from app.models import StudentProfile
+          from app.models.base import Base
+
+          # 独立进程、独立数据库：不加载 pytest conftest，不允许其把 DB_ENABLED 改回 false。
+          Base.metadata.create_all(bind=get_engine())
+          db = get_sessionmaker()()
+          try:
+              student = db.scalars(select(StudentProfile).where(
+                  StudentProfile.tenant_id == 1000000000000000001,
+                  StudentProfile.student_no == "2023115001",
+                  StudentProfile.is_deleted.is_(False),
+              ).limit(1)).first()
+              if student is None:
+                  student = StudentProfile(
+                      tenant_id=1000000000000000001,
+                      student_no="2023115001",
+                      real_name="赵一凡",
+                      current_stage="INTERNSHIP",
+                      student_status="NORMAL",
+                      status="ACTIVE",
+                  )
+                  db.add(student)
+                  db.commit()
+          finally:
+              db.close()
+
+          path = Path("tests/test_aa_stage4_real_smoke.py").resolve()
+          spec = spec_from_file_location("stage4_real_smoke", path)
+          if spec is None or spec.loader is None:
+              raise SystemExit("无法加载第四阶段真实冒烟模块")
+          smoke = module_from_spec(spec)
+          spec.loader.exec_module(smoke)
+          smoke.test_stage4_route_model_and_cross_module_contracts()
+          smoke.test_stage4_real_mysql_admin_teacher_student_smoke({"standalone": True})
+          print("stage4 standalone real JWT smoke=success")
+          PY
+
+  teacher-pc:
+    name: 教师／教务 PC test、lint 与生产构建
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+
+  student-pc:
+    name: 学生 PC lint 与生产构建
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: student-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+
+  miniapp:
+    name: 学生／教师小程序 H5 与微信构建
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: miniapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - run: npm ci
+      - run: npm run build:h5
+      - run: npm run build:mp-weixin
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+
+  cross-module-protection:
+    name: 毕设、实习、学工与认证公共保护
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      APP_ENV: test
+      JWT_SECRET: stage4-cross-module-secret-at-least-32-bytes
+      MOCK_LOGIN_ENABLED: "true"
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install cryptography
+      - name: 控制面、权限、敏感字段和毕设静态闸门
+        run: |
+          python scripts/check/validate-module-manifest.py
+          node scripts/check/generate-capability-registry.mjs
+          python scripts/check/check-control-plane-contracts.py
+          python scripts/check/check-student-sensitive-contracts.py
+          node scripts/check/check-graduation-production-gates.mjs
+      - name: 岗位实习关键回归
+        working-directory: backend
+        run: timeout 25m pytest tests/test_internship*.py -q -p no:warnings --durations=20
+      - name: 学工公共权限、菜单与共享契约
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES=(
+            tests/test_aa_main_permission_middleware_compat.py
+            tests/test_aa_student_portal_route_main_compat.py
+            tests/test_aa_miniapp_main_compat.py
+          )
+          while IFS= read -r file; do FILES+=("$file"); done < <(
+            find tests -maxdepth 1 -type f \( \
+              -name 'test_affairs_*permission*.py' -o \
+              -name 'test_*student_affairs*contract*.py' -o \
+              -name 'test_*menu*contract*.py' \
+            \) | sort
+          )
+          timeout 20m pytest -q "${FILES[@]}" -p no:warnings --durations=20
+
+  acceptance-summary:
+    name: 第四阶段权威闸门汇总
+    if: always()
+    needs:
+      - freeze-audit
+      - backend-authoritative
+      - teacher-pc
+      - student-pc
+      - miniapp
+      - cross-module-protection
+    runs-on: ubuntu-latest
+    steps:
+      - name: 强制全部成功并发布状态
+        shell: bash
+        env:
+          FREEZE: ${{ needs.freeze-audit.result }}
+          BACKEND: ${{ needs.backend-authoritative.result }}
+          TEACHER_PC: ${{ needs.teacher-pc.result }}
+          STUDENT_PC: ${{ needs.student-pc.result }}
+          MINIAPP: ${{ needs.miniapp.result }}
+          CROSS: ${{ needs.cross-module-protection.result }}
+        run: |
+          printf 'freeze=%s\nbackend=%s\nteacher_pc=%s\nstudent_pc=%s\nminiapp=%s\ncross=%s\n' \
+            "$FREEZE" "$BACKEND" "$TEACHER_PC" "$STUDENT_PC" "$MINIAPP" "$CROSS" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [[ "$FREEZE" == success && "$BACKEND" == success && "$TEACHER_PC" == success && \
+                "$STUDENT_PC" == success && "$MINIAPP" == success && "$CROSS" == success ]]; then
+            STATE=success
+            DESC='第四阶段权威总闸门全部通过，保持 Draft 等待所有者决定'
+          else
+            STATE=failure
+            DESC='第四阶段权威总闸门仍有未通过项'
+          fi
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -d "{\"state\":\"$STATE\",\"context\":\"academic-affairs/stage4-final-acceptance\",\"description\":\"$DESC\",\"target_url\":\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+          test "$STATE" = success

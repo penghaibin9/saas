@@ -1,0 +1,179 @@
+"""教务扩展不得覆盖最新 main 的路由、权限、上下文和模型注册安全边界。"""
+import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
+REGISTER_ALL_ROUTES = SOURCE[SOURCE.index("def register_all_routes("):]
+PACKAGE = (ROOT / "app/modules/academic_affairs/routers/__init__.py").read_text(encoding="utf-8")
+BUNDLE = (ROOT / "app/modules/academic_affairs/routers/academic_affairs_bundle.py").read_text(encoding="utf-8")
+PERMISSIONS = (ROOT / "app/core/permissions.py").read_text(encoding="utf-8")
+CONTEXT = (ROOT / "app/core/context.py").read_text(encoding="utf-8")
+MIDDLEWARE = (ROOT / "app/middleware/context.py").read_text(encoding="utf-8")
+MODELS_INIT = (ROOT / "app/models/__init__.py").read_text(encoding="utf-8")
+
+
+def test_latest_main_graduation_internship_and_student_affairs_routes_are_preserved():
+    for token in (
+        "require_mobile_graduation_request_permission",
+        "graduation_p0_guard.router",
+        "graduation_sensitive_router.router",
+        "graduation_archive_sensitive_router.router",
+        "graduation_material_sensitive_router.router",
+        "mobile_graduation_guard.router",
+        "mobile_graduation_teacher_context.router",
+        "mobile_internship_context.router",
+        "mobile_internship_leave_context.router",
+        "mobile_internship_student.router",
+        "student_portal_graduation_guard.router",
+        "student_portal_internship_router",
+        "enforce_student_portal_module_access",
+        "enforce_teacher_internship_mobile_permission",
+        'api_router.include_router(student_affairs.router, dependencies=deps["sa"])',
+    ):
+        assert token in SOURCE
+
+    # 这些旧施工期 monkey-patch 安装器不属于最新 main 注册合同，禁止重新带回。
+    for obsolete in (
+        "install_consistency_guards()",
+        "install_mobile_resolver()",
+        "install_mobile_stable_bridge()",
+        "install_mobile_taskbook_list_bridge()",
+    ):
+        assert obsolete not in SOURCE
+
+
+def test_shared_main_registry_contains_only_narrow_academic_bundle_extension():
+    for forbidden in (
+        "find_spec",
+        "_module_exists",
+        "_academic_affairs_extension_routers",
+        "register_academic_affairs_extensions",
+        "mobile_security_modules",
+        "student_portal_security_modules",
+        "sys.modules",
+        "routes.remove",
+    ):
+        assert forbidden not in SOURCE
+
+    assert SOURCE.count("academic_affairs_bundle as academic_affairs") >= 2
+    assert SOURCE.count("academic_affairs.build_router()") >= 2
+    assert 'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])' in SOURCE
+
+
+def test_academic_extensions_are_aggregated_inside_domain_package():
+    assert "academic_affairs_bundle as academic_affairs" not in PACKAGE
+    assert "不得提前加载聚合器" in PACKAGE
+    assert "router.include_router(base_router.router)" in BUNDLE
+    assert "def build_router()" in BUNDLE
+    for token in (
+        "dashboard_readiness_router",
+        "dynamic_grade_router",
+        "exam_incident_closure_router",
+        "grade_task_identity_router",
+        "mobile_grade_entry_router",
+        "program_quality_router",
+        "scheduling_rule_router",
+        "semester_pilot_router",
+        "stats_snapshot_router",
+        "student_evaluation_router",
+        "student_exam_router",
+        "teaching_class_router",
+        "teaching_task_workbench_router",
+        "term_detail_router",
+        "textbook_closure_router",
+    ):
+        assert token in BUNDLE
+
+
+def test_existing_main_registration_order_is_unchanged():
+    ordered = [
+        "register_internship_routes(api_router, deps)",
+        'api_router.include_router(orientation.router, dependencies=deps["orientation"])',
+        'api_router.include_router(campus_service.router, dependencies=deps["cs"])',
+        'api_router.include_router(academic.router, dependencies=deps["academic_legacy"])',
+        "register_graduation_routes(api_router, deps)",
+        "api_router.include_router(excel.router)",
+        'api_router.include_router(employment.router, dependencies=deps["employment"])',
+        'api_router.include_router(student_affairs.router, dependencies=deps["sa"])',
+        "academic_affairs.router = academic_affairs.build_router()",
+        'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])',
+        "register_platform_routes(api_router)",
+    ]
+    positions = [REGISTER_ALL_ROUTES.index(token) for token in ordered]
+    assert positions == sorted(positions)
+
+
+def test_current_main_cross_domain_permissions_are_preserved():
+    for token in (
+        '"graduationDesign.topic.assign", "graduationDesign.topic.review"',
+        '"graduationDesign.defense.view", "graduationDesign.defense.groupManage"',
+        '"graduationDesign.grade.view", "graduationDesign.grade.review"',
+        '"internship.agreement.view", "internship.agreement.manage", "internship.agreement.sign"',
+        '"studentAffairs.aid.counselorReview"',
+    ):
+        assert token in PERMISSIONS
+
+
+def test_academic_teacher_permission_is_explicit_and_fail_closed():
+    assert '"ACADEMIC_TEACHER": {' in PERMISSIONS
+    assert '"ACADEMIC_TEACHER": {"academicAffairs.*"' not in PERMISSIONS
+    for token in (
+        '"academicAffairs.grade.input"',
+        '"academicAffairs.grade.submit"',
+        '"academicAffairs.schedule.teacherConfirm"',
+        '"academicAffairs.selection.rosterView"',
+        '"academicAffairs.evaluation.view"',
+    ):
+        assert token in PERMISSIONS
+    assert "ROLE_PERMISSION_DENY: dict[str, set[str]] = {}" in PERMISSIONS
+
+
+def test_internship_batch_context_is_preserved_end_to_end():
+    for token in (
+        "set_current_internship_batch_id",
+        "get_current_internship_batch_id",
+    ):
+        assert token in CONTEXT
+    assert re.search(
+        r'ContextVar\(\s*"internship_batch_id"\s*,\s*default=None\s*\)',
+        CONTEXT,
+    )
+
+    for token in (
+        "set_current_internship_batch_id(_resolve_internship_batch_id(request))",
+        'request.headers.get("x-internship-batch-id")',
+        'path.startswith("/api/v1/mobile/internship")',
+        'path.startswith("/api/v1/portal/internship")',
+        '"internshipBatchId": _resolve_internship_batch_id(request) or ""',
+    ):
+        assert token in MIDDLEWARE
+
+
+def test_request_middleware_keeps_fail_closed_tenant_guards():
+    assert "_expired_tenant_readonly_deny(request)" in MIDDLEWARE
+    assert "_demo_tenant_readonly_deny(request)" in MIDDLEWARE
+    assert '"TENANT_GUARD_UNAVAILABLE"' in MIDDLEWARE
+    assert '"MODULE_EXPIRED_READONLY"' in MIDDLEWARE
+
+
+def test_academic_extension_models_register_through_one_shared_import():
+    assert MODELS_INIT.count("from app.models.academic_affairs_registry import *") == 1
+
+    from app.models import (
+        AaEffectiveGradePolicySnapshot,
+        AaGradeComponentScore,
+        AaSemesterPilot,
+        AaTeachingClass,
+        Base,
+    )
+
+    expected = {
+        AaTeachingClass.__table__.name,
+        AaGradeComponentScore.__table__.name,
+        AaSemesterPilot.__table__.name,
+        AaEffectiveGradePolicySnapshot.__table__.name,
+    }
+    assert expected <= set(Base.metadata.tables)
+    assert "t_aa_teaching_class" in expected

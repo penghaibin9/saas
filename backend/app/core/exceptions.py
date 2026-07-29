@@ -20,7 +20,6 @@ CODE_HTTP = {
     "REJECT_REASON_REQUIRED": 400,
     "FILE_TYPE_NOT_ALLOWED": 400,
     "LOCATION_PERMISSION_REQUIRED": 400,
-    "ASSIGNEE_NOT_CONFIGURED": 400,
     "UNAUTHORIZED": 401,
     "WECHAT_AUTH_REQUIRED": 401,
     "NO_PERMISSION": 403,
@@ -65,6 +64,11 @@ def unauthorized(msg: str = "未登录或令牌失效"):
 
 def no_permission(msg: str = "无权限访问当前数据", details=None):
     return AppException("NO_PERMISSION", msg, details)
+
+
+def no_data_scope(msg: str = "当前账号无可用数据范围", details=None):
+    """数据范围缺失时统一 fail-closed，禁止退化为全量数据。"""
+    return AppException("NO_DATA_SCOPE", msg, details)
 
 
 def not_found(msg: str = "资源不存在"):
