@@ -1,0 +1,131 @@
+name: File center security foundation
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/v1/file.py"
+      - "backend/app/api/v1/files.py"
+      - "backend/app/models/file.py"
+      - "backend/app/services/clamav_client.py"
+      - "backend/app/services/file_content_security.py"
+      - "backend/app/services/file_scan_*.py"
+      - "backend/app/services/file_service.py"
+      - "backend/app/workers/file_scan_worker.py"
+      - "backend/alembic/versions/*file*security*foundation*.py"
+      - "backend/tests/test_file_scan_*.py"
+      - "backend/tests/file_scan_mysql_acceptance.py"
+      - ".github/workflows/file-center-security-foundation.yml"
+  push:
+    branches:
+      - audit/file-capability-inventory
+    paths:
+      - "backend/app/api/v1/file.py"
+      - "backend/app/api/v1/files.py"
+      - "backend/app/models/file.py"
+      - "backend/app/services/clamav_client.py"
+      - "backend/app/services/file_content_security.py"
+      - "backend/app/services/file_scan_*.py"
+      - "backend/app/services/file_service.py"
+      - "backend/app/workers/file_scan_worker.py"
+      - "backend/alembic/versions/*file*security*foundation*.py"
+      - "backend/tests/test_file_scan_*.py"
+      - "backend/tests/file_scan_mysql_acceptance.py"
+      - ".github/workflows/file-center-security-foundation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  security-foundation:
+    name: MySQL + ClamAV 安全底座验收
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      clamav:
+        image: clamav/clamav:stable
+        ports:
+          - 3310:3310
+
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      UPLOAD_DIR: /tmp/file-center-stage1-uploads
+      FILE_STORAGE_BACKEND: local
+      FILE_ALLOW_ZIP: "true"
+      CLAMAV_ENABLED: "true"
+      FILE_SCAN_REQUIRED: "true"
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: "3310"
+      CLAMAV_CONNECT_TIMEOUT: "2"
+      CLAMAV_READ_TIMEOUT: "60"
+      FILE_SCAN_MAX_ATTEMPTS: "3"
+      FILE_SCAN_RETRY_BASE_SECONDS: "1"
+      PYTHONPATH: backend
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Wait for ClamAV
+        run: |
+          python - <<'PY'
+          import time
+          from app.services.clamav_client import ClamAVClient
+          last = None
+          for _ in range(180):
+              try:
+                  client = ClamAVClient()
+                  if client.ping():
+                      print(client.version())
+                      raise SystemExit(0)
+              except Exception as exc:
+                  last = exc
+              time.sleep(2)
+          raise SystemExit(f"ClamAV did not become ready: {last}")
+          PY
+      - name: Verify single Alembic head and upgrade MySQL
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+      - name: Compile Stage 1 modules
+        run: |
+          python -m py_compile \
+            backend/app/api/v1/file.py \
+            backend/app/api/v1/files.py \
+            backend/app/models/file.py \
+            backend/app/services/clamav_client.py \
+            backend/app/services/file_content_security.py \
+            backend/app/services/file_scan_config.py \
+            backend/app/services/file_scan_constants.py \
+            backend/app/services/file_scan_service.py \
+            backend/app/services/file_service.py \
+            backend/app/workers/file_scan_worker.py \
+            backend/alembic/versions/0145_file_center_security_foundation.py
+      - name: Unit and contract tests
+        working-directory: backend
+        run: pytest -q tests/test_file_scan_clamav.py tests/test_file_scan_state.py -p no:warnings
+      - name: Real MySQL and real ClamAV acceptance
+        working-directory: backend
+        run: python tests/file_scan_mysql_acceptance.py
