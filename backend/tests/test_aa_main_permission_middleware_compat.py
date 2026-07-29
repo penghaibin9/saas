@@ -1,10 +1,14 @@
 """教务长期分支不得回退主线权限与请求上下文能力。"""
 from pathlib import Path
 
+from app.core.context import (
+    get_current_internship_batch_id,
+    set_current_internship_batch_id,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PERMISSIONS = (ROOT / "app/core/permissions.py").read_text(encoding="utf-8")
-CONTEXT = (ROOT / "app/core/context.py").read_text(encoding="utf-8")
 MIDDLEWARE = (ROOT / "app/middleware/context.py").read_text(encoding="utf-8")
 
 
@@ -37,12 +41,14 @@ def test_academic_teacher_remains_explicit_and_fail_closed():
 
 
 def test_internship_batch_context_is_preserved_end_to_end():
-    for token in (
-        "set_current_internship_batch_id",
-        "get_current_internship_batch_id",
-        'ContextVar("internship_batch_id", default=None)',
-    ):
-        assert token in CONTEXT
+    previous = get_current_internship_batch_id()
+    try:
+        set_current_internship_batch_id("batch-compat-17")
+        assert get_current_internship_batch_id() == "batch-compat-17"
+        set_current_internship_batch_id("")
+        assert get_current_internship_batch_id() is None
+    finally:
+        set_current_internship_batch_id(previous)
 
     for token in (
         "set_current_internship_batch_id(_resolve_internship_batch_id(request))",
