@@ -55,7 +55,7 @@ def test_academic_and_current_main_heads_are_joined_without_ddl():
 
     reachable = {
         revision.revision
-        for revision in script.walk_revisions(heads, "base")
+        for revision in script.walk_revisions(base="base", head=heads)
     }
     assert "0134_aa_makeup_source_identity" in reachable
     assert "0142_gd_excellent_delay" in reachable
