@@ -223,3 +223,6 @@ def register_all_routes(api_router: APIRouter) -> None:
     mark("academic_bundle")
     register_platform_routes(api_router)
     mark("platform")
+
+    if len(api_router.routes) < 200:
+        raise RuntimeError(f"API route registration collapsed: {trace}")
