@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
 from app.api.v1.file_contract import download_contract, metadata_contract, upload_contract
 from app.core.config import settings
@@ -50,15 +50,19 @@ async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_curr
 
 @router.post("/upload", summary="上传文件（历史兼容入口，委托 POST /files 权威合同）")
 async def upload_real(
+    request: Request,
     file: UploadFile = File(...),
-    bizType: str = Form("ATTACHMENT"),
+    bizType: str | None = Form(None),
     bizId: str | None = Form(None),
     user=Depends(get_current_user),
 ):
+    # 老学生 PC / 小程序曾把 bizType、bizId 放在 query；保留读取但统一委托权威合同。
+    effective_biz_type = bizType or request.query_params.get("bizType") or "ATTACHMENT"
+    effective_biz_id = bizId if bizId not in (None, "") else request.query_params.get("bizId")
     data = await upload_contract(
         file,
-        biz_type=bizType,
-        biz_id=bizId,
+        biz_type=effective_biz_type,
+        biz_id=effective_biz_id,
         user=user,
         visibility="BIZ_SCOPED",
     )
