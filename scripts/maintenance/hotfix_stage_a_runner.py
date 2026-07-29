@@ -92,5 +92,16 @@ if source.count(old_message) != 1:
     raise RuntimeError(f"message patch block matches={source.count(old_message)}")
 source = source.replace(old_message, new_message, 1)
 
+old_summary_apply = 'text = replace_once(text, old_result_notice, new_result_notice, "student message summary result")'
+new_summary_apply = '''text = regex_once(
+    text,
+    r''' + "'''" + r'''            "notices": \[.*?            "unreadCount": unread_count,\n''' + "'''" + r''',
+    new_result_notice,
+    "student message summary result",
+)'''
+if source.count(old_summary_apply) != 1:
+    raise RuntimeError(f"summary apply matches={source.count(old_summary_apply)}")
+source = source.replace(old_summary_apply, new_summary_apply, 1)
+
 runner.write_text(source, encoding="utf-8")
 print("stage A runner anchors hotfixed")
