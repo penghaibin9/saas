@@ -3,15 +3,20 @@
     <MobileNavBar variant="brand" title="补考重修 / 免修" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="d">
+        <view v-if="opts.identityDebtCount" class="mk__debt card">
+          <text class="mk__debt-title">有 {{ opts.identityDebtCount }} 条历史成绩尚未完成课程身份治理</text>
+          <text class="mk__sub">这些成绩暂不能用于重修或免修，请联系教务处处理。</text>
+        </view>
+
         <view class="section-head">
           <text class="section-head__title">我的重修申请</text>
           <text class="section-head__more" @click="toggleForm('retake')">{{ showRetake ? '收起' : '+ 新增报名' }}</text>
         </view>
 
         <view class="card stack-sm" v-if="showRetake">
-          <text class="mk__hint">请从挂科课程列表选择（禁止纯手输为主入口）</text>
+          <text class="mk__hint">请从当前有效挂科成绩选择，系统按成绩ID和修读次数提交</text>
           <picker mode="selector" :range="retakeLabels" :value="retakeIndex" @change="onRetakePick">
-            <view class="mk__input">{{ retakeLabels[retakeIndex] || '请选择挂科课程' }}</view>
+            <view class="mk__input">{{ retakeLabels[retakeIndex] || '请选择挂科成绩' }}</view>
           </picker>
           <textarea class="mk__textarea" v-model="retakeForm.reason" :maxlength="200" placeholder="申请说明（选填）" placeholder-class="mk__ph" />
           <button class="btn btn-primary" :disabled="!retakeForm.gradeId || submitting" @click="submitRetake">
@@ -29,7 +34,7 @@
             <MobileStatusTag :status="r.status" />
           </view>
         </view>
-        <MobileGlobalState v-else state="empty" title="暂无重修申请" description="点击右上角从挂科列表报名。" />
+        <MobileGlobalState v-else state="empty" title="暂无重修申请" description="点击右上角从挂科成绩列表报名。" />
 
         <view class="section-head">
           <text class="section-head__title">我的免修申请</text>
@@ -37,12 +42,12 @@
         </view>
 
         <view class="card stack-sm" v-if="showExemption">
-          <text class="mk__hint">请从未及格课程列表选择</text>
+          <text class="mk__hint">请从具备稳定课程版本的可申请课程中选择</text>
           <picker mode="selector" :range="exLabels" :value="exIndex" @change="onExPick">
-            <view class="mk__input">{{ exLabels[exIndex] || '请选择课程' }}</view>
+            <view class="mk__input">{{ exLabels[exIndex] || '请选择课程版本' }}</view>
           </picker>
           <textarea class="mk__textarea" v-model="exForm.reason" :maxlength="200" placeholder="免修理由（选填）" placeholder-class="mk__ph" />
-          <button class="btn btn-primary" :disabled="!exForm.courseName || submitting" @click="submitExemption">
+          <button class="btn btn-primary" :disabled="!exForm.courseId || submitting" @click="submitExemption">
             {{ submitting ? '提交中…' : '提交免修申请' }}
           </button>
         </view>
@@ -57,7 +62,7 @@
             <MobileStatusTag :status="e.status" />
           </view>
         </view>
-        <MobileGlobalState v-else state="empty" title="暂无免修申请" description="点击右上角从课程列表发起免修。" />
+        <MobileGlobalState v-else state="empty" title="暂无免修申请" description="点击右上角从课程版本列表发起免修。" />
       </view>
     </MobileGlobalState>
   </view>
@@ -73,21 +78,27 @@ const submitLock = createSubmitLock(1500)
 export default {
   data() {
     return {
-      d: null, opts: { retakeOptions: [], exemptionOptions: [] }, state: 'loading', submitting: false,
+      d: null,
+      opts: { retakeOptions: [], exemptionOptions: [], identityDebtCount: 0 },
+      state: 'loading', submitting: false,
       showRetake: false, showExemption: false,
       retakeIndex: 0, exIndex: 0,
-      retakeForm: { gradeId: '', courseName: '', termCode: '', reason: '' },
-      exForm: { courseName: '', termCode: '', reason: '' }
+      retakeForm: { gradeId: '', termCode: '', reason: '' },
+      exForm: { courseId: '', termCode: '', reason: '', materialFileIds: [] }
     }
   },
   computed: {
     retakeLabels() {
       const rows = this.opts.retakeOptions || []
-      return rows.length ? rows.map((x) => `${x.courseName}（${x.termCode || '无学期'} · ${x.score ?? '—'}分）`) : ['暂无挂科课程']
+      return rows.length
+        ? rows.map((x) => `${x.courseName} · ${x.courseCode || '无代码'} v${x.courseVersion || '?'} · 第${x.attemptNo || '?'}次修读 · ${x.score ?? '—'}分`)
+        : ['暂无可报名挂科成绩']
     },
     exLabels() {
       const rows = this.opts.exemptionOptions || []
-      return rows.length ? rows.map((x) => `${x.courseName}（${x.termCode || '无学期'}）`) : ['暂无可选课程']
+      return rows.length
+        ? rows.map((x) => `${x.courseName} · ${x.courseCode || '无代码'} v${x.courseVersion || '?'}`)
+        : ['暂无可申请课程']
     }
   },
   onLoad() { this.load() },
@@ -97,47 +108,43 @@ export default {
       Promise.all([studentApi.getMyMakeup(), studentApi.getMakeupOptions()])
         .then(([d, opts]) => {
           this.d = d
-          this.opts = opts || { retakeOptions: [], exemptionOptions: [] }
+          this.opts = opts || { retakeOptions: [], exemptionOptions: [], identityDebtCount: 0 }
           this.syncPickDefaults()
           this.state = 'ready'
         })
         .catch(() => { this.state = 'error' })
     },
     syncPickDefaults() {
-      const r = (this.opts.retakeOptions || [])[0]
-      if (r) {
-        this.retakeForm.gradeId = r.gradeId
-        this.retakeForm.courseName = r.courseName
-        this.retakeForm.termCode = r.termCode || ''
-        this.retakeIndex = 0
-      } else {
-        this.retakeForm.gradeId = ''
-        this.retakeForm.courseName = ''
+      const retake = (this.opts.retakeOptions || [])[0]
+      this.retakeForm = {
+        gradeId: retake?.gradeId || '',
+        termCode: retake?.termCode || '',
+        reason: ''
       }
-      const e = (this.opts.exemptionOptions || [])[0]
-      if (e) {
-        this.exForm.courseName = e.courseName
-        this.exForm.termCode = e.termCode || ''
-        this.exIndex = 0
-      } else {
-        this.exForm.courseName = ''
+      this.retakeIndex = 0
+      const exemption = (this.opts.exemptionOptions || [])[0]
+      this.exForm = {
+        courseId: exemption?.courseId || '',
+        termCode: exemption?.termCode || '',
+        reason: '',
+        materialFileIds: []
       }
+      this.exIndex = 0
     },
     onRetakePick(e) {
-      const i = Number(e.detail.value || 0)
-      this.retakeIndex = i
-      const row = (this.opts.retakeOptions || [])[i]
+      const index = Number(e.detail.value || 0)
+      const row = (this.opts.retakeOptions || [])[index]
       if (!row) return
+      this.retakeIndex = index
       this.retakeForm.gradeId = row.gradeId
-      this.retakeForm.courseName = row.courseName
       this.retakeForm.termCode = row.termCode || ''
     },
     onExPick(e) {
-      const i = Number(e.detail.value || 0)
-      this.exIndex = i
-      const row = (this.opts.exemptionOptions || [])[i]
+      const index = Number(e.detail.value || 0)
+      const row = (this.opts.exemptionOptions || [])[index]
       if (!row) return
-      this.exForm.courseName = row.courseName
+      this.exIndex = index
+      this.exForm.courseId = row.courseId
       this.exForm.termCode = row.termCode || ''
     },
     toggleForm(kind) {
@@ -154,7 +161,6 @@ export default {
       this.submitting = true
       submitLock.run(() => studentApi.applyRetake({
         gradeId: this.retakeForm.gradeId,
-        courseName: this.retakeForm.courseName,
         termCode: this.retakeForm.termCode,
         reason: this.retakeForm.reason.trim()
       }))
@@ -168,12 +174,13 @@ export default {
         .finally(() => { this.submitting = false })
     },
     submitExemption() {
-      if (!this.exForm.courseName || this.submitting) return
+      if (!this.exForm.courseId || this.submitting) return
       this.submitting = true
       submitLock.run(() => studentApi.applyExemption({
-        courseName: this.exForm.courseName,
+        courseId: this.exForm.courseId,
         termCode: this.exForm.termCode,
-        reason: this.exForm.reason.trim()
+        reason: this.exForm.reason.trim(),
+        materialFileIds: this.exForm.materialFileIds
       }))
         .then(() => {
           uni.showToast({ title: '免修申请已提交', icon: 'success' })
@@ -195,4 +202,6 @@ export default {
 .mk__sub { display: block; color: var(--t3); font-size: 12px; margin-top: 4px; }
 .mk__reason { display: block; color: var(--danger, #dc2626); font-size: 12px; margin-top: 4px; }
 .mk__hint { display: block; color: var(--t3); font-size: 12px; }
+.mk__debt { border: 1px solid var(--warning, #f59e0b); }
+.mk__debt-title { display: block; color: var(--warning-dark, #b45309); font-size: 14px; font-weight: 600; }
 </style>

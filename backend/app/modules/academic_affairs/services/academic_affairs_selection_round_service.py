@@ -1,214 +1,227 @@
-"""选课轮次与抽签服务（SM-09 增强层）。
+"""选课轮次唯一公开 Service。
 
-对标商业教务系统（强智《智慧教学服务平台操作手册》印刷页 224-250）的多轮次选课：
-轮次维护（预选/正选/补退选）、抽签摇号、"可选可退/只可选/只可退"三态控制。
-
-设计纪律：
-- 无轮次的批次保持既有先到先得行为分毫不动（向后兼容，存量选课测试原样绿）。
-- 同批次至多一个 OPEN 轮次（开轮时校验，409 拦截）。
-- 摇号为确定性算法：按 (记录id, 轮次id) 派生序取前 N 名，同输入同输出，
-  可复核可审计——摇号结果必须经得起学生和家长质询，不能是"黑盒随机"。
-  （强智另有"志愿抽签/投积分"两种模式，本波只落"随机抽签"；
-    另两种登记在案作为 mode 枚举扩展位，不做假实现。）
-- 摇号只在 CLOSED 轮次上执行一次（DRAWN 终态），中签写容量走守护更新不超容。
+原只读 DTO 和列表能力保存在 ``academic_affairs_selection_round_core_service``；本文件显式收口：
+- 新建、开启、关闭、摇号均在同一事务校验所属学期未封存；
+- 同一批次同时只能开启一个轮次；
+- 摇号先原子抢占 CLOSED→DRAWN，再锁定课程和待抽签记录；
+- 排序使用 SHA-256(roundId:recordId)，跨进程、跨重试可复核；
+- 容量更新保持数据库原子条件，不允许超卖。
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 
 from sqlalchemy import select
 
-from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.modules.academic_affairs.services.academic_affairs_selection_service import (
-    _REC_LOST, _REC_PENDING, _REC_SELECTED, _ctx, _get_batch, _require_manage_scope)
-from app.services.db_service import _iso, _tid, session
 
-MODES = ("FCFS", "LOTTERY")
+from . import academic_affairs_selection_round_core_service as _core
+from . import academic_affairs_selection_service as selection_service
 
-
-def _bad(m):
-    return AppException("VALIDATION_ERROR", m)
+MODES = _core.MODES
 
 
-def _invalid(m):
-    return AppException("DATA_CONFLICT", m, http_status=409)
+def __getattr__(name):
+    return getattr(_core, name)
 
 
-def _op():
-    ctx = get_current_user_ctx() or {}
-    return str(ctx.get("userId") or ctx.get("loginName") or "")
+def _writable_batch(db, batch_id):
+    batch = selection_service._core._get_batch(db, int(batch_id))
+    selection_service._guard_batch_writable(db, batch)
+    return batch
 
 
-def _role():
-    ctx = get_current_user_ctx() or {}
-    return str(ctx.get("currentRoleCode") or "")
+def _draw_key(round_id: int, record_id: int) -> str:
+    return hashlib.sha256(f"{int(round_id)}:{int(record_id)}".encode("utf-8")).hexdigest()
 
-
-def _audit(db, biz_id, action, detail=""):
-    from app.models import AffairsAuditTrail
-    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="AA_SELECTION_ROUND", biz_id=biz_id,
-                             action=action, operator=_op(), role_name=_role(), detail=detail[:990],
-                             occurred_at=datetime.utcnow()))
-
-
-def _round_dto(r):
-    return {"roundId": str(r.id), "batchId": str(r.batch_id), "roundNo": r.round_no,
-            "roundName": r.round_name, "mode": r.mode,
-            "startAt": _iso(r.start_at), "endAt": _iso(r.end_at),
-            "allowEnroll": bool(r.allow_enroll), "allowDrop": bool(r.allow_drop),
-            "status": r.status}
-
-
-def _get_round(db, round_id):
-    from app.models import AaSelectionRound
-    r = db.get(AaSelectionRound, int(round_id))
-    if not r or r.is_deleted or r.tenant_id != _tid():
-        raise not_found("选课轮次不存在")
-    return r
-
-
-# ══════════ 轮次维护 ══════════
 
 def create_round(user, batch_id, body) -> dict:
     from app.models import AaSelectionRound
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        b = _get_batch(db, int(batch_id))
-        if b.status in ("LOCKED", "ARCHIVED"):
-            raise _invalid("批次已锁定/归档，不可新增轮次")
-        mode = (getattr(body, "mode", None) or "FCFS").upper()
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _writable_batch(db, batch_id)
+        if batch.status in {"LOCKED", "ARCHIVED"}:
+            raise _core._invalid("批次已锁定/归档，不可新增轮次")
+        mode = str(getattr(body, "mode", None) or "FCFS").upper()
         if mode not in MODES:
-            raise _bad("轮次模式仅支持 FCFS(先到先得)/LOTTERY(抽签)")
-        name = (getattr(body, "roundName", None) or "").strip()
+            raise _core._bad("轮次模式仅支持 FCFS(先到先得)/LOTTERY(抽签)")
+        name = str(getattr(body, "roundName", None) or "").strip()
         if not name:
-            raise _bad("轮次名称必填")
-        max_no = db.query(AaSelectionRound).filter(
-            AaSelectionRound.tenant_id == _tid(), AaSelectionRound.batch_id == b.id,
-            AaSelectionRound.is_deleted.is_(False)).count()
-        r = AaSelectionRound(
-            tenant_id=_tid(), batch_id=b.id, round_no=max_no + 1, round_name=name, mode=mode,
+            raise _core._bad("轮次名称必填")
+        maximum = db.query(AaSelectionRound).filter(
+            AaSelectionRound.tenant_id == _core._tid(),
+            AaSelectionRound.batch_id == batch.id,
+            AaSelectionRound.is_deleted.is_(False),
+        ).with_for_update().count()
+        row = AaSelectionRound(
+            tenant_id=_core._tid(),
+            batch_id=batch.id,
+            round_no=int(maximum or 0) + 1,
+            round_name=name,
+            mode=mode,
             allow_enroll=bool(getattr(body, "allowEnroll", True)),
-            allow_drop=bool(getattr(body, "allowDrop", True)), status="DRAFT")
-        db.add(r)
+            allow_drop=bool(getattr(body, "allowDrop", True)),
+            start_at=selection_service._core._parse_dt(getattr(body, "startAt", None)),
+            end_at=selection_service._core._parse_dt(getattr(body, "endAt", None)),
+            status="DRAFT",
+        )
+        if row.start_at and row.end_at and row.end_at <= row.start_at:
+            raise _core._bad("轮次结束时间必须晚于开始时间")
+        db.add(row)
         db.flush()
-        _audit(db, r.id, "ROUND_CREATE", f"第{r.round_no}轮 {name}({mode})")
+        _core._audit(db, row.id, "ROUND_CREATE", f"第{row.round_no}轮 {name}({mode})")
         db.commit()
-        return _round_dto(r)
-
-
-def list_rounds(user, batch_id):
-    from app.models import AaSelectionRound
-    with session() as db:
-        _ctx(user, db)
-        rows = db.query(AaSelectionRound).filter(
-            AaSelectionRound.tenant_id == _tid(), AaSelectionRound.batch_id == int(batch_id),
-            AaSelectionRound.is_deleted.is_(False)).order_by(AaSelectionRound.round_no).all()
-        return [_round_dto(r) for r in rows]
+        return _core._round_dto(row)
 
 
 def open_round(user, round_id) -> dict:
     from app.models import AaSelectionRound
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        r = _get_round(db, round_id)
-        if r.status not in ("DRAFT", "CLOSED"):
-            raise _invalid("仅草稿/已关闭轮次可开启")
-        b = _get_batch(db, r.batch_id)
-        if b.status != "OPEN":
-            raise _invalid("批次未处于开放选课状态，不可开轮")
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        row = db.query(AaSelectionRound).filter(
+            AaSelectionRound.id == int(round_id),
+            AaSelectionRound.tenant_id == _core._tid(),
+            AaSelectionRound.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
+            raise not_found("轮次不存在")
+        batch = _writable_batch(db, row.batch_id)
+        if row.status not in {"DRAFT", "CLOSED"}:
+            raise _core._invalid("仅草稿/已关闭轮次可开启")
+        if batch.status != "OPEN":
+            raise _core._invalid("批次未处于开放选课状态，不可开轮")
         other = db.query(AaSelectionRound).filter(
-            AaSelectionRound.tenant_id == _tid(), AaSelectionRound.batch_id == r.batch_id,
-            AaSelectionRound.status == "OPEN", AaSelectionRound.id != r.id,
-            AaSelectionRound.is_deleted.is_(False)).first()
+            AaSelectionRound.tenant_id == _core._tid(),
+            AaSelectionRound.batch_id == row.batch_id,
+            AaSelectionRound.status == "OPEN",
+            AaSelectionRound.id != row.id,
+            AaSelectionRound.is_deleted.is_(False),
+        ).first()
         if other:
-            raise _invalid(f"第{other.round_no}轮（{other.round_name}）尚未关闭，同批次同时只能开一个轮次")
-        r.status = "OPEN"
-        _audit(db, r.id, "ROUND_OPEN", f"第{r.round_no}轮开启")
+            raise _core._invalid(f"第{other.round_no}轮（{other.round_name}）尚未关闭，同批次同时只能开一个轮次")
+        now = datetime.utcnow()
+        if row.end_at and row.end_at <= now:
+            raise _core._invalid("该轮次结束时间已过，不能重新开启")
+        row.status = "OPEN"
+        row.start_at = row.start_at or now
+        _core._audit(db, row.id, "ROUND_OPEN", f"第{row.round_no}轮开启")
         db.commit()
-        return _round_dto(r)
+        return _core._round_dto(row)
 
 
 def close_round(user, round_id) -> dict:
-    from app.models import AaSelectionRound  # noqa: F401（保持导入面一致）
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        r = _get_round(db, round_id)
-        if r.status != "OPEN":
-            raise _invalid("仅开启中的轮次可关闭")
-        r.status = "CLOSED"
-        _audit(db, r.id, "ROUND_CLOSE", f"第{r.round_no}轮关闭")
+    from app.models import AaSelectionRound
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        row = db.query(AaSelectionRound).filter(
+            AaSelectionRound.id == int(round_id),
+            AaSelectionRound.tenant_id == _core._tid(),
+            AaSelectionRound.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
+            raise not_found("轮次不存在")
+        _writable_batch(db, row.batch_id)
+        if row.status != "OPEN":
+            raise _core._invalid("仅开启中的轮次可关闭")
+        row.status = "CLOSED"
+        row.end_at = row.end_at or datetime.utcnow()
+        _core._audit(db, row.id, "ROUND_CLOSE", f"第{row.round_no}轮关闭")
         db.commit()
-        return _round_dto(r)
+        return _core._round_dto(row)
 
-
-# ══════════ 摇号 ══════════
 
 def draw_round(user, round_id) -> dict:
-    """抽签摇号：逐课程比对志愿数与剩余容量，超额按确定性派生序取前 N 名。
-
-    中签 → SELECTED 并守护式占容量（绝不超容）；未中签 → LOTTERY_LOST（可进下一轮再选）。
-    只允许在 CLOSED 的 LOTTERY 轮次上执行一次；执行后轮次 DRAWN 终态。
-    """
+    """确定性摇号：相同轮次和申请记录在任何进程中排序结果完全一致。"""
     from app.models import AaSelectionCourse, AaSelectionRecord, AaSelectionRound
-    with session() as db:
-        _require_manage_scope(_ctx(user, db))
-        r = _get_round(db, round_id)
-        if r.mode != "LOTTERY":
-            raise _invalid("仅抽签轮次可摇号")
-        # 历史欠账收口（TOCTOU）：状态跃迁由"读检查+提交前赋值"改为条件更新抢占——
-        # MySQL 行锁下并发第二个 draw 会阻塞至第一个提交，随后匹配 0 行 → 409，
-        # 消除双摇号窗口（双摇会对同一批 PENDING 记录二次派奖+二次占容量）。
-        grabbed = db.query(AaSelectionRound).filter(
-            AaSelectionRound.id == r.id, AaSelectionRound.tenant_id == _tid(),
-            AaSelectionRound.status == "CLOSED").update(
-            {AaSelectionRound.status: "DRAWN"}, synchronize_session=False)
-        if not grabbed:
-            raise _invalid("请先关闭轮次再摇号（开启中不可摇号，已摇号不可重摇）")
 
-        pend = db.scalars(select(AaSelectionRecord).where(
-            AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.round_id == r.id,
-            AaSelectionRecord.status == _REC_PENDING,
-            AaSelectionRecord.is_deleted.is_(False))).all()
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        row = db.query(AaSelectionRound).filter(
+            AaSelectionRound.id == int(round_id),
+            AaSelectionRound.tenant_id == _core._tid(),
+            AaSelectionRound.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
+            raise not_found("轮次不存在")
+        _writable_batch(db, row.batch_id)
+        if row.mode != "LOTTERY":
+            raise _core._invalid("仅抽签轮次可摇号")
+        claimed = db.query(AaSelectionRound).filter(
+            AaSelectionRound.id == row.id,
+            AaSelectionRound.tenant_id == _core._tid(),
+            AaSelectionRound.status == "CLOSED",
+        ).update({AaSelectionRound.status: "DRAWN"}, synchronize_session=False)
+        if not claimed:
+            raise _core._invalid("请先关闭轮次再摇号（开启中不可摇号，已摇号不可重摇）")
+        row.status = "DRAWN"
+
+        pending = db.scalars(select(AaSelectionRecord).where(
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.round_id == row.id,
+            AaSelectionRecord.status == selection_service._REC_PENDING,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).with_for_update()).all()
         by_course = {}
-        for rec in pend:
-            by_course.setdefault(int(rec.selection_course_id), []).append(rec)
+        for record in pending:
+            by_course.setdefault(int(record.selection_course_id), []).append(record)
 
-        results, total_win, total_lose = [], 0, 0
-        for cid, recs in sorted(by_course.items()):
-            c = db.get(AaSelectionCourse, cid)
-            remaining = max(0, int(c.capacity or 0) - int(c.selected_count or 0)) if c else 0
-            if len(recs) <= remaining:
-                winners, losers = recs, []
-            else:
-                # 确定性摇号：(记录id, 轮次id) 派生序，可复核；不引入不可复现的随机源
-                ordered = sorted(recs, key=lambda x: (hash((x.id, r.id)), x.id))
-                winners, losers = ordered[:remaining], ordered[remaining:]
-            if winners and c:
-                n = len(winners)
-                upd = db.query(AaSelectionCourse).filter(
-                    AaSelectionCourse.id == c.id, AaSelectionCourse.tenant_id == _tid(),
-                    AaSelectionCourse.selected_count + n <= AaSelectionCourse.capacity).update(
-                    {AaSelectionCourse.selected_count: AaSelectionCourse.selected_count + n},
-                    synchronize_session=False)
-                if not upd:
-                    # 容量在关轮后被外部变更（如教务处调容）→ 本课程全部落败，不硬塞
-                    losers, winners = winners + losers, []
-            for w in winners:
-                w.status, w.enrolled_at = _REC_SELECTED, datetime.utcnow()
-            for l in losers:
-                l.status = _REC_LOST
+        results = []
+        total_win = total_lose = 0
+        for course_id, records in sorted(by_course.items()):
+            course = db.query(AaSelectionCourse).filter(
+                AaSelectionCourse.id == int(course_id),
+                AaSelectionCourse.tenant_id == _core._tid(),
+                AaSelectionCourse.is_deleted.is_(False),
+            ).with_for_update().first()
+            remaining = max(0, int(course.capacity or 0) - int(course.selected_count or 0)) if course else 0
+            ordered = sorted(records, key=lambda item: (_draw_key(row.id, item.id), int(item.id)))
+            winners, losers = ordered[:remaining], ordered[remaining:]
+            if winners and course:
+                count = len(winners)
+                updated = db.query(AaSelectionCourse).filter(
+                    AaSelectionCourse.id == course.id,
+                    AaSelectionCourse.tenant_id == _core._tid(),
+                    AaSelectionCourse.status == selection_service._COURSE_OPEN,
+                    AaSelectionCourse.selected_count + count <= AaSelectionCourse.capacity,
+                ).update({
+                    AaSelectionCourse.selected_count: AaSelectionCourse.selected_count + count,
+                }, synchronize_session=False)
+                if not updated:
+                    losers, winners = ordered, []
+            now = datetime.utcnow()
+            for winner in winners:
+                winner.status = selection_service._REC_SELECTED
+                winner.enrolled_at = now
+            for loser in losers:
+                loser.status = selection_service._REC_LOST
             total_win += len(winners)
             total_lose += len(losers)
-            results.append({"selectionCourseId": str(cid),
-                            "courseName": (c.course_name if c else None),
-                            "applicants": len(recs), "winners": len(winners),
-                            "losers": len(losers),
-                            "remainingBefore": remaining})
+            results.append({
+                "selectionCourseId": str(course_id),
+                "courseName": course.course_name if course else None,
+                "applicants": len(records),
+                "winners": len(winners),
+                "losers": len(losers),
+                "remainingBefore": remaining,
+                "algorithm": "SHA256_ROUND_RECORD_V1",
+            })
 
-        # 状态已在上方条件更新原子置为 DRAWN（抢占即跃迁），此处不再赋值
-        _audit(db, r.id, "ROUND_DRAW",
-               f"第{r.round_no}轮摇号：{len(by_course)}门课，中签{total_win}/落签{total_lose}")
+        _core._audit(
+            db,
+            row.id,
+            "ROUND_DRAW",
+            f"第{row.round_no}轮摇号：{len(by_course)}门课，中签{total_win}/落签{total_lose};algorithm=SHA256_ROUND_RECORD_V1",
+        )
         db.commit()
-        return {"roundId": str(r.id), "roundNo": r.round_no, "courses": results,
-                "totalWinners": total_win, "totalLosers": total_lose}
+        return {
+            "roundId": str(row.id),
+            "roundNo": row.round_no,
+            "algorithm": "SHA256_ROUND_RECORD_V1",
+            "courses": results,
+            "totalWinners": total_win,
+            "totalLosers": total_lose,
+        }

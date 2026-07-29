@@ -21,6 +21,7 @@
 /**
  * MobileNavBar 自定义导航栏（适配状态栏高度）
  * variant: default(白底) | brand(学生蓝渐变) | teacher(教师青绿渐变)
+ * beforeBack: 可选异步守卫，返回 false 时阻止离页（用于未保存表单提醒）。
  */
 import { back as navBack } from '@/utils/nav'
 export default {
@@ -29,10 +30,11 @@ export default {
     title: { type: String, default: '' },
     subtitle: { type: String, default: '' },
     showBack: { type: Boolean, default: false },
-    variant: { type: String, default: 'default' }
+    variant: { type: String, default: 'default' },
+    beforeBack: { type: Function, default: null }
   },
   data() {
-    return { statusBarHeight: 20 }
+    return { statusBarHeight: 20, backing: false }
   },
   created() {
     try {
@@ -41,8 +43,18 @@ export default {
     } catch (e) {}
   },
   methods: {
-    onBack() {
-      if (this.showBack) navBack()
+    async onBack() {
+      if (!this.showBack || this.backing) return
+      this.backing = true
+      try {
+        if (this.beforeBack) {
+          const allowed = await this.beforeBack()
+          if (allowed === false) return
+        }
+        navBack()
+      } finally {
+        this.backing = false
+      }
     }
   }
 }

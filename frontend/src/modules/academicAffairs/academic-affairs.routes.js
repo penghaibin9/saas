@@ -161,8 +161,10 @@ const layoutRoute = {
     // ── 三级：统计分析 / 材料归档（三级施工卡 10/11） ──
     { path: 'makeup/stats', name: 'aa-makeup-stats', component: () => import('@/modules/academicAffairs/views/AaMakeupStatsView.vue'), meta: meta('academicAffairs.makeup.view', '补考重修缓考免修统计分析') },
     { path: 'exemption/archive', name: 'aa-exemption-archive', component: () => import('@/modules/academicAffairs/views/AaExemptionArchiveView.vue'), meta: meta('academicAffairs.makeup.archive', '免修材料归档') },
-    // ── 教材管理（控制台） ──
+    // ── 教材管理（控制台 + 独立发放工作区） ──
     { path: 'textbooks', name: 'aa-textbooks', component: () => import('@/modules/academicAffairs/views/AaTextbookConsoleView.vue'), meta: meta('academicAffairs.textbook.view', '教材管理') },
+    { path: 'textbooks/distributions/new', name: 'aa-textbook-distribution-new', component: () => import('@/modules/academicAffairs/views/AaTextbookDistributionGenerateView.vue'), meta: meta('academicAffairs.textbook.distribution.manage', '生成教材发放名单') },
+    { path: 'textbooks/distributions/:batchId', name: 'aa-textbook-distribution-detail', component: () => import('@/modules/academicAffairs/views/AaTextbookDistributionDetailView.vue'), meta: meta('academicAffairs.textbook.distribution.manage', '教材发放签收工作区') },
     // ── 排课管理增强（规则/可用时间/冲突报告） ──
     { path: 'scheduling', name: 'aa-scheduling', component: () => import('@/modules/academicAffairs/views/AaSchedulingConsoleView.vue'), meta: meta('academicAffairs.schedule.view', '排课管理') },
     // ── 教学评价（控制台） ──

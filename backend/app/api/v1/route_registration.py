@@ -75,7 +75,8 @@ def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 
 def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
     from app.api.v1 import academic
-    from app.modules.academic_affairs.routers import academic_affairs
+    from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
+    academic_affairs.router = academic_affairs.build_router()
     api_router.include_router(academic.router, dependencies=deps["academic_legacy"])
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
 
@@ -183,7 +184,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
 
 def register_all_routes(api_router: APIRouter) -> None:
     from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
-    from app.modules.academic_affairs.routers import academic_affairs
+    from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
     from app.modules.employment.routers import employment
     deps = build_deps()
     register_core_routes(api_router)
@@ -197,5 +198,6 @@ def register_all_routes(api_router: APIRouter) -> None:
     api_router.include_router(excel.router)
     api_router.include_router(employment.router, dependencies=deps["employment"])
     api_router.include_router(student_affairs.router, dependencies=deps["sa"])
+    academic_affairs.router = academic_affairs.build_router()
     api_router.include_router(academic_affairs.router, dependencies=deps["aa"])
     register_platform_routes(api_router)
