@@ -19,8 +19,8 @@ def replace_once(path: str, old: str, new: str, label: str) -> None:
 # 不新增兼容别名，也不绕过数据范围。
 replace_once(
     "backend/app/services/mobile_teacher_service.py",
-    "from app.services import (academic_service, approval_service, campus_service_service,\n                           orientation_service)\n",
-    "from app.services import (academic_service, affairs_leave_service, approval_service,\n                           campus_service_service, orientation_service)\n",
+    "academic_service, approval_service, campus_service_service,",
+    "academic_service, affairs_leave_service, approval_service, campus_service_service,",
     "teacher authoritative leave import",
 )
 replace_once(
