@@ -55,3 +55,20 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
         return bool(biz_id and biz_id in _actor_student_values(user))
     permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
     return bool(permission and has_permission(user, permission))
+
+
+@register_file_resolver("AFFAIRS_ARCHIVE")
+def affairs_archive_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """学工归档文件：archive.view 与目标学生数据范围必须同时成立。"""
+    if not has_permission(user or {}, "studentAffairs.archive.view"):
+        return False
+    student_id = str(file_obj.biz_id or "").strip()
+    if not student_id.isdigit() or db is None:
+        return False
+    try:
+        from app.core.affairs_security import build_affairs_context
+
+        build_affairs_context(user or {}, db).require_student(db, int(student_id))
+        return True
+    except Exception:
+        return False
