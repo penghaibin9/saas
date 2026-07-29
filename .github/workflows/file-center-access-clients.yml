@@ -7,6 +7,8 @@ on:
       - "backend/app/api/v1/files.py"
       - "backend/app/api/v1/file_contract.py"
       - "backend/app/models/file.py"
+      - "backend/app/services/affairs_archive_file_guard.py"
+      - "backend/app/services/affairs_archive_guard.py"
       - "backend/app/services/file_access_service.py"
       - "backend/app/services/file_access_resolvers.py"
       - "backend/app/services/file_service.py"
@@ -87,6 +89,8 @@ jobs:
             backend/app/api/v1/files.py \
             backend/app/api/v1/file_contract.py \
             backend/app/models/file.py \
+            backend/app/services/affairs_archive_file_guard.py \
+            backend/app/services/affairs_archive_guard.py \
             backend/app/services/file_access_service.py \
             backend/app/services/file_access_resolvers.py \
             backend/app/services/file_service.py \
