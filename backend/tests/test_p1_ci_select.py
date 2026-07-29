@@ -26,3 +26,9 @@ def test_file_change_selects_file_tests():
     mod = _load()
     targets = mod.select(["backend/app/services/file_content_security.py"])
     assert any("file" in t for t in targets)
+
+
+def test_workbench_snapshot_change_selects_snapshot_contract():
+    mod = _load()
+    targets = mod.select(["backend/app/services/workbench_snapshot_service.py"])
+    assert "tests/test_workbench_snapshot.py" in targets
