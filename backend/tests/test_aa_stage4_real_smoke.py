@@ -8,9 +8,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+from app.core.route_introspection import iter_effective_api_routes
 from app.core.security import create_access_token
 from app.db.session import get_sessionmaker
 from app.main import app
@@ -75,12 +75,10 @@ def _ensure_term() -> int:
 
 
 def test_stage4_route_model_and_cross_module_contracts():
-    # FastAPI method + path 必须唯一；同时确认四个业务中心和两类移动端入口真实挂载。
+    # FastAPI 0.139+ 将 include_router 保存为嵌套节点；必须遍历最终有效路由上下文。
     seen: set[tuple[str, str]] = set()
     paths: set[str] = set()
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
+    for route in iter_effective_api_routes(app.routes):
         paths.add(route.path)
         for method in (route.methods or set()) - {"HEAD", "OPTIONS"}:
             key = (method, route.path)
@@ -185,7 +183,6 @@ def test_stage4_real_mysql_admin_teacher_student_smoke(db_mode):
         _assert_forbidden(client.get("/api/v1/mobile/teacher/academic/tasks", headers=student), "学生不得进入教师接口")
         unknown = client.get("/api/v1/__stage4_unknown_route__", headers=admin)
         assert unknown.status_code == 404
-
 
 
 def test_stage4_warning_reminder_persists_real_message_type(db_mode):
