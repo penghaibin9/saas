@@ -20,23 +20,88 @@ echo "main=$MAIN_SHA"
 echo "source=$SOURCE_SHA"
 git diff --name-only "$SECOND_STAGE_MAIN" "$MAIN_SHA" | sort -u | tee /tmp/main-after-stage2.txt
 
+SOURCE_COMPAT_TESTS=(
+  tests/test_aa_main_migration_compat.py
+  tests/test_aa_model_extension_compat.py
+  tests/test_aa_route_registration_main_compat.py
+  tests/test_aa_route_uniqueness.py
+  tests/test_aa_shared_exception_compat.py
+  tests/test_aa_source_branch_dependency_closure.py
+  tests/test_aa_student_portal_route_main_compat.py
+  tests/test_aa_miniapp_main_compat.py
+  tests/test_aa_main_permission_middleware_compat.py
+  tests/test_aa_scope_fail_closed.py
+  tests/test_security_student_identity.py
+)
+
+FINAL_BACKEND_TESTS=(
+  tests/test_aa_main_migration_compat.py
+  tests/test_aa_model_extension_compat.py
+  tests/test_aa_route_registration_main_compat.py
+  tests/test_aa_route_uniqueness.py
+  tests/test_aa_shared_exception_compat.py
+  tests/test_aa_source_branch_dependency_closure.py
+  tests/test_aa_student_portal_route_main_compat.py
+  tests/test_aa_miniapp_main_compat.py
+  tests/test_aa_main_permission_middleware_compat.py
+  tests/test_aa_archive_semantic_gates.py
+  tests/test_aa_archive_status_change_gate.py
+  tests/test_aa_archive_workflow_policy.py
+  tests/test_aa_archive_selection_gate.py
+  tests/test_aa_selection_round_archive_guard.py
+  tests/test_aa_makeup_archive_guard.py
+  tests/test_aa_evaluation_archive_guard.py
+  tests/test_aa_evaluation_student_anonymity.py
+  tests/test_aa_evaluation_batch_anonymity.py
+  tests/test_aa_evaluation_client_entrypoints.py
+  tests/test_aa_textbook_archive_guard.py
+  tests/test_aa_exam_closure.py
+  tests/test_aa_teaching_roster_unification.py
+  tests/test_aa_frontend_p0_contracts.py
+  tests/test_aa_task_workbench.py
+  tests/test_aa_evaluation_appeal_scope.py
+  tests/test_aa_attendance_teacher_identity.py
+  tests/test_aa_attendance_task_binding.py
+  tests/test_aa_mobile_teacher_identity.py
+  tests/test_aa_mobile_schedule_week.py
+  tests/test_aa_mobile_grade_entry_v2.py
+  tests/test_aa_mobile_effective_grade_policy.py
+  tests/test_aa_home_task_routes_v2.py
+  tests/test_aa_program_opening_r7.py
+  tests/test_aa_teaching_class_migration_r8.py
+  tests/test_aa_roster_consumers_r9.py
+  tests/test_aa_dynamic_grade_evidence_snapshot_r10.py
+  tests/test_aa_effective_grade_identity.py
+  tests/test_aa_effective_grade_policy_snapshot.py
+  tests/test_aa_makeup_effective_candidates.py
+  tests/test_aa_makeup_student_identity.py
+  tests/test_aa_makeup_candidate_scope.py
+  tests/test_aa_task_teaching_weeks.py
+  tests/test_aa_task_scope_security.py
+  tests/test_aa_scope_fail_closed.py
+  tests/test_aa_student_schedule_merge.py
+  tests/test_aa_student_exam_time.py
+  tests/test_aa_student_identity_legacy_entry_guards.py
+  tests/test_aa_graduation_program_resolution.py
+  tests/test_aa_program_quality_v2.py
+  tests/test_aa_program_generation_gate_v2.py
+  tests/test_aa_teaching_class_v2.py
+  tests/test_aa_teaching_class_v2_runtime.py
+  tests/test_aa_scheduling_rule_v2.py
+  tests/test_aa_scheduling_rule_v2_ui.py
+  tests/test_aa_scheduling_rule_v2_final.py
+  tests/test_aa_dashboard_readiness_v2.py
+  tests/test_aa_service_entrypoint_integrity.py
+  tests/test_aa_selection_canonical_service.py
+  tests/test_security_student_identity.py
+)
+
 # 第二阶段核心合同必须先通过，禁止从不稳定施工源创建最终分支。
 git checkout --detach "$SOURCE_SHA"
 (
   cd backend
   python -m compileall -q app tests
-  pytest -q \
-    tests/test_aa_main_migration_compat.py \
-    tests/test_aa_model_extension_compat.py \
-    tests/test_aa_route_registration_main_compat.py \
-    tests/test_aa_route_uniqueness.py \
-    tests/test_aa_shared_exception_compat.py \
-    tests/test_aa_source_branch_dependency_closure.py \
-    tests/test_aa_student_portal_route_main_compat.py \
-    tests/test_aa_miniapp_main_compat.py \
-    tests/test_aa_main_permission_middleware_compat.py \
-    tests/test_aa_scope_fail_closed.py \
-    tests/test_security_student_identity.py
+  pytest -q "${SOURCE_COMPAT_TESTS[@]}" -p no:warnings
 )
 echo source_compat=success > /tmp/source-validation.env
 
@@ -176,7 +241,7 @@ done
   python -m compileall -q app tests
   test "$(alembic heads | grep -c '(head)')" -eq 1
   python -c "from app.db.session import get_engine; from app.models.base import Base; import app.models; Base.metadata.create_all(bind=get_engine())"
-  timeout 35m pytest -q tests/test_aa_*.py tests/test_security_student_identity.py -p no:warnings --durations=20
+  timeout 35m pytest -q "${FINAL_BACKEND_TESTS[@]}" -p no:warnings --durations=20
 )
 echo backend=success > /tmp/backend-validation.env
 
