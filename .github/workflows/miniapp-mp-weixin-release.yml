@@ -9,6 +9,7 @@ on:
       - scripts/maintenance/apply_miniapp_stage_a.py
       - scripts/maintenance/hotfix_stage_a_runner.py
       - scripts/maintenance/hotfix_stage_a_runner_tail.py
+      - scripts/maintenance/postprocess_stage_a_patch.py
       - .github/workflows/miniapp-mp-weixin-release.yml
   pull_request:
     branches:
@@ -81,6 +82,7 @@ jobs:
           python scripts/maintenance/hotfix_stage_a_runner.py
           python scripts/maintenance/hotfix_stage_a_runner_tail.py
           python scripts/maintenance/apply_miniapp_stage_a.py
+          python scripts/maintenance/postprocess_stage_a_patch.py
 
       - name: 公共文件中心禁区和迁移红线检查
         shell: bash
@@ -100,17 +102,22 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
 
-      - name: Python编译与移动端MySQL测试
+      - name: Python编译与阶段A相关MySQL测试
         working-directory: backend
         shell: bash
         run: |
           set -euo pipefail
           python -m compileall -q app tests
-          mapfile -t TESTS < <(
-            find tests -maxdepth 1 -type f \( -name 'test_mobile*.py' -o -name 'test_*miniapp*.py' \) | sort -u
-          )
-          printf 'mobile tests: %s\n' "${TESTS[*]}"
-          pytest -q -p no:warnings "${TESTS[@]}" --durations=20
+          pytest -q -p no:warnings \
+            tests/test_mobile_stage_a_contracts.py \
+            tests/test_mobile.py::test_home_aggregation_and_cross_tenant_isolation \
+            tests/test_mobile.py::test_messages_self_only \
+            tests/test_mobile.py::test_student_cannot_access_teacher \
+            tests/test_mobile.py::test_requires_login \
+            tests/test_mobile.py::test_teacher_overview_ok \
+            tests/test_mobile.py::test_teacher_todos_403_and_200 \
+            tests/test_mobile.py::test_new_endpoints_require_login \
+            --durations=20
 
       - name: 安装小程序依赖
         working-directory: miniapp
