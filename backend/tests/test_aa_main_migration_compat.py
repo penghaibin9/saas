@@ -13,6 +13,12 @@ def _source(filename: str) -> str:
     return (VERSIONS / filename).read_text(encoding="utf-8")
 
 
+def _script() -> ScriptDirectory:
+    config = Config(str(BACKEND / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND / "alembic"))
+    return ScriptDirectory.from_config(config)
+
+
 def test_current_main_merge_migrations_are_preserved():
     main_merge = _source("0141_merge_gd_intern_affairs_heads.py")
     main_head = _source("0142_gd_excellent_delay_workflows.py")
@@ -43,16 +49,27 @@ def test_main_merge_parents_exist_on_long_lived_branch():
 
 
 def test_academic_and_current_main_heads_are_joined_without_ddl():
-    source = _source("aa_merge_main_20260728_heads.py")
-    assert 'revision = "aa_merge_main_20260728"' in source
-    assert '"0134_aa_makeup_source_identity"' in source
-    assert '"0142_gd_excellent_delay"' in source
-    assert "def upgrade():\n    pass" in source
-    assert "def downgrade():\n    pass" in source
+    script = _script()
+    heads = script.get_heads()
+    assert len(heads) == 1
+
+    reachable = {
+        revision.revision
+        for revision in script.walk_revisions(heads, "base")
+    }
+    assert "0134_aa_makeup_source_identity" in reachable
+    assert "0142_gd_excellent_delay" in reachable
+
+    head = script.get_revision(heads[0])
+    parents = head.down_revision
+    assert isinstance(parents, tuple)
+    assert len(parents) >= 2
+
+    source = Path(head.path).read_text(encoding="utf-8")
+    assert "def upgrade" in source
+    assert "def downgrade" in source
+    assert "op." not in source
 
 
 def test_alembic_graph_has_exactly_one_head():
-    config = Config(str(BACKEND / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND / "alembic"))
-    script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["aa_merge_main_20260728"]
+    assert len(_script().get_heads()) == 1
