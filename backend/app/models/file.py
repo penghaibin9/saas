@@ -1,4 +1,4 @@
-"""公共文件对象、扫描记录、上传会话与文件任务。"""
+"""公共文件对象、扫描记录、上传会话、文件任务与业务绑定。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -106,4 +106,30 @@ class FileJob(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "dedupe_key", name="uk_file_job_dedupe"),
         Index("ix_file_job_claim", "job_type", "status", "available_at", "locked_at"),
+    )
+
+
+class FileBinding(PKMixin, TenantMixin, CommonMixin, Base):
+    __tablename__ = "t_file_binding"
+
+    file_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    biz_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    biz_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    relation_type: Mapped[str] = mapped_column(String(40), nullable=False, default="ATTACHMENT")
+    subject_type: Mapped[str] = mapped_column(String(30), nullable=False, default="BUSINESS_OBJECT")
+    subject_id: Mapped[str | None] = mapped_column(String(64))
+    batch_id: Mapped[str | None] = mapped_column(String(64))
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
+    scope_json: Mapped[dict | None] = mapped_column(JSON)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "file_id", "biz_type", "biz_id", "relation_type",
+            name="uk_file_binding_relation",
+        ),
+        Index("ix_file_binding_business", "tenant_id", "biz_type", "biz_id", "is_current"),
+        Index("ix_file_binding_subject", "tenant_id", "subject_type", "subject_id"),
+        Index("ix_file_binding_batch", "tenant_id", "batch_id"),
     )
