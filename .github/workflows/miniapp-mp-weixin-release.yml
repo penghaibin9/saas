@@ -1,0 +1,58 @@
+name: 小程序 mp-weixin 生产构建
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/miniapp-mp-weixin-release-hardening-20260729
+    paths:
+      - miniapp/**
+      - scripts/check/scan-fixed-demo-credentials.mjs
+      - .github/workflows/miniapp-mp-weixin-release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miniapp-mp-weixin-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-mp-weixin:
+    name: 生产构建与上传产物
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VITE_API_BASE_URL: https://api.hnyueke.com
+      VITE_USE_MOCK: "false"
+      WECHAT_APPID: ${{ vars.WECHAT_APPID }}
+    defaults:
+      run:
+        working-directory: miniapp
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建微信小程序生产包
+        run: npm run build:mp-weixin:release
+
+      - name: 扫描固定演示账号与密码
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+
+      - name: 上传微信开发者工具导入目录
+        uses: actions/upload-artifact@v4
+        with:
+          name: mp-weixin-importable
+          path: miniapp/dist/build/mp-weixin
+          if-no-files-found: error
+          retention-days: 14
