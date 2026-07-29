@@ -132,6 +132,20 @@ jobs:
           UNEXPECTED=$(wc -l < /tmp/unexpected-diff.txt)
           ALLOWED=$(wc -l < /tmp/allowed-diff.txt)
 
+          echo "施工源教务独占文件=$TOTAL，完全一致=$EXACT，已解释安全修复=$ALLOWED，缺失=$MISSING，未解释差异=$UNEXPECTED"
+          if [[ "$MISSING" -gt 0 ]]; then
+            echo '--- 缺失文件 ---'
+            cat /tmp/missing.txt
+          fi
+          if [[ "$UNEXPECTED" -gt 0 ]]; then
+            echo '--- 未解释内容差异 ---'
+            cat /tmp/unexpected-diff.txt
+          fi
+          if [[ "$ALLOWED" -gt 0 ]]; then
+            echo '--- 已解释最终安全修复 ---'
+            cat /tmp/allowed-diff.txt
+          fi
+
           {
             echo '## PR #17 → PR #23 教务独占成果核验'
             echo
