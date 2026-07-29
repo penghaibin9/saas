@@ -7,7 +7,7 @@ on:
       - integrate/academic-affairs-final-20260729
 
 permissions:
-  contents: read
+  contents: write
   statuses: write
 
 concurrency:
@@ -33,6 +33,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: 应用预警提醒真实落库修复
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "academic-affairs-stage4-bot"
+          git config user.email "academic-affairs-stage4@users.noreply.github.com"
+          git pull --ff-only origin integrate/academic-affairs-final-20260729
+          python scripts/check/apply-stage4-warning-reminder-fix.py
+          git add -- \
+            backend/app/services/message_event_outbox_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py \
+            backend/tests/test_aa_stage4_real_smoke.py
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(academic-affairs): persist warning reminder message type"
+            git push origin HEAD:integrate/academic-affairs-final-20260729
+          fi
 
       - name: 核对施工源教务文件完整性
         shell: bash
@@ -77,6 +94,7 @@ jobs:
 
           is_allowed_final_remediation() {
             case "$1" in
+              backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py|\
               backend/app/student_portal/services/academic_evaluation_safety_facade.py|\
               backend/app/student_portal/services/academic_transcript_safety_facade.py)
                 return 0 ;;
@@ -122,7 +140,14 @@ jobs:
             fi
           done < /tmp/source-academic-files.txt
 
-          # 允许差异必须是第三、第四阶段真实回归发现并验证的安全兼容修复。
+          if grep -Fxq 'backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py' /tmp/allowed-diff.txt; then
+            grep -Fq 'event_code = "WARNING.REMINDED" if is_remind else "WARNING.CREATED"' \
+              backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py
+            test "$(grep -Fc 'event_code=event_code' backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py)" -eq 2
+            grep -Fq '"WARNING.REMINDED"' backend/app/services/message_event_outbox_service.py
+            grep -Fq '"message_type": "ACAD_WARNING_REMIND"' backend/app/services/message_event_outbox_service.py
+            grep -Fq 'test_stage4_warning_reminder_persists_real_message_type' backend/tests/test_aa_stage4_real_smoke.py
+          fi
           if grep -Fxq 'backend/app/student_portal/services/academic_evaluation_safety_facade.py' /tmp/allowed-diff.txt; then
             grep -Fq 'from app.services.mobile_student_service import _require_student' \
               backend/app/student_portal/services/academic_evaluation_safety_facade.py
