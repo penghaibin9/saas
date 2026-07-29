@@ -1,33 +1,44 @@
 """/api/v1 路由聚合。注册逻辑拆至 route_registration，路径与依赖保持兼容。"""
 from __future__ import annotations
 
-import inspect
 from types import MethodType
 
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
 
-# 必须先于 route_registration 及其依赖导入保存。历史兼容模块可能在导入链中替换
-# APIRouter.include_router；最终父 Router 必须始终使用 FastAPI 原始实现。
+# 必须先于 route_registration 及其依赖导入保存。历史兼容模块会在导入链中替换
+# APIRouter.add_api_route；include_router 内部最终仍调用 self.add_api_route，因此两个
+# 原始方法都必须按实例绑定，否则每个子 Router 只会留下 1 条路由。
 _CANONICAL_INCLUDE_ROUTER = APIRouter.include_router
+_CANONICAL_ADD_API_ROUTE = APIRouter.add_api_route
 
-# 在任何业务模块导入前做最小自检，确认保存到的确实是可工作的 FastAPI 实现。
+
+def _bind_canonical_router_methods(router: APIRouter) -> None:
+    """把 FastAPI 原始挂载方法直接绑定到实例，隔离导入链中的类级替换。"""
+    router.include_router = MethodType(_CANONICAL_INCLUDE_ROUTER, router)
+    router.add_api_route = MethodType(_CANONICAL_ADD_API_ROUTE, router)
+
+
+# 在任何业务模块导入前验证多路由复制能力；单路由探针无法识别“每个子 Router 只留 1 条”。
 _probe_parent = APIRouter()
 _probe_child = APIRouter()
-_probe_child.add_api_route("/__route_probe__", lambda: None, methods=["GET"])
-_CANONICAL_INCLUDE_ROUTER(_probe_parent, _probe_child)
+for index in range(3):
+    _CANONICAL_ADD_API_ROUTE(
+        _probe_child,
+        f"/__route_probe__/{index}",
+        lambda: None,
+        methods=["GET"],
+    )
+_bind_canonical_router_methods(_probe_parent)
+_probe_parent.include_router(_probe_child)
 _CANONICAL_PROBE_COUNT = len(_probe_parent.routes)
+if _CANONICAL_PROBE_COUNT != 3:
+    raise RuntimeError(f"FastAPI 原始路由挂载异常: expected=3 actual={_CANONICAL_PROBE_COUNT}")
 
 from app.api.v1.route_registration import register_all_routes
 
-
-def _bind_canonical_include_router(router: APIRouter) -> None:
-    """把原始 include_router 直接绑定到实例，绕开导入链中的类级或实例级替换。"""
-    router.include_router = MethodType(_CANONICAL_INCLUDE_ROUTER, router)
-
-
 api_router = APIRouter()
-_bind_canonical_include_router(api_router)
+_bind_canonical_router_methods(api_router)
 register_all_routes(api_router)
 
 # 学工四端补充路由必须在既有路由完成注册后挂载；契约安装器随后修补已加载服务的
@@ -166,9 +177,10 @@ install_teacher_workbench_guard()
 def _finalize_route_registry_after_import_cycles() -> None:
     """在全部模块初始化后重建唯一最终父 Router，并保留对象身份。"""
     APIRouter.include_router = _CANONICAL_INCLUDE_ROUTER
+    APIRouter.add_api_route = _CANONICAL_ADD_API_ROUTE
 
     rebuilt = APIRouter()
-    _bind_canonical_include_router(rebuilt)
+    _bind_canonical_router_methods(rebuilt)
     register_all_routes(rebuilt)
     for supplemental_router in _SUPPLEMENTAL_ROUTERS:
         _mount_supplemental_router(rebuilt, supplemental_router)
@@ -190,12 +202,9 @@ def _finalize_route_registry_after_import_cycles() -> None:
     }
     missing = sorted(required - paths)
     if missing:
-        method_file = inspect.getsourcefile(_CANONICAL_INCLUDE_ROUTER)
         raise RuntimeError(
             "API 路由最终注册不完整: "
-            f"missing={missing}; probe={_CANONICAL_PROBE_COUNT}; rebuilt={len(rebuilt.routes)}; "
-            f"canonical={_CANONICAL_INCLUDE_ROUTER.__module__}."
-            f"{_CANONICAL_INCLUDE_ROUTER.__qualname__}; source={method_file}"
+            f"missing={missing}; probe={_CANONICAL_PROBE_COUNT}; rebuilt={len(rebuilt.routes)}"
         )
 
 
