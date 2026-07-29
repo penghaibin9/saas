@@ -11,6 +11,9 @@ on:
     # 每日 18:00 UTC（北京 02:00）跑后端全量；push/PR 仅跑 portal 相关快测。
     - cron: "0 18 * * *"
 
+permissions:
+  contents: write
+
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -91,7 +94,6 @@ jobs:
         working-directory: backend
     env:
       TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
-      # 仍使用真实 MySQL；会话建表一次、每用例清数据，避免约 250 张表反复 DDL 导致超时。
       FAST_TEST_SCHEMA: "1"
     services:
       mysql:
@@ -217,3 +219,82 @@ jobs:
             exit 1
           fi
           echo "✅ 未发现禁止文件"
+
+  abcd-regression-repair:
+    name: ABCD回归合同修复与定向MySQL验证
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/miniapp-mp-weixin-release-hardening-20260729'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_ENV: test
+      JWT_SECRET: abcd-regression-authoritative-secret-32-bytes
+      DB_ENABLED: "true"
+      MOCK_LOGIN_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/miniapp-mp-weixin-release-hardening-20260729
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: 应用精确合同补丁
+        run: python scripts/maintenance/fix_abcd_regression_contracts.py
+      - name: 禁区检查
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only HEAD --)
+          printf '%s\n' "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -E '(^|/)(file-center|file_center)(/|$)|fileApi\.js|fileCenter\.js|uploadQueue\.js|^backend/alembic/versions/|^miniapp/src/pages\.json$'; then
+            echo "触碰公共文件中心、迁移或 pages.json 禁区"
+            exit 1
+          fi
+      - name: 安装后端依赖
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: 定向MySQL回归
+        working-directory: backend
+        run: |
+          pytest -q -p no:warnings \
+            tests/test_mobile.py \
+            tests/test_mobile_aa_student_v2.py \
+            tests/test_mobile_attendance.py \
+            tests/test_mobile_wave10.py \
+            tests/test_workbench_snapshot.py \
+            tests/test_mobile_stage_a_contracts.py \
+            --durations=20
+      - name: 精确提交修复
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/app/services/mobile_teacher_service.py \
+            backend/tests/test_mobile.py \
+            backend/tests/test_mobile_aa_student_v2.py \
+            backend/tests/test_mobile_attendance.py \
+            backend/tests/test_mobile_wave10.py
+          git diff --cached --check
+          git commit -m "fix(test): align ABCD regressions with production contracts"
+          git push origin HEAD:agent/miniapp-mp-weixin-release-hardening-20260729
