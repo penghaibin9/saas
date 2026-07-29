@@ -77,7 +77,8 @@ jobs:
 
           is_allowed_final_remediation() {
             case "$1" in
-              backend/app/student_portal/services/academic_evaluation_safety_facade.py)
+              backend/app/student_portal/services/academic_evaluation_safety_facade.py|\
+              backend/app/student_portal/services/academic_transcript_safety_facade.py)
                 return 0 ;;
             esac
             return 1
@@ -121,11 +122,23 @@ jobs:
             fi
           done < /tmp/source-academic-files.txt
 
-          # 唯一允许的差异必须是最终分支补上的“先鉴权、后查任务”安全修复。
+          # 允许差异必须是第三、第四阶段真实回归发现并验证的安全兼容修复。
           if grep -Fxq 'backend/app/student_portal/services/academic_evaluation_safety_facade.py' /tmp/allowed-diff.txt; then
             grep -Fq 'from app.services.mobile_student_service import _require_student' \
               backend/app/student_portal/services/academic_evaluation_safety_facade.py
             test "$(grep -Fc '_require_student(user)' backend/app/student_portal/services/academic_evaluation_safety_facade.py)" -ge 2
+          fi
+          if grep -Fxq 'backend/app/student_portal/services/academic_transcript_safety_facade.py' /tmp/allowed-diff.txt; then
+            grep -Fq 'from app.services.mobile_student_service import _require_student' \
+              backend/app/student_portal/services/academic_transcript_safety_facade.py
+            grep -Fq 'student_user = _require_student(user)' \
+              backend/app/student_portal/services/academic_transcript_safety_facade.py
+            grep -Fq 'reason = "本人查询使用"' \
+              backend/app/student_portal/services/academic_transcript_safety_facade.py
+            grep -Fq '"official": False' \
+              backend/app/student_portal/services/academic_transcript_safety_facade.py
+            grep -Fq '"verifiable": False' \
+              backend/app/student_portal/services/academic_transcript_safety_facade.py
           fi
 
           MISSING=$(wc -l < /tmp/missing.txt)
