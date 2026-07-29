@@ -2,6 +2,7 @@
 
 > 阶段 0：精确清单与冻结合同  
 > 分支：`audit/file-capability-inventory`  
+> Draft PR：`#25`  
 > 本阶段只盘点、登记和建立门禁，不改变任何上传、下载、预览、导入、导出、归档业务行为。
 
 ## 1. 审计目标
@@ -76,20 +77,37 @@ Excel、迁移、教务、学工、实习、毕设等模块存在导入/导出�
 
 机器脚本 `scripts/audit_file_capabilities.py` 扫描：
 
-- FastAPI 路由装饰器及包含 upload/download/preview/import/export/archive/file 的路径；
+- FastAPI 中明确包含 file/upload/download/preview/import/export/archive/attachment 的路由；
 - `UploadFile`、`FileResponse`、`StreamingResponse`；
 - `file_service.store_upload/store_bytes/get_file_meta/resolve_download`；
 - 浏览器/uni-app 的 `uploadFile`、`downloadFile`、`chooseFile`；
 - `openpyxl`、`load_workbook`、`Workbook`、`ZipFile`；
 - `Content-Disposition` 和附件响应；
-- 关键本地文件读写调用。
+- 大文件 `read_bytes()` 等关键本地文件读取调用。
 
-脚本提供两类门禁：
+脚本提供三类能力：
 
 1. **全量基线检查**：现有高置信文件能力必须被清单覆盖；
-2. **增量检查**：PR 新增或修改文件能力时，必须同步登记清单。
+2. **增量检查**：PR 新增或修改文件能力时，必须同步登记清单；
+3. **机器同步**：按模块和客户端生成可追溯的来源组，并保留人工确认的核心入口记录。
 
-## 6. 验收口径
+## 6. 首轮扫描与清单收口
+
+首轮过宽扫描得到 1074 个候选，其中大量只是普通页面路径中出现“材料、模板”等词，不是文件读写能力。该结果不能直接作为架构清单。
+
+收紧规则后，扫描器只保留真实文件信号，得到：
+
+- 高置信候选：427 个；
+- 涉及源码文件：88 个；
+- 覆盖范围：后端、教师/管理 PC、学生 PC、教师小程序、学生小程序；
+- 覆盖类型：上传、下载、预览、导入、导出、归档、Excel、ZIP、附件响应和全文件读取；
+- 机器清单：保留 16 条人工确认的核心记录，并生成 27 条按“模块 + 客户端”归组的来源记录，共 43 条；
+- 清单根状态：`COMPLETE`；
+- 每条归组记录均保存真实源码路径和代表性路由，后续阶段可以按 `targetPhase` 逐项施工。
+
+机器清单的 `needs-verification` 不表示阶段 0 漏审，而表示该能力已经找到并登记，但其版本、扫描放行、权限或数据范围将在对应后续阶段做业务级核实。
+
+## 7. 阶段 0 验收口径
 
 阶段 0 只有同时满足以下条件才算完成：
 
@@ -101,7 +119,9 @@ Excel、迁移、教务、学工、实习、毕设等模块存在导入/导出�
 - 没有修改业务代码、路由行为和数据库；
 - Draft PR 保持未合并。
 
-## 7. 后续阶段约束
+当前已完成清单生成和审计报告更新；以 PR #25 最新一次 `File capability inventory` 检查全绿作为阶段 0 最终完成证据。
+
+## 8. 后续阶段约束
 
 阶段 0 验收前：
 
@@ -111,4 +131,4 @@ Excel、迁移、教务、学工、实习、毕设等模块存在导入/导出�
 - 不修改存储或病毒扫描实现；
 - 不把任何“建议目标”当成“当前事实”。
 
-阶段 0 完成后，以 `file-capability-inventory.yaml` 作为阶段 1–7 的唯一施工入口清单。
+阶段 0 验收完成后，继续在同一分支和同一 Draft PR #25 施工阶段 1，不另开文件中心 PR；`file-capability-inventory.yaml` 是阶段 1–7 的唯一施工入口清单。
