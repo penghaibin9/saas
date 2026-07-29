@@ -18,7 +18,8 @@ def test_file_security_models_are_registered() -> None:
     }.issubset(Base.metadata.tables)
 
 
-def test_high_risk_upload_classification() -> None:
+def test_high_risk_upload_classification(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAMAV_ENABLED", "true")
     for ext in ("doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "txt", "csv"):
         assert is_scan_required_for_upload(ext) is True
     for ext in ("pdf", "png", "jpg", "jpeg", "gif"):
