@@ -33,6 +33,15 @@ function read(relative) {
   return fs.readFileSync(absolute, 'utf8')
 }
 
+function walk(directory, suffix, output = []) {
+  for (const entry of fs.readdirSync(path.join(root, directory), { withFileTypes: true })) {
+    const relative = path.join(directory, entry.name)
+    if (entry.isDirectory()) walk(relative, suffix, output)
+    else if (entry.name.endsWith(suffix)) output.push(relative)
+  }
+  return output
+}
+
 for (const relative of sdkFiles) {
   const source = read(relative)
   for (const [status, text] of Object.entries(expected)) {
@@ -69,4 +78,26 @@ if (!apiFiles.every((source) => source.includes('upload_contract'))) {
   throw new Error('formal and compatibility upload APIs must delegate to upload_contract')
 }
 
-console.log('Stage 2 four-client File SDK and component contract passed')
+const accessContract = read('backend/app/api/v1/file_contract.py')
+if (!accessContract.includes('file_access_resolvers')) {
+  throw new Error('authoritative file contract must load registry-based business resolvers')
+}
+const accessService = read('backend/app/services/file_access_service.py')
+if (!accessService.includes('raise not_found("文件不存在")')) {
+  throw new Error('file access failures must be hidden as 404')
+}
+
+for (const relative of walk('backend/app', '.py')) {
+  const source = read(relative)
+  const forbidden = [
+    /file_service\.authorize_file_access\s*=/,
+    /setattr\(\s*file_service\s*,\s*["']authorize_file_access["']/,
+    /file_service\.get_file_meta\s*=/,
+    /setattr\(\s*file_service\s*,\s*["']get_file_meta["']/
+  ]
+  if (forbidden.some((pattern) => pattern.test(source))) {
+    throw new Error(`${relative} reintroduces forbidden student-affairs file monkey-patch`)
+  }
+}
+
+console.log('Stage 2 four-client File SDK, component, resolver and compatibility contract passed')
