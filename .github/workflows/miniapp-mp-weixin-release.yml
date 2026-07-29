@@ -7,6 +7,7 @@ on:
       - agent/miniapp-mp-weixin-release-hardening-20260729
     paths:
       - scripts/maintenance/apply_miniapp_stage_a.py
+      - scripts/maintenance/hotfix_stage_a_runner.py
       - .github/workflows/miniapp-mp-weixin-release.yml
   pull_request:
     branches:
@@ -75,7 +76,9 @@ jobs:
           cache-dependency-path: miniapp/package-lock.json
 
       - name: 应用阶段A精确补丁
-        run: python scripts/maintenance/apply_miniapp_stage_a.py
+        run: |
+          python scripts/maintenance/hotfix_stage_a_runner.py
+          python scripts/maintenance/apply_miniapp_stage_a.py
 
       - name: 公共文件中心禁区和迁移红线检查
         shell: bash
