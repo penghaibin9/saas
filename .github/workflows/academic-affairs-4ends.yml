@@ -1,4 +1,4 @@
-# rerun: 2026-07-29-contract-bridge-restored
+# rerun: 2026-07-29-runtime-context-contract
 name: 教务最终集成执行
 
 on:
@@ -7,6 +7,11 @@ on:
     branches:
       - refactor/academic-affairs-4ends
     paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'student-portal/**'
+      - 'miniapp/**'
+      - 'scripts/check/**'
       - '.github/workflows/academic-affairs-4ends.yml'
 
 permissions:
