@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+PERMANENT_WORKFLOW = r'''name: 小程序阶段A生产闸门
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/miniapp-mp-weixin-release-hardening-20260729
+    paths:
+      - miniapp/**
+      - backend/app/api/v1/mobile.py
+      - backend/app/services/mobile_student_service.py
+      - backend/app/services/mobile_teacher_service.py
+      - backend/tests/test_mobile_stage_a_contracts.py
+      - scripts/check/scan-fixed-demo-credentials.mjs
+      - .github/workflows/miniapp-mp-weixin-release.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - miniapp/**
+      - backend/app/api/v1/mobile.py
+      - backend/app/services/mobile_student_service.py
+      - backend/app/services/mobile_teacher_service.py
+      - backend/tests/test_mobile_stage_a_contracts.py
+      - scripts/check/scan-fixed-demo-credentials.mjs
+      - .github/workflows/miniapp-mp-weixin-release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miniapp-stage-a-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stage-a-gate:
+    name: MySQL合同、H5与微信生产构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APP_ENV: test
+      JWT_SECRET: stage-a-authoritative-secret-at-least-32-bytes
+      DB_ENABLED: "true"
+      MOCK_LOGIN_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: "1"
+      VITE_API_BASE_URL: https://api.hnyueke.com
+      VITE_USE_MOCK: "false"
+      WECHAT_APPID: ${{ vars.WECHAT_APPID }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: 公共文件中心与迁移边界
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          CHANGED=$(git diff --name-only origin/main...HEAD)
+          printf '%s\n' "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -E '(^|/)(file-center|file_center)(/|$)|miniapp/src/services/fileApi\.js|miniapp/src/services/fileCenter\.js|miniapp/src/stores/uploadQueue\.js|miniapp/src/components/file-center/|^backend/alembic/versions/|^miniapp/src/pages\.json$'; then
+            echo "阶段A触碰公共文件中心、迁移或 pages.json 禁区"
+            exit 1
+          fi
+
+      - name: 安装后端依赖
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Python编译与阶段A相关MySQL测试
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q app tests
+          pytest -q -p no:warnings \
+            tests/test_mobile_stage_a_contracts.py \
+            tests/test_mobile.py::test_home_aggregation_and_cross_tenant_isolation \
+            tests/test_mobile.py::test_messages_self_only \
+            tests/test_mobile.py::test_student_cannot_access_teacher \
+            tests/test_mobile.py::test_requires_login \
+            tests/test_mobile.py::test_teacher_overview_ok \
+            tests/test_mobile.py::test_teacher_todos_403_and_200 \
+            tests/test_mobile.py::test_new_endpoints_require_login \
+            --durations=20
+
+      - name: 安装小程序依赖
+        working-directory: miniapp
+        run: npm ci
+
+      - name: 阶段A前端合同测试
+        working-directory: miniapp
+        run: npm test
+
+      - name: H5生产构建
+        working-directory: miniapp
+        run: npm run build:h5
+
+      - name: 微信生产构建
+        working-directory: miniapp
+        run: npm run build:mp-weixin:release
+
+      - name: 固定演示凭据扫描
+        working-directory: miniapp
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+
+      - name: 上传微信开发者工具导入目录
+        uses: actions/upload-artifact@v4
+        with:
+          name: mp-weixin-importable-stage-a
+          path: miniapp/dist/build/mp-weixin
+          if-no-files-found: error
+          retention-days: 14
+'''
+
+(ROOT / ".github/workflows/miniapp-mp-weixin-release.yml").write_text(
+    PERMANENT_WORKFLOW, encoding="utf-8"
+)
+
+for relative in (
+    ".github/workflows/miniapp-stage-a-autofix.yml",
+    "scripts/maintenance/apply_miniapp_stage_a.py",
+    "scripts/maintenance/hotfix_stage_a_runner.py",
+    "scripts/maintenance/hotfix_stage_a_runner_tail.py",
+    "scripts/maintenance/postprocess_stage_a_patch.py",
+    "scripts/maintenance/finalize_stage_a_branch.py",
+):
+    target = ROOT / relative
+    if target.exists():
+        target.unlink()
+
+print("stage A branch prepared for exact commit")
