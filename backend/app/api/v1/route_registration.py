@@ -62,6 +62,13 @@ def _prepare_academic_affairs_route_overrides() -> tuple[APIRouter, list]:
         for route in child.routes
         if isinstance(route, APIRoute)
     }
+    # scheduling_rule_router 会在服务 Facade 循环导入期间短暂暴露空 Router；这三条是其
+    # 明确声明的同 URL 契约修正，必须无条件替换旧总路由，不能依赖导入时机。
+    replacement_signatures.update({
+        ("/academic-affairs/scheduling/rules", frozenset({"PUT"})),
+        ("/academic-affairs/scheduling/rules", frozenset({"GET"})),
+        ("/academic-affairs/scheduling/rules/{rule_id}", frozenset({"DELETE"})),
+    })
     original_routes = list(base_router.router.routes)
     base_router.router.routes[:] = [
         route
