@@ -22,29 +22,6 @@ on:
       - "miniapp/src/components/file/**"
       - "scripts/check/check-file-client-contract.mjs"
       - ".github/workflows/file-center-access-clients.yml"
-  push:
-    branches:
-      - audit/file-capability-inventory
-    paths:
-      - "backend/app/api/v1/file.py"
-      - "backend/app/api/v1/files.py"
-      - "backend/app/api/v1/file_contract.py"
-      - "backend/app/models/file.py"
-      - "backend/app/services/file_access_service.py"
-      - "backend/app/services/file_access_resolvers.py"
-      - "backend/app/services/file_version_service.py"
-      - "backend/alembic/versions/0146_file_center_access_and_clients.py"
-      - "backend/tests/test_file_access_service.py"
-      - "backend/tests/file_access_mysql_acceptance.py"
-      - "frontend/src/services/file/**"
-      - "frontend/src/components/file/**"
-      - "student-portal/src/services/fileSdk.js"
-      - "student-portal/src/components/file/**"
-      - "miniapp/src/services/fileApi.js"
-      - "miniapp/src/services/fileSdk.js"
-      - "miniapp/src/components/file/**"
-      - "scripts/check/check-file-client-contract.mjs"
-      - ".github/workflows/file-center-access-clients.yml"
 
 permissions:
   contents: read
