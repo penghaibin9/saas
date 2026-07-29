@@ -1,8 +1,15 @@
 /**
- * 统一请求封装（上线质量收口版）
- * - 401 刷新单飞；业务错误不回退假成功；写操作支持提交锁。
- * - 学生岗位实习请求自动携带当前选择批次，所有子页面共享同一业务上下文。
- * - 教师毕设：显式批次、后端分页传输、前端逐页合并（最多 20 页，超限明确标记）。
+ * 统一请求封装（P10：上线质量收口版）
+ * ------------------------------------------------------------
+ * - realRequest()：uni.request 调后端，解析统一响应 {code,bizCode,message,data,traceId}。
+ * - realUpload()/realDownload()：文件上传下载沿用同一 token 与 401 单飞刷新。
+ * - 401 刷新单飞：多接口同时 401 只发一次 /auth/refresh，其余排队等结果。
+ * - refresh 失败：清 token 并跳转登录页（不再进入奇怪状态）。
+ * - realFirst / realFirstStrict：读接口仅网络失败才回退 mock；
+ *   业务错误（403/409/422/404）一律透出，绝不假装成功。
+ * - safeToast：同文案 2.5s 内不重复弹，错误不刷屏。
+ * - createSubmitLock：写操作提交锁，快速连点不重复提交。
+ * - 日志绝不输出 token / 手机号 / 身份证。
  */
 import { ENV } from '@/config/env'
 
@@ -13,7 +20,7 @@ const GD_TEACHER_BATCH_KEY = 'gx_gd_teacher_batch_v1'
 const state = { offlineUntil: 0, warned: false }
 
 export function setToken(token) {
-  try { uni.setStorageSync(TOKEN_KEY, token || '') } catch (e) {}
+  try { uni.setStorageSync(TOKEN_KEY, token || '') } catch (e) { /* 忽略存储失败 */ }
 }
 
 export function getToken() {
@@ -21,7 +28,7 @@ export function getToken() {
 }
 
 export function setRefreshToken(token) {
-  try { uni.setStorageSync(REFRESH_KEY, token || '') } catch (e) {}
+  try { uni.setStorageSync(REFRESH_KEY, token || '') } catch (e) { /* 忽略存储失败 */ }
 }
 
 export function getRefreshToken() {
@@ -36,7 +43,7 @@ export function setTeacherGraduationBatch(batch) {
       : null
     if (value) uni.setStorageSync(GD_TEACHER_BATCH_KEY, value)
     else uni.removeStorageSync(GD_TEACHER_BATCH_KEY)
-  } catch (e) { /* 忽略本地缓存失败，页面仍会要求重新选择 */ }
+  } catch (e) { /* 忽略本地缓存失败 */ }
 }
 
 export function getTeacherGraduationBatch() {
@@ -45,6 +52,7 @@ export function getTeacherGraduationBatch() {
     return value && value.id ? value : null
   } catch (e) { return null }
 }
+
 
 export function clearTokens() {
   setToken('')
@@ -66,6 +74,7 @@ function markOffline() {
   }
 }
 
+/* ── 错误分类 ── */
 export function isBusinessError(e) {
   return !!(e && e.biz)
 }
@@ -86,6 +95,7 @@ export function normalizeError(e) {
   return { kind: 'unknown', text: (e && e.message) || '操作失败，请稍后重试' }
 }
 
+/* ── 防刷屏 toast ── */
 const _toastState = { last: '', at: 0 }
 export function safeToast(title, icon = 'none') {
   try {
@@ -94,13 +104,14 @@ export function safeToast(title, icon = 'none') {
     _toastState.last = title
     _toastState.at = now
     uni.showToast({ title, icon, duration: 2200 })
-  } catch (e) {}
+  } catch (e) { /* 忽略 */ }
 }
 
 export function toastError(e) {
   safeToast(normalizeError(e).text, 'none')
 }
 
+/* ── 提交锁：同一个写操作短时间不能重复提交 ── */
 export function createSubmitLock(cooldownMs = 1200) {
   let busy = false
   let lastAt = 0
@@ -122,6 +133,7 @@ export function createSubmitLock(cooldownMs = 1200) {
   }
 }
 
+/* ── 未登录/会话失效 → 跳登录 ── */
 let _redirecting = false
 export function requireAuthOrRedirect(message = '登录已失效，请重新登录') {
   clearTokens()
@@ -129,35 +141,43 @@ export function requireAuthOrRedirect(message = '登录已失效，请重新登�
   _redirecting = true
   safeToast(message, 'none')
   setTimeout(() => {
-    try { uni.reLaunch({ url: '/pages/login/index' }) } catch (e) {}
+    try { uni.reLaunch({ url: '/pages/login/index' }) } catch (e) { /* 忽略 */ }
     _redirecting = false
   }, 600)
 }
 
+/** 模拟一次数据请求。fail=true 时用于演示 error 态。 */
 export function mockRequest(payload, { latency = ENV.mockLatency, fail = false } = {}) {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
-      if (fail) reject({ code: 'MOCK_ERROR', message: '数据加载失败' })
-      else resolve(JSON.parse(JSON.stringify(payload)))
+      if (fail) {
+        reject({ code: 'MOCK_ERROR', message: '数据加载失败' })
+      } else {
+        resolve(JSON.parse(JSON.stringify(payload)))
+      }
     }, latency)
   })
 }
 
+/* ── 401 刷新单飞队列 ── */
 let _refreshing = null
 function _refreshOnce() {
   if (_refreshing) return _refreshing
   const rt = getRefreshToken()
-  if (!rt) return Promise.reject({ code: 401001, biz: true, message: '未登录' })
-  _refreshing = realRequest('/auth/refresh', {
-    method: 'POST', auth: false, data: { refreshToken: rt }
-  }).then((d) => {
-    setToken(d.accessToken)
-    setRefreshToken(d.refreshToken || '')
-    return d.accessToken
-  }).catch((e) => {
-    requireAuthOrRedirect()
-    throw e
-  }).finally(() => { _refreshing = null })
+  if (!rt) {
+    return Promise.reject({ code: 401001, biz: true, message: '未登录' })
+  }
+  _refreshing = realRequest('/auth/refresh', { method: 'POST', auth: false, data: { refreshToken: rt } })
+    .then((d) => {
+      setToken(d.accessToken)
+      setRefreshToken(d.refreshToken || '')
+      return d.accessToken
+    })
+    .catch((e) => {
+      requireAuthOrRedirect()
+      throw e
+    })
+    .finally(() => { _refreshing = null })
   return _refreshing
 }
 
@@ -209,7 +229,6 @@ function withTeacherGraduationContext(path) {
   }
   return value
 }
-
 function attachPageMeta(items, meta) {
   Object.defineProperty(items, '_pageMeta', { value: meta, enumerable: false, configurable: true })
   return items
@@ -217,47 +236,29 @@ function attachPageMeta(items, meta) {
 function normalizeTeacherGraduationData(path, data) {
   const pathname = path.split('?')[0]
   if (pathname === GD_TASKBOOK_PATH && data && Array.isArray(data.items)) {
-    return {
-      list: data.items,
-      total: data.total || data.items.length,
-      page: data.page || 1,
-      pageSize: data.pageSize || data.items.length,
-      hasMore: !!data.hasMore,
-      truncated: !!data.truncated
-    }
+    return { list: data.items, total: data.total || data.items.length, page: data.page || 1,
+      pageSize: data.pageSize || data.items.length, hasMore: !!data.hasMore, truncated: !!data.truncated }
   }
   if (GD_TEACHER_PAGED_PATHS.has(pathname) && pathname !== GD_TEACHER_PREFIX && data && Array.isArray(data.items)) {
-    return attachPageMeta(data.items, {
-      total: data.total || data.items.length,
-      page: data.page || 1,
-      pageSize: data.pageSize || data.items.length,
-      hasMore: !!data.hasMore,
-      truncated: !!data.truncated
-    })
+    return attachPageMeta(data.items, { total: data.total || data.items.length, page: data.page || 1,
+      pageSize: data.pageSize || data.items.length, hasMore: !!data.hasMore, truncated: !!data.truncated })
   }
   return data
 }
-
 async function collectTeacherGraduationPages(path, first, options) {
   const pathname = path.split('?')[0]
   if (!GD_TEACHER_PAGED_PATHS.has(pathname) || !first || !first.hasMore) {
     return normalizeTeacherGraduationData(path, first)
   }
-
   let page = Number(first.page || 1)
   let current = first
   let calls = 1
   if (pathname === GD_TEACHER_PREFIX) {
-    const merged = {
-      ...first,
-      students: [...(first.students || [])],
-      reviewDetail: [...(first.reviewDetail || [])],
-      finalDetail: [...(first.finalDetail || [])]
-    }
+    const merged = { ...first, students: [...(first.students || [])],
+      reviewDetail: [...(first.reviewDetail || [])], finalDetail: [...(first.finalDetail || [])] }
     while (current.hasMore && calls < GD_MAX_AUTO_PAGES) {
       page += 1; calls += 1
-      const nextPath = replaceQuery(path, 'page', page)
-      current = await realRequest(nextPath, { ...options, _rawPage: true })
+      current = await realRequest(replaceQuery(path, 'page', page), { ...options, _rawPage: true })
       merged.students.push(...((current && current.students) || []))
       merged.reviewDetail.push(...((current && current.reviewDetail) || []))
       merged.finalDetail.push(...((current && current.finalDetail) || []))
@@ -266,29 +267,25 @@ async function collectTeacherGraduationPages(path, first, options) {
     merged.truncated = merged.hasMore
     return merged
   }
-
   const items = [...(first.items || [])]
   while (current.hasMore && calls < GD_MAX_AUTO_PAGES) {
     page += 1; calls += 1
-    const nextPath = replaceQuery(path, 'page', page)
-    current = await realRequest(nextPath, { ...options, _rawPage: true })
+    current = await realRequest(replaceQuery(path, 'page', page), { ...options, _rawPage: true })
     items.push(...((current && current.items) || []))
   }
-  return normalizeTeacherGraduationData(path, {
-    ...first,
-    items,
-    total: Number(first.total || items.length),
-    page: 1,
-    pageSize: items.length,
-    hasMore: !!(current && current.hasMore),
-    truncated: !!(current && current.hasMore)
-  })
+  return normalizeTeacherGraduationData(path, { ...first, items, total: Number(first.total || items.length),
+    page: 1, pageSize: items.length, hasMore: !!(current && current.hasMore),
+    truncated: !!(current && current.hasMore) })
 }
 
-/** 真实后端请求：返回统一响应 data；code!==0 抛业务错误。 */
-export function realRequest(path, {
-  method = 'GET', data, auth = true, _retried = false, _rawPage = false
-} = {}) {
+
+function parseUnifiedBody(raw) {
+  if (raw && typeof raw === 'object') return raw
+  try { return JSON.parse(String(raw || '')) } catch (e) { return null }
+}
+
+/** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
+export function realRequest(path, { method = 'GET', data, auth = true, _retried = false, _rawPage = false } = {}) {
   let effectivePath
   try { effectivePath = withTeacherGraduationContext(path) } catch (e) { return Promise.reject(e) }
   return new Promise((resolve, reject) => {
@@ -315,7 +312,7 @@ export function realRequest(path, {
             _refreshOnce()
               .then(() => realRequest(path, { method, data, auth, _retried: true, _rawPage }))
               .then(resolve)
-              .catch(() => reject({ code: body.code, biz: true, message: body.message || '登录已失效', traceId: body.traceId }))
+              .catch(reject)
             return
           }
           reject({ code: body.code, biz: true, message: body.message || '业务错误', traceId: body.traceId })
@@ -329,6 +326,84 @@ export function realRequest(path, {
       fail: (err) => {
         markOffline()
         reject({ code: 'NETWORK', message: (err && err.errMsg) || '网络异常' })
+      }
+    })
+  })
+}
+
+/** 文件上传：使用真实 /files 两步式合同，401 后单飞刷新并仅重试一次。 */
+export function realUpload(path, filePath, {
+  name = 'file', formData = {}, auth = true, _retried = false
+} = {}) {
+  return new Promise((resolve, reject) => {
+    if (!filePath) {
+      reject({ code: 422001, biz: true, message: '请选择要上传的文件' })
+      return
+    }
+    const header = {}
+    const token = auth ? getToken() : ''
+    if (token) header.Authorization = 'Bearer ' + token
+    uni.uploadFile({
+      url: ENV.apiBaseUrl + ENV.apiPrefix + path,
+      filePath,
+      name,
+      formData,
+      header,
+      timeout: Math.max(ENV.requestTimeout || 10000, 30000),
+      success: (res) => {
+        const body = parseUnifiedBody(res.data)
+        if (!body || typeof body.code !== 'number') {
+          reject({ code: 'BAD_RESPONSE', message: '上传响应结构异常' })
+          return
+        }
+        if (body.code !== 0) {
+          if (body.code === 401001 && auth && !_retried) {
+            _refreshOnce()
+              .then(() => realUpload(path, filePath, { name, formData, auth, _retried: true }))
+              .then(resolve)
+              .catch(reject)
+            return
+          }
+          reject({ code: body.code, biz: true, message: body.message || '上传失败', traceId: body.traceId })
+          return
+        }
+        resolve(body.data)
+      },
+      fail: (err) => {
+        markOffline()
+        reject({ code: 'NETWORK', message: (err && err.errMsg) || '上传失败' })
+      }
+    })
+  })
+}
+
+/** 文件下载：返回临时文件路径；401 后单飞刷新并仅重试一次。 */
+export function realDownload(path, { auth = true, _retried = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const header = {}
+    const token = auth ? getToken() : ''
+    if (token) header.Authorization = 'Bearer ' + token
+    uni.downloadFile({
+      url: ENV.apiBaseUrl + ENV.apiPrefix + path,
+      header,
+      timeout: Math.max(ENV.requestTimeout || 10000, 30000),
+      success: (res) => {
+        if (res.statusCode === 200 && res.tempFilePath) {
+          resolve({ tempFilePath: res.tempFilePath })
+          return
+        }
+        if (res.statusCode === 401 && auth && !_retried) {
+          _refreshOnce()
+            .then(() => realDownload(path, { auth, _retried: true }))
+            .then(resolve)
+            .catch(reject)
+          return
+        }
+        reject({ code: res.statusCode === 403 ? 403001 : 404001, biz: true, message: '文件不存在或无权下载' })
+      },
+      fail: (err) => {
+        markOffline()
+        reject({ code: 'NETWORK', message: (err && err.errMsg) || '下载失败' })
       }
     })
   })
@@ -355,7 +430,7 @@ export function request(options) {
 }
 
 export default {
-  mockRequest, realRequest, realFirst, realFirstStrict, request,
+  mockRequest, realRequest, realUpload, realDownload, realFirst, realFirstStrict, request,
   setToken, getToken, clearTokens, safeToast, toastError, normalizeError,
   createSubmitLock, requireAuthOrRedirect, isBusinessError, isNetworkError
 }
