@@ -4,11 +4,11 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
 
-from app.api.v1.route_registration import register_all_routes
-
-# 某些历史兼容模块会在导入链中临时替换 APIRouter.include_router。必须在任何业务模块
-# 导入前保存 FastAPI 原始实现，最终注册时恢复，避免生产启动得到只有补充路由的半成品。
+# 必须先于 route_registration 及其依赖导入保存。历史兼容模块可能在该导入链中临时替换
+# APIRouter.include_router；若保存得太晚，拿到的仍是被替换后的实现。
 _CANONICAL_INCLUDE_ROUTER = APIRouter.include_router
+
+from app.api.v1.route_registration import register_all_routes
 
 api_router = APIRouter()
 register_all_routes(api_router)
