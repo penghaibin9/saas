@@ -116,6 +116,14 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "学业预警通知",
         "require_ack": False,
     },
+    "WARNING.REMINDED": {
+        "source_module": "academic-affairs",
+        "category": "REMINDER",
+        "priority": "IMPORTANT",
+        "message_type": "ACAD_WARNING_REMIND",
+        "title": "学业预警再次提醒",
+        "require_ack": False,
+    },
     "EXAM.ARRANGED": {
         "source_module": "academic-affairs",
         "category": "BUSINESS",
