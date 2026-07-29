@@ -181,7 +181,7 @@ jobs:
           conn = pymysql.connect(host="127.0.0.1", user="root", password="root", autocommit=True)
           try:
               with conn.cursor() as cur:
-                  for name in ("stage4_main_upgrade", "stage4_create_all"):
+                  for name in ("stage4_main_upgrade", "stage4_create_all", "stage4_real_smoke"):
                       cur.execute(f"DROP DATABASE IF EXISTS `{name}`")
                       cur.execute(f"CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
           finally:
@@ -290,11 +290,56 @@ jobs:
             tests/test_p1_health_ops.py
           )
           timeout 70m pytest -q "${TESTS[@]}" -p no:warnings --durations=30
-      - name: 生产关闭 mock-login 的真实三角色与路由冒烟
+      - name: 生产关闭 mock-login 的独立真实三角色与路由冒烟
         working-directory: backend
         env:
           MOCK_LOGIN_ENABLED: "false"
-        run: timeout 20m pytest -q tests/test_aa_stage4_real_smoke.py -p no:warnings --durations=20
+          DB_ENABLED: "true"
+          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/stage4_real_smoke?charset=utf8mb4
+        run: |
+          python - <<'PY'
+          from importlib.util import module_from_spec, spec_from_file_location
+          from pathlib import Path
+
+          from sqlalchemy import select
+          import app.models as _registered_models
+          from app.db.session import get_engine, get_sessionmaker
+          from app.models import StudentProfile
+          from app.models.base import Base
+
+          # 独立进程、独立数据库：不加载 pytest conftest，不允许其把 DB_ENABLED 改回 false。
+          Base.metadata.create_all(bind=get_engine())
+          db = get_sessionmaker()()
+          try:
+              student = db.scalars(select(StudentProfile).where(
+                  StudentProfile.tenant_id == 1000000000000000001,
+                  StudentProfile.student_no == "2023115001",
+                  StudentProfile.is_deleted.is_(False),
+              ).limit(1)).first()
+              if student is None:
+                  student = StudentProfile(
+                      tenant_id=1000000000000000001,
+                      student_no="2023115001",
+                      real_name="赵一凡",
+                      current_stage="INTERNSHIP",
+                      student_status="NORMAL",
+                      status="ACTIVE",
+                  )
+                  db.add(student)
+                  db.commit()
+          finally:
+              db.close()
+
+          path = Path("tests/test_aa_stage4_real_smoke.py").resolve()
+          spec = spec_from_file_location("stage4_real_smoke", path)
+          if spec is None or spec.loader is None:
+              raise SystemExit("无法加载第四阶段真实冒烟模块")
+          smoke = module_from_spec(spec)
+          spec.loader.exec_module(smoke)
+          smoke.test_stage4_route_model_and_cross_module_contracts()
+          smoke.test_stage4_real_mysql_admin_teacher_student_smoke({"standalone": True})
+          print("stage4 standalone real JWT smoke=success")
+          PY
 
   teacher-pc:
     name: 教师／教务 PC test、lint 与生产构建
