@@ -119,6 +119,7 @@ def main() -> None:
 
     from app.core.context import set_current_user, set_tenant
     from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401
+    from app.services import file_service
     from app.services.file_access_service import require_file_access
 
     cleanup()
@@ -133,6 +134,7 @@ def main() -> None:
         }
         set_current_user(allowed_student)
         assert require_file_access(student_file_id, user=allowed_student, action="meta").id
+        assert file_service.get_file_meta(student_file_id, allowed_student, require_ready=False)
 
         other_student = {
             "userId": 1002,
@@ -140,6 +142,7 @@ def main() -> None:
             "studentNo": "S-200",
         }
         assert_hidden(lambda: require_file_access(student_file_id, user=other_student, action="meta"))
+        assert file_service.get_file_meta(student_file_id, other_student, require_ready=False) is None
 
         allowed_batch = {
             "userId": 2001,
@@ -149,6 +152,7 @@ def main() -> None:
         }
         set_current_user(allowed_batch)
         assert require_file_access(batch_file_id, user=allowed_batch, action="meta").id
+        assert file_service.get_file_meta(batch_file_id, allowed_batch, require_ready=False)
 
         other_batch = {
             "userId": 2002,
@@ -157,6 +161,7 @@ def main() -> None:
             "allowedBatchIds": ["B-200"],
         }
         assert_hidden(lambda: require_file_access(batch_file_id, user=other_batch, action="meta"))
+        assert file_service.get_file_meta(batch_file_id, other_batch, require_ready=False) is None
 
         no_scope = {
             "userId": 2003,
@@ -164,6 +169,7 @@ def main() -> None:
             "currentRoleCode": "GD_COLLEGE_ADMIN",
         }
         assert_hidden(lambda: require_file_access(batch_file_id, user=no_scope, action="meta"))
+        assert file_service.get_file_meta(batch_file_id, no_scope, require_ready=False) is None
 
         # permissions 数组不是后端权威权限来源；伪造它不能让 STAFF 提权。
         no_permission = {
@@ -174,9 +180,11 @@ def main() -> None:
             "permissions": ["*", "graduationDesign.view"],
         }
         assert_hidden(lambda: require_file_access(batch_file_id, user=no_permission, action="meta"))
+        assert file_service.get_file_meta(batch_file_id, no_permission, require_ready=False) is None
 
         set_tenant({"tenantId": OTHER_TENANT_ID, "tenantCode": "other-school"})
         assert_hidden(lambda: require_file_access(student_file_id, user=allowed_student, action="meta"))
+        assert file_service.get_file_meta(student_file_id, allowed_student, require_ready=False) is None
 
         print("Stage 2 MySQL access acceptance passed")
     finally:
