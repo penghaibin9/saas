@@ -7,7 +7,6 @@ set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
 cd "$ROOT"
-
 git config user.name "academic-affairs-integration-bot"
 git config user.email "academic-affairs-integration@users.noreply.github.com"
 git fetch origin main "$SOURCE_BRANCH" --prune
@@ -21,7 +20,7 @@ echo "main=$MAIN_SHA"
 echo "source=$SOURCE_SHA"
 git diff --name-only "$SECOND_STAGE_MAIN" "$MAIN_SHA" | sort -u | tee /tmp/main-after-stage2.txt
 
-# 施工源必须先满足第二阶段核心兼容合同；不满足则禁止创建最终分支。
+# 第二阶段核心合同必须先通过，禁止从不稳定施工源创建最终分支。
 git checkout --detach "$SOURCE_SHA"
 (
   cd backend
@@ -41,8 +40,7 @@ git checkout --detach "$SOURCE_SHA"
 )
 echo source_compat=success > /tmp/source-validation.env
 
-# 按用户要求真实执行一次 merge --squash，仅用于记录冲突；随后丢弃结果，
-# 从最新 main 重建干净分支并按第二阶段白名单导入，避免旧分支覆盖共享能力。
+# 真实执行一次 squash 以记录冲突；最终交付仍从最新 main 重建并按白名单导入。
 git checkout -B __academic_squash_audit "$MAIN_SHA"
 set +e
 git merge --squash --no-commit "$SOURCE_SHA" > /tmp/squash-audit.log 2>&1
@@ -135,13 +133,13 @@ done < <(git diff --name-only --diff-filter=D "$MAIN_SHA" "$SOURCE_SHA")
 sort -u -o /tmp/imported-files.txt /tmp/imported-files.txt
 sort -u -o /tmp/skipped-files.txt /tmp/skipped-files.txt
 
-# 不带入施工期临时合并迁移；在最新 main 图上生成最终单一 head。
+# 不带入施工期临时图合并；在最新 main 迁移图上创建新的最终 merge revision。
 rm -f backend/alembic/versions/aa_merge_main_20260728_heads.py
 (
   cd backend
   mapfile -t HEADS < <(alembic heads | awk '/\(head\)/ {print $1}')
   if [[ ${#HEADS[@]} -gt 1 ]]; then
-    alembic merge -r aa_final_20260729 -m "merge academic affairs final with main" heads
+    alembic merge --rev-id aa_final_20260729 -m "merge academic affairs final with main" heads
   fi
   test "$(alembic heads | grep -c '(head)')" -eq 1
   alembic heads | tee /tmp/alembic-heads.txt
@@ -152,7 +150,7 @@ rm -f backend/alembic/versions/aa_merge_main_20260728_heads.py
   git ls-files --others --exclude-standard
 } | sort -u > /tmp/final-files.txt
 
-# 最终分支不得携带毕设、实习、学工施工成果，也不得覆盖这些高风险共享底座。
+# 拒绝跨域施工成果和高风险共享底座覆盖。
 BAD=$(grep -E '(^|/)(graduation|internship|student_affairs|studentAffairs)(/|_)' /tmp/final-files.txt \
   | grep -vE '^backend/app/modules/academic_affairs/|^frontend/src/modules/academicAffairs/' || true)
 if [[ -n "$BAD" ]]; then
@@ -172,7 +170,7 @@ for forbidden in \
   fi
 done
 
-# 基础验证全部在提交和推送之前完成。
+# 提交前完成后端、MySQL 和四端构建验证。
 (
   cd backend
   python -m compileall -q app tests
@@ -182,29 +180,14 @@ done
 )
 echo backend=success > /tmp/backend-validation.env
 
-(
-  cd frontend
-  npm ci
-  npm run build
-)
+(cd frontend && npm ci && npm run build)
 echo teacher_pc=success > /tmp/teacher-pc-validation.env
-
-(
-  cd student-portal
-  npm ci
-  npm run build
-)
+(cd student-portal && npm ci && npm run build)
 echo student_pc=success > /tmp/student-pc-validation.env
-
-(
-  cd miniapp
-  npm ci
-  npm run build:h5
-  npm run build:mp-weixin
-)
+(cd miniapp && npm ci && npm run build:h5 && npm run build:mp-weixin)
 echo miniapp=success > /tmp/miniapp-validation.env
 
-# 精确暂存最终差异，不使用 git add -A。
+# 精确暂存，不使用 git add -A。
 git diff --name-only -z | xargs -0 -r git add --
 git ls-files --others --exclude-standard -z | xargs -0 -r git add --
 if git diff --cached --quiet; then
@@ -235,10 +218,10 @@ CONFLICT_COUNT=$(wc -l < /tmp/squash-conflicts.txt)
   echo "- merge --squash 冲突文件：$CONFLICT_COUNT"
   echo
   echo "### 冲突解决原则"
-  echo "- 教务独占目录采用已通过专项验证的施工成果。"
+  echo "- 教务独占目录采用通过专项验证的施工成果。"
   echo "- 公共共享目录以最新 main 为准，只接回第二阶段确认的教务扩展。"
   echo "- 毕设、岗位实习、学工文件不从施工源导入。"
-  echo "- Alembic 不改写 main 已使用迁移，以新图合并 revision 收敛为单一 head。"
+  echo "- Alembic 不改写 main 已使用迁移，以新的 merge revision 收敛为单一 head。"
   echo
   echo "### 基础验证"
   echo "- [x] Python 编译与导入"
