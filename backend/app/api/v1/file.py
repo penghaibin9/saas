@@ -13,8 +13,7 @@ from app.core.permissions import require_permission
 from app.core.response import success
 from app.core.security import get_current_user
 from app.services import audit_log
-from app.services.file_access_service import require_file_access
-from app.services.file_scan_service import file_scan_status, health_snapshot, retry_file_scan
+from app.services.file_scan_service import health_snapshot, retry_file_scan
 
 router = APIRouter(tags=["S9·文件上传"])
 placeholder_router = APIRouter(tags=["S9·文件上传占位（非生产）"])
@@ -76,8 +75,18 @@ def scan_health(user=Depends(require_permission("systemAdmin.file.manage"))):
 
 @router.get("/{file_id}/scan-status", summary="查询文件安全扫描状态")
 def scan_status(file_id: str, user=Depends(get_current_user)):
-    require_file_access(file_id, user=user, action="meta")
-    return success(file_scan_status(file_id, user=user))
+    meta = metadata_contract(file_id, user=user)
+    return success({
+        "fileId": meta.get("fileId"),
+        "status": meta.get("status"),
+        "scanRequired": meta.get("scanRequired", False),
+        "scanStatus": meta.get("scanStatus"),
+        "statusText": meta.get("statusText"),
+        "scanAttempts": meta.get("scanAttempts", 0),
+        "readyForBusiness": meta.get("readyForBusiness", False),
+        "scannedAt": meta.get("scannedAt"),
+        "allowedActions": meta.get("allowedActions") or [],
+    })
 
 
 @router.post("/{file_id}/scan-retry", summary="重试失败的文件安全扫描")
