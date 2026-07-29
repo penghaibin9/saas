@@ -8,6 +8,7 @@ on:
     paths:
       - scripts/maintenance/apply_miniapp_stage_a.py
       - scripts/maintenance/hotfix_stage_a_runner.py
+      - scripts/maintenance/hotfix_stage_a_runner_tail.py
       - .github/workflows/miniapp-mp-weixin-release.yml
   pull_request:
     branches:
@@ -78,6 +79,7 @@ jobs:
       - name: 应用阶段A精确补丁
         run: |
           python scripts/maintenance/hotfix_stage_a_runner.py
+          python scripts/maintenance/hotfix_stage_a_runner_tail.py
           python scripts/maintenance/apply_miniapp_stage_a.py
 
       - name: 公共文件中心禁区和迁移红线检查
@@ -140,7 +142,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           path: |
-            .github/workflows/miniapp-mp-weixin-release.yml
             backend/app/api/v1/mobile.py
             backend/app/services/mobile_student_service.py
             backend/app/services/mobile_teacher_service.py
