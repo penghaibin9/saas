@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from app.core.exceptions import AppException
 from app.modules.academic_affairs.services import academic_affairs_evaluation_service as evaluation
+from app.services.mobile_student_service import _require_student
 
 from . import academic_transcript_safety_facade as _base
 
@@ -16,6 +17,7 @@ def __getattr__(name):
 
 
 def evaluation_tasks(user: dict) -> dict:
+    _require_student(user)
     all_items = evaluation.my_student_tasks(user, include_closed=True)
     # 旧学生 PC 评教卡只区分“可提交/已提交”，因此关闭但未提交的任务不伪装成可操作按钮。
     items = [item for item in all_items if item.get("canSubmit") or item.get("submitted")]
@@ -29,6 +31,8 @@ def evaluation_tasks(user: dict) -> dict:
 
 
 def evaluation_submit(user: dict, body: dict) -> dict:
+    # 权限必须先于参数与业务数据校验，防止非学生通过错误差异探测评教任务是否存在。
+    _require_student(user)
     data = body or {}
     task_id = data.get("taskId")
     if not task_id or not str(task_id).isdigit():
