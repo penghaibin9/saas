@@ -6,6 +6,12 @@ from pathlib import Path
 runner = Path(__file__).with_name("apply_miniapp_stage_a.py")
 source = runner.read_text(encoding="utf-8")
 
+old_regex_helper = "    new, count = re.subn(pattern, replacement, text, count=1, flags=flags)\n"
+new_regex_helper = "    new, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=flags)\n"
+if source.count(old_regex_helper) != 1:
+    raise RuntimeError(f"regex helper matches={source.count(old_regex_helper)}")
+source = source.replace(old_regex_helper, new_regex_helper, 1)
+
 old_teacher = '''text = replace_once(
     text,
     "export const mobileTeacherTodos = () => realRequest('/mobile/teacher/todos')\\n",
