@@ -9,7 +9,6 @@ from __future__ import annotations
 import importlib
 
 from fastapi import APIRouter
-from fastapi.routing import APIRoute
 
 from . import academic_affairs as base_router
 
@@ -32,58 +31,22 @@ _EXTENSION_ROUTER_MODULES = (
 )
 
 
-def _route_signature(route: APIRoute) -> tuple[str, frozenset[str]]:
-    return route.path, frozenset((route.methods or set()) - {"HEAD", "OPTIONS"})
-
-
-def _append_route(router: APIRouter, route, seen: set[tuple[str, frozenset[str]]]) -> None:
-    """复制已完成初始化的路由；扩展路由之间禁止继续产生同方法同路径冲突。"""
-    if not isinstance(route, APIRoute):
-        router.routes.append(route)
-        return
-    signature = _route_signature(route)
-    if signature in seen:
-        raise RuntimeError(f"教务扩展路由重复注册: methods={sorted(signature[1])} path={signature[0]}")
-    router.routes.append(route)
-    seen.add(signature)
-
-
 def build_router() -> APIRouter:
-    """构建单一教务 Router；同路径扩展明确替换旧实现，不依赖注册顺序抢占。"""
+    """在注册时读取包内已完成初始化的真实子 Router，避开循环导入留下的旧模块引用。"""
     from app.modules.academic_affairs.routers import scheduling_rule_router as live_rule_router
 
+    router = APIRouter()
+    router.include_router(base_router.router)
     package = importlib.import_module(__package__)
-    extension_routers: list[APIRouter] = []
     for module_name in _EXTENSION_ROUTER_MODULES:
         module = getattr(package, module_name, None)
         if module is None:
             module = importlib.import_module(f"{__package__}.{module_name}")
-        extension_routers.append(module.router)
+        router.include_router(module.router)
 
-    # 该独立路由会在服务 Facade 初始化期间经历循环导入，因此必须在注册阶段读取当前真实 Router。
-    extension_routers.append(live_rule_router.router)
-
-    # 新增 Router 中存在少量“保持原 URL、修正请求契约”的替代实现（例如排课规则
-    # ruleValue 从 dict 放宽为 Any）。先收集这些精确方法+路径，再从旧总 Router 中移除同签名路由，
-    # 避免生产进程同时挂载两份端点并依赖声明顺序决定实际命中谁。
-    replacement_signatures = {
-        _route_signature(route)
-        for child in extension_routers
-        for route in child.routes
-        if isinstance(route, APIRoute)
-    }
-
-    router = APIRouter()
-    seen: set[tuple[str, frozenset[str]]] = set()
-    for route in base_router.router.routes:
-        if isinstance(route, APIRoute) and _route_signature(route) in replacement_signatures:
-            continue
-        _append_route(router, route, seen)
-
-    for child in extension_routers:
-        for route in child.routes:
-            _append_route(router, route, seen)
-
+    # 该独立路由会在服务 Facade 初始化期间经历循环导入；此时 include_router 可能读取到
+    # 尚未装配完成的旧 APIRouter。注册阶段直接复制当前真实 APIRoute，随后由上层统一附加模块依赖。
+    router.routes.extend(list(live_rule_router.router.routes))
     return router
 
 
