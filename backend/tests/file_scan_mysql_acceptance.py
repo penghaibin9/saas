@@ -62,6 +62,29 @@ def row(file_id: str):
         db.close()
 
 
+def queue_snapshot() -> list[dict]:
+    from app.db.session import get_sessionmaker
+    from app.models.file import FileJob
+    db = get_sessionmaker()()
+    try:
+        jobs = db.scalars(select(FileJob).where(
+            FileJob.tenant_id == TENANT_ID,
+            FileJob.is_deleted.is_(False),
+        ).order_by(FileJob.id)).all()
+        return [{
+            "id": item.id,
+            "fileId": item.file_id,
+            "status": item.status,
+            "attempts": item.attempts,
+            "maxAttempts": item.max_attempts,
+            "availableAt": item.available_at.isoformat() if item.available_at else None,
+            "lockedAt": item.locked_at.isoformat() if item.locked_at else None,
+            "lastError": item.last_error,
+        } for item in jobs]
+    finally:
+        db.close()
+
+
 def assert_gate(file_id: str, code: str) -> None:
     from app.core.exceptions import AppException
     from app.services.file_scan_service import assert_file_ready_for_business
@@ -91,7 +114,9 @@ def cleanup() -> None:
 
 
 def assert_scan_result(result: dict, expected: str) -> None:
-    assert result.get("scanStatus") == expected, f"expected {expected}, worker returned: {result!r}"
+    assert result.get("scanStatus") == expected, (
+        f"expected {expected}, worker returned: {result!r}; queue={queue_snapshot()!r}"
+    )
 
 
 def main() -> None:
@@ -131,6 +156,7 @@ def main() -> None:
             "GRADUATION_MATERIAL",
         )
         assert office["status"] == "QUARANTINED"
+        assert office["scanRequired"] is True
         assert_gate(office["fileId"], "FILE_NOT_READY")
         result = process_next_scan_job("acceptance-real-clamav")
         assert_scan_result(result, "CLEAN")
@@ -141,6 +167,7 @@ def main() -> None:
 
         package = upload("evidence.zip", zip_bytes(), "application/zip", "ARCHIVE_PACKAGE")
         assert package["status"] == "QUARANTINED"
+        assert package["scanRequired"] is True
         result = process_next_scan_job("acceptance-real-clamav")
         assert_scan_result(result, "CLEAN")
         assert row(package["fileId"]).status == "AVAILABLE"
