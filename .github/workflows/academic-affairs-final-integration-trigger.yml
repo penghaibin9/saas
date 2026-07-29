@@ -1,0 +1,17 @@
+name: 教务最终集成触发
+
+on:
+  push:
+    branches:
+      - refactor/academic-affairs-4ends
+    paths:
+      - '.github/workflows/academic-affairs-final-integration-trigger.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-note:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Final integration is executed by academic-affairs-final-integration.yml'
