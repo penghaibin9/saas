@@ -118,6 +118,7 @@ def main() -> None:
         raise RuntimeError("DATABASE_URL is required")
 
     from app.core.context import set_current_user, set_tenant
+    from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401
     from app.services.file_access_service import require_file_access
 
     cleanup()
@@ -165,6 +166,14 @@ def main() -> None:
             "permissions": ["graduationDesign.view"],
         }
         assert_hidden(lambda: require_file_access(batch_file_id, user=no_scope, action="meta"))
+
+        no_permission = {
+            "userId": 2004,
+            "userType": "TEACHER",
+            "allowedBatchIds": ["B-100"],
+            "permissions": [],
+        }
+        assert_hidden(lambda: require_file_access(batch_file_id, user=no_permission, action="meta"))
 
         set_tenant({"tenantId": OTHER_TENANT_ID, "tenantCode": "other-school"})
         assert_hidden(lambda: require_file_access(student_file_id, user=allowed_student, action="meta"))
