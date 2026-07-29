@@ -75,7 +75,7 @@ jobs:
       CLAMAV_READ_TIMEOUT: "60"
       FILE_SCAN_MAX_ATTEMPTS: "3"
       FILE_SCAN_RETRY_BASE_SECONDS: "1"
-      PYTHONPATH: backend
+      PYTHONPATH: ${{ github.workspace }}/backend
 
     steps:
       - uses: actions/checkout@v4
