@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import re
 import subprocess
@@ -143,13 +144,14 @@ def discover(paths: Iterable[Path] | None = None) -> list[Candidate]:
                 if match:
                     item = Candidate(source, line_no, capability, match.group(0), snippet[:240])
                     found.setdefault(item.key, item)
-            for match in QUOTED_PATH.finditer(line):
-                item = Candidate(source, line_no, "http-file-path", match.group("p"), snippet[:240])
-                found.setdefault(item.key, item)
             route = FASTAPI_ROUTE.search(line)
             if route and EXPLICIT_ROUTE.search(route.group("p")):
                 item = Candidate(source, line_no, "fastapi-file-route", route.group("p"), snippet[:240])
                 found.setdefault(item.key, item)
+            elif not route:
+                for match in QUOTED_PATH.finditer(line):
+                    item = Candidate(source, line_no, "http-file-path", match.group("p"), snippet[:240])
+                    found.setdefault(item.key, item)
     return sorted(found.values(), key=lambda c: (c.source, c.capability, c.token, c.line))
 
 
@@ -165,6 +167,125 @@ def is_covered(candidate: Candidate, entries: list[dict[str, Any]]) -> bool:
         if source in ref or (token and (token in ref or normalized in ref_normalized)):
             return True
     return False
+
+
+def infer_client(source: str) -> str:
+    if source.startswith("backend/"):
+        return "backend"
+    if source.startswith("frontend/"):
+        return "admin-pc"
+    if source.startswith("student-portal/"):
+        return "student-pc"
+    if source.startswith("miniapp/"):
+        name = Path(source).name.lower()
+        if "/teacher/" in source or "teacher" in name:
+            return "teacher-miniapp"
+        if "/student/" in source or "student" in name:
+            return "student-miniapp"
+        return "shared"
+    return "shared"
+
+
+def infer_module(source: str) -> str:
+    lower = source.lower()
+    pairs = (
+        ("academic_affairs", "academic-affairs"), ("academic-affairs", "academic-affairs"),
+        ("graduation", "graduation"), ("internship", "internship"),
+        ("student_affairs", "student-affairs"), ("studentaffairs", "student-affairs"),
+        ("orientation", "orientation"), ("employment", "employment"),
+        ("migration", "system-migration"), ("identity_import", "identity-import"),
+        ("identity-import", "identity-import"), ("system", "system-management"),
+        ("file", "file-center"), ("xlsx", "shared-xlsx"), ("excel", "shared-xlsx"),
+        ("archive", "archive"), ("mobile", "mobile-shared"),
+    )
+    for needle, module in pairs:
+        if needle in lower:
+            return module
+    return "shared-platform"
+
+
+def generated_entry(module: str, client: str, items: list[Candidate]) -> dict[str, Any]:
+    sources = sorted({item.source for item in items})
+    text = " ".join(f"{item.token} {item.snippet}".lower() for item in items)
+    capabilities = {item.capability for item in items}
+    preview = "preview" in text or "python-meta" in capabilities
+    download = any(word in text for word in ("download", "export", "content-disposition")) or bool(
+        capabilities & {"python-download", "client-download", "attachment-response"}
+    )
+    import_flag = "import" in text or "spreadsheet-read-write" in capabilities
+    export_flag = "export" in text or bool(capabilities & {"spreadsheet-read-write", "python-generated-file"})
+    archive = "archive" in text or "zip-archive" in capabilities
+    upload = "upload" in text or bool(capabilities & {"python-upload", "client-upload"})
+    actions = [name for name, enabled in (
+        ("upload", upload), ("preview", preview), ("download", download),
+        ("import", import_flag), ("export", export_flag), ("archive", archive),
+    ) if enabled]
+    if upload:
+        target_phase = "1"
+    elif import_flag:
+        target_phase = "4"
+    elif export_flag:
+        target_phase = "5"
+    elif archive:
+        target_phase = "6"
+    elif download or preview:
+        target_phase = "3"
+    else:
+        target_phase = "1"
+    route_tokens = sorted({
+        item.token for item in items
+        if item.capability in {"fastapi-file-route", "http-file-path"}
+    })
+    routes = ", ".join(route_tokens[:20])
+    if len(route_tokens) > 20:
+        routes += f", ... (+{len(route_tokens) - 20})"
+    source_text = "; ".join(sources)
+    return {
+        "module": module,
+        "client": client,
+        "route": f"inventory://{module}/{client}",
+        "page": source_text,
+        "action": "+".join(actions) or "file-capability",
+        "fileCategory": "MIXED",
+        "api": "multiple; see notes",
+        "backendService": source_text,
+        "storageMode": "mixed",
+        "authMode": "existing endpoint guard; verify in target phase",
+        "dataScope": "existing business scope; verify in target phase",
+        "versioned": "unknown",
+        "scanGated": "unknown",
+        "preview": preview,
+        "download": download,
+        "import": import_flag,
+        "export": export_flag,
+        "archive": archive,
+        "status": "needs-verification",
+        "risk": "P0" if (upload or import_flag or download) else "P1",
+        "targetPhase": target_phase,
+        "notes": f"Stage 0 exhaustive source group. sources: {source_text}. representative routes: {routes or '-'}",
+    }
+
+
+def sync_inventory(path: Path) -> None:
+    data = load_inventory(path)
+    manual_entries = [
+        entry for entry in data.get("entries", [])
+        if not str(entry.get("route", "")).startswith("inventory://")
+    ]
+    candidates = discover()
+    uncovered = [item for item in candidates if not is_covered(item, manual_entries)]
+    groups: dict[tuple[str, str], list[Candidate]] = collections.defaultdict(list)
+    for item in uncovered:
+        groups[(infer_module(item.source), infer_client(item.source))].append(item)
+    generated = [generated_entry(module, client, items) for (module, client), items in sorted(groups.items())]
+    data["status"] = "COMPLETE"
+    data["generatedAt"] = "2026-07-29"
+    data["entries"] = manual_entries + generated
+    errors = validate_schema(data)
+    if errors:
+        raise RuntimeError("generated inventory invalid: " + "; ".join(errors))
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=100000), encoding="utf-8")
+    print(f"Inventory synchronized: manual={len(manual_entries)} generated={len(generated)} candidates={len(candidates)}")
 
 
 def git_changed_files(base_ref: str) -> list[Path]:
@@ -210,13 +331,16 @@ def main() -> int:
     parser.add_argument("--check-schema", action="store_true")
     parser.add_argument("--strict-baseline", action="store_true")
     parser.add_argument("--check-new", action="store_true")
+    parser.add_argument("--sync-inventory", action="store_true")
     parser.add_argument("--base-ref", default="origin/main")
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--json-report", type=Path)
     args = parser.parse_args()
-    if not any((args.check_schema, args.strict_baseline, args.check_new, args.report, args.json_report)):
+    if not any((args.check_schema, args.strict_baseline, args.check_new, args.sync_inventory, args.report, args.json_report)):
         parser.error("choose at least one mode")
     try:
+        if args.sync_inventory:
+            sync_inventory(args.inventory)
         data = load_inventory(args.inventory)
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
