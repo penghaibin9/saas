@@ -17,6 +17,8 @@ concurrency:
 jobs:
   patch:
     runs-on: ubuntu-latest
+    env:
+      HOTFIX_REV: '2'
     steps:
       - uses: actions/checkout@v4
         with:
