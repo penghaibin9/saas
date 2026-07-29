@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 # 后续轮次会再次调用固定入口。用进程内标记让递归调用成为 no-op，
-# 从而保持 CI 命令不变，同时顺序执行 round1 → round2 → round3 → round4 → round5。
+# 从而保持 CI 命令不变，同时顺序执行 round1 → round2 → round3 → round4 → round5 → round6。
 if os.environ.get("ABCD_ROUND1_DONE") == "1":
     print("ABCD round1 already applied")
 else:
@@ -29,6 +29,6 @@ else:
     exec(compile(source, "<abcd-round1>", "exec"), namespace)
     os.environ["ABCD_ROUND1_DONE"] = "1"
     runpy.run_path(
-        str(ROOT / "scripts/maintenance/fix_abcd_regression_contracts_round5.py"),
+        str(ROOT / "scripts/maintenance/fix_abcd_regression_contracts_round6.py"),
         run_name="__main__",
     )
