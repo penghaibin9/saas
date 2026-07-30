@@ -12,8 +12,8 @@ from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
-from app.services import (academic_service, affairs_leave_service, approval_service,
-                          campus_service_service, orientation_service)
+from app.services import (academic_service, affairs_leave_service, approval_service, campus_service_service,
+                          orientation_service)
 from app.modules.employment.services import employment_service
 from app.modules.internship.services import internship_service
 from app.modules.graduation.services import graduation_service
@@ -271,17 +271,6 @@ def _safe_list(fn, page, ps, **kw):
         return [], 0
 
 
-def _list_teacher_leaves(page, page_size, *, user, status=None, **_kw):
-    """移动教师端复用13A请假唯一事实源，并保持当前身份数据范围。"""
-    mapped_status = "PENDING" if status == "PENDING_REVIEW" else status
-    return affairs_leave_service.list_leaves(
-        user,
-        status=mapped_status,
-        page=page,
-        page_size=page_size,
-    )
-
-
 # ══════════ 工作台总览 / 待办 ══════════
 
 def overview(user: dict) -> dict:
@@ -289,7 +278,8 @@ def overview(user: dict) -> dict:
     if not db_enabled():
         return {"hasData": False, "note": "演示模式"}
     scope = resolve_teacher_scope(u)
-    pending_leave = _total(_list_teacher_leaves, user=u, status="PENDING_REVIEW")
+    _, pending_leave = affairs_leave_service.list_leaves(
+        u, status="PENDING", page=1, page_size=1)
     pending_grant = _total(campus_service_service.list_grants, status="REVIEWING")
     pending_wo = _total(campus_service_service.list_work_orders, status="PENDING_HANDLE")
     exc = _total(internship_service.list_attendance_exceptions, status="PENDING_HANDLE")
@@ -338,7 +328,10 @@ def todos(user: dict) -> dict:
                           "level": "high" if r.get("riskLevel") in ("HIGH", "URGENT") else "normal",
                           "deadline": r.get("deadline") or r.get("dueAt") or ""})
 
-    add(_list_teacher_leaves, "待审请假", "campus-service", "approve", user=u, status="PENDING_REVIEW")
+    add(
+        lambda page, ps, **_kw: affairs_leave_service.list_leaves(
+            u, status="PENDING", page=page, page_size=ps),
+        "待审请假", "student-affairs", "approve")
     add(internship_service.list_weekly_reports, "待批周报", "internship", "review", status="PENDING_REVIEW")
     add(internship_service.list_attendance_exceptions, "打卡异常", "internship", "risk", status="PENDING_HANDLE")
     add(academic_service.list_warnings, "学业预警", "academic", "risk", status="PENDING_HANDLE")
@@ -348,6 +341,74 @@ def todos(user: dict) -> dict:
                {"key": "confirm", "label": "待确认"}, {"key": "done", "label": "已处理"}]
     return {"hasData": bool(items), "filters": filters, "list": items[:60],
             "total": len(items), "pendingCount": len(items), "scopeMode": scope["mode"]}
+
+
+def todos_page(user: dict, group: str = "all", page: int = 1,
+               page_size: int = 20) -> dict:
+    """移动待办服务端分页；旧 todos() 保持兼容，移动页面不再一次接收完整聚合。"""
+    data = todos(user)
+    key = (group or "all").strip().lower()
+    source = list(data.get("list") or [])
+    if key not in {"all", "soon"}:
+        source = [item for item in source if item.get("group") == key]
+    elif key == "soon":
+        source = [item for item in source if item.get("soon") and item.get("status") != "COMPLETED"]
+    current_page = max(1, int(page or 1))
+    size = max(1, min(50, int(page_size or 20)))
+    start = (current_page - 1) * size
+    items = source[start:start + size]
+    filters = []
+    for item in data.get("filters") or []:
+        filter_key = item.get("key")
+        if filter_key == "all":
+            badge = sum(1 for row in data.get("list") or [] if row.get("status") != "COMPLETED")
+        elif filter_key == "soon":
+            badge = sum(1 for row in data.get("list") or []
+                        if row.get("soon") and row.get("status") != "COMPLETED")
+        else:
+            badge = sum(1 for row in data.get("list") or []
+                        if row.get("group") == filter_key and row.get("status") != "COMPLETED")
+        filters.append({**item, "badge": badge})
+    return {
+        "filters": filters,
+        "list": items,
+        "page": current_page,
+        "pageSize": size,
+        "total": len(source),
+        "pendingCount": int(data.get("pendingCount") or 0),
+        "hasMore": start + len(items) < len(source),
+        "scopeMode": data.get("scopeMode"),
+    }
+
+
+def risk_students_page(user: dict, level: str = "all", page: int = 1,
+                       page_size: int = 20) -> dict:
+    """风险学生服务端分页；按权限过滤完成后再分页。"""
+    data = risk_students(user)
+    source = list(data.get("list") or [])
+    counts = {
+        "HIGH": sum(1 for row in source if row.get("riskLevel") == "HIGH"),
+        "MEDIUM": sum(1 for row in source if row.get("riskLevel") == "MEDIUM"),
+    }
+    requested = (level or "all").strip().upper()
+    if requested not in {"ALL", "HIGH", "MEDIUM"}:
+        raise AppException("VALIDATION_ERROR", "level 必须是 all/HIGH/MEDIUM")
+    filtered = source if requested == "ALL" else [
+        row for row in source if row.get("riskLevel") == requested
+    ]
+    current_page = max(1, int(page or 1))
+    size = max(1, min(50, int(page_size or 20)))
+    start = (current_page - 1) * size
+    items = filtered[start:start + size]
+    return {
+        "list": items,
+        "page": current_page,
+        "pageSize": size,
+        "total": len(filtered),
+        "counts": counts,
+        "hasMore": start + len(items) < len(filtered),
+        "scopeMode": data.get("scopeMode"),
+    }
 
 
 # ══════════ 风险学生（替代 PC /students 全列表） ══════════
@@ -1512,7 +1573,10 @@ def talk_record(user: dict, talk_id, body: dict) -> dict:
     _require_teacher(user)  # 纵深防御：与同族 talk_* 一致显式收口非教师（底层 _scope_or_403 仍在）
     from app.services import affairs_talk_service as talk
     b = body or {}
-    return talk.record_talk(talk_id, user, b.get("content"), b.get("result", ""), bool(b.get("needFollow")))
+    expected_version = b.get("expectedVersion", b.get("version"))
+    return talk.record_talk(
+        talk_id, user, b.get("content"), b.get("result", ""),
+        bool(b.get("needFollow")), expected_version=expected_version)
 
 
 def talk_follow_up(user: dict, talk_id, body: dict) -> dict:
@@ -1998,7 +2062,10 @@ def internship_visit_record(user: dict, internship_id: str) -> dict:
 
 
 def campus(user):
-    return _domain(campus_service_service.list_leaves, "campus-service", user, status="PENDING_REVIEW")
+    return _domain(
+        lambda page, ps, **_kw: affairs_leave_service.list_leaves(
+            user, status="PENDING", page=page, page_size=ps),
+        "student-affairs", user)
 
 
 def academic(user):
