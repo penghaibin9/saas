@@ -15,9 +15,52 @@
           <p style="margin-bottom: 0"><b>预期成果：</b>{{ detail.content.outcome || '—' }}</p>
         </div>
         <div v-if="detail.attachments.length" style="margin-top: var(--space-3)">
-          <p class="mp-note" style="margin-bottom: var(--space-2)">附件材料</p>
+          <p class="mp-note" style="margin-bottom: var(--space-2)">旧接口附件引用（仅兼容展示）</p>
           <AppFileList :files="attachmentFiles" :previewable="false" :downloadable="false" :removable="false" />
         </div>
+      </AppSectionCard>
+
+      <AppSectionCard title="当前安全版本（本次审核锁定）">
+        <template #header-extra>
+          <StatusTag
+            :type="detail.reviewReady ? 'success' : 'warning'"
+            :label="detail.reviewReady ? `安全门通过 · ${secureVersionFiles.length} 个版本` : '暂不可审核'"
+          />
+        </template>
+        <div v-if="detail.migrationRequired" class="version-warning">
+          该历史记录尚未完成公共版本回填。系统会在正式审核动作前执行安全回填；回填失败时禁止通过。
+        </div>
+        <div v-else-if="!detail.reviewReady" class="version-warning">
+          当前版本仍在扫描、扫描失败或版本关系已变化。请刷新后确认，系统不会绕过安全门审核。
+        </div>
+        <SecureFileList
+          :items="secureVersionFiles"
+          :loading="loading"
+          empty-text="尚无可审核的安全文件版本"
+          @preview="previewVersion"
+          @download="downloadVersion"
+          @refresh="load"
+        />
+        <div v-if="secureVersionFiles.length" class="version-table-wrap">
+          <table class="version-table">
+            <thead>
+              <tr><th>材料</th><th>版本</th><th>versionId</th><th>扫描</th><th>审核态</th><th>SHA-256</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in secureVersionFiles" :key="item.versionId">
+                <td>{{ item.materialName || item.fileName }}</td>
+                <td>v{{ item.versionNo }}</td>
+                <td class="mono">{{ item.versionId }}</td>
+                <td>{{ item.scanStatus }}</td>
+                <td>{{ item.versionStatus }}</td>
+                <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mp-note" style="margin-top: var(--space-2)">
+          教师通过或驳回时，后端会再次锁定这些 versionId 并核验 FileObject、扫描结论和 SHA-256。
+        </p>
       </AppSectionCard>
 
       <section class="mp-card">
@@ -25,17 +68,17 @@
         <div class="mp-card__body">
           <template v-if="detail.status === 'PENDING_REVIEW'">
             <div v-if="!canReview" class="mp-note" style="margin-bottom: var(--space-2); color: var(--warning-600)">
-              {{ reviewReason }}（以下操作已置灰，仅指导教师可批阅）
+              {{ reviewReason }}（以下操作已置灰）
             </div>
             <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">批阅意见（驳回时必填，≥5 字）</label>
             <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" rows="3" placeholder="批注将随批阅结果同步学生端…"></textarea>
             <AppTemplateChips v-if="canReview" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
             <p v-if="formError" class="mp-form-err">{{ formError }}</p>
             <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
-              <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过</AppPermissionButton>
-              <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" style="flex: 1" @click="submit('REJECT')">↩ 驳回修改</AppPermissionButton>
+              <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过当前版本</AppPermissionButton>
+              <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" style="flex: 1" @click="submit('REJECT')">↩ 驳回当前版本</AppPermissionButton>
             </div>
-            <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅写入审批留痕，学生端即时同步</p>
+            <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅结果写入业务留痕与公共文件版本状态，学生端即时同步</p>
           </template>
           <template v-else-if="detail.status === 'APPROVED'">
             <div class="mp-kv"><span class="mp-kv__k">书面开题</span><span class="mp-kv__v">已通过</span></div>
@@ -57,14 +100,14 @@
           <template v-else>
             <div class="mp-kv"><span class="mp-kv__k">批阅结果</span><span class="mp-kv__v">已驳回修改</span></div>
             <div v-if="detail.reviewComment" class="mp-kv"><span class="mp-kv__k">驳回原因</span><span class="mp-kv__v">{{ detail.reviewComment }}</span></div>
-            <p class="mp-note" style="margin-top: var(--space-2)">批阅结果已同步学生端，学生重交后将出现新的待审记录</p>
+            <p class="mp-note" style="margin-top: var(--space-2)">学生重交后将生成新的 FileVersion，旧版本继续保留追溯</p>
           </template>
         </div>
       </section>
 
       <div class="mp-grid-2 prc-bottom" :class="{ 'is-compact': compact }">
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">历史版本</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">业务历史版本</span></div>
           <div class="mp-card__body">
             <ul class="mp-timeline">
               <li v-for="(v, i) in detail.versions" :key="i" class="mp-timeline__item" :class="'is-' + (v.tone === 'processing' ? 'warning' : v.tone)">
@@ -84,17 +127,14 @@
 </template>
 
 <script>
-/**
- * ProposalReviewCard — 开题批阅卡（可复用）。
- * 使用方：① 开题审核双栏工作区右栏（compact）② 独立批阅详情页 /proposals/:id（深链/窄屏）。
- * 数据：graduationApi.getProposalReviewDetail（真实接口）；批阅/开题答辩均走真实状态机。
- * 事件：reviewed({ id, status, statusLabel })：批阅成功；conflict：并发冲突（外层应刷新队列）。
- */
+/** ProposalReviewCard — 开题批阅卡。审核动作锁定公共 FileVersion。 */
 import { StatusTag, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList, AppTemplateChips } from '@/components/common'
+import SecureFileList from '@/components/file/SecureFileList.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
 
@@ -103,11 +143,10 @@ const DEFENSE_COMMENT_CHIPS = ['选题有实际意义，完成度高', '回答�
 
 export default {
   name: 'ProposalReviewCard',
-  components: { StatusTag, LoadingState, ErrorState, AppButton, AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList, AppTemplateChips },
+  components: { StatusTag, LoadingState, ErrorState, AppButton, AppPermissionButton, AppAuditTrail, AppFileList, AppSectionCard, AppDescriptionList, AppTemplateChips, SecureFileList },
   props: {
     ctx: { type: Object, required: true },
     proposalId: { type: [String, Number], required: true },
-    /** 双栏右栏使用：布局更紧凑 */
     compact: { type: Boolean, default: false }
   },
   emits: ['reviewed', 'conflict'],
@@ -131,14 +170,20 @@ export default {
     attachmentFiles() {
       return (this.detail?.attachments || []).map((name, i) => ({ id: i, name }))
     },
+    secureVersionFiles() {
+      return graduationMaterialCenterApi.normalizeVersions(this.detail?.currentSafeVersions || [])
+    },
     trailRecords() {
       return (this.detail?.trail || []).map((t, i) => ({ id: i, action: t.action, actor: t.who, at: this.fmtTime(t.time), target: t.affected }))
     },
     canReview() {
       const pa = this.ctx.permissionActions.reviewProposal
-      return !!(pa && pa.visible && pa.allowed)
+      return !!(pa && pa.visible && pa.allowed && this.detail?.reviewReady)
     },
     reviewReason() {
+      if (this.detail && !this.detail.reviewReady) {
+        return this.detail.migrationRequired ? '历史材料尚未完成公共版本回填' : '当前材料版本未通过安全门禁'
+      }
       const pa = this.ctx.permissionActions.reviewProposal
       return pa && !pa.allowed ? pa.reason : ''
     }
@@ -147,8 +192,10 @@ export default {
     proposalId: { immediate: true, handler() { this.load() } }
   },
   methods: {
-    fmtTime(s) {
-      return formatDateTime(s, '')
+    fmtTime(s) { return formatDateTime(s, '') },
+    shortHash(value) {
+      const text = String(value || '')
+      return text.length > 16 ? `${text.slice(0, 8)}…${text.slice(-8)}` : (text || '—')
     },
     async load() {
       this.loading = true
@@ -161,6 +208,12 @@ export default {
       else this.error = res.message
       this.loading = false
     },
+    async previewVersion(item) {
+      try { await graduationMaterialCenterApi.previewMaterial(item) } catch (error) { toast.error(error?.message || '预览失败') }
+    },
+    async downloadVersion(item) {
+      try { await graduationMaterialCenterApi.downloadMaterial(item) } catch (error) { toast.error(error?.message || '下载失败') }
+    },
     async submit(action) {
       if (!this.canReview) return
       this.formError = ''
@@ -172,11 +225,11 @@ export default {
       const res = await graduationApi.reviewProposal(this.detail.id, { action, comment: this.comment })
       this.submitting = false
       if (res.code === 0) {
-        toast.success('批阅完成：' + res.data.statusLabel + '，已留痕并同步学生端')
+        toast.success('批阅完成：' + res.data.statusLabel + '，已锁定版本并同步学生端')
         this.comment = ''
         this.$emit('reviewed', res.data)
         this.load()
-      } else if (res.message && res.message.includes('已批阅')) {
+      } else if (res.message && (res.message.includes('已批阅') || res.message.includes('已被处理'))) {
         this.formError = res.message
         this.$emit('conflict')
         this.load()
@@ -200,13 +253,15 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.prc-content {
-  margin-top: var(--space-3);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
+.prc-content { margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; }
 .prc-content p { margin: 0 0 var(--space-2); }
 .prc-content b { color: var(--text-primary); }
 .prc-bottom.is-compact { grid-template-columns: 1fr; }
+.version-warning { margin-bottom: var(--space-3); padding: 10px 12px; border-radius: 8px; background: var(--warning-50); color: var(--warning-700); font-size: 13px; }
+.version-table-wrap { margin-top: var(--space-3); overflow-x: auto; }
+.version-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.version-table th, .version-table td { padding: 9px 10px; border-bottom: 1px solid var(--border-light); text-align: left; white-space: nowrap; }
+.version-table th { color: var(--text-tertiary); font-weight: 600; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hash { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 </style>

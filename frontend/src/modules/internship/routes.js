@@ -289,6 +289,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '实习统计', requiresAuth: true, permissionKey: 'internship.stats.view' }
     },
     {
+      path: 'material-center',
+      name: 'internship-material-center',
+      component: () => import('@/modules/internship/views/InternshipMaterialCenterView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '材料与证据中心', requiresAuth: true, permissionKey: 'internship.archive.view' }
+    },
+    {
       path: 'archive',
       name: 'internship-archive',
       component: () => import('@/modules/internship/views/ArchiveView.vue'),

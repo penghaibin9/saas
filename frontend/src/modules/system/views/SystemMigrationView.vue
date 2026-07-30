@@ -1,21 +1,21 @@
 <template>
   <ModulePageShell
     title="老系统数据迁移"
-    subtitle="数据迁移 · 老系统（教务/学工）历史数据按依赖顺序导入：模板 → 上传校验 → 错误清零 → 整批确认 → 对账"
+    subtitle="历史数据按依赖顺序导入：模板 → XLSX 安全上传 → 错误清零 → 任务确认 → 对账"
     :role-name="ctx?.currentRole?.roleName || ''"
     :data-scope-name="ctx?.dataScope?.scopeName || ''"
   >
     <div class="mp-stack">
       <ModuleHero
         title="迁移地图（21 域 · 学工 + 教务全量历史）"
-        subtitle="老系统只要能导出 Excel 即可迁移；金智(XH/XM/ZCJ)、正方(xh/kcmc/cj)、强智(中文列名)常见字段名可自动识别，仍以学校真实导出样例为准。"
+        subtitle="老系统只要能导出 Excel 即可迁移；原始 XLSX、预检和确认结果统一进入数据交换任务中心。"
         :stats="heroStats"
       />
 
       <section class="mp-card">
         <header class="mp-card__head">
           <span class="mp-card__title">迁移域（按依赖顺序执行）</span>
-          <span class="mp-note">灰色域表示前置依赖未完成；确认导入为高风险操作，整批一个事务，全程审计留痕</span>
+          <span class="mp-note">灰色域表示前置依赖未完成；确认只提交统一 jobId 与服务器任务版本</span>
         </header>
         <div class="mp-card__body smv-domains">
           <div
@@ -73,7 +73,10 @@
       <section class="mp-card">
         <header class="mp-card__head">
           <span class="mp-card__title">迁移批次记录</span>
-          <AppButton size="sm" variant="ghost" :loading="loading" @click="reload">刷新</AppButton>
+          <div class="smv-domain__actions">
+            <AppButton size="sm" variant="ghost" @click="$router.push('/admin/system/data-exchange')">任务中心</AppButton>
+            <AppButton size="sm" variant="ghost" :loading="loading" @click="reload">刷新</AppButton>
+          </div>
         </header>
         <div class="mp-card__body">
           <table v-if="batches.length" class="smv-table">
@@ -100,7 +103,7 @@
               </tr>
             </tbody>
           </table>
-          <div v-else class="smv-empty">暂无迁移批次；先在上方选择迁移域并上传老系统导出的数据文件。</div>
+          <div v-else class="smv-empty">暂无迁移批次；先在上方选择迁移域并上传老系统导出的 XLSX 文件。</div>
         </div>
       </section>
 
@@ -108,8 +111,8 @@
         <header class="mp-card__head"><span class="mp-card__title">实施口径（对学校可承诺的验收方式）</span></header>
         <div class="mp-card__body">
           <ul class="smv-list">
-            <li>老系统导出的原始文件、映射对照表、每批错误清单、确认回执按学校归档，四件套可追溯。</li>
-            <li>预校验存在任何错误行时禁止确认导入；确认阶段整批一个事务，任一行失败全部回滚，不留半批数据。</li>
+            <li>老系统原始 XLSX、预检错误、确认结果和任务版本全部可追溯，刷新页面任务不丢。</li>
+            <li>预校验存在任何错误行时禁止确认；确认阶段整批一个事务，任一行失败全部回滚。</li>
             <li>历史数据只进终态：不产生待办、不触发工作流；导入行为全部写入安全审计。</li>
             <li>导入完成后按域对账：库内数量与老系统报表逐项核对一致方可签认。</li>
           </ul>
@@ -136,14 +139,14 @@
 
 <script>
 /**
- * 老系统数据迁移工作台（系统管理 · 数据迁移，P1 · 6 域）。
- * 后端：/api/v1/system/migration/*（dry-run → 行级错误 → confirm 整批事务；批次留痕）。
- * 复用公共 Excel 导入抽屉；本页只做迁移地图编排与批次展示，不自建导入通道。
+ * 老系统数据迁移工作台。阶段 3 后：上传返回 ImportJob，确认只提交 jobId + expectedVersion；
+ * 原业务迁移 service 仍负责整批事务，公共任务中心负责文件、安全、租约、状态和历史。
  */
 import { ModulePageShell, ModuleHero, StatusTag } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { systemApi } from '@/modules/system/api/system.api'
+import { dataExchangeApi } from '@/modules/system/api/dataExchange.api'
 import { toast } from '@/utils/toast'
 
 const DUP_LABELS = { ERROR: '重复即报错', SKIP: '重复跳过', OVERWRITE: '重复覆盖' }
@@ -164,7 +167,7 @@ export default {
       batches: [],
       active: null,
       drawerVisible: false,
-      pendingBatchNo: ''
+      pendingJobId: ''
     }
   },
   computed: {
@@ -183,16 +186,10 @@ export default {
       return (this.active?.columns || []).map((c) => c.key)
     }
   },
-  created() {
-    this.reload()
-  },
+  created() { this.reload() },
   methods: {
-    dupPolicyLabel(p) {
-      return DUP_LABELS[p] || p
-    },
-    batchStatusLabel(s) {
-      return BATCH_LABELS[s] || s
-    },
+    dupPolicyLabel(p) { return DUP_LABELS[p] || p },
+    batchStatusLabel(s) { return BATCH_LABELS[s] || s },
     depLabel(dep) {
       if (dep === 'student-profile') return '学生主档'
       return this.domains.find((d) => d.domain === dep)?.label || dep
@@ -207,28 +204,23 @@ export default {
         if (ov.code === 0) {
           this.studentCount = ov.data.studentCount || 0
           this.domains = ov.data.domains || []
-        } else {
-          toast.error(ov.message || '迁移总览加载失败')
-        }
+        } else toast.error(ov.message || '迁移总览加载失败')
         if (bs.code === 0) this.batches = bs.data || []
       } finally {
         this.loading = false
       }
     },
-    downloadTemplate(d) {
-      return systemApi.downloadMigrationTemplate(d.domain, d.label)
-    },
+    downloadTemplate(d) { return systemApi.downloadMigrationTemplate(d.domain, d.label) },
     openImport(d) {
       this.active = d
-      this.pendingBatchNo = ''
+      this.pendingJobId = ''
       this.drawerVisible = true
     },
     async uploadFn(file) {
       const res = await systemApi.validateMigrationFile(this.active.domain, file)
       if (res.code !== 0) return res
       const d = res.data
-      this.pendingBatchNo = d.batchNo
-      // 适配公共抽屉的统一预校验结构；skippedRows 提示到 message
+      this.pendingJobId = d.jobId
       if (d.skippedRows) toast.info(`有 ${d.skippedRows} 行与现有数据相同/重复，将按策略跳过`)
       return {
         code: 0,
@@ -238,15 +230,22 @@ export default {
         }
       }
     },
-    confirmFn() {
-      if (!this.pendingBatchNo) return Promise.resolve({ code: 1, message: '批次已失效，请重新上传校验' })
-      return systemApi.confirmMigrationBatch(this.pendingBatchNo)
+    async confirmFn() {
+      if (!this.pendingJobId) return { code: 1, message: '任务已失效，请重新上传校验' }
+      try {
+        const current = await dataExchangeApi.getImport(this.pendingJobId)
+        const data = await dataExchangeApi.confirmImport(this.pendingJobId, current.version)
+        return { code: 0, data: { ...data, created: data.confirmedRows }, message: '导入完成' }
+      } catch (error) {
+        return { code: error?.code || 1, message: error?.message || '确认导入失败' }
+      }
     },
     downloadErrorsFn({ rows, errors }) {
       return systemApi.downloadMigrationErrors(this.active.domain, rows, errors)
     },
     onImported() {
       this.reload()
+      this.$router.push('/admin/system/data-exchange')
     }
   }
 }
@@ -255,29 +254,12 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .smv-domains { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4); }
-.smv-domain {
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  background: var(--bg-page);
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
+.smv-domain { border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-page); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
 .smv-domain.is-blocked { opacity: 0.65; }
 .smv-domain__head { display: flex; align-items: center; gap: var(--space-2); }
-.smv-domain__order {
-  width: 22px; height: 22px; border-radius: var(--radius-full);
-  background: var(--primary-50); color: var(--primary-600);
-  font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold);
-  display: inline-flex; align-items: center; justify-content: center;
-}
+.smv-domain__order { width: 22px; height: 22px; border-radius: var(--radius-full); background: var(--primary-50); color: var(--primary-600); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); display: inline-flex; align-items: center; justify-content: center; }
 .smv-domain__label { font-weight: var(--font-weight-semibold); flex: 1; }
-.smv-domain__group {
-  font-size: var(--font-size-xs); color: var(--text-tertiary);
-  border: 1px solid var(--border-light); border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-}
+.smv-domain__group { font-size: var(--font-size-xs); color: var(--text-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 0 var(--space-1); }
 .smv-domain__meta { font-size: var(--font-size-xs); color: var(--text-secondary); display: grid; gap: 4px; }
 .smv-domain__meta code { font-size: var(--font-size-xs); }
 .smv-domain__actions { display: flex; gap: var(--space-2); justify-content: flex-end; }

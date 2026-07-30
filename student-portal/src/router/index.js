@@ -22,6 +22,7 @@ const routes = [
       { path: 'orientation', name: 'orientation', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
       { path: 'messages', name: 'messages', meta: { modulePath: 'messages' }, component: () => import('../views/messages/MessagesView.vue') },
       { path: 'service-hall', name: 'service-hall', component: () => import('../views/hall/ServiceHallView.vue') },
+      { path: 'graduation/materials', name: 'graduation-material-library', meta: { modulePath: 'graduation' }, component: () => import('../views/graduation/GraduationMaterialsView.vue') },
       { path: 'graduation', name: 'graduation-workbench', meta: { modulePath: 'graduation' }, component: () => import('../views/graduation/GraduationWorkbenchView.vue') },
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }
     ]
