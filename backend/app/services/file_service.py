@@ -183,15 +183,32 @@ def authorize_file_access(user: dict, file_obj, action: str = "download") -> boo
         return False
     db = get_sessionmaker()()
     try:
-        bindings = db.scalars(select(FileBinding).where(
+        bindings = list(db.scalars(select(FileBinding).where(
             FileBinding.tenant_id == tenant_id,
             FileBinding.file_id == int(file_id),
             FileBinding.is_deleted.is_(False),
-        )).all()
+        )).all())
+        actor = user or {}
+        # A freshly uploaded object has no business binding yet. Only its uploader
+        # or an explicit file administrator may perform the first bind/submit after
+        # the security gate has reached CLEAN/AVAILABLE. Once any binding exists,
+        # the authoritative business resolver remains mandatory.
+        if not bindings and action in {"bind", "submit"}:
+            actor_id = _actor_user_id(actor)
+            owner_id = getattr(file_obj, "owner_user_id", None) or getattr(file_obj, "created_by", None)
+            return bool(
+                _ready(file_obj)
+                and (
+                    is_super_admin(actor)
+                    or has_permission(actor, "systemAdmin.file.manage")
+                    or has_permission(actor, "*")
+                    or (actor_id and owner_id and int(actor_id) == int(owner_id))
+                )
+            )
         return authorize_file_object(
             file_obj,
-            list(bindings),
-            user or {},
+            bindings,
+            actor,
             action,
             db=db,
         )

@@ -242,6 +242,32 @@ def graduation_material_resolver(db, file_obj, bindings: list[Any], user: dict, 
         and item.status in {"ACTIVE", "SUPERSEDED", "ARCHIVED"}
         and item.version_id and item.asset_id
     ]
+    # Stage 2 historical bindings predate Asset/Version columns. Keep a narrow
+    # compatibility adapter until backfill completes: the binding must carry a
+    # concrete student/user/batch/role scope, and staff still need graduation
+    # permission. A generic BUSINESS_OBJECT binding without batch scope is never
+    # enough, and systemAdmin.file.manage does not bypass this resolver.
+    if not valid:
+        scoped_legacy = [
+            item for item in bindings
+            if not item.is_deleted and item.status == "ACTIVE"
+            and (
+                str(item.subject_type or "").upper() in {"STUDENT", "USER", "BATCH", "ROLE"}
+                or bool(str(item.batch_id or "").strip())
+            )
+        ]
+        if not scoped_legacy:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            return any(
+                str(item.subject_type or "").upper() in {"STUDENT", "USER"}
+                and _binding_subject_allows(item, user)
+                for item in scoped_legacy
+            )
+        return bool(
+            _graduation_staff_permission(user or {}, action)
+            and any(_binding_subject_allows(item, user) for item in scoped_legacy)
+        )
     gd_student_ids = _graduation_student_ids(valid)
     if len(gd_student_ids) != 1:
         return False
