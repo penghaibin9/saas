@@ -1,9 +1,8 @@
 /**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
- * 查看类走 /mobile/me/* 与 /mobile/{domain}/my；PC 重活走 /portal/*。
- * 后端 /portal/* 由服务层 _require_student + SELF 数据范围收口，仅本人可读写。
  */
 import { downloadFile, request, uploadFile } from './request'
+import fileSdk from './fileSdk'
 
 const q = (obj) => {
   const parts = Object.entries(obj || {})
@@ -12,15 +11,11 @@ const q = (obj) => {
   return parts.length ? `?${parts.join('&')}` : ''
 }
 
-// 仅缓存本页最近一次真实加载并展示的任务书版本；确认时禁止重新 GET 后偷换成未阅读的新版本。
 let renderedGraduationTaskbookVersion = null
 
 export const portalApi = {
   login: (loginName, password, tenantCode) =>
-    request('/auth/login', {
-      method: 'POST', auth: false,
-      body: { loginName, password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC' }
-    }),
+    request('/auth/login', { method: 'POST', auth: false, body: { loginName, password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC' } }),
   portalConfig: () => request('/mobile/me/portal-config'),
   overview: () => request('/mobile/me/overview'),
   profile: () => request('/mobile/me/profile'),
@@ -108,7 +103,6 @@ export const portalApi = {
   affairsActivitiesMy: () => request('/portal/affairs/activities/my'),
   affairsActivityEnroll: (activityId) => request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
-  // ── 岗位实习：所有 /portal/internship/* 后端统一校验模块购买授权 ──
   internshipMy: () => request('/portal/internship/my'),
   internshipCompliance: (operation = 'ONBOARD', batchId = '') => request(`/portal/internship/compliance${q({ operation, batchId })}`),
   internshipConsents: () => request('/portal/internship/consents'),
@@ -156,21 +150,17 @@ export const portalApi = {
   employmentMy: () => request('/portal/employment/my'),
   employmentDestination: (body) => request('/portal/employment/destination', { method: 'POST', body }),
   employmentDestinationPrint: (body) => request('/portal/employment/destination/print', { method: 'POST', body }),
-
   orientationMy: () => request('/portal/orientation/my'),
   orientationCollect: (body) => request('/portal/orientation/collect', { method: 'POST', body }),
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),
   orientationPrint: (body) => request('/portal/orientation/print', { method: 'POST', body }),
-
   serviceHallCatalog: () => request('/portal/service-hall/catalog'),
-
   messagesInbox: (page = 1, pageSize = 20) => request(`/portal/messages${q({ page, pageSize })}`),
   messageRead: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/read`, { method: 'POST' }),
   messagesReadAll: () => request('/portal/messages/read-all', { method: 'POST' }),
   messageReceipt: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/receipt`, { method: 'POST' }),
   messagePreferences: () => request('/portal/messages/preferences'),
   messageSetPreference: (body) => request('/portal/messages/preferences', { method: 'POST', body }),
-
   commonSign: (body) => request('/portal/common/sign', { method: 'POST', body }),
   commonPrintLog: (body) => request('/portal/common/print-log', { method: 'POST', body }),
   commonExportLog: (body) => request('/portal/common/export-log', { method: 'POST', body }),
@@ -180,10 +170,7 @@ export const portalApi = {
     renderedGraduationTaskbookVersion = data?.hasData ? data.taskbookVersion : null
     return data
   },
-  signGraduationTaskbook: (taskbookVersion = renderedGraduationTaskbookVersion) =>
-    request('/portal/graduation/taskbook/sign', {
-      method: 'POST', body: { confirm: true, taskbookVersion }
-    }),
+  signGraduationTaskbook: (taskbookVersion = renderedGraduationTaskbookVersion) => request('/portal/graduation/taskbook/sign', { method: 'POST', body: { confirm: true, taskbookVersion } }),
   graduationProposal: () => request('/portal/graduation/proposal'),
   submitGraduationProposal: (body) => request('/portal/graduation/proposal/submit', { method: 'POST', body }),
   graduationMidterm: () => request('/portal/graduation/midterm'),
@@ -203,8 +190,19 @@ export const portalApi = {
   withdrawGraduationChoices: (roundId) => request('/mobile/graduation/withdraw-choices', { method: 'POST', body: { roundId } }),
   requestGraduationTopicChange: (newTopicId, reason) => request('/mobile/graduation/change-request', { method: 'POST', body: { newTopicId, reason } }),
   graduationChangeRequests: () => request('/mobile/graduation/change-requests/my'),
-  uploadGraduationMaterial: (file) => uploadFile('/files/upload?bizType=GRADUATION_MATERIAL', file),
-  downloadGraduationMaterial: (fileId, fileName) => downloadFile(`/mobile/graduation/materials/${encodeURIComponent(fileId)}/download`, fileName)
+  graduationMaterialLibrary: () => request('/mobile/graduation/material-center/library'),
+  graduationMaterialManifest: () => request('/mobile/graduation/material-center/manifest'),
+  submitGraduationMaterial: (materialCode, fileId, expectedVersion) => request(`/mobile/graduation/material-center/materials/${encodeURIComponent(materialCode)}/submit`, { method: 'POST', body: { fileId, expectedVersion, clientSurface: 'STUDENT_PC' } }),
+  issueGraduationMaterialTicket: (fileId, action) => request(`/mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket`, { method: 'POST', body: { action } }),
+  uploadGraduationMaterial: (file) => fileSdk.upload(file, { bizType: 'GRADUATION_MATERIAL' }),
+  async downloadGraduationMaterial(fileId, fileName) {
+    const ticket = await this.issueGraduationMaterialTicket(fileId, 'download')
+    return fileSdk.downloadFrom(ticket, fileName)
+  },
+  async previewGraduationMaterial(fileId, fileName) {
+    const ticket = await this.issueGraduationMaterialTicket(fileId, 'preview')
+    return fileSdk.previewFrom(ticket, fileName)
+  }
 }
 
 export default portalApi

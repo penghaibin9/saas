@@ -25,6 +25,7 @@ def _excel_text(value):
 
 def _package_bytes(student_id: int, user) -> bytes:
     from app.services import affairs_profile_service as profile
+
     data = profile.get_profile(student_id, user)
     timeline, _total = profile.get_timeline(student_id, user, page=1, page_size=200)
     wb = Workbook()
@@ -37,8 +38,10 @@ def _package_bytes(student_id: int, user) -> bytes:
     ts.append(["时间", "模块", "事件", "说明"])
     for item in timeline:
         ts.append([
-            _excel_text(item.get("occurredAt")), _excel_text(item.get("module")),
-            _excel_text(item.get("title")), _excel_text(item.get("detail")),
+            _excel_text(item.get("occurredAt")),
+            _excel_text(item.get("module")),
+            _excel_text(item.get("title")),
+            _excel_text(item.get("detail")),
         ])
     stream = io.BytesIO()
     wb.save(stream)
@@ -48,16 +51,24 @@ def _package_bytes(student_id: int, user) -> bytes:
 def _generate_pending_packages(batch_id: int, user) -> int:
     from app.models import ArchivePackage, StudentProfile
     from app.services import file_service
+
     generated = 0
     with session() as db:
         package_ids = list(db.scalars(select(ArchivePackage.id).where(
-            ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == int(batch_id),
-            ArchivePackage.package_file_id.is_(None), ArchivePackage.is_deleted.is_(False),
+            ArchivePackage.tenant_id == _tid(),
+            ArchivePackage.batch_id == int(batch_id),
+            ArchivePackage.package_file_id.is_(None),
+            ArchivePackage.is_deleted.is_(False),
         )).all())
     for package_id in package_ids:
         with session() as db:
             package = db.get(ArchivePackage, int(package_id))
-            if not package or package.is_deleted or package.tenant_id != _tid() or package.package_file_id:
+            if (
+                not package
+                or package.is_deleted
+                or package.tenant_id != _tid()
+                or package.package_file_id
+            ):
                 continue
             student = db.get(StudentProfile, int(package.student_id))
             if not student or student.is_deleted or student.tenant_id != _tid():
@@ -69,15 +80,25 @@ def _generate_pending_packages(batch_id: int, user) -> int:
             student_no = student.student_no or str(student.id)
         payload = _package_bytes(student_id, user)
         meta = file_service.store_bytes(
-            payload, f"学工档案_{student_no}.xlsx", biz_type="ATTACHMENT",
+            payload,
+            f"学工档案_{student_no}.xlsx",
+            biz_type="AFFAIRS_ARCHIVE",
             mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            biz_id=str(student_id), user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE",
+            biz_id=str(student_id),
+            user=user,
+            visibility="BIZ_SCOPED",
+            security_level="SENSITIVE",
         )
         if meta.get("status") not in ("AVAILABLE", "available", None):
             raise AppException("DATA_CONFLICT", f"学生{student_no}档案文件安全校验未通过")
         with session() as db:
             package = db.get(ArchivePackage, int(package_id))
-            if package and not package.is_deleted and package.tenant_id == _tid() and not package.package_file_id:
+            if (
+                package
+                and not package.is_deleted
+                and package.tenant_id == _tid()
+                and not package.package_file_id
+            ):
                 package.package_file_id = int(meta["fileId"])
                 package.missing_items_json = "[]"
                 package.status = "SUBMITTED"
@@ -96,9 +117,12 @@ def _manifest_bytes(batch, packages, students) -> bytes:
     for package in packages:
         student = students.get(int(package.student_id))
         ws.append([
-            str(package.student_id), _excel_text(student.student_no if student else ""),
-            _excel_text(student.real_name if student else ""), package.status,
-            str(package.package_file_id or ""), _excel_text(package.missing_items_json or "[]"),
+            str(package.student_id),
+            _excel_text(student.student_no if student else ""),
+            _excel_text(student.real_name if student else ""),
+            package.status,
+            str(package.package_file_id or ""),
+            _excel_text(package.missing_items_json or "[]"),
         ])
     stream = io.BytesIO()
     wb.save(stream)
@@ -125,6 +149,7 @@ def install() -> None:
         except (TypeError, ValueError) as exc:
             raise AppException("VALIDATION_ERROR", "学生ID必须为有效数字") from exc
         from app.core.affairs_security import build_affairs_context
+
         with session() as db:
             context = build_affairs_context(user, db)
             for student_id in ids:
@@ -133,8 +158,10 @@ def install() -> None:
         result["packagesGenerated"] = _generate_pending_packages(int(batch_id), user)
         with session() as db:
             pending = db.scalars(select(ArchivePackage.id).where(
-                ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == int(batch_id),
-                ArchivePackage.status != "SUBMITTED", ArchivePackage.is_deleted.is_(False),
+                ArchivePackage.tenant_id == _tid(),
+                ArchivePackage.batch_id == int(batch_id),
+                ArchivePackage.status != "SUBMITTED",
+                ArchivePackage.is_deleted.is_(False),
             )).all()
         result["packagesPending"] = len(pending)
         return result
@@ -143,6 +170,7 @@ def install() -> None:
         if str(action or "").upper() != "APPROVE":
             raise AppException("VALIDATION_ERROR", "归档流转仅支持APPROVE，退回须使用专用退回流程")
         from app.core.affairs_security import build_affairs_context
+
         with session() as db:
             batch = db.get(ArchiveBatch, int(batch_id))
             if not batch or batch.is_deleted or batch.tenant_id != _tid():
@@ -155,18 +183,19 @@ def install() -> None:
             if batch.status != "SA_CONFIRM":
                 return old_advance(batch_id, user, "APPROVE", expected_version)
 
-        # 最终确认前先补生成可重试的档案包；任何未就绪包都会阻断归档。
         _generate_pending_packages(int(batch_id), user)
         with session() as db:
             batch = db.scalars(select(ArchiveBatch).where(
-                ArchiveBatch.tenant_id == _tid(), ArchiveBatch.id == int(batch_id),
+                ArchiveBatch.tenant_id == _tid(),
+                ArchiveBatch.id == int(batch_id),
                 ArchiveBatch.is_deleted.is_(False),
             ).with_for_update()).first()
             if not batch or batch.status != "SA_CONFIRM":
                 raise AppException("APPROVAL_VERSION_CONFLICT", "归档批次状态已变化，请刷新")
             archive.atomic_claim_version(db, batch, expected_version)
             packages = db.scalars(select(ArchivePackage).where(
-                ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == batch.id,
+                ArchivePackage.tenant_id == _tid(),
+                ArchivePackage.batch_id == batch.id,
                 ArchivePackage.is_deleted.is_(False),
             )).all()
             if not packages:
@@ -175,48 +204,75 @@ def install() -> None:
             if not_ready:
                 raise AppException("DATA_CONFLICT", f"仍有{len(not_ready)}份档案包未生成完成，不能归档")
             student_ids = {int(p.student_id) for p in packages}
-            students = {int(s.id): s for s in db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(student_ids),
-                StudentProfile.is_deleted.is_(False),
-            )).all()}
+            students = {
+                int(s.id): s
+                for s in db.scalars(select(StudentProfile).where(
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.id.in_(student_ids),
+                    StudentProfile.is_deleted.is_(False),
+                )).all()
+            }
             payload = _manifest_bytes(batch, packages, students)
             from app.services.import_export_service import upload_dir
+
             key = f"exports/{datetime.now():%Y%m%d}/affairs_archive_{batch.id}_{uuid.uuid4().hex[:8]}.xlsx"
             target = upload_dir() / key
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
             digest = hashlib.sha256(payload).hexdigest()
             from app.services.message_identity import resolve_message_user_id
+
             task = ExportTask(
-                tenant_id=_tid(), export_mode="ARCHIVE_MANIFEST", module_code="student-affairs",
-                row_count=len(packages), purpose=f"学工归档清单：{batch.batch_name}",
-                file_hash=digest, status="SUCCESS", remark=key,
+                tenant_id=_tid(),
+                export_mode="ARCHIVE_MANIFEST",
+                module_code="student-affairs",
+                row_count=len(packages),
+                purpose=f"学工归档清单：{batch.batch_name}",
+                file_hash=digest,
+                status="SUCCESS",
+                remark=key,
                 created_by=resolve_message_user_id(user) or None,
             )
-            db.add(task); db.flush()
+            db.add(task)
+            db.flush()
             for package in packages:
                 package.export_task_id = task.id
                 package.status = "ARCHIVED"
                 package.version = int(package.version or 0) + 1
             operator, _role, _uid = archive._op()
-            batch.status, batch.confirm_by, batch.confirm_at = "ARCHIVED", operator, datetime.utcnow()
+            batch.status = "ARCHIVED"
+            batch.confirm_by = operator
+            batch.confirm_at = datetime.utcnow()
             batch.version = int(batch.version or 0) + 1
             archive._audit(db, batch.id, "ARCHIVED", f"export_task={task.id};sha256={digest}")
-            db.commit(); db.refresh(batch)
+            db.commit()
+            db.refresh(batch)
             data = archive._batch_row(batch)
-            data.update({"exportTaskId": str(task.id), "fileName": target.name, "rowCount": len(packages)})
+            data.update({
+                "exportTaskId": str(task.id),
+                "fileName": target.name,
+                "rowCount": len(packages),
+            })
             return data
 
     def get_batch(batch_id, user):
         data = old_get_batch(batch_id, user)
-        ids = [int(row["packageId"]) for row in data.get("packages", []) if str(row.get("packageId") or "").isdigit()]
+        ids = [
+            int(row["packageId"])
+            for row in data.get("packages", [])
+            if str(row.get("packageId") or "").isdigit()
+        ]
         if not ids:
             return data
         with session() as db:
-            rows = {int(row.id): row for row in db.scalars(select(ArchivePackage).where(
-                ArchivePackage.tenant_id == _tid(), ArchivePackage.id.in_(ids),
-                ArchivePackage.is_deleted.is_(False),
-            )).all()}
+            rows = {
+                int(row.id): row
+                for row in db.scalars(select(ArchivePackage).where(
+                    ArchivePackage.tenant_id == _tid(),
+                    ArchivePackage.id.in_(ids),
+                    ArchivePackage.is_deleted.is_(False),
+                )).all()
+            }
         for item in data["packages"]:
             row = rows.get(int(item["packageId"]))
             if row:

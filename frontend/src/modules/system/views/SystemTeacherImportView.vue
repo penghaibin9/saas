@@ -12,11 +12,16 @@
         <div class="mp-card__head"><span class="mp-card__title">导入内容</span></div>
         <div class="mp-card__body">
           <ul class="sti__points">
-            <li>创建教职工登录账号并生成一次性初始密码回执</li>
+            <li>创建教职工登录账号并生成短期有效的初始密码回执</li>
             <li>按「预设角色编码」绑定角色（可多个，逗号/分号/竖线分隔）</li>
             <li>配置数据范围：SCHOOL / COLLEGE / CLASS / ADVISOR</li>
             <li>辅导员必须填写 CLASS 或 ADVISOR 范围及对应班级</li>
           </ul>
+          <p class="sti__note">
+            原始 Excel、安全扫描、错误回执和初始凭据回执会进入
+            <button class="mp-link" @click="$router.push('/admin/system/data-exchange')">数据交换任务中心</button>，
+            凭据回执过期或撤销后将无法继续下载。
+          </p>
           <p class="sti__note">
             本模板<strong>不包含</strong>学生的学院、专业、班级、年级与学籍状态；
             导入学生请前往
@@ -36,25 +41,29 @@
     <ImportDialog
       v-model:visible="importOpen"
       :template="template"
-      :run-validate="api.validateTeacherIdentityFile"
-      :run-import="api.confirmTeacherIdentityBatch"
+      :run-validate="validateFile"
+      :run-import="confirmJob"
       :run-download-template="api.downloadTeacherImportTemplate"
-      :run-download-errors="api.downloadIdentityImportErrors"
+      @done="$router.push('/admin/system/data-exchange')"
     />
   </ModulePageShell>
 </template>
 
 <script>
 /**
- * 系统管理 › 身份与账号 › 教师导入（独立三级页面）。
- * 角色绑定、数据范围、辅导员班级范围、初始密码回执、重复登录名校验、跨租户阻断、
- * 整批事务与错误回执等既有能力全部保留，仅把入口与模板同学生拆开。
+ * 系统管理 › 身份与账号 › 教师导入。
+ * 阶段 3：上传后创建统一 ImportJob；确认只传 jobId + expectedVersion，禁止前端回传 rows。
  */
 import { ModulePageShell } from '@/components/business'
 import { AppGlobalState } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ImportDialog from '@/modules/system/components/ImportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
+import { dataExchangeApi } from '@/modules/system/api/dataExchange.api'
+
+function apiError(error) {
+  return { code: error?.code || 1, data: null, message: error?.message || '请求失败' }
+}
 
 export default {
   name: 'SystemTeacherImportView',
@@ -72,6 +81,49 @@ export default {
       const pa = (this.ctx && this.ctx.permissionActions) || {}
       const item = pa.importUsers
       return item ? !!(item.visible && item.allowed) : true
+    }
+  },
+  methods: {
+    async validateFile(file) {
+      try {
+        const job = await dataExchangeApi.validateIdentity('teachers', file)
+        const invalid = Number(job.invalidRows || 0)
+        return {
+          code: 0,
+          data: {
+            ...job,
+            jobId: job.id,
+            total: Number(job.totalRows || 0),
+            valid: Number(job.validRows || 0),
+            invalid,
+            errors: invalid
+              ? [{ row: 0, field: '预检结果', message: `发现 ${invalid} 行错误，完整回执已进入数据交换任务中心` }]
+              : []
+          },
+          message: '教师名单解析及预检完成'
+        }
+      } catch (error) {
+        return apiError(error)
+      }
+    },
+    async confirmJob(jobId) {
+      try {
+        const current = await dataExchangeApi.getImport(jobId)
+        const data = await dataExchangeApi.confirmImport(jobId, current.version)
+        const result = data.result || {}
+        const entities = result.entities || {}
+        const created = entities.teachers?.created || data.confirmedRows || 0
+        return {
+          code: 0,
+          data: {
+            ...data,
+            receipt: `已完成教师账号处理 ${created} 条；初始凭据请到数据交换任务中心安全下载`
+          },
+          message: '教师账号已整批创建'
+        }
+      } catch (error) {
+        return apiError(error)
+      }
     }
   }
 }
