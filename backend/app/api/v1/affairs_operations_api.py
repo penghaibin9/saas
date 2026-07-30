@@ -1,4 +1,8 @@
-"""学工材料补交与低风险安全批次 API。"""
+"""学工材料补交与低风险安全批次 API。
+
+所有旧 URL 保持兼容；材料创建、补交、退回、重交、版本与审核直接调用阶段 5
+公共版本 Facade，不再依赖应用启动时替换 service 函数。
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.services import affairs_operations_service as operations
+from app.modules.student_affairs.services import affairs_material_center_service as operations
 
 router = APIRouter(tags=["学工中心·材料与安全批次"])
 

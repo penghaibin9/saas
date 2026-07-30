@@ -1,6 +1,6 @@
 """学工材料与安全批次终态安全门。
 
-- 材料审核附件按“业务权限 + 学生数据范围”做对象级授权；
+- 材料审核附件授权已迁移到公共文件 resolver registry；
 - 教师材料队列在计数和分页前按业务权限过滤，禁止跨域数量泄露；
 - 宿管的调宿材料按当前入住楼栋或调宿目标楼栋收敛，不错误套用班级范围；
 - 批次幂等键绑定同一请求，失败尝试次数即使事务回滚也可靠累计；
@@ -50,7 +50,10 @@ def _install_dorm_material_scope_guard(operations) -> None:
             DormTransfer.tenant_id == _tid(),
             DormTransfer.student_id == int(student_id),
             DormTransfer.is_deleted.is_(False),
-            DormTransfer.status.in_(("SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW", "DORM_MANAGER_REVIEW", "RETURNED")),
+            DormTransfer.status.in_((
+                "SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW",
+                "DORM_MANAGER_REVIEW", "RETURNED",
+            )),
             DormBed.tenant_id == _tid(),
             DormBed.building_id.in_(buildings),
             DormBed.is_deleted.is_(False),
@@ -61,45 +64,19 @@ def _install_dorm_material_scope_guard(operations) -> None:
     operations._require_student_scope = require_student_scope
 
 
-def _install_material_file_access_guard(operations) -> None:
-    from app.services import file_service
-
-    original = file_service.authorize_file_access
-
-    def authorize_file_access(user: dict, file_obj, action: str = "download") -> bool:
-        if original(user, file_obj, action):
-            return True
-        if file_obj is None or str(getattr(file_obj, "biz_type", "") or "").upper() != "MATERIAL_REQUIREMENT":
-            return False
-        raw_id = str(getattr(file_obj, "biz_id", "") or "").strip()
-        if not raw_id.isdigit():
-            return False
-        try:
-            from app.models.affairs_operations import AffairsMaterialRequirement
-
-            with session() as db:
-                requirement = db.scalars(select(AffairsMaterialRequirement).where(
-                    AffairsMaterialRequirement.tenant_id == _tid(),
-                    AffairsMaterialRequirement.id == int(raw_id),
-                    AffairsMaterialRequirement.is_deleted.is_(False),
-                )).first()
-                if not requirement:
-                    return False
-                permissions = operations._BIZ_PERMISSIONS.get(requirement.biz_type, ())
-                if not any(has_permission(user or {}, code) for code in permissions):
-                    return False
-                operations._require_student_scope(db, requirement.student_id, user or {})
-                return True
-        except Exception:
-            # 文件授权必须 fail-closed；调用方统一按不存在处理，不泄露文件存在性。
-            return False
-
-    file_service.authorize_file_access = authorize_file_access
+def _install_material_file_access_guard(_operations) -> None:
+    """阶段 2 兼容空入口：MATERIAL_REQUIREMENT 已由 resolver registry 授权。"""
+    return
 
 
 def _install_teacher_requirement_scope_guard(operations) -> None:
-    def list_teacher_requirements(user: dict, *, status: str | None = None,
-                                  page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+    def list_teacher_requirements(
+        user: dict,
+        *,
+        status: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[dict], int]:
         from app.core.affairs_security import build_affairs_context
         from app.models import DormBed, DormTransfer, StudentProfile, User
         from app.models.affairs_operations import AffairsMaterialRequirement
@@ -127,7 +104,6 @@ def _install_teacher_requirement_scope_guard(operations) -> None:
             if status:
                 conds.append(AffairsMaterialRequirement.status == str(status).upper())
             if ctx.scope_type == "DORM_BUILDING":
-                # 宿管只处理调宿材料；学生须当前住在本人楼栋，或调宿目标床位属于本人楼栋。
                 visible_biz_types &= {"DORM_TRANSFER"}
                 if not visible_biz_types or not ctx.dorm_building_ids:
                     return [], 0
@@ -143,27 +119,37 @@ def _install_teacher_requirement_scope_guard(operations) -> None:
                 ).where(
                     DormTransfer.tenant_id == _tid(),
                     DormTransfer.is_deleted.is_(False),
-                    DormTransfer.status.in_(("SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW", "DORM_MANAGER_REVIEW", "RETURNED")),
+                    DormTransfer.status.in_((
+                        "SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW",
+                        "DORM_MANAGER_REVIEW", "RETURNED",
+                    )),
                     DormBed.tenant_id == _tid(),
                     DormBed.building_id.in_(ctx.dorm_building_ids),
                     DormBed.is_deleted.is_(False),
                 )
-                conds.append(or_(StudentProfile.id.in_(current_students), StudentProfile.id.in_(target_students)))
+                conds.append(or_(
+                    StudentProfile.id.in_(current_students),
+                    StudentProfile.id.in_(target_students),
+                ))
             else:
                 allowed, _ = _allowed_class_ids(db, user)
                 if allowed is not None:
                     conds.append(StudentProfile.class_id.in_(allowed or {-1}))
             joined = select(AffairsMaterialRequirement).join(
-                StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
+                StudentProfile,
+                StudentProfile.id == AffairsMaterialRequirement.student_id,
             )
             total = int(db.scalar(
                 select(func.count()).select_from(AffairsMaterialRequirement).join(
-                    StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
+                    StudentProfile,
+                    StudentProfile.id == AffairsMaterialRequirement.student_id,
                 ).where(*conds)
             ) or 0)
             rows = db.scalars(
-                joined.where(*conds).order_by(AffairsMaterialRequirement.id.desc())
-                .offset((page - 1) * page_size).limit(page_size)
+                joined.where(*conds)
+                .order_by(AffairsMaterialRequirement.id.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
             ).all()
             submissions = operations._submission_rows(db, [row.id for row in rows])
             owner_ids = {int(row.review_owner_id) for row in rows if row.review_owner_id}
@@ -204,16 +190,25 @@ def _install_batch_reliability_guard(operations) -> None:
 
         user = get_current_user_ctx() or {}
         db.add(AffairsAuditTrail(
-            tenant_id=_tid(), biz_type="BATCH_JOB", biz_id=int(biz_id),
-            action=action, operator=user.get("realName") or operations._user_key(user),
-            role_name=user.get("currentRoleCode") or "", detail=(detail or "")[:1000],
+            tenant_id=_tid(),
+            biz_type="BATCH_JOB",
+            biz_id=int(biz_id),
+            action=action,
+            operator=user.get("realName") or operations._user_key(user),
+            role_name=user.get("currentRoleCode") or "",
+            detail=(detail or "")[:1000],
             occurred_at=datetime.utcnow(),
         ))
 
     def _request_ids(payload: dict) -> list[int]:
         items = payload.get("items") or []
         versions = [item.get("version") for item in items]
-        if any(not isinstance(version, int) or isinstance(version, bool) or version < 0 for version in versions):
+        if any(
+            not isinstance(version, int)
+            or isinstance(version, bool)
+            or version < 0
+            for version in versions
+        ):
             raise AppException("VALIDATION_ERROR", "批量提醒每一条都必须携带当前材料版本")
         return [int(item.get("requirementId") or 0) for item in items]
 
@@ -241,8 +236,6 @@ def _install_batch_reliability_guard(operations) -> None:
                 else:
                     return operations._batch_job_dict(db, existed)
         if resume_id:
-            # 进程在“主表/明细已提交、尚未开始逐条执行”之间中断时，
-            # 客户端用同一幂等键重试会恢复原批次，而不是新建第二批。
             return operations.run_batch_job(resume_id, user)
         result = original_create_batch(user, payload)
         result_id = str(result.get("batchJobId") or "")
@@ -260,8 +253,6 @@ def _install_batch_reliability_guard(operations) -> None:
             if row and row.tenant_id == _tid() and not row.is_deleted:
                 before = int(row.attempt_count or 0)
         original_execute_item(item_id, user)
-        # 原执行器失败时业务事务会回滚，RUNNING 与 attempt_count 也会一起回滚；
-        # 这里在独立事务中补齐失败尝试事实，保证重试审计准确。
         with session() as db:
             row = db.scalars(select(AffairsBatchJobItem).where(
                 AffairsBatchJobItem.tenant_id == _tid(),
@@ -288,11 +279,14 @@ def _install_material_round_guard(operations) -> None:
     def create_material_requirement(user: dict, payload: dict) -> dict:
         result = original(user, payload)
         requirement_id = str(result.get("requirementId") or "")
-        if result.get("created") or result.get("status") != "MISSING" or not result.get("currentSubmissionId"):
+        if (
+            result.get("created")
+            or result.get("status") != "MISSING"
+            or not result.get("currentSubmissionId")
+        ):
             return result
         if not requirement_id.isdigit():
             return result
-        # 重新开启新一轮时清空“当前提交”，但历史版本行全部保留。
         with session() as db:
             row = db.scalars(select(AffairsMaterialRequirement).where(
                 AffairsMaterialRequirement.tenant_id == _tid(),
@@ -303,11 +297,14 @@ def _install_material_round_guard(operations) -> None:
                 return result
             row.current_submission_id = None
             row.version = int(row.version or 0) + 1
-            db.commit(); db.refresh(row)
+            db.commit()
+            db.refresh(row)
             submissions = operations._submission_rows(db, [row.id]).get(int(row.id), [])
             owner = db.get(User, int(row.review_owner_id)) if row.review_owner_id else None
             refreshed = operations._requirement_dict(
-                row, submissions, student_view=False,
+                row,
+                submissions,
+                student_view=False,
                 owner_name=(owner.real_name if owner else ""),
             )
             refreshed["created"] = False

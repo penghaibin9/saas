@@ -12,8 +12,7 @@
       </div>
 
       <nav class="sp-nav">
-        <a v-for="m in nav" :key="m.key" class="sp-nav__item" :class="{ 'is-active': m.active, 'is-locked': m.locked }"
-           @click="onNav(m)">
+        <a v-for="m in nav" :key="m.key" class="sp-nav__item" :class="{ 'is-active': m.active, 'is-locked': m.locked }" @click="onNav(m)">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="m.d1" /><path :d="m.d2" /></svg>
           <span style="flex:1">{{ m.title }}</span>
           <span v-if="m.badge" class="sp-nav__badge">{{ m.badge }}</span>
@@ -39,6 +38,9 @@
           </div>
           <button v-if="activePath === 'internship'" class="sp-context-link" @click="toggleInternshipView">
             {{ route.name === 'internship-compliance' ? '返回实习工作台' : '上岗合规与安全教育' }}
+          </button>
+          <button v-if="activePath === 'graduation'" class="sp-context-link" @click="toggleGraduationView">
+            {{ route.name === 'graduation-material-library' ? '返回毕业设计工作台' : '我的材料库' }}
           </button>
         </div>
         <div style="display:flex;align-items:center;gap:14px;flex:none">
@@ -134,9 +136,8 @@ function onNav(m) {
   if (m.locked) { ui.notify('该模块未开通，请联系学校管理员'); return }
   router.push(m.to)
 }
-function toggleInternshipView() {
-  router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance')
-}
+function toggleInternshipView() { router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance') }
+function toggleGraduationView() { router.push(route.name === 'graduation-material-library' ? '/graduation' : '/graduation/materials') }
 function goMsg() { router.push('/messages') }
 function doSearch() { if (search.value) router.push('/service-hall') }
 function logout() {
