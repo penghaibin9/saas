@@ -24,6 +24,7 @@ on:
       - "docs/architecture/file-capability-inventory.yaml"
       - "scripts/audit_file_capabilities.py"
       - "scripts/patch_phase6_residuals.py"
+      - "scripts/patch_phase6_business_residuals.py"
       - ".github/workflows/file-capability-inventory.yml"
 
 permissions:
@@ -45,10 +46,12 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/patch_phase6_residuals.py
+          python scripts/patch_phase6_business_residuals.py
           TARGETS=(
             backend/app/services/file_service.py
             backend/app/services/file_access_resolvers.py
-            .github/workflows/miniapp-mp-weixin-release.yml
+            backend/app/modules/graduation/services/graduation_material_export_service.py
+            backend/app/modules/graduation/services/graduation_material_catalog_service.py
           )
           if ! git diff --quiet -- "${TARGETS[@]}"; then
             git config user.name "github-actions[bot]"
@@ -56,7 +59,7 @@ jobs:
             git add -- "${TARGETS[@]}"
             echo "Exact staged files:"
             git diff --cached --name-only
-            git commit -m "fix(file-center): close phase 6 authorization regressions"
+            git commit -m "fix(graduation): close phase 6 business residuals"
             git push origin HEAD:audit/file-capability-inventory
           fi
       - name: Merge latest main into phase 6 Draft branch
