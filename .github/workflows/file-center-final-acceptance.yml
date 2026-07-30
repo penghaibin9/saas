@@ -21,6 +21,7 @@ on:
       - 'miniapp/src/**'
       - 'scripts/audit_file_center_calls.py'
       - 'scripts/audit_file_capabilities.py'
+      - 'scripts/check_new_file_capabilities.py'
       - 'docs/architecture/file-center-stage10-closure.md'
       - 'docs/architecture/file-capability-inventory*'
       - '.github/workflows/file-center-final-acceptance.yml'
@@ -47,7 +48,7 @@ jobs:
         run: |
           python scripts/audit_file_capabilities.py --check-schema
           python scripts/audit_file_capabilities.py --strict-baseline
-          python scripts/audit_file_capabilities.py --check-new --base-ref origin/main
+          python scripts/check_new_file_capabilities.py --base-ref origin/main
       - name: Strict file center call scan
         run: python scripts/audit_file_center_calls.py --strict --json-report artifacts/file-center-call-scan.json
       - name: Freeze retired aliases
