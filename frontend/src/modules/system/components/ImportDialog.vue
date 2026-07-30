@@ -25,7 +25,7 @@
       <template v-else-if="step === 1">
         <label v-if="realFileMode" class="imp__upload">
           <input ref="fileInput" type="file" class="imp__file-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="selectFile" />
-          <span class="mp-note">仅支持标准 .xlsx；上传后执行 dry-run 预检，不会直接写入数据库</span>
+          <span class="mp-note">仅支持标准 .xlsx；上传后进入文件安全检查并执行服务端预检，不会直接写入数据库</span>
           <span v-if="file" class="imp__filename">已选择：{{ file.name }}</span>
         </label>
         <label v-else class="imp__upload">
@@ -42,19 +42,21 @@
               <tr v-for="(e, index) in preview.errors" :key="e.row + '-' + e.field + '-' + index"><td>{{ e.row ? '第 ' + e.row + ' 行' : '全局' }}</td><td>{{ e.field }}</td><td>{{ e.message }}</td></tr>
             </tbody>
           </table>
-          <button v-if="preview.errors.length" class="mp-link" @click="downloadErrors">⇩ 下载{{ realFileMode ? ' Excel ' : '' }}错误回执</button>
+          <button v-if="preview.errors.length && runDownloadErrors" class="mp-link" @click="downloadErrors">⇩ 下载{{ realFileMode ? ' Excel ' : '' }}错误回执</button>
+          <p v-else-if="preview.errors.length" class="mp-note">完整错误回执已进入「数据交换任务中心」，可在任务列表中安全下载。</p>
         </div>
       </template>
 
       <template v-else>
         <div class="mp-card">
           <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">导入批次</span><span class="mp-kv__v">{{ preview && preview.batchNo }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">写入范围</span><span class="mp-kv__v">仅校验通过的 {{ preview && preview.valid }} 行；错误行不写入</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">审计留痕</span><span class="mp-kv__v">导入回执与错误清单将写入操作日志</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">任务编号</span><span class="mp-kv__v">#{{ preview && (preview.jobId || preview.id || preview.batchNo) }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">写入范围</span><span class="mp-kv__v">仅服务器预检通过的 {{ preview && preview.valid }} 行；前端不回传 rows</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">安全门禁</span><span class="mp-kv__v">原始文件完成安全扫描后才允许确认</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">审计留痕</span><span class="mp-kv__v">原始文件、错误回执与初始凭据回执均进入文件中心和任务历史</span></div>
           </div>
         </div>
-        <p class="mp-note">确认后数据立即生效；如导入有误可在列表中按批次号筛选并逐条停用（不提供物理删除）。</p>
+        <p class="mp-note">确认后数据立即生效；刷新页面或切换设备后仍可从「数据交换任务中心」继续处理。</p>
       </template>
     </div>
     <template #footer>
@@ -71,9 +73,9 @@
 
 <script>
 /**
- * ImportDialog — 系统管理模块局部组件：三步导入流（模板下载 → 校验预览 → 导入回执）。
- * Props：template（importTemplates 中的一项）、runValidate(File)、runImport(batchNo) 为
- * 父页面传入的 api 调用（返回统一契约 Promise），组件内不直接 import api，保持模块内可复用。
+ * ImportDialog — 三步导入流。
+ * runValidate(File) 返回服务端 ImportJob 预检投影；runImport(jobId) 只使用任务编号，
+ * 任务版本由父级 API 客户端读取后提交，禁止把预检 rows 或旧 batchNo 当权威输入。
  */
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -155,10 +157,11 @@ export default {
     },
     async confirmImport() {
       this.submitting = true
-      const res = await this.runImport(this.realFileMode ? this.preview.batchNo : this.fileName)
+      const jobId = this.preview && (this.preview.jobId || this.preview.id || this.preview.batchNo)
+      const res = await this.runImport(this.realFileMode ? jobId : this.fileName)
       this.submitting = false
       if (res.code === 0) {
-        toast.success((res.data.receipt || res.message || '导入完成') + '，已写入审计日志')
+        toast.success((res.data.receipt || res.message || '导入完成') + '，已写入任务历史与审计日志')
         this.$emit('update:visible', false)
         this.$emit('done')
       } else {
