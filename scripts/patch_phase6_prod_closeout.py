@@ -10,102 +10,60 @@ def replace_once(path: str, old: str, new: str) -> None:
     text = target.read_text(encoding="utf-8")
     count = text.count(old)
     if count != 1:
-        raise RuntimeError(f"{path}: expected one match, found {count}")
+        raise RuntimeError(f"{path}: expected one match, found {count}: {old[:80]!r}")
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+# File service: optional caller-owned transaction for trusted system snapshots.
 replace_once(
     "backend/app/services/file_service.py",
-    '    security_level: str = "NORMAL",\n) -> dict:\n',
-    '    security_level: str = "NORMAL",\n    db=None,\n) -> dict:\n',
+    '''def store_bytes(
+    data: bytes,
+    filename: str,
+    biz_type: str = "ATTACHMENT",
+    mime_type: str | None = None,
+    *,
+    biz_id: str | None = None,
+    user: dict | None = None,
+    visibility: str = "PRIVATE",
+    security_level: str = "NORMAL",
+) -> dict:
+''',
+    '''def store_bytes(
+    data: bytes,
+    filename: str,
+    biz_type: str = "ATTACHMENT",
+    mime_type: str | None = None,
+    *,
+    biz_id: str | None = None,
+    user: dict | None = None,
+    visibility: str = "PRIVATE",
+    security_level: str = "NORMAL",
+    db=None,
+) -> dict:
+''',
 )
 replace_once(
     "backend/app/services/file_service.py",
-    '''    if db_enabled():
-        from app.models.file import FileObject
-
-        db = get_sessionmaker()()
+    '''        db = get_sessionmaker()()
         try:
             row = FileObject(
-                tenant_id=tenant_id,
-                file_key=key,
-                file_name=filename,
-                ext=ext,
-                mime_type=detected_mime,
-                size_bytes=len(data),
-                sha256=meta["sha256"],
-                biz_type=biz_type,
-                biz_id=biz_id,
-                owner_user_id=owner_id,
-                created_by=owner_id,
-                visibility=visibility or "PRIVATE",
-                security_level=security_level or "NORMAL",
-                status=FILE_STATUS_AVAILABLE,
-                storage_backend=str(settings.FILE_STORAGE_BACKEND or "local").lower(),
-                storage_zone="ACTIVE",
-                upload_source="SYSTEM",
-                scan_required=False,
-                scan_status=SCAN_NOT_REQUIRED,
-                available_at=now,
-            )
-            db.add(row)
-            db.flush()
-            _register_binding(
-                str(row.id),
-                biz_type=biz_type,
-                biz_id=biz_id,
-                actor=actor,
-                db=db,
-            )
-            db.commit()
-            db.refresh(row)
-            meta.update(_row_meta(row))
-        finally:
-            db.close()
-    else:
 ''',
-    '''    if db_enabled():
-        from app.models.file import FileObject
-
-        owns_db = db is None
+    '''        owns_db = db is None
         working_db = db or get_sessionmaker()()
         try:
             row = FileObject(
-                tenant_id=tenant_id,
-                file_key=key,
-                file_name=filename,
-                ext=ext,
-                mime_type=detected_mime,
-                size_bytes=len(data),
-                sha256=meta["sha256"],
-                biz_type=biz_type,
-                biz_id=biz_id,
-                owner_user_id=owner_id,
-                created_by=owner_id,
-                visibility=visibility or "PRIVATE",
-                security_level=security_level or "NORMAL",
-                status=FILE_STATUS_AVAILABLE,
-                storage_backend=str(settings.FILE_STORAGE_BACKEND or "local").lower(),
-                storage_zone="ACTIVE",
-                upload_source="SYSTEM",
-                scan_required=False,
-                scan_status=SCAN_NOT_REQUIRED,
-                available_at=now,
-            )
-            working_db.add(row)
-            working_db.flush()
-            _register_binding(
-                str(row.id),
-                biz_type=biz_type,
-                biz_id=biz_id,
-                actor=actor,
-                db=working_db,
-            )
-            if owns_db:
-                working_db.commit()
-                working_db.refresh(row)
-            meta.update(_row_meta(row))
-        except Exception:
+''',
+)
+replace_once("backend/app/services/file_service.py", "            db.add(row)\n            db.flush()\n", "            working_db.add(row)\n            working_db.flush()\n")
+replace_once("backend/app/services/file_service.py", "                db=db,\n            )\n            db.commit()\n            db.refresh(row)\n", "                db=working_db,\n            )\n            if owns_db:\n                working_db.commit()\n                working_db.refresh(row)\n")
+replace_once(
+    "backend/app/services/file_service.py",
+    '''        finally:
+            db.close()
+    else:
+''',
+    '''        except Exception:
             if owns_db:
                 working_db.rollback()
             raise
@@ -116,15 +74,15 @@ replace_once(
 ''',
 )
 
+# Proposal and template system snapshots share the FileVersion transaction.
 replace_once(
     "backend/app/modules/graduation/services/graduation_material_center_service.py",
-    '''def _store_proposal_snapshot(record: GraduationProposal, student: GraduationStudent, user: dict) -> FileObject:
-    safe_student = re.sub(r"[\\/:*?\"<>|]+", "_", student.name or "学生")
-    meta = file_service.store_bytes(
-        _proposal_snapshot_bytes(record, student),
-        f"开题报告_{safe_student}_{record.version or 'v1'}_正文快照.txt",
-        biz_type="GRADUATION_MATERIAL", biz_id=str(record.id), mime_type="text/plain",
-        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE",
+    "def _store_proposal_snapshot(record: GraduationProposal, student: GraduationStudent, user: dict) -> FileObject:\n",
+    "def _store_proposal_snapshot(db, record: GraduationProposal, student: GraduationStudent, user: dict) -> FileObject:\n",
+)
+replace_once(
+    "backend/app/modules/graduation/services/graduation_material_center_service.py",
+    '''        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE",
     )
     from app.db.session import get_sessionmaker
     lookup = get_sessionmaker()()
@@ -137,15 +95,7 @@ replace_once(
     finally:
         lookup.close()
 ''',
-    '''def _store_proposal_snapshot(
-    db, record: GraduationProposal, student: GraduationStudent, user: dict,
-) -> FileObject:
-    safe_student = re.sub(r"[\\/:*?\"<>|]+", "_", student.name or "学生")
-    meta = file_service.store_bytes(
-        _proposal_snapshot_bytes(record, student),
-        f"开题报告_{safe_student}_{record.version or 'v1'}_正文快照.txt",
-        biz_type="GRADUATION_MATERIAL", biz_id=str(record.id), mime_type="text/plain",
-        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
+    '''        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
     )
     row = db.get(FileObject, int(meta["fileId"]))
     if not row or row.tenant_id != _tid():
@@ -155,13 +105,8 @@ replace_once(
 )
 replace_once(
     "backend/app/modules/graduation/services/graduation_material_center_service.py",
-    '''        snapshot = _store_proposal_snapshot(record, student, user)
-        # snapshot 已在独立写会话提交并从该会话分离；旧业务事务处于 MySQL
-        # REPEATABLE READ 时不得再次 db.get，否则可能得到 None。
-''',
-    '''        snapshot = _store_proposal_snapshot(db, record, student, user)
-        # FileObject、FileVersion 与 FileBinding 在同一事务内可见。
-''',
+    "        snapshot = _store_proposal_snapshot(record, student, user)\n",
+    "        snapshot = _store_proposal_snapshot(db, record, student, user)\n",
 )
 replace_once(
     "backend/app/modules/graduation/services/graduation_material_center_service.py",
@@ -175,6 +120,7 @@ replace_once(
 ''',
 )
 
+# Route ordering: exact sensitive routes, then legacy fixed routes, then Stage-6 dynamic routes.
 replace_once(
     "backend/app/api/v1/route_registration.py",
     '''    api_router.include_router(graduation_p0_guard.router, dependencies=d)
@@ -190,7 +136,8 @@ replace_once(
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
-    # 固定路径先于 Stage-6 动态详情；旧详情/审核已直接委托公共版本 Service。
+    # Legacy fixed paths precede Stage-6 dynamic detail paths; legacy detail/review
+    # endpoints already delegate to the authoritative public-version service.
     api_router.include_router(graduation.router, dependencies=d)
     api_router.include_router(graduation_material_center.router, dependencies=d)
 ''',
@@ -211,6 +158,7 @@ replace_once(
     '            assert routes.index(name) < routes.index("api_router.include_router(graduation.router")\n',
 )
 
+# Stable defense identities are explicit in the DTO.
 replace_once(
     "backend/app/modules/graduation/services/graduation_service.py",
     '''            "members": members or (g.members_json or []),
@@ -222,6 +170,7 @@ replace_once(
 ''',
 )
 
+# Signed batch preview may use the server-generated archive number.
 replace_once(
     "backend/app/modules/graduation/routers/graduation_material_center.py",
     '''    archive_no = str((body or {}).get("archiveBatchNo") or "").strip()
@@ -240,8 +189,8 @@ replace_once(
 )
 replace_once(
     "backend/app/modules/graduation/services/graduation_material_center_service.py",
-    'def batch_file(archive_batch_no: str, batch_id: int, preview_token: str, user: dict) -> dict:\n',
-    'def batch_file(archive_batch_no: str | None, batch_id: int, preview_token: str, user: dict) -> dict:\n',
+    "def batch_file(archive_batch_no: str, batch_id: int, preview_token: str, user: dict) -> dict:\n",
+    "def batch_file(archive_batch_no: str | None, batch_id: int, preview_token: str, user: dict) -> dict:\n",
 )
 replace_once(
     "backend/app/modules/graduation/services/graduation_material_center_service.py",
@@ -260,4 +209,4 @@ replace_once(
 ''',
 )
 
-print("Stage 6 production closeout patch applied")
+print("Stage 6 production closeout v2 patch applied")
