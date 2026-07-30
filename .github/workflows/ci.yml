@@ -11,6 +11,13 @@ on:
     # 每日 18:00 UTC（北京 02:00）跑后端全量；push/PR 仅跑 portal 相关快测。
     - cron: "0 18 * * *"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   control-plane-contracts:
     name: 控制面合同检查
@@ -79,7 +86,7 @@ jobs:
       - run: node scripts/check/check-graduation-production-gates.mjs
 
   backend:
-    name: 后端 pytest（PR:portal子集 / 定时:全量）
+    name: 后端 pytest（PR:变更感知 / 定时:全量）
     runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:
@@ -87,7 +94,6 @@ jobs:
         working-directory: backend
     env:
       TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
-      # 仍使用真实 MySQL；会话建表一次、每用例清数据，避免约 250 张表反复 DDL 导致超时。
       FAST_TEST_SCHEMA: "1"
     services:
       mysql:
@@ -104,6 +110,8 @@ jobs:
           --health-retries=15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -152,7 +160,7 @@ jobs:
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
 
   student-portal:
-    name: 学生 PC 门户 lint + build
+    name: 学生 PC 门户 lint + test + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -166,6 +174,7 @@ jobs:
           cache-dependency-path: student-portal/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
       - name: 禁止学生门户产物携带固定演示凭据
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist

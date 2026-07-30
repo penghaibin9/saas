@@ -6,7 +6,7 @@
         <view class="rk__summary card">
           <view class="rk__sum-item"><text class="rk__sum-val is-high">{{ counts.HIGH }}</text><text class="rk__sum-label">高风险</text></view>
           <view class="rk__sum-item"><text class="rk__sum-val is-mid">{{ counts.MEDIUM }}</text><text class="rk__sum-label">中风险</text></view>
-          <view class="rk__sum-item"><text class="rk__sum-val">{{ list.length }}</text><text class="rk__sum-label">需关注</text></view>
+          <view class="rk__sum-item"><text class="rk__sum-val">{{ total }}</text><text class="rk__sum-label">需关注</text></view>
         </view>
 
         <view class="rk__filters">
@@ -17,7 +17,7 @@
 
         <view class="stack-sm">
           <MobileStudentCard
-            v-for="s in pagedSlice(filtered)"
+            v-for="s in list"
             :key="s.id"
             :name="s.name"
             :class-name="s.className"
@@ -34,8 +34,10 @@
               <text class="rk__btn is-primary" @click.stop="openStudent(s)">处理</text>
             </template>
           </MobileStudentCard>
-          <view v-if="pagedFooter(filtered) === 'more'" class="rk__paging" @click="pagedLoadMore">上拉加载更多</view>
-          <view v-else-if="pagedFooter(filtered) === 'end'" class="rk__paging is-end">没有更多了</view>
+          <view v-if="hasMore" class="rk__paging" @click="loadMore">
+            {{ loadingMore ? '加载中…' : '上拉加载更多' }}
+          </view>
+          <view v-else class="rk__paging is-end">没有更多了</view>
         </view>
       </view>
     </MobileGlobalState>
@@ -44,44 +46,64 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
-import { listPaging } from '@/utils/listPaging'
-import { go, toast } from '@/utils/nav'
+import { go } from '@/utils/nav'
+const PAGE_SIZE = 20
 export default {
-  mixins: [listPaging(20)],
-  data() { return { list: null, state: 'loading', level: 'all' } },
-  onLoad() { this.load() },
-  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
-  onReachBottom() { this.pagedReachBottom() },
-  watch: {
-    level() { this.pagedReset() }
-  },
-  computed: {
-    filtered() {
-      if (!this.list) return []
-      return this.level === 'all' ? this.list : this.list.filter((s) => s.risk === this.level)
-    },
-    counts() {
-      const c = { HIGH: 0, MEDIUM: 0 }
-      ;(this.list || []).forEach((s) => { if (c[s.risk] !== undefined) c[s.risk]++ })
-      return c
+  data() {
+    return {
+      list: [], state: 'loading', level: 'all', page: 1, hasMore: false,
+      loadingMore: false, total: 0, counts: { HIGH: 0, MEDIUM: 0 }
     }
   },
+  onLoad() { this._pageActive = true; this.load({ reset: true }) },
+  onShow() { this._pageActive = true },
+  onHide() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
+  onUnload() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
+  onReachBottom() { this.loadMore() },
+  watch: {
+    level() { this.load({ reset: true }) }
+  },
   onPullDownRefresh() {
-    if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
-    this.load(() => uni.stopPullDownRefresh())
+    this.load({ reset: true, done: () => uni.stopPullDownRefresh() })
   },
   methods: {
-    pagingList() { return this.filtered },
-    load(done) {
-      this.state = 'loading'
-      this.pagedReset()
-      teacherApi.getRiskStudents().then((d) => { this.list = d; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
-        .finally(() => { if (done) done() })
+    loadMore() {
+      if (!this.hasMore || this.loadingMore) return
+      this.load({ reset: false })
     },
-    openStudent(s) { go('/pages/teacher/student-detail/index?id=' + s.id) },
-    // 学生联系方式属敏感信息：不在列表明文提供，进入学生详情查看脱敏联系方式
-    contact(s) { this.openStudent(s) }
+    load({ reset = true, done = null } = {}) {
+      if (this._riskPromise) return this._riskPromise.finally(() => { if (done) done() })
+      const requestedLevel = this.level
+      const requestedPage = reset ? 1 : this.page + 1
+      const epoch = (this._loadEpoch || 0) + 1
+      this._loadEpoch = epoch
+      if (reset) this.state = 'loading'
+      else this.loadingMore = true
+      const pending = teacherApi.getRiskStudentsPage(requestedLevel, requestedPage, PAGE_SIZE)
+        .then((result) => {
+          if (!this._pageActive || this._loadEpoch !== epoch || this.level !== requestedLevel) return result
+          this.list = reset ? (result.list || []) : [...this.list, ...(result.list || [])]
+          this.page = Number(result.page) || requestedPage
+          this.hasMore = !!result.hasMore
+          this.total = Number(result.total) || 0
+          this.counts = result.counts || { HIGH: 0, MEDIUM: 0 }
+          this.state = 'ready'
+          return result
+        })
+        .catch((error) => {
+          if (this._pageActive && this._loadEpoch === epoch && reset) this.state = 'error'
+          throw error
+        })
+        .finally(() => {
+          if (this._riskPromise === pending) this._riskPromise = null
+          this.loadingMore = false
+          if (done) done()
+        })
+      this._riskPromise = pending
+      return pending
+    },
+    openStudent(student) { go('/pages/teacher/student-detail/index?id=' + student.id) },
+    contact(student) { this.openStudent(student) }
   }
 }
 </script>

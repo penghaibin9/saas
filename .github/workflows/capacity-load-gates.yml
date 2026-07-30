@@ -1,0 +1,382 @@
+name: 容量与可观测性闸门
+
+on:
+  pull_request:
+    paths:
+      - "performance/**"
+      - "scripts/check/check-capacity-load-gates.mjs"
+      - ".github/workflows/capacity-load-gates.yml"
+  workflow_dispatch:
+    inputs:
+      target_base_url:
+        description: "预发环境 HTTPS 根地址；禁止填写文件服务地址"
+        required: true
+        type: string
+      profile:
+        description: "负载档位；300以上必须先配置仓库解锁变量"
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - baseline
+          - p300
+          - p500
+          - p1000
+          - p3000
+      scenario:
+        description: "只读核心场景"
+        required: true
+        default: mixed
+        type: choice
+        options:
+          - student
+          - teacher
+          - mixed
+  schedule:
+    # 北京时间每天 02:30；远程任务仅在已配置目标与Secrets时运行。
+    - cron: "30 18 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capacity-load-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: 压测边界与脚本合同
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 校验只读范围、指标门槛与安全锁
+        run: node scripts/check/check-capacity-load-gates.mjs
+      - name: 编译阶段E工具
+        run: |
+          python -m py_compile \
+            performance/tools/prepare_k6_credentials.py \
+            performance/tools/audit_capacity_runtime.py \
+            performance/tools/probe_observability.py \
+            performance/tools/seed_local_capacity_env.py \
+            performance/tools/evaluate_capacity_result.py
+
+  local-capacity:
+    name: 临时MySQL与Redis自包含 ${{ matrix.profile }}
+    needs: contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [smoke, baseline, p300, p500]
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: development
+      DEBUG: "false"
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "10"
+      REDIS_URL: redis://127.0.0.1:6379/0
+      JWT_SECRET: local-capacity-gate-secret-at-least-32-bytes
+      INTERNAL_OPS_TOKEN: local-capacity-ops-token-20260730
+      MOCK_LOGIN_ENABLED: "true"
+      SCHEDULER_MODE: external
+      FAST_TEST_SCHEMA: "1"
+      BASE_URL: http://127.0.0.1:8000
+      PROFILE: ${{ matrix.profile }}
+      SCENARIO: mixed
+      STUDENT_SHARE_PERCENT: "75"
+      K6_ALLOW_HIGH_LOAD: "true"
+      K6_STUDENT_TOKENS_FILE: /work/performance/secrets/student-tokens.json
+      K6_TEACHER_TOKENS_FILE: /work/performance/secrets/teacher-tokens.json
+      SUMMARY_PATH: /work/performance/results/k6-summary.json
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: 安装后端依赖
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: 执行MySQL迁移
+        working-directory: backend
+        run: alembic upgrade head
+      - name: 创建临时学生与按VU隔离的短期Token池
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$PROFILE" in
+            p500) token_count=500 ;;
+            p300) token_count=300 ;;
+            baseline) token_count=20 ;;
+            *) token_count=2 ;;
+          esac
+          python ../performance/tools/seed_local_capacity_env.py \
+            --out ../performance/secrets \
+            --token-count "$token_count"
+      - name: 启动临时后端
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p performance/results
+          workers=1
+          case "$PROFILE" in
+            p300|p500)
+              workers="$(nproc)"
+              if (( workers > 4 )); then workers=4; fi
+              if (( workers < 2 )); then workers=2; fi
+              ;;
+          esac
+          export WEB_CONCURRENCY="$workers"
+          {
+            echo "profile=$PROFILE"
+            echo "cpu_count=$(nproc)"
+            echo "workers=$workers"
+            echo "db_pool_size=$DB_POOL_SIZE"
+            echo "db_max_overflow=$DB_MAX_OVERFLOW"
+            free -m
+          } > performance/results/runtime-capacity.txt
+          (
+            cd backend
+            nohup python -m uvicorn app.main:app \
+              --host 127.0.0.1 \
+              --port 8000 \
+              --workers "$workers" \
+              --no-access-log \
+              --log-config ../performance/uvicorn-capacity-log.json \
+              > ../performance/results/local-backend.log 2>&1 &
+            echo $! > ../performance/results/local-backend.pid
+          )
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat performance/results/local-backend.log
+          exit 1
+      - name: 校验临时Token池规模
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = {"smoke": 2, "baseline": 20, "p300": 300, "p500": 500}[os.environ["PROFILE"]]
+          for role in ("student", "teacher"):
+              values = json.loads(Path(f"performance/secrets/{role}-tokens.json").read_text())
+              assert len(values) == expected, (role, len(values), expected)
+          print(f"token_pool_verified={expected}")
+          PY
+      - name: ${{ matrix.profile }} 前就绪与指标探针
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 0.2 \
+            --output performance/results/observability-before.json
+      - name: 运行固定版本 k6 ${{ matrix.profile }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod 0777 performance/results
+          docker pull grafana/k6:0.54.0
+          docker run --rm --network host \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            -e BASE_URL \
+            -e PROFILE \
+            -e SCENARIO \
+            -e STUDENT_SHARE_PERCENT \
+            -e K6_ALLOW_HIGH_LOAD \
+            -e K6_STUDENT_TOKENS_FILE \
+            -e K6_TEACHER_TOKENS_FILE \
+            -e SUMMARY_PATH \
+            grafana/k6:0.54.0 run performance/k6/capacity.js
+      - name: ${{ matrix.profile }} 后就绪与指标探针
+        if: always()
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 0.2 \
+            --output performance/results/observability-after.json
+      - name: 生成 ${{ matrix.profile }} 容量裁决
+        if: always()
+        run: |
+          python performance/tools/evaluate_capacity_result.py \
+            --profile "$PROFILE" \
+            --summary performance/results/k6-summary.json \
+            --before performance/results/observability-before.json \
+            --after performance/results/observability-after.json \
+            --output performance/results/capacity-verdict.json
+      - name: 上传本地容量结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-local-${{ matrix.profile }}-${{ github.run_id }}
+          path: performance/results/
+          if-no-files-found: error
+          retention-days: 14
+
+  remote-load:
+    name: 预发容量压测
+    needs: contract
+    if: >-
+      (github.event_name == 'pull_request' && vars.PERF_BASE_URL != '') ||
+      (github.event_name == 'workflow_dispatch' && inputs.target_base_url != '') ||
+      (github.event_name == 'schedule' && vars.PERF_BASE_URL != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.target_base_url || vars.PERF_BASE_URL }}
+      PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}
+      SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.scenario || 'mixed' }}
+      STUDENT_SHARE_PERCENT: "75"
+      K6_ALLOW_HIGH_LOAD: ${{ vars.PERF_ALLOW_HIGH_LOAD }}
+      K6_ALLOW_PRODUCTION_HIGH_LOAD: ${{ vars.PERF_ALLOW_PRODUCTION_HIGH_LOAD }}
+      K6_STUDENT_TOKENS_JSON: ${{ secrets.PERF_STUDENT_TOKENS_JSON }}
+      K6_TEACHER_TOKENS_JSON: ${{ secrets.PERF_TEACHER_TOKENS_JSON }}
+      K6_STUDENT_CREDENTIALS_JSON: ${{ secrets.PERF_STUDENT_CREDENTIALS_JSON }}
+      K6_TEACHER_CREDENTIALS_JSON: ${{ secrets.PERF_TEACHER_CREDENTIALS_JSON }}
+      INTERNAL_OPS_TOKEN: ${{ secrets.PERF_INTERNAL_OPS_TOKEN }}
+      SUMMARY_PATH: /work/performance/results/k6-summary.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 检查目标、运维探针与账号/令牌池
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$BASE_URL" in
+            https://*) ;;
+            *) echo "远程压测仅允许 HTTPS"; exit 1 ;;
+          esac
+          test -n "$INTERNAL_OPS_TOKEN" || { echo "缺少 PERF_INTERNAL_OPS_TOKEN"; exit 1; }
+          student_auth=false
+          teacher_auth=false
+          test -n "$K6_STUDENT_TOKENS_JSON" && student_auth=true
+          test -n "$K6_STUDENT_CREDENTIALS_JSON" && student_auth=true
+          test -n "$K6_TEACHER_TOKENS_JSON" && teacher_auth=true
+          test -n "$K6_TEACHER_CREDENTIALS_JSON" && teacher_auth=true
+          case "$SCENARIO" in
+            student)
+              $student_auth || { echo "缺少学生测试账号或Token Secret"; exit 1; }
+              ;;
+            teacher)
+              $teacher_auth || { echo "缺少教师测试账号或Token Secret"; exit 1; }
+              ;;
+            mixed)
+              $student_auth || { echo "缺少学生测试账号或Token Secret"; exit 1; }
+              $teacher_auth || { echo "缺少教师测试账号或Token Secret"; exit 1; }
+              ;;
+            *) echo "非法场景: $SCENARIO"; exit 1 ;;
+          esac
+          if [[ "$PROFILE" =~ ^p(300|500|1000|3000)$ ]]; then
+            [[ "$K6_ALLOW_HIGH_LOAD" == "true" ]] || { echo "高并发档位尚未解锁"; exit 1; }
+            case "$SCENARIO" in
+              student) test -n "$K6_STUDENT_TOKENS_JSON" || { echo "高负载必须使用学生Token池"; exit 1; } ;;
+              teacher) test -n "$K6_TEACHER_TOKENS_JSON" || { echo "高负载必须使用教师Token池"; exit 1; } ;;
+              mixed)
+                test -n "$K6_STUDENT_TOKENS_JSON" || { echo "高负载必须使用学生Token池"; exit 1; }
+                test -n "$K6_TEACHER_TOKENS_JSON" || { echo "高负载必须使用教师Token池"; exit 1; }
+                ;;
+            esac
+          fi
+          mkdir -p performance/results
+          chmod 0777 performance/results
+      - name: 压测前就绪与指标探针
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 1 \
+            --output performance/results/observability-before.json
+      - name: 运行固定版本 k6
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull grafana/k6:0.54.0
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            -e BASE_URL \
+            -e PROFILE \
+            -e SCENARIO \
+            -e STUDENT_SHARE_PERCENT \
+            -e K6_ALLOW_HIGH_LOAD \
+            -e K6_ALLOW_PRODUCTION_HIGH_LOAD \
+            -e K6_STUDENT_TOKENS_JSON \
+            -e K6_TEACHER_TOKENS_JSON \
+            -e K6_STUDENT_CREDENTIALS_JSON \
+            -e K6_TEACHER_CREDENTIALS_JSON \
+            -e SUMMARY_PATH \
+            grafana/k6:0.54.0 run performance/k6/capacity.js
+      - name: 压测后就绪与指标探针
+        if: always()
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 1 \
+            --output performance/results/observability-after.json
+      - name: 生成远程容量裁决
+        if: always()
+        run: |
+          python performance/tools/evaluate_capacity_result.py \
+            --profile "$PROFILE" \
+            --summary performance/results/k6-summary.json \
+            --before performance/results/observability-before.json \
+            --after performance/results/observability-after.json \
+            --output performance/results/capacity-verdict.json
+      - name: 上传容量结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-${{ env.PROFILE }}-${{ env.SCENARIO }}-${{ github.run_id }}
+          path: performance/results/
+          if-no-files-found: warn
+          retention-days: 30

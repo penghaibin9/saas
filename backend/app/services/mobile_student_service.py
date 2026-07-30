@@ -4,16 +4,43 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
+import random
+import time
+from contextvars import ContextVar
+from threading import Lock
 from math import asin, cos, radians, sin, sqrt
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import event, func, or_, select
 
 from app.core.exceptions import AppException
 from app.core.student_lifecycle import student_stage_label
-from app.db.session import db_enabled, get_sessionmaker
+from app.db.session import db_enabled, get_engine, get_sessionmaker
 from app.services import audit_log
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _mask_phone, _org_names, _primary_phone, _tid
+
+log = logging.getLogger("app.mobile.student")
+_home_query_count: ContextVar[int | None] = ContextVar("mobile_home_query_count", default=None)
+_home_listener_lock = Lock()
+_home_listener_installed = False
+
+
+def _count_home_query(*_args, **_kwargs):
+    count = _home_query_count.get()
+    if count is not None:
+        _home_query_count.set(count + 1)
+
+
+def _ensure_home_query_listener() -> None:
+    global _home_listener_installed
+    if _home_listener_installed:
+        return
+    with _home_listener_lock:
+        if _home_listener_installed:
+            return
+        event.listen(get_engine(), "before_cursor_execute", _count_home_query)
+        _home_listener_installed = True
 
 
 def _require_student(user: dict | None):
@@ -132,7 +159,9 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return {"student": None, "stage": None, "todos": [], "alerts": [], "notices": [],
-                    "domains": [], "unreadCount": 0, **_empty()}
+                    "domains": [], "unreadCount": 0,
+                    "messageSummary": {"unreadCount": 0, "emergencyPendingCount": 0,
+                                       "latestEmergency": None}, **_empty()}
         from app.models import (AcademicStudent, AcademicWarning, EmpStudent, InternshipRecord,
                                 OrientationStudent, UnifiedMessage, UnifiedTodo)
         sid, name = stu.id, stu.real_name
@@ -151,10 +180,36 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         personal_ids = [x for x in (sid, uid) if x is not None]
         # 不再并入 receiver_id=0：历史风险升级曾对 0 广播，会让全体学生看到他人风险告警。
         # 真公共公告应使用独立消息类型/频道，不得冒充学生个人收件箱。
-        notices = db.scalars(select(UnifiedMessage).where(
+        visibility = [UnifiedMessage.receiver_id.in_(personal_ids)]
+        if uid is not None:
+            visibility.append(UnifiedMessage.receiver_user_id == uid)
+        notice_columns = (
+            UnifiedMessage.id, UnifiedMessage.title, UnifiedMessage.message_type,
+            UnifiedMessage.source_module, UnifiedMessage.status, UnifiedMessage.priority,
+            UnifiedMessage.category, UnifiedMessage.require_ack, UnifiedMessage.ack_at,
+            UnifiedMessage.withdrawn_at, UnifiedMessage.created_at,
+        )
+        notices = db.execute(select(*notice_columns).where(
             UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
-            UnifiedMessage.receiver_id.in_(personal_ids)
+            or_(*visibility)
         ).order_by(UnifiedMessage.id.desc()).limit(5)).all()
+        emergency_filter = or_(
+            UnifiedMessage.priority == "EMERGENCY",
+            UnifiedMessage.category == "EMERGENCY",
+            UnifiedMessage.message_type == "EMERGENCY",
+        )
+        emergency_pending_count = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
+            UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
+            or_(*visibility), emergency_filter,
+            UnifiedMessage.require_ack.is_(True), UnifiedMessage.ack_at.is_(None),
+            UnifiedMessage.withdrawn_at.is_(None),
+        )) or 0
+        latest_emergency = db.execute(select(*notice_columns).where(
+            UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False),
+            or_(*visibility), emergency_filter,
+            UnifiedMessage.require_ack.is_(True), UnifiedMessage.ack_at.is_(None),
+            UnifiedMessage.withdrawn_at.is_(None),
+        ).order_by(UnifiedMessage.id.desc()).limit(1)).first()
         # 各域是否有我的记录 + 关键状态
         from app.modules.internship.services.internship_record_resolver import (
             resolve_student_internship_context,
@@ -192,10 +247,26 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
                        "dueAt": _iso(t.due_at) if hasattr(t, "due_at") else None} for t in todos],
             "alerts": alerts,
             "notices": [{"id": str(n.id), "title": n.title, "type": n.message_type,
-                         "source": n.source_module or "校园通知",
-                         "important": (n.message_type or "").upper() in ("URGENT", "IMPORTANT"),
-                         "status": n.status} for n in notices],
+                          "source": n.source_module or "校园通知",
+                          "important": ((n.priority or "").upper() in ("EMERGENCY", "IMPORTANT")
+                                        or (n.message_type or "").upper() in ("URGENT", "IMPORTANT")),
+                          "status": n.status} for n in notices],
             "unreadCount": unread_count,
+            "messageSummary": {
+                "unreadCount": unread_count,
+                "emergencyPendingCount": int(emergency_pending_count),
+                "latestEmergency": ({
+                    "id": str(latest_emergency.id),
+                    "messageId": str(latest_emergency.id),
+                    "title": latest_emergency.title,
+                    "module": latest_emergency.source_module or "通知",
+                    "emergency": True,
+                    "receipt": True,
+                    "acked": False,
+                    "kind": "UNIFIED_MESSAGE",
+                    "time": _iso(latest_emergency.created_at),
+                } if latest_emergency is not None else None),
+            },
             "domains": [
                 {"key": "orientation", "label": "数字迎新", "status": ori.report_status if ori else "NONE",
                  "hasData": bool(ori)},
@@ -231,18 +302,59 @@ def invalidate_home_cache(user: dict) -> None:
 
 
 def home(user: dict) -> dict:
-    """One authenticated request for overview + orientation + public batch state."""
+    """One authenticated request for overview + orientation + lightweight message summary."""
     u = _require_student(user)
     from app.core.config import settings
-    from app.core.redis_client import cache_get_json, cache_set_json
+    from app.core.redis_client import (
+        cache_get_json,
+        cache_set_json,
+        cache_set_json_if_absent,
+    )
     key = _home_cache_key(u)
+    started = time.perf_counter()
     cached = cache_get_json(key)
     if isinstance(cached, dict):
         cached["cacheHit"] = True
+        log.info("mobile_home cache_hit=true duration_ms=%.2f query_count=0",
+                 (time.perf_counter() - started) * 1000)
         return cached
-    data = me_overview(u, include_home=True)
-    cache_set_json(key, data, settings.HOME_CACHE_TTL)
+
+    lock_state = cache_set_json_if_absent(
+        f"{key}:build", {"startedAt": int(time.time())}, 5)
+    if lock_state is False:
+        for _ in range(6):
+            time.sleep(0.05)
+            cached = cache_get_json(key)
+            if isinstance(cached, dict):
+                cached["cacheHit"] = True
+                log.info("mobile_home cache_hit=waited duration_ms=%.2f query_count=0",
+                         (time.perf_counter() - started) * 1000)
+                return cached
+
+    query_token = None
+    query_count = 0
+    if db_enabled():
+        _ensure_home_query_listener()
+        query_token = _home_query_count.set(0)
+    try:
+        data = me_overview(u, include_home=True)
+        query_count = int(_home_query_count.get() or 0) if query_token is not None else 0
+    finally:
+        if query_token is not None:
+            _home_query_count.reset(query_token)
+
+    data["cacheHit"] = False
+    base_ttl = max(1, int(settings.HOME_CACHE_TTL))
+    jitter = random.randint(0, max(1, min(5, base_ttl // 4 or 1)))
+    cached_ok = cache_set_json(key, data, base_ttl + jitter)
+    log.info(
+        "mobile_home cache_hit=false duration_ms=%.2f query_count=%d redis_cached=%s",
+        (time.perf_counter() - started) * 1000,
+        query_count,
+        cached_ok,
+    )
     return data
+
 
 
 def my_todos(user: dict) -> dict:
@@ -382,6 +494,30 @@ def my_messages(user: dict) -> dict:
             "list": flat,
             "emergencyPending": emergency_pending if "notice" in on else [],
         }
+
+
+def my_messages_page(user: dict, tab: str = "todo", page: int = 1,
+                     page_size: int = 20) -> dict:
+    """兼容聚合上的服务端分页。底层各域查询均已有硬上限；客户端不再一次接收全部分组。"""
+    key = (tab or "todo").strip().lower()
+    if key not in {"todo", "notice", "progress"}:
+        raise AppException("VALIDATION_ERROR", "tab 必须是 todo/notice/progress")
+    current_page = max(1, int(page or 1))
+    size = max(1, min(50, int(page_size or 20)))
+    data = my_messages(user)
+    source = list((data.get("groups") or {}).get(key) or [])
+    start = (current_page - 1) * size
+    items = source[start:start + size]
+    return {
+        "tabs": data.get("tabs") or [],
+        "tab": key,
+        "list": items,
+        "page": current_page,
+        "pageSize": size,
+        "total": len(source),
+        "hasMore": start + len(items) < len(source),
+        "emergencyPending": data.get("emergencyPending") or [],
+    }
 
 
 def _resolve_uid(u: dict):

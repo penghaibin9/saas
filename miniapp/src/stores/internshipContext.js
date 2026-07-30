@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { teacherInternshipContext } from '@/services/internshipApi'
 
 const STORAGE_KEY = 'gx_internship_context_v1'
+let _loadPromise = null
 
 function matches(code, patterns) {
   return (patterns || []).some((p) => {
@@ -52,44 +53,47 @@ export const useInternshipContextStore = defineStore('internshipContext', {
       } catch (e) {}
     },
     async load(force = false) {
-      if (this.loading) return this.selectedBatchId
+      if (_loadPromise) return _loadPromise
       if (this.loaded && !force) return this.selectedBatchId
-      this.loading = true
-      this.error = ''
-      this.moduleAccessError = ''
-      try {
-        const data = await teacherInternshipContext()
-        const healthy = data.moduleAccessHealthy !== false
-        this.moduleAccessHealthy = healthy
-        this.moduleAccessError = data.moduleAccessError || ''
-        if (!healthy) {
+      _loadPromise = (async () => {
+        this.loading = true
+        this.error = ''
+        this.moduleAccessError = ''
+        try {
+          const data = await teacherInternshipContext()
+          const healthy = data.moduleAccessHealthy !== false
+          this.moduleAccessHealthy = healthy
+          this.moduleAccessError = data.moduleAccessError || ''
+          if (!healthy) {
+            this.loaded = false
+            this.permissionPatterns = []
+            this.batches = []
+            this.selectedBatchId = ''
+            this.error = this.moduleAccessError || '权限服务加载失败，已停止显示岗位实习操作'
+            throw { code: 'PERMISSION_SERVICE_UNHEALTHY', biz: true, message: this.error }
+          }
+          const oldRole = this.roleCode
+          this.roleCode = data.roleCode || ''
+          this.permissionPatterns = data.permissionPatterns || []
+          this.permissionVersion = data.permissionVersion || ''
+          this.batches = data.batches || []
+          const exists = this.batches.some((b) => String(b.id) === String(this.selectedBatchId))
+          if (!exists || (oldRole && oldRole !== this.roleCode)) {
+            this.selectedBatchId = data.defaultBatchId || (this.batches[0] && String(this.batches[0].id)) || ''
+          }
+          this.loaded = true
+          this.persist()
+          return this.selectedBatchId
+        } catch (e) {
           this.loaded = false
           this.permissionPatterns = []
-          this.batches = []
-          this.selectedBatchId = ''
-          this.error = this.moduleAccessError || '权限服务加载失败，已停止显示岗位实习操作'
-          throw { code: 'PERMISSION_SERVICE_UNHEALTHY', biz: true, message: this.error }
+          if (!this.error) this.error = (e && e.message) || '实习权限或批次加载失败'
+          throw e
+        } finally {
+          this.loading = false
         }
-        const oldRole = this.roleCode
-        this.roleCode = data.roleCode || ''
-        this.permissionPatterns = data.permissionPatterns || []
-        this.permissionVersion = data.permissionVersion || ''
-        this.batches = data.batches || []
-        const exists = this.batches.some((b) => String(b.id) === String(this.selectedBatchId))
-        if (!exists || (oldRole && oldRole !== this.roleCode)) {
-          this.selectedBatchId = data.defaultBatchId || (this.batches[0] && String(this.batches[0].id)) || ''
-        }
-        this.loaded = true
-        this.persist()
-        return this.selectedBatchId
-      } catch (e) {
-        this.loaded = false
-        this.permissionPatterns = []
-        if (!this.error) this.error = (e && e.message) || '实习权限或批次加载失败'
-        throw e
-      } finally {
-        this.loading = false
-      }
+      })().finally(() => { _loadPromise = null })
+      return _loadPromise
     },
     selectBatch(batchId) {
       if (!this.moduleAccessHealthy) return false

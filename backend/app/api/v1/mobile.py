@@ -5,7 +5,7 @@
 所有接口鉴权；查不到本人档案返回空态（hasData=false），不 500。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Path, Request
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 
 from app.core.permissions import require_module, require_permission
 from app.core.response import success
@@ -62,6 +62,16 @@ def me_todos(user=Depends(get_current_user)):
 @router.get("/me/messages", summary="我的消息（本人）")
 def me_messages(user=Depends(get_current_user)):
     return success(stu.my_messages(user))
+
+
+@router.get("/me/messages-page", summary="我的消息分页（本人）")
+def me_messages_page(
+    tab: str = Query(default="todo"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, alias="pageSize", ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    return success(stu.my_messages_page(user, tab=tab, page=page, page_size=page_size))
 
 
 @router.get("/me/profile", summary="我的档案（本人·脱敏）")
@@ -611,6 +621,26 @@ def teacher_overview(user=Depends(get_current_user)):
 @router.get("/teacher/todos", summary="教师今日待办（本校）")
 def teacher_todos(user=Depends(get_current_user)):
     return success(tea.todos(user))
+
+
+@router.get("/teacher/todos-page", summary="教师今日待办分页（本校）")
+def teacher_todos_page(
+    group: str = Query(default="all"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, alias="pageSize", ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    return success(tea.todos_page(user, group=group, page=page, page_size=page_size))
+
+
+@router.get("/teacher/risk-students-page", summary="教师风险学生分页（本校）")
+def teacher_risk_students_page(
+    level: str = Query(default="all"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, alias="pageSize", ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    return success(tea.risk_students_page(user, level=level, page=page, page_size=page_size))
 
 
 @router.get("/teacher/orientation", summary="教师·迎新待处理")

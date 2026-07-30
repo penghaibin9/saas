@@ -49,8 +49,8 @@ function mapInternshipDashboard(r) {
 
 export const studentApi = {
   getHome: () =>
-    realFirst('student.home',
-      () => mockRequest(M.studentHome).then((d) => real.enrichHome(d)),
+    realFirstStrict('student.home',
+      () => real.studentHomeReal(),
       () => mockRequest(M.studentHome)),
   getProfile: () =>
     realFirstStrict('student.profile',
@@ -115,6 +115,10 @@ export const studentApi = {
     realFirst('student.applications',
       () => real.selfApplications(),
       () => mockRequest({ tabs: M.applicationTabs, list: M.applications })),
+  getMessagesPage: (tab = 'todo', page = 1, pageSize = 20) =>
+    realFirstStrict('student.messages.page',
+      () => real.selfMessagesPage(tab, page, pageSize),
+      () => mockRequest({ tabs: M.studentMessageTabs, groups: M.studentMessages })),
   getMessages: () =>
     realFirstStrict('student.messages',
       () => real.selfMessages({ tabs: M.studentMessageTabs, groups: M.studentMessages }),

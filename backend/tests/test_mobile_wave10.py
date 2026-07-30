@@ -100,35 +100,170 @@ def test_psy_survey_referral_visible_to_teacher_attention_list(client, db_mode):
 
 # ══════════ 通知发布 ══════════
 
+_NOTIFY_STUDENTS = {}
+_NOTIFY_PASSWORD = "StudentPass123"
+
+
+def _ensure_test_tenant(db, tenant_id=MAIN):
+    from app.models import Tenant
+    tenant = db.get(Tenant, int(tenant_id))
+    if tenant is None:
+        tenant = Tenant(
+            id=int(tenant_id), tenant_code="demo", school_name="测试学校",
+            short_name="测试学校", status="ACTIVE")
+        db.add(tenant); db.flush()
+    return tenant
+
+
+def _notify_student_token(client, class_id, index=0):
+    item = _NOTIFY_STUDENTS[int(class_id)][index]
+    result = client.post("/api/v1/auth/login", json={
+        "tenantCode": "demo", "loginName": item["studentNo"],
+        "password": _NOTIFY_PASSWORD, "clientType": "MP",
+    }).json()
+    assert result["code"] == 0, result
+    return {"Authorization": f"Bearer {result['data']['accessToken']}"}
+
+
 def _seed_class(counselor_id, tenant_id=MAIN, n_students=2):
+    from app.core.security import hash_password
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import (
+        Role, SchoolClass, StudentAccountLink, StudentProfile,
+        TeacherStudentScope, User, UserRole,
+    )
     db = get_sessionmaker()()
     try:
+        _ensure_test_tenant(db, tenant_id)
+        student_role = Role(
+            tenant_id=tenant_id, role_code="STUDENT", role_name="学生",
+            role_type="SYSTEM", status="ACTIVE")
+        db.add(student_role); db.flush()
         c = SchoolClass(tenant_id=tenant_id, major_id=1, class_name="通知测2601",
                         grade="2026", counselor_id=counselor_id, status="ACTIVE")
         db.add(c); db.flush()
         cid = c.id
+        db.add(TeacherStudentScope(
+            tenant_id=tenant_id, teacher_key=str(counselor_id), teacher_name="王老师",
+            role_code="COUNSELOR", scope_type="CLASS", ref_value=c.class_name, status="ACTIVE"))
+        account_rows = []
         for i in range(n_students):
-            db.add(StudentProfile(tenant_id=tenant_id, student_no=f"NT{i:04d}",
-                                  real_name=f"通知测生{i}", class_id=cid,
-                                  current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE"))
+            student_no = f"NT{i:04d}"
+            real_name = f"通知测生{i}"
+            profile = StudentProfile(
+                tenant_id=tenant_id, student_no=student_no, real_name=real_name, class_id=cid,
+                current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE")
+            db.add(profile); db.flush()
+            account = User(
+                tenant_id=tenant_id, login_name=student_no, real_name=real_name,
+                password_hash=hash_password(_NOTIFY_PASSWORD),
+                user_type="STUDENT", status="ACTIVE")
+            db.add(account); db.flush()
+            db.add(UserRole(
+                tenant_id=tenant_id, user_id=account.id,
+                role_id=student_role.id, status="ACTIVE"))
+            db.add(StudentAccountLink(
+                tenant_id=tenant_id, student_id=profile.id, user_id=account.id,
+                link_status="ACTIVE", source="MANUAL",
+                bound_login_name=student_no, bound_student_no=student_no,
+                bound_at=datetime.utcnow()))
+            account_rows.append({
+                "studentId": profile.id, "userId": account.id,
+                "studentNo": student_no, "realName": real_name,
+            })
         db.commit()
+        _NOTIFY_STUDENTS[int(cid)] = account_rows
         return cid
     finally:
         db.close()
 
 
-def test_notify_publish_class_scope_and_student_receives(client, db_mode):
+def _drain_message_delivery_jobs():
+    """模拟调度器到达重试时间后的最终一致投递，并返回可诊断状态。"""
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import MessageDeliveryJob, UnifiedMessage
+    from app.services.message_delivery_service import claim_and_process_delivery_jobs
+
+    db = get_sessionmaker()()
+    try:
+        jobs = db.query(MessageDeliveryJob).filter(
+            MessageDeliveryJob.tenant_id == MAIN,
+            MessageDeliveryJob.is_deleted.is_(False),
+            MessageDeliveryJob.status.in_(("PENDING", "RETRY_WAIT", "PROCESSING")),
+        ).all()
+        for job in jobs:
+            job.status = "PENDING"
+            job.next_retry_at = None
+            job.locked_by = None
+            job.locked_at = None
+            job.lease_expires_at = None
+        db.commit()
+    finally:
+        db.close()
+
+    set_tenant({"tenantId": str(MAIN)})
+    try:
+        for _ in range(3):
+            claim_and_process_delivery_jobs(limit=20, worker_id="test-notify-drain")
+    finally:
+        set_tenant(None)
+
+    db = get_sessionmaker()()
+    try:
+        return {
+            "jobs": [{
+                "id": row.id, "status": row.status,
+                "attemptCount": row.attempt_count,
+                "lastError": row.last_error_code,
+                "writtenCount": row.written_count,
+                "recipients": list(row.recipient_slice_json or []),
+            } for row in db.query(MessageDeliveryJob).filter(
+                MessageDeliveryJob.tenant_id == MAIN,
+                MessageDeliveryJob.is_deleted.is_(False),
+            ).order_by(MessageDeliveryJob.id).all()],
+            "messages": [{
+                "id": row.id, "title": row.title,
+                "receiverId": row.receiver_id,
+                "receiverUserId": row.receiver_user_id,
+                "category": row.category,
+            } for row in db.query(UnifiedMessage).filter(
+                UnifiedMessage.tenant_id == MAIN,
+                UnifiedMessage.is_deleted.is_(False),
+            ).order_by(UnifiedMessage.id).all()],
+        }
+    finally:
+        db.close()
+
+
+def _force_non_quiet_publish(monkeypatch):
+    from app.services import message_governance_service as governance
+    monkeypatch.setattr(
+        governance,
+        "apply_quiet_hours_policy",
+        lambda **kwargs: {
+            "publishMode": str(kwargs.get("publish_mode") or "IMMEDIATE").upper(),
+            "scheduledAt": kwargs.get("scheduled_at"),
+            "quietBypassed": False,
+            "note": None,
+        },
+    )
+
+
+def test_notify_publish_class_scope_and_student_receives(client, db_mode, monkeypatch):
+    _force_non_quiet_publish(monkeypatch)
     cid = _seed_class(660001)
     hdr = _teacher_token(uid=660001, role="COUNSELOR")
     r = client.post("/api/v1/mobile/teacher/notify/publish", headers=hdr,
                     json={"title": "期中考试安排", "content": "下周三开始期中考试，请做好复习准备。",
                           "scopeType": "CLASS", "classId": cid}).json()
-    assert r["code"] == 0 and r["data"]["recipientCount"] == 2
-    stu_hdr = _stu_token("通知测生0", "NT0000")
+    assert r["code"] == 0 and r["data"]["recipientCount"] == 2, r
+    delivery = _drain_message_delivery_jobs()
+    stu_hdr = _notify_student_token(client, cid)
     msgs = client.get("/api/v1/mobile/me/messages", headers=stu_hdr).json()["data"]
-    assert any("期中考试安排" in m["title"] for m in msgs["groups"]["notice"])
+    assert any("期中考试安排" in m["title"] for m in msgs["groups"]["notice"]), {
+        "inbox": msgs, "delivery": delivery,
+    }
 
 
 def test_notify_publish_class_scope_other_teacher_forbidden(client, db_mode):
@@ -158,14 +293,19 @@ def test_notify_publish_validation(client, db_mode):
 
 # ══════════ 消息通知设置 ══════════
 
-def test_notify_preference_filters_messages(client, db_mode):
+def test_notify_preference_filters_messages(client, db_mode, monkeypatch):
+    _force_non_quiet_publish(monkeypatch)
     cid = _seed_class(660005, n_students=1)
     hdr = _teacher_token(uid=660005, role="COUNSELOR")
-    client.post("/api/v1/mobile/teacher/notify/publish", headers=hdr,
-               json={"title": "偏好测试通知", "content": "用于验证通知开关真实生效", "scopeType": "CLASS", "classId": cid})
-    stu_hdr = _stu_token("通知测生0", "NT0000")
+    published = client.post("/api/v1/mobile/teacher/notify/publish", headers=hdr,
+               json={"title": "偏好测试通知", "content": "用于验证通知开关真实生效", "scopeType": "CLASS", "classId": cid}).json()
+    assert published["code"] == 0, published
+    delivery = _drain_message_delivery_jobs()
+    stu_hdr = _notify_student_token(client, cid)
     before = client.get("/api/v1/mobile/me/messages", headers=stu_hdr).json()["data"]
-    assert any("偏好测试通知" in m["title"] for m in before["groups"]["notice"])
+    assert any("偏好测试通知" in m["title"] for m in before["groups"]["notice"]), {
+        "inbox": before, "delivery": delivery,
+    }
     off = client.post("/api/v1/mobile/me/notify-preferences", headers=stu_hdr,
                       json={"key": "notice", "enabled": False}).json()
     assert off["code"] == 0
@@ -217,7 +357,8 @@ def test_talk_create_and_record_flow(client, db_mode):
     talk_id = created["data"]["talkIds"][0]
     recorded = client.post(f"/api/v1/mobile/teacher/talk/{talk_id}/record", headers=hdr,
                            json={"content": "本次谈话了解了学生近期学习和生活状态，情况正常。",
-                                 "result": "无需特别跟进", "needFollow": False}).json()
+                                 "result": "无需特别跟进", "needFollow": False,
+                                 "expectedVersion": 0}).json()
     assert recorded["code"] == 0 and recorded["data"]["status"] == "COMPLETED"
 
 
@@ -244,23 +385,29 @@ def test_teacher_dashboard_returns_summary_cards(client, db_mode):
 def _seed_real_user(login_name, password, tenant_id=MAIN):
     from app.core.security import hash_password
     from app.db.session import get_sessionmaker
-    from app.models import User
+    from app.models import Role, User, UserRole
     db = get_sessionmaker()()
     try:
+        _ensure_test_tenant(db, tenant_id)
         u = User(tenant_id=tenant_id, login_name=login_name, real_name="改密测试师",
                  password_hash=hash_password(password), user_type="TEACHER", status="ACTIVE")
-        db.add(u); db.commit(); db.refresh(u)
-        return u.id
+        db.add(u); db.flush()
+        role = Role(tenant_id=tenant_id, role_code="COUNSELOR", role_name="辅导员",
+                    role_type="SYSTEM", status="ACTIVE")
+        db.add(role); db.flush()
+        db.add(UserRole(tenant_id=tenant_id, user_id=u.id, role_id=role.id, status="ACTIVE"))
+        db.commit()
     finally:
         db.close()
 
 
-def _db_token(uid):
-    from app.core.security import create_access_token
-    return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"db-{uid}", "realName": "改密测试师", "userType": "TEACHER",
-        "tid": "demo", "tenantId": str(MAIN), "activeContextId": "ctx",
-        "currentRoleCode": "COUNSELOR", "clientType": "MP"})}
+def _real_login(client, login_name, password):
+    result = client.post("/api/v1/auth/login", json={
+        "tenantCode": "demo", "loginName": login_name,
+        "password": password, "clientType": "MP",
+    }).json()
+    assert result["code"] == 0, result
+    return {"Authorization": f"Bearer {result['data']['accessToken']}"}
 
 
 def test_change_password_demo_account_rejected(client, db_mode):
@@ -271,22 +418,22 @@ def test_change_password_demo_account_rejected(client, db_mode):
 
 
 def test_change_password_wrong_old_rejected(client, db_mode):
-    uid = _seed_real_user("cp_test01", "OldPass123")
-    hdr = _db_token(uid)
+    _seed_real_user("cp_test01", "OldPass123")
+    hdr = _real_login(client, "cp_test01", "OldPass123")
     r = client.post("/api/v1/auth/change-password", headers=hdr,
                     json={"oldPassword": "WrongPassword", "newPassword": "NewPass456"}).json()
     assert r["code"] != 0
 
 
 def test_change_password_success_and_relogin(client, db_mode):
-    uid = _seed_real_user("cp_test02", "OldPass123")
-    hdr = _db_token(uid)
+    _seed_real_user("cp_test02", "OldPass123")
+    hdr = _real_login(client, "cp_test02", "OldPass123")
     r = client.post("/api/v1/auth/change-password", headers=hdr,
                     json={"oldPassword": "OldPass123", "newPassword": "NewPass456"}).json()
     assert r["code"] == 0
-    login_old = client.post("/api/v1/auth/login",
-                            json={"loginName": "cp_test02", "password": "OldPass123"}).json()
+    login_old = client.post("/api/v1/auth/login", json={
+        "tenantCode": "demo", "loginName": "cp_test02", "password": "OldPass123"}).json()
     assert login_old["code"] != 0
-    login_new = client.post("/api/v1/auth/login",
-                            json={"loginName": "cp_test02", "password": "NewPass456"}).json()
+    login_new = client.post("/api/v1/auth/login", json={
+        "tenantCode": "demo", "loginName": "cp_test02", "password": "NewPass456"}).json()
     assert login_new["code"] == 0

@@ -12,6 +12,17 @@ import { useInternshipContextStore } from '@/stores/internshipContext'
 const STORAGE_KEY = 'gx_session_v1'
 const STUDENT_INTERNSHIP_BATCH_KEY = 'gx_student_internship_batch_v1'
 
+function neutralUser(side) {
+  return side === 'teacher'
+    ? { name: '', tenantName: '', identities: [] }
+    : { name: '', studentNo: '', className: '', college: '', major: '', grade: '', tenantName: '' }
+}
+
+function initialUser(side) {
+  if (import.meta.env && import.meta.env.PROD) return neutralUser(side)
+  return side === 'teacher' ? { ...mockTeacherUser } : { ...mockStudentUser }
+}
+
 export const useSessionStore = defineStore('session', {
   state: () => ({
     logged: false,
@@ -50,10 +61,10 @@ export const useSessionStore = defineStore('session', {
       this.currentRole = roleKey
       this.logged = true
       if (cfg.side === 'teacher') {
-        this.mockUser = { ...mockTeacherUser }
+        this.mockUser = initialUser('teacher')
         this.availableRoles = this.mockUser.identities || []
       } else {
-        this.mockUser = { ...mockStudentUser }
+        this.mockUser = initialUser('student')
         this.availableRoles = [ROLE.STUDENT]
       }
       this.persist()
@@ -169,7 +180,7 @@ export const useSessionStore = defineStore('session', {
           this.currentRole = s.currentRole
           this.availableRoles = s.availableRoles || []
           this.logged = true
-          const skeleton = s.isTeacher ? { ...mockTeacherUser } : { ...mockStudentUser }
+          const skeleton = initialUser(s.isTeacher ? 'teacher' : 'student')
           const saved = s.user || {}
           const overlay = {}
           Object.keys(saved).forEach((k) => { if (saved[k] !== undefined && saved[k] !== null) overlay[k] = saved[k] })
