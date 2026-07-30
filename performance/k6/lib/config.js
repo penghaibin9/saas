@@ -13,12 +13,21 @@ const PROFILES = {
       { duration: '30s', target: 0 },
     ],
   },
+  p300: {
+    stages: [
+      { duration: '1m', target: 100 },
+      { duration: '2m', target: 300 },
+      { duration: '4m', target: 300 },
+      { duration: '1m', target: 0 },
+    ],
+  },
   p500: {
     stages: [
-      { duration: '2m', target: 100 },
-      { duration: '3m', target: 500 },
+      { duration: '1m', target: 150 },
+      { duration: '2m', target: 300 },
+      { duration: '2m', target: 500 },
       { duration: '5m', target: 500 },
-      { duration: '2m', target: 0 },
+      { duration: '1m', target: 0 },
     ],
   },
   p1000: {
@@ -39,7 +48,7 @@ const PROFILES = {
   },
 };
 
-const HIGH_LOAD_PROFILES = new Set(['p500', 'p1000', 'p3000']);
+const HIGH_LOAD_PROFILES = new Set(['p300', 'p500', 'p1000', 'p3000']);
 
 function normalizeBaseUrl(raw) {
   const value = String(raw || '').trim().replace(/\/$/, '');
