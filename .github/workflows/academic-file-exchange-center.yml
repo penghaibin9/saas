@@ -100,6 +100,8 @@ jobs:
           ! grep -n 'source_snapshot_json={[^}]*"rows"' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
           grep -q 'ExportJob(' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
           grep -q 'create_download_ticket' backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
-          grep -q 'confirmImport(this.currentImportJob.id' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+          grep -q 'confirmImport(' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+          grep -q 'this.currentImportJob.id' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+          grep -q 'this.currentImportJob.version' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
           ! grep -q 'rosterImportConfirm(rows)' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
           ! grep -q 'URL.createObjectURL(res.data)' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
