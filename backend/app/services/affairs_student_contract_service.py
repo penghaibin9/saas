@@ -516,13 +516,14 @@ def _patch_message_views() -> None:
                 continue
             key = row.action_key
             params = dict(row.action_params_json or {})
+            biz_type = getattr(row, "source_biz_type", None) or row.source_module
             if not key:
-                key, defaults = _default_action(row.source_biz_type, row.source_biz_id)
+                key, defaults = _default_action(biz_type, row.source_biz_id)
                 params = {**defaults, **params}
             item["actionKey"] = key
             item["actionParams"] = params
             item["recordId"] = str(row.source_biz_id or "")
-            item["bizType"] = _biz(row.source_biz_type)
+            item["bizType"] = _biz(biz_type)
         return data
 
     def message_get(user, message_id):
@@ -536,7 +537,8 @@ def _patch_message_views() -> None:
                 with session() as db:
                     row = db.get(UnifiedMessage, mid)
                     if row and not row.is_deleted and row.tenant_id == _tid():
-                        key, defaults = _default_action(row.source_biz_type, row.source_biz_id)
+                        biz_type = getattr(row, "source_biz_type", None) or row.source_module
+                        key, defaults = _default_action(biz_type, row.source_biz_id)
             except (TypeError, ValueError):
                 pass
             if key:

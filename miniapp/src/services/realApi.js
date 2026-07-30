@@ -72,41 +72,92 @@ export const handleWarningReal = (warningId, action, note) =>
 export const createFollowupReal = (body) =>
   realRequest('/mobile/teacher/employment/followup', { method: 'POST', data: body })
 
-/** 学生首页：真实阶段 / 待办 / 通知 / 未读数 / 阻断全部覆盖 mock 骨架，不再展示假数量。
- * 今日课程、快捷服务入口暂无对应真实数据源，保留 mock 骨架（P13 夜间补强已知欠账，见施工记录）。 */
-export async function enrichHome(mockHome) {
+/** 学生首页：完全由真实聚合接口构造，生产不再从 mock 骨架继承课程、数量或个人信息。 */
+export async function studentHomeReal() {
   const ov = await realRequest('/mobile/home')
   const stu = (ov && ov.student) || {}
-  if (stu.stage && mockHome.stageCard) {
-    mockHome.stageCard.stageText = STAGE_TEXT[stu.stage] || mockHome.stageCard.stageText
-    mockHome.stageCard.title = `你正处于「${mockHome.stageCard.stageText}」阶段`
+  const stageCode = (ov && ov.stage && ov.stage.code) || stu.stage || ''
+  const stageText = (ov && ov.stage && ov.stage.label) || STAGE_TEXT[stageCode] || '当前阶段'
+  const todos = Array.isArray(ov && ov.todos) ? ov.todos.map((t) => ({
+    id: t.id,
+    title: t.title,
+    module: t.module || t.type || '待办',
+    deadline: t.dueAt || '',
+    status: t.status || 'PENDING'
+  })) : []
+  const notices = Array.isArray(ov && ov.notices) ? ov.notices.map((n) => ({
+    id: n.id,
+    title: n.title,
+    source: n.source || '校园通知',
+    important: !!n.important
+  })) : []
+  const blockers = Array.isArray(ov && ov.alerts) ? ov.alerts.map((a, i) => ({
+    id: a.domain || `alert-${i}`,
+    title: a.title || '有事项需要处理',
+    reason: a.title || '',
+    solveText: '去处理',
+    level: a.level || 'MEDIUM'
+  })) : []
+  const messageSummary = (ov && ov.messageSummary) || {
+    unreadCount: Number(ov && ov.unreadCount) || 0,
+    emergencyPendingCount: 0,
+    latestEmergency: null
   }
-  if (ov && Array.isArray(ov.todos)) {
-    mockHome.todos = ov.todos.map((t) => ({
-      id: t.id, title: t.title, module: t.module || t.type || '待办',
-      deadline: t.dueAt || '', status: 'PENDING_HANDLE'
-    }))
-    if (mockHome.todoOverview) mockHome.todoOverview.pending = ov.todos.length
+  const firstTodo = todos[0]
+  const firstBlocker = blockers[0]
+  const nextAction = firstBlocker
+    ? {
+        title: firstBlocker.title,
+        desc: firstBlocker.reason || '请尽快处理当前阻断事项',
+        deadline: '',
+        actionText: '去处理',
+        route: '/pages/student/my-applications/index'
+      }
+    : firstTodo
+      ? {
+          title: firstTodo.title,
+          desc: `来自${firstTodo.module}`,
+          deadline: firstTodo.deadline,
+          actionText: '去办理',
+          route: '/pages/student/messages/index'
+        }
+      : null
+
+  return {
+    realApi: true,
+    cacheHit: !!(ov && ov.cacheHit),
+    student: {
+      name: stu.name || '',
+      studentNo: stu.studentNo || '',
+      className: stu.className || '',
+      grade: stu.grade || ''
+    },
+    greeting: '你好',
+    stageCard: {
+      title: `你正处于「${stageText}」阶段`,
+      subtitle: '查看当前待办和校园通知',
+      stageText,
+      progress: null
+    },
+    metrics: {
+      unread: Number(messageSummary.unreadCount) || 0,
+      todoCount: todos.length,
+      creditRate: null
+    },
+    messageSummary,
+    nextAction,
+    blockers,
+    quickServices: [],
+    todayCourses: [],
+    todos,
+    notices,
+    orientation: (ov && ov.orientation) || null,
+    orientationBatch: (ov && ov.orientationBatch) || { open: false, daysLeft: 0 }
   }
-  if (ov && Array.isArray(ov.notices)) {
-    mockHome.notices = ov.notices.map((n) => ({
-      id: n.id, title: n.title, source: n.source || '校园通知', important: !!n.important
-    }))
-  }
-  if (ov && Array.isArray(ov.alerts)) {
-    mockHome.blockers = ov.alerts.map((a, i) => ({
-      id: a.domain || ('alert' + i), title: a.title, reason: a.title, solveText: '去处理', level: a.level
-    }))
-  }
-  if (ov && typeof ov.unreadCount === 'number') {
-    mockHome.metrics = mockHome.metrics || {}
-    mockHome.metrics.unread = ov.unreadCount
-  }
-  mockHome.realApi = true
-  mockHome.orientation = (ov && ov.orientation) || null
-  mockHome.orientationBatch = (ov && ov.orientationBatch) || { open: false, daysLeft: 0 }
-  return mockHome
 }
+
+// 兼容旧调用名；不再接受或复制 mock 首页。
+export const enrichHome = () => studentHomeReal()
 
 /* ══════════ 移动端·学生自视图（mobile/<域>/my）字段适配 ══════════
  * 策略：真实数据覆盖到 mock 骨架的主展示字段，保证页面不破；hasData=false 时保留 mock 骨架。
@@ -610,71 +661,98 @@ export async function enrichCampusService(mock) {
     disciplineNotice: r.disciplineNotice, mentalNotice: r.mentalNotice }, _real: true }
 }
 
-/* 教师端·工作台聚合（本校待办，只读） */
+/* 教师端·移动聚合兼容导出 */
 export const mobileTeacherOverview = () => realRequest('/mobile/teacher/overview')
 export const mobileTeacherTodos = () => realRequest('/mobile/teacher/todos')
 export const mobileTeacherDomain = (domain) => realRequest('/mobile/teacher/' + domain)
+export const teacherTodosPage = (group = 'all', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/teacher/todos-page?group=${encodeURIComponent(group)}&page=${page}&pageSize=${pageSize}`)
+export const teacherRiskStudentsPage = (level = 'all', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/teacher/risk-students-page?level=${encodeURIComponent(level)}&page=${page}&pageSize=${pageSize}`)
+    .then((data) => ({
+      ...data,
+      list: (data.list || []).map((student) => ({
+        ...student,
+        risk: student.riskLevel || 'MEDIUM',
+        task: student.reason || student.riskType || '风险事项待处理',
+        pending: 1,
+        last: student.latestTime || '',
+        stage: student.riskType || ''
+      }))
+    }))
 
-/* 教师端·工作台：与 PC 同源 /todos/summary + /teacher-mobile/todos/count + 列表。
- * 不再用 /mobile/teacher/overview 另一套口径；生产禁止回落 mock 假指标。 */
-export async function enrichTeacherWorkbench(mock) {
-  const [summary, count, list, risk] = await Promise.all([
-    realRequest('/todos/summary').catch(() => null),
-    realRequest('/teacher-mobile/todos/count').catch(() => null),
-    realRequest('/teacher-mobile/todos', { data: { status: 'PENDING', pageSize: 8 } }).catch(() => null),
-    realRequest('/mobile/teacher/risk-students').catch(() => null)
+/* 教师端·工作台：真实摘要、真实待办、真实风险；任一主摘要失败必须显式报错，不回落 mock。 */
+export async function teacherWorkbenchReal(roleKey) {
+  const [summaryResult, countResult, listResult, riskResult] = await Promise.allSettled([
+    realRequest('/todos/summary'),
+    realRequest('/teacher-mobile/todos/count'),
+    realRequest('/teacher-mobile/todos', { data: { status: 'PENDING', page: 1, pageSize: 8 } }),
+    realRequest('/mobile/teacher/risk-students-page?page=1&pageSize=5&level=all')
   ])
-  if (!summary || typeof summary !== 'object') {
-    return { ...mock, _real: false }
+  if (summaryResult.status !== 'fulfilled' ||
+      !summaryResult.value || typeof summaryResult.value !== 'object') {
+    throw (summaryResult.status === 'rejected'
+      ? summaryResult.reason
+      : { code: 'BAD_RESPONSE', message: '教师工作台摘要加载失败' })
   }
+
+  const summary = summaryResult.value
+  const count = countResult.status === 'fulfilled' ? countResult.value : null
+  const list = listResult.status === 'fulfilled' ? listResult.value : null
+  const risk = riskResult.status === 'fulfilled' ? riskResult.value : null
   const byType = (count && count.byType) || {}
   const pending = Number(summary.pending) || 0
   const overdue = Number(summary.overdue) || 0
   const near = Number(summary.nearDeadline) || 0
   const doneToday = Number(summary.doneToday) || 0
-  const role = summary.role || ''
+  const role = summary.role || roleKey || ''
   const metrics = [
     { key: 'pending', label: '待我处理', value: pending },
     { key: 'overdue', label: '已逾期', value: overdue },
     { key: 'near', label: '24h到期', value: near },
     { key: 'done', label: '今日完成', value: doneToday }
   ]
-  // 有分类时把前两个真实类型数字补进条带（不臆造未写入类型）
   const typeEntries = Object.entries(byType).filter(([, n]) => Number(n) > 0).slice(0, 2)
   if (typeEntries.length) {
-    metrics.splice(2, 2, ...typeEntries.map(([k, n]) => ({ key: k, label: k, value: Number(n) || 0 })))
+    metrics.splice(2, 2, ...typeEntries.map(([key, value]) => ({
+      key, label: key, value: Number(value) || 0
+    })))
   }
   const items = (list && (list.items || list.list)) || []
-  const dueSoon = (Array.isArray(items) ? items : []).slice(0, 5).map((t) => ({
-    id: t.todoId || t.id,
-    title: t.title,
-    module: t.sourceModule || t.todoType || '',
-    student: t.studentName || '',
-    deadline: t.dueAt || t.deadline || '',
-    status: t.status || 'PENDING',
-    todoType: t.todoType
-  }))
-  const out = {
-    ...mock,
-    contextTitle: role || mock.contextTitle,
+  return {
+    contextTitle: role,
     metrics,
     pendingTotal: pending,
-    dueSoon,
+    dueSoon: (Array.isArray(items) ? items : []).slice(0, 5).map((t) => ({
+      id: t.todoId || t.id,
+      title: t.title || '',
+      module: t.sourceModule || t.todoType || '',
+      student: t.studentName || '',
+      deadline: t.dueAt || t.deadline || '',
+      status: t.status || 'PENDING',
+      todoType: t.todoType
+    })),
+    riskStudents: (risk && Array.isArray(risk.list) ? risk.list : []).slice(0, 5).map((s) => ({
+      id: s.studentId || s.studentNo || s.id,
+      name: s.name || '',
+      className: s.className || '—',
+      type: `${s.riskType || '风险'}${s.reason ? '·' + s.reason : ''}`,
+      level: s.riskLevel || s.risk || 'MEDIUM'
+    })),
+    recent: [],
     _real: true,
     _role: role,
-    _byType: byType
+    _byType: byType,
+    partialFailures: {
+      count: countResult.status !== 'fulfilled',
+      todos: listResult.status !== 'fulfilled',
+      risk: riskResult.status !== 'fulfilled'
+    }
   }
-  if (risk && Array.isArray(risk.list)) {
-    out.riskStudents = risk.list.slice(0, 5).map((s) => ({
-      id: s.studentId || s.studentNo || s.id,
-      name: s.name,
-      className: s.className || '—',
-      type: s.riskType + (s.reason ? '·' + s.reason : ''),
-      level: s.riskLevel
-    }))
-  }
-  return out
 }
+
+// 兼容旧调用名；生产不再复制 mock 工作台。
+export const enrichTeacherWorkbench = (_mock, roleKey) => teacherWorkbenchReal(roleKey)
 
 /* ══════════ P9.2 · 学生端补齐（档案脱敏 / 本人消息 / 我的申请 / 写操作） ══════════ */
 
@@ -770,6 +848,9 @@ export const remindWeeklyReal = (reportId) =>
   realRequest(`/mobile/teacher/internship/weekly/${reportId}/remind`, { method: 'POST' })
 
 /** 本人消息详情（按 messageId，杀进程后可重开） */
+export const selfMessagesPage = (tab = 'todo', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/me/messages-page?tab=${encodeURIComponent(tab)}&page=${page}&pageSize=${pageSize}`)
+
 export const getMessageDetail = (id) =>
   realRequest('/mobile/me/messages/' + id)
 

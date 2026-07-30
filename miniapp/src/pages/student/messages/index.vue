@@ -23,7 +23,7 @@
           </view>
           <MobileGlobalState v-if="!list.length" state="empty" title="暂无消息" description="这里会收到待办、通知、服务进度与课程教务消息。" />
           <view v-else class="stack-sm">
-            <view v-for="m in pagedSlice(list)" :key="m.id" class="msg__item card" :class="{ 'is-unread': !m.read, 'is-emg': m.emergency }" @click="open(m)">
+            <view v-for="m in list" :key="m.id" class="msg__item card" :class="{ 'is-unread': !m.read, 'is-emg': m.emergency }" @click="open(m)">
               <view class="msg__item-top">
                 <text class="msg__dot" :class="{ 'is-on': !m.read }" />
                 <text class="msg__module">{{ m.module }}</text>
@@ -39,8 +39,10 @@
                 <text v-if="m.actionable" class="msg__btn is-primary" @click.stop="handle(m)">去处理</text>
               </view>
             </view>
-            <view v-if="pagedFooter(list) === 'more'" class="msg__paging" @click="pagedLoadMore">上拉加载更多</view>
-            <view v-else-if="pagedFooter(list) === 'end'" class="msg__paging is-end">没有更多了</view>
+            <view v-if="hasMore" class="msg__paging" @click="loadMore">
+              {{ loadingMore ? '加载中…' : '上拉加载更多' }}
+            </view>
+            <view v-else class="msg__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -66,61 +68,89 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { fromNow, deadlineText } from '@/utils/format'
-import { listPaging } from '@/utils/listPaging'
 import { toast, go } from '@/utils/nav'
 import { stashDetail, stashSearchPool } from '@/utils/msgStash'
 const TAB_ICON = { todo: '☑', notice: '📢', progress: '⏱', course: '📖' }
 const TAB_GRAD = { todo: 'g1', notice: 'g1', progress: 'g3', course: 'g4' }
+const PAGE_SIZE = 20
 
 export default {
-  mixins: [listPaging(20)],
   data() {
     return {
-      data: null, state: 'loading', tab: 'todo', statusBarHeight: 20,
-      emg: null, emgAcking: false
+      data: { tabs: [], groups: {} }, state: 'loading', tab: 'todo', statusBarHeight: 20,
+      emg: null, emgAcking: false, page: 1, hasMore: false, loadingMore: false
     }
   },
   onLoad() {
+    this._pageActive = true
     try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
-    this.load()
+    this.load({ reset: true })
   },
   onShow() {
+    this._pageActive = true
     if (this.data) this._pickEmergency()
   },
-  onReachBottom() { this.pagedReachBottom() },
+  onHide() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
+  onUnload() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
+  onReachBottom() { this.loadMore() },
   watch: {
-    tab() { this.pagedReset() }
+    tab() { this.load({ reset: true }) }
   },
   computed: {
-    list() { return this.data ? (this.data.groups[this.tab] || []) : [] },
+    list() { return this.data?.groups?.[this.tab] || [] },
     unreadTotal() {
-      if (!this.data) return 0
-      return Object.values(this.data.groups).flat().filter((m) => !m.read).length
+      return (this.data.tabs || []).reduce((sum, item) => sum + (Number(item.badge) || 0), 0)
     }
   },
   methods: {
     toast, fromNow, deadlineText,
     tabIcon(key) { return TAB_ICON[key] || '✉' },
     tabGrad(key) { return TAB_GRAD[key] || 'g8' },
-    pagingList() { return this.list },
-    load() {
-      this.state = 'loading'
-      this.pagedReset()
-      studentApi.getMessages().then((d) => {
-        this.data = d
-        this.state = 'ready'
-        this._pickEmergency()
-      }).catch(() => { this.state = 'error' })
+    loadMore() {
+      if (!this.hasMore || this.loadingMore) return
+      this.load({ reset: false })
+    },
+    load({ reset = true } = {}) {
+      if (this._messagesPromise) return this._messagesPromise
+      const requestedTab = this.tab
+      const requestedPage = reset ? 1 : this.page + 1
+      const epoch = (this._loadEpoch || 0) + 1
+      this._loadEpoch = epoch
+      if (reset) this.state = 'loading'
+      else this.loadingMore = true
+      const pending = studentApi.getMessagesPage(requestedTab, requestedPage, PAGE_SIZE)
+        .then((result) => {
+          if (!this._pageActive || this._loadEpoch !== epoch || this.tab !== requestedTab) return result
+          const incoming = Array.isArray(result.list) ? result.list : []
+          const previous = reset ? [] : (this.data.groups[requestedTab] || [])
+          this.data = {
+            ...this.data,
+            tabs: result.tabs || this.data.tabs || [],
+            groups: { ...this.data.groups, [requestedTab]: [...previous, ...incoming] },
+            emergencyPending: result.emergencyPending || this.data.emergencyPending || []
+          }
+          this.page = Number(result.page) || requestedPage
+          this.hasMore = !!result.hasMore
+          this.state = 'ready'
+          this._pickEmergency()
+          return result
+        })
+        .catch((error) => {
+          if (this._pageActive && this._loadEpoch === epoch && reset) this.state = 'error'
+          throw error
+        })
+        .finally(() => {
+          if (this._messagesPromise === pending) this._messagesPromise = null
+          this.loadingMore = false
+        })
+      this._messagesPromise = pending
+      return pending
     },
     _pickEmergency() {
       const list = (this.data && this.data.emergencyPending) || []
-      const next = (list || []).find((x) => x && x.receipt && !x.acked)
-      this.emg = next || null
+      this.emg = list.find((item) => item && item.receipt && !item.acked) || null
     },
-    openEmg() {
-      if (!this.emg) return
-      this.open(this.emg)
-    },
+    openEmg() { if (this.emg) this.open(this.emg) },
     async ackEmg() {
       if (!this.emg || this.emgAcking) return
       const raw = String(this.emg.messageId || this.emg.id || '').replace('msg-', '')
@@ -131,7 +161,7 @@ export default {
         this.emg.receipt = false
         this.emg.read = true
         toast('已确认')
-        this.load()
+        await this.load({ reset: true })
       } catch (e) {
         toast((e && e.message) || '确认失败')
       } finally {
@@ -139,30 +169,32 @@ export default {
       }
     },
     markAllRead() {
-      this.list.forEach((m) => { if (!m.read) { m.read = true; this._syncRead(m) } })
+      this.list.forEach((message) => {
+        if (!message.read) { message.read = true; this._syncRead(message) }
+      })
     },
-    open(m) {
-      m.read = true
-      this._syncRead(m)
-      stashDetail(m)
+    open(message) {
+      message.read = true
+      this._syncRead(message)
+      stashDetail(message)
       go('/pages/common/message-detail/index')
     },
     openSearch() {
       stashSearchPool(Object.values((this.data && this.data.groups) || {}).flat())
       go('/pages/common/search/index')
     },
-    _syncRead(m) {
-      if (m._synced) return
-      const raw = String(m.messageId || m.id || '').replace('msg-', '')
-      const isUnified = m.kind === 'UNIFIED_MESSAGE' || /^\d+$/.test(raw)
+    _syncRead(message) {
+      if (message._synced) return
+      const raw = String(message.messageId || message.id || '').replace('msg-', '')
+      const isUnified = message.kind === 'UNIFIED_MESSAGE' || /^\d+$/.test(raw)
       if (!isUnified) return
-      m._synced = true
-      studentApi.markMessageRead(raw).catch(() => { m._synced = false })
+      message._synced = true
+      studentApi.markMessageRead(raw).catch(() => { message._synced = false })
     },
-    handle(m) {
-      m.read = true
-      this._syncRead(m)
-      if (m.status === 'RETURNED') return go('/pages/student/my-applications/index')
+    handle(message) {
+      message.read = true
+      this._syncRead(message)
+      if (message.status === 'RETURNED') return go('/pages/student/my-applications/index')
       go('/pages/student/campus-service/index')
     }
   }

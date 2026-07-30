@@ -30,7 +30,7 @@ class CompleteBody(BaseModel):
 
 
 def _use_real_db() -> bool:
-    """真库优先；生产环境禁止 MOCK 待办/消息回落（P1/P6 验收：生产无假数据）。"""
+    """真库优先；生产环境禁止 MOCK 待办/消息回落。"""
     if db_enabled():
         return True
     if settings.is_prod:
@@ -45,11 +45,8 @@ def _use_real_db() -> bool:
 def make_router(client: str) -> APIRouter:
     """client: admin / student-mini / teacher-mobile"""
     router = APIRouter(prefix=f"/{client}", tags=[f"04·待办与消息（{client}）"])
-    # 管理端/教师端待办仅教职工可访问，学生令牌一律 403（此前用 get_current_user，学生可越权拉 /admin/todos）；
-    # student-mini 是学生本人端，保持 get_current_user 不拦。
     guard = get_current_user if client == "student-mini" else require_staff
 
-    # ── 4.x 待办列表 ──
     @router.get("/todos", summary="待办列表", name=f"{client}_todos_list")
     def list_todos(status: Optional[str] = Query(default=None, description="PENDING / DONE"),
                    todoType: Optional[str] = Query(default=None, description="APPROVAL/REVIEW/RISK/SUBMIT/CONFIRM"),
@@ -66,7 +63,6 @@ def make_router(client: str) -> APIRouter:
         start = (page - 1) * pageSize
         return success(paginate(items[start:start + pageSize], total, page, pageSize))
 
-    # ── 待办角标 ──
     @router.get("/todos/count", summary="待办计数（红点角标）", name=f"{client}_todos_count")
     def todos_count(user=Depends(guard)):
         if _use_real_db():
@@ -77,7 +73,32 @@ def make_router(client: str) -> APIRouter:
             by_type[t["todoType"]] = by_type.get(t["todoType"], 0) + 1
         return success({"total": len(pending), "byType": by_type})
 
-    # ── 待办详情 ──
+    if client != "student-mini":
+        @router.get("/workbench-snapshot", summary="教师工作台只读快照",
+                    name=f"{client}_workbench_snapshot")
+        def workbench_snapshot(pageSize: int = Query(default=8, ge=1, le=20),
+                               user=Depends(guard)):
+            if _use_real_db():
+                from app.services import workbench_snapshot_service as snapshot_svc
+                return success(snapshot_svc.snapshot(user, page_size=pageSize))
+            pending = [t for t in MOCK_TODOS if t["status"] == "PENDING"]
+            by_type: dict[str, int] = {}
+            for item in pending:
+                by_type[item["todoType"]] = by_type.get(item["todoType"], 0) + 1
+            return success({
+                "summary": {
+                    "role": str((user or {}).get("currentRoleCode") or ""),
+                    "pending": len(pending), "overdue": 0,
+                    "nearDeadline": 0, "doneToday": 0,
+                },
+                "count": {"total": len(pending), "byType": by_type},
+                "todos": paginate(pending[:pageSize], len(pending), 1, pageSize),
+                "messages": {
+                    "unread": sum(1 for m in MOCK_MESSAGES if m["readStatus"] == "UNREAD"),
+                    "pendingAck": 0,
+                },
+            })
+
     @router.get("/todos/{todo_id}", summary="待办详情", name=f"{client}_todo_detail")
     def todo_detail(todo_id: str, user=Depends(guard)):
         if _use_real_db():
@@ -90,7 +111,6 @@ def make_router(client: str) -> APIRouter:
             raise not_found("待办不存在")
         return success({**todo, "actions": ["COMPLETE"] if todo["status"] == "PENDING" else []})
 
-    # ── 确认类待办完成 ──
     @router.post("/todos/{todo_id}/complete", summary="待办完成", name=f"{client}_todo_complete")
     def complete_todo(todo_id: str, body: CompleteBody, user=Depends(guard)):
         if _use_real_db():
@@ -110,7 +130,6 @@ def make_router(client: str) -> APIRouter:
         todo["status"] = "DONE"
         return success({"todoId": todo_id, "status": "DONE"})
 
-    # ── 消息列表 ──
     @router.get("/messages", summary="消息列表", name=f"{client}_messages_list")
     def list_messages(
         readStatus: Optional[str] = Query(default=None, description="UNREAD / READ"),
@@ -133,7 +152,6 @@ def make_router(client: str) -> APIRouter:
         start = (page - 1) * pageSize
         return success(paginate(items[start:start + pageSize], total, page, pageSize))
 
-    # ── 未读计数 ──
     @router.get("/messages/count", summary="未读消息数", name=f"{client}_messages_count")
     def messages_count(user=Depends(guard)):
         if _use_real_db():
@@ -144,7 +162,6 @@ def make_router(client: str) -> APIRouter:
             "pendingAck": 0,
         })
 
-    # ── 分类计数（左侧导航） ──
     @router.get("/messages/categories", summary="消息分类计数", name=f"{client}_messages_categories")
     def messages_categories(user=Depends(guard)):
         if _use_real_db():
@@ -152,7 +169,6 @@ def make_router(client: str) -> APIRouter:
             return success(mc.category_counts(user))
         return success({"ALL": len(MOCK_MESSAGES), "UNREAD": 0, "READ": 0})
 
-    # ── 批量已读（不确认） ──
     @router.post("/messages/read-all", summary="批量已读", name=f"{client}_messages_read_all")
     def messages_read_all(
         category: Optional[str] = Query(default=None),
@@ -169,7 +185,6 @@ def make_router(client: str) -> APIRouter:
                 n += 1
         return success({"affectedCount": n, "updatedAt": None})
 
-    # ── 消息详情（不自动已读） ──
     @router.get("/messages/{message_id}", summary="消息详情", name=f"{client}_message_detail")
     def message_detail(message_id: str, user=Depends(guard)):
         if _use_real_db():
@@ -183,7 +198,6 @@ def make_router(client: str) -> APIRouter:
             raise not_found("消息不存在")
         return success(msg)
 
-    # ── 标记已读 ──
     @router.post("/messages/{message_id}/read", summary="消息标记已读", name=f"{client}_message_read")
     def read_message(message_id: str, user=Depends(guard)):
         if _use_real_db():
@@ -198,7 +212,6 @@ def make_router(client: str) -> APIRouter:
         msg["readStatus"] = "READ"
         return success({"messageId": message_id, "readStatus": "READ"})
 
-    # ── 确认回执 ──
     @router.post("/messages/{message_id}/receipt", summary="消息确认回执", name=f"{client}_message_receipt")
     def message_receipt(message_id: str, user=Depends(guard)):
         if _use_real_db():

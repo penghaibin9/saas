@@ -7,10 +7,10 @@
           <MobileSegmented :items="filtersWithBadge" v-model="filter" />
         </view>
         <view class="page-pad" style="padding-top:0;">
-          <MobileGlobalState v-if="!filtered.length" state="empty" title="暂无待办" description="切换其他分类查看。处理完成的会进入「已处理」。" />
+          <MobileGlobalState v-if="!list.length" state="empty" title="暂无待办" description="切换其他分类查看。处理完成的会进入「已处理」。" />
           <view v-else class="stack-sm">
             <MobileTodoCard
-              v-for="t in pagedSlice(filtered)"
+              v-for="t in list"
               :key="t.id"
               :title="t.title"
               :source-module="t.module"
@@ -27,8 +27,10 @@
                 <button class="td__btn is-primary" @click.stop="handle(t)">去处理</button>
               </template>
             </MobileTodoCard>
-            <view v-if="pagedFooter(filtered) === 'more'" class="td__paging" @click="pagedLoadMore">上拉加载更多</view>
-            <view v-else-if="pagedFooter(filtered) === 'end'" class="td__paging is-end">没有更多了</view>
+            <view v-if="hasMore" class="td__paging" @click="loadMore">
+              {{ loadingMore ? '加载中…' : '上拉加载更多' }}
+            </view>
+            <view v-else class="td__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -41,66 +43,85 @@
 import { useSessionStore } from '@/stores/session'
 import { teacherApi } from '@/services/teacherApi'
 import { deadlineText, isOverdue } from '@/utils/format'
-import { listPaging } from '@/utils/listPaging'
-import { go, toast } from '@/utils/nav'
+import { go } from '@/utils/nav'
+const PAGE_SIZE = 20
 export default {
-  mixins: [listPaging(20)],
-  data() { return { data: null, state: 'loading', filter: 'all', scopeText: '' } },
-  onLoad() {
-    this.scopeText = useSessionStore().dataScopeText
-    this.load()
+  data() {
+    return {
+      data: { filters: [], list: [] }, state: 'loading', filter: 'all', scopeText: '',
+      page: 1, hasMore: false, loadingMore: false
+    }
   },
-  // onReachBottom 必须写在页面本身，mp-weixin 才会注册（mixin 里的会被编译器忽略）
-  onReachBottom() { this.pagedReachBottom() },
+  onLoad() {
+    this._pageActive = true
+    this.scopeText = useSessionStore().dataScopeText
+    this.load({ reset: true })
+  },
+  onShow() { this._pageActive = true },
+  onHide() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
+  onUnload() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
+  onReachBottom() { this.loadMore() },
   watch: {
-    // 切换分类回到第一批，避免上一分类的展开条数影响新分类
-    filter() { this.pagedReset() }
+    filter() { this.load({ reset: true }) }
   },
   computed: {
-    filtered() {
-      if (!this.data) return []
-      return this.filter === 'all' ? this.data.list : this.data.list.filter((t) => {
-        if (this.filter === 'soon') return t.soon && t.status !== 'COMPLETED'
-        return t.group === this.filter
-      })
-    },
-    pendingCount() {
-      return this.data ? this.data.list.filter((t) => t.status !== 'COMPLETED').length : 0
-    },
+    list() { return this.data.list || [] },
+    pendingCount() { return Number(this.data.pendingCount) || 0 },
     filtersWithBadge() {
-      if (!this.data) return []
-      return this.data.filters.map((f) => {
-        let n = 0
-        if (f.key === 'all') n = this.data.list.filter((t) => t.status !== 'COMPLETED').length
-        else if (f.key === 'soon') n = this.data.list.filter((t) => t.soon && t.status !== 'COMPLETED').length
-        else if (f.key !== 'done') n = this.data.list.filter((t) => t.group === f.key && t.status !== 'COMPLETED').length
-        return { ...f, badge: n }
-      })
+      return (this.data.filters || []).map((item) => ({
+        ...item,
+        badge: Number(item.badge) || 0
+      }))
     }
   },
   methods: {
     deadlineText, isOverdue,
-    // 供 listPaging 判断是否还有更多（仅在确有更多时才增长 pagerShown）
-    pagingList() { return this.filtered },
-    load() {
-      this.state = 'loading'
-      this.pagedReset()
-      teacherApi.getTodos().then((d) => { this.data = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+    loadMore() {
+      if (!this.hasMore || this.loadingMore) return
+      this.load({ reset: false })
     },
-    handle(t) {
+    load({ reset = true } = {}) {
+      if (this._todosPromise) return this._todosPromise
+      const requestedFilter = this.filter
+      const requestedPage = reset ? 1 : this.page + 1
+      const epoch = (this._loadEpoch || 0) + 1
+      this._loadEpoch = epoch
+      if (reset) this.state = 'loading'
+      else this.loadingMore = true
+      const pending = teacherApi.getTodosPage(requestedFilter, requestedPage, PAGE_SIZE)
+        .then((result) => {
+          if (!this._pageActive || this._loadEpoch !== epoch || this.filter !== requestedFilter) return result
+          this.data = {
+            ...result,
+            list: reset ? (result.list || []) : [...this.list, ...(result.list || [])]
+          }
+          this.page = Number(result.page) || requestedPage
+          this.hasMore = !!result.hasMore
+          this.state = 'ready'
+          return result
+        })
+        .catch((error) => {
+          if (this._pageActive && this._loadEpoch === epoch && reset) this.state = 'error'
+          throw error
+        })
+        .finally(() => {
+          if (this._todosPromise === pending) this._todosPromise = null
+          this.loadingMore = false
+        })
+      this._todosPromise = pending
+      return pending
+    },
+    handle(todo) {
       const map = {
-        review: t.module.includes('毕业') ? '/pages/teacher/graduation-guide/index?tab=review' : '/pages/teacher/internship-review/index',
+        review: todo.module.includes('毕业') ? '/pages/teacher/graduation-guide/index?tab=review' : '/pages/teacher/internship-review/index',
         approve: '/pages/teacher/approval/index',
         risk: '/pages/teacher/risk-students/index',
         contact: '/pages/teacher/risk-students/index',
         confirm: '/pages/teacher/internship-review/index'
       }
-      go(map[t.group] || '/pages/teacher/approval/index')
+      go(map[todo.group] || '/pages/teacher/approval/index')
     },
-    quickDone(t) {
-      // 待办来自各业务模块聚合，必须进入对应模块真实处理，不做本地假完成
-      this.handle(t)
-    }
+    quickDone(todo) { this.handle(todo) }
   }
 }
 </script>

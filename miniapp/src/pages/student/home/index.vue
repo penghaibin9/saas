@@ -1,13 +1,13 @@
 <template>
   <view class="page-wrap">
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" @retry="retryLoad">
       <view class="home__hero hero-band is-brand">
         <view class="hero-band__orb" />
         <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
         <view class="home__greet">
           <view class="avatar-badge">{{ (user.name || '同').slice(0,1) }}</view>
           <view class="flex-1">
-            <text class="home__greet-name">{{ greeting }}，{{ user.name }}<text v-if="isOrientationGuide" class="home__newtag">新生</text></text>
+            <text class="home__greet-name">{{ greeting }}，{{ user.name || '同学' }}<text v-if="isOrientationGuide" class="home__newtag">新生</text></text>
             <text class="home__greet-sub">
               <template v-if="isOrientationGuide">{{ user.className || '2026级新生' }} · 尚未完成报到</template>
               <template v-else>{{ user.className || '在校学生' }}{{ user.studentNo ? ' · 学号 ' + user.studentNo : '' }}</template>
@@ -19,9 +19,9 @@
           </view>
         </view>
         <view class="stat-strip" v-if="home && !isOrientationGuide">
-          <view class="stat-strip__item"><text class="stat-strip__val">{{ home.stageCard.progress }}%</text><text class="stat-strip__label">阶段进度</text></view>
+          <view class="stat-strip__item"><text class="stat-strip__val">{{ progressText }}</text><text class="stat-strip__label">阶段进度</text></view>
           <view class="stat-strip__item"><text class="stat-strip__val">{{ home.metrics.todoCount }}</text><text class="stat-strip__label">待办事项</text></view>
-          <view class="stat-strip__item"><text class="stat-strip__val">{{ home.metrics.creditRate }}%</text><text class="stat-strip__label">学分完成率</text></view>
+          <view class="stat-strip__item"><text class="stat-strip__val">{{ creditRateText }}</text><text class="stat-strip__label">学分完成率</text></view>
         </view>
       </view>
 
@@ -73,13 +73,16 @@
         <!-- 下一步行动 -->
         <view class="section-head"><text class="section-head__title">下一步该做什么</text></view>
         <MobileActionCard
+          v-if="home.nextAction"
           :title="home.nextAction.title"
-          :description="home.nextAction.desc + ' · ' + deadlineText(home.nextAction.deadline)"
+          :description="[home.nextAction.desc, deadlineText(home.nextAction.deadline)].filter(Boolean).join(' · ')"
           icon="→"
           :action-text="home.nextAction.actionText"
           @action="go(home.nextAction.route)"
           @click="go(home.nextAction.route)"
         />
+        <MobileGlobalState v-else state="empty" title="当前暂无待办"
+          description="有新的审批、材料补交或校园事项时会显示在这里。" />
 
         <!-- 当前阻断 -->
         <template v-if="home.blockers.length">
@@ -99,7 +102,7 @@
         <!-- 常用服务 -->
         <view class="card">
           <view class="row-between" style="margin-bottom: var(--space-2);"><text class="card-title">常用服务</text></view>
-          <view class="icon-grid">
+          <view v-if="home.quickServices.length" class="icon-grid">
             <view
               v-for="(q, i) in home.quickServices"
               :key="q.key"
@@ -110,6 +113,8 @@
               <text class="icon-grid__label">{{ q.label }}</text>
             </view>
           </view>
+          <MobileGlobalState v-else state="empty" title="暂无常用服务"
+            description="学校启用可办理服务后会显示在这里。" />
         </view>
 
         <!-- 今日课程 -->
@@ -130,6 +135,8 @@
             </view>
             <text v-if="c.status === 'current'" class="home__course-tag">进行中</text>
           </view>
+          <MobileGlobalState v-if="!home.todayCourses.length" state="empty" title="暂无今日课程"
+            description="当前没有从教务系统获取到今日课程。" />
         </view>
 
         <!-- 待办 -->
@@ -148,6 +155,8 @@
             action-text="去办理"
             @handle="go('/pages/student/campus-service/index')"
           />
+          <MobileGlobalState v-if="!home.todos.length" state="empty" title="暂无待办"
+            description="当前没有需要你处理的事项。" />
         </view>
 
         <!-- 通知 -->
@@ -158,6 +167,8 @@
             <text class="home__notice-title ellipsis flex-1">{{ n.title }}</text>
             <text class="home__notice-src">{{ n.source }}</text>
           </view>
+          <MobileGlobalState v-if="!home.notices.length" state="empty" title="暂无校园通知"
+            description="学校发布与你相关的通知后会显示在这里。" />
         </view>
       </view>
     </MobileGlobalState>
@@ -176,12 +187,13 @@
 import { tenantBrandConfig } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
-import { deadlineText, fromNow } from '@/utils/format'
+import { getStudentHomeVersion } from '@/utils/viewFreshness'
+import { deadlineText } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
 
+const HOME_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g3', 'g7', 'g4', 'g5', 'g6', 'g2', 'g8']
 
-// 与后端 orientation_service.REGISTRATION_STEPS 对齐（7 环节，标签取自同一常量）
 const STEP_LABELS = { ACTIVATE: '账号激活', INFO: '信息核对', MATERIAL: '材料上传',
   PAYMENT: '缴费/绿色通道', DORM: '宿舍确认', CHECKIN: '现场报到', CONFIRM: '学院确认' }
 const STEP_ROUTE = {
@@ -191,16 +203,29 @@ const STEP_ROUTE = {
   CONFIRM: '/pages/student/orientation/index'
 }
 
+function sessionContextKey(session) {
+  const identity = session.identity || {}
+  return [identity.userId || '', identity.studentId || '', session.currentRole || ''].join('|')
+}
+
 export default {
   data() {
     return {
-      brand: tenantBrandConfig, home: null, state: 'loading', user: {}, greeting: '你好', statusBarHeight: 20,
-      orientation: null, orientationBatch: { open: false, daysLeft: 0 },
-      emg: null
+      brand: tenantBrandConfig, home: null, state: 'loading', user: {}, greeting: '你好',
+      statusBarHeight: 20, orientation: null,
+      orientationBatch: { open: false, daysLeft: 0 }, emg: null,
+      lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1
     }
   },
   computed: {
-    // 未报到/预报到中的新生：首页收起为迎新引导态；已现场报到/学院确认或无报到记录都走普通首页
+    progressText() {
+      const value = Number(this.home?.stageCard?.progress)
+      return Number.isFinite(value) ? `${value}%` : '—'
+    },
+    creditRateText() {
+      const value = Number(this.home?.metrics?.creditRate)
+      return Number.isFinite(value) ? `${value}%` : '—'
+    },
     isOrientationGuide() {
       return !!(this.orientation && this.orientation.hasData &&
         ['NOT_REPORTED', 'PREPARED'].includes(this.orientation.reportStatus))
@@ -208,19 +233,17 @@ export default {
     orientationSteps() {
       if (!this.orientation) return []
       let metCurrent = false
-      return (this.orientation.steps || []).map((s) => {
-        const done = s.status === 'DONE'
+      return (this.orientation.steps || []).map((step) => {
+        const done = step.status === 'DONE'
         const state = done ? 'done' : (metCurrent ? 'wait' : 'now')
         if (!done) metCurrent = true
-        return { key: s.key, label: STEP_LABELS[s.key] || s.key, state,
+        return { key: step.key, label: STEP_LABELS[step.key] || step.key, state,
           stateLabel: done ? '已完成' : (state === 'now' ? '进行中' : '待办') }
       })
     },
-    orientationDoneCount() {
-      return this.orientationSteps.filter((s) => s.state === 'done').length
-    },
+    orientationDoneCount() { return this.orientationSteps.filter((step) => step.state === 'done').length },
     orientationCurrentStep() {
-      return this.orientationSteps.find((s) => s.state === 'now') || this.orientationSteps[0]
+      return this.orientationSteps.find((step) => step.state === 'now') || this.orientationSteps[0]
     },
     orientationNextLabel() {
       return this.orientationCurrentStep ? this.orientationCurrentStep.label : '报到总览'
@@ -236,54 +259,97 @@ export default {
     }
   },
   onLoad() {
-    const session = useSessionStore()
-    this.user = session.mockUser || {}
+    this._pageActive = true
     try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
-    this.load()
+    this.load({ force: true })
   },
   onShow() {
-    this.loadEmergency()
+    this._pageActive = true
+    this.ensureFresh()
+  },
+  onHide() {
+    this._pageActive = false
+    this._loadEpoch = (this._loadEpoch || 0) + 1
+  },
+  onUnload() {
+    this._pageActive = false
+    this._loadEpoch = (this._loadEpoch || 0) + 1
   },
   onPullDownRefresh() {
-    this.load(() => uni.stopPullDownRefresh())
+    this.load({ force: true, done: () => uni.stopPullDownRefresh() })
   },
   methods: {
     go, toast, deadlineText,
-    fmtDeadline(d) {
-      return deadlineText(d)
+    fmtDeadline(value) { return deadlineText(value) },
+    gradClass(index) { return GRAD_CLASSES[index % GRAD_CLASSES.length] },
+    goMessages() { go('/pages/student/messages/index') },
+    retryLoad() { return this.load({ force: true }) },
+    ensureFresh() {
+      const session = useSessionStore()
+      const contextKey = sessionContextKey(session)
+      const freshness = getStudentHomeVersion()
+      const fresh = this.home &&
+        this.loadedContextKey === contextKey &&
+        this.loadedFreshnessVersion === freshness &&
+        Date.now() - this.lastLoadedAt < HOME_TTL_MS
+      if (!fresh) this.load()
     },
-    gradClass(i) {
-      return GRAD_CLASSES[i % GRAD_CLASSES.length]
-    },
-    goMessages() {
-      go('/pages/student/messages/index')
-    },
-    loadEmergency() {
-      studentApi.getMessages().then((d) => {
-        const list = (d && d.emergencyPending) || []
-        this.emg = list.find((x) => x && x.receipt && !x.acked) || null
-      }).catch(() => { /* 横幅失败不阻断首页 */ })
-    },
-    load(done) {
-      if (this._homeLoading) {
-        done && done()
-        return
+    load({ force = false, done = null } = {}) {
+      const session = useSessionStore()
+      const contextKey = sessionContextKey(session)
+      const freshness = getStudentHomeVersion()
+      const fresh = this.home &&
+        this.loadedContextKey === contextKey &&
+        this.loadedFreshnessVersion === freshness &&
+        Date.now() - this.lastLoadedAt < HOME_TTL_MS
+      if (!force && fresh) {
+        if (done) done()
+        return Promise.resolve(this.home)
       }
-      this._homeLoading = true
-      this.state = 'loading'
-      studentApi.getHome().then((data) => {
-        this.home = data
-        this.orientation = data.orientation || null
-        this.orientationBatch = data.orientationBatch || { open: false, daysLeft: 0 }
-        this.greeting = data.greeting || '你好'
-        this.state = 'ready'
-        this.loadEmergency()
-      }).catch(() => {
-        this.state = 'error'
-      }).finally(() => {
-        this._homeLoading = false
-        done && done()
-      })
+      if (this._homePromise) {
+        return this._homePromise.finally(() => { if (done) done() })
+      }
+
+      const epoch = (this._loadEpoch || 0) + 1
+      this._loadEpoch = epoch
+      if (!this.home || force) this.state = 'loading'
+      const pending = studentApi.getHome()
+        .then((data) => {
+          const currentSession = useSessionStore()
+          if (!this._pageActive || this._loadEpoch !== epoch ||
+              sessionContextKey(currentSession) !== contextKey) return data
+          this.home = data
+          this.orientation = data.orientation || null
+          this.orientationBatch = data.orientationBatch || { open: false, daysLeft: 0 }
+          this.greeting = data.greeting || '你好'
+          this.emg = data.messageSummary?.latestEmergency || null
+          const student = data.student || {}
+          this.user = {
+            name: student.name || '',
+            studentNo: student.studentNo || '',
+            className: student.className || '',
+            grade: student.grade || ''
+          }
+          currentSession.hydrateStudentProfile({
+            base: { name: this.user.name, studentNo: this.user.studentNo },
+            org: { className: this.user.className, grade: this.user.grade }
+          })
+          this.loadedContextKey = contextKey
+          this.loadedFreshnessVersion = freshness
+          this.lastLoadedAt = Date.now()
+          this.state = 'ready'
+          return data
+        })
+        .catch((error) => {
+          if (this._pageActive && this._loadEpoch === epoch) this.state = 'error'
+          throw error
+        })
+        .finally(() => {
+          if (this._homePromise === pending) this._homePromise = null
+          if (done) done()
+        })
+      this._homePromise = pending
+      return pending
     }
   }
 }

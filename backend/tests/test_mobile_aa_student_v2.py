@@ -34,6 +34,17 @@ def _seed_student(student_no, real_name, grade="2026", major_id=None, class_id=N
     db.commit(); db.close()
 
 
+def _seed_target_course(client, admin):
+    response = client.post(f"{ADMIN_BASE}/courses", headers=admin, json={
+        "courseCode": "RG101", "courseName": "高等数学",
+        "category": "MAJOR_CORE", "nature": "REQUIRED", "credit": 4,
+        "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16,
+        "examMode": "EXAM",
+    })
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["courseId"]
+
+
 # ── 成绩认定 ──
 
 def test_recognition_my_empty_not_500(client, db_mode):
@@ -45,14 +56,20 @@ def test_recognition_my_empty_not_500(client, db_mode):
 def test_recognition_submit_and_visible_to_admin(client, db_mode):
     _seed_student("RG0002", "认定乙")
     hdr = _stu_token("认定乙", "RG0002")
-    # 低分拦截
+    admin = _admin(client)
+    target_course_id = _seed_target_course(client, admin)
+    # 低分拦截（即使目标课程合法，低分仍必须被业务规则拒绝）
     bad = client.post(f"{BASE}/recognition/submit", headers=hdr,
-                      json={"sourceCourseName": "高数A", "sourceScore": 50, "targetCourseName": "高数"})
+                      json={"sourceCourseName": "高数A", "sourceScore": 50,
+                            "targetCourseId": str(target_course_id),
+                            "targetCourseName": "高等数学"})
     assert bad.status_code == 400, bad.text
     # 正常提交
     ok = client.post(f"{BASE}/recognition/submit", headers=hdr,
                      json={"sourceCourseName": "高数A", "sourceScore": 82, "sourceCredit": 4,
-                           "sourceOrigin": "原电子专业", "targetCourseName": "高等数学", "reason": "转专业替代"})
+                           "sourceOrigin": "原电子专业",
+                           "targetCourseId": str(target_course_id),
+                           "targetCourseName": "高等数学", "reason": "转专业替代"})
     assert ok.status_code == 200, ok.text
     my = client.get(f"{BASE}/recognition/my", headers=hdr).json()["data"]["items"]
     assert len(my) == 1 and my[0]["status"] == "SUBMITTED"

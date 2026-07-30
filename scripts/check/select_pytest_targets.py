@@ -33,6 +33,9 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
     (("backend/app/services/affairs", "backend/app/api/v1/student_affairs",
       "backend/app/api/v1/mobile"),
      ["tests/test_affairs_*.py", "tests/test_portal_affairs*.py", "tests/test_mobile*.py"]),
+    (("backend/app/api/v1/todos", "backend/app/services/workbench_todo",
+      "backend/app/services/workbench_snapshot"),
+     ["tests/test_workbench_snapshot.py", "tests/test_mobile_stage_a_contracts.py"]),
     # 学生主档统一整改：主档写入口/投影/敏感字段读取链
     (("backend/app/core/field_crypto", "backend/app/services/student_projection",
       "backend/app/services/db_service", "backend/app/api/v1/student.py",

@@ -1,13 +1,13 @@
 <template>
   <view class="page-wrap">
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" @retry="retryLoad">
       <view class="wb__hero hero-band is-teacher">
         <view class="hero-band__orb" />
         <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
         <view class="wb__greet">
-          <view class="avatar-badge">{{ (user.name||'师').slice(0,1) }}</view>
+          <view class="avatar-badge">{{ (user.name || '老师').slice(0,1) }}</view>
           <view class="flex-1">
-            <text class="wb__greet-name">{{ user.name }}</text>
+            <text class="wb__greet-name">{{ user.name || '老师' }}</text>
             <text class="wb__greet-sub">{{ brand.schoolName }}</text>
           </view>
           <view class="wb__bell" @click="go('/pages/teacher/messages/index')">
@@ -134,9 +134,11 @@ import { tenantBrandConfig } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { teacherApi } from '@/services/teacherApi'
+import { getTeacherWorkbenchVersion } from '@/utils/viewFreshness'
 import { deadlineText, isOverdue, fromNow } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
 
+const WORKBENCH_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7', 'g6', 'g8']
 const INTERNSHIP_PERMISSIONS = {
   weekly: 'internship.report.review',
@@ -160,7 +162,8 @@ export default {
   data() {
     return {
       brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {},
-      statusBarHeight: 20, internshipContextReady: false, internshipContextError: ''
+      statusBarHeight: 20, internshipContextReady: false, internshipContextError: '',
+      lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1
     }
   },
   computed: {
@@ -201,44 +204,106 @@ export default {
     }
   },
   onLoad() {
+    this._pageActive = true
     try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
   },
-  onShow() { this.load() },
-  onPullDownRefresh() { this.load(() => uni.stopPullDownRefresh()) },
+  onShow() {
+    this._pageActive = true
+    this.ensureFresh()
+  },
+  onHide() {
+    this._pageActive = false
+    this._loadEpoch = (this._loadEpoch || 0) + 1
+  },
+  onUnload() {
+    this._pageActive = false
+    this._loadEpoch = (this._loadEpoch || 0) + 1
+  },
+  onPullDownRefresh() {
+    this.load({ force: true, done: () => uni.stopPullDownRefresh() })
+  },
   methods: {
     go, deadlineText, isOverdue, fromNow,
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
-    async load(done) {
+    contextKey(session) {
+      const identity = session.identity || {}
+      const context = useInternshipContextStore()
+      return [
+        identity.userId || '',
+        session.currentRole || '',
+        session.realUser?.tenantId || '',
+        session.currentRole === 'intern_mentor' ? context.selectedBatchId || '' : ''
+      ].join('|')
+    },
+    retryLoad() { return this.load({ force: true }) },
+    ensureFresh() {
       const session = useSessionStore()
-      this.user = session.mockUser || {}
-      this.roleConfig = session.roleConfig
-      this.state = 'loading'
+      const contextKey = this.contextKey(session)
+      const freshness = getTeacherWorkbenchVersion()
+      const fresh = this.wb &&
+        this.loadedContextKey === contextKey &&
+        this.loadedFreshnessVersion === freshness &&
+        Date.now() - this.lastLoadedAt < WORKBENCH_TTL_MS
+      if (!fresh) this.load()
+    },
+    async loadInternshipContext(session, force) {
       this.internshipContextReady = session.currentRole !== 'intern_mentor'
       this.internshipContextError = ''
+      if (session.currentRole !== 'intern_mentor') return
+      const context = useInternshipContextStore()
+      context.restore()
       try {
-        if (session.currentRole === 'intern_mentor') {
-          const context = useInternshipContextStore()
-          context.restore()
-          await context.load(true)
-          this.internshipContextReady = true
-        }
-        this.wb = await teacherApi.getWorkbench(session.currentRole)
-        this.state = 'ready'
-      } catch (e) {
-        if (session.currentRole === 'intern_mentor') {
-          this.internshipContextError = (e && e.message) || '岗位实习权限或批次上下文加载失败，已停止展示操作入口。'
-          try {
-            this.wb = await teacherApi.getWorkbench(session.currentRole)
-            this.state = 'ready'
-          } catch (workbenchError) {
-            this.state = 'error'
-          }
-        } else {
-          this.state = 'error'
-        }
-      } finally {
-        done && done()
+        await context.load(force)
+        this.internshipContextReady = true
+      } catch (error) {
+        this.internshipContextReady = false
+        this.internshipContextError = (error && error.message) ||
+          '岗位实习权限或批次上下文加载失败，已停止展示操作入口。'
       }
+    },
+    load({ force = false, done = null } = {}) {
+      const session = useSessionStore()
+      const beforeContextKey = this.contextKey(session)
+      const freshness = getTeacherWorkbenchVersion()
+      const fresh = this.wb &&
+        this.loadedContextKey === beforeContextKey &&
+        this.loadedFreshnessVersion === freshness &&
+        Date.now() - this.lastLoadedAt < WORKBENCH_TTL_MS
+      if (!force && fresh) {
+        if (done) done()
+        return Promise.resolve(this.wb)
+      }
+      if (this._workbenchPromise) {
+        return this._workbenchPromise.finally(() => { if (done) done() })
+      }
+
+      const epoch = (this._loadEpoch || 0) + 1
+      this._loadEpoch = epoch
+      this.user = session.mockUser || {}
+      this.roleConfig = session.roleConfig
+      if (!this.wb || force) this.state = 'loading'
+
+      const pending = (async () => {
+        await this.loadInternshipContext(session, force)
+        const contextKey = this.contextKey(session)
+        const workbench = await teacherApi.getWorkbench(session.currentRole)
+        if (!this._pageActive || this._loadEpoch !== epoch ||
+            this.contextKey(useSessionStore()) !== contextKey) return workbench
+        this.wb = workbench
+        this.loadedContextKey = contextKey
+        this.loadedFreshnessVersion = freshness
+        this.lastLoadedAt = Date.now()
+        this.state = 'ready'
+        return workbench
+      })().catch((error) => {
+        if (this._pageActive && this._loadEpoch === epoch) this.state = 'error'
+        throw error
+      }).finally(() => {
+        if (this._workbenchPromise === pending) this._workbenchPromise = null
+        if (done) done()
+      })
+      this._workbenchPromise = pending
+      return pending
     },
     quick(q) {
       const session = useSessionStore()

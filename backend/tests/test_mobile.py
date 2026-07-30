@@ -13,12 +13,12 @@ def _stu_token(real_name, tenant_id=MAIN, tid="demo"):
         "currentRoleCode": "STUDENT", "clientType": "MP"})}
 
 
-def _teacher_token(tenant_id=MAIN, tid="demo"):
+def _teacher_token(tenant_id=MAIN, tid="demo", role="COUNSELOR"):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
         "userId": "u-teacher", "realName": "王辅导", "userType": "TEACHER",
         "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
-        "currentRoleCode": "COUNSELOR", "clientType": "MP"})}
+        "currentRoleCode": role, "clientType": "MP"})}
 
 
 def _seed_two_students(_db_mode):
@@ -233,16 +233,19 @@ def test_teacher_todos_403_and_200(client, db_mode):
 
 def test_teacher_risk_students_tenant_isolation(client, db_mode):
     _seed_rich(db_mode)
-    main = client.get("/api/v1/mobile/teacher/risk-students", headers=_teacher_token()).json()
+    main = client.get("/api/v1/mobile/teacher/risk-students",
+                      headers=_teacher_token(role="SCHOOL_ADMIN")).json()
     assert main["code"] == 0 and main["data"]["total"] >= 1  # 主租户有风险学生
     demo = client.get("/api/v1/mobile/teacher/risk-students",
-                      headers=_teacher_token(tenant_id=DEMO, tid="demo-school")).json()
+                      headers=_teacher_token(tenant_id=DEMO, tid="demo-school",
+                                             role="SCHOOL_ADMIN")).json()
     assert demo["code"] == 0 and demo["data"]["total"] == 0  # demo 租户看不到主租户风险学生
 
 
 def test_teacher_student_detail_200_and_404(client, db_mode):
     sid = _seed_rich(db_mode)
-    ok = client.get(f"/api/v1/mobile/teacher/student/{sid}", headers=_teacher_token()).json()
+    ok = client.get(f"/api/v1/mobile/teacher/student/{sid}",
+                    headers=_teacher_token(role="SCHOOL_ADMIN")).json()
     assert ok["code"] == 0 and ok["data"]["hasData"] is True
     # 不返回身份证/手机明文
     import json as _json
@@ -262,15 +265,16 @@ def test_teacher_student_detail_cross_tenant_not_found(client, db_mode):
 
 def test_teacher_domain_pages_structure(client, db_mode):
     _seed_rich(db_mode)
-    it = client.get("/api/v1/mobile/teacher/internship", headers=_teacher_token()).json()
+    admin_headers = _teacher_token(role="SCHOOL_ADMIN")
+    it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers).json()
     assert it["code"] == 0 and "weeklyReports" in it["data"] and "abnormalCheckins" in it["data"]
-    gd = client.get("/api/v1/mobile/teacher/graduation", headers=_teacher_token()).json()
+    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()
     assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
-    em = client.get("/api/v1/mobile/teacher/employment", headers=_teacher_token()).json()
+    em = client.get("/api/v1/mobile/teacher/employment", headers=admin_headers).json()
     assert em["code"] == 0 and "students" in em["data"] and "jobPool" in em["data"]
-    msg = client.get("/api/v1/mobile/teacher/messages", headers=_teacher_token()).json()
+    msg = client.get("/api/v1/mobile/teacher/messages", headers=admin_headers).json()
     assert msg["code"] == 0 and "groups" in msg["data"]
-    ap = client.get("/api/v1/mobile/teacher/approvals", headers=_teacher_token()).json()
+    ap = client.get("/api/v1/mobile/teacher/approvals", headers=admin_headers).json()
     assert ap["code"] == 0 and "approvals" in ap["data"]
 
 
