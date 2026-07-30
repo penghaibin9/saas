@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.permissions import has_permission
 from app.services.file_access_service import (
@@ -65,6 +65,89 @@ def _student_scope_values(db, file_obj, user: dict) -> set[str]:
     return {item for item in values if item}
 
 
+def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[int], set[int]]:
+    """从文件对象、绑定与请假单中还原权威实习记录/学生范围。"""
+    student_ids: set[int] = set()
+    internship_ids: set[int] = set()
+    tenant_id = int(file_obj.tenant_id or 0)
+
+    def add_numeric(value, target: set[int]) -> None:
+        raw = str(value or "").strip()
+        if raw.isdigit():
+            target.add(int(raw))
+
+    biz_type = str(file_obj.biz_type or "").upper()
+    if biz_type in {"INTERNSHIP", "ENT_EVAL"}:
+        # 历史数据中 biz_id 可能是 StudentProfile.id，也可能是 InternshipRecord.id；
+        # 下方查询同时按两种解释收敛，不直接据此放行。
+        add_numeric(file_obj.biz_id, student_ids)
+        add_numeric(file_obj.biz_id, internship_ids)
+
+    leave_ids: set[int] = set()
+    if biz_type == "LEAVE":
+        add_numeric(file_obj.biz_id, leave_ids)
+
+    for item in bindings:
+        binding_type = str(item.biz_type or "").upper()
+        if binding_type in {"INTERNSHIP", "ENT_EVAL"}:
+            add_numeric(item.biz_id, student_ids)
+            add_numeric(item.biz_id, internship_ids)
+        elif binding_type == "LEAVE":
+            add_numeric(item.biz_id, leave_ids)
+        if str(item.subject_type or "").upper() == "STUDENT":
+            add_numeric(item.subject_id, student_ids)
+        scope = item.scope_json or {}
+        add_numeric(scope.get("studentId"), student_ids)
+        add_numeric(scope.get("internshipId"), internship_ids)
+
+    if db is not None and leave_ids:
+        try:
+            from app.models import InternshipLeave
+
+            rows = db.scalars(select(InternshipLeave).where(
+                InternshipLeave.tenant_id == tenant_id,
+                InternshipLeave.id.in_(leave_ids),
+                InternshipLeave.is_deleted.is_(False),
+            )).all()
+            for row in rows:
+                student_ids.add(int(row.student_id))
+                internship_ids.add(int(row.internship_id))
+        except Exception:
+            return set(), set()
+    return student_ids, internship_ids
+
+
+def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict) -> bool:
+    """仅放行与文件目标学生存在真实指导关系的实习教师。"""
+    if db is None or str(user.get("userType") or "").upper() != "TEACHER":
+        return False
+    student_ids, internship_ids = _collect_internship_scope(file_obj, bindings, db)
+    if not student_ids and not internship_ids:
+        return False
+    try:
+        from app.models import InternshipRecord
+
+        clauses = []
+        if student_ids:
+            clauses.append(InternshipRecord.student_id.in_(student_ids))
+        if internship_ids:
+            clauses.append(InternshipRecord.id.in_(internship_ids))
+        rows = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == int(file_obj.tenant_id),
+            InternshipRecord.is_deleted.is_(False),
+            or_(*clauses),
+        )).all()
+        actor_name = str(user.get("realName") or user.get("name") or "").strip()
+        actor_user_id = resolve_message_user_id(user)
+        return any(
+            (actor_user_id and int(row.advisor_user_id or 0) == actor_user_id)
+            or (actor_name and str(row.advisor_name or "").strip() == actor_name)
+            for row in rows
+        )
+    except Exception:
+        return False
+
+
 @register_file_resolver(
     "GRADUATION_MATERIAL",
     "INTERNSHIP",
@@ -83,6 +166,10 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
         return True
 
     active = [item for item in bindings if not item.is_deleted and item.status == "ACTIVE"]
+    if str(file_obj.biz_type or "").upper() in {"INTERNSHIP", "ENT_EVAL", "LEAVE"}:
+        if _internship_staff_scope_allows(db, file_obj, active, user):
+            return True
+
     if active:
         subject_allowed = any(_binding_subject_allows(item, user) for item in active)
         if not subject_allowed:
