@@ -68,6 +68,7 @@ jobs:
     name: 预发容量压测
     needs: contract
     if: >-
+      (github.event_name == 'pull_request' && vars.PERF_BASE_URL != '') ||
       (github.event_name == 'workflow_dispatch' && inputs.target_base_url != '') ||
       (github.event_name == 'schedule' && vars.PERF_BASE_URL != '')
     runs-on: ubuntu-latest
