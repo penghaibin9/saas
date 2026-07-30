@@ -188,7 +188,7 @@ def freeze_manifest(gd_student_id: int, archive_batch_no: str, user: dict) -> di
             if spec["required"] and spec["archiveRequired"]
         }
         selected: list[tuple[GraduationStudentMaterial, FileVersion, FileObject]] = []
-        missing: list[str] = []
+        problems: list[str] = []
         for material in materials:
             spec = catalog.SPEC_BY_CODE.get(material.material_code)
             archive_required = bool((spec or {}).get("archiveRequired", material.archive_status != "NOT_ARCHIVED"))
@@ -196,7 +196,8 @@ def freeze_manifest(gd_student_id: int, archive_batch_no: str, user: dict) -> di
             if not archive_required and not material.current_version_id:
                 continue
             if not material.current_version_id:
-                if required: missing.append(material.material_name)
+                if required:
+                    problems.append(material.material_name)
                 continue
             version = db.scalars(select(FileVersion).where(
                 FileVersion.tenant_id == _tid(), FileVersion.id == int(material.current_version_id),
@@ -204,11 +205,13 @@ def freeze_manifest(gd_student_id: int, archive_batch_no: str, user: dict) -> di
                 FileVersion.is_deleted.is_(False),
             ).with_for_update()).first()
             file_obj = db.get(FileObject, int(version.file_object_id)) if version else None
+            # An optional material may be absent, but once submitted it must never be
+            # silently omitted because its current version is unsafe or unapproved.
             if not version or not file_obj:
-                if required: missing.append(material.material_name)
+                problems.append(f"{material.material_name}（当前版本不存在）")
                 continue
             if version.status != "APPROVED" or material.review_status not in {"APPROVED", "NOT_REQUIRED"}:
-                if required: missing.append(f"{material.material_name}（未审核通过）")
+                problems.append(f"{material.material_name}（未审核通过）")
                 continue
             try:
                 legacy_ready = __import__(
@@ -217,11 +220,11 @@ def freeze_manifest(gd_student_id: int, archive_batch_no: str, user: dict) -> di
                 )
                 legacy_ready._require_file_ready(file_obj)
             except AppException:
-                if required: missing.append(f"{material.material_name}（安全状态异常）")
+                problems.append(f"{material.material_name}（安全状态异常）")
                 continue
             selected.append((material, version, file_obj))
-        if missing:
-            raise AppException("DATA_CONFLICT", "归档材料未齐全：" + "、".join(sorted(set(missing))))
+        if problems:
+            raise AppException("DATA_CONFLICT", "归档材料未齐全或存在异常：" + "、".join(sorted(set(problems))))
         if not selected:
             raise AppException("DATA_CONFLICT", "毕业设计归档没有可冻结的真实文件版本")
         active = db.scalars(select(ArchiveManifest).where(
@@ -529,7 +532,20 @@ def run_export_job(job_id: int, user: dict) -> dict:
             }
             row.version = int(row.version or 0) + 1
             for _, manifest in pairs:
-                manifest.status = "PACKAGED"; manifest.package_file_id = int(zip_file.id)
+                manifest.status = "PACKAGED"
+                manifest.package_file_id = int(zip_file.id)
+                manifest_codes = {
+                    item.material_code for item in items if int(item.manifest_id) == int(manifest.id)
+                }
+                archived_materials = db.scalars(select(GraduationStudentMaterial).where(
+                    GraduationStudentMaterial.tenant_id == _tid(),
+                    GraduationStudentMaterial.gd_student_id == int(manifest.target_id),
+                    GraduationStudentMaterial.material_code.in_(manifest_codes or {"__NONE__"}),
+                    GraduationStudentMaterial.is_deleted.is_(False),
+                ).with_for_update()).all()
+                for material in archived_materials:
+                    material.archive_status = "ARCHIVED"
+                    material.version = int(material.version or 0) + 1
             db.commit(); return _export_job_view(row)
     except Exception as exc:
         with session() as db:
@@ -568,6 +584,21 @@ def revoke_manifest(gd_student_id: int, reason: str, user: dict) -> dict:
         for material in materials:
             material.archive_status = "ELIGIBLE" if material.review_status == "APPROVED" else "NOT_ARCHIVED"
             material.version = int(material.version or 0) + 1
+        manifest_items = db.scalars(select(ArchiveManifestItem).where(
+            ArchiveManifestItem.tenant_id == _tid(),
+            ArchiveManifestItem.manifest_id == int(manifest.id),
+            ArchiveManifestItem.is_deleted.is_(False),
+        )).all()
+        version_ids = {int(item.version_id) for item in manifest_items}
+        versions = db.scalars(select(FileVersion).where(
+            FileVersion.tenant_id == _tid(), FileVersion.id.in_(version_ids or {-1}),
+            FileVersion.is_current.is_(True), FileVersion.is_deleted.is_(False),
+        ).with_for_update()).all()
+        for version in versions:
+            if version.status == "ARCHIVED":
+                version.status = "APPROVED"
+        student.stage = "FINAL_CHECK"
+        student.version = int(student.version or 0) + 1
         archive = db.scalars(select(GraduationArchiveRecord).where(
             GraduationArchiveRecord.tenant_id == _tid(),
             GraduationArchiveRecord.gd_student_id == int(student.id),
