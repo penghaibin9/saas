@@ -13,7 +13,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
-from app.models import InternshipProcessReport, StudentProfile
+from app.models import InternshipArchive, InternshipProcessReport, StudentProfile
 from app.models.file import ArchiveManifest, ArchiveManifestItem
 from app.modules.internship.services import internship_material_center_facade as facade
 from app.modules.internship.services import internship_material_center_service as core
@@ -282,13 +282,70 @@ def prepare_archive_manifest(internship_id, user=None, force_file_ids=None) -> d
         }
 
 
+def finalize_manifest(manifest_id, internship_id, user=None) -> dict:
+    """冻结文件版本清单，但不额外改变旧业务归档的乐观锁版本。"""
+    with session() as db:
+        manifest = db.scalar(select(ArchiveManifest).where(
+            ArchiveManifest.id == _as_id(manifest_id),
+            ArchiveManifest.tenant_id == _tid(),
+            ArchiveManifest.target_id == str(_as_id(internship_id)),
+            ArchiveManifest.status == "PREPARED",
+            ArchiveManifest.is_deleted.is_(False),
+        ).with_for_update())
+        if not manifest:
+            raise AppException("DATA_CONFLICT", "归档文件版本清单不存在或状态已变化")
+        archive = db.scalar(select(InternshipArchive).where(
+            InternshipArchive.tenant_id == _tid(),
+            InternshipArchive.internship_id == _as_id(internship_id),
+            InternshipArchive.status == "ARCHIVED",
+            InternshipArchive.is_deleted.is_(False),
+        ).with_for_update())
+        if not archive:
+            raise AppException("DATA_CONFLICT", "业务归档未成功，不能冻结文件版本清单")
+        items = db.scalars(select(ArchiveManifestItem).where(
+            ArchiveManifestItem.tenant_id == _tid(),
+            ArchiveManifestItem.manifest_id == manifest.id,
+            ArchiveManifestItem.is_deleted.is_(False),
+        ).order_by(ArchiveManifestItem.sort_no, ArchiveManifestItem.id)).all()
+        manifest.status = "FROZEN"
+        manifest.frozen_at = datetime.utcnow()
+        snapshot = dict(archive.material_snapshot or {})
+        snapshot["fileVersionManifest"] = {
+            "schemaVersion": "INTERNSHIP_FILE_VERSION_MANIFEST_V1",
+            "manifestId": str(manifest.id),
+            "revision": manifest.revision,
+            "manifestSha256": manifest.manifest_sha256,
+            "frozenAt": manifest.frozen_at.isoformat() + "Z",
+            "items": [{
+                "materialCode": item.material_code,
+                "assetId": str(item.asset_id),
+                "versionId": str(item.version_id),
+                "fileObjectId": str(item.file_object_id),
+                "fileName": item.file_name_snapshot,
+                "sizeBytes": item.size_snapshot,
+                "sha256": item.sha256_snapshot,
+                "reviewStatus": item.review_status,
+                "scanResult": item.scan_result,
+            } for item in items],
+        }
+        archive.material_snapshot = snapshot
+        archive.snapshot_version = int(archive.snapshot_version or 0) + 1
+        # 不能递增 archive.version：archive_student() 已把新版本返回给客户端；
+        # Manifest 是附加证据，不应让紧接着的撤销请求误判为并发修改。
+        core._trail(db, _as_id(internship_id), "MANIFEST_FROZEN", {
+            "manifestId": str(manifest.id),
+            "manifestSha256": manifest.manifest_sha256,
+        }, user)
+        db.commit()
+        return core._manifest_row(db, manifest)
+
+
 # 其余接口继续使用已验证的阶段 4 Facade / 核心实现。
 record_detail = facade.record_detail
 list_center = facade.list_center
 synchronize = facade.synchronize
 preflight_agreement = facade.preflight_agreement
 preflight_insurance = facade.preflight_insurance
-finalize_manifest = facade.finalize_manifest
 abort_manifest = facade.abort_manifest
 get_manifest = facade.get_manifest
 build_versioned_package = facade.build_versioned_package
