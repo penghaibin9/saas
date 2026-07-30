@@ -18,3 +18,4 @@
 .v2-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.v2-form-section{padding:18px}.v2-form-section h2{font-size:15px;margin:0 0 14px}.v2-note{font-size:11px;color:var(--v2-text-3);line-height:1.6}.v2-state{display:none;padding:42px 20px;text-align:center}.v2-state.active{display:block}.v2-state svg{width:44px;height:44px;color:var(--v2-brand-600)}.v2-state h3{margin:12px 0 6px}.v2-state p{font-size:12px;color:var(--v2-text-3)}
 @media(max-width:1320px){.v2-metric-grid{grid-template-columns:repeat(2,1fr)}.v2-kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:900px){.v2-two,.v2-form-grid{grid-template-columns:1fr}.v2-page{padding:14px}.v2-page-head{flex-direction:column}.v2-head-actions{justify-content:flex-start}}
+.v2-icon-btn svg,.v2-metric-icon svg,.v2-priority svg,.v2-page-title-icon svg,.v2-quick svg{width:18px;height:18px;display:block}
