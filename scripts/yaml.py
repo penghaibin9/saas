@@ -26,28 +26,44 @@ def _patch_acceptance() -> bool:
     text = TARGET.read_text(encoding="utf-8")
     original = text
     file_models = (
-        "ArchiveManifest", "ArchiveManifestItem", "ExportJob",
+        "ArchiveManifest", "ArchiveManifestItem",
         "FileAsset", "FileBinding", "FileObject", "FileVersion",
     )
-    for name in file_models:
+    for name in (*file_models, "ExportJob"):
         line = f"    {name},\n"
         if line in text:
             text = text.replace(line, "", 1)
     file_import = '''from app.models.file import (
     ArchiveManifest,
     ArchiveManifestItem,
-    ExportJob,
     FileAsset,
     FileBinding,
     FileObject,
     FileVersion,
 )
 '''
+    data_exchange_import = "from app.models.data_exchange import ExportJob\n"
     anchor = "from app.modules.graduation.services import (\n"
     if file_import not in text:
         if text.count(anchor) != 1:
             raise RuntimeError("cannot insert public file model imports")
-        text = text.replace(anchor, file_import + anchor, 1)
+        text = text.replace(anchor, file_import + data_exchange_import + anchor, 1)
+    elif data_exchange_import not in text:
+        text = text.replace(file_import, file_import + data_exchange_import, 1)
+
+    v1_anchor = '''        assert old_versions
+        assert all(not row.is_current and row.status == "INVALIDATED" for row in old_versions)
+'''
+    v1_block = '''        assert old_versions
+        v1 = old_versions[0]
+        assert v1.status == "INVALIDATED"
+        assert v1.is_current is False
+        assert all(not row.is_current and row.status == "INVALIDATED" for row in old_versions)
+'''
+    if 'v1.status == "INVALIDATED"' not in text:
+        if text.count(v1_anchor) != 1:
+            raise RuntimeError("cannot insert explicit v1 invalidation evidence")
+        text = text.replace(v1_anchor, v1_block, 1)
 
     scan_block = '''    # Teacher overview must count a current material whose FileObject later becomes unsafe.
     db = get_sessionmaker()()
