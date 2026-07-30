@@ -33,7 +33,7 @@ on:
           - teacher
           - mixed
   schedule:
-    # 北京时间每天 02:30；仅执行 smoke，且需配置 PERF_BASE_URL 与令牌 Secrets。
+    # 北京时间每天 02:30；仅执行 smoke，且需配置 PERF_BASE_URL、运维令牌与测试账号/Token Secrets。
     - cron: "30 18 * * *"
 
 permissions:
@@ -81,6 +81,8 @@ jobs:
       K6_ALLOW_PRODUCTION_HIGH_LOAD: ${{ vars.PERF_ALLOW_PRODUCTION_HIGH_LOAD }}
       K6_STUDENT_TOKENS_JSON: ${{ secrets.PERF_STUDENT_TOKENS_JSON }}
       K6_TEACHER_TOKENS_JSON: ${{ secrets.PERF_TEACHER_TOKENS_JSON }}
+      K6_STUDENT_CREDENTIALS_JSON: ${{ secrets.PERF_STUDENT_CREDENTIALS_JSON }}
+      K6_TEACHER_CREDENTIALS_JSON: ${{ secrets.PERF_TEACHER_CREDENTIALS_JSON }}
       INTERNAL_OPS_TOKEN: ${{ secrets.PERF_INTERNAL_OPS_TOKEN }}
       SUMMARY_PATH: /work/performance/results/k6-summary.json
     steps:
@@ -88,7 +90,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: 检查目标、运维探针与令牌池
+      - name: 检查目标、运维探针与账号/令牌池
         shell: bash
         run: |
           set -euo pipefail
@@ -97,22 +99,35 @@ jobs:
             *) echo "远程压测仅允许 HTTPS"; exit 1 ;;
           esac
           test -n "$INTERNAL_OPS_TOKEN" || { echo "缺少 PERF_INTERNAL_OPS_TOKEN"; exit 1; }
+          student_auth=false
+          teacher_auth=false
+          test -n "$K6_STUDENT_TOKENS_JSON" && student_auth=true
+          test -n "$K6_STUDENT_CREDENTIALS_JSON" && student_auth=true
+          test -n "$K6_TEACHER_TOKENS_JSON" && teacher_auth=true
+          test -n "$K6_TEACHER_CREDENTIALS_JSON" && teacher_auth=true
           case "$SCENARIO" in
             student)
-              test -n "$K6_STUDENT_TOKENS_JSON" || { echo "缺少 PERF_STUDENT_TOKENS_JSON"; exit 1; }
+              $student_auth || { echo "缺少学生测试账号或Token Secret"; exit 1; }
               ;;
             teacher)
-              test -n "$K6_TEACHER_TOKENS_JSON" || { echo "缺少 PERF_TEACHER_TOKENS_JSON"; exit 1; }
+              $teacher_auth || { echo "缺少教师测试账号或Token Secret"; exit 1; }
               ;;
             mixed)
-              test -n "$K6_STUDENT_TOKENS_JSON" || { echo "缺少 PERF_STUDENT_TOKENS_JSON"; exit 1; }
-              test -n "$K6_TEACHER_TOKENS_JSON" || { echo "缺少 PERF_TEACHER_TOKENS_JSON"; exit 1; }
+              $student_auth || { echo "缺少学生测试账号或Token Secret"; exit 1; }
+              $teacher_auth || { echo "缺少教师测试账号或Token Secret"; exit 1; }
               ;;
             *) echo "非法场景: $SCENARIO"; exit 1 ;;
           esac
-          if [[ "$PROFILE" =~ ^p(500|1000|3000)$ ]] && [[ "$K6_ALLOW_HIGH_LOAD" != "true" ]]; then
-            echo "高并发档位尚未解锁"
-            exit 1
+          if [[ "$PROFILE" =~ ^p(500|1000|3000)$ ]]; then
+            [[ "$K6_ALLOW_HIGH_LOAD" == "true" ]] || { echo "高并发档位尚未解锁"; exit 1; }
+            case "$SCENARIO" in
+              student) test -n "$K6_STUDENT_TOKENS_JSON" || { echo "高负载必须使用学生Token池"; exit 1; } ;;
+              teacher) test -n "$K6_TEACHER_TOKENS_JSON" || { echo "高负载必须使用教师Token池"; exit 1; } ;;
+              mixed)
+                test -n "$K6_STUDENT_TOKENS_JSON" || { echo "高负载必须使用学生Token池"; exit 1; }
+                test -n "$K6_TEACHER_TOKENS_JSON" || { echo "高负载必须使用教师Token池"; exit 1; }
+                ;;
+            esac
           fi
           mkdir -p performance/results
       - name: 压测前就绪与指标探针
@@ -138,6 +153,8 @@ jobs:
             -e K6_ALLOW_PRODUCTION_HIGH_LOAD \
             -e K6_STUDENT_TOKENS_JSON \
             -e K6_TEACHER_TOKENS_JSON \
+            -e K6_STUDENT_CREDENTIALS_JSON \
+            -e K6_TEACHER_CREDENTIALS_JSON \
             -e SUMMARY_PATH \
             grafana/k6:0.54.0 run performance/k6/capacity.js
       - name: 压测后就绪与指标探针
