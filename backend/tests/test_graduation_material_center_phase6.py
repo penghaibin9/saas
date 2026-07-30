@@ -230,13 +230,106 @@ def test_phase6_generic_graduation_download_remains_blocked():
     assert "GRADUATION_VERSIONED_MATERIAL_DOWNLOAD" in staff_router
 
 
+def _install_acceptance_model_exports():
+    import app.models as aggregate
+    from app.models.file import (
+        ArchiveManifest,
+        ArchiveManifestItem,
+        FileAsset,
+        FileBinding,
+        FileObject,
+        FileVersion,
+    )
+
+    for model in (
+        ArchiveManifest,
+        ArchiveManifestItem,
+        FileAsset,
+        FileBinding,
+        FileObject,
+        FileVersion,
+    ):
+        setattr(aggregate, model.__name__, model)
+
+
+def _assert_real_scan_abnormal_student():
+    from sqlalchemy import select
+
+    from app.core.context import set_current_user, set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models.file import FileBinding, FileObject
+    from app.models.graduation import GraduationBatch
+    from app.modules.graduation.services import graduation_material_catalog_service as catalog
+
+    tenant_id = 1000000000000000001
+    admin_user = {
+        "tenantId": str(tenant_id),
+        "userId": "6201",
+        "realName": "阶段六管理员",
+        "userType": "TEACHER",
+        "currentRoleCode": "GRADUATION_ADMIN",
+        "permissions": ["*"],
+        "dataScope": "ALL",
+        "graduationDataScope": "ALL",
+    }
+    set_tenant({"tenantId": str(tenant_id)})
+    set_current_user(admin_user)
+    db = get_sessionmaker()()
+    file_id = None
+    old_status = None
+    old_scan = None
+    try:
+        batch = db.scalars(select(GraduationBatch).where(
+            GraduationBatch.tenant_id == tenant_id,
+            GraduationBatch.batch_name.like("阶段六材料中心验收-%"),
+            GraduationBatch.is_deleted.is_(False),
+        ).order_by(GraduationBatch.id.desc())).first()
+        assert batch is not None
+        binding = db.scalars(select(FileBinding).where(
+            FileBinding.tenant_id == tenant_id,
+            FileBinding.module_code == "GRADUATION",
+            FileBinding.is_current.is_(True),
+            FileBinding.is_deleted.is_(False),
+        ).order_by(FileBinding.id.desc())).first()
+        assert binding is not None
+        file_obj = db.get(FileObject, int(binding.file_id))
+        assert file_obj is not None
+        file_id = int(file_obj.id)
+        old_status = file_obj.status
+        old_scan = file_obj.scan_status
+        file_obj.status = "REJECTED"
+        file_obj.scan_status = "INFECTED"
+        db.commit()
+        batch_id = int(batch.id)
+    finally:
+        db.close()
+
+    try:
+        overview = catalog.material_overview(admin_user, batch_id=batch_id, page=1, page_size=20)
+        scanAbnormalStudents = int(overview["summary"]["scanAbnormalStudents"])
+        assert scanAbnormalStudents >= 1
+    finally:
+        if file_id is not None:
+            db = get_sessionmaker()()
+            try:
+                file_obj = db.get(FileObject, file_id)
+                file_obj.status = old_status
+                file_obj.scan_status = old_scan
+                db.commit()
+            finally:
+                db.close()
+
+
 def test_phase6_real_mysql_version_review_manifest_zip_excel_template(db_mode, monkeypatch):
     database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     assert database_url, "real MySQL test database is required"
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("DB_ENABLED", "true")
+    _install_acceptance_model_exports()
     script = Path(__file__).with_name("graduation_material_center_mysql_acceptance.py")
     runpy.run_path(str(script), run_name="__main__")
+    _assert_real_scan_abnormal_student()
+
 
 def test_phase6_template_self_service_and_mobile_clients_are_real():
     catalog = read("backend/app/modules/graduation/services/graduation_material_catalog_service.py")
@@ -282,16 +375,19 @@ def test_phase6_template_self_service_and_mobile_clients_are_real():
 
 def test_phase6_real_acceptance_covers_all_completion_evidence():
     script = read("backend/tests/graduation_material_center_mysql_acceptance.py")
+    test_source = read("backend/tests/test_graduation_material_center_phase6.py")
     structured = read("backend/app/modules/graduation/services/graduation_structured_snapshot_service.py")
     ast.parse(structured, filename="graduation_structured_snapshot_service.py")
     for marker in (
-        "len(rule_codes) == 18", "scanAbnormalStudents", "v1.status == \"INVALIDATED\"",
-        "ExportJob", "manifest.json", "档案清单.xlsx", "materialFileCount",
+        "len(rule_codes) == 18", "v1.status == \"INVALIDATED\"",
+        "ExportJob", "manifest.json", "档案清单.xlsx", 'completed["result"]["fileCount"]',
         "result[\"zipSha256\"]", "result[\"xlsxSha256\"]", "startswith(\"'=\")",
         "revoke_manifest", "create_download_ticket", "second_manifest", "template_v2",
         "cross_tenant_file_id", "infected_file_id", "pending_file_id", "dry_run=True",
     ):
         assert marker in script
+    assert "scanAbnormalStudents" in test_source
+    assert "catalog.material_overview" in test_source
     assert "structured_snapshots.prepare_all" in read(
         "backend/app/modules/graduation/services/graduation_material_export_service.py"
     )
