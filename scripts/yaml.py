@@ -49,12 +49,14 @@ def _validate_stage6_once() -> None:
             raise RuntimeError("Stage 6 MySQL container did not become ready")
 
         _run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", "backend/requirements.txt"])
+        database_url = f"mysql+pymysql://root:root@127.0.0.1:{port}/student_lifecycle_test?charset=utf8mb4"
         env = dict(os.environ)
         env.update({
             "PYTHONPATH": str(ROOT / "backend"),
             "DB_ENABLED": "true",
             "DB_DRIVER": "mysql",
-            "DATABASE_URL": f"mysql+pymysql://root:root@127.0.0.1:{port}/student_lifecycle_test?charset=utf8mb4",
+            "DATABASE_URL": database_url,
+            "TEST_DATABASE_URL": database_url,
             "APP_ENV": "test",
             "AUTH_MOCK_ENABLED": "true",
             "FILE_STORAGE_BACKEND": "local",
