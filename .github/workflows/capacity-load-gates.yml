@@ -84,6 +84,8 @@ jobs:
       DB_ENABLED: "true"
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "10"
       REDIS_URL: redis://127.0.0.1:6379/0
       JWT_SECRET: local-capacity-gate-secret-at-least-32-bytes
       INTERNAL_OPS_TOKEN: local-capacity-ops-token-20260730
@@ -157,15 +159,33 @@ jobs:
           mkdir -p performance/results
           workers=1
           case "$PROFILE" in
-            p300|p500) workers=2 ;;
+            p300|p500)
+              workers="$(nproc)"
+              if (( workers > 4 )); then workers=4; fi
+              if (( workers < 2 )); then workers=2; fi
+              ;;
           esac
+          export WEB_CONCURRENCY="$workers"
+          {
+            echo "profile=$PROFILE"
+            echo "cpu_count=$(nproc)"
+            echo "workers=$workers"
+            echo "db_pool_size=$DB_POOL_SIZE"
+            echo "db_max_overflow=$DB_MAX_OVERFLOW"
+            free -m
+          } > performance/results/runtime-capacity.txt
           (
             cd backend
-            nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers "$workers" \
+            nohup python -m uvicorn app.main:app \
+              --host 127.0.0.1 \
+              --port 8000 \
+              --workers "$workers" \
+              --no-access-log \
+              --log-config ../performance/uvicorn-capacity-log.json \
               > ../performance/results/local-backend.log 2>&1 &
             echo $! > ../performance/results/local-backend.pid
           )
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
               exit 0
             fi
