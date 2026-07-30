@@ -35,7 +35,9 @@ REQUIRED_FIELDS = (
 VALID_CLIENTS = {"backend", "admin-pc", "student-pc", "teacher-miniapp", "student-miniapp", "shared"}
 VALID_STATUS = {"active", "legacy", "duplicate", "needs-verification", "planned", "removed"}
 VALID_RISK = {"P0", "P1", "P2", "P3"}
-VALID_TARGET_PHASE = {str(i) for i in range(8)} | {"none"}
+# The frozen document defines stages 0-10. Supplements from later construction stages must be
+# schema-valid without weakening the original baseline or using free-form phase labels.
+VALID_TARGET_PHASE = {str(i) for i in range(11)} | {"none"}
 SCAN_ROOTS = ("backend/app", "frontend/src", "student-portal/src", "miniapp/src")
 SOURCE_SUFFIXES = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".json"}
 SKIP_PARTS = {".git", "node_modules", "dist", "build", ".venv", "venv", "__pycache__", "coverage", "public"}
@@ -108,8 +110,6 @@ def load_supplement_entries() -> list[dict[str, Any]]:
 
 def load_effective_inventory(path: Path) -> dict[str, Any]:
     data = load_inventory(path)
-    # Supplements belong only to the repository's canonical frozen inventory. Custom --inventory
-    # calls remain isolated and deterministic for tests or external audits.
     if path.resolve() == DEFAULT_INVENTORY.resolve():
         data = dict(data)
         data["entries"] = list(data.get("entries") or []) + load_supplement_entries()
@@ -260,169 +260,167 @@ def generated_entry(module: str, client: str, items: list[Candidate]) -> dict[st
         ("upload", upload), ("preview", preview), ("download", download),
         ("import", import_flag), ("export", export_flag), ("archive", archive),
     ) if enabled]
-    if upload:
-        target_phase = "1"
-    elif import_flag:
-        target_phase = "4"
-    elif export_flag:
-        target_phase = "5"
-    elif archive:
-        target_phase = "6"
-    elif download or preview:
-        target_phase = "3"
-    else:
-        target_phase = "1"
-    route_tokens = sorted({
-        item.token for item in items if item.capability in {"fastapi-file-route", "http-file-path"}
-    })
-    routes = ", ".join(route_tokens[:20])
-    if len(route_tokens) > 20:
-        routes += f", ... (+{len(route_tokens) - 20})"
-    source_text = "; ".join(sources)
+    primary = items[0]
     return {
         "module": module,
         "client": client,
-        "route": f"inventory://{module}/{client}",
-        "page": source_text,
-        "action": "+".join(actions) or "file-capability",
-        "fileCategory": "MIXED",
-        "api": "multiple; see notes",
-        "backendService": source_text,
-        "storageMode": "mixed",
-        "authMode": "existing endpoint guard; verify in target phase",
-        "dataScope": "existing business scope; verify in target phase",
-        "versioned": "unknown",
-        "scanGated": "unknown",
+        "route": primary.token if primary.capability in {"fastapi-file-route", "http-file-path"} else primary.source,
+        "page": ", ".join(sources),
+        "action": "+".join(actions) or primary.capability,
+        "fileCategory": "AUTO_DISCOVERED",
+        "api": ", ".join(sorted({item.token for item in items if "route" in item.capability or "path" in item.capability})) or "not-explicit",
+        "backendService": ", ".join(source for source in sources if source.startswith("backend/")) or "client-only",
+        "storageMode": "unknown-requires-review",
+        "authMode": "unknown-requires-review",
+        "dataScope": "unknown-requires-review",
+        "versioned": False,
+        "scanGated": False,
         "preview": preview,
         "download": download,
         "import": import_flag,
         "export": export_flag,
         "archive": archive,
         "status": "needs-verification",
-        "risk": "P0" if (upload or import_flag or download) else "P1",
-        "targetPhase": target_phase,
-        "notes": f"Stage 0 exhaustive source group. sources: {source_text}. representative routes: {routes or '-'}",
+        "risk": "P1",
+        "targetPhase": "0",
+        "notes": "auto-discovered signals: " + "; ".join(
+            f"{item.source}:{item.line} [{item.capability}] {item.snippet}" for item in items[:8]
+        ),
     }
 
 
-def sync_inventory(path: Path) -> None:
-    data = load_inventory(path)
-    manual_entries = [
-        entry for entry in data.get("entries", [])
-        if not str(entry.get("route", "")).startswith("inventory://")
-    ]
-    supplements = load_supplement_entries() if path.resolve() == DEFAULT_INVENTORY.resolve() else []
-    candidates = discover()
-    uncovered = [item for item in candidates if not is_covered(item, manual_entries + supplements)]
-    groups: dict[tuple[str, str], list[Candidate]] = collections.defaultdict(list)
-    for item in uncovered:
-        groups[(infer_module(item.source), infer_client(item.source))].append(item)
-    generated = [generated_entry(module, client, items) for (module, client), items in sorted(groups.items())]
-    data["status"] = "COMPLETE"
-    data["generatedAt"] = "2026-07-29"
-    data["entries"] = manual_entries + generated
-    errors = validate_schema({**data, "entries": data["entries"] + supplements})
-    if errors:
-        raise RuntimeError("generated inventory invalid: " + "; ".join(errors))
-    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=100000), encoding="utf-8")
-    print(
-        f"Inventory synchronized: manual={len(manual_entries)} supplements={len(supplements)} "
-        f"generated={len(generated)} candidates={len(candidates)}"
+def relative_sources(candidates: Iterable[Candidate]) -> set[str]:
+    return {item.source for item in candidates}
+
+
+def inventory_entries(path: Path) -> list[dict[str, Any]]:
+    return list(load_effective_inventory(path).get("entries") or [])
+
+
+def git_changed_files(base_ref: str) -> list[str]:
+    completed = subprocess.run(
+        ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
     )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "git diff failed")
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
 
 
-def git_changed_files(base_ref: str) -> list[Path]:
-    command = ["git", "diff", "--name-only", "--diff-filter=ACMR", f"{base_ref}...HEAD"]
-    try:
-        output = subprocess.check_output(command, cwd=ROOT, text=True, stderr=subprocess.STDOUT)
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        detail = getattr(exc, "output", "") or str(exc)
-        raise RuntimeError(f"cannot calculate changed files against {base_ref}: {detail.strip()}") from exc
-    result: list[Path] = []
-    for item in output.splitlines():
-        rel = item.strip()
-        path = ROOT / rel
-        if rel and path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES and any(
-            rel.startswith(f"{root}/") for root in SCAN_ROOTS
-        ):
-            result.append(path)
-    return result
+def validate_changed_capabilities(base_ref: str, entries: list[dict[str, Any]]) -> list[str]:
+    changed = [ROOT / item for item in git_changed_files(base_ref)]
+    sources = [path for path in changed if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES]
+    candidates = discover(sources)
+    return [
+        f"unregistered changed capability: {item.source}:{item.line} [{item.capability}] {item.token}"
+        for item in candidates
+        if not is_covered(item, entries)
+    ]
 
 
-def print_candidates(title: str, candidates: list[Candidate]) -> None:
-    print(title)
-    for item in candidates:
-        print(f"  - {item.source}:{item.line} [{item.capability}] {item.token}")
-        print(f"      {item.snippet}")
-
-
-def write_json_report(path: Path, all_candidates: list[Candidate], missing: list[Candidate], entries_count: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": "file-capability-scan/v2",
-        "entriesCount": entries_count,
-        "candidateCount": len(all_candidates),
-        "missingCount": len(missing),
-        "candidates": [asdict(item) for item in all_candidates],
-        "missing": [asdict(item) for item in missing],
+def summarize(candidates: list[Candidate], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    uncovered = [item for item in candidates if not is_covered(item, entries)]
+    by_module = collections.Counter(infer_module(item.source) for item in candidates)
+    return {
+        "candidates": len(candidates),
+        "registered": len(candidates) - len(uncovered),
+        "uncovered": len(uncovered),
+        "byModule": dict(sorted(by_module.items())),
+        "uncoveredItems": [asdict(item) for item in uncovered],
     }
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"JSON report written: {path}")
 
 
-def main() -> int:
+def write_synced_inventory(path: Path) -> int:
+    data = load_inventory(path)
+    entries = list(data.get("entries") or [])
+    candidates = discover()
+    uncovered = [item for item in candidates if not is_covered(item, entries)]
+    grouped: dict[tuple[str, str], list[Candidate]] = collections.defaultdict(list)
+    for item in uncovered:
+        grouped[(infer_module(item.source), infer_client(item.source))].append(item)
+    for (module, client), items in sorted(grouped.items()):
+        entries.append(generated_entry(module, client, items))
+    data["entries"] = entries
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    print(f"sync complete: added {len(grouped)} grouped entries")
+    return 0
+
+
+def print_schema(path: Path) -> int:
+    errors = validate_schema(load_effective_inventory(path))
+    if errors:
+        print("inventory schema invalid:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    print("inventory schema valid")
+    return 0
+
+
+def print_report(path: Path, json_path: Path | None) -> int:
+    entries = inventory_entries(path)
+    candidates = discover()
+    report = summarize(candidates, entries)
+    if json_path:
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+def print_strict(path: Path) -> int:
+    entries = inventory_entries(path)
+    uncovered = [item for item in discover() if not is_covered(item, entries)]
+    if uncovered:
+        print("unregistered file capabilities:", file=sys.stderr)
+        for item in uncovered:
+            print(f"- {item.source}:{item.line} [{item.capability}] {item.token}", file=sys.stderr)
+        return 1
+    print("all file capabilities registered")
+    return 0
+
+
+def print_changed(path: Path, base_ref: str) -> int:
+    errors = validate_changed_capabilities(base_ref, inventory_entries(path))
+    if errors:
+        print("changed file capabilities must be registered:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    print("all changed file capabilities registered")
+    return 0
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--inventory", type=Path, default=DEFAULT_INVENTORY)
     parser.add_argument("--check-schema", action="store_true")
     parser.add_argument("--strict-baseline", action="store_true")
     parser.add_argument("--check-new", action="store_true")
-    parser.add_argument("--sync-inventory", action="store_true")
     parser.add_argument("--base-ref", default="origin/main")
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--json-report", type=Path)
-    args = parser.parse_args()
-    if not any((args.check_schema, args.strict_baseline, args.check_new, args.sync_inventory, args.report, args.json_report)):
-        parser.error("choose at least one mode")
-    try:
-        if args.sync_inventory:
-            sync_inventory(args.inventory)
-        data = load_effective_inventory(args.inventory)
-    except RuntimeError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-    errors = validate_schema(data)
-    if errors:
-        print("Inventory schema errors:", file=sys.stderr)
-        for error in errors:
-            print(f"  - {error}", file=sys.stderr)
-        return 2
-    entries = data["entries"]
+    parser.add_argument("--sync-inventory", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     if args.check_schema:
-        print(f"Inventory schema OK: {len(entries)} entries")
-    if args.report or args.strict_baseline or args.json_report:
-        candidates = discover()
-        missing = [item for item in candidates if not is_covered(item, entries)]
-        print(f"Baseline candidates: {len(candidates)}; registered: {len(candidates) - len(missing)}; missing: {len(missing)}")
-        if args.json_report:
-            write_json_report(args.json_report, candidates, missing, len(entries))
-        if args.report and missing:
-            print_candidates("Unregistered baseline candidates:", missing)
-        if args.strict_baseline and missing:
-            print_candidates("ERROR: unregistered baseline candidates:", missing)
-            return 1
+        return print_schema(args.inventory)
+    if args.sync_inventory:
+        return write_synced_inventory(args.inventory)
+    if args.strict_baseline:
+        return print_strict(args.inventory)
     if args.check_new:
-        try:
-            changed = git_changed_files(args.base_ref)
-        except RuntimeError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
-        candidates = discover(changed)
-        missing = [item for item in candidates if not is_covered(item, entries)]
-        print(f"Changed source files: {len(changed)}; capability candidates: {len(candidates)}; unregistered: {len(missing)}")
-        if missing:
-            print_candidates("ERROR: changed file capability is not registered:", missing)
-            return 1
-    return 0
+        return print_changed(args.inventory, args.base_ref)
+    if args.report or args.json_report:
+        return print_report(args.inventory, args.json_report)
+    return print_report(args.inventory, args.json_report)
 
 
 if __name__ == "__main__":
