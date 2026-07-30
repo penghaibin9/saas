@@ -6,6 +6,7 @@ on:
       - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/data_exchange_job_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
+      - 'backend/app/services/data_exchange_cleanup_service.py'
       - 'backend/app/api/v1/data_exchange.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
@@ -19,6 +20,7 @@ on:
       - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/data_exchange_job_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
+      - 'backend/app/services/data_exchange_cleanup_service.py'
       - 'backend/app/api/v1/data_exchange.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
@@ -82,6 +84,7 @@ jobs:
             app/models/data_exchange.py \
             app/services/data_exchange_job_service.py \
             app/services/data_exchange_confirm_service.py \
+            app/services/data_exchange_cleanup_service.py \
             app/api/v1/data_exchange.py \
             app/api/v1/migration.py \
             alembic/versions/0147_data_exchange_job_center.py
@@ -105,4 +108,6 @@ jobs:
           grep -q "current.version" frontend/src/modules/system/views/SystemTeacherImportView.vue
           grep -q "current.version" frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "pendingJobId" frontend/src/modules/system/views/SystemMigrationView.vue
+          grep -q "ImportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
+          grep -q "ExportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "extra=\"forbid\"" backend/app/api/v1/data_exchange.py
