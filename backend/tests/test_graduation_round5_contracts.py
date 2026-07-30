@@ -91,7 +91,7 @@ def test_sensitive_routes_require_batch_and_precede_legacy_routes():
         "graduation_material_sensitive_router.router",
     ):
         assert name in routes
-        assert routes.index(name) < routes.index("graduation, graduation_batch")
+            assert routes.index(name) < routes.index("api_router.include_router(graduation.router")
     sensitive = text("backend/app/modules/graduation/routers/graduation_sensitive_router.py")
     for endpoint in (
         '"/gd-grades/{gd_student_id}"',

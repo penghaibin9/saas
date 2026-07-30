@@ -445,24 +445,18 @@ def _proposal_snapshot_bytes(record: GraduationProposal, student: GraduationStud
     return text.encode("utf-8")
 
 
-def _store_proposal_snapshot(record: GraduationProposal, student: GraduationStudent, user: dict) -> FileObject:
+def _store_proposal_snapshot(db, record: GraduationProposal, student: GraduationStudent, user: dict) -> FileObject:
     safe_student = re.sub(r"[\\/:*?\"<>|]+", "_", student.name or "学生")
     meta = file_service.store_bytes(
         _proposal_snapshot_bytes(record, student),
         f"开题报告_{safe_student}_{record.version or 'v1'}_正文快照.txt",
         biz_type="GRADUATION_MATERIAL", biz_id=str(record.id), mime_type="text/plain",
-        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE",
+        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
     )
-    from app.db.session import get_sessionmaker
-    lookup = get_sessionmaker()()
-    try:
-        row = lookup.get(FileObject, int(meta["fileId"]))
-        if not row or row.tenant_id != _tid():
-            raise AppException("DATA_CONFLICT", "开题正文快照写入失败")
-        lookup.expunge(row)
-        return row
-    finally:
-        lookup.close()
+    row = db.get(FileObject, int(meta["fileId"]))
+    if not row or row.tenant_id != _tid():
+        raise AppException("DATA_CONFLICT", "开题正文快照写入失败")
+    return row
 
 
 def _status_for_record(status: str) -> str:
@@ -492,7 +486,7 @@ def _adopt_record(db, record_type: str, record, student: GraduationStudent, user
     )
     materials: list[tuple[str, str, FileObject]] = []
     if family == STAGE_PROPOSAL:
-        snapshot = _store_proposal_snapshot(record, student, user)
+        snapshot = _store_proposal_snapshot(db, record, student, user)
         # snapshot 已在独立写会话提交并从该会话分离；旧业务事务处于 MySQL
         # REPEATABLE READ 时不得再次 db.get，否则可能得到 None。
         _require_file_ready(snapshot)
@@ -1041,7 +1035,7 @@ def publish_template_asset(template_id: int, file_id: int | None, user: dict) ->
             meta = file_service.store_bytes(
                 text, f"{template.name}_{template.template_version or 'v1'}.txt",
                 biz_type="GRADUATION_TEMPLATE", biz_id=str(template.id), mime_type="text/plain",
-                user=user, visibility="BIZ_SCOPED", security_level="NORMAL",
+                user=user, visibility="BIZ_SCOPED", security_level="NORMAL", db=db,
             )
             file_obj = db.get(FileObject, int(meta["fileId"]))
             _require_file_ready(file_obj)
@@ -1320,16 +1314,15 @@ def file_archive(gd_student_id: int, archive_batch_no: str | None, user: dict) -
 
 
 @_conflict_guard
-def batch_file(archive_batch_no: str, batch_id: int, preview_token: str, user: dict) -> dict:
+def batch_file(archive_batch_no: str | None, batch_id: int, preview_token: str, user: dict) -> dict:
     from app.modules.graduation.services import graduation_archive_consistency as consistency
     from app.modules.graduation.services import graduation_archive_service as archive_service
     from app.modules.graduation.services.graduation_archive_batch_consistency import _archive_no
 
-    archive_no = _archive_no(archive_batch_no)
+    archive_no = _archive_no(archive_batch_no or f"GDARCH-{datetime.now():%Y%m%d}")
     with session() as db:
         batch = archive_service._require_batch(db, batch_id)
         snapshot = consistency._snapshot(db, batch, "FILE", lock=True)
-        snapshot["archiveBatchNo"] = archive_no
         consistency._verify_token(preview_token, consistency._token_payload("FILE", batch, snapshot))
         filed = skipped = 0
         manifest_ids: list[str] = []

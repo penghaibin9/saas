@@ -923,6 +923,7 @@ def _def_row(g: GraduationDefenseGroup) -> dict:
             "location": g.location or "待定", "chair": g.chair or "待指定",
             "chairMentorId": str(g.chair_mentor_id) if getattr(g, "chair_mentor_id", None) else None,
             "members": members or (g.members_json or []),
+            "memberDetails": members,
             "secretary": g.secretary or "待指定",
             "secretaryMentorId": str(g.secretary_mentor_id) if getattr(g, "secretary_mentor_id", None) else None,
             "studentCount": g.student_count, "conflict": g.conflict or "",

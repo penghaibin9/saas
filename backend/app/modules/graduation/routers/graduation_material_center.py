@@ -341,9 +341,10 @@ def batch_file(
 ):
     archive_no = str((body or {}).get("archiveBatchNo") or "").strip()
     preview_token = str((body or {}).get("previewToken") or "").strip()
-    if not archive_no or not preview_token:
-        raise AppException("VALIDATION_ERROR", "归档批次号和预览凭证不能为空")
-    legacy_result = center.batch_file(archive_no, batchId, preview_token, user)
+    if not preview_token:
+        raise AppException("VALIDATION_ERROR", "执行前必须先完成归档预览")
+    legacy_result = center.batch_file(archive_no or None, batchId, preview_token, user)
+    archive_no = str(legacy_result.get("archiveBatchNo") or archive_no).strip()
     with session() as db:
         student_ids = list(db.scalars(select(GraduationStudent.id).join(
             GraduationArchiveRecord,

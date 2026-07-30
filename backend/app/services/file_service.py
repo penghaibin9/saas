@@ -461,6 +461,7 @@ def store_bytes(
     user: dict | None = None,
     visibility: str = "PRIVATE",
     security_level: str = "NORMAL",
+    db=None,
 ) -> dict:
     """系统生成文件可信写入；仍做结构校验，但不进入用户上传杀毒队列。"""
     tenant_id = _require_tenant_id()
@@ -500,7 +501,8 @@ def store_bytes(
     if db_enabled():
         from app.models.file import FileObject
 
-        db = get_sessionmaker()()
+        owns_db = db is None
+        working_db = db or get_sessionmaker()()
         try:
             row = FileObject(
                 tenant_id=tenant_id,
@@ -524,20 +526,26 @@ def store_bytes(
                 scan_status=SCAN_NOT_REQUIRED,
                 available_at=now,
             )
-            db.add(row)
-            db.flush()
+            working_db.add(row)
+            working_db.flush()
             _register_binding(
                 str(row.id),
                 biz_type=biz_type,
                 biz_id=biz_id,
                 actor=actor,
-                db=db,
+                db=working_db,
             )
-            db.commit()
-            db.refresh(row)
+            if owns_db:
+                working_db.commit()
+                working_db.refresh(row)
             meta.update(_row_meta(row))
+        except Exception:
+            if owns_db:
+                working_db.rollback()
+            raise
         finally:
-            db.close()
+            if owns_db:
+                working_db.close()
     else:
         file_id = f"mem-{uuid.uuid4().hex[:12]}"
         meta["fileId"] = file_id

@@ -150,13 +150,13 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     )
     d = deps["gd"]
     api_router.include_router(graduation_p0_guard.router, dependencies=d)
-    # 先注册旧聚合 Router 中的 /proposals/stats、/finals/stats 等固定路径；
-    # 其同 URL 详情/审核函数已直接委托 Stage-6 权威 Service，不再依赖路由抢占。
-    api_router.include_router(graduation.router, dependencies=d)
-    api_router.include_router(graduation_material_center.router, dependencies=d)
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
+    # Legacy fixed paths precede Stage-6 dynamic detail paths; legacy detail/review
+    # endpoints already delegate to the authoritative public-version service.
+    api_router.include_router(graduation.router, dependencies=d)
+    api_router.include_router(graduation_material_center.router, dependencies=d)
     api_router.include_router(
         graduation_extension.router,
         dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
