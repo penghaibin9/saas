@@ -1,4 +1,9 @@
 from pathlib import Path
+import subprocess
+
+BRANCH = "audit/file-capability-inventory"
+subprocess.run(["git", "fetch", "origin", BRANCH], check=True)
+subprocess.run(["git", "checkout", "-B", "stage6-apply", f"origin/{BRANCH}"], check=True)
 
 path = Path(__file__).with_name("patch_phase6_prod_closeout.py")
 text = path.read_text(encoding="utf-8")
@@ -114,4 +119,4 @@ if text.count(needle) != 1:
     raise RuntimeError(f"round5 matcher expected once, found {text.count(needle)}")
 text = text.replace(needle, '        assert routes.index(name) < routes.index("graduation, graduation_batch")', 1)
 path.write_text(text, encoding="utf-8")
-print("Scoped store_bytes and Round5 patch sections")
+print("Checked out latest branch and scoped Stage 6 patch sections")
