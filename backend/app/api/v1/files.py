@@ -49,6 +49,10 @@ def download_file(file_id: str, user=Depends(get_current_user)):
     return download_contract(file_id, user=user)
 
 
+# 静态 /governance 必须先于动态 /{file_id} 注册，否则会被当成文件编号。
+router.include_router(file_governance.router)
+
+
 @router.get("/{file_id}", summary="文件元数据、状态和允许动作")
 def file_metadata(file_id: str, user=Depends(get_current_user)):
     return success(metadata_contract(file_id, user=user))
@@ -62,7 +66,3 @@ def file_version_timeline(file_id: str, user=Depends(get_current_user)):
 @router.get("/{file_id}/url", summary="获取预览/下载 URL（仅安全可用文件）")
 def file_url(file_id: str, user=Depends(get_current_user)):
     return success(url_contract(file_id, user=user))
-
-
-# /api/v1/files/governance/*：学校管理员自助管理容量、配额、保留与清理；不提供文件内容读取。
-router.include_router(file_governance.router)
