@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """阶段 10：公共文件中心调用扫描与旧合同退役门禁。
 
-输出机器可读 JSON；发现客户端仍调用旧 URL、业务模块直连 COS SDK、绕过统一 SDK 或一次性
-施工残留时失败。兼容后端合同可通过显式 allowlist 暂留，但只有零客户端调用后才允许退役。
+输出机器可读 JSON；发现客户端仍调用旧上传/元数据 URL、业务页面绕开统一 SDK、业务模块直连
+COS SDK 或一次性施工残留时失败。受控代理下载只允许存在于共享 File SDK 内。
 """
 from __future__ import annotations
 
@@ -19,14 +19,14 @@ SOURCE_ROOTS = ("backend/app", "frontend/src", "student-portal/src", "miniapp/sr
 SUFFIXES = {".py", ".js", ".ts", ".vue", ".mjs", ".cjs"}
 SKIP_PARTS = {"node_modules", "dist", "build", ".git", "__pycache__", "public"}
 
-CLIENT_LEGACY_PATTERNS = {
+CLIENT_PATTERNS = {
     "legacy-upload-url": re.compile(r"[\"'`]\/files\/upload(?:[?\"'`]|$)"),
     "legacy-meta-url": re.compile(r"[\"'`]\/files\/meta\/"),
-    "legacy-download-url": re.compile(r"[\"'`]\/files\/download\/"),
+    "proxy-download-url": re.compile(r"[\"'`]\/files\/download\/"),
     "direct-uni-upload": re.compile(r"\buni\.uploadFile\s*\("),
     "direct-uni-download": re.compile(r"\buni\.downloadFile\s*\("),
 }
-BACKEND_BYPASS_PATTERNS = {
+BACKEND_PATTERNS = {
     "direct-cos-sdk": re.compile(r"\b(?:qcloud_cos|CosS3Client|cos-python-sdk)\b"),
     "whole-file-read": re.compile(r"\.read_bytes\s*\("),
     "raw-file-response": re.compile(r"\bFileResponse\s*\("),
@@ -54,6 +54,11 @@ ALLOW = {
         "backend/app/modules/graduation/routers/graduation_material_center.py",
         "backend/app/modules/internship/routers/internship_material_center.py",
         "backend/app/modules/student_affairs/routers/affairs_material_center.py",
+    ),
+    "proxy-download-url": (
+        "frontend/src/services/file/fileSdk.js",
+        "student-portal/src/services/fileCenter.js",
+        "miniapp/src/services/fileCenter.js",
     ),
     "direct-uni-upload": (
         "miniapp/src/services/http.js",
@@ -94,8 +99,7 @@ def scan() -> list[Finding]:
     findings: list[Finding] = []
     for path in iter_files():
         source = path.relative_to(ROOT).as_posix()
-        is_client = not source.startswith("backend/")
-        patterns = CLIENT_LEGACY_PATTERNS if is_client else BACKEND_BYPASS_PATTERNS
+        patterns = CLIENT_PATTERNS if not source.startswith("backend/") else BACKEND_PATTERNS
         text = path.read_text(encoding="utf-8", errors="ignore")
         for line_no, line in enumerate(text.splitlines(), 1):
             snippet = line.strip()
