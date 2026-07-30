@@ -63,7 +63,8 @@ jobs:
             performance/tools/prepare_k6_credentials.py \
             performance/tools/audit_capacity_runtime.py \
             performance/tools/probe_observability.py \
-            performance/tools/seed_local_capacity_env.py
+            performance/tools/seed_local_capacity_env.py \
+            performance/tools/evaluate_capacity_result.py
 
   local-capacity:
     name: 临时MySQL与Redis自包含 ${{ matrix.profile }}
@@ -191,6 +192,15 @@ jobs:
             --samples 3 \
             --interval 0.2 \
             --output performance/results/observability-after.json
+      - name: 生成 ${{ matrix.profile }} 容量裁决
+        if: always()
+        run: |
+          python performance/tools/evaluate_capacity_result.py \
+            --profile "$PROFILE" \
+            --summary performance/results/k6-summary.json \
+            --before performance/results/observability-before.json \
+            --after performance/results/observability-after.json \
+            --output performance/results/capacity-verdict.json
       - name: 上传本地容量结果
         if: always()
         uses: actions/upload-artifact@v4
@@ -304,6 +314,15 @@ jobs:
             --samples 3 \
             --interval 1 \
             --output performance/results/observability-after.json
+      - name: 生成远程容量裁决
+        if: always()
+        run: |
+          python performance/tools/evaluate_capacity_result.py \
+            --profile "$PROFILE" \
+            --summary performance/results/k6-summary.json \
+            --before performance/results/observability-before.json \
+            --after performance/results/observability-after.json \
+            --output performance/results/capacity-verdict.json
       - name: 上传容量结果
         if: always()
         uses: actions/upload-artifact@v4
