@@ -109,9 +109,14 @@ def list_contract(biz_type: str, biz_id: str, *, user: dict) -> list[dict]:
     return list_business_files(biz_type, biz_id, user=user)
 
 
+def _requires_audited_business_download(biz_type: str | None) -> bool:
+    """强制走业务专用下载接口，避免绕过批次/导师范围与业务审计。"""
+    return str(biz_type or "").upper() == "GRADUATION_MATERIAL"
+
+
 def url_contract(file_id: str, *, user: dict) -> dict:
     meta = metadata_contract(file_id, user=user)
-    if not meta.get("readyForBusiness"):
+    if not meta.get("readyForBusiness") or _requires_audited_business_download(meta.get("bizType")):
         raise not_found("文件不存在")
     return {
         "fileId": str(file_id),
@@ -126,14 +131,18 @@ def url_contract(file_id: str, *, user: dict) -> dict:
 
 
 def download_contract(file_id: str, *, user: dict) -> FileResponse:
-    """授权成功后直接从存储抽象解析字节，避免再落回旧硬编码权限分支。"""
+    """授权成功后从存储抽象解析字节；业务专用材料不得绕过其审计接口。"""
     row = require_file_access(file_id, user=user, action="download")
     if isinstance(row, dict):
+        if _requires_audited_business_download(row.get("bizType")):
+            raise not_found("文件不存在")
         resolved = file_service.resolve_download(file_id, user=user)
         if not resolved:
             raise not_found("文件不存在")
         path, filename = resolved
     else:
+        if _requires_audited_business_download(row.biz_type):
+            raise not_found("文件不存在")
         from app.services.storage import get_backend
 
         path = get_backend().fetch_local(row.file_key)
