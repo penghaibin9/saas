@@ -14,38 +14,43 @@
 
 ## 当前规模
 
-- manifest 路由/业务切面：**113**
-- 独立 HTML：**107**
+- manifest 路由/业务切面：**124**
+- 独立 HTML：**118**
 - 共享 HTML 路由条目：**8**
-- 共享设计文件：**12**
-- 已完成首轮工作区：**10**
+- 共享设计文件：**13**
+- 已完成首轮工作区：**11**
 - 一级中心完整覆盖：**0**
 - 仓库截图：**0**
-- 本地累计渲染截图：**173**
+- 本地累计渲染截图：**196**
 
-## 本轮新增
+## 最近完成
 
-### 课程库（13页）
+### 课程库
 
-课程列表、新建、详情、编辑，以及控制台 9 个真实 Tab：课程分类、课程性质、学分学时、课程大纲、考核方式、课程负责人、课程材料、课程停用、历史课程。
+课程列表、新建、详情、编辑及 `category / nature / credit / outline / assessment / owner / material / disable / archive` 九个真实控制台 Tab。
 
-### 培养方案（18页）
+### 培养方案
 
-培养方案治理、开课差异、编制器 4 个关键步骤，以及控制台 12 个真实 Tab：方案制定、版本、计划变更、课程模块、实践教学计划、学分要求、实践环节、毕业要求、审核、发布、变更、归档。
+治理首页、开课差异、编制器四个关键步骤及 `authoring / versions / planChange / courseModules / practicePlan / creditRequirements / practiceSegments / graduationRequirements / review / publish / changeStatus / archive` 十二个真实 Tab。
+
+### 教学任务
+
+教学任务工作台、生成批次、教学班与名单版本、教学班详情、批次详情、任课教师分配、合班拆班、两级批次确认、教师本人确认、任务调整和统计。
 
 ## 离线共享实现
 
 - `shared/v2-course-base-packed.js`
 - `shared/v2-program-base-packed.js`
+- `shared/v2-teaching-task-base-packed.js`
 
-二者是离线原型渲染包，使用浏览器原生 `DecompressionStream('gzip')` 解包本地脚本，不依赖 CDN 或网络请求。生产 Vue 不使用这些文件。
+这些文件是原型离线渲染包，使用浏览器原生 gzip 解压能力，不依赖 CDN，不进入生产 Vue 运行时。
 
 ## 追溯入口
 
-- `prototype-manifest.json`：聚合规则、当前批次索引和覆盖汇总
+- `prototype-manifest.json`：聚合规则、最新批次索引和覆盖汇总
 - `manifest-parts/*.json`：完整 route → component → permission/API → HTML → states 记录
-- `route-coverage.md`：工作区覆盖与未覆盖项
-- `PROGRESS.md`：验证结果和下一批精确起点
+- `route-coverage.md`：工作区覆盖和未覆盖项
+- `PROGRESS.md`：验证结果及下一批精确起点
 - `design-system.md`：视觉、母版和业务真实性规范
 
-数据中的“学生A / 课程A / — / 占位”均为中性 placeholder，不代表真实生产数据。
+数据中的“学生A / 课程A / — / 占位”均为中性 placeholder，不代表生产数据。
