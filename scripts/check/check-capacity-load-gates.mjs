@@ -57,7 +57,7 @@ if (failures.length === 0) {
   for (const endpoint of requiredEndpoints) {
     if (!k6.includes(endpoint)) failures.push(`missing core endpoint ${endpoint}`)
   }
-  for (const profile of ['smoke', 'baseline', 'p500', 'p1000', 'p3000']) {
+  for (const profile of ['smoke', 'baseline', 'p300', 'p500', 'p1000', 'p3000']) {
     if (!k6.includes(`${profile}:`)) failures.push(`missing profile ${profile}`)
   }
   const requiredGuards = [
@@ -84,7 +84,9 @@ if (failures.length === 0) {
   if (!workflow.includes('schedule:')) failures.push('nightly schedule is required')
   if (!workflow.includes('grafana/k6:0.54.0')) failures.push('k6 Docker image must be pinned')
   if (!workflow.includes('local-capacity:')) failures.push('self-contained local capacity job is required')
-  if (!workflow.includes('profile: [smoke, baseline]')) failures.push('local capacity matrix must run smoke and baseline')
+  if (!workflow.includes('profile: [smoke, baseline, p300, p500]')) {
+    failures.push('local capacity matrix must run smoke, baseline, p300 and p500')
+  }
   if (!workflow.includes('capacity-local-${{ matrix.profile }}-${{ github.run_id }}')) {
     failures.push('local capacity artifacts must be profile-specific')
   }
@@ -94,6 +96,9 @@ if (failures.length === 0) {
   if (!workflow.includes('redis:7-alpine')) failures.push('local capacity must use Redis')
   if (!workflow.includes('alembic upgrade head')) failures.push('local capacity must run real migrations')
   if (!workflow.includes('seed_local_capacity_env.py')) failures.push('local capacity must seed ephemeral identities')
+  if (!workflow.includes('--token-count "$token_count"')) failures.push('local high load must generate per-VU token pools')
+  if (!workflow.includes('K6_ALLOW_HIGH_LOAD: "true"')) failures.push('local p300/p500 matrix must explicitly unlock high load')
+  if (!workflow.includes('-e K6_ALLOW_HIGH_LOAD')) failures.push('local k6 container must receive high-load unlock')
   if (!workflow.includes('--network host')) failures.push('local k6 must reach the host backend explicitly')
   if (!workflow.includes('PERF_STUDENT_TOKENS_JSON')) failures.push('student token secret is required')
   if (!workflow.includes('PERF_TEACHER_TOKENS_JSON')) failures.push('teacher token secret is required')
@@ -117,11 +122,15 @@ if (failures.length === 0) {
   if (!probe.includes('X-Ops-Token')) failures.push('observability probe must use X-Ops-Token')
   if (!localSeed.includes('create_access_token')) failures.push('local seed must issue ephemeral signed tokens')
   if (!localSeed.includes('StudentProfile')) failures.push('local seed must create a real student profile')
+  if (!localSeed.includes('--token-count')) failures.push('local seed must support explicit token pool size')
   if (/password|accessToken/i.test(localSeed) && /print\([^\n]*(password|token)/i.test(localSeed)) {
     failures.push('local seed must not print credentials or tokens')
   }
   for (const verdictContract of ['minimumRequests', 'httpFailureRate', 'businessCheckRate', 'p95Ms', 'p99Ms', 'readinessBefore', 'readinessAfter', 'non2xxAfter']) {
     if (!evaluator.includes(verdictContract)) failures.push(`capacity evaluator missing ${verdictContract}`)
+  }
+  for (const profile of ['"p300": 10000', '"p500": 20000']) {
+    if (!evaluator.includes(profile)) failures.push(`capacity evaluator missing high-load minimum ${profile}`)
   }
 
   const secretLeakPatterns = [
