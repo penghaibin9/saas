@@ -1,0 +1,28 @@
+:root {
+  --v2-brand-950:#082463; --v2-brand-900:#0b2f79; --v2-brand-800:#0d3d98;
+  --v2-brand-700:#1253c7; --v2-brand-600:#1967e8; --v2-brand-500:#2f7cf4;
+  --v2-brand-100:#dceaff; --v2-brand-50:#f2f7ff;
+  --v2-cyan:#45c7ff; --v2-purple:#7657f4;
+  --v2-page:#f5f7fb; --v2-surface:#ffffff; --v2-surface-soft:#f8faff;
+  --v2-surface-muted:#f1f4f9; --v2-line:#e5eaf2; --v2-line-strong:#d5ddeb;
+  --v2-text:#17233a; --v2-text-2:#44516b; --v2-text-3:#77839a;
+  --v2-success:#22a96a; --v2-success-bg:#eaf8f1;
+  --v2-warning:#f59b23; --v2-warning-bg:#fff5e7;
+  --v2-danger:#e5484d; --v2-danger-bg:#fff0f0;
+  --v2-info:#3478f6; --v2-info-bg:#eef5ff;
+  --v2-radius-xl:18px; --v2-radius-lg:14px; --v2-radius-md:10px; --v2-radius-sm:8px;
+  --v2-shadow:0 10px 30px rgba(27,55,105,.08);
+  --v2-shadow-sm:0 4px 16px rgba(27,55,105,.06);
+  --v2-topbar-h:64px; --v2-sidebar-w:208px; --v2-context-w:280px;
+  --v2-font:"Inter","PingFang SC","Microsoft YaHei",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:var(--v2-font);color:var(--v2-text);background:var(--v2-page)}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+a{color:inherit;text-decoration:none}
+body[data-theme="business"]{--v2-brand-900:#0c2b6b;--v2-brand-700:#1757bb;--v2-brand-600:#2a6bd6}
+body[data-theme="gray"]{--v2-brand-900:#25324a;--v2-brand-700:#4b5f7a;--v2-brand-600:#657995}
+body[data-theme="green"]{--v2-brand-900:#0d4d45;--v2-brand-700:#14796d;--v2-brand-600:#1c9b89}
+body[data-theme="white"]{--v2-brand-900:#17345f;--v2-brand-700:#245da8;--v2-brand-600:#3478d4}
+body[data-theme="ink"]{--v2-brand-900:#111827;--v2-brand-700:#293548;--v2-brand-600:#475569}
