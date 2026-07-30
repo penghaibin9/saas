@@ -9,8 +9,8 @@ from app.api.v1.route_registration import register_all_routes
 api_router = APIRouter()
 register_all_routes(api_router)
 
-# 学工四端补充路由必须在既有路由完成注册后挂载；契约安装器随后修补已加载服务的
-# version/permission/scope 绑定，不改任何其他业务域状态机。
+# 学工四端补充路由必须在既有路由完成注册后挂载；阶段 5 材料与归档服务通过
+# 显式 Facade/正式 Service 接入，不再在启动时替换业务函数。
 from app.api.v1.affairs_activity_mobile import router as affairs_activity_mobile_router
 from app.api.v1.affairs_appeal_mobile import router as affairs_appeal_mobile_router
 from app.api.v1.affairs_appeal_repair_api import router as affairs_appeal_repair_router
@@ -19,6 +19,7 @@ from app.api.v1.affairs_leave_self_api import router as affairs_leave_self_route
 from app.api.v1.affairs_operations_api import router as affairs_operations_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
+from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
 from app.services.affairs_activity_accounting_guard import install as install_activity_accounting_guard
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
@@ -28,8 +29,6 @@ from app.services.affairs_aid_list_argument_guard import install as install_aid_
 from app.services.affairs_appeal_repair_scheduler import install as install_appeal_repair_scheduler
 from app.services.affairs_appeal_repair_service import install as install_appeal_repair
 from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
-from app.services.affairs_archive_file_guard import install as install_archive_file_guard
-from app.services.affairs_archive_guard import install as install_archive_guard
 from app.services.affairs_batch_job_guard import install as install_batch_job_guard
 from app.services.affairs_counselor_eval_guard import install as install_counselor_eval_guard
 from app.services.affairs_counselor_handover_guard import install as install_counselor_handover_guard
@@ -48,8 +47,6 @@ from app.services.affairs_four_end_terminal_guard import install as install_affa
 from app.services.affairs_funding_ext_guard import install as install_funding_ext_guard
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
-from app.services.affairs_operations_final_guard import install as install_affairs_operations_final_guard
-from app.services.affairs_operations_service import install as install_affairs_operations
 from app.services.affairs_publicity_guard import install as install_publicity_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
@@ -84,6 +81,7 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
 
 
 for supplemental_router in (
+    affairs_material_center_router,
     affairs_four_end_router,
     affairs_operations_router,
     affairs_student_dorm_router,
@@ -118,8 +116,6 @@ install_counselor_eval_guard()
 install_funding_ext_guard()
 install_publicity_guard()
 install_batch_job_guard()
-install_archive_guard()
-install_archive_file_guard()
 install_talk_guard()
 install_activity_accounting_guard()
 install_activity_reconfirm_guard()
@@ -135,8 +131,6 @@ install_dorm_node_guard()
 install_dorm_transfer_scope_guard()
 install_student_contract()
 install_student_contract_security_guard()
-install_affairs_operations()
-install_affairs_operations_final_guard()
 install_teacher_workbench_guard()
 install_affairs_four_end_terminal_guard(api_router)
 install_appeal_repair_scheduler()
