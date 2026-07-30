@@ -16,5 +16,7 @@ PyJWT>=2.8,<3.0
 cryptography>=42.0,<47.0
 # 多实例共享鉴权缓存、限流、短时业务缓存；未配置 REDIS_URL 时代码安全回退本机内存/数据库。
 redis[hiredis]>=5.0,<7.0
-# 对象存储（腾讯云 COS）：仅 FILE_STORAGE_BACKEND=cos 时需要，延迟导入，本地模式不依赖
+# 对象存储（腾讯云 COS）：服务端持久化、对象 HEAD/复制与短时预签名。
 cos-python-sdk-v5>=1.9,<2.0
+# 腾讯云官方 COS STS SDK：只下发精确 objectKey、短时、最小动作的临时凭证。
+qcloud-python-sts>=3.1,<4.0
