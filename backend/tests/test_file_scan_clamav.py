@@ -120,7 +120,10 @@ def test_clamav_unavailable_is_not_treated_as_clean(tmp_path: Path) -> None:
         client.scan_path(target)
 
 
-def test_ooxml_validation_never_uses_path_read_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ooxml_validation_never_uses_path_read_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     target = tmp_path / "sample.docx"
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", "<Types />")
@@ -130,6 +133,8 @@ def test_ooxml_validation_never_uses_path_read_bytes(tmp_path: Path, monkeypatch
         raise AssertionError("Path.read_bytes() must not be used for upload scanning")
 
     monkeypatch.setattr(Path, "read_bytes", forbidden)
+    monkeypatch.setenv("CLAMAV_ENABLED", "true")
+    monkeypatch.setenv("FILE_SCAN_REQUIRED", "true")
     mime, status = validate_content_path(
         filename=target.name,
         declared_content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
