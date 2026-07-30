@@ -2,7 +2,7 @@ import { request } from '@/services/http/client'
 import fileSdk, { normalizeFile } from '@/services/file/fileSdk'
 
 function ticketPath(ticket = {}) {
-  const value = String(ticket.url || '')
+  const value = String(ticket.url || ticket.downloadUrl || '')
   if (!value.startsWith('/api/v1/')) return value
   return value.slice('/api/v1'.length)
 }
