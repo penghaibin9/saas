@@ -1,0 +1,32 @@
+{
+  "moduleKey": "graduation-audit",
+  "moduleLabel": "毕业资格审核",
+  "sourceOfTruth": "frontend/src/config/navPlan.js",
+  "productionImplementationStatus": "15 navigation entries and declared permissions verified; production components, APIs and backend enums require implementation audit",
+  "sharedAssets": ["shared/v2-graduation-workbench.js", "shared/v2-graduation-workbench.css"],
+  "lifecycle": ["BATCH_FROZEN", "ROSTER_LOCKED", "SECTION_AUDIT", "EXCEPTION_RECHECK", "FINAL_REVIEW", "RESULT_PUBLISHED", "CERTIFICATE_PROCESSING", "ARCHIVED"],
+  "principles": [
+    "precheck is not final graduation decision",
+    "section conclusions bind rule and data snapshots",
+    "UNKNOWN is neither PASS nor FAIL",
+    "final review requires authorized human confirmation",
+    "published result correction, certificate changes and archive access are audited"
+  ],
+  "routes": [
+    {"route":"/admin/academic-affairs/graduation","html":"academic-affairs/graduation/graduation-precheck.html","title":"毕业资格预审","permissionCandidate":"to verify","boundary":"precheck only identifies risks"},
+    {"route":"/admin/academic-affairs/graduation?tab=batches","html":"academic-affairs/graduation/graduation-batches.html","title":"审核批次","permissionCandidate":"academicAffairs.graduation.view","fields":["毕业范围","规则版本","数据截止时间","审核责任","批次状态"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=roster","html":"academic-affairs/graduation/graduation-roster.html","title":"毕业学生名单","permissionCandidate":"academicAffairs.graduation.view","boundary":"roster lock is not approval","fields":["学籍状态","预计毕业范围","培养方案版本","排除原因","差异版本"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=credit","html":"academic-affairs/graduation/graduation-credit.html","title":"学分达成审核","permissionCandidate":"academicAffairs.graduation.view","fields":["方案版本","模块要求","已获","认定","替代","在修","待回写","缺口"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=course","html":"academic-affairs/graduation/graduation-course.html","title":"课程达成审核","permissionCandidate":"academicAffairs.graduation.view","boundary":"total credits do not replace core-course completion","fields":["必修","核心","限选","替代关系","免修认定","成绩发布状态"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=practice","html":"academic-affairs/graduation/graduation-practice.html","title":"实践环节审核","permissionCandidate":"academicAffairs.graduation.view","fields":["实践要求","来源模块","完成状态","成绩","证据","来源冲突"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=thesis","html":"academic-affairs/graduation/graduation-thesis.html","title":"毕设状态联动","permissionCandidate":"academicAffairs.graduation.view","boundary":"graduation-design module owns thesis conclusion"},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=internship","html":"academic-affairs/graduation/graduation-internship.html","title":"实习状态联动","permissionCandidate":"academicAffairs.graduation.view","boundary":"internship module owns internship conclusion"},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=fee","html":"academic-affairs/graduation/graduation-fee.html","title":"费用结清（待接入）","permissionCandidate":"academicAffairs.graduation.view","sourceStatus":"UNKNOWN","blockingPolicy":"soft reminder; does not block academic graduation conclusion","nextIntegration":["finance Excel return", "finance-system adapter"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=discipline","html":"academic-affairs/graduation/graduation-discipline.html","title":"处分状态联动","permissionCandidate":"academicAffairs.graduation.view","boundary":"student-affairs module owns discipline facts; historical discipline alone must not auto-fail"},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=final","html":"academic-affairs/graduation/graduation-final.html","title":"毕业资格终审","permissionCandidate":"academicAffairs.graduation.final","decisions":["PASS","FAIL","DEFERRED_RECHECK"],"highRiskActions":["batch final review","publish result"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=reason","html":"academic-affairs/graduation/graduation-reasons.html","title":"不通过原因","permissionCandidate":"academicAffairs.graduation.view","fields":["reason code","section","student-visible explanation","next action","evidence link","enabled state"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=results","html":"academic-affairs/graduation/graduation-results.html","title":"审核结果","permissionCandidate":"academicAffairs.graduation.view","states":["PASS","FAIL","DEFERRED","PUBLISHED","RECHECK","CORRECTED"]},
+    {"route":"/admin/academic-affairs/certificates","html":"academic-affairs/graduation/graduation-certificates.html","title":"毕业证书管理","permissionCandidate":"academicAffairs.graduationCert.view","boundary":"certificate processing does not replace qualification audit","states":["NUMBER_PENDING","PRINT_PENDING","IN_STOCK","SIGNED","LOST","VOID"]},
+    {"route":"/admin/academic-affairs/graduation/audit-console?tab=archive","html":"academic-affairs/graduation/graduation-archive.html","title":"审核归档","permissionCandidate":"academicAffairs.graduation.manage","boundary":"archived evidence is immutable","fields":["batch","rule version","data snapshot","section conclusions","final review","result version","certificate link","download audit"]}
+  ]
+}
