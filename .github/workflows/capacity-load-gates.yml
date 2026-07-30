@@ -13,13 +13,14 @@ on:
         required: true
         type: string
       profile:
-        description: "负载档位；500以上必须先配置仓库解锁变量"
+        description: "负载档位；300以上必须先配置仓库解锁变量"
         required: true
         default: smoke
         type: choice
         options:
           - smoke
           - baseline
+          - p300
           - p500
           - p1000
           - p3000
@@ -75,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [smoke, baseline]
+        profile: [smoke, baseline, p300, p500]
     env:
       APP_ENV: test
       DEPLOYMENT_MODE: development
@@ -93,6 +94,7 @@ jobs:
       PROFILE: ${{ matrix.profile }}
       SCENARIO: mixed
       STUDENT_SHARE_PERCENT: "75"
+      K6_ALLOW_HIGH_LOAD: "true"
       SUMMARY_PATH: /work/performance/results/k6-summary.json
     services:
       mysql:
@@ -132,17 +134,32 @@ jobs:
       - name: 执行MySQL迁移
         working-directory: backend
         run: alembic upgrade head
-      - name: 创建临时学生与短期Token
+      - name: 创建临时学生与按VU隔离的短期Token池
         working-directory: backend
-        run: python ../performance/tools/seed_local_capacity_env.py --out ../performance/secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$PROFILE" in
+            p500) token_count=500 ;;
+            p300) token_count=300 ;;
+            baseline) token_count=20 ;;
+            *) token_count=2 ;;
+          esac
+          python ../performance/tools/seed_local_capacity_env.py \
+            --out ../performance/secrets \
+            --token-count "$token_count"
       - name: 启动临时后端
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p performance/results
+          workers=1
+          case "$PROFILE" in
+            p300|p500) workers=2 ;;
+          esac
           (
             cd backend
-            nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+            nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers "$workers" \
               > ../performance/results/local-backend.log 2>&1 &
             echo $! > ../performance/results/local-backend.pid
           )
@@ -154,7 +171,7 @@ jobs:
           done
           cat performance/results/local-backend.log
           exit 1
-      - name: 装载本次运行临时Token
+      - name: 装载本次运行临时Token池
         shell: bash
         run: |
           echo "K6_STUDENT_TOKENS_JSON=$(cat performance/secrets/student-tokens.json)" >> "$GITHUB_ENV"
@@ -180,6 +197,7 @@ jobs:
             -e PROFILE \
             -e SCENARIO \
             -e STUDENT_SHARE_PERCENT \
+            -e K6_ALLOW_HIGH_LOAD \
             -e K6_STUDENT_TOKENS_JSON \
             -e K6_TEACHER_TOKENS_JSON \
             -e SUMMARY_PATH \
@@ -265,7 +283,7 @@ jobs:
               ;;
             *) echo "非法场景: $SCENARIO"; exit 1 ;;
           esac
-          if [[ "$PROFILE" =~ ^p(500|1000|3000)$ ]]; then
+          if [[ "$PROFILE" =~ ^p(300|500|1000|3000)$ ]]; then
             [[ "$K6_ALLOW_HIGH_LOAD" == "true" ]] || { echo "高并发档位尚未解锁"; exit 1; }
             case "$SCENARIO" in
               student) test -n "$K6_STUDENT_TOKENS_JSON" || { echo "高负载必须使用学生Token池"; exit 1; } ;;
