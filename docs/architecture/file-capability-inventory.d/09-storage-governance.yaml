@@ -1,0 +1,89 @@
+entries:
+  - module: file-center
+    client: backend
+    route: /api/v1/files/governance/overview
+    page: backend/app/api/v1/file_governance.py
+    action: view+quota+retention+cleanup+legal-hold
+    fileCategory: STORAGE_GOVERNANCE
+    api: GET/PUT/POST /api/v1/files/governance/*
+    backendService: backend/app/services/file_storage_governance_service.py
+    storageMode: MYSQL_METADATA_PLUS_CONFIGURED_BACKEND
+    authMode: authenticated+systemAdmin.file.manage
+    dataScope: current-tenant-statistics-only
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '9'
+    notes: 学校管理员只查看容量和异常；可配置硬配额、保留策略、清理预演和法律保留，不获得业务文件内容权限。
+  - module: file-center
+    client: backend
+    route: backend/app/services/storage/governed.py
+    page: backend/app/services/storage/governed.py
+    action: upload+quota
+    fileCategory: STORAGE_QUOTA_GATE
+    api: StorageBackend.persist; POST /api/v1/files/upload-sessions
+    backendService: backend/app/services/file_storage_governance_service.py::assert_quota_available
+    storageMode: ALL_PHYSICAL_WRITES_AND_COS_STS_PRECHECK
+    authMode: internal-tenant-context
+    dataScope: tenant+optional-module
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '9'
+    notes: 用户上传、系统生成、导入错误回执、导出和归档统一在物理写入边界限额；COS 直传在 STS 签发前执行同一判断。
+  - module: file-center
+    client: backend
+    route: backend/app/workers/file_governance_worker.py
+    page: backend/app/workers/file_governance_worker.py
+    action: cleanup+reconcile
+    fileCategory: RETENTION_CLEANUP
+    api: python -m app.workers.file_governance_worker
+    backendService: backend/app/services/file_storage_governance_service.py::cleanup_expired
+    storageMode: LOCAL_OR_COS_ZONE_AWARE
+    authMode: internal-worker+tenant-context
+    dataScope: one-tenant-at-a-time
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '9'
+    notes: 每小时逐租户补算保留期、清理过期未完成上传、删除无有效引用且未法律保留的到期对象；单租户失败不阻塞其它学校。
+  - module: system-management
+    client: admin-pc
+    route: /admin/system/file-storage-governance
+    page: frontend/src/modules/system/views/SystemFileStorageGovernanceView.vue
+    action: view+quota+retention+cleanup+legal-hold
+    fileCategory: STORAGE_GOVERNANCE_UI
+    api: frontend/src/modules/system/api/fileStorageGovernance.api.js
+    backendService: backend/app/services/file_storage_governance_service.py
+    storageMode: STATISTICS_AND_POLICY_METADATA
+    authMode: route-permission+systemAdmin.file.manage
+    dataScope: current-tenant-statistics-only
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '9'
+    notes: 页面首屏给出容量与异常结论，支持配额、策略、预演清理和法律保留；不展示或下载文件内容。
