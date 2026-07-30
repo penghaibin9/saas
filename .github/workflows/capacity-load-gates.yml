@@ -1,0 +1,134 @@
+name: 容量与可观测性闸门
+
+on:
+  pull_request:
+    paths:
+      - "performance/**"
+      - "scripts/check/check-capacity-load-gates.mjs"
+      - ".github/workflows/capacity-load-gates.yml"
+  workflow_dispatch:
+    inputs:
+      target_base_url:
+        description: "预发环境 HTTPS 根地址；禁止填写文件服务地址"
+        required: true
+        type: string
+      profile:
+        description: "负载档位；500以上必须先配置仓库解锁变量"
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - baseline
+          - p500
+          - p1000
+          - p3000
+      scenario:
+        description: "只读核心场景"
+        required: true
+        default: mixed
+        type: choice
+        options:
+          - student
+          - teacher
+          - mixed
+  schedule:
+    # 北京时间每天 02:30；仅执行 smoke，且需配置 PERF_BASE_URL 与令牌 Secrets。
+    - cron: "30 18 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capacity-load-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: 压测边界与脚本合同
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 校验只读范围、指标门槛与安全锁
+        run: node scripts/check/check-capacity-load-gates.mjs
+      - name: 编译 XLSX 凭据工具
+        run: python -m py_compile performance/tools/prepare_k6_credentials.py
+
+  remote-load:
+    name: 预发容量压测
+    needs: contract
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.target_base_url != '') ||
+      (github.event_name == 'schedule' && vars.PERF_BASE_URL != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.target_base_url || vars.PERF_BASE_URL }}
+      PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}
+      SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.scenario || 'mixed' }}
+      STUDENT_SHARE_PERCENT: "75"
+      K6_ALLOW_HIGH_LOAD: ${{ vars.PERF_ALLOW_HIGH_LOAD }}
+      K6_ALLOW_PRODUCTION_HIGH_LOAD: ${{ vars.PERF_ALLOW_PRODUCTION_HIGH_LOAD }}
+      K6_STUDENT_TOKENS_JSON: ${{ secrets.PERF_STUDENT_TOKENS_JSON }}
+      K6_TEACHER_TOKENS_JSON: ${{ secrets.PERF_TEACHER_TOKENS_JSON }}
+      SUMMARY_PATH: /work/performance/results/k6-summary.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检查目标与令牌池
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$BASE_URL" in
+            https://*) ;;
+            *) echo "远程压测仅允许 HTTPS"; exit 1 ;;
+          esac
+          case "$SCENARIO" in
+            student)
+              test -n "$K6_STUDENT_TOKENS_JSON" || { echo "缺少 PERF_STUDENT_TOKENS_JSON"; exit 1; }
+              ;;
+            teacher)
+              test -n "$K6_TEACHER_TOKENS_JSON" || { echo "缺少 PERF_TEACHER_TOKENS_JSON"; exit 1; }
+              ;;
+            mixed)
+              test -n "$K6_STUDENT_TOKENS_JSON" || { echo "缺少 PERF_STUDENT_TOKENS_JSON"; exit 1; }
+              test -n "$K6_TEACHER_TOKENS_JSON" || { echo "缺少 PERF_TEACHER_TOKENS_JSON"; exit 1; }
+              ;;
+            *) echo "非法场景: $SCENARIO"; exit 1 ;;
+          esac
+          if [[ "$PROFILE" =~ ^p(500|1000|3000)$ ]] && [[ "$K6_ALLOW_HIGH_LOAD" != "true" ]]; then
+            echo "高并发档位尚未解锁"
+            exit 1
+          fi
+          mkdir -p performance/results
+      - name: 运行固定版本 k6
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull grafana/k6:0.54.0
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            -e BASE_URL \
+            -e PROFILE \
+            -e SCENARIO \
+            -e STUDENT_SHARE_PERCENT \
+            -e K6_ALLOW_HIGH_LOAD \
+            -e K6_ALLOW_PRODUCTION_HIGH_LOAD \
+            -e K6_STUDENT_TOKENS_JSON \
+            -e K6_TEACHER_TOKENS_JSON \
+            -e SUMMARY_PATH \
+            grafana/k6:0.54.0 run performance/k6/capacity.js
+      - name: 上传容量结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-${{ env.PROFILE }}-${{ env.SCENARIO }}-${{ github.run_id }}
+          path: performance/results/
+          if-no-files-found: warn
+          retention-days: 30
