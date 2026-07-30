@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed an ephemeral MySQL database and issue short-lived capacity smoke tokens.
+"""Seed an ephemeral MySQL database and issue short-lived capacity tokens.
 
 This tool is intended only for GitHub Actions/local test environments. It never creates
 production credentials and never prints tokens to stdout.
@@ -52,53 +52,67 @@ def seed_student() -> None:
         db.close()
 
 
-def write_tokens(out_dir: Path) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    student = create_access_token(
+def _student_token(index: int) -> str:
+    return create_access_token(
         {
-            "userId": "perf-student",
+            "userId": f"perf-student-{index:04d}",
             "loginName": STUDENT_NO,
             "realName": "容量测试学生",
             "userType": "STUDENT",
             "tid": "perf-local",
             "tenantId": str(TENANT_ID),
-            "activeContextId": "perf-student-context",
+            "activeContextId": f"perf-student-context-{index:04d}",
             "currentRoleCode": "STUDENT",
             "clientType": "MP",
             "studentNo": STUDENT_NO,
         },
         expires_in=3600,
     )
-    teacher = create_access_token(
+
+
+def _teacher_token(index: int) -> str:
+    return create_access_token(
         {
-            "userId": "perf-teacher",
-            "loginName": "PERF-TEACHER-001",
+            "userId": f"perf-teacher-{index:04d}",
+            "loginName": f"PERF-TEACHER-{index:04d}",
             "realName": "容量测试教师",
             "userType": "TEACHER",
             "tid": "perf-local",
             "tenantId": str(TENANT_ID),
-            "activeContextId": "perf-teacher-context",
+            "activeContextId": f"perf-teacher-context-{index:04d}",
             "currentRoleCode": "SCHOOL_ADMIN",
             "clientType": "MP",
         },
         expires_in=3600,
     )
+
+
+def write_tokens(out_dir: Path, token_count: int) -> None:
+    if not 1 <= token_count <= 1000:
+        raise SystemExit("token-count must be between 1 and 1000")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    students = [_student_token(index) for index in range(1, token_count + 1)]
+    teachers = [_teacher_token(index) for index in range(1, token_count + 1)]
     (out_dir / "student-tokens.json").write_text(
-        json.dumps([student], ensure_ascii=False), encoding="utf-8"
+        json.dumps(students, ensure_ascii=False), encoding="utf-8"
     )
     (out_dir / "teacher-tokens.json").write_text(
-        json.dumps([teacher], ensure_ascii=False), encoding="utf-8"
+        json.dumps(teachers, ensure_ascii=False), encoding="utf-8"
     )
     (out_dir / ".gitignore").write_text("*\n!.gitignore\n", encoding="utf-8")
-    print("seeded_student=1 student_tokens=1 teacher_tokens=1")
+    print(
+        f"seeded_student=1 student_tokens={token_count} "
+        f"teacher_tokens={token_count}"
+    )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed local capacity smoke data")
+    parser = argparse.ArgumentParser(description="Seed local capacity data")
     parser.add_argument("--out", type=Path, default=ROOT / "performance/secrets")
+    parser.add_argument("--token-count", type=int, default=1)
     args = parser.parse_args()
     seed_student()
-    write_tokens(args.out)
+    write_tokens(args.out, args.token_count)
 
 
 if __name__ == "__main__":
