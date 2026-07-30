@@ -84,11 +84,12 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
   },
   {
     key: 'sys-security-audit', label: '安全与审计', icon: '≡',
-    description: '审计日志只增不删；敏感查看、导入导出与权限变更必须可追溯。',
+    description: '审计日志只增不删；敏感查看、导入导出、文件容量与权限变更必须可追溯。',
     items: [
       { key: 'sys-operation-audit', label: '操作与权限审计', path: '/admin/system/logs?tab=operation', permissionKey: 'system.audit.operation.view', view: 'logs', actions: [action('audit:operation:view', '查看操作审计'), action('audit:operation:export', '导出操作审计', 'HIGH')] },
       { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'system.audit.login.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
-      { key: 'sys-sensitive-audit', label: '敏感与导入导出审计', path: '/admin/system/sensitive-audit', permissionKey: 'system.audit.sensitive.view', view: 'sensitive-audit', actions: [action('audit:sensitive:view', '查看敏感审计'), action('audit:export:view', '查看导入导出审计')] }
+      { key: 'sys-sensitive-audit', label: '敏感与导入导出审计', path: '/admin/system/sensitive-audit', permissionKey: 'system.audit.sensitive.view', view: 'sensitive-audit', actions: [action('audit:sensitive:view', '查看敏感审计'), action('audit:export:view', '查看导入导出审计')] },
+      { key: 'sys-file-storage-governance', label: '文件存储治理', path: '/admin/system/file-storage-governance', permissionKey: 'systemAdmin.file.manage', view: 'file-storage-governance', actions: [action('file:storage:view', '查看容量与异常'), action('file:storage:quota', '配置存储配额', 'HIGH'), action('file:storage:cleanup', '执行到期清理', 'HIGH'), action('file:legal-hold', '设置法律保留', 'HIGH')] }
     ]
   },
   {
@@ -144,7 +145,11 @@ const ACTION_CODE_OVERRIDES = {
   'data-exchange:view': 'systemAdmin.user.import',
   'data-exchange:confirm': 'systemAdmin.user.import',
   'data-exchange:download': 'systemAdmin.user.import',
-  'data-exchange:revoke': 'systemAdmin.user.import'
+  'data-exchange:revoke': 'systemAdmin.user.import',
+  'file:storage:view': 'systemAdmin.file.manage',
+  'file:storage:quota': 'systemAdmin.file.manage',
+  'file:storage:cleanup': 'systemAdmin.file.manage',
+  'file:legal-hold': 'systemAdmin.file.manage'
 }
 
 export const SYSTEM_ACTION_PERMISSION_BY_KEY = Object.fromEntries(
