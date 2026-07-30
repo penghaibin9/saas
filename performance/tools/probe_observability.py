@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 def _get_json(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:
@@ -32,6 +33,13 @@ def _get_json(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:
 def _unwrap(payload: dict[str, Any]) -> dict[str, Any]:
     data = payload.get("data")
     return data if isinstance(data, dict) else payload
+
+
+def _safe_base_url(value: str) -> bool:
+    parsed = urlparse(value)
+    if parsed.scheme == "https" and parsed.hostname:
+        return True
+    return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
 
 
 def probe(base_url: str, token: str, samples: int, interval: float) -> dict[str, Any]:
@@ -81,8 +89,8 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    if not args.base_url.startswith("https://") and not args.base_url.startswith("http://localhost"):
-        raise SystemExit("Remote probes require HTTPS")
+    if not _safe_base_url(args.base_url):
+        raise SystemExit("Remote probes require HTTPS; local probes allow localhost/loopback only")
     token = os.getenv(args.token_env, "").strip()
     if len(token) < 16:
         raise SystemExit(f"Missing or weak ops token in environment variable {args.token_env}")
