@@ -86,8 +86,11 @@ async def upload_real(
 
 @router.post("/upload-sessions", summary="创建 COS 精确对象直传会话")
 def create_upload_session(body: UploadSessionCreate, user=Depends(get_current_user)):
+    from app.services.file_storage_governance_service import assert_quota_available, _module_from_biz
     from app.services.storage.production import create_upload_session as create_session
 
+    # COS 直传绕过应用服务器的 persist 边界，必须在签发 STS 之前预占式执行同一硬配额判断。
+    assert_quota_available(body.sizeBytes, module_code=_module_from_biz(body.bizType))
     return success(create_session(
         filename=body.fileName,
         size_bytes=body.sizeBytes,
@@ -109,9 +112,23 @@ def upload_session_detail(session_id: str, user=Depends(get_current_user)):
 
 @router.post("/upload-sessions/{session_id}/complete", summary="COS HEAD 核验并完成上传会话")
 def complete_upload_session(session_id: str, body: UploadSessionComplete, user=Depends(get_current_user)):
+    from app.db.session import get_sessionmaker
+    from app.models.file import FileObject
+    from app.services.file_storage_governance_service import assign_retention
     from app.services.storage.production import complete_upload_session as complete_session
 
-    return success(complete_session(session_id, etag=body.etag, user=user), message="上传完成，文件已进入安全扫描")
+    result = complete_session(session_id, etag=body.etag, user=user)
+    file_id = str(result.get("fileId") or "")
+    if file_id.isdigit():
+        db = get_sessionmaker()()
+        try:
+            row = db.get(FileObject, int(file_id), with_for_update=True)
+            if row:
+                assign_retention(row, db=db)
+                db.commit()
+        finally:
+            db.close()
+    return success(result, message="上传完成，文件已进入安全扫描")
 
 
 @router.post("/upload-sessions/{session_id}/abandon", summary="放弃未完成上传会话")
