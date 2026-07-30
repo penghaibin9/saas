@@ -104,7 +104,8 @@ def test_phase6_old_urls_are_shadowed_and_authoritative_routes_exist():
     registry = read("backend/app/api/v1/route_registration.py")
     staff_router = read("backend/app/modules/graduation/routers/graduation_material_center.py")
     student_router = read("backend/app/api/v1/mobile_graduation_material_center.py")
-    assert registry.index("graduation_material_center.router") < registry.index("graduation_sensitive_router.router")
+    assert registry.index("graduation_sensitive_router.router") < registry.index("api_router.include_router(graduation.router")
+    assert registry.index("api_router.include_router(graduation.router") < registry.index("graduation_material_center.router")
     assert registry.index("mobile_graduation_material_center.router") < registry.index("mobile.router")
     for path in (
         '/proposals/{proposal_id}', '/proposals/{proposal_id}/review',

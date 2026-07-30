@@ -504,6 +504,9 @@ def main() -> None:
         proposal_v2.defense_result = "PASS"
         proposal_v2.defense_comment = "开题答辩通过"
         proposal_v2.defense_at = datetime.utcnow()
+        # 真实业务只有进入成果检查阶段后才允许提交初稿；测试夹具必须推进
+        # 学生流程状态，不能通过放宽生产状态机来证明文件链可用。
+        db.get(GraduationStudent, student_id).stage = "FINAL_CHECK"
         db.commit()
 
         draft_file_id = int(draft_file.id)
