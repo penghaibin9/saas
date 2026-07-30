@@ -1,92 +1,132 @@
 # 路由覆盖
 
-> 本文件是设计交付清单，不取代生产路由、菜单或权限事实源。完整追溯见 `manifest-parts/*.json`。
+> 本文件是设计交付清单，不取代生产路由、菜单或权限事实源。完整机器追溯见 `prototype-manifest.json` 与 `manifest-parts/*.json`。
 
 ## 当前统计
 
-- manifest 条目：**175**
-- 独立 HTML：**169**
+- manifest 条目：**241**
+- 独立 HTML：**235**
 - 共享 HTML 路由条目：**8**
-- 共享设计文件：**17**
+- 共享设计文件：**31**
 - 仓库截图：**0**
-- 本地累计渲染截图：**309**
-- 已完成首轮工作区：成绩管理、成绩审核发布更正、学籍管理、注册管理、学籍异动办理、学院专业班级、学年学期、校历节次、课程库、培养方案、教学任务、课表管理、调停课、选课管理、考务管理
+- 已记录本地历史渲染截图：**309**
+- 已完成首轮工作区：**22**
 - 一级中心完成：**0**
 
-## 教务中心导航纠偏（COMPLETE）
+旧统计 175 / 169 / 17 / 15 已废止。旧总 manifest 只加载到 `120-exam.json`，没有聚合已经存在的 `130` 至 `180`；本轮已补齐聚合并新增 `190-quality.json`。
+
+## 教务中心导航（已冻结）
 
 - 左侧菜单按 `frontend/src/config/navPlan.js` 冻结顺序直接展示 **29 个真实二级模块**。
-- 已取消“学期与校历、组织与学籍”等 8 个原型聚合分组；分组不再作为菜单、折叠层级、页面、路由、点击入口或面包屑节点。
+- 取消“学期与校历、组织与学籍”等原型聚合分组；分组不得作为菜单、折叠层级、路由、页面或面包屑节点。
 - 导航层级为：**顶部一级中心 → 左侧真实二级模块 → 内容区三级功能**。
-- 共享原型壳支持二级菜单搜索、独立纵向滚动、展开/收起、当前模块高亮和严格三级面包屑。
-- 原型尚未覆盖的真实二级模块保留名称与生产路由提示，但不伪装为已经存在独立高保真 HTML。
-- 权限继续以 `navPlan → adminMenu → BasePortalLayout` 的生产投影为准，本 PR 没有修改权限点、角色或数据范围。
+- 共享壳支持二级菜单搜索、独立纵向滚动、展开/收起、当前模块高亮和严格三级面包屑。
+- 权限继续以生产菜单投影和后端裁决为准，本 PR 不修改权限、角色或数据范围。
 
-## 考务管理（COMPLETE）
+## 已进入首轮设计追踪的工作区
 
-| 路由 / 业务切面 | 源组件 | HTML | 状态 |
+| 序号 | 工作区 | manifest | 独立 HTML | 当前口径 |
+|---:|---|---|---:|---|
+| 1 | 成绩管理 | 基线部分 | 已登记 | 首轮完成 |
+| 2 | 成绩审核发布更正 | 基线部分 | 已登记 | 首轮完成 |
+| 3 | 学籍管理 | 基线部分 | 已登记 | 首轮完成 |
+| 4 | 注册管理 | `10-registration.json` | 已登记 | 首轮完成 |
+| 5 | 学籍异动办理 | `20-status-changes.json` | 已登记 | 首轮完成 |
+| 6 | 学院专业班级 | `40-org-console.json` | 已登记 | 首轮完成 |
+| 7 | 学年学期 | `50-terms-calendar.json` | 已登记 | 首轮完成 |
+| 8 | 校历节次 | `50-terms-calendar.json` | 已登记 | 首轮完成 |
+| 9 | 课程库 | `60-courses.json` | 已登记 | 首轮完成 |
+| 10 | 培养方案 | `70-programs.json` | 已登记 | 首轮完成 |
+| 11 | 教学任务 | `80-teaching-tasks.json` | 已登记 | 首轮完成 |
+| 12 | 课表管理 | `90-schedule.json` | 已登记 | 首轮完成 |
+| 13 | 调停课 | `100-schedule-change.json` | 已登记 | 首轮完成 |
+| 14 | 选课管理 | `110-selection.json` | 12 | 首轮完成 |
+| 15 | 考务管理 | `120-exam.json` | 11 | 首轮完成 |
+| 16 | 补考重修缓考免修 | `130-makeup.json` | 8 | 首轮完成 |
+| 17 | 学业预警 | `140-warning.json` | 11 | 首轮完成 |
+| 18 | 毕业资格审核 | `150-graduation.json` | 15 | 首轮完成 |
+| 19 | 教材管理 | `160-textbook.json` | 7 | 首轮完成 |
+| 20 | 教学资源 | `170-resource.json` | 9 | 首轮完成 |
+| 21 | 教学评价 | `180-evaluation.json` | 8 | 首轮完成 |
+| 22 | 教学质量 | `190-quality.json` | 8 | 首轮结构完成；浏览器回归待执行 |
+
+“首轮完成”不等于生产施工完成，也不等于当前 HEAD 的全量浏览器回归通过。
+
+## 教学评价（结构完整）
+
+| 生产入口 | HTML | 状态 |
+|---|---|---|
+| 评教批次（结果分级） | `evaluation/evaluation-batches.html` | COMPLETE |
+| 申诉审核 | `evaluation/evaluation-appeals.html` | COMPLETE |
+| 学生评教（小程序治理入口） | `evaluation/evaluation-student.html` | COMPLETE |
+| 教师自评 | `evaluation/evaluation-self.html` | COMPLETE |
+| 同行评价 | `evaluation/evaluation-peer.html` | COMPLETE |
+| 督导评价 | `evaluation/evaluation-supervisor.html` | COMPLETE |
+| 评价统计 | `evaluation/evaluation-stats.html` | COMPLETE |
+| 评价归档 | `evaluation/evaluation-archive.html` | COMPLETE |
+
+完整匿名、最小样本、角色回避、结果版本、申诉与归档边界见 `manifest-parts/180-evaluation.json` 和 `academic-affairs/evaluation/README.md`。
+
+## 教学质量（本轮补齐）
+
+| 生产路由 | HTML | 权限 | 状态 |
 |---|---|---|---|
-| `/admin/academic-affairs/exam?view=batches` | `AaExamConsoleView.vue` | `exam/exam-batches.html` | COMPLETE |
-| 同路由考试课程确认 | 同上 | `exam/exam-courses.html` | COMPLETE |
-| 同路由自动排考 | 同上 | `exam/exam-auto-arrange.html` | COMPLETE |
-| 同路由冲突处理 | 同上 | `exam/exam-conflicts.html` | COMPLETE |
-| 同路由考场与座位 | 同上 | `exam/exam-rooms-seats.html` | COMPLETE |
-| 同路由监考与巡考 | 同上 | `exam/exam-invigilators.html` | COMPLETE |
-| 同路由发布前核验 | 同上 | `exam/exam-publish-precheck.html` | COMPLETE |
-| 同路由异常记录 | 同上 | `exam/exam-incidents.html` | COMPLETE |
-| 同路由考务统计 | 同上 | `exam/exam-stats.html` | COMPLETE |
-| `/admin/academic-affairs/exam?tab=archive` | 同上 | `exam/exam-archive.html` | COMPLETE |
-| `/admin/academic-affairs/exam/print/seating?roomId=:roomId` | `AaExamSeatingPrintView.vue` | `exam/exam-seating-print.html` | COMPLETE |
+| `/admin/academic-affairs/quality` | `quality/quality-monitor.html` | `academicAffairs.quality.dashboard.view` | STATIC COMPLETE |
+| `?tab=supervision` | `quality/quality-supervision.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
+| `?tab=patrol` | `quality/quality-patrol.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
+| `?tab=inspection` | `quality/quality-inspection.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
+| `?tab=incident` | `quality/quality-incident.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
+| `?tab=rectify` | `quality/quality-rectify.html` | `academicAffairs.quality.rectification.view` | STATIC COMPLETE |
+| `?tab=followUp` | `quality/quality-followup.html` | `academicAffairs.quality.rectification.view` | STATIC COMPLETE |
+| `?tab=archive` | `quality/quality-archive.html` | `academicAffairs.quality.archive.view` | STATIC COMPLETE |
 
-完整权限、API、角色、母版和状态登记在 `manifest-parts/120-exam.json`。
+### 教学质量事实边界
 
-### 考务事实边界
+- 监控信号与评价趋势是线索，不是最终定责。
+- 督导、巡课、检查均区分观察事实、判断和定性。
+- 教学事故需保护证据、听取说明、执行回避并保留申诉衔接。
+- 整改任务绑定来源、责任、期限、措施、证据和验收标准。
+- 材料提交不等于整改有效；复查保留无效、重开与复发历史。
+- 归档原件、结论版本和下载审计不可覆盖。
 
-- 真实生命周期按生产页面核对为：`DRAFT → COURSE_CONFIRMED → ARRANGED / PUBLISHED → FINISHED → ARCHIVED`，页面说明保持“草稿→圈课→学院确认→编排→发布→结束→归档”。
-- 自动排考明确区分仅预检和正式执行，并保留人工编排保护、漏排原因和监考缺口。
-- 冲突按教师、教室、考生时间和监考缺口分别定位，不能用一个笼统失败提示替代。
-- 发布是高风险流转，必须重新读取后端状态并完成课程、时间、考场、座位、监考和冲突核验。
-- 考场异常仅记录缺考、违纪和其他事实，不越权替代处分、申诉或成绩处理。
-- 归档为只读封存；打印使用独立 A4 页面，无 `roomId`、无权限或座位未铺排时不得输出空白正式单据。
+本批浏览器回归尚未执行，详细矩阵见 `academic-affairs/quality/regression-report.md`。
 
-### 考务实际验证
+## 下一批：教务归档
 
-- 10 个考务工作区 × 3 种分辨率：**30 次真实浏览器渲染**。
-- 独立打印页 × 3 种分辨率：**3 次真实浏览器渲染**，另验证 A4 打印媒体。
-- 分辨率：`1280×900`、`1440×1000`、`1920×1080`。
-- 结果：控制台错误 **0**、根页面横向溢出 **0**。
-- 已检查：29 项名称与顺序、当前模块高亮、菜单搜索、展开/收起、三级页签跳转、三级面包屑、加载/空/错误/403/长数据、确认弹层和 Escape 关闭。
-- 截图和打印 PDF 只存在于本地执行环境，未提交 PR。
+生产 `navPlan.js` 已登记四个入口：
 
-## 选课管理（COMPLETE）
+1. `/admin/academic-affairs/archive`：归档批次、9 数据域完整性检查与学期封存。
+2. `/admin/academic-affairs/archive/precheck`：归档缺失提醒。
+3. `/admin/academic-affairs/archive?entry=batch`：批量归档工作台。
+4. `/admin/academic-affairs/archive/export`：归档导出。
 
-| 路由 / 切面 | 源组件 | HTML | 状态 |
-|---|---|---|---|
-| `/admin/academic-affairs/selection` | `AaSelectionConsoleView.vue` | `selection/selection-batches.html` | COMPLETE |
-| 同路由 `DRAFT` | 同上 | `selection/selection-draft-config.html` | COMPLETE |
-| 同路由轮次/抽签 | 同上 | `selection/selection-rounds.html` | COMPLETE |
-| 同路由 `OPEN` | 同上 | `selection/selection-open-monitor.html` | COMPLETE |
-| 同路由 `CLOSED` | 同上 | `selection/selection-closed-review.html` | COMPLETE |
-| 同路由异常/冲突 | 同上 | `selection/selection-conflicts.html` | COMPLETE |
-| 同路由 `LOCKED` | 同上 | `selection/selection-locked-roster.html` | COMPLETE |
-| `/admin/academic-affairs/my-selection` | `AaSelectionStudentView.vue` | `selection/my-selection-open.html` | COMPLETE |
-| 同路由满额态 | 同上 | `selection/my-selection-full.html` | COMPLETE |
-| 同路由补选指引 | 同上 | `selection/my-selection-reselect.html` | COMPLETE |
-| `/admin/academic-affairs/selection/archive` | `AaSelectionArchiveView.vue` | `selection/selection-archive.html` | COMPLETE |
-| 同路由归档详情 | 同上 | `selection/selection-archive-detail.html` | COMPLETE |
+下一批必须先读取真实 Vue、API、权限、状态和审计实现，再决定母版复用与独立高保真页面。
 
-完整权限、API、字段与状态登记在 `manifest-parts/110-selection.json`。
+## 尚未覆盖或未收口
 
-## 尚未覆盖
+### 教务中心
 
-- 教务中心：专业分流、排课管理、课堂考勤、补考重修缓考免修、学业预警、毕业资格审核、教材管理、教学资源、教学评价、教学质量、教务归档、教务统计等真实二级模块或其复杂切面。
-- 工作台其余页面及全局审批、消息、帮助、数据中心。
-- 学工中心、岗位实习中心、毕业设计中心、系统管理。
-- 登录、安全、其余打印/导出预览。
+- 专业分流
+- 教学计划独立工作区
+- 排课管理复杂工作台
+- 课堂考勤
+- 教务归档
+- 教务统计
+- 教务看板与部分入口的统一回归
+
+### 其他一级中心
+
+- 工作台其余页面和全局审批、消息、帮助、数据中心
+- 学工中心
+- 岗位实习中心
+- 毕业设计中心
+- 系统管理
+- 登录、安全与其余打印 / 导出预览
 
 ## 尚未完成的验证
 
-- 本轮没有在浏览器中重新渲染此前已存在的 **158 个 HTML**。共享导航和壳层改动已通过新增考务工作区回归，但旧页面仍需执行一次169页全量浏览器回归。
-- 当前执行环境无法直接克隆完整分支快照；全目录资源检查目前由 GitHub 文件读取、manifest 追踪和新增页面真实渲染共同承担。
+- 当前 **235 个 HTML** 尚未在同一最新 HEAD 下完成一次全量浏览器回归。
+- 教学质量 8 页尚未完成三档分辨率、控制台、溢出、键盘和焦点回归。
+- 仓库截图和打印 PDF 均为 0。
 
-未覆盖或未验证项不得描述为完成。
+未覆盖或未验证项不得描述为完成，PR 必须继续保持 Draft。
