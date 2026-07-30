@@ -14,7 +14,7 @@ from app.core.response import paginate, success
 from app.modules.internship.services import internship_agreement_service as agreement_svc
 from app.modules.internship.services import internship_archive_service as archive_svc
 from app.modules.internship.services import internship_insurance_service as insurance_svc
-from app.modules.internship.services import internship_material_center_facade as material_svc
+from app.modules.internship.services import internship_material_center_compat as material_svc
 from app.modules.internship.services import internship_process_report_service as report_svc
 from app.services import audit_log
 
