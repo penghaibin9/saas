@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
+from app.api.v1 import file_governance
 from app.api.v1.file_contract import (
     download_contract,
     list_contract,
@@ -61,3 +62,7 @@ def file_version_timeline(file_id: str, user=Depends(get_current_user)):
 @router.get("/{file_id}/url", summary="获取预览/下载 URL（仅安全可用文件）")
 def file_url(file_id: str, user=Depends(get_current_user)):
     return success(url_contract(file_id, user=user))
+
+
+# /api/v1/files/governance/*：学校管理员自助管理容量、配额、保留与清理；不提供文件内容读取。
+router.include_router(file_governance.router)
