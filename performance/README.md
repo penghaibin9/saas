@@ -28,6 +28,33 @@
 
 高并发档位必须使用预签发Token池。使用账号密码现场登录会触发系统登录限流，因此只允许smoke/baseline排查鉴权。
 
+## 生产运行参数审计
+
+在服务器已经加载正式环境变量后执行：
+
+```bash
+python performance/tools/audit_capacity_runtime.py
+```
+
+它会拒绝以下状态进入容量验收：
+
+- 未显式使用production模式
+- 未启用真实MySQL
+- 未配置Redis
+- 仍是单Worker且未启用多实例
+- 多Worker/多实例仍把Scheduler放在Web进程
+- 未配置`INTERNAL_OPS_TOKEN`
+- MySQL连接池预算不足
+
+建议先声明数据库最大连接预算：
+
+```bash
+export CAPACITY_DB_CONNECTION_BUDGET=200
+python performance/tools/audit_capacity_runtime.py
+```
+
+脚本只输出安全状态和计算结果，不回显密钥或完整数据库连接串。
+
 ## 准备XLSX账号表
 
 ```bash
@@ -45,6 +72,18 @@ python ../performance/tools/prepare_k6_credentials.py \
 ```
 
 `performance/local/`、`performance/secrets/`和账号表不得提交。工具只输出数量，不回显密码和Token。
+
+## 压测前监控探针
+
+```bash
+export INTERNAL_OPS_TOKEN='服务器实际运维探针令牌'
+python performance/tools/probe_observability.py \
+  --base-url https://staging.example.com \
+  --samples 3 \
+  --output performance/results/observability.json
+```
+
+探针要求`/health/ready`为READY，并验证`/internal/metrics`包含P50/P95/P99所需的基础指标结构。Token只从环境变量读取。
 
 ## 本地smoke示例
 
@@ -70,6 +109,7 @@ docker run --rm \
 
 - `PERF_STUDENT_TOKENS_JSON`
 - `PERF_TEACHER_TOKENS_JSON`
+- `PERF_INTERNAL_OPS_TOKEN`
 
 仓库Variables：
 
@@ -77,7 +117,7 @@ docker run --rm \
 - `PERF_ALLOW_HIGH_LOAD=true`：解锁p500/p1000/p3000
 - `PERF_ALLOW_PRODUCTION_HIGH_LOAD=true`：仅在正式批准后允许对`api.hnyueke.com`执行高负载
 
-夜间任务固定执行smoke。p500以上只能手动触发，并需要解锁变量。
+夜间任务固定执行smoke。p500以上只能手动触发，并需要解锁变量。每次压测前后都会抓取就绪状态和进程指标，随k6结果一起上传Artifact。
 
 ## 验收门槛
 
