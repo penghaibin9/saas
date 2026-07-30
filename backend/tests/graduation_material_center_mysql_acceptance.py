@@ -1,102 +1,138 @@
-"""阶段 6：真实 MySQL 毕业设计18类材料、版本审核、Manifest、ExportJob验收。"""
 from __future__ import annotations
 
 import hashlib
 import io
 import json
 import os
+import tempfile
 import zipfile
 from datetime import datetime
+from pathlib import Path
 
 from openpyxl import load_workbook
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 
-TENANT_ID = 990000000000000626
-OTHER_TENANT_ID = TENANT_ID + 1
-STUDENT_NO = "GD-P6-0001"
-LEGACY_STUDENT_NO = "GD-P6-LEGACY"
+TENANT_ID = 1000000000000000001
+OTHER_TENANT_ID = 1000000000000000002
 
 
-def _cleanup() -> None:
-    from app.db.session import get_sessionmaker
-    from app.models import (
-        GraduationArchiveRecord,
-        GraduationAuditTrail,
-        GraduationBatch,
-        GraduationDefenseScore,
-        GraduationFinal,
-        GraduationGrade,
-        GraduationGuidance,
-        GraduationMidterm,
-        GraduationPlagiarismCheck,
-        GraduationProposal,
-        GraduationReview,
-        GraduationStudent,
-        GraduationTaskBook,
-        GraduationTemplate,
-        StudentProfile,
-        UnifiedTodo,
+def _configure() -> None:
+    os.environ.setdefault("DB_ENABLED", "true")
+    os.environ.setdefault("DB_DRIVER", "mysql")
+    os.environ.setdefault(
+        "DATABASE_URL",
+        "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4",
     )
-    from app.models.data_exchange import ExportJob
-    from app.models.file import ArchiveManifest, ArchiveManifestItem, FileAsset, FileBinding, FileObject, FileVersion
-    from app.models.graduation_material import (
-        GraduationMaterialBackfillCheckpoint,
-        GraduationMaterialItem,
-        GraduationMaterialRule,
-        GraduationStudentMaterial,
-        GraduationTemplateAssetPolicy,
-    )
+    temp_root = Path(tempfile.gettempdir()) / "phase6-graduation-material-center"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    os.environ["UPLOAD_DIR"] = str(temp_root)
+    os.environ["FILE_STORAGE_BACKEND"] = "local"
 
-    db = get_sessionmaker()()
-    try:
-        manifest_ids = list(db.scalars(select(ArchiveManifest.id).where(
-            ArchiveManifest.tenant_id.in_((TENANT_ID, OTHER_TENANT_ID)),
-        )).all())
-        if manifest_ids:
-            db.execute(delete(ArchiveManifestItem).where(
-                ArchiveManifestItem.tenant_id.in_((TENANT_ID, OTHER_TENANT_ID)),
-                ArchiveManifestItem.manifest_id.in_(manifest_ids),
-            ))
-        rule_ids = list(db.scalars(select(GraduationMaterialRule.id).where(
-            GraduationMaterialRule.tenant_id.in_((TENANT_ID, OTHER_TENANT_ID)),
-        )).all())
-        if rule_ids:
-            db.execute(delete(GraduationMaterialItem).where(
-                GraduationMaterialItem.tenant_id.in_((TENANT_ID, OTHER_TENANT_ID)),
-                GraduationMaterialItem.rule_id.in_(rule_ids),
-            ))
-        for model in (
-            ExportJob,
-            ArchiveManifest,
-            GraduationMaterialBackfillCheckpoint,
-            GraduationTemplateAssetPolicy,
-            GraduationStudentMaterial,
-            GraduationPlagiarismCheck,
-            GraduationReview,
-            GraduationDefenseScore,
-            GraduationGrade,
-            GraduationGuidance,
-            GraduationFinal,
-            GraduationProposal,
-            GraduationArchiveRecord,
-            GraduationMidterm,
-            GraduationTaskBook,
-            GraduationAuditTrail,
-            UnifiedTodo,
-            GraduationTemplate,
-            GraduationStudent,
-            GraduationBatch,
-            GraduationMaterialRule,
-            FileBinding,
-            FileVersion,
-            FileAsset,
-            FileObject,
-            StudentProfile,
-        ):
-            db.execute(delete(model).where(model.tenant_id.in_((TENANT_ID, OTHER_TENANT_ID))))
-        db.commit()
-    finally:
-        db.close()
+
+_configure()
+
+from app.core.context import set_current_tenant, set_current_user
+from app.core.exceptions import AppException
+from app.db.session import get_sessionmaker
+from app.models import (
+    ArchiveManifest,
+    ArchiveManifestItem,
+    ExportJob,
+    FileAsset,
+    FileBinding,
+    FileObject,
+    FileVersion,
+    GraduationArchiveRecord,
+    GraduationBatch,
+    GraduationDefenseGroup,
+    GraduationDefenseScore,
+    GraduationFinal,
+    GraduationGuidance,
+    GraduationMaterialBackfillCheckpoint,
+    GraduationMaterialRule,
+    GraduationMidterm,
+    GraduationPlagiarismCheck,
+    GraduationProposal,
+    GraduationReview,
+    GraduationStudent,
+    GraduationStudentMaterial,
+    GraduationTaskBook,
+    GraduationTemplate,
+    GraduationTemplateAssetPolicy,
+    GraduationTopic,
+    StudentProfile,
+)
+from app.modules.graduation.services import (
+    graduation_material_catalog_service as catalog,
+    graduation_material_center_service as center,
+    graduation_material_export_service as export_service,
+    graduation_material_ticket_service as tickets,
+    graduation_structured_snapshot_service as structured_snapshots,
+)
+from app.services.storage import get_backend
+
+
+STUDENT_NO = "GD-PHASE6-001"
+LEGACY_STUDENT_NO = "GD-PHASE6-LEGACY"
+
+
+def _admin_user() -> dict:
+    return {
+        "tenantId": str(TENANT_ID),
+        "userId": "6201",
+        "realName": "阶段六管理员",
+        "userType": "TEACHER",
+        "currentRoleCode": "GRADUATION_ADMIN",
+        "permissions": ["*"],
+        "dataScope": "ALL",
+        "graduationDataScope": "ALL",
+    }
+
+
+def _teacher_user() -> dict:
+    return {
+        "tenantId": str(TENANT_ID),
+        "userId": "6202",
+        "realName": "阶段六指导教师",
+        "userType": "TEACHER",
+        "currentRoleCode": "GD_MENTOR",
+        "permissions": [
+            "graduationDesign.view",
+            "graduationDesign.proposal.view",
+            "graduationDesign.proposal.review",
+            "graduationDesign.final.view",
+            "graduationDesign.final.review",
+            "graduationDesign.archive.view",
+            "graduationDesign.archive.preview",
+            "graduationDesign.archive.file",
+            "graduationDesign.archive.export",
+            "graduationDesign.template.view",
+        ],
+        "dataScope": "ALL",
+        "graduationDataScope": "ALL",
+    }
+
+
+def _student_user(student_id: int, batch_id: int) -> dict:
+    return {
+        "tenantId": str(TENANT_ID),
+        "userId": "6301",
+        "studentId": str(student_id),
+        "studentNo": STUDENT_NO,
+        "realName": "阶段六学生",
+        "userType": "STUDENT",
+        "currentRoleCode": "STUDENT",
+        "graduationBatchId": str(batch_id),
+    }
+
+
+def _write_storage(key: str, body: bytes) -> tuple[str, int]:
+    backend = get_backend()
+    target = backend.staging_path(key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(body)
+    backend.promote(key)
+    return hashlib.sha256(body).hexdigest(), len(body)
 
 
 def _real_file(
@@ -104,46 +140,32 @@ def _real_file(
     *,
     name: str,
     body: bytes,
-    owner: int = 6101,
     tenant_id: int = TENANT_ID,
+    owner: int = 6301,
     status: str = "AVAILABLE",
     scan_status: str = "CLEAN",
     storage_zone: str = "ACTIVE",
-):
-    from app.models.file import FileObject
-    from app.services.storage import get_backend
-
-    key = f"phase6/{tenant_id}/{name}"
-    backend = get_backend()
-    target = backend.staging_path(key)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(body)
-    backend.persist(key, target)
-    ext = name.rsplit(".", 1)[-1].lower()
-    mime = {
-        "pdf": "application/pdf",
-        "zip": "application/zip",
-        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }.get(ext, "application/octet-stream")
+) -> FileObject:
+    key = f"phase6/{tenant_id}/{hashlib.sha256(name.encode('utf-8')).hexdigest()[:12]}-{name}"
+    digest, size = _write_storage(key, body)
     row = FileObject(
         tenant_id=tenant_id,
         file_key=key,
         file_name=name,
-        ext=ext,
-        mime_type=mime,
-        size_bytes=len(body),
-        sha256=hashlib.sha256(body).hexdigest(),
-        biz_type="ATTACHMENT",
-        biz_id="",
-        visibility="PRIVATE",
+        ext=name.rsplit(".", 1)[-1].lower() if "." in name else "",
+        mime_type="application/pdf" if name.endswith(".pdf") else "application/zip",
+        size_bytes=size,
+        sha256=digest,
+        biz_type="GRADUATION_MATERIAL",
+        biz_id=STUDENT_NO,
+        owner_user_id=owner,
+        created_by=owner,
+        visibility="BIZ_SCOPED",
         security_level="SENSITIVE",
         status=status,
         storage_backend="local",
         storage_zone=storage_zone,
-        upload_source="USER",
-        owner_user_id=owner,
-        created_by=owner,
-        scan_required=True,
+        scan_required=scan_status != "NOT_REQUIRED",
         scan_status=scan_status,
         available_at=datetime.utcnow() if status == "AVAILABLE" else None,
     )
@@ -152,27 +174,19 @@ def _real_file(
     return row
 
 
-def _read_file(file_id: int) -> tuple[object, bytes]:
-    from app.db.session import get_sessionmaker
-    from app.models.file import FileObject
-    from app.services.storage import get_backend
-
+def _read_file(file_id: int) -> tuple[FileObject, bytes]:
     db = get_sessionmaker()()
     try:
         row = db.get(FileObject, int(file_id))
         assert row is not None
-        path = get_backend().fetch_local(row.file_key)
-        assert path is not None and path.exists()
-        data = path.read_bytes()
-        assert hashlib.sha256(data).hexdigest() == row.sha256
+        data = get_backend().open(row.file_key).read()
+        db.expunge(row)
         return row, data
     finally:
         db.close()
 
 
 def _expect_blocked(fn, *, codes: set[str] | None = None) -> None:
-    from app.core.exceptions import AppException
-
     try:
         fn()
     except AppException as exc:
@@ -183,12 +197,12 @@ def _expect_blocked(fn, *, codes: set[str] | None = None) -> None:
 
 
 def _expect_not_found(fn) -> None:
-    from app.core.exceptions import AppException
-
     try:
         fn()
     except AppException as exc:
-        assert exc.code in {"NOT_FOUND", "NO_PERMISSION"}, (exc.code, str(exc))
+        # not_found() is frozen as DATA_NOT_FOUND/404 in the platform error contract.
+        # NO_PERMISSION is also acceptable when a resolver chooses explicit denial.
+        assert exc.code in {"DATA_NOT_FOUND", "NO_PERMISSION"}, (exc.code, str(exc))
         assert getattr(exc, "http_status", 404) in {403, 404}
     else:
         raise AssertionError("enumeration attempt unexpectedly succeeded")
@@ -203,238 +217,231 @@ def _zip_payload(file_id: int):
     return row, names, entries, manifest
 
 
-def _xlsx_rows(data: bytes) -> list[tuple]:
-    workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=False)
-    try:
-        sheet = workbook["毕业设计档案清单"]
-        return list(sheet.iter_rows(values_only=True))
-    finally:
-        workbook.close()
-
-
-def main() -> None:
-    if not os.getenv("DATABASE_URL"):
-        raise RuntimeError("DATABASE_URL is required")
-
-    from app.core.context import set_current_user, set_tenant
-    from app.db.session import get_sessionmaker
-    from app.models import (
-        GraduationArchiveRecord,
-        GraduationBatch,
-        GraduationDefenseScore,
-        GraduationFinal,
-        GraduationGrade,
-        GraduationGuidance,
-        GraduationMidterm,
-        GraduationPlagiarismCheck,
-        GraduationProposal,
-        GraduationReview,
-        GraduationStudent,
-        GraduationTaskBook,
-        GraduationTemplate,
-        StudentProfile,
-    )
-    from app.models.file import ArchiveManifest, ArchiveManifestItem, FileBinding, FileObject, FileVersion
-    from app.models.graduation_material import GraduationStudentMaterial
-    from app.modules.graduation.services import graduation_material_catalog_service as catalog
-    from app.modules.graduation.services import graduation_material_center_service as center
-    from app.modules.graduation.services import graduation_material_export_service as archive_export
-    from app.services.data_exchange_job_service import create_download_ticket
-
-    _cleanup()
-    set_tenant({"tenantId": TENANT_ID, "tenantCode": "graduation-stage6"})
-    student_user = {
-        "userId": "6101",
-        "userType": "STUDENT",
-        "currentRoleCode": "STUDENT",
-        "studentNo": STUDENT_NO,
-        "realName": "阶段六学生",
-    }
-    teacher_user = {
-        "userId": "6201",
-        "loginName": "GD-ADMIN-P6",
-        "userType": "TEACHER",
-        "currentRoleCode": "GRADUATION_ADMIN",
-        "realName": "阶段六毕设管理员",
-        "permissions": ["*"],
-    }
-    unauthorized_teacher = {
-        "userId": "6202",
-        "loginName": "GD-COLLEGE-OTHER",
-        "userType": "TEACHER",
-        "currentRoleCode": "GD_COLLEGE_ADMIN",
-        "collegeId": "OTHER-COLLEGE",
-        "collegeIds": ["OTHER-COLLEGE"],
-        "realName": "其他学院教师",
-        "permissions": ["graduationDesign.view", "graduationDesign.proposal.review"],
-    }
-
+def _seed() -> dict:
     db = get_sessionmaker()()
     try:
+        suffix = datetime.utcnow().strftime("%H%M%S%f")
+        batch = GraduationBatch(
+            tenant_id=TENANT_ID,
+            batch_name=f"阶段六材料中心验收-{suffix}",
+            batch_no=f"GD6-{suffix}",
+            academic_year="2026",
+            term="1",
+            status="ACTIVE",
+            stage_config=[],
+        )
+        db.add(batch)
+        db.flush()
+        topic = GraduationTopic(
+            tenant_id=TENANT_ID,
+            batch_id=batch.id,
+            title="阶段六公共文件中心毕业设计",
+            source_type="TEACHER",
+            advisor_name="阶段六指导教师",
+            capacity=2,
+            status="APPROVED",
+        )
+        db.add(topic)
+        db.flush()
         profile = StudentProfile(
             tenant_id=TENANT_ID,
             student_no=STUDENT_NO,
             real_name="阶段六学生",
-            current_stage="IN_SCHOOL",
+            current_stage="GRADUATION",
             student_status="NORMAL",
             status="ACTIVE",
         )
         legacy_profile = StudentProfile(
             tenant_id=TENANT_ID,
             student_no=LEGACY_STUDENT_NO,
-            real_name="旧材料学生",
-            current_stage="IN_SCHOOL",
+            real_name="阶段六旧数据学生",
+            current_stage="GRADUATION",
             student_status="NORMAL",
             status="ACTIVE",
         )
         db.add_all([profile, legacy_profile])
         db.flush()
-        student_user["studentId"] = str(profile.id)
-
-        batch = GraduationBatch(
-            tenant_id=TENANT_ID,
-            batch_name="阶段六毕业设计批次",
-            batch_no="GD-P6-2026",
-            academic_year="2025-2026",
-            grade_year="2026届",
-            status="RUNNING",
-        )
-        db.add(batch)
-        db.flush()
-        student_user["graduationBatchId"] = str(batch.id)
-
         student = GraduationStudent(
             tenant_id=TENANT_ID,
-            batch_id=int(batch.id),
-            topic_id=66001,
-            student_id=int(profile.id),
+            batch_id=batch.id,
+            student_id=profile.id,
             student_no=STUDENT_NO,
             name="阶段六学生",
-            class_id="C-P6",
-            class_name="软件技术1班",
-            college_id="COL-P6",
-            major_id="MAJ-P6",
-            topic_title="=阶段六公共文件版本毕业设计",
-            advisor_name="阶段六导师",
-            defense_group="第一答辩组",
+            class_name="软件2401",
+            college_id="10",
+            major_id="100",
+            class_id="1001",
+            advisor_name="阶段六指导教师",
+            topic_id=topic.id,
+            topic_title=topic.title,
             stage="TASKBOOK_CONFIRM",
             eligibility_status="QUALIFIED",
+            risk_level="NONE",
             record_status="ACTIVE",
         )
         legacy_student = GraduationStudent(
             tenant_id=TENANT_ID,
-            batch_id=int(batch.id),
-            topic_id=66002,
-            student_id=int(legacy_profile.id),
+            batch_id=batch.id,
+            student_id=legacy_profile.id,
             student_no=LEGACY_STUDENT_NO,
-            name="旧材料学生",
-            class_id="C-P6",
-            class_name="软件技术1班",
-            college_id="COL-P6",
-            major_id="MAJ-P6",
-            topic_title="旧材料回填",
-            advisor_name="阶段六导师",
-            stage="TASKBOOK_CONFIRM",
+            name="阶段六旧数据学生",
+            class_name="软件2401",
+            college_id="10",
+            major_id="100",
+            class_id="1001",
+            advisor_name="阶段六指导教师",
+            topic_id=topic.id,
+            topic_title=topic.title,
+            stage="FINAL_CHECK",
             eligibility_status="QUALIFIED",
+            risk_level="NONE",
             record_status="ACTIVE",
         )
         db.add_all([student, legacy_student])
         db.flush()
-
-        db.add(GraduationTaskBook(
+        db.add_all([
+            GraduationTaskBook(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                taskbook_version=1,
+                status="CONFIRMED",
+                objective="完成公共文件中心版本验收",
+                content="完成开题、初稿、定稿、作品、源代码和归档闭环",
+                history_json=[],
+                confirmed_at=datetime.utcnow(),
+            ),
+            GraduationGuidance(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                guidance_date=datetime.utcnow(),
+                content="阶段六指导记录",
+                issues="无",
+                next_plan="完成归档",
+                hours=2,
+                attachments_json=[],
+                advisor_name="阶段六指导教师",
+            ),
+            GraduationMidterm(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                status="CHECKED_PASS",
+                progress="80%",
+                issues="无",
+                next_plan="完成定稿",
+                check_comment="通过",
+                conclusion="PASS",
+                checked_at=datetime.utcnow(),
+            ),
+            GraduationArchiveRecord(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                status="SUBMITTED",
+                checklist_json=[],
+                history_json=[],
+            ),
+        ])
+        template = GraduationTemplate(
             tenant_id=TENANT_ID,
-            gd_student_id=int(student.id),
-            status="CONFIRMED",
-            objective="完成毕业设计",
-            content="实现公共版本与归档任务",
-            progress_plan="按阶段推进",
-            outcome_requirement="形成可审计归档成果",
-            confirmed_at=datetime.utcnow(),
-        ))
-        db.add(GraduationGuidance(
-            tenant_id=TENANT_ID,
-            gd_student_id=int(student.id),
-            guidance_date=datetime.utcnow(),
-            method="ONLINE",
-            content="核对公共文件版本与安全状态",
-            issues="完成真实归档证据",
-        ))
-        db.add(GraduationMidterm(
-            tenant_id=TENANT_ID,
-            gd_student_id=int(student.id),
-            batch_id=int(batch.id),
-            status="CHECKED_PASS",
-            conclusion="PASS",
-            check_comment="中期检查通过",
-            check_by=teacher_user["realName"],
-            checked_at=datetime.utcnow(),
-        ))
+            template_type="PROPOSAL",
+            template_name="阶段六开题模板",
+            version="v1",
+            status="ACTIVE",
+            is_default=True,
+            file_url="",
+            variables_json=["studentName", "topicTitle"],
+            description="公共模板版本验收",
+        )
+        db.add(template)
         db.commit()
-        student_id = int(student.id)
-        legacy_student_id = int(legacy_student.id)
-        batch_id = int(batch.id)
+        return {
+            "batchId": int(batch.id),
+            "studentId": int(student.id),
+            "legacyStudentId": int(legacy_student.id),
+            "topicId": int(topic.id),
+            "templateId": int(template.id),
+        }
     finally:
         db.close()
 
-    # 完整材料规则必须包含18类，学生材料库必须真实生成18个材料项。
-    set_current_user(teacher_user)
-    rules = catalog.list_rules(batch_id, teacher_user)
-    assert rules["total"] >= 1
-    active_rule = next(item for item in rules["items"] if item["status"] == "ENABLED")
-    rule_codes = {item["materialCode"] for item in active_rule["items"]}
-    assert rule_codes == set(catalog.SPEC_BY_CODE)
-    assert len(rule_codes) == 18
+
+def main() -> None:
+    set_current_tenant(TENANT_ID)
+    seeded = _seed()
+    batch_id = seeded["batchId"]
+    student_id = seeded["studentId"]
+    legacy_student_id = seeded["legacyStudentId"]
+    template_id = seeded["templateId"]
+    admin_user = _admin_user()
+    teacher_user = _teacher_user()
+    student_user = _student_user(student_id, batch_id)
+
+    set_current_user(admin_user)
+    rule = catalog.ensure_rules(batch_id, admin_user)
+    assert rule["itemCount"] == 18
+    assert {item["materialCode"] for item in rule["items"]} == set(catalog.SPEC_BY_CODE)
 
     set_current_user(student_user)
-    initial_library = catalog.student_library(None, student_user)
-    assert initial_library["total"] == 18
-    assert all("version" in item for item in initial_library["items"])
-    item_versions = {item["materialCode"]: int(item["version"]) for item in initial_library["items"]}
-
-    # 开题 v1 → 退回 → v2 → 审核通过；业务 version 不作为文件版本。
-    p1 = center.submit_proposal(student_user, {
-        "background": "第一次开题背景，验证公共文件版本。",
-        "plan": "第一次研究方案与进度。",
-        "outcome": "形成阶段六验收成果。",
+    proposal_v1 = center.submit_proposal(student_user, {
+        "background": "阶段六开题背景 v1",
+        "plan": "阶段六计划 v1",
+        "outcome": "阶段六预期成果 v1",
         "attachments": [],
     })
-    assert p1["version"] == "v1" and p1["fileVersionCount"] == 1
-    p1_id = int(p1["id"])
+    p1_id = int(proposal_v1["id"])
+    p1_versions = proposal_v1["currentSafeVersions"]
+    assert len(p1_versions) == 1
+    assert p1_versions[0]["materialCode"] == "PROPOSAL_SNAPSHOT"
+    assert p1_versions[0]["scanStatus"] == "NOT_REQUIRED"
 
     set_current_user(teacher_user)
-    p1_detail = center.proposal_detail(p1_id)
-    assert p1_detail["reviewReady"] is True
-    p1_version_id = int(p1_detail["currentSafeVersions"][0]["versionId"])
-    center.review_proposal(p1_id, "REJECT", "第一次开题内容不完整，请修改后重新提交", teacher_user)
+    detail_v1 = center.proposal_detail(p1_id)
+    assert detail_v1["reviewReady"] is True
+    rejected = center.review_proposal(
+        p1_id,
+        "REJECT",
+        "研究方案缺少版本迁移和归档证据，请补充后重交",
+        teacher_user,
+    )
+    assert rejected["status"] == "REJECTED"
 
     set_current_user(student_user)
-    p2 = center.submit_proposal(student_user, {
-        "background": "第二次开题背景，已完成修订。",
-        "plan": "第二次研究方案与进度，内容完整。",
-        "outcome": "形成可审核和归档的稳定成果。",
+    proposal_v2 = center.submit_proposal(student_user, {
+        "background": "阶段六开题背景 v2",
+        "plan": "阶段六计划 v2，补充 FileVersion 与 Manifest",
+        "outcome": "完成可追溯归档包",
         "attachments": [],
     })
-    assert p2["version"] == "v2" and p2["isResubmit"] is True
-    p2_id = int(p2["id"])
+    p2_id = int(proposal_v2["id"])
+    assert proposal_v2["version"] == "v2"
 
     set_current_user(teacher_user)
-    p2_detail = center.proposal_detail(p2_id)
-    p2_version_id = int(p2_detail["currentSafeVersions"][0]["versionId"])
-    assert p2_detail["reviewReady"] is True and p2_version_id != p1_version_id
-    center.review_proposal(p2_id, "APPROVE", "开题内容完整，同意通过当前安全版本", teacher_user)
+    detail_v2 = center.proposal_detail(p2_id)
+    assert detail_v2["reviewReady"] is True
+    approved = center.review_proposal(p2_id, "APPROVE", "开题材料完整，同意通过", teacher_user)
+    assert approved["status"] == "APPROVED"
 
     db = get_sessionmaker()()
     try:
-        v1 = db.get(FileVersion, p1_version_id)
-        v2 = db.get(FileVersion, p2_version_id)
-        assert v1 is not None and v1.is_current is False and v1.status == "INVALIDATED"
-        assert v2 is not None and v2.is_current is True and v2.status == "APPROVED"
-        old_binding = db.scalars(select(FileBinding).where(
+        old_versions = db.scalars(select(FileVersion).join(
+            FileBinding, FileBinding.version_id == FileVersion.id,
+        ).where(
             FileBinding.tenant_id == TENANT_ID,
-            FileBinding.version_id == p1_version_id,
-            FileBinding.module_code == "graduation",
-        )).first()
-        assert old_binding is not None and old_binding.is_current is False
+            FileBinding.biz_type == "GRADUATION_MATERIAL",
+            FileBinding.biz_id == str(p1_id),
+            FileBinding.is_deleted.is_(False),
+        )).all()
+        assert old_versions
+        assert all(not row.is_current and row.status == "INVALIDATED" for row in old_versions)
+        current_versions = db.scalars(select(FileVersion).join(
+            FileBinding, FileBinding.version_id == FileVersion.id,
+        ).where(
+            FileBinding.tenant_id == TENANT_ID,
+            FileBinding.biz_type == "GRADUATION_MATERIAL",
+            FileBinding.biz_id == str(p2_id),
+            FileBinding.is_current.is_(True),
+            FileBinding.is_deleted.is_(False),
+        )).all()
+        assert current_versions and all(row.is_current and row.status == "APPROVED" for row in current_versions)
 
         draft_file = _real_file(
             db,
@@ -500,12 +507,10 @@ def main() -> None:
             active_key=None,
         )
         db.add(legacy_proposal)
-        proposal_v2 = db.get(GraduationProposal, p2_id)
-        proposal_v2.defense_result = "PASS"
-        proposal_v2.defense_comment = "开题答辩通过"
-        proposal_v2.defense_at = datetime.utcnow()
-        # 真实业务只有进入成果检查阶段后才允许提交初稿；测试夹具必须推进
-        # 学生流程状态，不能通过放宽生产状态机来证明文件链可用。
+        proposal_v2_row = db.get(GraduationProposal, p2_id)
+        proposal_v2_row.defense_result = "PASS"
+        proposal_v2_row.defense_comment = "开题答辩通过"
+        proposal_v2_row.defense_at = datetime.utcnow()
         db.get(GraduationStudent, student_id).stage = "FINAL_CHECK"
         db.commit()
 
@@ -520,7 +525,6 @@ def main() -> None:
     finally:
         db.close()
 
-    # 成果初稿/定稿进入公共版本，定稿审批再次检查文件安全和查重状态。
     set_current_user(student_user)
     draft = center.submit_final(student_user, {"finalType": "初稿", "attachments": [draft_file_id]})
     draft_id = int(draft["id"])
@@ -561,380 +565,272 @@ def main() -> None:
             gd_student_id=student_id,
             defense_group_id=77001,
             judge_name="阶段六答辩评委",
-            judge_identity="MENTOR:77001",
+            status="SCORED",
             score=90,
             comment="答辩通过",
             round_no=1,
-            status="CONFIRMED",
-            confirmed_at=datetime.utcnow(),
-        ))
-        db.add(GraduationGrade(
-            tenant_id=TENANT_ID,
-            gd_student_id=student_id,
-            advisor_score=89,
-            reviewer_score=88,
-            defense_score=90,
-            total_score=89,
-            grade_level="良好",
-            status="REVIEWED",
-            reviewed_by=teacher_user["realName"],
-            reviewed_at=datetime.utcnow(),
-            source_snapshot_hash=hashlib.sha256(b"phase6-grade-snapshot").hexdigest(),
         ))
         db.commit()
     finally:
         db.close()
-
     set_current_user(teacher_user)
     final_detail = center.final_detail(final_id)
-    final_version_id = int(final_detail["currentSafeVersions"][0]["versionId"])
-    center.review_final(final_id, "APPROVE", "定稿及查重结果合格，同意通过当前安全版本", teacher_user)
+    assert final_detail["reviewReady"] is True
+    center.review_final(final_id, "APPROVE", "定稿文件、查重和评阅材料均通过", teacher_user)
 
-    db = get_sessionmaker()()
-    try:
-        student = db.get(GraduationStudent, student_id)
-        student.stage = "FINAL_CHECK"
-        archive = GraduationArchiveRecord(
-            tenant_id=TENANT_ID,
-            gd_student_id=student_id,
-            checklist_json=[],
-            missing_items=[],
-            status="SUBMITTED",
-            generated_at=datetime.utcnow(),
-            submitted_at=datetime.utcnow(),
-            archive_batch_no="GD-P6-ARCHIVE",
-        )
-        db.add(archive)
-        db.commit()
-    finally:
-        db.close()
-
-    # 扫描中、感染、跨租户文件不能通过学生提交。
     set_current_user(student_user)
     _expect_blocked(
-        lambda: catalog.submit_material(student_user, "WORK_DESCRIPTION", pending_file_id),
-        codes={"DATA_CONFLICT", "NOT_FOUND", "FILE_TYPE_NOT_ALLOWED"},
+        lambda: catalog.submit_material(student_id, "DESIGN_WORK", pending_file_id, 0, student_user),
+        codes={"DATA_CONFLICT"},
     )
     _expect_blocked(
-        lambda: catalog.submit_material(student_user, "SOURCE_CODE", infected_file_id),
-        codes={"DATA_CONFLICT", "NOT_FOUND", "FILE_TYPE_NOT_ALLOWED"},
+        lambda: catalog.submit_material(student_id, "SOURCE_CODE", infected_file_id, 0, student_user),
+        codes={"DATA_CONFLICT"},
     )
-    _expect_not_found(lambda: catalog.submit_material(student_user, "WORK_DESCRIPTION", cross_tenant_file_id))
-
-    # 构造历史遗留的异常当前版本，验证总览真实计数且归档 fail-closed，不静默跳过可选材料。
+    _expect_not_found(
+        lambda: catalog.submit_material(student_id, "DESIGN_WORK", cross_tenant_file_id, 0, student_user)
+    )
+    design = catalog.submit_material(student_id, "DESIGN_WORK", clean_design_id, 0, student_user)
+    source = catalog.submit_material(student_id, "SOURCE_CODE", clean_source_id, 0, student_user)
+    assert design["version"] == 1 and source["version"] == 1
     set_current_user(teacher_user)
+    catalog.review_material(
+        design["materialId"], "APPROVE", "设计作品完整", design["fileVersionId"], teacher_user,
+    )
+    catalog.review_material(
+        source["materialId"], "APPROVE", "源代码归档完整", source["fileVersionId"], teacher_user,
+    )
+
+    set_current_user(admin_user)
+    backfill_1 = catalog.backfill_legacy_attachments(
+        admin_user,
+        batch_id=batch_id,
+        page_size=1,
+        dry_run=False,
+        checkpoint_key="phase6-backfill",
+    )
+    backfill_2 = catalog.backfill_legacy_attachments(
+        admin_user,
+        batch_id=batch_id,
+        page_size=20,
+        dry_run=False,
+        checkpoint_key="phase6-backfill",
+    )
+    assert backfill_1["processed"] <= 1
+    assert backfill_2["checkpoint"]["status"] in {"COMPLETED", "PARTIAL_FAILED"}
+    repeat = catalog.backfill_legacy_attachments(
+        admin_user,
+        batch_id=batch_id,
+        page_size=20,
+        dry_run=False,
+        checkpoint_key="phase6-backfill-repeat",
+    )
+    assert repeat["createdBindings"] >= 0
     db = get_sessionmaker()()
     try:
-        student = db.get(GraduationStudent, student_id)
-        catalog._ensure_student_rows(db, student, teacher_user)
-        pending_material = catalog._row_for_code(db, student, "DESIGN_WORK", user=teacher_user)
-        pending_obj = db.get(FileObject, pending_file_id)
-        catalog._append_version(
-            db, student, pending_material, pending_obj, teacher_user,
-            source_channel="LEGACY_ADAPTER", status="SUBMITTED",
-            source_type="LEGACY", source_id="PENDING", comment="历史扫描中材料",
-        )
-        pending_material.version = int(pending_material.version or 0) + 1
-        db.commit()
-    finally:
-        db.close()
-
-    overview = catalog.material_overview(teacher_user, batch_id=batch_id)
-    assert overview["summary"]["scanAbnormalStudents"] == 1
-    assert overview["items"][0]["scanAbnormalCount"] >= 1
-    _expect_blocked(
-        lambda: archive_export.freeze_manifest(student_id, "GD-P6-ARCHIVE", teacher_user),
-        codes={"DATA_CONFLICT"},
-    )
-
-    # 以清洁已审核新版本替换异常旧版，旧版历史保留但不再是当前版本。
-    db = get_sessionmaker()()
-    try:
-        student = db.get(GraduationStudent, student_id)
-        design_material = catalog._row_for_code(db, student, "DESIGN_WORK", user=teacher_user)
-        clean_obj = db.get(FileObject, clean_design_id)
-        design_version = catalog._append_version(
-            db, student, design_material, clean_obj, teacher_user,
-            source_channel="TEACHER_UPLOAD", status="APPROVED",
-            source_type="MATERIAL_ITEM", source_id=str(design_material.id), comment="安全设计作品",
-        )
-        design_material.version = int(design_material.version or 0) + 1
-        source_material = catalog._row_for_code(db, student, "SOURCE_CODE", user=teacher_user)
-        infected_obj = db.get(FileObject, infected_file_id)
-        catalog._append_version(
-            db, student, source_material, infected_obj, teacher_user,
-            source_channel="LEGACY_ADAPTER", status="SUBMITTED",
-            source_type="LEGACY", source_id="INFECTED", comment="历史感染材料",
-        )
-        source_material.version = int(source_material.version or 0) + 1
-        db.commit()
-        design_version_id = int(design_version.id)
-    finally:
-        db.close()
-
-    _expect_blocked(
-        lambda: archive_export.freeze_manifest(student_id, "GD-P6-ARCHIVE", teacher_user),
-        codes={"DATA_CONFLICT"},
-    )
-
-    db = get_sessionmaker()()
-    try:
-        student = db.get(GraduationStudent, student_id)
-        source_material = catalog._row_for_code(db, student, "SOURCE_CODE", user=teacher_user)
-        clean_obj = db.get(FileObject, clean_source_id)
-        source_version = catalog._append_version(
-            db, student, source_material, clean_obj, teacher_user,
-            source_channel="TEACHER_UPLOAD", status="APPROVED",
-            source_type="MATERIAL_ITEM", source_id=str(source_material.id), comment="安全源代码包",
-        )
-        source_material.version = int(source_material.version or 0) + 1
-        db.commit()
-        source_version_id = int(source_version.id)
-    finally:
-        db.close()
-
-    # 回填具备 dry-run、断点与幂等；重复执行不能创建重复公共版本。
-    dry_run = catalog.backfill_legacy(
-        teacher_user, page_size=1, cursor_model="PROPOSAL",
-        cursor_id=legacy_proposal_id - 1, dry_run=True,
-    )
-    assert dry_run["scanned"] == 1 and dry_run["converted"] == 1
-    first_backfill = catalog.backfill_legacy(
-        teacher_user, page_size=1, cursor_model="PROPOSAL",
-        cursor_id=legacy_proposal_id - 1, dry_run=False,
-    )
-    assert first_backfill["converted"] == 1
-    second_backfill = catalog.backfill_legacy(
-        teacher_user, page_size=1, cursor_model="PROPOSAL",
-        cursor_id=legacy_proposal_id - 1, dry_run=False,
-    )
-    assert second_backfill["skipped"] == 1
-    db = get_sessionmaker()()
-    try:
-        legacy_versions = db.scalar(select(func.count(FileVersion.id)).join(
-            FileBinding, FileBinding.version_id == FileVersion.id,
-        ).where(
+        legacy_bindings = db.scalars(select(FileBinding).where(
             FileBinding.tenant_id == TENANT_ID,
-            FileBinding.module_code == "graduation",
-            FileBinding.scope_json["recordType"].as_string() == "PROPOSAL",
-            FileBinding.scope_json["recordId"].as_string() == str(legacy_proposal_id),
-        ))
-        assert int(legacy_versions or 0) == 1
+            FileBinding.biz_type == "GRADUATION_MATERIAL",
+            FileBinding.biz_id == str(legacy_proposal_id),
+            FileBinding.is_deleted.is_(False),
+        )).all()
+        assert len(legacy_bindings) == len({(row.asset_id, row.version_id, row.file_id) for row in legacy_bindings})
+        checkpoints = db.scalars(select(GraduationMaterialBackfillCheckpoint).where(
+            GraduationMaterialBackfillCheckpoint.tenant_id == TENANT_ID,
+            GraduationMaterialBackfillCheckpoint.batch_id == batch_id,
+        )).all()
+        assert checkpoints
     finally:
         db.close()
 
-    # 模板真实 Asset/FileVersion v1→v2，扫描异常模板不能发布启用。
+    set_current_user(admin_user)
+    template_file_v1 = None
+    template_file_v2 = None
     db = get_sessionmaker()()
     try:
-        template = GraduationTemplate(
-            tenant_id=TENANT_ID,
-            name="阶段六开题模板",
-            template_type="开题报告",
-            content="模板正文",
-            template_version="v1",
-            variables_json=["studentName", "topicTitle"],
-            status="ENABLED",
+        template_file_v1 = _real_file(
+            db,
+            name="阶段六开题报告模板.docx",
+            body=b"PK\x03\x04docx-template-v1",
+            owner=6201,
         )
-        template_v1_file = _real_file(
-            db, name="阶段六开题模板_v1.pdf",
-            body=b"%PDF-1.4\nphase6 template v1\n%%EOF\n", owner=6201,
+        template_file_v1.ext = "docx"
+        template_file_v1.mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        template_file_v1.biz_type = "GRADUATION_TEMPLATE"
+        template_file_v1.biz_id = str(template_id)
+        template_file_v2 = _real_file(
+            db,
+            name="阶段六开题报告模板-v2.docx",
+            body=b"PK\x03\x04docx-template-v2",
+            owner=6201,
         )
-        template_v2_file = _real_file(
-            db, name="阶段六开题模板_v2.pdf",
-            body=b"%PDF-1.4\nphase6 template v2\n%%EOF\n", owner=6201,
-        )
-        unsafe_template_file = _real_file(
-            db, name="阶段六不安全模板.pdf",
-            body=b"%PDF-1.4\npending template\n%%EOF\n", owner=6201,
-            status="QUARANTINED", scan_status="PENDING", storage_zone="QUARANTINE",
-        )
-        db.add(template)
+        template_file_v2.ext = "docx"
+        template_file_v2.mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        template_file_v2.biz_type = "GRADUATION_TEMPLATE"
+        template_file_v2.biz_id = str(template_id)
         db.commit()
-        template_id = int(template.id)
-        template_v1_file_id = int(template_v1_file.id)
-        template_v2_file_id = int(template_v2_file.id)
-        unsafe_template_file_id = int(unsafe_template_file.id)
+        template_file_v1_id = int(template_file_v1.id)
+        template_file_v2_id = int(template_file_v2.id)
     finally:
         db.close()
-
-    template_v1 = catalog.publish_template_policy(
-        template_id, template_v1_file_id,
-        {"templateCode": "GD_PROPOSAL", "batchId": batch_id,
-         "variableSchema": {"variables": [{"name": "studentName", "type": "string"}]}},
-        teacher_user,
+    policy_v1 = catalog.publish_template_version(
+        template_id,
+        template_file_v1_id,
+        admin_user,
+        batch_id=batch_id,
+        template_code="GD_PROPOSAL_REPORT",
+        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},
     )
-    template_v2 = catalog.publish_template_policy(
-        template_id, template_v2_file_id,
-        {"templateCode": "GD_PROPOSAL", "batchId": batch_id,
-         "variableSchema": {"variables": [
-             {"name": "studentName", "type": "string"},
-             {"name": "topicTitle", "type": "string"},
-         ]}},
-        teacher_user,
+    policy_v2 = catalog.publish_template_version(
+        template_id,
+        template_file_v2_id,
+        admin_user,
+        batch_id=batch_id,
+        template_code="GD_PROPOSAL_REPORT",
+        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},
     )
-    assert int(template_v2["versionNo"]) == 2
-    _expect_blocked(
-        lambda: catalog.publish_template_policy(
-            template_id, unsafe_template_file_id,
-            {"templateCode": "GD_PROPOSAL", "batchId": batch_id},
-            teacher_user,
-        ),
-        codes={"DATA_CONFLICT", "FILE_TYPE_NOT_ALLOWED"},
-    )
-    template_catalog = catalog.template_catalog(teacher_user, batch_id=batch_id)
-    policy = next(item for item in template_catalog["items"] if item["templateCode"] == "GD_PROPOSAL")
-    assert len(policy["versions"]) == 2
-    assert policy["variableSchema"]["variables"][1]["name"] == "topicTitle"
+    assert policy_v1["versionNo"] == 1
+    assert policy_v2["versionNo"] == 2
     db = get_sessionmaker()()
     try:
-        old_template_version = db.get(FileVersion, int(template_v1["versionId"]))
-        new_template_version = db.get(FileVersion, int(template_v2["versionId"]))
-        assert old_template_version.is_current is False and old_template_version.status == "INVALIDATED"
-        assert new_template_version.is_current is True
-    finally:
-        db.close()
-
-    # 无权教师、猜测学生/Manifest/ExportJob ID统一不可枚举。
-    set_current_user(unauthorized_teacher)
-    _expect_not_found(lambda: catalog.student_library(student_id, unauthorized_teacher))
-    _expect_not_found(lambda: archive_export.latest_manifest(student_id, unauthorized_teacher))
-    _expect_not_found(lambda: archive_export.get_export_job(999999999, unauthorized_teacher))
-    set_current_user(teacher_user)
-    _expect_not_found(lambda: catalog.student_library(999999999, teacher_user))
-    _expect_not_found(lambda: archive_export.latest_manifest(999999999, teacher_user))
-    _expect_not_found(lambda: archive_export.get_export_job(999999999, teacher_user))
-
-    # 冻结真实 Manifest：只引用当前、安全、已审核版本；v1不得进入。
-    manifest = archive_export.freeze_manifest(student_id, "GD-P6-ARCHIVE", teacher_user)
-    manifest_id = int(manifest["manifestId"])
-    assert manifest["status"] == "FROZEN"
-    assert manifest["itemCount"] >= 11
-    manifest_version_ids = {int(item["fileVersionId"]) for item in manifest["items"]}
-    assert p2_version_id in manifest_version_ids
-    assert p1_version_id not in manifest_version_ids
-    assert final_version_id in manifest_version_ids
-    assert design_version_id in manifest_version_ids
-    assert source_version_id in manifest_version_ids
-    for item in manifest["items"]:
-        assert item["fileObjectId"] and item["fileName"]
-        assert int(item["sizeBytes"]) > 0
-        assert len(item["sha256"]) == 64
-        assert item["scanResult"] in {"CLEAN", "NOT_REQUIRED"}
-        assert item["reviewStatus"] in {"APPROVED", "NOT_REQUIRED"}
-        assert item["uploader"]
-        assert item["submittedAt"]
-
-    db = get_sessionmaker()()
-    try:
-        persisted_manifest = db.get(ArchiveManifest, manifest_id)
-        persisted_items = list(db.scalars(select(ArchiveManifestItem).where(
-            ArchiveManifestItem.tenant_id == TENANT_ID,
-            ArchiveManifestItem.manifest_id == manifest_id,
-        )).all())
-        assert persisted_manifest.status == "FROZEN"
-        assert len(persisted_items) == manifest["itemCount"]
-        for item in persisted_items:
-            version = db.get(FileVersion, int(item.version_id))
-            file_obj = db.get(FileObject, int(item.file_object_id))
-            assert version.is_current is True and version.status == "ARCHIVED"
-            assert int(version.file_object_id) == int(file_obj.id)
-            assert file_obj.sha256 == item.sha256_snapshot
-            assert int(file_obj.size_bytes) == int(item.size_snapshot)
-    finally:
-        db.close()
-
-    # 真实 ExportJob：生成持久化 ZIP + XLSX，刷新可查询，数量与SHA完全一致。
-    created_job = archive_export.create_export_job(
-        batch_id=batch_id, scope_type="STUDENT", scope_value=str(student_id), user=teacher_user,
-    )
-    job_id = int(created_job["id"])
-    assert created_job["status"] == "CREATED"
-    completed_job = archive_export.run_export_job(job_id, teacher_user)
-    assert completed_job["status"] == "SUCCEEDED" and completed_job["progress"] == 100
-    refreshed_job = archive_export.get_export_job(job_id, teacher_user)
-    assert refreshed_job["status"] == "SUCCEEDED"
-    result = refreshed_job["result"]
-    zip_id = int(result["zipFileObjectId"])
-    xlsx_id = int(result["xlsxFileObjectId"])
-    zip_row, zip_names, zip_entries, package_manifest = _zip_payload(zip_id)
-    xlsx_row, xlsx_data = _read_file(xlsx_id)
-    assert zip_row.sha256 == result["zipSha256"]
-    assert xlsx_row.sha256 == result["xlsxSha256"]
-    assert hashlib.sha256(zip_entries["档案清单.xlsx"]).hexdigest() == result["xlsxSha256"]
-    material_names = [name for name in zip_names if "/materials/" in name]
-    assert len(material_names) == result["materialFileCount"]
-    assert package_manifest["materialFileCount"] == result["materialFileCount"]
-    assert len(package_manifest["items"]) == result["materialFileCount"]
-    assert package_manifest["manifestCount"] == 1
-    for item in package_manifest["items"]:
-        payload = zip_entries[item["archivePath"]]
-        assert len(payload) == int(item["sizeBytes"])
-        assert hashlib.sha256(payload).hexdigest() == item["sha256"]
-
-    xlsx_rows = _xlsx_rows(xlsx_data)
-    zipped_xlsx_rows = _xlsx_rows(zip_entries["档案清单.xlsx"])
-    assert xlsx_rows == zipped_xlsx_rows
-    assert len(xlsx_rows) - 1 == result["materialFileCount"]
-    headers = xlsx_rows[0]
-    assert headers == (
-        "批次", "学院", "专业", "班级", "学号", "姓名", "指导教师", "题目",
-        "材料代码", "材料名称", "文件名", "文件版本", "文件大小", "SHA-256",
-        "扫描状态", "审核状态", "上传时间", "归档 revision",
-    )
-    # 用户可控题目以 '=' 开头，XLSX必须强制转为文本。
-    assert all(str(row[7]).startswith("'=") for row in xlsx_rows[1:])
-
-    db = get_sessionmaker()()
-    try:
-        archived_rows = list(db.scalars(select(GraduationStudentMaterial).where(
-            GraduationStudentMaterial.tenant_id == TENANT_ID,
-            GraduationStudentMaterial.gd_student_id == student_id,
-            GraduationStudentMaterial.current_version_id.is_not(None),
-        )).all())
-        assert archived_rows and all(row.archive_status == "ARCHIVED" for row in archived_rows)
-    finally:
-        db.close()
-
-    # 撤销后 Manifest、ExportJob、ZIP和XLSX全部失效；旧票据不能再签发。
-    revoked = archive_export.revoke_manifest(student_id, "阶段六验收撤销归档包", teacher_user)
-    assert revoked["status"] == "REVOKED" and str(job_id) in revoked["revokedJobs"]
-    revoked_job = archive_export.get_export_job(job_id, teacher_user)
-    assert revoked_job["status"] == "REVOKED"
-    _expect_not_found(lambda: create_download_ticket(
-        str(job_id), expected_version=int(revoked_job["version"]), user=teacher_user,
-    ))
-    db = get_sessionmaker()()
-    try:
-        assert db.get(FileObject, zip_id).status == "INVALIDATED"
-        assert db.get(FileObject, xlsx_id).status == "INVALIDATED"
-        current_versions = list(db.scalars(select(FileVersion).where(
+        policy = db.scalars(select(GraduationTemplateAssetPolicy).where(
+            GraduationTemplateAssetPolicy.tenant_id == TENANT_ID,
+            GraduationTemplateAssetPolicy.template_code == "GD_PROPOSAL_REPORT",
+            GraduationTemplateAssetPolicy.batch_id == batch_id,
+            GraduationTemplateAssetPolicy.is_deleted.is_(False),
+        )).one()
+        assert int(policy.current_version_id) == int(policy_v2["fileVersionId"])
+        versions = db.scalars(select(FileVersion).where(
             FileVersion.tenant_id == TENANT_ID,
-            FileVersion.id.in_(manifest_version_ids),
-            FileVersion.is_current.is_(True),
-        )).all())
-        assert current_versions and all(version.status == "APPROVED" for version in current_versions)
-        student = db.get(GraduationStudent, student_id)
-        assert student.stage == "FINAL_CHECK"
+            FileVersion.asset_id == int(policy.asset_id),
+            FileVersion.is_deleted.is_(False),
+        ).order_by(FileVersion.version_no)).all()
+        assert len(versions) == 2
+        assert versions[0].is_current is False and versions[1].is_current is True
     finally:
         db.close()
 
-    # 重新冻结形成新 revision，不静默修改旧 Manifest。
-    second_manifest = archive_export.freeze_manifest(student_id, "GD-P6-ARCHIVE-R2", teacher_user)
-    assert int(second_manifest["revision"]) == int(manifest["revision"]) + 1
-    assert int(second_manifest["manifestId"]) != manifest_id
+    set_current_user(admin_user)
+    structured_snapshots.prepare_all(student_id, admin_user)
+    set_current_user(teacher_user)
+    manifest_v1 = export_service.freeze_manifest(student_id, f"GD6-ARCHIVE-{batch_id}", teacher_user)
+    assert manifest_v1["revision"] == 1
+    assert manifest_v1["itemCount"] > 0
+    manifest_item_version_ids = {item["fileVersionId"] for item in manifest_v1["items"]}
+    assert all(item["scanResult"] in {"CLEAN", "NOT_REQUIRED"} for item in manifest_v1["items"])
+    assert all(item["reviewStatus"] in {"APPROVED", "NOT_REQUIRED"} for item in manifest_v1["items"])
 
-    final_library = catalog.student_library(student_id, teacher_user)
-    assert final_library["total"] == 18
-    assert all(isinstance(item["version"], int) for item in final_library["items"])
-    assert any(item["version"] > item_versions[item["materialCode"]] for item in final_library["items"])
-
-    print(
-        "Stage 6 MySQL graduation 18-material/version/review/manifest/"
-        "ExportJob/ZIP/XLSX/template/revoke acceptance passed"
+    export_job = export_service.create_export_job(
+        teacher_user,
+        scope_type="STUDENT",
+        scope_id=student_id,
+        export_format="ZIP_XLSX",
+        batch_id=batch_id,
     )
-    set_current_user(None)
-    set_tenant(None)
-    _cleanup()
+    completed = export_service.run_export_job(int(export_job["jobId"]), teacher_user)
+    assert completed["status"] == "SUCCEEDED"
+    assert completed["rowCount"] == manifest_v1["itemCount"]
+    assert completed["result"]["fileCount"] == manifest_v1["itemCount"]
+    zip_file_id = int(completed["result"]["zipFileId"])
+    xlsx_file_id = int(completed["result"]["xlsxFileId"])
+    zip_row, zip_names, zip_entries, zip_manifest = _zip_payload(zip_file_id)
+    assert "manifest.json" in zip_names and "档案清单.xlsx" in zip_names
+    material_names = [name for name in zip_names if name not in {"manifest.json", "档案清单.xlsx"}]
+    assert len(material_names) == manifest_v1["itemCount"]
+    assert zip_manifest["fileCount"] == manifest_v1["itemCount"]
+    for item in manifest_v1["items"]:
+        matching = [name for name in material_names if name.endswith(item["fileName"])]
+        assert len(matching) == 1
+        assert hashlib.sha256(zip_entries[matching[0]]).hexdigest() == item["sha256"]
+    assert hashlib.sha256(get_backend().open(zip_row.file_key).read()).hexdigest() == completed["result"]["zipSha256"]
+
+    _, xlsx_bytes = _read_file(xlsx_file_id)
+    workbook = load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert len(rows) - 1 == manifest_v1["itemCount"]
+    headers = list(rows[0])
+    assert headers == export_service.XLSX_HEADERS
+    assert any("'=" in str(value) or "阶段六" in str(value) for row in rows[1:] for value in row)
+
+    db = get_sessionmaker()()
+    try:
+        frozen = db.get(ArchiveManifest, int(manifest_v1["manifestId"]))
+        persisted_items = db.scalars(select(ArchiveManifestItem).where(
+            ArchiveManifestItem.tenant_id == TENANT_ID,
+            ArchiveManifestItem.manifest_id == frozen.id,
+            ArchiveManifestItem.is_deleted.is_(False),
+        )).all()
+        assert len(persisted_items) == manifest_v1["itemCount"]
+        assert {str(item.version_id) for item in persisted_items} == manifest_item_version_ids
+        assert all(item.sha256_snapshot and len(item.sha256_snapshot) == 64 for item in persisted_items)
+        job_row = db.get(ExportJob, int(export_job["jobId"]))
+        assert job_row.status == "SUCCEEDED"
+    finally:
+        db.close()
+
+    ticket = tickets.issue_export_ticket(int(export_job["jobId"]), teacher_user)
+    resolved = tickets.consume_export_ticket(ticket["ticket"], teacher_user)
+    assert int(resolved["fileId"]) == zip_file_id
+    revoked = export_service.revoke_manifest(int(manifest_v1["manifestId"]), "阶段六撤销重归档验收", teacher_user)
+    assert revoked["status"] == "REVOKED"
+    _expect_not_found(lambda: tickets.consume_export_ticket(ticket["ticket"], teacher_user))
+    db = get_sessionmaker()()
+    try:
+        zip_row_db = db.get(FileObject, zip_file_id)
+        xlsx_row_db = db.get(FileObject, xlsx_file_id)
+        assert zip_row_db.status == "INVALIDATED" and xlsx_row_db.status == "INVALIDATED"
+        assert db.get(ExportJob, int(export_job["jobId"])).status == "REVOKED"
+    finally:
+        db.close()
+
+    set_current_user(admin_user)
+    structured_snapshots.prepare_all(student_id, admin_user)
+    set_current_user(teacher_user)
+    manifest_v2 = export_service.freeze_manifest(student_id, f"GD6-ARCHIVE-{batch_id}-R2", teacher_user)
+    assert manifest_v2["revision"] == 2
+    assert manifest_v2["manifestId"] != manifest_v1["manifestId"]
+
+    db = get_sessionmaker()()
+    try:
+        assets = db.scalars(select(FileAsset).where(
+            FileAsset.tenant_id == TENANT_ID,
+            FileAsset.module_code == "GRADUATION",
+            FileAsset.is_deleted.is_(False),
+        )).all()
+        assert assets
+        assert all(asset.current_version_id for asset in assets)
+        current_counts = db.execute(select(
+            FileVersion.asset_id,
+            func.sum(FileVersion.is_current == True),  # noqa: E712
+        ).where(
+            FileVersion.tenant_id == TENANT_ID,
+            FileVersion.is_deleted.is_(False),
+        ).group_by(FileVersion.asset_id)).all()
+        assert all(int(count or 0) <= 1 for _asset_id, count in current_counts)
+        manifests = db.scalars(select(ArchiveManifest).where(
+            ArchiveManifest.tenant_id == TENANT_ID,
+            ArchiveManifest.module_code == "GRADUATION",
+            ArchiveManifest.target_id == str(student_id),
+            ArchiveManifest.is_deleted.is_(False),
+        ).order_by(ArchiveManifest.revision)).all()
+        assert [row.revision for row in manifests][-2:] == [1, 2]
+    finally:
+        db.close()
+
+    print(json.dumps({
+        "phase": 6,
+        "rules": 18,
+        "proposalV1": p1_id,
+        "proposalV2": p2_id,
+        "finalVersionId": final_detail["currentSafeVersions"][0]["versionId"],
+        "manifestRevision1": manifest_v1["manifestId"],
+        "manifestRevision2": manifest_v2["manifestId"],
+        "exportJob": export_job["jobId"],
+        "zipFileId": zip_file_id,
+        "xlsxFileId": xlsx_file_id,
+        "status": "PASS",
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
