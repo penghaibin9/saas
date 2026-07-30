@@ -65,3 +65,25 @@ entries:
     risk: P1
     targetPhase: '7'
     notes: 教务任务中心只展示当前操作者与当前租户任务，不混入系统管理或其它模块任务。
+  - module: academic-affairs
+    client: admin-pc
+    route: /admin/academic-affairs/roster/import-export
+    page: frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+    action: upload+import+export+download
+    fileCategory: DATA_EXCHANGE_JOB
+    api: frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
+    storageMode: server-authoritative-job
+    authMode: route-permission+backend-permission
+    dataScope: tenant+operator+academic-roster
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 页面确认不再回传 rows；刷新后可读取任务，导出通过一次性票据下载并支持撤销。
