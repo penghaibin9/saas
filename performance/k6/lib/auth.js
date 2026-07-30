@@ -87,7 +87,7 @@ export function bearerFor(role, baseUrl) {
   if (!credential) {
     throw new Error(`No ${role} token or credential pool configured`);
   }
-  if (['p500', 'p1000', 'p3000'].includes(String(__ENV.PROFILE || 'smoke'))) {
+  if (['p300', 'p500', 'p1000', 'p3000'].includes(String(__ENV.PROFILE || 'smoke'))) {
     throw new Error(`High-load profiles require pre-issued ${role} token pools; credential login is intentionally blocked`);
   }
   cache[role] = loginWithCredential(role, credential, baseUrl);
