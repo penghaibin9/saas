@@ -38,7 +38,7 @@ def _upload(client, hdr, name="p0.txt", content=b"hello-p0", biz_type="ATTACHMEN
     data = {"bizType": biz_type}
     if biz_id:
         data["bizId"] = biz_id
-    r = client.post("/api/v1/files/upload", headers=hdr, files=files, data=data)
+    r = client.post("/api/v1/files", headers=hdr, files=files, data=data)
     assert r.status_code == 200, r.text
     return r.json()["data"]["fileId"]
 
@@ -48,14 +48,14 @@ def test_same_tenant_other_user_cannot_guess_download(client, db_mode):
     fid = _upload(client, admin, name="secret.txt", content=b"secret-bytes")
     other = _hdr(client, "academic01")
     assert client.get(f"/api/v1/files/download/{fid}", headers=other).status_code == 404
-    assert client.get(f"/api/v1/files/meta/{fid}", headers=other).status_code == 404
+    assert client.get(f"/api/v1/files/{fid}", headers=other).status_code == 404
 
 
 def test_owner_can_download(client, db_mode):
     teacher = _hdr(client, "academic01")
     fid = _upload(client, teacher, name="mine.txt", content=b"mine")
     assert client.get(f"/api/v1/files/download/{fid}", headers=teacher).status_code == 200
-    assert client.get(f"/api/v1/files/meta/{fid}", headers=teacher).status_code == 200
+    assert client.get(f"/api/v1/files/{fid}", headers=teacher).status_code == 200
 
 
 def test_cross_tenant_download_denied(client, db_mode):
@@ -68,7 +68,6 @@ def test_cross_tenant_download_denied(client, db_mode):
 def test_biz_permission_holder_can_download_after_bind(client, db_mode):
     admin = _hdr(client, "school_admin01")
     fid = _upload(client, admin, name="leave.pdf", content=b"%PDF-1.4\n%", biz_type="LEAVE", biz_id="1001")
-    # 辅导员有 leave.view
     counselor = _hdr(client, "counselor01")
     assert client.get(f"/api/v1/files/download/{fid}", headers=counselor).status_code == 200
 
@@ -79,7 +78,7 @@ def test_student_only_own_attachment(client, db_mode):
                   biz_type="ATTACHMENT", biz_id="2023100001")
     other = _upload(client, admin, name="other.pdf", content=b"%PDF-1.4\nother",
                     biz_type="ATTACHMENT", biz_id="OTHERNO")
-    stu = _hdr(client, "student01")  # studentNo=2023100001
+    stu = _hdr(client, "student01")
     assert client.get(f"/api/v1/files/download/{own}", headers=stu).status_code == 200
     assert client.get(f"/api/v1/files/download/{other}", headers=stu).status_code == 404
 
