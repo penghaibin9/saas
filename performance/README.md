@@ -26,7 +26,7 @@
 | p1000 | 1000并发阶梯 | 否，需显式解锁 |
 | p3000 | 3000并发阶梯 | 否，需显式解锁 |
 
-高并发档位必须使用预签发Token池。使用账号密码现场登录会触发系统登录限流，因此只允许smoke/baseline排查鉴权。
+`smoke`和`baseline`允许使用专用测试账号自动登录。高并发档位必须使用预签发Token池，避免登录限流污染容量结论。
 
 ## 生产运行参数审计
 
@@ -105,15 +105,54 @@ docker run --rm \
 
 ## GitHub Actions配置
 
+入口：仓库 `Settings` → `Secrets and variables` → `Actions`。
+
+### 新手首次smoke只需配置
+
+仓库Variable：
+
+- `PERF_BASE_URL`：目标API根地址，必须HTTPS，例如 `https://api.example.com`
+
+仓库Secrets：
+
+- `PERF_STUDENT_CREDENTIALS_JSON`
+- `PERF_TEACHER_CREDENTIALS_JSON`
+- `PERF_INTERNAL_OPS_TOKEN`
+
+学生账号Secret示例（单行JSON，不要使用真实学生个人账号）：
+
+```json
+[{"loginName":"perf_student","password":"替换为专用测试密码","tenantCode":"替换为学校租户码"}]
+```
+
+教师账号Secret示例（单行JSON，只给最低必要的只读角色）：
+
+```json
+[{"loginName":"perf_teacher","password":"替换为专用测试密码","tenantCode":"替换为学校租户码"}]
+```
+
+`PERF_INTERNAL_OPS_TOKEN`必须与服务器环境变量`INTERNAL_OPS_TOKEN`完全相同。至少16位，建议本地生成48字节随机值：
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+将生成值同时放到：
+
+1. 服务器后端正式环境变量 `INTERNAL_OPS_TOKEN`
+2. GitHub Secret `PERF_INTERNAL_OPS_TOKEN`
+
+修改服务器环境变量后需要重启后端进程。
+
+### 高负载阶段以后再配置
+
 仓库Secrets：
 
 - `PERF_STUDENT_TOKENS_JSON`
 - `PERF_TEACHER_TOKENS_JSON`
-- `PERF_INTERNAL_OPS_TOKEN`
 
 仓库Variables：
 
-- `PERF_BASE_URL`：夜间smoke目标，必须HTTPS
 - `PERF_ALLOW_HIGH_LOAD=true`：解锁p500/p1000/p3000
 - `PERF_ALLOW_PRODUCTION_HIGH_LOAD=true`：仅在正式批准后允许对`api.hnyueke.com`执行高负载
 
