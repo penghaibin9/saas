@@ -53,6 +53,14 @@ function normalizeBaseUrl(raw) {
   return value;
 }
 
+function hostnameOf(baseUrl) {
+  return String(baseUrl)
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .toLowerCase();
+}
+
 export const BASE_URL = normalizeBaseUrl(__ENV.BASE_URL);
 export const PROFILE = String(__ENV.PROFILE || 'smoke').trim();
 export const SCENARIO = String(__ENV.SCENARIO || 'mixed').trim();
@@ -68,7 +76,7 @@ if (HIGH_LOAD_PROFILES.has(PROFILE) && __ENV.K6_ALLOW_HIGH_LOAD !== 'true') {
 }
 if (
   HIGH_LOAD_PROFILES.has(PROFILE)
-  && /(^|\.)api\.hnyueke\.com$/i.test(new URL(BASE_URL).hostname)
+  && /(^|\.)api\.hnyueke\.com$/i.test(hostnameOf(BASE_URL))
   && __ENV.K6_ALLOW_PRODUCTION_HIGH_LOAD !== 'true'
 ) {
   throw new Error('High load against api.hnyueke.com is locked; use staging or explicitly unlock production');
