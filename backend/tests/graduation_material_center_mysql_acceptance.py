@@ -31,7 +31,7 @@ def _configure() -> None:
 
 _configure()
 
-from app.core.context import set_current_tenant, set_current_user
+from app.core.context import set_current_user, set_tenant
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
 from app.models import (
@@ -365,7 +365,7 @@ def _seed() -> dict:
 
 
 def main() -> None:
-    set_current_tenant(TENANT_ID)
+    set_tenant({"tenantId": str(TENANT_ID)})
     seeded = _seed()
     batch_id = seeded["batchId"]
     student_id = seeded["studentId"]
@@ -378,7 +378,9 @@ def main() -> None:
     set_current_user(admin_user)
     rule = catalog.ensure_rules(batch_id, admin_user)
     assert rule["itemCount"] == 18
-    assert {item["materialCode"] for item in rule["items"]} == set(catalog.SPEC_BY_CODE)
+    rule_codes = {item["materialCode"] for item in rule["items"]}
+    assert len(rule_codes) == 18
+    assert rule_codes == set(catalog.SPEC_BY_CODE)
 
     set_current_user(student_user)
     proposal_v1 = center.submit_proposal(student_user, {
