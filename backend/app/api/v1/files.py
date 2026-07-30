@@ -3,7 +3,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
-from app.api.v1.file_contract import list_contract, metadata_contract, upload_contract, url_contract
+from app.api.v1.file_contract import (
+    download_contract,
+    list_contract,
+    metadata_contract,
+    upload_contract,
+    url_contract,
+)
 from app.core.response import success
 from app.core.security import get_current_user
 from app.services.file_version_service import file_version_timeline as build_file_version_timeline
@@ -35,6 +41,11 @@ def list_files(
     user=Depends(get_current_user),
 ):
     return success({"items": list_contract(bizType, bizId, user=user)})
+
+
+@router.get("/download/{file_id}", summary="下载文件（权威授权与审计入口）")
+def download_file(file_id: str, user=Depends(get_current_user)):
+    return download_contract(file_id, user=user)
 
 
 @router.get("/{file_id}", summary="文件元数据、状态和允许动作")
