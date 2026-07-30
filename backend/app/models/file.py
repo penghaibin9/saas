@@ -1,4 +1,4 @@
-"""公共文件对象、扫描记录、上传会话、文件任务与业务绑定。"""
+"""公共文件对象、扫描记录、上传会话、文件任务、逻辑资产、版本、绑定与归档清单。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -45,9 +45,54 @@ class FileObject(PKMixin, TenantMixin, CommonMixin, Base):
     )
 
 
+class FileAsset(PKMixin, TenantMixin, CommonMixin, Base):
+    """逻辑文件资产。物理字节不可覆盖，重交通过 FileVersion 递增。"""
+    __tablename__ = "t_file_asset"
+
+    asset_code: Mapped[str] = mapped_column(String(180), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    category_code: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    owner_type: Mapped[str] = mapped_column(String(30), nullable=False, default="BUSINESS_OBJECT")
+    owner_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    current_version_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    lifecycle_status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE", comment="ACTIVE/LOCKED/ARCHIVED/DELETED")
+    version_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sensitivity_level: Mapped[str] = mapped_column(String(30), nullable=False, default="PERSONAL")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "asset_code", name="uk_file_asset_code"),
+        Index("ix_file_asset_owner", "tenant_id", "owner_type", "owner_id"),
+        Index("ix_file_asset_category", "tenant_id", "category_code", "lifecycle_status"),
+    )
+
+
+class FileVersion(PKMixin, TenantMixin, CommonMixin, Base):
+    """逻辑资产版本；每一版只指向一个不可变 FileObject。"""
+    __tablename__ = "t_file_version"
+
+    asset_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    file_object_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_channel: Mapped[str] = mapped_column(String(40), nullable=False, default="LEGACY_ADAPTER")
+    uploader_user_id: Mapped[str | None] = mapped_column(String(64))
+    uploader_name_snapshot: Mapped[str | None] = mapped_column(String(100))
+    submit_comment: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="UPLOADED", comment="UPLOADED/SCANNING/READY/SUBMITTED/APPROVED/REJECTED/INVALIDATED/ARCHIVED")
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    invalidated_by: Mapped[str | None] = mapped_column(String(100))
+    invalid_reason: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "asset_id", "version_no", name="uk_file_version_no"),
+        UniqueConstraint("tenant_id", "asset_id", "file_object_id", name="uk_file_version_object"),
+        Index("ix_file_version_current", "tenant_id", "asset_id", "is_current", "status"),
+    )
+
+
 class FileScanRecord(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_file_scan_record"
-
     file_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False)
     engine: Mapped[str] = mapped_column(String(50), nullable=False, default="CLAMAV")
@@ -60,7 +105,6 @@ class FileScanRecord(PKMixin, TenantMixin, CommonMixin, Base):
     error_code: Mapped[str | None] = mapped_column(String(80))
     error_message: Mapped[str | None] = mapped_column(Text)
     details_json: Mapped[dict | None] = mapped_column(JSON)
-
     __table_args__ = (
         UniqueConstraint("tenant_id", "file_id", "attempt", name="uk_file_scan_record_attempt"),
         Index("ix_file_scan_record_result", "tenant_id", "result", "created_at"),
@@ -69,7 +113,6 @@ class FileScanRecord(PKMixin, TenantMixin, CommonMixin, Base):
 
 class FileUploadSession(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_file_upload_session"
-
     session_key: Mapped[str] = mapped_column(String(64), nullable=False)
     file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="CREATED")
@@ -80,7 +123,6 @@ class FileUploadSession(PKMixin, TenantMixin, CommonMixin, Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
     metadata_json: Mapped[dict | None] = mapped_column(JSON)
-
     __table_args__ = (
         UniqueConstraint("tenant_id", "session_key", name="uk_file_upload_session_key"),
         Index("ix_file_upload_session_status", "tenant_id", "status", "created_at"),
@@ -89,7 +131,6 @@ class FileUploadSession(PKMixin, TenantMixin, CommonMixin, Base):
 
 class FileJob(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_file_job"
-
     job_type: Mapped[str] = mapped_column(String(40), nullable=False, default="FILE_SCAN")
     file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -102,7 +143,6 @@ class FileJob(PKMixin, TenantMixin, CommonMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     payload_json: Mapped[dict | None] = mapped_column(JSON)
     result_json: Mapped[dict | None] = mapped_column(JSON)
-
     __table_args__ = (
         UniqueConstraint("tenant_id", "dedupe_key", name="uk_file_job_dedupe"),
         Index("ix_file_job_claim", "job_type", "status", "available_at", "locked_at"),
@@ -111,7 +151,6 @@ class FileJob(PKMixin, TenantMixin, CommonMixin, Base):
 
 class FileBinding(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_file_binding"
-
     file_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     biz_type: Mapped[str] = mapped_column(String(50), nullable=False)
     biz_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -123,13 +162,60 @@ class FileBinding(PKMixin, TenantMixin, CommonMixin, Base):
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
     scope_json: Mapped[dict | None] = mapped_column(JSON)
-
+    asset_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    version_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    module_code: Mapped[str | None] = mapped_column(String(64), index=True)
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    data_scope_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime)
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "file_id", "biz_type", "biz_id", "relation_type",
-            name="uk_file_binding_relation",
-        ),
+        UniqueConstraint("tenant_id", "file_id", "biz_type", "biz_id", "relation_type", name="uk_file_binding_relation"),
+        UniqueConstraint("tenant_id", "version_id", "module_code", "biz_type", "biz_id", "relation_type", name="uk_file_binding_version_relation"),
         Index("ix_file_binding_business", "tenant_id", "biz_type", "biz_id", "is_current"),
         Index("ix_file_binding_subject", "tenant_id", "subject_type", "subject_id"),
         Index("ix_file_binding_batch", "tenant_id", "batch_id"),
+        Index("ix_file_binding_asset_current", "tenant_id", "asset_id", "version_id", "is_current"),
+    )
+
+
+class ArchiveManifest(PKMixin, TenantMixin, CommonMixin, Base):
+    __tablename__ = "t_archive_manifest"
+    module_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    archive_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PREPARED", comment="PREPARED/FROZEN/PACKAGED/SUPERSEDED/REVOKED/ABORTED")
+    rule_version: Mapped[str | None] = mapped_column(String(64))
+    manifest_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    package_file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    created_by_name: Mapped[str | None] = mapped_column(String(100))
+    frozen_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_by: Mapped[str | None] = mapped_column(String(100))
+    revoke_reason: Mapped[str | None] = mapped_column(String(500))
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_code", "archive_type", "target_type", "target_id", "revision", name="uk_archive_manifest_revision"),
+        Index("ix_archive_manifest_target", "tenant_id", "module_code", "target_type", "target_id", "status"),
+    )
+
+
+class ArchiveManifestItem(PKMixin, TenantMixin, CommonMixin, Base):
+    __tablename__ = "t_archive_manifest_item"
+    manifest_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    material_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    asset_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    version_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    file_object_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    file_name_snapshot: Mapped[str] = mapped_column(String(300), nullable=False)
+    size_snapshot: Mapped[int | None] = mapped_column(BigInteger)
+    sha256_snapshot: Mapped[str | None] = mapped_column(String(64))
+    review_status: Mapped[str | None] = mapped_column(String(40))
+    scan_result: Mapped[str] = mapped_column(String(30), nullable=False)
+    sort_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "manifest_id", "version_id", "material_code", name="uk_archive_manifest_item_version"),
+        Index("ix_archive_manifest_item_order", "tenant_id", "manifest_id", "sort_no", "id"),
     )
