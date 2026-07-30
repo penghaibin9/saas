@@ -5,7 +5,9 @@ on:
     paths:
       - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/data_exchange_job_service.py'
+      - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/api/v1/data_exchange.py'
+      - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
       - 'backend/tests/test_data_exchange_job_center.py'
       - 'frontend/src/modules/system/**'
@@ -16,7 +18,9 @@ on:
     paths:
       - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/data_exchange_job_service.py'
+      - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/api/v1/data_exchange.py'
+      - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
       - 'backend/tests/test_data_exchange_job_center.py'
       - 'frontend/src/modules/system/**'
@@ -77,7 +81,9 @@ jobs:
           python -m py_compile \
             app/models/data_exchange.py \
             app/services/data_exchange_job_service.py \
+            app/services/data_exchange_confirm_service.py \
             app/api/v1/data_exchange.py \
+            app/api/v1/migration.py \
             alembic/versions/0147_data_exchange_job_center.py
       - name: Authoritative contract tests
         working-directory: backend
@@ -90,9 +96,11 @@ jobs:
           npm run build
       - name: Reject old confirmation contract in migrated pages
         run: |
-          ! grep -R "confirmStudentIdentityBatch\|confirmTeacherIdentityBatch" \
+          ! grep -R "confirmStudentIdentityBatch\|confirmTeacherIdentityBatch\|confirmMigrationBatch" \
             frontend/src/modules/system/views/SystemStudentImportView.vue \
-            frontend/src/modules/system/views/SystemTeacherImportView.vue
+            frontend/src/modules/system/views/SystemTeacherImportView.vue \
+            frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "jobId" frontend/src/modules/system/components/ImportDialog.vue
           grep -q "expectedVersion" frontend/src/modules/system/components/ImportDialog.vue
+          grep -q "pendingJobId" frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "extra=\"forbid\"" backend/app/api/v1/data_exchange.py
