@@ -28,8 +28,12 @@ export function normalizeFile(file = {}) {
 function uploadPath({ bizType = 'ATTACHMENT', bizId = '' } = {}) {
   const query = new URLSearchParams({ bizType: String(bizType || 'ATTACHMENT') })
   if (bizId !== undefined && bizId !== null && String(bizId) !== '') query.set('bizId', String(bizId))
-  // 历史别名只负责兼容参数传递；后端已委托同一权威上传合同。
   return `/files/upload?${query.toString()}`
+}
+
+function authorizedPath(ticket = {}) {
+  const value = String(ticket.url || ticket.downloadUrl || '')
+  return value.startsWith('/api/v1/') ? value.slice('/api/v1'.length) : value
 }
 
 export const fileSdk = {
@@ -56,9 +60,16 @@ export const fileSdk = {
   async download(fileId, fileName = '附件') {
     return downloadFile(`/files/download/${enc(fileId)}`, fileName)
   },
+  async downloadFrom(ticket, fileName = '附件') {
+    const path = typeof ticket === 'string' ? ticket : authorizedPath(ticket)
+    if (!path || !String(path).startsWith('/')) throw new Error('服务端未返回有效文件授权路径')
+    return downloadFile(path, fileName)
+  },
   async preview(fileId, fileName = '附件') {
-    // 学生 PC 的受保护文件仍以 Bearer 下载；浏览器不把 token 拼到 URL。
     return this.download(fileId, fileName)
+  },
+  async previewFrom(ticket, fileName = '附件') {
+    return this.downloadFrom(ticket, fileName)
   }
 }
 
