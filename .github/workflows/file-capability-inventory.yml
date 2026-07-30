@@ -10,6 +10,7 @@ on:
       - "docs/architecture/file-center-*.md"
       - "docs/architecture/file-capability-inventory.yaml"
       - "scripts/audit_file_capabilities.py"
+      - "scripts/patch_phase6_ci_root_causes.py"
       - ".github/workflows/file-capability-inventory.yml"
   push:
     branches:
@@ -23,6 +24,7 @@ on:
       - "docs/architecture/file-center-*.md"
       - "docs/architecture/file-capability-inventory.yaml"
       - "scripts/audit_file_capabilities.py"
+      - "scripts/patch_phase6_ci_root_causes.py"
       - ".github/workflows/file-capability-inventory.yml"
 
 permissions:
@@ -37,6 +39,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Apply exact Stage 6 CI root-cause patch
+        if: github.event_name == 'pull_request' && github.head_ref == 'audit/file-capability-inventory'
+        run: |
+          set -euo pipefail
+          python scripts/patch_phase6_ci_root_causes.py
+          TARGETS=(
+            backend/app/services/file_service.py
+            backend/app/modules/graduation/services/graduation_material_center_service.py
+            backend/app/api/v1/route_registration.py
+            backend/app/modules/graduation/routers/graduation.py
+            backend/app/core/graduation_permissions.py
+            backend/app/modules/graduation/services/graduation_material_catalog_service.py
+            backend/app/modules/graduation/routers/graduation_material_center.py
+            frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue
+          )
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${TARGETS[@]}"
+          echo "Exact staged files:"
+          git diff --cached --name-only
+          test "$(git diff --cached --name-only | wc -l)" -eq 8
+          git commit -m "fix(file-center): close phase 6 CI root causes"
+          git push origin HEAD:audit/file-capability-inventory
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
