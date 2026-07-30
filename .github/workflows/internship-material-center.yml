@@ -112,12 +112,10 @@ jobs:
           PY
           python - <<'PY'
           from app.api.v1.route_registration import register_internship_routes
-          from fastapi import APIRouter, FastAPI
-          from fastapi.routing import APIRoute
+          from fastapi import APIRouter
+          from fastapi.routing import iter_route_contexts
           grouped = APIRouter()
           register_internship_routes(grouped, {'intern': []})
-          app = FastAPI()
-          app.include_router(grouped)
           target_paths = {
               '/internship/agreements/{agreement_id}/school-confirm',
               '/internship/insurances/{insurance_id}/verify',
@@ -128,8 +126,8 @@ jobs:
           }
           matching = [
               (route.path, sorted(route.methods or []), route.endpoint.__module__)
-              for route in app.routes
-              if isinstance(route, APIRoute) and route.path in target_paths
+              for route in iter_route_contexts(grouped.routes)
+              if route.path in target_paths and route.endpoint is not None
           ]
           first_by_path = {}
           for path, methods, module in matching:
