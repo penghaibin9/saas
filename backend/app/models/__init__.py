@@ -75,7 +75,13 @@ from app.models.graduation import (GraduationArchiveRecord, GraduationAuditTrail
                                       GraduationTaskBook, GraduationTemplate,
                                       GraduationTopic, GraduationTopicChangeRequest,
                                       GraduationTopicChoice, GraduationTopicRound)
-from app.models.graduation_material import GraduationMaterialItem, GraduationMaterialRule  # noqa: F401
+from app.models.graduation_material import (  # noqa: F401
+    GraduationMaterialBackfillCheckpoint,
+    GraduationMaterialItem,
+    GraduationMaterialRule,
+    GraduationStudentMaterial,
+    GraduationTemplateAssetPolicy,
+)
 from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup,  # noqa: F401
                                      EmpJob, EmpMaterial, EmpStudent,
                                      InternshipEnterpriseContact)
