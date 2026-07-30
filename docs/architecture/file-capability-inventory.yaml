@@ -952,11 +952,11 @@ entries:
 - module: system-management
   client: admin-pc
   route: inventory://system-management/admin-pc
-  page: frontend/src/modules/system/api/system.api.js
-  action: download+export
+  page: frontend/src/modules/system/api/dataExchange.api.js; frontend/src/modules/system/api/system.api.js
+  action: upload+download+import+export
   fileCategory: MIXED
   api: multiple; see notes
-  backendService: frontend/src/modules/system/api/system.api.js
+  backendService: frontend/src/modules/system/api/dataExchange.api.js; frontend/src/modules/system/api/system.api.js
   storageMode: mixed
   authMode: existing endpoint guard; verify in target phase
   dataScope: existing business scope; verify in target phase
@@ -964,13 +964,13 @@ entries:
   scanGated: unknown
   preview: false
   download: true
-  import: false
+  import: true
   export: true
   archive: false
   status: needs-verification
   risk: P0
-  targetPhase: '5'
-  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/system/api/system.api.js. representative routes: /system/export/configs, /system/export/logs?tab=${t}, /system/export/org, /system/export/role-config/${encodeURIComponent(id)}, /system/export/scope-rules, /system/export/users'
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/system/api/dataExchange.api.js; frontend/src/modules/system/api/system.api.js. representative routes: /data-exchange/exports/${job.id}/download, /data-exchange/exports/${job.id}/download-ticket, /data-exchange/exports/${jobId}, /data-exchange/exports/${jobId}/revoke, /data-exchange/imports/${jobId}, /data-exchange/imports/${jobId}/confirm, /data-exchange/imports/identity/${kind}/validate-file, /system/export/configs, /system/export/logs?tab=${t}, /system/export/org, /system/export/role-config/${encodeURIComponent(id)}, /system/export/scope-rules, /system/export/users'
 - module: system-management
   client: backend
   route: inventory://system-management/backend
