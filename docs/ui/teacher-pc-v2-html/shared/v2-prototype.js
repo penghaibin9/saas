@@ -226,10 +226,23 @@
     }
   };
 
-  document.body.dataset.theme = storage.get('teacher-pc-v2-theme') || 'academy';
-  renderAcademicNavigation();
-  bindAcademicNavigation();
-  enhanceSharedStates();
+  function initEnhancements() {
+    document.body.dataset.theme = storage.get('teacher-pc-v2-theme') || 'academy';
+    renderAcademicNavigation();
+    bindAcademicNavigation();
+    enhanceSharedStates();
+  }
+
+  initEnhancements();
+  if (!$('.v2-sidebar')) {
+    const observer = new MutationObserver(() => {
+      if (!$('.v2-sidebar')) return;
+      observer.disconnect();
+      initEnhancements();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    window.addEventListener('v2:page-ready', initEnhancements, { once: true });
+  }
 
   document.addEventListener('click', event => {
     const theme = event.target.closest('[data-theme-value]');
