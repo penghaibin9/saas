@@ -316,8 +316,10 @@ def revoke_export(
     ), message="导出任务已撤销")
 
 
-@router.post("/maintenance/cleanup-expired", summary="清理过期导入导出任务与可重建字节")
+@router.post("/maintenance/cleanup-expired", summary="清理当前学校过期任务与可重建字节")
 def cleanup_expired(
     user=Depends(require_permission("systemAdmin.file.manage")),
 ):
-    return success(jobs.cleanup_expired_jobs(), message="过期任务清理完成")
+    from app.services.data_exchange_cleanup_service import cleanup_current_tenant_expired_jobs
+
+    return success(cleanup_current_tenant_expired_jobs(), message="当前学校过期任务清理完成")
