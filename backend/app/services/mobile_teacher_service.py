@@ -12,8 +12,8 @@ from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
-from app.services import (academic_service, approval_service, campus_service_service,
-                          orientation_service)
+from app.services import (academic_service, affairs_leave_service, approval_service,
+                          campus_service_service, orientation_service)
 from app.modules.employment.services import employment_service
 from app.modules.internship.services import internship_service
 from app.modules.graduation.services import graduation_service
@@ -271,6 +271,17 @@ def _safe_list(fn, page, ps, **kw):
         return [], 0
 
 
+def _list_teacher_leaves(page, page_size, *, user, status=None, **_kw):
+    """移动教师端复用13A请假唯一事实源，并保持当前身份数据范围。"""
+    mapped_status = "PENDING" if status == "PENDING_REVIEW" else status
+    return affairs_leave_service.list_leaves(
+        user,
+        status=mapped_status,
+        page=page,
+        page_size=page_size,
+    )
+
+
 # ══════════ 工作台总览 / 待办 ══════════
 
 def overview(user: dict) -> dict:
@@ -278,7 +289,7 @@ def overview(user: dict) -> dict:
     if not db_enabled():
         return {"hasData": False, "note": "演示模式"}
     scope = resolve_teacher_scope(u)
-    pending_leave = _total(campus_service_service.list_leaves, status="PENDING_REVIEW")
+    pending_leave = _total(_list_teacher_leaves, user=u, status="PENDING_REVIEW")
     pending_grant = _total(campus_service_service.list_grants, status="REVIEWING")
     pending_wo = _total(campus_service_service.list_work_orders, status="PENDING_HANDLE")
     exc = _total(internship_service.list_attendance_exceptions, status="PENDING_HANDLE")
@@ -327,7 +338,7 @@ def todos(user: dict) -> dict:
                           "level": "high" if r.get("riskLevel") in ("HIGH", "URGENT") else "normal",
                           "deadline": r.get("deadline") or r.get("dueAt") or ""})
 
-    add(campus_service_service.list_leaves, "待审请假", "campus-service", "approve", status="PENDING_REVIEW")
+    add(_list_teacher_leaves, "待审请假", "campus-service", "approve", user=u, status="PENDING_REVIEW")
     add(internship_service.list_weekly_reports, "待批周报", "internship", "review", status="PENDING_REVIEW")
     add(internship_service.list_attendance_exceptions, "打卡异常", "internship", "risk", status="PENDING_HANDLE")
     add(academic_service.list_warnings, "学业预警", "academic", "risk", status="PENDING_HANDLE")
