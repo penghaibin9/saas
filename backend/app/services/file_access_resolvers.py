@@ -1,6 +1,8 @@
 """公共文件冻结中心内置业务 resolver 注册。
 
 该模块通过 registry 正式注册，不改写 file_service 函数，不使用运行时 monkey-patch。
+毕业设计、岗位实习和学工强敏感材料均在公共文件对象授权之后叠加真实业务数据范围；
+通用文件管理员权限不能自动绕过具体业务关系。
 """
 from __future__ import annotations
 
@@ -156,7 +158,6 @@ def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict
 
 
 @register_file_resolver(
-    "GRADUATION_MATERIAL",
     "INTERNSHIP",
     "ENT_EVAL",
     "COURSE_MATERIAL",
@@ -197,6 +198,163 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
         return bool(biz_id and biz_id in _student_scope_values(db, file_obj, user))
     permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
     return bool(permission and has_permission(user, permission))
+
+
+def _graduation_student_ids(bindings: list[Any]) -> set[int]:
+    result: set[int] = set()
+    for binding in bindings:
+        if binding.is_deleted:
+            continue
+        scope = binding.scope_json or {}
+        for value in (
+            scope.get("gdStudentId"),
+            getattr(binding, "student_id", None),
+        ):
+            raw = str(value or "").strip()
+            if raw.isdigit():
+                result.add(int(raw))
+    return result
+
+
+def _graduation_staff_permission(user: dict, action: str) -> bool:
+    permissions = {
+        "graduationDesign.view",
+        "graduationDesign.student.view",
+        "graduationDesign.proposal.review",
+        "graduationDesign.final.review",
+        "graduationDesign.archive.view",
+        "graduationDesign.archive.file",
+        "graduationDesign.archive.export",
+    }
+    if action in {"submit", "bind"}:
+        permissions.update({"graduationDesign.material.manage", "graduationDesign.student.manage"})
+    return any(has_permission(user or {}, permission) for permission in permissions)
+
+
+@register_file_resolver("GRADUATION_MATERIAL")
+def graduation_material_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """毕业设计材料必须同时满足租户文件授权与具体学生/导师/组织范围。"""
+    if db is None:
+        return False
+    valid = [
+        item for item in bindings
+        if not item.is_deleted and item.module_code == "graduation"
+        and item.status in {"ACTIVE", "SUPERSEDED", "ARCHIVED"}
+        and item.version_id and item.asset_id
+    ]
+    gd_student_ids = _graduation_student_ids(valid)
+    if len(gd_student_ids) != 1:
+        return False
+    gd_student_id = next(iter(gd_student_ids))
+    try:
+        from app.models import GraduationStudent
+        from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
+        from app.modules.graduation.services.graduation_scope_service import assert_student_access
+
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == gd_student_id,
+            GraduationStudent.tenant_id == int(file_obj.tenant_id),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+        )).first()
+        if not student:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            current = resolve_current_gd_student(db, user or {})
+            return bool(current and int(current.id) == int(student.id))
+        # systemAdmin.file.manage 不是毕业设计数据范围；必须具备毕设动作权限并通过学生范围。
+        if not _graduation_staff_permission(user or {}, action):
+            return False
+        assert_student_access(db, student, f"file.{action}")
+        return True
+    except Exception:
+        return False
+
+
+@register_file_resolver("GRADUATION_TEMPLATE")
+def graduation_template_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    if db is None:
+        return False
+    try:
+        from app.models.graduation_material import GraduationTemplateAssetPolicy
+        from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
+
+        asset_ids = {int(item.asset_id) for item in bindings if item.asset_id and not item.is_deleted}
+        if len(asset_ids) != 1:
+            return False
+        policy = db.scalars(select(GraduationTemplateAssetPolicy).where(
+            GraduationTemplateAssetPolicy.tenant_id == int(file_obj.tenant_id),
+            GraduationTemplateAssetPolicy.asset_id.in_(asset_ids),
+            GraduationTemplateAssetPolicy.is_deleted.is_(False),
+        )).first()
+        if not policy:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            student = resolve_current_gd_student(db, user or {})
+            if not student or not policy.enabled or policy.status != "ENABLED":
+                return False
+            if policy.batch_id and int(policy.batch_id) != int(student.batch_id or 0):
+                return False
+            if policy.college_id and str(policy.college_id) != str(student.college_id or ""):
+                return False
+            if policy.major_id and str(policy.major_id) != str(student.major_id or ""):
+                return False
+            return True
+        return any(has_permission(user or {}, code) for code in (
+            "graduationDesign.template.view",
+            "graduationDesign.template.manage",
+            "graduationDesign.view",
+        ))
+    except Exception:
+        return False
+
+
+@register_file_resolver("GRADUATION_ARCHIVE_PACKAGE", "GRADUATION_ARCHIVE_INDEX")
+def graduation_archive_file_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    if db is None:
+        return False
+    try:
+        from app.models import GraduationBatch, GraduationStudent
+        from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
+        from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+
+        biz_id = str(file_obj.biz_id or "").strip()
+        if not biz_id.isdigit():
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            if str(file_obj.biz_type or "").upper() != "GRADUATION_ARCHIVE_PACKAGE":
+                return False
+            current = resolve_current_gd_student(db, user or {})
+            return bool(current and int(current.id) == int(biz_id))
+        if not any(has_permission(user or {}, code) for code in (
+            "graduationDesign.archive.view",
+            "graduationDesign.archive.file",
+            "graduationDesign.archive.export",
+        )):
+            return False
+        if str(file_obj.biz_type or "").upper() == "GRADUATION_ARCHIVE_INDEX":
+            batch = db.scalars(select(GraduationBatch).where(
+                GraduationBatch.tenant_id == int(file_obj.tenant_id),
+                GraduationBatch.id == int(biz_id),
+                GraduationBatch.is_deleted.is_(False),
+            )).first()
+            return bool(batch and accessible_student_ids(db, int(file_obj.tenant_id), batch_id=int(batch.id)))
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.tenant_id == int(file_obj.tenant_id),
+            GraduationStudent.id == int(biz_id),
+            GraduationStudent.is_deleted.is_(False),
+        )).first()
+        if student:
+            assert_student_access(db, student, f"archive.file.{action}")
+            return True
+        batch = db.scalars(select(GraduationBatch).where(
+            GraduationBatch.tenant_id == int(file_obj.tenant_id),
+            GraduationBatch.id == int(biz_id),
+            GraduationBatch.is_deleted.is_(False),
+        )).first()
+        return bool(batch and accessible_student_ids(db, int(file_obj.tenant_id), batch_id=int(batch.id)))
+    except Exception:
+        return False
 
 
 @register_file_resolver("AFFAIRS_ARCHIVE")
