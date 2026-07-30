@@ -48,3 +48,6 @@ html,body{overflow-x:hidden}
   .v2-icon-btn{width:30px}
   .v2-user{padding-left:4px;font-size:12px}
 }
+/* V2 dense workspace containment: prevents page tabs and long business tables from expanding the root layout. */
+.v2-main-grid>div,.v2-content,.v2-page,.v2-state{min-width:0}
+.v2-workspace-tabs{max-width:100%;min-width:0}
