@@ -128,10 +128,11 @@ def _prepare_student_materials(student_id: int, user: dict) -> None:
         final_id = int(final.id) if final else None
     if proposal_id: catalog.sync_record("PROPOSAL", proposal_id, user)
     if final_id: catalog.sync_record("FINAL", final_id, user)
-    with session() as db:
-        student = db.get(GraduationStudent, int(student_id))
-        catalog.ensure_structured_snapshots(db, student, user)
-        db.commit()
+    # System-generated PDF evidence is persisted outside the business read
+    # transaction, then bound in a fresh transaction. This avoids MySQL default
+    # REPEATABLE READ visibility gaps without weakening the file security gate.
+    from app.modules.graduation.services import graduation_structured_snapshot_service as structured_snapshots
+    structured_snapshots.prepare_all(int(student_id), user)
 
 
 def _manifest_view(db, manifest: ArchiveManifest) -> dict:

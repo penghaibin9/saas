@@ -803,6 +803,7 @@ def student_library(gd_student_id: int | None, user: dict, *, include_history: b
                 "reviewStatus": row.review_status, "archiveStatus": row.archive_status,
                 "sensitivityLevel": row.sensitivity_level, "assetId": str(row.asset_id or ""),
                 "currentVersionId": str(row.current_version_id or ""),
+                "version": int(row.version or 0),
                 "currentVersion": current_file, "versions": versions,
                 "versionCount": len(versions), "rejectReason": row.reject_reason or "",
                 "reviewer": row.reviewer_name or "", "reviewedAt": _iso(row.reviewed_at),
@@ -869,15 +870,38 @@ def material_overview(user: dict, *, batch_id: int, page: int = 1, page_size: in
         if archive_status: material_stmt = material_stmt.where(GraduationStudentMaterial.archive_status == archive_status.upper())
         if missing_status.upper() == "MISSING": material_stmt = material_stmt.where(GraduationStudentMaterial.business_status == "MISSING")
         all_materials = db.scalars(material_stmt).all()
+        version_ids = {int(row.current_version_id) for row in all_materials if row.current_version_id}
+        state_rows = db.execute(select(
+            FileVersion.id, FileObject.scan_status, FileObject.status,
+        ).join(FileObject, FileObject.id == FileVersion.file_object_id).where(
+            FileVersion.tenant_id == _tid(), FileVersion.id.in_(version_ids or {-1}),
+            FileVersion.is_deleted.is_(False), FileObject.is_deleted.is_(False),
+        )).all()
+        version_states = {
+            int(version_id): (str(scan or "").upper(), str(status or "").upper())
+            for version_id, scan, status in state_rows
+        }
+        abnormal_scan_states = {"PENDING", "RUNNING", "SCANNING", "ERROR", "FAILED", "SCAN_FAILED", "INFECTED"}
+        abnormal_material_ids = {
+            int(row.id) for row in all_materials
+            if row.current_version_id and (
+                version_states.get(int(row.current_version_id), ("", ""))[0] in abnormal_scan_states
+                or version_states.get(int(row.current_version_id), ("", ""))[1] != "AVAILABLE"
+            )
+        }
+        scan_abnormal_student_ids = {
+            int(row.gd_student_id) for row in all_materials if int(row.id) in abnormal_material_ids
+        }
         if scan_status:
-            version_ids = {int(row.current_version_id) for row in all_materials if row.current_version_id}
-            matched_versions = set(db.scalars(select(FileVersion.id).join(
-                FileObject, FileObject.id == FileVersion.file_object_id
-            ).where(
-                FileVersion.tenant_id == _tid(), FileVersion.id.in_(version_ids or {-1}),
-                FileObject.scan_status == scan_status.upper(),
-            )).all())
-            all_materials = [row for row in all_materials if row.current_version_id in matched_versions]
+            wanted_scan_status = scan_status.upper()
+            matched_versions = {
+                version_id for version_id, (actual_scan, _status) in version_states.items()
+                if actual_scan == wanted_scan_status
+            }
+            all_materials = [
+                row for row in all_materials
+                if row.current_version_id and int(row.current_version_id) in matched_versions
+            ]
         by_student: dict[int, list[GraduationStudentMaterial]] = {}
         for row in all_materials: by_student.setdefault(int(row.gd_student_id), []).append(row)
         rows = []
@@ -888,6 +912,7 @@ def material_overview(user: dict, *, batch_id: int, page: int = 1, page_size: in
             pending = sum(item.review_status == "PENDING" for item in materials)
             returned = sum(item.review_status == "RETURNED" for item in materials)
             approved = sum(item.review_status in {"APPROVED", "NOT_REQUIRED"} for item in required)
+            scan_abnormal = sum(int(item.id) in abnormal_material_ids for item in materials)
             rows.append({
                 "gdStudentId": str(student.id), "studentId": str(student.student_id or ""),
                 "studentNo": student.student_no or "", "studentName": student.name,
@@ -896,8 +921,11 @@ def material_overview(user: dict, *, batch_id: int, page: int = 1, page_size: in
                 "className": student.class_name or "", "advisorName": student.advisor_name or "",
                 "topicTitle": student.topic_title or "", "requiredCount": len(required),
                 "missingCount": missing, "pendingReviewCount": pending, "returnedCount": returned,
-                "approvedRequiredCount": approved,
-                "archiveReady": bool(required and approved == len(required) and missing == pending == returned == 0),
+                "approvedRequiredCount": approved, "scanAbnormalCount": scan_abnormal,
+                "archiveReady": bool(
+                    required and approved == len(required)
+                    and missing == pending == returned == scan_abnormal == 0
+                ),
             })
         required_all = [row for row in all_materials if row.required_status == "REQUIRED"]
         missing_students = {int(row.gd_student_id) for row in required_all if row.business_status == "MISSING"}
@@ -909,8 +937,11 @@ def material_overview(user: dict, *, batch_id: int, page: int = 1, page_size: in
         return {
             "summary": {
                 "expectedStudents": total,
-                "completeStudents": max(0, total - len(missing_students | pending_students | returned_students)),
-                "missingStudents": len(missing_students), "scanAbnormalStudents": 0,
+                "completeStudents": max(0, total - len(
+                    missing_students | pending_students | returned_students | scan_abnormal_student_ids
+                )),
+                "missingStudents": len(missing_students),
+                "scanAbnormalStudents": len(scan_abnormal_student_ids),
                 "pendingReviewStudents": len(pending_students), "returnedStudents": len(returned_students),
                 "archiveReadyStudents": len(ready_students), "archivedStudents": len(archived_students),
             },
