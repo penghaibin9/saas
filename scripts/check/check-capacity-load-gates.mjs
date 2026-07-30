@@ -9,6 +9,8 @@ const requiredFiles = [
   'performance/k6/lib/auth.js',
   'performance/k6/lib/config.js',
   'performance/tools/prepare_k6_credentials.py',
+  'performance/tools/audit_capacity_runtime.py',
+  'performance/tools/probe_observability.py',
   'performance/capacity-report-template.md',
   '.github/workflows/capacity-load-gates.yml',
 ]
@@ -28,6 +30,8 @@ if (failures.length === 0) {
   ]
   const k6 = k6Files.map(read).join('\n')
   const workflow = read('.github/workflows/capacity-load-gates.yml')
+  const runtimeAudit = read('performance/tools/audit_capacity_runtime.py')
+  const probe = read('performance/tools/probe_observability.py')
   const forbiddenLoadPaths = [
     /\/upload(?:\/|\b)/i,
     /\/download(?:\/|\b)/i,
@@ -76,6 +80,22 @@ if (failures.length === 0) {
   if (!workflow.includes('grafana/k6:0.54.0')) failures.push('k6 Docker image must be pinned')
   if (!workflow.includes('PERF_STUDENT_TOKENS_JSON')) failures.push('student token secret is required')
   if (!workflow.includes('PERF_TEACHER_TOKENS_JSON')) failures.push('teacher token secret is required')
+  if (!workflow.includes('PERF_INTERNAL_OPS_TOKEN')) failures.push('ops token secret is required')
+  if (!workflow.includes('probe_observability.py')) failures.push('observability probe must run before load')
+
+  const runtimeRequirements = [
+    'REDIS_URL is required before capacity validation',
+    'scaled runtime requires SCHEDULER_MODE=external',
+    'CAPACITY_DB_CONNECTION_BUDGET',
+    'INTERNAL_OPS_TOKEN',
+  ]
+  for (const requirement of runtimeRequirements) {
+    if (!runtimeAudit.includes(requirement)) failures.push(`runtime audit missing ${requirement}`)
+  }
+  for (const endpoint of ['/health/ready', '/internal/metrics']) {
+    if (!probe.includes(endpoint)) failures.push(`observability probe missing ${endpoint}`)
+  }
+  if (!probe.includes('X-Ops-Token')) failures.push('observability probe must use X-Ops-Token')
 
   const secretLeakPatterns = [
     /password\s*[:=]\s*['"][^'"]+['"]/i,
