@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Audit repository file capabilities against the frozen inventory."""
+"""Audit repository file capabilities against the frozen inventory.
+
+The original inventory remains the frozen baseline. Later construction phases register their
+new capabilities in ``docs/architecture/file-capability-inventory.d/*.yaml``. Schema, strict
+baseline and changed-file checks always validate the effective merged registry; no source or
+capability is ignored.
+"""
 from __future__ import annotations
 
 import argparse
@@ -19,6 +25,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INVENTORY = ROOT / "docs/architecture/file-capability-inventory.yaml"
+SUPPLEMENT_DIR = ROOT / "docs/architecture/file-capability-inventory.d"
 REQUIRED_FIELDS = (
     "module", "client", "route", "page", "action", "fileCategory", "api",
     "backendService", "storageMode", "authMode", "dataScope", "versioned",
@@ -67,14 +74,45 @@ class Candidate:
         return f"{self.source}:{self.capability}:{self.token}"
 
 
-def load_inventory(path: Path) -> dict[str, Any]:
+def _read_yaml(path: Path) -> dict[str, Any]:
     if yaml is None:
         raise RuntimeError("PyYAML is required: pip install pyyaml")
     if not path.exists():
         raise RuntimeError(f"inventory not found: {path}")
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise RuntimeError("inventory root must be a mapping")
+        raise RuntimeError(f"inventory root must be a mapping: {path}")
+    return data
+
+
+def load_inventory(path: Path) -> dict[str, Any]:
+    """Load only the requested inventory document (kept for sync/backward compatibility)."""
+    return _read_yaml(path)
+
+
+def load_supplement_entries() -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    if not SUPPLEMENT_DIR.exists():
+        return entries
+    for path in sorted(SUPPLEMENT_DIR.glob("*.yaml")):
+        data = _read_yaml(path)
+        value = data.get("entries")
+        if not isinstance(value, list):
+            raise RuntimeError(f"supplement entries must be a list: {path}")
+        for entry in value:
+            if not isinstance(entry, dict):
+                raise RuntimeError(f"supplement entry must be a mapping: {path}")
+            entries.append(entry)
+    return entries
+
+
+def load_effective_inventory(path: Path) -> dict[str, Any]:
+    data = load_inventory(path)
+    # Supplements belong only to the repository's canonical frozen inventory. Custom --inventory
+    # calls remain isolated and deterministic for tests or external audits.
+    if path.resolve() == DEFAULT_INVENTORY.resolve():
+        data = dict(data)
+        data["entries"] = list(data.get("entries") or []) + load_supplement_entries()
     return data
 
 
@@ -110,7 +148,7 @@ def validate_schema(data: dict[str, Any]) -> list[str]:
             errors.append(f"{where}.risk invalid: {entry['risk']}")
         if str(entry["targetPhase"]) not in VALID_TARGET_PHASE:
             errors.append(f"{where}.targetPhase invalid: {entry['targetPhase']}")
-        identity = tuple(str(entry.get(k, "")) for k in ("module", "client", "route", "action", "api"))
+        identity = tuple(str(entry.get(key, "")) for key in ("module", "client", "route", "action", "api"))
         if identity in seen:
             errors.append(f"{where} duplicates module/client/route/action/api identity")
         seen.add(identity)
@@ -123,7 +161,9 @@ def iter_source_files() -> Iterable[Path]:
         if not root.exists():
             continue
         for path in root.rglob("*"):
-            if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES and not any(part in SKIP_PARTS for part in path.parts):
+            if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES and not any(
+                part in SKIP_PARTS for part in path.parts
+            ):
                 yield path
 
 
@@ -152,7 +192,7 @@ def discover(paths: Iterable[Path] | None = None) -> list[Candidate]:
                 for match in QUOTED_PATH.finditer(line):
                     item = Candidate(source, line_no, "http-file-path", match.group("p"), snippet[:240])
                     found.setdefault(item.key, item)
-    return sorted(found.values(), key=lambda c: (c.source, c.capability, c.token, c.line))
+    return sorted(found.values(), key=lambda item: (item.source, item.capability, item.token, item.line))
 
 
 def is_covered(candidate: Candidate, entries: list[dict[str, Any]]) -> bool:
@@ -233,8 +273,7 @@ def generated_entry(module: str, client: str, items: list[Candidate]) -> dict[st
     else:
         target_phase = "1"
     route_tokens = sorted({
-        item.token for item in items
-        if item.capability in {"fastapi-file-route", "http-file-path"}
+        item.token for item in items if item.capability in {"fastapi-file-route", "http-file-path"}
     })
     routes = ", ".join(route_tokens[:20])
     if len(route_tokens) > 20:
@@ -272,8 +311,9 @@ def sync_inventory(path: Path) -> None:
         entry for entry in data.get("entries", [])
         if not str(entry.get("route", "")).startswith("inventory://")
     ]
+    supplements = load_supplement_entries() if path.resolve() == DEFAULT_INVENTORY.resolve() else []
     candidates = discover()
-    uncovered = [item for item in candidates if not is_covered(item, manual_entries)]
+    uncovered = [item for item in candidates if not is_covered(item, manual_entries + supplements)]
     groups: dict[tuple[str, str], list[Candidate]] = collections.defaultdict(list)
     for item in uncovered:
         groups[(infer_module(item.source), infer_client(item.source))].append(item)
@@ -281,11 +321,14 @@ def sync_inventory(path: Path) -> None:
     data["status"] = "COMPLETE"
     data["generatedAt"] = "2026-07-29"
     data["entries"] = manual_entries + generated
-    errors = validate_schema(data)
+    errors = validate_schema({**data, "entries": data["entries"] + supplements})
     if errors:
         raise RuntimeError("generated inventory invalid: " + "; ".join(errors))
     path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=100000), encoding="utf-8")
-    print(f"Inventory synchronized: manual={len(manual_entries)} generated={len(generated)} candidates={len(candidates)}")
+    print(
+        f"Inventory synchronized: manual={len(manual_entries)} supplements={len(supplements)} "
+        f"generated={len(generated)} candidates={len(candidates)}"
+    )
 
 
 def git_changed_files(base_ref: str) -> list[Path]:
@@ -299,7 +342,9 @@ def git_changed_files(base_ref: str) -> list[Path]:
     for item in output.splitlines():
         rel = item.strip()
         path = ROOT / rel
-        if rel and path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES and any(rel.startswith(f"{root}/") for root in SCAN_ROOTS):
+        if rel and path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES and any(
+            rel.startswith(f"{root}/") for root in SCAN_ROOTS
+        ):
             result.append(path)
     return result
 
@@ -341,7 +386,7 @@ def main() -> int:
     try:
         if args.sync_inventory:
             sync_inventory(args.inventory)
-        data = load_inventory(args.inventory)
+        data = load_effective_inventory(args.inventory)
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
