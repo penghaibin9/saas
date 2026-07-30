@@ -33,6 +33,7 @@ def upgrade() -> None:
         ("bucket_name", sa.Column("bucket_name", sa.String(150))),
         ("object_key", sa.Column("object_key", sa.String(500))),
         ("etag", sa.Column("etag", sa.String(128))),
+        ("legacy_file_key", sa.Column("legacy_file_key", sa.String(500))),
         ("storage_migrated_at", sa.Column("storage_migrated_at", sa.DateTime())),
         ("storage_verified_at", sa.Column("storage_verified_at", sa.DateTime())),
     )
@@ -64,6 +65,9 @@ def downgrade() -> None:
         if name in indexes:
             op.drop_index(name, table_name="t_file_object")
     columns = _columns("t_file_object")
-    for name in ("storage_verified_at", "storage_migrated_at", "etag", "object_key", "bucket_name"):
+    for name in (
+        "storage_verified_at", "storage_migrated_at", "legacy_file_key",
+        "etag", "object_key", "bucket_name",
+    ):
         if name in columns:
             op.drop_column("t_file_object", name)
