@@ -1,10 +1,29 @@
+import ast
+import os
+import runpy
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_phase5_python_files_parse_before_app_import():
+    paths = (
+        "backend/app/services/affairs_archive_service.py",
+        "backend/app/services/affairs_attachment_service.py",
+        "backend/app/modules/student_affairs/services/affairs_material_center_service.py",
+        "backend/app/modules/student_affairs/routers/affairs_material_center.py",
+        "backend/app/api/v1/affairs_operations_api.py",
+        "backend/app/api/v1/router.py",
+        "backend/alembic/versions/0149_affairs_material_center.py",
+    )
+    for path in paths:
+        ast.parse(read(path), filename=path)
 
 
 def test_phase5_schema_is_additive_and_keeps_legacy_fields():
@@ -117,3 +136,12 @@ def test_phase5_router_exposes_overview_backfill_and_manifest():
         assert path in router
     assert "affairs_material_center_router" in aggregator
     assert "affairs_material_center_router," in aggregator
+
+
+def test_phase5_real_mysql_resubmit_manifest_and_sensitivity():
+    if not os.getenv("DATABASE_URL") or os.getenv("DB_ENABLED", "").lower() != "true":
+        pytest.skip("real MySQL is required")
+    runpy.run_path(
+        str(ROOT / "backend/tests/affairs_material_center_mysql_acceptance.py"),
+        run_name="__main__",
+    )
