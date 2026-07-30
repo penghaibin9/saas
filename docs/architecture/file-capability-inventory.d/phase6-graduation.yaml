@@ -1,0 +1,92 @@
+version: file-capability-inventory-supplement/v1
+phase: 6
+status: COMPLETE
+entries:
+- module: graduation
+  client: backend
+  route: /api/v1/mobile/graduation/material-center/*
+  page: backend/app/api/v1/mobile_graduation_material_center.py
+  action: download+archive
+  fileCategory: GRADUATION_MATERIAL
+  api: GET /api/v1/mobile/graduation/material-center/files/{file_id}/download; GET /api/v1/mobile/graduation/material-center/packages/{file_id}/download
+  backendService: backend/app/api/v1/mobile_graduation_material_center.py
+  storageMode: configurable
+  authMode: student-authenticated+student-self+audited-download
+  dataScope: tenant+graduation-student-self
+  versioned: true
+  scanGated: true
+  preview: true
+  download: true
+  import: false
+  export: false
+  archive: true
+  status: active
+  risk: P0
+  targetPhase: '6'
+  notes: 学生本人材料库、当前/历史版本下载和本人归档包下载；所有字节走毕业设计专用审计路由。
+- module: graduation
+  client: backend
+  route: /api/v1/graduation/material-center/*
+  page: backend/app/modules/graduation/routers/graduation_material_center.py
+  action: preview+download+export+archive
+  fileCategory: GRADUATION_MATERIAL
+  api: GET/POST /api/v1/graduation/material-center/*
+  backendService: backend/app/modules/graduation/routers/graduation_material_center.py
+  storageMode: configurable
+  authMode: authenticated+graduation-permission+business-scope+audited-download
+  dataScope: tenant+batch+student+mentor+role-scope
+  versioned: true
+  scanGated: true
+  preview: true
+  download: true
+  import: false
+  export: true
+  archive: true
+  status: active
+  risk: P0
+  targetPhase: '6'
+  notes: 教师审核前查看当前安全 FileVersion；材料规则、学生材料库、Manifest、单人/批量归档包和模板版本。
+- module: graduation
+  client: backend
+  route: internal://graduation-material-center
+  page: backend/app/modules/graduation/services/graduation_material_center_service.py
+  action: store-generated-file+export+archive
+  fileCategory: GRADUATION_MATERIAL
+  api: internal service
+  backendService: backend/app/modules/graduation/services/graduation_material_center_service.py
+  storageMode: configurable
+  authMode: service-context+tenant-required+business-scope
+  dataScope: tenant+batch+student+business-object
+  versioned: true
+  scanGated: true
+  preview: false
+  download: true
+  import: false
+  export: true
+  archive: true
+  status: active
+  risk: P0
+  targetPhase: '6'
+  notes: 生成开题正文快照、冻结真实 Manifest、复算文件哈希、生成单人 ZIP、批量 ZIP 与真实 Excel 索引。
+- module: graduation
+  client: admin-pc
+  route: /admin/graduation/material-center
+  page: frontend/src/modules/graduation/api/graduation-material-center.api.js; frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue
+  action: preview+download+export+archive
+  fileCategory: GRADUATION_MATERIAL
+  api: /graduation/material-center/*
+  backendService: frontend/src/modules/graduation/api/graduation-material-center.api.js
+  storageMode: configurable
+  authMode: authenticated+graduation-permission+server-authoritative-actions
+  dataScope: server-filtered-batch+student+mentor-scope
+  versioned: true
+  scanGated: true
+  preview: true
+  download: true
+  import: false
+  export: true
+  archive: true
+  status: active
+  risk: P0
+  targetPhase: '6'
+  notes: 审核证据面板显示版本号、versionId、安全状态和 SHA-256；预览下载走专用 Blob 接口。
