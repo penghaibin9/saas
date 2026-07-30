@@ -108,5 +108,10 @@ replacement = """replace_once(
 ''',
 )
 """
-path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
-print("Scoped store_bytes DB patch section")
+text = text[:start] + replacement + text[end:]
+needle = '            assert routes.index(name) < routes.index("graduation, graduation_batch")'
+if text.count(needle) != 1:
+    raise RuntimeError(f"round5 matcher expected once, found {text.count(needle)}")
+text = text.replace(needle, '        assert routes.index(name) < routes.index("graduation, graduation_batch")', 1)
+path.write_text(text, encoding="utf-8")
+print("Scoped store_bytes and Round5 patch sections")
