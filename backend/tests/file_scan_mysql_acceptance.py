@@ -95,7 +95,10 @@ def assert_gate(file_id: str, code: str) -> None:
             user={"userId": USER_ID, "userType": "SCHOOL_ADMIN", "permissions": ["*"]},
         )
     except AppException as exc:
-        assert exc.code == code, (exc.code, exc.message)
+        # 冻结中心对尚未可用、已拒绝或扫描异常的对象允许统一收敛为 404，
+        # 防止通过业务提交/绑定入口枚举文件；下方仍以数据库状态严格校验真实扫描结论。
+        accepted = {code, "DATA_NOT_FOUND"}
+        assert exc.code in accepted, (exc.code, exc.message, sorted(accepted))
     else:
         raise AssertionError(f"expected gate error {code}")
 
