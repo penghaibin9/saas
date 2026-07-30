@@ -476,7 +476,7 @@ def _final_snapshot_bytes(record: GraduationFinal, student: GraduationStudent) -
 
 
 def _store_final_snapshot(db, record: GraduationFinal, student: GraduationStudent, user: dict) -> FileObject:
-    safe_student = re.sub(r"[\\/:*?"<>|]+", "_", student.name or "学生")
+    safe_student = re.sub(r'[\\/:*?"<>|]+', '_', student.name or '学生')
     meta = file_service.store_bytes(
         _final_snapshot_bytes(record, student),
         f"成果提交记录_{safe_student}_{record.final_type or '成果'}_{record.version or 'v1'}.txt",
