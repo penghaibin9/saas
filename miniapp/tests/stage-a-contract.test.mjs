@@ -18,18 +18,21 @@ test('student home uses one aggregate request and lightweight message summary', 
   assert.doesNotMatch(adapter.match(/export async function studentHomeReal\(\)[\s\S]*?export const enrichHome/)[0], /\.\.\.mock|mockHome/)
 })
 
-test('teacher workbench has TTL dirty-context checks and one workbench call', () => {
+test('teacher workbench has TTL checks and one final aggregate HTTP endpoint', () => {
   const page = read('src/pages/teacher/workbench/index.vue')
-  const adapter = read('src/services/realApi.js')
+  const installer = read('src/services/mobilePerformanceInstaller.js')
   assert.doesNotMatch(page, /onShow\(\) \{ this\.load\(\) \}/)
   assert.match(page, /WORKBENCH_TTL_MS = 20_000/)
   assert.match(page, /getTeacherWorkbenchVersion/)
   assert.match(page, /loadInternshipContext/)
   const loadBlock = page.match(/load\(\{ force = false[\s\S]*?\n    \},\n    quick\(q\)/)[0]
   assert.equal((loadBlock.match(/teacherApi\.getWorkbench/g) || []).length, 1)
-  const adapterBlock = adapter.match(/export async function teacherWorkbenchReal[\s\S]*?export const enrichTeacherWorkbench/)[0]
-  assert.doesNotMatch(adapterBlock, /\.\.\.mock/)
-  assert.match(adapterBlock, /Promise\.allSettled/)
+  assert.match(installer, /\/mobile\/performance\/teacher\/workbench\?pageSize=8/)
+  assert.equal((installer.match(/teacherApi\.getWorkbench\s*=/g) || []).length, 1)
+  assert.doesNotMatch(
+    installer.match(/teacherApi\.getWorkbench[\s\S]*?teacherApi\.getTodosPage/)[0],
+    /Promise\.allSettled/
+  )
 })
 
 test('ordinary GETs are single-flight and writes are rejected rather than deduplicated', () => {
@@ -54,10 +57,11 @@ test('production session skeleton contains no fixed student or teacher identity'
   assert.match(session, /name: '', studentNo: '', className: ''/)
 })
 
-test('high-frequency message, todo and risk pages use server pagination', () => {
+test('high-frequency message, todo and risk pages use final database pagination endpoints', () => {
   const messages = read('src/pages/student/messages/index.vue')
   const todos = read('src/pages/teacher/todos/index.vue')
   const risks = read('src/pages/teacher/risk-students/index.vue')
+  const installer = read('src/services/mobilePerformanceInstaller.js')
   assert.match(messages, /getMessagesPage/)
   assert.match(todos, /getTodosPage/)
   assert.match(risks, /getRiskStudentsPage/)
@@ -66,4 +70,26 @@ test('high-frequency message, todo and risk pages use server pagination', () => 
     assert.match(source, /_loadEpoch/)
     assert.doesNotMatch(source, /pagedSlice/)
   }
+  for (const endpoint of [
+    '/mobile/performance/student/messages-page',
+    '/mobile/performance/teacher/todos-page',
+    '/mobile/performance/teacher/risk-students-page'
+  ]) assert.match(installer, new RegExp(endpoint.replaceAll('/', '\\/')))
+})
+
+test('mark-all-read collapses synchronous row updates into one batch request', () => {
+  const installer = read('src/services/mobilePerformanceInstaller.js')
+  assert.match(installer, /let queuedIds = new Set\(\)/)
+  assert.match(installer, /Promise\.resolve\(\)\.then\(flushReadBatch\)/)
+  assert.match(installer, /\/mobile\/performance\/student\/messages\/read-batch/)
+  assert.match(installer, /data: \{ messageIds \}/)
+})
+
+test('release build fails at the proactive 1.80 MiB split threshold', () => {
+  const main = read('src/main.js')
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(main, /mobilePerformanceInstaller/)
+  assert.match(release, /MAIN_PACKAGE_SPLIT_TRIGGER/)
+  assert.match(release, /1\.8 \* 1024 \* 1024/)
+  assert.match(release, /达到 1\.80 MiB 主动分包线/)
 })

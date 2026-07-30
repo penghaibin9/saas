@@ -38,9 +38,13 @@ export function studentRead() {
   group('student-core-read', () => {
     getJson('student', 'student_home', '/api/v1/mobile/home');
     jitter();
-    getJson('student', 'student_todos', '/api/v1/mobile/me/todos');
+    getJson('student', 'student_todos', '/api/v1/student-mini/todos?status=PENDING&page=1&pageSize=20');
     jitter();
-    getJson('student', 'student_messages', '/api/v1/mobile/me/messages');
+    getJson(
+      'student',
+      'student_messages',
+      '/api/v1/mobile/performance/student/messages-page?tab=notice&page=1&pageSize=20',
+    );
     jitter();
     getJson('student', 'student_profile', '/api/v1/mobile/me/profile');
   });
@@ -49,13 +53,25 @@ export function studentRead() {
 
 export function teacherRead() {
   group('teacher-core-read', () => {
-    getJson('teacher', 'teacher_overview', '/api/v1/mobile/teacher/overview');
+    getJson(
+      'teacher',
+      'teacher_workbench',
+      '/api/v1/mobile/performance/teacher/workbench?pageSize=8',
+    );
     jitter();
-    getJson('teacher', 'teacher_todos', '/api/v1/mobile/teacher/todos');
+    getJson(
+      'teacher',
+      'teacher_todos',
+      '/api/v1/mobile/performance/teacher/todos-page?group=all&page=1&pageSize=20',
+    );
     jitter();
     getJson('teacher', 'teacher_classes', '/api/v1/mobile/teacher/my-classes');
     jitter();
-    getJson('teacher', 'teacher_risk_students', '/api/v1/mobile/teacher/risk-students');
+    getJson(
+      'teacher',
+      'teacher_risk_students',
+      '/api/v1/mobile/performance/teacher/risk-students-page?level=all&page=1&pageSize=20',
+    );
   });
   jitter();
 }

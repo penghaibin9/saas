@@ -8,6 +8,7 @@ const APP_JSON = path.join(OUTPUT_DIR, 'app.json')
 const PROJECT_JSON = path.join(OUTPUT_DIR, 'project.config.json')
 const RELEASE_INFO = path.join(OUTPUT_DIR, 'RELEASE_INFO.txt')
 const TEXT_EXTENSIONS = new Set(['.js', '.json', '.wxml', '.wxss', '.wxs', '.sjs', '.txt'])
+const MAIN_PACKAGE_SPLIT_TRIGGER = Math.floor(1.8 * 1024 * 1024)
 const MAIN_PACKAGE_LIMIT = 2 * 1024 * 1024
 const TOTAL_PACKAGE_LIMIT = 20 * 1024 * 1024
 
@@ -124,18 +125,26 @@ async function main() {
   if (totalBytes > TOTAL_PACKAGE_LIMIT) {
     fail(`小程序总包约 ${(totalBytes / 1024 / 1024).toFixed(2)} MiB，超过 20 MiB`)
   }
+  if (mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER) {
+    fail(
+      `主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，达到 1.80 MiB 主动分包线；` +
+      '必须实施 pages.json 分包后再发布'
+    )
+  }
   if (mainPackageBytes > MAIN_PACKAGE_LIMIT) {
-    fail(`主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，超过 2 MiB；需要继续分包`)
+    fail(`主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，超过 2 MiB`)
   }
 
   const info = [
     '跃科校园通 · 微信小程序生产构建产物',
     `API: ${expectedApiBase}`,
     `AppID: ${appid || '未注入，请在微信开发者工具导入时选择你的小程序 AppID'}`,
-    `学生端入口: pages/login/student/index`,
-    `教师端入口: pages/login/teacher/index`,
+    '学生端入口: pages/login/student/index',
+    '教师端入口: pages/login/teacher/index',
     `主包大小: ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB`,
     `总包大小: ${(totalBytes / 1024 / 1024).toFixed(2)} MiB`,
+    `分包数量: ${subPackages.length}`,
+    '主动分包线: 1.80 MiB',
     '导入目录: 本文件所在的 mp-weixin 文件夹'
   ].join('\n')
   await fs.writeFile(RELEASE_INFO, `${info}\n`, 'utf8')

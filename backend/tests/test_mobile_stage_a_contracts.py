@@ -51,3 +51,45 @@ def test_teacher_mobile_uses_authoritative_affairs_leave_service():
     assert "affairs_leave_service.list_leaves" in source
     assert "campus_service_service.list_leaves" not in source
     assert 'status="PENDING"' in source
+
+
+def test_final_mobile_performance_routes_are_mounted_and_bounded():
+    routes = _read("app/api/v1/mobile_performance.py")
+    aggregator = _read("app/api/v1/router.py")
+    for path in (
+        '"/teacher/workbench"',
+        '"/teacher/todos-page"',
+        '"/teacher/risk-students-page"',
+        '"/student/messages-page"',
+        '"/student/messages/read-batch"',
+    ):
+        assert path in routes
+    assert "pageSize" in routes
+    assert "le=50" in routes
+    assert "mobile_performance_router" in aggregator
+
+
+def test_high_frequency_pages_use_database_pagination_not_full_aggregate_slicing():
+    source = _read("app/services/mobile_performance_service.py")
+    assert ".offset(" in source
+    assert ".limit(" in source
+    assert "union_all(" in source
+    assert "todo_svc._visibility_cond" in source
+    assert "message_svc.list_messages" in source
+    assert "def teacher_todos_page" in source
+    assert "def teacher_risk_students_page" in source
+    assert "def student_messages_page" in source
+    assert "data = todos(user)" not in source
+    assert "data = risk_students(user)" not in source
+    assert "my_messages(user)" not in source
+
+
+def test_teacher_workbench_and_batch_read_are_single_server_operations():
+    source = _read("app/services/mobile_performance_service.py")
+    workbench = source.split("def teacher_workbench", 1)[1]
+    batch = source.split("def read_messages_batch", 1)[1].split("def teacher_workbench", 1)[0]
+    assert "snapshot_svc.snapshot" in workbench
+    assert "teacher_risk_students_page" in workbench
+    assert "sql_update(UnifiedMessage)" in batch
+    assert "UnifiedMessage.id.in_(ids)" in batch
+    assert "func.coalesce(UnifiedMessage.version, 0) + 1" in batch

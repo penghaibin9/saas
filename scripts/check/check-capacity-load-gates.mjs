@@ -50,9 +50,11 @@ if (failures.length === 0) {
   }
   const requiredEndpoints = [
     '/api/v1/mobile/home',
-    '/api/v1/mobile/me/messages',
-    '/api/v1/mobile/teacher/overview',
-    '/api/v1/mobile/teacher/todos',
+    '/api/v1/student-mini/todos?status=PENDING&page=1&pageSize=20',
+    '/api/v1/mobile/performance/student/messages-page',
+    '/api/v1/mobile/performance/teacher/workbench',
+    '/api/v1/mobile/performance/teacher/todos-page',
+    '/api/v1/mobile/performance/teacher/risk-students-page',
   ]
   for (const endpoint of requiredEndpoints) {
     if (!k6.includes(endpoint)) failures.push(`missing core endpoint ${endpoint}`)
