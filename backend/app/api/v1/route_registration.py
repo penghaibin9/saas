@@ -102,10 +102,13 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship, internship_agreement_template, internship_application, internship_archive,
         internship_communication, internship_complaint, internship_compliance,
         internship_enterprise_eval_versioned, internship_insurance,
-        internship_match, internship_participant, internship_plan, internship_position,
-        internship_process, internship_stats, internship_student, internship_visit_plan,
+        internship_match, internship_material_center, internship_participant,
+        internship_plan, internship_position, internship_process, internship_stats,
+        internship_student, internship_visit_plan,
     )
     d = deps["intern"]
+    # 安全优先路由必须先于旧协议/保险/报告/归档路由注册。
+    api_router.include_router(internship_material_center.router, dependencies=d)
     for r in (
         internship, internship_position, internship_agreement_template, internship_student,
         internship_match, internship_participant, internship_application, internship_archive,
