@@ -214,6 +214,8 @@ class ArchiveManifestItem(PKMixin, TenantMixin, CommonMixin, Base):
     sha256_snapshot: Mapped[str | None] = mapped_column(String(64))
     review_status: Mapped[str | None] = mapped_column(String(40))
     scan_result: Mapped[str] = mapped_column(String(30), nullable=False)
+    uploader_snapshot: Mapped[str | None] = mapped_column(String(100))
+    submitted_at_snapshot: Mapped[datetime | None] = mapped_column(DateTime)
     sort_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     __table_args__ = (
         UniqueConstraint("tenant_id", "manifest_id", "version_id", "material_code", name="uk_archive_manifest_item_version"),
