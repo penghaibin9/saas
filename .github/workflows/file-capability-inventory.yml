@@ -10,7 +10,7 @@ on:
       - "docs/architecture/file-center-*.md"
       - "docs/architecture/file-capability-inventory.yaml"
       - "scripts/audit_file_capabilities.py"
-      - "scripts/patch_phase6_prod_closeout.py"
+      - "scripts/patch_phase6_*.py"
       - ".github/workflows/file-capability-inventory.yml"
   push:
     branches:
@@ -24,7 +24,7 @@ on:
       - "docs/architecture/file-center-*.md"
       - "docs/architecture/file-capability-inventory.yaml"
       - "scripts/audit_file_capabilities.py"
-      - "scripts/patch_phase6_prod_closeout.py"
+      - "scripts/patch_phase6_*.py"
       - ".github/workflows/file-capability-inventory.yml"
 
 permissions:
