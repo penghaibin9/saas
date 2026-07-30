@@ -100,14 +100,17 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
         add_numeric(scope.get("studentId"), student_ids)
         add_numeric(scope.get("internshipId"), internship_ids)
 
-    if db is not None and leave_ids:
+    if db is not None:
         try:
             from app.models import InternshipLeave
 
+            leave_clauses = [InternshipLeave.file_id == str(file_obj.id)]
+            if leave_ids:
+                leave_clauses.append(InternshipLeave.id.in_(leave_ids))
             rows = db.scalars(select(InternshipLeave).where(
                 InternshipLeave.tenant_id == tenant_id,
-                InternshipLeave.id.in_(leave_ids),
                 InternshipLeave.is_deleted.is_(False),
+                or_(*leave_clauses),
             )).all()
             for row in rows:
                 student_ids.add(int(row.student_id))
