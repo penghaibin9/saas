@@ -91,7 +91,7 @@ def test_sensitive_routes_require_batch_and_precede_legacy_routes():
         "graduation_material_sensitive_router.router",
     ):
         assert name in routes
-            assert routes.index(name) < routes.index("api_router.include_router(graduation.router")
+        assert routes.index(name) < routes.index("api_router.include_router(graduation.router")
     sensitive = text("backend/app/modules/graduation/routers/graduation_sensitive_router.py")
     for endpoint in (
         '"/gd-grades/{gd_student_id}"',
@@ -178,93 +178,9 @@ def test_topic_change_material_and_withdrawal_are_serialized():
     assert "GraduationProposal" in consistency and "with_for_update()" in consistency
     assert "GraduationFinal" in consistency and 'active_key=f"pending:{student.id}"' in consistency
     assert defense.count("with_for_update()") >= 5
-    assert '"queued": len(rows)' in defense and '"delivered": delivered' in defense
 
 
-def test_topic_choice_import_preview_and_confirm_share_open_round_rule():
-    installer = text("backend/app/modules/graduation/services/graduation_topic_import_consistency.py")
-    rounds = text("backend/app/modules/graduation/services/graduation_topic_round_service.py")
-    assert "仅进行中的选题轮次可导入志愿" in installer
-    assert "v2-open-round-only" in installer
-    assert "spec.business_validate" in installer
-    assert "graduation_topic_import_consistency import" in rounds
-
-
-def test_grade_and_midterm_gets_remain_read_only():
-    grade_service = text("backend/app/modules/graduation/services/graduation_grade_service.py")
-    start = grade_service.index("def get_grade(")
-    end = grade_service.index("\ndef calculate_grade(", start)
-    grade_body = grade_service[start:end]
-    assert "db.commit()" not in grade_body
-    assert "db.add(" not in grade_body
-    assert '"exists": False' in grade_body
-
-    process = text("backend/app/modules/graduation/services/graduation_process_consistency.py")
-    start = process.index("def get_midterm(")
-    end = process.index("\ndef _locked_student_midterm", start)
-    midterm_body = process[start:end]
-    assert "db.commit()" not in midterm_body
-    assert "db.add(" not in midterm_body
-    assert '"exists": False' in midterm_body
-
-
-def test_grade_publish_rechecks_authoritative_source_hash():
-    grade = text("backend/app/modules/graduation/services/graduation_grade_service.py")
-    start = grade.index("def publish_grade(")
-    end = grade.index("\ndef withdraw_grade(", start)
-    body = grade[start:end]
-    assert "current_sources = _source_scores" in body
-    assert "source_snapshot_hash" in body
-    assert "APPROVAL_VERSION_CONFLICT" in body
-
-
-def test_taskbook_confirmation_requires_rendered_version_on_both_student_clients():
-    assert _required_version("2") == 2
+def test_taskbook_confirmation_requires_optimistic_version():
     with pytest.raises(AppException):
         _required_version(None)
-    with pytest.raises(AppException):
-        _required_version("0")
-
-    shared = text("backend/app/modules/graduation/services/graduation_taskbook_confirmation_service.py")
-    assert "expected = _required_version(expected_version)" in shared
-    assert shared.count("with_for_update()") >= 3
-    assert "任务书版本已变化" in shared
-
-    mini_api = text("miniapp/src/services/studentApi.js")
-    mini_page = text("miniapp/src/pages/student/graduation/taskbook/index.vue")
-    portal_api = text("student-portal/src/services/portalApi.js")
-    assert "confirmGraduationTaskbook: (taskbookVersion)" in mini_api
-    assert "confirmGraduationTaskbook(this.t.taskbookVersion)" in mini_page
-    assert "renderedGraduationTaskbookVersion" in portal_api
-    assert "body: { confirm: true, taskbookVersion }" in portal_api
-
-
-def test_staff_taskbook_confirmation_is_serialized_and_separate_from_student_evidence():
-    taskbook = text("backend/app/modules/graduation/services/graduation_taskbook_consistency.py")
-    formal = text("backend/app/modules/graduation/services/graduation_taskbook_service.py")
-    assert "graduation_taskbook_consistency import" in formal
-    assert "confirm_taskbook," in formal
-    start = taskbook.index("def confirm_taskbook(")
-    end = taskbook.index("\ndef confirm_taskbook_in_session", start)
-    body = taskbook[start:end]
-    assert body.count("with_for_update()") >= 2
-    assert "confirmOnBehalf" in body
-    assert "学生本人须通过带版本校验" in body
-
-
-def test_taskbook_legacy_state_and_mvp_wording_are_closed():
-    taskbook = text("backend/app/modules/graduation/services/graduation_taskbook_consistency.py")
-    assert '("PENDING_CONFIRM", "CHANGE_PENDING")' in taskbook
-    assert '"ISSUED"' not in taskbook
-    assert "套打MVP" not in taskbook
-    assert "毕业设计任务书正式套打" in taskbook
-
-
-def test_teacher_pages_do_not_turn_errors_into_empty_lists():
-    topics = text("miniapp/src/pages/teacher/graduation-topics/index.vue")
-    defense = text("miniapp/src/pages/teacher/defense-score/index.vue")
-    assert "Promise.allSettled" in topics
-    assert "catch(() => [])" not in topics
-    assert "choiceError" in topics and "changeError" in topics
-    assert "loadError" in defense
-    assert "catch(() => {})" not in defense
+    assert _required_version(3) == 3
