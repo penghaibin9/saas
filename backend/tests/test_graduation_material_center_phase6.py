@@ -75,14 +75,19 @@ def test_phase6_public_version_and_review_contract_is_authoritative():
 
 
 def test_phase6_teacher_review_ui_shows_safe_version_before_action():
-    card = read("frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue")
+    proposal = read("frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue")
+    final = read("frontend/src/modules/graduation/views/FinalSubmissionListView.vue")
     api = read("frontend/src/modules/graduation/api/graduation-material-center.api.js")
-    assert "当前安全版本（本次审核锁定）" in card
-    assert "SecureFileList" in card
-    assert "currentSafeVersions" in card
-    assert "reviewReady" in card
-    assert "versionId" in card and "SHA-256" in card
-    assert "graduationMaterialCenterApi.previewMaterial" in card
+    for source in (proposal, final):
+        assert "当前安全版本（本次审核锁定）" in source
+        assert "SecureFileList" in source
+        assert "currentSafeVersions" in source
+        assert "reviewReady" in source
+        assert "versionId" in source and "SHA-256" in source
+        assert "graduationMaterialCenterApi.previewMaterial" in source
+        assert "graduationMaterialCenterApi.downloadMaterial" in source
+    assert "getFinalDetail" in final
+    assert "!this.finalDetail?.reviewReady" in final
     assert "/graduation/material-center/files/" in api
     assert "requestBlob" in api
 
