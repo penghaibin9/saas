@@ -798,11 +798,11 @@ entries:
 - module: shared-platform
   client: backend
   route: inventory://shared-platform/backend
-  page: backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py
-  action: preview+download+import+export
+  page: backend/app/api/v1/data_exchange.py; backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py
+  action: upload+preview+download+import+export
   fileCategory: MIXED
   api: multiple; see notes
-  backendService: backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py
+  backendService: backend/app/api/v1/data_exchange.py; backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py
   storageMode: mixed
   authMode: existing endpoint guard; verify in target phase
   dataScope: existing business scope; verify in target phase
@@ -815,8 +815,8 @@ entries:
   archive: false
   status: needs-verification
   risk: P0
-  targetPhase: '4'
-  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py. representative routes: /api/v1/data-exchange/exports/{row.id}/download?ticket={raw_token}, /api/v1/export/create-placeholder, /import/confirm, /import/dry-run, /projects/{project_id}/preview, /{campaign_id}/attachments'
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/data_exchange.py; backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py. representative routes: /api/v1/data-exchange/exports/{row.id}/download?ticket={raw_token}, /api/v1/export/create-placeholder, /exports/{job_id}, /exports/{job_id}/download, /exports/{job_id}/download-ticket, /exports/{job_id}/revoke, /import/confirm, /import/dry-run, /imports/adapters/excel/{legacy_job_id}, /imports/adapters/migration/{batch_no}, /imports/identity/{kind}/validate-file, /imports/{job_id}, /imports/{job_id}/confirm, /projects/{project_id}/preview, /{campaign_id}/attachments'
 - module: shared-platform
   client: shared
   route: inventory://shared-platform/shared
