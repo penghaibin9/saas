@@ -44,6 +44,25 @@ function uploadError(payload, status) {
   return err
 }
 
+function openBlob(blob) {
+  const url = URL.createObjectURL(blob)
+  const opened = window.open(url, '_blank', 'noopener,noreferrer')
+  if (!opened) URL.revokeObjectURL(url)
+  else setTimeout(() => URL.revokeObjectURL(url), 60000)
+  return { url, opened: Boolean(opened) }
+}
+
+function saveBlob(blob, fileName = '附件') {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName || '附件'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 /**
  * 教师/管理 PC 上传任务。
  * - 复用统一 access/refresh 会话；401 时触发单飞刷新并只重试一次
@@ -101,7 +120,6 @@ export function createFileUploadTask(file, {
       const unauthorized = xhr.status === 401 || payload.code === 401001
       if (unauthorized && !retried && !cancelled) {
         try {
-          // request() 内部负责 refreshToken 单飞刷新；成功后重新读取新 access token。
           await request('/auth/me')
           resolve(await send(true))
         } catch (e) {
@@ -151,24 +169,25 @@ export const fileSdk = {
   async blob(fileId) {
     return requestBlob(`/files/download/${encodeURIComponent(fileId)}`)
   },
+  async blobFrom(authorizedPath) {
+    if (!authorizedPath || typeof authorizedPath !== 'string' || !authorizedPath.startsWith('/')) {
+      const error = new Error('服务端未返回有效文件授权路径')
+      error.code = 'INVALID_AUTHORIZED_FILE_PATH'
+      throw error
+    }
+    return requestBlob(authorizedPath)
+  },
   async preview(fileId) {
-    const blob = await this.blob(fileId)
-    const url = URL.createObjectURL(blob)
-    const opened = window.open(url, '_blank', 'noopener,noreferrer')
-    if (!opened) URL.revokeObjectURL(url)
-    else setTimeout(() => URL.revokeObjectURL(url), 60000)
-    return { url, opened: Boolean(opened) }
+    return openBlob(await this.blob(fileId))
+  },
+  async previewFrom(authorizedPath) {
+    return openBlob(await this.blobFrom(authorizedPath))
   },
   async download(fileId, fileName = '附件') {
-    const blob = await this.blob(fileId)
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = fileName || '附件'
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-    URL.revokeObjectURL(url)
+    saveBlob(await this.blob(fileId), fileName)
+  },
+  async downloadFrom(authorizedPath, fileName = '附件') {
+    saveBlob(await this.blobFrom(authorizedPath), fileName)
   }
 }
 
