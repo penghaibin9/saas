@@ -60,7 +60,6 @@ def _student_scope_values(db, file_obj, user: dict) -> set[str]:
             values.add(str(row.id))
             values.add(str(row.student_no or "").strip())
     except Exception:
-        # 身份补齐异常必须收窄为现有令牌值，不能放宽授权。
         pass
     return {item for item in values if item}
 
@@ -80,8 +79,6 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
 
     biz_type = str(file_obj.biz_type or "").upper()
     if biz_type in {"INTERNSHIP", "ENT_EVAL"}:
-        # 历史 INTERNSHIP.biz_id 可能是 StudentProfile.id、InternshipRecord.id，
-        # 也可能是 InternshipLeave.id；先作为歧义候选，待权威关系查询后再决定是否采用。
         add_numeric(file_obj.biz_id, ambiguous_student_ids)
         add_numeric(file_obj.biz_id, ambiguous_internship_ids)
 
@@ -122,8 +119,6 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
             return set(), set()
 
     if not linked_leaves:
-        # 只有不存在权威请假关系时，才兼容解释历史 INTERNSHIP.biz_id，防止 leave_id
-        # 与其他学生/实习记录主键碰撞后错误放行。
         student_ids.update(ambiguous_student_ids)
         internship_ids.update(ambiguous_internship_ids)
     return student_ids, internship_ids
@@ -195,10 +190,8 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
         permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
         if permission:
             return has_permission(user, permission)
-        # 未映射的冻结业务类型仅允许显式绑定主体本人，不能按租户泛化授权。
         return subject_allowed
 
-    # 历史对象没有绑定表时，仅兼容本人、学生本人业务归属或明确业务权限。
     if str(user.get("userType") or "").upper() == "STUDENT":
         biz_id = str(file_obj.biz_id or "").strip()
         return bool(biz_id and biz_id in _student_scope_values(db, file_obj, user))
@@ -208,7 +201,7 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
 
 @register_file_resolver("AFFAIRS_ARCHIVE")
 def affairs_archive_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
-    """学工归档文件：archive.view 与目标学生数据范围必须同时成立。"""
+    """学工学生档案文件：archive.view 与目标学生数据范围必须同时成立。"""
     if not has_permission(user or {}, "studentAffairs.archive.view"):
         return False
     student_id = str(file_obj.biz_id or "").strip()
@@ -223,15 +216,21 @@ def affairs_archive_resolver(db, file_obj, bindings: list[Any], user: dict, acti
         return False
 
 
+@register_file_resolver("AFFAIRS_ARCHIVE_MANIFEST")
+def affairs_archive_manifest_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """批次级归档清单不含学生明文详情入口，但仅归档授权角色可访问。"""
+    return bool(has_permission(user or {}, "studentAffairs.archive.view"))
+
+
 @register_file_resolver("MATERIAL_REQUIREMENT")
 def material_requirement_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
-    """学工补材料附件：业务权限与材料目标学生范围必须同时成立。"""
+    """学工补交材料：本人或业务授权角色；心理/困难再叠加强敏感范围。"""
     raw_id = str(file_obj.biz_id or "").strip()
     if not raw_id.isdigit() or db is None:
         return False
     try:
         from app.models.affairs_operations import AffairsMaterialRequirement
-        from app.services import affairs_operations_service as operations
+        from app.modules.student_affairs.services import affairs_material_center_service as center
 
         requirement = db.scalars(select(AffairsMaterialRequirement).where(
             AffairsMaterialRequirement.tenant_id == int(file_obj.tenant_id),
@@ -240,10 +239,17 @@ def material_requirement_resolver(db, file_obj, bindings: list[Any], user: dict,
         )).first()
         if not requirement:
             return False
-        permissions = operations._BIZ_PERMISSIONS.get(requirement.biz_type, ())
-        if not any(has_permission(user or {}, code) for code in permissions):
+
+        # 学生本人可以查看自己提交的强敏感材料；不能通过 userId owner 偶然碰撞放行他人。
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            return str(requirement.student_id) in _student_scope_values(db, file_obj, user)
+
+        # 强敏感不接受 systemAdmin.file.manage 之类通用文件管理员越权。
+        if not center._has_biz_permission(user or {}, requirement.biz_type):
             return False
-        operations._require_student_scope(db, requirement.student_id, user or {})
+        if requirement.material_scope == "PSY_STUDENT":
+            return center._psy_scope_allows(db, requirement.student_id, user or {})
+        center._require_student_scope(db, requirement.student_id, user or {}, hide=True)
         return True
     except Exception:
         return False
