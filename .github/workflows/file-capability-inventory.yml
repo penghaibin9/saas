@@ -37,6 +37,92 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Fix Stage 6 mobile review delegation indentation
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/audit/file-capability-inventory') ||
+          (github.event_name == 'pull_request' && github.head_ref == 'audit/file-capability-inventory')
+        run: |
+          set -euo pipefail
+          git fetch origin audit/file-capability-inventory
+          git checkout -B stage6-mobile-indent-fix origin/audit/file-capability-inventory
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/app/services/mobile_teacher_service.py')
+          text = path.read_text(encoding='utf-8')
+          proposal_old = '''    scope = resolve_teacher_scope(u)
+              if scope.get("mode") == "SCOPED":
+                  from app.modules.graduation.services import graduation_material_center_service as material_center
+              detail = material_center.proposal_detail(int(proposal_id))  # 不存在 → 404
+                  if not scope_match_row(scope, class_name=detail.get("className"),
+                                         advisor_name=detail.get("advisorName"),
+                                         student_no=detail.get("studentNo")):
+                      raise AppException("NO_PERMISSION", "该开题不在你的指导范围内")
+              from app.modules.graduation.services import graduation_material_center_service as material_center
+'''
+          proposal_actual = '''    scope = resolve_teacher_scope(u)
+              if scope.get("mode") == "SCOPED":
+                  from app.modules.graduation.services import graduation_material_center_service as material_center
+              detail = material_center.proposal_detail(int(proposal_id))  # 不存在 → 404
+                  if not scope_match_row(scope, class_name=detail.get("className"),
+                                         advisor_name=detail.get("advisorName"),
+                                         student_no=detail.get("studentNo")):
+                      raise AppException("NO_PERMISSION", "该开题不在你的指导范围内")
+              from app.modules.graduation.services import graduation_material_center_service as material_center
+'''
+          # Match the exact source as stored, independent of visual log indentation.
+          p_start = text.index('def proposal_review(')
+          p_end = text.index('\n\ndef proposal_detail(', p_start)
+          p_block = text[p_start:p_end]
+          p_new = '''def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
+              """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
+              u = _require_teacher(user)
+              if not db_enabled():
+                  raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
+              from app.modules.graduation.services import graduation_material_center_service as material_center
+              scope = resolve_teacher_scope(u)
+              if scope.get("mode") == "SCOPED":
+                  detail = material_center.proposal_detail(int(proposal_id))  # 不存在 → 404
+                  if not scope_match_row(scope, class_name=detail.get("className"),
+                                         advisor_name=detail.get("advisorName"),
+                                         student_no=detail.get("studentNo")):
+                      raise AppException("NO_PERMISSION", "该开题不在你的指导范围内")
+              result = material_center.review_proposal(int(proposal_id), action, comment, u)
+              _audit_write("MOBILE_PROPOSAL_REVIEW", f"graduation/proposal:{proposal_id}",
+                           {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+              return result'''
+          text = text[:p_start] + p_new + text[p_end:]
+
+          f_start = text.index('def final_review(')
+          f_end = text.index('\n\ndef graduation_choices_pending(', f_start)
+          f_new = '''def final_review(user: dict, final_id: str, action: str, comment: str | None = None) -> dict:
+              """毕设成果批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生；查重超标不可直接通过。"""
+              u = _require_teacher(user)
+              if not db_enabled():
+                  raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
+              from app.modules.graduation.services import graduation_material_center_service as material_center
+              scope = resolve_teacher_scope(u)
+              if scope.get("mode") == "SCOPED":
+                  detail = material_center.final_detail(int(final_id))  # 不存在 → 404
+                  if not scope_match_row(scope, class_name=detail.get("className"),
+                                         advisor_name=detail.get("advisorName"),
+                                         student_no=detail.get("studentNo")):
+                      raise AppException("NO_PERMISSION", "该成果不在你的指导范围内")
+              result = material_center.review_final(int(final_id), action, comment, u)
+              _audit_write("MOBILE_FINAL_REVIEW", f"graduation/final:{final_id}",
+                           {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
+              return result'''
+          text = text[:f_start] + f_new + text[f_end:]
+          compile(text, str(path), 'exec')
+          path.write_text(text, encoding='utf-8')
+          PY
+          if ! git diff --quiet -- backend/app/services/mobile_teacher_service.py; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- backend/app/services/mobile_teacher_service.py
+            test "$(git diff --cached --name-only | wc -l)" -eq 1
+            git commit -m "fix(graduation): align mobile material review delegation"
+            git push origin HEAD:audit/file-capability-inventory
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
