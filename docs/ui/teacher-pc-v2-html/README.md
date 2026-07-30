@@ -19,41 +19,83 @@
 
 ## 当前批次
 
-已经建立共享 V2 tokens、统一壳、组件、交互脚本和 SVG 图标体系，并生成 **14 个可直接打开的 HTML 原型**：
+已经建立共享 V2 tokens、统一壳、组件、交互脚本和 SVG 图标体系，并生成：
+
+- manifest 路由/切面条目：**24**
+- 独立 HTML：**23**
+- 共用 HTML：复学学生与转专业学生两个真实路由共用 `roster-change-results.html`
+
+### 已完成首轮覆盖的真实工作区
+
+1. 成绩管理
+2. 成绩审核发布更正
+3. 学籍管理
+
+### 已启动但未完成
+
+- 我的工作台
+- 教务看板
+
+### 当前 HTML
+
+#### 工作台与中心首页
 
 - 教师/管理工作台
 - 教务工作台
+
+#### 成绩管理
+
 - 成绩分析
 - 成绩录入（固定三段 + 动态成绩项 + 导入切面）
 - 挂科清单
 - 学生成绩单
 - 成绩异常
+- 成绩认定 · 课程替代
+- 成绩统计（`/stats?tab=grade`）
+
+#### 成绩审核发布更正
+
 - 学院审核
 - 教务发布
 - 成绩更正
 - 成绩复查复审
 - 成绩操作审计
-- 成绩认定 · 课程替代
-- 成绩统计（`/stats?tab=grade` 真实切面）
 
-当前已完成“成绩管理”和“成绩审核发布更正”两个工作区的首轮 HTML 覆盖；工作台、教务中心和其余中心仍在持续施工，**没有宣称全库完成**。
+#### 学籍管理
 
-建议从以下文件开始查看：
+- 学籍名册及状态分类视图
+- 学籍状态总览
+- 学籍异动记录
+- 学籍导入导出
+- 复学学生 / 转专业学生结果视图
+- 学籍信息更正
+- 学籍档案详情
+- 学籍统计
+- 学籍归档
+
+当前没有宣称整个工作台中心或教务中心完成，更没有宣称全库完成。
+
+## 快速查看
 
 - `workbench/my-workbench/index.html`
 - `academic-affairs/dashboard/index.html`
 - `academic-affairs/grades/grade-overview.html`
 - `academic-affairs/grades/grade-entry.html`
 - `academic-affairs/grades/grade-publish.html`
+- `academic-affairs/roster/roster-list.html`
+- `academic-affairs/roster/roster-detail.html`
+- `academic-affairs/roster/roster-import-export.html`
 
 ## 交付索引
 
 - `prototype-manifest.json`：路由 → Vue 组件 → API/字段 → HTML
-- `route-coverage.md`：当前覆盖和未覆盖缺口
+- `route-coverage.md`：当前覆盖、共用映射和代码事实差异
 - `PROGRESS.md`：可无损续工状态
 - `design-system.md`：视觉和母版规范
 - `shared/`：所有原型复用的离线 CSS、JS 和 SVG 图标
 
 ## 截图状态
 
-本批次已在本地渲染环境生成并检查 24 张截图：14 个页面的 1440 截图，以及工作台、教务看板、成绩分析、成绩录入、挂科清单的 1280/1920 截图。由于当前 GitHub 连接器不能直接从本地二进制路径批量写入仓库，截图文件尚未提交；HTML 已完成实际渲染和横向溢出检查。该缺口在 `PROGRESS.md` 中保持未完成状态，不以本地截图冒充仓库交付。
+首批 14 个 HTML 已在本地渲染环境生成并检查 24 张截图：14 个页面的 1440 截图，以及工作台、教务看板、成绩分析、成绩录入、挂科清单的 1280/1920 截图。新增学籍工作区尚未生成截图。
+
+当前 GitHub 连接器不能直接从本地二进制路径批量写入仓库，因此截图文件尚未提交。HTML 已完成首批实际渲染和横向溢出检查；截图缺口继续在 `PROGRESS.md` 中保持未完成，不以本地截图冒充仓库交付。
