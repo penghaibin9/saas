@@ -259,7 +259,7 @@ export default {
       propAtts: [], finalAtts: [], uploading: false,
       final: null, finalSubmitting: false,
       midterm: null, rectifyContent: '', rectifySubmitting: false,
-      defense: null, grade: null, archive: null,
+      defense: null, grade: null, archive: null, materials: null, materialUploadingCode: '',
       showAppeal: false, appealReason: '', appealSubmitting: false,
       peer: { toReview: [], myRectify: [] }, peerOpinions: {}, peerNotes: {}, peerBusyId: '',
       processErrors: []
