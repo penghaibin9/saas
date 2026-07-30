@@ -1,1 +1,1 @@
-"""One-shot trigger for the exact Stage 6 mobile delegation fix; removed immediately after the bot commit."""
+"""Second one-shot trigger for the exact Stage 6 mobile review delegation fix; removed after the bot commit."""
