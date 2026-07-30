@@ -75,6 +75,7 @@ from app.models.graduation import (GraduationArchiveRecord, GraduationAuditTrail
                                       GraduationTaskBook, GraduationTemplate,
                                       GraduationTopic, GraduationTopicChangeRequest,
                                       GraduationTopicChoice, GraduationTopicRound)
+from app.models.graduation_material import GraduationMaterialItem, GraduationMaterialRule  # noqa: F401
 from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup,  # noqa: F401
                                      EmpJob, EmpMaterial, EmpStudent,
                                      InternshipEnterpriseContact)
@@ -180,8 +181,6 @@ from app.models.system_implementation import (SystemImplementationCheck,  # noqa
                                                SystemImplementationProject,
                                                SystemImplementationSection,
                                                SystemPresetInstallation)
-from app.models.national_standard import (NationalMajorCatalog,  # noqa: F401
-                                          NationalStandardDocument,
-                                          NationalStandardSection,
-                                          NationalStandardSource,
+from app.models.national_standard import (NationalMajorCatalog, NationalStandardDocument,  # noqa: F401
+                                          NationalStandardSection, NationalStandardSource,
                                           SchoolMajorStandardBinding)
