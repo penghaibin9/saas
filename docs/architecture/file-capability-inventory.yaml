@@ -446,11 +446,11 @@ entries:
 - module: archive
   client: backend
   route: inventory://archive/backend
-  page: backend/app/services/affairs_archive_guard.py
+  page: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py
   action: import+export
   fileCategory: MIXED
   api: multiple; see notes
-  backendService: backend/app/services/affairs_archive_guard.py
+  backendService: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py
   storageMode: mixed
   authMode: existing endpoint guard; verify in target phase
   dataScope: existing business scope; verify in target phase
@@ -464,7 +464,7 @@ entries:
   status: needs-verification
   risk: P0
   targetPhase: '4'
-  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/affairs_archive_guard.py. representative routes: -'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py. representative routes: -'
 - module: file-center
   client: admin-pc
   route: inventory://file-center/admin-pc
@@ -926,15 +926,15 @@ entries:
   status: needs-verification
   risk: P0
   targetPhase: '6'
-  notes: 'Stage 0 exhaustive source group. sources: frontend/src/config/help/studentAffairsHelpCards.js; frontend/src/modules/studentAffairs/api/operations.api.js; frontend/src/modules/studentAffairs/api/studentAffairs.api.js; frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue. representative routes: /admin/student-affairs/archive/packages, /files/download/${enc(fileId)}, /files/download/${row.fileId}, /student-affairs/archive/batches, /student-affairs/archive/batches/${batchId}, /student-affairs/archive/batches/${batchId}/advance, /student-affairs/archive/batches/${batchId}/collect, /student-affairs/attachments/${attachmentId}/download'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/config/help/studentAffairsHelpCards.js; frontend/src/modules/studentAffairs/api/operations.api.js; frontend/src/modules/studentAffairs/api/studentAffairs.api.js; frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue. representative routes: /admin/student-affairs/archive/packages, /files/download/${row.fileId}, /student-affairs/archive/batches, /student-affairs/archive/batches/${batchId}, /student-affairs/archive/batches/${batchId}/advance, /student-affairs/archive/batches/${batchId}/collect, /student-affairs/archive/packages/${enc(packageId)}/manifest, /student-affairs/attachments/${attachmentId}/download'
 - module: student-affairs
   client: backend
   route: inventory://student-affairs/backend
-  page: backend/app/api/v1/student_affairs.py
+  page: backend/app/api/v1/student_affairs.py; backend/app/modules/student_affairs/routers/affairs_material_center.py
   action: download+export+archive
   fileCategory: MIXED
   api: multiple; see notes
-  backendService: backend/app/api/v1/student_affairs.py
+  backendService: backend/app/api/v1/student_affairs.py; backend/app/modules/student_affairs/routers/affairs_material_center.py
   storageMode: mixed
   authMode: existing endpoint guard; verify in target phase
   dataScope: existing business scope; verify in target phase
@@ -948,7 +948,7 @@ entries:
   status: needs-verification
   risk: P0
   targetPhase: '5'
-  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/student_affairs.py. representative routes: /activities/{activityId}/archive, /archive/batches, /archive/batches/{batchId}, /archive/batches/{batchId}/advance, /archive/batches/{batchId}/collect, /leave/export'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/student_affairs.py; backend/app/modules/student_affairs/routers/affairs_material_center.py. representative routes: /activities/{activityId}/archive, /archive/batches, /archive/batches/{batchId}, /archive/batches/{batchId}/advance, /archive/batches/{batchId}/collect, /leave/export, /student-affairs/archive/packages/{package_id}/manifest'
 - module: system-management
   client: admin-pc
   route: inventory://system-management/admin-pc
