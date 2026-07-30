@@ -57,6 +57,17 @@ async def _read_upload(file: UploadFile) -> bytes:
     return content
 
 
+def _redacted_preview_rows(content: bytes) -> list[dict]:
+    """预览可返回业务字段，但证件原值只保留在受控原始 XLSX。"""
+    from app.modules.academic_affairs.services import academic_affairs_service as roster
+
+    rows = roster.roster_import_read(content)
+    return [
+        {key: value for key, value in dict(row).items() if key not in {"idCard"}}
+        for row in rows[:200]
+    ]
+
+
 @router.post("/roster/import-jobs", summary="上传学籍 XLSX 并创建服务端权威 ImportJob")
 async def create_roster_import_job(
     file: UploadFile = File(...),
@@ -78,6 +89,7 @@ async def create_roster_import_job(
         source_file_id=int(meta["fileId"]),
         user=user,
     )
+    item.setdefault("preview", {})["rows"] = _redacted_preview_rows(content)
     return success(item, message="学籍文件已进入安全检查，服务端预检任务已保存")
 
 
