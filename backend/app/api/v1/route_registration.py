@@ -167,7 +167,7 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
 
 def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
-        audit, dashboard, feedback, implementation, import_export,
+        audit, dashboard, data_exchange, feedback, implementation, import_export,
         migration, mobile, mobile_export, mobile_graduation_extension_teacher,
         mobile_graduation_guard, mobile_graduation_teacher_context, mobile_orientation_teacher,
         mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
@@ -189,6 +189,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(message_center_api.router)
     api_router.include_router(import_export.import_router, prefix="/import", tags=["import-export"])
     api_router.include_router(import_export.export_router, prefix="/export", tags=["import-export"])
+    api_router.include_router(data_exchange.router)
     api_router.include_router(transfer.router)
     api_router.include_router(migration.router)
     api_router.include_router(migration.platform_router)
