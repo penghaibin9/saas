@@ -45,6 +45,13 @@ const systemRoutes = {
         permissionKey: 'systemAdmin.user.import' }
     },
     {
+      path: 'data-exchange',
+      name: 'system-data-exchange',
+      component: () => import('@/modules/system/views/SystemDataExchangeView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '数据交换任务中心', requiresAuth: true,
+        permissionKey: 'systemAdmin.user.import' }
+    },
+    {
       /* 旧的师生混合入口：保留路由避免既有链接 404，直接落到学生导入页。 */
       path: 'identity-import',
       redirect: '/admin/system/identity-import/students'
