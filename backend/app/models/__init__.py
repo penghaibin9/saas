@@ -26,6 +26,7 @@ from app.models.idempotency import IdempotencyRecord  # noqa: F401
 from app.models.system_config import DataScopeRule, MenuNode, SysConfig  # noqa: F401  (系统管理·可编辑配置)
 from app.models.system_governance import SystemJsonDoc  # noqa: F401  (系统管理·治理 JSON 文档)
 from app.models.file import FileObject  # noqa: F401
+from app.models.data_exchange import ExportJob, ImportJob, ImportRowError  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAgreement,  # noqa: F401
                                     InternshipArchive, InternshipAuditTrail, InternshipBatch,
