@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+BACKEND = ROOT / "backend"
+if str(BACKEND) not in sys.path:
+    sys.path.insert(0, str(BACKEND))
 
 from sqlalchemy import select
 
@@ -89,7 +95,7 @@ def write_tokens(out_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed local capacity smoke data")
-    parser.add_argument("--out", type=Path, default=Path("performance/secrets"))
+    parser.add_argument("--out", type=Path, default=ROOT / "performance/secrets")
     args = parser.parse_args()
     seed_student()
     write_tokens(args.out)
