@@ -4,12 +4,27 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
+from functools import wraps
+from types import ModuleType
 from typing import Any
 
 from app.core.context import current_tenant_id
 from app.core.redis_client import cache_get_json, cache_set_json
 
 _DEFAULT_TTL_SECONDS = 8
+_TARGETS = {
+    "mobile_student_service": {
+        "my_todos": "student-todos",
+        "my_messages": "student-messages",
+        "my_profile": "student-profile",
+    },
+    "mobile_teacher_service": {
+        "overview": "teacher-overview",
+        "todos": "teacher-todos",
+        "risk_students": "teacher-risk-students",
+        "my_classes": "teacher-my-classes",
+    },
+}
 
 
 def mobile_read_cache_key(user: dict | None, endpoint: str) -> str:
@@ -47,3 +62,23 @@ def cached_mobile_read(
     if isinstance(value, dict):
         cache_set_json(key, value, max(1, int(ttl)))
     return value
+
+
+def install_mobile_read_wrappers(module_name: str, module: ModuleType) -> ModuleType:
+    """Wrap only the approved authenticated read functions; safe to call repeatedly."""
+    for function_name, endpoint in _TARGETS.get(module_name, {}).items():
+        original = getattr(module, function_name)
+        if getattr(original, "__mobile_read_cached__", False):
+            continue
+
+        @wraps(original)
+        def wrapped(user, *args, __original=original, __endpoint=endpoint, **kwargs):
+            return cached_mobile_read(
+                user,
+                __endpoint,
+                lambda: __original(user, *args, **kwargs),
+            )
+
+        wrapped.__mobile_read_cached__ = True
+        setattr(module, function_name, wrapped)
+    return module
