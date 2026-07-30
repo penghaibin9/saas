@@ -50,8 +50,8 @@ def material_library(
 
 @router.get("/material-center/proposals/{proposal_id}/versions", summary="开题公共版本时间线")
 def proposal_versions(proposal_id: int, user=Depends(get_current_user)):
-    return success({"items": center.record_versions("PROPOSAL", proposal_id),
-                    "total": len(center.record_versions("PROPOSAL", proposal_id))})
+    items = center.record_versions("PROPOSAL", proposal_id)
+    return success({"items": items, "total": len(items)})
 
 
 @router.get("/material-center/finals/{final_id}/versions", summary="成果公共版本时间线")
