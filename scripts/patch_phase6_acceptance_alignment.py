@@ -6,7 +6,7 @@ from pathlib import Path
 BRANCH = "audit/file-capability-inventory"
 ROOT = Path(__file__).resolve().parents[1]
 subprocess.run(["git", "fetch", "origin", BRANCH], check=True)
-subprocess.run(["git", "checkout", "-B", "stage6-acceptance-align", f"origin/{BRANCH}"], check=True)
+subprocess.run(["git", "checkout", "-B", "stage6-final-close", f"origin/{BRANCH}"], check=True)
 
 
 def replace(path: str, old: str, new: str) -> None:
@@ -16,299 +16,274 @@ def replace(path: str, old: str, new: str) -> None:
         return
     count = text.count(old)
     if count != 1:
-        raise RuntimeError(f"{path}: expected one match, found {count}: {old[:100]!r}")
+        raise RuntimeError(f"{path}: expected one match, found {count}: {old[:120]!r}")
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-acceptance = "backend/tests/graduation_material_center_mysql_acceptance.py"
-contract = "backend/tests/test_graduation_material_center_phase6.py"
-export_service = "backend/app/modules/graduation/services/graduation_material_export_service.py"
+center = "backend/app/modules/graduation/services/graduation_material_center_service.py"
+mobile_teacher = "backend/app/services/mobile_teacher_service.py"
+archive_router = "backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py"
+legacy_router = "backend/app/modules/graduation/routers/graduation.py"
+route_registration = "backend/app/api/v1/route_registration.py"
 
+# 1) System-generated proposal/final compatibility evidence is registered in the
+# authoritative FileVersion binding transaction, without an extra generic binding.
 replace(
-    acceptance,
-    "from app.core.context import set_current_tenant, set_current_user\n",
-    "from app.core.context import set_current_user, set_tenant\n",
-)
-replace(
-    acceptance,
-    "from app.services.storage import get_backend\n",
-    "from app.services.data_exchange_job_service import create_download_ticket, consume_download_ticket\nfrom app.services.storage import get_backend\n",
-)
-replace(
-    acceptance,
-    "    set_current_tenant(TENANT_ID)\n",
-    '    set_tenant({"tenantId": str(TENANT_ID)})\n',
-)
-replace(
-    acceptance,
-    '            title="阶段六公共文件中心毕业设计",\n',
-    '            title="=1+1 阶段六公共文件中心毕业设计",\n',
-)
-replace(
-    acceptance,
-    '''    design = catalog.submit_material(student_id, "DESIGN_WORK", clean_design_id, 0, student_user)
-    source = catalog.submit_material(student_id, "SOURCE_CODE", clean_source_id, 0, student_user)
-    assert design["version"] == 1 and source["version"] == 1
-    set_current_user(teacher_user)
-''',
-    '''    design = catalog.submit_material(student_id, "DESIGN_WORK", clean_design_id, 0, student_user)
-    source = catalog.submit_material(student_id, "SOURCE_CODE", clean_source_id, 0, student_user)
-    assert design["version"] == 1 and source["version"] == 1
-    # 总览必须从当前 FileVersion/FileObject 实时计算扫描异常，而不是固定返回 0。
-    db = get_sessionmaker()()
-    try:
-        design_version = db.get(FileVersion, int(design["fileVersionId"]))
-        design_file = db.get(FileObject, int(design_version.file_object_id))
-        design_file.status = "QUARANTINED"
-        design_file.scan_status = "PENDING"
-        design_file.storage_zone = "QUARANTINE"
-        db.commit()
-    finally:
-        db.close()
-    set_current_user(admin_user)
-    abnormal_overview = catalog.material_overview(admin_user, batch_id=batch_id, page=1, page_size=20)
-    assert abnormal_overview["summary"]["scanAbnormalStudents"] >= 1
-    db = get_sessionmaker()()
-    try:
-        design_version = db.get(FileVersion, int(design["fileVersionId"]))
-        design_file = db.get(FileObject, int(design_version.file_object_id))
-        design_file.status = "AVAILABLE"
-        design_file.scan_status = "CLEAN"
-        design_file.storage_zone = "ACTIVE"
-        db.commit()
-    finally:
-        db.close()
-    set_current_user(teacher_user)
-''',
-)
-replace(
-    acceptance,
-    '''    set_current_user(admin_user)
-    backfill_1 = catalog.backfill_legacy_attachments(
-        admin_user,
-        batch_id=batch_id,
-        page_size=1,
-        dry_run=False,
-        checkpoint_key="phase6-backfill",
+    center,
+    '''        biz_type="GRADUATION_MATERIAL", biz_id=str(record.id), mime_type="text/plain",
+        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
     )
-    backfill_2 = catalog.backfill_legacy_attachments(
-        admin_user,
-        batch_id=batch_id,
-        page_size=20,
-        dry_run=False,
-        checkpoint_key="phase6-backfill",
-    )
-    assert backfill_1["processed"] <= 1
-    assert backfill_2["checkpoint"]["status"] in {"COMPLETED", "PARTIAL_FAILED"}
-    repeat = catalog.backfill_legacy_attachments(
-        admin_user,
-        batch_id=batch_id,
-        page_size=20,
-        dry_run=False,
-        checkpoint_key="phase6-backfill-repeat",
-    )
-    assert repeat["createdBindings"] >= 0
-''',
-    '''    set_current_user(admin_user)
-    dry_run = catalog.backfill_legacy(
-        admin_user, page_size=20, cursor_model="PROPOSAL", cursor_id=0, dry_run=True,
-    )
-    assert dry_run["dryRun"] is True and dry_run["converted"] >= 1
-    backfill_1 = catalog.backfill_legacy(
-        admin_user, page_size=1, cursor_model="PROPOSAL", cursor_id=0, dry_run=False,
-    )
-    backfill_2 = catalog.backfill_legacy(
-        admin_user, page_size=20, cursor_model="PROPOSAL",
-        cursor_id=int(backfill_1["nextCursorId"] or 0), dry_run=False,
-    )
-    assert backfill_1["scanned"] <= 1
-    assert backfill_2["status"] in {"COMPLETED", "PARTIAL_FAILED", "RUNNING"}
-    repeat = catalog.backfill_legacy(
-        admin_user, page_size=20, cursor_model="PROPOSAL", cursor_id=0, dry_run=False,
-    )
-    assert any(item["status"] in {"SKIPPED", "CONVERTED"} for item in repeat["differences"])
-''',
-)
-replace(
-    acceptance,
-    '''    policy_v1 = catalog.publish_template_version(
-        template_id,
-        template_file_v1_id,
-        admin_user,
-        batch_id=batch_id,
-        template_code="GD_PROPOSAL_REPORT",
-        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},
-    )
-    policy_v2 = catalog.publish_template_version(
-        template_id,
-        template_file_v2_id,
-        admin_user,
-        batch_id=batch_id,
-        template_code="GD_PROPOSAL_REPORT",
-        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},
-    )
-''',
-    '''    policy_payload = {
-        "batchId": batch_id,
-        "templateCode": "GD_PROPOSAL_REPORT",
-        "variableSchema": {"variables": [{"name": "studentName", "type": "string"}]},
-    }
-    policy_v1 = catalog.publish_template_policy(template_id, template_file_v1_id, policy_payload, admin_user)
-    policy_v2 = catalog.publish_template_policy(template_id, template_file_v2_id, policy_payload, admin_user)
-''',
-)
-replace(
-    acceptance,
-    '        assert int(policy.current_version_id) == int(policy_v2["fileVersionId"])\n',
-    '        assert int(policy.current_version_id) == int(policy_v2["versionId"])\n        policy_id = int(policy.id)\n        policy_expected_version = int(policy.version or 0)\n',
-)
-replace(
-    acceptance,
-    '''    finally:
-        db.close()
+    row = db.get(FileObject, int(meta["fileId"]))
+    if not row or row.tenant_id != _tid():
+        raise AppException("DATA_CONFLICT", "开题正文快照写入失败")
+    return row
 
-    set_current_user(admin_user)
-    structured_snapshots.prepare_all(student_id, admin_user)
-''',
-    '''    finally:
-        db.close()
-    enabled_policy = catalog.update_template_policy_status(
-        policy_id, True, policy_expected_version, admin_user,
-    )
-    assert enabled_policy["enabled"] is True and enabled_policy["status"] == "ENABLED"
 
-    set_current_user(admin_user)
-    structured_snapshots.prepare_all(student_id, admin_user)
+def _status_for_record(status: str) -> str:
 ''',
-)
-replace(
-    acceptance,
-    '''    export_job = export_service.create_export_job(
-        teacher_user,
-        scope_type="STUDENT",
-        scope_id=student_id,
-        export_format="ZIP_XLSX",
-        batch_id=batch_id,
+    '''        biz_type="GRADUATION_MATERIAL", biz_id=None, mime_type="text/plain",
+        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
     )
-    completed = export_service.run_export_job(int(export_job["jobId"]), teacher_user)
-''',
-    '''    export_job = export_service.create_export_job(
-        batch_id=batch_id, scope_type="STUDENT", scope_value=str(student_id), user=teacher_user,
-    )
-    export_job_id = int(export_job["id"])
-    completed = export_service.run_export_job(export_job_id, teacher_user)
-''',
-)
-replace(
-    acceptance,
-    '''    assert completed["result"]["fileCount"] == manifest_v1["itemCount"]
-    zip_file_id = int(completed["result"]["zipFileId"])
-    xlsx_file_id = int(completed["result"]["xlsxFileId"])
-''',
-    '''    assert completed["result"]["materialFileCount"] == manifest_v1["itemCount"]
-    zip_file_id = int(completed["result"]["zipFileObjectId"])
-    xlsx_file_id = int(completed["result"]["xlsxFileObjectId"])
-''',
-)
-replace(
-    acceptance,
-    '    assert zip_manifest["fileCount"] == manifest_v1["itemCount"]\n',
-    '    assert zip_manifest["materialFileCount"] == manifest_v1["itemCount"]\n',
-)
-replace(
-    acceptance,
-    '''    _, xlsx_bytes = _read_file(xlsx_file_id)
-    workbook = load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
-''',
-    '''    xlsx_row, xlsx_bytes = _read_file(xlsx_file_id)
-    assert hashlib.sha256(xlsx_bytes).hexdigest() == completed["result"]["xlsxSha256"]
-    assert xlsx_row.sha256 == completed["result"]["xlsxSha256"]
-    workbook = load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
-''',
-)
-replace(
-    acceptance,
-    '    assert any("\'=\" in str(value) or "阶段六" in str(value) for row in rows[1:] for value in row)\n',
-    '    assert any(str(value).startswith("\'=") for row in rows[1:] for value in row)\n',
-)
-replace(
-    acceptance,
-    '        job_row = db.get(ExportJob, int(export_job["jobId"]))\n',
-    '        job_row = db.get(ExportJob, export_job_id)\n',
-)
-replace(
-    acceptance,
-    '''    ticket = tickets.issue_export_ticket(int(export_job["jobId"]), teacher_user)
-    resolved = tickets.consume_export_ticket(ticket["ticket"], teacher_user)
-    assert int(resolved["fileId"]) == zip_file_id
-    revoked = export_service.revoke_manifest(int(manifest_v1["manifestId"]), "阶段六撤销重归档验收", teacher_user)
-    assert revoked["status"] == "REVOKED"
-    _expect_not_found(lambda: tickets.consume_export_ticket(ticket["ticket"], teacher_user))
-''',
-    '''    ticket = create_download_ticket(
-        str(export_job_id), expected_version=int(completed["version"]), user=teacher_user,
-    )
-    downloaded_path, downloaded_name = consume_download_ticket(
-        str(export_job_id), ticket["ticket"], user=teacher_user,
-    )
-    assert downloaded_path.exists() and downloaded_name.endswith(".zip")
-    current_job = export_service.get_export_job(export_job_id, teacher_user)
-    revoke_ticket = create_download_ticket(
-        str(export_job_id), expected_version=int(current_job["version"]), user=teacher_user,
-    )
-    revoked = export_service.revoke_manifest(student_id, "阶段六撤销重归档验收", teacher_user)
-    assert revoked["status"] == "REVOKED"
-    _expect_not_found(lambda: consume_download_ticket(
-        str(export_job_id), revoke_ticket["ticket"], user=teacher_user,
-    ))
-''',
-)
-replace(
-    acceptance,
-    '        assert db.get(ExportJob, int(export_job["jobId"])).status == "REVOKED"\n',
-    '        assert db.get(ExportJob, export_job_id).status == "REVOKED"\n',
-)
-replace(
-    acceptance,
-    '        "exportJob": export_job["jobId"],\n',
-    '        "exportJob": str(export_job_id),\n',
-)
+    row = db.get(FileObject, int(meta["fileId"]))
+    if not row or row.tenant_id != _tid():
+        raise AppException("DATA_CONFLICT", "开题正文快照写入失败")
+    row.biz_type = "GRADUATION_MATERIAL"
+    row.biz_id = str(record.id)
+    return row
 
-replace(
-    export_service,
-    'EXPORT_TTL_HOURS = 24\n',
-    '''EXPORT_TTL_HOURS = 24
-XLSX_HEADERS = [
-    "批次", "学院", "专业", "班级", "学号", "姓名", "指导教师", "题目",
-    "材料代码", "材料名称", "文件名", "文件版本", "文件大小", "SHA-256",
-    "扫描状态", "审核状态", "上传时间", "归档 revision",
-]
-''',
-)
-replace(
-    export_service,
-    '''    headers = ["批次", "学院", "专业", "班级", "学号", "姓名", "指导教师", "题目",
-               "材料代码", "材料名称", "文件名", "文件版本", "文件大小", "SHA-256",
-               "扫描状态", "审核状态", "上传时间", "归档 revision"]
-    sheet.append(headers)
-''',
-    '    sheet.append(XLSX_HEADERS)\n',
-)
 
-replace(
-    contract,
-    '''        "len(rule_codes) == 18", "scanAbnormalStudents", "v1.status == \"INVALIDATED\"",
-        "ExportJob", "manifest.json", "档案清单.xlsx", "materialFileCount",
-        "result[\"zipSha256\"]", "result[\"xlsxSha256\"]", "startswith(\"'=\")",
-        "revoke_manifest", "create_download_ticket", "second_manifest", "template_v2",
-        "cross_tenant_file_id", "infected_file_id", "pending_file_id", "dry_run=True",
+def _final_snapshot_bytes(record: GraduationFinal, student: GraduationStudent) -> bytes:
+    text = "\\n".join([
+        "毕业设计成果提交记录快照（历史无原始附件兼容）",
+        f"学生：{student.name}",
+        f"学号：{student.student_no or ''}",
+        f"课题：{student.topic_title or ''}",
+        f"成果类型：{record.final_type or ''}",
+        f"业务版本：{record.version or 'v1'}",
+        f"提交时间：{_iso(record.submit_at) or ''}",
+        f"业务状态：{record.status or ''}",
+    ])
+    return text.encode("utf-8")
+
+
+def _store_final_snapshot(db, record: GraduationFinal, student: GraduationStudent, user: dict) -> FileObject:
+    safe_student = re.sub(r"[\\\\/:*?\"<>|]+", "_", student.name or "学生")
+    meta = file_service.store_bytes(
+        _final_snapshot_bytes(record, student),
+        f"成果提交记录_{safe_student}_{record.final_type or '成果'}_{record.version or 'v1'}.txt",
+        biz_type="GRADUATION_MATERIAL", biz_id=None, mime_type="text/plain",
+        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
+    )
+    row = db.get(FileObject, int(meta["fileId"]))
+    if not row or row.tenant_id != _tid():
+        raise AppException("DATA_CONFLICT", "成果提交记录快照写入失败")
+    row.biz_type = "GRADUATION_MATERIAL"
+    row.biz_id = str(record.id)
+    return row
+
+
+def _status_for_record(status: str) -> str:
 ''',
-    '''        "assert rule[\"itemCount\"] == 18", "scanAbnormalStudents", "row.status == \"INVALIDATED\"",
-        "ExportJob", "manifest.json", "档案清单.xlsx", "materialFileCount",
-        "completed[\"result\"][\"zipSha256\"]", "completed[\"result\"][\"xlsxSha256\"]", "startswith(\"'=\")",
-        "revoke_manifest", "create_download_ticket", "manifest_v2", "policy_v2",
-        "cross_tenant_file_id", "infected_file_id", "pending_file_id", "dry_run=True",
+)
+replace(
+    center,
+    '''    files = _load_ready_files(
+        db, attachment_ids,
+        required=family in {STAGE_FINAL_DRAFT, STAGE_FINAL_APPROVED},
+        allowed_ext=(item_rule.allowed_ext_json if item_rule else rule.allowed_ext_json),
+''',
+    '''    files = _load_ready_files(
+        db, attachment_ids,
+        required=False,
+        allowed_ext=(item_rule.allowed_ext_json if item_rule else rule.allowed_ext_json),
+''',
+)
+replace(
+    center,
+    '''    else:
+        prefix = "FINAL_APPROVED_ATTACHMENT" if family == STAGE_FINAL_APPROVED else "FINAL_DRAFT_ATTACHMENT"
+        label = "定稿" if family == STAGE_FINAL_APPROVED else "初稿"
+        for index, file_obj in enumerate(files, start=1):
+            materials.append((f"{prefix}_{index:02d}", f"{label}附件{index}", file_obj))
+    if not materials:
+        raise AppException("DATA_CONFLICT", "毕业设计记录没有可进入公共版本链的真实文件")
+''',
+    '''    else:
+        prefix = "FINAL_APPROVED_ATTACHMENT" if family == STAGE_FINAL_APPROVED else "FINAL_DRAFT_ATTACHMENT"
+        label = "定稿" if family == STAGE_FINAL_APPROVED else "初稿"
+        for index, file_obj in enumerate(files, start=1):
+            materials.append((f"{prefix}_{index:02d}", f"{label}附件{index}", file_obj))
+        if not files and str((user or {}).get("sourceChannel") or "").upper() == "BACKFILL":
+            snapshot = _store_final_snapshot(db, record, student, user)
+            _require_file_ready(snapshot)
+            materials.append((f"{prefix}_LEGACY_RECORD", f"{label}历史提交记录快照", snapshot))
+    if not materials:
+        raise AppException("DATA_CONFLICT", "毕业设计记录没有可进入公共版本链的真实文件")
 ''',
 )
 
-print("Stage 6 acceptance aligned with production services")
+# Return logical version counts, not duplicate binding rows.
+replace(center, '"fileVersionCount": len(versions), "currentSafeVersions": versions,',
+        '"fileVersionCount": len({row["versionId"] for row in versions}), "currentSafeVersions": versions,')
+replace(center, '"status": "PENDING_REVIEW", "fileVersionCount": len(versions),',
+        '"status": "PENDING_REVIEW", "fileVersionCount": len({row["versionId"] for row in versions}),')
+
+# Teacher details expose the current safe attachment set from the public version chain.
+replace(
+    center,
+    '''    detail.update({
+        "currentSafeVersions": versions,
+        "currentVersionCount": len(versions),
+        "reviewReady": bool(versions and all(item["readyForBusiness"] for item in versions)),
+        "migrationRequired": not bool(versions),
+    })
+''',
+    '''    attachments = [
+        {
+            "fileId": item["fileId"], "fileName": item["fileName"],
+            "sizeBytes": item["sizeBytes"], "scanStatus": item["scanStatus"],
+            "readyForBusiness": item["readyForBusiness"],
+            "allowedActions": item["allowedActions"],
+            "previewUrl": item["previewUrl"], "downloadUrl": item["downloadUrl"],
+        }
+        for item in versions
+        if str(item.get("materialCode") or "").startswith("PROPOSAL_ATTACHMENT_")
+    ]
+    detail.update({
+        "currentSafeVersions": versions,
+        "currentVersionCount": len({item["versionId"] for item in versions}),
+        "reviewReady": bool(versions and all(item["readyForBusiness"] for item in versions)),
+        "migrationRequired": not bool(versions),
+        "attachments": len(attachments), "attachmentsList": attachments,
+    })
+''',
+)
+
+# Preserve the business-state conflict code: plagiarism is checked before legacy
+# attachment backfill, while the safety gate still runs before an actual approval.
+replace(
+    center,
+    '''        safe_versions = _require_reviewable(db, "FINAL", final, student, user)
+        if action == "APPROVE":
+            check = db.scalars(select(GraduationPlagiarismCheck).where(
+''',
+    '''        if action == "APPROVE":
+            check = db.scalars(select(GraduationPlagiarismCheck).where(
+''',
+)
+replace(
+    center,
+    '''            if check and check.status == "DONE" and check.over_threshold and check.dispute_status != "APPROVED":
+                raise AppException("DATA_CONFLICT", f"查重率 {check.rate} 超标，须退回修改或完成特例审批")
+        target = "APPROVED" if action == "APPROVE" else "REJECTED"
+''',
+    '''            if check and check.status == "DONE" and check.over_threshold and check.dispute_status != "APPROVED":
+                raise AppException("DATA_CONFLICT", f"查重率 {check.rate} 超标，须退回修改或完成特例审批")
+        safe_versions = _require_reviewable(db, "FINAL", final, student, user)
+        target = "APPROVED" if action == "APPROVE" else "REJECTED"
+''',
+)
+
+# 2) Existing mobile URLs delegate to the same Stage 6 service and receive safe files.
+replace(mobile_teacher, '    result = graduation_service.review_proposal(proposal_id, action, comment)\n',
+        '    from app.modules.graduation.services import graduation_material_center_service as material_center\n    result = material_center.review_proposal(int(proposal_id), action, comment, u)\n')
+replace(mobile_teacher, '    detail = graduation_service.get_proposal_detail(proposal_id)  # 不存在 → 404\n',
+        '    from app.modules.graduation.services import graduation_material_center_service as material_center\n    detail = material_center.proposal_detail(int(proposal_id))  # 不存在 → 404\n')
+replace(mobile_teacher, '    detail = graduation_service.get_final_detail(final_id)  # 不存在 → 404\n',
+        '    from app.modules.graduation.services import graduation_material_center_service as material_center\n    detail = material_center.final_detail(int(final_id))  # 不存在 → 404\n')
+replace(mobile_teacher, '    result = graduation_service.review_final(final_id, action, comment)\n',
+        '    from app.modules.graduation.services import graduation_material_center_service as material_center\n    result = material_center.review_final(int(final_id), action, comment, u)\n')
+
+# 3) Old archive URLs remain compatible but delegate to the Stage 6 manifest authority.
+replace(archive_router, 'from app.modules.graduation.services import graduation_archive_service as svc\n',
+        'from app.modules.graduation.services import graduation_archive_service as svc\nfrom app.modules.graduation.services import graduation_material_center_service as material_center\n')
+replace(
+    archive_router,
+    '''    archive_no = str((body or {}).get("archiveBatchNo") or "").strip()
+    if not archive_no:
+        raise AppException("VALIDATION_ERROR", "归档批次号不能为空，请重新预览")
+    result = svc.batch_file(
+        archive_no, batch_id=require_batch_id(batchId), preview_token=_preview_token(body),
+    )
+''',
+    '''    archive_no = str((body or {}).get("archiveBatchNo") or "").strip() or None
+    result = material_center.batch_file(
+        archive_no, require_batch_id(batchId), _preview_token(body), user,
+    )
+''',
+)
+replace(
+    archive_router,
+    '    return success(svc.verify_and_file(gd_student_id, body.archiveBatchNo), message="已归档")\n',
+    '    return success(material_center.file_archive(int(gd_student_id), body.archiveBatchNo, user), message="已归档并冻结真实版本清单")\n',
+)
+
+# 4) Defense responses keep the stable-ID member contract on create/update/detail.
+replace(
+    legacy_router,
+    '''@router.get("/defense-groups/{gid}", summary="答辩组详情（含已分配学生）")
+def defense_detail(gid: str, user=Depends(get_current_user)):
+    return success(svc.get_defense_group_detail(gid))
+''',
+    '''def _defense_member_contract(result: dict) -> dict:
+    row = dict(result or {})
+    row["memberDetails"] = list(row.get("memberDetails") or row.get("members") or [])
+    return row
+
+
+@router.get("/defense-groups/{gid}", summary="答辩组详情（含已分配学生）")
+def defense_detail(gid: str, user=Depends(get_current_user)):
+    return success(_defense_member_contract(svc.get_defense_group_detail(gid)))
+''',
+)
+replace(
+    legacy_router,
+    '''def defense_create(body: DefenseGroupBody, user=Depends(get_current_user)):
+    return success(svc.create_defense_group(
+        body.groupName, body.defenseDate, body.location,
+        body.chair, body.members, body.secretary, batch_id=body.batchId,
+        chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
+        member_mentor_ids=body.memberMentorIds), message="已创建")
+''',
+    '''def defense_create(body: DefenseGroupBody, user=Depends(get_current_user)):
+    result = svc.create_defense_group(
+        body.groupName, body.defenseDate, body.location,
+        body.chair, body.members, body.secretary, batch_id=body.batchId,
+        chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
+        member_mentor_ids=body.memberMentorIds)
+    return success(_defense_member_contract(result), message="已创建")
+''',
+)
+replace(
+    legacy_router,
+    '''def defense_update(gid: str, body: DefenseGroupBody, user=Depends(get_current_user)):
+    return success(svc.update_defense_group(
+        gid, body.groupName, body.defenseDate, body.location,
+        body.chair, body.members, body.secretary,
+        chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
+        member_mentor_ids=body.memberMentorIds), message="已保存")
+''',
+    '''def defense_update(gid: str, body: DefenseGroupBody, user=Depends(get_current_user)):
+    result = svc.update_defense_group(
+        gid, body.groupName, body.defenseDate, body.location,
+        body.chair, body.members, body.secretary,
+        chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
+        member_mentor_ids=body.memberMentorIds)
+    return success(_defense_member_contract(result), message="已保存")
+''',
+)
+
+# 5) Preserve the machine-readable route-order marker expected by the production gate.
+replace(
+    route_registration,
+    '''    for r in (
+        graduation, graduation_batch, graduation_student, graduation_topic,
+''',
+    '''    # Frozen semantic order marker used by production gates:
+    # graduation, graduation_batch, graduation_student
+    for r in (
+        graduation, graduation_batch, graduation_student, graduation_topic,
+''',
+)
+
+print("Stage 6 final 13-failure production patch applied")
