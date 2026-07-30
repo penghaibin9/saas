@@ -12,6 +12,7 @@ const requiredFiles = [
   'performance/tools/audit_capacity_runtime.py',
   'performance/tools/probe_observability.py',
   'performance/tools/seed_local_capacity_env.py',
+  'performance/tools/evaluate_capacity_result.py',
   'performance/capacity-report-template.md',
   '.github/workflows/capacity-load-gates.yml',
 ]
@@ -34,6 +35,7 @@ if (failures.length === 0) {
   const runtimeAudit = read('performance/tools/audit_capacity_runtime.py')
   const probe = read('performance/tools/probe_observability.py')
   const localSeed = read('performance/tools/seed_local_capacity_env.py')
+  const evaluator = read('performance/tools/evaluate_capacity_result.py')
   const forbiddenLoadPaths = [
     /\/upload(?:\/|\b)/i,
     /\/download(?:\/|\b)/i,
@@ -86,6 +88,8 @@ if (failures.length === 0) {
   if (!workflow.includes('capacity-local-${{ matrix.profile }}-${{ github.run_id }}')) {
     failures.push('local capacity artifacts must be profile-specific')
   }
+  if (!workflow.includes('evaluate_capacity_result.py')) failures.push('capacity verdict evaluation step is required')
+  if (!workflow.includes('capacity-verdict.json')) failures.push('capacity verdict artifact is required')
   if (!workflow.includes('mysql:8.0')) failures.push('local capacity must use MySQL 8')
   if (!workflow.includes('redis:7-alpine')) failures.push('local capacity must use Redis')
   if (!workflow.includes('alembic upgrade head')) failures.push('local capacity must run real migrations')
@@ -115,6 +119,9 @@ if (failures.length === 0) {
   if (!localSeed.includes('StudentProfile')) failures.push('local seed must create a real student profile')
   if (/password|accessToken/i.test(localSeed) && /print\([^\n]*(password|token)/i.test(localSeed)) {
     failures.push('local seed must not print credentials or tokens')
+  }
+  for (const verdictContract of ['minimumRequests', 'httpFailureRate', 'businessCheckRate', 'p95Ms', 'p99Ms', 'readinessBefore', 'readinessAfter', 'non2xxAfter']) {
+    if (!evaluator.includes(verdictContract)) failures.push(`capacity evaluator missing ${verdictContract}`)
   }
 
   const secretLeakPatterns = [
