@@ -45,6 +45,7 @@ jobs:
           (github.event_name == 'pull_request' && github.head_ref == 'audit/file-capability-inventory')
         run: |
           set -euo pipefail
+          python scripts/patch_phase6_prod_closeout_fix.py
           python scripts/patch_phase6_prod_closeout.py
           TARGETS=(
             backend/app/services/file_service.py
