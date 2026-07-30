@@ -141,6 +141,9 @@
     const sidebar = $('.v2-sidebar');
     if (!sidebar || !window.location.pathname.includes('/academic-affairs/')) return;
 
+    if (sidebar.dataset.v2NavBound === '1') return;
+    sidebar.dataset.v2NavBound = '1';
+
     const nav = $('.v2-side-nav', sidebar);
     const search = $('[data-v2-side-search]', sidebar);
     const empty = $('[data-v2-side-empty]', sidebar);
@@ -190,6 +193,33 @@
     }
   }
 
+  function enhanceExamTabs() {
+    if (!window.location.pathname.includes('/academic-affairs/exam/')) return;
+    const targets = {
+      '考试批次': 'exam-batches.html',
+      '考试课程': 'exam-courses.html',
+      '自动排考': 'exam-auto-arrange.html',
+      '冲突处理': 'exam-conflicts.html',
+      '考场与座位': 'exam-rooms-seats.html',
+      '监考与巡考': 'exam-invigilators.html',
+      '发布前核验': 'exam-publish-precheck.html',
+      '异常记录': 'exam-incidents.html',
+      '考务统计': 'exam-stats.html',
+      '考务归档': 'exam-archive.html'
+    };
+    $$('.v2-workspace-tabs .v2-workspace-tab').forEach(tab => {
+      const label = (tab.textContent || '').trim();
+      const href = targets[label];
+      if (!href || tab.tagName === 'A') return;
+      const link = document.createElement('a');
+      link.className = tab.className;
+      link.href = href;
+      link.textContent = label;
+      if (tab.classList.contains('active')) link.setAttribute('aria-current', 'page');
+      tab.replaceWith(link);
+    });
+  }
+
   function enhanceSharedStates() {
     $$('[data-state-button="unauthorized"]').forEach(button => {
       if (/只读/.test(button.textContent || '')) button.textContent = '403 / 只读';
@@ -230,6 +260,7 @@
     document.body.dataset.theme = storage.get('teacher-pc-v2-theme') || 'academy';
     renderAcademicNavigation();
     bindAcademicNavigation();
+    enhanceExamTabs();
     enhanceSharedStates();
   }
 
