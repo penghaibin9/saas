@@ -20,6 +20,8 @@ def replace_exact(path: str, old: str, new: str, marker: str) -> bool:
 
 def main() -> None:
     changed: list[str] = []
+    export_path = "backend/app/modules/graduation/services/graduation_material_export_service.py"
+    catalog_path = "backend/app/modules/graduation/services/graduation_material_catalog_service.py"
 
     export_old = '''    if proposal_id: catalog.sync_record("PROPOSAL", proposal_id, user)
     if final_id: catalog.sync_record("FINAL", final_id, user)
@@ -36,13 +38,147 @@ def main() -> None:
     from app.modules.graduation.services import graduation_structured_snapshot_service as structured_snapshots
     structured_snapshots.prepare_all(int(student_id), user)
 '''
-    if replace_exact(
-        "backend/app/modules/graduation/services/graduation_material_export_service.py",
-        export_old,
-        export_new,
-        "System-generated PDF evidence is persisted outside the business read",
-    ):
-        changed.append("backend/app/modules/graduation/services/graduation_material_export_service.py")
+    if replace_exact(export_path, export_old, export_new,
+                     "System-generated PDF evidence is persisted outside the business read"):
+        changed.append(export_path)
+
+    freeze_old = '''        selected: list[tuple[GraduationStudentMaterial, FileVersion, FileObject]] = []
+        missing: list[str] = []
+        for material in materials:
+            spec = catalog.SPEC_BY_CODE.get(material.material_code)
+            archive_required = bool((spec or {}).get("archiveRequired", material.archive_status != "NOT_ARCHIVED"))
+            required = material.material_code in required_codes
+            if not archive_required and not material.current_version_id:
+                continue
+            if not material.current_version_id:
+                if required: missing.append(material.material_name)
+                continue
+            version = db.scalars(select(FileVersion).where(
+                FileVersion.tenant_id == _tid(), FileVersion.id == int(material.current_version_id),
+                FileVersion.asset_id == int(material.asset_id), FileVersion.is_current.is_(True),
+                FileVersion.is_deleted.is_(False),
+            ).with_for_update()).first()
+            file_obj = db.get(FileObject, int(version.file_object_id)) if version else None
+            if not version or not file_obj:
+                if required: missing.append(material.material_name)
+                continue
+            if version.status != "APPROVED" or material.review_status not in {"APPROVED", "NOT_REQUIRED"}:
+                if required: missing.append(f"{material.material_name}（未审核通过）")
+                continue
+            try:
+                legacy_ready = __import__(
+                    "app.modules.graduation.services.graduation_material_center_service",
+                    fromlist=["_require_file_ready"],
+                )
+                legacy_ready._require_file_ready(file_obj)
+            except AppException:
+                if required: missing.append(f"{material.material_name}（安全状态异常）")
+                continue
+            selected.append((material, version, file_obj))
+        if missing:
+            raise AppException("DATA_CONFLICT", "归档材料未齐全：" + "、".join(sorted(set(missing))))
+'''
+    freeze_new = '''        selected: list[tuple[GraduationStudentMaterial, FileVersion, FileObject]] = []
+        problems: list[str] = []
+        for material in materials:
+            spec = catalog.SPEC_BY_CODE.get(material.material_code)
+            archive_required = bool((spec or {}).get("archiveRequired", material.archive_status != "NOT_ARCHIVED"))
+            required = material.material_code in required_codes
+            if not archive_required and not material.current_version_id:
+                continue
+            if not material.current_version_id:
+                if required:
+                    problems.append(material.material_name)
+                continue
+            version = db.scalars(select(FileVersion).where(
+                FileVersion.tenant_id == _tid(), FileVersion.id == int(material.current_version_id),
+                FileVersion.asset_id == int(material.asset_id), FileVersion.is_current.is_(True),
+                FileVersion.is_deleted.is_(False),
+            ).with_for_update()).first()
+            file_obj = db.get(FileObject, int(version.file_object_id)) if version else None
+            # An optional material may be absent, but once submitted it must never be
+            # silently omitted because its current version is unsafe or unapproved.
+            if not version or not file_obj:
+                problems.append(f"{material.material_name}（当前版本不存在）")
+                continue
+            if version.status != "APPROVED" or material.review_status not in {"APPROVED", "NOT_REQUIRED"}:
+                problems.append(f"{material.material_name}（未审核通过）")
+                continue
+            try:
+                legacy_ready = __import__(
+                    "app.modules.graduation.services.graduation_material_center_service",
+                    fromlist=["_require_file_ready"],
+                )
+                legacy_ready._require_file_ready(file_obj)
+            except AppException:
+                problems.append(f"{material.material_name}（安全状态异常）")
+                continue
+            selected.append((material, version, file_obj))
+        if problems:
+            raise AppException("DATA_CONFLICT", "归档材料未齐全或存在异常：" + "、".join(sorted(set(problems))))
+'''
+    if replace_exact(export_path, freeze_old, freeze_new,
+                     "An optional material may be absent, but once submitted"):
+        if export_path not in changed:
+            changed.append(export_path)
+
+    package_old = '''            row.version = int(row.version or 0) + 1
+            for _, manifest in pairs:
+                manifest.status = "PACKAGED"; manifest.package_file_id = int(zip_file.id)
+            db.commit(); return _export_job_view(row)
+'''
+    package_new = '''            row.version = int(row.version or 0) + 1
+            for _, manifest in pairs:
+                manifest.status = "PACKAGED"
+                manifest.package_file_id = int(zip_file.id)
+                manifest_codes = {
+                    item.material_code for item in items if int(item.manifest_id) == int(manifest.id)
+                }
+                archived_materials = db.scalars(select(GraduationStudentMaterial).where(
+                    GraduationStudentMaterial.tenant_id == _tid(),
+                    GraduationStudentMaterial.gd_student_id == int(manifest.target_id),
+                    GraduationStudentMaterial.material_code.in_(manifest_codes or {"__NONE__"}),
+                    GraduationStudentMaterial.is_deleted.is_(False),
+                ).with_for_update()).all()
+                for material in archived_materials:
+                    material.archive_status = "ARCHIVED"
+                    material.version = int(material.version or 0) + 1
+            db.commit(); return _export_job_view(row)
+'''
+    if replace_exact(export_path, package_old, package_new,
+                     'material.archive_status = "ARCHIVED"'):
+        if export_path not in changed:
+            changed.append(export_path)
+
+    revoke_old = '''        for material in materials:
+            material.archive_status = "ELIGIBLE" if material.review_status == "APPROVED" else "NOT_ARCHIVED"
+            material.version = int(material.version or 0) + 1
+        archive = db.scalars(select(GraduationArchiveRecord).where(
+'''
+    revoke_new = '''        for material in materials:
+            material.archive_status = "ELIGIBLE" if material.review_status == "APPROVED" else "NOT_ARCHIVED"
+            material.version = int(material.version or 0) + 1
+        manifest_items = db.scalars(select(ArchiveManifestItem).where(
+            ArchiveManifestItem.tenant_id == _tid(),
+            ArchiveManifestItem.manifest_id == int(manifest.id),
+            ArchiveManifestItem.is_deleted.is_(False),
+        )).all()
+        version_ids = {int(item.version_id) for item in manifest_items}
+        versions = db.scalars(select(FileVersion).where(
+            FileVersion.tenant_id == _tid(), FileVersion.id.in_(version_ids or {-1}),
+            FileVersion.is_current.is_(True), FileVersion.is_deleted.is_(False),
+        ).with_for_update()).all()
+        for version in versions:
+            if version.status == "ARCHIVED":
+                version.status = "APPROVED"
+        student.stage = "FINAL_CHECK"
+        student.version = int(student.version or 0) + 1
+        archive = db.scalars(select(GraduationArchiveRecord).where(
+'''
+    if replace_exact(export_path, revoke_old, revoke_new,
+                     'student.stage = "FINAL_CHECK"'):
+        if export_path not in changed:
+            changed.append(export_path)
 
     library_old = '''                "sensitivityLevel": row.sensitivity_level, "assetId": str(row.asset_id or ""),
                 "currentVersionId": str(row.current_version_id or ""),
@@ -53,13 +189,9 @@ def main() -> None:
                 "version": int(row.version or 0),
                 "currentVersion": current_file, "versions": versions,
 '''
-    if replace_exact(
-        "backend/app/modules/graduation/services/graduation_material_catalog_service.py",
-        library_old,
-        library_new,
-        '"version": int(row.version or 0),\n                "currentVersion": current_file',
-    ):
-        changed.append("backend/app/modules/graduation/services/graduation_material_catalog_service.py")
+    if replace_exact(catalog_path, library_old, library_new,
+                     '"version": int(row.version or 0),\n                "currentVersion": current_file'):
+        changed.append(catalog_path)
 
     scan_old = '''        all_materials = db.scalars(material_stmt).all()
         if scan_status:
@@ -106,14 +238,9 @@ def main() -> None:
                 if row.current_version_id and int(row.current_version_id) in matched_versions
             ]
 '''
-    if replace_exact(
-        "backend/app/modules/graduation/services/graduation_material_catalog_service.py",
-        scan_old,
-        scan_new,
-        "scan_abnormal_student_ids = {",
-    ):
-        if "backend/app/modules/graduation/services/graduation_material_catalog_service.py" not in changed:
-            changed.append("backend/app/modules/graduation/services/graduation_material_catalog_service.py")
+    if replace_exact(catalog_path, scan_old, scan_new, "scan_abnormal_student_ids = {"):
+        if catalog_path not in changed:
+            changed.append(catalog_path)
 
     row_old = '''            approved = sum(item.review_status in {"APPROVED", "NOT_REQUIRED"} for item in required)
             rows.append({
@@ -122,12 +249,8 @@ def main() -> None:
             scan_abnormal = sum(int(item.id) in abnormal_material_ids for item in materials)
             rows.append({
 '''
-    replace_exact(
-        "backend/app/modules/graduation/services/graduation_material_catalog_service.py",
-        row_old,
-        row_new,
-        "scan_abnormal = sum(int(item.id) in abnormal_material_ids",
-    )
+    replace_exact(catalog_path, row_old, row_new,
+                  "scan_abnormal = sum(int(item.id) in abnormal_material_ids")
 
     ready_old = '''                "approvedRequiredCount": approved,
                 "archiveReady": bool(required and approved == len(required) and missing == pending == returned == 0),
@@ -138,12 +261,7 @@ def main() -> None:
                     and missing == pending == returned == scan_abnormal == 0
                 ),
 '''
-    replace_exact(
-        "backend/app/modules/graduation/services/graduation_material_catalog_service.py",
-        ready_old,
-        ready_new,
-        '"scanAbnormalCount": scan_abnormal',
-    )
+    replace_exact(catalog_path, ready_old, ready_new, '"scanAbnormalCount": scan_abnormal')
 
     summary_old = '''                "completeStudents": max(0, total - len(missing_students | pending_students | returned_students)),
                 "missingStudents": len(missing_students), "scanAbnormalStudents": 0,
@@ -154,12 +272,8 @@ def main() -> None:
                 "missingStudents": len(missing_students),
                 "scanAbnormalStudents": len(scan_abnormal_student_ids),
 '''
-    replace_exact(
-        "backend/app/modules/graduation/services/graduation_material_catalog_service.py",
-        summary_old,
-        summary_new,
-        '"scanAbnormalStudents": len(scan_abnormal_student_ids)',
-    )
+    replace_exact(catalog_path, summary_old, summary_new,
+                  '"scanAbnormalStudents": len(scan_abnormal_student_ids)')
 
     print("phase 6 business residual patch complete:", ", ".join(changed) if changed else "already applied")
 
