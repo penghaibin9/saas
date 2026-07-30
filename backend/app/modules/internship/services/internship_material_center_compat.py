@@ -68,7 +68,11 @@ def _store_snapshot(db, *, payload: dict, filename: str, record, user,
         label=title,
         business_version=business_version,
     )
-    return core._adopt_source(db, refreshed_record, student, source, user=user)
+    item = core._adopt_source(db, refreshed_record, student, source, user=user)
+    # 项目 Session 明确配置 autoflush=False。_adopt_source 对新 FileBinding 只 add，
+    # 必须在随后查询当前版本清单前显式 flush，否则会误报“没有可追溯的文件版本”。
+    db.flush()
+    return item
 
 
 def preflight_process_report(report_id, user=None) -> dict:
