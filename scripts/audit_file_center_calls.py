@@ -51,6 +51,9 @@ ALLOW = {
         "backend/app/api/v1/data_exchange.py",
         "backend/app/api/v1/import_export.py",
         "backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py",
+        # 阶段 7 已登记的剩余迁移债务：旧教务 Router 内注册、课表、成绩、统计等同步导出。
+        # 每迁完一个页面族后必须从这里移除对应文件，而不是长期把业务 Router 当公共边界。
+        "backend/app/modules/academic_affairs/routers/academic_affairs.py",
         "backend/app/modules/graduation/routers/graduation_material_center.py",
         "backend/app/modules/internship/routers/internship_material_center.py",
         "backend/app/modules/student_affairs/routers/affairs_material_center.py",
