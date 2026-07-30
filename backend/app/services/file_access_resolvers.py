@@ -1,4 +1,4 @@
-"""公共文件中心内置业务 resolver 注册。
+"""公共文件冻结中心内置业务 resolver 注册。
 
 该模块通过 registry 正式注册，不改写 file_service 函数，不使用运行时 monkey-patch。
 """
@@ -17,11 +17,58 @@ from app.services.file_access_service import (
     _is_file_admin,
     register_file_resolver,
 )
+from app.services.message_identity import resolve_message_user_id
+
+
+def _owner_allows(file_obj, user: dict) -> bool:
+    """兼容正式数字账号与 mock/历史字符串账号的统一 owner 判断。"""
+    owner = str(file_obj.owner_user_id or file_obj.created_by or "").strip()
+    if not owner:
+        return False
+    actor_values = {_actor_id(user)}
+    resolved = resolve_message_user_id(user)
+    if resolved:
+        actor_values.add(str(resolved))
+    return owner in {item for item in actor_values if item}
+
+
+def _student_scope_values(db, file_obj, user: dict) -> set[str]:
+    """补齐 studentNo、StudentProfile.id 与令牌 studentId 的等价身份。"""
+    values = set(_actor_student_values(user))
+    if db is None:
+        return values
+    try:
+        from app.models import StudentProfile
+
+        tenant_id = int(file_obj.tenant_id or 0)
+        explicit_id = str(user.get("studentId") or "").strip()
+        student_no = str(user.get("studentNo") or "").strip()
+        row = None
+        if explicit_id.isdigit():
+            row = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == tenant_id,
+                StudentProfile.id == int(explicit_id),
+                StudentProfile.is_deleted.is_(False),
+            )).first()
+        if row is None and student_no:
+            row = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == tenant_id,
+                StudentProfile.student_no == student_no,
+                StudentProfile.is_deleted.is_(False),
+            )).first()
+        if row is not None:
+            values.add(str(row.id))
+            values.add(str(row.student_no or "").strip())
+    except Exception:
+        # 身份补齐异常必须收窄为现有令牌值，不能放宽授权。
+        pass
+    return {item for item in values if item}
 
 
 @register_file_resolver(
     "GRADUATION_MATERIAL",
     "INTERNSHIP",
+    "ENT_EVAL",
     "COURSE_MATERIAL",
     "ATTACHMENT",
     "LEAVE",
@@ -30,9 +77,7 @@ from app.services.file_access_service import (
     "MENTAL",
 )
 def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
-    actor_id = _actor_id(user)
-    owner = str(file_obj.owner_user_id or file_obj.created_by or "").strip()
-    if actor_id and owner and actor_id == owner:
+    if _owner_allows(file_obj, user):
         return True
     if _is_file_admin(user):
         return True
@@ -49,12 +94,15 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
                 for item in active
             )
         permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
-        return bool(permission and has_permission(user, permission))
+        if permission:
+            return has_permission(user, permission)
+        # 未映射的冻结业务类型仅允许显式绑定主体本人，不能按租户泛化授权。
+        return subject_allowed
 
-    # 历史对象没有绑定表时，仅兼容本人或明确业务权限。
+    # 历史对象没有绑定表时，仅兼容本人、学生本人业务归属或明确业务权限。
     if str(user.get("userType") or "").upper() == "STUDENT":
         biz_id = str(file_obj.biz_id or "").strip()
-        return bool(biz_id and biz_id in _actor_student_values(user))
+        return bool(biz_id and biz_id in _student_scope_values(db, file_obj, user))
     permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
     return bool(permission and has_permission(user, permission))
 
