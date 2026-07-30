@@ -104,6 +104,7 @@ export const options = {
     http_req_duration: ['p(95)<1000', 'p(99)<2000'],
     ...routeThresholds,
   },
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   userAgent: 'Yueke-Capacity-Gate/1.0',
   noConnectionReuse: false,
 };
