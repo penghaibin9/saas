@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """One-time exact patch for E capacity mobile-read caching and class-count N+1 removal."""
+# Trigger revision: run only after the workflow file exists on the branch.
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
