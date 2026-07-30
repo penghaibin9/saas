@@ -30,7 +30,7 @@
     ['schedule-change', '调停课', '/admin/academic-affairs/schedule-change', '../schedule-change/schedule-change-ledger.html'],
     ['attendance', '课堂考勤', '/admin/academic-affairs/attendance-stats', ''],
     ['selection', '选课管理', '/admin/academic-affairs/selection', '../selection/selection-batches.html'],
-    ['exam', '考务管理', '/admin/academic-affairs/exam', ''],
+    ['exam', '考务管理', '/admin/academic-affairs/exam', '../exam/exam-batches.html'],
     ['makeup', '补考重修缓考免修', '/admin/academic-affairs/makeup', ''],
     ['grades', '成绩管理', '/admin/academic-affairs/grade-overview', '../grades/grade-overview.html'],
     ['grade-review', '成绩审核发布更正', '/admin/academic-affairs/grade-college-review', '../grades/grade-college-review.html'],
@@ -61,6 +61,7 @@
     if (path.includes('/schedule-change/')) return 'schedule-change';
     if (path.includes('/schedule/')) return 'schedule';
     if (path.includes('/selection/')) return 'selection';
+    if (path.includes('/exam/')) return 'exam';
     if (path.includes('/grades/')) {
       return /grade-(audit|change|college-review|publish|recheck)/.test(file) ? 'grade-review' : 'grades';
     }
