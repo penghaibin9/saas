@@ -39,7 +39,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply exact Stage 6 residual patch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/audit/file-capability-inventory'
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/audit/file-capability-inventory') ||
+          (github.event_name == 'pull_request' && github.head_ref == 'audit/file-capability-inventory')
         run: |
           set -euo pipefail
           python scripts/patch_phase6_residuals.py
