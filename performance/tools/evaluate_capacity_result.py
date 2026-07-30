@@ -11,6 +11,8 @@ from typing import Any
 PROFILE_MIN_REQUESTS = {
     "smoke": 100,
     "baseline": 1000,
+    "p300": 10000,
+    "p500": 20000,
 }
 
 
