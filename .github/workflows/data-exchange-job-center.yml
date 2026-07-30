@@ -101,6 +101,8 @@ jobs:
             frontend/src/modules/system/views/SystemTeacherImportView.vue \
             frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "jobId" frontend/src/modules/system/components/ImportDialog.vue
-          grep -q "expectedVersion" frontend/src/modules/system/components/ImportDialog.vue
+          grep -q "current.version" frontend/src/modules/system/views/SystemStudentImportView.vue
+          grep -q "current.version" frontend/src/modules/system/views/SystemTeacherImportView.vue
+          grep -q "current.version" frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "pendingJobId" frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "extra=\"forbid\"" backend/app/api/v1/data_exchange.py
