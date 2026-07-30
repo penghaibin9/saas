@@ -70,12 +70,16 @@ if (miniCompat.includes('uni.uploadFile(') || miniCompat.includes('uni.downloadF
   throw new Error('miniapp fileApi.js must not retain duplicate transport implementation')
 }
 
-const apiFiles = [
-  read('backend/app/api/v1/file.py'),
-  read('backend/app/api/v1/files.py')
-]
-if (!apiFiles.every((source) => source.includes('upload_contract'))) {
-  throw new Error('formal and compatibility upload APIs must delegate to upload_contract')
+const sessionApi = read('backend/app/api/v1/file.py')
+const authoritativeApi = read('backend/app/api/v1/files.py')
+if (!authoritativeApi.includes('upload_contract')) {
+  throw new Error('authoritative POST /files API must delegate to upload_contract')
+}
+if (sessionApi.includes('@router.post("/upload"') || sessionApi.includes('def upload_real(')) {
+  throw new Error('zero-call compatibility /files/upload alias must remain retired')
+}
+if (!sessionApi.includes('@router.post("/upload-sessions"')) {
+  throw new Error('COS upload-session API must remain registered after alias retirement')
 }
 
 const accessContract = read('backend/app/api/v1/file_contract.py')
@@ -110,4 +114,4 @@ for (const relative of walk('backend/app', '.py')) {
   }
 }
 
-console.log('Stage 2 four-client File SDK, component, resolver and compatibility contract passed')
+console.log('Stage 2 four-client File SDK, component, resolver and authoritative API contract passed')
