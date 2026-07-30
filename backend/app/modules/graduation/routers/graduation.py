@@ -135,12 +135,17 @@ def proposal_stats(batchId: int | None = Query(default=None, ge=1),
 
 @router.get("/proposals/{pid}", summary="开题批阅详情")
 def proposal_detail(pid: str, user=Depends(get_current_user)):
-    return success(svc.get_proposal_detail(pid))
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    return success(material_center.proposal_detail(int(pid)))
 
 
 @router.post("/proposals/{pid}/review", summary="批阅开题（驳回原因≥5字）")
 def proposal_review(pid: str, body: ReviewBody, user=Depends(require_permission("graduationDesign.proposal.review"))):
-    return success(svc.review_proposal(pid, body.action, body.comment), message="已批阅")
+    from app.modules.graduation.services import graduation_material_catalog_service as material_catalog
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    result = material_center.review_proposal(int(pid), body.action, body.comment, user)
+    material_catalog.sync_record("PROPOSAL", int(pid), user)
+    return success(result, message="已批阅")
 
 
 @router.post("/proposals/{pid}/defense", summary="开题答辩（现场·PASS/FAIL，须书面已通过）")
@@ -179,7 +184,11 @@ def finals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 
 @router.post("/finals/{fid}/review", summary="批阅成果（退回原因≥5字；查重超标 GD-R09 不可直接通过）")
 def final_review(fid: str, body: ReviewBody, user=Depends(get_current_user)):
-    return success(svc.review_final(fid, body.action, body.comment), message="已批阅")
+    from app.modules.graduation.services import graduation_material_catalog_service as material_catalog
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    result = material_center.review_final(int(fid), body.action, body.comment, user)
+    material_catalog.sync_record("FINAL", int(fid), user)
+    return success(result, message="已批阅")
 
 
 @router.post("/finals/remind", summary="成果催交（未提交学生留痕催办）")

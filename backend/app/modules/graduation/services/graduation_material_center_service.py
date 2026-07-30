@@ -88,17 +88,23 @@ def _require_student_user(user: dict) -> None:
         raise no_permission("该接口仅学生本人可用")
 
 
-def _file_ready(row: FileObject) -> bool:
+def _file_ready(row: FileObject | None) -> bool:
+    if row is None:
+        return False
     scan = str(row.scan_status or SCAN_NOT_REQUIRED).upper()
     return bool(is_downloadable_status(row.status) and scan in READY_SCAN_STATES and row.sha256)
 
 
-def _require_file_ready(row: FileObject) -> None:
+def _require_file_ready(row: FileObject | None) -> None:
     if not _file_ready(row):
         raise AppException(
             "DATA_CONFLICT",
             "材料仍在安全扫描、扫描失败或已被隔离，不能提交、审核或归档",
-            details={"fileId": str(row.id), "status": row.status, "scanStatus": row.scan_status},
+            details={
+                "fileId": str(getattr(row, "id", "") or ""),
+                "status": getattr(row, "status", None),
+                "scanStatus": getattr(row, "scan_status", None),
+            },
         )
     if not row.sha256 or len(str(row.sha256)) != 64:
         raise AppException("DATA_CONFLICT", "材料缺少有效 SHA-256，不能进入公共版本链")
@@ -121,7 +127,7 @@ def _load_ready_files(db, values, *, required: bool, allowed_ext: list[str] | No
                       max_files: int = 10, max_size_bytes: int = MAX_FILE_SIZE) -> list[FileObject]:
     ids = _normalize_file_ids(values)
     if required and not ids:
-        raise AppException("VALIDATION_ERROR", "请先上传毕业设计材料再提交")
+        raise AppException("VALIDATION_ERROR", "请先上传毕业设计材料附件再提交")
     if len(ids) > max(1, int(max_files or 1)):
         raise AppException("VALIDATION_ERROR", f"本次最多提交 {max_files} 个文件")
     if not ids:
@@ -487,7 +493,8 @@ def _adopt_record(db, record_type: str, record, student: GraduationStudent, user
     materials: list[tuple[str, str, FileObject]] = []
     if family == STAGE_PROPOSAL:
         snapshot = _store_proposal_snapshot(record, student, user)
-        snapshot = db.get(FileObject, int(snapshot.id))
+        # snapshot 已在独立写会话提交并从该会话分离；旧业务事务处于 MySQL
+        # REPEATABLE READ 时不得再次 db.get，否则可能得到 None。
         _require_file_ready(snapshot)
         materials.append(("PROPOSAL_SNAPSHOT", "开题报告正文快照", snapshot))
         for index, file_obj in enumerate(files, start=1):

@@ -105,7 +105,7 @@
                   <summary>历史版本（{{ material.versions.length }}）</summary>
                   <FileVersionTimeline :items="timelineItems(material)" @select="selectHistory" />
                 </details>
-                <div v-if="material.currentVersionId && material.reviewStatus === 'PENDING'" class="gm-review-actions">
+                <div v-if="material.currentVersionId && material.reviewStatus === 'PENDING' && (material.allowedActions || []).includes('review')" class="gm-review-actions">
                   <button class="gm-btn gm-btn--primary" @click="reviewMaterial(material, 'APPROVE')">通过当前版本</button>
                   <button class="gm-btn gm-btn--danger" @click="reviewMaterial(material, 'REJECT')">退回当前版本</button>
                 </div>
@@ -231,7 +231,7 @@ async function refreshLibrary() { if (!selectedId.value) return; libraryLoading.
 function search() { page.value = 1; loadOverview() }
 function resetFilters() { Object.assign(filters, { keyword: '', stage: '', reviewStatus: '', scanStatus: '', archiveStatus: '' }); missingOnly.value = false; search() }
 function changePage(next) { page.value = next; loadOverview() }
-function normalizedFiles(material) { return (material.currentVersion ? [material.currentVersion] : []).map(normalizeFile) }
+function normalizedFiles(material) { return (material.currentVersion ? [{ ...material.currentVersion, allowedActions: material.currentVersion.allowedActions || material.allowedActions || [] }] : []).map(normalizeFile) }
 function timelineItems(material) { return (material.versions || []).map(v => ({ bindingId: v.bindingId || v.fileVersionId, versionNo: v.versionNo, isCurrent: v.isCurrent, boundAt: v.submittedAt, file: normalizeFile(v) })) }
 function selectHistory(item) { if (item?.file) previewFile(item.file) }
 async function previewFile(item) { try { await api.previewMaterial(item) } catch (e) { error.value = e?.message || '文件暂不可预览' } }

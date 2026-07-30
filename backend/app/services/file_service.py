@@ -163,6 +163,44 @@ def _memory_authorized(user: dict, file_obj, action: str) -> bool:
     return bool(permission and has_permission(user, permission))
 
 
+_LEGACY_INTERNSHIP_BIND_PERMISSIONS = (
+    "internship.student.material.view",
+    "internship.application.review",
+    "internship.attendance.review",
+    "internship.leave.review",
+    "internship.agreement.manage",
+    "internship.eval.enterprise.manage",
+    "internship.score.manage",
+    "internship.risk.handle",
+    "internship.archive.prepare",
+)
+
+
+def _legacy_unbound_business_authorized(user: dict, file_obj, action: str) -> bool:
+    """Stage-2 前无 Binding 文件的窄兼容，只允许首次业务接管，不允许直接枚举下载。"""
+    if action not in {"bind", "submit", "archive"} or not _ready(file_obj):
+        return False
+    if str(getattr(file_obj, "visibility", "") or "").upper() != "BIZ_SCOPED":
+        return False
+    biz_type = str(getattr(file_obj, "biz_type", "") or "").upper().strip()
+    biz_id = str(getattr(file_obj, "biz_id", "") or "").strip()
+    if not biz_type or not biz_id:
+        return False
+    actor = user or {}
+    if is_super_admin(actor) or has_permission(actor, "systemAdmin.file.manage") or has_permission(actor, "*"):
+        return True
+    if str(actor.get("userType") or "").upper() == "STUDENT":
+        values = {
+            str(actor.get("studentId") or "").strip(),
+            str(actor.get("studentNo") or "").strip(),
+        }
+        return any(value and (biz_id == value or biz_id.endswith(f":{value}")) for value in values)
+    if biz_type == "INTERNSHIP" or biz_type.startswith("INTERNSHIP_"):
+        return any(has_permission(actor, code) for code in _LEGACY_INTERNSHIP_BIND_PERMISSIONS)
+    permission = _MEMORY_BIZ_VIEW_PERM.get(biz_type)
+    return bool(permission and has_permission(actor, permission))
+
+
 def authorize_file_access(user: dict, file_obj, action: str = "download") -> bool:
     """唯一兼容授权入口。
 
@@ -191,20 +229,24 @@ def authorize_file_access(user: dict, file_obj, action: str = "download") -> boo
         actor = user or {}
         # A freshly uploaded object has no business binding yet. Only its uploader
         # or an explicit file administrator may perform the first bind/submit after
-        # the security gate has reached CLEAN/AVAILABLE. Once any binding exists,
-        # the authoritative business resolver remains mandatory.
-        if not bindings and action in {"bind", "submit"}:
-            actor_id = _actor_user_id(actor)
-            owner_id = getattr(file_obj, "owner_user_id", None) or getattr(file_obj, "created_by", None)
-            return bool(
-                _ready(file_obj)
-                and (
-                    is_super_admin(actor)
-                    or has_permission(actor, "systemAdmin.file.manage")
-                    or has_permission(actor, "*")
-                    or (actor_id and owner_id and int(actor_id) == int(owner_id))
-                )
-            )
+        # the security gate has reached CLEAN/AVAILABLE. Stage-2 前的历史 BIZ_SCOPED
+        # 文件仅允许通过窄兼容完成首次业务接管；预览/下载仍必须走正式 resolver。
+        if not bindings:
+            if action in {"bind", "submit"}:
+                actor_id = _actor_user_id(actor)
+                owner_id = getattr(file_obj, "owner_user_id", None) or getattr(file_obj, "created_by", None)
+                if bool(
+                    _ready(file_obj)
+                    and (
+                        is_super_admin(actor)
+                        or has_permission(actor, "systemAdmin.file.manage")
+                        or has_permission(actor, "*")
+                        or (actor_id and owner_id and int(actor_id) == int(owner_id))
+                    )
+                ):
+                    return True
+            if _legacy_unbound_business_authorized(actor, file_obj, action):
+                return True
         return authorize_file_object(
             file_obj,
             bindings,

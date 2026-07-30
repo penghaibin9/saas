@@ -167,7 +167,7 @@ def publish_template_asset(
 
 
 @router.post("/material-center/templates/policies/{policy_id}/status", summary="启用或停用模板资产策略")
-def update_template_status(policy_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+def update_template_status(policy_id: int, body: dict = Body(...), user=Depends(_require_material_manager)):
     enabled = bool((body or {}).get("enabled"))
     expected = (body or {}).get("expectedVersion")
     if not str(expected or "").isdigit():

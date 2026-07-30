@@ -150,7 +150,9 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     )
     d = deps["gd"]
     api_router.include_router(graduation_p0_guard.router, dependencies=d)
-    # 阶段6公共版本路由必须先于旧开题、成果和归档路由。
+    # 先注册旧聚合 Router 中的 /proposals/stats、/finals/stats 等固定路径；
+    # 其同 URL 详情/审核函数已直接委托 Stage-6 权威 Service，不再依赖路由抢占。
+    api_router.include_router(graduation.router, dependencies=d)
     api_router.include_router(graduation_material_center.router, dependencies=d)
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
@@ -160,7 +162,7 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
         dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
     )
     for r in (
-        graduation, graduation_batch, graduation_student, graduation_topic,
+        graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
         graduation_taskbook, graduation_guidance, graduation_midterm,
         graduation_student_eval, graduation_review, graduation_defense_score,
@@ -212,7 +214,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_teacher_context.router,
         dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
     )
-    # 与旧移动端相同 URL，必须先于 mobile.router 注册。
+    # 与旧移动端相同 URL，必须先于旧移动端聚合 Router 注册。
     api_router.include_router(
         mobile_graduation_material_center.router,
         dependencies=[Depends(require_mobile_graduation_request_permission)],

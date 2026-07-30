@@ -16,6 +16,7 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import has_permission
 from app.models import (
     GraduationDefenseScore,
     GraduationFinal,
@@ -795,6 +796,22 @@ def student_library(gd_student_id: int | None, user: dict, *, include_history: b
             versions = file_maps.get(int(row.asset_id), []) if row.asset_id else []
             current_file = next((item for item in versions if item["isCurrent"]), None)
             spec = SPEC_BY_CODE.get(row.material_code, {})
+            allowed_actions = list((current_file or {}).get("allowedActions", []))
+            can_review = any(has_permission(user or {}, code) for code in (
+                "graduationDesign.proposal.review",
+                "graduationDesign.final.review",
+                "graduationDesign.review.submit",
+                "graduationDesign.defense.scoreConfirm",
+                "graduationDesign.grade.review",
+            ))
+            if (
+                current_file
+                and current_file.get("readyForBusiness")
+                and row.review_status == "PENDING"
+                and can_review
+                and "review" not in allowed_actions
+            ):
+                allowed_actions.append("review")
             items.append({
                 "materialId": str(row.id), "materialCode": row.material_code,
                 "materialName": row.material_name, "stage": row.biz_stage,
@@ -809,7 +826,7 @@ def student_library(gd_student_id: int | None, user: dict, *, include_history: b
                 "reviewer": row.reviewer_name or "", "reviewedAt": _iso(row.reviewed_at),
                 "submittedAt": _iso(row.submitted_at),
                 "archiveRequired": bool(spec.get("archiveRequired", False)),
-                "allowedActions": (current_file or {}).get("allowedActions", []),
+                "allowedActions": allowed_actions,
                 "nextAction": "上传材料" if row.business_status == "MISSING" else (
                     "按退回原因重交" if row.business_status == "RETURNED" else (
                         "等待审核" if row.review_status == "PENDING" else "无需处理"
