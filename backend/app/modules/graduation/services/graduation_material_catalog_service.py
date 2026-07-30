@@ -1143,11 +1143,10 @@ def template_catalog(user: dict, *, batch_id: int | None = None) -> dict:
             stmt = stmt.where(or_(GraduationTemplateAssetPolicy.batch_id == int(batch_id),
                                   GraduationTemplateAssetPolicy.batch_id.is_(None)))
         policies = db.scalars(stmt.order_by(GraduationTemplateAssetPolicy.template_code)).all()
-        template_ids = {int(row.template_id) for row in policies}
         templates = {int(row.id): row for row in db.scalars(select(GraduationTemplate).where(
-            GraduationTemplate.tenant_id == _tid(), GraduationTemplate.id.in_(template_ids or {-1}),
+            GraduationTemplate.tenant_id == _tid(),
             GraduationTemplate.is_deleted.is_(False),
-        )).all()}
+        ).order_by(GraduationTemplate.template_type, GraduationTemplate.name)).all()}
         versions = db.scalars(select(FileVersion).where(
             FileVersion.tenant_id == _tid(),
             FileVersion.asset_id.in_({int(row.asset_id) for row in policies if row.asset_id} or {-1}),
@@ -1179,8 +1178,55 @@ def template_catalog(user: dict, *, batch_id: int | None = None) -> dict:
                 "templateType": template.template_type, "currentVersionId": str(policy.current_version_id or ""),
                 "batchId": str(policy.batch_id or ""), "collegeId": policy.college_id or "",
                 "majorId": policy.major_id or "", "enabled": bool(policy.enabled),
-                "status": policy.status, "effectiveAt": _iso(policy.effective_at),
+                "status": policy.status, "version": int(policy.version or 0),
+                "effectiveAt": _iso(policy.effective_at),
                 "variableSchema": policy.variable_schema_json or {}, "scope": policy.scope_json or {},
                 "versions": by_asset.get(int(policy.asset_id), []) if policy.asset_id else [],
             })
-        return {"items": items, "total": len(items)}
+        return {
+            "items": items, "total": len(items),
+            "availableTemplates": [{
+                "templateId": str(template.id), "templateName": template.name,
+                "templateType": template.template_type, "status": template.status,
+            } for template in templates.values()],
+        }
+
+def update_template_policy_status(policy_id: int, enabled: bool, expected_version: int, user: dict) -> dict:
+    # 学校自助启停模板；启用前重新执行公共文件安全门和乐观锁。
+    role = str((user or {}).get("currentRoleCode") or (user or {}).get("userType") or "").upper()
+    permissions = set((user or {}).get("permissions") or [])
+    if role not in {"PLATFORM_SUPER_ADMIN", "SCHOOL_ADMIN", "GRADUATION_ADMIN", "GD_GRADE_ADMIN"}             and "*" not in permissions and "graduationDesign.template.manage" not in permissions:
+        raise not_found("毕业设计模板策略不存在")
+    with session() as db:
+        policy = db.scalars(select(GraduationTemplateAssetPolicy).where(
+            GraduationTemplateAssetPolicy.tenant_id == _tid(),
+            GraduationTemplateAssetPolicy.id == int(policy_id),
+            GraduationTemplateAssetPolicy.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not policy:
+            raise not_found("毕业设计模板策略不存在")
+        if int(policy.version or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "模板策略版本已变化，请刷新后重试")
+        if enabled:
+            if not policy.current_version_id:
+                raise AppException("DATA_CONFLICT", "模板尚未发布文件版本")
+            version = db.scalars(select(FileVersion).where(
+                FileVersion.tenant_id == _tid(),
+                FileVersion.id == int(policy.current_version_id),
+                FileVersion.is_current.is_(True),
+                FileVersion.is_deleted.is_(False),
+            )).first()
+            file_obj = db.get(FileObject, int(version.file_object_id)) if version else None
+            if not version or not file_obj:
+                raise AppException("DATA_CONFLICT", "模板当前文件版本不存在")
+            legacy_center._require_file_ready(file_obj)
+        policy.enabled = bool(enabled)
+        policy.status = "ENABLED" if enabled else "DISABLED"
+        policy.effective_at = datetime.utcnow() if enabled else policy.effective_at
+        policy.version = int(policy.version or 0) + 1
+        db.commit()
+        return {
+            "policyId": str(policy.id), "templateCode": policy.template_code,
+            "enabled": bool(policy.enabled), "status": policy.status,
+            "version": int(policy.version or 0), "effectiveAt": _iso(policy.effective_at),
+        }

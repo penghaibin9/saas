@@ -1,5 +1,5 @@
 /** 教师端数据服务：真实后端优先（主链：学生/审批/待办/消息/学生360），失败自动回退 mock。 */
-import { mockRequest, realFirst, realFirstStrict } from './request'
+import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
 import * as real from './realApi'
 import * as M from '@/mock'
 
@@ -54,6 +54,12 @@ export const teacherApi = {
   createGuidance: (gdStudentId, body) => real.teacherGraduationGuidanceCreate(gdStudentId, body),
   getGraduationProposalDetail: (id) => real.gdTeacherProposalDetail(id),
   getGraduationFinalDetail: (id) => real.gdTeacherFinalDetail(id),
+  getGraduationMaterialLibrary: (gdStudentId) =>
+    realRequest(`/mobile/graduation/material-center/library?gdStudentId=${encodeURIComponent(gdStudentId)}&includeHistory=true`),
+  reviewGraduationMaterial: (materialId, body) =>
+    realRequest(`/mobile/graduation/material-center/materials/${encodeURIComponent(materialId)}/review`, {
+      method: 'POST', data: body
+    }),
   reviewFinal: (id, action, comment) => real.gdTeacherFinalReview(id, action, comment),
   getGraduationMidtermQueue: () => real.gdTeacherMidtermQueue(),
   getGraduationMidtermDetail: (id) => real.gdTeacherMidtermDetail(id),

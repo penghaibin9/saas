@@ -139,10 +139,22 @@
       </section>
 
       <section class="gm-panel gm-templates">
-        <header class="gm-section-head"><div><strong>模板资产与版本</strong><span>DOCX / PDF / XLSX / PPTX，更新模板只新增 FileVersion</span></div><button class="gm-btn" @click="loadTemplates">刷新模板</button></header>
+        <header class="gm-section-head"><div><strong>模板资产与版本</strong><span>学校管理员自助上传、配置变量并启停；更新只新增 FileVersion</span></div><button class="gm-btn" @click="loadTemplates">刷新模板</button></header>
+        <form class="gm-template-form" @submit.prevent="publishTemplate">
+          <label>模板<select v-model="templateForm.templateId" required><option value="">请选择</option><option v-for="item in templateOptions" :key="item.templateId" :value="item.templateId">{{ item.templateType }} · {{ item.templateName }}</option></select></label>
+          <label>模板代码<input v-model.trim="templateForm.templateCode" required placeholder="如 GD_PROPOSAL" /></label>
+          <label>学院范围<input v-model.trim="templateForm.collegeId" placeholder="留空为全校" /></label>
+          <label>专业范围<input v-model.trim="templateForm.majorId" placeholder="留空为全部专业" /></label>
+          <label class="gm-template-form__schema">变量 Schema<textarea v-model="templateForm.variableSchemaText" rows="4" spellcheck="false" /></label>
+          <div class="gm-template-form__upload">
+            <FileUploader biz-type="GRADUATION_TEMPLATE" :biz-id="templateForm.templateId || 'new'" accept=".docx,.pdf,.xlsx,.pptx" button-text="上传模板新版本" @uploaded="onTemplateUploaded" />
+            <span>{{ templateForm.fileName || '尚未上传文件' }}</span>
+          </div>
+          <button class="gm-btn gm-btn--primary" type="submit" :disabled="templateBusy || !templateForm.fileId">{{ templateBusy ? '发布中…' : '发布模板版本' }}</button>
+        </form>
         <div v-if="!templates.length" class="gm-state">当前批次尚未发布公共模板资产</div>
-        <div v-else class="gm-table-wrap"><table><thead><tr><th>模板代码</th><th>模板名称</th><th>范围</th><th>状态</th><th>当前版本</th><th>历史版本</th></tr></thead>
-          <tbody><tr v-for="item in templates" :key="item.policyId"><td><code>{{ item.templateCode }}</code></td><td>{{ item.templateName }}</td><td>{{ item.collegeId || '全校' }} / {{ item.majorId || '全部专业' }}</td><td>{{ item.status }}</td><td>{{ item.currentVersionId || '-' }}</td><td>{{ item.versions?.length || 0 }}</td></tr></tbody>
+        <div v-else class="gm-table-wrap"><table><thead><tr><th>模板代码</th><th>模板名称</th><th>范围</th><th>状态</th><th>当前版本</th><th>历史版本</th><th>操作</th></tr></thead>
+          <tbody><tr v-for="item in templates" :key="item.policyId"><td><code>{{ item.templateCode }}</code></td><td>{{ item.templateName }}</td><td>{{ item.collegeId || '全校' }} / {{ item.majorId || '全部专业' }}</td><td>{{ item.status }}</td><td>{{ item.currentVersionId || '-' }}</td><td>{{ item.versions?.length || 0 }}</td><td><button class="gm-btn" @click="toggleTemplate(item)">{{ item.enabled ? '停用' : '启用' }}</button></td></tr></tbody>
         </table></div>
       </section>
     </template>
@@ -155,6 +167,7 @@ import { useRouter } from 'vue-router'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import SecureFileList from '@/components/file/SecureFileList.vue'
 import FileVersionTimeline from '@/components/file/FileVersionTimeline.vue'
+import FileUploader from '@/components/file/FileUploader.vue'
 import { normalizeFile } from '@/services/file/fileSdk'
 import { graduationMaterialCenterApi as api } from '@/modules/graduation/api/graduation-material-center.api'
 
@@ -163,7 +176,12 @@ const batchStore = useGraduationBatchStore()
 const batchId = computed(() => batchStore.selectedBatchId)
 const loading = ref(false); const libraryLoading = ref(false); const exporting = ref(false); const error = ref('')
 const overview = ref({ summary: {}, items: [], total: 0 }); const library = ref(null); const manifest = ref(null)
-const selectedId = ref(''); const templates = ref([]); const exportJob = ref(null)
+const selectedId = ref(''); const templates = ref([]); const templateOptions = ref([]); const exportJob = ref(null)
+const templateBusy = ref(false)
+const templateForm = reactive({
+  templateId: '', templateCode: '', collegeId: '', majorId: '', fileId: '', fileName: '',
+  variableSchemaText: JSON.stringify({ variables: [{ name: 'studentName', type: 'string' }, { name: 'topicTitle', type: 'string' }] }, null, 2)
+})
 const page = ref(1); const pageSize = 20; const missingOnly = ref(false)
 const filters = reactive({ keyword: '', stage: '', reviewStatus: '', scanStatus: '', archiveStatus: '' })
 
@@ -183,7 +201,30 @@ const summaryCards = computed(() => {
 
 function params() { return { batchId: batchId.value, page: page.value, pageSize, keyword: filters.keyword, stage: filters.stage, reviewStatus: filters.reviewStatus, scanStatus: filters.scanStatus, archiveStatus: filters.archiveStatus, missingStatus: missingOnly.value ? 'MISSING' : '' } }
 async function loadOverview() { if (!batchId.value) return; overview.value = await api.overview(params()) }
-async function loadTemplates() { if (!batchId.value) return; const data = await api.templateCatalog(batchId.value); templates.value = data.items || [] }
+async function loadTemplates() {
+  if (!batchId.value) return
+  const data = await api.templateCatalog(batchId.value)
+  templates.value = data.items || []
+  templateOptions.value = data.availableTemplates || []
+}
+function onTemplateUploaded(file) { templateForm.fileId = file.fileId; templateForm.fileName = file.fileName || '' }
+async function publishTemplate() {
+  templateBusy.value = true; error.value = ''
+  try {
+    const variableSchema = JSON.parse(templateForm.variableSchemaText || '{}')
+    await api.publishTemplateAsset(templateForm.templateId, templateForm.fileId, {
+      templateCode: templateForm.templateCode, batchId: batchId.value,
+      collegeId: templateForm.collegeId, majorId: templateForm.majorId, variableSchema
+    })
+    templateForm.fileId = ''; templateForm.fileName = ''
+    await loadTemplates()
+  } catch (e) { error.value = e instanceof SyntaxError ? '变量 Schema 不是有效 JSON' : (e?.message || '模板发布失败') }
+  finally { templateBusy.value = false }
+}
+async function toggleTemplate(item) {
+  try { await api.setTemplateStatus(item.policyId, !item.enabled, item.version); await loadTemplates() }
+  catch (e) { error.value = e?.message || '模板状态更新失败' }
+}
 async function loadAll() { loading.value = true; error.value = ''; try { await Promise.all([loadOverview(), loadTemplates()]); if (selectedId.value) await refreshLibrary() } catch (e) { error.value = e?.message || '材料中心加载失败' } finally { loading.value = false } }
 async function selectStudent(student) { selectedId.value = String(student.gdStudentId); manifest.value = null; await refreshLibrary() }
 async function refreshLibrary() { if (!selectedId.value) return; libraryLoading.value = true; try { library.value = await api.studentLibrary(selectedId.value, true) } catch (e) { error.value = e?.message || '学生材料加载失败' } finally { libraryLoading.value = false } }
@@ -223,6 +264,7 @@ onMounted(async () => { await batchStore.ensureLoaded(); await loadAll() })
 .gm-filters{padding:14px;display:grid;grid-template-columns:1.4fr repeat(4,1fr) auto auto;gap:10px;align-items:end}.gm-filters label{display:grid;gap:5px;color:#526176;font-size:13px}.gm-filters input,.gm-filters select{min-width:0;border:1px solid #ccd8e8;border-radius:8px;padding:8px;background:#fff}.gm-check{display:flex!important;align-items:center;gap:6px;padding-bottom:8px}
 .gm-workspace{display:grid;grid-template-columns:minmax(260px,330px) minmax(0,1fr);gap:16px}.gm-queue,.gm-detail{min-width:0;overflow:hidden}.gm-queue>header,.gm-detail__head,.gm-section-head{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:16px 18px;border-bottom:1px solid #edf1f7}.gm-queue>header div,.gm-section-head div,.gm-detail__head>div:first-child{display:grid;gap:4px}.gm-queue>header span{color:#7b8798;font-size:13px}
 .gm-student{display:grid;width:100%;gap:7px;padding:14px 16px;border:0;border-bottom:1px solid #edf1f7;background:#fff;text-align:left;cursor:pointer}.gm-student:hover,.gm-student.is-active{background:#f1f7ff}.gm-student__name,.gm-student__status{display:flex;justify-content:space-between;gap:8px}.gm-student__status{justify-content:flex-start;flex-wrap:wrap}.gm-student__status b,.gm-tags b{font-size:12px;padding:2px 7px;border-radius:999px;background:#eef2f7;color:#526176}.is-danger{color:#b42318!important;background:#fff0f0!important}.is-warning{color:#9a5b00!important;background:#fff7df!important}.is-success{color:#137a43!important;background:#eafaf1!important}.gm-pagination{display:flex;justify-content:center;align-items:center;gap:10px;padding:12px}
+.gm-template-form{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px;padding:16px;border-bottom:1px solid #edf1f7}.gm-template-form label{display:grid;gap:5px;color:#526176;font-size:13px}.gm-template-form input,.gm-template-form select,.gm-template-form textarea{border:1px solid #ccd8e8;border-radius:8px;padding:8px;background:#fff}.gm-template-form__schema{grid-column:span 2}.gm-template-form__upload{grid-column:span 3;display:flex;align-items:center;gap:12px;color:#69768b;font-size:13px}
 .gm-detail{max-height:1200px;overflow:auto}.gm-group{padding:0 18px 18px}.gm-group h3{display:flex;justify-content:space-between;margin:18px 0 10px;color:#253550}.gm-group h3 span{font-size:12px;color:#7b8798}.gm-material{border:1px solid #e2e8f2;border-radius:12px;padding:14px;margin-bottom:12px}.gm-material>header{display:flex;justify-content:space-between;gap:10px;margin-bottom:10px}.gm-material>header>div:first-child{display:grid;gap:3px}.gm-material>header span,.gm-meta{color:#7b8798;font-size:12px}.gm-tags{display:flex;gap:5px;flex-wrap:wrap}.gm-meta{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.gm-reject{padding:9px 11px;border-radius:8px;background:#fff3f3;color:#a61b1b}.gm-history{margin-top:10px}.gm-history summary{cursor:pointer;color:#1769e0;margin-bottom:10px}.gm-review-actions{margin-top:10px}
 .gm-bottom-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,.6fr);gap:16px}.gm-manifest-head,.gm-job{display:grid;gap:10px;padding:16px}.gm-manifest-head code,.gm-job code,.gm-table-wrap code{font-size:11px;word-break:break-all}.gm-table-wrap{overflow:auto;padding:0 16px 16px}.gm-table-wrap table{width:100%;border-collapse:collapse;min-width:760px}.gm-table-wrap th,.gm-table-wrap td{padding:10px;border-bottom:1px solid #edf1f7;text-align:left;vertical-align:top;font-size:13px}.gm-table-wrap th{position:sticky;top:0;background:#f7f9fc;color:#526176}.gm-state{padding:30px;text-align:center;color:#7b8798}.gm-templates{overflow:hidden}
 @media(max-width:1200px){.gm-summary{grid-template-columns:repeat(4,1fr)}.gm-filters{grid-template-columns:repeat(3,1fr)}.gm-workspace{grid-template-columns:1fr}.gm-queue{max-height:420px;overflow:auto}.gm-bottom-grid{grid-template-columns:1fr}}

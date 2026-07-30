@@ -92,6 +92,11 @@ export const graduationMaterialCenterApi = {
       method: 'POST', data: { ...payload, fileId }
     })
   },
+  setTemplateStatus(policyId, enabled, expectedVersion) {
+    return request(`/graduation/material-center/templates/policies/${encodeURIComponent(policyId)}/status`, {
+      method: 'POST', data: { enabled, expectedVersion }
+    })
+  },
   templateVersions(templateId) {
     return request(`/graduation/material-center/templates/${encodeURIComponent(templateId)}/versions`)
   },

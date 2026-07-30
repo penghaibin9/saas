@@ -166,6 +166,17 @@ def publish_template_asset(
     return success(catalog.publish_template_policy(template_id, file_id, body or {}, user), message="模板资产版本已发布")
 
 
+@router.post("/material-center/templates/policies/{policy_id}/status", summary="启用或停用模板资产策略")
+def update_template_status(policy_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    enabled = bool((body or {}).get("enabled"))
+    expected = (body or {}).get("expectedVersion")
+    if not str(expected or "").isdigit():
+        raise AppException("VALIDATION_ERROR", "expectedVersion 不能为空")
+    return success(catalog.update_template_policy_status(
+        policy_id, enabled, int(expected), user,
+    ), message="模板状态已更新")
+
+
 @router.get("/material-center/templates/{template_id}/versions", summary="模板资产版本历史")
 def template_versions(template_id: int, user=Depends(get_current_user)):
     return success(center.template_versions(template_id))

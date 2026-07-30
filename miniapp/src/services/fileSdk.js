@@ -61,6 +61,21 @@ function fileExtension(fileName) {
   return index >= 0 ? name.slice(index + 1) : ''
 }
 
+function openDownloaded(downloaded, fileName = '') {
+  const ext = fileExtension(fileName)
+  return new Promise((resolve, reject) => {
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+      uni.previewImage({ urls: [downloaded.tempFilePath], current: downloaded.tempFilePath, success: resolve, fail: reject })
+      return
+    }
+    uni.openDocument({
+      filePath: downloaded.tempFilePath, fileType: ext || undefined, showMenu: true,
+      success: resolve,
+      fail: (error) => reject({ code: 'PREVIEW_FAILED', message: error?.errMsg || '当前文件无法预览，请在 PC 端查看' })
+    })
+  })
+}
+
 export async function openBusinessFile(fileId) {
   const id = String(fileId || '').trim()
   if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
@@ -69,25 +84,8 @@ export async function openBusinessFile(fileId) {
     throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
   }
   const downloaded = await realDownload(`/files/download/${enc(id)}`)
-  const ext = fileExtension(meta.fileName)
-  return new Promise((resolve, reject) => {
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-      uni.previewImage({
-        urls: [downloaded.tempFilePath],
-        current: downloaded.tempFilePath,
-        success: () => resolve(meta),
-        fail: (error) => reject({ code: 'PREVIEW_FAILED', message: error?.errMsg || '图片预览失败' })
-      })
-      return
-    }
-    uni.openDocument({
-      filePath: downloaded.tempFilePath,
-      fileType: ext || undefined,
-      showMenu: true,
-      success: () => resolve(meta),
-      fail: (error) => reject({ code: 'PREVIEW_FAILED', message: error?.errMsg || '当前文件无法预览，请在管理端下载查看' })
-    })
-  })
+  await openDownloaded(downloaded, meta.fileName)
+  return meta
 }
 
 export const fileSdk = {
@@ -104,6 +102,16 @@ export const fileSdk = {
         bizId: String(options.bizId || '')
       }
     }))
+  },
+  async openAuthorized({ fileId, ticketPath, openPath, action = 'preview', fileName = '' }) {
+    const id = String(fileId || '').trim()
+    if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
+    const ticket = await realRequest(ticketPath, { method: 'POST', data: { action } })
+    const raw = encodeURIComponent(String(ticket?.ticket || ''))
+    if (!raw) throw { code: 404001, biz: true, message: '文件票据不存在或已失效' }
+    const downloaded = await realDownload(`${openPath}?ticket=${raw}`)
+    await openDownloaded(downloaded, fileName)
+    return ticket
   },
   async list({ bizType, bizId }) {
     const data = await realRequest(`/files?bizType=${enc(bizType)}&bizId=${enc(bizId)}`)
