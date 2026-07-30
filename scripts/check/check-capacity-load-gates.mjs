@@ -11,6 +11,7 @@ const requiredFiles = [
   'performance/tools/prepare_k6_credentials.py',
   'performance/tools/audit_capacity_runtime.py',
   'performance/tools/probe_observability.py',
+  'performance/tools/seed_local_capacity_env.py',
   'performance/capacity-report-template.md',
   '.github/workflows/capacity-load-gates.yml',
 ]
@@ -32,6 +33,7 @@ if (failures.length === 0) {
   const workflow = read('.github/workflows/capacity-load-gates.yml')
   const runtimeAudit = read('performance/tools/audit_capacity_runtime.py')
   const probe = read('performance/tools/probe_observability.py')
+  const localSeed = read('performance/tools/seed_local_capacity_env.py')
   const forbiddenLoadPaths = [
     /\/upload(?:\/|\b)/i,
     /\/download(?:\/|\b)/i,
@@ -78,10 +80,16 @@ if (failures.length === 0) {
   if (!workflow.includes('workflow_dispatch:')) failures.push('workflow_dispatch is required')
   if (!workflow.includes('schedule:')) failures.push('nightly schedule is required')
   if (!workflow.includes('grafana/k6:0.54.0')) failures.push('k6 Docker image must be pinned')
+  if (!workflow.includes('local-smoke:')) failures.push('self-contained local smoke job is required')
+  if (!workflow.includes('mysql:8.0')) failures.push('local smoke must use MySQL 8')
+  if (!workflow.includes('redis:7-alpine')) failures.push('local smoke must use Redis')
+  if (!workflow.includes('alembic upgrade head')) failures.push('local smoke must run real migrations')
+  if (!workflow.includes('seed_local_capacity_env.py')) failures.push('local smoke must seed ephemeral identities')
+  if (!workflow.includes('--network host')) failures.push('local k6 must reach the host backend explicitly')
   if (!workflow.includes('PERF_STUDENT_TOKENS_JSON')) failures.push('student token secret is required')
   if (!workflow.includes('PERF_TEACHER_TOKENS_JSON')) failures.push('teacher token secret is required')
-  if (!workflow.includes('PERF_STUDENT_CREDENTIALS_JSON')) failures.push('student credential fallback is required')
-  if (!workflow.includes('PERF_TEACHER_CREDENTIALS_JSON')) failures.push('teacher credential fallback is required')
+  if (!workflow.includes('PERF_STUDENT_CREDENTIALS_JSON')) failures.push('student credential secret fallback is required')
+  if (!workflow.includes('PERF_TEACHER_CREDENTIALS_JSON')) failures.push('teacher credential secret fallback is required')
   if (!workflow.includes('PERF_INTERNAL_OPS_TOKEN')) failures.push('ops token secret is required')
   if (!workflow.includes('probe_observability.py')) failures.push('observability probe must run before load')
 
@@ -98,6 +106,11 @@ if (failures.length === 0) {
     if (!probe.includes(endpoint)) failures.push(`observability probe missing ${endpoint}`)
   }
   if (!probe.includes('X-Ops-Token')) failures.push('observability probe must use X-Ops-Token')
+  if (!localSeed.includes('create_access_token')) failures.push('local seed must issue ephemeral signed tokens')
+  if (!localSeed.includes('StudentProfile')) failures.push('local seed must create a real student profile')
+  if (/password|accessToken/i.test(localSeed) && /print\([^\n]*(password|token)/i.test(localSeed)) {
+    failures.push('local seed must not print credentials or tokens')
+  }
 
   const secretLeakPatterns = [
     /password\s*[:=]\s*['"][^'"]+['"]/i,
