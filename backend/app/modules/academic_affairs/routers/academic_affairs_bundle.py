@@ -14,6 +14,7 @@ from . import academic_affairs as base_router
 
 
 _EXTENSION_ROUTER_MODULES = (
+    "academic_file_exchange_router",
     "dashboard_readiness_router",
     "dynamic_grade_router",
     "exam_incident_closure_router",
