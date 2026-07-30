@@ -1,25 +1,43 @@
 import http from 'k6/http';
 import { check } from 'k6';
+import { SharedArray } from 'k6/data';
 
 const cache = { student: null, teacher: null };
 
-function parseJsonEnv(name, fallback) {
-  const raw = String(__ENV[name] || '').trim();
-  if (!raw) return fallback;
+function parseJson(raw, label, fallback) {
+  const value = String(raw || '').trim();
+  if (!value) return fallback;
   try {
-    return JSON.parse(raw);
+    return JSON.parse(value);
   } catch (error) {
-    throw new Error(`${name} must be valid JSON: ${error.message}`);
+    throw new Error(`${label} must be valid JSON: ${error.message}`);
   }
 }
 
 function arrayEnv(name) {
-  const value = parseJsonEnv(name, []);
+  const value = parseJson(__ENV[name], name, []);
   if (!Array.isArray(value)) {
     throw new Error(`${name} must be a JSON array`);
   }
   return value;
 }
+
+function fileArray(envName, label) {
+  const path = String(__ENV[envName] || '').trim();
+  if (!path) return [];
+  const value = parseJson(open(path), label, []);
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must contain a JSON array`);
+  }
+  return value;
+}
+
+const studentFileTokens = new SharedArray('student capacity token pool', () =>
+  fileArray('K6_STUDENT_TOKENS_FILE', 'K6_STUDENT_TOKENS_FILE'),
+);
+const teacherFileTokens = new SharedArray('teacher capacity token pool', () =>
+  fileArray('K6_TEACHER_TOKENS_FILE', 'K6_TEACHER_TOKENS_FILE'),
+);
 
 function selectByVu(items, label) {
   if (!items.length) return null;
@@ -68,6 +86,13 @@ function loginWithCredential(role, credential, baseUrl) {
   return token;
 }
 
+function tokenPool(role) {
+  const filePool = role === 'student' ? studentFileTokens : teacherFileTokens;
+  if (filePool.length) return filePool;
+  const tokenName = role === 'student' ? 'K6_STUDENT_TOKENS_JSON' : 'K6_TEACHER_TOKENS_JSON';
+  return arrayEnv(tokenName);
+}
+
 export function bearerFor(role, baseUrl) {
   if (!['student', 'teacher'].includes(role)) throw new Error(`Unsupported role=${role}`);
   if (cache[role]) return cache[role];
@@ -77,7 +102,7 @@ export function bearerFor(role, baseUrl) {
     ? 'K6_STUDENT_CREDENTIALS_JSON'
     : 'K6_TEACHER_CREDENTIALS_JSON';
 
-  const token = selectByVu(arrayEnv(tokenName), tokenName);
+  const token = selectByVu(tokenPool(role), `${tokenName}/file`);
   if (typeof token === 'string' && token.trim()) {
     cache[role] = token.trim();
     return cache[role];
