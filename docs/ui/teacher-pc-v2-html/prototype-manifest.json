@@ -1,1 +1,120 @@
-{"schemaVersion":"2.2.0","baseline":{"repository":"penghaibin9/saas","branch":"main","commit":"b0af2244e1c8d466fe8afbd7b2bc0ab067d68489","prototypeBranch":"codex/teacher-pc-v2-html-library","generatedAt":"2026-07-30T16:13:00+08:00","updatedAt":"2026-07-30T19:04:00+08:00"},"status":"IN_PROGRESS","designOnly":true,"productionCodeModified":false,"aggregation":{"rule":"load parts in order; later route entries override earlier entries with the same route","parts":["manifest-parts/00-existing-baseline.json","manifest-parts/10-registration.json","manifest-parts/20-status-changes.json","manifest-parts/30-roster-detail-override.json","manifest-parts/40-org-console.json","manifest-parts/50-terms-calendar.json","manifest-parts/60-courses.json","manifest-parts/70-programs.json","manifest-parts/80-teaching-tasks.json","manifest-parts/90-schedule.json","manifest-parts/100-schedule-change.json","manifest-parts/110-selection.json","manifest-parts/120-exam.json"]},"validation":{"screenshotsCommitted":0,"screenshotsGeneratedLocally":309,"currentBatchPages":11,"currentBatchRenders":33,"resolutions":["1280x900","1440x1000","1920x1080"],"directNavigationNote":"考务管理10个工作区各完成1280/1440/1920三档真实浏览器渲染，独立打印页完成三档渲染与A4打印媒体检查；共33次，无控制台错误、无根页面横向溢出。菜单搜索、独立滚动、展开收起、29项顺序、三级页签、三级面包屑、六类状态与Escape关闭弹层通过。截图和打印PDF只保存在本地执行环境，未提交PR。","navigationValidation":{"academicSecondLevelCount":29,"source":"frontend/src/config/navPlan.js","groupMenusRemoved":true,"directSecondLevelNavigation":true,"sidebarIndependentScroll":true,"sidebarSearch":true,"sidebarCollapse":true,"breadcrumbPattern":"一级中心 / 二级模块 / 三级功能","permissionProjectionUnchanged":true},"limitations":["本轮未在浏览器中重新渲染此前已存在的158个HTML；共享壳变更通过10个考务工作区和打印页进行真实回归，旧页面仍需后续全量浏览器回归。","当前执行环境无法直接克隆完整GitHub分支快照，因此全目录资源校验以GitHub文件读取、manifest追踪和新增页面真实渲染为主。"]},"routeIndexDelta":[{"route":"/admin/academic-affairs/exam?view=batches","routeName":"aa-exam","html":"academic-affairs/exam/exam-batches.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=courses","routeName":"aa-exam","html":"academic-affairs/exam/exam-courses.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=auto-arrange","routeName":"aa-exam","html":"academic-affairs/exam/exam-auto-arrange.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=conflicts","routeName":"aa-exam","html":"academic-affairs/exam/exam-conflicts.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=rooms-seats","routeName":"aa-exam","html":"academic-affairs/exam/exam-rooms-seats.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=invigilators-patrols","routeName":"aa-exam","html":"academic-affairs/exam/exam-invigilators.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=publish-precheck","routeName":"aa-exam","html":"academic-affairs/exam/exam-publish-precheck.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=incidents","routeName":"aa-exam","html":"academic-affairs/exam/exam-incidents.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?view=stats","routeName":"aa-exam","html":"academic-affairs/exam/exam-stats.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam?tab=archive","routeName":"aa-exam","html":"academic-affairs/exam/exam-archive.html","part":"120-exam.json"},{"route":"/admin/academic-affairs/exam/print/seating?roomId=:roomId","routeName":"aa-exam-seating-print","html":"academic-affairs/exam/exam-seating-print.html","part":"120-exam.json"}],"coverage":{"registeredPrototypeEntries":175,"uniqueHtmlFiles":169,"sharedRouteEntries":8,"sharedDesignFiles":17,"screenshotsCommitted":0,"screenshotsGeneratedLocally":309,"centersStarted":["工作台","教务中心"],"centersComplete":[],"workspacesComplete":["成绩管理","成绩审核发布更正","学籍管理","注册管理","学籍异动办理","学院专业班级","学年学期","校历节次","课程库","培养方案","教学任务","课表管理","调停课","选课管理","考务管理"],"lastCompletedWorkspace":"考务管理","nextWorkspaceCandidate":"补考重修缓考免修","remainingCenters":["工作台其余页面","教务中心其余工作区","学工中心","岗位实习中心","毕业设计中心","系统管理","全局中心","登录与安全","打印页其余页面"]}}
+{
+  "schemaVersion": "2.3.0",
+  "baseline": {
+    "repository": "penghaibin9/saas",
+    "branch": "main",
+    "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
+    "prototypeBranch": "codex/teacher-pc-v2-html-library",
+    "generatedAt": "2026-07-30T16:13:00+08:00",
+    "updatedAt": "2026-07-31T08:00:00+08:00"
+  },
+  "status": "IN_PROGRESS",
+  "designOnly": true,
+  "productionCodeModified": false,
+  "aggregation": {
+    "rule": "load parts in order; later route entries override earlier entries with the same route",
+    "parts": [
+      "manifest-parts/00-existing-baseline.json",
+      "manifest-parts/10-registration.json",
+      "manifest-parts/20-status-changes.json",
+      "manifest-parts/30-roster-detail-override.json",
+      "manifest-parts/40-org-console.json",
+      "manifest-parts/50-terms-calendar.json",
+      "manifest-parts/60-courses.json",
+      "manifest-parts/70-programs.json",
+      "manifest-parts/80-teaching-tasks.json",
+      "manifest-parts/90-schedule.json",
+      "manifest-parts/100-schedule-change.json",
+      "manifest-parts/110-selection.json",
+      "manifest-parts/120-exam.json",
+      "manifest-parts/130-makeup.json",
+      "manifest-parts/140-warning.json",
+      "manifest-parts/150-graduation.json",
+      "manifest-parts/160-textbook.json",
+      "manifest-parts/170-resource.json",
+      "manifest-parts/180-evaluation.json",
+      "manifest-parts/190-quality.json"
+    ]
+  },
+  "validation": {
+    "screenshotsCommitted": 0,
+    "screenshotsGeneratedLocally": 309,
+    "currentBatchPages": 8,
+    "currentBatchRenders": 0,
+    "resolutions": ["1280x900", "1440x1000", "1920x1080"],
+    "directNavigationNote": "教学质量8个真实入口已完成HTML、共享渲染器引用、开发契约和manifest静态核对；当前连接环境未执行本批真实浏览器渲染，不宣称控制台、溢出、焦点或三档分辨率回归通过。",
+    "navigationValidation": {
+      "academicSecondLevelCount": 29,
+      "source": "frontend/src/config/navPlan.js",
+      "groupMenusRemoved": true,
+      "directSecondLevelNavigation": true,
+      "sidebarIndependentScroll": true,
+      "sidebarSearch": true,
+      "sidebarCollapse": true,
+      "breadcrumbPattern": "一级中心 / 二级模块 / 三级功能",
+      "permissionProjectionUnchanged": true
+    },
+    "limitations": [
+      "当前235个独立HTML尚未完成一次同一HEAD下的全量浏览器回归。",
+      "教学质量本批8页只完成静态结构、相对资源、路由和权限核对，浏览器矩阵仍待执行。",
+      "截图和打印PDF均未作为仓库交付物提交。"
+    ]
+  },
+  "routeIndexDelta": [
+    {"route": "/admin/academic-affairs/quality", "html": "academic-affairs/quality/quality-monitor.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/quality?tab=supervision", "html": "academic-affairs/quality/quality-supervision.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/quality?tab=patrol", "html": "academic-affairs/quality/quality-patrol.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/quality?tab=inspection", "html": "academic-affairs/quality/quality-inspection.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/quality?tab=incident", "html": "academic-affairs/quality/quality-incident.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/quality?tab=rectify", "html": "academic-affairs/quality/quality-rectify.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/quality?tab=followUp", "html": "academic-affairs/quality/quality-followup.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/quality?tab=archive", "html": "academic-affairs/quality/quality-archive.html", "part": "190-quality.json"}
+  ],
+  "coverage": {
+    "registeredPrototypeEntries": 241,
+    "uniqueHtmlFiles": 235,
+    "sharedRouteEntries": 8,
+    "sharedDesignFiles": 31,
+    "screenshotsCommitted": 0,
+    "screenshotsGeneratedLocally": 309,
+    "centersStarted": ["工作台", "教务中心"],
+    "centersComplete": [],
+    "workspacesComplete": [
+      "成绩管理",
+      "成绩审核发布更正",
+      "学籍管理",
+      "注册管理",
+      "学籍异动办理",
+      "学院专业班级",
+      "学年学期",
+      "校历节次",
+      "课程库",
+      "培养方案",
+      "教学任务",
+      "课表管理",
+      "调停课",
+      "选课管理",
+      "考务管理",
+      "补考重修缓考免修",
+      "学业预警",
+      "毕业资格审核",
+      "教材管理",
+      "教学资源",
+      "教学评价",
+      "教学质量"
+    ],
+    "lastCompletedWorkspace": "教学质量",
+    "nextWorkspaceCandidate": "教务归档",
+    "remainingCenters": [
+      "工作台其余页面",
+      "教务中心其余工作区",
+      "学工中心",
+      "岗位实习中心",
+      "毕业设计中心",
+      "系统管理",
+      "全局中心",
+      "登录与安全",
+      "打印页其余页面"
+    ]
+  }
+}
