@@ -57,8 +57,12 @@ jobs:
           python-version: "3.12"
       - name: 校验只读范围、指标门槛与安全锁
         run: node scripts/check/check-capacity-load-gates.mjs
-      - name: 编译 XLSX 凭据工具
-        run: python -m py_compile performance/tools/prepare_k6_credentials.py
+      - name: 编译阶段E工具
+        run: |
+          python -m py_compile \
+            performance/tools/prepare_k6_credentials.py \
+            performance/tools/audit_capacity_runtime.py \
+            performance/tools/probe_observability.py
 
   remote-load:
     name: 预发容量压测
@@ -77,10 +81,14 @@ jobs:
       K6_ALLOW_PRODUCTION_HIGH_LOAD: ${{ vars.PERF_ALLOW_PRODUCTION_HIGH_LOAD }}
       K6_STUDENT_TOKENS_JSON: ${{ secrets.PERF_STUDENT_TOKENS_JSON }}
       K6_TEACHER_TOKENS_JSON: ${{ secrets.PERF_TEACHER_TOKENS_JSON }}
+      INTERNAL_OPS_TOKEN: ${{ secrets.PERF_INTERNAL_OPS_TOKEN }}
       SUMMARY_PATH: /work/performance/results/k6-summary.json
     steps:
       - uses: actions/checkout@v4
-      - name: 检查目标与令牌池
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 检查目标、运维探针与令牌池
         shell: bash
         run: |
           set -euo pipefail
@@ -88,6 +96,7 @@ jobs:
             https://*) ;;
             *) echo "远程压测仅允许 HTTPS"; exit 1 ;;
           esac
+          test -n "$INTERNAL_OPS_TOKEN" || { echo "缺少 PERF_INTERNAL_OPS_TOKEN"; exit 1; }
           case "$SCENARIO" in
             student)
               test -n "$K6_STUDENT_TOKENS_JSON" || { echo "缺少 PERF_STUDENT_TOKENS_JSON"; exit 1; }
@@ -106,6 +115,13 @@ jobs:
             exit 1
           fi
           mkdir -p performance/results
+      - name: 压测前就绪与指标探针
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 1 \
+            --output performance/results/observability-before.json
       - name: 运行固定版本 k6
         shell: bash
         run: |
@@ -124,6 +140,14 @@ jobs:
             -e K6_TEACHER_TOKENS_JSON \
             -e SUMMARY_PATH \
             grafana/k6:0.54.0 run performance/k6/capacity.js
+      - name: 压测后就绪与指标探针
+        if: always()
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 1 \
+            --output performance/results/observability-after.json
       - name: 上传容量结果
         if: always()
         uses: actions/upload-artifact@v4
