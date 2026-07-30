@@ -9,6 +9,7 @@ import time
 
 from app.services.file_scan_config import get_file_scan_config
 from app.services.file_scan_service import process_next_scan_job
+from app.services.storage.finalize import finalize_scan_storage
 
 log = logging.getLogger("file-scan-worker")
 
@@ -18,7 +19,7 @@ def run(*, once: bool = False, worker_id: str | None = None) -> int:
     identity = worker_id or os.getenv("FILE_SCAN_WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}"
     processed = 0
     while True:
-        result = process_next_scan_job(identity)
+        result = finalize_scan_storage(process_next_scan_job(identity))
         if result.get("processed"):
             processed += 1
             log.info("file scan result: %s", result)
