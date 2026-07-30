@@ -12,7 +12,7 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 class FileObject(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_file_object"
 
-    file_key: Mapped[str] = mapped_column(String(500), nullable=False, comment="存储 key")
+    file_key: Mapped[str] = mapped_column(String(500), nullable=False, comment="兼容存储 key")
     file_name: Mapped[str] = mapped_column(String(300), nullable=False)
     ext: Mapped[str | None] = mapped_column(String(20))
     mime_type: Mapped[str | None] = mapped_column(String(100))
@@ -28,6 +28,11 @@ class FileObject(PKMixin, TenantMixin, CommonMixin, Base):
 
     storage_backend: Mapped[str] = mapped_column(String(30), nullable=False, default="local")
     storage_zone: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
+    bucket_name: Mapped[str | None] = mapped_column(String(150))
+    object_key: Mapped[str | None] = mapped_column(String(500))
+    etag: Mapped[str | None] = mapped_column(String(128))
+    storage_migrated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    storage_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
     upload_source: Mapped[str] = mapped_column(String(30), nullable=False, default="USER")
     scan_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     scan_status: Mapped[str] = mapped_column(String(30), nullable=False, default="NOT_REQUIRED", index=True)
@@ -42,6 +47,8 @@ class FileObject(PKMixin, TenantMixin, CommonMixin, Base):
 
     __table_args__ = (
         Index("ix_file_object_scan_queue", "tenant_id", "scan_required", "scan_status", "created_at"),
+        Index("ix_file_storage_object", "storage_backend", "bucket_name", "object_key"),
+        Index("ix_file_storage_migration", "tenant_id", "storage_backend", "storage_migrated_at", "id"),
     )
 
 
