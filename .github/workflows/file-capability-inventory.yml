@@ -11,6 +11,7 @@ on:
       - "docs/architecture/file-capability-inventory.yaml"
       - "scripts/audit_file_capabilities.py"
       - "scripts/patch_phase6_acceptance_alignment.py"
+      - "scripts/run_phase6_final13_patch.py"
       - ".github/workflows/file-capability-inventory.yml"
   push:
     branches:
@@ -25,6 +26,7 @@ on:
       - "docs/architecture/file-capability-inventory.yaml"
       - "scripts/audit_file_capabilities.py"
       - "scripts/patch_phase6_acceptance_alignment.py"
+      - "scripts/run_phase6_final13_patch.py"
       - ".github/workflows/file-capability-inventory.yml"
 
 permissions:
@@ -45,7 +47,7 @@ jobs:
           (github.event_name == 'pull_request' && github.head_ref == 'audit/file-capability-inventory')
         run: |
           set -euo pipefail
-          python scripts/patch_phase6_acceptance_alignment.py
+          python scripts/run_phase6_final13_patch.py
           TARGETS=(
             backend/app/modules/graduation/services/graduation_material_center_service.py
             backend/app/services/mobile_teacher_service.py
