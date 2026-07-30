@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
-from app.core.exceptions import AppException
+from app.core.context import current_tenant_id
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.db.session import get_sessionmaker
@@ -76,16 +76,15 @@ async def migration_validate_file(domain: str, file: UploadFile = File(...),
         security_level="SENSITIVE",
     )
     source_file_id = int(file_meta["fileId"])
+    tenant_id = int(current_tenant_id() or 0)
 
     db = get_sessionmaker()()
     try:
         ledger = db.scalars(select(StudentImportBatch).where(
-            StudentImportBatch.tenant_id == int(file_meta.get("tenantId") or 0)
-            if file_meta.get("tenantId") else StudentImportBatch.tenant_id == StudentImportBatch.tenant_id,
+            StudentImportBatch.tenant_id == tenant_id,
             StudentImportBatch.batch_no == result["batchNo"],
             StudentImportBatch.is_deleted.is_(False),
         )).first()
-        # 上方兼容旧 File DTO 未返回 tenantId；批次号全局随机且后续 adapter 仍再次按请求租户校验。
         if ledger:
             ledger.file_id = source_file_id
             db.commit()
