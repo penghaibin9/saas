@@ -425,22 +425,26 @@ def _match(code: str, patterns: Iterable[str]) -> bool:
     return False
 
 
-def get_effective_permission_patterns(user: dict) -> list[str]:
-    """唯一有效权限计算入口：内置角色读平台基线；自定义角色读 DB；超管为 *。"""
+def get_base_permission_patterns(user: dict) -> list[str]:
+    """不含临时授权的基础权限。
+
+    临时授权创建时必须用本函数校验授权上限，禁止把别人临时授予的权限
+    再次转授形成权限链式放大。
+    """
     if is_super_admin(user):
         return ["*"]
     database_patterns = _db_granted(user)
     if database_patterns is not None:
-        # 自定义角色：DB 权限 + 有效临时授权
-        patterns = set(database_patterns)
-        try:
-            from app.services import system_governance_service as gov
-            patterns.update(gov.active_delegation_permission_patterns(user) or [])
-        except Exception:
-            pass
-        return sorted(patterns)
+        return sorted(set(database_patterns))
     role = _role_of(user)
-    patterns = set(_granted(role))
+    return sorted(set(_granted(role)))
+
+
+def get_effective_permission_patterns(user: dict) -> list[str]:
+    """唯一有效权限计算入口：基础权限 + 当前有效临时授权。"""
+    if is_super_admin(user):
+        return ["*"]
+    patterns = set(get_base_permission_patterns(user))
     try:
         from app.services import system_governance_service as gov
         patterns.update(gov.active_delegation_permission_patterns(user) or [])

@@ -18,19 +18,15 @@
           <li v-for="r in template.rules" :key="r">{{ r }}</li>
         </ul>
         <AppButton variant="secondary" :loading="downloading" @click="downloadTemplate">
-          {{ realFileMode ? '⇩ 下载标准 Excel 模板' : '⇩ 下载导入模板' }}
+          ⇩ 下载标准 Excel 模板
         </AppButton>
       </template>
 
       <template v-else-if="step === 1">
-        <label v-if="realFileMode" class="imp__upload">
+        <label class="imp__upload">
           <input ref="fileInput" type="file" class="imp__file-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="selectFile" />
           <span class="mp-note">仅支持标准 .xlsx；上传后执行 dry-run 预检，不会直接写入数据库</span>
           <span v-if="file" class="imp__filename">已选择：{{ file.name }}</span>
-        </label>
-        <label v-else class="imp__upload">
-          <input v-model="fileName" type="text" class="imp__file-input" placeholder="演示环境：输入文件名模拟上传" />
-          <span class="mp-note">上传后自动执行字段校验（dry-run 预检），不会直接写入</span>
         </label>
         <div v-if="preview" class="imp__result">
           <div class="imp__stat">
@@ -42,7 +38,7 @@
               <tr v-for="(e, index) in preview.errors" :key="e.row + '-' + e.field + '-' + index"><td>{{ e.row ? '第 ' + e.row + ' 行' : '全局' }}</td><td>{{ e.field }}</td><td>{{ e.message }}</td></tr>
             </tbody>
           </table>
-          <button v-if="preview.errors.length" class="mp-link" @click="downloadErrors">⇩ 下载{{ realFileMode ? ' Excel ' : '' }}错误回执</button>
+          <button v-if="preview.errors.length" class="mp-link" @click="downloadErrors">⇩ 下载 Excel 错误回执</button>
         </div>
       </template>
 
@@ -60,10 +56,10 @@
     <template #footer>
       <AppButton v-if="step > 0" variant="ghost" @click="step--">上一步</AppButton>
       <AppButton v-if="step === 0" variant="primary" @click="step = 1">下一步：上传文件</AppButton>
-      <AppButton v-else-if="step === 1" variant="primary" :disabled="realFileMode ? !file : !fileName" :loading="checking" @click="runCheck">
+      <AppButton v-else-if="step === 1" variant="primary" :disabled="!file" :loading="checking" @click="runCheck">
         {{ preview ? '重新校验' : '开始校验' }}
       </AppButton>
-      <AppButton v-if="step === 1 && preview && (!realFileMode || preview.invalid === 0)" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
+      <AppButton v-if="step === 1 && preview && preview.invalid === 0" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
       <AppButton v-if="step === 2" variant="primary" :loading="submitting" @click="confirmImport">确认导入 {{ preview && preview.valid }} 行</AppButton>
     </template>
   </AppDrawer>
@@ -87,32 +83,23 @@ export default {
     template: { type: Object, required: true },
     runValidate: { type: Function, required: true },
     runImport: { type: Function, required: true },
-    runDownloadTemplate: { type: Function, default: null },
+    runDownloadTemplate: { type: Function, required: true },
     runDownloadErrors: { type: Function, default: null }
   },
   emits: ['update:visible', 'done'],
   data() {
     return {
-      step: 0, file: null, fileName: '', preview: null, checking: false, submitting: false,
+      step: 0, file: null, preview: null, checking: false, submitting: false,
       downloading: false, downloadingErrors: false
-    }
-  },
-  computed: {
-    realFileMode() {
-      return typeof this.runDownloadTemplate === 'function'
     }
   },
   watch: {
     visible(v) {
-      if (v) Object.assign(this, { step: 0, file: null, fileName: '', preview: null })
+      if (v) Object.assign(this, { step: 0, file: null, preview: null })
     }
   },
   methods: {
     async downloadTemplate() {
-      if (!this.realFileMode) {
-        toast.success('模板已开始下载：' + this.template.fileName)
-        return
-      }
       this.downloading = true
       const res = await this.runDownloadTemplate()
       this.downloading = false
@@ -135,10 +122,6 @@ export default {
       this.file = selected
     },
     async downloadErrors() {
-      if (!this.realFileMode) {
-        toast.success('错误清单已开始下载（含行号与原因，修正后可重新上传）')
-        return
-      }
       if (!this.preview?.batchNo || this.downloadingErrors || !this.runDownloadErrors) return
       this.downloadingErrors = true
       const res = await this.runDownloadErrors(this.preview.batchNo)
@@ -148,14 +131,14 @@ export default {
     },
     async runCheck() {
       this.checking = true
-      const res = await this.runValidate(this.realFileMode ? this.file : this.fileName)
+      const res = await this.runValidate(this.file)
       this.checking = false
       if (res.code === 0) this.preview = res.data
       else toast.error(res.message)
     },
     async confirmImport() {
       this.submitting = true
-      const res = await this.runImport(this.realFileMode ? this.preview.batchNo : this.fileName)
+      const res = await this.runImport(this.preview.batchNo)
       this.submitting = false
       if (res.code === 0) {
         toast.success((res.data.receipt || res.message || '导入完成') + '，已写入审计日志')

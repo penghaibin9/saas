@@ -14,16 +14,13 @@ from typing import Any
 
 
 def _school_enabled_map(tenant_id: int) -> dict[str, bool]:
-    try:
-        from app.services import system_governance_service as gov
-        features = gov.get_module_features()
-        out = {}
-        for key, val in (features or {}).items():
-            if isinstance(val, dict):
-                out[key] = bool(val.get("enabled", True))
-        return out
-    except Exception:
-        return {}
+    from app.services import system_governance_service as gov
+    features = gov.get_module_features()
+    out = {}
+    for key, val in (features or {}).items():
+        if isinstance(val, dict):
+            out[key] = bool(val.get("enabled", True))
+    return out
 
 
 def module_access_state(tenant_id: int, module_key: str) -> dict[str, Any]:

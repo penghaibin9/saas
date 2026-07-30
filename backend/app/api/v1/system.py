@@ -20,6 +20,128 @@ from app.db.session import db_enabled, get_sessionmaker
 
 router = APIRouter()
 
+STAFF_ACCOUNT_USER_TYPES = ("TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN")
+
+
+def _normalize_account_type(value: object, *, allow_empty: bool = True) -> str:
+    from app.core.exceptions import AppException
+    raw = str(value or "").strip().upper()
+    if not raw and allow_empty:
+        return ""
+    if raw not in ("STAFF", "STUDENT"):
+        raise AppException("VALIDATION_ERROR", "account_type 必须是 STAFF 或 STUDENT")
+    return raw
+
+
+def _is_student_account(db, account, roles: list | None = None) -> bool:
+    """兼容历史脏数据：类型、稳定主档绑定、学生角色任一命中即视为学生。"""
+    if str(account.user_type or "").upper() == "STUDENT":
+        return True
+    if roles is not None and any(str(role.role_code or "").upper() == "STUDENT" for role in roles):
+        return True
+    if db is None:
+        return False
+    from app.models import Role, StudentAccountLink, UserRole
+    linked = db.scalar(select(func.count(StudentAccountLink.id)).where(
+        StudentAccountLink.tenant_id == account.tenant_id,
+        StudentAccountLink.user_id == account.id,
+        StudentAccountLink.link_status == "ACTIVE",
+        StudentAccountLink.is_deleted.is_(False),
+    ))
+    if linked:
+        return True
+    student_role = db.scalar(select(func.count(UserRole.id)).join(
+        Role, Role.id == UserRole.role_id
+    ).where(
+        UserRole.tenant_id == account.tenant_id,
+        UserRole.user_id == account.id,
+        UserRole.status == "ACTIVE",
+        UserRole.is_deleted.is_(False),
+        Role.role_code == "STUDENT",
+        Role.is_deleted.is_(False),
+    ))
+    return bool(student_role)
+
+
+def _account_type_of(account, db=None, roles: list | None = None) -> str:
+    return "STUDENT" if _is_student_account(db, account, roles) else "STAFF"
+
+
+def _account_type_condition(User, account_type: str, tenant_id: int):
+    """数据库层使用同一分类规则，确保列表、批量操作、异常与导出边界一致。"""
+    from app.models import Role, StudentAccountLink, UserRole
+    linked_student = select(StudentAccountLink.id).where(
+        StudentAccountLink.tenant_id == tenant_id,
+        StudentAccountLink.user_id == User.id,
+        StudentAccountLink.link_status == "ACTIVE",
+        StudentAccountLink.is_deleted.is_(False),
+    ).exists()
+    has_student_role = select(UserRole.id).join(
+        Role, Role.id == UserRole.role_id
+    ).where(
+        UserRole.tenant_id == tenant_id,
+        UserRole.user_id == User.id,
+        UserRole.status == "ACTIVE",
+        UserRole.is_deleted.is_(False),
+        Role.role_code == "STUDENT",
+        Role.is_deleted.is_(False),
+    ).exists()
+    student_condition = (
+        (User.user_type == "STUDENT") | linked_student | has_student_role
+    )
+    if account_type == "STUDENT":
+        return student_condition
+    return User.user_type.in_(STAFF_ACCOUNT_USER_TYPES) & ~student_condition
+
+
+def _student_profile_user_ids(
+        tenant_id: int, *, college_id: object = "", class_id: object = "",
+        grade: object = "", student_status: object = ""):
+    """按权威学生主档范围返回稳定绑定的账号 ID 子查询。"""
+    from app.models import StudentAccountLink, StudentProfile
+    stmt = select(StudentAccountLink.user_id).join(
+        StudentProfile, StudentProfile.id == StudentAccountLink.student_id
+    ).where(
+        StudentAccountLink.tenant_id == tenant_id,
+        StudentAccountLink.link_status == "ACTIVE",
+        StudentAccountLink.is_deleted.is_(False),
+        StudentProfile.tenant_id == tenant_id,
+        StudentProfile.is_deleted.is_(False),
+    )
+    for raw, column in (
+        (college_id, StudentProfile.college_id),
+        (class_id, StudentProfile.class_id),
+    ):
+        if str(raw or "").isdigit():
+            stmt = stmt.where(column == int(raw))
+    if str(grade or "").strip():
+        stmt = stmt.where(StudentProfile.grade == str(grade).strip())
+    if str(student_status or "").strip():
+        stmt = stmt.where(StudentProfile.student_status == str(student_status).strip().upper())
+    return stmt
+
+
+def _is_last_active_school_admin(db, tenant_id: int, user_id: int) -> bool:
+    """最后一名可登录学校管理员不得被停用或移除管理员角色。"""
+    from app.models import Role, User, UserRole
+    owns_role = db.scalar(select(func.count(UserRole.id)).join(
+        Role, Role.id == UserRole.role_id
+    ).where(
+        UserRole.tenant_id == tenant_id, UserRole.user_id == user_id,
+        UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+        Role.role_code == "SCHOOL_ADMIN", Role.is_deleted.is_(False),
+    ))
+    if not owns_role:
+        return False
+    active_admins = db.scalar(select(func.count(func.distinct(User.id))).join(
+        UserRole, UserRole.user_id == User.id
+    ).join(Role, Role.id == UserRole.role_id).where(
+        User.tenant_id == tenant_id, User.status == "ACTIVE", User.is_deleted.is_(False),
+        UserRole.tenant_id == tenant_id, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+        Role.role_code == "SCHOOL_ADMIN", Role.is_deleted.is_(False),
+    ))
+    return int(active_admins or 0) <= 1
+
 
 def _role_scope(role) -> str:
     """只读兼容：优先结构化规则，历史 Role.remark 仅作回落。"""
@@ -73,22 +195,74 @@ def _mask_user_phone(raw: str | None) -> str:
     return _mask_phone(plain or "")
 
 
-def _user_org_hint(db, account) -> tuple[str, str]:
-    """尽量从学生档案/教师带班关系补组织展示；无则空。"""
+def _student_account_meta(db, account) -> dict:
+    """通过稳定绑定返回学生主档投影；历史库才回落到登录名=学号。"""
     try:
-        from app.models import College, SchoolClass, StudentProfile, TeacherStudentScope
-        if str(account.user_type or "").upper() == "STUDENT":
+        from app.models import (College, Major, SchoolClass, StudentAccountLink,
+                                StudentProfile)
+        link = db.scalars(select(StudentAccountLink).where(
+            StudentAccountLink.tenant_id == account.tenant_id,
+            StudentAccountLink.user_id == account.id,
+            StudentAccountLink.link_status == "ACTIVE",
+            StudentAccountLink.is_deleted.is_(False),
+        )).first()
+        sp = db.get(StudentProfile, link.student_id) if link is not None else None
+        if sp is None:
             sp = db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == account.tenant_id, StudentProfile.is_deleted.is_(False),
-                StudentProfile.student_no == account.login_name)).first()
-            if sp is not None:
-                college = db.get(College, sp.college_id) if sp.college_id else None
-                cls = db.get(SchoolClass, sp.class_id) if sp.class_id else None
-                name = " / ".join(x for x in [
-                    college.college_name if college else "",
-                    cls.class_name if cls else "",
-                ] if x) or "未设置"
-                return (str(sp.class_id or sp.college_id or ""), name)
+                StudentProfile.tenant_id == account.tenant_id,
+                StudentProfile.is_deleted.is_(False),
+                StudentProfile.student_no == account.login_name,
+            )).first()
+        if sp is None:
+            return {
+                "studentId": "", "studentNo": account.login_name,
+                "collegeId": "", "collegeName": "", "majorId": "", "majorName": "",
+                "classId": "", "className": "", "grade": "",
+                "studentStatus": "UNBOUND", "studentStatusLabel": "未绑定学生主档",
+                "currentStage": "", "profileBound": False,
+            }
+        college = db.get(College, sp.college_id) if sp.college_id else None
+        major = db.get(Major, sp.major_id) if sp.major_id else None
+        cls = db.get(SchoolClass, sp.class_id) if sp.class_id else None
+        student_status = str(sp.student_status or sp.status or "").upper()
+        return {
+            "studentId": str(sp.id), "studentNo": sp.student_no,
+            "collegeId": str(sp.college_id or ""),
+            "collegeName": college.college_name if college else "",
+            "majorId": str(sp.major_id or ""),
+            "majorName": major.major_name if major else "",
+            "classId": str(sp.class_id or ""),
+            "className": cls.class_name if cls else "",
+            "grade": sp.grade or (cls.grade if cls else "") or "",
+            "studentStatus": student_status,
+            "studentStatusLabel": {
+                "NORMAL": "正常在籍", "REGISTERED": "已注册", "SUSPENDED": "休学",
+                "GRADUATED": "已毕业", "WITHDRAWN": "已退学", "MERGED": "已合并",
+                "RECYCLED": "已作废",
+            }.get(student_status, student_status or "未设置"),
+            "currentStage": str(sp.current_stage or ""),
+            "profileBound": True,
+        }
+    except Exception:
+        return {
+            "studentId": "", "studentNo": account.login_name,
+            "collegeId": "", "collegeName": "", "majorId": "", "majorName": "",
+            "classId": "", "className": "", "grade": "",
+            "studentStatus": "UNBOUND", "studentStatusLabel": "主档读取失败",
+            "currentStage": "", "profileBound": False,
+        }
+
+
+def _user_org_hint(db, account, account_type: str | None = None) -> tuple[str, str]:
+    """学生读稳定主档绑定；教职工展示现有业务归属，不伪造人事部门。"""
+    try:
+        from app.models import TeacherStudentScope
+        if (account_type or _account_type_of(account, db)) == "STUDENT":
+            meta = _student_account_meta(db, account)
+            name = " / ".join(
+                x for x in (meta["collegeName"], meta["majorName"], meta["className"]) if x
+            ) or "未绑定学生主档"
+            return (meta["classId"] or meta["majorId"] or meta["collegeId"], name)
         scope = db.scalars(select(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == account.tenant_id,
             TeacherStudentScope.teacher_key == account.login_name).limit(1)).first()
@@ -101,17 +275,19 @@ def _user_org_hint(db, account) -> tuple[str, str]:
 
 def _user_row(account, roles: list, db=None) -> dict:
     status = str(account.status or "").upper()
+    account_type = _account_type_of(account, db, roles)
     org_id, org_name = ("", "未设置")
     if db is not None:
-        org_id, org_name = _user_org_hint(db, account)
+        org_id, org_name = _user_org_hint(db, account, account_type)
     phone_masked = _mask_user_phone(getattr(account, "phone_encrypted", None))
-    return {
+    row = {
         "id": str(account.id),
         "userNo": account.login_name,
         "loginName": account.login_name,
         "name": account.real_name,
         "realName": account.real_name,
         "userType": account.user_type,
+        "accountType": account_type,
         "orgId": org_id, "orgName": org_name, "roles": [r.role_code for r in roles],
         "roleNames": [r.role_name for r in roles], "phone": phone_masked, "email": "",
         "mustChangePassword": bool(getattr(account, "must_change_password", False)),
@@ -120,6 +296,9 @@ def _user_row(account, roles: list, db=None) -> dict:
         "source": "统一师生导入" if account.user_type in ("TEACHER", "STUDENT") else "系统创建",
         "lastLoginAt": str(account.last_login_at or "")[:19], "createdAt": str(account.created_at or "")[:10],
     }
+    if db is not None and row["accountType"] == "STUDENT":
+        row.update(_student_account_meta(db, account))
+    return row
 
 
 @router.get("/system/readiness", summary="学校上线初始化检查（真实库）")
@@ -238,22 +417,47 @@ def list_system_roles(
 
 
 @router.get("/system/users", summary="学校账号列表（真实库）")
-def list_system_users(keyword: str = "", role: str = "", status: str = "", page: int = 1, page_size: int = 20,
+def list_system_users(
+        keyword: str = "", role: str = "", status: str = "", account_type: str = "",
+        college_id: str = "", major_id: str = "", class_id: str = "", grade: str = "",
+        student_status: str = "", page: int = 1, page_size: int = 20,
                       user=Depends(require_permission("systemAdmin.user.view"))):
     from app.models import Role, User, UserRole
     tenant_id = current_tenant_id()
+    normalized_type = _normalize_account_type(account_type)
     db = get_sessionmaker()()
     try:
         stmt = select(User).where(User.tenant_id == tenant_id, User.is_deleted.is_(False))
+        if normalized_type:
+            stmt = stmt.where(_account_type_condition(User, normalized_type, tenant_id))
         if keyword.strip():
             like = f"%{keyword.strip()}%"
             stmt = stmt.where(User.login_name.like(like) | User.real_name.like(like))
-        if status.strip(): stmt = stmt.where(User.status == status.upper())
+        if status.strip():
+            stmt = stmt.where(User.status == status.upper())
         if role.strip():
             stmt = stmt.where(User.id.in_(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(
                 UserRole.tenant_id == tenant_id, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
                 Role.role_code == role.strip().upper(), Role.is_deleted.is_(False))))
-        users = db.scalars(stmt.order_by(User.created_at.desc())).all()
+        student_filters = {
+            "college_id": college_id, "major_id": major_id, "class_id": class_id,
+            "grade": grade, "student_status": student_status,
+        }
+        if any(str(value or "").strip() for value in student_filters.values()):
+            profile_users = _student_profile_user_ids(
+                tenant_id, college_id=college_id, class_id=class_id,
+                grade=grade, student_status=student_status)
+            if str(major_id or "").isdigit():
+                from app.models import StudentProfile, StudentAccountLink
+                profile_users = profile_users.where(StudentProfile.major_id == int(major_id))
+            stmt = stmt.where(User.id.in_(profile_users))
+        page = max(1, int(page or 1))
+        page_size = min(100, max(1, int(page_size or 20)))
+        total = int(db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+        users = db.scalars(
+            stmt.order_by(User.created_at.desc(), User.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
         user_ids = [u.id for u in users]
         by_user: dict[int, list] = {uid: [] for uid in user_ids}
         if user_ids:
@@ -261,10 +465,9 @@ def list_system_users(keyword: str = "", role: str = "", status: str = "", page:
                 UserRole.tenant_id == tenant_id, UserRole.user_id.in_(user_ids), UserRole.status == "ACTIVE",
                 UserRole.is_deleted.is_(False), Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))).all():
                 by_user[uid].append(r)
-        page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 20)))
-        start = (page - 1) * page_size
-        return success({"list": [_user_row(account, by_user.get(account.id, []), db) for account in users[start:start + page_size]],
-                        "total": len(users), "page": page, "pageSize": page_size})
+        return success({"list": [_user_row(account, by_user.get(account.id, []), db) for account in users],
+                        "total": total, "page": page, "pageSize": page_size,
+                        "accountType": normalized_type or "MIXED_LEGACY"})
     finally:
         db.close()
 
@@ -323,6 +526,8 @@ def update_system_user(user_id: int, body: dict = Body(...),
                                                 User.is_deleted.is_(False))).first()
         if account is None:
             raise AppException("DATA_NOT_FOUND", "账号不存在")
+        if _account_type_of(account, db) == "STUDENT" and name != account.real_name:
+            raise AppException("VALIDATION_ERROR", "学生姓名属于学生主档，请到学生主档办理更正")
         before = {"name": account.real_name, "phone": _mask_user_phone(account.phone_encrypted)}
         account.real_name = name
         if phone:
@@ -349,13 +554,92 @@ def update_system_user(user_id: int, body: dict = Body(...),
 def batch_set_system_user_status(body: dict = Body(...),
                                  user=Depends(require_permission("systemAdmin.user.manage"))):
     from app.core.exceptions import AppException
+    from app.models import User
     action = str((body or {}).get("action") or "DISABLE").strip().upper()
     reason = str((body or {}).get("reason") or "").strip()
+    account_type = _normalize_account_type((body or {}).get("accountType"))
+    scope = str((body or {}).get("scope") or "SELECTED").strip().upper()
+    filters = (body or {}).get("filters") or {}
     ids = [int(x) for x in (body or {}).get("ids") or [] if str(x).isdigit() or isinstance(x, int)]
     if action == "DISABLE" and len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "批量停用原因必填且不少于 5 个字")
+    if scope not in ("SELECTED", "CLASS", "GRADE", "COLLEGE", "SCHOOL"):
+        raise AppException("VALIDATION_ERROR", "批量停用范围无效")
+
+    # 大批量学生账号按主档范围在数据库内一次完成，不能把几千个 ID 发给前端逐个调用。
+    if scope != "SELECTED":
+        if action != "DISABLE" or account_type != "STUDENT":
+            raise AppException("VALIDATION_ERROR", "班级、年级、学院和全校范围仅支持批量停用学生账号")
+        scope_value = {
+            "CLASS": filters.get("classId"),
+            "GRADE": filters.get("grade"),
+            "COLLEGE": filters.get("collegeId"),
+        }.get(scope)
+        if scope != "SCHOOL" and not str(scope_value or "").strip():
+            raise AppException("VALIDATION_ERROR", "请选择具体的班级、年级或学院")
+        if scope in ("CLASS", "COLLEGE") and not str(scope_value).isdigit():
+            raise AppException("VALIDATION_ERROR", "班级或学院参数无效")
+        if scope == "SCHOOL" and (body or {}).get("confirmSchoolScope") is not True:
+            raise AppException("VALIDATION_ERROR", "全校停用属于高风险操作，请完成全校范围二次确认")
+
+        tenant_id = current_tenant_id()
+        db = get_sessionmaker()()
+        try:
+            stmt = select(User).where(
+                User.tenant_id == tenant_id,
+                User.is_deleted.is_(False),
+                User.status == "ACTIVE",
+                _account_type_condition(User, "STUDENT", tenant_id),
+            )
+            if scope != "SCHOOL":
+                profile_users = _student_profile_user_ids(
+                    tenant_id,
+                    college_id=scope_value if scope == "COLLEGE" else "",
+                    class_id=scope_value if scope == "CLASS" else "",
+                    grade=scope_value if scope == "GRADE" else "",
+                )
+                stmt = stmt.where(User.id.in_(profile_users))
+            accounts = db.scalars(stmt).all()
+            for account in accounts:
+                account.status = "DISABLED"
+                account.version = int(account.version or 0) + 1
+            db.commit()
+            count = len(accounts)
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+        from app.services import audit_log
+        scope_label = {
+            "CLASS": "班级", "GRADE": "年级", "COLLEGE": "学院", "SCHOOL": "全校",
+        }[scope]
+        audit_log.record("USER_BATCH_DISABLE", f"{scope_label}学生账号批量停用", detail={
+            "scope": scope,
+            "scopeValue": str(scope_value or ""),
+            "count": count,
+            "reason": reason,
+            "summary": f"按{scope_label}范围批量停用学生账号（逻辑停用，可恢复）",
+        })
+        return success({"count": count, "errors": [], "scope": scope},
+                       message=f"已按{scope_label}范围停用 {count} 个学生账号")
+
     if not ids:
         raise AppException("VALIDATION_ERROR", "请选择账号")
+    if account_type:
+        db = get_sessionmaker()()
+        try:
+            matched = int(db.scalar(select(func.count(User.id)).where(
+                User.tenant_id == current_tenant_id(),
+                User.id.in_(ids),
+                User.is_deleted.is_(False),
+                _account_type_condition(User, account_type, current_tenant_id()),
+            )) or 0)
+        finally:
+            db.close()
+        if matched != len(set(ids)):
+            raise AppException("VALIDATION_ERROR", "所选账号包含其他类型，已拒绝批量操作")
     self_id = _acting_db_id(user)
     count = 0
     errors = []
@@ -373,16 +657,19 @@ def batch_set_system_user_status(body: dict = Body(...),
 
 
 @router.get("/system/users-exceptions", summary="账号异常中心（锁定/停用/长期未登录/强制改密）")
-def list_account_exceptions(page: int = 1, page_size: int = 50,
+def list_account_exceptions(account_type: str = "", page: int = 1, page_size: int = 50,
                             user=Depends(require_any_permission(
                                 "systemAdmin.user.exception.view", "systemAdmin.user.view", "systemAdmin.user.manage"))):
     from datetime import datetime, timedelta
     from app.models import Role, User, UserRole
     tenant_id = current_tenant_id()
+    normalized_type = _normalize_account_type(account_type)
     db = get_sessionmaker()()
     try:
-        users = db.scalars(select(User).where(User.tenant_id == tenant_id, User.is_deleted.is_(False)
-                                              ).order_by(User.updated_at.desc())).all()
+        stmt = select(User).where(User.tenant_id == tenant_id, User.is_deleted.is_(False))
+        if normalized_type:
+            stmt = stmt.where(_account_type_condition(User, normalized_type, tenant_id))
+        users = db.scalars(stmt.order_by(User.updated_at.desc())).all()
         cutoff = datetime.utcnow() - timedelta(days=90)
         rows = []
         for account in users:
@@ -394,8 +681,11 @@ def list_account_exceptions(page: int = 1, page_size: int = 50,
                 reasons.append("账号已停用")
             if getattr(account, "must_change_password", False):
                 reasons.append("待强制改密")
-            if account.last_login_at is None or account.last_login_at < cutoff:
-                reasons.append("超过90天未登录或从未登录")
+            if (
+                (account.last_login_at is None and account.created_at and account.created_at < cutoff)
+                or (account.last_login_at is not None and account.last_login_at < cutoff)
+            ):
+                reasons.append("超过90天未登录")
             if not reasons:
                 continue
             roles = [r for _, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
@@ -406,7 +696,9 @@ def list_account_exceptions(page: int = 1, page_size: int = 50,
             rows.append(item)
         page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 50)))
         start = (page - 1) * page_size
-        return success({"list": rows[start:start + page_size], "total": len(rows), "page": page, "pageSize": page_size})
+        return success({"list": rows[start:start + page_size], "total": len(rows),
+                        "page": page, "pageSize": page_size,
+                        "accountType": normalized_type or "MIXED_LEGACY"})
     finally:
         db.close()
 
@@ -458,10 +750,43 @@ def get_system_context(user=Depends(require_any_permission(
     from app.core.permissions import get_effective_access_context, has_permission
     tenant_id = int(current_tenant_id() or 0)
     brand = {}
+    role_options = []
+    college_options = []
+    class_options = []
+    grade_options = []
     if db_enabled():
+        from app.models import College, Role, SchoolClass, StudentProfile
         db = get_sessionmaker()()
         try:
             brand = _brand_form(db, tenant_id)
+            roles = db.scalars(select(Role).where(
+                Role.tenant_id == tenant_id,
+                Role.is_deleted.is_(False),
+                Role.status.in_(("ACTIVE", "ENABLED")),
+            ).order_by(Role.role_type, Role.role_name)).all()
+            colleges = db.scalars(select(College).where(
+                College.tenant_id == tenant_id,
+                College.is_deleted.is_(False),
+                College.status == "ACTIVE",
+            ).order_by(College.college_name)).all()
+            role_options = [{"value": row.role_code, "label": row.role_name} for row in roles]
+            college_options = [{"value": str(row.id), "label": row.college_name} for row in colleges]
+            classes = db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == tenant_id,
+                SchoolClass.is_deleted.is_(False),
+                SchoolClass.status == "ACTIVE",
+            ).order_by(SchoolClass.grade.desc(), SchoolClass.class_name)).all()
+            class_options = [{
+                "value": str(row.id),
+                "label": " · ".join(x for x in (row.grade, row.class_name) if x),
+            } for row in classes]
+            grades = db.scalars(select(StudentProfile.grade).where(
+                StudentProfile.tenant_id == tenant_id,
+                StudentProfile.is_deleted.is_(False),
+                StudentProfile.grade.is_not(None),
+                StudentProfile.grade != "",
+            ).distinct().order_by(StudentProfile.grade.desc())).all()
+            grade_options = [{"value": str(value), "label": str(value)} for value in grades]
         finally:
             db.close()
     role_code = (user or {}).get("currentRoleCode") or ""
@@ -477,10 +802,13 @@ def get_system_context(user=Depends(require_any_permission(
         "resetPassword": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.manage"), "reason": ""},
         "batchDisableUsers": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.manage"), "reason": ""},
         "assignRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.assign-role"), "reason": ""},
+        "viewSensitiveFull": {"visible": True, "allowed": has_permission(user, "systemAdmin.user.sensitive.view"),
+                              "reason": "查看完整敏感字段需要专项权限，操作将被审计"},
         "createRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.create"), "reason": ""},
         "editRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.config"), "reason": ""},
         "copyRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.create"), "reason": ""},
         "configRolePermission": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.config"), "reason": ""},
+        "configRoleScope": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.config"), "reason": ""},
         "deprecateRole": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.config"), "reason": ""},
         "exportRoleConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.role.view"), "reason": ""},
         "createOrg": {"visible": True, "allowed": has_permission(user, "systemAdmin.org.create"), "reason": ""},
@@ -490,9 +818,17 @@ def get_system_context(user=Depends(require_any_permission(
                       "reason": "请前往实施中心「数据导入与智能匹配」"},
         "exportOrg": {"visible": True, "allowed": has_permission(user, "systemAdmin.org.view"), "reason": ""},
         "editBrandConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.config.manage"), "reason": ""},
+        "resetBrandConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.config.manage"), "reason": ""},
+        "editSystemConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.config.manage"), "reason": ""},
+        "exportSystemConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.config.view"), "reason": ""},
         "saveConfig": {"visible": True, "allowed": has_permission(user, "systemAdmin.config.manage"), "reason": ""},
+        "viewLoginLogs": {"visible": True, "allowed": has_permission(user, "systemAdmin.audit.view"), "reason": ""},
+        "viewOperationLogs": {"visible": True, "allowed": has_permission(user, "systemAdmin.audit.view"), "reason": ""},
         "exportLogs": {"visible": True, "allowed": has_permission(user, "systemAdmin.audit.view"), "reason": ""},
         "exportScopeRules": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.view"), "reason": ""},
+        "createScopeRule": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.manage"), "reason": ""},
+        "editScopeRule": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.manage"), "reason": ""},
+        "viewScopeAffected": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.view"), "reason": ""},
         "saveScopeRule": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.manage"), "reason": ""},
         "deprecateScopeRule": {"visible": True, "allowed": has_permission(user, "systemAdmin.scope.manage"), "reason": ""},
     }
@@ -513,8 +849,16 @@ def get_system_context(user=Depends(require_any_permission(
             "userStatus": [{"value": "ACTIVE", "label": "启用中"}, {"value": "DISABLED", "label": "已停用"},
                            {"value": "LOCKED", "label": "已锁定"}],
             "scopeTypes": [{"value": k, "label": v} for k, v in _SCOPE_LABELS.items()],
+            "roleStatus": [{"value": "ENABLED", "label": "启用中"},
+                           {"value": "DEPRECATED", "label": "已作废"}],
+            "roleType": [{"value": "BUILTIN", "label": "内置角色"},
+                         {"value": "CUSTOM", "label": "自定义角色"}],
+            "ruleStatus": [{"value": "ENABLED", "label": "启用中"},
+                           {"value": "DEPRECATED", "label": "已作废"}],
         },
-        "filterOptions": {"roles": [], "colleges": []},
+        "filterOptions": {"roles": role_options, "colleges": college_options,
+                          "classes": class_options, "grades": grade_options,
+                          "logModules": [], "logActions": []},
         "fieldColumns": {}, "batchActions": [], "importTemplates": {}, "exportOptions": {},
     })
 
@@ -534,6 +878,13 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
         account = db.scalars(select(User).where(User.id == user_id, User.tenant_id == tenant_id,
                                                 User.is_deleted.is_(False))).first()
         if account is None: raise AppException("DATA_NOT_FOUND", "账号不存在")
+        if _account_type_of(account, db) == "STUDENT":
+            if codes != ["STUDENT"]:
+                raise AppException("NO_PERMISSION", "学生账号固定绑定 STUDENT，禁止分配教职工或管理员角色")
+        elif "STUDENT" in codes:
+            raise AppException("VALIDATION_ERROR", "教职工账号不能绑定 STUDENT 角色")
+        if "SCHOOL_ADMIN" not in codes and _is_last_active_school_admin(db, tenant_id, account.id):
+            raise AppException("VALIDATION_ERROR", "不能移除本校最后一名启用中的学校管理员")
         roles = db.scalars(select(Role).where(Role.tenant_id == tenant_id, Role.role_code.in_(codes),
                                               Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))).all()
         if len(roles) != len(codes): raise AppException("VALIDATION_ERROR", "包含不存在或已停用的角色")
@@ -1081,6 +1432,8 @@ def set_system_user_status(user_id: int, body: dict = Body(...),
                                                 User.is_deleted.is_(False))).first()
         if account is None:
             raise AppException("DATA_NOT_FOUND", "账号不存在")
+        if action == "DISABLE" and _is_last_active_school_admin(db, tenant_id, account.id):
+            raise AppException("VALIDATION_ERROR", "不能停用本校最后一名启用中的学校管理员")
         before = str(account.status or "").upper()
         account.status = "DISABLED" if action == "DISABLE" else "ACTIVE"
         account.version = int(account.version or 0) + 1
@@ -1352,13 +1705,16 @@ def _xlsx_response(title: str, headers: list, rows: list, filename: str, user: d
 
 
 @router.get("/system/export/users", summary="导出账号台账（真实 xlsx）")
-def export_system_users(keyword: str = "", role: str = "", status: str = "",
+def export_system_users(keyword: str = "", role: str = "", status: str = "", account_type: str = "",
                         user=Depends(require_any_permission("systemAdmin.user.export", "systemAdmin.user.view"))):
     from app.models import Role, User, UserRole
     tenant_id = current_tenant_id()
+    normalized_type = _normalize_account_type(account_type)
     db = get_sessionmaker()()
     try:
         stmt = select(User).where(User.tenant_id == tenant_id, User.is_deleted.is_(False))
+        if normalized_type:
+            stmt = stmt.where(_account_type_condition(User, normalized_type, tenant_id))
         if keyword.strip():
             like = f"%{keyword.strip()}%"
             stmt = stmt.where(User.login_name.like(like) | User.real_name.like(like))
@@ -1375,12 +1731,44 @@ def export_system_users(keyword: str = "", role: str = "", status: str = "",
         if role.strip():
             want = role.strip().upper()
             users = [u for u in users if any(rr.role_code == want for rr in by_user.get(u.id, []))]
-        headers = ["工号/学号", "姓名", "角色", "状态", "最后登录", "创建时间"]
         status_label = {"ACTIVE": "启用中", "DISABLED": "已停用", "LOCKED": "已锁定"}
-        rows = [[u.login_name, u.real_name, "、".join(r.role_name for r in by_user.get(u.id, [])) or "—",
-                 status_label.get(str(u.status or "").upper(), u.status or ""),
-                 str(u.last_login_at or "")[:19] or "—", str(u.created_at or "")[:10]] for u in users]
-        return _xlsx_response("账号台账", headers, rows, f"账号台账_{datetime.now():%Y%m%d}.xlsx", user, "账号台账")
+        if normalized_type == "STUDENT":
+            headers = ["学号", "姓名", "学院", "专业", "年级", "班级", "学籍状态",
+                       "账号状态", "最后登录", "创建时间"]
+            rows = []
+            for account in users:
+                meta = _student_account_meta(db, account)
+                rows.append([
+                    meta["studentNo"] or account.login_name, account.real_name,
+                    meta["collegeName"] or "—", meta["majorName"] or "—",
+                    meta["grade"] or "—", meta["className"] or "—",
+                    meta["studentStatusLabel"],
+                    status_label.get(str(account.status or "").upper(), account.status or ""),
+                    str(account.last_login_at or "")[:19] or "—",
+                    str(account.created_at or "")[:10],
+                ])
+            title = "学生账号台账"
+        elif normalized_type == "STAFF":
+            headers = ["工号", "姓名", "业务归属", "角色", "账号状态", "最后登录", "创建时间"]
+            rows = [[
+                account.login_name, account.real_name, _user_org_hint(db, account)[1],
+                "、".join(r.role_name for r in by_user.get(account.id, [])) or "—",
+                status_label.get(str(account.status or "").upper(), account.status or ""),
+                str(account.last_login_at or "")[:19] or "—",
+                str(account.created_at or "")[:10],
+            ] for account in users]
+            title = "教职工账号台账"
+        else:
+            headers = ["工号/学号", "姓名", "角色", "状态", "最后登录", "创建时间"]
+            rows = [[
+                account.login_name, account.real_name,
+                "、".join(r.role_name for r in by_user.get(account.id, [])) or "—",
+                status_label.get(str(account.status or "").upper(), account.status or ""),
+                str(account.last_login_at or "")[:19] or "—",
+                str(account.created_at or "")[:10],
+            ] for account in users]
+            title = "账号台账"
+        return _xlsx_response(title, headers, rows, f"{title}_{datetime.now():%Y%m%d}.xlsx", user, title)
     finally:
         db.close()
 
@@ -1748,6 +2136,50 @@ def save_system_brand(body: dict = Body(...), user=Depends(require_permission("s
         return success(after, message="品牌配置已保存并生效")
     except Exception:
         db.rollback(); raise
+    finally:
+        db.close()
+
+
+@router.post("/system/brand/reset", summary="恢复学校品牌为平台默认值（真实生效）")
+def reset_system_brand(body: dict = Body(...),
+                       user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.models import TenantBrandConfig
+    tenant_id = int(current_tenant_id() or 0)
+    reason = str((body or {}).get("reason") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "恢复默认原因不少于 5 个字")
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(TenantBrandConfig).where(
+            TenantBrandConfig.tenant_id == tenant_id)).first()
+        before = _brand_form(db, tenant_id)
+        if row is not None:
+            row.primary_color = None
+            row.watermark_text = None
+            row.motto = None
+            extra = dict(row.config_json) if isinstance(row.config_json, dict) else {}
+            for key in ("schoolShortName", "loginSlogan", "footerText", "watermarkDensity"):
+                extra.pop(key, None)
+            row.config_json = extra
+        db.commit()
+        after = _brand_form(db, tenant_id)
+        from app.services import audit_log
+        audit_log.record(
+            "BRAND_CONFIG_RESET",
+            "学校品牌配置",
+            detail={
+                "reason": reason,
+                "before": before,
+                "after": after,
+                "summary": "学校自定义品牌已恢复为平台默认值",
+                "moduleCode": "systemAdmin",
+            },
+        )
+        return success(after, message="品牌配置已恢复为平台默认值")
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

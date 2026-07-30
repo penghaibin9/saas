@@ -1,38 +1,19 @@
 /**
- * 系统管理中心 API（半真实：读可合并 UI 脚手架；写操作禁止 mock 成功）。
+ * 系统管理中心 API（正式页面只读取真实后端；写操作禁止 mock 成功）。
  * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功。
- * 页面禁止直接 import mocks，必须经本文件获取数据。
+ * 页面不得直接读取演示数据，所有运行态事实必须经本文件访问真实接口。
  * 留痕规则：所有写操作（含导入导出）均由后端审计；前端不伪造写成功。
  */
 /* P2 · 真实后端桥 */
-import { request, requestBlob, requestUpload, withFallback } from '@/services/http/client'
-import * as realApi from '@/services/http/adapters'
+import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import {
-  tenantBrandConfig,
-  currentRole,
-  dataScope,
-  permissionActions,
-  statusOptions,
-  filterOptions,
-  fieldColumns,
-  batchActions,
-  importTemplates,
-  exportOptions,
-  dashboardSummary,
-  userList,
-  roleList,
-  roleDetailMap,
-  permissionTree,
-  menuTree,
-  roleMenuPreview,
-  departmentTree,
-  auditLogs
-} from '@/mocks/system/system.mock'
-
-import { MOCK_DELAY_MS } from '@/utils/mockDelay'
-
-const DELAY = MOCK_DELAY_MS
+  SYSTEM_STATUS_OPTIONS,
+  SYSTEM_FIELD_COLUMNS,
+  SYSTEM_BATCH_ACTIONS,
+  SYSTEM_IMPORT_TEMPLATES,
+  SYSTEM_EXPORT_OPTIONS
+} from '@/modules/system/system.ui-config'
 
 /** 最近一次权限树展开得到的全部可见 permissionCode（保存角色权限时提交） */
 let _lastPermissionTreeVisibleCodes = []
@@ -40,9 +21,7 @@ let _lastPermissionTreeVisibleCodes = []
 let _lastPermissionTree = []
 
 function ok(data, message = 'ok') {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve({ code: 0, data, message }), DELAY)
-  })
+  return Promise.resolve({ code: 0, data, message })
 }
 
 function fail(message) {
@@ -100,12 +79,6 @@ function flattenPermissionTreeVisibleCodes(tree = []) {
   return [...new Set(codes.filter(Boolean))]
 }
 
-function paginate(list, { page = 1, pageSize = 10 } = {}) {
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return { list: list.slice(start, start + pageSize), total, page, pageSize }
-}
-
 function now() {
   const d = new Date()
   const p = (n) => String(n).padStart(2, '0')
@@ -113,35 +86,33 @@ function now() {
 }
 
 function mergeContextUiScaffold(data) {
-  const mockStatus = clone(statusOptions)
-  const mockFilter = clone(filterOptions)
   return {
-    tenantBrandConfig: data.tenantBrandConfig || clone(tenantBrandConfig),
-    currentRole: data.currentRole || clone(currentRole),
-    dataScope: data.dataScope || clone(dataScope),
-    /* 后端动作覆盖脚手架；失败路径不得走到这里（见 getContext fail） */
-    permissionActions: {
-      ...clone(permissionActions),
-      ...(data.permissionActions || {})
-    },
+    tenantBrandConfig: data.tenantBrandConfig || {},
+    currentRole: data.currentRole || {},
+    dataScope: data.dataScope || {},
+    permissionActions: data.permissionActions || {},
     permissionPatterns: data.permissionPatterns || [],
-    statusOptions: { ...mockStatus, ...(data.statusOptions || {}) },
+    statusOptions: { ...clone(SYSTEM_STATUS_OPTIONS), ...(data.statusOptions || {}) },
     filterOptions: {
-      roles: (data.filterOptions?.roles?.length ? data.filterOptions.roles : mockFilter.roles),
-      colleges: (data.filterOptions?.colleges?.length ? data.filterOptions.colleges : mockFilter.colleges),
-      logModules: data.filterOptions?.logModules || mockFilter.logModules,
-      logActions: data.filterOptions?.logActions || mockFilter.logActions
+      roles: data.filterOptions?.roles || [],
+      colleges: data.filterOptions?.colleges || [],
+      classes: data.filterOptions?.classes || [],
+      grades: data.filterOptions?.grades || [],
+      logModules: data.filterOptions?.logModules || [],
+      logActions: data.filterOptions?.logActions || []
     },
     fieldColumns: (data.fieldColumns && Object.keys(data.fieldColumns).length)
       ? data.fieldColumns
-      : clone(fieldColumns),
-    batchActions: (data.batchActions && data.batchActions.length) ? data.batchActions : clone(batchActions),
+      : clone(SYSTEM_FIELD_COLUMNS),
+    batchActions: (data.batchActions && Object.keys(data.batchActions).length)
+      ? data.batchActions
+      : clone(SYSTEM_BATCH_ACTIONS),
     importTemplates: (data.importTemplates && Object.keys(data.importTemplates).length)
       ? data.importTemplates
-      : clone(importTemplates),
+      : clone(SYSTEM_IMPORT_TEMPLATES),
     exportOptions: (data.exportOptions && Object.keys(data.exportOptions).length)
       ? data.exportOptions
-      : clone(exportOptions)
+      : clone(SYSTEM_EXPORT_OPTIONS)
   }
 }
 
@@ -156,47 +127,96 @@ export const systemApi = {
     }
   },
 
-  getDashboardSummary() {
-    return withFallback('system.readiness', async () => {
-      const data = await request('/system/readiness')
-      const c = data.counts || {}
+  async getDashboardSummary() {
+    try {
+      const [board, auditPage] = await Promise.all([
+        request('/system/overview-board'),
+        request('/system/operation-logs', { params: { page: 1, page_size: 8 } })
+      ])
+      const moduleStates = Object.values(board.moduleHealth || {})
+      const availableModules = moduleStates.filter((item) => item.entitled && item.enabled).length
+      const summary = board.goLive?.summary || {}
+      const routeFor = (code = '') => {
+        if (code === 'org') return '/admin/system/org'
+        if (code === 'accounts') return '/admin/system/identity-import/students'
+        if (code === 'roles' || code === 'permissions') return '/admin/system/roles'
+        if (code === 'data_scope') return '/admin/system/scopes'
+        if (code === 'integrations') return '/admin/system/integrations'
+        if (code === 'sync') return '/admin/system/sync-jobs'
+        if (code === 'modules' || code.startsWith('module_')) return '/admin/system/module-entitlements'
+        if (code === 'workflow' || code === 'term') return '/admin/workflow/processes'
+        return '/admin/system/implementation/acceptance'
+      }
       return ok({
         stats: [
-          { label: '在册账号', value: String(c.accounts || 0), trend: '仅统一导入入口可创建', trendQuality: 'neutral' },
-          { label: '预设角色', value: String(c.roles || 0), trend: '标准模板自动初始化', trendQuality: c.roles >= 26 ? 'good' : 'bad' },
-          { label: '学院', value: String(c.colleges || 0), trend: `专业 ${c.majors || 0} · 班级 ${c.classes || 0}`, trendQuality: 'neutral' }
+          {
+            label: '可用业务模块',
+            value: `${availableModules}/${moduleStates.length}`,
+            trend: '平台授权与学校开关共同生效',
+            trendQuality: availableModules === moduleStates.length ? 'good' : 'neutral'
+          },
+          {
+            label: '上线阻断',
+            value: String(summary.blocker || 0),
+            trend: summary.blocker ? '需完成阻断项后验收' : '当前无阻断项',
+            trendQuality: summary.blocker ? 'bad' : 'good'
+          },
+          {
+            label: '同步失败',
+            value: String((board.syncFailures || []).length),
+            trend: '失败任务进入同步失败中心',
+            trendQuality: (board.syncFailures || []).length ? 'bad' : 'good'
+          }
         ],
-        todos: (data.checks || []).filter((item) => !item.passed).map((item) => ({
-          id: item.key, label: item.label, count: 1, tone: 'warning', hint: item.message, route: '/admin/system/org'
+        todos: (board.pendingItems || []).map((item) => ({
+          id: item.code,
+          label: item.title,
+          count: 1,
+          tone: item.status === 'BLOCKER' ? 'danger' : 'warning',
+          hint: item.recommendedAction || item.detail,
+          route: routeFor(item.code)
         })),
-        securityAlerts: [], recentOps: []
+        securityAlerts: (board.securityRisks || []).map((item, index) => ({
+          id: `risk-${index}`,
+          title: item.text,
+          detail: item.text,
+          level: item.level || 'MEDIUM',
+          time: '实时检查'
+        })),
+        recentOps: (auditPage.list || []).map((item) => ({
+          id: item.id,
+          who: item.who,
+          action: item.actionLabel || item.action,
+          time: item.time
+        }))
       })
-    }, () => ok(clone(dashboardSummary)))
+    } catch (error) {
+      return fail(error.message || '系统运行总览加载失败')
+    }
   },
 
   /* ==================== 用户账号 ==================== */
 
-  getUsers(params = {}) {
-    const mockUsers = () => {
-      let list = [...userList]
-      if (params.keyword) {
-        const kw = params.keyword.trim()
-        list = list.filter((u) => u.name.includes(kw) || u.userNo.includes(kw) || (u.orgName || '').includes(kw))
-      }
-      if (params.orgId) list = list.filter((u) => u.orgId === params.orgId)
-      if (params.role) list = list.filter((u) => u.roles.includes(params.role))
-      if (params.status) list = list.filter((u) => u.status === params.status)
-      return ok(paginate(list, params))
+  async getUsers(params = {}) {
+    try {
+      return ok(await request('/system/users', {
+        params: {
+          keyword: params.keyword || undefined,
+          role: params.role || undefined,
+          status: params.status || undefined,
+          account_type: params.accountType || undefined,
+          college_id: params.collegeId || undefined,
+          major_id: params.majorId || undefined,
+          class_id: params.classId || undefined,
+          grade: params.grade || undefined,
+          student_status: params.studentStatus || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 20
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '账号列表加载失败')
     }
-    return withFallback('system.users', async () => ok(await request('/system/users', {
-      params: {
-        keyword: params.keyword || undefined,
-        role: params.role || undefined,
-        status: params.status || undefined,
-        page: params.page || 1,
-        page_size: params.pageSize || 20
-      }
-    })), mockUsers)
   },
 
   async getUserDetail(id) {
@@ -254,12 +274,26 @@ export const systemApi = {
     }
   },
 
-  async batchDisableUsers(ids, { reason }) {
+  async batchDisableUsers(ids, {
+    reason,
+    accountType,
+    scope = 'SELECTED',
+    filters = {},
+    confirmSchoolScope = false
+  }) {
     if (!reason || reason.trim().length < 5) return fail('批量停用原因必填且不少于 5 个字')
     try {
       return ok(await request('/system/user-batch-status', {
         method: 'PUT',
-        body: { action: 'DISABLE', ids, reason }
+        body: {
+          action: 'DISABLE',
+          ids,
+          reason,
+          accountType,
+          scope,
+          filters,
+          confirmSchoolScope
+        }
       }))
     } catch (error) {
       return fail(error.message || '批量停用失败')
@@ -475,10 +509,17 @@ export const systemApi = {
   },
 
   /** 导出账号台账（真实 xlsx：后端查真库+水印+导出留痕，浏览器直接下载） */
-  async exportUsers() {
+  async exportUsers({ accountType = '', filters = {} } = {}) {
     try {
-      const blob = await requestBlob('/system/export/users')
-      const fileName = '账号台账_' + now().slice(0, 10) + '.xlsx'
+      const params = new URLSearchParams()
+      if (accountType) params.set('account_type', accountType)
+      if (filters.keyword) params.set('keyword', filters.keyword)
+      if (filters.role) params.set('role', filters.role)
+      if (filters.status) params.set('status', filters.status)
+      const query = params.toString()
+      const blob = await requestBlob('/system/export/users' + (query ? `?${query}` : ''))
+      const prefix = accountType === 'STUDENT' ? '学生账号台账_' : accountType === 'STAFF' ? '教职工账号台账_' : '账号台账_'
+      const fileName = prefix + now().slice(0, 10) + '.xlsx'
       saveBlob(blob, fileName)
       return ok({ fileName })
     } catch (error) {
@@ -488,15 +529,8 @@ export const systemApi = {
 
   /* ==================== 角色权限 ==================== */
 
-  getRoles(params = {}) {
-    const mockRoles = () => {
-      let list = [...roleList]
-      if (params.keyword) list = list.filter((r) => r.name.includes(params.keyword.trim()) || r.code.includes(params.keyword.trim().toUpperCase()))
-      if (params.status) list = list.filter((r) => r.status === params.status)
-      if (params.type) list = list.filter((r) => r.type === params.type)
-      return ok(paginate(list, params))
-    }
-    return withFallback('system.roles', async () => {
+  async getRoles(params = {}) {
+    try {
       const data = await request('/system/roles', {
         params: {
           keyword: params.keyword || undefined,
@@ -507,30 +541,22 @@ export const systemApi = {
         }
       })
       return ok(data)
-    }, mockRoles)
+    } catch (error) {
+      return fail(error.message || '角色列表加载失败')
+    }
   },
 
-  getRoleDetail(id) {
-    const mockDetail = () => {
-      const preset = roleDetailMap[id]
-      if (preset) return ok(clone(preset))
-      const row = roleList.find((r) => r.id === id)
-      if (!row) return fail('角色不存在')
-      const menuKeys = [...(roleMenuPreview[row.code] || [])]
-      const systemNode = permissionTree.find((node) => node.key === 'mod-system')
-      const buttonKeys = (systemNode?.children || [])
-        .filter((menu) => menuKeys.includes(menu.key))
-        .flatMap((menu) => (menu.children || []).map((button) => button.key))
-      return ok({ ...clone(row), menuKeys, buttonKeys, members: [], auditTrail: [{ who: '系统', time: row.updatedAt, action: '最近更新', affected: row.description }] })
-    }
-    return withFallback('system.role.detail', async () => {
+  async getRoleDetail(id) {
+    try {
       const data = await request(`/system/roles/${encodeURIComponent(id)}`)
       const tree = _lastPermissionTree.length ? _lastPermissionTree : []
       const fromBackend = (data.menuKeys || data.buttonKeys)
         ? { menuKeys: data.menuKeys || [], buttonKeys: data.buttonKeys || [] }
         : selectionFromPermissionCodes(data.permissionCodes || [], tree)
       return ok({ ...data, ...fromBackend })
-    }, mockDetail)
+    } catch (error) {
+      return fail(error.message || '角色详情加载失败')
+    }
   },
 
   async getPermissionTree() {
@@ -623,7 +649,7 @@ export const systemApi = {
   /* ==================== 菜单权限 ==================== */
 
   getMenuTree() {
-    return ok(clone(menuTree))
+    return fail('菜单配置已并入角色权限页，旧菜单编辑入口已停用')
   },
 
   saveMenu() {
@@ -635,7 +661,7 @@ export const systemApi = {
   },
 
   previewRoleMenus(roleCode) {
-    return ok({ roleCode, menuCodes: clone(roleMenuPreview[roleCode] || []) })
+    return fail(`角色 ${roleCode || ''} 的入口预览请在角色权限页查看`)
   },
 
   /* ==================== 数据范围 ==================== */
@@ -692,9 +718,12 @@ export const systemApi = {
 
   /* ==================== 组织结构 ==================== */
 
-  getDepartmentTree() {
-    return withFallback('system.org-tree', async () => ok(await request('/system/org-tree')),
-      () => ok(clone(departmentTree)))
+  async getDepartmentTree() {
+    try {
+      return ok(await request('/system/org-tree'))
+    } catch (error) {
+      return fail(error.message || '组织结构加载失败')
+    }
   },
 
   /** 岗位列表：映射教职工归属；失败则返回空列表 */
@@ -712,7 +741,7 @@ export const systemApi = {
       }))
       return ok(list, '岗位数据来自教职工归属')
     } catch (error) {
-      return ok([], error.message || '暂无岗位归属数据')
+      return fail(error.message || '教职工归属加载失败')
     }
   },
 
@@ -768,6 +797,14 @@ export const systemApi = {
       return ok(await request('/system/brand', { method: 'PUT', body: { ...payload, reason } }))
     } catch (error) {
       return fail(error.message || '品牌保存失败')
+    }
+  },
+
+  async resetBrandConfig({ reason } = {}) {
+    try {
+      return ok(await request('/system/brand/reset', { method: 'POST', body: { reason } }))
+    } catch (error) {
+      return fail(error.message || '品牌恢复默认失败')
     }
   },
 
@@ -853,8 +890,8 @@ export const systemApi = {
     }
   },
 
-  getAuditLogs() {
-    return withFallback('audit.logs', () => realApi.getAuditLogs(), () => ok(clone(auditLogs)))
+  getAuditLogs(params = {}) {
+    return this.getOperationLogs(params)
   },
 
   /** 导出登录/操作审计（真实 xlsx：后端查真库 t_security_audit_log+水印，浏览器直接下载） */
@@ -875,7 +912,11 @@ export const systemApi = {
   async listAccountExceptions(params = {}) {
     try {
       return ok(await request('/system/users-exceptions', {
-        params: { page: params.page || 1, page_size: params.pageSize || 50 }
+        params: {
+          account_type: params.accountType || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 50
+        }
       }))
     } catch (error) {
       return fail(error.message || '账号异常列表加载失败')
@@ -984,10 +1025,10 @@ export const systemApi = {
     }
   },
 
-  async saveModuleFeatures(features, { reason } = {}) {
+  async saveModuleFeatures(features, { reason, expectedVersion } = {}) {
     try {
       return ok(await request('/system/module-features', {
-        method: 'PUT', body: { features, reason }
+        method: 'PUT', body: { features, reason, expectedVersion }
       }))
     } catch (error) {
       return fail(error.message || '业务开关保存失败')

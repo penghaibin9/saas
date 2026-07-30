@@ -77,7 +77,7 @@
       type="danger"
       :title="'作废组织「' + (deprecateRow ? deprecateRow.name : '') + '」？'"
       :message="deprecateRow && deprecateRow.memberCount > 0
-        ? '该组织下仍有 ' + deprecateRow.memberCount + ' 名成员，作废前需先完成转移；此处仅演示确认流程。'
+        ? '该组织下仍有 ' + deprecateRow.memberCount + ' 名成员；后端会校验在籍学生和下级组织，存在引用时将拒绝停用。'
         : '作废为逻辑删除，历史归属关系保留可追溯。'"
       confirm-text="确认作废并留痕"
       require-reason
@@ -198,7 +198,7 @@ export default {
       }
       if (key === 'exportOrg') {
         const res = await systemApi.exportOrg()
-        if (res.code === 0) toast.success('导出任务已创建：' + res.data.fileName + '（含水印），已留痕')
+        if (res.code === 0) toast.success('组织结构已下载：' + res.data.fileName + '（含水印），已留痕')
         else toast.error(res.message)
       }
     },

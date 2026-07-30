@@ -16,9 +16,11 @@
         <header class="mp-card__head"><span class="mp-card__title">业务中心开关</span></header>
         <div class="mp-card__body">
           <label v-for="(item, key) in features" :key="key" class="mf-row">
-            <input v-model="item.enabled" type="checkbox" />
+            <input v-model="item.enabled" type="checkbox" :disabled="!item.entitled" />
             <span class="mf-row__label">{{ item.label || key }}</span>
-            <span class="mp-note">{{ item.expiresAt ? ('授权至 ' + item.expiresAt) : '当前套餐已开通' }}</span>
+            <span class="mp-note">
+              {{ !item.entitled ? (item.reason || '当前套餐未授权') : item.expiresAt ? ('授权至 ' + item.expiresAt) : '当前套餐已开通' }}
+            </span>
           </label>
         </div>
       </section>
@@ -53,6 +55,7 @@ export default {
       loading: true,
       error: '',
       features: {},
+      documentVersion: 0,
       confirmOpen: false,
       submitting: false
     }
@@ -66,23 +69,35 @@ export default {
       Object.keys(this.features).forEach((key) => {
         payload[key] = { enabled: !!this.features[key].enabled }
       })
-      const res = await systemApi.saveModuleFeatures(payload, { reason })
+      const res = await systemApi.saveModuleFeatures(payload, {
+        reason,
+        expectedVersion: this.documentVersion
+      })
       this.submitting = false
       if (res.code === 0) {
         toast.success('业务开关已更新')
         this.confirmOpen = false
         this.features = res.data || this.features
+        this.documentVersion = this.readVersion(this.features)
       } else {
         toast.error(res.message)
+        if (res.code === 'DATA_CONFLICT') this.load()
       }
     },
     async load() {
       this.loading = true
       this.error = ''
       const res = await systemApi.getModuleFeatures()
-      if (res.code === 0) this.features = res.data || {}
+      if (res.code === 0) {
+        this.features = res.data || {}
+        this.documentVersion = this.readVersion(this.features)
+      }
       else this.error = res.message
       this.loading = false
+    },
+    readVersion(features) {
+      const first = Object.values(features || {}).find((item) => item && Number.isFinite(Number(item.version)))
+      return first ? Number(first.version) : 0
     }
   }
 }

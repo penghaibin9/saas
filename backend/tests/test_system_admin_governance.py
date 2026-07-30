@@ -124,9 +124,8 @@ def test_auth_scope_prefers_structured_rule():
     assert "resolve_role_scope_code" in src
 
 
-def test_data_scope_survives_relogin(client, monkeypatch):
-    """改范围后，auth 与 HTTP current-context 均优先读结构化规则（不依赖全库 DDL）。"""
-    from app.core import config as cfg
+def test_data_scope_survives_context_rebuild(monkeypatch):
+    """改范围后，认证重建上下文仍优先读结构化规则（不依赖外部数据库可用性）。"""
     from app.services import auth_service_db as auth
     from app.services import data_scope_service as dss
 
@@ -140,20 +139,106 @@ def test_data_scope_survives_relogin(client, monkeypatch):
 
     # 模拟已写入 DataScopeRule=COLLEGE 后的读取
     monkeypatch.setattr(dss, "resolve_role_scope_code", lambda role: "COLLEGE")
-    monkeypatch.setattr(dss, "resolve_scope_by_role_code", lambda tid, code: "COLLEGE")
-    monkeypatch.setattr(cfg.settings, "DB_ENABLED", True)
 
     assert auth._scope_from_role(Role()) == "COLLEGE"
+    rebuilt = auth._public_context(
+        Role.id,
+        Role.role_code,
+        Role.role_name,
+        scope=auth._scope_from_role(Role()),
+        version=Role.version,
+    )
+    scope = rebuilt.get("dataScope")
+    assert scope == "COLLEGE", f"context scope={scope!r}"
 
-    login = client.post("/api/v1/auth/mock-login",
-                        json={"loginName": "school_admin01", "password": "any"}).json()["data"]
-    headers = {"Authorization": f"Bearer {login['accessToken']}"}
-    resp = client.get("/api/v1/rbac/current-context", headers=headers)
-    assert resp.status_code == 200
-    data = resp.json().get("data") or {}
-    scope_obj = data.get("dataScope") or {}
-    scope = scope_obj.get("scope") if isinstance(scope_obj, dict) else scope_obj
-    assert scope == "COLLEGE", f"HTTP context scope={scope!r}"
+
+def test_module_storage_failure_never_defaults_enabled(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.services import module_access_service as access
+    from app.services import system_governance_service as gov
+
+    monkeypatch.setattr(gov, "get_module_features", lambda: (_ for _ in ()).throw(
+        AppException("SERVER_ERROR", "storage down", http_status=503)))
+    with pytest.raises(AppException) as caught:
+        access._school_enabled_map(1)
+    assert caught.value.http_status == 503
+
+
+def test_module_feature_expected_version_conflict(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.db import session as db_session
+    from app.services import system_governance_service as gov
+
+    monkeypatch.setattr(db_session, "db_enabled", lambda: False)
+    monkeypatch.setattr(gov, "_tid", lambda: 0)
+    gov._MEMORY_DOCS.pop(gov.DOC_MODULE_FEATURES, None)
+    gov._MEMORY_DOCS.pop(f"{gov.DOC_MODULE_FEATURES}__ver", None)
+    first = gov.save_module_features(
+        {"userId": "db-1"},
+        {"studentAffairs": {"enabled": False}},
+        "收口并发版本测试",
+        expected_version=0,
+    )
+    assert first["studentAffairs"]["version"] == 1
+    with pytest.raises(AppException) as caught:
+        gov.save_module_features(
+            {"userId": "db-1"},
+            {"studentAffairs": {"enabled": True}},
+            "使用过期版本重试",
+            expected_version=0,
+        )
+    assert caught.value.code == "DATA_CONFLICT"
+    gov._MEMORY_DOCS.pop(gov.DOC_MODULE_FEATURES, None)
+    gov._MEMORY_DOCS.pop(f"{gov.DOC_MODULE_FEATURES}__ver", None)
+
+
+def test_delegation_rejects_platform_and_excess_role():
+    from datetime import datetime, timedelta
+    from app.core.exceptions import AppException
+    from app.services import system_governance_service as gov
+
+    base = {
+        "granteeUserNo": "teacher01",
+        "expiresAt": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "reason": "系统收口越权验证",
+    }
+    with pytest.raises(AppException) as platform_denied:
+        gov.create_delegation(
+            {"currentRoleCode": "SCHOOL_ADMIN"},
+            {**base, "roleCode": "PLATFORM_SUPER_ADMIN"},
+        )
+    assert platform_denied.value.code == "NO_PERMISSION"
+
+    with pytest.raises(AppException) as excess_denied:
+        gov.create_delegation(
+            {"currentRoleCode": "SYS_ADMIN"},
+            {**base, "roleCode": "COUNSELOR"},
+        )
+    assert excess_denied.value.code == "NO_PERMISSION"
+
+
+def test_delegation_matches_stable_user_id_after_login_rename(monkeypatch):
+    from datetime import datetime, timedelta
+    from app.db import session as db_session
+    from app.services import system_governance_service as gov
+
+    monkeypatch.setattr(db_session, "db_enabled", lambda: False)
+    monkeypatch.setattr(gov, "_tid", lambda: 0)
+    gov._MEMORY_DOCS[gov.DOC_DELEGATIONS] = [{
+        "id": "delegation-1",
+        "granteeUserId": "42",
+        "granteeUserNo": "old-login",
+        "roleCode": "COUNSELOR",
+        "expiresAt": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "ACTIVE",
+        "effective": True,
+    }]
+    patterns = gov.active_delegation_permission_patterns({
+        "userId": "db-42",
+        "loginName": "new-login",
+    })
+    assert patterns
+    gov._MEMORY_DOCS.pop(gov.DOC_DELEGATIONS, None)
 
 
 def test_org_bypass_allowlist_documented():

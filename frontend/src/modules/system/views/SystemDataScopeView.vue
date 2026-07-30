@@ -178,7 +178,8 @@ export default {
       if (key === 'createScopeRule') this.openEdit(null)
       if (key === 'exportScopeRules') {
         const res = await systemApi.exportScopeRules()
-        if (res.code === 0) toast.success('导出任务已创建：' + res.data.fileName + '（含水印），已留痕')
+        if (res.code === 0) toast.success('数据范围清单已下载：' + res.data.fileName + '（含水印），已留痕')
+        else toast.error(res.message)
       }
     },
     openEdit(row) {

@@ -317,7 +317,7 @@ export default {
     async doExport(row) {
       if (!this.can('exportRoleConfig')) return
       const res = await systemApi.exportRoleConfig(row.id)
-      if (res.code === 0) toast.success('导出任务已创建：' + res.data.fileName + '（含水印），已留痕')
+      if (res.code === 0) toast.success('角色配置已下载：' + res.data.fileName + '，已留痕')
       else toast.error(res.message)
     },
     askDeprecate(row) {
