@@ -93,5 +93,6 @@ jobs:
           ! grep -R "confirmStudentIdentityBatch\|confirmTeacherIdentityBatch" \
             frontend/src/modules/system/views/SystemStudentImportView.vue \
             frontend/src/modules/system/views/SystemTeacherImportView.vue
-          grep -q "jobId.*expectedVersion" frontend/src/modules/system/components/ImportDialog.vue
+          grep -q "jobId" frontend/src/modules/system/components/ImportDialog.vue
+          grep -q "expectedVersion" frontend/src/modules/system/components/ImportDialog.vue
           grep -q "extra=\"forbid\"" backend/app/api/v1/data_exchange.py
