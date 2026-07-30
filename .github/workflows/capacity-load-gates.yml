@@ -165,8 +165,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          chmod 0777 performance/results
           docker pull grafana/k6:0.54.0
           docker run --rm --network host \
+            --user "$(id -u):$(id -g)" \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
             -e BASE_URL \
@@ -261,6 +263,7 @@ jobs:
             esac
           fi
           mkdir -p performance/results
+          chmod 0777 performance/results
       - name: 压测前就绪与指标探针
         run: |
           python performance/tools/probe_observability.py \
@@ -274,6 +277,7 @@ jobs:
           set -euo pipefail
           docker pull grafana/k6:0.54.0
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
             -e BASE_URL \
