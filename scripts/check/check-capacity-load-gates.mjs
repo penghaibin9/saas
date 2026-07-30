@@ -70,9 +70,10 @@ if (failures.length === 0) {
     "http_req_failed: ['rate<0.005']",
     "http_req_duration: ['p(95)<1000', 'p(99)<2000']",
     "checks: ['rate>0.995']",
+    "summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)']",
   ]
   for (const threshold of requiredThresholds) {
-    if (!k6.includes(threshold)) failures.push(`missing threshold ${threshold}`)
+    if (!k6.includes(threshold)) failures.push(`missing threshold/reporting contract ${threshold}`)
   }
   if (!/permissions:\s*\n\s*contents:\s*read/m.test(workflow)) {
     failures.push('workflow permissions must be contents: read')
@@ -80,11 +81,15 @@ if (failures.length === 0) {
   if (!workflow.includes('workflow_dispatch:')) failures.push('workflow_dispatch is required')
   if (!workflow.includes('schedule:')) failures.push('nightly schedule is required')
   if (!workflow.includes('grafana/k6:0.54.0')) failures.push('k6 Docker image must be pinned')
-  if (!workflow.includes('local-smoke:')) failures.push('self-contained local smoke job is required')
-  if (!workflow.includes('mysql:8.0')) failures.push('local smoke must use MySQL 8')
-  if (!workflow.includes('redis:7-alpine')) failures.push('local smoke must use Redis')
-  if (!workflow.includes('alembic upgrade head')) failures.push('local smoke must run real migrations')
-  if (!workflow.includes('seed_local_capacity_env.py')) failures.push('local smoke must seed ephemeral identities')
+  if (!workflow.includes('local-capacity:')) failures.push('self-contained local capacity job is required')
+  if (!workflow.includes('profile: [smoke, baseline]')) failures.push('local capacity matrix must run smoke and baseline')
+  if (!workflow.includes('capacity-local-${{ matrix.profile }}-${{ github.run_id }}')) {
+    failures.push('local capacity artifacts must be profile-specific')
+  }
+  if (!workflow.includes('mysql:8.0')) failures.push('local capacity must use MySQL 8')
+  if (!workflow.includes('redis:7-alpine')) failures.push('local capacity must use Redis')
+  if (!workflow.includes('alembic upgrade head')) failures.push('local capacity must run real migrations')
+  if (!workflow.includes('seed_local_capacity_env.py')) failures.push('local capacity must seed ephemeral identities')
   if (!workflow.includes('--network host')) failures.push('local k6 must reach the host backend explicitly')
   if (!workflow.includes('PERF_STUDENT_TOKENS_JSON')) failures.push('student token secret is required')
   if (!workflow.includes('PERF_TEACHER_TOKENS_JSON')) failures.push('teacher token secret is required')
