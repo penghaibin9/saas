@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.optimistic_lock import atomic_claim_version
@@ -155,7 +155,7 @@ def _register_package_version(package_id: int, file_id: int, user) -> None:
             old.invalidated_at = datetime.utcnow()
             old.invalidated_by = center._actor_name(user)
             old.invalid_reason = "重新生成学工档案包"
-        version_no = int(db.scalar(select(__import__("sqlalchemy").func.max(FileVersion.version_no)).where(
+        version_no = int(db.scalar(select(func.max(FileVersion.version_no)).where(
             FileVersion.tenant_id == _tid(), FileVersion.asset_id == int(asset.id),
         )) or 0) + 1
         version = FileVersion(
@@ -245,7 +245,6 @@ def _generate_pending_packages(batch_id: int, user) -> int:
 
 def list_batches(user, status=None, page=1, page_size=50):
     from app.models import ArchiveBatch, ArchivePackage
-    from sqlalchemy import func
 
     with session() as db:
         conds = [ArchiveBatch.tenant_id == _tid(), ArchiveBatch.is_deleted.is_(False)]
@@ -458,7 +457,7 @@ def get_batch(batch_id, user) -> dict:
         packages = db.scalars(select(ArchivePackage).where(
             ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == batch.id,
             ArchivePackage.is_deleted.is_(False),
-        ).all()
+        )).all()
         result = _batch_row(batch)
         visible = []
         for package in packages:
