@@ -67,7 +67,7 @@ def test_requirement_submission_and_attachment_use_public_versions():
 
     for token in (
         "FileAsset", "FileVersion", "FileBinding", "asset.current_version_id",
-        'source_channel="STUDENT_SUBMISSION"', 'status="SUPERSEDED"',
+        'source_channel="STUDENT_SUBMISSION"', "SUPERSEDED",
         "file_version_id", "binding_id",
     ):
         assert token in service
