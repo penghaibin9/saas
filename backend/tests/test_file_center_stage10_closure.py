@@ -15,6 +15,7 @@ def _route_signatures(router):
     return {
         (route.path, frozenset((route.methods or set()) - {"HEAD", "OPTIONS"}))
         for route in router.routes
+        if hasattr(route, "path") and hasattr(route, "methods")
     }
 
 
