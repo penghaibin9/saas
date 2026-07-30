@@ -601,7 +601,7 @@ entries:
   client: student-miniapp
   route: inventory://graduation/student-miniapp
   page: miniapp/src/pages/student/graduation/index.vue
-  action: upload+download
+  action: preview
   fileCategory: MIXED
   api: multiple; see notes
   backendService: miniapp/src/pages/student/graduation/index.vue
@@ -610,20 +610,20 @@ entries:
   dataScope: existing business scope; verify in target phase
   versioned: unknown
   scanGated: unknown
-  preview: false
-  download: true
+  preview: true
+  download: false
   import: false
   export: false
   archive: false
   status: needs-verification
-  risk: P0
-  targetPhase: '1'
-  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/pages/student/graduation/index.vue. representative routes: /files/upload?bizType=GRADUATION_MATERIAL'
+  risk: P1
+  targetPhase: '3'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/pages/student/graduation/index.vue. representative routes: /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/preview, /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket'
 - module: graduation
   client: teacher-miniapp
   route: inventory://graduation/teacher-miniapp
   page: miniapp/src/pages/teacher/graduation-guide/index.vue
-  action: download
+  action: preview
   fileCategory: MIXED
   api: multiple; see notes
   backendService: miniapp/src/pages/teacher/graduation-guide/index.vue
@@ -632,15 +632,15 @@ entries:
   dataScope: existing business scope; verify in target phase
   versioned: unknown
   scanGated: unknown
-  preview: false
-  download: true
+  preview: true
+  download: false
   import: false
   export: false
   archive: false
   status: needs-verification
-  risk: P0
+  risk: P1
   targetPhase: '3'
-  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/pages/teacher/graduation-guide/index.vue. representative routes: -'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/pages/teacher/graduation-guide/index.vue. representative routes: /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/preview, /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket'
 - module: identity-import
   client: backend
   route: inventory://identity-import/backend
