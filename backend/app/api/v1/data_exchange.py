@@ -1,7 +1,6 @@
 """学校端统一数据交换任务中心 API（阶段 3）。"""
 from __future__ import annotations
 
-import io
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Header, Query, UploadFile
@@ -110,10 +109,17 @@ def confirm_import(
     job_id: str,
     body: ConfirmImportRequest,
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
-    user=Depends(require_permission("systemAdmin.user.import")),
+    user=Depends(require_any_permission(
+        "systemAdmin.user.import",
+        "systemAdmin.migration.import",
+        "academicAffairs.roster.import",
+        "academicAffairs.grade.import",
+    )),
 ):
+    from app.services.data_exchange_confirm_service import confirm_import_job
+
     return success(
-        jobs.confirm_identity_import_job(
+        confirm_import_job(
             job_id,
             expected_version=body.expectedVersion,
             user=user,
