@@ -1,4 +1,4 @@
-"""公共文件对象、扫描记录、上传会话、文件任务、逻辑资产、版本、绑定与归档清单。"""
+"""公共文件对象、扫描、资产版本、绑定、归档与存储治理模型。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -31,8 +31,12 @@ class FileObject(PKMixin, TenantMixin, CommonMixin, Base):
     bucket_name: Mapped[str | None] = mapped_column(String(150))
     object_key: Mapped[str | None] = mapped_column(String(500))
     etag: Mapped[str | None] = mapped_column(String(128))
+    legacy_file_key: Mapped[str | None] = mapped_column(String(500))
     storage_migrated_at: Mapped[datetime | None] = mapped_column(DateTime)
     storage_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime)
+    legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     upload_source: Mapped[str] = mapped_column(String(30), nullable=False, default="USER")
     scan_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     scan_status: Mapped[str] = mapped_column(String(30), nullable=False, default="NOT_REQUIRED", index=True)
@@ -49,6 +53,7 @@ class FileObject(PKMixin, TenantMixin, CommonMixin, Base):
         Index("ix_file_object_scan_queue", "tenant_id", "scan_required", "scan_status", "created_at"),
         Index("ix_file_storage_object", "storage_backend", "bucket_name", "object_key"),
         Index("ix_file_storage_migration", "tenant_id", "storage_backend", "storage_migrated_at", "id"),
+        Index("ix_file_retention_cleanup", "tenant_id", "legal_hold", "is_deleted", "retention_until", "id"),
     )
 
 
@@ -227,4 +232,34 @@ class ArchiveManifestItem(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "manifest_id", "version_id", "material_code", name="uk_archive_manifest_item_version"),
         Index("ix_archive_manifest_item_order", "tenant_id", "manifest_id", "sort_no", "id"),
+    )
+
+
+class FileRetentionPolicy(PKMixin, TenantMixin, CommonMixin, Base):
+    __tablename__ = "t_file_retention_policy"
+    policy_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    module_code: Mapped[str | None] = mapped_column(String(64))
+    biz_type: Mapped[str | None] = mapped_column(String(80))
+    storage_zone: Mapped[str | None] = mapped_column(String(30))
+    retention_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    cleanup_action: Mapped[str] = mapped_column(String(30), nullable=False, default="DELETE_BYTES")
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    description: Mapped[str | None] = mapped_column(String(500))
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "policy_code", name="uk_file_retention_policy_code"),
+        Index("ix_file_retention_policy_match", "tenant_id", "is_active", "module_code", "biz_type", "storage_zone", "priority"),
+    )
+
+
+class TenantStorageQuota(PKMixin, TenantMixin, CommonMixin, Base):
+    __tablename__ = "t_tenant_storage_quota"
+    total_quota_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    warning_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    hard_limit_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    module_quota_json: Mapped[dict | None] = mapped_column(JSON)
+    description: Mapped[str | None] = mapped_column(String(500))
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uk_tenant_storage_quota"),
+        Index("ix_tenant_storage_quota_enabled", "tenant_id", "hard_limit_enabled", "is_deleted"),
     )
