@@ -142,14 +142,16 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.graduation.routers import (
         graduation, graduation_archive, graduation_archive_sensitive_router, graduation_batch,
         graduation_defense_score, graduation_extension, graduation_grade, graduation_guidance,
-        graduation_material_sensitive_router, graduation_mentor, graduation_midterm,
-        graduation_more, graduation_p0_guard, graduation_review, graduation_risk,
-        graduation_sensitive_router, graduation_stats, graduation_student,
+        graduation_material_center, graduation_material_sensitive_router, graduation_mentor,
+        graduation_midterm, graduation_more, graduation_p0_guard, graduation_review,
+        graduation_risk, graduation_sensitive_router, graduation_stats, graduation_student,
         graduation_student_eval, graduation_taskbook, graduation_template,
         graduation_topic, graduation_topic_change, graduation_topic_round,
     )
     d = deps["gd"]
     api_router.include_router(graduation_p0_guard.router, dependencies=d)
+    # 阶段6公共版本路由必须先于旧开题、成果和归档路由。
+    api_router.include_router(graduation_material_center.router, dependencies=d)
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
@@ -172,7 +174,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import (
         audit, dashboard, data_exchange, feedback, implementation, import_export,
         migration, mobile, mobile_export, mobile_graduation_extension_teacher,
-        mobile_graduation_guard, mobile_graduation_teacher_context, mobile_orientation_teacher,
+        mobile_graduation_guard, mobile_graduation_material_center,
+        mobile_graduation_teacher_context, mobile_orientation_teacher,
         mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
         national_standards, notification, onboarding, org_directory, platform, stats,
         student_portal_graduation_guard, system, transfer, user_preference,
@@ -208,6 +211,11 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(
         mobile_graduation_teacher_context.router,
         dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
+    )
+    # 与旧移动端相同 URL，必须先于 mobile.router 注册。
+    api_router.include_router(
+        mobile_graduation_material_center.router,
+        dependencies=[Depends(require_mobile_graduation_request_permission)],
     )
     api_router.include_router(mobile_graduation_guard.router)
     from app.core.mobile_internship_permission_gate import enforce_teacher_internship_mobile_permission
