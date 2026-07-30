@@ -6,7 +6,7 @@
 - 基线：`main@b0af2244e1c8d466fe8afbd7b2bc0ab067d68489`
 - 分支：`codex/teacher-pc-v2-html-library`
 - Draft PR：`#27`
-- 共享设计系统：`teacher-pc-v2 / 1.0.0`
+- 共享设计系统：`teacher-pc-v2 / 1.1.0`
 - 生产代码修改：**否**
 - 允许目录外修改：**0**
 - 当前最新完成工作区：**考务管理**
