@@ -1,6 +1,7 @@
 """学工材料补交与安全批次操作模型。
 
-材料：缺项定义与每次补交版本分离，禁止覆盖历史文件。
+材料：缺项定义与每次补交版本分离，禁止覆盖历史文件；阶段 5 同步接入公共
+FileAsset/FileVersion/FileBinding，旧字段继续保留兼容。
 批次：主表与逐条结果分离，支持部分成功、失败重试、幂等和审计。
 """
 from __future__ import annotations
@@ -34,6 +35,17 @@ class AffairsMaterialRequirement(PKMixin, TenantMixin, CommonMixin, Base):
     current_submission_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # 公共文件冻结中心阶段 5：同一缺项只有一个逻辑资产，重交形成不可变版本。
+    asset_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    sensitivity_level: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="SENSITIVE",
+        comment="NORMAL/PERSONAL/SENSITIVE/HIGHLY_SENSITIVE",
+    )
+    material_scope: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="STUDENT_SELF",
+        comment="STUDENT_SELF/PSY_STUDENT/AID_RESTRICTED/BUSINESS_SCOPE",
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "tenant_id", "biz_type", "biz_id", "item_code",
@@ -42,6 +54,10 @@ class AffairsMaterialRequirement(PKMixin, TenantMixin, CommonMixin, Base):
         Index(
             "ix_affairs_material_requirement_biz",
             "tenant_id", "biz_type", "biz_id", "status",
+        ),
+        Index(
+            "ix_affairs_material_requirement_sensitivity",
+            "tenant_id", "sensitivity_level", "status",
         ),
     )
 
@@ -68,6 +84,14 @@ class AffairsMaterialSubmission(PKMixin, TenantMixin, CommonMixin, Base):
     review_note: Mapped[str | None] = mapped_column(String(500))
     supersedes_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
 
+    # 兼容字段 file_id/affairs_attachment_id 继续双写；以下为公共版本权威引用。
+    asset_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    file_version_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    binding_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    sensitivity_level: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="SENSITIVE",
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "tenant_id", "requirement_id", "version_no",
@@ -76,6 +100,10 @@ class AffairsMaterialSubmission(PKMixin, TenantMixin, CommonMixin, Base):
         Index(
             "ix_affairs_material_submission_requirement",
             "tenant_id", "requirement_id", "status", "version_no",
+        ),
+        Index(
+            "ix_affairs_material_submission_public_version",
+            "tenant_id", "requirement_id", "file_version_id", "status",
         ),
     )
 

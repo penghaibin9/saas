@@ -37,6 +37,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
          混在一张表里靠「账号类型」列区分，学校填表极易串列。 */
       { key: 'sys-student-import', label: '学生导入与账号开通', path: '/admin/system/identity-import/students', permissionKey: 'system.user.import', view: 'student-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
       { key: 'sys-teacher-import', label: '教师导入', path: '/admin/system/identity-import/teachers', permissionKey: 'system.user.import', view: 'teacher-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
+      { key: 'sys-data-exchange', label: '数据交换任务中心', path: '/admin/system/data-exchange', permissionKey: 'system.user.import', view: 'data-exchange', actions: [action('data-exchange:view', '查看任务'), action('data-exchange:confirm', '确认导入', 'HIGH'), action('data-exchange:download', '下载回执', 'HIGH'), action('data-exchange:revoke', '撤销导出', 'HIGH')] },
       { key: 'sys-account-exceptions', label: '账号异常中心', path: '/admin/system/account-exceptions', permissionKey: 'system.user.exception.view', view: 'account-exceptions', actions: [action('user:exception:resolve', '处理账号异常', 'HIGH')] },
       { key: 'sys-login-policy', label: '登录与安全策略', path: '/admin/system/login-policy', permissionKey: 'system.security.policy.manage', view: 'login-policy', actions: [action('security:login-policy:update', '修改登录策略', 'HIGH')] }
     ]
@@ -139,7 +140,11 @@ const ACTION_CODE_OVERRIDES = {
   'role:config': 'systemAdmin.role.config',
   'audit:operation:view': 'systemAdmin.audit.view',
   'audit:login:view': 'systemAdmin.audit.view',
-  'config:brand:update': 'systemAdmin.config.manage'
+  'config:brand:update': 'systemAdmin.config.manage',
+  'data-exchange:view': 'systemAdmin.user.import',
+  'data-exchange:confirm': 'systemAdmin.user.import',
+  'data-exchange:download': 'systemAdmin.user.import',
+  'data-exchange:revoke': 'systemAdmin.user.import'
 }
 
 export const SYSTEM_ACTION_PERMISSION_BY_KEY = Object.fromEntries(

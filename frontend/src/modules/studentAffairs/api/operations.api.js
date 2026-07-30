@@ -1,19 +1,21 @@
-import { request, requestBlob } from '@/services/http/client'
+import { request } from '@/services/http/client'
+import { fileSdk } from '@/services/file/fileSdk'
 
 const enc = encodeURIComponent
 
-function saveBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = fileName || '补交材料'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-}
-
 export const affairsOperationsApi = {
+  listCenter(params = {}) {
+    return request('/student-affairs/material-center', { params })
+  },
+  backfill(limit = 500) {
+    return request('/student-affairs/material-center/backfill', { method: 'POST', body: { limit } })
+  },
+  getLatestManifest(studentId) {
+    return request(`/student-affairs/material-center/students/${enc(studentId)}/manifest`)
+  },
+  getPackageManifest(packageId) {
+    return request(`/student-affairs/archive/packages/${enc(packageId)}/manifest`)
+  },
   listRequirements(params = {}) {
     return request('/student-affairs/material-requirements', { params })
   },
@@ -37,9 +39,11 @@ export const affairsOperationsApi = {
   retryFailed(jobId) {
     return request(`/student-affairs/batch-jobs/${enc(jobId)}/retry-failed`, { method: 'POST' })
   },
-  async downloadMaterial(fileId, fileName) {
-    const blob = await requestBlob(`/files/download/${enc(fileId)}`)
-    saveBlob(blob, fileName)
+  previewMaterial(fileId) {
+    return fileSdk.preview(fileId)
+  },
+  downloadMaterial(fileId, fileName) {
+    return fileSdk.download(fileId, fileName)
   }
 }
 

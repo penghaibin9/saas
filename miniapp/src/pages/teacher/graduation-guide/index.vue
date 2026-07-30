@@ -175,9 +175,17 @@
             <!-- 通用：上次意见 + 历史版本 + 真实附件 -->
             <view v-if="detail.reviewComment" class="rv__block"><text class="rv__label">上次批阅/退回意见</text><text class="rv__text rv__text--warn">{{ detail.reviewComment }}</text></view>
             <view v-if="detail.versions && detail.versions.length > 1" class="rv__block"><text class="rv__label">历史版本</text><text v-for="(v, i) in detail.versions" :key="i" class="rv__ver">· {{ v.title }}<text v-if="v.desc"> — {{ v.desc }}</text></text></view>
-            <view v-if="detail.attachmentsList && detail.attachmentsList.length" class="rv__block">
-              <text class="rv__label">材料附件（点击下载）</text>
-              <view v-for="a in detail.attachmentsList" :key="a.fileId" class="rv__att" @click="downloadAtt(a)"><text class="rv__att-name">📎 {{ a.fileName }}</text><text class="rv__att-dl">下载</text></view>
+            <view v-if="detail.currentSafeVersions && detail.currentSafeVersions.length" class="rv__block">
+              <text class="rv__label">当前安全版本（审核锁定）</text>
+              <view v-for="v in detail.currentSafeVersions" :key="v.versionId" class="rv__att" @click="openVersion(v)">
+                <view><text class="rv__att-name">📎 {{ v.fileName }}</text><text class="rv__text">FileVersion {{ v.versionId }} · v{{ v.versionNo }} · {{ v.scanStatus }} · {{ v.reviewStatus || v.status }}</text></view>
+                <text class="rv__att-dl">安全预览</text>
+              </view>
+              <text v-if="!detail.reviewReady" class="rv__warn">文件仍在扫描、已隔离或版本已变化，当前不能审核通过</text>
+            </view>
+            <view v-else-if="detail.attachmentsList && detail.attachmentsList.length" class="rv__block">
+              <text class="rv__label">历史兼容附件</text>
+              <view v-for="a in detail.attachmentsList" :key="a.fileId" class="rv__att" @click="openVersion(a)"><text class="rv__att-name">📎 {{ a.fileName }}</text><text class="rv__att-dl">安全预览</text></view>
             </view>
           </view>
         </MobileGlobalState>
@@ -218,9 +226,8 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
+import fileSdk from '@/services/fileSdk'
 import { go, toast } from '@/utils/nav'
-import { ENV } from '@/config/env'
-import { getToken } from '@/services/request'
 
 const KIND_LABEL = { proposal: '开题批阅', final: '成果批阅', midterm: '中期检查', peer: '评阅', grade: '成绩复核' }
 const TAB_KEYS = ['review', 'midterm', 'peer', 'defense', 'grade']
@@ -280,7 +287,11 @@ export default {
     overdueCount() { return this.data ? this.data.list.filter((g) => g.status === 'OVERDUE').length : 0 },
     current() { return this.queue[this.queueIndex] || null },
     kindLabel() { return KIND_LABEL[this.reviewKind] || '处理' },
-    canAct() { return !this.acting && !!this.detail && this.detailState === 'ready' }
+    canAct() {
+      const needsSafeVersion = this.reviewKind === 'proposal' || this.reviewKind === 'final'
+      return !this.acting && !!this.detail && this.detailState === 'ready'
+        && (!needsSafeVersion || this.detail.reviewReady === true)
+    }
   },
   methods: {
     toast,
@@ -464,25 +475,20 @@ export default {
         .then(() => { toast('评阅已提交'); this.afterAction() })
         .catch((e) => { toast(normalizeError(e).text) }).finally(() => { this.acting = false })
     },
-    downloadAtt(a) {
-      const url = ENV.apiBaseUrl + ENV.apiPrefix + a.downloadUrl.replace(ENV.apiPrefix, '')
-      const token = getToken()
-      uni.showLoading({ title: '下载中' })
-      uni.downloadFile({
-        url, header: token ? { Authorization: 'Bearer ' + token } : {},
-        success: (res) => {
-          uni.hideLoading()
-          if (res.statusCode !== 200) { toast('下载失败或无权限'); return }
-          // #ifdef H5
-          try { const link = document.createElement('a'); link.href = res.tempFilePath; link.download = a.fileName; link.click() } catch (e) { toast('已下载') }
-          // #endif
-          // #ifndef H5
-          uni.openDocument({ filePath: res.tempFilePath, showMenu: true, fail: () => toast('已下载，暂无法预览此类型') })
-          // #endif
-        },
-        fail: () => { uni.hideLoading(); toast('下载失败，请检查网络') }
-      })
+    async openVersion(item) {
+      const fileId = item && item.fileId
+      if (!fileId) { toast('附件无效'); return }
+      try {
+        await fileSdk.openAuthorized({
+          fileId,
+          fileName: item.fileName,
+          ticketPath: `/mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket`,
+          openPath: `/mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/preview`,
+          action: 'preview'
+        })
+      } catch (e) { toast(normalizeError(e).text || '材料尚未通过安全扫描或无权限') }
     },
+    downloadAtt(a) { return this.openVersion(a) },
     addGuidance(g) {
       if (this.acting) return
       if (!/^\d+$/.test(String(g.id))) { toast('当前为离线数据，无法记录指导'); return }

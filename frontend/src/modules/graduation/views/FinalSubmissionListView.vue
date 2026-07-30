@@ -22,7 +22,6 @@
 
       <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
 
-      <!-- 连续批阅双栏：左队列 + 右批阅面板；窄屏降级为「列表 ⇄ 整屏详情」切换 -->
       <div class="fr-split" :class="{ 'is-narrow': isNarrow }">
         <aside v-if="!isNarrow || !selectedRow" class="fr-list">
           <AppSearchBox v-if="hasBatch" v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
@@ -99,7 +98,56 @@
               </div>
             </section>
 
-            <!-- 未提交：催交 -->
+            <section v-if="selectedRow.status !== 'NOT_SUBMITTED'" class="mp-card">
+              <div class="mp-card__head">
+                <span class="mp-card__title">当前安全版本（本次审核锁定）</span>
+                <StatusTag
+                  :type="finalDetail?.reviewReady ? 'success' : 'warning'"
+                  :label="finalDetail?.reviewReady ? `安全门通过 · ${secureVersionFiles.length} 个版本` : '暂不可审核'"
+                />
+              </div>
+              <div class="mp-card__body">
+                <LoadingState v-if="detailLoading" />
+                <ErrorState v-else-if="detailError" :description="detailError" @retry="loadSelectedDetail" />
+                <template v-else>
+                  <div v-if="finalDetail?.migrationRequired" class="version-warning">
+                    该历史成果尚未完成公共版本回填。正式审核前后端会执行安全回填；回填失败时禁止通过。
+                  </div>
+                  <div v-else-if="!finalDetail?.reviewReady" class="version-warning">
+                    当前成果仍在扫描、扫描失败或版本关系已变化。请刷新详情，系统不会绕过安全门审核。
+                  </div>
+                  <SecureFileList
+                    :items="secureVersionFiles"
+                    :loading="detailLoading"
+                    empty-text="尚无可审核的安全文件版本"
+                    @preview="previewVersion"
+                    @download="downloadVersion"
+                    @refresh="loadSelectedDetail"
+                  />
+                  <div v-if="secureVersionFiles.length" class="version-table-wrap">
+                    <table class="version-table">
+                      <thead>
+                        <tr><th>材料</th><th>版本</th><th>versionId</th><th>扫描</th><th>审核态</th><th>SHA-256</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="item in secureVersionFiles" :key="item.versionId">
+                          <td>{{ item.materialName || item.fileName }}</td>
+                          <td>v{{ item.versionNo }}</td>
+                          <td class="mono">{{ item.versionId }}</td>
+                          <td>{{ item.scanStatus }}</td>
+                          <td>{{ item.versionStatus }}</td>
+                          <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p class="mp-note" style="margin-top: var(--space-2)">
+                    通过或退回时，服务端会重新锁定这些 versionId，核验 FileObject、扫描结论与 SHA-256 后再改变业务状态。
+                  </p>
+                </template>
+              </div>
+            </section>
+
             <section v-if="selectedRow.status === 'NOT_SUBMITTED'" class="mp-card">
               <div class="mp-card__head"><span class="mp-card__title">尚未提交成果</span></div>
               <div class="mp-card__body">
@@ -108,32 +156,30 @@
               </div>
             </section>
 
-            <!-- 待审阅：批阅表单 -->
             <section v-else-if="selectedRow.status === 'PENDING_REVIEW'" class="mp-card">
               <div class="mp-card__head"><span class="mp-card__title">批阅</span></div>
               <div class="mp-card__body">
                 <div v-if="!canReview" class="mp-note" style="margin-bottom: var(--space-2); color: var(--warning-600)">
-                  {{ reviewReason }}（以下操作已置灰，仅指导教师可批阅）
+                  {{ reviewReason }}（以下操作已置灰）
                 </div>
                 <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">批阅意见（退回时必填，≥5 字）</label>
                 <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" rows="3" placeholder="批阅意见将同步学生端…"></textarea>
                 <AppTemplateChips v-if="canReview" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
                 <p v-if="formError" class="mp-form-err">{{ formError }}</p>
                 <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
-                  <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submitReview('APPROVE')">✓ 通过</AppPermissionButton>
-                  <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" style="flex: 1" @click="submitReview('REJECT')">↩ 退回修改</AppPermissionButton>
+                  <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submitReview('APPROVE')">✓ 通过当前版本</AppPermissionButton>
+                  <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" style="flex: 1" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
                 </div>
-                <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅写入审批留痕；成果文件与查重报告在学生档案「成果 / 查重」页签查看</p>
+                <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅结果同时写入业务留痕与公共文件版本状态；学生重交会生成新的 FileVersion。</p>
               </div>
             </section>
 
-            <!-- 已批阅：结果 -->
             <section v-else class="mp-card">
               <div class="mp-card__head"><span class="mp-card__title">批阅结果</span></div>
               <div class="mp-card__body">
                 <div class="mp-kv"><span class="mp-kv__k">结果</span><span class="mp-kv__v">{{ selectedRow.statusLabel }}</span></div>
                 <p class="mp-note" style="margin-top: var(--space-2)">
-                  批阅意见与留痕在学生档案中查看；已退回的成果待学生重交后将出现新的待审记录。
+                  已批阅版本继续保留追溯；已退回成果待学生重交后会出现新的待审记录和新的 FileVersion。
                 </p>
               </div>
             </section>
@@ -141,26 +187,22 @@
         </section>
       </div>
 
-      <p class="mp-note">初稿 / 定稿顺序、查重超标拦截均由后端真实状态机校验；筛选默认「全部时间」。</p>
+      <p class="mp-note">初稿 / 定稿顺序、查重超标和文件安全门均由后端真实状态机校验；筛选默认「全部时间」。</p>
     </div>
-    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
     <AppPageGuide guide-key="graduation.gd-final-review" />
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 成果检查 · 连续双栏批阅工作区（/admin/graduation/finals）。
- * 左：成果队列（搜索/页签计数/分页）；右：行摘要 + 查重摘要 + 真实批阅（通过/退回≥5字）/催交。
- * 查重超标（>30%）由后端拦截「通过」（GD 业务规则），前端仅提示不伪造结果。
- * 连续处理：处理后自动进入下一条待审；↑↓ 键切换；?sel= 刷新保留；窄屏为「列表 ⇄ 整屏详情」切换。
- */
+/** 成果检查：连续双栏批阅 + 公共 FileVersion 安全证据。 */
 import { ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips, AppPageGuide } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
+import SecureFileList from '@/components/file/SecureFileList.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
 import { buildMaterialQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
@@ -169,10 +211,10 @@ const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达�
 
 export default {
   name: 'FinalSubmissionListView',
-  components: { AppPageGuide,
-    ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
+  components: {
+    AppPageGuide, ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppDateDisplay,
-    AppTemplateChips
+    AppTemplateChips, SecureFileList
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -194,6 +236,10 @@ export default {
       reminding: false,
       stats: null,
       isNarrow: false,
+      finalDetail: null,
+      detailLoading: false,
+      detailError: '',
+      detailRequestKey: '',
       tabs: [
         { value: 'PENDING_REVIEW', label: '待审阅' },
         { value: 'APPROVED', label: '已通过' },
@@ -204,41 +250,45 @@ export default {
     }
   },
   computed: {
-    hasBatch() {
-      return !!this.batchStore.selectedBatchId
-    },
+    hasBatch() { return !!this.batchStore.selectedBatchId },
     pageSubtitle() {
       if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
       const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
       const s = this.stats
-      if (!s) return `${batch}初稿 / 定稿连续批阅 · 查重超标不可直接通过，须退回修改`
-      return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 查重超标 ${s.plagiarismOver ?? 0} · 连续批阅不返回列表`
+      if (!s) return `${batch}初稿 / 定稿连续批阅 · 审核前锁定当前安全文件版本`
+      return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 查重超标 ${s.plagiarismOver ?? 0} · 安全版本审核`
     },
-    emptyTitle() {
-      return this.hasBatch ? '当前页签暂无成果提交' : '请先选择或创建毕设批次'
-    },
-    emptyDesc() {
-      return this.hasBatch ? '可切换页签或调整筛选' : '顶部批次条选择当前工作批次后，再批阅成果材料。'
-    },
+    emptyTitle() { return this.hasBatch ? '当前页签暂无成果提交' : '请先选择或创建毕设批次' },
+    emptyDesc() { return this.hasBatch ? '可切换页签或调整筛选' : '顶部批次条选择当前工作批次后，再批阅成果材料。' },
     exportPerm() {
       const pa = this.ctx.permissionActions.exportStats || {}
       return { visible: !!pa.visible && this.hasBatch, allowed: !!pa.allowed }
     },
+    secureVersionFiles() {
+      return graduationMaterialCenterApi.normalizeVersions(this.finalDetail?.currentSafeVersions || [])
+    },
     canReview() {
       const pa = this.ctx.permissionActions.reviewFinal
-      return !!(pa && pa.visible && pa.allowed) && this.ctx.writeEnabled !== false
+      return !!(
+        pa && pa.visible && pa.allowed && this.ctx.writeEnabled !== false &&
+        this.selectedRow?.status === 'PENDING_REVIEW' && !this.detailLoading &&
+        this.finalDetail?.reviewReady
+      )
     },
     reviewReason() {
       if (this.ctx.writeEnabled === false) return '写操作已禁用'
       const pa = this.ctx.permissionActions.reviewFinal
-      return pa && !pa.allowed ? pa.reason : ''
+      if (pa && !pa.allowed) return pa.reason || '当前角色无成果批阅权限'
+      if (this.detailLoading) return '正在核验当前文件版本'
+      if (this.detailError) return '成果安全版本详情加载失败'
+      if (this.finalDetail?.migrationRequired) return '历史材料尚未完成公共版本回填'
+      if (!this.finalDetail?.reviewReady) return '当前材料版本未通过安全门禁'
+      return ''
     },
-    filterFields() {
-      return []
-    },
+    filterFields() { return [] },
     pageStartIndex() { return (this.page - 1) * this.pageSize },
-    selectedRow() { return this.rows.find((r) => this.rowKey(r) === this.selKey) || null },
-    selIndex() { return this.rows.findIndex((r) => this.rowKey(r) === this.selKey) },
+    selectedRow() { return this.rows.find((row) => this.rowKey(row) === this.selKey) || null },
+    selIndex() { return this.rows.findIndex((row) => this.rowKey(row) === this.selKey) },
     hasNext() {
       if (this.selIndex < this.rows.length - 1) return true
       return this.page * this.pageSize < this.total
@@ -246,7 +296,7 @@ export default {
   },
   created() {
     const qTab = (this.$route.query.tab || '').toString()
-    if (this.tabs.some((x) => x.value === qTab)) this.filters.status = qTab
+    if (this.tabs.some((item) => item.value === qTab)) this.filters.status = qTab
     this.selKey = (this.$route.query.sel || '').toString()
     this.loadStats()
     this.load()
@@ -255,6 +305,7 @@ export default {
     'batchStore.selectedBatchId'() {
       this.page = 1
       this.selKey = ''
+      this.resetDetail()
       this.loadStats()
       this.load()
     }
@@ -262,49 +313,54 @@ export default {
   mounted() {
     this._mq = window.matchMedia('(max-width: 1100px)')
     this.isNarrow = this._mq.matches
-    this._onMq = (e) => { this.isNarrow = e.matches }
+    this._onMq = (event) => { this.isNarrow = event.matches }
     this._mq.addEventListener ? this._mq.addEventListener('change', this._onMq) : this._mq.addListener(this._onMq)
-    this._onKey = (e) => {
+    this._onKey = (event) => {
       if (this.isNarrow) return
-      const tag = (e.target && e.target.tagName) || ''
+      const tag = (event.target && event.target.tagName) || ''
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (e.key === 'ArrowDown') { e.preventDefault(); this.step(1) }
-      if (e.key === 'ArrowUp') { e.preventDefault(); this.step(-1) }
+      if (event.key === 'ArrowDown') { event.preventDefault(); this.step(1) }
+      if (event.key === 'ArrowUp') { event.preventDefault(); this.step(-1) }
     }
     window.addEventListener('keydown', this._onKey)
   },
   beforeUnmount() {
-    if (this._mq) { this._mq.removeEventListener ? this._mq.removeEventListener('change', this._onMq) : this._mq.removeListener(this._onMq) }
+    if (this._mq) this._mq.removeEventListener ? this._mq.removeEventListener('change', this._onMq) : this._mq.removeListener(this._onMq)
     window.removeEventListener('keydown', this._onKey)
   },
   methods: {
-    rowKey(row) {
-      return row.id != null ? String(row.id) : 'ns-' + row.gdStudentId
+    rowKey(row) { return row.id != null ? String(row.id) : `ns-${row.gdStudentId}` },
+    shortHash(value) {
+      const text = String(value || '')
+      return text.length > 16 ? `${text.slice(0, 8)}…${text.slice(-8)}` : (text || '—')
     },
     statusCount(status) {
-      const s = (this.stats?.byStatus || []).find((x) => x.status === status)
-      return s ? s.count : 0
+      const stat = (this.stats?.byStatus || []).find((item) => item.status === status)
+      return stat ? stat.count : 0
     },
-    tabCount(v) {
-      if (!this.stats || v === '') return null
-      if (v === 'NOT_SUBMITTED') return null
-      return this.statusCount(v)
+    tabCount(value) {
+      if (!this.stats || value === '' || value === 'NOT_SUBMITTED') return null
+      return this.statusCount(value)
+    },
+    resetDetail() {
+      this.finalDetail = null
+      this.detailLoading = false
+      this.detailError = ''
+      this.detailRequestKey = ''
     },
     async loadStats() {
-      if (!this.batchStore.selectedBatchId) {
-        this.stats = null
-        return
-      }
+      if (!this.batchStore.selectedBatchId) { this.stats = null; return }
       const res = await graduationMoreApi.getFinalStats({ batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) this.stats = res.data
     },
-    switchTab(v) {
-      this.filters.status = v
+    switchTab(value) {
+      this.filters.status = value
       this.page = 1
       this.selKey = ''
-      const q = { ...this.$route.query, tab: v || undefined }
-      delete q.sel
-      this.$router.replace({ query: q })
+      this.resetDetail()
+      const query = { ...this.$route.query, tab: value || undefined }
+      delete query.sel
+      this.$router.replace({ query })
       this.load()
     },
     onFilterSearch() { this.page = 1; this.load() },
@@ -313,22 +369,49 @@ export default {
       this.page = 1
       this.load()
     },
-    turnPage(p) { this.page = p; this.load() },
+    turnPage(page) { this.page = page; this.load() },
     select(row) {
       this.selKey = this.rowKey(row)
       this.comment = ''
       this.formError = ''
+      this.resetDetail()
       this.$router.replace({ query: { ...this.$route.query, sel: this.selKey } })
+      this.loadSelectedDetail()
     },
     clearSelection() {
       this.selKey = ''
-      const q = { ...this.$route.query }
-      delete q.sel
-      this.$router.replace({ query: q })
+      this.resetDetail()
+      const query = { ...this.$route.query }
+      delete query.sel
+      this.$router.replace({ query })
+    },
+    async loadSelectedDetail() {
+      const row = this.selectedRow
+      if (!row || row.status === 'NOT_SUBMITTED' || !row.id) {
+        this.resetDetail()
+        return
+      }
+      const requestKey = `${row.id}:${this.batchStore.selectedBatchId}`
+      this.detailRequestKey = requestKey
+      this.detailLoading = true
+      this.detailError = ''
+      const res = await graduationApi.getFinalDetail(row.id, { batchId: this.batchStore.selectedBatchId })
+      if (this.detailRequestKey !== requestKey) return
+      this.detailLoading = false
+      if (res.code === 0) this.finalDetail = res.data
+      else {
+        this.finalDetail = null
+        this.detailError = res.message || '成果安全版本详情加载失败'
+      }
+    },
+    async previewVersion(item) {
+      try { await graduationMaterialCenterApi.previewMaterial(item) } catch (error) { toast.error(error?.message || '预览失败') }
+    },
+    async downloadVersion(item) {
+      try { await graduationMaterialCenterApi.downloadMaterial(item) } catch (error) { toast.error(error?.message || '下载失败') }
     },
     step(delta) {
-      const i = this.selIndex
-      const target = i + delta
+      const target = this.selIndex + delta
       if (target >= 0 && target < this.rows.length) { this.select(this.rows[target]); return }
       if (delta > 0 && this.page * this.pageSize < this.total) {
         this.turnPage(this.page + 1)
@@ -339,39 +422,35 @@ export default {
     },
     nextPending() {
       const from = this.selIndex
-      for (let i = from + 1; i < this.rows.length; i++) {
-        if (this.rows[i].status === 'PENDING_REVIEW') { this.select(this.rows[i]); return }
+      for (let index = from + 1; index < this.rows.length; index++) {
+        if (this.rows[index].status === 'PENDING_REVIEW') { this.select(this.rows[index]); return }
       }
-      for (let i = 0; i < from; i++) {
-        if (this.rows[i].status === 'PENDING_REVIEW') { this.select(this.rows[i]); return }
+      for (let index = 0; index < from; index++) {
+        if (this.rows[index].status === 'PENDING_REVIEW') { this.select(this.rows[index]); return }
       }
       if (this.page * this.pageSize < this.total) {
         this._selectPendingAfterLoad = true
         this.turnPage(this.page + 1)
-      } else {
-        toast.success('本页待审成果已全部处理完')
-      }
+      } else toast.success('本页待审成果已全部处理完')
     },
     ensureSelection() {
-      if (this.selectedRow) return
-      if (!this.rows.length) { this.selKey = ''; return }
+      if (this.selectedRow) { this.loadSelectedDetail(); return }
+      if (!this.rows.length) { this.selKey = ''; this.resetDetail(); return }
       let target = null
       if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
-      else target = this.rows.find((r) => r.status === 'PENDING_REVIEW') || this.rows[0]
+      else target = this.rows.find((row) => row.status === 'PENDING_REVIEW') || this.rows[0]
       this._selectLastAfterLoad = false
       this._selectPendingAfterLoad = false
       if (target && !this.isNarrow) this.select(target)
     },
     openDossier(row) {
-      if (row.projectId) this.$router.push('/admin/graduation/students/' + row.projectId)
+      if (row.projectId) this.$router.push(`/admin/graduation/students/${row.projectId}`)
     },
     exportFinalsFn() {
       const hint = exportFilenameHint(this.batchStore.selectedBatchName, '成果提交')
-      const p = buildMaterialQuery(this.filters, { batchId: this.batchStore.selectedBatchId })
-      return graduationApi.exportFinals(p).then((res) => {
-        if (res.code === 0 && res.data) {
-          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
-        }
+      const params = buildMaterialQuery(this.filters, { batchId: this.batchStore.selectedBatchId })
+      return graduationApi.exportFinals(params).then((res) => {
+        if (res.code === 0 && res.data) res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
         return res
       })
     },
@@ -386,27 +465,25 @@ export default {
       const res = await graduationApi.reviewFinal(this.selectedRow.id, { action, comment: this.comment })
       this.submitting = false
       if (res.code === 0) {
-        toast.success('批阅完成：' + res.data.statusLabel + '，已留痕并同步学生端')
+        toast.success(`批阅完成：${res.data.statusLabel}，已锁定当前安全版本并同步学生端`)
         const row = this.selectedRow
         row.status = res.data.status
         row.statusLabel = res.data.statusLabel
         this.comment = ''
         this.loadStats()
+        await this.loadSelectedDetail()
         if (this.autoNext) this.nextPending()
-      } else if (res.message && res.message.includes('已批阅')) {
-        // 并发冲突：他人已处理，刷新队列
+      } else if (res.message && (res.message.includes('已批阅') || res.message.includes('已被处理') || res.message.includes('版本已变化'))) {
         this.formError = res.message
         this.loadStats()
         this.load()
-      } else {
-        this.formError = res.message
-      }
+      } else this.formError = res.message
     },
     async remind(row) {
       this.reminding = true
       const res = await graduationApi.remindFinal(row.projectId || row.gdStudentId)
       this.reminding = false
-      if (res.code === 0) toast.success('已记录对 ' + row.studentName + ' 的线下成果催办（未发送站内消息）')
+      if (res.code === 0) toast.success(`已记录对 ${row.studentName} 的线下成果催办（未发送站内消息）`)
       else toast.error(res.message || '催交失败')
     },
     async load() {
@@ -416,6 +493,7 @@ export default {
         this.rows = []
         this.total = 0
         this.selKey = ''
+        this.resetDetail()
         return
       }
       this.loading = true
@@ -431,6 +509,7 @@ export default {
         this.ensureSelection()
       } else {
         this.error = res.message
+        this.resetDetail()
       }
       this.loading = false
     }
@@ -442,15 +521,12 @@ export default {
 @import '@/styles/module-page.css';
 .fr-tab-count { margin-left: 4px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .mp-tab.is-active .fr-tab-count { color: inherit; }
-.fr-tabs-side { margin-left: auto; }
 .mp-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
-
 .fr-split { display: flex; gap: var(--space-4); align-items: flex-start; }
 .fr-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .fr-split.is-narrow .fr-list { width: 100%; }
 .fr-pane { flex: 1; min-width: 0; padding: var(--space-4); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .fr-split.is-narrow .fr-pane { width: 100%; }
-
 .fr-rows { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow-y: auto; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); }
 .fr-row { padding: 10px 12px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
 .fr-row:last-child { border-bottom: none; }
@@ -465,18 +541,17 @@ export default {
 .fr-row__idx { margin-left: auto; }
 .fr-over { color: var(--danger, #dc2626); }
 .fr-list__foot { display: flex; justify-content: center; }
-
-.fr-pane__bar {
-  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
-  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3);
-  background: var(--gray-50, #f8fafc); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px);
-  font-size: var(--font-size-sm);
-}
+.fr-pane__bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); background: var(--gray-50, #f8fafc); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); font-size: var(--font-size-sm); }
 .fr-pane__pos { color: var(--text-secondary); }
 .fr-pane__auto { color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .fr-pane__nav { margin-left: auto; display: inline-flex; gap: var(--space-3); }
 .fr-pane__nav .mp-link:disabled { opacity: 0.4; cursor: not-allowed; }
-@media (max-width: 1100px) {
-  .fr-pane { padding: var(--space-3); }
-}
+.version-warning { margin-bottom: var(--space-3); padding: 10px 12px; border-radius: 8px; background: var(--warning-50); color: var(--warning-700); font-size: 13px; }
+.version-table-wrap { margin-top: var(--space-3); overflow-x: auto; }
+.version-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.version-table th, .version-table td { padding: 9px 10px; border-bottom: 1px solid var(--border-light); text-align: left; white-space: nowrap; }
+.version-table th { color: var(--text-tertiary); font-weight: 600; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hash { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) { .fr-pane { padding: var(--space-3); } }
 </style>

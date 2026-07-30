@@ -85,6 +85,12 @@ export const studentApi = {
   submitInternshipSafetyCourse: (id, body) => internship.studentInternshipSafetySubmit(id, body),
   commitInternshipSafety: (id, body) => internship.studentInternshipSafetyCommit(id, body),
   getGraduation: () => real.enrichGraduation(),
+  getGraduationMaterialLibrary: () =>
+    realRequest('/mobile/graduation/material-center/library?includeHistory=true'),
+  submitGraduationMaterial: (materialCode, body) =>
+    realRequest(`/mobile/graduation/material-center/materials/${encodeURIComponent(materialCode)}/submit`, {
+      method: 'POST', data: { ...body, clientSurface: 'MP_WEIXIN' }
+    }),
   getGraduationActiveRound: () => real.gdActiveRound(),
   getGraduationTopics: (batchId) => real.gdTopics(batchId),
   getMyGraduationChangeRequests: () => real.gdMyChangeRequests(),

@@ -1,0 +1,1039 @@
+version: file-capability-inventory/v1
+contract: docs/architecture/file-center-contract.md
+status: COMPLETE
+generatedAt: '2026-07-29'
+requiredFields:
+- module
+- client
+- route
+- page
+- action
+- fileCategory
+- api
+- backendService
+- storageMode
+- authMode
+- dataScope
+- versioned
+- scanGated
+- preview
+- download
+- import
+- export
+- archive
+- status
+- risk
+- targetPhase
+entries:
+- module: file-center
+  client: backend
+  route: /api/v1/files
+  page: '-'
+  action: upload
+  fileCategory: ATTACHMENT
+  api: POST /api/v1/files
+  backendService: backend/app/services/file_service.py::store_upload
+  storageMode: configurable
+  authMode: authenticated+rate-limit+object-owner
+  dataScope: tenant+object
+  versioned: false
+  scanGated: partial
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: active
+  risk: P1
+  targetPhase: 1
+  notes: 正式文件创建入口；阶段 0 不裁决是否作为最终唯一入口。源码 backend/app/api/v1/files.py
+- module: file-center
+  client: backend
+  route: /api/v1/files/upload
+  page: '-'
+  action: upload
+  fileCategory: ATTACHMENT
+  api: POST /api/v1/files/upload
+  backendService: backend/app/services/file_service.py::store_upload
+  storageMode: configurable
+  authMode: authenticated+rate-limit+object-owner
+  dataScope: tenant+object
+  versioned: false
+  scanGated: partial
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: duplicate
+  risk: P1
+  targetPhase: 7
+  notes: 历史真实上传入口；阶段 0 仅登记，不删除。源码 backend/app/api/v1/file.py
+- module: file-center
+  client: backend
+  route: /api/v1/files/upload-placeholder
+  page: '-'
+  action: upload
+  fileCategory: PLACEHOLDER
+  api: POST /api/v1/files/upload-placeholder
+  backendService: backend/app/api/v1/file.py::upload_placeholder
+  storageMode: temporary
+  authMode: authenticated+non-production-only
+  dataScope: tenant
+  versioned: false
+  scanGated: false
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: legacy
+  risk: P1
+  targetPhase: 7
+  notes: 不落盘并生成假 fileId；仅非生产注册，需核实是否还有调用。
+- module: file-center
+  client: backend
+  route: /api/v1/files/meta/{file_id}
+  page: '-'
+  action: metadata
+  fileCategory: ALL
+  api: GET /api/v1/files/meta/{file_id}
+  backendService: backend/app/services/file_service.py::get_file_meta
+  storageMode: configurable
+  authMode: authenticated+object-authorization
+  dataScope: tenant+object
+  versioned: false
+  scanGated: partial
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: active
+  risk: P1
+  targetPhase: 1
+  notes: 源码 backend/app/api/v1/file.py
+- module: file-center
+  client: backend
+  route: /api/v1/files/{file_id}/url
+  page: '-'
+  action: preview-url
+  fileCategory: ALL
+  api: GET /api/v1/files/{file_id}/url
+  backendService: backend/app/services/file_service.py::get_file_meta
+  storageMode: configurable
+  authMode: authenticated+object-authorization
+  dataScope: tenant+object
+  versioned: false
+  scanGated: partial
+  preview: true
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: active
+  risk: P1
+  targetPhase: 3
+  notes: 当前返回同域下载 API，不是对象存储签名 URL。源码 backend/app/api/v1/files.py
+- module: file-center
+  client: backend
+  route: /api/v1/files/download/{file_id}
+  page: '-'
+  action: download
+  fileCategory: ALL
+  api: GET /api/v1/files/download/{file_id}
+  backendService: backend/app/services/file_service.py::resolve_download
+  storageMode: configurable
+  authMode: authenticated+object-authorization+audit
+  dataScope: tenant+object
+  versioned: false
+  scanGated: partial
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: active
+  risk: P0
+  targetPhase: 1
+  notes: 统一下载入口之一；源码 backend/app/api/v1/file.py
+- module: file-center
+  client: backend
+  route: internal
+  page: '-'
+  action: store-generated-file
+  fileCategory: GENERATED
+  api: internal
+  backendService: backend/app/services/file_service.py::store_bytes
+  storageMode: configurable
+  authMode: service-context+tenant-required
+  dataScope: tenant+object
+  versioned: false
+  scanGated: partial
+  preview: false
+  download: true
+  import: false
+  export: true
+  archive: false
+  status: active
+  risk: P1
+  targetPhase: 5
+  notes: 系统生成文件写入公共文件对象。
+- module: file-center
+  client: backend
+  route: internal
+  page: '-'
+  action: content-validation
+  fileCategory: ALL
+  api: internal
+  backendService: backend/app/services/file_service.py::store_upload
+  storageMode: configurable
+  authMode: service-context
+  dataScope: tenant
+  versioned: false
+  scanGated: partial
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: active
+  risk: P0
+  targetPhase: 1
+  notes: 超过 8MB 当前使用 Path.read_bytes() 读取全文件，阶段 1 必须消除。
+- module: student-affairs
+  client: backend
+  route: /api/v1/student-affairs/attachments
+  page: '-'
+  action: link
+  fileCategory: STUDENT_AFFAIRS_ATTACHMENT
+  api: POST /api/v1/student-affairs/attachments
+  backendService: backend/app/services/affairs_attachment_service.py
+  storageMode: configurable
+  authMode: authenticated+business-permission
+  dataScope: tenant+business-object
+  versioned: false
+  scanGated: unknown
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: active
+  risk: P0
+  targetPhase: 1
+  notes: 字节先走公共上传，再做业务回链；必须核实业务提交前是否统一检查文件安全状态。
+- module: student-affairs
+  client: backend
+  route: /api/v1/student-affairs/attachments/{attachmentId}/download
+  page: '-'
+  action: download
+  fileCategory: STUDENT_AFFAIRS_ATTACHMENT
+  api: GET /api/v1/student-affairs/attachments/{attachmentId}/download
+  backendService: backend/app/services/affairs_attachment_service.py::download_attachment
+  storageMode: configurable
+  authMode: authenticated+business-permission+sensitive-export-audit
+  dataScope: tenant+business-object
+  versioned: false
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: active
+  risk: P0
+  targetPhase: 3
+  notes: 业务专用下载入口，需核实是否复用公共 resolve_download。
+- module: graduation
+  client: student-pc
+  route: /portal/graduation/proposal
+  page: student-portal/src
+  action: upload+submit
+  fileCategory: GRADUATION_MATERIAL
+  api: POST /api/v1/files/upload -> POST /api/v1/portal/graduation/proposal/submit
+  backendService: backend/app/student_portal/services/graduation_service.py::submit_proposal
+  storageMode: configurable
+  authMode: student-authenticated+owner
+  dataScope: tenant+student-self
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: true
+  import: false
+  export: false
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: 1
+  notes: 已知开题附件先上传再提交 fileId；页面精确源码路径待脚本核实。
+- module: graduation
+  client: student-pc
+  route: /portal/graduation/final
+  page: student-portal/src
+  action: upload+submit
+  fileCategory: GRADUATION_MATERIAL
+  api: POST /api/v1/files/upload -> POST /api/v1/portal/graduation/final/submit
+  backendService: backend/app/student_portal/services/graduation_service.py
+  storageMode: configurable
+  authMode: student-authenticated+owner
+  dataScope: tenant+student-self
+  versioned: true
+  scanGated: unknown
+  preview: true
+  download: true
+  import: false
+  export: false
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: 1
+  notes: 论文初稿/定稿附件；精确页面和提交服务待脚本核实。
+- module: academic-affairs
+  client: admin-pc
+  route: aa-course-materials
+  page: frontend/src
+  action: upload+link
+  fileCategory: COURSE_MATERIAL
+  api: POST /api/v1/files/upload
+  backendService: backend/app/modules/academic_affairs
+  storageMode: configurable
+  authMode: authenticated+academicAffairs.course.manage
+  dataScope: tenant+course
+  versioned: unknown
+  scanGated: unknown
+  preview: unknown
+  download: true
+  import: false
+  export: false
+  archive: true
+  status: needs-verification
+  risk: P1
+  targetPhase: 1
+  notes: 课程大纲和课程材料复用 t_file_object；精确页面/API 文件待脚本核实。
+- module: import-export
+  client: backend
+  route: /api/v1/import/*
+  page: '-'
+  action: import
+  fileCategory: XLSX_IMPORT
+  api: /api/v1/import/*
+  backendService: backend/app/api/v1/import_export.py
+  storageMode: temporary
+  authMode: authenticated+domain-permission
+  dataScope: tenant+domain
+  versioned: false
+  scanGated: unknown
+  preview: false
+  download: true
+  import: true
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: 4
+  notes: 统一导入路由聚合器；需继续拆分具体端点、模板、校验和错误回执。
+- module: import-export
+  client: backend
+  route: /api/v1/export/*
+  page: '-'
+  action: export
+  fileCategory: XLSX_EXPORT
+  api: /api/v1/export/*
+  backendService: backend/app/api/v1/import_export.py
+  storageMode: generated
+  authMode: authenticated+domain-permission
+  dataScope: tenant+domain
+  versioned: false
+  scanGated: false
+  preview: false
+  download: true
+  import: false
+  export: true
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: 5
+  notes: 统一导出路由聚合器；需核实同步/异步、审计和敏感字段。
+- module: system-migration
+  client: backend
+  route: /api/v1/migration/*
+  page: '-'
+  action: import+export
+  fileCategory: MIGRATION_XLSX
+  api: /api/v1/migration/*
+  backendService: backend/app/api/v1/migration.py
+  storageMode: temporary
+  authMode: authenticated+platform-or-school-admin
+  dataScope: tenant+domain
+  versioned: false
+  scanGated: unknown
+  preview: false
+  download: true
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: 4
+  notes: 老系统数据迁移能力；需逐域登记。
+- module: academic-affairs
+  client: admin-pc
+  route: inventory://academic-affairs/admin-pc
+  page: frontend/src/modules/academicAffairs/api/academic-affairs.api.js
+  action: download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/modules/academicAffairs/api/academic-affairs.api.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '3'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/academicAffairs/api/academic-affairs.api.js. representative routes: /files/download/${fileId}'
+- module: academic-affairs
+  client: backend
+  route: inventory://academic-affairs/backend
+  page: backend/app/modules/academic_affairs/routers/academic_affairs.py; backend/app/modules/academic_affairs/routers/dashboard_readiness_router.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py; backend/app/modules/academic_affairs/services/academic_affairs_course_service.py; backend/app/modules/academic_affairs/services/academic_affairs_term_workspace_service.py
+  action: upload+preview+download+import+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/modules/academic_affairs/routers/academic_affairs.py; backend/app/modules/academic_affairs/routers/dashboard_readiness_router.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py; backend/app/modules/academic_affairs/services/academic_affairs_course_service.py; backend/app/modules/academic_affairs/services/academic_affairs_term_workspace_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: true
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/modules/academic_affairs/routers/academic_affairs.py; backend/app/modules/academic_affairs/routers/dashboard_readiness_router.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py; backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py; backend/app/modules/academic_affairs/services/academic_affairs_course_service.py; backend/app/modules/academic_affairs/services/academic_affairs_term_workspace_service.py. representative routes: /admin/academic-affairs/archive/precheck, /archive/batches, /archive/batches/{bid}, /archive/batches/{bid}/cancel, /archive/batches/{bid}/check, /archive/batches/{bid}/confirm, /archive/batches/{bid}/download-log, /archive/batches/{bid}/export, /archive/batches/{bid}/items/{category}/export, /archive/batches/{bid}/unfreeze, /archive/precheck, /evaluation/batches/{bid}/archive, /evaluation/batches/{bid}/export, /exam/archive, /exam/batches/{bid}/archive, /exemption/{eid}/archive, /grade-tasks/{taskId}/archive, /grade-tasks/{taskId}/import/confirm, /grade-tasks/{taskId}/import/errors-xlsx, /grade-tasks/{taskId}/import/template, ... (+33)'
+- module: archive
+  client: admin-pc
+  route: inventory://archive/admin-pc
+  page: frontend/src/modules/academicAffairs/views/AaStatusChangeArchiveView.vue
+  action: download+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/modules/academicAffairs/views/AaStatusChangeArchiveView.vue
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '5'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/academicAffairs/views/AaStatusChangeArchiveView.vue. representative routes: /admin/academic-affairs/archive/export'
+- module: archive
+  client: backend
+  route: inventory://archive/backend
+  page: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py
+  action: import+export
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: true
+  export: true
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '4'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py. representative routes: -'
+- module: file-center
+  client: admin-pc
+  route: inventory://file-center/admin-pc
+  page: frontend/src/components/file/FileUploader.vue; frontend/src/services/file/fileSdk.js
+  action: upload+download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/components/file/FileUploader.vue; frontend/src/services/file/fileSdk.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/components/file/FileUploader.vue; frontend/src/services/file/fileSdk.js. representative routes: /files/download/${encodeURIComponent(fileId)}'
+- module: file-center
+  client: backend
+  route: inventory://file-center/backend
+  page: backend/app/api/v1/file_contract.py; backend/app/services/file_content_security.py
+  action: upload+download+import+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/api/v1/file_contract.py; backend/app/services/file_content_security.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: true
+  export: false
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/file_contract.py; backend/app/services/file_content_security.py. representative routes: -'
+- module: file-center
+  client: shared
+  route: inventory://file-center/shared
+  page: miniapp/src/services/fileSdk.js
+  action: download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: miniapp/src/services/fileSdk.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '3'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/services/fileSdk.js. representative routes: /files/download/${enc(fileId)}, /files/download/${enc(id)}'
+- module: file-center
+  client: student-pc
+  route: inventory://file-center/student-pc
+  page: student-portal/src/services/fileSdk.js
+  action: upload+download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: student-portal/src/services/fileSdk.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: student-portal/src/services/fileSdk.js. representative routes: /files/download/${enc(fileId)}, /files/upload?${query.toString()}'
+- module: graduation
+  client: admin-pc
+  route: inventory://graduation/admin-pc
+  page: frontend/src/modules/graduation/api/graduation-material-center.api.js
+  action: download+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/modules/graduation/api/graduation-material-center.api.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '5'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/graduation/api/graduation-material-center.api.js. representative routes: /graduation/material-center/archives/${encodeURIComponent(gdStudentId)}/manifest, /graduation/material-center/archives/${encodeURIComponent(gdStudentId)}/package, /graduation/material-center/archives/${encodeURIComponent(gdStudentId)}/revoke, /graduation/material-center/exports/${encodeURIComponent(jobId)}, /graduation/material-center/exports/${encodeURIComponent(jobId)}/retry, /graduation/material-center/exports/${encodeURIComponent(jobId)}/revoke, /graduation/material-center/exports/${encodeURIComponent(jobId)}/ticket, /graduation/material-center/files/${encodeURIComponent(fileId)}/ticket'
+- module: graduation
+  client: backend
+  route: inventory://graduation/backend
+  page: backend/app/api/v1/mobile_graduation_material_center.py; backend/app/modules/graduation/routers/graduation.py; backend/app/modules/graduation/routers/graduation_archive.py; backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py; backend/app/modules/graduation/routers/graduation_batch.py; backend/app/modules/graduation/routers/graduation_material_center.py; backend/app/modules/graduation/routers/graduation_material_sensitive_router.py; backend/app/modules/graduation/routers/graduation_mentor.py; backend/app/modules/graduation/routers/graduation_sensitive_router.py; backend/app/modules/graduation/routers/graduation_student.py; backend/app/modules/graduation/routers/graduation_taskbook.py; backend/app/modules/graduation/routers/graduation_taskbook_sensitive_router.py; backend/app/modules/graduation/routers/graduation_topic.py; backend/app/modules/graduation/routers/graduation_topic_round.py; backend/app/modules/graduation/services/graduation_archive_service.py; backend/app/modules/graduation/services/graduation_batch_service.py; backend/app/modules/graduation/services/graduation_export_security.py; backend/app/modules/graduation/services/graduation_material_catalog_service.py; backend/app/modules/graduation/services/graduation_material_center_service.py; backend/app/modules/graduation/services/graduation_material_export_service.py; backend/app/modules/graduation/services/graduation_material_ticket_service.py; backend/app/modules/graduation/services/graduation_mentor_service.py; backend/app/modules/graduation/services/graduation_service.py; backend/app/modules/graduation/services/graduation_structured_snapshot_service.py; backend/app/modules/graduation/services/graduation_taskbook_service.py
+  action: upload+preview+download+import+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/api/v1/mobile_graduation_material_center.py; backend/app/modules/graduation/routers/graduation.py; backend/app/modules/graduation/routers/graduation_archive.py; backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py; backend/app/modules/graduation/routers/graduation_batch.py; backend/app/modules/graduation/routers/graduation_material_center.py; backend/app/modules/graduation/routers/graduation_material_sensitive_router.py; backend/app/modules/graduation/routers/graduation_mentor.py; backend/app/modules/graduation/routers/graduation_sensitive_router.py; backend/app/modules/graduation/routers/graduation_student.py; backend/app/modules/graduation/routers/graduation_taskbook.py; backend/app/modules/graduation/routers/graduation_taskbook_sensitive_router.py; backend/app/modules/graduation/routers/graduation_topic.py; backend/app/modules/graduation/routers/graduation_topic_round.py; backend/app/modules/graduation/services/graduation_archive_service.py; backend/app/modules/graduation/services/graduation_batch_service.py; backend/app/modules/graduation/services/graduation_export_security.py; backend/app/modules/graduation/services/graduation_material_catalog_service.py; backend/app/modules/graduation/services/graduation_material_center_service.py; backend/app/modules/graduation/services/graduation_material_export_service.py; backend/app/modules/graduation/services/graduation_material_ticket_service.py; backend/app/modules/graduation/services/graduation_mentor_service.py; backend/app/modules/graduation/services/graduation_service.py; backend/app/modules/graduation/services/graduation_structured_snapshot_service.py; backend/app/modules/graduation/services/graduation_taskbook_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: true
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/mobile_graduation_material_center.py; backend/app/modules/graduation/routers/graduation.py; backend/app/modules/graduation/routers/graduation_archive.py; backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py; backend/app/modules/graduation/routers/graduation_batch.py; backend/app/modules/graduation/routers/graduation_material_center.py; backend/app/modules/graduation/routers/graduation_material_sensitive_router.py; backend/app/modules/graduation/routers/graduation_mentor.py; backend/app/modules/graduation/routers/graduation_sensitive_router.py; backend/app/modules/graduation/routers/graduation_student.py; backend/app/modules/graduation/routers/graduation_taskbook.py; backend/app/modules/graduation/routers/graduation_taskbook_sensitive_router.py; backend/app/modules/graduation/routers/graduation_topic.py; backend/app/modules/graduation/routers/graduation_topic_round.py; backend/app/modules/graduation/services/graduation_archive_service.py; backend/app/modules/graduation/services/graduation_batch_service.py; backend/app/modules/graduation/services/graduation_export_security.py; backend/app/modules/graduation/services/graduation_material_catalog_service.py; backend/app/modules/graduation/services/graduation_material_center_service.py; backend/app/modules/graduation/services/graduation_material_export_service.py; backend/app/modules/graduation/services/graduation_material_ticket_service.py; backend/app/modules/graduation/services/graduation_mentor_service.py; backend/app/modules/graduation/services/graduation_service.py; backend/app/modules/graduation/services/graduation_structured_snapshot_service.py; backend/app/modules/graduation/services/graduation_taskbook_service.py. representative routes: /api/v1/graduation/material-center/files/{int(file_id)}/{normalized}?ticket={token}, /batches/export, /batches/{bid}/archive, /defense-groups/export, /finals/export, /gd-archives/batch-file/preview, /gd-archives/batch-generate/preview, /gd-archives/export, /gd-archives/{gd_student_id}/file, /gd-mentors/export, /gd-mentors/import/confirm, /gd-mentors/import/dry-run, /gd-mentors/import/errors-xlsx, /gd-mentors/import/template, /gd-mentors/import/xlsx, /gd-mentors/{mid}/archive, /gd-students/export, /gd-students/import/confirm, /gd-students/import/dry-run, /gd-students/import/errors-xlsx, ... (+34)'
+- module: graduation
+  client: student-miniapp
+  route: inventory://graduation/student-miniapp
+  page: miniapp/src/pages/student/graduation/index.vue
+  action: preview
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: miniapp/src/pages/student/graduation/index.vue
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P1
+  targetPhase: '3'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/pages/student/graduation/index.vue. representative routes: /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/preview, /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket'
+- module: graduation
+  client: teacher-miniapp
+  route: inventory://graduation/teacher-miniapp
+  page: miniapp/src/pages/teacher/graduation-guide/index.vue
+  action: preview
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: miniapp/src/pages/teacher/graduation-guide/index.vue
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P1
+  targetPhase: '3'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/pages/teacher/graduation-guide/index.vue. representative routes: /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/preview, /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket'
+- module: identity-import
+  client: backend
+  route: inventory://identity-import/backend
+  page: backend/app/services/identity_import_file_service.py
+  action: import+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/services/identity_import_file_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '4'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/identity_import_file_service.py. representative routes: -'
+- module: internship
+  client: admin-pc
+  route: inventory://internship/admin-pc
+  page: frontend/src/modules/internship/api/guidance-visit.api.js; frontend/src/modules/internship/api/internship.api.js; frontend/src/modules/internship/api/position.api.js
+  action: upload+download+import
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/modules/internship/api/guidance-visit.api.js; frontend/src/modules/internship/api/internship.api.js; frontend/src/modules/internship/api/position.api.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: true
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/internship/api/guidance-visit.api.js; frontend/src/modules/internship/api/internship.api.js; frontend/src/modules/internship/api/position.api.js. representative routes: /files/download/${fileId}, /internship/enterprises/import/confirm, /internship/enterprises/import/dry-run, /internship/enterprises/import/errors-xlsx, /internship/enterprises/import/template, /internship/enterprises/import/xlsx, /internship/positions/import/confirm, /internship/positions/import/dry-run, /internship/positions/import/errors-xlsx, /internship/positions/import/template, /internship/positions/import/xlsx'
+- module: internship
+  client: backend
+  route: inventory://internship/backend
+  page: backend/app/modules/internship/routers/internship.py; backend/app/modules/internship/routers/internship_archive.py; backend/app/modules/internship/routers/internship_compliance.py; backend/app/modules/internship/routers/internship_match.py; backend/app/modules/internship/routers/internship_material_center.py; backend/app/modules/internship/routers/internship_participant.py; backend/app/modules/internship/routers/internship_position.py; backend/app/modules/internship/routers/internship_process.py; backend/app/modules/internship/routers/internship_stats.py; backend/app/modules/internship/routers/internship_student.py; backend/app/modules/internship/services/internship_agreement_service.py; backend/app/modules/internship/services/internship_application_service.py; backend/app/modules/internship/services/internship_archive_service.py; backend/app/modules/internship/services/internship_enterprise_eval_service.py; backend/app/modules/internship/services/internship_evidence_package_service.py; backend/app/modules/internship/services/internship_guidance_service.py; backend/app/modules/internship/services/internship_insurance_service.py; backend/app/modules/internship/services/internship_leave_service.py; backend/app/modules/internship/services/internship_makeup_service.py; backend/app/modules/internship/services/internship_material_center_compat.py; backend/app/modules/internship/services/internship_material_center_service.py; backend/app/modules/internship/services/internship_plan_task_service.py; backend/app/modules/internship/services/internship_visit_service.py
+  action: upload+preview+download+import+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/modules/internship/routers/internship.py; backend/app/modules/internship/routers/internship_archive.py; backend/app/modules/internship/routers/internship_compliance.py; backend/app/modules/internship/routers/internship_match.py; backend/app/modules/internship/routers/internship_material_center.py; backend/app/modules/internship/routers/internship_participant.py; backend/app/modules/internship/routers/internship_position.py; backend/app/modules/internship/routers/internship_process.py; backend/app/modules/internship/routers/internship_stats.py; backend/app/modules/internship/routers/internship_student.py; backend/app/modules/internship/services/internship_agreement_service.py; backend/app/modules/internship/services/internship_application_service.py; backend/app/modules/internship/services/internship_archive_service.py; backend/app/modules/internship/services/internship_enterprise_eval_service.py; backend/app/modules/internship/services/internship_evidence_package_service.py; backend/app/modules/internship/services/internship_guidance_service.py; backend/app/modules/internship/services/internship_insurance_service.py; backend/app/modules/internship/services/internship_leave_service.py; backend/app/modules/internship/services/internship_makeup_service.py; backend/app/modules/internship/services/internship_material_center_compat.py; backend/app/modules/internship/services/internship_material_center_service.py; backend/app/modules/internship/services/internship_plan_task_service.py; backend/app/modules/internship/services/internship_visit_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: true
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/modules/internship/routers/internship.py; backend/app/modules/internship/routers/internship_archive.py; backend/app/modules/internship/routers/internship_compliance.py; backend/app/modules/internship/routers/internship_match.py; backend/app/modules/internship/routers/internship_material_center.py; backend/app/modules/internship/routers/internship_participant.py; backend/app/modules/internship/routers/internship_position.py; backend/app/modules/internship/routers/internship_process.py; backend/app/modules/internship/routers/internship_stats.py; backend/app/modules/internship/routers/internship_student.py; backend/app/modules/internship/services/internship_agreement_service.py; backend/app/modules/internship/services/internship_application_service.py; backend/app/modules/internship/services/internship_archive_service.py; backend/app/modules/internship/services/internship_enterprise_eval_service.py; backend/app/modules/internship/services/internship_evidence_package_service.py; backend/app/modules/internship/services/internship_guidance_service.py; backend/app/modules/internship/services/internship_insurance_service.py; backend/app/modules/internship/services/internship_leave_service.py; backend/app/modules/internship/services/internship_makeup_service.py; backend/app/modules/internship/services/internship_material_center_compat.py; backend/app/modules/internship/services/internship_material_center_service.py; backend/app/modules/internship/services/internship_plan_task_service.py; backend/app/modules/internship/services/internship_visit_service.py. representative routes: /agreements/export, /agreements/{agreement_id}/archive, /archive, /archive-packages/{package_id}/download, /archive/by-batch, /archive/by-enterprise, /archive/export, /archive/{internship_id}, /archive/{internship_id}/archive, /archive/{internship_id}/package, /archive/{internship_id}/revoke, /batches/export, /batches/{bid}/archive, /checkins/export, /enterprise-evals/export, /enterprises/export, /enterprises/import/confirm, /enterprises/import/dry-run, /enterprises/import/errors-xlsx, /enterprises/import/template, ... (+34)'
+- module: internship
+  client: student-pc
+  route: inventory://internship/student-pc
+  page: student-portal/src/services/internshipCoreApi.js
+  action: upload
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: student-portal/src/services/internshipCoreApi.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: student-portal/src/services/internshipCoreApi.js. representative routes: /files/upload?bizType=INTERNSHIP_APPLICATION_EVIDENCE, /files/upload?bizType=INTERNSHIP_INSURANCE_POLICY'
+- module: mobile-shared
+  client: backend
+  route: inventory://mobile-shared/backend
+  page: backend/app/api/v1/mobile.py; backend/app/api/v1/mobile_export.py; backend/app/services/mobile_student_service.py
+  action: preview+download+import+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/api/v1/mobile.py; backend/app/api/v1/mobile_export.py; backend/app/services/mobile_student_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: true
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '4'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/mobile.py; backend/app/api/v1/mobile_export.py; backend/app/services/mobile_student_service.py. representative routes: /archive, /materials/{file_id}/download'
+- module: orientation
+  client: admin-pc
+  route: inventory://orientation/admin-pc
+  page: frontend/src/modules/orientation/api/orientation.api.js
+  action: archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/modules/orientation/api/orientation.api.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: true
+  status: needs-verification
+  risk: P1
+  targetPhase: '6'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/orientation/api/orientation.api.js. representative routes: /orientation/archives/${id}/run'
+- module: orientation
+  client: backend
+  route: inventory://orientation/backend
+  page: backend/app/api/v1/orientation.py
+  action: archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/api/v1/orientation.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: true
+  status: needs-verification
+  risk: P1
+  targetPhase: '6'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/orientation.py. representative routes: /archives, /archives/{aid}/run'
+- module: shared-platform
+  client: admin-pc
+  route: inventory://shared-platform/admin-pc
+  page: frontend/src/config/navPlan.js; frontend/src/modules/academicAffairs/views/AaDashboardView.vue; frontend/src/modules/academicAffairs/views/AaTermDetailView.vue; frontend/src/modules/student/api/student.api.real.example.js; frontend/src/modules/student/api/student.contract.js
+  action: download+import+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/config/navPlan.js; frontend/src/modules/academicAffairs/views/AaDashboardView.vue; frontend/src/modules/academicAffairs/views/AaTermDetailView.vue; frontend/src/modules/student/api/student.api.real.example.js; frontend/src/modules/student/api/student.contract.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '4'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/config/navPlan.js; frontend/src/modules/academicAffairs/views/AaDashboardView.vue; frontend/src/modules/academicAffairs/views/AaTermDetailView.vue; frontend/src/modules/student/api/student.api.real.example.js; frontend/src/modules/student/api/student.contract.js. representative routes: /admin/academic-affairs/archive/export, /admin/academic-affairs/archive/precheck, /admin/academic-affairs/archive/precheck?termId=${this.termId}, /admin/academic-affairs/archive?entry=batch, /admin/academic-affairs/archive?entry=studentStatus, /admin/internship/archive?panel=materials, /admin/internship/archive?panel=packages, /admin/internship/archive?panel=records, /admin/student-affairs/archive/packages, /api/student/import/validate'
+- module: shared-platform
+  client: backend
+  route: inventory://shared-platform/backend
+  page: backend/app/api/v1/data_exchange.py; backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py
+  action: upload+preview+download+import+export
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/api/v1/data_exchange.py; backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: true
+  download: true
+  import: true
+  export: true
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/data_exchange.py; backend/app/api/v1/implementation.py; backend/app/api/v1/message_center.py; backend/app/api/v1/transfer.py; backend/app/services/affairs_class_service.py; backend/app/services/data_exchange_job_service.py; backend/app/services/domain_export_service.py; backend/app/services/import_export_service.py; backend/app/services/mock_audit_service.py. representative routes: /api/v1/data-exchange/exports/{row.id}/download?ticket={raw_token}, /api/v1/export/create-placeholder, /exports/{job_id}, /exports/{job_id}/download, /exports/{job_id}/download-ticket, /exports/{job_id}/revoke, /import/confirm, /import/dry-run, /imports/adapters/excel/{legacy_job_id}, /imports/adapters/migration/{batch_no}, /imports/identity/{kind}/validate-file, /imports/{job_id}, /imports/{job_id}/confirm, /projects/{project_id}/preview, /{campaign_id}/attachments'
+- module: shared-platform
+  client: shared
+  route: inventory://shared-platform/shared
+  page: miniapp/src/services/affairsContractApi.js; miniapp/src/services/request.js
+  action: upload+download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: miniapp/src/services/affairsContractApi.js; miniapp/src/services/request.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/services/affairsContractApi.js; miniapp/src/services/request.js. representative routes: /files/download/${fileId}'
+- module: shared-platform
+  client: student-miniapp
+  route: inventory://shared-platform/student-miniapp
+  page: miniapp/src/pages/student/affairs/index.vue
+  action: upload
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: miniapp/src/pages/student/affairs/index.vue
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: miniapp/src/pages/student/affairs/index.vue. representative routes: -'
+- module: shared-platform
+  client: student-pc
+  route: inventory://shared-platform/student-pc
+  page: student-portal/src/services/affairsFourEndApi.js; student-portal/src/services/portalApi.js
+  action: upload+download
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: student-portal/src/services/affairsFourEndApi.js; student-portal/src/services/portalApi.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: student-portal/src/services/affairsFourEndApi.js; student-portal/src/services/portalApi.js. representative routes: /files/download/${enc(fileId)}, /mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket'
+- module: shared-xlsx
+  client: backend
+  route: inventory://shared-xlsx/backend
+  page: backend/app/services/xlsx_util.py
+  action: import+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/services/xlsx_util.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: true
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '4'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/xlsx_util.py. representative routes: -'
+- module: student-affairs
+  client: admin-pc
+  route: inventory://student-affairs/admin-pc
+  page: frontend/src/config/help/studentAffairsHelpCards.js; frontend/src/modules/studentAffairs/api/operations.api.js; frontend/src/modules/studentAffairs/api/studentAffairs.api.js; frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue
+  action: download+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/config/help/studentAffairsHelpCards.js; frontend/src/modules/studentAffairs/api/operations.api.js; frontend/src/modules/studentAffairs/api/studentAffairs.api.js; frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: false
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '6'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/config/help/studentAffairsHelpCards.js; frontend/src/modules/studentAffairs/api/operations.api.js; frontend/src/modules/studentAffairs/api/studentAffairs.api.js; frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue. representative routes: /admin/student-affairs/archive/packages, /files/download/${row.fileId}, /student-affairs/archive/batches, /student-affairs/archive/batches/${batchId}, /student-affairs/archive/batches/${batchId}/advance, /student-affairs/archive/batches/${batchId}/collect, /student-affairs/archive/packages/${enc(packageId)}/manifest, /student-affairs/attachments/${attachmentId}/download'
+- module: student-affairs
+  client: backend
+  route: inventory://student-affairs/backend
+  page: backend/app/api/v1/student_affairs.py; backend/app/modules/student_affairs/routers/affairs_material_center.py
+  action: download+export+archive
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/api/v1/student_affairs.py; backend/app/modules/student_affairs/routers/affairs_material_center.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: false
+  export: true
+  archive: true
+  status: needs-verification
+  risk: P0
+  targetPhase: '5'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/student_affairs.py; backend/app/modules/student_affairs/routers/affairs_material_center.py. representative routes: /activities/{activityId}/archive, /archive/batches, /archive/batches/{batchId}, /archive/batches/{batchId}/advance, /archive/batches/{batchId}/collect, /leave/export, /student-affairs/archive/packages/{package_id}/manifest'
+- module: system-management
+  client: admin-pc
+  route: inventory://system-management/admin-pc
+  page: frontend/src/modules/system/api/dataExchange.api.js; frontend/src/modules/system/api/system.api.js
+  action: upload+download+import+export
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: frontend/src/modules/system/api/dataExchange.api.js; frontend/src/modules/system/api/system.api.js
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: true
+  export: true
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: frontend/src/modules/system/api/dataExchange.api.js; frontend/src/modules/system/api/system.api.js. representative routes: /data-exchange/exports/${job.id}/download, /data-exchange/exports/${job.id}/download-ticket, /data-exchange/exports/${jobId}, /data-exchange/exports/${jobId}/revoke, /data-exchange/imports/${jobId}, /data-exchange/imports/${jobId}/confirm, /data-exchange/imports/identity/${kind}/validate-file, /system/export/configs, /system/export/logs?tab=${t}, /system/export/org, /system/export/role-config/${encodeURIComponent(id)}, /system/export/scope-rules, /system/export/users'
+- module: system-management
+  client: backend
+  route: inventory://system-management/backend
+  page: backend/app/api/v1/system.py
+  action: upload+download+import+export
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/api/v1/system.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: true
+  import: true
+  export: true
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '1'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/api/v1/system.py. representative routes: /system/export/configs, /system/export/logs, /system/export/org, /system/export/role-config/{role_id}, /system/export/scope-rules, /system/export/users'
+- module: system-migration
+  client: backend
+  route: inventory://system-migration/backend
+  page: backend/app/services/migration_import_service.py
+  action: import+export
+  fileCategory: MIXED
+  api: multiple; see notes
+  backendService: backend/app/services/migration_import_service.py
+  storageMode: mixed
+  authMode: existing endpoint guard; verify in target phase
+  dataScope: existing business scope; verify in target phase
+  versioned: unknown
+  scanGated: unknown
+  preview: false
+  download: false
+  import: true
+  export: true
+  archive: false
+  status: needs-verification
+  risk: P0
+  targetPhase: '4'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/migration_import_service.py. representative routes: -'

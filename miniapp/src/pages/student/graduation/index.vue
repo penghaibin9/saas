@@ -155,6 +155,24 @@
           </template>
         </view>
 
+        <!-- 统一材料库：状态、版本、退回原因和小型材料补交 -->
+        <view v-if="materials" id="gd-materials" class="section-head"><text class="section-head__title">材料库</text></view>
+        <view v-if="materials" class="card stack-sm">
+          <view class="gd__choice-row"><text class="gd__choice-title">18 类材料 · 缺 {{ materialCount('MISSING') }} · 退回 {{ materialCount('RETURNED') }}</text></view>
+          <view v-for="m in materials.items || []" :key="m.materialId" class="gd__final-item">
+            <view class="gd__choice-row">
+              <view class="flex-1"><text class="gd__choice-title">{{ m.materialName }}</text><text class="gd__hint">{{ m.materialCode }} · 当前版本 {{ m.currentVersion?.versionNo || '—' }} · {{ m.currentVersion?.scanStatus || '未上传' }}</text></view>
+              <MobileStatusTag :label="m.reviewStatus || m.businessStatus" :type="m.reviewStatus === 'APPROVED' ? 'success' : m.reviewStatus === 'RETURNED' ? 'danger' : 'warning'" />
+            </view>
+            <MobileInlineAlert v-if="m.rejectReason" type="danger" title="需要重交" :description="m.rejectReason" />
+            <view class="gg__actions">
+              <button v-if="m.currentVersion?.fileId && (m.currentVersion.allowedActions || []).includes('preview')" class="btn btn-ghost" @click="openMaterial(m)">安全预览</button>
+              <button v-if="canMiniSubmit(m)" class="btn btn-primary" :disabled="materialUploadingCode === m.materialCode" @click="submitSmallMaterial(m)">{{ materialUploadingCode === m.materialCode ? '上传中…' : '补交小型材料' }}</button>
+              <text v-else-if="isPcOnly(m.materialCode) && ['MISSING','RETURNED'].includes(m.businessStatus)" class="gd__hint">大型论文、作品或源代码请到学生 PC 上传</text>
+            </view>
+          </view>
+        </view>
+
         <!-- 归档 -->
         <view v-if="archive && archive.hasData" id="gd-archive" class="section-head"><text class="section-head__title">材料归档</text></view>
         <view v-if="archive && archive.hasData" class="card stack-sm">
@@ -228,9 +246,9 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { normalizeError, getToken } from '@/services/request'
+import { normalizeError } from '@/services/request'
+import fileSdk from '@/services/fileSdk'
 import { go, toast } from '@/utils/nav'
-import { ENV } from '@/config/env'
 
 export default {
   data() {
@@ -241,7 +259,7 @@ export default {
       propAtts: [], finalAtts: [], uploading: false,
       final: null, finalSubmitting: false,
       midterm: null, rectifyContent: '', rectifySubmitting: false,
-      defense: null, grade: null, archive: null,
+      defense: null, grade: null, archive: null, materials: null, materialUploadingCode: '',
       showAppeal: false, appealReason: '', appealSubmitting: false,
       peer: { toReview: [], myRectify: [] }, peerOpinions: {}, peerNotes: {}, peerBusyId: '',
       processErrors: []
@@ -271,6 +289,7 @@ export default {
       if (this.final && this.final.hasData) nav.push({ label: '成果', anchor: 'final' })
       if (this.defense && this.defense.assigned) nav.push({ label: '答辩', anchor: 'defense' })
       if (this.grade && this.grade.published) nav.push({ label: '成绩', anchor: 'grade' })
+      if (this.materials) nav.push({ label: '材料', anchor: 'materials' })
       if (this.archive && this.archive.hasData) nav.push({ label: '归档', anchor: 'archive' })
       if (this.hasPeerWork) nav.push({ label: '互查', anchor: 'peer' })
       nav.push({ label: '指导记录', anchor: 'guidance' })
@@ -311,7 +330,8 @@ export default {
         track('答辩', studentApi.getGraduationDefense().then((d) => { this.defense = d })),
         track('成绩', studentApi.getGraduationGrade().then((d) => { this.grade = d })),
         track('互查', studentApi.getGraduationPeerTasks().then((d) => { this.peer = d || { toReview: [], myRectify: [] } })),
-        track('归档', studentApi.getGraduationArchive().then((d) => { this.archive = d }))
+        track('归档', studentApi.getGraduationArchive().then((d) => { this.archive = d })),
+        track('材料库', studentApi.getGraduationMaterialLibrary().then((d) => { this.materials = d }))
       ]).then(() => {
         if (this.processErrors.length) toast('部分环节加载失败')
       })
@@ -383,87 +403,58 @@ export default {
       }).catch((e) => { toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试') })
         .finally(() => { this.finalSubmitting = false })
     },
-    // 附件：选择 → 校验大小/类型 → 真实上传文件中心 → 记录 file_id（提交时随材料一起提交）
-    pickUpload(target) {
+    // 公共 File SDK：统一鉴权刷新、错误处理与上传合同；小程序不承担大型论文/ZIP上传。
+    async pickUpload(target) {
       if (this.uploading) return
-      const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
-      const MAX_DOC = 10 * 1024 * 1024
-      const ALLOWED_EXT = ['pdf', 'doc', 'docx', 'zip']
-      const extOf = (name) => (name || '').split('.').pop().toLowerCase()
-      const checkFile = (name, size) => {
-        const ext = extOf(name)
-        if (!ext || ALLOWED_EXT.indexOf(ext) < 0) {
-          toast('请选择 PDF/Word/ZIP'); return false
-        }
-        if (typeof size === 'number' && size > MAX_DOC) {
-          toast('文件过大，请控制在 ' + (MAX_DOC / 1024 / 1024) + 'MB 以内'); return false
-        }
-        return true
-      }
-      const doUpload = (path, name, size) => {
-        this.uploading = true
-        const token = getToken()
-        uni.uploadFile({
-          url: ENV.apiBaseUrl + ENV.apiPrefix + '/files/upload?bizType=GRADUATION_MATERIAL',
-          filePath: path, name: 'file',
-          header: token ? { Authorization: 'Bearer ' + token } : {},
-          success: (res) => {
-            try {
-              const body = JSON.parse(res.data)
-              if (body && body.code === 0 && body.data) {
-                this[arr].push({ fileId: body.data.fileId, fileName: body.data.fileName || name || '附件' })
-              } else { toast((body && body.message) || '上传失败') }
-            } catch (e) { toast('上传失败') }
-          },
-          fail: () => { toast('上传失败，请检查网络') },
-          complete: () => { this.uploading = false }
-        })
-      }
-      // #ifdef H5 || APP-PLUS
-      if (uni.chooseFile) {
-        uni.chooseFile({ count: 1, success: (r) => {
-          const f = r.tempFiles && r.tempFiles[0]
-          if (!f || !checkFile(f.name, f.size)) return
-          doUpload(r.tempFilePaths[0], f.name, f.size)
-        } })
-      } else {
-        toast('请选择 PDF/Word/ZIP')
-      }
-      // #endif
       // #ifdef MP-WEIXIN
-      uni.chooseMessageFile({ count: 1, type: 'file', success: (r) => {
-        const f = r.tempFiles[0]
-        if (!f || !checkFile(f.name, f.size)) return
-        doUpload(f.path, f.name, f.size)
-      } })
+      if (target === 'final') { toast('论文定稿、作品和源代码请使用学生 PC 上传'); return }
       // #endif
+      const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
+      this.uploading = true
+      try {
+        const selected = await fileSdk.choose()
+        if (!selected) return
+        const uploaded = await fileSdk.upload(selected, { bizType: 'GRADUATION_MATERIAL' })
+        this[arr].push({ fileId: uploaded.fileId, fileName: uploaded.fileName || selected.name || '附件' })
+      } catch (e) { toast(normalizeError(e).text || '上传失败') }
+      finally { this.uploading = false }
     },
     removeAtt(target, i) {
       const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
       this[arr].splice(i, 1)
     },
-    downloadAtt(a) {
-      const token = getToken()
+    async downloadAtt(a) {
       const fileId = a && a.fileId
       if (!fileId) { toast('附件无效'); return }
-      // 始终走学生端 materials 下载通道（本人材料或明确分配的互查定稿）
-      const url = ENV.apiBaseUrl + ENV.apiPrefix + '/mobile/graduation/materials/' + fileId + '/download'
-      uni.showLoading({ title: '下载中' })
-      uni.downloadFile({
-        url,
-        header: token ? { Authorization: 'Bearer ' + token } : {},
-        success: (res) => {
-          uni.hideLoading()
-          if (res.statusCode !== 200) { toast('下载失败或无权限'); return }
-          // #ifdef H5
-          try { const link = document.createElement('a'); link.href = res.tempFilePath; link.download = a.fileName; link.click() } catch (e) { toast('已下载') }
-          // #endif
-          // #ifndef H5
-          uni.openDocument({ filePath: res.tempFilePath, showMenu: true, fail: () => toast('已下载，暂无法预览此类型') })
-          // #endif
-        },
-        fail: () => { uni.hideLoading(); toast('下载失败，请检查网络') }
-      })
+      try {
+        await fileSdk.openAuthorized({
+          fileId,
+          fileName: a.fileName,
+          ticketPath: `/mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket`,
+          openPath: `/mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/preview`,
+          action: 'preview'
+        })
+      } catch (e) { toast(normalizeError(e).text || '附件暂不可预览') }
+    },
+    materialCount(status) { return ((this.materials && this.materials.items) || []).filter((m) => m.businessStatus === status || m.reviewStatus === status).length },
+    isPcOnly(code) { return ['THESIS_DRAFT', 'THESIS_FINAL', 'DESIGN_WORK', 'SOURCE_CODE', 'WORK_DESCRIPTION'].includes(code) },
+    canMiniSubmit(material) { return !this.isPcOnly(material.materialCode) && ['MISSING', 'RETURNED'].includes(material.businessStatus) },
+    async openMaterial(material) { return this.downloadAtt(material.currentVersion || {}) },
+    async submitSmallMaterial(material) {
+      if (this.materialUploadingCode) return
+      this.materialUploadingCode = material.materialCode
+      try {
+        const selected = await fileSdk.choose()
+        if (!selected) return
+        if (Number(selected.size || 0) > 8 * 1024 * 1024) { toast('小程序仅支持 8MB 以内材料，请到学生 PC 上传'); return }
+        const uploaded = await fileSdk.upload(selected, { bizType: 'GRADUATION_MATERIAL', bizId: material.materialId })
+        await studentApi.submitGraduationMaterial(material.materialCode, {
+          fileId: uploaded.fileId, expectedVersion: material.version
+        })
+        uni.showToast({ title: '材料已提交', icon: 'success' })
+        this.materials = await studentApi.getGraduationMaterialLibrary()
+      } catch (e) { toast(normalizeError(e).text || '材料提交失败') }
+      finally { this.materialUploadingCode = '' }
     },
     submitRectify() {
       const content = this.rectifyContent.trim()
