@@ -1,0 +1,100 @@
+{
+  "moduleKey": "makeup",
+  "moduleLabel": "补考重修缓考免修",
+  "sourceOfTruth": "frontend/src/config/navPlan.js",
+  "productionImplementationStatus": "route entries verified; component, API and state-machine symbols require implementation audit before production coding",
+  "sharedAssets": [
+    "shared/v2-makeup-workbench.js",
+    "shared/v2-makeup-workbench.css"
+  ],
+  "routes": [
+    {
+      "route": "/admin/academic-affairs/makeup?tab=makeup",
+      "html": "academic-affairs/makeup/makeup-batches.html",
+      "title": "补考批次",
+      "archetype": "lifecycle-workbench",
+      "roles": ["教务处", "二级学院"],
+      "permissionCandidate": "academicAffairs.makeup.view",
+      "states": ["DRAFT", "COURSE_CONFIRMED", "LOCKED", "PUBLISHED", "FINISHED", "ARCHIVED"],
+      "highRiskActions": ["生成资格快照", "名单锁定", "批次发布", "归档"],
+      "fields": ["批次名称", "学年学期", "资格来源", "课程数", "资格人数", "当前环节", "状态"]
+    },
+    {
+      "route": "/admin/academic-affairs/makeup?tab=retake",
+      "html": "academic-affairs/makeup/retake-approval.html",
+      "title": "重修审批",
+      "archetype": "multi-stage-approval",
+      "roles": ["二级学院", "教务复核"],
+      "permissionCandidate": "academicAffairs.makeup.view",
+      "states": ["PENDING", "APPROVED", "RETURNED", "RULE_BLOCKED"],
+      "boundary": "审批通过不等于已分配教学班",
+      "fields": ["申请单", "学生", "课程", "申请学期", "重修方式", "规则预检", "审批状态"]
+    },
+    {
+      "route": "/admin/academic-affairs/makeup?tab=exemption",
+      "html": "academic-affairs/makeup/exemption-approval.html",
+      "title": "免修审批",
+      "archetype": "evidence-approval",
+      "roles": ["课程负责人", "二级学院", "教务处"],
+      "permissionCandidate": "academicAffairs.makeup.view",
+      "states": ["PENDING", "APPROVED", "RETURNED", "REJECTED", "MATERIAL_INVALID"],
+      "boundary": "课程免修、考试免考、成绩认定必须分开裁决",
+      "fields": ["依据类型", "依据名称", "申请课程", "材料包", "匹配提示", "审批意见", "审批状态"]
+    },
+    {
+      "route": "/admin/academic-affairs/makeup?tab=clearance",
+      "html": "academic-affairs/makeup/graduation-clearance.html",
+      "title": "毕业清考",
+      "archetype": "qualification-snapshot",
+      "roles": ["教务处", "毕业审核人员"],
+      "permissionCandidate": "academicAffairs.makeup.view",
+      "states": ["ELIGIBLE", "BLOCKED", "MERGED_TO_EXAM", "RESULT_WRITTEN_BACK"],
+      "boundary": "清考资格不是毕业资格",
+      "fields": ["预计毕业批次", "培养方案课程缺口", "学籍状态", "成绩快照", "资格状态", "阻断原因"]
+    },
+    {
+      "route": "/admin/academic-affairs/makeup?tab=deferred",
+      "html": "academic-affairs/makeup/deferred-merge.html",
+      "title": "缓考合流",
+      "archetype": "cross-workflow-merge",
+      "roles": ["考务管理员", "教务处"],
+      "permissionCandidate": "academicAffairs.makeup.view",
+      "states": ["APPROVED", "COURSE_UNMATCHED", "TIME_CONFLICT", "MERGED"],
+      "boundary": "只接收已审批缓考记录，不在本页批准缓考",
+      "fields": ["缓考记录", "来源审批单", "课程", "目标补考批次", "合流校验", "合流状态"]
+    },
+    {
+      "route": "/admin/academic-affairs/my-makeup",
+      "html": "academic-affairs/makeup/my-makeup.html",
+      "title": "学生自助申请",
+      "archetype": "student-self-service",
+      "roles": ["学生本人"],
+      "dataScope": "self",
+      "permissionCandidate": "academicAffairs.retake.apply",
+      "states": ["DRAFT", "SUBMITTED", "RETURNED", "APPROVED", "REJECTED"],
+      "boundary": "前端不自行判定最终资格",
+      "fields": ["申请类型", "课程", "资格来源", "证明材料", "申请说明", "当前状态", "下一步动作"]
+    },
+    {
+      "route": "/admin/academic-affairs/makeup/stats",
+      "html": "academic-affairs/makeup/makeup-stats.html",
+      "title": "统计分析",
+      "archetype": "privacy-aware-dashboard",
+      "roles": ["教务处", "领导查看"],
+      "permissionCandidate": "academicAffairs.makeup.view",
+      "privacy": ["aggregate-first", "small-cell masking", "student drilldown permission"],
+      "fields": ["资格人数", "审批通过", "实际参考", "通过率", "重复申请", "合流失败", "材料退回"]
+    },
+    {
+      "route": "/admin/academic-affairs/exemption/archive",
+      "html": "academic-affairs/makeup/exemption-archive.html",
+      "title": "材料归档",
+      "archetype": "immutable-audit-archive",
+      "roles": ["教务归档人员", "审计"],
+      "permissionCandidate": "academicAffairs.makeup.archive",
+      "states": ["ARCHIVED", "DOWNLOAD_AUDITED", "FILE_MISSING", "UNAUTHORIZED"],
+      "boundary": "归档原件不可覆盖，只允许追加说明",
+      "fields": ["归档号", "业务单", "学生", "课程", "材料包版本", "审批快照", "文件校验值", "下载审计"]
+    }
+  ]
+}
