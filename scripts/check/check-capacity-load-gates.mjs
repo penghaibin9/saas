@@ -79,6 +79,12 @@ if (failures.length === 0) {
   for (const threshold of requiredThresholds) {
     if (!k6.includes(threshold)) failures.push(`missing threshold/reporting contract ${threshold}`)
   }
+  if (!k6.includes('LOCAL_HIGH_LOAD_DIAGNOSTIC')) {
+    failures.push('local high-load diagnostic mode must be explicit')
+  }
+  if (!k6.includes('isLocalBaseUrl(BASE_URL) && HIGH_LOAD_PROFILES.has(PROFILE)')) {
+    failures.push('only local high-load profiles may skip k6 latency thresholds')
+  }
   if (!/permissions:\s*\n\s*contents:\s*read/m.test(workflow)) {
     failures.push('workflow permissions must be contents: read')
   }
@@ -122,6 +128,9 @@ if (failures.length === 0) {
     if (!probe.includes(endpoint)) failures.push(`observability probe missing ${endpoint}`)
   }
   if (!probe.includes('X-Ops-Token')) failures.push('observability probe must use X-Ops-Token')
+  if (!probe.includes('"targetMode": _target_mode(base)')) {
+    failures.push('observability probe must record local versus remote target mode')
+  }
   if (!localSeed.includes('create_access_token')) failures.push('local seed must issue ephemeral signed tokens')
   if (!localSeed.includes('StudentProfile')) failures.push('local seed must create a real student profile')
   if (!localSeed.includes('--token-count')) failures.push('local seed must support explicit token pool size')
@@ -133,6 +142,14 @@ if (failures.length === 0) {
   }
   for (const profile of ['"p300": 10000', '"p500": 20000']) {
     if (!evaluator.includes(profile)) failures.push(`capacity evaluator missing high-load minimum ${profile}`)
+  }
+  for (const diagnosticContract of ['"local-functional"', '"full-capacity"', '"latencyGateEnforced"', '"enforced"']) {
+    if (!evaluator.includes(diagnosticContract)) {
+      failures.push(`capacity evaluator missing target-aware contract ${diagnosticContract}`)
+    }
+  }
+  if (!evaluator.includes('target_mode == "local"')) {
+    failures.push('only local targets may use functional-only high-load verdicts')
   }
 
   const secretLeakPatterns = [

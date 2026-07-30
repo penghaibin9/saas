@@ -70,6 +70,10 @@ function hostnameOf(baseUrl) {
     .toLowerCase();
 }
 
+function isLocalBaseUrl(baseUrl) {
+  return /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(String(baseUrl));
+}
+
 export const BASE_URL = normalizeBaseUrl(__ENV.BASE_URL);
 export const PROFILE = String(__ENV.PROFILE || 'smoke').trim();
 export const SCENARIO = String(__ENV.SCENARIO || 'mixed').trim();
@@ -94,9 +98,19 @@ if (
 const routeThresholds = {
   'http_req_duration{route:student_home}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:student_messages}': ['p(95)<1000', 'p(99)<2000'],
-  'http_req_duration{route:teacher_overview}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_workbench}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:teacher_todos}': ['p(95)<1000', 'p(99)<2000'],
 };
+
+const fullLatencyThresholds = {
+  http_req_duration: ['p(95)<1000', 'p(99)<2000'],
+  ...routeThresholds,
+};
+
+// GitHub自包含高负载把k6、FastAPI、MySQL、Redis放在同一Runner，只作为功能与稳定性诊断。
+// HTTPS预发/正式环境仍执行完整延迟硬门槛，禁止用本地诊断替代真实容量验收。
+export const LOCAL_HIGH_LOAD_DIAGNOSTIC =
+  isLocalBaseUrl(BASE_URL) && HIGH_LOAD_PROFILES.has(PROFILE);
 
 export const options = {
   scenarios: {
@@ -110,8 +124,7 @@ export const options = {
   thresholds: {
     checks: ['rate>0.995'],
     http_req_failed: ['rate<0.005'],
-    http_req_duration: ['p(95)<1000', 'p(99)<2000'],
-    ...routeThresholds,
+    ...(LOCAL_HIGH_LOAD_DIAGNOSTIC ? {} : fullLatencyThresholds),
   },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   userAgent: 'Yueke-Capacity-Gate/1.0',

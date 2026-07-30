@@ -14,6 +14,7 @@ PROFILE_MIN_REQUESTS = {
     "p300": 10000,
     "p500": 20000,
 }
+LOCAL_DIAGNOSTIC_PROFILES = {"p300", "p500"}
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -98,68 +99,83 @@ def main() -> int:
     minimum_requests = PROFILE_MIN_REQUESTS.get(args.profile, 1)
     missing_keys = ((after.get("metrics") or {}).get("missingKeys") or [])
     non_2xx = _status_failures(after)
+    target_mode = str(before.get("targetMode") or after.get("targetMode") or "unknown")
+    local_high_load = target_mode == "local" and args.profile in LOCAL_DIAGNOSTIC_PROFILES
+    verdict_mode = "local-functional" if local_high_load else "full-capacity"
 
     assertions = [
         {
             "key": "minimumRequests",
             "passed": request_count >= minimum_requests,
+            "enforced": True,
             "actual": request_count,
             "limit": minimum_requests,
         },
         {
             "key": "httpFailureRate",
             "passed": failed_rate < 0.005,
+            "enforced": True,
             "actual": failed_rate,
             "limit": 0.005,
         },
         {
             "key": "businessCheckRate",
             "passed": check_rate > 0.995,
+            "enforced": True,
             "actual": check_rate,
             "limit": 0.995,
         },
         {
             "key": "p95Ms",
             "passed": math.isfinite(p95) and p95 < 1000,
+            "enforced": not local_high_load,
             "actual": None if not math.isfinite(p95) else round(p95, 3),
             "limit": 1000,
         },
         {
             "key": "p99Ms",
             "passed": math.isfinite(p99) and p99 < 2000,
+            "enforced": not local_high_load,
             "actual": None if not math.isfinite(p99) else round(p99, 3),
             "limit": 2000,
         },
         {
             "key": "readinessBefore",
             "passed": _ready(before),
+            "enforced": True,
             "actual": (before.get("readiness") or {}).get("status"),
             "limit": "READY",
         },
         {
             "key": "readinessAfter",
             "passed": _ready(after),
+            "enforced": True,
             "actual": (after.get("readiness") or {}).get("status"),
             "limit": "READY",
         },
         {
             "key": "metricsKeysAfter",
             "passed": not missing_keys,
+            "enforced": True,
             "actual": missing_keys,
             "limit": [],
         },
         {
             "key": "non2xxAfter",
             "passed": not non_2xx,
+            "enforced": True,
             "actual": non_2xx,
             "limit": {},
         },
     ]
 
-    passed = all(item["passed"] for item in assertions)
+    passed = all(item["passed"] for item in assertions if item["enforced"])
     verdict = {
         "profile": args.profile,
+        "mode": verdict_mode,
+        "targetMode": target_mode,
         "passed": passed,
+        "latencyGateEnforced": not local_high_load,
         "summary": {
             "requests": request_count,
             "p95Ms": None if not math.isfinite(p95) else round(p95, 3),
@@ -173,13 +189,16 @@ def main() -> int:
     args.output.write_text(json.dumps(verdict, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(
-        f"capacity_verdict profile={args.profile} passed={str(passed).lower()} "
-        f"requests={request_count} p95_ms={verdict['summary']['p95Ms']} "
-        f"p99_ms={verdict['summary']['p99Ms']} failed_rate={failed_rate} check_rate={check_rate}"
+        f"capacity_verdict profile={args.profile} mode={verdict_mode} "
+        f"passed={str(passed).lower()} requests={request_count} "
+        f"p95_ms={verdict['summary']['p95Ms']} p99_ms={verdict['summary']['p99Ms']} "
+        f"failed_rate={failed_rate} check_rate={check_rate}"
     )
+    if local_high_load:
+        print("INFO local high-load latency is diagnostic only; HTTPS remote runs enforce full latency gates")
     if not passed:
         for item in assertions:
-            if not item["passed"]:
+            if item["enforced"] and not item["passed"]:
                 print(f"FAILED {item['key']}: actual={item['actual']} limit={item['limit']}")
         return 1
     return 0

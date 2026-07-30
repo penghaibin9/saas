@@ -42,6 +42,11 @@ def _safe_base_url(value: str) -> bool:
     return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
 
 
+def _target_mode(value: str) -> str:
+    parsed = urlparse(value)
+    return "local" if parsed.hostname in {"localhost", "127.0.0.1", "::1"} else "remote"
+
+
 def probe(base_url: str, token: str, samples: int, interval: float) -> dict[str, Any]:
     base = base_url.rstrip("/")
     health_status, health_payload = _get_json(f"{base}/health")
@@ -66,6 +71,7 @@ def probe(base_url: str, token: str, samples: int, interval: float) -> dict[str,
     metrics_ok = all(item["status"] == 200 for item in metrics_samples) and not missing_metric_keys
     result = {
         "ok": health_status == 200 and ready_ok and metrics_ok,
+        "targetMode": _target_mode(base),
         "health": {"statusCode": health_status, "status": _unwrap(health_payload).get("status")},
         "readiness": {
             "statusCode": ready_status,
