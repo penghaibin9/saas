@@ -6,96 +6,55 @@
 - 基线：`main@b0af2244e1c8d466fe8afbd7b2bc0ab067d68489`
 - 分支：`codex/teacher-pc-v2-html-library`
 - Draft PR：`#27`
-- 共享设计系统：`teacher-pc-v2 / 0.5.0`
+- 共享设计系统：`teacher-pc-v2 / 0.6.0`
 - 生产代码修改：**否**
 - 允许目录外修改：**0**
 
-## 本轮收尾完成
+## 本轮完成
 
-### 学院专业班级
+### 课程库
 
-真实 `AaOrgConsole.vue` 的 11 个 Tab 已全部进入 manifest：
+- 课程列表、新建、详情、编辑
+- `category / nature / credit / outline / assessment / owner / material / disable / archive` 九个真实 Tab
+- 分类/性质/考核方式调整抽屉
+- 学分学时全字段抽屉
+- 课程负责人绑定
+- 大纲/材料上传登记及作废确认
+- 两级审核、退回理由、启停和培养方案引用保护
+- 历史课程按 `DISABLED + SUPERSEDED` 只读派生，不虚构 `ARCHIVED`
 
-1. 学院
-2. 专业
-3. 行政班
-4. 年级
-5. 教学班
-6. 专业方向
-7. 班级学生
-8. 班级调整
-9. 组织树
-10. 组织统计
-11. 变更审计
+### 培养方案
 
-同时覆盖新建/编辑抽屉、教学秘书绑定、逻辑删除、班级学生抽屉、个体转班、专业方向总开关、批量班级调整、前置核验、阻断结果和执行确认。
-
-### 学年学期
-
-- 学期管理
-- 新建学期
-- 学年管理
-- 当前学期设置
-- 学期周次
-- 教学周配置
-- 教学周配置非草稿锁定态
-- 学期状态及冻结/解冻
-- 学期切换记录
-- 学期归档只读总览
-
-### 校历节次
-
-- 校历管理
-- 校历发布后锁定态
-- 节假日配置
-- 补课日配置
-- 教学周日历
-- 校历发布
-- 校历归档只读总览
-- 节次管理
-- 上课时间段
-
-`time-slots.html` 与 `time-bands.html` 的提交 `722a67a74b2dbad5f27ddb7459ac3ce8ee5e2feb` 已快进接入当前分支和 Draft PR #27。
+- 培养方案治理与内联新建
+- 开课差异：漏开、重复、多开、缺教师、学分/学时不一致、未解析、未匹配班级
+- 编制器：基本信息、课程结构、国家标准依据、审核发布四个关键切面
+- 控制台 12 个真实 Tab：`authoring / versions / planChange / courseModules / practicePlan / creditRequirements / practiceSegments / graduationRequirements / review / publish / changeStatus / archive`
+- 新建版本、带原因计划变更、课程/实践/学分/毕业要求 CRUD、两级审核、年级/班级绑定、冻结/恢复/停用、变更记录
+- 方案归档为已停用和被新版本取代的只读派生结果，不新增状态值
 
 ## 累计数量
 
-- manifest 条目：**82**
-- 独立 HTML：**76**
+- manifest 条目：**113**
+- 独立 HTML：**107**
 - 共享路由条目：**8**
-- shared 文件：**10**
+- shared 文件：**12**
 - 仓库截图：**0**
-- 本地累计渲染截图：**118**
-- 已完成首轮工作区：**8**
+- 本地累计渲染截图：**173**
+- 已完成首轮工作区：**10**
 - 完成一级中心：**0**
 
 ## 本批验证
 
-### 学院专业班级
-
-- 页面：**11**
-- 1440 × 1000：11 页全部渲染
-- 1280 × 900：5 个关键页额外渲染
-- 1920 × 1080：5 个关键页额外渲染
-- 本批渲染：**21 次**
-
-### 学年学期与校历节次
-
-- 页面：**19**
-- 1440 × 1000：19 页全部渲染
-- 1280 × 900：7 个关键页额外渲染
-- 1920 × 1080：7 个关键页额外渲染
-- 本批渲染：**33 次**
-
-### 结果
-
+- 新增页面：**31**
+- 1440 × 1000：31 页全部渲染
+- 1280 × 900：12 个关键页额外渲染
+- 1920 × 1080：12 个关键页额外渲染
+- 本批总渲染：**55 次**
 - 页面级横向溢出：**0**
 - 控制台明显错误：**0**
 - 相对资源缺失：**0**
-- 默认态、加载态、空态、错误态、无权限态、长数据态及关键抽屉/弹窗均完成静态检查
-- 学期周次示例日期已按 `2026-09-01` 起连续日期计算，不存在无效月份
+- 根布局已增加 `min-width:0` 密集工作区约束，9/12 Tab 不会撑宽页面
 - 截图只保存在执行环境，**未提交 GitHub 仓库**
-
-执行环境说明：容器 Chromium 对 `file://` 和 `localhost` 直接导航返回 `ERR_BLOCKED_BY_ADMINISTRATOR`。采用“HTML + 本地 CSS/JS/SVG 完全内联后渲染”检查布局与交互，并独立检查原始 HTML 相对资源路径。
 
 ## 已完成首轮工作区
 
@@ -107,38 +66,38 @@
 6. 学院专业班级
 7. 学年学期
 8. 校历节次
+9. 课程库
+10. 培养方案
 
 “首轮完成”不代表教务中心或教师 PC 全量完成。
 
 ## 已确认差异 / 疑问
 
-1. `navPlan.js` 使用 `PRESERVED`，`AaRosterListView.vue` 使用 `RETAINED`。继续记录，不修改生产代码。
+1. `navPlan.js` 使用 `PRESERVED`，`AaRosterListView.vue` 使用 `RETAINED`；只记录，不修改。
 2. `PRESERVE` 是保留学籍，`RETAIN` 是留级，不能合并。
-3. `/status-changes/retain` 仅为旧路由重定向，不生成原型。
-4. 异动记录 `term_code` 当前无可靠回填，不在异动归档原型中虚构学期筛选。
-5. 学期和校历归档实际动作统一进入“教务归档”，本原型只做真实只读联动，不造第二套归档写入口。
-6. 校历发布后事件锁定；教学周总数与考试周起始周次仅 `DRAFT` 学期可改。
+3. `/status-changes/retain` 是 redirect-only，不生成原型。
+4. 异动记录 `term_code` 无可靠回填，不虚构学期筛选。
+5. 学期和校历归档统一进入教务归档，不造第二套写入口。
+6. 课程历史视图没有 `ARCHIVED` 状态；只使用 `DISABLED` 与版本关系。
+7. 课程控制台维度写操作真实后端为完整记录整体 PUT，原型不得暗示局部 PATCH。
+8. 方案归档是 `DISABLED ∪ SUPERSEDED` 只读派生；生命周期变更在方案变更 Tab 执行。
+9. `/programs/opening-plan` 被动态 `:id` 路由接收后由编辑器组件内部切换到开课差异页面，原型按真实可达切面登记。
 
 ## 下一批精确起点
 
-按真实业务依赖，下一批从 **课程库** 开始：
+按业务依赖继续 **教学任务**：
 
-1. `/admin/academic-affairs/courses` 课程列表
-2. `/admin/academic-affairs/courses/new` 新建课程
-3. `/admin/academic-affairs/courses/:id` 课程详情及审核态
-4. `/admin/academic-affairs/courses/:id/edit` 编辑课程
-5. `/admin/academic-affairs/courses/console?tab=category` 课程分类
-6. `?tab=nature` 课程性质
-7. `?tab=credit` 学分学时
-8. `?tab=outline` 课程大纲
-9. `?tab=assessment` 考核方式
-10. `?tab=owner` 课程负责人
-11. `?tab=material` 课程材料
-12. `?tab=disable` 课程停用
-13. `?tab=archive` 历史课程
-14. 分类/性质/考核方式抽屉、学分学时抽屉、负责人抽屉、材料上传与作废确认、启停状态
+1. `/admin/academic-affairs/teaching-tasks` 教学任务批次
+2. `/teaching-tasks/:batchId` 教学任务明细
+3. `/teaching-tasks/assign` 任课教师分配
+4. `/teaching-tasks/merge-split` 合班拆班
+5. `/teaching-tasks/confirm` 教学任务确认
+6. `/teaching-tasks/teacher-confirm` 教师任务确认
+7. `/teaching-tasks/adjust` 教学任务调整
+8. `/teaching-tasks/stats` 教学任务统计
+9. 生成、分配、确认、退回、调整、只读、异常和批量办理状态
 
-课程库完成后继续 **培养方案**，仍以真实 `AaProgramListView.vue`、`AaProgramEditorView.vue`、`AaProgramConsoleView.vue` 的路由、Tab、状态机和字段为准。
+教学任务完成后继续课表管理。
 
 ## Git 状态
 
@@ -146,4 +105,3 @@
 - 不合并 main
 - 不创建新 PR
 - 每批只修改 `docs/ui/teacher-pc-v2-html/`
-- 当前收尾完成后，下一会话从课程库直接续工
