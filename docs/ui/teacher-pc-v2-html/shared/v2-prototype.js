@@ -193,6 +193,96 @@
     }
   }
 
+  function enhanceGenericSidebar() {
+    const sidebar = $('.v2-sidebar');
+    if (!sidebar || window.location.pathname.includes('/academic-affairs/')) return;
+    if (sidebar.dataset.v2GenericEnhanced === '1') return;
+    sidebar.dataset.v2GenericEnhanced = '1';
+
+    const title = $('.v2-side-title', sidebar);
+    const subtitle = $('.v2-side-sub', sidebar);
+    const nav = $('.v2-side-nav', sidebar);
+    if (!nav) return;
+
+    const heading = document.createElement('div');
+    heading.className = 'v2-side-heading';
+    const copy = document.createElement('div');
+    copy.className = 'v2-side-heading-copy';
+    if (title) copy.appendChild(title);
+    if (subtitle) copy.appendChild(subtitle);
+    heading.appendChild(copy);
+
+    const collapsed = storage.get('teacher-pc-v2-generic-sidebar-collapsed') === '1';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'v2-side-collapse-btn';
+    toggle.dataset.v2SidebarToggle = '';
+    toggle.textContent = collapsed ? '›' : '‹';
+    toggle.setAttribute('aria-label', collapsed ? '展开左侧菜单' : '收起左侧菜单');
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    heading.appendChild(toggle);
+    sidebar.insertBefore(heading, nav);
+
+    const oldCollapse = $('.v2-collapse', sidebar);
+    if (oldCollapse) oldCollapse.remove();
+
+    const searchWrap = document.createElement('label');
+    searchWrap.className = 'v2-side-search-wrap';
+    searchWrap.innerHTML = '<span class="v2-visually-hidden">搜索当前中心模块</span><input class="v2-side-search" type="search" placeholder="搜索当前中心模块" autocomplete="off" data-v2-side-search />';
+    sidebar.insertBefore(searchWrap, nav);
+
+    $$('a', nav).forEach((link, index) => {
+      const labelNode = $('span', link);
+      const label = (labelNode ? labelNode.textContent : link.textContent || '').trim();
+      if (labelNode) labelNode.classList.add('v2-nav-label');
+      link.dataset.v2ModuleLabel = label;
+      link.title = label;
+      link.setAttribute('data-v2-generic-module', String(index + 1));
+    });
+
+    const empty = document.createElement('div');
+    empty.className = 'v2-side-search-empty';
+    empty.dataset.v2SideEmpty = '';
+    empty.hidden = true;
+    empty.textContent = '没有匹配的模块';
+    sidebar.appendChild(empty);
+
+    const layout = $('.v2-layout');
+    sidebar.classList.toggle('is-collapsed', collapsed);
+    if (layout) layout.classList.toggle('is-sidebar-collapsed', collapsed);
+
+    const savedScroll = Number(storage.get('teacher-pc-v2-generic-sidebar-scroll') || 0);
+    if (savedScroll > 0) nav.scrollTop = savedScroll;
+
+    const search = $('[data-v2-side-search]', sidebar);
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      $$('a[data-v2-module-label]', nav).forEach(link => {
+        const matched = !query || link.dataset.v2ModuleLabel.toLowerCase().includes(query);
+        link.hidden = !matched;
+        if (matched) visible += 1;
+      });
+      empty.hidden = visible > 0;
+    });
+    search.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      const first = $$('a[data-v2-module-label]', nav).find(link => !link.hidden);
+      if (first) { event.preventDefault(); first.click(); }
+    });
+
+    toggle.addEventListener('click', () => {
+      const nextCollapsed = !sidebar.classList.contains('is-collapsed');
+      sidebar.classList.toggle('is-collapsed', nextCollapsed);
+      if (layout) layout.classList.toggle('is-sidebar-collapsed', nextCollapsed);
+      toggle.textContent = nextCollapsed ? '›' : '‹';
+      toggle.setAttribute('aria-expanded', nextCollapsed ? 'false' : 'true');
+      toggle.setAttribute('aria-label', nextCollapsed ? '展开左侧菜单' : '收起左侧菜单');
+      storage.set('teacher-pc-v2-generic-sidebar-collapsed', nextCollapsed ? '1' : '0');
+    });
+    nav.addEventListener('scroll', () => storage.set('teacher-pc-v2-generic-sidebar-scroll', String(nav.scrollTop)), { passive: true });
+  }
+
   function enhanceExamTabs() {
     if (!window.location.pathname.includes('/academic-affairs/exam/')) return;
     const targets = {
@@ -260,6 +350,7 @@
     document.body.dataset.theme = storage.get('teacher-pc-v2-theme') || 'academy';
     renderAcademicNavigation();
     bindAcademicNavigation();
+    enhanceGenericSidebar();
     enhanceExamTabs();
     enhanceSharedStates();
   }
