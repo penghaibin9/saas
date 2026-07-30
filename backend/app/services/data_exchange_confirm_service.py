@@ -1,6 +1,6 @@
 """统一 ImportJob 确认分派。
 
-身份账号与老系统迁移均只接受 jobId + expectedVersion；真正写入继续委托原业务
+身份账号、老系统迁移与已迁移教务作业均只接受 jobId + expectedVersion；真正写入继续委托原业务
 adapter，公共层负责租户、所有者、版本、过期、文件安全门、任务租约与结果投影。
 """
 from __future__ import annotations
@@ -102,6 +102,7 @@ def confirm_import_job(
     try:
         current = jobs._owned_import(db, job_id, user)
         adapter_type = current.adapter_type
+        import_type = current.import_type
         if current.status == "SUCCEEDED":
             return jobs._import_row(current)
     finally:
@@ -138,10 +139,17 @@ def confirm_import_job(
             from app.services import migration_import_service as migration
             result = migration.confirm(adapter_ref)
             return _finish(job_id, lease, result, user)
+        if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type == "ACADEMIC_ROSTER":
+            from app.modules.academic_affairs.services import academic_file_exchange_service as academic
+            result = academic.confirm_roster_import(job_id, lease=lease, user=user)
+            if not result.get("confirmedRows"):
+                result = dict(result)
+                result["confirmedRows"] = sum(int(result.get(key) or 0) for key in ("created", "reused", "skipped"))
+            return _finish(job_id, lease, result, user)
         if adapter_type == jobs.IMPORT_ADAPTER_EXCEL:
             raise AppException(
                 "DATA_CONFLICT",
-                "该教务 Excel 作业仍由原业务确认接口执行；统一任务已接管历史、文件和状态展示",
+                "该 Excel 作业尚未迁移到服务端权威确认，请使用对应业务入口",
             )
         raise AppException("DATA_CONFLICT", "未知导入 adapter，拒绝确认")
     except Exception as exc:
