@@ -69,6 +69,8 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
     """从文件对象、绑定与请假单中还原权威实习记录/学生范围。"""
     student_ids: set[int] = set()
     internship_ids: set[int] = set()
+    ambiguous_student_ids: set[int] = set()
+    ambiguous_internship_ids: set[int] = set()
     tenant_id = int(file_obj.tenant_id or 0)
 
     def add_numeric(value, target: set[int]) -> None:
@@ -78,10 +80,10 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
 
     biz_type = str(file_obj.biz_type or "").upper()
     if biz_type in {"INTERNSHIP", "ENT_EVAL"}:
-        # 历史数据中 biz_id 可能是 StudentProfile.id，也可能是 InternshipRecord.id；
-        # 下方查询同时按两种解释收敛，不直接据此放行。
-        add_numeric(file_obj.biz_id, student_ids)
-        add_numeric(file_obj.biz_id, internship_ids)
+        # 历史 INTERNSHIP.biz_id 可能是 StudentProfile.id、InternshipRecord.id，
+        # 也可能是 InternshipLeave.id；先作为歧义候选，待权威关系查询后再决定是否采用。
+        add_numeric(file_obj.biz_id, ambiguous_student_ids)
+        add_numeric(file_obj.biz_id, ambiguous_internship_ids)
 
     leave_ids: set[int] = set()
     if biz_type == "LEAVE":
@@ -90,8 +92,8 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
     for item in bindings:
         binding_type = str(item.biz_type or "").upper()
         if binding_type in {"INTERNSHIP", "ENT_EVAL"}:
-            add_numeric(item.biz_id, student_ids)
-            add_numeric(item.biz_id, internship_ids)
+            add_numeric(item.biz_id, ambiguous_student_ids)
+            add_numeric(item.biz_id, ambiguous_internship_ids)
         elif binding_type == "LEAVE":
             add_numeric(item.biz_id, leave_ids)
         if str(item.subject_type or "").upper() == "STUDENT":
@@ -100,6 +102,7 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
         add_numeric(scope.get("studentId"), student_ids)
         add_numeric(scope.get("internshipId"), internship_ids)
 
+    linked_leaves = []
     if db is not None:
         try:
             from app.models import InternshipLeave
@@ -107,16 +110,22 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
             leave_clauses = [InternshipLeave.file_id == str(file_obj.id)]
             if leave_ids:
                 leave_clauses.append(InternshipLeave.id.in_(leave_ids))
-            rows = db.scalars(select(InternshipLeave).where(
+            linked_leaves = db.scalars(select(InternshipLeave).where(
                 InternshipLeave.tenant_id == tenant_id,
                 InternshipLeave.is_deleted.is_(False),
                 or_(*leave_clauses),
             )).all()
-            for row in rows:
+            for row in linked_leaves:
                 student_ids.add(int(row.student_id))
                 internship_ids.add(int(row.internship_id))
         except Exception:
             return set(), set()
+
+    if not linked_leaves:
+        # 只有不存在权威请假关系时，才兼容解释历史 INTERNSHIP.biz_id，防止 leave_id
+        # 与其他学生/实习记录主键碰撞后错误放行。
+        student_ids.update(ambiguous_student_ids)
+        internship_ids.update(ambiguous_internship_ids)
     return student_ids, internship_ids
 
 
