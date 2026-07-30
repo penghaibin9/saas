@@ -110,28 +110,48 @@ def list_contract(biz_type: str, biz_id: str, *, user: dict) -> list[dict]:
 
 
 def _requires_audited_business_download(biz_type: str | None) -> bool:
-    """强制走业务专用下载接口，避免绕过批次/导师范围与业务审计。"""
+    """强敏感或业务专用材料必须走代理/业务下载接口，不能发可转发直链。"""
     return str(biz_type or "").upper() == "GRADUATION_MATERIAL"
 
 
 def url_contract(file_id: str, *, user: dict) -> dict:
-    meta = metadata_contract(file_id, user=user)
-    if not meta.get("readyForBusiness") or _requires_audited_business_download(meta.get("bizType")):
+    row = require_file_access(file_id, user=user, action="download")
+    if isinstance(row, dict):
+        meta = metadata_contract(file_id, user=user)
+        if not meta.get("readyForBusiness") or _requires_audited_business_download(meta.get("bizType")):
+            raise not_found("文件不存在")
+        return {
+            "fileId": str(file_id),
+            "fileName": meta.get("fileName"),
+            "url": f"/api/v1/files/download/{file_id}",
+            "expiresIn": 180,
+            "delivery": "LOCAL_PROXY",
+            "status": meta.get("status"),
+            "scanStatus": meta.get("scanStatus"),
+            "statusText": meta.get("statusText"),
+            "allowedActions": meta.get("allowedActions") or [],
+        }
+    if _requires_audited_business_download(row.biz_type) or str(row.security_level or "").upper() in {"HIGHLY_SENSITIVE", "LEGAL_HOLD"}:
         raise not_found("文件不存在")
+    from app.services.storage.production import presigned_download
+
+    url = presigned_download(row, filename=row.file_name or "download", expires_seconds=180)
+    meta = metadata_contract(file_id, user=user)
     return {
         "fileId": str(file_id),
-        "fileName": meta.get("fileName"),
-        "url": f"/api/v1/files/download/{file_id}",
-        "expiresIn": 900,
-        "status": meta.get("status"),
-        "scanStatus": meta.get("scanStatus"),
+        "fileName": row.file_name,
+        "url": url or f"/api/v1/files/download/{file_id}",
+        "expiresIn": 180,
+        "delivery": "COS_PRESIGNED" if url else "LOCAL_PROXY",
+        "status": row.status,
+        "scanStatus": row.scan_status,
         "statusText": meta.get("statusText"),
         "allowedActions": meta.get("allowedActions") or [],
     }
 
 
 def download_contract(file_id: str, *, user: dict) -> FileResponse:
-    """授权成功后从存储抽象解析字节；业务专用材料不得绕过其审计接口。"""
+    """兼容代理下载；普通 COS 客户端应先请求 /{fileId}/url 获取短时预签名。"""
     row = require_file_access(file_id, user=user, action="download")
     if isinstance(row, dict):
         if _requires_audited_business_download(row.get("bizType")):
@@ -145,11 +165,12 @@ def download_contract(file_id: str, *, user: dict) -> FileResponse:
             raise not_found("文件不存在")
         from app.services.storage import get_backend
 
-        path = get_backend().fetch_local(row.file_key)
+        key = str(getattr(row, "object_key", None) or row.file_key)
+        path = get_backend().fetch_local(key)
         if not path or not path.exists():
             raise not_found("文件不存在")
         filename = row.file_name or path.name
-    audit_log.record("FILE_DOWNLOAD", filename, detail={"fileId": file_id})
+    audit_log.record("FILE_DOWNLOAD", filename, detail={"fileId": file_id, "delivery": "PROXY"})
     response = FileResponse(str(path), filename=filename, content_disposition_type="attachment")
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Cache-Control"] = "private, no-store"
