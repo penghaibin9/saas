@@ -26,7 +26,8 @@ class FakeBackend:
 
 
 @pytest.fixture(autouse=True)
-def tenant_context_and_cleanup():
+def tenant_context_and_cleanup(db_mode):
+    """复用全仓 MySQL 测试夹具；禁止治理测试自行打开默认/生产数据库。"""
     set_tenant({"tenantId": str(TENANT_ID)})
     set_current_user({"userId": "1", "userType": "STAFF", "realName": "治理测试"})
     db = get_sessionmaker()()
