@@ -1,1 +1,1 @@
-"""Final trigger for the independent Stage 6 MySQL acceptance and scan-summary evidence."""
+"""Final rerun for Stage 6 MySQL acceptance after model-import and v1-evidence alignment."""
