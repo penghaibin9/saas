@@ -23,32 +23,12 @@
       "queryVariants": [],
       "permissionKey": "",
       "permissionAny": [],
-      "apiSources": [
-        "fetchLayoutContext",
-        "fetchTodoSummary",
-        "fetchTodoCount",
-        "fetchTodoList",
-        "fetchMessageCount",
-        "fetchSchoolStats",
-        "fetchMyScheduleToday"
-      ],
-      "sourceFiles": [
-        "frontend/src/router/index.js",
-        "frontend/src/views/AdminWorkbenchView.vue",
-        "frontend/src/modules/workbench/views/WorkbenchView.vue",
-        "frontend/src/modules/workbench/api/workbench.api.js",
-        "frontend/src/modules/workbench/config/workbenchRecipes.js"
-      ],
-      "statesCovered": [
-        "ready",
-        "empty-by-section",
-        "loading-copy",
-        "error-copy",
-        "role-aware",
-        "readonly-layout"
-      ],
+      "apiSources": ["fetchLayoutContext", "fetchTodoSummary", "fetchTodoList", "fetchMessageCount", "fetchSchoolStats", "fetchMyScheduleToday"],
+      "sourceFiles": ["frontend/src/router/index.js", "frontend/src/views/AdminWorkbenchView.vue", "frontend/src/modules/workbench/views/WorkbenchView.vue", "frontend/src/modules/workbench/api/workbench.api.js", "frontend/src/modules/workbench/config/workbenchRecipes.js"],
+      "statesCovered": ["ready", "empty-by-section", "loading-copy", "error-copy", "role-aware", "readonly-layout"],
+      "screenshots": ["screenshots/1280/workbench.png", "screenshots/1440/workbench.png", "screenshots/1920/workbench.png"],
       "sharedPrototype": false,
-      "notes": "数字使用‘—’中性占位；真实值由接口返回。视觉结构对齐冻结的工作台参考图。"
+      "notes": "数字使用中性占位；真实值由工作台接口返回。"
     },
     {
       "route": "/admin/academic-affairs",
@@ -62,25 +42,10 @@
       "queryVariants": [],
       "permissionKey": "academicAffairs.dashboard.view",
       "permissionAny": [],
-      "apiSources": [
-        "academicAffairsDashboardReadinessApi.get",
-        "academicAffairsApi.getDashboardReminders",
-        "academicAffairsDashboardReadinessApi.exportXlsx"
-      ],
-      "sourceFiles": [
-        "frontend/src/modules/academicAffairs/academic-affairs.routes.js",
-        "frontend/src/modules/academicAffairs/views/AaDashboardView.vue",
-        "frontend/src/modules/academicAffairs/api/academic-affairs-dashboard-readiness.api.js",
-        "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"
-      ],
-      "statesCovered": [
-        "ready",
-        "empty-by-section",
-        "loading-copy",
-        "error-copy",
-        "blocker",
-        "risk"
-      ],
+      "apiSources": ["academicAffairsDashboardReadinessApi.get", "academicAffairsApi.getDashboardReminders", "academicAffairsDashboardReadinessApi.exportXlsx"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaDashboardView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs-dashboard-readiness.api.js", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["ready", "empty-by-section", "loading-copy", "error-copy", "blocker", "risk"],
+      "screenshots": ["screenshots/1280/academic-dashboard.png", "screenshots/1440/academic-dashboard.png", "screenshots/1920/academic-dashboard.png"],
       "sharedPrototype": false,
       "notes": "readiness、阻断、风险、责任角色、截止时间、今日教学和提醒均按真实字段建模。"
     },
@@ -93,31 +58,15 @@
       "pageTitle": "成绩分析",
       "pageType": "ANALYTICS",
       "html": "academic-affairs/grades/grade-overview.html",
-      "queryVariants": [
-        { "dimension": "", "label": "总体" },
-        { "dimension": "course", "label": "按课程" },
-        { "dimension": "class", "label": "按班级" }
-      ],
+      "queryVariants": [{"dimension": "", "label": "总体"}, {"dimension": "course", "label": "按课程"}, {"dimension": "class", "label": "按班级"}],
       "permissionKey": "academicAffairs.grade.view",
       "permissionAny": [],
-      "apiSources": [
-        "academicAffairsApi.getGradeAnalysis",
-        "academicAffairsApi.exportGradeAnalysis"
-      ],
-      "sourceFiles": [
-        "frontend/src/modules/academicAffairs/academic-affairs.routes.js",
-        "frontend/src/modules/academicAffairs/views/AaGradeOverviewView.vue",
-        "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"
-      ],
-      "statesCovered": [
-        "ready",
-        "empty",
-        "loading-copy",
-        "error-copy",
-        "export-purpose-validation"
-      ],
+      "apiSources": ["academicAffairsApi.getGradeAnalysis", "academicAffairsApi.exportGradeAnalysis"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeOverviewView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["ready", "empty", "loading-copy", "error-copy", "export-purpose-validation"],
+      "screenshots": ["screenshots/1280/grade-overview.png", "screenshots/1440/grade-overview.png", "screenshots/1920/grade-overview.png"],
       "sharedPrototype": false,
-      "notes": "表格列、筛选项、指标和导出用途均来自源组件；示例行是明确标注的 placeholder。"
+      "notes": "表格列、筛选、指标和导出用途来自源组件。"
     },
     {
       "route": "/admin/academic-affairs/grade-entry",
@@ -128,41 +77,15 @@
       "pageTitle": "成绩录入",
       "pageType": "FORM",
       "html": "academic-affairs/grades/grade-entry.html",
-      "queryVariants": [
-        { "filter": "pending" },
-        { "todoType": "AA_GRADE_ENTRY" },
-        { "taskId": ":gradeTaskId" },
-        { "taskId": ":gradeTaskId", "mode": "dynamic" },
-        { "taskId": ":gradeTaskId", "action": "import" }
-      ],
+      "queryVariants": [{"filter": "pending"}, {"todoType": "AA_GRADE_ENTRY"}, {"taskId": ":gradeTaskId"}, {"taskId": ":gradeTaskId", "mode": "dynamic"}, {"taskId": ":gradeTaskId", "action": "import"}],
       "permissionKey": "academicAffairs.grade.input",
       "permissionAny": [],
-      "apiSources": [
-        "academicAffairsApi.getGradeTasks",
-        "academicAffairsApi.getGradeRecords",
-        "academicAffairsApi.downloadGradeImportTemplate",
-        "academicAffairsApi.uploadGradeImportXlsx",
-        "academicAffairsApi.confirmGradeImport",
-        "academicAffairsR10Api.getDynamicGradeRoster",
-        "gradeIdentityApi"
-      ],
-      "sourceFiles": [
-        "frontend/src/modules/academicAffairs/academic-affairs.routes.js",
-        "frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue",
-        "frontend/src/modules/academicAffairs/api/academic-affairs.api.js",
-        "frontend/src/modules/academicAffairs/api/grade-identity.api.js",
-        "frontend/src/modules/academicAffairs/api/academic-affairs-r10.api.js"
-      ],
-      "statesCovered": [
-        "new-task",
-        "fixed-mode",
-        "dynamic-mode",
-        "returned",
-        "readonly",
-        "import-entry"
-      ],
+      "apiSources": ["academicAffairsApi.getGradeTasks", "academicAffairsApi.getGradeRecords", "academicAffairsApi.downloadGradeImportTemplate", "academicAffairsApi.uploadGradeImportXlsx", "academicAffairsApi.confirmGradeImport", "academicAffairsR10Api.getDynamicGradeRoster", "gradeIdentityApi"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js", "frontend/src/modules/academicAffairs/api/grade-identity.api.js", "frontend/src/modules/academicAffairs/api/academic-affairs-r10.api.js"],
+      "statesCovered": ["new-task", "fixed-mode", "dynamic-mode", "returned", "readonly", "import-entry"],
+      "screenshots": ["screenshots/1280/grade-entry.png", "screenshots/1440/grade-entry.png", "screenshots/1920/grade-entry.png"],
       "sharedPrototype": false,
-      "notes": "固定三段、动态成绩项、异常标记、正式名单冻结、管理员特殊补录均按真实代码呈现。"
+      "notes": "固定三段、动态成绩项、异常标记、正式名单冻结和管理员特殊补录均按真实代码呈现。"
     },
     {
       "route": "/admin/academic-affairs/grade-fail",
@@ -177,33 +100,194 @@
       "permissionKey": "academicAffairs.grade.view",
       "permissionAny": [],
       "apiSources": ["academicAffairsApi.getFailList"],
-      "sourceFiles": [
-        "frontend/src/modules/academicAffairs/academic-affairs.routes.js",
-        "frontend/src/modules/academicAffairs/views/AaGradeFailListView.vue",
-        "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"
-      ],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeFailListView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
       "statesCovered": ["ready", "empty", "loading", "error"],
+      "screenshots": ["screenshots/1280/grade-fail.png", "screenshots/1440/grade-fail.png", "screenshots/1920/grade-fail.png"],
       "sharedPrototype": false,
-      "notes": "筛选、分页、列和成绩单下钻均来自真实组件。"
+      "notes": "筛选、分页、列和成绩单下钻来自真实组件。"
+    },
+    {
+      "route": "/admin/academic-affairs/transcript",
+      "routeName": "aa-transcript",
+      "component": "frontend/src/modules/academicAffairs/views/AaTranscriptView.vue",
+      "center": "教务中心",
+      "workspace": "成绩管理",
+      "pageTitle": "学生成绩单",
+      "pageType": "DETAIL",
+      "html": "academic-affairs/grades/transcript.html",
+      "queryVariants": [{"studentId": ":studentId", "name": ":studentName"}, {"action": "export"}],
+      "permissionKey": "academicAffairs.grade.view",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.getTranscript", "academicAffairsApi.exportTranscript"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaTranscriptView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["student-unselected", "ready", "empty", "loading", "export-purpose-validation"],
+      "screenshots": ["screenshots/1440/transcript.png"],
+      "sharedPrototype": false,
+      "notes": "只读已发布课程成绩；导出用途不少于5字并写审计。"
+    },
+    {
+      "route": "/admin/academic-affairs/grade-exception",
+      "routeName": "aa-grade-exception",
+      "component": "frontend/src/modules/academicAffairs/views/AaGradeExceptionView.vue",
+      "center": "教务中心",
+      "workspace": "成绩管理",
+      "pageTitle": "成绩异常",
+      "pageType": "LEDGER",
+      "html": "academic-affairs/grades/grade-exception.html",
+      "queryVariants": [],
+      "permissionKey": "academicAffairs.grade.view",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.getExceptionList"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeExceptionView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["ready", "empty", "loading", "error"],
+      "screenshots": ["screenshots/1440/grade-exception.png"],
+      "sharedPrototype": false,
+      "notes": "汇总 ABSENT、DEFERRED、EXEMPT，支持成绩单下钻。"
+    },
+    {
+      "route": "/admin/academic-affairs/grade-college-review",
+      "routeName": "aa-grade-college-review",
+      "component": "frontend/src/modules/academicAffairs/views/AaGradeCollegeReviewView.vue",
+      "center": "教务中心",
+      "workspace": "成绩审核发布更正",
+      "pageTitle": "学院审核",
+      "pageType": "QUEUE",
+      "html": "academic-affairs/grades/grade-college-review.html",
+      "queryVariants": [],
+      "permissionKey": "academicAffairs.grade.collegeReview",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.getGradeTasks(status=SUBMITTED)", "academicAffairsApi.collegeReviewGrade"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeCollegeReviewView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["ready", "empty", "loading", "error", "approve-confirm", "return-reason"],
+      "screenshots": ["screenshots/1440/grade-college-review.png"],
+      "sharedPrototype": false,
+      "notes": "通过进入教务终审；退回必须填写审核意见。"
+    },
+    {
+      "route": "/admin/academic-affairs/grade-publish",
+      "routeName": "aa-grade-publish",
+      "component": "frontend/src/modules/academicAffairs/views/AaGradePublishView.vue",
+      "center": "教务中心",
+      "workspace": "成绩审核发布更正",
+      "pageTitle": "教务发布",
+      "pageType": "QUEUE",
+      "html": "academic-affairs/grades/grade-publish.html",
+      "queryVariants": [{"tab": "ACADEMIC_REVIEW"}, {"tab": "PUBLISHED"}],
+      "permissionKey": "academicAffairs.grade.publish",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.getGradeTasks", "academicAffairsApi.publishGrades", "academicAffairsApi.returnGradeTask", "academicAffairsApi.archiveGradeTask"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradePublishView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["academic-review", "published", "empty", "loading", "error", "danger-confirm"],
+      "screenshots": ["screenshots/1440/grade-publish.png"],
+      "sharedPrototype": false,
+      "notes": "发布为不可撤销高危动作；已发布任务可归档。"
+    },
+    {
+      "route": "/admin/academic-affairs/grade-change",
+      "routeName": "aa-grade-change",
+      "component": "frontend/src/modules/academicAffairs/views/AaGradeChangeView.vue",
+      "center": "教务中心",
+      "workspace": "成绩审核发布更正",
+      "pageTitle": "成绩更正",
+      "pageType": "FORM",
+      "html": "academic-affairs/grades/grade-change.html",
+      "queryVariants": [],
+      "permissionKey": "academicAffairs.gradeChange.apply",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.requestGradeChange", "academicAffairsApi.changeCollegeReview", "academicAffairsApi.changeAcademicReview"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeChangeView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["apply", "college-review", "academic-review", "reject-reason"],
+      "screenshots": ["screenshots/1440/grade-change.png"],
+      "sharedPrototype": false,
+      "notes": "教师发起、学院初审、教务终审；原值 append-only 留痕。"
+    },
+    {
+      "route": "/admin/academic-affairs/grade-recheck",
+      "routeName": "aa-grade-recheck",
+      "component": "frontend/src/modules/academicAffairs/views/AaGradeRecheckView.vue",
+      "center": "教务中心",
+      "workspace": "成绩审核发布更正",
+      "pageTitle": "成绩复查复审",
+      "pageType": "QUEUE",
+      "html": "academic-affairs/grades/grade-recheck.html",
+      "queryVariants": [],
+      "permissionKey": "academicAffairs.grade.view",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.getGradeRechecks", "academicAffairsApi.reviewGradeRecheck"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeRecheckView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["ready", "empty", "loading", "error", "uphold", "adjust", "reject"],
+      "screenshots": ["screenshots/1440/grade-recheck.png"],
+      "sharedPrototype": false,
+      "notes": "复审结论为维持、调整或不予受理。"
+    },
+    {
+      "route": "/admin/academic-affairs/grade-audit",
+      "routeName": "aa-grade-audit",
+      "component": "frontend/src/modules/academicAffairs/views/AaGradeAuditView.vue",
+      "center": "教务中心",
+      "workspace": "成绩审核发布更正",
+      "pageTitle": "成绩操作审计",
+      "pageType": "LEDGER",
+      "html": "academic-affairs/grades/grade-audit.html",
+      "queryVariants": [],
+      "permissionKey": "academicAffairs.grade.view",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.getGradeAudit"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeAuditView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["ready", "empty", "loading", "error", "role-scoped"],
+      "screenshots": ["screenshots/1440/grade-audit.png"],
+      "sharedPrototype": false,
+      "notes": "只读复用既有成绩审计流水，任课教师仅自查本人操作。"
+    },
+    {
+      "route": "/admin/academic-affairs/grade-recognition",
+      "routeName": "aa-grade-recognition",
+      "component": "frontend/src/modules/academicAffairs/views/AaGradeRecognitionView.vue",
+      "center": "教务中心",
+      "workspace": "成绩管理",
+      "pageTitle": "成绩认定 · 课程替代",
+      "pageType": "QUEUE",
+      "html": "academic-affairs/grades/grade-recognition.html",
+      "queryVariants": [{"status": "SUBMITTED"}, {"status": "APPROVED"}, {"status": "REJECTED"}],
+      "permissionKey": "academicAffairs.gradeRecognition.view",
+      "permissionAny": [],
+      "apiSources": ["academicAffairsApi.listRecognitions", "academicAffairsApi.submitRecognition", "academicAffairsApi.reviewRecognition", "POST /files/upload"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaGradeRecognitionView.vue", "frontend/src/modules/academicAffairs/api/academic-affairs.api.js"],
+      "statesCovered": ["ready", "empty", "loading", "error", "create-drawer", "reject-drawer", "approve-confirm"],
+      "screenshots": ["screenshots/1440/grade-recognition.png"],
+      "sharedPrototype": false,
+      "notes": "代录、附件、审核通过和驳回字段均来自真实组件。"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=grade",
+      "routeName": "aa-stats",
+      "component": "frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue",
+      "center": "教务中心",
+      "workspace": "成绩管理",
+      "pageTitle": "成绩统计",
+      "pageType": "ANALYTICS",
+      "html": "academic-affairs/grades/grade-stats.html",
+      "queryVariants": [{"tab": "grade"}],
+      "permissionKey": "academicAffairs.stats.view",
+      "permissionAny": [],
+      "apiSources": ["AaStatsOverviewView grade summary API", "AaStatsOverviewView grade detail API"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue", "frontend/src/config/navPlan.js"],
+      "statesCovered": ["ready", "empty", "loading", "error", "scope-blocked", "detail-open"],
+      "screenshots": ["screenshots/1440/grade-stats.png"],
+      "sharedPrototype": false,
+      "notes": "真实生产路由是 /stats?tab=grade；没有另造生产路由。"
     }
   ],
   "coverage": {
-    "registeredPrototypeEntries": 5,
-    "uniqueHtmlFiles": 5,
+    "registeredPrototypeEntries": 14,
+    "uniqueHtmlFiles": 14,
     "sharedMappedRoutes": 0,
-    "screenshots": 0,
+    "screenshotsCommitted": 0,
+    "screenshotsGeneratedLocally": 24,
     "centersStarted": ["工作台", "教务中心"],
     "centersComplete": [],
-    "remainingCenters": [
-      "工作台其余页面",
-      "教务中心其余页面",
-      "学工中心",
-      "岗位实习中心",
-      "毕业设计中心",
-      "系统管理",
-      "全局中心",
-      "登录与安全",
-      "打印页"
-    ]
+    "workspacesComplete": ["成绩管理", "成绩审核发布更正"],
+    "workspacesStarted": ["我的工作台", "教务看板", "成绩管理", "成绩审核发布更正"],
+    "remainingCenters": ["工作台其余页面", "教务中心其余页面", "学工中心", "岗位实习中心", "毕业设计中心", "系统管理", "全局中心", "登录与安全", "打印页"]
   }
 }
