@@ -26,6 +26,7 @@ on:
       - "scripts/patch_phase6_residuals.py"
       - "scripts/patch_phase6_business_residuals.py"
       - "scripts/patch_phase6_clients_templates.py"
+      - "scripts/patch_phase6_final_contracts.py"
       - ".github/workflows/file-capability-inventory.yml"
 
 permissions:
@@ -49,12 +50,14 @@ jobs:
           python scripts/patch_phase6_residuals.py
           python scripts/patch_phase6_business_residuals.py
           python scripts/patch_phase6_clients_templates.py
+          python scripts/patch_phase6_final_contracts.py
           TARGETS=(
             backend/app/services/file_service.py
             backend/app/services/file_access_resolvers.py
             backend/app/modules/graduation/services/graduation_material_export_service.py
             backend/app/modules/graduation/services/graduation_material_catalog_service.py
             backend/app/modules/graduation/routers/graduation_material_center.py
+            backend/tests/test_graduation_material_center_phase6.py
             frontend/src/modules/graduation/api/graduation-material-center.api.js
             frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue
             miniapp/src/services/fileSdk.js
@@ -69,7 +72,7 @@ jobs:
             git add -- "${TARGETS[@]}"
             echo "Exact staged files:"
             git diff --cached --name-only
-            git commit -m "fix(graduation): close phase 6 client and template residuals"
+            git commit -m "fix(graduation): close final phase 6 contracts"
             git push origin HEAD:audit/file-capability-inventory
           fi
       - name: Merge latest main into phase 6 Draft branch
