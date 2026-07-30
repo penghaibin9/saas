@@ -1,10 +1,11 @@
-"""文件兼容 API：历史上传别名、扫描运维、元数据兼容与安全下载。"""
+"""文件兼容 API：历史上传、扫描运维、元数据、安全下载与 COS 直传会话。"""
 from __future__ import annotations
 
 import hashlib
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.file_contract import download_contract, metadata_contract, upload_contract
 from app.core.config import settings
@@ -19,6 +20,22 @@ router = APIRouter(tags=["S9·文件上传"])
 placeholder_router = APIRouter(tags=["S9·文件上传占位（非生产）"])
 MAX_SIZE = 50 * 1024 * 1024
 ALLOWED_EXT = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "png", "jpg", "jpeg", "gif", "zip", "txt", "csv"}
+
+
+class UploadSessionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fileName: str = Field(..., min_length=1, max_length=300)
+    sizeBytes: int = Field(..., gt=0)
+    sha256: str | None = Field(None, max_length=64)
+    bizType: str = Field("ATTACHMENT", min_length=1, max_length=80)
+    bizId: str | None = Field(None, max_length=100)
+    clientType: str = Field("ADMIN_PC", min_length=1, max_length=40)
+    idempotencyKey: str = Field(..., min_length=8, max_length=100)
+
+
+class UploadSessionComplete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    etag: str | None = Field(None, max_length=128)
 
 
 @placeholder_router.post("/upload-placeholder", summary="文件上传占位（仅非生产；不落盘）")
@@ -55,7 +72,6 @@ async def upload_real(
     bizId: str | None = Form(None),
     user=Depends(get_current_user),
 ):
-    # 老学生 PC / 小程序曾把 bizType、bizId 放在 query；保留读取但统一委托权威合同。
     effective_biz_type = bizType or request.query_params.get("bizType") or "ATTACHMENT"
     effective_biz_id = bizId if bizId not in (None, "") else request.query_params.get("bizId")
     data = await upload_contract(
@@ -66,6 +82,43 @@ async def upload_real(
         visibility="BIZ_SCOPED",
     )
     return success(data, message="上传成功；高风险文件需等待安全扫描")
+
+
+@router.post("/upload-sessions", summary="创建 COS 精确对象直传会话")
+def create_upload_session(body: UploadSessionCreate, user=Depends(get_current_user)):
+    from app.services.storage.production import create_upload_session as create_session
+
+    return success(create_session(
+        filename=body.fileName,
+        size_bytes=body.sizeBytes,
+        sha256=body.sha256,
+        biz_type=body.bizType,
+        biz_id=body.bizId,
+        client_type=body.clientType,
+        idempotency_key=body.idempotencyKey,
+        user=user,
+    ))
+
+
+@router.get("/upload-sessions/{session_id}", summary="查询上传会话")
+def upload_session_detail(session_id: str, user=Depends(get_current_user)):
+    from app.services.storage.production import get_upload_session
+
+    return success(get_upload_session(session_id, user=user))
+
+
+@router.post("/upload-sessions/{session_id}/complete", summary="COS HEAD 核验并完成上传会话")
+def complete_upload_session(session_id: str, body: UploadSessionComplete, user=Depends(get_current_user)):
+    from app.services.storage.production import complete_upload_session as complete_session
+
+    return success(complete_session(session_id, etag=body.etag, user=user), message="上传完成，文件已进入安全扫描")
+
+
+@router.post("/upload-sessions/{session_id}/abandon", summary="放弃未完成上传会话")
+def abandon_upload_session(session_id: str, user=Depends(get_current_user)):
+    from app.services.storage.production import abandon_upload_session as abandon_session
+
+    return success(abandon_session(session_id, user=user), message="上传会话已放弃")
 
 
 @router.get("/scan/health", summary="文件扫描服务健康状态")
