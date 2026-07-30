@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# This user-authored update intentionally triggers the installed branch-push step.
 
 
 def replace_exact(path: str, old: str, new: str, marker: str) -> bool:
