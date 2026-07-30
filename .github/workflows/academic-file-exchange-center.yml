@@ -8,6 +8,8 @@ on:
       - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
+      - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
+      - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
       - '.github/workflows/academic-file-exchange-center.yml'
   push:
@@ -19,6 +21,8 @@ on:
       - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
+      - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
+      - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
       - '.github/workflows/academic-file-exchange-center.yml'
 
@@ -28,9 +32,9 @@ concurrency:
 
 jobs:
   mysql-authoritative-jobs:
-    name: MySQL 权威导入 + 导出生命周期
+    name: MySQL 权威导入 + 导出生命周期 + PC 合同
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     services:
       mysql:
         image: mysql:8.0
@@ -58,6 +62,11 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
@@ -77,6 +86,12 @@ jobs:
       - name: Authoritative job contract tests
         working-directory: backend
         run: pytest tests/test_academic_file_exchange_center.py tests/test_data_exchange_job_center.py -q -p no:warnings
+      - name: Teacher PC lint and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
       - name: Freeze no-rows confirmation and no-blob export
         run: |
           grep -q 'ConfigDict(extra="forbid")' backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
@@ -85,3 +100,6 @@ jobs:
           ! grep -n 'source_snapshot_json={[^}]*"rows"' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
           grep -q 'ExportJob(' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
           grep -q 'create_download_ticket' backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+          grep -q 'confirmImport(this.currentImportJob.id' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+          ! grep -q 'rosterImportConfirm(rows)' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+          ! grep -q 'URL.createObjectURL(res.data)' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
