@@ -112,25 +112,29 @@ jobs:
           PY
           python - <<'PY'
           from app.api.v1.route_registration import register_internship_routes
-          from fastapi import APIRouter
-          router = APIRouter()
-          register_internship_routes(router, {'intern': []})
+          from fastapi import APIRouter, FastAPI
+          from fastapi.routing import APIRoute
+          grouped = APIRouter()
+          register_internship_routes(grouped, {'intern': []})
+          app = FastAPI()
+          app.include_router(grouped)
+          target_paths = {
+              '/internship/agreements/{agreement_id}/school-confirm',
+              '/internship/insurances/{insurance_id}/verify',
+              '/internship/process-reports/{report_id}/review',
+              '/internship/archive/{internship_id}/archive',
+              '/internship/archive/{internship_id}/package',
+              '/internship/archive/{internship_id}/revoke',
+          }
           matching = [
               (route.path, sorted(route.methods or []), route.endpoint.__module__)
-              for route in router.routes
-              if route.path in {
-                  '/internship/agreements/{agreement_id}/school-confirm',
-                  '/internship/insurances/{insurance_id}/verify',
-                  '/internship/process-reports/{report_id}/review',
-                  '/internship/archive/{internship_id}/archive',
-                  '/internship/archive/{internship_id}/package',
-                  '/internship/archive/{internship_id}/revoke',
-              }
+              for route in app.routes
+              if isinstance(route, APIRoute) and route.path in target_paths
           ]
           first_by_path = {}
           for path, methods, module in matching:
               first_by_path.setdefault(path, module)
-          assert first_by_path
+          assert set(first_by_path) == target_paths, (target_paths - set(first_by_path), matching)
           assert all(module.endswith('internship_material_center') for module in first_by_path.values()), first_by_path
           print('Stage 4 safety-first routing verified')
           PY
