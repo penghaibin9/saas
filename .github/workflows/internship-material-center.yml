@@ -91,7 +91,7 @@ jobs:
         run: pytest tests/test_internship_material_center.py -q -p no:warnings
       - name: Real MySQL asset version and manifest acceptance
         working-directory: backend
-        run: python tests/internship_material_center_mysql_acceptance.py
+        run: PYTHONPATH=. python tests/internship_material_center_mysql_acceptance.py
       - name: Verify schema and safety route ordering
         working-directory: backend
         run: |
