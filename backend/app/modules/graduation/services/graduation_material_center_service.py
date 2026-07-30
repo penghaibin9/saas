@@ -450,12 +450,44 @@ def _store_proposal_snapshot(db, record: GraduationProposal, student: Graduation
     meta = file_service.store_bytes(
         _proposal_snapshot_bytes(record, student),
         f"开题报告_{safe_student}_{record.version or 'v1'}_正文快照.txt",
-        biz_type="GRADUATION_MATERIAL", biz_id=str(record.id), mime_type="text/plain",
+        biz_type="GRADUATION_MATERIAL", biz_id=None, mime_type="text/plain",
         user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
     )
     row = db.get(FileObject, int(meta["fileId"]))
     if not row or row.tenant_id != _tid():
         raise AppException("DATA_CONFLICT", "开题正文快照写入失败")
+    row.biz_type = "GRADUATION_MATERIAL"
+    row.biz_id = str(record.id)
+    return row
+
+
+def _final_snapshot_bytes(record: GraduationFinal, student: GraduationStudent) -> bytes:
+    text = "\n".join([
+        "毕业设计成果提交记录快照（历史无原始附件兼容）",
+        f"学生：{student.name}",
+        f"学号：{student.student_no or ''}",
+        f"课题：{student.topic_title or ''}",
+        f"成果类型：{record.final_type or ''}",
+        f"业务版本：{record.version or 'v1'}",
+        f"提交时间：{_iso(record.submit_at) or ''}",
+        f"业务状态：{record.status or ''}",
+    ])
+    return text.encode("utf-8")
+
+
+def _store_final_snapshot(db, record: GraduationFinal, student: GraduationStudent, user: dict) -> FileObject:
+    safe_student = re.sub(r"[\\/:*?"<>|]+", "_", student.name or "学生")
+    meta = file_service.store_bytes(
+        _final_snapshot_bytes(record, student),
+        f"成果提交记录_{safe_student}_{record.final_type or '成果'}_{record.version or 'v1'}.txt",
+        biz_type="GRADUATION_MATERIAL", biz_id=None, mime_type="text/plain",
+        user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE", db=db,
+    )
+    row = db.get(FileObject, int(meta["fileId"]))
+    if not row or row.tenant_id != _tid():
+        raise AppException("DATA_CONFLICT", "成果提交记录快照写入失败")
+    row.biz_type = "GRADUATION_MATERIAL"
+    row.biz_id = str(record.id)
     return row
 
 
@@ -479,7 +511,7 @@ def _adopt_record(db, record_type: str, record, student: GraduationStudent, user
     item_rule = items.get(rule_key)
     files = _load_ready_files(
         db, attachment_ids,
-        required=family in {STAGE_FINAL_DRAFT, STAGE_FINAL_APPROVED},
+        required=False,
         allowed_ext=(item_rule.allowed_ext_json if item_rule else rule.allowed_ext_json),
         max_files=(item_rule.max_files if item_rule else rule.max_files),
         max_size_bytes=(item_rule.max_size_bytes if item_rule else rule.max_size_bytes),
@@ -498,6 +530,10 @@ def _adopt_record(db, record_type: str, record, student: GraduationStudent, user
         label = "定稿" if family == STAGE_FINAL_APPROVED else "初稿"
         for index, file_obj in enumerate(files, start=1):
             materials.append((f"{prefix}_{index:02d}", f"{label}附件{index}", file_obj))
+        if not files and str((user or {}).get("sourceChannel") or "").upper() == "BACKFILL":
+            snapshot = _store_final_snapshot(db, record, student, user)
+            _require_file_ready(snapshot)
+            materials.append((f"{prefix}_LEGACY_RECORD", f"{label}历史提交记录快照", snapshot))
     if not materials:
         raise AppException("DATA_CONFLICT", "毕业设计记录没有可进入公共版本链的真实文件")
 
@@ -696,7 +732,7 @@ def submit_proposal(user: dict, body: dict) -> dict:
         return {
             "id": str(proposal.id), "version": version_label,
             "isResubmit": bool(existing), "status": "PENDING_REVIEW",
-            "fileVersionCount": len(versions), "currentSafeVersions": versions,
+            "fileVersionCount": len({row["versionId"] for row in versions}), "currentSafeVersions": versions,
         }
 
 
@@ -742,7 +778,7 @@ def submit_final(user: dict, body: dict) -> dict:
                 return {
                     "id": str(pending.id), "finalType": pending.final_type,
                     "version": pending.version, "status": pending.status,
-                    "fileVersionCount": len(versions), "currentSafeVersions": versions,
+                    "fileVersionCount": len({row["versionId"] for row in versions}), "currentSafeVersions": versions,
                 }
             raise AppException("DATA_CONFLICT", "已有待审阅的成果，请等待指导教师批阅")
         if final_type == "定稿":
@@ -781,7 +817,7 @@ def submit_final(user: dict, body: dict) -> dict:
         db.commit()
         return {
             "id": str(final.id), "finalType": final_type, "version": version_label,
-            "status": "PENDING_REVIEW", "fileVersionCount": len(versions),
+            "status": "PENDING_REVIEW", "fileVersionCount": len({row["versionId"] for row in versions}),
             "currentSafeVersions": [dict(row, previewUrl=row["previewUrl"], downloadUrl=row["downloadUrl"])
                                     for row in versions],
         }
@@ -793,11 +829,23 @@ def proposal_detail(proposal_id: int) -> dict:
     with session() as db:
         bindings = _record_bindings(db, "PROPOSAL", int(proposal_id), current_only=True)
         versions = _version_views(db, bindings, student_mode=False)
+    attachments = [
+        {
+            "fileId": item["fileId"], "fileName": item["fileName"],
+            "sizeBytes": item["sizeBytes"], "scanStatus": item["scanStatus"],
+            "readyForBusiness": item["readyForBusiness"],
+            "allowedActions": item["allowedActions"],
+            "previewUrl": item["previewUrl"], "downloadUrl": item["downloadUrl"],
+        }
+        for item in versions
+        if str(item.get("materialCode") or "").startswith("PROPOSAL_ATTACHMENT_")
+    ]
     detail.update({
         "currentSafeVersions": versions,
-        "currentVersionCount": len(versions),
+        "currentVersionCount": len({item["versionId"] for item in versions}),
         "reviewReady": bool(versions and all(item["readyForBusiness"] for item in versions)),
         "migrationRequired": not bool(versions),
+        "attachments": len(attachments), "attachmentsList": attachments,
     })
     return detail
 
@@ -808,11 +856,23 @@ def final_detail(final_id: int) -> dict:
     with session() as db:
         bindings = _record_bindings(db, "FINAL", int(final_id), current_only=True)
         versions = _version_views(db, bindings, student_mode=False)
+    attachments = [
+        {
+            "fileId": item["fileId"], "fileName": item["fileName"],
+            "sizeBytes": item["sizeBytes"], "scanStatus": item["scanStatus"],
+            "readyForBusiness": item["readyForBusiness"],
+            "allowedActions": item["allowedActions"],
+            "previewUrl": item["previewUrl"], "downloadUrl": item["downloadUrl"],
+        }
+        for item in versions
+        if str(item.get("materialCode") or "").startswith("PROPOSAL_ATTACHMENT_")
+    ]
     detail.update({
         "currentSafeVersions": versions,
-        "currentVersionCount": len(versions),
+        "currentVersionCount": len({item["versionId"] for item in versions}),
         "reviewReady": bool(versions and all(item["readyForBusiness"] for item in versions)),
         "migrationRequired": not bool(versions),
+        "attachments": len(attachments), "attachmentsList": attachments,
     })
     return detail
 
@@ -902,6 +962,7 @@ def review_final(final_id: int, action: str, comment: str | None, user: dict) ->
                 raise AppException("DATA_CONFLICT", "查重尚未完成，不能通过成果审核")
             if check and check.status == "DONE" and check.over_threshold and check.dispute_status != "APPROVED":
                 raise AppException("DATA_CONFLICT", f"查重率 {check.rate} 超标，须退回修改或完成特例审批")
+        safe_versions = _require_reviewable(db, "FINAL", final, student, user)
         target = "APPROVED" if action == "APPROVE" else "REJECTED"
         before = final.status
         final.status = target

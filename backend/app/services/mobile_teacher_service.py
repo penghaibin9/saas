@@ -2695,12 +2695,14 @@ def proposal_review(user: dict, proposal_id: str, action: str, comment: str | No
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
     scope = resolve_teacher_scope(u)
     if scope.get("mode") == "SCOPED":
-        detail = graduation_service.get_proposal_detail(proposal_id)  # 不存在 → 404
+        from app.modules.graduation.services import graduation_material_center_service as material_center
+    detail = material_center.proposal_detail(int(proposal_id))  # 不存在 → 404
         if not scope_match_row(scope, class_name=detail.get("className"),
                                advisor_name=detail.get("advisorName"),
                                student_no=detail.get("studentNo")):
             raise AppException("NO_PERMISSION", "该开题不在你的指导范围内")
-    result = graduation_service.review_proposal(proposal_id, action, comment)
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    result = material_center.review_proposal(int(proposal_id), action, comment, u)
     _audit_write("MOBILE_PROPOSAL_REVIEW", f"graduation/proposal:{proposal_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
@@ -2712,7 +2714,8 @@ def proposal_detail(user: dict, proposal_id: str) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实开题材料")
-    detail = graduation_service.get_proposal_detail(proposal_id)  # 不存在 → 404
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    detail = material_center.proposal_detail(int(proposal_id))  # 不存在 → 404
     scope = resolve_teacher_scope(u)
     if scope.get("mode") == "SCOPED" and not scope_match_row(
             scope, class_name=detail.get("className"), advisor_name=detail.get("advisorName"),
@@ -2737,7 +2740,8 @@ def final_detail(user: dict, final_id: str) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实成果材料")
-    detail = graduation_service.get_final_detail(final_id)  # 不存在 → 404
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    detail = material_center.final_detail(int(final_id))  # 不存在 → 404
     scope = resolve_teacher_scope(u)
     if scope.get("mode") == "SCOPED" and not scope_match_row(
             scope, class_name=detail.get("className"), advisor_name=detail.get("advisorName"),
@@ -2763,12 +2767,14 @@ def final_review(user: dict, final_id: str, action: str, comment: str | None = N
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
     scope = resolve_teacher_scope(u)
     if scope.get("mode") == "SCOPED":
-        detail = graduation_service.get_final_detail(final_id)  # 不存在 → 404
+        from app.modules.graduation.services import graduation_material_center_service as material_center
+    detail = material_center.final_detail(int(final_id))  # 不存在 → 404
         if not scope_match_row(scope, class_name=detail.get("className"),
                                advisor_name=detail.get("advisorName"),
                                student_no=detail.get("studentNo")):
             raise AppException("NO_PERMISSION", "该成果不在你的指导范围内")
-    result = graduation_service.review_final(final_id, action, comment)
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    result = material_center.review_final(int(final_id), action, comment, u)
     _audit_write("MOBILE_FINAL_REVIEW", f"graduation/final:{final_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result

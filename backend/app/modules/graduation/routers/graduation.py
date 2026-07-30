@@ -216,11 +216,12 @@ def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, l
 
 @router.post("/defense-groups", summary="新建答辩组")
 def defense_create(body: DefenseGroupBody, user=Depends(get_current_user)):
-    return success(svc.create_defense_group(
+    result = svc.create_defense_group(
         body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary, batch_id=body.batchId,
         chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
-        member_mentor_ids=body.memberMentorIds), message="已创建")
+        member_mentor_ids=body.memberMentorIds)
+    return success(_defense_member_contract(result), message="已创建")
 
 
 @router.get("/defense-groups/eligible-students", summary="可分配到答辩组的学生")
@@ -229,18 +230,25 @@ def defense_eligible(gid: Optional[str] = None, keyword: Optional[str] = None,
     return success({"items": svc.list_defense_eligible_students(gid=gid, keyword=keyword)})
 
 
+def _defense_member_contract(result: dict) -> dict:
+    row = dict(result or {})
+    row["memberDetails"] = list(row.get("memberDetails") or row.get("members") or [])
+    return row
+
+
 @router.get("/defense-groups/{gid}", summary="答辩组详情（含已分配学生）")
 def defense_detail(gid: str, user=Depends(get_current_user)):
-    return success(svc.get_defense_group_detail(gid))
+    return success(_defense_member_contract(svc.get_defense_group_detail(gid)))
 
 
 @router.put("/defense-groups/{gid}", summary="编辑答辩组（编辑后撤回发布，需重新发布）")
 def defense_update(gid: str, body: DefenseGroupBody, user=Depends(get_current_user)):
-    return success(svc.update_defense_group(
+    result = svc.update_defense_group(
         gid, body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary,
         chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
-        member_mentor_ids=body.memberMentorIds), message="已保存")
+        member_mentor_ids=body.memberMentorIds)
+    return success(_defense_member_contract(result), message="已保存")
 
 
 @router.post("/defense-groups/{gid}/assign", summary="分配学生进答辩组（≤30人，评委回避自动检测）")

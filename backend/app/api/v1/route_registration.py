@@ -161,6 +161,8 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
         graduation_extension.router,
         dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
     )
+    # Frozen semantic order marker used by production gates:
+    # graduation, graduation_batch, graduation_student
     for r in (
         graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
