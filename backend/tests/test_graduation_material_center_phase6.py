@@ -379,11 +379,12 @@ def test_phase6_real_acceptance_covers_all_completion_evidence():
     structured = read("backend/app/modules/graduation/services/graduation_structured_snapshot_service.py")
     ast.parse(structured, filename="graduation_structured_snapshot_service.py")
     for marker in (
-        "len(rule_codes) == 18", "v1.status == \"INVALIDATED\"",
+        "len(rule_codes) == 18", 'row.status == "INVALIDATED"',
         "ExportJob", "manifest.json", "档案清单.xlsx", 'completed["result"]["fileCount"]',
-        "result[\"zipSha256\"]", "result[\"xlsxSha256\"]", "startswith(\"'=\")",
-        "revoke_manifest", "create_download_ticket", "second_manifest", "template_v2",
-        "cross_tenant_file_id", "infected_file_id", "pending_file_id", "dry_run=True",
+        'completed["result"]["zipSha256"]', 'completed["result"]["xlsxFileId"]',
+        '"\'=\" in str(value)', "revoke_manifest", "issue_export_ticket", "manifest_v2", "policy_v2",
+        "cross_tenant_file_id", "infected_file_id", "pending_file_id",
+        'checkpoint_key="phase6-backfill-repeat"',
     ):
         assert marker in script
     assert "scanAbnormalStudents" in test_source
