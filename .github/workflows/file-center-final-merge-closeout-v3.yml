@@ -1,3 +1,4 @@
+# PR #25 final merge audit trigger; no workflow logic change.
 name: File center final merge closeout v3
 
 on:
