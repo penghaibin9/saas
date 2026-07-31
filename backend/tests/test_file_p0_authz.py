@@ -84,12 +84,13 @@ def test_student_only_own_attachment(client, db_mode):
 
 
 def test_no_tenant_context_upload_fails(client, db_mode, monkeypatch):
-    from app.core import context as ctx
     from app.core.exceptions import AppException
     from app.services import file_service
     import asyncio
 
-    monkeypatch.setattr(ctx, "current_tenant_id", lambda: None)
+    # file_service imports the context accessor into its own module namespace; patch that exact
+    # security boundary so the assertion continues to prove tenant-less writes are rejected.
+    monkeypatch.setattr(file_service, "current_tenant_id", lambda: None)
 
     class _F:
         filename = "x.txt"
