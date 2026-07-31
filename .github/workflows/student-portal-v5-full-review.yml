@@ -55,7 +55,7 @@ jobs:
       REVIEW_LOGIN: student2
       REVIEW_PASSWORD: "123456"
       REVIEW_TENANT: sandbox-school
-      REVIEW_OUTPUT: ${{ runner.temp }}/student-portal-v5-full-review
+      REVIEW_OUTPUT: /tmp/student-portal-v5-full-review
     steps:
       - uses: actions/checkout@v4
         with:
@@ -157,6 +157,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: student-portal-v5-full-review
-          path: ${{ runner.temp }}/student-portal-v5-full-review
+          path: /tmp/student-portal-v5-full-review
           if-no-files-found: error
           retention-days: 14
