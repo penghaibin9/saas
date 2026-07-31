@@ -2,9 +2,23 @@
 
 ## 当前结论
 
-状态：**静态结构完成，真实浏览器回归待执行。**
+状态：**生产路由与权限元数据 15/15 已核对并修正；真实浏览器回归待执行。**
 
 本记录不把文件存在、代码阅读或生产历史测试冒充为当前 HTML 在最新 HEAD 下的浏览器验证。
+
+## 本轮真实核对（2026-07-31）
+
+以当前生产 `frontend/src/config/navPlan.js` 与 `frontend/src/modules/academicAffairs/academic-affairs.routes.js` 为事实源，完成统计目录 15 个独立 HTML 的逐页核对：
+
+- `stats-overview.html` 及 13 个统计 Tab 的生产路由名统一为 `aa-stats`；
+- `workload-review.html` 的生产路由名为 `aa-workload-review`；
+- 常规统计 Tab 权限为 `academicAffairs.stats.view`；
+- 导出 Tab 权限为 `academicAffairs.stats.export`；
+- 工作量申报审核权限为 `academicAffairs.stats.view`；
+- 15 个 HTML 均已补入真实 `routeName`，页面内 `window.V2_PAGE.permission` 与生产菜单权限一致；
+- 调停课统计继续复用 `/admin/academic-affairs/schedule-change/stats` 与 `aa-schedule-change-stats`，不在统计目录复制第 16 个 HTML。
+
+本轮只修正原型契约注释，不改变业务字段、状态、交互、共享 CSS/JS 或生产代码。
 
 ## 已完成的静态核对
 
@@ -12,7 +26,7 @@
 - 14 个统计 Tab 与工作量申报审核均有独立可打开 HTML。
 - 调停课统计复用既有独立原型，不复制页面。
 - 所有新页面引用统一 Token、壳、组件、流程和统计共享资源。
-- URL、权限、主要筛选、摘要、下钻与导出边界已按生产 `navPlan.js`、`AaStatsOverviewView.vue` 和 `AaWorkloadReviewView.vue` 核对。
+- URL、routeName、权限、主要筛选、摘要、下钻与导出边界已按生产 `navPlan.js`、`academic-affairs.routes.js`、`AaStatsOverviewView.vue` 和 `AaWorkloadReviewView.vue` 核对。
 - 统计页登记正常、加载、空、错误、403 / 无范围和长数据状态。
 - 工作量非薪酬、资源学校级范围、导出同步下载无历史等边界已明确。
 
@@ -65,7 +79,7 @@
 
 ## 当前未验证项
 
-- 新页面浏览器渲染次数：0
+- 当前最新 HEAD 的统计目录浏览器渲染次数：0
 - 控制台错误：未执行
 - 根页面横向溢出：未执行
 - 三档分辨率：未执行
@@ -73,4 +87,4 @@
 - 实际页面间跳转：未执行
 - 截图提交：0
 
-完成上述矩阵前，只能标记为“首轮原型结构完成”，不能标记为“最终回归完成”。
+完成上述矩阵前，只能标记为“路由权限契约已收口”，不能标记为“最终回归完成”。
