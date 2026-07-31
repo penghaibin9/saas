@@ -60,6 +60,8 @@ def _expire_locked(db, tenant_id: int, now: datetime) -> int:
         row.status = "EXPIRED"
         row.released_at = now
         row.release_reason = "RESERVATION_TTL_EXPIRED"
+    if rows:
+        db.flush()
     return len(rows)
 
 
@@ -89,6 +91,8 @@ def _reconcile_storage_locked(db, tenant_id: int, now: datetime) -> int:
             row.consumed_file_id = int(file_obj.id)
             row.consumed_at = now
             consumed += 1
+    if consumed:
+        db.flush()
     return consumed
 
 

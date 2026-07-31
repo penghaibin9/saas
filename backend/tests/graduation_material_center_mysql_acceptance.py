@@ -313,7 +313,6 @@ def _seed() -> dict:
                 guidance_date=datetime.utcnow(),
                 content="阶段六指导记录",
                 issues="无",
-                next_plan="完成归档",
                 hours=2,
                 attachments_json=[],
                 advisor_name="阶段六指导教师",
