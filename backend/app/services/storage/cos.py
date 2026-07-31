@@ -93,7 +93,9 @@ class CosStorageBackend:
 
     def head_object(self, key: str) -> dict | None:
         try:
-            response = self._client.head_object(Bucket=self.bucket_name, Key=key)
+            # The official SDK returns metadata. Small test/adaptor clients may
+            # signal a successful HEAD call with no response body.
+            response = self._client.head_object(Bucket=self.bucket_name, Key=key) or {}
         except Exception:  # noqa: BLE001 - 对外统一为不存在/不可核验
             return None
         return {
