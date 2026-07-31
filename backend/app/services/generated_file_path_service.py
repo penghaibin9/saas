@@ -17,6 +17,7 @@ from app.db.session import db_enabled, get_sessionmaker
 from app.services import file_service
 from app.services.file_content_security import FILE_STATUS_AVAILABLE, sanitize_filename, validate_content_path
 from app.services.file_scan_constants import SCAN_NOT_REQUIRED
+from app.services.file_storage_write_context import storage_write_scope
 from app.services.storage import get_backend
 
 CHUNK_SIZE = 1024 * 1024
@@ -71,7 +72,8 @@ def store_generated_path(
     staged = backend.staging_path(key)
     try:
         size, sha256 = _copy_and_hash(source, staged)
-        backend.persist(key, staged)
+        with storage_write_scope(biz_type):
+            backend.persist(key, staged)
     except Exception:
         staged.unlink(missing_ok=True)
         raise
