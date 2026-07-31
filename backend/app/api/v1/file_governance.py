@@ -46,9 +46,21 @@ class LegalHoldRequest(BaseModel):
     reason: str = Field(..., min_length=5, max_length=500)
 
 
-@router.get("/overview", summary="租户容量、增长、分区、模块和异常概览")
+@router.get("/overview", summary="租户容量、预留、增长、分区、模块和异常概览")
 def overview(user=Depends(require_permission("systemAdmin.file.manage"))):
-    return success(governance.governance_overview())
+    from app.core.context import current_tenant_id
+    from app.services.file_storage_quota_reservation_service import held_bytes
+
+    payload = governance.governance_overview()
+    usage = payload.setdefault("usage", {})
+    reserved = held_bytes(tenant_id=int(current_tenant_id()))
+    usage["reservedBytes"] = reserved
+    usage["effectiveOccupiedBytes"] = int(usage.get("totalBytes") or 0) + reserved
+    quota = int(usage.get("quotaBytes") or 0)
+    usage["effectiveUsagePercent"] = (
+        round(usage["effectiveOccupiedBytes"] * 100 / quota, 2) if quota else None
+    )
+    return success(payload)
 
 
 @router.put("/quota", summary="配置租户总配额和模块配额")
