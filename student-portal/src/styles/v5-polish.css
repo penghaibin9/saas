@@ -16,6 +16,19 @@
   color: var(--pri-text, var(--pri));
 }
 
+/* 毕设旧局部样式原本写死了粉色和浅灰；统一回到可读 token。 */
+.route-graduation :where(.gd-eyebrow) {
+  color: var(--pri-text, var(--pri)) !important;
+}
+.route-graduation :where(.gd-hero p, .gd-step p, .gd-step__detail, .gd-rule, .gdep__text, .gdep__hint) {
+  color: var(--t3) !important;
+}
+
+/* 成绩通过色略加深，满足白底正文对比度。 */
+.route-academic .score.is-pass {
+  color: #087735 !important;
+}
+
 html[data-sp-theme='dark'] :where(
   .sp-header, .home-card, .home-metric, .home-quick__item,
   .academic-context,
@@ -46,6 +59,11 @@ html[data-sp-theme='dark'] .sp-search {
   border-color: var(--line);
 }
 
+/* 深色主题侧栏选中项是白底，使用深蓝文字而不是浅蓝文字。 */
+html[data-sp-theme='dark'] .sp-nav__item.is-active {
+  color: #244f96 !important;
+}
+
 /* 自定义白底表单和兼容页必须随深色主题切换。 */
 html[data-sp-theme='dark'] :where(
   .search, .tr-preview, .typecard, .inline-form, .selected-target,
@@ -54,6 +72,16 @@ html[data-sp-theme='dark'] :where(
   background: var(--surface-2) !important;
   border-color: var(--line) !important;
   color: var(--t1) !important;
+}
+
+/* 1024px 等窄桌面：宽表格在卡片内横向滚动，不被内容区裁切。 */
+@media (max-width: 1100px) {
+  .route-academic .sp-content__page :where(.sp-card, .panel):has(> .sp-table) {
+    overflow-x: auto !important;
+  }
+  .route-academic .sp-content__page :where(.sp-card, .panel):has(> .sp-table) > .sp-table {
+    min-width: 720px;
+  }
 }
 
 @media (min-width: 1500px) {
