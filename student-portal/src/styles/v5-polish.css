@@ -31,12 +31,47 @@ html:not([data-sp-theme='dark']) {
 .gdep__refresh {
   color: var(--pri-text, var(--pri)) !important;
 }
-.gdep__refresh {
-  border-color: var(--pri-100) !important;
-}
-.route-graduation :where(.gd-hero p, .gd-step p, .gd-step__detail, .gd-rule),
-:where(.gdep__text, .gdep__hint) {
+.route-graduation :where(.gd-hero p, .gd-step p, .gd-step__detail, .gd-rule) {
   color: var(--t3) !important;
+}
+
+/* 毕设扩展面板不在 PortalLayout 路由壳层内，完整接入主题 surface/text/token。 */
+.gdep {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
+  color: var(--t1) !important;
+}
+.gdep :where(.gdep__head strong, .gdep__summary strong, .gdep__card-head strong) {
+  color: var(--t1) !important;
+}
+.gdep :where(
+  .gdep__head p, .gdep__card p, .gdep__state p, .gdep__text, .gdep__hint,
+  .gdep__card-head small, .gdep__summary span, .gdep__timeline, .gdep__submit-row small
+) {
+  color: var(--t3) !important;
+}
+.gdep :where(.gdep__summary > div, .gdep__card, .gdep__state) {
+  background: var(--surface-2) !important;
+  border-color: var(--line2) !important;
+}
+.gdep :where(.gdep__refresh, .gdep__state button) {
+  background: var(--surface) !important;
+  border-color: var(--pri-100) !important;
+  color: var(--pri-text, var(--pri)) !important;
+}
+.gdep .gdep__card-head > span {
+  background: var(--pri-50) !important;
+  color: var(--pri-text, var(--pri)) !important;
+}
+.gdep textarea {
+  background: var(--field-bg) !important;
+  border-color: var(--line) !important;
+  color: var(--t1) !important;
+}
+.gdep .gdep__primary {
+  background: var(--pri) !important;
+  border-color: var(--pri) !important;
+  color: var(--pri-on, #fff) !important;
 }
 
 /* 成绩通过色略加深，满足白底正文对比度。 */
