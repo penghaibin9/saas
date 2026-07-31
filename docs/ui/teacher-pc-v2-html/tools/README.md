@@ -80,7 +80,85 @@ docs/ui/teacher-pc-v2-html/manifest-parts/320-graduation.json
 
 该脚本已完成 `node --check`，并在隔离同构目录中跑通；最终冻结必须在完整真实分支快照中再次执行。
 
-## 4. 三档分辨率浏览器全量回归
+## 4. 页面族定向浏览器回归
+
+`run-page-family-regression.mjs` 会复制一份临时原型快照，生成只包含目标页面的临时 Manifest，再调用正式浏览器执行器。它不会修改工作区文件，也不会把临时 Manifest 写入仓库。
+
+### 学工 11 个关键工作台
+
+先核对选中页面：
+
+```bash
+node tools/run-page-family-regression.mjs \
+  --family=student-affairs-key \
+  --list-only
+```
+
+执行三档 33 次回归：
+
+```bash
+node tools/run-page-family-regression.mjs \
+  --family=student-affairs-key \
+  --concurrency=3 \
+  --report-dir=/tmp/teacher-pc-v2-freeze/student-affairs-key
+```
+
+### 学工全部 15 页
+
+```bash
+node tools/run-page-family-regression.mjs \
+  --family=student-affairs-all \
+  --concurrency=3 \
+  --report-dir=/tmp/teacher-pc-v2-freeze/student-affairs-all
+```
+
+### 毕业设计现行 8 工作区
+
+先核对选中页面：
+
+```bash
+node tools/run-page-family-regression.mjs \
+  --family=graduation \
+  --list-only
+```
+
+执行三档 24 次回归：
+
+```bash
+node tools/run-page-family-regression.mjs \
+  --family=graduation \
+  --concurrency=3 \
+  --report-dir=/tmp/teacher-pc-v2-freeze/graduation-browser
+```
+
+### 自定义页面族
+
+按目录前缀：
+
+```bash
+node tools/run-page-family-regression.mjs \
+  --prefix=academic-affairs/stats/ \
+  --report-dir=/tmp/teacher-pc-v2-freeze/academic-stats
+```
+
+按精确 HTML，多个文件使用逗号分隔：
+
+```bash
+node tools/run-page-family-regression.mjs \
+  --html=graduation/overview.html,graduation/defense.html \
+  --viewports=1440x1000 \
+  --report-dir=/tmp/teacher-pc-v2-freeze/graduation-smoke
+```
+
+页面族固定数量保护：
+
+- `student-affairs-key` 必须为 11 页；
+- `student-affairs-all` 必须为 15 页；
+- `graduation` 必须为 8 页。
+
+Manifest 数量不符、目标 HTML 不存在或筛选结果为空时，工具会直接失败，不会启动 Chrome。添加 `--keep-temp` 可在失败后保留临时快照用于排查；默认自动删除。
+
+## 5. 三档分辨率浏览器全量回归
 
 当前总 Manifest 登记 **290 个唯一 HTML**，因此基础回归是：
 
@@ -121,13 +199,15 @@ node tools/run-browser-regression.mjs \
 - 正 `tabindex`、无交互元素和 `console.warn` 警告；
 - 可选三档截图。
 
-## 5. 冻结顺序
+## 6. 冻结顺序
 
 ```bash
 node tools/check-prototype-consistency.mjs --report=/tmp/teacher-pc-v2-freeze/consistency.json
 node tools/check-internship-route-audit.mjs --report=/tmp/teacher-pc-v2-freeze/internship-route-audit.json
 node tools/check-graduation-workspace-audit.mjs --report=/tmp/teacher-pc-v2-freeze/graduation-workspace-audit.json
+node tools/run-page-family-regression.mjs --family=student-affairs-key --report-dir=/tmp/teacher-pc-v2-freeze/student-affairs-key
+node tools/run-page-family-regression.mjs --family=graduation --report-dir=/tmp/teacher-pc-v2-freeze/graduation-browser
 node tools/run-browser-regression.mjs --concurrency=4 --report-dir=/tmp/teacher-pc-v2-freeze/browser
 ```
 
-四项全部 PASS 后，仍需人工完成打印页、特殊状态、业务红线和公共交互复核。只有 `prototype-freeze-gates.md` 的 G0–G7 全部通过，才能记录冻结 HEAD、把 Manifest 状态改为 `FROZEN` 并生成四条生产施工总控提示词。
+机器检查全部 PASS 后，仍需人工完成打印页、特殊状态、业务红线和公共交互复核。只有 `prototype-freeze-gates.md` 的 G0–G7 全部通过，才能记录冻结 HEAD、把 Manifest 状态改为 `FROZEN` 并生成四条生产施工总控提示词。
