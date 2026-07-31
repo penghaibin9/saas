@@ -108,10 +108,13 @@ Teacher PC V2 信息架构固定为：
 - `tools/check-prototype-consistency.mjs`：Manifest、文件、孤儿 HTML、重复路由、共享资源和相对引用检查。
 - `tools/check-internship-route-audit.mjs`：岗位实习 101 叶子 / 99 URL / 权限 / 字段 / 状态 / API 参数检查。
 - `tools/check-graduation-workspace-audit.mjs`：毕业设计 8 工作区 / 50 叶子 / 48 URL / 2 共享 URL 投影检查。
+- `tools/run-page-family-regression.mjs`：按 Manifest 精确运行学工 11 / 15 页、毕业设计 8 页或自定义页面族。
 - `tools/run-browser-regression.mjs`：Chrome / Chromium 三档分辨率全量回归。
 - `tools/README.md`：可重复执行命令与冻结顺序。
 
-工具落盘不等于最终候选 HEAD 已经执行通过。当前连接器可读写 GitHub，但执行容器无法解析 GitHub 域名，不能直接取得完整分支快照。
+页面族执行器已通过语法检查和隔离同构夹具：毕业设计预设准确选中 8 页，临时 Manifest 和子执行器链路通过。记录见 `tools/page-family-regression-report.md`。这些工具验证不等于真实完整 PR 分支已经产生浏览器 PASS。
+
+工具落盘不等于最终候选 HEAD 已经执行通过。当前连接器可读写 GitHub，但执行容器无法解析 GitHub 域名，不能直接取得完整分支快照；当前 Actions 也没有可下载的分支归档 Artifact。
 
 ## 当前冻结阻断
 
