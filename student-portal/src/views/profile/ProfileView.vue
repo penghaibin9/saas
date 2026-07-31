@@ -105,6 +105,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
+import { localizeTrailingEnumInParentheses } from '../../services/visibleEnumLocalization'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
@@ -134,7 +135,10 @@ function readableCode(value, mapping, fallback = '状态待确认') {
   if (mapping[key]) return mapping[key]
   return /^[A-Z0-9_]+$/.test(raw) ? fallback : raw
 }
-function applicationName(item) { return readableCode(item?.name || item?.type || item?.leaveType, APPLICATION_NAME_MAP, '业务申请') }
+function applicationName(item) {
+  const raw = readableCode(item?.name || item?.type || item?.leaveType, APPLICATION_NAME_MAP, '业务申请')
+  return localizeTrailingEnumInParentheses(raw)
+}
 function applicationStatusText(item) { return item?.statusText || readableCode(item?.status || item?.currentNode, APPLICATION_STATUS_MAP) }
 
 const basic = computed(() => {
