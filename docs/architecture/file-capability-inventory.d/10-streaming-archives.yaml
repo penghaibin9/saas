@@ -1,0 +1,45 @@
+entries:
+  - module: file-center
+    client: backend
+    route: backend/app/services/streaming_archive_service.py
+    page: backend/app/services/streaming_archive_service.py
+    action: export+archive+stream
+    fileCategory: STREAMING_ZIP_ARCHIVE
+    api: internal archive boundary
+    backendService: backend/app/services/streaming_archive_service.py
+    storageMode: TEMP_FILE_ZIP64_CHUNKED
+    authMode: internal-service-after-business-authorization
+    dataScope: frozen-manifest+tenant+business-scope
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 材料逐块哈希并写入 ZIP64，校验冻结 SHA-256 与大小，不读取整文件或整包到内存。
+  - module: internship
+    client: backend
+    route: /api/v1/internship/archive/{internshipId}/package
+    page: backend/app/modules/internship/services/internship_streaming_package_service.py
+    action: export+archive+stream
+    fileCategory: INTERNSHIP_STREAMING_ARCHIVE
+    api: POST /api/v1/internship/archive/{internshipId}/package
+    backendService: backend/app/modules/internship/services/internship_streaming_package_service.py; backend/app/services/generated_file_path_service.py
+    storageMode: FROZEN_MANIFEST_TO_STREAMING_ZIP_FILE_OBJECT
+    authMode: internship.archive.package+tenant+record-scope
+    dataScope: tenant+internship-record+frozen-file-version-manifest
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 只从冻结 Manifest 取当前版本，分块复核字节后经路径型 FileObject 边界持久化并审计。
