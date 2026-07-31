@@ -4,23 +4,23 @@
 
 ## 当前统计
 
-- manifest 条目：**245**
-- 独立 HTML：**239**
-- 共享 HTML 路由条目：**8**
-- 共享设计文件：**33**
+- manifest 条目：**261**
+- 独立 HTML：**254**
+- 共享 HTML 路由条目：**9**
+- 共享设计文件：**35**
 - 仓库截图：**0**
 - 已记录本地历史渲染截图：**309**
-- 已完成首轮工作区：**23**
+- 已完成首轮工作区：**24**
 - 一级中心完成：**0**
 
-旧统计 175 / 169 / 17 / 15 已废止。旧总 manifest 只加载到 `120-exam.json`，没有聚合已经存在的 `130` 至 `180`；本轮已补齐聚合并新增 `190-quality.json` 与 `200-archive.json`。
+旧统计 175 / 169 / 17 / 15 已废止。旧总 manifest 只加载到 `120-exam.json`，没有聚合已经存在的 `130` 至 `180`；本轮已补齐聚合并新增 `190-quality.json`、`200-archive.json` 与 `210-stats.json`。
 
 ## 教务中心导航（已冻结）
 
 - 左侧菜单按 `frontend/src/config/navPlan.js` 冻结顺序直接展示 **29 个真实二级模块**。
 - 取消原型聚合分组；分组不得作为菜单、折叠层级、路由、页面或面包屑节点。
 - 导航层级为：**顶部一级中心 → 左侧真实二级模块 → 内容区三级功能**。
-- 共享壳支持二级菜单搜索、独立纵向滚动、展开/收起、当前模块高亮和严格三级面包屑。
+- 共享壳支持二级菜单搜索、独立纵向滚动、展开 / 收起、当前模块高亮和严格三级面包屑。
 - 权限继续以生产菜单投影和后端裁决为准，本 PR 不修改权限、角色或数据范围。
 
 ## 已进入首轮设计追踪的工作区
@@ -50,65 +50,60 @@
 | 21 | 教学评价 | `180-evaluation.json` | 8 | 首轮完成 |
 | 22 | 教学质量 | `190-quality.json` | 8 | 首轮结构完成；浏览器回归待执行 |
 | 23 | 教务归档 | `200-archive.json` | 4 | 首轮结构完成；浏览器回归待执行 |
+| 24 | 教务统计 | `210-stats.json` | 15 新页 + 1 复用页 | 首轮结构完成；浏览器回归待执行 |
 
 “首轮完成”不等于生产施工完成，也不等于当前 HEAD 的全量浏览器回归通过。
 
-## 教学评价（结构完整）
+## 教学评价
 
-| 生产入口 | HTML | 状态 |
-|---|---|---|
-| 评教批次（结果分级） | `evaluation/evaluation-batches.html` | COMPLETE |
-| 申诉审核 | `evaluation/evaluation-appeals.html` | COMPLETE |
-| 学生评教（小程序治理入口） | `evaluation/evaluation-student.html` | COMPLETE |
-| 教师自评 | `evaluation/evaluation-self.html` | COMPLETE |
-| 同行评价 | `evaluation/evaluation-peer.html` | COMPLETE |
-| 督导评价 | `evaluation/evaluation-supervisor.html` | COMPLETE |
-| 评价统计 | `evaluation/evaluation-stats.html` | COMPLETE |
-| 评价归档 | `evaluation/evaluation-archive.html` | COMPLETE |
+8 个入口 HTML、README、回归记录、共享资源与 `180-evaluation.json` 已完整落盘。匿名、最小样本、回避、结果版本、申诉和归档边界已追踪。
 
-完整匿名、最小样本、角色回避、结果版本、申诉与归档边界见 `180-evaluation.json` 和评价 README。
+## 教学质量
 
-## 教学质量（本轮补齐）
+8 个生产入口均有独立 HTML；监控信号不直接定责，事故、整改、复查与归档边界见 `190-quality.json`。
 
-| 生产路由 | HTML | 权限 | 状态 |
+## 教务归档
+
+4 个生产入口均有独立 HTML；一学期一批次、6 状态、语义门禁、强制归档、封存写保护、解冻和导出审计见 `200-archive.json`。
+
+## 教务统计（本轮补齐）
+
+| 生产路由 | HTML | 权限 | 复用关系 |
 |---|---|---|---|
-| `/admin/academic-affairs/quality` | `quality/quality-monitor.html` | `academicAffairs.quality.dashboard.view` | STATIC COMPLETE |
-| `?tab=supervision` | `quality/quality-supervision.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
-| `?tab=patrol` | `quality/quality-patrol.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
-| `?tab=inspection` | `quality/quality-inspection.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
-| `?tab=incident` | `quality/quality-incident.html` | `academicAffairs.quality.record.view` | STATIC COMPLETE |
-| `?tab=rectify` | `quality/quality-rectify.html` | `academicAffairs.quality.rectification.view` | STATIC COMPLETE |
-| `?tab=followUp` | `quality/quality-followup.html` | `academicAffairs.quality.rectification.view` | STATIC COMPLETE |
-| `?tab=archive` | `quality/quality-archive.html` | `academicAffairs.quality.archive.view` | STATIC COMPLETE |
+| `/admin/academic-affairs/stats` | `stats/stats-overview.html` | `academicAffairs.stats.view` | 统计总览母版 |
+| `?tab=statusChange` | `stats/stats-status-change.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=registration` | `stats/stats-registration.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=course` | `stats/stats-course.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=teachingTask` | `stats/stats-teaching-task.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=schedule` | `stats/stats-schedule.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `/schedule-change/stats` | `schedule-change/schedule-change-stats.html` | `academicAffairs.scheduleChange.view` | 复用既有独立页 |
+| `?tab=courseSelection` | `stats/stats-selection.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=exam` | `stats/stats-exam.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=grade` | `stats/stats-grade.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=warning` | `stats/stats-warning.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=graduation` | `stats/stats-graduation.html` | `academicAffairs.stats.view` | 共享统计母版 |
+| `?tab=workload` | `stats/stats-workload.html` | `academicAffairs.stats.view` | 工作量独立切面 |
+| `?tab=resource` | `stats/stats-resource.html` | `academicAffairs.stats.view` | 学校级资源切面 |
+| `/admin/academic-affairs/workload-review` | `stats/workload-review.html` | `academicAffairs.stats.view` | 独立审核页 |
+| `?tab=export` | `stats/stats-export.html` | `academicAffairs.stats.export` | 正式导出页 |
 
-教学质量监控信号不直接定责；事故、整改、复查与归档边界见 `190-quality.json`。
+### 教务统计事实边界
 
-## 教务归档（本轮补齐）
+- 百分比保留分子分母、口径、范围、更新时间与下钻来源。
+- 摘要和明细使用相同筛选与后端数据范围。
+- 未配置学院范围时 fail-closed。
+- 零值、空数据、未启用、无范围和请求失败分别展示。
+- 调停课统计复用独立业务页，不在聚合页重复造入口。
+- 教学资源统计为学校级资产，不添加学期 / 学院筛选。
+- 教师工作量仅供教务参考，不承担薪酬核算。
+- 工作量审核只有 `SUBMITTED / APPROVED / REJECTED`，驳回原因至少 5 字。
+- 导出为同步 XLSX，用途至少 5 字；无虚假异步历史列表。
 
-| 生产路由 | HTML | 权限 | 状态 |
-|---|---|---|---|
-| `/admin/academic-affairs/archive` | `archive/archive-batches.html` | `academicAffairs.archive.view / manage` | STATIC COMPLETE |
-| `/admin/academic-affairs/archive/precheck` | `archive/archive-precheck.html` | `academicAffairs.archive.view` | STATIC COMPLETE |
-| `/admin/academic-affairs/archive?entry=batch` | `archive/archive-batch-workbench.html` | `academicAffairs.archive.view / manage` | STATIC COMPLETE |
-| `/admin/academic-affairs/archive/export` | `archive/archive-export.html` | `academicAffairs.archive.export` | STATIC COMPLETE |
+完整字段、下钻、权限与口径见 `210-stats.json` 和统计 README。
 
-### 教务归档事实边界
+## 下一批：专业分流
 
-- 一学期一个归档批次。
-- 状态为 `DRAFT / CHECKING / READY / MISSING_ITEMS / ARCHIVED / CANCELLED`。
-- 语义预检不能用记录数量替代业务完成结论。
-- “批量归档”是单学期批次内多域集中处理，不是跨学期一键封存。
-- 普通确认只允许 `READY`；缺失批次只能修复或明确强制归档。
-- 强制归档必须保留缺失、原因和风险审计。
-- 归档后学期封存，核心写入口返回 `409 TERM_ARCHIVED`。
-- 特批解冻仅学校管理员，原归档历史不可删除。
-- 正式导出仅限已归档批次，下载要求用途、水印、权限和审计。
-
-详细开发契约见 `academic-affairs/archive/README.md` 与 `200-archive.json`。
-
-## 下一批：教务统计
-
-生产入口包括教务总览及注册、异动、成绩、预警、质量等统计与导出。下一批必须先核对真实统计页面、11 项指标、筛选口径、下钻和导出 API，再决定驾驶舱、明细与正式导出的独立切面。
+必须先核对真实生产三级入口、Vue、API、权限与状态，再区分批次、规则、志愿、资格、自动分配、人工调整、结果发布、异议和归档；不得复制第二套专业、班级或学生主档。
 
 ## 尚未覆盖或未收口
 
@@ -118,7 +113,6 @@
 - 教学计划独立映射说明
 - 排课管理复杂工作台
 - 课堂考勤
-- 教务统计
 - 教务看板与部分入口的统一回归
 
 ### 其他一级中心
@@ -132,8 +126,8 @@
 
 ## 尚未完成的验证
 
-- 当前 **239 个 HTML** 尚未在同一最新 HEAD 下完成一次全量浏览器回归。
-- 教学质量 8 页与教务归档 4 页尚未完成三档分辨率、控制台、溢出、键盘和焦点回归。
+- 当前 **254 个 HTML** 尚未在同一最新 HEAD 下完成一次全量浏览器回归。
+- 教学质量 8 页、教务归档 4 页和教务统计 15 页尚未完成三档分辨率、控制台、溢出、键盘和焦点回归。
 - 仓库截图和打印 PDF 均为 0。
 
 未覆盖或未验证项不得描述为完成，PR 必须继续保持 Draft。
