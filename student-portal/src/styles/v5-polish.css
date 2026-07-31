@@ -88,6 +88,11 @@ html[data-sp-theme='dark'] :where(
   border-color: var(--line) !important;
 }
 
+/* V5 深邃黑基准使用深色侧栏，而不是继续复用亮蓝主题渐变。 */
+html[data-sp-theme='dark'] .sp-aside {
+  background: linear-gradient(180deg, #070c13 0%, #111b2f 57%, #283b66 100%) !important;
+}
+
 html[data-sp-theme='dark'] .home-focus {
   background: var(--surface-2);
   color: var(--t1);
