@@ -58,20 +58,18 @@ class ClamAVClient:
 
     @staticmethod
     def _read_response(sock: socket.socket, limit: int = 64 * 1024) -> str:
-        chunks: list[bytes] = []
-        size = 0
-        while size < limit:
+        response = bytearray()
+        while len(response) < limit:
             try:
-                part = sock.recv(min(4096, limit - size))
+                part = sock.recv(min(4096, limit - len(response)))
             except OSError as exc:
                 raise ClamAVUnavailable(f"ClamAV read failed: {exc}") from exc
             if not part:
                 break
-            chunks.append(part)
-            size += len(part)
+            response.extend(part)
             if b"\0" in part or b"\n" in part:
                 break
-        return b"".join(chunks).rstrip(b"\0\r\n").decode("utf-8", errors="replace")
+        return bytes(response).rstrip(b"\0\r\n").decode("utf-8", errors="replace")
 
     def command(self, command: str) -> str:
         with self._connect() as sock:
