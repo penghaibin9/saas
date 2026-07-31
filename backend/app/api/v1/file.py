@@ -1,18 +1,13 @@
-"""文件上传会话与扫描运维 API；普通上传权威合同为 /files。
-
-历史 ``/files/upload`` 在调用扫描归零前保留为隐藏兼容入口，但只能直接委托
-``file_contract.upload_contract``，不得拥有独立存储、鉴权、扫描或绑定逻辑。
-"""
+"""文件上传会话与扫描运维 API；普通上传权威合同为 ``POST /files``。"""
 from __future__ import annotations
 
 import hashlib
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.v1.file_contract import metadata_contract, upload_contract
+from app.api.v1.file_contract import metadata_contract
 from app.core.config import settings
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import require_permission
@@ -67,31 +62,6 @@ async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_curr
     }
     audit_log.record("FILE_UPLOAD", f"file:{file_id}", {"fileName": file.filename, "size": size, "placeholder": True})
     return success(meta)
-
-
-@router.post("/upload", deprecated=True, include_in_schema=False)
-async def delegated_legacy_upload(
-    file: UploadFile = File(...),
-    bizType: str = Form("ATTACHMENT"),
-    bizId: str | None = Form(None),
-    user=Depends(get_current_user),
-):
-    """调用归零前的窄兼容；所有安全、配额、扫描和绑定均来自权威合同。"""
-    result = await upload_contract(
-        file,
-        biz_type=bizType,
-        biz_id=bizId,
-        user=user,
-    )
-    return JSONResponse(
-        content=success(result, message="兼容上传已委托公共文件权威合同"),
-        headers={
-            "Deprecation": "true",
-            "Sunset": "after-zero-call-audit",
-            "Link": '</api/v1/files>; rel="successor-version"',
-            "X-File-Center-Contract": "AUTHORITATIVE_UPLOAD_DELEGATE",
-        },
-    )
 
 
 @router.post("/upload-sessions", summary="创建 COS 精确对象直传会话")
