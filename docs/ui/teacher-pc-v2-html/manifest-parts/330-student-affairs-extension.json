@@ -4,6 +4,7 @@
   "coverageType": "non-key-workspaces-required-for-freeze",
   "sourceOfTruth": [
     "frontend/src/config/navPlan.js",
+    "frontend/src/config/navPlan.permission-contract.test.js",
     "frontend/src/modules/orientation/orientation.routes.js",
     "frontend/src/modules/campusService/campusService.routes.js",
     "frontend/src/modules/studentAffairs/studentAffairs.routes.js",
@@ -20,7 +21,7 @@
     "unconfigured non-management scope fails closed",
     "protected notes contacts attachments and exports require permission purpose and audit",
     "registration attendance results credits appeals and organization roles remain separate facts",
-    "menu permission and route permission are recorded separately and are never silently treated as aliases"
+    "menu permission and route permission use the same authoritative contract for each production entry"
   ],
   "routes": [
     {
@@ -28,14 +29,14 @@
       "routeName": "orientation-dashboard",
       "html": "student-affairs/orientation-workbench.html",
       "title": "数字迎新 · 进度与异常工作台",
-      "menuPermissionCandidates": ["studentAffairs.orientation.view"],
+      "menuPermissionCandidates": ["orientation.student.view"],
       "routePermissionCandidates": ["orientation.student.view"],
-      "contractStatus": "BLOCKED_MENU_ROUTE_PERMISSION_MISMATCH",
+      "contractStatus": "ALIGNED",
+      "contractResolution": "navPlan 数字迎新入口已统一使用 orientation.student.view，与 orientation-dashboard 路由守卫一致，并由 navPlan.permission-contract.test.js 固定校验",
       "apiSources": ["迎新批次与步骤", "身份核验", "信息采集", "缴费只读核验", "现场报到", "宿舍分配与入住", "绿色通道", "材料缺失与补交", "dashboard"],
       "states": ["progress", "blocker", "green-channel", "materials", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
       "fields": ["迎新批次", "学院", "应报到", "已报到", "步骤完成率", "阻断来源", "责任人", "截止时间", "证据", "补正结果"],
-      "boundary": "迎新推进阶段事实但不复制学生主档；阻断项保留来源、责任、证据、截止时间与补正历史",
-      "blocker": "navPlan uses studentAffairs.orientation.view while orientation-dashboard route guard uses orientation.student.view; production must choose one authoritative permission contract before freeze"
+      "boundary": "迎新推进阶段事实但不复制学生主档；阻断项保留来源、责任、证据、截止时间与补正历史"
     },
     {
       "route": "/admin/campus-service/classes",
@@ -44,14 +45,14 @@
       "coveredRouteNames": ["student-affairs-counselor-assignments", "student-affairs-counselor-eval"],
       "html": "student-affairs/class-counselor-workbench.html",
       "title": "班级与辅导员 · 责任工作台",
-      "menuPermissionCandidates": ["studentAffairs.class.view", "studentAffairs.counselorEval.view"],
+      "menuPermissionCandidates": ["campus.record.view", "studentAffairs.class.view", "studentAffairs.counselorEval.view"],
       "routePermissionCandidates": ["campus.record.view", "studentAffairs.class.view", "studentAffairs.counselorEval.view"],
-      "contractStatus": "BLOCKED_PRIMARY_MENU_ROUTE_PERMISSION_MISMATCH",
+      "contractStatus": "ALIGNED",
+      "contractResolution": "navPlan 班级管理主入口已统一使用 campus.record.view，与 campus-service-classes 路由守卫一致；辅导员责任关系和考评入口继续使用各自学工权限，并由合同测试分别校验",
       "apiSources": ["班级列表与画像", "班级材料", "辅导员责任关系", "考评周期", "自动指标", "学院评分", "排名发布"],
       "states": ["responsibility", "profile", "materials", "assessment", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
       "fields": ["学院", "年级", "班级", "学生数", "主辅导员", "协同辅导员", "生效时间", "范围状态", "请假/风险摘要", "考评指标", "综合分"],
-      "boundary": "辅导员范围必须显式配置；未配置返回空或403且不回退全校；班级画像不能绕过学生敏感字段权限",
-      "blocker": "navPlan exposes the primary class entry with studentAffairs.class.view while campus-service-classes route guard requires campus.record.view; covered counselor routes already use their own student-affairs permissions"
+      "boundary": "辅导员范围必须显式配置；未配置返回空或403且不回退全校；班级画像不能绕过学生敏感字段权限"
     },
     {
       "route": "/admin/student-affairs/talk",
@@ -82,8 +83,6 @@
   ],
   "knownLimitations": [
     "the four workspaces consolidate existing deep routes without deleting or replacing production routes",
-    "orientation menu and route permission codes are inconsistent in production",
-    "the primary class-management menu and route permission codes are inconsistent in production",
-    "current branch still requires browser and state regression for these pages"
+    "covered counselor responsibility and evaluation routes retain their own explicit permission contracts"
   ]
 }
