@@ -35,6 +35,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Check native shared-script syntax
+        shell: bash
+        run: |
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-student-affairs-workbench.js
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-internship-key.js
+
       - name: Install isolated browser driver
         shell: bash
         run: npm install --prefix .pr27-tools --no-package-lock --ignore-scripts puppeteer-core@24.16.0
