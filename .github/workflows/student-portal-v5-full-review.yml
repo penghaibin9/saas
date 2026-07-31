@@ -1,15 +1,6 @@
 name: Student Portal V5 Full Review
 
 on:
-  push:
-    branches:
-      - agent/student-portal-v5-full-review
-    paths:
-      - student-portal/src/**
-      - student-portal/review/**
-      - student-portal/package.json
-      - student-portal/package-lock.json
-      - .github/workflows/student-portal-v5-full-review.yml
   pull_request:
     branches:
       - main
@@ -21,10 +12,10 @@ on:
       - .github/workflows/student-portal-v5-full-review.yml
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: student-portal-v5-full-review-${{ github.event.pull_request.number || github.ref }}
+  group: student-portal-v5-full-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -68,7 +59,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - uses: actions/setup-python@v5
         with:
@@ -137,7 +127,7 @@ jobs:
           cat /tmp/student-v5-portal.log
           exit 1
 
-      - name: Chromium 全路由、tab、主题和多分辨率复审
+      - name: Chromium 全路由、tab、主题、交互和多分辨率复审
         working-directory: student-portal
         run: |
           node review/v5-full-review.mjs
@@ -149,19 +139,6 @@ jobs:
           mkdir -p docs/reviews/student-portal-v5-full-review/logs
           tail -n 300 /tmp/student-v5-backend.log > docs/reviews/student-portal-v5-full-review/logs/backend-tail.log 2>/dev/null || true
           tail -n 300 /tmp/student-v5-portal.log > docs/reviews/student-portal-v5-full-review/logs/portal-tail.log 2>/dev/null || true
-
-      - name: 提交复审证据到复审分支
-        if: always() && github.event_name == 'push'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/reviews/student-portal-v5-full-review
-          if git diff --cached --quiet; then
-            echo "no review evidence changes"
-            exit 0
-          fi
-          git commit -m "docs(student-portal): add V5 full review evidence [skip ci]"
-          git push origin HEAD:agent/student-portal-v5-full-review
 
       - name: 上传复审证据
         if: always()
