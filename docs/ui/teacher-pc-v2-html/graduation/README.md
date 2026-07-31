@@ -10,6 +10,8 @@
 - 显式共享 URL：2
 - 独立 HTML：8
 - 共享运行资源：`shared/v2-graduation-key.css/js`
+- 机器审计：`tools/check-graduation-workspace-audit.mjs`
+- 审计记录：`graduation/workspace-audit-report.md`
 
 两个共享入口：
 
@@ -41,9 +43,30 @@
 - 新增 `batch-implementation.html`、`proposal-final.html`、`risk-archive.html`、`templates.html`；
 - 保留并重定义 `overview.html`、`topic.html`、`process.html`、`defense.html`；
 - 重建 `320-graduation.json`，为每个工作区补齐真实主路由、routeName、权限候选、叶子路由、字段、状态与边界；
-- 重写共享 JavaScript 的菜单、页签、生产入口和工作区内容。
+- 重写共享 JavaScript 的菜单、页签、生产入口和工作区内容；
+- 将流程步骤样式从固定 8 列改为按实际步骤数量自适应，兼容 6 步与 8 步工作流。
 
 独立 HTML 总数仍为 8，没有用同一页面冒充多个工作区，也没有增加生产代码改动。
+
+## 机器审计契约
+
+`tools/check-graduation-workspace-audit.mjs` 直接解析生产 `GRADUATION_WORKSPACES`，并与 `320-graduation.json` 比较：
+
+- 8 个工作区的 key、名称和主入口；
+- 50 个三级叶子与 48 个唯一 URL；
+- 两个共享 URL 及 owner；
+- 每个工作区全部 `coveredRoutes`；
+- 生产权限候选覆盖；
+- 8 个 HTML 的存在性与唯一 owner；
+- 字段、状态与业务边界；
+- 漏工作区、过时工作区、漏 URL、过时 URL 和错误共享关系。
+
+当前已完成：
+
+- 工具 `node --check` PASS；
+- 隔离同构夹具 8 / 50 / 48 / 2、8 HTML、0 error PASS。
+
+当前未完成：在完整真实 PR 分支快照中执行工具。详细结论边界见 `workspace-audit-report.md`。
 
 ## 核心事实边界
 
@@ -85,17 +108,19 @@
 ## 开发 AI 读取顺序
 
 1. 先读生产 `graduationWorkspaces.js`，确认 8 个工作区和 50 个三级叶子没有变化；
-2. 阅读 `manifest-parts/320-graduation.json`；
-3. 阅读对应 HTML 的 `workspaceKey`、`route`、`routeName`、`permissions`、`states` 和 `boundary`；
-4. 阅读 `shared/v2-graduation-key.css/js`；
-5. 回到生产 `routes.js`、真实 Vue 页面、API 和服务；
-6. 先核对批次、权限、数据范围、状态机和版本链，再还原视觉与交互；
-7. 不复制原型占位值，不把前端候选状态当作后端事实。
+2. 运行 `tools/check-graduation-workspace-audit.mjs`；
+3. 阅读 `manifest-parts/320-graduation.json`；
+4. 阅读对应 HTML 的 `workspaceKey`、`route`、`routeName`、`permissions`、`states` 和 `boundary`；
+5. 阅读 `shared/v2-graduation-key.css/js`；
+6. 回到生产 `routes.js`、真实 Vue 页面、API 和服务；
+7. 先核对批次、权限、数据范围、状态机和版本链，再还原视觉与交互；
+8. 不复制原型占位值，不把前端候选状态当作后端事实。
 
 ## 当前验证口径
 
 - 8 个现行工作区、50 个三级叶子和 48 个唯一 URL 已完成静态映射重建；
-- 共享 JavaScript 已在写入前通过 `node --check`；
+- 共享 JavaScript 与审计工具均已通过写入前语法检查；
+- 审计工具在隔离同构夹具中 0 error，但真实完整分支未执行；
 - 重映射后的 8 页当前浏览器渲染次数仍为 0；
 - 未执行三档分辨率、控制台、溢出、状态切换、键盘、焦点和页面跳转回归；
-- 完成 8 × 3 = 24 次回归前，不得标记毕业设计中心冻结完成。
+- 完成真实分支审计和 8 × 3 = 24 次回归前，不得标记毕业设计中心冻结完成。
