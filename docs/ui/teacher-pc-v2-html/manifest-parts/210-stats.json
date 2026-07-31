@@ -1,0 +1,166 @@
+{
+  "moduleKey": "academic-stats",
+  "moduleLabel": "教务统计",
+  "sourceOfTruth": [
+    "frontend/src/config/navPlan.js",
+    "frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue",
+    "frontend/src/modules/academicAffairs/views/AaWorkloadReviewView.vue",
+    "frontend/src/modules/academicAffairs/api/academic-affairs.api.js",
+    "backend/app/modules/academic_affairs/services/academic_affairs_stats_service.py"
+  ],
+  "productionImplementationStatus": "sixteen navigation entries verified: fourteen tabs in AaStatsOverviewView, one existing schedule-change stats page, and one workload declaration review page; backend aggregation, scope, detail and export remain authoritative",
+  "sharedAssets": [
+    "shared/v2-stats-workbench.js",
+    "shared/v2-stats-workbench.css"
+  ],
+  "principles": [
+    "rates expose numerator and denominator",
+    "summary and drilldown use identical filters and backend scope",
+    "zero, empty, module-disabled, scope-blocked and request-error states remain distinct",
+    "unconfigured college scope fails closed",
+    "large detail datasets use server pagination",
+    "schedule-change statistics reuse their independent production page",
+    "teaching resource statistics are school-level shared assets without term or college filters",
+    "teacher workload is an academic reference rather than payroll calculation",
+    "formal xlsx export requires purpose, watermark, permission and audit",
+    "current production export is synchronous and has no async history queue"
+  ],
+  "routes": [
+    {
+      "route": "/admin/academic-affairs/stats",
+      "html": "academic-affairs/stats/stats-overview.html",
+      "title": "教务总览（15 项指标 · 多维筛选 · 下钻 · 导出）",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["学期", "学院", "专业", "15项指标", "分子", "分母", "单位", "状态", "更新时间", "下钻明细"],
+      "boundary": "overview indicators support operational observation and never directly assign responsibility"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=statusChange",
+      "html": "academic-affairs/stats/stats-status-change.html",
+      "title": "学籍统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["已生效异动人数", "异动类型分布", "学生", "学号", "原状态", "现状态"],
+      "boundary": "only EFFECTIVE changes count as completed status changes"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=registration",
+      "html": "academic-affairs/stats/stats-registration.html",
+      "title": "注册统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["应注册", "已注册", "完成率", "未注册学生", "状态", "原因"],
+      "boundary": "registration rate always exposes registered and expected counts"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=course",
+      "html": "academic-affairs/stats/stats-course.html",
+      "title": "课程统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["启用课程数", "类别分布", "学院分布", "课程代码", "课程名称", "学分", "总学时"],
+      "boundary": "enabled, disabled and historical course versions remain distinct"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=teachingTask",
+      "html": "academic-affairs/stats/stats-teaching-task.html",
+      "title": "教学任务统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["任务确认率", "已确认", "应确认", "未确认课程", "教学班", "教师", "状态"],
+      "boundary": "teacher and management confirmation remain separate workflow nodes"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=schedule",
+      "html": "academic-affairs/stats/stats-schedule.html",
+      "title": "课表统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["发布覆盖率", "已发布批次", "总批次", "未解决冲突", "班级", "星期", "节次", "课程"],
+      "boundary": "draft schedules do not count as formally published coverage"
+    },
+    {
+      "route": "/admin/academic-affairs/schedule-change/stats",
+      "html": "academic-affairs/schedule-change/schedule-change-stats.html",
+      "title": "调停课统计",
+      "permissionCandidate": "academicAffairs.scheduleChange.view",
+      "sharedExistingHtml": true,
+      "boundary": "independent operational page is reused rather than duplicated by the aggregate stats workbench"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=courseSelection",
+      "html": "academic-affairs/stats/stats-selection.html",
+      "title": "选课统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["填充率", "已选人数", "总容量", "记录数", "低人数课程", "满额课程", "批次状态"],
+      "boundary": "fill rate uses real capacity and low-enrollment threshold remains traceable"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=exam",
+      "html": "academic-affairs/stats/stats-exam.html",
+      "title": "考务统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["课程确认率", "确认课程", "课程总数", "缺考人次", "违纪人次", "批次状态", "事件明细"],
+      "boundary": "absence and violation are registered facts rather than inferred discipline conclusions"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=grade",
+      "html": "academic-affairs/stats/stats-grade.html",
+      "title": "成绩统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["挂科率", "有效挂科数", "有效成绩数", "录入发布率", "补考人次", "重修人次", "挂科明细"],
+      "boundary": "effective deduplicated grades define failure statistics and workflow stages define publish rate"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=warning",
+      "html": "academic-affairs/stats/stats-warning.html",
+      "title": "学业预警统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["未关闭预警", "等级分布", "来源分布", "学生", "班级", "跟进状态"],
+      "boundary": "warnings are intervention signals rather than discipline or graduation decisions"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=graduation",
+      "html": "academic-affairs/stats/stats-graduation.html",
+      "title": "毕业资格统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["资格通过率", "通过人数", "应审人数", "异常项分布", "异常学生", "UNKNOWN项"],
+      "boundary": "unconnected facts such as finance remain UNKNOWN and are not converted to FAIL by the frontend"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=workload",
+      "html": "academic-affairs/stats/stats-workload.html",
+      "title": "教师工作量统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["教师", "教学任务学时", "已批申报工时", "综合参考工时", "任务数", "授课明细"],
+      "boundary": "academic workload references are not formal payroll or performance settlement"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=resource",
+      "html": "academic-affairs/stats/stats-resource.html",
+      "title": "教学资源统计",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "fields": ["教室总数", "预约总数", "状态分布", "类型分布", "预约状态", "待审核预约"],
+      "boundary": "resource statistics use school-level shared-asset scope and do not accept invented term or college filters"
+    },
+    {
+      "route": "/admin/academic-affairs/workload-review",
+      "html": "academic-affairs/stats/workload-review.html",
+      "title": "工作量申报审核（教师申报）",
+      "permissionCandidate": "academicAffairs.stats.view",
+      "states": ["SUBMITTED", "APPROVED", "REJECTED"],
+      "fields": ["教师", "学期", "类别", "申报课时", "说明", "状态", "审核意见"],
+      "actions": ["通过", "驳回"],
+      "boundary": "approved declarations enter academic reference statistics only and rejection reason requires at least five characters"
+    },
+    {
+      "route": "/admin/academic-affairs/stats?tab=export",
+      "html": "academic-affairs/stats/stats-export.html",
+      "title": "导出报表",
+      "permissionCandidate": "academicAffairs.stats.export",
+      "fields": ["导出维度", "学期", "学院", "导出用途", "XLSX"],
+      "boundary": "synchronous export requires purpose of at least five characters, backend scope, watermark and audit; no fake history queue"
+    }
+  ],
+  "knownLimitations": [
+    "the current production page has fourteen tabs rather than fourteen independent Vue pages",
+    "resource statistics intentionally ignore term and college filters",
+    "current synchronous export has no export history or failed-task retry list",
+    "current prototype batch has not completed browser, keyboard or focus regression"
+  ]
+}
