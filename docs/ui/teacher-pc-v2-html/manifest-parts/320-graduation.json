@@ -1,0 +1,84 @@
+{
+  "moduleKey": "graduation",
+  "moduleLabel": "毕业设计中心",
+  "coverageType": "eight-production-workspaces",
+  "sourceOfTruth": [
+    "frontend/src/modules/graduation/config/graduationWorkspaces.js",
+    "graduation production routes, Vue pages, APIs and services"
+  ],
+  "productionImplementationStatus": "all eight production workspaces registered with key routes, version boundaries, release gates and archive constraints",
+  "sharedAssets": ["shared/v2-graduation-key.js", "shared/v2-graduation-key.css"],
+  "principles": [
+    "batch context spans eligibility, mentor, topic, proposal, process, artifact, defense, grade and archive",
+    "identity facts remain in unified student and teacher masters",
+    "topic submission, review, publication, student selection, mentor confirmation and final allocation are separate",
+    "materials, guidance, milestones, results and scores preserve versions",
+    "proposal approval never implies artifact, defense or grade approval",
+    "originality evidence never automatically creates an academic conclusion",
+    "defense publication rechecks group, time, room, student, judge, recusal and conflict facts",
+    "score calculation, review, publication and dispute remain separate",
+    "missing materials block a complete archive package",
+    "downloads require permission, scope, purpose, watermark and audit"
+  ],
+  "routes": [
+    {
+      "workspace": "overview",
+      "html": "graduation/overview.html",
+      "title": "毕业设计总览",
+      "coveredRoutes": ["/admin/graduation/dashboard", "/admin/graduation/batch", "/admin/graduation/eligibility", "/admin/graduation/mentor", "/admin/graduation/topic", "/admin/graduation/proposal", "/admin/graduation/milestone", "/admin/graduation/artifact", "/admin/graduation/defense", "/admin/graduation/grade"]
+    },
+    {
+      "workspace": "topic",
+      "html": "graduation/topic.html",
+      "title": "选题与分配",
+      "coveredRoutes": ["/admin/graduation/topic", "/admin/graduation/topic/teacher", "/admin/graduation/topic/review", "/admin/graduation/topic/publish", "/admin/graduation/topic/student", "/admin/graduation/topic/confirm", "/admin/graduation/topic/allocation", "/admin/graduation/topic/import-export"],
+      "boundary": "publication, selection, mentor confirmation and final allocation are separate and capacity or specialty conflicts block allocation"
+    },
+    {
+      "workspace": "proposal",
+      "html": "graduation/proposal.html",
+      "title": "开题管理",
+      "coveredRoutes": ["/admin/graduation/proposal/requirement", "/admin/graduation/proposal/submit", "/admin/graduation/proposal/review", "/admin/graduation/proposal/history", "/admin/graduation/proposal/remind", "/admin/graduation/proposal/stats"],
+      "boundary": "returned submissions preserve versions and proposal approval does not imply later-stage approval"
+    },
+    {
+      "workspace": "process",
+      "html": "graduation/process.html",
+      "title": "过程管理",
+      "coveredRoutes": ["/admin/graduation/proposal", "/admin/graduation/task", "/admin/graduation/guidance", "/admin/graduation/milestone", "/admin/graduation/midterm", "/admin/graduation/issue", "/admin/graduation/extension"],
+      "boundary": "guidance, evidence, midterm results, issue rectification and extension approval append history"
+    },
+    {
+      "workspace": "artifact",
+      "html": "graduation/artifact.html",
+      "title": "成果提交",
+      "coveredRoutes": ["/admin/graduation/artifact/draft", "/admin/graduation/artifact/final", "/admin/graduation/artifact/check", "/admin/graduation/artifact/review", "/admin/graduation/artifact/history", "/admin/graduation/artifact/remind", "/admin/graduation/artifact/stats"],
+      "boundary": "draft, final and originality evidence remain separate and originality does not auto-create an academic conclusion"
+    },
+    {
+      "workspace": "defense",
+      "html": "graduation/defense.html",
+      "title": "答辩管理",
+      "coveredRoutes": ["/admin/graduation/defense/group", "/admin/graduation/defense/plan", "/admin/graduation/defense/allocation", "/admin/graduation/defense/recusal", "/admin/graduation/defense/publish", "/admin/graduation/defense/attendance", "/admin/graduation/defense/record", "/admin/graduation/defense/issue", "/admin/graduation/defense/stats", "/admin/graduation/defense/emergency"],
+      "boundary": "release rechecks group, time, room, student, judge, recusal and conflict facts while emergency changes preserve prior plans"
+    },
+    {
+      "workspace": "grade",
+      "html": "graduation/grade.html",
+      "title": "成绩管理",
+      "coveredRoutes": ["/admin/graduation/grade/supervisor", "/admin/graduation/grade/reviewer", "/admin/graduation/grade/defense", "/admin/graduation/grade/calculation", "/admin/graduation/grade/review", "/admin/graduation/grade/publish", "/admin/graduation/grade/dispute"],
+      "boundary": "frozen weights, missing-score rules and rounding precede calculation while review, publication and dispute remain separate"
+    },
+    {
+      "workspace": "archive",
+      "html": "graduation/archive.html",
+      "title": "归档与统计",
+      "coveredRoutes": ["/admin/graduation/archive/record", "/admin/graduation/archive/package", "/admin/graduation/archive/audit", "/admin/graduation/stats", "/admin/graduation/notification", "/admin/graduation/early-warning"],
+      "boundary": "final versions and complete audit only; missing material blocks complete package and downloads require purpose, watermark and permission"
+    }
+  ],
+  "knownLimitations": [
+    "permission names must be re-read from the production workspace projection before Vue migration",
+    "the current batch has not completed browser, keyboard or focus regression"
+  ]
+}
