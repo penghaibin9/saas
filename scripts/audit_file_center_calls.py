@@ -4,7 +4,7 @@
 严格区分三类结果：
 - BOUNDARY：公共 SDK、请求传输层和存储适配层的受控底层调用；
 - LEGACY_DEBT：origin/main 已存在、仍待迁移的历史调用，进入债务账本但不冒充本 PR 新回归；
-- BLOCKER：本 PR 新增的绕过、旧 URL 或一次性施工文件，严格门禁失败。
+- BLOCKER：本 PR 新增的绕过、旧 URL、整包内存读取或一次性施工文件，严格门禁失败。
 """
 from __future__ import annotations
 
@@ -29,10 +29,13 @@ CLIENT_PATTERNS = {
     "proxy-download-url": re.compile(r"[\"'`]\/files\/download\/"),
     "direct-uni-upload": re.compile(r"\buni\.uploadFile\s*\("),
     "direct-uni-download": re.compile(r"\buni\.downloadFile\s*\("),
+    "runtime-cos-cdn": re.compile(r"cdn\.jsdelivr\.net\/npm\/cos-js-sdk-v5", re.I),
 }
 BACKEND_PATTERNS = {
     "direct-cos-sdk": re.compile(r"\b(?:qcloud_cos|CosS3Client|cos-python-sdk)\b"),
     "whole-file-read": re.compile(r"\.read_bytes\s*\("),
+    "whole-upload-buffer": re.compile(r"b[\"']{2}\.join\s*\("),
+    "in-memory-xlsx-open": re.compile(r"load_workbook\s*\(\s*io\.BytesIO\s*\("),
     "raw-file-response": re.compile(r"\bFileResponse\s*\("),
 }
 TEMP_FILE_PATTERNS = (
@@ -46,14 +49,9 @@ ALLOW = {
         "backend/app/services/storage/cos.py",
         "backend/app/services/storage/production.py",
     ),
+    # FileResponse 只能存在于公共响应合同；业务 Router 必须调用该合同。
     "raw-file-response": (
         "backend/app/api/v1/file_contract.py",
-        "backend/app/api/v1/data_exchange.py",
-        "backend/app/api/v1/import_export.py",
-        "backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py",
-        "backend/app/modules/graduation/routers/graduation_material_center.py",
-        "backend/app/modules/internship/routers/internship_material_center.py",
-        "backend/app/modules/student_affairs/routers/affairs_material_center.py",
     ),
     "proxy-download-url": (
         "frontend/src/services/file/fileSdk.js",
@@ -187,7 +185,7 @@ def main() -> int:
     debts = [item for item in findings if item.classification == "LEGACY_DEBT"]
     boundaries = [item for item in findings if item.classification == "BOUNDARY"]
     report = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "baseRef": args.base_ref,
         "summary": {
             "findings": len(findings),
