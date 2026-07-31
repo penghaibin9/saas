@@ -1,4 +1,3 @@
-# PR #25 manual rerun trigger; no workflow logic change.
 name: File center final acceptance
 
 on:
