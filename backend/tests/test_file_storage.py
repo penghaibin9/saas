@@ -76,7 +76,8 @@ class _FakeCosClient:
     def __init__(self, *_a, **_k):
         pass
 
-    def put_object(self, Bucket, Body, Key):  # noqa: N803
+    def put_object(self, Bucket, Body, Key, ServerSideEncryption=None):  # noqa: N803
+        assert ServerSideEncryption == "AES256"
         _FakeCosClient.store[Key] = Body.read()
 
     def get_object(self, Bucket, Key):  # noqa: N803
