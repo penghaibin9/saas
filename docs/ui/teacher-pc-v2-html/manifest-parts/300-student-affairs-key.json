@@ -1,0 +1,129 @@
+{
+  "moduleKey": "student-affairs-key",
+  "moduleLabel": "学工中心关键原型",
+  "coverageType": "key-workspaces-not-full-center",
+  "sourceOfTruth": [
+    "frontend/src/config/navPlan.js",
+    "student affairs production routes and Vue pages",
+    "studentAffairsApi",
+    "StudentAffairsSecurityContext",
+    "student affairs dashboard, leave, risk, dorm, aid, funding, discipline, mental, stats and archive services"
+  ],
+  "productionImplementationStatus": "eleven high-frequency and high-risk workspaces registered; the full student-affairs menu is not yet claimed as prototype-complete",
+  "sharedAssets": [
+    "shared/v2-student-affairs-workbench.js",
+    "shared/v2-student-affairs-workbench.css"
+  ],
+  "scopeTypes": ["TENANT_ALL", "COLLEGE", "CLASS", "STUDENT", "DORM_BUILDING", "SELF", "NONE"],
+  "principles": [
+    "unconfigured non-management scope fails closed and never falls back to tenant-wide data",
+    "the UI shows a user-facing scope label rather than internal scope codes",
+    "student master remains the single identity fact source and student 360 only aggregates authorized business facts",
+    "protected detail requires independent permission, purpose and audit",
+    "objective facts remain separate from discipline, risk or clinical conclusions",
+    "downloads inherit backend scope, masking, purpose, watermark and audit",
+    "prototype placeholders never represent production data"
+  ],
+  "routes": [
+    {
+      "route": "/admin/student-affairs/dashboard",
+      "html": "student-affairs/dashboard.html",
+      "title": "学工总览",
+      "permissionCandidates": ["studentAffairs.dashboard.view"],
+      "fields": ["scopeLabel", "范围内学生", "班级", "本人待办", "待审请假", "逾期未销假", "困难认定", "奖助", "处分", "风险学生", "真实下钻路径"],
+      "boundary": "only trustworthy role-scoped metrics appear; unavailable dorm aggregation and construction copy are excluded"
+    },
+    {
+      "route": "/admin/student/list -> /admin/student-affairs/profile/:studentId",
+      "html": "student-affairs/student-360.html",
+      "title": "学生360",
+      "permissionCandidates": ["student.profile.view", "studentAffairs.student.view"],
+      "fields": ["基础身份", "真实班级", "宿舍摘要", "联系方式脱敏", "家庭联系人计数", "请假", "困难认定", "奖助", "处分", "风险摘要", "谈话", "时间线"],
+      "boundary": "student master is not duplicated and protected detail uses independent permission, purpose and audit"
+    },
+    {
+      "route": "/admin/student-affairs/leave",
+      "coveredRoutes": ["/admin/student-affairs/leave/followup", "/admin/student-affairs/leave/ledger", "/admin/student-affairs/leave/stats"],
+      "html": "student-affairs/leave-workbench.html",
+      "title": "请假销假工作台",
+      "permissionCandidates": ["studentAffairs.leave.view"],
+      "fields": ["学生", "班级", "起止时间", "天数", "原因摘要", "当前审批节点", "续假", "返校", "销假", "逾期", "台账"],
+      "boundary": "only the current approval node can act and extension or cancellation appends rather than overwrites history"
+    },
+    {
+      "route": "/admin/student-affairs/dorm/exception",
+      "html": "student-affairs/dorm-exception.html",
+      "title": "宿舍异常（含夜不归宿）",
+      "permissionCandidates": ["studentAffairs.dorm.view"],
+      "fields": ["楼栋", "房间", "床位", "学生", "异常类型", "发现时间", "客观事实", "证据", "请假比对", "核验", "转办", "闭环"],
+      "boundary": "building or student scope applies and an absence never directly determines discipline"
+    },
+    {
+      "route": "/admin/student-affairs/risk",
+      "html": "student-affairs/risk-workbench.html",
+      "title": "风险预警与处置",
+      "permissionCandidates": ["studentAffairs.risk.view", "studentAffairs.risk.handle"],
+      "fields": ["学生", "来源", "风险等级", "摘要", "责任人", "超时", "状态", "分派", "处置", "跟进", "转派", "升级", "接管", "关闭", "重开"],
+      "boundary": "psychological sources are summary-only by default and timeout scan is limited to school or student-affairs management"
+    },
+    {
+      "route": "/admin/student-affairs/aid",
+      "coveredRoutes": ["/admin/student-affairs/aid/batches", "/admin/student-affairs/aid/publicity", "/admin/student-affairs/aid/ledger", "/admin/student-affairs/aid/difficult-students", "/admin/student-affairs/aid/stats", "/admin/student-affairs/aid/objections"],
+      "html": "student-affairs/difficulty-workbench.html",
+      "title": "困难认定工作台",
+      "permissionCandidates": ["studentAffairs.aid.view", "studentAffairs.stats.view"],
+      "fields": ["认定批次", "申请审核", "公示", "异议复核", "认定台账", "困难学生库", "认定统计"],
+      "boundary": "protected application materials are not expanded in ordinary lists and publicity, objections and final results preserve versions"
+    },
+    {
+      "route": "/admin/student-affairs/funding",
+      "coveredRoutes": ["/admin/student-affairs/funding/projects", "/admin/student-affairs/funding/batches", "/admin/student-affairs/funding/publicity", "/admin/student-affairs/funding/appeals", "/admin/student-affairs/funding/disbursements", "/admin/student-affairs/funding/stats", "/admin/student-affairs/funding/work-study", "/admin/student-affairs/funding/loans", "/admin/student-affairs/funding/fee-reductions"],
+      "html": "student-affairs/funding-workbench.html",
+      "title": "奖助发放工作台",
+      "permissionCandidates": ["studentAffairs.funding.view"],
+      "fields": ["项目", "批次", "申请评审", "公示", "申诉", "获批金额", "发放状态", "失败原因", "重试", "凭证", "对账"],
+      "boundary": "approved never equals paid and failed, retried or partially successful payments remain auditable"
+    },
+    {
+      "route": "/admin/student-affairs/discipline",
+      "coveredRoutes": ["/admin/student-affairs/discipline/appeals", "/admin/student-affairs/discipline/ledger", "/admin/student-affairs/discipline/stats"],
+      "html": "student-affairs/discipline-workbench.html",
+      "title": "违纪处分工作台",
+      "permissionCandidates": ["studentAffairs.discipline.view"],
+      "fields": ["案件", "学生", "事实", "证据", "调查", "审批", "送达", "陈述申辩", "生效", "申诉", "解除", "投影对账", "归档"],
+      "boundary": "facts and evidence precede classification and delivery, appeal, effectiveness and release remain separate nodes"
+    },
+    {
+      "route": "/admin/student-affairs/mental",
+      "coveredRoutes": ["/admin/student-affairs/mental/summary", "/admin/student-affairs/mental/referrals", "/admin/student-affairs/mental/crisis", "/admin/student-affairs/mental/stats"],
+      "html": "student-affairs/mental-crisis.html",
+      "title": "心理危机与转介",
+      "permissionCandidates": ["studentAffairs.risk.view", "studentAffairs.risk.psyDetail.view"],
+      "fields": ["关注名单", "摘要", "点名授权", "转介", "接收", "回访", "危机升级", "责任人", "响应时限", "敏感访问审计"],
+      "boundary": "minimum visibility applies and protected detail requires named authorization, reason and audit without automatic diagnosis"
+    },
+    {
+      "route": "/admin/student-affairs/stats",
+      "coveredRoutes": ["/admin/student-affairs/stats/cockpit"],
+      "html": "student-affairs/stats-cockpit.html",
+      "title": "学工统计驾驶舱",
+      "permissionCandidates": ["studentAffairs.stats.view"],
+      "fields": ["学校/学院/班级/时间范围", "请假", "风险", "困难认定", "奖助", "处分", "谈话家校", "分子分母", "下钻", "最小样本"],
+      "boundary": "backend scope, same-filter drilldown and minimum-sample protection apply to sensitive domains"
+    },
+    {
+      "route": "/admin/student-affairs/archive",
+      "coveredRoutes": ["/admin/student-affairs/archive/packages"],
+      "html": "student-affairs/archive-packages.html",
+      "title": "学生档案包",
+      "permissionCandidates": ["studentAffairs.archive.view"],
+      "fields": ["学生或批次", "业务目录", "版本", "生成状态", "失败原因", "临时下载链接", "用途", "脱敏", "水印", "下载审计"],
+      "boundary": "closed or archivable versions only; originals are immutable and downloads require scope, masking, purpose, watermark and audit"
+    }
+  ],
+  "knownLimitations": [
+    "this is an eleven-page key prototype pack rather than full student-affairs menu coverage",
+    "orientation, class/counselor, talks/family and activities require their own full-center prototype pass",
+    "current batch has not completed browser, keyboard or focus regression"
+  ]
+}
