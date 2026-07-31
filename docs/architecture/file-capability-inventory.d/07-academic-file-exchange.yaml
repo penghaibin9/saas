@@ -6,8 +6,8 @@ entries:
     action: upload+import
     fileCategory: XLSX_IMPORT
     api: POST /api/v1/academic-affairs/file-exchange/roster/import-jobs
-    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::create_roster_import_job
-    storageMode: configurable
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::create_academic_import_job
+    storageMode: configurable-quarantine
     authMode: authenticated+academicAffairs.roster.import
     dataScope: tenant+operator+academic-roster
     versioned: true
@@ -20,7 +20,29 @@ entries:
     status: active
     risk: P0
     targetPhase: '7'
-    notes: 原始 XLSX 固化为不可变 FileObject；确认仅接收 jobId+expectedVersion，并重新读取同一文件预检。
+    notes: 上传只登记 SCANNING Job；CLEAN/AVAILABLE 后详情轮询才服务端解析，确认仅接收 jobId+expectedVersion并重读同一文件。
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/file-exchange/{grade-task|schedule-batch}/import-jobs
+    page: backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py, frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js
+    action: upload+import
+    fileCategory: XLSX_IMPORT
+    api: POST grade-tasks/{task_id}/import-jobs; POST schedule-batches/{batch_id}/import-jobs
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::create_academic_import_job+confirm_academic_import
+    storageMode: configurable-quarantine
+    authMode: original-domain-permission+job-owner+confirm-lease
+    dataScope: tenant+operator+grade-task-or-schedule-batch
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 成绩与排课导入复用SCANNING→PARSING→VALIDATED状态机；原始rows不持久化，确认重新解析并委托原领域事务。
   - module: academic-affairs
     client: backend
     route: /api/v1/academic-affairs/file-exchange/roster/export-jobs
@@ -74,7 +96,7 @@ entries:
     api: GET /api/v1/academic-affairs/file-exchange/jobs
     backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::list_academic_jobs
     storageMode: metadata
-    authMode: authenticated+academic-import-or-export-permission
+    authMode: authenticated+staff+job-owner
     dataScope: tenant+operator
     versioned: true
     scanGated: true
@@ -108,4 +130,4 @@ entries:
     status: active
     risk: P0
     targetPhase: '7'
-    notes: 页面确认不再回传 rows；刷新后可读取任务，导出通过一次性票据下载并支持撤销。
+    notes: 页面轮询SCANNING/PARSING任务，只有VALIDATED可确认；确认不回传rows，导出通过一次性票据下载并支持撤销。
