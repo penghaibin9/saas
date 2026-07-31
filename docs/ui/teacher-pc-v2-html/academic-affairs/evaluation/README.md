@@ -1,19 +1,28 @@
 # 教学评价：开发还原契约
 
-> 本目录是教师 PC V2 高保真 HTML 原型。生产权限、任务生成、问卷、匿名算法、权重、结果和申诉状态以后端为准。
+> 本目录是教师 PC V2 高保真 HTML 原型。生产权限、数据范围、任务生成、问卷、匿名聚合、权重、结果和申诉状态以后端为准。
+
+## 已核准生产事实
+
+- 生产路由：`aa-evaluation`
+- 生产组件：`AaEvaluationConsoleView.vue`
+- API 适配器：`academicAffairsEvaluationApi`
+- 真实 Tab：`batches`、`appeals`、`studentEval`、`selfEval`、`peerEval`、`supervisorEval`、`evalStats`、`archive`
+- 批次生命周期：`DRAFT → PUBLISHED → OPEN → CLOSED → RESULT_READY → ARCHIVED`
+- 生产入口与权限以 `navPlan.js` 为准。
 
 ## 8 个真实入口
 
-| 入口 | HTML | 核心任务 |
-|---|---|---|
-| 评教批次 | `evaluation-batches.html` | 对象、问卷、权重、匿名、时间和发布策略 |
-| 申诉审核 | `evaluation-appeals.html` | 受理、独立复核、结果维持或更正 |
-| 学生评教 | `evaluation-student.html` | 小程序任务、参与率、匿名聚合和异常答卷 |
-| 教师自评 | `evaluation-self.html` | 本人教学任务、证据、反思和改进计划 |
-| 同行评价 | `evaluation-peer.html` | 专业匹配、回避、听课或材料评价 |
-| 督导评价 | `evaluation-supervisor.html` | 观察事实、问题等级、反馈和整改关联 |
-| 评价统计 | `evaluation-stats.html` | 多来源分布、趋势、申诉和改进效果 |
-| 评价归档 | `evaluation-archive.html` | 规则、问卷、结果、申诉、改进与下载审计 |
+| 入口 | URL | 权限 | HTML |
+|---|---|---|---|
+| 评教批次 | `?tab=batches` | `academicAffairs.evaluation.view` | `evaluation-batches.html` |
+| 申诉审核 | `?tab=appeals` | `academicAffairs.evaluation.view` | `evaluation-appeals.html` |
+| 学生评教 | `?tab=studentEval` | `academicAffairs.evaluation.view` | `evaluation-student.html` |
+| 教师自评 | `?tab=selfEval` | `academicAffairs.evaluation.selfEval.submit` | `evaluation-self.html` |
+| 同行评价 | `?tab=peerEval` | `academicAffairs.evaluation.peerEval.submit` | `evaluation-peer.html` |
+| 督导评价 | `?tab=supervisorEval` | `academicAffairs.evaluation.supervisorEval.submit` | `evaluation-supervisor.html` |
+| 评价统计 | `?tab=evalStats` | `academicAffairs.evaluation.view` | `evaluation-stats.html` |
+| 评价归档 | `?tab=archive` | `academicAffairs.evaluation.view` | `evaluation-archive.html` |
 
 ## 业务链
 
@@ -22,7 +31,7 @@
 → 从教学任务生成多角色评价任务
 → 学生 / 教师 / 同行 / 督导分别评价
 → 身份隔离、异常检测和匿名聚合
-→ 按权重版本生成结果
+→ 按规则版本生成结果
 → 发布结果与反馈
 → 申诉复核和改进跟踪
 → 只读归档
@@ -30,113 +39,22 @@
 
 ## 关键边界
 
-1. 学生评教填写入口在学生小程序；教师 PC 负责任务、进度、匿名和结果治理。
+1. 学生填写入口在学生小程序；教师 PC 负责批次、任务、进度、匿名聚合、结果与申诉治理。
 2. 任课教师不能查看学生个人答卷、未评学生名单或可反推身份的提交时间。
 3. 匿名样本不足时不展示结果，不能解释为零分或低分。
-4. 教师自评只覆盖本人教学任务，是独立来源，不替代其他评价。
+4. 教师自评只覆盖本人教学任务，是独立来源。
 5. 同行评价必须校验专业匹配、利益冲突和重复评价。
-6. 督导评价要区分观察事实与专业判断，严重问题转教学质量整改。
-7. 申诉不能修改原始答卷，只能追加独立复核和结果版本。
-8. 评价结果用于教学改进，不应生成简单公开教师排名。
+6. 督导评价区分观察事实与专业判断，严重问题进入教学质量整改。
+7. 申诉不能修改原始答卷，只能追加复核结论与结果版本。
+8. 评价结果用于教学改进，不生成简单公开教师排名。
 9. 归档后的问卷、规则、聚合结果和申诉记录不可覆盖。
 
-## 批次规则最小字段
+## 生产还原要求
 
-- 学年学期和教学任务范围
-- 评价对象和评价角色
-- 各角色问卷版本
-- 各角色权重
-- 学生匿名最小样本
-- 开放时间、关闭时间和提醒策略
-- 是否允许撤回或补交
-- 异常答卷处理规则
-- 结果聚合和舍入规则
-- 结果可见范围与发布时间
-- 申诉窗口和办理期限
+- 读取 HTML `<head>` 的 route、routeName、permission、roles、states、privacy 和 boundary。
+- 读取 `manifest-parts/180-evaluation.json` 的机器契约。
+- 读取 `shared/v2-evaluation-workbench.js/css` 的离线结构与交互。
+- 回到 `AaEvaluationConsoleView.vue`、`academicAffairsEvaluationApi` 和后端服务核对字段、数据范围、写权限、并发版本与审计。
+- 原型中的中性数据、权重和匿名阈值不得直接写入生产常量。
 
-批次发布后修改规则应创建新版本并重新评估影响，不能静默改动已有任务。
-
-## 学生评教匿名保护
-
-至少包含：
-
-- 学生身份与答卷内容分离存储
-- 任课教师只查看整体参与率
-- 不向任课教师展示谁已评、谁未评
-- 最小样本阈值
-- 小班、合班和特殊教学班的反推保护
-- 自由文本个人信息脱敏
-- 极短答题时长、全同选项、批量模式等异常识别
-- 管理员查看敏感明细的额外权限与审计
-
-提醒任务可以定向发送给未完成学生，但教师端只看到发送数量和总体完成率。
-
-## 多角色评价
-
-### 教师自评
-
-- 教学目标达成证据
-- 课程实施反思
-- 学生成绩与课堂数据的合理解释
-- 已采取的改进
-- 下一阶段行动、期限和验收证据
-
-### 同行评价
-
-- 课程或专业匹配
-- 上下级、合作、申诉等回避关系
-- 听课或材料评价方式
-- 观察时间、材料版本和事实证据
-- 建议与问题等级
-
-### 督导评价
-
-- 督导任务来源
-- 课堂观察事实
-- 教学材料核查
-- 专业判断和依据
-- 问题等级
-- 教师反馈确认
-- 严重问题的整改关联
-
-## 申诉复核
-
-申诉至少保存：
-
-- 申请人和申诉对象
-- 申诉类型
-- 被申诉结果版本
-- 理由与附件证据
-- 受理人和复核人
-- 回避校验
-- 办理期限
-- 复核事实与结论
-- 维持、纠正或转其他流程
-- 新结果版本和通知记录
-
-原始匿名答卷不得因申诉被修改或暴露。
-
-## 统计口径
-
-统计建议展示：
-
-- 有效任务数
-- 各角色完成率
-- 学生匿名达标率
-- 评价结果分布
-- 学院、课程和教师趋势
-- 申诉率与更正率
-- 改进计划完成率
-- 评价后复查变化
-
-小样本应隐藏或合并。教师结果不能脱离课程类型、学生规模和评价来源直接公开排名。
-
-## 开发 AI 读取顺序
-
-1. 阅读每个 HTML `<head>` 的 route、permission、roles、states、privacy 和 boundary。
-2. 阅读 `manifest-parts/180-evaluation.json` 获取机器可读字段、角色和匿名规则。
-3. 阅读 `shared/v2-evaluation-workbench.js` 获取页面结构、交互和中性占位数据。
-4. 阅读 `shared/v2-evaluation-workbench.css` 获取匿名、结果分布、申诉和归档视觉规则。
-5. 回到生产 `navPlan.js` 和真实后端任务、问卷、答卷、聚合、申诉与权限代码核对。
-
-当前已确认导航中的 8 个入口和权限。生产组件、API、写操作权限、问卷模型和状态枚举，在生产施工前必须再次核对。
+历史 `student-evaluation / self-evaluation / peer-evaluation / supervisor-evaluation / evaluation-stats` query 及缺少 `evaluation.` 前缀的权限码已废止。

@@ -1,124 +1,62 @@
 # 毕业资格审核：开发还原契约
 
-> 本目录是教师 PC V2 高保真 HTML 原型。生产权限、规则、数据、接口和状态以后端为准。
+> 本目录是教师 PC V2 高保真 HTML 原型。生产权限、跨域证据、规则、数据范围、接口和状态以后端为准。
+
+## 已核准生产事实
+
+- 预审与审核批次路由：`aa-graduation`，组件 `AaGraduationBatchView.vue`
+- 十项审核控制台路由：`aa-graduation-audit-console`，组件 `AaGraduationAuditConsoleView.vue`
+- 证书路由：`aa-certificates`，组件 `AaCertificateView.vue`
+- API：`academic-affairs.api.js` 中毕业资格相关适配器
+- 入口 URL 与权限：生产 `navPlan.js`
+- 费用来源当前未接入完整财务系统，保持 `UNKNOWN` 软提醒，不阻断学业结论。
 
 ## 15 个真实入口
 
-| 入口 | HTML | 任务 |
-|---|---|---|
-| 毕业资格预审 | `graduation-precheck.html` | 提前发现缺口和未知来源，不产生终审结论 |
-| 审核批次 | `graduation-batches.html` | 冻结范围、规则版本、数据截止和审核责任 |
-| 毕业学生名单 | `graduation-roster.html` | 学籍状态、预计毕业范围、方案版本和差异 |
-| 学分达成审核 | `graduation-credit.html` | 培养方案模块学分、认定、替代、在修和缺口 |
-| 课程达成审核 | `graduation-course.html` | 必修、核心、限选和替代课程达成 |
-| 实践环节审核 | `graduation-practice.html` | 校内实践、岗位实习、毕业设计等要求 |
-| 毕设状态联动 | `graduation-thesis.html` | 只读获取毕业设计最终状态和来源证据 |
-| 实习状态联动 | `graduation-internship.html` | 只读获取岗位实习最终状态和来源证据 |
-| 费用结清 | `graduation-fee.html` | 诚实标记未接入，UNKNOWN 软提醒 |
-| 处分状态联动 | `graduation-discipline.html` | 获取当前有效处分、解除和申诉状态 |
-| 毕业资格终审 | `graduation-final.html` | 有权人员形成通过、不通过或暂缓结论 |
-| 不通过原因 | `graduation-reasons.html` | 结构化原因、学生说明、整改动作和证据 |
-| 审核结果 | `graduation-results.html` | 发布、通知、复核、更正和版本追踪 |
-| 毕业证书管理 | `graduation-certificates.html` | 证书号、印制、入库、签领、遗失和作废 |
-| 审核归档 | `graduation-archive.html` | 只读保存完整审核和证书证据链 |
-
-## 业务链
-
-```text
-预审
-  ↓
-创建审核批次（冻结规则与数据截止时间）
-  ↓
-生成并锁定毕业学生名单
-  ↓
-学分 / 课程 / 实践 / 学籍 / 外部来源分项审核
-  ↓
-异常、差异和 UNKNOWN 补核
-  ↓
-终审：通过 / 不通过 / 暂缓待补核
-  ↓
-结果发布、通知、复核与正式更正
-  ↓
-证书号、印制、入库和签领
-  ↓
-只读归档
-```
+| 入口 | 路由名 | 权限 | HTML |
+|---|---|---|---|
+| 毕业资格预审 | `aa-graduation` | `academicAffairs.graduation.view` | `graduation-precheck.html` |
+| 审核批次 | `aa-graduation` | `academicAffairs.graduation.view` | `graduation-batches.html` |
+| 毕业学生名单 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-roster.html` |
+| 学分达成审核 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-credit.html` |
+| 课程达成审核 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-course.html` |
+| 实践环节审核 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-practice.html` |
+| 毕设状态联动 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-thesis.html` |
+| 实习状态联动 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-internship.html` |
+| 费用结清 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-fee.html` |
+| 处分状态联动 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-discipline.html` |
+| 毕业资格终审 | `aa-graduation-audit-console` | `academicAffairs.graduation.final` | `graduation-final.html` |
+| 不通过原因 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-reasons.html` |
+| 审核结果 | `aa-graduation-audit-console` | `academicAffairs.graduation.view` | `graduation-results.html` |
+| 毕业证书管理 | `aa-certificates` | `academicAffairs.graduationCert.view` | `graduation-certificates.html` |
+| 审核归档 | `aa-graduation-audit-console` | `academicAffairs.graduation.manage` | `graduation-archive.html` |
 
 ## 关键边界
 
-1. 预审不是终审。
-2. 进入毕业名单不是审核通过。
-3. 总学分达标不能掩盖必修、核心或实践模块缺口。
-4. 毕设、实习和处分的事实由来源模块维护，毕业审核只读取并判断影响。
-5. `UNKNOWN` 既不是通过也不是不通过，应进入补核或暂缓。
-6. 终审必须由有权人员明确确认，前端建议不能自动通过。
-7. 发布后的结果更正必须形成新版本和完整审计。
+1. 预审不是终审，进入名单也不是审核通过。
+2. 总学分达标不能掩盖必修、核心或实践模块缺口。
+3. 毕设、实习和处分事实由来源模块维护，毕业审核只读取并判断影响。
+4. `UNKNOWN` 既不是通过也不是不通过，应进入补核或暂缓。
+5. 终审由 `academicAffairs.graduation.final` 授权人员确认，前端建议不能自动通过。
+6. 归档由 `academicAffairs.graduation.manage` 裁决，原件不可覆盖。
+7. 发布后的结果更正形成新版本和完整审计。
 8. 证书管理读取已发布毕业结果，不替代毕业资格审核。
-9. 归档原件不可覆盖，只能追加说明或形成后续正式版本。
 
-## 费用页的真实口径
-
-当前导航代码已明确说明：尚未接入完整的学校财务数据源。
-
-因此原型采用：
+## 费用页真实口径
 
 - 数据状态：`UNKNOWN`
-- 展示方式：黄色软提醒
+- 展示：黄色软提醒
 - 学业结论：不阻断
-- 后续接入路径：先由财务处 Excel 回填，再建设财务系统适配器
-- 禁止做法：用教材费、奖助、贷款或迎新缴费冒充学校财务结清结果
+- 过渡接入：财务处 Excel 回填
+- 长期接入：财务系统适配器
+- 禁止用教材费、奖助、贷款或迎新缴费冒充学校财务结清结果
 
-学校如需控制证书领取，应在离校或领证环节单独配置，不应偷偷改变学业毕业结论。
+## 生产还原要求
 
-## 分项审核必须保存
+- 读取每个 HTML 的 route、routeName、permission、roles、states 和 boundary。
+- 读取 `manifest-parts/150-graduation.json`。
+- 读取 `AaGraduationBatchView.vue`、`AaGraduationAuditConsoleView.vue`、`AaCertificateView.vue` 及真实 API。
+- 保留批次、规则、名单、数据截止、来源状态、审核结论、版本和审计字段。
+- 所有终审、学籍终态、归档和证书动作重新读取后端状态与版本，不在前端伪造成功。
 
-- 审核批次和名单版本
-- 规则版本
-- 数据截止时间
-- 来源系统、来源单号、来源状态和更新时间
-- 培养方案版本
-- 分项计算输入和结果
-- `PASS`、`FAIL`、`UNKNOWN` 或待回写状态
-- 审核人、审核时间和意见
-- 锁定后差异
-- 附件和文件校验值
-
-## 终审保护
-
-批量终审仅允许处理：
-
-- 分项全部明确
-- 无 `UNKNOWN`
-- 锁定后无未处理差异
-- 系统建议与批量结论一致
-
-其他学生必须逐条打开证据确认。结论至少支持：
-
-- 通过
-- 不通过
-- 暂缓 / 待补核
-
-不通过必须选择结构化原因，并给学生可理解的说明和下一步。
-
-## 证书生命周期
-
-```text
-毕业结果已发布
-→ 证书号生成与唯一性校验
-→ 印制登记
-→ 实物入库核验
-→ 本人或代领签领
-→ 遗失、补办或作废状态审计
-```
-
-任何证书号、状态和签领记录变更都必须记录操作人、时间、原因和前后值。
-
-## 开发 AI 读取顺序
-
-1. 读每个 HTML `<head>` 的 route、permission、roles、states 和 boundary。
-2. 读 `manifest-parts/150-graduation.json` 获取机器可读路由、字段和边界。
-3. 读 `shared/v2-graduation-workbench.js` 获取页面结构和交互。
-4. 读 `shared/v2-graduation-workbench.css` 获取响应式规则。
-5. 回到生产 `navPlan.js` 以及真实后端 service、schema、permission 和状态枚举核对。
-
-当前只确认了导航中的 15 个入口和明确声明的权限。生产组件、接口与枚举没有稳定定位时，原型语义名不能直接当作既有代码事实。
+历史 `routeName: to verify` 和预审权限待核对标记已废止。
