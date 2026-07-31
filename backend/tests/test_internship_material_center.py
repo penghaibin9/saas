@@ -63,15 +63,18 @@ def test_safety_router_precedes_legacy_routes():
 
 def test_manifest_freezes_real_versions_and_package_rechecks_bytes():
     core = read("backend/app/modules/internship/services/internship_material_center_service.py")
+    streaming = read("backend/app/modules/internship/services/internship_streaming_package_service.py")
     facade = read("backend/app/modules/internship/services/internship_material_center_facade.py")
-    assert "version_id=int(item[\"versionId\"])" in facade
-    assert "file_object_id=int(item[\"fileId\"])" in facade
+    assert 'version_id=int(item["versionId"])' in facade
+    assert 'file_object_id=int(item["fileId"])' in facade
     assert "manifestSha256" in core
-    assert "version.file_object_id != file_row.id" in core
-    assert "file_row.sha256 != item.sha256_snapshot" in core
-    assert "digest != item.sha256_snapshot" in core
-    assert "INTERNSHIP_ARCHIVE_PACKAGE_FILE_VERSION_V1" in core
-    assert 'entries["manifest.json"]' in core
+    assert "version.file_object_id != file_row.id" in streaming
+    assert "file_row.sha256 != item.sha256_snapshot" in streaming
+    assert "expected_sha256=item.sha256_snapshot" in streaming
+    assert "expected_size=int(item.size_snapshot or 0)" in streaming
+    assert "INTERNSHIP_ARCHIVE_PACKAGE_FILE_VERSION_V2" in streaming
+    assert 'add_json(archive_zip, "manifest.json"' in streaming
+    assert ".read_bytes(" not in streaming
 
 
 def test_existing_archive_freeze_and_revoke_are_preserved():
