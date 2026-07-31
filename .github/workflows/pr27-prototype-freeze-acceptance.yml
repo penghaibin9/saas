@@ -1,0 +1,59 @@
+name: PR27 prototype freeze acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/ui/teacher-pc-v2-html/**'
+      - 'frontend/src/config/navPlan.js'
+      - 'frontend/src/config/navPlan.permission-contract.test.js'
+      - 'frontend/tests/studentAffairs.permissionCatalog.test.mjs'
+      - '.github/workflows/pr27-prototype-freeze-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-browser-freeze-acceptance:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            browser: chrome
+            label: Linux Chrome 打印/宽表/键盘/敏感业务
+          - os: windows-2022
+            browser: edge
+            label: Windows Edge 打印/宽表/键盘/敏感业务
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install isolated browser driver
+        shell: bash
+        run: npm install --prefix .pr27-tools --no-package-lock --ignore-scripts puppeteer-core@24.16.0
+
+      - name: Run cross-browser freeze acceptance
+        shell: bash
+        env:
+          ACCEPTANCE_BROWSER: ${{ matrix.browser }}
+          PUPPETEER_CORE_PATH: ${{ github.workspace }}/.pr27-tools/node_modules/puppeteer-core
+        run: |
+          mkdir -p acceptance-artifacts/${{ matrix.browser }}
+          node docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs \
+            --report=acceptance-artifacts/${{ matrix.browser }}/report.json
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr27-freeze-acceptance-${{ matrix.browser }}
+          path: acceptance-artifacts/${{ matrix.browser }}/
+          if-no-files-found: error
+          retention-days: 14
