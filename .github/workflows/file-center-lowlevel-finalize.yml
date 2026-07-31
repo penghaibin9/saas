@@ -1,0 +1,386 @@
+name: File center low-level final closure
+
+on:
+  push:
+    branches: [audit/file-capability-inventory]
+    paths: ['.github/workflows/file-center-lowlevel-finalize.yml']
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: file-center-lowlevel-final-closure
+  cancel-in-progress: true
+
+jobs:
+  finalize-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, 'finalize stage 6-10') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      APP_ENV: test
+      SECRET_KEY: stage10-file-center-final-secret
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - id: finalize
+        name: Form and push final candidate HEAD
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main audit/file-capability-inventory
+          git reset --hard origin/audit/file-capability-inventory
+          git merge --no-ff --no-commit origin/main || true
+          UNMERGED="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$UNMERGED" ]; then
+            if [ "$UNMERGED" != "student-portal/src/layouts/PortalLayout.vue" ]; then
+              echo "Unexpected merge conflicts:"
+              echo "$UNMERGED"
+              exit 1
+            fi
+            git checkout --theirs -- student-portal/src/layouts/PortalLayout.vue
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          portal = Path('student-portal/src/layouts/PortalLayout.vue')
+          source = portal.read_text(encoding='utf-8')
+          if 'function toggleGraduationView()' not in source:
+              button_anchor = '''          <button v-if="activeModulePath === 'internship'" class="sp-context-link" type="button" @click="toggleInternshipView">
+            {{ route.name === 'internship-compliance' ? '返回实习工作台' : '上岗合规与安全教育' }}
+          </button>
+'''
+              button = '''          <button v-if="activeModulePath === 'graduation'" class="sp-context-link" type="button" @click="toggleGraduationView">
+            {{ route.name === 'graduation-material-library' ? '返回毕业设计工作台' : '我的材料库' }}
+          </button>
+'''
+              function_anchor = '''function toggleInternshipView() {
+  router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance')
+}
+'''
+              function = '''function toggleGraduationView() {
+  router.push(route.name === 'graduation-material-library' ? '/graduation' : '/graduation/materials')
+}
+'''
+              if button_anchor not in source or function_anchor not in source:
+                  raise SystemExit('PortalLayout V5 anchors missing')
+              source = source.replace(button_anchor, button_anchor + button, 1)
+              source = source.replace(function_anchor, function_anchor + function, 1)
+          required = (
+              'sp-theme__grid',
+              'student-portal-theme-change',
+              "activeModulePath === 'graduation'",
+              'function toggleGraduationView()',
+              "'/graduation/materials'",
+          )
+          missing = [item for item in required if item not in source]
+          if missing:
+              raise SystemExit(f'PortalLayout contracts missing: {missing}')
+          portal.write_text(source, encoding='utf-8')
+
+          fs_path = Path('backend/app/services/file_service.py')
+          fs = fs_path.read_text(encoding='utf-8')
+          anchor = 'from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED, SCAN_PENDING\n'
+          import_line = 'from app.services.file_storage_write_context import storage_write_scope\n'
+          if import_line not in fs:
+              if anchor not in fs:
+                  raise SystemExit('file_service import anchor missing')
+              fs = fs.replace(anchor, anchor + import_line, 1)
+          upload_old = '        backend.persist(key, target)\n'
+          upload_new = '        with storage_write_scope(biz_type):\n            backend.persist(key, target)\n'
+          if upload_new not in fs:
+              if fs.count(upload_old) != 1:
+                  raise SystemExit('store_upload persist anchor must occur once')
+              fs = fs.replace(upload_old, upload_new, 1)
+          bytes_old = '    backend.persist(key, target)\n'
+          bytes_new = '    with storage_write_scope(biz_type):\n        backend.persist(key, target)\n'
+          if bytes_new not in fs:
+              if fs.count(bytes_old) != 1:
+                  raise SystemExit('store_bytes persist anchor must occur once')
+              fs = fs.replace(bytes_old, bytes_new, 1)
+          if fs.count('with storage_write_scope(biz_type):') != 2:
+              raise SystemExit('file_service must contain exactly two quota scopes')
+          fs_path.write_text(fs, encoding='utf-8')
+
+          model_path = Path('backend/app/models/__init__.py')
+          models = model_path.read_text(encoding='utf-8')
+          quota_import = 'from app.models.file_quota import FileStorageQuotaReservation  # noqa: F401\n'
+          if quota_import not in models:
+              model_anchor = 'from app.models.file import FileObject  # noqa: F401\n'
+              if model_anchor not in models:
+                  raise SystemExit('models aggregate anchor missing')
+              models = models.replace(model_anchor, model_anchor + quota_import, 1)
+          model_path.write_text(models, encoding='utf-8')
+
+          phase6_path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          phase6 = phase6_path.read_text(encoding='utf-8')
+          seed_start = phase6.index('            GraduationGuidance(')
+          seed_end = phase6.index('            GraduationArchiveRecord(', seed_start)
+          seed = '''            GraduationGuidance(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                guidance_date=datetime.utcnow(),
+                method="ONLINE",
+                content="阶段六指导记录；下一步完成归档",
+                issues="无",
+                attachments_json=[],
+            ),
+            GraduationMidterm(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                status="CHECKED_PASS",
+                check_comment="进度 80%，检查通过，下一步完成定稿",
+                conclusion="PASS",
+                checked_at=datetime.utcnow(),
+            ),
+'''
+          phase6_path.write_text(phase6[:seed_start] + seed + phase6[seed_end:], encoding='utf-8')
+          PY
+
+          (cd frontend && npm install --save-exact cos-js-sdk-v5@1.10.1 --package-lock-only --ignore-scripts)
+          node - <<'NODE'
+          const fs = require('fs')
+          const lock = JSON.parse(fs.readFileSync('frontend/package-lock.json', 'utf8'))
+          const pkg = lock.packages && lock.packages['node_modules/cos-js-sdk-v5']
+          if (!pkg || pkg.version !== '1.10.1') throw new Error('COS SDK exact lock missing')
+          if (!/^sha512-/.test(pkg.integrity || '')) throw new Error('COS SDK integrity missing')
+          if (!/^https:\/\/registry\.npmjs\.org\//.test(pkg.resolved || '')) throw new Error('COS SDK registry URL missing')
+          NODE
+
+          cat > docs/architecture/file-center-stage10-closure.md <<'EOF'
+          # 公共文件中心阶段 6–10 收口报告
+
+          阶段 6–10 的仓库内施工收口到统一 FileObject、版本与绑定、ImportJob/ExportJob、流式归档、COS 存储适配以及租户配额、保留和清理治理。最终门禁结果以 PR #25 的“阶段 6–10 最终验收”评论及对应 GitHub Actions 运行记录为权威证据。
+
+          ## 已冻结合同
+
+          - 普通上传、系统字节文件和路径型大型文件在物理写入前进入模块配额作用域。
+          - COS 直传与服务器写入使用持久化 HELD reservation，完成后消费，失败、放弃或过期后释放。
+          - 毕业设计与岗位实习使用流式 ZIP64、分块 SHA-256 和路径型 FileObject，不整文件读入内存。
+          - 身份导入先隔离扫描，CLEAN 后才进行路径型 openpyxl 解析。
+          - 业务 Router 不直接构造 FileResponse，统一使用 no-store、nosniff 和审计响应合同。
+          - 管理 PC 使用精确锁定的 cos-js-sdk-v5@1.10.1，不运行时加载 CDN，不保存永久密钥。
+
+          ## 真实 COS 外部环境验收阻塞
+
+          以下项目必须在真实腾讯云 COS 与生产域名环境执行，不能由 fake client 或单元测试冒充：STS 最小权限及过期、CORS、生命周期、SSE、50MB/500MB 上传、跨进程暂停续传取消、真实跨租户对象隔离与越权验证。
+
+          外部验收完成前，PR 保持 Draft，不合并 main。
+          EOF
+
+          git rm -f -- \
+            .github/workflows/file-center-validation-report.yml \
+            .github/workflows/file-center-pr-finalize.yml \
+            .github/workflows/file-center-lowlevel-finalize.yml
+          python -m py_compile \
+            backend/app/services/file_service.py \
+            backend/app/models/__init__.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py
+          git add -- \
+            backend/app/models/__init__.py \
+            backend/app/services/file_service.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py \
+            docs/architecture/file-center-stage10-closure.md \
+            frontend/package.json \
+            frontend/package-lock.json \
+            frontend/src/services/file/cosBrowserSdk.js \
+            student-portal/src/App.vue \
+            student-portal/src/layouts/PortalLayout.vue \
+            student-portal/src/styles/v5-overrides.css \
+            student-portal/src/styles/v5-polish.css \
+            student-portal/src/views/home/HomeView.vue
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --cached --check
+          git commit -m "merge(main): finalize stage 6-10 file center closure"
+          git push origin HEAD:audit/file-capability-inventory
+          FINAL_SHA="$(git rev-parse HEAD)"
+          echo "sha=$FINAL_SHA" >> "$GITHUB_OUTPUT"
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+
+      - id: scan
+        name: Capability inventory, strict call scan and secret audit
+        if: steps.finalize.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python -m pip install pyyaml
+          python scripts/audit_file_capabilities.py --check-schema
+          python scripts/audit_file_capabilities.py --strict-baseline
+          python scripts/check_new_file_capabilities.py --base-ref origin/main
+          python scripts/audit_file_center_calls.py --strict --base-ref origin/main --json-report artifacts/file-center-call-scan.json
+          test ! -e .github/workflows/file-center-validation-report.yml
+          test ! -e .github/workflows/file-center-pr-finalize.yml
+          test ! -e .github/workflows/file-center-lowlevel-finalize.yml
+          test "$(grep -c 'with storage_write_scope(biz_type):' backend/app/services/file_service.py)" = "2"
+          grep -q "with storage_write_scope(biz_type):" backend/app/services/generated_file_path_service.py
+          grep -q "function toggleGraduationView()" student-portal/src/layouts/PortalLayout.vue
+          grep -q "'/graduation/materials'" student-portal/src/layouts/PortalLayout.vue
+          ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' 'cdn.jsdelivr.net/npm/cos-js-sdk-v5\|COS_SECRET_ID\|COS_SECRET_KEY\|tmpSecretKey[[:space:]]*=' frontend/src student-portal/src miniapp/src
+
+      - id: mysql
+        name: MySQL 8, Alembic 0154 and stage 6-10 tests
+        if: steps.finalize.outcome == 'success'
+        continue-on-error: true
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          alembic current | grep -q '0154_file_storage_quota_reservation'
+          python -m compileall -q app tests
+          pytest -q -p no:warnings \
+            tests/test_file_identity_import_scan.py \
+            tests/test_file_storage_quota_reservation.py \
+            tests/test_file_storage_write_context.py \
+            tests/test_file_streaming_archive_cutover.py
+          TARGETS=$(find tests -maxdepth 1 -type f \( \
+            -name 'test_file*.py' -o \
+            -name 'test_*material_center*.py' -o \
+            -name 'test_*archive_manifest*.py' -o \
+            -name 'test_data_exchange_job_center.py' -o \
+            -name 'test_academic_file_exchange_center.py' -o \
+            -name 'test_academic_export_compat.py' \
+          \) | sort | tr '\n' ' ')
+          timeout 65m pytest $TARGETS -q -p no:warnings --durations=30
+          python tests/file_access_mysql_acceptance.py
+          python tests/file_scan_mysql_acceptance.py
+          python tests/internship_material_center_mysql_acceptance.py
+          python tests/graduation_material_center_mysql_acceptance.py
+          python tests/affairs_material_center_mysql_acceptance.py
+          python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run
+
+      - id: admin
+        name: Admin PC lint, test and build
+        if: steps.finalize.outcome == 'success'
+        continue-on-error: true
+        working-directory: frontend
+        run: npm ci && npm run lint && npm test && npm run build
+
+      - uses: actions/setup-node@v4
+        if: steps.finalize.outcome == 'success'
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+
+      - id: student
+        name: Student PC lint, test and build
+        if: steps.finalize.outcome == 'success'
+        continue-on-error: true
+        working-directory: student-portal
+        run: npm ci && npm run lint && npm test && npm run build
+
+      - id: miniapp
+        name: H5 and WeChat miniapp production builds
+        if: steps.finalize.outcome == 'success'
+        continue-on-error: true
+        working-directory: miniapp
+        run: npm ci && npm run build:h5 && npm run build:mp-weixin
+
+      - name: Write authoritative PR result
+        if: always()
+        shell: bash
+        env:
+          FINALIZE: ${{ steps.finalize.outcome }}
+          SCAN: ${{ steps.scan.outcome }}
+          MYSQL: ${{ steps.mysql.outcome }}
+          ADMIN: ${{ steps.admin.outcome }}
+          STUDENT: ${{ steps.student.outcome }}
+          MINIAPP: ${{ steps.miniapp.outcome }}
+        run: |
+          set -euo pipefail
+          SHA="${FINAL_SHA:-${GITHUB_SHA}}"
+          cat > /tmp/result.md <<EOF
+          <!-- file-center-stage6-10-final-validation -->
+          ## 阶段 6–10 最终验收（${SHA}）
+
+          | 门禁 | 结果 |
+          |---|---|
+          | 合并 main V5 / 材料库入口 / 模块配额 / COS SDK lock / 删除临时编排 | ${FINALIZE} |
+          | 能力清单 / 严格调用扫描 / 上传合同 / 密钥审计 | ${SCAN} |
+          | MySQL 8 / Alembic 0154 / 新增合同 / 阶段 6–10 pytest / 真实验收 | ${MYSQL} |
+          | 管理 PC lint / test / build | ${ADMIN} |
+          | 学生 PC lint / test / build | ${STUDENT} |
+          | H5 / 微信小程序生产构建 | ${MINIAPP} |
+
+          Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          gh pr comment 25 --repo "$GITHUB_REPOSITORY" --body-file /tmp/result.md
+
+          if [ "$FINALIZE" = success ] && [ "$SCAN" = success ] && [ "$MYSQL" = success ] && [ "$ADMIN" = success ] && [ "$STUDENT" = success ] && [ "$MINIAPP" = success ]; then
+            cat > /tmp/body.md <<EOF
+          ## PR 定位
+
+          - 分支：\`audit/file-capability-inventory\`
+          - 最终仓库验收 HEAD：\`${SHA}\`
+          - 状态：Draft，未合并 main
+          - main 学生门户 V5 已吸收，毕业设计“我的材料库”入口已保留
+          - 临时验收编排已从最终 HEAD 删除
+
+          ## 阶段 6–10 仓库内收口
+
+          - [x] 毕业设计与岗位实习流式归档
+          - [x] 身份导入扫描后路径解析、教务 ImportJob/ExportJob
+          - [x] COS 存储适配、持久化配额 reservation、保留/法律保留/两阶段清理
+          - [x] 普通上传、store_bytes、路径型大型文件模块配额作用域
+          - [x] cos-js-sdk-v5@1.10.1 package-lock registry 与 integrity
+          - [x] 旧上传退役、统一文件响应、严格调用扫描与密钥扫描
+
+          ## 最终仓库门禁
+
+          能力扫描、MySQL/Alembic 0154/测试、管理 PC、学生 PC、H5 与微信构建全部 success。
+
+          ## 真实 COS 外部环境验收阻塞
+
+          STS、CORS、生命周期、SSE、50MB/500MB 上传、跨进程续传取消、真实跨租户隔离必须在真实腾讯云和生产域名验证，不能用 fake client 冒充。
+
+          外部验收完成前继续保持 Draft，不合并 main。
+          EOF
+            gh pr edit 25 --repo "$GITHUB_REPOSITORY" \
+              --title "Draft: 全平台公共文件中心（阶段 6–10 仓库内已收口，待真实 COS 验收）" \
+              --body-file /tmp/body.md
+          fi
