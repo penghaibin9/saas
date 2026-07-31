@@ -1,12 +1,12 @@
 {
-  "schemaVersion": "2.7.2",
+  "schemaVersion": "2.7.3",
   "baseline": {
     "repository": "penghaibin9/saas",
     "branch": "main",
     "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
     "prototypeBranch": "codex/teacher-pc-v2-html-library",
     "generatedAt": "2026-07-30T16:13:00+08:00",
-    "updatedAt": "2026-07-31T23:17:00+08:00"
+    "updatedAt": "2026-07-31T23:31:00+08:00"
   },
   "status": "IN_PROGRESS_NOT_FROZEN",
   "designOnly": true,
@@ -55,7 +55,7 @@
       "1440x1000",
       "1920x1080"
     ],
-    "directNavigationNote": "教务页面族累计推进至546/870；学工15页已完成生产契约核对但11页待回归；岗位实习10个关键工作台的101叶子/99 URL契约仍有效；毕业设计已纠偏为生产现行8工作区、50叶子/48 URL，浏览器0/24。",
+    "directNavigationNote": "教务页面族累计推进至546/870；学工15页已完成生产契约核对但11页待回归；岗位实习101叶子/99 URL契约仍有效；毕业设计已纠偏为生产现行8工作区、50叶子/48 URL，审计脚本语法与隔离同构夹具通过，真实分支浏览器0/24。",
     "navigationValidation": {
       "academicSecondLevelCount": 29,
       "academicWorkspaceCount": 27,
@@ -81,6 +81,10 @@
       "internshipRouteAuditReport": "internship/route-audit-report.md",
       "internshipRouteAuditStatus": "PASS_INPUTS_UNCHANGED_FINAL_FREEZE_RERUN_REQUIRED",
       "internshipRouteAuditSourceHead": "7031fc39b2e93f0e976d4e9d2155a8f4ecad2162",
+      "graduationWorkspaceAudit": "tools/check-graduation-workspace-audit.mjs",
+      "graduationWorkspaceAuditReport": "graduation/workspace-audit-report.md",
+      "graduationWorkspaceAuditStatus": "SCRIPT_SYNTAX_AND_ISOLATED_FIXTURE_PASS_REAL_BRANCH_NOT_EXECUTED",
+      "graduationWorkspaceAuditSourceBlob": "3dedbf5c3332b014d85472f225c8888fe7b607a1",
       "browserRunner": "tools/run-browser-regression.mjs",
       "browserExpectedRenders": 870,
       "browserRunnerStatus": "PARTIAL_CUMULATIVE_546_FINAL_HEAD_NOT_EXECUTED"
@@ -88,7 +92,7 @@
     "limitations": [
       "当前290个独立HTML尚未完成一次同一最终候选HEAD下的870次全量浏览器回归。",
       "学工11个关键工作台仍待33次回归，数字迎新和班级管理存在生产菜单/路由权限不一致。",
-      "毕业设计刚完成现行8工作区结构纠偏，重映射后24次浏览器回归尚未执行。",
+      "毕业设计现行8工作区已完成静态纠偏，机器审计脚本语法与隔离同构夹具通过，但真实完整分支审计与24次浏览器回归尚未执行。",
       "岗位实习101叶子/99 URL原审计输入保持不变，但最终冻结HEAD仍必须重跑。",
       "截图和打印PDF均未作为仓库交付物提交。",
       "四窗口生产施工提示词在原型冻结闸门通过前不得启用。"
@@ -178,8 +182,8 @@
       "毕设-风险与归档",
       "毕设-模板与设置"
     ],
-    "lastCompletedWorkspace": "毕设-模板与设置（结构纠偏）",
-    "nextWorkspaceCandidate": "学工11页33次回归 + 毕设8页24次回归 + 剩余页面族推进",
+    "lastCompletedWorkspace": "毕设-模板与设置（结构纠偏与审计工具落盘）",
+    "nextWorkspaceCandidate": "完整快照一致性冒烟 + 学工11页33次回归 + 毕设8页24次回归",
     "remainingCenters": [
       "工作台其余页面",
       "系统管理",
