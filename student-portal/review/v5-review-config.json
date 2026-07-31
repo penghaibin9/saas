@@ -1,0 +1,32 @@
+{
+  "routes": [
+    {"path":"/home","name":"首页工作台","module":"公共门户"},
+    {"path":"/profile","name":"我的档案","module":"个人档案"},
+    {"path":"/academic","name":"教务学业","module":"教务学业"},
+    {"path":"/campus-service","name":"学工事务","module":"学工事务"},
+    {"path":"/materials","name":"材料补交","module":"学工事务"},
+    {"path":"/internship","name":"岗位实习","module":"岗位实习"},
+    {"path":"/internship/compliance","name":"上岗合规与安全教育","module":"岗位实习"},
+    {"path":"/employment","name":"就业服务","module":"就业服务"},
+    {"path":"/orientation","name":"迎新报到","module":"迎新报到"},
+    {"path":"/messages","name":"消息通知","module":"消息中心"},
+    {"path":"/service-hall","name":"办事大厅","module":"办事大厅"},
+    {"path":"/graduation","name":"毕业设计","module":"毕业设计"},
+    {"path":"/not-enabled","name":"门户未开通状态","module":"公共状态页"},
+    {"path":"/module-disabled/not-real","name":"模块未开通状态","module":"公共状态页"}
+  ],
+  "viewports": [
+    {"key":"1920x1080","width":1920,"height":1080},
+    {"key":"1440x900","width":1440,"height":900},
+    {"key":"1366x768","width":1366,"height":768},
+    {"key":"1024x768","width":1024,"height":768}
+  ],
+  "themes": [
+    {"key":"blue","label":"学院蓝","route":"/home"},
+    {"key":"purple","label":"科技紫","route":"/academic"},
+    {"key":"green","label":"薄荷绿","route":"/internship"},
+    {"key":"orange","label":"活力橙","route":"/campus-service"},
+    {"key":"pink","label":"樱花粉","route":"/graduation"},
+    {"key":"dark","label":"深邃黑","route":"/service-hall"}
+  ]
+}
