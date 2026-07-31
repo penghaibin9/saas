@@ -1,0 +1,120 @@
+name: File center final six fixes
+
+on:
+  push:
+    branches:
+      - audit/file-capability-inventory
+    paths:
+      - .github/workflows/file-center-final-six-fixes.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: file-center-final-six-fixes
+  cancel-in-progress: true
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      UPLOAD_DIR: /tmp/file-center-final-six
+      FILE_STORAGE_BACKEND: local
+      CLAMAV_ENABLED: "false"
+      FILE_SCAN_REQUIRED: "false"
+      JWT_SECRET: file-center-final-six-secret
+      PYTHONPATH: ${{ github.workspace }}/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Fix quota transaction visibility and stale graduation fixture
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          quota = Path('backend/app/services/file_storage_quota_reservation_service.py')
+          text = quota.read_text(encoding='utf-8')
+          old_expire = '''    for row in rows:\n        row.status = "EXPIRED"\n        row.released_at = now\n        row.release_reason = "RESERVATION_TTL_EXPIRED"\n    return len(rows)\n'''
+          new_expire = '''    for row in rows:\n        row.status = "EXPIRED"\n        row.released_at = now\n        row.release_reason = "RESERVATION_TTL_EXPIRED"\n    if rows:\n        db.flush()\n    return len(rows)\n'''
+          if old_expire not in text:
+              raise SystemExit('quota expire block changed unexpectedly')
+          text = text.replace(old_expire, new_expire, 1)
+
+          old_reconcile = '''        if file_obj:\n            row.status = "CONSUMED"\n            row.consumed_file_id = int(file_obj.id)\n            row.consumed_at = now\n            consumed += 1\n    return consumed\n'''
+          new_reconcile = '''        if file_obj:\n            row.status = "CONSUMED"\n            row.consumed_file_id = int(file_obj.id)\n            row.consumed_at = now\n            consumed += 1\n    if consumed:\n        db.flush()\n    return consumed\n'''
+          if old_reconcile not in text:
+              raise SystemExit('quota reconcile block changed unexpectedly')
+          quota.write_text(text.replace(old_reconcile, new_reconcile, 1), encoding='utf-8')
+
+          acceptance = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          source = acceptance.read_text(encoding='utf-8')
+          stale = '                next_plan="完成归档",\n'
+          if stale not in source:
+              raise SystemExit('stale GraduationGuidance next_plan fixture not found')
+          acceptance.write_text(source.replace(stale, '', 1), encoding='utf-8')
+          PY
+
+      - name: Install backend dependencies and upgrade real MySQL
+        working-directory: backend
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements.txt
+          alembic upgrade head
+
+      - name: Run all previously failing contracts
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_academic_file_exchange_center.py \
+            tests/test_file_storage.py \
+            tests/test_file_storage_quota_reservation.py \
+            tests/test_graduation_material_center_phase6.py
+
+      - name: Run client and strict file contracts
+        run: |
+          node scripts/check/check-file-client-contract.mjs
+          python scripts/audit_file_center_calls.py --strict --base-ref origin/main --json-report /tmp/file-center-call-scan.json
+
+      - name: Commit verified fixes and remove this workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/file-center-final-six-fixes.yml
+          git add -- \
+            backend/app/services/file_storage_quota_reservation_service.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py
+          git diff --cached --check
+          git commit -m "fix(file-center): close final MySQL contract gaps"
+          git push origin HEAD:audit/file-capability-inventory
