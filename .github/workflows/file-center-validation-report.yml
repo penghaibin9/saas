@@ -6,16 +6,134 @@ on:
     paths: ['.github/workflows/file-center-validation-report.yml']
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
+concurrency:
+  group: file-center-stage6-10-validation
+  cancel-in-progress: true
+
 jobs:
+  prepare:
+    name: 吸收 main V5 + 修正阶段 6 真实夹具
+    runs-on: ubuntu-24.04
+    outputs:
+      head_sha: ${{ steps.head.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+      - name: Merge current main and preserve graduation material entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-ff --no-commit origin/main || true
+          UNMERGED="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$UNMERGED" ]; then
+            if [ "$UNMERGED" != "student-portal/src/layouts/PortalLayout.vue" ]; then
+              echo "Unexpected merge conflicts:"
+              echo "$UNMERGED"
+              exit 1
+            fi
+            git checkout --theirs -- student-portal/src/layouts/PortalLayout.vue
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          portal = Path('student-portal/src/layouts/PortalLayout.vue')
+          source = portal.read_text(encoding='utf-8')
+          if 'function toggleGraduationView()' not in source:
+              button_anchor = '''          <button v-if="activeModulePath === 'internship'" class="sp-context-link" type="button" @click="toggleInternshipView">
+            {{ route.name === 'internship-compliance' ? '返回实习工作台' : '上岗合规与安全教育' }}
+          </button>
+'''
+              button = '''          <button v-if="activeModulePath === 'graduation'" class="sp-context-link" type="button" @click="toggleGraduationView">
+            {{ route.name === 'graduation-material-library' ? '返回毕业设计工作台' : '我的材料库' }}
+          </button>
+'''
+              function_anchor = '''function toggleInternshipView() {
+  router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance')
+}
+'''
+              function = '''function toggleGraduationView() {
+  router.push(route.name === 'graduation-material-library' ? '/graduation' : '/graduation/materials')
+}
+'''
+              if button_anchor not in source or function_anchor not in source:
+                  raise SystemExit('PortalLayout V5 anchors missing')
+              source = source.replace(button_anchor, button_anchor + button, 1)
+              source = source.replace(function_anchor, function_anchor + function, 1)
+          required = (
+              'sp-theme__grid',
+              'student-portal-theme-change',
+              "activeModulePath === 'graduation'",
+              'function toggleGraduationView()',
+              "'/graduation/materials'",
+          )
+          missing = [marker for marker in required if marker not in source]
+          if missing:
+              raise SystemExit(f'PortalLayout contracts missing: {missing}')
+          portal.write_text(source, encoding='utf-8')
+
+          phase6_path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          phase6 = phase6_path.read_text(encoding='utf-8')
+          seed_start = phase6.index('            GraduationGuidance(')
+          seed_end = phase6.index('            GraduationArchiveRecord(', seed_start)
+          seed = '''            GraduationGuidance(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                guidance_date=datetime.utcnow(),
+                method="ONLINE",
+                content="阶段六指导记录；下一步完成归档",
+                issues="无",
+                attachments_json=[],
+            ),
+            GraduationMidterm(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                status="CHECKED_PASS",
+                check_comment="进度 80%，检查通过，下一步完成定稿",
+                conclusion="PASS",
+                checked_at=datetime.utcnow(),
+            ),
+'''
+          phase6_path.write_text(phase6[:seed_start] + seed + phase6[seed_end:], encoding='utf-8')
+          PY
+          python -m py_compile backend/tests/graduation_material_center_mysql_acceptance.py
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git add -- \
+            student-portal/src/App.vue \
+            student-portal/src/layouts/PortalLayout.vue \
+            student-portal/src/styles/v5-overrides.css \
+            student-portal/src/styles/v5-polish.css \
+            student-portal/src/views/home/HomeView.vue \
+            backend/tests/graduation_material_center_mysql_acceptance.py
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "merge(main): absorb student portal V5 and current phase6 fixtures"
+            git push origin HEAD:audit/file-capability-inventory
+          else
+            git merge --abort 2>/dev/null || true
+          fi
+      - id: head
+        name: Resolve prepared branch HEAD
+        run: |
+          git fetch origin audit/file-capability-inventory
+          echo "sha=$(git rev-parse origin/audit/file-capability-inventory)" >> "$GITHUB_OUTPUT"
+
   scan:
+    needs: prepare
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install pyyaml
@@ -30,6 +148,7 @@ jobs:
           grep -q '@router.post("", summary="上传文件（权威入口）")' backend/app/api/v1/files.py
 
   mysql:
+    needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     services:
@@ -56,6 +175,7 @@ jobs:
       FILE_SCAN_REQUIRED: 'false'
     steps:
       - uses: actions/checkout@v4
+        with: { ref: audit/file-capability-inventory }
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -82,10 +202,12 @@ jobs:
           python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run
 
   admin:
+    needs: prepare
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: frontend } }
     steps:
       - uses: actions/checkout@v4
+        with: { ref: audit/file-capability-inventory }
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -97,10 +219,12 @@ jobs:
       - run: npm run build
 
   student:
+    needs: prepare
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: student-portal } }
     steps:
       - uses: actions/checkout@v4
+        with: { ref: audit/file-capability-inventory }
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -112,10 +236,12 @@ jobs:
       - run: npm run build
 
   miniapp:
+    needs: prepare
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: miniapp } }
     steps:
       - uses: actions/checkout@v4
+        with: { ref: audit/file-capability-inventory }
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -127,10 +253,12 @@ jobs:
 
   report:
     if: always()
-    needs: [scan, mysql, admin, student, miniapp]
+    needs: [prepare, scan, mysql, admin, student, miniapp]
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
+      PREPARE: ${{ needs.prepare.result }}
+      PREPARED_SHA: ${{ needs.prepare.outputs.head_sha }}
       SCAN: ${{ needs.scan.result }}
       MYSQL: ${{ needs.mysql.result }}
       ADMIN: ${{ needs.admin.result }}
@@ -141,10 +269,11 @@ jobs:
         run: |
           cat > /tmp/result.md <<EOF
           <!-- file-center-stage6-10-validation -->
-          ## 阶段 6–10 最新验收（${GITHUB_SHA}）
+          ## 阶段 6–10 最新验收（${PREPARED_SHA:-$GITHUB_SHA}）
 
           | 门禁 | 结果 |
           |---|---|
+          | 吸收 main V5 / 阶段 6 夹具 | ${PREPARE} |
           | 能力清单 / 严格调用扫描 / 上传合同 | ${SCAN} |
           | MySQL 8 / Alembic / 阶段 6–10 pytest / 治理 worker | ${MYSQL} |
           | 管理 PC lint / test / build | ${ADMIN} |
