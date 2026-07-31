@@ -1,0 +1,184 @@
+name: File center final red closeout
+
+on:
+  push:
+    branches:
+      - audit/file-capability-inventory
+    paths:
+      - .github/workflows/file-center-final-red-closeout.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: file-center-streaming-scan-closeout
+  cancel-in-progress: true
+
+jobs:
+  closeout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      APP_ENV: test
+      SECRET_KEY: file-center-final-red-closeout-secret
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Apply streaming fixes from the verified patch source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/file-center-streaming-scan-closeout.yml')
+          if not workflow.exists():
+              raise SystemExit('streaming patch workflow source is missing')
+          raw = workflow.read_text(encoding='utf-8')
+          start_marker = "          python - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          if start_marker not in raw or end_marker not in raw:
+              raise SystemExit('streaming patch source markers missing')
+          script = raw.split(start_marker, 1)[1].split(end_marker, 1)[0]
+          exec(compile(textwrap.dedent(script), str(workflow), 'exec'), {})
+          PY
+      - name: Apply four real MySQL root-cause fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Fake/alternate COS clients may legally omit response metadata; upload success must not crash.
+          path = Path('backend/app/services/storage/cos.py')
+          source = path.read_text(encoding='utf-8')
+          old = '''            response = self._client.put_object(
+                Bucket=self.bucket_name,
+                Body=body,
+                Key=key,
+                ServerSideEncryption="AES256",
+            )
+'''
+          new = '''            response = self._client.put_object(
+                Bucket=self.bucket_name,
+                Body=body,
+                Key=key,
+                ServerSideEncryption="AES256",
+            ) or {}
+'''
+          if old not in source:
+              raise SystemExit('COS persist response anchor missing')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          # Session autoflush is disabled; flush consumed reservations before held-byte aggregation.
+          path = Path('backend/app/services/file_storage_quota_reservation_service.py')
+          source = path.read_text(encoding='utf-8')
+          start = source.index('def _reconcile_storage_locked(')
+          end = source.index('\ndef _actual_usage(', start)
+          block = source[start:end]
+          old = '    return consumed\n'
+          new = '    if consumed:\n        db.flush()\n    return consumed\n'
+          if old not in block:
+              raise SystemExit('quota reconciliation return anchor missing')
+          block = block.replace(old, new, 1)
+          source = source[:start] + block + source[end:]
+          path.write_text(source, encoding='utf-8')
+
+          # Stage 6 fixture follows the current GraduationGuidance model; next plan belongs to midterm.
+          path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          source = path.read_text(encoding='utf-8')
+          start = source.index('            GraduationGuidance(')
+          end = source.index('            GraduationMidterm(', start)
+          block = source[start:end]
+          obsolete = '                next_plan="完成归档",\n'
+          if obsolete not in block:
+              raise SystemExit('obsolete GraduationGuidance next_plan fixture missing')
+          block = block.replace(obsolete, '', 1)
+          source = source[:start] + block + source[end:]
+          path.write_text(source, encoding='utf-8')
+          PY
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Compile and migrate real MySQL to 0154
+        working-directory: backend
+        run: |
+          python -m compileall -q app tests
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          alembic current | grep -q '0154_file_storage_quota_reservation'
+      - name: Strict call scan stays strict
+        run: |
+          python scripts/audit_file_capabilities.py --check-schema
+          python scripts/audit_file_capabilities.py --strict-baseline
+          python scripts/check_new_file_capabilities.py --base-ref origin/main
+          python scripts/audit_file_center_calls.py --strict --base-ref origin/main
+      - name: Run complete stage 6-10 MySQL regression
+        working-directory: backend
+        run: |
+          pytest -q -p no:warnings --durations=30 \
+            tests/test_academic_export_compat.py \
+            tests/test_academic_file_exchange_center.py \
+            tests/test_affairs_material_center.py \
+            tests/test_data_exchange_job_center.py \
+            tests/test_file_access_service.py \
+            tests/test_file_center_cos_production.py \
+            tests/test_file_center_frontend_cos_supply_chain.py \
+            tests/test_file_center_stage10_closure.py \
+            tests/test_file_identity_import_scan.py \
+            tests/test_file_p0_authz.py \
+            tests/test_file_scan_clamav.py \
+            tests/test_file_scan_state.py \
+            tests/test_file_storage.py \
+            tests/test_file_storage_governance.py \
+            tests/test_file_storage_quota_reservation.py \
+            tests/test_file_storage_write_context.py \
+            tests/test_file_streaming_archive_cutover.py \
+            tests/test_graduation_material_center_phase6.py \
+            tests/test_internship_material_center.py
+          python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run
+      - name: Commit verified fixes and remove both one-time workflows
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/file-center-streaming-scan-closeout.yml
+          git rm .github/workflows/file-center-final-red-closeout.yml
+          git add -- \
+            backend/app/services/xlsx_util.py \
+            backend/app/services/excel/pipeline.py \
+            backend/app/services/excel/__init__.py \
+            backend/app/services/clamav_client.py \
+            backend/app/services/storage/cos.py \
+            backend/app/services/file_storage_quota_reservation_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_service.py \
+            backend/app/modules/academic_affairs/services/academic_file_exchange_service.py \
+            backend/app/modules/academic_affairs/services/academic_export_compat_service.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py
+          git diff --cached --check
+          git commit -m "fix(file-center): close final scan and MySQL blockers"
+          git push origin HEAD:audit/file-capability-inventory
