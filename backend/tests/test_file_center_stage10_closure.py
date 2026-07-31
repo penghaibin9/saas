@@ -19,11 +19,17 @@ def _route_signatures(router):
     }
 
 
-def test_zero_call_legacy_aliases_are_not_registered():
+def test_nonzero_call_upload_alias_is_delegated_not_duplicated():
     legacy = _route_signatures(session_router.router)
-    assert ("/upload", frozenset({"POST"})) not in legacy
+    assert ("/upload", frozenset({"POST"})) in legacy
     assert ("/meta/{file_id}", frozenset({"GET"})) not in legacy
     assert ("/download/{file_id}", frozenset({"GET"})) not in legacy
+
+    source = inspect.getsource(session_router.delegated_legacy_upload)
+    assert "upload_contract(" in source
+    assert "file_service.store_upload" not in source
+    assert '"Deprecation": "true"' in source
+    assert '"X-File-Center-Contract": "AUTHORITATIVE_UPLOAD_DELEGATE"' in source
 
     authoritative = _route_signatures(authoritative_router.router)
     assert ("/files", frozenset({"POST"})) in authoritative
@@ -71,5 +77,5 @@ def test_stage10_closure_ledger_exists_and_names_external_proofs():
     text = ledger.read_text(encoding="utf-8")
     assert "真实 COS 端到端" in text
     assert "大文件跨会话续传" in text
-    assert "教务剩余迁移范围" in text
+    assert "旧上传调用归零" in text
     assert "PR 仍为 Draft" in text
