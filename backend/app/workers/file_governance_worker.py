@@ -1,6 +1,6 @@
 """公共文件存储治理 worker。
 
-默认每小时逐租户执行：历史保留期补算、过期上传会话清理、到期文件安全清理、异常快照。
+默认每小时逐租户执行：历史保留期补算、过期上传会话两阶段清理、到期文件两阶段清理、异常快照。
 任一租户失败会记账并继续下一个租户，不因单校配置问题阻塞全平台。
 
 运行：python -m app.workers.file_governance_worker --once
@@ -11,18 +11,15 @@ import argparse
 import json
 import logging
 import time
-from datetime import datetime
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 
 from app.core.context import set_current_user, set_tenant
 from app.db.session import get_sessionmaker
-from app.services.file_storage_governance_service import (
-    anomaly_snapshot,
-    backfill_retention,
-    cleanup_expired,
-)
-from app.services.storage import get_backend, reset_backend
+from app.services.file_storage_cleanup_service import cleanup_expired
+from app.services.file_storage_governance_service import anomaly_snapshot, backfill_retention
+from app.services.file_upload_session_cleanup_service import expire_upload_sessions
+from app.services.storage import reset_backend
 
 log = logging.getLogger("file-governance-worker")
 
@@ -43,45 +40,6 @@ def _tenant_ids(explicit: int | None = None) -> list[int]:
         db.close()
 
 
-def _expire_upload_sessions(*, tenant_id: int, limit: int = 500) -> dict:
-    from app.models.file import FileUploadSession
-
-    now = datetime.utcnow()
-    db = get_sessionmaker()()
-    expired = deleted_objects = 0
-    errors: list[dict] = []
-    try:
-        rows = db.scalars(select(FileUploadSession).where(
-            FileUploadSession.tenant_id == tenant_id,
-            FileUploadSession.is_deleted.is_(False),
-            FileUploadSession.expires_at.is_not(None),
-            FileUploadSession.expires_at <= now,
-            FileUploadSession.status.in_(["CREATED", "UPLOADING"]),
-        ).order_by(FileUploadSession.id).limit(max(1, min(limit, 5000))).with_for_update()).all()
-        backend = get_backend()
-        for row in rows:
-            meta = dict(row.metadata_json or {})
-            object_key = str(meta.get("objectKey") or "")
-            if object_key:
-                try:
-                    backend.delete(object_key)
-                    deleted_objects += 1
-                except Exception as exc:  # noqa: BLE001 - mark expired and record cleanup debt
-                    errors.append({"sessionId": row.session_key, "error": str(exc)[:500]})
-            row.status = "EXPIRED"
-            row.updated_at = now
-            expired += 1
-        db.commit()
-        return {
-            "tenantId": tenant_id,
-            "expiredSessions": expired,
-            "deletedObjects": deleted_objects,
-            "errors": errors,
-        }
-    finally:
-        db.close()
-
-
 def process_tenant(tenant_id: int, *, dry_run: bool, limit: int) -> dict:
     set_tenant({"tenantId": str(tenant_id)})
     set_current_user({
@@ -93,12 +51,13 @@ def process_tenant(tenant_id: int, *, dry_run: bool, limit: int) -> dict:
     reset_backend()
     try:
         backfill = backfill_retention(tenant_id=tenant_id, limit=limit)
-        sessions = _expire_upload_sessions(tenant_id=tenant_id, limit=limit)
+        sessions = expire_upload_sessions(tenant_id=tenant_id, limit=limit)
         cleanup = cleanup_expired(tenant_id=tenant_id, dry_run=dry_run, limit=limit)
         anomalies = anomaly_snapshot(tenant_id=tenant_id)
+        status = "PARTIAL_FAILED" if sessions.get("failed") or cleanup.get("failed") else "SUCCEEDED"
         return {
             "tenantId": tenant_id,
-            "status": "SUCCEEDED",
+            "status": status,
             "backfill": backfill,
             "uploadSessions": sessions,
             "cleanup": cleanup,
@@ -117,7 +76,11 @@ def run(*, once: bool, tenant_id: int | None, dry_run: bool, limit: int, interva
         for value in ids:
             try:
                 result = process_tenant(value, dry_run=dry_run, limit=limit)
-                log.info("governance result: %s", json.dumps(result, ensure_ascii=False, default=str))
+                if result.get("status") != "SUCCEEDED":
+                    failures += 1
+                    log.error("governance partial failure: %s", json.dumps(result, ensure_ascii=False, default=str))
+                else:
+                    log.info("governance result: %s", json.dumps(result, ensure_ascii=False, default=str))
             except Exception as exc:  # noqa: BLE001 - one tenant must not stop others
                 failures += 1
                 log.exception("tenant %s governance failed: %s", value, exc)
@@ -130,7 +93,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="跨租户文件保留、清理与异常治理 worker")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--tenant-id", type=int)
-    parser.add_argument("--dry-run", action="store_true", help="只预演文件清理；过期未完成上传仍会清理")
+    parser.add_argument("--dry-run", action="store_true", help="只预演到期文件；过期未完成上传仍按两阶段流程清理")
     parser.add_argument("--limit", type=int, default=500)
     parser.add_argument("--interval-seconds", type=int, default=3600)
     args = parser.parse_args()
