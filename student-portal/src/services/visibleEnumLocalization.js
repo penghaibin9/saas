@@ -111,6 +111,7 @@ export const VISIBLE_ENUM_WHITELIST = new Set([
 
 const UNDERSCORE_ENUM_RE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g
 const UPPER_WORD_RE = /\b[A-Z][A-Z0-9]{2,}\b/g
+const ENUM_TOKEN_RE = '[A-Z][A-Z0-9_]*'
 
 /**
  * 仅本地化一个明确的枚举值。
@@ -120,6 +121,26 @@ export function localizeVisibleEnumText(value) {
   const raw = String(value ?? '')
   const key = raw.trim().toUpperCase()
   return VISIBLE_ENUM_LABELS[key] || raw
+}
+
+/** 仅处理“当前状态：ENUM”这类明确状态句尾。 */
+export function localizeStatusSuffixText(value) {
+  const raw = String(value ?? '')
+  const pattern = new RegExp(`((?:当前)?状态[：:]\\s*)(${ENUM_TOKEN_RE})\\s*$`)
+  return raw.replace(pattern, (whole, prefix, token) => {
+    const label = localizeVisibleEnumText(token)
+    return label === token ? whole : `${prefix}${label}`
+  })
+}
+
+/** 仅处理申请标题末尾“（ENUM）”或“(ENUM)”中的明确类型值。 */
+export function localizeTrailingEnumInParentheses(value) {
+  const raw = String(value ?? '')
+  const pattern = new RegExp(`([（(])(${ENUM_TOKEN_RE})([）)])\\s*$`)
+  return raw.replace(pattern, (whole, open, token, close) => {
+    const label = localizeVisibleEnumText(token)
+    return label === token ? whole : `${open}${label}${close}`
+  })
 }
 
 export function findVisibleEnumTokens(value) {
