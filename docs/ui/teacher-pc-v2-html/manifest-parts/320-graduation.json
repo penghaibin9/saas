@@ -2,83 +2,432 @@
   "moduleKey": "graduation",
   "moduleLabel": "毕业设计中心",
   "coverageType": "eight-production-workspaces",
+  "productionSource": {
+    "file": "frontend/src/modules/graduation/config/graduationWorkspaces.js",
+    "blobSha": "3dedbf5c3332b014d85472f225c8888fe7b607a1",
+    "workspaceCount": 8,
+    "leafCount": 50,
+    "uniqueUrlCount": 48,
+    "sharedUrlCount": 2
+  },
   "sourceOfTruth": [
     "frontend/src/modules/graduation/config/graduationWorkspaces.js",
-    "graduation production routes, Vue pages, APIs and services"
+    "frontend/src/modules/graduation/routes.js",
+    "graduation production Vue pages, APIs and services"
   ],
-  "productionImplementationStatus": "all eight production workspaces registered with key routes, version boundaries, release gates and archive constraints",
-  "sharedAssets": ["shared/v2-graduation-key.js", "shared/v2-graduation-key.css"],
+  "productionImplementationStatus": "all eight current production workspaces are represented by one independent HTML and exact route/permission candidates",
+  "sharedAssets": [
+    "shared/v2-graduation-key.js",
+    "shared/v2-graduation-key.css"
+  ],
+  "sharedProductionUrls": [
+    {
+      "route": "/admin/graduation/defense-scoring",
+      "owners": [
+        "gd-workbench",
+        "gd-defense"
+      ],
+      "reason": "the workbench task entry and the defense workspace lead to the same scoring queue"
+    },
+    {
+      "route": "/admin/graduation/stats-report",
+      "owners": [
+        "gd-workbench",
+        "gd-risk-archive"
+      ],
+      "reason": "the workbench analytics entry and the risk/archive workspace lead to the same report"
+    }
+  ],
   "principles": [
-    "batch context spans eligibility, mentor, topic, proposal, process, artifact, defense, grade and archive",
+    "batch context spans all eight workspaces",
     "identity facts remain in unified student and teacher masters",
-    "topic submission, review, publication, student selection, mentor confirmation and final allocation are separate",
-    "materials, guidance, milestones, results and scores preserve versions",
-    "proposal approval never implies artifact, defense or grade approval",
+    "workspace aggregation never creates a duplicate business ledger",
+    "topic submission review publication choice matching confirmation and adjustment remain separate",
+    "taskbooks plans guidance records evaluations proposals finals reviews scores and templates preserve versions",
     "originality evidence never automatically creates an academic conclusion",
-    "defense publication rechecks group, time, room, student, judge, recusal and conflict facts",
-    "score calculation, review, publication and dispute remain separate",
+    "defense publication rechecks group time room student judge recusal capacity and conflicts",
+    "score submission secretary confirmation grade ledger excellent result publication and appeal remain separate",
+    "risk items retain source owner deadline evidence escalation and closure",
     "missing materials block a complete archive package",
-    "downloads require permission, scope, purpose, watermark and audit"
+    "template updates never retroactively mutate published batches or historical materials",
+    "downloads require permission scope purpose watermark and audit"
   ],
   "routes": [
     {
-      "workspace": "overview",
+      "workspaceKey": "gd-workbench",
+      "workspace": "workbench",
+      "route": "/admin/graduation",
+      "routeName": "graduation-dashboard",
       "html": "graduation/overview.html",
-      "title": "毕业设计总览",
-      "coveredRoutes": ["/admin/graduation/dashboard", "/admin/graduation/batch", "/admin/graduation/eligibility", "/admin/graduation/mentor", "/admin/graduation/topic", "/admin/graduation/proposal", "/admin/graduation/milestone", "/admin/graduation/artifact", "/admin/graduation/defense", "/admin/graduation/grade"]
+      "title": "我的工作台",
+      "permissionCandidates": [
+        "graduationDesign.dashboard.view",
+        "graduationDesign.proposal.view",
+        "graduationDesign.final.view",
+        "graduationDesign.defense.score",
+        "graduationDesign.stats.view",
+        "graduationDesign.audit.view"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation",
+        "/admin/graduation/proposals?tab=PENDING_REVIEW",
+        "/admin/graduation/finals?tab=PENDING_REVIEW",
+        "/admin/graduation/defense-scoring",
+        "/admin/graduation/stats-report",
+        "/admin/graduation/audit-logs"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data"
+      ],
+      "fields": [
+        "current batch",
+        "role-scoped todos",
+        "student count",
+        "stage progress",
+        "risk summary",
+        "freshness",
+        "same-filter drilldown"
+      ],
+      "boundary": "role-scoped aggregation only; one batch context and same-filter drilldown; no copied proposal final score or archive ledger"
     },
     {
+      "workspaceKey": "gd-batch-impl",
+      "workspace": "batch",
+      "route": "/admin/graduation/batches?panel=list",
+      "routeName": "graduation-batches",
+      "html": "graduation/batch-implementation.html",
+      "title": "批次与实施",
+      "permissionCandidates": [
+        "graduationDesign.batch.view",
+        "graduationDesign.batch.update",
+        "graduationDesign.student.view",
+        "graduationDesign.student.manage",
+        "graduationDesign.mentor.manage"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation/batches?panel=list",
+        "/admin/graduation/batches?panel=stages",
+        "/admin/graduation/batches?panel=rules",
+        "/admin/graduation/students?panel=roster",
+        "/admin/graduation/students?panel=progress",
+        "/admin/graduation/students?panel=topic",
+        "/admin/graduation/students?panel=eligibility",
+        "/admin/graduation/mentors?panel=list",
+        "/admin/graduation/mentors?panel=assign",
+        "/admin/graduation/mentors/conflicts"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data",
+        "draft",
+        "active",
+        "archived"
+      ],
+      "fields": [
+        "batch",
+        "stage version",
+        "rule version",
+        "student scope",
+        "eligibility",
+        "mentor access",
+        "assignment",
+        "conflict"
+      ],
+      "boundary": "timeline and rules are versioned; eligibility mentor access assignment and conflict closure remain separate facts"
+    },
+    {
+      "workspaceKey": "gd-topic-select",
       "workspace": "topic",
+      "route": "/admin/graduation/topic-lib",
+      "routeName": "graduation-topic-lib",
       "html": "graduation/topic.html",
-      "title": "选题与分配",
-      "coveredRoutes": ["/admin/graduation/topic", "/admin/graduation/topic/teacher", "/admin/graduation/topic/review", "/admin/graduation/topic/publish", "/admin/graduation/topic/student", "/admin/graduation/topic/confirm", "/admin/graduation/topic/allocation", "/admin/graduation/topic/import-export"],
-      "boundary": "publication, selection, mentor confirmation and final allocation are separate and capacity or specialty conflicts block allocation"
+      "title": "题目与选题",
+      "permissionCandidates": [
+        "graduationDesign.topic.lib",
+        "graduationDesign.topic.manage",
+        "graduationDesign.topic.round",
+        "graduationDesign.topic.change"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation/topic-lib?panel=list",
+        "/admin/graduation/topic-lib?panel=pending",
+        "/admin/graduation/topics",
+        "/admin/graduation/topic-rounds?panel=rounds",
+        "/admin/graduation/topic-rounds?panel=choices",
+        "/admin/graduation/topic-rounds?panel=match",
+        "/admin/graduation/topic-rounds?panel=conflicts",
+        "/admin/graduation/topic-changes"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data",
+        "submitted",
+        "reviewed",
+        "published",
+        "matched",
+        "confirmed",
+        "conflict"
+      ],
+      "fields": [
+        "topic",
+        "mentor",
+        "specialty",
+        "capacity",
+        "review",
+        "publication",
+        "student choice",
+        "match",
+        "conflict",
+        "change request"
+      ],
+      "boundary": "submission review publication choice match confirmation final result and change request remain separate; capacity specialty mentor-limit and duplicate conflicts block"
     },
     {
-      "workspace": "proposal",
-      "html": "graduation/proposal.html",
-      "title": "开题管理",
-      "coveredRoutes": ["/admin/graduation/proposal/requirement", "/admin/graduation/proposal/submit", "/admin/graduation/proposal/review", "/admin/graduation/proposal/history", "/admin/graduation/proposal/remind", "/admin/graduation/proposal/stats"],
-      "boundary": "returned submissions preserve versions and proposal approval does not imply later-stage approval"
-    },
-    {
+      "workspaceKey": "gd-process",
       "workspace": "process",
+      "route": "/admin/graduation/process?panel=taskbook",
+      "routeName": "graduation-process",
       "html": "graduation/process.html",
-      "title": "过程管理",
-      "coveredRoutes": ["/admin/graduation/proposal", "/admin/graduation/task", "/admin/graduation/guidance", "/admin/graduation/milestone", "/admin/graduation/midterm", "/admin/graduation/issue", "/admin/graduation/extension"],
-      "boundary": "guidance, evidence, midterm results, issue rectification and extension approval append history"
+      "title": "过程指导",
+      "permissionCandidates": [
+        "graduationDesign.guidance.view"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation/process?panel=workflow",
+        "/admin/graduation/process?panel=taskbook",
+        "/admin/graduation/process?panel=guidance",
+        "/admin/graduation/process?panel=plan",
+        "/admin/graduation/process?panel=eval",
+        "/admin/graduation/process?panel=midterm"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data",
+        "planned",
+        "in-progress",
+        "rectifying",
+        "completed"
+      ],
+      "fields": [
+        "workflow",
+        "taskbook version",
+        "guidance plan",
+        "guidance record",
+        "mentor evaluation",
+        "midterm result",
+        "evidence",
+        "deadline"
+      ],
+      "boundary": "taskbooks plans records evaluations and midterm results append versioned evidence; extension or rectification never overwrites the original deadline or conclusion"
     },
     {
-      "workspace": "artifact",
-      "html": "graduation/artifact.html",
-      "title": "成果提交",
-      "coveredRoutes": ["/admin/graduation/artifact/draft", "/admin/graduation/artifact/final", "/admin/graduation/artifact/check", "/admin/graduation/artifact/review", "/admin/graduation/artifact/history", "/admin/graduation/artifact/remind", "/admin/graduation/artifact/stats"],
-      "boundary": "draft, final and originality evidence remain separate and originality does not auto-create an academic conclusion"
+      "workspaceKey": "gd-proposal-final",
+      "workspace": "proposalFinal",
+      "route": "/admin/graduation/proposals",
+      "routeName": "graduation-proposals",
+      "html": "graduation/proposal-final.html",
+      "title": "开题与成果",
+      "permissionCandidates": [
+        "graduationDesign.proposal.view",
+        "graduationDesign.final.view",
+        "graduationDesign.plagiarism.view",
+        "graduationDesign.review.view",
+        "graduationDesign.more.manage"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation/proposals",
+        "/admin/graduation/finals",
+        "/admin/graduation/plagiarism-ledger",
+        "/admin/graduation/review-tasks",
+        "/admin/graduation/more?panel=peer"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data",
+        "submitted",
+        "returned",
+        "resubmitted",
+        "reviewed",
+        "rectifying"
+      ],
+      "fields": [
+        "proposal version",
+        "draft version",
+        "final version",
+        "originality evidence",
+        "teacher review",
+        "peer rectification",
+        "material completeness"
+      ],
+      "boundary": "proposal draft final originality evidence teacher review and peer rectification are distinct; originality never auto-creates an academic conclusion and resubmission keeps prior versions"
     },
     {
+      "workspaceKey": "gd-defense",
       "workspace": "defense",
+      "route": "/admin/graduation/defense",
+      "routeName": "graduation-defense",
       "html": "graduation/defense.html",
-      "title": "答辩管理",
-      "coveredRoutes": ["/admin/graduation/defense/group", "/admin/graduation/defense/plan", "/admin/graduation/defense/allocation", "/admin/graduation/defense/recusal", "/admin/graduation/defense/publish", "/admin/graduation/defense/attendance", "/admin/graduation/defense/record", "/admin/graduation/defense/issue", "/admin/graduation/defense/stats", "/admin/graduation/defense/emergency"],
-      "boundary": "release rechecks group, time, room, student, judge, recusal and conflict facts while emergency changes preserve prior plans"
+      "title": "答辩与成绩",
+      "permissionCandidates": [
+        "graduationDesign.defense.view",
+        "graduationDesign.defense.score",
+        "graduationDesign.defense.scoreConfirm",
+        "graduationDesign.grade.view",
+        "graduationDesign.more.manage"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation/defense",
+        "/admin/graduation?extension=delay",
+        "/admin/graduation/defense-scoring",
+        "/admin/graduation/defense-confirmation",
+        "/admin/graduation/grade-ledger",
+        "/admin/graduation?extension=excellent",
+        "/admin/graduation/more?panel=experts",
+        "/admin/graduation/more?panel=appeals"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data",
+        "draft",
+        "precheck-blocked",
+        "published",
+        "scoring",
+        "confirmed",
+        "appealing"
+      ],
+      "fields": [
+        "defense group",
+        "student allocation",
+        "judge",
+        "recusal",
+        "time",
+        "room",
+        "capacity",
+        "score",
+        "secretary confirmation",
+        "grade ledger",
+        "appeal"
+      ],
+      "boundary": "release rechecks group time room student judge recusal capacity and conflicts; score submit confirmation grade ledger excellent result and appeal remain separate"
     },
     {
-      "workspace": "grade",
-      "html": "graduation/grade.html",
-      "title": "成绩管理",
-      "coveredRoutes": ["/admin/graduation/grade/supervisor", "/admin/graduation/grade/reviewer", "/admin/graduation/grade/defense", "/admin/graduation/grade/calculation", "/admin/graduation/grade/review", "/admin/graduation/grade/publish", "/admin/graduation/grade/dispute"],
-      "boundary": "frozen weights, missing-score rules and rounding precede calculation while review, publication and dispute remain separate"
+      "workspaceKey": "gd-risk-archive",
+      "workspace": "riskArchive",
+      "route": "/admin/graduation/risk-archive?panel=risk",
+      "routeName": "graduation-risk-archive",
+      "html": "graduation/risk-archive.html",
+      "title": "风险与归档",
+      "permissionCandidates": [
+        "graduationDesign.riskArchive.manage",
+        "graduationDesign.stats.view"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation/risk-archive?panel=risk",
+        "/admin/graduation/risk-archive?panel=archive",
+        "/admin/graduation/stats-report"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data",
+        "open",
+        "handling",
+        "closed",
+        "archive-blocked",
+        "archived"
+      ],
+      "fields": [
+        "risk source",
+        "owner",
+        "deadline",
+        "evidence",
+        "escalation",
+        "closure",
+        "material completeness",
+        "final version",
+        "archive status",
+        "download purpose"
+      ],
+      "boundary": "risk keeps source owner deadline evidence and closure; archive accepts final versions and complete audit only; missing materials block a complete package"
     },
     {
-      "workspace": "archive",
-      "html": "graduation/archive.html",
-      "title": "归档与统计",
-      "coveredRoutes": ["/admin/graduation/archive/record", "/admin/graduation/archive/package", "/admin/graduation/archive/audit", "/admin/graduation/stats", "/admin/graduation/notification", "/admin/graduation/early-warning"],
-      "boundary": "final versions and complete audit only; missing material blocks complete package and downloads require purpose, watermark and permission"
+      "workspaceKey": "gd-templates",
+      "workspace": "templates",
+      "route": "/admin/graduation/templates",
+      "routeName": "graduation-templates",
+      "html": "graduation/templates.html",
+      "title": "模板与设置",
+      "permissionCandidates": [
+        "graduationDesign.template.manage"
+      ],
+      "coveredRoutes": [
+        "/admin/graduation/templates?type=MATERIAL",
+        "/admin/graduation/templates?type=TASKBOOK",
+        "/admin/graduation/templates?type=PROPOSAL",
+        "/admin/graduation/templates"
+      ],
+      "states": [
+        "ready",
+        "loading",
+        "empty",
+        "error",
+        "unauthorized",
+        "readonly",
+        "long-data",
+        "draft",
+        "published",
+        "disabled"
+      ],
+      "fields": [
+        "template type",
+        "template version",
+        "status",
+        "bound batch",
+        "effective scope",
+        "updated by",
+        "impact analysis"
+      ],
+      "boundary": "template versions affect explicitly bound new work only; published batches and historical materials keep the original template version"
     }
   ],
   "knownLimitations": [
-    "permission names must be re-read from the production workspace projection before Vue migration",
-    "the current batch has not completed browser, keyboard or focus regression"
+    "browser keyboard focus and final-state regression have not run on the remapped eight workspaces",
+    "route names are recorded for each primary host while covered leaf routes continue to use production route definitions",
+    "the final freeze candidate must re-read production workspace projection and rerun 24 browser renders"
   ]
 }
