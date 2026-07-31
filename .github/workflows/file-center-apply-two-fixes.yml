@@ -1,0 +1,91 @@
+name: Apply file center auth and phase6 fixture fixes
+
+on:
+  push:
+    branches: [audit/file-capability-inventory]
+    paths: ['.github/workflows/file-center-apply-two-fixes.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+      - name: Apply exact source patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          resolver_path = Path('backend/app/services/file_access_resolvers.py')
+          resolver = resolver_path.read_text(encoding='utf-8')
+          fn_start = resolver.index('def scoped_binding_resolver(')
+          block_start = resolver.index('    if active:', fn_start)
+          block_end = resolver.index('\n\ndef _graduation_student_ids', block_start)
+          replacement = '''    biz_type = str(file_obj.biz_type or "").upper()
+    permission = _FILE_VIEW_PERMISSION.get(biz_type)
+    subject_allowed = any(_binding_subject_allows(item, user) for item in active)
+
+    if str(user.get("userType") or "").upper() == "STUDENT":
+        biz_id = str(file_obj.biz_id or "").strip()
+        if biz_id and biz_id in _student_scope_values(db, file_obj, user):
+            return True
+        return any(
+            str(item.subject_type or "").upper() in {"STUDENT", "USER"}
+            and _binding_subject_allows(item, user)
+            for item in active
+        )
+
+    if permission and has_permission(user, permission):
+        # 上传者 USER 绑定只表示来源；普通业务台账由明确业务权限放行。
+        # 通用附件、资助、风险和心理材料仍必须同时命中具体绑定范围。
+        if biz_type in {"ATTACHMENT", "AID", "RISK", "MENTAL"}:
+            return subject_allowed
+        return True
+    return subject_allowed
+'''
+          resolver_path.write_text(resolver[:block_start] + replacement + resolver[block_end:], encoding='utf-8')
+
+          phase6_path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          phase6 = phase6_path.read_text(encoding='utf-8')
+          seed_start = phase6.index('            GraduationGuidance(')
+          seed_end = phase6.index('            GraduationArchiveRecord(', seed_start)
+          seed = '''            GraduationGuidance(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                guidance_date=datetime.utcnow(),
+                method="ONLINE",
+                content="阶段六指导记录；下一步完成归档",
+                issues="无",
+                attachments_json=[],
+            ),
+            GraduationMidterm(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                status="CHECKED_PASS",
+                check_comment="进度 80%，检查通过，下一步完成定稿",
+                conclusion="PASS",
+                checked_at=datetime.utcnow(),
+            ),
+'''
+          phase6_path.write_text(phase6[:seed_start] + seed + phase6[seed_end:], encoding='utf-8')
+          PY
+          python -m py_compile \
+            backend/app/services/file_access_resolvers.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py
+          git diff --check
+      - name: Commit exact files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            backend/app/services/file_access_resolvers.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py
+          git commit -m "fix(file-center): restore business auth and current phase6 fixtures"
+          git push origin HEAD:audit/file-capability-inventory
