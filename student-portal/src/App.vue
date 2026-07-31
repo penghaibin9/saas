@@ -35,40 +35,75 @@ const router = useRouter()
 const health = useGraduationHealth()
 const graduationErrors = health.items
 
-const THEME_COLORS = {
-  purple: '#7b61ff',
-  green: '#16a078',
-  orange: '#f59b23',
-  pink: '#f36ca5',
-  dark: '#4f8bff'
+const THEME_PRESETS = {
+  purple: { display: '#7b61ff', accent: '#6045d2' },
+  green: { display: '#16a078', accent: '#087858' },
+  orange: { display: '#f59b23', accent: '#a75400' },
+  pink: { display: '#f36ca5', accent: '#b83d72' },
+  dark: { display: '#4f8bff', accent: '#71a1ff' }
 }
 const themeKey = ref('blue')
-const primary = computed(() => THEME_COLORS[themeKey.value] || cfg.brand?.primaryColor || '#2f6bff')
-const primaryRgb = computed(() => {
-  const hex = String(primary.value || '#2f6bff').replace('#', '')
-  const value = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex.padEnd(6, '0').slice(0, 6)
-  const number = Number.parseInt(value, 16)
-  if (!Number.isFinite(number)) return '47,107,255'
-  return `${(number >> 16) & 255},${(number >> 8) & 255},${number & 255}`
+
+function normalizeHex(input, fallback = '#2f6bff') {
+  const raw = String(input || '').trim().replace('#', '')
+  if (/^[0-9a-f]{3}$/i.test(raw)) return `#${raw.split('').map((char) => char + char).join('')}`
+  if (/^[0-9a-f]{6}$/i.test(raw)) return `#${raw}`
+  return fallback
+}
+
+function shadeHex(input, factor = 0.82) {
+  const hex = normalizeHex(input).slice(1)
+  const channels = [0, 2, 4].map((offset) => Math.max(0, Math.min(255, Math.round(Number.parseInt(hex.slice(offset, offset + 2), 16) * factor))))
+  return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`
+}
+
+function rgbOf(input) {
+  const hex = normalizeHex(input).slice(1)
+  return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16)).join(',')
+}
+
+const displayPrimary = computed(() => {
+  if (themeKey.value === 'blue') return normalizeHex(cfg.brand?.primaryColor || '#2f6bff')
+  return THEME_PRESETS[themeKey.value]?.display || '#2f6bff'
 })
-const themeStyle = computed(() => ({
-  '--sp-primary': primary.value,
-  '--sp-primary-rgb': primaryRgb.value,
-  '--pri': primary.value,
-  '--pri-h': `color-mix(in srgb, ${primary.value} 84%, #000)`,
-  '--pri-50': `color-mix(in srgb, ${primary.value} 9%, #fff)`,
-  '--pri-100': `color-mix(in srgb, ${primary.value} 18%, #fff)`,
-  '--pri-500': primary.value,
-  '--g1': `color-mix(in srgb, ${primary.value} 62%, #fff)`,
-  '--g2': primary.value,
-  '--bg': themeKey.value === 'dark' ? '#161b24' : `color-mix(in srgb, ${primary.value} 4%, #f8faff)`
-}))
+const readablePrimary = computed(() => {
+  if (themeKey.value === 'blue') return shadeHex(displayPrimary.value, 0.78)
+  return THEME_PRESETS[themeKey.value]?.accent || shadeHex(displayPrimary.value, 0.78)
+})
+const readableHover = computed(() => shadeHex(readablePrimary.value, 0.86))
+const themeStyle = computed(() => {
+  const dark = themeKey.value === 'dark'
+  return {
+    '--sp-primary': displayPrimary.value,
+    '--sp-primary-rgb': rgbOf(displayPrimary.value),
+    '--pri-display': displayPrimary.value,
+    '--pri': readablePrimary.value,
+    '--pri-text': readablePrimary.value,
+    '--pri-h': readableHover.value,
+    '--pri-on': '#ffffff',
+    '--pri-50': `color-mix(in srgb, ${displayPrimary.value} 9%, ${dark ? '#1b2231' : '#fff'})`,
+    '--pri-100': `color-mix(in srgb, ${displayPrimary.value} 18%, ${dark ? '#1b2231' : '#fff'})`,
+    '--pri-500': readablePrimary.value,
+    '--g1': `color-mix(in srgb, ${displayPrimary.value} 62%, #fff)`,
+    '--g2': displayPrimary.value,
+    '--bg': dark ? '#161b24' : `color-mix(in srgb, ${displayPrimary.value} 4%, #f8faff)`,
+    '--surface': dark ? '#1b2231' : '#ffffff',
+    '--surface-2': dark ? '#202838' : '#f8faff',
+    '--field-bg': dark ? '#202838' : '#f8faff',
+    '--t1': dark ? '#f2f6ff' : '#172033',
+    '--t2': dark ? '#d2daea' : '#3f4b63',
+    '--t3': dark ? '#adb9cf' : '#65728a',
+    '--t4': dark ? '#91a0ba' : '#718097',
+    '--line': dark ? '#34405a' : '#dfe5ef',
+    '--line2': dark ? '#2a3448' : '#ebeff5'
+  }
+})
 
 const showGraduationPanel = computed(() => route.name === 'graduation-workbench')
 const showGraduationHealth = computed(() => showGraduationPanel.value && graduationErrors.value.length > 0)
 
 function setTheme(key) {
-  const allowed = key === 'blue' || Object.prototype.hasOwnProperty.call(THEME_COLORS, key)
+  const allowed = key === 'blue' || Object.prototype.hasOwnProperty.call(THEME_PRESETS, key)
   themeKey.value = allowed ? key : 'blue'
   document.documentElement.dataset.spTheme = themeKey.value
 }
