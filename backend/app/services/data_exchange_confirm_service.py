@@ -32,7 +32,7 @@ def _begin_adapter_confirm(job_id: str, expected_version: int, user: dict) -> tu
         if row.status == "CONFIRMING" and row.lease_started_at \
                 and row.lease_started_at > jobs._now() - timedelta(seconds=jobs.LEASE_STALE_SECONDS):
             raise AppException("DATA_CONFLICT", "该任务正在另一服务实例确认，请稍后刷新")
-        if row.status not in {"VALIDATED", "CONFIRMING", "FAILED"}:
+        if row.status not in {"VALIDATED", "CONFIRMING"}:
             raise AppException("DATA_CONFLICT", f"当前任务状态 {row.status} 不允许确认")
         row.status = "CONFIRMING"
         row.lease_token = lease
@@ -139,12 +139,11 @@ def confirm_import_job(
             from app.services import migration_import_service as migration
             result = migration.confirm(adapter_ref)
             return _finish(job_id, lease, result, user)
-        if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type == "ACADEMIC_ROSTER":
+        if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type in {
+            "ACADEMIC_ROSTER", "ACADEMIC_GRADE", "ACADEMIC_SCHEDULE",
+        }:
             from app.modules.academic_affairs.services import academic_file_exchange_service as academic
-            result = academic.confirm_roster_import(job_id, lease=lease, user=user)
-            if not result.get("confirmedRows"):
-                result = dict(result)
-                result["confirmedRows"] = sum(int(result.get(key) or 0) for key in ("created", "reused", "skipped"))
+            result = academic.confirm_academic_import(job_id, lease=lease, user=user)
             return _finish(job_id, lease, result, user)
         if adapter_type == jobs.IMPORT_ADAPTER_EXCEL:
             raise AppException(
