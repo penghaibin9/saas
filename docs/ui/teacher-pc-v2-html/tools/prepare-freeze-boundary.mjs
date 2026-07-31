@@ -101,6 +101,14 @@ if (checker.includes(boundaryLegacy)) checker = checker.replace(boundaryLegacy, 
 if (!checker.includes('PRODUCTION_BOUNDARY_EXCEPTION_MISMATCH')) {
   throw new Error('production boundary checker was not prepared')
 }
+
+checker = checker.replace(
+  "if (main?.status === 'FROZEN' && (errors.length || missingScreenshots.length)) {",
+  "if (main?.status === 'FROZEN' && (errors.length || (requireScreenshots && missingScreenshots.length))) {"
+)
+if (!checker.includes("requireScreenshots && missingScreenshots.length")) {
+  throw new Error('artifact-backed frozen status rule was not prepared')
+}
 fs.writeFileSync(checkerPath, checker, 'utf8')
 
 let browser = ensureImport(readNormalized(browserPath))
