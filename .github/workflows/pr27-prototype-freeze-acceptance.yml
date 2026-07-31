@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   cross-browser-freeze-acceptance:
@@ -69,3 +69,37 @@ jobs:
           path: acceptance-artifacts/${{ matrix.browser }}/
           if-no-files-found: error
           retention-days: 14
+
+  materialize-validated-runner:
+    name: 固化已验证验收器
+    needs: cross-browser-freeze-acceptance
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Materialize verified runner and remove one-shot workflow
+        run: |
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-acceptance.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+          rm -f .github/workflows/pr27-acceptance-runner-repair.yml
+
+      - name: Commit only when materialization changed the branch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+          git add -u .github/workflows/pr27-acceptance-runner-repair.yml
+          if git diff --cached --quiet; then
+            echo 'runner already materialized'
+            exit 0
+          fi
+          git commit -m 'fix(prototype): materialize validated acceptance runner'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
