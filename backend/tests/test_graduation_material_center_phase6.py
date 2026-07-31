@@ -382,7 +382,7 @@ def test_phase6_real_acceptance_covers_all_completion_evidence():
         "len(rule_codes) == 18", 'row.status == "INVALIDATED"',
         "ExportJob", "manifest.json", "档案清单.xlsx", 'completed["result"]["fileCount"]',
         'completed["result"]["zipSha256"]', 'completed["result"]["xlsxFileId"]',
-        '"\'=\" in str(value)', "revoke_manifest", "issue_export_ticket", "manifest_v2", "policy_v2",
+        '"' + "'=" + '" in str(value)', "revoke_manifest", "issue_export_ticket", "manifest_v2", "policy_v2",
         "cross_tenant_file_id", "infected_file_id", "pending_file_id",
         'checkpoint_key="phase6-backfill-repeat"',
     ):
