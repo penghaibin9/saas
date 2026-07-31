@@ -12,67 +12,15 @@ on:
       - .github/workflows/student-portal-v5-full-review.yml
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: student-portal-v5-full-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  apply-reviewed-fixes:
-    name: 应用带断言的已复审修复
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: 检查是否已经应用
-        id: needed
-        run: |
-          if grep -q "d.hasData ? statusLabel(d.status) : '未开始'" student-portal/src/views/home/HomeView.vue; then
-            echo "apply=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "apply=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: 执行带断言的精确替换
-        if: steps.needed.outputs.apply == 'true'
-        run: python student-portal/review/apply-reviewed-display-fixes.py
-
-      - name: 确认修改边界
-        if: steps.needed.outputs.apply == 'true'
-        run: |
-          changed="$(git diff --name-only)"
-          echo "$changed"
-          test -n "$changed"
-          if echo "$changed" | grep -Ev '^(student-portal/src/views/(home/HomeView.vue|profile/ProfileView.vue|messages/MessagesView.vue|graduation/GraduationWorkbenchView.vue|affairs/AffairsFourEndView.vue)|student-portal/review/(v5-review-config.json|v5-full-review.mjs))$'; then
-            echo "unexpected file changed"
-            exit 1
-          fi
-
-      - name: 提交精确修复到复审分支
-        if: steps.needed.outputs.apply == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add student-portal/src/views student-portal/review/v5-review-config.json student-portal/review/v5-full-review.mjs
-          git commit -m "fix(student-portal): localize reviewed states and degrade optional dorm history [skip ci]"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
-      - name: 已应用时跳过
-        if: steps.needed.outputs.apply != 'true'
-        run: echo "reviewed display fixes already applied"
-
   real-browser-review:
     name: 真实 MySQL + Chromium 全页面复审
-    needs: apply-reviewed-fixes
     runs-on: ubuntu-latest
     timeout-minutes: 75
     services:
@@ -106,7 +54,7 @@ jobs:
       REVIEW_LOGIN: student2
       REVIEW_PASSWORD: "123456"
       REVIEW_TENANT: sandbox-school
-      REVIEW_OUTPUT: ../docs/reviews/student-portal-v5-full-review
+      REVIEW_OUTPUT: ${{ runner.temp }}/student-portal-v5-full-review
     steps:
       - uses: actions/checkout@v4
         with:
@@ -134,6 +82,16 @@ jobs:
       - name: 执行真实 MySQL 迁移
         working-directory: backend
         run: alembic upgrade head
+
+      - name: 确认种子脚本仅连接 CI 一次性数据库
+        run: |
+          python - <<'PY'
+          import os
+          url = os.environ.get('DATABASE_URL', '')
+          assert '127.0.0.1:3306/student_lifecycle_review' in url, f'unsafe review database: {url}'
+          assert os.environ.get('DEFAULT_TENANT_CODE') == 'sandbox-school'
+          print('ephemeral review database confirmed')
+          PY
 
       - name: 重建 sandbox-school 真实种子
         run: python student-portal/review/seed-sandbox-compatible.py
@@ -183,20 +141,21 @@ jobs:
         working-directory: student-portal
         run: |
           node review/v5-full-review.mjs
+          node review/visible-enum-scan.mjs
           node review/write-report.mjs
 
       - name: 保存运行日志摘要
         if: always()
         run: |
-          mkdir -p docs/reviews/student-portal-v5-full-review/logs
-          tail -n 300 /tmp/student-v5-backend.log > docs/reviews/student-portal-v5-full-review/logs/backend-tail.log 2>/dev/null || true
-          tail -n 300 /tmp/student-v5-portal.log > docs/reviews/student-portal-v5-full-review/logs/portal-tail.log 2>/dev/null || true
+          mkdir -p "$REVIEW_OUTPUT/logs"
+          tail -n 300 /tmp/student-v5-backend.log > "$REVIEW_OUTPUT/logs/backend-tail.log" 2>/dev/null || true
+          tail -n 300 /tmp/student-v5-portal.log > "$REVIEW_OUTPUT/logs/portal-tail.log" 2>/dev/null || true
 
       - name: 上传复审证据
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: student-portal-v5-full-review
-          path: docs/reviews/student-portal-v5-full-review
-          if-no-files-found: warn
+          path: ${{ runner.temp }}/student-portal-v5-full-review
+          if-no-files-found: error
           retention-days: 14
