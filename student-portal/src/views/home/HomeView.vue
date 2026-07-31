@@ -87,7 +87,7 @@
               <button v-for="m in msgs" :key="m.id" type="button" class="home-message" @click="goTarget(m.link || m.module)">
                 <span class="home-message__dot" :class="{ 'is-read': m.read }" />
                 <span class="home-message__main">
-                  <b :class="{ 'is-read': m.read }">{{ m.title }}</b>
+                  <b :class="{ 'is-read': m.read }">{{ messageTitle(m.title) }}</b>
                   <small>{{ modName(m.module) }} · {{ fmt(m.time) }}</small>
                 </span>
               </button>
@@ -132,6 +132,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSessionStore } from '../../stores/session'
 import { portalApi } from '../../services/portalApi'
+import { localizeStatusSuffixText } from '../../services/visibleEnumLocalization'
 import { MODULES, moduleByKey } from '../../platform/moduleRegistry'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
@@ -212,6 +213,7 @@ function statusLabel(s) {
   if (STATUS_LABELS[key]) return STATUS_LABELS[key]
   return /^[A-Z0-9_]+$/.test(raw) ? '状态待确认' : raw
 }
+function messageTitle(value) { return localizeStatusSuffixText(value || '系统通知') }
 function modName(key) { return moduleByKey(key)?.title || (String(key || '').includes('academic') ? '教务学业' : key ? '系统' : '') }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(5, 16) : '' }
 function goTarget(target) {
