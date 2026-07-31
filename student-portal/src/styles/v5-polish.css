@@ -11,14 +11,27 @@
   outline-offset: 2px;
 }
 
+/* 浅色主题的辅助正文必须达到普通小字号可读对比度。 */
+html:not([data-sp-theme='dark']) {
+  --t3: #5f6f89;
+}
+
+/* 首页渐变保留明确底色：既是渐变失效回退，也便于无障碍工具识别真实背景。 */
+.home-hero {
+  background-color: var(--pri) !important;
+}
+
 /* 可点击主色文字统一使用经过对比度校正的 token。 */
 :where(.sp-link, .link, .todo__go, .msg__all, .section-route__back) {
   color: var(--pri-text, var(--pri));
 }
 
-/* 毕设旧局部样式原本写死了粉色和浅灰；统一回到可读 token。 */
-.route-graduation :where(.gd-eyebrow) {
+/* 毕设旧局部样式原本写死了蓝色、粉色和浅灰；统一回到当前主题的可读 token。 */
+.route-graduation :where(.gd-eyebrow, .gdep__refresh) {
   color: var(--pri-text, var(--pri)) !important;
+}
+.route-graduation .gdep__refresh {
+  border-color: var(--pri-100) !important;
 }
 .route-graduation :where(.gd-hero p, .gd-step p, .gd-step__detail, .gd-rule, .gdep__text, .gdep__hint) {
   color: var(--t3) !important;
@@ -74,13 +87,30 @@ html[data-sp-theme='dark'] :where(
   color: var(--t1) !important;
 }
 
-/* 1024px 等窄桌面：宽表格在卡片内横向滚动，不被内容区裁切。 */
+/* 1024px 等窄桌面：只对两张实测溢出的教务表格采用固定布局并允许单元格换行。 */
 @media (max-width: 1100px) {
-  .route-academic .sp-content__page :where(.sp-card, .panel):has(> .sp-table) {
-    overflow-x: auto !important;
+  :where(.view-academic-warning, .view-academic-graduation) .section-route__body,
+  :where(.view-academic-warning, .view-academic-graduation) .section-route__body > .sp-page,
+  :where(.view-academic-warning, .view-academic-graduation) .sp-autotable,
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table-wrap {
+    min-width: 0;
+    max-width: 100%;
   }
-  .route-academic .sp-content__page :where(.sp-card, .panel):has(> .sp-table) > .sp-table {
-    min-width: 720px;
+
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table-wrap {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table {
+    width: 100%;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table :where(th, td) {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 
