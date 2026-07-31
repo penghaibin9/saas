@@ -9,7 +9,7 @@
         </thead>
         <tbody>
           <tr v-for="(row, ri) in list" :key="ri">
-            <td v-for="c in cols" :key="c.key">{{ fmt(row[c.key]) }}</td>
+            <td v-for="c in cols" :key="c.key">{{ fmt(row[c.key], c.key) }}</td>
           </tr>
         </tbody>
       </table>
@@ -20,6 +20,7 @@
 <script setup>
 import { computed } from 'vue'
 import StateBlock from './StateBlock.vue'
+import { localizeVisibleEnumText } from '../services/visibleEnumLocalization'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -37,11 +38,15 @@ const cols = computed(() => {
   return Object.keys(first).slice(0, 8).map((k) => ({ key: k, label: k }))
 })
 
-function fmt(v) {
+const ENUM_FIELD_RE = /(?:status|type|node|level|mode|stage|kind|category)$/i
+
+function fmt(v, key = '') {
   if (v == null || v === '') return '—'
   if (typeof v === 'boolean') return v ? '是' : '否'
   if (typeof v === 'object') return Array.isArray(v) ? `${v.length} 项` : JSON.stringify(v)
-  return String(v)
+  const text = String(v)
+  // 只在明确的状态、类型、审核节点等语义列中转换整个枚举值。
+  return ENUM_FIELD_RE.test(String(key || '')) ? localizeVisibleEnumText(text) : text
 }
 </script>
 
