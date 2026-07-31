@@ -19,22 +19,20 @@ def _route_signatures(router):
     }
 
 
-def test_nonzero_call_upload_alias_is_delegated_not_duplicated():
+def test_legacy_upload_alias_is_removed_and_authoritative_contract_is_single():
     legacy = _route_signatures(session_router.router)
-    assert ("/upload", frozenset({"POST"})) in legacy
+    assert ("/upload", frozenset({"POST"})) not in legacy
     assert ("/meta/{file_id}", frozenset({"GET"})) not in legacy
     assert ("/download/{file_id}", frozenset({"GET"})) not in legacy
-
-    source = inspect.getsource(session_router.delegated_legacy_upload)
-    assert "upload_contract(" in source
-    assert "file_service.store_upload" not in source
-    assert '"Deprecation": "true"' in source
-    assert '"X-File-Center-Contract": "AUTHORITATIVE_UPLOAD_DELEGATE"' in source
+    assert not hasattr(session_router, "delegated_legacy_upload")
 
     authoritative = _route_signatures(authoritative_router.router)
     assert ("/files", frozenset({"POST"})) in authoritative
     assert ("/files/{file_id}", frozenset({"GET"})) in authoritative
     assert ("/files/download/{file_id}", frozenset({"GET"})) in authoritative
+    source = inspect.getsource(authoritative_router.upload_file)
+    assert "upload_contract(" in source
+    assert "file_service.store_upload" not in source
 
 
 def test_upload_session_and_scan_routes_remain_available():
