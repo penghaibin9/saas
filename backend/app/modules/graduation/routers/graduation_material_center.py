@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Query
-from fastapi.responses import FileResponse
 from sqlalchemy import select
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import has_permission, require_permission
 from app.core.response import success
@@ -16,7 +16,6 @@ from app.modules.graduation.services import graduation_material_catalog_service 
 from app.modules.graduation.services import graduation_material_center_service as center
 from app.modules.graduation.services import graduation_material_delivery_service as archive_export
 from app.modules.graduation.services import graduation_material_ticket_service as tickets
-from app.services import audit_log
 from app.services.data_exchange_job_service import create_download_ticket, revoke_export_job
 from app.services.db_service import _tid, session
 
@@ -270,11 +269,14 @@ def material_file_ticket(file_id: int, body: dict = Body(...), user=Depends(get_
 @router.get("/material-center/files/{file_id}/preview", summary="使用短时票据预览当前安全材料")
 def preview_material(file_id: int, ticket: str = Query(...), user=Depends(get_current_user)):
     path, filename = tickets.consume_ticket(file_id, "preview", ticket, user)
-    audit_log.record("GRADUATION_VERSIONED_MATERIAL_PREVIEW", f"graduation-file:{file_id}")
-    response = FileResponse(str(path), filename=filename, content_disposition_type="inline")
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Cache-Control"] = "private, no-store"
-    return response
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="GRADUATION_VERSIONED_MATERIAL_PREVIEW",
+        audit_target=f"graduation-file:{file_id}",
+        inline=True,
+        audit_detail={"fileId": str(file_id), "surface": "STAFF_PC"},
+    )
 
 
 @router.get("/material-center/files/{file_id}/download", summary="下载当前安全材料版本（旧 URL 兼容）")
@@ -285,21 +287,25 @@ def download_material(
         tickets.consume_ticket(file_id, "download", ticket, user)
         if ticket else center.resolve_material_download(file_id, user, student_mode=False)
     )
-    audit_log.record("GRADUATION_VERSIONED_MATERIAL_DOWNLOAD", f"graduation-file:{file_id}")
-    response = FileResponse(str(path), filename=filename, content_disposition_type="attachment")
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Cache-Control"] = "private, no-store"
-    return response
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="GRADUATION_VERSIONED_MATERIAL_DOWNLOAD",
+        audit_target=f"graduation-file:{file_id}",
+        audit_detail={"fileId": str(file_id), "ticketed": bool(ticket)},
+    )
 
 
 @router.get("/material-center/packages/{file_id}/download", summary="旧毕业设计归档 ZIP/Excel 下载兼容")
 def download_package(file_id: int, user=Depends(get_current_user)):
     path, filename = center.resolve_package_download(file_id, user)
-    audit_log.record("GRADUATION_ARCHIVE_PACKAGE_DOWNLOAD", f"graduation-package:{file_id}")
-    response = FileResponse(str(path), filename=filename, content_disposition_type="attachment")
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Cache-Control"] = "private, no-store"
-    return response
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="GRADUATION_ARCHIVE_PACKAGE_DOWNLOAD",
+        audit_target=f"graduation-package:{file_id}",
+        audit_detail={"fileId": str(file_id)},
+    )
 
 
 # 下列同 URL 路由必须先于旧 Router 注册，使正式审核和备案直接受公共版本门禁保护。
