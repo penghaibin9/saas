@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   prepare:
-    name: 吸收 main V5 + 阶段 6 夹具 + COS SDK lock
+    name: 吸收 main V5 + 阶段 6 夹具 + 构建输入收口
     runs-on: ubuntu-24.04
     outputs:
       head_sha: ${{ steps.head.outputs.sha }}
@@ -30,7 +30,7 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Merge current main and preserve graduation material entry
+      - name: Merge current main and apply exact closure patches
         shell: bash
         run: |
           set -euo pipefail
@@ -108,8 +108,45 @@ jobs:
             ),
 '''
           phase6_path.write_text(phase6[:seed_start] + seed + phase6[seed_end:], encoding='utf-8')
+
+          file_service_path = Path('backend/app/services/file_service.py')
+          file_service = file_service_path.read_text(encoding='utf-8')
+          import_anchor = 'from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED, SCAN_PENDING\n'
+          import_line = 'from app.services.file_storage_write_context import storage_write_scope\n'
+          if import_line not in file_service:
+              if import_anchor not in file_service:
+                  raise SystemExit('file_service import anchor missing')
+              file_service = file_service.replace(import_anchor, import_anchor + import_line, 1)
+          upload_old = '        backend.persist(key, target)\n'
+          upload_new = '        with storage_write_scope(biz_type):\n            backend.persist(key, target)\n'
+          if upload_new not in file_service:
+              if file_service.count(upload_old) != 1:
+                  raise SystemExit('store_upload persist anchor must match exactly once')
+              file_service = file_service.replace(upload_old, upload_new, 1)
+          bytes_old = '    backend.persist(key, target)\n'
+          bytes_new = '    with storage_write_scope(biz_type):\n        backend.persist(key, target)\n'
+          if bytes_new not in file_service:
+              if file_service.count(bytes_old) != 1:
+                  raise SystemExit('store_bytes persist anchor must match exactly once')
+              file_service = file_service.replace(bytes_old, bytes_new, 1)
+          if file_service.count('with storage_write_scope(biz_type):') < 2:
+              raise SystemExit('authoritative server write paths are not module scoped')
+          file_service_path.write_text(file_service, encoding='utf-8')
+
+          aggregate_path = Path('backend/app/models/__init__.py')
+          aggregate = aggregate_path.read_text(encoding='utf-8')
+          quota_import = 'from app.models.file_quota import FileStorageQuotaReservation  # noqa: F401\n'
+          if quota_import not in aggregate:
+              anchor = 'from app.models.file import FileObject  # noqa: F401\n'
+              if anchor not in aggregate:
+                  raise SystemExit('models aggregate file anchor missing')
+              aggregate = aggregate.replace(anchor, anchor + quota_import, 1)
+          aggregate_path.write_text(aggregate, encoding='utf-8')
           PY
-          python -m py_compile backend/tests/graduation_material_center_mysql_acceptance.py
+          python -m py_compile \
+            backend/app/services/file_service.py \
+            backend/app/models/__init__.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py
           test -z "$(git diff --name-only --diff-filter=U)"
       - name: Generate exact npm lock for official COS SDK
         working-directory: frontend
@@ -124,6 +161,8 @@ jobs:
             student-portal/src/styles/v5-overrides.css \
             student-portal/src/styles/v5-polish.css \
             student-portal/src/views/home/HomeView.vue \
+            backend/app/models/__init__.py \
+            backend/app/services/file_service.py \
             backend/tests/graduation_material_center_mysql_acceptance.py \
             frontend/package.json \
             frontend/package-lock.json \
@@ -131,7 +170,7 @@ jobs:
           test -z "$(git diff --name-only --diff-filter=U)"
           git diff --cached --check
           if ! git diff --cached --quiet || git rev-parse -q --verify MERGE_HEAD >/dev/null; then
-            git commit -m "merge(main): absorb portal V5 and finalize file center build inputs"
+            git commit -m "merge(main): absorb portal V5 and finalize file center inputs"
             git push origin HEAD:audit/file-capability-inventory
           fi
       - id: head
@@ -289,7 +328,7 @@ jobs:
 
           | 门禁 | 结果 |
           |---|---|
-          | 吸收 main V5 / 阶段 6 夹具 / COS SDK lock | ${PREPARE} |
+          | 吸收 main V5 / 阶段 6 夹具 / COS SDK lock / 模块配额作用域 | ${PREPARE} |
           | 能力清单 / 严格调用扫描 / 上传合同 / 密钥审计 | ${SCAN} |
           | MySQL 8 / Alembic 0154 / 阶段 6–10 pytest / 治理 worker | ${MYSQL} |
           | 管理 PC lint / test / build | ${ADMIN} |
