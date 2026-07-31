@@ -1,0 +1,65 @@
+name: PR27 acceptance runner repair
+
+on:
+  push:
+    branches:
+      - codex/teacher-pc-v2-html-library
+    paths:
+      - .github/workflows/pr27-acceptance-runner-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/teacher-pc-v2-html-library
+          fetch-depth: 0
+
+      - name: Patch keyboard chord and favicon handling
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs')
+          text = path.read_text(encoding='utf-8')
+
+          old_key = "          await page.keyboard.press(index % 3 === 0 ? 'Shift+Tab' : 'Tab')"
+          new_key = """          if (index % 3 === 0) {
+            await page.keyboard.down('Shift')
+            await page.keyboard.press('Tab')
+            await page.keyboard.up('Shift')
+          } else {
+            await page.keyboard.press('Tab')
+          }"""
+          assert text.count(old_key) == 1, text.count(old_key)
+          text = text.replace(old_key, new_key, 1)
+
+          old_server = "    const raw = decodeURIComponent(String(request.url || '/').split('?')[0]).replace(/^\\/+/, '')\n    const target = path.resolve(ROOT, raw || 'index.html')"
+          new_server = """    const raw = decodeURIComponent(String(request.url || '/').split('?')[0]).replace(/^\\/+/, '')
+    if (raw === 'favicon.ico') {
+      response.writeHead(204)
+      response.end()
+      return
+    }
+    const target = path.resolve(ROOT, raw || 'index.html')"""
+          assert text.count(old_server) == 1, text.count(old_server)
+          text = text.replace(old_server, new_server, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify runner syntax
+        run: node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+
+      - name: Commit repair and remove one-shot workflow
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+          git rm .github/workflows/pr27-acceptance-runner-repair.yml
+          git commit -m "fix(prototype): repair cross-browser acceptance runner"
+          git push origin HEAD:codex/teacher-pc-v2-html-library
