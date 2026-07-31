@@ -49,12 +49,6 @@ export function chooseSingleFile({ count = 1 } = {}) {
   })
 }
 
-function uploadPath({ bizType = 'ATTACHMENT', bizId = '' } = {}) {
-  const parts = [`bizType=${enc(String(bizType || 'ATTACHMENT'))}`]
-  if (bizId !== undefined && bizId !== null && String(bizId) !== '') parts.push(`bizId=${enc(String(bizId))}`)
-  return `/files/upload?${parts.join('&')}`
-}
-
 function fileExtension(fileName) {
   const name = String(fileName || '').toLowerCase()
   const index = name.lastIndexOf('.')
@@ -95,7 +89,7 @@ export const fileSdk = {
   async upload(file, options = {}) {
     const filePath = file?.path || file?.tempFilePath
     if (!filePath) throw { code: 'FILE_REQUIRED', biz: true, message: '请选择要上传的文件' }
-    return normalizeFile(await realUpload(uploadPath(options), filePath, {
+    return normalizeFile(await realUpload('/files', filePath, {
       name: 'file',
       formData: {
         bizType: String(options.bizType || 'ATTACHMENT'),
