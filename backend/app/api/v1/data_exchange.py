@@ -4,10 +4,10 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Header, Query, UploadFile
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import require_any_permission, require_permission
@@ -292,34 +292,11 @@ def download_export_file(
     )),
 ):
     path, filename = jobs.consume_download_ticket(job_id, ticket, user=user)
-    return FileResponse(
+    return validated_local_file_response(
         path,
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        audit_action="DATA_EXCHANGE_EXPORT_DOWNLOAD",
+        audit_target=f"data-exchange-export:{job_id}",
+        audit_detail={"jobId": str(job_id), "ticketConsumed": True},
     )
-
-
-@router.post("/exports/{job_id}/revoke", summary="撤销尚未过期的导出文件")
-def revoke_export(
-    job_id: str,
-    body: RevokeExportRequest,
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.audit.sensitive.view",
-    )),
-):
-    return success(jobs.revoke_export_job(
-        job_id,
-        expected_version=body.expectedVersion,
-        reason=body.reason,
-        user=user,
-    ), message="导出任务已撤销")
-
-
-@router.post("/maintenance/cleanup-expired", summary="清理当前学校过期任务与可重建字节")
-def cleanup_expired(
-    user=Depends(require_permission("systemAdmin.file.manage")),
-):
-    from app.services.data_exchange_cleanup_service import cleanup_current_tenant_expired_jobs
-
-    return success(cleanup_current_tenant_expired_jobs(), message="当前学校过期任务清理完成")
