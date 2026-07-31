@@ -19,6 +19,7 @@ jobs:
   apply:
     name: 应用已复审的精确前端修复
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
