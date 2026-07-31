@@ -1,0 +1,23 @@
+entries:
+  - module: file-center
+    client: admin-pc
+    route: frontend/src/services/file/cosBrowserSdk.js
+    page: frontend/src/services/file/cosBrowserSdk.js
+    action: upload+multipart+pause+resume
+    fileCategory: COS_BROWSER_SDK
+    api: npm:cos-js-sdk-v5@1.10.1
+    backendService: backend/app/services/storage/production.py
+    storageMode: BUILD_TIME_NPM_BUNDLE
+    authMode: exact-key-STS-only
+    dataScope: tenant+actor+upload-session+exact-object-key
+    versioned: false
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '8'
+    notes: 管理 PC 由 package-lock 固定官方 SDK；禁止运行时 CDN 注入和前端永久密钥。
