@@ -4,7 +4,6 @@ import io
 from pathlib import Path
 
 from openpyxl import Workbook
-from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.context import set_current_user, set_tenant
@@ -17,6 +16,22 @@ from app.modules.academic_affairs.services.academic_export_compat_service import
 from app.services import storage
 
 TENANT_ID = 1000000000000000001
+
+
+def _effective_routes(routes):
+    """FastAPI 0.137+ 将 include_router 保留为树；展开后继续验证真实路由顺序。"""
+    try:
+        from fastapi.routing import iter_route_contexts
+    except ImportError:  # pragma: no cover - 兼容旧 FastAPI
+        iter_route_contexts = None
+    if iter_route_contexts is not None:
+        yield from iter_route_contexts(routes)
+        return
+    for route in routes:
+        if hasattr(route, "effective_route_contexts"):
+            yield from route.effective_route_contexts()
+        else:
+            yield route
 
 
 def _xlsx() -> bytes:
@@ -104,8 +119,8 @@ def test_all_high_frequency_legacy_exports_have_task_backed_adapters():
     }
     actual = {
         (route.path, method)
-        for route in compat_router.router.routes
-        for method in (route.methods or set())
+        for route in _effective_routes(compat_router.router.routes)
+        for method in (getattr(route, "methods", None) or set())
         if method not in {"HEAD", "OPTIONS"}
     }
     assert expected <= actual
@@ -121,7 +136,8 @@ def test_compatibility_routes_precede_historical_streaming_routes():
         "/academic-affairs/stats/export",
         "/academic-affairs/archive/batches/{bid}/export",
     }
+    effective = list(_effective_routes(router.routes))
     for path in watched:
-        matches = [route for route in router.routes if getattr(route, "path", None) == path]
+        matches = [route for route in effective if getattr(route, "path", None) == path]
         assert len(matches) >= 2, path
         assert matches[0].endpoint.__module__.endswith("academic_export_compat_router"), path
