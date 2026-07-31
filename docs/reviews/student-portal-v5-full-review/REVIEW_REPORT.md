@@ -1,150 +1,135 @@
-# Student Portal V5 第一阶段真实页面复审报告
+# Student Portal V5 最终完整复审报告
 
-- 生成时间：2026-07-31T02:11:41.937Z
-- 执行方式：real MySQL + real password login + Chromium
-- 页面：0/14 通过；有问题 14；阻塞 0；未检查 0
-- 三级 tab：检查 42；有问题 42
-- 六套主题：检查 6；有问题 0
-- 多分辨率：检查 36；有问题 36
-- 控制台错误：1；失败网络请求：1
+- 最终复验时间：2026-07-31T04:18:32.000Z
+- 复验代码：`50cf876547fbc1ea74ac80632de89048690a03b3`
+- 分支：`agent/student-portal-v5-full-review`
+- PR：Draft #30
+- 执行方式：真实 MySQL + 真实账号密码登录 + 真实 API + Chromium
+- 证据来源：GitHub Actions `Student Portal V5 Full Review` run #42
+- Artifact：`student-portal-v5-full-review`，SHA-256 `36ee0d1922ef049209ce8c7fc2d645f203787c28be98398343f15a637d84e585`
 
-## 页面验收矩阵
+## 一、总体结论
 
-| 路由 | 页面 | 模块 | 结果 | tab 数 | 主要问题 | 证据 |
-|---|---|---|---|---:|---|---|
-| `/home` | 首页工作台 | 公共门户 | 有问题 | 0 | 关键元素溢出 2 项 | [截图](screenshots/1920x1080--home-首页工作台.jpg) |
-| `/profile` | 我的档案 | 个人档案 | 有问题 | 0 | 关键元素溢出 1 项 | [截图](screenshots/1920x1080--profile-我的档案.jpg) |
-| `/academic` | 教务学业 | 教务学业 | 有问题 | 0 | 关键元素溢出 1 项 | [截图](screenshots/1920x1080--academic-教务学业.jpg) |
-| `/campus-service` | 学工事务 | 学工事务 | 有问题 | 8 | 关键元素溢出 1 项；请假销假: 切换后关键元素溢出 1 项；困难认定: 切换后关键元素溢出 1 项；奖学金与助学金: 切换后关键元素溢出 1 项；我的宿舍: 切换后关键元素溢出 1 项；处分申诉: 切换后关键元素溢出 1 项；心理自评: 切换后关键元素溢出 1 项；活动与第二课堂: 切换后关键元素溢出 1 项；谈心谈话: 切换后关键元素溢出 1 项 | [截图](screenshots/1920x1080--campus-service-学工事务.jpg) |
-| `/materials` | 材料补交 | 学工事务 | 有问题 | 3 | 关键元素溢出 1 项；待处理 3: 切换后关键元素溢出 1 项；已完成 2: 切换后关键元素溢出 1 项；全部 5: 切换后关键元素溢出 1 项 | [截图](screenshots/1920x1080--materials-材料补交.jpg) |
-| `/internship` | 岗位实习 | 岗位实习 | 有问题 | 14 | 关键元素溢出 1 项；我的实习: 切换后关键元素溢出 1 项；三方协议: 切换后关键元素溢出 1 项；每日打卡: 切换后关键元素溢出 1 项；实习请假: 切换后关键元素溢出 1 项；补卡申请: 切换后关键元素溢出 1 项；岗位意向: 切换后关键元素溢出 1 项；正式申请: 切换后关键元素溢出 1 项；调岗退岗: 切换后关键元素溢出 1 项；企业岗位库: 切换后关键元素溢出 1 项；实习保险: 切换后关键元素溢出 1 项；实习计划: 切换后关键元素溢出 1 项；实习求助: 切换后关键元素溢出 1 项；周报/月报/总结: 切换后关键元素溢出 1 项；实习成绩/自评: 切换后关键元素溢出 1 项 | [截图](screenshots/1920x1080--internship-岗位实习.jpg) |
-| `/internship/compliance` | 上岗合规与安全教育 | 岗位实习 | 有问题 | 0 | 关键元素溢出 1 项 | [截图](screenshots/1920x1080--internship-compliance-上岗合规与安全教育.jpg) |
-| `/employment` | 就业服务 | 就业服务 | 有问题 | 4 | 关键元素溢出 1 项；我的就业: 切换后关键元素溢出 1 项；生源核对: 切换后关键元素溢出 1 项；去向登记: 切换后关键元素溢出 1 项；签约材料: 切换后关键元素溢出 1 项 | [截图](screenshots/1920x1080--employment-就业服务.jpg) |
-| `/orientation` | 迎新报到 | 迎新报到 | 有问题 | 4 | 关键元素溢出 1 项；我的迎新: 切换后关键元素溢出 1 项；信息采集: 切换后关键元素溢出 1 项；绿色通道: 切换后关键元素溢出 1 项；离校: 切换后关键元素溢出 1 项 | [截图](screenshots/1920x1080--orientation-迎新报到.jpg) |
-| `/messages` | 消息通知 | 消息中心 | 有问题 | 5 | 关键元素溢出 1 项；全部: 点击后未呈现选中态；全部: 切换后关键元素溢出 1 项；待办 1: 点击后未呈现选中态；待办 1: 切换后关键元素溢出 1 项；通知 1: 点击后未呈现选中态；通知 1: 切换后关键元素溢出 1 项；服务进度 1: 点击后未呈现选中态；服务进度 1: 切换后关键元素溢出 1 项；消息设置: 点击后未呈现选中态；消息设置: 切换后关键元素溢出 1 项 | [截图](screenshots/1920x1080--messages-消息通知.jpg) |
-| `/service-hall` | 办事大厅 | 办事大厅 | 有问题 | 4 | 关键元素溢出 1 项；全部事项: 切换后关键元素溢出 1 项；教务学业类: 切换后关键元素溢出 1 项；学工事务类: 切换后关键元素溢出 1 项；毕业就业类: 切换后关键元素溢出 1 项 | [截图](screenshots/1920x1080--service-hall-办事大厅.jpg) |
-| `/graduation` | 毕业设计 | 毕业设计 | 有问题 | 0 | 关键元素溢出 1 项 | [截图](screenshots/1920x1080--graduation-毕业设计.jpg) |
-| `/not-enabled` | 门户未开通状态 | 公共状态页 | 有问题 | 0 | 关键元素溢出 1 项 | [截图](screenshots/1920x1080--not-enabled-门户未开通状态.jpg) |
-| `/module-disabled/not-real` | 模块未开通状态 | 公共状态页 | 有问题 | 0 | 关键元素溢出 1 项 | [截图](screenshots/1920x1080--module-disabled-not-real-模块未开通状态.jpg) |
+**结论：V5 方向成立，当前修复可以保留，已完成完整页面级复审和修复后复验。**
 
-## 三级 tab 检查
+本轮没有修改 `main`，没有修改后端、数据库、API 合同、权限、真实 tab key、路由语义或业务状态机。PR #30 必须继续保持 Draft，等待用户明确确认后才允许进入合并决策。
 
-### 学工事务（/campus-service）
-- ❌ 请假销假 · [截图](screenshots/1920x1080--campus-service-tab-请假销假.jpg) · 切换后关键元素溢出 1 项
-- ❌ 困难认定 · [截图](screenshots/1920x1080--campus-service-tab-困难认定.jpg) · 切换后关键元素溢出 1 项
-- ❌ 奖学金与助学金 · [截图](screenshots/1920x1080--campus-service-tab-奖学金与助学金.jpg) · 切换后关键元素溢出 1 项
-- ❌ 我的宿舍 · [截图](screenshots/1920x1080--campus-service-tab-我的宿舍.jpg) · 切换后关键元素溢出 1 项
-- ❌ 处分申诉 · [截图](screenshots/1920x1080--campus-service-tab-处分申诉.jpg) · 切换后关键元素溢出 1 项
-- ❌ 心理自评 · [截图](screenshots/1920x1080--campus-service-tab-心理自评.jpg) · 切换后关键元素溢出 1 项
-- ❌ 活动与第二课堂 · [截图](screenshots/1920x1080--campus-service-tab-活动与第二课堂.jpg) · 切换后关键元素溢出 1 项
-- ❌ 谈心谈话 · [截图](screenshots/1920x1080--campus-service-tab-谈心谈话.jpg) · 切换后关键元素溢出 1 项
+## 二、最终验收矩阵
 
-### 材料补交（/materials）
-- ❌ 待处理 3 · [截图](screenshots/1920x1080--materials-tab-待处理-3.jpg) · 切换后关键元素溢出 1 项
-- ❌ 已完成 2 · [截图](screenshots/1920x1080--materials-tab-已完成-2.jpg) · 切换后关键元素溢出 1 项
-- ❌ 全部 5 · [截图](screenshots/1920x1080--materials-tab-全部-5.jpg) · 切换后关键元素溢出 1 项
+- 页面路由：**36/36 通过**
+- 有问题页面：**0**
+- 阻塞页面：**0**
+- 未检查页面：**0**
+- 三级 tab / 子工作区：**69 项，问题 0**
+- 真实交互：**5 项，问题 0**
+- 六套主题：**6/6 通过，问题 0**
+- 多分辨率：**96 项，问题 0**
 
-### 岗位实习（/internship）
-- ❌ 我的实习 · [截图](screenshots/1920x1080--internship-tab-我的实习.jpg) · 切换后关键元素溢出 1 项
-- ❌ 三方协议 · [截图](screenshots/1920x1080--internship-tab-三方协议.jpg) · 切换后关键元素溢出 1 项
-- ❌ 每日打卡 · [截图](screenshots/1920x1080--internship-tab-每日打卡.jpg) · 切换后关键元素溢出 1 项
-- ❌ 实习请假 · [截图](screenshots/1920x1080--internship-tab-实习请假.jpg) · 切换后关键元素溢出 1 项
-- ❌ 补卡申请 · [截图](screenshots/1920x1080--internship-tab-补卡申请.jpg) · 切换后关键元素溢出 1 项
-- ❌ 岗位意向 · [截图](screenshots/1920x1080--internship-tab-岗位意向.jpg) · 切换后关键元素溢出 1 项
-- ❌ 正式申请 · [截图](screenshots/1920x1080--internship-tab-正式申请.jpg) · 切换后关键元素溢出 1 项
-- ❌ 调岗退岗 · [截图](screenshots/1920x1080--internship-tab-调岗退岗.jpg) · 切换后关键元素溢出 1 项
-- ❌ 企业岗位库 · [截图](screenshots/1920x1080--internship-tab-企业岗位库.jpg) · 切换后关键元素溢出 1 项
-- ❌ 实习保险 · [截图](screenshots/1920x1080--internship-tab-实习保险.jpg) · 切换后关键元素溢出 1 项
-- ❌ 实习计划 · [截图](screenshots/1920x1080--internship-tab-实习计划.jpg) · 切换后关键元素溢出 1 项
-- ❌ 实习求助 · [截图](screenshots/1920x1080--internship-tab-实习求助.jpg) · 切换后关键元素溢出 1 项
-- ❌ 周报/月报/总结 · [截图](screenshots/1920x1080--internship-tab-周报-月报-总结.jpg) · 切换后关键元素溢出 1 项
-- ❌ 实习成绩/自评 · [截图](screenshots/1920x1080--internship-tab-实习成绩-自评.jpg) · 切换后关键元素溢出 1 项
+| 业务范围 | 已检查内容 | 结果 |
+|---|---:|---|
+| 公共门户与状态页 | 首页、档案、家长入口、门户未开通、模块未开通、未知模块兼容 | 通过 |
+| 教务学业 | 工作台及 21 个独立/兼容路由，含考试子工作区与旧功能安全入口 | 通过 |
+| 学工事务 | 学工 8 个 tab、材料补交 3 个 tab | 通过 |
+| 岗位实习 | 实习 14 个 tab、上岗合规 3 个 tab | 通过 |
+| 就业、迎新、消息、办事大厅 | 17 个 tab/业务分组 | 通过 |
+| 毕业设计 | 主工作台与延期答辩/优秀成果扩展面板 | 通过 |
 
-### 就业服务（/employment）
-- ❌ 我的就业 · [截图](screenshots/1920x1080--employment-tab-我的就业.jpg) · 切换后关键元素溢出 1 项
-- ❌ 生源核对 · [截图](screenshots/1920x1080--employment-tab-生源核对.jpg) · 切换后关键元素溢出 1 项
-- ❌ 去向登记 · [截图](screenshots/1920x1080--employment-tab-去向登记.jpg) · 切换后关键元素溢出 1 项
-- ❌ 签约材料 · [截图](screenshots/1920x1080--employment-tab-签约材料.jpg) · 切换后关键元素溢出 1 项
+完整机器结果与全量截图位于 run #42 Artifact；仓库中的 `review-results.json` 保存最终摘要和 Artifact 指纹。
 
-### 迎新报到（/orientation）
-- ❌ 我的迎新 · [截图](screenshots/1920x1080--orientation-tab-我的迎新.jpg) · 切换后关键元素溢出 1 项
-- ❌ 信息采集 · [截图](screenshots/1920x1080--orientation-tab-信息采集.jpg) · 切换后关键元素溢出 1 项
-- ❌ 绿色通道 · [截图](screenshots/1920x1080--orientation-tab-绿色通道.jpg) · 切换后关键元素溢出 1 项
-- ❌ 离校 · [截图](screenshots/1920x1080--orientation-tab-离校.jpg) · 切换后关键元素溢出 1 项
+## 三、已修复问题
 
-### 消息通知（/messages）
-- ❌ 全部 · [截图](screenshots/1920x1080--messages-tab-全部.jpg) · 点击后未呈现选中态；切换后关键元素溢出 1 项
-- ❌ 待办 1 · [截图](screenshots/1920x1080--messages-tab-待办-1.jpg) · 点击后未呈现选中态；切换后关键元素溢出 1 项
-- ❌ 通知 1 · [截图](screenshots/1920x1080--messages-tab-通知-1.jpg) · 点击后未呈现选中态；切换后关键元素溢出 1 项
-- ❌ 服务进度 1 · [截图](screenshots/1920x1080--messages-tab-服务进度-1.jpg) · 点击后未呈现选中态；切换后关键元素溢出 1 项
-- ❌ 消息设置 · [截图](screenshots/1920x1080--messages-tab-消息设置.jpg) · 点击后未呈现选中态；切换后关键元素溢出 1 项
+### P0
 
-### 办事大厅（/service-hall）
-- ❌ 全部事项 · [截图](screenshots/1920x1080--service-hall-tab-全部事项.jpg) · 切换后关键元素溢出 1 项
-- ❌ 教务学业类 · [截图](screenshots/1920x1080--service-hall-tab-教务学业类.jpg) · 切换后关键元素溢出 1 项
-- ❌ 学工事务类 · [截图](screenshots/1920x1080--service-hall-tab-学工事务类.jpg) · 切换后关键元素溢出 1 项
-- ❌ 毕业就业类 · [截图](screenshots/1920x1080--service-hall-tab-毕业就业类.jpg) · 切换后关键元素溢出 1 项
+无。
 
-## 六套主题代表证据
+### P1
 
-- ✅ 学院蓝 · /home · [截图](screenshots/theme-blue--home.jpg)
-- ✅ 科技紫 · /academic · [截图](screenshots/theme-purple--academic.jpg)
-- ✅ 薄荷绿 · /internship · [截图](screenshots/theme-green--internship.jpg)
-- ✅ 活力橙 · /campus-service · [截图](screenshots/theme-orange--campus-service.jpg)
-- ✅ 樱花粉 · /graduation · [截图](screenshots/theme-pink--graduation.jpg)
-- ✅ 深邃黑 · /service-hall · [截图](screenshots/theme-dark--service-hall.jpg)
+1. 上次仅依靠公共 CSS，未真正形成教务独立三级页上下文导航。
+   - 已增加显式 `AcademicContextNav.vue`，保留旧业务状态机和真实 tab key。
+   - 教务独立路由与旧功能安全入口均已复验通过。
 
-## 多分辨率
+2. 学工宿舍调宿可选接口失败会拖累整个宿舍页。
+   - 前端已将可选调宿历史失败降级为提示，不伪造记录、不绕过权限。
 
-- ❌ 1440x900 /home：关键元素溢出 2 项 · [截图](screenshots/1440x900--home-responsive.jpg)
-- ❌ 1440x900 /profile：关键元素溢出 1 项
-- ❌ 1440x900 /academic：关键元素溢出 1 项 · [截图](screenshots/1440x900--academic-responsive.jpg)
-- ❌ 1440x900 /campus-service：关键元素溢出 1 项 · [截图](screenshots/1440x900--campus-service-responsive.jpg)
-- ❌ 1440x900 /materials：关键元素溢出 1 项
-- ❌ 1440x900 /internship：关键元素溢出 1 项 · [截图](screenshots/1440x900--internship-responsive.jpg)
-- ❌ 1440x900 /internship/compliance：关键元素溢出 1 项
-- ❌ 1440x900 /employment：关键元素溢出 1 项
-- ❌ 1440x900 /orientation：关键元素溢出 1 项
-- ❌ 1440x900 /messages：关键元素溢出 1 项
-- ❌ 1440x900 /service-hall：关键元素溢出 1 项
-- ❌ 1440x900 /graduation：关键元素溢出 1 项 · [截图](screenshots/1440x900--graduation-responsive.jpg)
-- ❌ 1366x768 /home：关键元素溢出 2 项 · [截图](screenshots/1366x768--home-responsive.jpg)
-- ❌ 1366x768 /profile：关键元素溢出 1 项
-- ❌ 1366x768 /academic：关键元素溢出 1 项 · [截图](screenshots/1366x768--academic-responsive.jpg)
-- ❌ 1366x768 /campus-service：关键元素溢出 1 项 · [截图](screenshots/1366x768--campus-service-responsive.jpg)
-- ❌ 1366x768 /materials：关键元素溢出 1 项
-- ❌ 1366x768 /internship：关键元素溢出 1 项 · [截图](screenshots/1366x768--internship-responsive.jpg)
-- ❌ 1366x768 /internship/compliance：关键元素溢出 1 项
-- ❌ 1366x768 /employment：关键元素溢出 1 项
-- ❌ 1366x768 /orientation：关键元素溢出 1 项
-- ❌ 1366x768 /messages：关键元素溢出 1 项
-- ❌ 1366x768 /service-hall：关键元素溢出 1 项
-- ❌ 1366x768 /graduation：关键元素溢出 1 项 · [截图](screenshots/1366x768--graduation-responsive.jpg)
-- ❌ 1024x768 /home：关键元素溢出 2 项 · [截图](screenshots/1024x768--home-responsive.jpg)
-- ❌ 1024x768 /profile：关键元素溢出 1 项
-- ❌ 1024x768 /academic：关键元素溢出 1 项 · [截图](screenshots/1024x768--academic-responsive.jpg)
-- ❌ 1024x768 /campus-service：关键元素溢出 1 项 · [截图](screenshots/1024x768--campus-service-responsive.jpg)
-- ❌ 1024x768 /materials：关键元素溢出 1 项
-- ❌ 1024x768 /internship：关键元素溢出 1 项 · [截图](screenshots/1024x768--internship-responsive.jpg)
-- ❌ 1024x768 /internship/compliance：关键元素溢出 1 项
-- ❌ 1024x768 /employment：关键元素溢出 1 项
-- ❌ 1024x768 /orientation：关键元素溢出 1 项
-- ❌ 1024x768 /messages：关键元素溢出 1 项
-- ❌ 1024x768 /service-hall：关键元素溢出 1 项
-- ❌ 1024x768 /graduation：关键元素溢出 1 项 · [截图](screenshots/1024x768--graduation-responsive.jpg)
+### P2
 
-## 登录、权限与刷新
+1. 复杂模块侧栏、公共页宽度和局部页面存在错误溢出判断及真实窄屏溢出。
+   - 修正公共布局检测和页面容器。
+   - 修正 `/academic/warning`、`/academic/graduation` 在 1024×768 的宽表格溢出。
+   - 最终 96/96 分辨率用例通过。
 
-- ✅ unauthenticated direct route redirects to login · http://127.0.0.1:5199/login?redirect=/academic
-- ✅ student real password login · http://127.0.0.1:5199/home
+2. 六套主题存在浅灰文字对比度不足、毕设扩展面板写死蓝色和浅灰。
+   - 提升浅色主题辅助文字 token 对比度。
+   - 毕设扩展面板完整接入主题 surface、文字、边框、按钮与输入框 token。
+   - 最终 6/6 主题通过，自动对比度问题为 0。
 
-## 控制台与网络错误
+### P3
 
-- console · route:/campus-service · Failed to load resource: the server responded with a status of 403 (Forbidden)
-- network · route:/campus-service · GET 403 http://127.0.0.1:8000/api/v1/mobile/affairs/dorm/transfers/my
+- 首页渐变增加明确背景回退值。
+- 双列网格相邻卡片间距归零，避免第二列下沉。
+- 焦点态、按钮文字、表格悬停与深色主题细节统一。
 
-## 判定边界
+## 四、真实交互复验
 
-- 本报告使用真实数据库、真实账号密码和真实接口，不调用 `/auth/mock-login`。
-- 自动化能够证明页面可达、tab 可切换、刷新不丢失、主题生效以及常见溢出问题。
-- 自动化不会因为公共 CSS 已命中就判定“逐页设计完成”；还必须对截图进行人工视觉复审并形成 P0–P3 问题清单。
+以下 5 项全部通过：
+
+1. 顶栏搜索将关键词带入办事大厅并立即筛选。
+2. 学籍异动向导可以从类型选择进入事由步骤。
+3. 实习工作台与上岗合规页面双向跳转。
+4. 教务独立三级页可通过上下文导航返回教务工作台。
+5. 主题切换后刷新仍能保持。
+
+## 五、主题与分辨率复验
+
+六套主题代表页面全部通过：
+
+- 深海蓝：首页
+- 科技紫：教务成绩
+- 薄荷绿：岗位实习
+- 活力橙：学工事务
+- 樱花粉：毕业设计
+- 深邃黑：办事大厅
+
+分辨率覆盖：1920×1080、1440×900、1366×768、1024×768。最终未发现文档横向溢出、关键元素出视口、弹窗越界或主题不可读问题。
+
+## 六、控制台与网络观察
+
+原始诊断仍记录 1 条 403 和 7 条 `net::ERR_ABORTED`，但它们不属于本轮 UI 阻断故障：
+
+1. `GET /api/v1/mobile/affairs/dorm/transfers/my` 返回 403。
+   - 这是宿舍调宿历史的可选权限接口。
+   - 页面已按真实权限结果降级，不绕权、不伪造记录，宿舍主信息和其他学工业务正常。
+   - 因本任务禁止修改后端和权限，本轮只保留为已知观察项。
+
+2. 7 条 `net::ERR_ABORTED`。
+   - 发生在自动化功能检查快速跳转路由时，浏览器主动取消上一页面尚未结束的 GET 请求。
+   - 对应页面、tab 和交互检查均通过，不是服务端失败。
+
+## 七、工程闸门
+
+最终提交已通过：
+
+- 学生 PC lint、test、build
+- 学生门户固定演示凭据检查
+- 后端变更感知 pytest
+- 岗位实习生产闸门
+- 毕业设计生产闸门
+- 控制面合同与学生敏感字段权限检查
+- PC 管理端 lint + test + build
+- 小程序 H5 / 微信构建
+- 禁止文件检查
+
+独立 `File capability inventory` 工作流仍因仓库基线缺少其审计脚本失败，与本 PR 的学生门户修改无关，未通过修改业务代码规避。
+
+## 八、修改边界
+
+生产代码修改仅位于 `student-portal/` 前端，范围为公共主题与布局、教务上下文导航、少量页面展示和错误降级、响应式与可访问性样式。另外增加了复审脚本、GitHub Actions 复审工作流、报告与截图证据。
+
+没有修改后端、数据库迁移、API 合同、权限规则或业务状态机。
+
+## 九、剩余风险与最终状态
+
+- 剩余阻断风险：**无**。
+- 已知非阻断观察：宿舍调宿历史可选接口 403；自动化跳转造成的取消请求。
+- PR 当前状态：**Draft，等待用户确认**。
+- 未经用户明确说“可以合并”，禁止转 Ready、合并、删除分支或修改 main。
