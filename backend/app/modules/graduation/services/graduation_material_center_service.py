@@ -1457,216 +1457,30 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[\\/:*?\"<>|]+", "_", str(value or "").strip()) or "未命名"
 
 
-def _manifest_entries(db, manifest: ArchiveManifest, student: GraduationStudent,
-                      *, folder_prefix: str = "") -> tuple[list[dict], dict[str, bytes]]:
-    items = db.scalars(select(ArchiveManifestItem).where(
-        ArchiveManifestItem.tenant_id == _tid(), ArchiveManifestItem.manifest_id == int(manifest.id),
-        ArchiveManifestItem.is_deleted.is_(False),
-    ).order_by(ArchiveManifestItem.sort_no, ArchiveManifestItem.id)).all()
-    if not items:
-        raise AppException("DATA_CONFLICT", "归档清单没有真实文件版本")
-    payload: list[dict] = []
-    entries: dict[str, bytes] = {}
-    for item in items:
-        version = db.get(FileVersion, int(item.version_id))
-        file_obj = db.get(FileObject, int(item.file_object_id))
-        if not version or not file_obj or version.file_object_id != file_obj.id:
-            raise AppException("DATA_CONFLICT", "归档清单引用的文件版本已损坏")
-        if version.status not in {"APPROVED", "ARCHIVED"}:
-            raise AppException("DATA_CONFLICT", "归档版本审核状态已变化")
-        _require_file_ready(file_obj)
-        if file_obj.sha256 != item.sha256_snapshot:
-            raise AppException("DATA_CONFLICT", "归档材料哈希与冻结清单不一致")
-        path = get_backend().fetch_local(file_obj.file_key)
-        if not path or not path.exists():
-            raise AppException("DATA_CONFLICT", "归档材料真实字节不存在")
-        data = path.read_bytes()
-        digest = hashlib.sha256(data).hexdigest()
-        if digest != item.sha256_snapshot:
-            raise AppException("DATA_CONFLICT", "归档材料真实字节哈希校验失败")
-        archive_path = (
-            f"{folder_prefix}materials/{int(item.sort_no or 0):03d}_"
-            f"{_safe_name(item.material_code)}_{_safe_name(item.file_name_snapshot)}"
-        )
-        if archive_path in entries:
-            raise AppException("DATA_CONFLICT", "归档包内文件名冲突")
-        entries[archive_path] = data
-        payload.append({
-            "materialCode": item.material_code, "assetId": str(item.asset_id),
-            "versionId": str(item.version_id), "fileObjectId": str(item.file_object_id),
-            "fileName": item.file_name_snapshot, "archivePath": archive_path,
-            "sizeBytes": len(data), "sha256": digest,
-            "reviewStatus": item.review_status, "scanResult": item.scan_result,
-            "gdStudentId": str(student.id), "studentId": str(student.student_id or ""),
-            "studentName": student.name, "studentNo": student.student_no or "",
-        })
-    return payload, entries
-
-
-def _zip_bytes(entries: dict[str, bytes]) -> bytes:
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive_zip:
-        for name in sorted(entries):
-            archive_zip.writestr(name, entries[name])
-    return output.getvalue()
-
-
 def build_student_package(gd_student_id: int, user: dict) -> dict:
+    """旧内部调用兼容：委托阶段 6 权威 ExportJob，不再同步内存打包。"""
+    from app.modules.graduation.services import graduation_material_delivery_service as delivery
+
     with session() as db:
         student = db.get(GraduationStudent, int(gd_student_id))
         if not student or student.is_deleted or student.tenant_id != _tid():
             raise not_found("毕业设计学生不存在")
         assert_student_access(db, student, "archive.package")
-        archive = db.scalars(select(GraduationArchiveRecord).where(
-            GraduationArchiveRecord.tenant_id == _tid(), GraduationArchiveRecord.gd_student_id == student.id,
-            GraduationArchiveRecord.status == "FILED", GraduationArchiveRecord.is_deleted.is_(False),
-        ).with_for_update()).first()
-        if not archive:
-            raise AppException("DATA_CONFLICT", "仅已备案学生可生成归档包")
-        manifest = db.scalars(select(ArchiveManifest).where(
-            ArchiveManifest.tenant_id == _tid(), ArchiveManifest.module_code == MODULE_CODE,
-            ArchiveManifest.target_id == str(archive.id),
-            ArchiveManifest.status.in_(("FROZEN", "PACKAGED")), ArchiveManifest.is_deleted.is_(False),
-        ).order_by(ArchiveManifest.revision.desc()).with_for_update()).first()
-        if not manifest:
-            raise AppException("DATA_CONFLICT", "缺少已冻结的毕业设计版本清单")
-        payload_items, entries = _manifest_entries(db, manifest, student)
-        package_manifest = {
-            "schemaVersion": "GRADUATION_ARCHIVE_PACKAGE_V1",
-            "manifestId": str(manifest.id), "manifestRevision": int(manifest.revision),
-            "manifestSha256": manifest.manifest_sha256, "tenantId": str(_tid()),
-            "gdStudentId": str(student.id), "studentId": str(student.student_id or ""),
-            "batchId": str(student.batch_id or ""), "archiveBatchNo": archive.archive_batch_no,
-            "generatedAt": datetime.utcnow().isoformat() + "Z", "generatedBy": _actor_name(user),
-            "materialFileCount": len(payload_items), "items": payload_items,
-        }
-        entries["manifest.json"] = json.dumps(
-            package_manifest, ensure_ascii=False, indent=2, sort_keys=True,
-        ).encode("utf-8")
-        zip_data = _zip_bytes(entries)
-        meta = file_service.store_bytes(
-            zip_data,
-            f"毕业设计归档_{_safe_name(student.name)}_{_safe_name(student.student_no or str(student.id))}_m{manifest.revision}.zip",
-            biz_type="GRADUATION_ARCHIVE_PACKAGE", biz_id=str(student.id), mime_type="application/zip",
-            user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE",
-        )
-        manifest.package_file_id = int(meta["fileId"])
-        manifest.status = "PACKAGED"
-        db.commit()
-        return {
-            "fileId": str(meta["fileId"]), "fileName": meta["fileName"],
-            "sizeBytes": meta["sizeBytes"], "sha256": meta["sha256"],
-            "manifestId": str(manifest.id), "manifestRevision": int(manifest.revision),
-            "materialFileCount": len(payload_items), "packageReady": True,
-        }
+        batch_id = int(student.batch_id or 0)
+    job = delivery.create_export_job(
+        batch_id=batch_id, scope_type="STUDENT", scope_value=str(gd_student_id), user=user,
+    )
+    return delivery.run_export_job(int(job["id"]), user)
 
 
 def build_batch_package(batch_id: int, user: dict) -> dict:
-    from openpyxl import Workbook
-    from openpyxl.styles import Font
+    """旧内部调用兼容：委托阶段 6 权威批次 ExportJob。"""
+    from app.modules.graduation.services import graduation_material_delivery_service as delivery
 
-    with session() as db:
-        batch = db.get(GraduationBatch, int(batch_id))
-        if not batch or batch.is_deleted or batch.tenant_id != _tid():
-            raise not_found("毕业设计批次不存在")
-        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch.id))
-        archives = db.scalars(select(GraduationArchiveRecord).where(
-            GraduationArchiveRecord.tenant_id == _tid(), GraduationArchiveRecord.status == "FILED",
-            GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1]),
-            GraduationArchiveRecord.is_deleted.is_(False),
-        ).order_by(GraduationArchiveRecord.gd_student_id).with_for_update()).all()
-        entries: dict[str, bytes] = {}
-        all_items: list[dict] = []
-        manifest_rows: list[dict] = []
-        manifests: list[ArchiveManifest] = []
-        for archive in archives:
-            student = db.get(GraduationStudent, int(archive.gd_student_id))
-            if not student or student.batch_id != batch.id:
-                continue
-            assert_student_access(db, student, "archive.batch.package")
-            manifest = db.scalars(select(ArchiveManifest).where(
-                ArchiveManifest.tenant_id == _tid(), ArchiveManifest.module_code == MODULE_CODE,
-                ArchiveManifest.target_id == str(archive.id),
-                ArchiveManifest.status.in_(("FROZEN", "PACKAGED")), ArchiveManifest.is_deleted.is_(False),
-            ).order_by(ArchiveManifest.revision.desc()).with_for_update()).first()
-            if not manifest:
-                raise AppException("DATA_CONFLICT", f"学生{student.name}缺少冻结版本清单")
-            folder = f"students/{_safe_name(student.student_no or str(student.id))}_{_safe_name(student.name)}/"
-            item_rows, item_entries = _manifest_entries(db, manifest, student, folder_prefix=folder)
-            for path, data in item_entries.items():
-                if path in entries:
-                    raise AppException("DATA_CONFLICT", "批量归档包路径冲突")
-                entries[path] = data
-            all_items.extend(item_rows)
-            manifest_rows.append({
-                "gdStudentId": str(student.id), "studentNo": student.student_no or "",
-                "studentName": student.name, "manifestId": str(manifest.id),
-                "manifestRevision": int(manifest.revision),
-                "manifestSha256": manifest.manifest_sha256,
-                "materialFileCount": len(item_rows),
-            })
-            manifests.append(manifest)
-        if not all_items:
-            raise AppException("DATA_CONFLICT", "当前批次没有可打包的已备案真实材料")
-
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.title = "毕业设计归档索引"
-        headers = ["学号", "学生", "材料编码", "版本ID", "文件对象ID", "文件名", "大小", "SHA-256", "包内路径"]
-        sheet.append(headers)
-        for cell in sheet[1]:
-            cell.font = Font(bold=True)
-        for item in all_items:
-            sheet.append([
-                item["studentNo"], item["studentName"], item["materialCode"],
-                item["versionId"], item["fileObjectId"], item["fileName"],
-                item["sizeBytes"], item["sha256"], item["archivePath"],
-            ])
-        sheet.freeze_panes = "A2"
-        widths = [18, 14, 32, 16, 16, 36, 14, 68, 72]
-        for index, width in enumerate(widths, start=1):
-            sheet.column_dimensions[chr(64 + index)].width = width
-        excel_buffer = io.BytesIO()
-        workbook.save(excel_buffer)
-        excel_data = excel_buffer.getvalue()
-        excel_name = f"毕业设计归档索引_{_safe_name(batch.batch_name)}_{datetime.now():%Y%m%d_%H%M}.xlsx"
-        excel_meta = file_service.store_bytes(
-            excel_data, excel_name,
-            biz_type="GRADUATION_ARCHIVE_INDEX", biz_id=str(batch.id),
-            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE",
-        )
-        entries["归档索引.xlsx"] = excel_data
-        package_manifest = {
-            "schemaVersion": "GRADUATION_BATCH_ARCHIVE_PACKAGE_V1",
-            "tenantId": str(_tid()), "batchId": str(batch.id), "batchName": batch.batch_name,
-            "generatedAt": datetime.utcnow().isoformat() + "Z", "generatedBy": _actor_name(user),
-            "studentManifestCount": len(manifest_rows), "materialFileCount": len(all_items),
-            "indexFile": {"fileName": excel_name, "sha256": hashlib.sha256(excel_data).hexdigest()},
-            "studentManifests": manifest_rows, "items": all_items,
-        }
-        entries["manifest.json"] = json.dumps(
-            package_manifest, ensure_ascii=False, indent=2, sort_keys=True,
-        ).encode("utf-8")
-        zip_data = _zip_bytes(entries)
-        zip_meta = file_service.store_bytes(
-            zip_data, f"毕业设计批量归档_{_safe_name(batch.batch_name)}_{datetime.now():%Y%m%d_%H%M}.zip",
-            biz_type="GRADUATION_ARCHIVE_PACKAGE", biz_id=str(batch.id), mime_type="application/zip",
-            user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE",
-        )
-        for manifest in manifests:
-            manifest.package_file_id = int(zip_meta["fileId"])
-            manifest.status = "PACKAGED"
-        db.commit()
-        return {
-            "batchId": str(batch.id), "batchName": batch.batch_name,
-            "zipFileId": str(zip_meta["fileId"]), "zipFileName": zip_meta["fileName"],
-            "zipSha256": zip_meta["sha256"], "zipSizeBytes": zip_meta["sizeBytes"],
-            "excelFileId": str(excel_meta["fileId"]), "excelFileName": excel_meta["fileName"],
-            "excelSha256": excel_meta["sha256"],
-            "studentManifestCount": len(manifest_rows), "materialFileCount": len(all_items),
-            "packageReady": True,
-        }
+    job = delivery.create_export_job(
+        batch_id=int(batch_id), scope_type="BATCH", scope_value="", user=user,
+    )
+    return delivery.run_export_job(int(job["id"]), user)
 
 
 def resolve_material_download(file_id: int, user: dict, *, student_mode: bool = False):

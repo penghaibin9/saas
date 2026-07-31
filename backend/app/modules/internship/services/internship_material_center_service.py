@@ -601,102 +601,12 @@ def get_manifest(internship_id, user=None) -> dict | None:
 
 
 def build_versioned_package(internship_id, user=None) -> dict:
-    from sqlalchemy.exc import IntegrityError
-    with session() as db:
-        record = _assert_scope(db, internship_id, user, "生成真实版本实习归档包")
-        archive = db.scalar(select(InternshipArchive).where(
-            InternshipArchive.tenant_id == _tid(), InternshipArchive.internship_id == record.id,
-            InternshipArchive.status == "ARCHIVED", InternshipArchive.is_deleted.is_(False)))
-        if not archive:
-            raise AppException("DATA_CONFLICT", "仅已归档学生可生成归档包")
-        manifest = db.scalar(select(ArchiveManifest).where(
-            ArchiveManifest.tenant_id == _tid(), ArchiveManifest.module_code == MODULE_CODE,
-            ArchiveManifest.target_id == str(record.id), ArchiveManifest.status.in_(("FROZEN", "PACKAGED")),
-            ArchiveManifest.is_deleted.is_(False)).order_by(ArchiveManifest.revision.desc()).with_for_update())
-        if not manifest:
-            raise AppException("DATA_CONFLICT", "缺少已冻结的 file_version 归档清单")
-        items = db.scalars(select(ArchiveManifestItem).where(
-            ArchiveManifestItem.tenant_id == _tid(), ArchiveManifestItem.manifest_id == manifest.id,
-            ArchiveManifestItem.is_deleted.is_(False)).order_by(
-            ArchiveManifestItem.sort_no, ArchiveManifestItem.id)).all()
-        if not items:
-            raise AppException("DATA_CONFLICT", "归档清单没有真实文件版本")
-        payload_items = []; entries: dict[str, bytes] = {}
-        for item in items:
-            version = db.scalar(select(FileVersion).where(
-                FileVersion.id == item.version_id, FileVersion.tenant_id == _tid(),
-                FileVersion.is_deleted.is_(False)))
-            file_row = db.scalar(select(FileObject).where(
-                FileObject.id == item.file_object_id, FileObject.tenant_id == _tid(),
-                FileObject.is_deleted.is_(False)))
-            if not version or not file_row or version.file_object_id != file_row.id:
-                raise AppException("DATA_CONFLICT", "归档清单引用的文件版本已损坏")
-            if not (_file_ready(file_row) and version.status in READY_VERSION_STATUS):
-                raise AppException("DATA_CONFLICT", "归档材料安全状态已变化，禁止打包")
-            if file_row.sha256 != item.sha256_snapshot:
-                raise AppException("DATA_CONFLICT", "归档材料哈希与冻结清单不一致")
-            path = get_backend().fetch_local(file_row.file_key)
-            if not path or not path.exists():
-                raise AppException("DATA_CONFLICT", "归档材料字节不存在，禁止生成不完整归档包")
-            data = path.read_bytes(); digest = hashlib.sha256(data).hexdigest()
-            if digest != item.sha256_snapshot:
-                raise AppException("DATA_CONFLICT", "归档材料字节哈希校验失败")
-            safe_name = re.sub(r"[\\/:*?\"<>|]+", "_", item.file_name_snapshot or f"file-{file_row.id}")
-            archive_path = f"materials/{item.sort_no:03d}_{item.material_code.replace(':', '_')}_{safe_name}"
-            entries[archive_path] = data
-            payload_items.append({"materialCode": item.material_code, "assetId": str(item.asset_id),
-                "versionId": str(item.version_id), "fileObjectId": str(item.file_object_id),
-                "fileName": safe_name, "archivePath": archive_path, "sizeBytes": len(data),
-                "sha256": digest, "reviewStatus": item.review_status, "scanResult": item.scan_result})
-        package_manifest = {"schemaVersion": "INTERNSHIP_ARCHIVE_PACKAGE_FILE_VERSION_V1",
-            "manifestId": str(manifest.id), "manifestRevision": manifest.revision,
-            "manifestSha256": manifest.manifest_sha256, "tenantId": str(_tid()),
-            "internshipId": str(record.id), "studentId": str(record.student_id),
-            "batchId": str(record.batch_id or ""), "generatedAt": datetime.utcnow().isoformat() + "Z",
-            "generatedBy": _op_name(user), "items": payload_items}
-        entries["manifest.json"] = json.dumps(package_manifest, ensure_ascii=False,
-                                               indent=2, sort_keys=True).encode("utf-8")
-        output = io.BytesIO()
-        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive_zip:
-            for name in sorted(entries): archive_zip.writestr(name, entries[name])
-        zip_bytes = output.getvalue()
-        latest = int(db.scalar(select(func.max(InternshipEvidencePackage.package_version)).where(
-            InternshipEvidencePackage.tenant_id == _tid(),
-            InternshipEvidencePackage.package_type == "ARCHIVE",
-            InternshipEvidencePackage.target_id == record.id)) or 0)
-        package = InternshipEvidencePackage(
-            tenant_id=_tid(), package_type="ARCHIVE", batch_id=record.batch_id,
-            target_id=record.id, package_version=latest + 1, status="FAILED",
-            generated_by_name=_op_name(user), generated_at=datetime.utcnow(), row_count=1)
-        db.add(package)
-        try: db.flush()
-        except IntegrityError as exc:
-            raise AppException("DATA_CONFLICT", "归档包正在生成，请稍后重试") from exc
-        student = db.get(StudentProfile, record.student_id)
-        safe_student = re.sub(r"[\\/:*?\"<>|]+", "_", getattr(student, "real_name", "") or "学生")
-        meta = file_service.store_bytes(
-            zip_bytes, f"实习归档_{safe_student}_manifest{manifest.revision}_v{package.package_version}.zip",
-            biz_type="ARCHIVE_PACKAGE", biz_id=f"ARCHIVE:{record.id}", mime_type="application/zip",
-            user=user, visibility="BIZ_SCOPED", security_level="SENSITIVE")
-        package_manifest.update({"packageFileId": str(meta["fileId"]),
-            "packageSha256": meta["sha256"], "packageSizeBytes": meta["sizeBytes"]})
-        package.package_file_id = meta["fileId"]; package.package_sha256 = meta["sha256"]
-        package.package_size_bytes = meta["sizeBytes"]; package.manifest_json = package_manifest
-        package.included_items = payload_items; package.missing_items = []
-        package.rule_version = manifest.rule_version; package.metric_version = "file-version-manifest-v1"
-        package.status = "READY"; package.file_count = len(payload_items)
-        manifest.package_file_id = int(meta["fileId"]); manifest.status = "PACKAGED"
-        archive.package_file_id = str(meta["fileId"])
-        _trail(db, record.id, "VERSIONED_PACKAGE", {"manifestId": str(manifest.id),
-            "packageId": str(package.id), "packageVersion": package.package_version,
-            "fileId": str(meta["fileId"]), "sha256": meta["sha256"],
-            "fileVersionCount": len(payload_items)}, user)
-        db.commit()
-        return {"fileId": str(meta["fileId"]), "fileName": meta["fileName"],
-            "sizeBytes": meta["sizeBytes"], "sha256": meta["sha256"],
-            "packageId": str(package.id), "packageVersion": package.package_version,
-            "manifestId": str(manifest.id), "manifestRevision": manifest.revision,
-            "status": "READY", "packageReady": True}
+    """委托流式归档实现；冻结 Manifest 仍是唯一事实来源。"""
+    from app.modules.internship.services.internship_streaming_package_service import (
+        build_versioned_package as stream_package,
+    )
+
+    return stream_package(internship_id, user=user)
 
 
 def revoke_manifests(internship_id, reason: str, user=None) -> dict:
