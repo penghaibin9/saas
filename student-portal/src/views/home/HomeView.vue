@@ -103,7 +103,7 @@
               <div v-for="d in domains" :key="d.key" class="home-domain">
                 <span class="home-domain__dot" :class="{ 'is-on': d.hasData }" />
                 <span>{{ d.label }}</span>
-                <StatusTag :text="d.hasData ? statusLabel(d.status) : '未开始'" :tone="d.hasData ? 'primary' : 'default'" />
+                <StatusTag :text="d.hasData ? statusLabel(d.status) : '状态待同步'" :tone="d.hasData ? 'primary' : 'default'" />
               </div>
             </div>
           </section>
@@ -177,7 +177,7 @@ const metrics = computed(() => {
   return [
     { title: '已修学分', value: c.obtainedCredits ?? 0, unit: '', sub: `培养要求 ${c.requiredCredits ?? '—'}`, color: 'var(--t1)' },
     { title: '平均绩点 GPA', value: c.gpa ?? '—', unit: '', sub: '截至最新学期', color: 'var(--t1)' },
-    { title: '待办事项', value: todos.value.length, unit: '项', sub: '待我处理', color: todos.value.length ? 'var(--pri)' : 'var(--t1)' },
+    { title: '待办事项', value: todos.value.length, unit: '项', sub: '待我处理', color: todos.value.length ? 'var(--pri-text, var(--pri))' : 'var(--t1)' },
     { title: '预警提醒', value: alerts.value.length, unit: '项', sub: '需跟进', color: alerts.value.length ? 'var(--danger-fg)' : 'var(--ok-fg)' }
   ]
 })
@@ -186,7 +186,7 @@ const ctaModule = computed(() => topAlert.value?.route || topAlert.value?.domain
 const ctaText = computed(() => (topAlert.value ? '立即处理' : todos.value.length ? '去办理' : ''))
 const quick = computed(() => MODULES.filter((m) => m.key !== 'dashboard').slice(0, 8))
 
-const STATUS_LABELS = { CHECKED_IN: '已报到', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验' }
+const STATUS_LABELS = { CHECKED_IN: '已报到', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验', UNEMPLOYED: '暂未就业', EMPLOYED: '已就业', JOB_SEEKING: '求职中', NOT_STARTED: '尚未开始' }
 const DONE_STATES = new Set(['DONE', 'APPROVED', 'VERIFIED', 'CHECKED_IN', 'SIGNED'])
 const journey = computed(() => {
   const defs = [
@@ -201,11 +201,17 @@ const journey = computed(() => {
     const domain = domains.value.find((item) => def.aliases.includes(item.key) || def.aliases.includes(item.domain)) || {}
     const done = !!domain.hasData && DONE_STATES.has(String(domain.status || '').toUpperCase())
     const current = !!domain.hasData && !done
-    return { ...def, done, current, state: domain.hasData ? statusLabel(domain.status) : '未开始' }
+    return { ...def, done, current, state: domain.hasData ? statusLabel(domain.status) : '状态待同步' }
   })
 })
 
-function statusLabel(s) { return STATUS_LABELS[s] || s || '进行中' }
+function statusLabel(s) {
+  const raw = String(s || '').trim()
+  if (!raw) return '状态待确认'
+  const key = raw.toUpperCase()
+  if (STATUS_LABELS[key]) return STATUS_LABELS[key]
+  return /^[A-Z0-9_]+$/.test(raw) ? '状态待确认' : raw
+}
 function modName(key) { return moduleByKey(key)?.title || (String(key || '').includes('academic') ? '教务学业' : key ? '系统' : '') }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(5, 16) : '' }
 function goTarget(target) {

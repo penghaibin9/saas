@@ -47,7 +47,7 @@
     {"key":"1024x768","width":1024,"height":768}
   ],
   "themes": [
-    {"key":"blue","label":"学院蓝","route":"/home"},
+    {"key":"blue","label":"深海蓝","route":"/home"},
     {"key":"purple","label":"科技紫","route":"/academic/grades"},
     {"key":"green","label":"薄荷绿","route":"/internship"},
     {"key":"orange","label":"活力橙","route":"/campus-service"},

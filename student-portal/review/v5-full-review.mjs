@@ -259,14 +259,14 @@ async function inspectFunctionalFlows(page) {
 
   await page.goto(`${baseUrl}/academic/grades`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  const backButton = page.getByRole('button', { name: /返回教务工作台/ })
-  const backFound = await backButton.count()
-  if (backFound) await backButton.click()
+  const academicHome = page.locator('.academic-context__item', { hasText: '教务总览' })
+  const academicHomeFound = await academicHome.count()
+  if (academicHomeFound) await academicHome.click()
   const backPassed = await page.waitForURL((url) => url.pathname.endsWith('/academic'), { timeout: 8000 }).then(() => true).catch(() => false)
   report.functionalChecks.push({
-    name: '教务独立三级页返回教务工作台',
-    passed: backFound === 1 && backPassed,
-    actual: { backFound, backPassed, url: page.url() },
+    name: '教务独立三级页通过上下文导航返回教务工作台',
+    passed: academicHomeFound === 1 && backPassed,
+    actual: { academicHomeFound, backPassed, url: page.url() },
     screenshot: await capture(page, outputDir, 'functional-academic-back', false)
   })
 

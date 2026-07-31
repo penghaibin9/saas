@@ -26,7 +26,7 @@
         <button v-for="(m, i) in shownList" :key="m.id || i" class="mrow" @click="go(m)">
           <span class="sp-tag" :class="'sp-tag--' + toneOf(m)" style="flex:none">{{ levelText(m) }}</span>
           <div style="flex:1;min-width:0">
-            <div style="font-size:14px;color:var(--t1);line-height:1.5" :style="{ fontWeight: m.read ? 400 : 600 }">{{ m.title }}</div>
+            <div style="font-size:14px;color:var(--t1);line-height:1.5" :style="{ fontWeight: m.read ? 400 : 600 }">{{ displayMessageText(m.title) }}</div>
             <div style="margin-top:4px;font-size:12.5px;color:var(--t4)">
               {{ modName(m.module) }} · {{ fmt(m.time) }}
               <span v-if="m.deadline"> · 截止 {{ fmt(m.deadline) }}</span>
@@ -97,6 +97,12 @@ const shownList = computed(() => {
   return g[tab.value] || (data.value.list || [])
 })
 
+const MESSAGE_STATUS_TEXT = { PENDING_REVIEW: '待审核', SUBMITTED: '已提交', RETURNED: '已退回', REJECTED: '未通过', APPROVED: '已通过', PROCESSING: '处理中', COMPLETED: '已完成', CLASS_REVIEW: '班级审核中', COLLEGE_REVIEW: '学院审核中', SCHOOL_REVIEW: '学校审核中' }
+function displayMessageText(value) {
+  let text = String(value || '')
+  for (const [key, label] of Object.entries(MESSAGE_STATUS_TEXT)) text = text.replaceAll(key, label)
+  return text || '系统通知'
+}
 function modName(key) { return MODULES.find((m) => m.key === key || m.domain === key)?.title || '系统' }
 function toneOf(m) {
   if (m && (m.emergency || m.level === 'high')) return 'danger'
@@ -179,12 +185,12 @@ onMounted(load)
 <style scoped>
 .mhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line2); }
 .mtab { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; height: 30px; padding: 0 13px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--t2); }
-.mtab.on { background: var(--pri-50); color: var(--pri); font-weight: 600; }
+.mtab.on { background: var(--pri-50); color: var(--pri-text, var(--pri)); font-weight: 600; }
 .mbadge { min-width: 16px; height: 16px; padding: 0 4px; margin-left: 5px; border-radius: 8px; background: var(--danger-fg); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
-.linkall { font-size: 13px; color: var(--pri); cursor: pointer; }
+.linkall { font-size: 13px; color: var(--pri-text, var(--pri)); cursor: pointer; }
 .mrow { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: flex; align-items: flex-start; gap: 13px; padding: 15px 14px; border-radius: 10px; }
-.mrow:hover { background: #FAFBFC; }
-.prefrow { display: flex; align-items: center; justify-content: space-between; padding: 13px 4px; border-bottom: 1px solid #F4F5F7; }
+.mrow:hover { background: var(--surface-2, #FAFBFC); }
+.prefrow { display: flex; align-items: center; justify-content: space-between; padding: 13px 4px; border-bottom: 1px solid var(--line2); }
 .switch { all: unset; cursor: pointer; width: 40px; height: 22px; border-radius: 11px; background: #DDE1E8; position: relative; flex: none; transition: background .15s; }
 .switch.on { background: var(--pri); }
 .switch span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: left .15s; }
