@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.services import file_storage_governance_service as governance
+from app.services.file_storage_cleanup_service import cleanup_expired
 
 router = APIRouter(prefix="/governance", tags=["文件中心·存储治理"])
 
@@ -82,11 +83,11 @@ def backfill_retention(
     return success(governance.backfill_retention(tenant_id=int(current_tenant_id()), limit=limit))
 
 
-@router.post("/cleanup", summary="预演或执行到期清理")
+@router.post("/cleanup", summary="预演或执行事务安全的两阶段到期清理")
 def cleanup(body: CleanupRequest, user=Depends(require_permission("systemAdmin.file.manage"))):
     from app.core.context import current_tenant_id
 
-    return success(governance.cleanup_expired(
+    return success(cleanup_expired(
         tenant_id=int(current_tenant_id()),
         dry_run=body.dryRun,
         limit=body.limit,
