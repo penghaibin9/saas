@@ -200,8 +200,6 @@ def _expect_not_found(fn) -> None:
     try:
         fn()
     except AppException as exc:
-        # not_found() is frozen as DATA_NOT_FOUND/404 in the platform error contract.
-        # NO_PERMISSION is also acceptable when a resolver chooses explicit denial.
         assert exc.code in {"DATA_NOT_FOUND", "NO_PERMISSION"}, (exc.code, str(exc))
         assert getattr(exc, "http_status", 404) in {403, 404}
     else:
@@ -226,7 +224,6 @@ def _seed() -> dict:
             batch_name=f"阶段六材料中心验收-{suffix}",
             batch_no=f"GD6-{suffix}",
             academic_year="2026",
-            term="1",
             status="ACTIVE",
             stage_config=[],
         )
