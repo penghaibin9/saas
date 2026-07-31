@@ -6,10 +6,10 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <AppSectionCard title="学籍导入" subtitle="原始 XLSX 进入安全检查；确认时由后端重新解析同一不可变文件">
+      <AppSectionCard title="学籍导入" subtitle="原始 XLSX 先完成安全扫描，再由服务端预检同一不可变文件">
         <p class="mp-note">
           学号、姓名、班级必填，班级须为已存在的行政班。前端只展示服务端预检结果，不再把 rows 回传作为写库依据；
-          确认请求仅包含任务编号和任务版本，多实例重复点击由任务租约拦截。
+          扫描或解析未完成时不能确认，确认请求仅包含任务编号和任务版本。
         </p>
         <AppButton variant="primary" @click="importVisible = true">打开批量导入</AppButton>
       </AppSectionCard>
@@ -41,6 +41,8 @@
             <div>
               <strong>{{ item.jobType === 'IMPORT' ? '导入' : '导出' }} · {{ item.importType || item.exportType }}</strong>
               <p class="mp-note">状态 {{ item.status }} · 任务 #{{ item.id }} · {{ item.createdAt || '-' }}</p>
+              <p v-if="item.status === 'SCANNING'" class="mp-note">安全扫描进行中，文件不会被提前解析。</p>
+              <p v-else-if="item.status === 'PARSING'" class="mp-note">安全扫描已通过，服务端正在预检。</p>
               <p v-if="item.errorMessage" class="aa-task-error">{{ item.errorMessage }}</p>
             </div>
             <div class="aa-task-actions">
@@ -96,6 +98,8 @@ const STATUS_LABEL = {
   SUSPENDED: '休学', RETAINED: '留级', WITHDRAWN: '退学', TRANSFER_SCHOOL: '转学',
   GRADUATED: '毕业', COMPLETED: '结业', INCOMPLETE: '肄业'
 }
+const IMPORT_TERMINAL = new Set(['VALIDATED', 'VALIDATION_FAILED', 'FAILED', 'EXPIRED', 'SUCCEEDED'])
+const delay = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
 function saveBlob(blob, filename) {
   const href = URL.createObjectURL(blob)
@@ -106,6 +110,27 @@ function saveBlob(blob, filename) {
   a.click()
   a.remove()
   URL.revokeObjectURL(href)
+}
+
+function previewResponse(item, message) {
+  const preview = item.preview || {}
+  const invalidRows = preview.invalidRows ?? item.invalidRows ?? 0
+  const validated = item.status === 'VALIDATED'
+  return {
+    code: validated || item.status === 'VALIDATION_FAILED' ? 0 : 1,
+    message: message || item.errorMessage || '导入任务尚未完成安全扫描与服务端预检',
+    data: {
+      total: preview.totalRows ?? item.totalRows ?? 0,
+      validRows: preview.validRows ?? item.validRows ?? 0,
+      invalidRows,
+      passed: validated && invalidRows === 0,
+      rows: preview.rows || [],
+      errors: preview.errors || [],
+      jobId: item.id,
+      expectedVersion: item.version,
+      status: item.status
+    }
+  }
 }
 
 export default {
@@ -132,28 +157,54 @@ export default {
     this.loadJobs()
   },
   methods: {
+    async waitForImportJob(initial) {
+      let item = initial
+      for (let attempt = 0; attempt < 60 && !IMPORT_TERMINAL.has(item.status); attempt += 1) {
+        await delay(1500)
+        const detail = await academicFileExchangeApi.getImportJob(item.id)
+        if (detail.code !== 0) return detail
+        item = detail.data
+        this.currentImportJob = { id: item.id, version: item.version, status: item.status }
+      }
+      await this.loadJobs()
+      if (!IMPORT_TERMINAL.has(item.status)) {
+        return {
+          code: 1,
+          data: null,
+          message: '文件仍在后台安全扫描，请稍后在任务中心刷新；扫描完成前不会开放确认'
+        }
+      }
+      return { code: 0, data: item, message: item.errorMessage || '服务端预检已完成' }
+    },
     async uploadAuthoritative(file) {
       const res = await academicFileExchangeApi.uploadRosterImport(file)
       if (res.code !== 0) return res
-      this.currentImportJob = { id: res.data.id, version: res.data.version }
-      const preview = res.data.preview || {}
-      return {
-        code: 0,
-        message: res.message,
-        data: {
-          total: preview.totalRows ?? res.data.totalRows ?? 0,
-          validRows: preview.validRows ?? res.data.validRows ?? 0,
-          invalidRows: preview.invalidRows ?? res.data.invalidRows ?? 0,
-          passed: (preview.invalidRows ?? res.data.invalidRows ?? 0) === 0,
-          rows: preview.rows || [],
-          errors: preview.errors || [],
-          jobId: res.data.id,
-          expectedVersion: res.data.version
-        }
+      this.currentImportJob = { id: res.data.id, version: res.data.version, status: res.data.status }
+      const terminal = IMPORT_TERMINAL.has(res.data.status)
+        ? { code: 0, data: res.data, message: res.message }
+        : await this.waitForImportJob(res.data)
+      if (terminal.code !== 0) return terminal
+      this.currentImportJob = {
+        id: terminal.data.id,
+        version: terminal.data.version,
+        status: terminal.data.status
       }
+      return previewResponse(terminal.data, terminal.message)
     },
     async confirmAuthoritative() {
       if (!this.currentImportJob?.id) return { code: 1, message: '导入任务已丢失，请重新上传预检' }
+      if (this.currentImportJob.status !== 'VALIDATED') {
+        const detail = await academicFileExchangeApi.getImportJob(this.currentImportJob.id)
+        if (detail.code !== 0) return detail
+        this.currentImportJob = {
+          id: detail.data.id,
+          version: detail.data.version,
+          status: detail.data.status
+        }
+        if (detail.data.status !== 'VALIDATED') {
+          return { code: 1, message: '安全扫描或服务端预检尚未通过，禁止确认导入' }
+        }
+      }
       const res = await academicFileExchangeApi.confirmImport(
         this.currentImportJob.id,
         this.currentImportJob.version
