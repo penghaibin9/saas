@@ -20,7 +20,7 @@
       <section class="sp-card student-card">
         <div>
           <strong>{{ data.realName || '本人' }}</strong>
-          <span>{{ data.studentNo || '学号待绑定' }} · 学籍状态 {{ data.studentStatus || '待确认' }}</span>
+          <span>{{ data.studentNo || '学号待绑定' }} · 学籍状态 {{ studentStatusText(data.studentStatus) }}</span>
         </div>
         <StatusTag :text="summaryText" :tone="pendingCount ? 'warn' : 'success'" />
       </section>
@@ -95,6 +95,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
+import { localizeVisibleEnumText } from '../../services/visibleEnumLocalization'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
@@ -110,6 +111,9 @@ const summaryText = computed(() => pendingCount.value ? `${pendingCount.value} �
 
 function dateText(value) {
   return String(value || '').slice(0, 10) || '待定'
+}
+function studentStatusText(status) {
+  return localizeVisibleEnumText(status || '待确认')
 }
 function registrationStatusText(status) {
   const map = {
