@@ -60,6 +60,22 @@ def tenant_context_and_cleanup(db_mode):
     set_tenant(None)
 
 
+def _effective_routes(routes):
+    """展开 FastAPI include_router 路由树后检查真实匹配顺序。"""
+    try:
+        from fastapi.routing import iter_route_contexts
+    except ImportError:  # pragma: no cover - 兼容旧 FastAPI
+        iter_route_contexts = None
+    if iter_route_contexts is not None:
+        yield from iter_route_contexts(routes)
+        return
+    for route in routes:
+        if hasattr(route, "effective_route_contexts"):
+            yield from route.effective_route_contexts()
+        else:
+            yield route
+
+
 def _file(name: str, *, size: int = 10, hold: bool = False, expired: bool = False) -> FileObject:
     now = datetime.utcnow()
     return FileObject(
@@ -81,7 +97,11 @@ def _file(name: str, *, size: int = 10, hold: bool = False, expired: bool = Fals
 
 
 def test_static_governance_routes_are_before_dynamic_file_id():
-    paths = [route.path for route in files_router.router.routes]
+    paths = [
+        route.path
+        for route in _effective_routes(files_router.router.routes)
+        if getattr(route, "path", None)
+    ]
     governance_index = paths.index("/files/governance/overview")
     dynamic_index = paths.index("/files/{file_id}")
     assert governance_index < dynamic_index
