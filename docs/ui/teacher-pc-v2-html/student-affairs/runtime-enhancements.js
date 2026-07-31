@@ -105,6 +105,13 @@
     (first || dialog).focus({ preventScroll: true });
   }
 
+  function scheduleDialogFocus(overlay) {
+    if (!overlay) return;
+    queueMicrotask(() => focusDialog(overlay));
+    requestAnimationFrame(() => focusDialog(overlay));
+    setTimeout(() => focusDialog(overlay), 60);
+  }
+
   function restoreFocus(overlay) {
     const opener = overlay ? openerByOverlay.get(overlay) : null;
     if (opener instanceof HTMLElement && opener.isConnected) {
@@ -121,13 +128,30 @@
 
   const observer = new MutationObserver((records) => {
     records.forEach((record) => {
-      record.addedNodes.forEach((node) => {
-        if (node instanceof Element) patch(node);
-      });
+      if (record.type === 'childList') {
+        record.addedNodes.forEach((node) => {
+          if (node instanceof Element) patch(node);
+        });
+        return;
+      }
+      if (record.type === 'attributes' && record.target instanceof Element) {
+        const overlay = record.target.matches('.v2-drawer-backdrop, .v2-modal-backdrop')
+          ? record.target
+          : null;
+        if (overlay && overlay.classList.contains('open')) {
+          patchDialogs(overlay);
+          scheduleDialogFocus(overlay);
+        }
+      }
     });
   });
 
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'aria-hidden']
+  });
   patch(document);
 
   document.addEventListener('click', (event) => {
@@ -136,7 +160,7 @@
       const overlay = document.getElementById(opener.dataset.open || '');
       if (overlay) {
         openerByOverlay.set(overlay, opener);
-        queueMicrotask(() => focusDialog(overlay));
+        scheduleDialogFocus(overlay);
       }
       return;
     }
