@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url'
 import { STUDENT_AFFAIRS_PERMISSION_CATALOG } from '../src/modules/studentAffairs/config/permissionCatalog.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const navPlanPath = path.join(root, 'src/config/navPlan.js')
+// navPlan.js 是最终运行投影；完整静态目录保存在 navPlan.base.js。
+// 本测试负责扫描完整目录，两个运行时权限收口另由 navPlan.permission-contract.test.js 验证。
+const navPlanPath = path.join(root, 'src/config/navPlan.base.js')
 const routesPath = path.join(root, 'src/modules/studentAffairs/studentAffairs.routes.js')
 const catalogCodes = new Set(STUDENT_AFFAIRS_PERMISSION_CATALOG.map(({ permissionCode }) => permissionCode))
 
