@@ -105,6 +105,11 @@ function mimeType(file) {
 async function startServer() {
   const server = http.createServer((request, response) => {
     const raw = decodeURIComponent(String(request.url || '/').split('?')[0]).replace(/^\/+/, '')
+    if (raw === 'favicon.ico') {
+      response.writeHead(204)
+      response.end()
+      return
+    }
     const target = path.resolve(ROOT, raw || 'index.html')
     const relative = path.relative(ROOT, target)
     if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(target) || !fs.statSync(target).isFile()) {
@@ -268,7 +273,13 @@ async function runKeyboard(browser, origin, errors, results) {
 
       if (dialogResult.opened) {
         for (let index = 0; index < 12; index += 1) {
-          await page.keyboard.press(index % 3 === 0 ? 'Shift+Tab' : 'Tab')
+          if (index % 3 === 0) {
+            await page.keyboard.down('Shift')
+            await page.keyboard.press('Tab')
+            await page.keyboard.up('Shift')
+          } else {
+            await page.keyboard.press('Tab')
+          }
           const inside = await page.evaluate(() => {
             const visible = (element) => {
               const style = getComputedStyle(element)
