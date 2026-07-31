@@ -190,7 +190,10 @@ def authorize_file_object(file_obj, bindings: list[Any], user: dict, action: str
     tenant_id = int(current_tenant_id() or 0)
     if not tenant_id or int(file_obj.tenant_id or 0) != tenant_id or file_obj.is_deleted:
         return False
-    if action in {"download", "preview", "bind", "submit", "archive"} and not _scan_ready(file_obj):
+    # “bind”在这里仅用于验证调用人是否与文件有关联；扫描是否完成由
+    # assert_file_ready_for_business 单独返回 FILE_NOT_READY。这样授权用户能轮询
+    # SCANNING，而未授权用户仍统一得到 404，不泄露文件存在性。
+    if action in {"download", "preview", "submit", "archive"} and not _scan_ready(file_obj):
         return False
     resolver = _RESOLVERS.get(str(file_obj.biz_type or "").upper(), _default_resolver)
     return bool(resolver(db, file_obj, bindings, user or {}, action))
@@ -218,6 +221,8 @@ def require_file_access(file_id: str, *, user: dict | None = None, action: str =
     try:
         file_obj, bindings = _load_file_and_bindings(db, tenant_id, int(file_id))
         if not file_obj or not authorize_file_object(file_obj, bindings, actor, action, db=db):
+            raise not_found("文件不存在")
+        if action == "bind" and not _scan_ready(file_obj):
             raise not_found("文件不存在")
         return file_obj
     finally:
