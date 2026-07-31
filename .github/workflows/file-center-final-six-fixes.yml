@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - audit/file-capability-inventory
-    paths:
-      - .github/workflows/file-center-final-six-fixes.yml
 
 permissions:
   contents: write
