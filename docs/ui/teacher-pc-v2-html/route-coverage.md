@@ -19,7 +19,7 @@
 |---|---:|---|---|
 | 教务中心 | 27 工作区 | `00`–`220` | 结构缺口已补，浏览器与状态回归未完成 |
 | 学工中心 | 15 工作区 | `300`、`330` | 主要生产工作区已进入追踪，浏览器与状态回归未完成 |
-| 岗位实习中心 | 10 关键工作台覆盖 12 二级 | `310` | 99 URL 精确契约已重建，机器审计未执行 |
+| 岗位实习中心 | 10 关键工作台覆盖 12 二级 | `310` | 来源 SHA 的 101 叶子 / 99 URL 审计 0 error；冻结 HEAD 待重跑 |
 | 毕业设计中心 | 8 工作区 | `320` | 结构完成，浏览器与状态回归未完成 |
 
 ## 教务中心
@@ -63,22 +63,24 @@
 1. `/admin/internship/batches?panel=list`：批次列表 / 批次详情；
 2. `/admin/internship/students?panel=roster`：实习名单 / 学生实习详情。
 
-`310-internship-key.json` 现已精确登记全部 99 URL，并按 12 个二级模块提供：
+`310-internship-key.json` 现已精确登记全部 99 URL，并按 12 个二级模块提供生产权限候选、字段契约、状态契约、API 参数契约和唯一原型 owner。
 
-- 生产权限候选；
-- 字段契约；
-- 状态契约；
-- API 参数契约；
-- 唯一原型 owner。
+已从 GitHub SHA `7031fc39b2e93f0e976d4e9d2155a8f4ecad2162` 分别读取生产导航和 Manifest，并在隔离容器实际运行机器审计：
 
-最终冻结必须运行：
+- 12 / 12 二级模块 PASS；
+- 101 / 101 三级叶子 PASS；
+- 99 / 99 唯一 URL PASS；
+- 2 / 2 显式共享 URL PASS；
+- 漏 URL、过时 URL、重复 owner 和权限缺失均为 0。
+
+报告：`internship/route-audit-report.md`。
+
+最终冻结候选 HEAD 必须再次运行：
 
 ```bash
 node tools/check-internship-route-audit.mjs \
   --report=/tmp/teacher-pc-v2-freeze/internship-route-audit.json
 ```
-
-未实际执行前，不得宣称 99 URL 审计通过。
 
 ## 毕业设计中心
 
@@ -103,7 +105,7 @@ node tools/check-internship-route-audit.mjs \
 
 - Manifest、HTML、CSS、JS 和相对资源存在性通过；
 - 无未解释重复 route、孤儿 HTML、失效引用或目录越界；
-- 岗位实习 101 叶子 / 99 URL / 2 别名审计 0 error；
+- 最终冻结 HEAD 的岗位实习 101 叶子 / 99 URL / 2 别名审计 0 error；
 - 870 / 870 浏览器渲染通过；
 - 控制台、运行时、Promise、资源和样式错误为 0；
 - 非预期根页面横向溢出为 0；
@@ -113,7 +115,7 @@ node tools/check-internship-route-audit.mjs \
 
 ## 当前判定
 
-工具和契约已经落盘，但当前完整 HEAD 的真实执行报告尚未产生。因此：
+岗位实习来源快照审计已经通过，但当前完整 HEAD 的全库一致性和 870 次浏览器报告尚未产生。因此：
 
 - PR #27 保持 Draft；
 - `prototype-manifest.json.status` 保持 `IN_PROGRESS_NOT_FROZEN`；
