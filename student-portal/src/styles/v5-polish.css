@@ -16,6 +16,12 @@
   margin-top: 0;
 }
 
+/* 全局相邻卡片间距在双列/网格容器中必须归零，避免第二列下沉。 */
+:where(.two, .select-grid, .catgrid, .content-grid, .gd-summary, .gdep__summary) > .sp-card + .sp-card,
+:where(.two, .select-grid, .catgrid, .content-grid) > .sp-panel + .sp-panel {
+  margin-top: 0;
+}
+
 :where(button, [role='button'], a, input, select, textarea):focus-visible {
   outline: 3px solid var(--pri-100);
   outline-offset: 2px;
