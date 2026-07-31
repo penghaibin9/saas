@@ -57,9 +57,13 @@ def overview(user=Depends(require_permission("systemAdmin.file.manage"))):
     usage["reservedBytes"] = reserved
     usage["effectiveOccupiedBytes"] = int(usage.get("totalBytes") or 0) + reserved
     quota = int(usage.get("quotaBytes") or 0)
-    usage["effectiveUsagePercent"] = (
+    effective_percent = (
         round(usage["effectiveOccupiedBytes"] * 100 / quota, 2) if quota else None
     )
+    usage["actualUsagePercent"] = usage.get("usagePercent")
+    usage["effectiveUsagePercent"] = effective_percent
+    # 现有管理 PC 使用 usagePercent 作为预警依据；必须包含 HELD 预留，避免并发上传时低报。
+    usage["usagePercent"] = effective_percent
     return success(payload)
 
 
