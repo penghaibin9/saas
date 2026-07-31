@@ -1,12 +1,12 @@
-"""教务文件与数据交换中心（阶段 7）。
+"""教务文件与数据交换中心（阶段 7 收口）。
 
-本服务把学籍名册导入/导出接入阶段 3 的公共 ImportJob/ExportJob：
-- 原始 XLSX 作为不可变 FileObject 留存；
-- 预检结果由服务端生成并持久化，确认时重新读取同一 FileObject，不信任前端 rows；
-- 确认只接受 jobId + expectedVersion，由公共租约控制多实例幂等；
+核心约束：
+- 上传请求只登记原始 FileObject 和 SCANNING ImportJob，绝不解析隔离文件；
+- 任务详情在文件 CLEAN/AVAILABLE 后推进 PARSING → VALIDATED/VALIDATION_FAILED；
+- 预检只持久化摘要与脱敏错误，原始 rows 不进入任务 JSON；
+- 确认只接受 jobId + expectedVersion，并重新读取同一 FileObject、复算 rowDigest、重新预检；
+- 学籍、成绩、排课写入继续委托原领域事务，公共层负责租约、文件安全和任务生命周期；
 - 导出生成 FileObject + ExportJob，支持过期、撤销和一次性下载票据。
-
-旧教务接口在阶段 10 调用扫描完成前保留为兼容入口，但新页面只允许调用本服务对应路由。
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.exceptions import AppException, not_found
 from app.db.session import get_sessionmaker
@@ -24,120 +24,127 @@ from app.services import data_exchange_job_service as jobs
 
 ACADEMIC_MODULE_CODE = "ACADEMIC_AFFAIRS"
 ACADEMIC_ROSTER_IMPORT = "ACADEMIC_ROSTER"
+ACADEMIC_GRADE_IMPORT = "ACADEMIC_GRADE"
+ACADEMIC_SCHEDULE_IMPORT = "ACADEMIC_SCHEDULE"
 ACADEMIC_ROSTER_EXPORT = "ACADEMIC_ROSTER"
-_MAX_ROSTER_IMPORT_BYTES = 20 * 1024 * 1024
+MAX_IMPORT_BYTES = 20 * 1024 * 1024
 
 
 def _json_safe(value: Any) -> Any:
-    """只保存预检摘要；敏感原始行始终留在受控 XLSX，不复制进任务 JSON。"""
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+
+
+def _row_digest(rows: list[dict]) -> str:
+    return hashlib.sha256(
+        json.dumps(_json_safe(rows), ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def _error_items(preview: dict) -> list[dict]:
     raw = preview.get("errors") or preview.get("errorList") or []
     if isinstance(raw, dict):
-        raw = [
-            {"row": key, "message": value}
-            for key, value in raw.items()
-        ]
+        raw = [{"row": key, "message": value} for key, value in raw.items()]
     return [item if isinstance(item, dict) else {"message": str(item)} for item in raw]
 
 
 def _preview_counts(rows: list[dict], preview: dict) -> tuple[int, int, int]:
-    total = int(preview.get("totalRows") or len(rows))
-    invalid = int(preview.get("invalidRows") or preview.get("errorRows") or 0)
+    total = int(preview.get("totalRows") or preview.get("total") or len(rows))
+    invalid = int(preview.get("invalidRows") or preview.get("invalid") or preview.get("errorRows") or 0)
     if not invalid:
         invalid = len({str(item.get("row") or item.get("rowNo") or "") for item in _error_items(preview)})
-    valid = int(preview.get("validRows") if preview.get("validRows") is not None else max(0, total - invalid))
+    valid_raw = preview.get("validRows") if preview.get("validRows") is not None else preview.get("valid")
+    valid = int(valid_raw if valid_raw is not None else max(0, total - invalid))
     return total, valid, invalid
 
 
-def create_roster_import_job(
+def _redacted_rows(rows: list[dict], limit: int = 200) -> list[dict]:
+    sensitive = {"idCard", "id_card", "phone", "mobile", "bankAccount", "bank_account"}
+    return [
+        {key: value for key, value in dict(row).items() if key not in sensitive}
+        for row in rows[:limit]
+    ]
+
+
+def create_academic_import_job(
     *,
-    content: bytes,
     filename: str,
     source_file_id: int,
+    import_type: str,
+    context: dict[str, Any] | None,
     user: dict,
 ) -> dict:
-    """解析并持久化权威预检任务；不保存前端可篡改的 rows 副本。"""
-    if not content:
-        raise AppException("VALIDATION_ERROR", "导入文件不能为空")
-    if len(content) > _MAX_ROSTER_IMPORT_BYTES:
-        raise AppException("FILE_TOO_LARGE", "学籍导入文件超过 20MB，请拆分后重试")
+    """只登记权威文件与 SCANNING Job；解析只能由 refresh_import_job 在安全门后执行。"""
+    from app.models.data_exchange import ImportJob
+    from app.models.file import FileObject
 
-    from app.models.data_exchange import ImportJob, ImportRowError
-    from app.modules.academic_affairs.services import academic_affairs_service as roster
-
-    rows = roster.roster_import_read(content)
-    preview = roster.roster_import_dry_run(rows)
-    errors = _error_items(preview)
-    total, valid, invalid = _preview_counts(rows, preview)
-    adapter_ref = f"AA-ROSTER-{uuid.uuid4().hex}"
-    actor_id = jobs._actor_id(user)
-    now = jobs._now()
-
+    import_type = str(import_type or "").upper()
+    if import_type not in {ACADEMIC_ROSTER_IMPORT, ACADEMIC_GRADE_IMPORT, ACADEMIC_SCHEDULE_IMPORT}:
+        raise AppException("VALIDATION_ERROR", "不支持的教务导入类型")
     db = get_sessionmaker()()
     try:
+        file_row = db.scalars(select(FileObject).where(
+            FileObject.id == int(source_file_id),
+            FileObject.tenant_id == jobs._tenant_id(),
+            FileObject.is_deleted.is_(False),
+        )).first()
+        if not file_row:
+            raise not_found("导入原始文件不存在")
+        if int(file_row.size_bytes or 0) <= 0:
+            raise AppException("VALIDATION_ERROR", "导入文件不能为空")
+        if int(file_row.size_bytes or 0) > MAX_IMPORT_BYTES:
+            raise AppException("FILE_TOO_LARGE", "教务导入文件超过 20MB，请拆分后重试")
+        actor_id = jobs._actor_id(user)
         row = ImportJob(
             tenant_id=jobs._tenant_id(),
             module_code=ACADEMIC_MODULE_CODE,
-            import_type=ACADEMIC_ROSTER_IMPORT,
+            import_type=import_type,
             source_file_id=int(source_file_id),
             adapter_type=jobs.IMPORT_ADAPTER_EXCEL,
-            adapter_ref=adapter_ref,
+            adapter_ref=f"AA-{import_type}-{uuid.uuid4().hex}",
             template_version="v1",
-            status="VALIDATED" if invalid == 0 else "VALIDATION_FAILED",
-            total_rows=total,
-            valid_rows=valid,
-            invalid_rows=invalid,
+            status="SCANNING",
+            total_rows=0,
+            valid_rows=0,
+            invalid_rows=0,
             operator_id=actor_id,
             operator_name=jobs._actor_name(user),
-            expires_at=now + timedelta(hours=jobs.IMPORT_JOB_TTL_HOURS),
+            expires_at=jobs._now() + timedelta(hours=jobs.IMPORT_JOB_TTL_HOURS),
             source_snapshot_json={
                 "authority": "SOURCE_FILE_OBJECT",
-                "fileName": filename,
-                "fileSha256": hashlib.sha256(content).hexdigest(),
-                "rowDigest": hashlib.sha256(
-                    json.dumps(_json_safe(rows), ensure_ascii=False, sort_keys=True).encode("utf-8")
-                ).hexdigest(),
-                "spec": "academicAffairs.roster.v1",
-                "preview": {
-                    "totalRows": total,
-                    "validRows": valid,
-                    "invalidRows": invalid,
-                },
+                "fileName": str(filename or file_row.file_name or "academic_import.xlsx"),
+                "fileObjectId": str(source_file_id),
+                "fileSha256": str(file_row.sha256 or ""),
+                "spec": f"academicAffairs.{import_type.lower()}.v1",
+                "context": _json_safe(context),
+                "preview": {"totalRows": 0, "validRows": 0, "invalidRows": 0},
             },
             created_by=actor_id,
         )
         db.add(row)
-        db.flush()
-        for item in errors:
-            raw = dict(item.get("raw") or item.get("rowData") or {})
-            # 身份证号等强敏感原值不进入错误表；原件仍在受控 FileObject。
-            raw.pop("idCard", None)
-            db.add(ImportRowError(
-                tenant_id=jobs._tenant_id(),
-                import_job_id=row.id,
-                sheet_name=str(item.get("sheetName") or "导入模板")[:100],
-                row_no=int(item.get("row") or item.get("rowNo") or 0) or None,
-                field_code=str(item.get("field") or item.get("fieldCode") or "")[:100] or None,
-                error_code=str(item.get("code") or item.get("errorCode") or "VALIDATION_ERROR")[:80],
-                error_message=str(item.get("message") or item.get("reason") or "预检失败")[:1000],
-                raw_snapshot_json=_json_safe(raw) if raw else None,
-                created_by=actor_id,
-            ))
         db.commit()
         db.refresh(row)
-        result = jobs._import_row(row)
-        result["preview"] = {
-            "totalRows": total,
-            "validRows": valid,
-            "invalidRows": invalid,
-            "errors": errors,
-        }
-        return result
+        job_id = str(row.id)
     finally:
         db.close()
+    return refresh_import_job(job_id, user=user)
+
+
+def create_roster_import_job(
+    *,
+    filename: str,
+    source_file_id: int,
+    user: dict,
+    content: bytes | None = None,
+) -> dict:
+    """兼容旧服务调用签名；content 故意不参与解析或权威判断。"""
+    _ = content
+    return create_academic_import_job(
+        filename=filename,
+        source_file_id=source_file_id,
+        import_type=ACADEMIC_ROSTER_IMPORT,
+        context={},
+        user=user,
+    )
 
 
 def _source_file_bytes(import_row, user: dict) -> bytes:
@@ -157,42 +164,248 @@ def _source_file_bytes(import_row, user: dict) -> bytes:
         )).first()
         if not file_row:
             raise not_found("导入原始文件不存在")
+        if int(file_row.size_bytes or 0) > MAX_IMPORT_BYTES:
+            raise AppException("FILE_TOO_LARGE", "教务导入文件超过 20MB，请拆分后重试")
         path = get_backend().fetch_local(file_row.file_key)
         if not path or not path.exists():
             raise not_found("导入原始文件不存在或已清理")
-        if int(file_row.size_bytes or 0) > _MAX_ROSTER_IMPORT_BYTES:
-            raise AppException("FILE_TOO_LARGE", "学籍导入文件超过 20MB，请拆分后重试")
+        chunks: list[bytes] = []
+        size = 0
         with path.open("rb") as handle:
-            return handle.read(_MAX_ROSTER_IMPORT_BYTES + 1)
+            while chunk := handle.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_IMPORT_BYTES:
+                    raise AppException("FILE_TOO_LARGE", "教务导入文件超过 20MB，请拆分后重试")
+                chunks.append(chunk)
+        return b"".join(chunks)
     finally:
         db.close()
 
 
-def confirm_roster_import(job_id: str, *, lease: str, user: dict) -> dict:
-    """从同一不可变 FileObject 重新解析并确认，前端没有 rows 写入口。"""
-    from app.modules.academic_affairs.services import academic_affairs_service as roster
+def _parse_and_validate(import_row, content: bytes, user: dict) -> tuple[list[dict], dict]:
+    snapshot = dict(import_row.source_snapshot_json or {})
+    context = dict(snapshot.get("context") or {})
+    if import_row.import_type == ACADEMIC_ROSTER_IMPORT:
+        from app.modules.academic_affairs.services import academic_affairs_service as roster
+        rows = roster.roster_import_read(content)
+        return rows, roster.roster_import_dry_run(rows)
+    if import_row.import_type == ACADEMIC_GRADE_IMPORT:
+        from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+        from app.services import xlsx_util
+        task_id = int(context.get("taskId") or 0)
+        if not task_id:
+            raise AppException("DATA_CONFLICT", "成绩导入任务缺少成绩任务编号")
+        rows = xlsx_util.read_xlsx(content, grade.IMPORT_HEADER_MAP)
+        return rows, grade.grade_import_dry_run(task_id, user, rows)
+    if import_row.import_type == ACADEMIC_SCHEDULE_IMPORT:
+        from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
+        from app.services import xlsx_util
+        batch_id = int(context.get("batchId") or 0)
+        if not batch_id:
+            raise AppException("DATA_CONFLICT", "排课导入任务缺少排课批次编号")
+        rows = xlsx_util.read_xlsx(content, schedule.IMPORT_HEADER_MAP)
+        if len(rows) > schedule.IMPORT_MAX_ROWS:
+            raise AppException("VALIDATION_ERROR", f"单批导入行数不得超过 {schedule.IMPORT_MAX_ROWS} 行")
+        rows = schedule.sanitize_import_rows(rows)
+        return rows, {
+            "totalRows": len(rows),
+            "validRows": len(rows),
+            "invalidRows": 0,
+            "errors": [],
+        }
+    raise AppException("DATA_CONFLICT", "未知教务导入类型")
+
+
+def _detail(row, errors: list[dict] | None = None, rows: list[dict] | None = None) -> dict:
+    result = jobs._import_row(row)
+    snapshot = dict(row.source_snapshot_json or {})
+    result["preview"] = {
+        **dict(snapshot.get("preview") or {}),
+        "errors": errors or [],
+        "rows": _redacted_rows(rows or []),
+    }
+    return result
+
+
+def _stored_errors(db, job_id: int) -> list[dict]:
+    from app.models.data_exchange import ImportRowError
+    rows = db.scalars(select(ImportRowError).where(
+        ImportRowError.tenant_id == jobs._tenant_id(),
+        ImportRowError.import_job_id == int(job_id),
+        ImportRowError.is_deleted.is_(False),
+    ).order_by(ImportRowError.row_no, ImportRowError.id)).all()
+    return [
+        {
+            "row": item.row_no,
+            "field": item.field_code,
+            "code": item.error_code,
+            "message": item.error_message,
+        }
+        for item in rows
+    ]
+
+
+def refresh_import_job(job_id: str, *, user: dict) -> dict:
+    """在详情轮询中推进安全扫描后的解析；并发实例通过状态锁只允许一个解析者。"""
+    from app.models.data_exchange import ImportRowError
 
     db = get_sessionmaker()()
     try:
         row = jobs._owned_import(db, job_id, user)
-        if row.adapter_type != jobs.IMPORT_ADAPTER_EXCEL or row.import_type != ACADEMIC_ROSTER_IMPORT:
-            raise AppException("DATA_CONFLICT", "该任务不是教务学籍导入")
-        if row.lease_token != lease:
-            raise AppException("DATA_CONFLICT", "导入任务确认租约已失效")
-        snapshot = dict(row.source_snapshot_json or {})
-        content = _source_file_bytes(row, user)
+        if row.status not in {"SCANNING", "PARSING"}:
+            return _detail(row, _stored_errors(db, int(row.id)))
+        if row.expires_at and row.expires_at <= jobs._now():
+            row.status = "EXPIRED"
+            row.version = int(row.version or 0) + 1
+            db.commit()
+            return _detail(row)
     finally:
         db.close()
 
-    rows = roster.roster_import_read(content)
-    digest = hashlib.sha256(json.dumps(_json_safe(rows), ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    try:
+        db = get_sessionmaker()()
+        try:
+            current = jobs._owned_import(db, job_id, user)
+            content = _source_file_bytes(current, user)
+        finally:
+            db.close()
+    except AppException as exc:
+        if exc.code == "FILE_NOT_READY":
+            db = get_sessionmaker()()
+            try:
+                return _detail(jobs._owned_import(db, job_id, user))
+            finally:
+                db.close()
+        db = get_sessionmaker()()
+        try:
+            row = jobs._owned_import(db, job_id, user, lock=True)
+            row.status = "VALIDATION_FAILED"
+            row.invalid_rows = max(1, int(row.invalid_rows or 0))
+            row.error_message = str(exc)[:4000]
+            row.version = int(row.version or 0) + 1
+            db.commit()
+            return _detail(row, [{"code": exc.code, "message": str(exc)}])
+        finally:
+            db.close()
+
+    db = get_sessionmaker()()
+    try:
+        row = jobs._owned_import(db, job_id, user, lock=True)
+        if row.status not in {"SCANNING", "PARSING"}:
+            return _detail(row, _stored_errors(db, int(row.id)))
+        row.status = "PARSING"
+        row.version = int(row.version or 0) + 1
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        db = get_sessionmaker()()
+        try:
+            row = jobs._owned_import(db, job_id, user)
+            rows, preview = _parse_and_validate(row, content, user)
+        finally:
+            db.close()
+        errors = _error_items(preview)
+        total, valid, invalid = _preview_counts(rows, preview)
+        digest = _row_digest(rows)
+    except Exception as exc:
+        db = get_sessionmaker()()
+        try:
+            row = jobs._owned_import(db, job_id, user, lock=True)
+            row.status = "VALIDATION_FAILED"
+            row.invalid_rows = max(1, int(row.invalid_rows or 0))
+            row.error_message = str(exc)[:4000]
+            row.version = int(row.version or 0) + 1
+            db.commit()
+            return _detail(row, [{"code": getattr(exc, "code", "PARSE_ERROR"), "message": str(exc)}])
+        finally:
+            db.close()
+
+    db = get_sessionmaker()()
+    try:
+        row = jobs._owned_import(db, job_id, user, lock=True)
+        db.execute(delete(ImportRowError).where(
+            ImportRowError.tenant_id == jobs._tenant_id(),
+            ImportRowError.import_job_id == int(row.id),
+        ))
+        actor_id = jobs._actor_id(user)
+        for item in errors:
+            raw = dict(item.get("raw") or item.get("rowData") or {})
+            for field in ("idCard", "id_card", "phone", "mobile", "bankAccount", "bank_account"):
+                raw.pop(field, None)
+            db.add(ImportRowError(
+                tenant_id=jobs._tenant_id(),
+                import_job_id=row.id,
+                sheet_name=str(item.get("sheetName") or "导入模板")[:100],
+                row_no=int(item.get("row") or item.get("rowNo") or 0) or None,
+                field_code=str(item.get("field") or item.get("fieldCode") or "")[:100] or None,
+                error_code=str(item.get("code") or item.get("errorCode") or "VALIDATION_ERROR")[:80],
+                error_message=str(item.get("message") or item.get("reason") or "预检失败")[:1000],
+                raw_snapshot_json=_json_safe(raw) if raw else None,
+                created_by=actor_id,
+            ))
+        snapshot = dict(row.source_snapshot_json or {})
+        snapshot["rowDigest"] = digest
+        snapshot["preview"] = {"totalRows": total, "validRows": valid, "invalidRows": invalid}
+        row.source_snapshot_json = snapshot
+        row.total_rows = total
+        row.valid_rows = valid
+        row.invalid_rows = invalid
+        row.status = "VALIDATED" if invalid == 0 else "VALIDATION_FAILED"
+        row.error_message = None if invalid == 0 else "预检存在错误，请修正原始文件后重新上传"
+        row.version = int(row.version or 0) + 1
+        db.commit()
+        db.refresh(row)
+        return _detail(row, errors, rows)
+    finally:
+        db.close()
+
+
+def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
+    """从同一 FileObject 重读、复算摘要并委托原领域事务确认。"""
+    db = get_sessionmaker()()
+    try:
+        row = jobs._owned_import(db, job_id, user)
+        if row.adapter_type != jobs.IMPORT_ADAPTER_EXCEL:
+            raise AppException("DATA_CONFLICT", "该任务不是教务 Excel 导入")
+        if row.lease_token != lease:
+            raise AppException("DATA_CONFLICT", "导入任务确认租约已失效")
+        snapshot = dict(row.source_snapshot_json or {})
+        context = dict(snapshot.get("context") or {})
+        import_type = row.import_type
+        content = _source_file_bytes(row, user)
+        rows, preview = _parse_and_validate(row, content, user)
+    finally:
+        db.close()
+
+    digest = _row_digest(rows)
     if snapshot.get("rowDigest") and snapshot["rowDigest"] != digest:
         raise AppException("DATA_CONFLICT", "导入文件解析结果已变化，请重新上传预检")
-    preview = roster.roster_import_dry_run(rows)
     _total, _valid, invalid = _preview_counts(rows, preview)
     if invalid:
         raise AppException("VALIDATION_ERROR", "确认前重新预检发现错误，请重新上传修正后的文件")
-    return roster.roster_import_confirm(rows)
+
+    if import_type == ACADEMIC_ROSTER_IMPORT:
+        from app.modules.academic_affairs.services import academic_affairs_service as roster
+        result = roster.roster_import_confirm(rows)
+    elif import_type == ACADEMIC_GRADE_IMPORT:
+        from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
+        result = grade.grade_import_confirm(int(context.get("taskId") or 0), user, rows)
+    elif import_type == ACADEMIC_SCHEDULE_IMPORT:
+        from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
+        result = schedule.import_items(int(context.get("batchId") or 0), user, rows)
+    else:
+        raise AppException("DATA_CONFLICT", "未知教务导入类型")
+    if not isinstance(result, dict):
+        result = {"result": result}
+    result = dict(result)
+    result.setdefault("confirmedRows", len(rows))
+    return result
+
+
+def confirm_roster_import(job_id: str, *, lease: str, user: dict) -> dict:
+    return confirm_academic_import(job_id, lease=lease, user=user)
 
 
 def create_roster_export_job(
@@ -202,7 +415,6 @@ def create_roster_export_job(
     keyword: str | None = None,
     status: str | None = None,
 ) -> dict:
-    """生成可追踪、可过期、可撤销的学籍名册导出任务。"""
     from app.models.data_exchange import ExportJob
     from app.modules.academic_affairs.services import academic_affairs_service as roster
 
@@ -253,7 +465,6 @@ def create_roster_export_job(
 
 
 def list_academic_jobs(*, user: dict, job_type: str = "", status: str = "", page: int = 1, page_size: int = 20) -> dict:
-    """只列当前操作者的教务任务，避免系统任务与其它模块混入。"""
     from app.models.data_exchange import ExportJob, ImportJob
 
     page = max(1, int(page or 1))
