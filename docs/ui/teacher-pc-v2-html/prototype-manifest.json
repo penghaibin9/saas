@@ -1,12 +1,12 @@
 {
-  "schemaVersion": "2.7.0",
+  "schemaVersion": "2.7.1",
   "baseline": {
     "repository": "penghaibin9/saas",
     "branch": "main",
     "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
     "prototypeBranch": "codex/teacher-pc-v2-html-library",
     "generatedAt": "2026-07-30T16:13:00+08:00",
-    "updatedAt": "2026-07-31T10:52:00+08:00"
+    "updatedAt": "2026-07-31T09:59:00+08:00"
   },
   "status": "IN_PROGRESS_NOT_FROZEN",
   "designOnly": true,
@@ -64,6 +64,10 @@
     },
     "tooling": {
       "consistencyChecker": "tools/check-prototype-consistency.mjs",
+      "internshipRouteAudit": "tools/check-internship-route-audit.mjs",
+      "internshipRouteAuditReport": "internship/route-audit-report.md",
+      "internshipRouteAuditStatus": "PASS_ON_SOURCE_SNAPSHOT_FINAL_FREEZE_RERUN_REQUIRED",
+      "internshipRouteAuditSourceHead": "7031fc39b2e93f0e976d4e9d2155a8f4ecad2162",
       "browserRunner": "tools/run-browser-regression.mjs",
       "browserExpectedRenders": 870,
       "browserRunnerStatus": "NOT_EXECUTED_ON_CURRENT_HEAD"
@@ -71,7 +75,7 @@
     "limitations": [
       "当前290个独立HTML尚未完成一次同一HEAD下的全量浏览器回归。",
       "最近新增或补齐的63页当前只完成静态结构、路由、权限候选和业务边界核对。",
-      "岗位实习99个三级入口仍需逐项机器审计字段、权限、状态和API参数。",
+      "岗位实习101叶子/99 URL已在来源SHA完成0错误机器审计，但最终冻结HEAD仍必须重跑。",
       "截图和打印PDF均未作为仓库交付物提交。",
       "四窗口生产施工提示词在原型冻结闸门通过前不得启用。"
     ]
@@ -155,10 +159,9 @@
       "毕设-归档与统计"
     ],
     "lastCompletedWorkspace": "学工-活动二课与社团",
-    "nextWorkspaceCandidate": "岗位实习99项逐路由审计 + 程序化一致性执行 + 870次浏览器回归",
+    "nextWorkspaceCandidate": "程序化一致性执行 + 870次浏览器回归 + 最终冻结HEAD审计重跑",
     "remainingCenters": [
       "工作台其余页面",
-      "岗位实习99个三级入口的逐路由字段/API/权限/状态校验",
       "系统管理",
       "全局中心",
       "登录与安全",
