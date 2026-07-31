@@ -61,11 +61,11 @@ def load_legacy_rows() -> list[dict[str, int]]:
     return [{"id": int(row["id"]), "student_id": int(row["student_id"])} for row in rows]
 
 
-def create_compatibility_batches(rows: list[dict[str, int]]) -> dict[int, InternshipBatch]:
-    """在干净 Session 中只插入批次，不加载或修改受沙箱保护的旧记录。"""
+def create_compatibility_batches(rows: list[dict[str, int]]) -> dict[int, dict[str, object]]:
+    """在干净 Session 中只插入批次，并在关闭前提取纯值映射。"""
     session = get_sessionmaker()()
     try:
-        mapping: dict[int, InternshipBatch] = {}
+        mapping: dict[int, dict[str, object]] = {}
         for row in rows:
             batch_no = f"{COMPAT_BATCH_PREFIX}-{row['id']}"
             batch = session.scalars(select(InternshipBatch).where(
@@ -83,7 +83,10 @@ def create_compatibility_batches(rows: list[dict[str, int]]) -> dict[int, Intern
                 )
                 session.add(batch)
                 session.flush()
-            mapping[row["id"]] = batch
+            mapping[row["id"]] = {
+                "id": int(batch.id),
+                "batch_no": str(batch.batch_no),
+            }
         session.commit()
         return mapping
     except Exception:
@@ -95,20 +98,22 @@ def create_compatibility_batches(rows: list[dict[str, int]]) -> dict[int, Intern
 
 def retire_legacy_rows(
     rows: list[dict[str, int]],
-    batches: dict[int, InternshipBatch],
+    batches: dict[int, dict[str, object]],
 ) -> tuple[list[dict[str, object]], int]:
     retired: list[dict[str, object]] = []
     removed_todos = 0
     with get_engine().begin() as connection:
         for row in rows:
             batch = batches[row["id"]]
+            batch_id = int(batch["id"])
+            batch_no = str(batch["batch_no"])
             result = connection.execute(text(
                 f"UPDATE {RECORD_TABLE} "
                 "SET batch_id=:batch_id, is_deleted=1 "
                 "WHERE id=:record_id AND tenant_id=:tenant_id "
                 "AND batch_id IS NULL AND is_deleted=0"
             ), {
-                "batch_id": int(batch.id),
+                "batch_id": batch_id,
                 "record_id": row["id"],
                 "tenant_id": SANDBOX_TID,
             })
@@ -124,8 +129,8 @@ def retire_legacy_rows(
             retired.append({
                 "recordId": row["id"],
                 "studentId": row["student_id"],
-                "batchId": int(batch.id),
-                "batchNo": batch.batch_no,
+                "batchId": batch_id,
+                "batchNo": batch_no,
                 "disposition": "retired-stale-null-batch-fixture",
             })
     return retired, removed_todos
