@@ -1,29 +1,229 @@
 (function(){'use strict';
-const P=window.V2_PAGE||{},I='../shared/icons.svg#';
-const modules=['毕业设计总览','选题与分配','开题管理','过程管理','成果提交','答辩管理','成绩管理','归档与统计'];
-const tabs=[['overview','毕业设计总览','overview.html'],['topic','选题与分配','topic.html'],['proposal','开题管理','proposal.html'],['process','过程管理','process.html'],['artifact','成果提交','artifact.html'],['defense','答辩管理','defense.html'],['grade','成绩管理','grade.html'],['archive','归档与统计','archive.html']];
-const meta={overview:['毕业设计总览','汇总批次、资格、导师、选题、开题、过程、成果、答辩、成绩和归档风险。','毕设管理员 / 学院 / 指导老师','后端授权批次与学生范围','总览只做真实进度和待办聚合，所有卡片保留同口径下钻。'],topic:['选题与分配','管理课题库、教师申报、审核发布、学生选题、教师确认、分配调整和结果导出。','毕设管理员 / 学院 / 指导老师','授权专业、导师和学生范围','课题发布、学生选择、导师确认与最终分配是独立状态；容量和专业冲突必须阻断。'],proposal:['开题管理','处理开题要求、学生提交、版本历史、导师评阅、退回重交、催交和统计。','指导老师 / 学院','本人指导学生或授权范围','退回不覆盖原版本；开题通过不等于成果定稿或答辩资格。'],process:['过程管理','管理阶段任务、指导记录、里程碑、中期检查、问题处置和延期申请。','指导老师 / 学院','授权学生和任务范围','指导记录、里程碑证据、中期结论、问题整改和延期审批均追加留痕。'],artifact:['成果提交','管理初稿、定稿、查重、附件、批阅、退回、历史版本、提醒和统计。','指导老师 / 学院','授权学生范围','初稿、定稿和查重结果分开；查重只是证据，不自动生成学术结论。'],defense:['答辩管理','管理答辩组、计划、学生分配、评委回避、发布、出勤、记录、异常和应急调整。','答辩管理员 / 评委','授权批次与答辩组','发布前重新校验组、时间、场地、学生、评委、回避和冲突；应急调整保留原计划历史。'],grade:['成绩管理','汇总导师、评阅、答辩评分，执行计算、审核、发布、异议与更正。','毕设管理员 / 学院 / 评委','授权批次与学生','评分角色、权重、缺失处理和舍入规则先冻结；审核、发布和异议复核分离。'],archive:['归档与统计','生成学生档案、批量归档、审计、统计、通知和风险预警。','毕设归档 / 审计人员','已办结批次与授权范围','归档只收最终版本和完整审计；缺材料不伪装完整，下载受用途、水印和权限控制。']};
-const svg=n=>`<svg aria-hidden="true"><use href="${I}${n}"></use></svg>`,badge=(t,c='')=>`<span class="v2-badge ${c}">${t}</span>`,btn=(t,c='',a='')=>`<button type="button" class="v2-btn ${c}" ${a}>${t}</button>`;
-const table=(h,r,w=980)=>`<div class="v2-table-wrap"><table class="v2-table" style="min-width:${w}px"><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${r.map(row=>`<tr>${row.map((x,i)=>`<td${i===row.length-1?' class="actions"':''}>${x}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-const pager=`<div class="v2-pager"><span class="v2-note">共 — 条 · 服务端分页</span><button class="v2-page-no active">1</button><button class="v2-page-no">2</button><button class="v2-page-no">›</button></div>`;
-const stateButtons=`<div class="v2-state-tools"><button data-state-button="ready" class="active">默认</button><button data-state-button="loading">加载</button><button data-state-button="empty">空</button><button data-state-button="error">错误</button><button data-state-button="unauthorized">403/只读</button><button data-state-button="long">长数据</button></div>`;
-const states=name=>`<section class="v2-state" data-prototype-state="loading"><div class="v2-state-card"><span class="v2-spinner"></span><h3>正在加载${name}</h3></div></section><section class="v2-state" data-prototype-state="empty"><div class="v2-state-card">${svg('i-inbox')}<h3>当前批次暂无数据</h3><p>区分未建批次、无范围和真实空数据。</p></div></section><section class="v2-state" data-prototype-state="error"><div class="v2-state-card">${svg('i-alert')}<h3>${name}加载失败</h3>${btn('重新加载','primary')}</div></section><section class="v2-state" data-prototype-state="unauthorized"><div class="v2-state-card">${svg('i-lock')}<h3>无权限或当前阶段只读</h3><p>菜单、按钮、批次状态和后端权限同口径。</p></div></section><section class="v2-state" data-prototype-state="long"><div class="v2-state-card"><h3>大批次与长数据</h3><p>学生、课题、材料、答辩和评分均服务端分页。</p></div></section>`;
-const filter=(extra='')=>`<section class="v2-card v2-filter v2-section"><div class="v2-field"><label>毕业设计批次</label><select class="v2-select"><option>当前批次</option></select></div><div class="v2-field"><label>学院 / 专业 / 状态</label><select class="v2-select"><option>全部可见范围</option></select></div><div class="v2-field grow"><label>关键词</label><input class="v2-input" placeholder="学生 / 导师 / 课题 / 材料"/></div>${btn('查询','primary')}${extra}</section>`;
-const kpis=a=>`<div class="v2-gr-kpis v2-section">${a.map(([x,y,z,c=''])=>`<article class="v2-gr-kpi ${c}"><small>${x}</small><strong>${y}</strong><span>${z}</span></article>`).join('')}</div>`;
-const progress=a=>`<div class="v2-gr-progress">${a.map((x,i)=>`<div class="${i<2?'done':i===2?'current':''}"><span>${i+1}</span><b>${x}</b></div>`).join('')}</div>`;
-function overview(){return kpis([['批次学生','—','资格通过'],['导师已分配','—','学生人数'],['已完成选题','—','最终分配'],['开题通过','—','已评阅'],['过程异常','—','问题 / 延期','danger'],['成果定稿','—','材料完整'],['答辩待发布','—','计划校验'],['成绩待发布','—','审核链中']])+`<section class="v2-card v2-panel v2-section"><div class="v2-table-toolbar"><div><h2>毕业设计主链</h2><p class="v2-note">批次、资格、选题、开题、过程、成果、答辩、成绩、归档。</p></div>${btn('查看批次')}</div>${progress(['资格与导师','选题分配','开题','过程指导','成果定稿','答辩','成绩','归档'])}</section><div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><h2>今日待办</h2><div class="v2-gr-checks"><article class="v2-gr-check block"><span>!</span><div><b>未完成选题</b><small>容量或专业冲突待处理</small></div>${badge('待办','danger')}</article><article class="v2-gr-check"><span>✓</span><div><b>开题待评阅</b><small>按本人指导学生统计</small></div>${badge('待处理','warning')}</article><article class="v2-gr-check block"><span>!</span><div><b>里程碑逾期</b><small>需指导或延期审批</small></div>${badge('风险','danger')}</article><article class="v2-gr-check"><span>✓</span><div><b>答辩计划待发布</b><small>需完成回避与冲突校验</small></div>${badge('预检','warning')}</article></div></section><aside class="v2-card v2-panel"><h2>风险摘要</h2><div class="v2-stats-definition"><article><b>未分配导师 / 课题</b><small>阻断后续任务。</small></article><article><b>开题或成果逾期</b><small>提醒后仍未提交进入风险。</small></article><article><b>答辩冲突</b><small>评委回避、时间、场地和学生冲突。</small></article><article><b>成绩缺项</b><small>缺任一必需评分时阻断发布。</small></article></div></aside></div>`}
-function topic(){return kpis([['课题库','—','当前批次'],['教师申报待审','—','专业审核'],['已发布课题','—','可供学生选择'],['学生未选题','—','需跟进','danger'],['导师待确认','—','学生选择'],['分配冲突','—','容量 / 专业 / 重复','danger']])+`<section class="v2-card v2-panel v2-section"><h2>选题与分配状态</h2>${progress(['教师申报','课题审核','课题发布','学生选择','导师确认','冲突处理','最终分配','结果导出'])}</section>${filter(btn('＋ 教师申报课题','primary')+btn('批量导入课题'))}<section class="v2-card v2-table-card v2-section">${table(['课题','申报导师','适用专业','容量','审核 / 发布','已选人数','分配状态','操作'],[['课题A','导师A','软件技术','3',badge('已发布','success'),'3',badge('已满','warning'),'查看分配'],['课题B','导师B','大数据技术','2',badge('待审核','warning'),'0','未开放','审核'],['课题C','导师C','跨专业候选','1',badge('已发布','success'),'2',badge('容量冲突','danger'),'处理冲突']])}${pager}</section><div class="v2-gr-rule v2-section">学生选择和导师确认只形成候选关系；最终分配必须重新校验课题容量、导师上限、专业范围和重复分配。</div>`}
-function proposal(){return kpis([['应提交开题','—','当前批次'],['已提交','—','含重交'],['待导师评阅','—','本人学生'],['退回待重交','—','原版本保留','danger'],['开题通过','—','进入过程'],['逾期未提交','—','需催交','danger']])+filter(btn('批量催交')+btn('导出开题台账'))+`<section class="v2-card v2-table-card v2-section">${table(['学生','课题 / 导师','当前版本','提交时间','导师意见','状态','历史','操作'],[['学生A','课题A / 导师A','v2','07-30','修改完成',badge('待评阅','warning'),'v1,v2','评阅'],['学生B','课题B / 导师B','v3','07-31','已按意见重交',badge('重交','warning'),'v1-v3','复核'],['学生C','课题C / 导师C','—','—','—',badge('逾期未提交','danger'),'—','提醒']])}${pager}</section><div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><h2>开题材料版本链</h2><div class="v2-gr-checks"><article class="v2-gr-check"><span>1</span><div><b>v1 学生提交</b><small>原始文件与提交时间只读</small></div>${badge('已退回','danger')}</article><article class="v2-gr-check"><span>2</span><div><b>导师意见</b><small>意见、附件与退回理由留痕</small></div>${badge('已反馈','success')}</article><article class="v2-gr-check"><span>3</span><div><b>v2 学生重交</b><small>不覆盖v1</small></div>${badge('待评阅','warning')}</article></div></section><aside class="v2-card v2-panel"><h2>阶段边界</h2><p class="v2-note">开题通过只表示研究计划获准进入过程阶段，不等于成果定稿、查重通过、答辩资格或成绩通过。</p></aside></div>`}
-function process(){return kpis([['阶段任务','—','当前批次'],['指导记录','—','本周新增'],['里程碑逾期','—','需跟进','danger'],['中期待检查','—','当前阶段'],['问题待处置','—','责任与时限'],['延期待审批','—','不改原截止']])+`<section class="v2-card v2-panel v2-section"><h2>过程管理闭环</h2>${progress(['任务下发','指导计划','指导记录','里程碑提交','中期检查','问题整改','延期审批','阶段完成'])}</section><div class="v2-gr-layout v2-section"><section class="v2-card v2-table-card">${table(['学生','任务 / 里程碑','截止时间','提交证据','指导记录','问题','状态','操作'],[['学生A','需求分析','07-31','附件2项','2次','无',badge('已完成','success'),'查看'],['学生B','原型实现','07-29','未提交','1次','逾期',badge('待跟进','danger'),'发起指导'],['学生C','中期检查','08-03','已提交','3次','需修改',badge('整改中','warning'),'查看整改']])}${pager}</section><aside class="v2-card v2-panel"><h2>延期申请</h2><div class="v2-gr-rule">延期是独立申请：原截止、申请天数、理由、证据、审批链和新截止均保留，不能直接编辑任务截止日期。</div></aside></div>`}
-function artifact(){return kpis([['初稿已提交','—','当前批次'],['定稿待评阅','—','本人学生'],['查重结果待核','—','证据'],['退回待重交','—','版本保留','danger'],['定稿通过','—','进入答辩'],['逾期未定稿','—','需提醒','danger']])+filter(btn('批量提醒')+btn('导出成果台账'))+`<section class="v2-card v2-table-card v2-section">${table(['学生','初稿版本','定稿版本','查重结果','导师批阅','材料完整','状态','操作'],[['学生A','v2','v1','18% / 报告#—',badge('待评阅','warning'),'完整',badge('定稿待审','warning'),'批阅'],['学生B','v3','—','—',badge('初稿已通过','success'),'缺成果附件',badge('待定稿','warning'),'提醒'],['学生C','v2','v2','12% / 报告#—',badge('通过','success'),'完整',badge('已定稿','success'),'查看历史']])}${pager}</section><div class="v2-gr-rule v2-section">查重报告是成果评阅证据之一，不自动生成“合格 / 不合格”学术结论；阈值、复核和例外按学校制度与批次规则执行。</div>`}
-function defense(){return kpis([['答辩组','—','已配置'],['待分配学生','—','容量限制'],['回避冲突','—','必须处理','danger'],['时间 / 场地冲突','—','发布阻断','danger'],['待发布计划','—','预检通过后'],['答辩异常','—','应急调整']])+`<section class="v2-card v2-panel v2-section"><h2>答辩发布前核验</h2><div class="v2-gr-checks"><article class="v2-gr-check"><span>✓</span><div><b>答辩组与组长</b><small>成员、角色、专业与容量完整</small></div>${badge('通过','success')}</article><article class="v2-gr-check block"><span>!</span><div><b>评委回避</b><small>2名评委与学生指导关系冲突</small></div>${badge('阻断','danger')}</article><article class="v2-gr-check"><span>✓</span><div><b>学生分配</b><small>每组不超过批次上限</small></div>${badge('通过','success')}</article><article class="v2-gr-check block"><span>!</span><div><b>时间与场地</b><small>1个教室时间冲突</small></div>${badge('阻断','danger')}</article></div></section>${filter(btn('＋ 新建答辩组')+btn('发布前核验','primary'))}<section class="v2-card v2-table-card v2-section">${table(['答辩组','时间地点','组长 / 评委','学生数','回避','发布','异常','操作'],[['第一答辩组','08-10 / A101','教师A / 4人','28',badge('通过','success'),badge('待发布','warning'),'无','查看'],['第二答辩组','08-10 / A101','教师B / 3人','30',badge('2项冲突','danger'),'阻断','场地冲突','处理'],['第三答辩组','08-11 / B203','教师C / 4人','24',badge('通过','success'),badge('已发布','success'),'应急调换1次','查看历史']])}${pager}</section><div class="v2-gr-rule v2-section">发布前重新读取后端状态，不能依赖页面旧缓存。应急调整追加新版本，原计划、通知和操作审计保留。</div>`}
-function grade(){return `<section class="v2-card v2-panel v2-section"><h2>成绩状态链</h2>${progress(['规则冻结','导师评分','评阅评分','答辩评分','成绩计算','审核','正式发布','异议更正'])}</section><div class="v2-gr-score-grid v2-section"><article class="v2-gr-score"><b>导师评分</b><strong>—</strong><small>本人指导学生</small></article><article class="v2-gr-score"><b>评阅评分</b><strong>—</strong><small>按评阅分配</small></article><article class="v2-gr-score"><b>答辩评分</b><strong>—</strong><small>评委回避后提交</small></article><article class="v2-gr-score"><b>缺失评分</b><strong>—</strong><small>阻断计算</small></article><article class="v2-gr-score"><b>待审核成绩</b><strong>—</strong><small>已计算未发布</small></article><article class="v2-gr-score"><b>异议待复核</b><strong>—</strong><small>发布后追加流程</small></article></div>${filter(btn('重新计算')+btn('发布前核验','primary'))}<section class="v2-card v2-table-card v2-section">${table(['学生','导师','评阅','答辩','综合成绩','审核','发布','操作'],[['学生A','88','90','86','88.0',badge('通过','success'),badge('待发布','warning'),'发布'],['学生B','92','—','89','—',badge('阻断','danger'),'不可发布','补评阅评分'],['学生C','85','87','90','87.3',badge('已发布','success'),badge('异议中','warning'),'复核']])}${pager}</section><div class="v2-gr-rule v2-section">权重、缺失评分、舍入和等级换算按批次规则版本冻结；发布后不能直接改分，必须走异议 / 更正并保留原成绩版本。</div>`}
-function archive(){return kpis([['待归档学生','—','流程已办结'],['材料完整','—','可生成档案'],['缺失材料','—','阻断生成','danger'],['档案包可下载','—','带目录水印'],['归档失败','—','原因可见','danger'],['风险通知','—','待处理']])+`<div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><div class="v2-table-toolbar"><div><h2>归档包与审计</h2><p class="v2-note">课题、开题、过程、成果、答辩、成绩和通知形成目录。</p></div>${btn('批量生成档案','primary')}</div><div class="v2-gr-cards"><article class="v2-gr-card"><header><h3>学生A · 毕设档案</h3>${badge('可下载','success')}</header><p>最终课题、开题v2、指导记录、定稿v2、答辩记录、成绩版本1。</p><footer><small>ZIP + 目录索引</small><a>填写用途下载</a></footer></article><article class="v2-gr-card"><header><h3>学生B · 档案生成</h3>${badge('阻断','danger')}</header><p>缺评阅评分和答辩记录，未输出假完整档案。</p><footer><small>缺失清单可下载</small><a>去补齐</a></footer></article><article class="v2-gr-card"><header><h3>批次统计</h3>${badge('实时聚合')}</header><p>选题、开题、过程、成果、答辩、成绩和归档完成率。</p><footer><small>同口径下钻</small><a>查看统计</a></footer></article><article class="v2-gr-card"><header><h3>通知与预警</h3>${badge('待跟进','warning')}</header><p>逾期、缺失、答辩冲突、成绩缺项和归档失败。</p><footer><small>按角色发送</small><a>处理</a></footer></article></div></section><aside class="v2-card v2-panel"><h2>归档纪律</h2><div class="v2-gr-checks"><article class="v2-gr-check"><span>✓</span><div><b>最终版本只读</b><small>历史版本仍可追溯</small></div>${badge('通过','success')}</article><article class="v2-gr-check"><span>✓</span><div><b>下载用途与水印</b><small>权限、范围和审计由后端执行</small></div>${badge('必需')}</article><article class="v2-gr-check block"><span>!</span><div><b>缺材料阻断</b><small>不生成伪完整包</small></div>${badge('红线','danger')}</article></div></aside></div>`}
-const key=P.active||'overview',m=meta[key]||meta.overview,ready={overview,topic,proposal,process,artifact,defense,grade,archive}[key]();
-const activeModule=m[0];
+
+const P=window.V2_PAGE||{};
+const I='../shared/icons.svg#';
+
+const WORKSPACES=[
+  {key:'workbench',label:'我的工作台',file:'overview.html',route:'/admin/graduation',permission:'graduationDesign.dashboard.view'},
+  {key:'batch',label:'批次与实施',file:'batch-implementation.html',route:'/admin/graduation/batches?panel=list',permission:'graduationDesign.batch.view'},
+  {key:'topic',label:'题目与选题',file:'topic.html',route:'/admin/graduation/topic-lib',permission:'graduationDesign.topic.lib'},
+  {key:'process',label:'过程指导',file:'process.html',route:'/admin/graduation/process?panel=taskbook',permission:'graduationDesign.guidance.view'},
+  {key:'proposalFinal',label:'开题与成果',file:'proposal-final.html',route:'/admin/graduation/proposals',permission:'graduationDesign.proposal.view'},
+  {key:'defense',label:'答辩与成绩',file:'defense.html',route:'/admin/graduation/defense',permission:'graduationDesign.defense.view'},
+  {key:'riskArchive',label:'风险与归档',file:'risk-archive.html',route:'/admin/graduation/risk-archive?panel=risk',permission:'graduationDesign.riskArchive.manage'},
+  {key:'templates',label:'模板与设置',file:'templates.html',route:'/admin/graduation/templates',permission:'graduationDesign.template.manage'}
+];
+
+const META={
+  workbench:{
+    title:'我的工作台',
+    desc:'按当前角色、批次与数据范围聚合本人待办、关键进度、风险和同口径下钻。',
+    role:'毕设管理员 / 学院 / 指导教师 / 评阅教师',
+    scope:'当前授权批次与本人职责范围',
+    boundary:'工作台只聚合生产事实，不复制各工作区主数据；每个数字必须保留批次、范围、口径和下钻目标。'
+  },
+  batch:{
+    title:'批次与实施',
+    desc:'管理批次、阶段时间轴、规则、学生资格、导师名单、学生分配与冲突检测。',
+    role:'毕设管理员 / 学院管理员',
+    scope:'授权批次、学院、专业与学生',
+    boundary:'批次规则与时间轴必须版本化；资格、导师准入、学生分配和冲突处理是独立事实，不能用前端临时选择覆盖正式关系。'
+  },
+  topic:{
+    title:'题目与选题',
+    desc:'贯通题目库、待审核题目、选题轮次、学生志愿、匹配结果、容量冲突和题目调整。',
+    role:'毕设管理员 / 学院 / 指导教师',
+    scope:'授权批次、专业、导师和学生',
+    boundary:'题目申报、审核、发布、学生志愿、匹配、确认和最终结果相互分离；容量、专业、导师上限和重复分配冲突必须阻断。'
+  },
+  process:{
+    title:'过程指导',
+    desc:'统一承载规范流程、任务书、指导记录、指导计划、导师评价和中期检查。',
+    role:'指导教师 / 学院管理员',
+    scope:'本人指导学生或授权学院范围',
+    boundary:'任务书、计划、指导记录、评价和中期检查均追加版本与证据；任何延期或整改都不得静默改写原截止时间和原结论。'
+  },
+  proposalFinal:{
+    title:'开题与成果',
+    desc:'处理开题批阅、成果提交与批阅、查重记录、教师评阅和成果互查整改。',
+    role:'指导教师 / 评阅教师 / 学院管理员',
+    scope:'本人任务或授权学生范围',
+    boundary:'开题、初稿、定稿、查重证据、教师评阅和互查整改是不同事实；查重结果不能自动生成学术结论，退回重交不能覆盖旧版本。'
+  },
+  defense:{
+    title:'答辩与成绩',
+    desc:'贯通答辩安排、延期答辩、评委评分、秘书确认、成绩台账、优秀成果与更正申诉。',
+    role:'答辩管理员 / 评委 / 答辩秘书 / 学院',
+    scope:'授权批次、答辩组与评分任务',
+    boundary:'答辩发布前重检人员、回避、时间、场地和容量；评分提交、秘书确认、成绩汇总、发布、优秀认定与更正申诉保持分离。'
+  },
+  riskArchive:{
+    title:'风险与归档',
+    desc:'集中处理问题预警、毕设材料归档和同口径统计。',
+    role:'毕设管理员 / 学院 / 归档审计人员',
+    scope:'授权批次与已办结学生范围',
+    boundary:'风险必须保留来源、责任人与处置时限；归档只收最终版本和完整审计，缺材料时输出缺失清单而不是伪完整档案。'
+  },
+  templates:{
+    title:'模板与设置',
+    desc:'维护材料模板、任务书模板、开题模板和全部模板版本。',
+    role:'毕设模板管理员',
+    scope:'学校或租户级模板管理范围',
+    boundary:'模板版本只影响明确绑定的新任务或新批次；已发布批次和历史材料必须继续引用原模板版本，不得被后续编辑追溯改写。'
+  }
+};
+
+const svg=(name)=>`<svg aria-hidden="true"><use href="${I}${name}"></use></svg>`;
+const badge=(text,cls='')=>`<span class="v2-badge ${cls}">${text}</span>`;
+const action=(text,href,cls='')=>`<a class="v2-btn ${cls}" href="${href}">${text}</a>`;
+const button=(text,cls='',attrs='')=>`<button type="button" class="v2-btn ${cls}" ${attrs}>${text}</button>`;
+const table=(heads,rows,width=980)=>`<div class="v2-table-wrap"><table class="v2-table" style="min-width:${width}px"><thead><tr>${heads.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((x,i)=>`<td${i===row.length-1?' class="actions"':''}>${x}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const pager=`<div class="v2-pager"><span class="v2-note">共 — 条 · 服务端分页</span><button type="button" class="v2-page-no active">1</button><button type="button" class="v2-page-no">2</button><button type="button" class="v2-page-no">›</button></div>`;
+const kpis=(items)=>`<div class="v2-gr-kpis v2-section">${items.map(([label,value,note,cls=''])=>`<article class="v2-gr-kpi ${cls}"><small>${label}</small><strong>${value}</strong><span>${note}</span></article>`).join('')}</div>`;
+const progress=(items,current=2)=>`<div class="v2-gr-progress">${items.map((label,i)=>`<div class="${i<current?'done':i===current?'current':''}"><span>${i+1}</span><b>${label}</b></div>`).join('')}</div>`;
+const filter=(extra='')=>`<section class="v2-card v2-filter v2-section"><div class="v2-field"><label>毕业设计批次</label><select class="v2-select"><option>当前授权批次</option></select></div><div class="v2-field"><label>学院 / 专业 / 状态</label><select class="v2-select"><option>全部可见范围</option></select></div><div class="v2-field grow"><label>关键词</label><input class="v2-input" placeholder="学生 / 导师 / 题目 / 材料"/></div>${button('查询','primary')}${button('重置')}${extra}</section>`;
+
+const stateButtons=`<div class="v2-state-tools"><button type="button" data-state-button="ready" class="active">默认</button><button type="button" data-state-button="loading">加载</button><button type="button" data-state-button="empty">空</button><button type="button" data-state-button="error">错误</button><button type="button" data-state-button="unauthorized">403/只读</button><button type="button" data-state-button="long">长数据</button></div>`;
+const states=(name)=>`<section class="v2-state" data-prototype-state="loading"><div class="v2-state-card"><span class="v2-spinner"></span><h3>正在加载${name}</h3><p>等待真实批次、权限、数据范围和业务数据。</p></div></section><section class="v2-state" data-prototype-state="empty"><div class="v2-state-card">${svg('i-inbox')}<h3>当前范围暂无记录</h3><p>区分未建批次、无权限、无数据范围和真实空数据。</p></div></section><section class="v2-state" data-prototype-state="error"><div class="v2-state-card">${svg('i-alert')}<h3>${name}加载失败</h3><p>保留当前批次和筛选条件，不把接口失败显示成 0。</p>${button('重新加载','primary')}</div></section><section class="v2-state" data-prototype-state="unauthorized"><div class="v2-state-card">${svg('i-lock')}<h3>无权限、无数据范围或当前阶段只读</h3><p>菜单、按钮、批次状态与后端权限必须同口径；不回退到全校数据。</p></div></section><section class="v2-state" data-prototype-state="long"><div class="v2-state-card"><h3>大批次与长数据状态</h3><p>学生、题目、材料、答辩和成绩均使用服务端分页；宽表只在容器内滚动。</p></div></section>`;
+
+function workbench(){
+  return kpis([
+    ['本人待办','—','按角色与任务池'],
+    ['批次学生','—','当前授权范围'],
+    ['待评阅开题','—','本人任务','warning'],
+    ['待评阅成果','—','本人任务','warning'],
+    ['答辩评分待办','—','本人答辩组','danger'],
+    ['过程风险','—','逾期 / 缺项','danger'],
+    ['待归档学生','—','已办结未归档'],
+    ['统计更新时间','—','后端返回新鲜度']
+  ])+`<section class="v2-card v2-panel v2-section"><div class="v2-table-toolbar"><div><h2>当前批次主链</h2><p class="v2-note">所有卡片继承同一批次和数据范围。</p></div>${action('查看批次','/admin/graduation/batches?panel=list')}</div>${progress(['批次实施','题目选题','过程指导','开题成果','答辩成绩','风险归档'],2)}</section><div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><h2>今日任务</h2><div class="v2-gr-checks"><article class="v2-gr-check block"><span>!</span><div><b>开题待评阅</b><small>只统计分配给本人的有效任务</small></div>${action('进入队列','/admin/graduation/proposals?tab=PENDING_REVIEW','primary')}</article><article class="v2-gr-check"><span>✓</span><div><b>成果待评阅</b><small>初稿、定稿和教师评阅分开</small></div>${action('进入队列','/admin/graduation/finals?tab=PENDING_REVIEW')}</article><article class="v2-gr-check block"><span>!</span><div><b>答辩评分待提交</b><small>评委回避校验通过后才能评分</small></div>${action('去评分','/admin/graduation/defense-scoring')}</article><article class="v2-gr-check"><span>✓</span><div><b>统计与审计</b><small>同口径报表与操作日志</small></div>${action('查看统计','/admin/graduation/stats-report')}</article></div></section><aside class="v2-card v2-panel"><h2>数据可信说明</h2><div class="v2-stats-definition"><article><b>不是第二套业务台账</b><small>工作台只聚合，不复制开题、成果、评分或归档记录。</small></article><article><b>下钻保持同一范围</b><small>批次、学院、专业、角色和时间条件必须传递。</small></article><article><b>失败不等于零</b><small>接口错误、无范围和真实零值使用不同状态。</small></article></div></aside></div>`;
+}
+
+function batch(){
+  return kpis([
+    ['有效批次','—','当前学年'],
+    ['阶段配置','—','规则版本'],
+    ['批次学生','—','名单范围'],
+    ['资格待认定','—','学生任务','warning'],
+    ['导师待准入','—','导师名单','warning'],
+    ['分配冲突','—','上限 / 重复','danger']
+  ])+`<section class="v2-card v2-panel v2-section"><h2>批次实施链</h2>${progress(['创建批次','阶段时间轴','规则配置','学生名单','资格认定','导师名单','学生分配','冲突收口'],3)}</section>${filter(action('批次列表','/admin/graduation/batches?panel=list')+action('阶段配置','/admin/graduation/batches?panel=stages')+action('规则配置','/admin/graduation/batches?panel=rules'))}<section class="v2-card v2-table-card v2-section">${table(['批次 / 学年','阶段版本','学生范围','资格完成','导师完成','分配完成','冲突','操作'],[['2026届毕业设计','v3','软件技术等 3 专业','— / —','— / —','— / —',badge('待扫描','warning'),action('查看批次','/admin/graduation/batches?panel=list')],['2025届毕业设计','v5','已归档范围','— / —','— / —','— / —',badge('只读','success'),action('查看历史','/admin/graduation/batches?panel=list')]])}${pager}</section><div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><h2>实施任务</h2><div class="v2-gr-checks"><article class="v2-gr-check"><span>1</span><div><b>学生资格认定</b><small>资格结论、依据与操作人留痕</small></div>${action('进入名单','/admin/graduation/students?panel=eligibility')}</article><article class="v2-gr-check"><span>2</span><div><b>导师名单与准入</b><small>导师资格、专业范围和指导上限</small></div>${action('导师名单','/admin/graduation/mentors?panel=list')}</article><article class="v2-gr-check block"><span>!</span><div><b>学生分配冲突</b><small>重复分配、导师超限和范围冲突</small></div>${action('冲突检测','/admin/graduation/mentors/conflicts','primary')}</article></div></section><aside class="v2-card v2-panel"><h2>批次纪律</h2><p class="v2-note">阶段时间轴和规则修改形成新版本；已启动或已归档批次不得被后续设置静默追溯改写。</p></aside></div>`;
+}
+
+function topic(){
+  return kpis([
+    ['题目库','—','当前批次'],
+    ['待审核题目','—','学院审核','warning'],
+    ['已发布题目','—','可选范围'],
+    ['未选题学生','—','需跟进','danger'],
+    ['匹配待确认','—','轮次结果'],
+    ['容量冲突','—','阻断最终结果','danger']
+  ])+`<section class="v2-card v2-panel v2-section"><h2>题目与选题状态链</h2>${progress(['题目申报','题目审核','题目发布','学生志愿','匹配计算','结果确认','冲突复核','题目调整'],3)}</section>${filter(action('题目列表','/admin/graduation/topic-lib?panel=list')+action('待审核题目','/admin/graduation/topic-lib?panel=pending')+action('选题轮次','/admin/graduation/topic-rounds?panel=rounds'))}<section class="v2-card v2-table-card v2-section">${table(['题目','申报导师','适用专业','容量','审核 / 发布','学生志愿','匹配结果','操作'],[['题目 A','导师 A','软件技术','3',badge('已发布','success'),'—',badge('待匹配','warning'),action('题目详情','/admin/graduation/topic-lib?panel=list')],['题目 B','导师 B','大数据技术','2',badge('待审核','warning'),'—','未开放',action('审核队列','/admin/graduation/topic-lib?panel=pending')],['题目 C','导师 C','跨专业候选','1',badge('已发布','success'),'—',badge('容量冲突','danger'),action('冲突复核','/admin/graduation/topic-rounds?panel=conflicts','primary')]])}${pager}</section><div class="v2-gr-rule v2-section">学生志愿和匹配结果不是最终分配。确认前必须重新检查题目容量、导师指导上限、专业范围、重复分配和题目调整中的并发版本。</div>`;
+}
+
+function processWorkspace(){
+  return kpis([
+    ['任务书待确认','—','当前阶段','warning'],
+    ['指导计划','—','本人学生'],
+    ['本周指导记录','—','真实提交'],
+    ['中期待检查','—','需处理','warning'],
+    ['逾期里程碑','—','风险学生','danger'],
+    ['整改未闭环','—','责任与时限','danger']
+  ])+`<section class="v2-card v2-panel v2-section"><h2>过程指导工作区</h2>${progress(['规范流程','任务书','指导计划','指导记录','里程碑证据','中期检查','问题整改','阶段完成'],3)}</section>${filter(action('任务书','/admin/graduation/process?panel=taskbook')+action('指导记录','/admin/graduation/process?panel=guidance')+action('中期检查','/admin/graduation/process?panel=midterm'))}<section class="v2-card v2-table-card v2-section">${table(['学生','任务书版本','指导计划','最近指导','中期检查','问题 / 整改','状态','操作'],[['学生 A','v2','已确认','2026-07-30',badge('待检查','warning'),'无',badge('进行中'),action('指导记录','/admin/graduation/process?panel=guidance')],['学生 B','v1','待确认','2026-07-22','未开始',badge('里程碑逾期','danger'),badge('需跟进','danger'),action('查看计划','/admin/graduation/process?panel=plan','primary')],['学生 C','v3','已确认','2026-07-29',badge('整改中','warning'),'问题单 #—',badge('整改中','warning'),action('中期检查','/admin/graduation/process?panel=midterm')]])}${pager}</section><div class="v2-gr-rule v2-section">任务书、指导计划、指导记录、导师评价和中期检查均追加历史。延期审批只能生成新的有效截止时间，不能覆盖原截止和原证据。</div>`;
+}
+
+function proposalFinal(){
+  return kpis([
+    ['开题待评阅','—','本人任务','warning'],
+    ['开题退回待重交','—','旧版本保留','danger'],
+    ['成果待批阅','—','初稿 / 定稿','warning'],
+    ['查重记录待核','—','证据'],
+    ['教师评阅待完成','—','分配任务','warning'],
+    ['互查整改未闭环','—','整改版本','danger']
+  ])+`<section class="v2-card v2-panel v2-section"><h2>开题与成果材料链</h2>${progress(['开题提交','开题批阅','退回重交','初稿提交','定稿提交','查重证据','教师评阅','互查整改'],2)}</section>${filter(action('开题批阅','/admin/graduation/proposals')+action('成果批阅','/admin/graduation/finals')+action('查重台账','/admin/graduation/plagiarism-ledger'))}<section class="v2-card v2-table-card v2-section">${table(['学生','开题版本 / 状态','成果版本 / 状态','查重证据','教师评阅','互查整改','完整性','操作'],[['学生 A','v2 / '+badge('待评阅','warning'),'初稿 v1 / 待定稿','报告 #—','未分配','无',badge('待补齐','warning'),action('开题批阅','/admin/graduation/proposals')],['学生 B','v3 / '+badge('已通过','success'),'定稿 v2 / '+badge('待批阅','warning'),'18% / 报告 #—','待评阅','无',badge('材料完整','success'),action('成果批阅','/admin/graduation/finals','primary')],['学生 C','v2 / '+badge('已通过','success'),'定稿 v3 / 已评阅','复核完成','已完成',badge('整改中','warning'),badge('未闭环','danger'),action('互查整改','/admin/graduation/more?panel=peer')]])}${pager}</section><div class="v2-gr-rule v2-section">开题通过不代表成果通过；初稿、定稿、查重报告、教师评阅和互查整改各自保留版本。查重比例只是证据，不自动生成学术合格或不合格结论。</div>`;
+}
+
+function defense(){
+  return kpis([
+    ['答辩组','—','当前批次'],
+    ['待分配学生','—','容量校验','warning'],
+    ['回避冲突','—','发布阻断','danger'],
+    ['我的评分待办','—','评委任务','warning'],
+    ['秘书待确认','—','评分确认','warning'],
+    ['成绩缺项','—','阻断台账','danger'],
+    ['优秀成果待认定','—','独立流程'],
+    ['更正申诉待处理','—','发布后流程','danger']
+  ])+`<section class="v2-card v2-panel v2-section"><h2>答辩与成绩状态链</h2>${progress(['答辩安排','学生分配','回避预检','计划发布','评委评分','秘书确认','成绩台账','更正申诉'],2)}</section>${filter(action('答辩安排','/admin/graduation/defense')+action('我的评分','/admin/graduation/defense-scoring')+action('成绩台账','/admin/graduation/grade-ledger'))}<div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><h2>发布前核验</h2><div class="v2-gr-checks"><article class="v2-gr-check"><span>✓</span><div><b>答辩组和容量</b><small>成员、角色与学生上限完整</small></div>${badge('通过','success')}</article><article class="v2-gr-check block"><span>!</span><div><b>评委回避</b><small>指导关系或利益冲突待处理</small></div>${badge('阻断','danger')}</article><article class="v2-gr-check block"><span>!</span><div><b>时间与场地</b><small>发布时重新读取最新冲突事实</small></div>${badge('阻断','danger')}</article><article class="v2-gr-check"><span>✓</span><div><b>成绩规则</b><small>评分项、确认节点与缺项处理已冻结</small></div>${badge('已配置','success')}</article></div></section><aside class="v2-card v2-panel"><h2>成绩边界</h2><p class="v2-note">评委评分提交后仍需秘书确认；成绩台账、优秀成果认定和发布后更正申诉分别受独立权限与状态机控制。</p></aside></div><section class="v2-card v2-table-card v2-section">${table(['学生','答辩组','评委评分','秘书确认','综合成绩','台账状态','异常','操作'],[['学生 A','第一组','已提交','待确认','—',badge('阻断','warning'),'无',action('秘书确认','/admin/graduation/defense-confirmation')],['学生 B','第二组','缺 1 项','不可确认','—',badge('缺项','danger'),'评分缺失',action('评分任务','/admin/graduation/defense-scoring','primary')],['学生 C','第三组','已提交','已确认','—',badge('待发布','warning'),'无',action('成绩台账','/admin/graduation/grade-ledger')]])}${pager}</section>`;
+}
+
+function riskArchive(){
+  return kpis([
+    ['过程预警','—','来源去重','danger'],
+    ['逾期未闭环','—','责任与时限','danger'],
+    ['待归档学生','—','已办结'],
+    ['材料完整','—','可生成档案'],
+    ['缺失材料','—','阻断完整包','danger'],
+    ['统计更新时间','—','同口径聚合']
+  ])+`${filter(action('问题预警','/admin/graduation/risk-archive?panel=risk')+action('材料归档','/admin/graduation/risk-archive?panel=archive')+action('毕设统计','/admin/graduation/stats-report'))}<div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><h2>风险处置</h2><div class="v2-gr-checks"><article class="v2-gr-check block"><span>!</span><div><b>里程碑逾期</b><small>来源、学生、责任人、截止和升级记录</small></div>${action('进入预警','/admin/graduation/risk-archive?panel=risk','primary')}</article><article class="v2-gr-check block"><span>!</span><div><b>答辩冲突未闭环</b><small>不能只在前端标记“已知晓”</small></div>${badge('阻断','danger')}</article><article class="v2-gr-check"><span>✓</span><div><b>风险关闭</b><small>证据、结论与关闭人完整</small></div>${badge('可归档','success')}</article></div></section><aside class="v2-card v2-panel"><h2>归档完整性</h2><div class="v2-gr-checks"><article class="v2-gr-check"><span>✓</span><div><b>最终题目与开题</b><small>引用最终有效版本</small></div>${badge('完整','success')}</article><article class="v2-gr-check block"><span>!</span><div><b>教师评阅缺失</b><small>生成缺失清单，不生成假完整包</small></div>${badge('阻断','danger')}</article><article class="v2-gr-check"><span>✓</span><div><b>下载保护</b><small>用途、水印、权限、范围与审计</small></div>${badge('必需')}</article></div></aside></div><section class="v2-card v2-table-card v2-section">${table(['学生','风险状态','材料完整度','最终版本','归档状态','缺失项','下载','操作'],[['学生 A',badge('已关闭','success'),'完整','已锁定',badge('可归档','success'),'无','填写用途',action('归档工作区','/admin/graduation/risk-archive?panel=archive')],['学生 B',badge('处理中','warning'),'缺 2 项','未锁定',badge('阻断','danger'),'评阅 / 答辩记录','不可下载',action('查看缺失','/admin/graduation/risk-archive?panel=archive','primary')]])}${pager}</section>`;
+}
+
+function templates(){
+  return kpis([
+    ['材料模板','—','有效版本'],
+    ['任务书模板','—','有效版本'],
+    ['开题模板','—','有效版本'],
+    ['草稿版本','—','未发布'],
+    ['已绑定批次','—','只读引用'],
+    ['待停用模板','—','影响分析','warning']
+  ])+`${filter(action('材料模板','/admin/graduation/templates?type=MATERIAL')+action('任务书模板','/admin/graduation/templates?type=TASKBOOK')+action('开题模板','/admin/graduation/templates?type=PROPOSAL'))}<section class="v2-card v2-table-card v2-section">${table(['模板','类型','当前版本','状态','已绑定批次','更新时间','影响边界','操作'],[['毕业设计材料清单','材料模板','v4',badge('已发布','success'),'2','2026-07-20','新绑定任务使用 v4',action('查看模板','/admin/graduation/templates?type=MATERIAL')],['任务书标准模板','任务书模板','v3',badge('草稿','warning'),'1','2026-07-28','历史任务继续引用 v2',action('编辑草稿','/admin/graduation/templates?type=TASKBOOK')],['开题报告模板','开题模板','v5',badge('已发布','success'),'3','2026-07-18','停用前需影响分析',action('查看模板','/admin/graduation/templates?type=PROPOSAL')]])}${pager}</section><div class="v2-gr-layout v2-section"><section class="v2-card v2-panel"><h2>版本纪律</h2><div class="v2-gr-checks"><article class="v2-gr-check"><span>1</span><div><b>草稿编辑</b><small>只影响当前草稿版本</small></div>${badge('可编辑')}</article><article class="v2-gr-check"><span>2</span><div><b>发布新版本</b><small>新任务或明确迁移后使用</small></div>${badge('需确认','warning')}</article><article class="v2-gr-check"><span>3</span><div><b>历史引用锁定</b><small>已提交材料继续关联原版本</small></div>${badge('只读','success')}</article></div></section><aside class="v2-card v2-panel"><h2>禁止行为</h2><p class="v2-note">不得因为管理员更新模板，就追溯替换已发布批次、已下发任务书、已提交开题或已归档材料中的历史模板版本。</p></aside></div>`;
+}
+
+const RENDERERS={workbench,batch,topic,process:processWorkspace,proposalFinal,defense,riskArchive,templates};
+const key=WORKSPACES.some(x=>x.key===P.active)?P.active:'workbench';
+const current=WORKSPACES.find(x=>x.key===key);
+const meta=META[key];
+const ready=RENDERERS[key]();
+
 const top=`<header class="v2-topbar"><div class="v2-brand"><span class="v2-brand-mark">跃</span><div><strong>校园综合管理平台</strong><small>Teacher PC V2 原型库</small></div></div><nav class="v2-centers"><a>工作台</a><a>学工中心</a><a>教务中心</a><a class="active">毕业设计中心</a><a>岗位实习中心</a><a>系统管理</a></nav><div class="v2-top-actions">${svg('i-search')}${svg('i-bell')}<span class="v2-avatar">毕</span></div></header>`;
-const side=`<aside class="v2-sidebar"><div class="v2-side-head"><b>毕业设计中心</b><button data-v2-sidebar-toggle aria-expanded="true">‹</button></div><div class="v2-side-search">${svg('i-search')}<input data-v2-side-search placeholder="搜索工作区"/></div><nav class="v2-side-nav">${modules.map(x=>`<a class="${x===activeModule?'active':''}" data-v2-module-label="${x}">${svg(x===activeModule?'i-grid':'i-folder')}<span>${x}</span>${x===activeModule?'<i></i>':''}</a>`).join('')}</nav><div class="v2-side-search-empty" hidden>未找到工作区</div></aside>`;
-const tabHtml=`<nav class="v2-gr-tabs">${tabs.map(([k,l,f])=>`<a class="v2-gr-tab ${k===key?'active':''}" href="${f}">${l}</a>`).join('')}</nav>`;
-document.body.dataset.theme='academy';document.body.innerHTML=`<div class="v2-app">${top}<div class="v2-layout">${side}<main class="v2-content"><div class="v2-page"><div class="v2-breadcrumb">毕业设计中心 / ${activeModule} / ${m[0]}</div><div class="v2-main-grid"><div><section class="v2-page-head"><div class="v2-page-title"><span class="v2-page-title-icon">${svg(key==='defense'?'i-calendar':key==='archive'?'i-archive':'i-grid')}</span><div><h1>${m[0]}</h1><p>${m[1]}</p></div></div><div class="v2-head-actions"><span class="v2-soft-chip">角色：${m[2]}</span><span class="v2-soft-chip">范围：${m[3]}</span><span class="v2-soft-chip">权限：${P.permission||'按生产工作区核对'}</span></div></section>${tabHtml}<section class="v2-state active" data-prototype-state="ready">${ready}</section>${states(m[0])}</div><aside class="v2-context"><section class="v2-card v2-context-card"><h2>原型状态</h2>${stateButtons}</section><section class="v2-card v2-context-card"><h2>本页边界</h2><p class="v2-note">${m[4]}</p></section><section class="v2-card v2-context-card"><h2>毕业设计纪律</h2><ul class="v2-plain-list"><li>批次上下文贯穿全流程。</li><li>材料与评分保留版本。</li><li>回避和冲突发布前重检。</li><li>发布后更正走复核。</li><li>缺材料不生成假档案。</li></ul></section><section class="v2-card v2-context-card"><h2>数据说明</h2><p class="v2-note">页面数据为中性占位；真实状态、字段和权限以生产代码为准。</p></section></aside></div></div></main></div></div>`;
-const sidebar=document.querySelector('.v2-sidebar'),nav=sidebar.querySelector('.v2-side-nav'),search=sidebar.querySelector('[data-v2-side-search]'),empty=sidebar.querySelector('.v2-side-search-empty');search.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();let n=0;nav.querySelectorAll('a').forEach(a=>{const hit=!q||a.dataset.v2ModuleLabel.toLowerCase().includes(q);a.hidden=!hit;if(hit)n++});empty.hidden=n>0});sidebar.querySelector('[data-v2-sidebar-toggle]').addEventListener('click',e=>{const c=!sidebar.classList.contains('is-collapsed');sidebar.classList.toggle('is-collapsed',c);document.querySelector('.v2-layout').classList.toggle('is-sidebar-collapsed',c);e.currentTarget.textContent=c?'›':'‹'});document.addEventListener('click',e=>{const s=e.target.closest('[data-state-button]');if(s){document.querySelectorAll('[data-prototype-state]').forEach(x=>x.classList.toggle('active',x.dataset.prototypeState===s.dataset.stateButton));document.querySelectorAll('[data-state-button]').forEach(x=>x.classList.toggle('active',x===s))}});
+const side=`<aside class="v2-sidebar"><div class="v2-side-head"><b>毕业设计中心</b><button type="button" data-v2-sidebar-toggle aria-expanded="true">‹</button></div><div class="v2-side-search">${svg('i-search')}<input data-v2-side-search placeholder="搜索工作区"/></div><nav class="v2-side-nav">${WORKSPACES.map(ws=>`<a class="${ws.key===key?'active':''}" data-v2-module-label="${ws.label}" href="${ws.file}">${svg(ws.key===key?'i-grid':'i-folder')}<span>${ws.label}</span>${ws.key===key?'<i></i>':''}</a>`).join('')}</nav><div class="v2-side-search-empty" hidden>未找到工作区</div></aside>`;
+const tabs=`<nav class="v2-gr-tabs" aria-label="毕业设计工作区">${WORKSPACES.map(ws=>`<a class="v2-gr-tab ${ws.key===key?'active':''}" href="${ws.file}">${ws.label}</a>`).join('')}</nav>`;
+
+document.body.dataset.theme='academy';
+document.body.innerHTML=`<div class="v2-app">${top}<div class="v2-layout">${side}<main class="v2-content"><div class="v2-page"><div class="v2-breadcrumb">毕业设计中心 / ${meta.title}</div><div class="v2-main-grid"><div><section class="v2-page-head"><div class="v2-page-title"><span class="v2-page-title-icon">${svg(key==='defense'?'i-calendar':key==='riskArchive'?'i-archive':key==='templates'?'i-settings':'i-grid')}</span><div><h1>${meta.title}</h1><p>${meta.desc}</p></div></div><div class="v2-head-actions"><span class="v2-soft-chip">生产工作区：${current.key}</span><span class="v2-soft-chip">角色：${meta.role}</span><span class="v2-soft-chip">范围：${meta.scope}</span><span class="v2-soft-chip">权限：${P.permission||current.permission}</span></div></section>${tabs}<section class="v2-state active" data-prototype-state="ready">${ready}</section>${states(meta.title)}</div><aside class="v2-context"><section class="v2-card v2-context-card"><h2>原型状态</h2>${stateButtons}</section><section class="v2-card v2-context-card"><h2>生产入口</h2><p class="v2-note"><code>${current.route}</code></p>${action('打开生产路由',current.route,'primary')}</section><section class="v2-card v2-context-card"><h2>本页边界</h2><p class="v2-note">${meta.boundary}</p></section><section class="v2-card v2-context-card"><h2>统一纪律</h2><ul class="v2-plain-list"><li>批次上下文贯穿全部工作区。</li><li>学生与教师身份来自统一主档。</li><li>材料、规则、计划与成绩保留版本。</li><li>冲突与缺项不能由前端静默绕过。</li><li>下载受权限、范围、用途、水印和审计约束。</li></ul></section><section class="v2-card v2-context-card"><h2>数据说明</h2><p class="v2-note">数值均为中性占位；真实字段、状态、权限和 API 以生产代码为准。</p></section></aside></div></div></main></div></div>`;
+
+const sidebar=document.querySelector('.v2-sidebar');
+const nav=sidebar.querySelector('.v2-side-nav');
+const search=sidebar.querySelector('[data-v2-side-search]');
+const empty=sidebar.querySelector('.v2-side-search-empty');
+
+search.addEventListener('input',()=>{
+  const query=search.value.trim().toLowerCase();
+  let visible=0;
+  nav.querySelectorAll('a').forEach(link=>{
+    const hit=!query||link.dataset.v2ModuleLabel.toLowerCase().includes(query);
+    link.hidden=!hit;
+    if(hit) visible+=1;
+  });
+  empty.hidden=visible>0;
+});
+
+sidebar.querySelector('[data-v2-sidebar-toggle]').addEventListener('click',(event)=>{
+  const collapsed=!sidebar.classList.contains('is-collapsed');
+  sidebar.classList.toggle('is-collapsed',collapsed);
+  document.querySelector('.v2-layout').classList.toggle('is-sidebar-collapsed',collapsed);
+  event.currentTarget.setAttribute('aria-expanded',String(!collapsed));
+  event.currentTarget.textContent=collapsed?'›':'‹';
+});
+
+document.addEventListener('click',(event)=>{
+  const trigger=event.target.closest('[data-state-button]');
+  if(!trigger) return;
+  document.querySelectorAll('[data-prototype-state]').forEach(section=>{
+    section.classList.toggle('active',section.dataset.prototypeState===trigger.dataset.stateButton);
+  });
+  document.querySelectorAll('[data-state-button]').forEach(buttonEl=>{
+    buttonEl.classList.toggle('active',buttonEl===trigger);
+  });
+});
+
 })();
