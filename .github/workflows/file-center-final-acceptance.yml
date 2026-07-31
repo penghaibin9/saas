@@ -13,7 +13,7 @@ on:
       - 'backend/alembic/versions/015*.py'
       - 'backend/tests/test_file*.py'
       - 'backend/tests/test_*material*.py'
-      - 'backend/tests/test_academic_file_exchange_center.py'
+      - 'backend/tests/test_academic*.py'
       - 'frontend/src/services/file/**'
       - 'frontend/src/modules/system/**'
       - 'frontend/src/modules/academicAffairs/**'
@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   inventory-and-call-scan:
-    name: 能力清单 + 调用扫描 + 旧合同退役
+    name: 能力清单 + 调用扫描 + 兼容合同裁决
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -51,12 +51,14 @@ jobs:
           python scripts/check_new_file_capabilities.py --base-ref origin/main
       - name: Strict file center call scan
         run: python scripts/audit_file_center_calls.py --strict --base-ref origin/main --json-report artifacts/file-center-call-scan.json
-      - name: Freeze retired aliases
+      - name: Freeze authoritative and delegated upload contracts
         run: |
-          ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' '["'"'"'`]\/files\/upload' frontend/src student-portal/src miniapp/src
           ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' '["'"'"'`]\/files\/meta\/' frontend/src student-portal/src miniapp/src
-          ! grep -n '@router.post("/upload"' backend/app/api/v1/file.py
           ! grep -n '@router.get("/meta/' backend/app/api/v1/file.py
+          grep -q '@router.post("/upload", deprecated=True, include_in_schema=False)' backend/app/api/v1/file.py
+          grep -q 'upload_contract(' backend/app/api/v1/file.py
+          ! sed -n '/def delegated_legacy_upload/,/^$/p' backend/app/api/v1/file.py | grep -q 'file_service.store_upload'
+          grep -q 'AUTHORITATIVE_UPLOAD_DELEGATE' backend/app/api/v1/file.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -113,8 +115,12 @@ jobs:
           python -m compileall -q \
             app/api/v1/file.py app/api/v1/files.py app/api/v1/file_governance.py \
             app/services/storage app/services/file_storage_governance_service.py \
+            app/services/file_storage_cleanup_service.py \
+            app/services/file_upload_session_cleanup_service.py \
             app/modules/academic_affairs/routers/academic_file_exchange_router.py \
+            app/modules/academic_affairs/routers/academic_export_compat_router.py \
             app/modules/academic_affairs/services/academic_file_exchange_service.py \
+            app/modules/academic_affairs/services/academic_export_compat_service.py \
             app/workers/file_scan_worker.py app/workers/file_governance_worker.py \
             app/commands/migrate_files_to_cos.py
       - name: Select stage 6–10 targeted tests
@@ -127,7 +133,8 @@ jobs:
             -name 'test_*material_center*.py' -o \
             -name 'test_*archive_manifest*.py' -o \
             -name 'test_data_exchange_job_center.py' -o \
-            -name 'test_academic_file_exchange_center.py' \
+            -name 'test_academic_file_exchange_center.py' -o \
+            -name 'test_academic_export_compat.py' \
           \) | sort | tr '\n' ' ')
           test -n "$TARGETS"
           echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
