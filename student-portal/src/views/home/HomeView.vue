@@ -1,89 +1,125 @@
 <template>
-  <div class="sp-page">
+  <div class="sp-page sp-home-v5">
     <StateBlock v-if="loading" type="loading" text="正在加载工作台…" />
     <template v-else>
-      <section class="hero">
-        <div class="hero__glow" />
-        <div class="hero__row">
-          <div style="min-width:0;flex:1">
-            <div class="hero__hi">{{ greeting }}，{{ studentName }}</div>
-            <div class="hero__chips">
-              <span v-for="c in identity" :key="c.label" class="chip"><span style="color:#A9B0BD">{{ c.label }}</span>{{ c.value }}</span>
-            </div>
-            <div v-if="topAlert" class="hero__alert">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D92D20" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 9v4M12 17h.01M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L14 3.9a2 2 0 0 0-3.4 0z" /></svg>
-              <div style="font-size:13.5px;color:#7A2016;line-height:1.5"><b style="color:#B42318">下一步 · </b>{{ topAlert.title }}</div>
+      <section class="home-hero">
+        <div class="home-hero__orb home-hero__orb--one" />
+        <div class="home-hero__orb home-hero__orb--two" />
+        <div class="home-hero__top">
+          <div class="home-hero__identity">
+            <div class="home-hero__eyebrow">MY STUDENT JOURNEY</div>
+            <h1>{{ greeting }}，{{ studentName }}</h1>
+            <p>今天先完成最重要的一件事，其他事项已按影响程度和截止时间排好顺序。</p>
+            <div class="home-hero__chips">
+              <span v-for="c in identity" :key="c.label" class="home-chip"><small>{{ c.label }}</small><b>{{ c.value }}</b></span>
             </div>
           </div>
-          <div style="display:flex;flex-direction:column;gap:10px;flex:none;align-items:flex-end">
-            <div style="font-size:12.5px;color:var(--t3)">当前阶段</div>
-            <div class="hero__stage"><span class="dot" />{{ stageLabel }}</div>
-            <button v-if="ctaModule" class="hero__cta" @click="goTarget(ctaModule)">{{ ctaText }} →</button>
+          <div class="home-stage">
+            <span>当前成长阶段</span>
+            <strong>{{ stageLabel }}</strong>
+            <div class="home-stage__bar"><i /></div>
+            <small>{{ domains.length ? `${domains.filter((d) => d.hasData).length} 个环节已有业务数据` : '等待学校发布阶段信息' }}</small>
           </div>
+        </div>
+
+        <div class="home-focus" :class="{ 'is-empty': !focusItem }">
+          <span class="home-focus__icon">{{ focusItem ? '!' : '✓' }}</span>
+          <div class="home-focus__body">
+            <strong>{{ focusItem ? focusTitle : '今天暂无紧急事项' }}</strong>
+            <small>{{ focusItem ? focusMeta : '可以查看课表、消息或继续关注成长进度。' }}</small>
+          </div>
+          <button v-if="focusItem && ctaModule" type="button" class="home-focus__button" @click="goTarget(ctaModule)">{{ ctaText }}</button>
         </div>
       </section>
 
-      <div class="metrics">
-        <div v-for="m in metrics" :key="m.title" class="metric">
-          <div class="metric__t">{{ m.title }}</div>
-          <div style="margin-top:9px;display:flex;align-items:baseline;gap:3px">
-            <span class="metric__v" :style="{ color: m.color }">{{ m.value }}</span>
-            <span style="font-size:14px;color:var(--t3);font-weight:500">{{ m.unit }}</span>
-          </div>
-          <div style="margin-top:6px;font-size:12px;color:var(--t4)">{{ m.sub }}</div>
-        </div>
-      </div>
+      <section class="home-metrics">
+        <article v-for="m in metrics" :key="m.title" class="home-metric">
+          <span>{{ m.title }}</span>
+          <div><strong :style="{ color: m.color }">{{ m.value }}</strong><em>{{ m.unit }}</em></div>
+          <small>{{ m.sub }}</small>
+        </article>
+      </section>
 
-      <div class="cols">
-        <section class="card">
-          <div class="card__head">
-            <div style="display:flex;align-items:center;gap:9px"><span class="card__title">待办中心</span><span class="cnt">{{ todos.length }}</span></div>
-            <span class="sp-muted">等我提交 / 确认 / 整改的事项</span>
+      <section class="home-card home-journey">
+        <div class="home-card__head">
+          <div><h2>我的成长航线</h2><p>跨模块统一查看当前阶段和下一步。</p></div>
+          <span>{{ journey.filter((item) => item.done).length }} / {{ journey.length }} 已完成</span>
+        </div>
+        <div class="home-journey__track">
+          <button v-for="(item, index) in journey" :key="item.key" type="button" class="home-journey__item"
+                  :class="{ 'is-done': item.done, 'is-current': item.current }" @click="goTarget(item.key)">
+            <span class="home-journey__node">{{ item.done ? '✓' : index + 1 }}</span>
+            <strong>{{ item.label }}</strong>
+            <small>{{ item.state }}</small>
+          </button>
+        </div>
+      </section>
+
+      <div class="home-grid">
+        <section class="home-card home-todos">
+          <div class="home-card__head">
+            <div><h2>我的下一步</h2><p>等我提交、确认、补充或整改的真实事项。</p></div>
+            <span>{{ todos.length }} 项待办</span>
           </div>
           <StateBlock v-if="!todos.length" type="empty" text="暂无待办，一切就绪" />
-          <div v-else style="display:flex;flex-direction:column;gap:10px">
-            <button v-for="t in todos" :key="t.id" class="todo" @click="goTarget(t.route || t.link || t.module)">
-              <span class="todo__tag" :style="modTagStyle(t.module)">{{ modName(t.module) }}</span>
-              <div style="flex:1;min-width:0">
-                <div class="todo__title">{{ t.title }}</div>
-                <div style="margin-top:3px;font-size:12px;color:var(--t4)">{{ t.dueAt ? ('截止 ' + fmt(t.dueAt)) : '待办事项' }}</div>
-              </div>
-              <span class="todo__go">去处理<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg></span>
+          <div v-else class="home-todo-list">
+            <button v-for="(t, index) in todos" :key="t.id || `${t.title}-${index}`" type="button" class="home-todo" @click="goTarget(t.route || t.link || t.module)">
+              <span class="home-todo__index">{{ String(index + 1).padStart(2, '0') }}</span>
+              <span class="home-todo__main">
+                <b>{{ t.title }}</b>
+                <small>{{ modName(t.module) }} · {{ t.dueAt ? `截止 ${fmt(t.dueAt)}` : '待办理' }}</small>
+              </span>
+              <span class="home-todo__go">去处理
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+              </span>
             </button>
           </div>
         </section>
 
-        <div style="display:flex;flex-direction:column;gap:18px">
-          <section class="card">
-            <div class="card__head"><span class="card__title">消息速览</span><a style="font-size:12.5px;color:var(--pri);cursor:pointer" @click="goMsg">全部</a></div>
+        <div class="home-side">
+          <section class="home-card">
+            <div class="home-card__head">
+              <div><h2>消息速览</h2><p>重要通知与业务结果。</p></div>
+              <button type="button" class="home-link" @click="goMsg">全部消息</button>
+            </div>
             <StateBlock v-if="!msgs.length" type="empty" text="暂无新消息" />
-            <button v-for="m in msgs" :key="m.id" class="msg" @click="goTarget(m.link || m.module)">
-              <span class="msg__dot" :style="{ background: m.read ? '#C9CED6' : 'var(--pri)' }" />
-              <div style="flex:1;min-width:0">
-                <div class="msg__title" :style="{ fontWeight: m.read ? 400 : 600 }">{{ m.title }}</div>
-                <div style="margin-top:3px;font-size:12px;color:var(--t4)">{{ modName(m.module) }} · {{ fmt(m.time) }}</div>
-              </div>
-            </button>
+            <div v-else class="home-message-list">
+              <button v-for="m in msgs" :key="m.id" type="button" class="home-message" @click="goTarget(m.link || m.module)">
+                <span class="home-message__dot" :class="{ 'is-read': m.read }" />
+                <span class="home-message__main">
+                  <b :class="{ 'is-read': m.read }">{{ m.title }}</b>
+                  <small>{{ modName(m.module) }} · {{ fmt(m.time) }}</small>
+                </span>
+              </button>
+            </div>
           </section>
 
-          <section class="card">
-            <div class="card__title" style="margin-bottom:6px">各环节状态</div>
+          <section class="home-card">
+            <div class="home-card__head">
+              <div><h2>环节状态</h2><p>来自各业务域的真实状态。</p></div>
+            </div>
             <StateBlock v-if="!domains.length" type="empty" text="暂无环节信息" />
-            <div v-for="d in domains" :key="d.key" class="sched">
-              <span class="sched__dot" :style="{ background: d.hasData ? 'var(--pri)' : '#C9CED6' }" />
-              <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:var(--t1)">{{ d.label }}</div></div>
-              <StatusTag :text="d.hasData ? statusLabel(d.status) : '未开始'" :tone="d.hasData ? 'primary' : 'default'" />
+            <div v-else class="home-domain-list">
+              <div v-for="d in domains" :key="d.key" class="home-domain">
+                <span class="home-domain__dot" :class="{ 'is-on': d.hasData }" />
+                <span>{{ d.label }}</span>
+                <StatusTag :text="d.hasData ? statusLabel(d.status) : '未开始'" :tone="d.hasData ? 'primary' : 'default'" />
+              </div>
             </div>
           </section>
         </div>
       </div>
 
-      <section class="card" style="margin-top:18px">
-        <div class="card__title" style="margin-bottom:14px">快捷入口</div>
-        <div class="quick">
-          <button v-for="q in quick" :key="q.key" class="quick__i" @click="goTarget(q.key)">
-            <span class="quick__ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="q.d1" /><path :d="q.d2" /></svg></span>
-            <span style="font-size:12.5px;color:var(--t2)">{{ q.label }}</span>
+      <section class="home-card home-quick-card">
+        <div class="home-card__head">
+          <div><h2>快捷服务</h2><p>直接进入高频模块，不必逐层寻找。</p></div>
+        </div>
+        <div class="home-quick">
+          <button v-for="q in quick" :key="q.key" type="button" class="home-quick__item" @click="goTarget(q.key)">
+            <span class="home-quick__icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="q.d1" /><path :d="q.d2" /></svg>
+            </span>
+            <span><b>{{ q.label }}</b><small>进入模块</small></span>
           </button>
         </div>
       </section>
@@ -113,6 +149,14 @@ const todos = computed(() => home.value.todos || [])
 const alerts = computed(() => home.value.alerts || [])
 const domains = computed(() => home.value.domains || [])
 const topAlert = computed(() => alerts.value[0] || null)
+const focusItem = computed(() => topAlert.value || todos.value[0] || null)
+const focusTitle = computed(() => focusItem.value?.title || '')
+const focusMeta = computed(() => {
+  const item = focusItem.value || {}
+  const parts = [modName(item.module || item.domain)]
+  if (item.dueAt) parts.push(`截止 ${fmt(item.dueAt)}`)
+  return parts.filter(Boolean).join(' · ') || '请及时处理'
+})
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -139,17 +183,30 @@ const metrics = computed(() => {
 })
 
 const ctaModule = computed(() => topAlert.value?.route || topAlert.value?.domain || todos.value[0]?.route || todos.value[0]?.module || null)
-const ctaText = computed(() => (topAlert.value ? '去处理预警' : todos.value.length ? '去处理待办' : ''))
-const quick = computed(() => MODULES.filter((m) => m.key !== 'dashboard').slice(0, 6))
+const ctaText = computed(() => (topAlert.value ? '立即处理' : todos.value.length ? '去办理' : ''))
+const quick = computed(() => MODULES.filter((m) => m.key !== 'dashboard').slice(0, 8))
 
 const STATUS_LABELS = { CHECKED_IN: '已报到', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验' }
+const DONE_STATES = new Set(['DONE', 'APPROVED', 'VERIFIED', 'CHECKED_IN', 'SIGNED'])
+const journey = computed(() => {
+  const defs = [
+    { key: 'orientation', aliases: ['orientation'], label: '迎新入学' },
+    { key: 'academic', aliases: ['academic', 'academic-affairs'], label: '学习生活' },
+    { key: 'campusService', aliases: ['campusService', 'campus-service', 'student-affairs'], label: '成长事务' },
+    { key: 'internship', aliases: ['internship'], label: '岗位实习' },
+    { key: 'graduation', aliases: ['graduation'], label: '毕业设计' },
+    { key: 'employment', aliases: ['employment'], label: '就业离校' }
+  ]
+  return defs.map((def) => {
+    const domain = domains.value.find((item) => def.aliases.includes(item.key) || def.aliases.includes(item.domain)) || {}
+    const done = !!domain.hasData && DONE_STATES.has(String(domain.status || '').toUpperCase())
+    const current = !!domain.hasData && !done
+    return { ...def, done, current, state: domain.hasData ? statusLabel(domain.status) : '未开始' }
+  })
+})
+
 function statusLabel(s) { return STATUS_LABELS[s] || s || '进行中' }
-function modName(key) { return moduleByKey(key)?.title || (String(key || '').includes('academic') ? '教务学业' : '系统') }
-function modTagStyle(key) {
-  const map = { academic: ['#F0ECFF', '#6D53E0'], 'academic-affairs': ['#F0ECFF', '#6D53E0'], internship: ['#E9F7EF', '#0C8A3E'], employment: ['#FFF4E5', '#B25E00'], campusService: ['#FDEEF3', '#C2416B'] }
-  const [bg, color] = map[key] || ['var(--pri-50)', 'var(--pri)']
-  return { background: bg, color }
-}
+function modName(key) { return moduleByKey(key)?.title || (String(key || '').includes('academic') ? '教务学业' : key ? '系统' : '') }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(5, 16) : '' }
 function goTarget(target) {
   const raw = String(target || 'home').trim()
@@ -181,41 +238,91 @@ onMounted(load)
 </script>
 
 <style scoped>
-.hero { position: relative; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 24px 26px; margin-bottom: 18px; }
-.hero__glow { position: absolute; right: -40px; top: -40px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(37,99,235,.10), transparent 68%); pointer-events: none; }
-.hero__row { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
-.hero__hi { font-size: 22px; font-weight: 600; color: var(--t1); }
-.hero__chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; background: #F5F7FA; border: 1px solid #EDEFF3; border-radius: 7px; font-size: 12.5px; color: var(--t2); white-space: nowrap; }
-.hero__alert { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px; background: #FEF3F1; border: 1px solid #F7D2CB; border-radius: 11px; max-width: 640px; }
-.hero__stage { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--pri-50); border-radius: 10px; color: var(--pri); font-weight: 600; font-size: 14px; }
-.hero__stage .dot, .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pri); }
-.hero__cta { all: unset; cursor: pointer; text-align: center; padding: 10px 16px; border-radius: 10px; background: var(--pri); color: #fff; font-size: 13.5px; font-weight: 600; box-shadow: 0 4px 12px rgba(37,99,235,.24); }
-.hero__cta:hover { background: var(--pri-h); }
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 18px; }
-.metric { background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 18px 18px 15px; }
-.metric__t { font-size: 13px; color: var(--t3); }
-.metric__v { font-size: 28px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
-.cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start; }
-.card { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 20px 22px; }
-.card__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.card__title { font-size: 16px; font-weight: 600; color: var(--t1); }
-.cnt { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #FEE4E2; color: var(--danger-fg); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
-.todo { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 14px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: inset 3px 0 0 var(--pri); }
-.todo:hover { border-color: #C9D8FF; background: #FBFCFE; }
-.todo__tag { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 6px; font-size: 12px; font-weight: 500; }
-.todo__title { font-size: 14px; color: var(--t1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.todo__go { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 13px; font-weight: 600; color: var(--pri); }
-.msg { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; border-bottom: 1px solid #F4F5F7; }
-.msg:hover { opacity: .72; }
-.msg__dot { margin-top: 6px; width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.msg__title { font-size: 13.5px; color: var(--t1); line-height: 1.45; }
-.sched { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid #F4F5F7; }
-.sched:last-child { border-bottom: 0; }
-.sched__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.quick { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-.quick__i { all: unset; cursor: pointer; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 15px 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-.quick__i:hover { border-color: #C9D8FF; background: #F6F9FF; }
-.quick__ic { width: 38px; height: 38px; border-radius: 11px; background: var(--pri-50); color: var(--pri); display: flex; align-items: center; justify-content: center; }
-@media (max-width: 900px) { .metrics { grid-template-columns: repeat(2, 1fr); } .cols { grid-template-columns: 1fr; } .quick { grid-template-columns: repeat(3, 1fr); } }
+.sp-home-v5 { max-width:1480px; margin:0 auto; }
+.home-hero { position:relative; overflow:hidden; padding:28px 30px; border-radius:26px; color:#fff; background:linear-gradient(118deg,color-mix(in srgb,var(--pri) 40%,#102d6d) 0%,var(--pri) 58%,color-mix(in srgb,var(--pri) 55%,#fff) 100%); box-shadow:0 20px 44px rgba(var(--sp-primary-rgb),.22); }
+.home-hero__orb { position:absolute; border-radius:50%; border:52px solid rgba(255,255,255,.09); pointer-events:none; }
+.home-hero__orb--one { width:330px; height:330px; right:-100px; top:-180px; }
+.home-hero__orb--two { width:190px; height:190px; right:260px; bottom:-150px; border-width:34px; }
+.home-hero__top { position:relative; z-index:1; display:flex; justify-content:space-between; gap:30px; }
+.home-hero__identity { min-width:0; }
+.home-hero__eyebrow { margin-bottom:8px; font-size:10px; letter-spacing:.14em; color:rgba(255,255,255,.65); }
+.home-hero h1 { margin:0; font-size:28px; line-height:1.25; }
+.home-hero p { margin:8px 0 0; color:rgba(255,255,255,.76); font-size:13px; }
+.home-hero__chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:17px; }
+.home-chip { min-height:31px; padding:0 10px; display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(255,255,255,.14); border-radius:10px; background:rgba(255,255,255,.11); font-size:12px; }
+.home-chip small { color:rgba(255,255,255,.65); }
+.home-stage { width:250px; flex:none; padding:16px; border:1px solid rgba(255,255,255,.17); border-radius:18px; background:rgba(255,255,255,.12); }
+.home-stage span,.home-stage small { display:block; color:rgba(255,255,255,.7); font-size:11.5px; }
+.home-stage strong { display:block; margin-top:5px; font-size:16px; }
+.home-stage__bar { height:7px; margin:15px 0 8px; overflow:hidden; border-radius:8px; background:rgba(255,255,255,.18); }
+.home-stage__bar i { display:block; width:62%; height:100%; border-radius:8px; background:#fff; }
+.home-focus { position:relative; z-index:1; margin-top:21px; padding:14px 15px; display:flex; align-items:center; gap:13px; border-radius:18px; background:#fff; color:var(--t1); box-shadow:0 13px 30px rgba(8,24,69,.17); }
+.home-focus.is-empty { background:rgba(255,255,255,.94); }
+.home-focus__icon { width:39px; height:39px; flex:none; border-radius:12px; display:grid; place-items:center; background:var(--danger-bg); color:var(--danger-fg); font-weight:850; }
+.home-focus.is-empty .home-focus__icon { background:var(--ok-bg); color:var(--ok-fg); }
+.home-focus__body { flex:1; min-width:0; }
+.home-focus__body strong,.home-focus__body small { display:block; }
+.home-focus__body strong { font-size:13.5px; }
+.home-focus__body small { margin-top:4px; color:var(--t3); font-size:11.5px; }
+.home-focus__button { min-height:37px; padding:0 14px; border:0; border-radius:11px; background:var(--pri); color:#fff; font-size:12px; font-weight:750; cursor:pointer; }
+.home-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:16px; }
+.home-metric { padding:18px; border:1px solid var(--line); border-radius:18px; background:#fff; box-shadow:0 5px 18px rgba(31,63,120,.045); }
+.home-metric > span { color:var(--t3); font-size:12px; }
+.home-metric div { margin:7px 0 3px; display:flex; align-items:baseline; gap:4px; }
+.home-metric strong { font-size:27px; line-height:1; }
+.home-metric em { color:var(--t3); font-size:13px; font-style:normal; }
+.home-metric small { color:var(--t4); font-size:11.5px; }
+.home-card { padding:19px 20px; border:1px solid var(--line); border-radius:20px; background:#fff; box-shadow:0 6px 22px rgba(31,63,120,.045); }
+.home-card__head { margin-bottom:14px; display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.home-card__head h2 { margin:0; color:var(--t1); font-size:15.5px; }
+.home-card__head p { margin:5px 0 0; color:var(--t3); font-size:11.5px; }
+.home-card__head > span { color:var(--pri); font-size:11.5px; font-weight:700; white-space:nowrap; }
+.home-journey { margin-top:16px; }
+.home-journey__track { position:relative; display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
+.home-journey__track::before { content:""; position:absolute; left:8%; right:8%; top:21px; height:2px; background:var(--line); }
+.home-journey__item { all:unset; cursor:pointer; position:relative; z-index:1; min-width:0; display:flex; flex-direction:column; align-items:center; text-align:center; }
+.home-journey__node { width:42px; height:42px; display:grid; place-items:center; border:4px solid #fff; border-radius:50%; background:#eef2f8; color:#667085; box-shadow:0 0 0 1px var(--line); font-size:12px; font-weight:800; }
+.home-journey__item.is-current .home-journey__node { background:var(--pri); color:#fff; box-shadow:0 0 0 5px var(--pri-50); }
+.home-journey__item.is-done .home-journey__node { background:var(--ok-fg); color:#fff; }
+.home-journey__item strong { margin-top:9px; color:var(--t1); font-size:12.5px; }
+.home-journey__item small { margin-top:3px; color:var(--t3); font-size:10.5px; }
+.home-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(340px,.78fr); gap:16px; margin-top:16px; }
+.home-side { display:flex; flex-direction:column; gap:16px; }
+.home-todo-list { display:flex; flex-direction:column; }
+.home-todo { all:unset; box-sizing:border-box; cursor:pointer; width:100%; padding:13px 0; display:grid; grid-template-columns:42px 1fr auto; align-items:center; gap:12px; border-top:1px solid var(--line2); }
+.home-todo:first-child { border-top:0; }
+.home-todo:hover .home-todo__go { background:var(--pri); color:#fff; }
+.home-todo__index { width:38px; height:38px; display:grid; place-items:center; border-radius:12px; background:var(--pri-50); color:var(--pri); font-size:12px; font-weight:800; }
+.home-todo__main { min-width:0; }
+.home-todo__main b,.home-todo__main small { display:block; }
+.home-todo__main b { overflow:hidden; color:var(--t1); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.home-todo__main small { margin-top:4px; color:var(--t3); font-size:11.5px; }
+.home-todo__go { min-height:32px; padding:0 10px; display:flex; align-items:center; gap:3px; border-radius:9px; background:var(--pri-50); color:var(--pri); font-size:11.5px; font-weight:700; transition:.15s; }
+.home-link { all:unset; cursor:pointer; color:var(--pri); font-size:11.5px; font-weight:700; }
+.home-message-list,.home-domain-list { display:flex; flex-direction:column; }
+.home-message { all:unset; box-sizing:border-box; cursor:pointer; padding:11px 0; display:grid; grid-template-columns:10px 1fr; gap:10px; border-top:1px solid var(--line2); }
+.home-message:first-child { border-top:0; }
+.home-message__dot { width:7px; height:7px; margin-top:6px; border-radius:50%; background:var(--pri); }
+.home-message__dot.is-read { background:#c9ced6; }
+.home-message__main { min-width:0; }
+.home-message__main b,.home-message__main small { display:block; }
+.home-message__main b { overflow:hidden; color:var(--t1); font-size:12.5px; text-overflow:ellipsis; white-space:nowrap; }
+.home-message__main b.is-read { font-weight:400; }
+.home-message__main small { margin-top:4px; color:var(--t4); font-size:10.5px; }
+.home-domain { min-height:39px; display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:9px; border-top:1px solid var(--line2); color:var(--t1); font-size:12.5px; }
+.home-domain:first-child { border-top:0; }
+.home-domain__dot { width:7px; height:7px; border-radius:50%; background:#c9ced6; }
+.home-domain__dot.is-on { background:var(--pri); }
+.home-quick-card { margin-top:16px; }
+.home-quick { display:grid; grid-template-columns:repeat(8,1fr); gap:10px; }
+.home-quick__item { all:unset; box-sizing:border-box; cursor:pointer; min-height:68px; padding:10px; display:flex; align-items:center; gap:9px; border:1px solid var(--line); border-radius:15px; background:#fff; }
+.home-quick__item:hover { border-color:var(--pri-100); background:var(--pri-50); transform:translateY(-1px); }
+.home-quick__icon { width:37px; height:37px; flex:none; display:grid; place-items:center; border-radius:11px; background:var(--pri-50); color:var(--pri); }
+.home-quick__item b,.home-quick__item small { display:block; }
+.home-quick__item b { color:var(--t1); font-size:11.5px; }
+.home-quick__item small { margin-top:3px; color:var(--t4); font-size:9.5px; }
+html[data-sp-theme='dark'] .home-metric,html[data-sp-theme='dark'] .home-card,html[data-sp-theme='dark'] .home-quick__item { background:#1b2231; }
+@media(max-width:1280px){.home-grid{grid-template-columns:1fr}.home-side{display:grid;grid-template-columns:1fr 1fr}.home-quick{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:900px){.home-hero__top{display:block}.home-stage{width:100%;margin-top:18px}.home-metrics{grid-template-columns:repeat(2,1fr)}.home-journey__track{grid-template-columns:repeat(3,1fr);row-gap:18px}.home-journey__track::before{display:none}.home-side{grid-template-columns:1fr}.home-quick{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.home-hero{padding:22px 18px}.home-hero h1{font-size:23px}.home-focus{align-items:flex-start;flex-wrap:wrap}.home-focus__button{width:100%}.home-metrics{grid-template-columns:1fr}.home-journey__track{grid-template-columns:repeat(2,1fr)}}
 </style>

@@ -1,55 +1,39 @@
-# 公共文件中心阶段 6–10 收口账本
+# 公共文件中心阶段 6–10 收口报告
 
-> PR：#25 `audit/file-capability-inventory`；始终保持 Draft，不合并 `main`，不开启自动合并。
-> 本文只记录当前代码事实、自动化证据与外部阻塞，不用“计划完成”替代真实验收。
+本报告对应 Draft PR #25 `audit/file-capability-inventory`。阶段 6–10 的仓库内施工收口到统一 FileObject、FileAsset/FileVersion/FileBinding、ImportJob/ExportJob、流式归档、COS 生产存储适配，以及租户配额、保留和清理治理。
 
-## 1. 当前施工结论
+## 已冻结的仓库合同
 
-| 阶段 | 当前代码状态 | 已形成的权威能力 | 尚需最终证据 |
-|---|---|---|---|
-| 6 毕业设计迁移 | 已收口，等待同一最新 HEAD 总验收 | 18 类材料规则；Asset/Version/Binding；退回重交旧版本失效；教师与移动端锁定当前安全版本；真实 Manifest、ZIP、XLSX、模板版本；回填检查点；真实 MySQL 异常扫描计数证据 | 最新 HEAD 的阶段 6专项、毕业设计总闸门和四端构建同时全绿 |
-| 7 教务迁移 | 权威导入与全域导出适配已完成 | 学籍、成绩、排课统一 SCANNING→PARSING→VALIDATED；确认仅 jobId+expectedVersion并重读同一 FileObject；15 类旧同步导出前置同路径适配，强制生成 FileObject+ExportJob+一次性票据；旧页面文件响应合同保持 | 最新 HEAD 的真 MySQL、Router前置顺序、管理 PC轮询和全域导出专项全绿 |
-| 8 COS 与大文件 | 代码收口，真实云环境待验 | 精确 objectKey STS；quarantine/clean/rejected；HEAD/ETag/大小/哈希/magic/OOXML/ZIP校验；短时预签名；PC分片暂停恢复；迁移/核验/回滚；分区提升改为复制核验→提交元数据→提交后删源 | 正式私有桶、真实 CAM/STS、CORS/生命周期/加密、50MB/500MB和应用重启后的真实端到端证据 |
-| 9 存储治理 | 代码收口，配额并发预留仍需设计 | 租户/模块配额；保留策略；法律保留；引用保护；到期文件 DELETE_PENDING→物理核验→DELETED 两阶段清理；失败进入 DELETE_FAILED；上传会话同样可恢复；跨租户 worker和学校治理页面 | 最新 HEAD MySQL专项；并发上传配额预留不能仅靠实时聚合查询，需要 reservation 贯穿物理写入到 FileObject落库 |
-| 10 最终收口 | 总验收中 | 基线感知调用扫描；机器清单；最终组合闸门；施工残留检查；旧上传在非零调用期间改为隐藏弃用且仅委托权威合同 | 所有专项与四端构建全绿；旧上传调用归零后再删除兼容入口；更新 PR 描述到最终 HEAD |
+- 毕业设计与岗位实习归档使用流式 ZIP64、分块 SHA-256 和路径型 FileObject，不整文件读入内存。
+- 身份导入先写入隔离区并完成安全扫描，CLEAN 后才进行路径型 openpyxl 解析。
+- COS 直传和服务器物理写入统一使用持久化 HELD reservation，成功后消费，失败、放弃或过期后释放。
+- 普通上传、系统字节文件和路径型大型文件都在物理 persist 前进入业务模块配额作用域。
+- 业务 Router 不直接构造 FileResponse，统一使用包含 no-store、nosniff 和下载审计的公共响应合同。
+- 管理 PC 使用精确锁定的 `cos-js-sdk-v5@1.10.1`，不在运行时加载 CDN，不向前端保存永久密钥。
+- 阶段 10 严格扫描器检查旧上传 URL、直接 FileResponse、整文件读取、上传内存拼包、运行时 COS CDN、永久密钥和一次性施工文件。
 
-## 2. API 退役裁决
+## 仓库内最终门禁
 
-- 权威普通上传入口是 `POST /files`。
-- 生产代码仍存在少量 `/files/upload` 调用，因此当前**不得物理删除**该 URL。
-- 兼容入口必须满足：隐藏 OpenAPI、`deprecated=True`、响应携带弃用头、只调用 `file_contract.upload_contract`，禁止直接调用 `file_service.store_upload` 或复制鉴权、扫描、绑定逻辑。
-- 旧上传调用归零后，调用扫描与最终门禁同步改为物理删除兼容入口。
-- `/files/meta/{fileId}` 已无生产调用并保持退役；元数据统一使用 `/files/{fileId}`。
-- `/files/download/{fileId}` 是权威代理下载合同，仅共享 File SDK或强敏感审计链使用；业务页面不得自行拼接。
+最终 HEAD 必须执行并记录：
 
-## 3. 阻塞与外部验收账本
+1. 能力清单、增量登记、严格调用扫描、上传合同和密钥审计；
+2. MySQL 8.0 单一 Alembic head，升级到 `0154_file_storage_quota_reservation`；
+3. 身份导入扫描后解析、配额 reservation、模块配额作用域、流式归档测试；
+4. 阶段 6–10 文件中心定向 pytest 和五个真实 MySQL acceptance；
+5. 管理 PC lint/test/build、学生 PC lint/test/build、H5 与微信小程序生产构建。
 
-以下事项不能在无正式云资源的 GitHub Actions 中伪造为“已验证”：
+测试结果只以真实执行日志和 PR 验收评论为证据；本报告不把未执行测试写成通过。
 
-1. **真实 COS 端到端**：私有测试桶、最小权限 CAM/STS、真实 CORS、生命周期与服务端加密；执行 50MB/500MB 分片、暂停恢复、应用重启后下载、预签名过期、跨租户拒绝及分区提升提交失败演练。
-2. **浏览器 SDK 同源制品**：管理 PC 当前锁定 `cos-js-sdk-v5@1.10.1`，但仍由公共 CDN 动态加载。正式上线前需在可重生成 `package-lock.json` 的环境中改为 npm依赖或提交经校验的同源制品；不能手工伪造 lockfile。
-3. **大文件跨会话续传**：当前支持同页面暂停/恢复/取消；浏览器关闭后的 UploadId 持久化恢复尚未取得真实 COS证据。
-4. **配额并发预留**：现有硬限额覆盖单请求和直传会话创建，但旧同域上传从物理写入到 FileObject落库之间仍有并发窗口。需要 reservation token/bytes 与过期回收，不能用短暂行锁冒充完整解决。
-5. **旧上传调用归零**：仍需逐个迁移大体量聚合 API 文件中的 `/files/upload` 字符串；在归零前保留委托兼容入口，调用扫描按 `LEGACY_DEBT` 展示。
-6. **真实容量成本**：存储类型、请求数、流量和地域价格以腾讯云实际账单验证，GitHub Actions只验证容量与治理逻辑。
+## 真实 COS 外部环境验收阻塞
 
-## 4. 正式环境配置检查
+以下项目必须在真实腾讯云 COS 与生产域名环境执行，不能由 fake client 或单元测试冒充：
 
-- COS 桶私有，禁止匿名读写。
-- 永久 SecretId/SecretKey 只存在服务器密钥管理或环境变量，不进入前端、仓库、日志与任务 JSON。
-- STS 仅允许一个 `quarantine/{tenantId}/.../{uuid}.{ext}` 精确 Key，默认 900 秒。
-- CORS 仅开放实际学校域名和必要方法，暴露 `ETag`、`Content-Length`，生产环境不使用 `*` 来源。
-- quarantine、rejected、preview、export 使用短生命周期；archive 按学校策略长期保存或沉降低频。
-- clamd 只在容器内部网络或 Unix Socket，扫描异常 fail-closed。
-- file-scan-worker 与 file-governance-worker 由进程守护，积压、失败和重启可观测。
+1. STS 最小权限与过期行为；
+2. COS CORS 白名单；
+3. COS 生命周期策略；
+4. 服务端加密 SSE；
+5. 50MB 与 500MB 真实上传；
+6. 跨进程暂停、续传和取消；
+7. 真实跨租户对象隔离与越权验证。
 
-## 5. 最终验收口径
-
-只有以下证据在同一最新 HEAD 同时成立，阶段 10 才可标记完成：
-
-1. Alembic 单一 head，真实 MySQL 8.0升级成功。
-2. 阶段 6–9专项、文件安全、对象授权、导入导出、实习/学工/毕设材料中心回归全绿。
-3. 调用扫描 0 `BLOCKER`；`LEGACY_DEBT` 有明确所有者和退役条件；能力清单 schema、全量基线、增量登记全绿。
-4. 管理 PC、学生 PC、H5、微信小程序 lint/test/build 全绿。
-5. EICAR、ClamAV停机、配额超限、分区迁移提交失败、过期/撤销下载、法律保留、DELETE_FAILED重试均 fail-closed。
-6. PR 仍为 Draft、未合并、未开启自动合并；PR描述使用最终 HEAD和真实结果。
+在上述外部验收完成前，PR 保持 Draft，不合并 main。
