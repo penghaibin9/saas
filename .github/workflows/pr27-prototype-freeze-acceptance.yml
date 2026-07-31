@@ -35,51 +35,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prepare diagnostic evidence
+      - name: Prepare acceptance workspace
         shell: bash
         run: |
-          mkdir -p acceptance-artifacts/${{ matrix.browser }}/source
-          cp docs/ui/teacher-pc-v2-html/shared/v2-student-affairs-workbench.js \
-            acceptance-artifacts/${{ matrix.browser }}/source/
-          cp docs/ui/teacher-pc-v2-html/shared/v2-internship-key.js \
-            acceptance-artifacts/${{ matrix.browser }}/source/
-
-      - name: Apply verified acceptance-runner repair in validation workspace
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs')
-          text = path.read_text(encoding='utf-8')
-
-          old_key = "          await page.keyboard.press(index % 3 === 0 ? 'Shift+Tab' : 'Tab')"
-          new_key = """          if (index % 3 === 0) {
-            await page.keyboard.down('Shift')
-            await page.keyboard.press('Tab')
-            await page.keyboard.up('Shift')
-          } else {
-            await page.keyboard.press('Tab')
-          }"""
-          if old_key in text:
-            text = text.replace(old_key, new_key, 1)
-
-          old_server = "    const raw = decodeURIComponent(String(request.url || '/').split('?')[0]).replace(/^\\/+/, '')\n    const target = path.resolve(ROOT, raw || 'index.html')"
-          new_server = """    const raw = decodeURIComponent(String(request.url || '/').split('?')[0]).replace(/^\\/+/, '')
-    if (raw === 'favicon.ico') {
-      response.writeHead(204)
-      response.end()
-      return
-    }
-    const target = path.resolve(ROOT, raw || 'index.html')"""
-          if old_server in text:
-            text = text.replace(old_server, new_server, 1)
-
-          assert "keyboard.press(index % 3 === 0 ? 'Shift+Tab'" not in text
-          assert "await page.keyboard.down('Shift')" in text
-          assert "raw === 'favicon.ico'" in text
-          path.write_text(text, encoding='utf-8')
-          PY
+          mkdir -p acceptance-artifacts/${{ matrix.browser }}
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-acceptance.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
 
       - name: Check native shared-script syntax
