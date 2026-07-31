@@ -45,6 +45,28 @@ entries:
     notes: 名册导出进入 FileObject+ExportJob，支持有效期、撤销和一次性下载票据。
   - module: academic-affairs
     client: backend
+    route: /api/v1/academic-affairs/{legacy-export-path}
+    page: backend/app/modules/academic_affairs/routers/academic_export_compat_router.py, backend/app/modules/academic_affairs/services/academic_export_compat_service.py
+    action: export+archive+download
+    fileCategory: XLSX_ZIP_EXPORT
+    api: roster/registration/schedule/grade/stats/selection/makeup/evaluation/quality/archive legacy export URLs
+    backendService: backend/app/modules/academic_affairs/services/academic_export_compat_service.py::task_backed_file_response
+    storageMode: configurable-export-zone
+    authMode: original-domain-permission+one-time-ticket
+    dataScope: tenant+operator+original-domain-scope-snapshot
+    versioned: true
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 15类历史同步导出由前置同路径 Router 兼容；响应文件合同不变，但生成前强制进入 FileObject+ExportJob，记录实际行数、过期、撤销、下载次数与一次性票据。
+  - module: academic-affairs
+    client: backend
     route: /api/v1/academic-affairs/file-exchange/jobs
     page: backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
     action: import+export
