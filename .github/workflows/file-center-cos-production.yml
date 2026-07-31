@@ -55,8 +55,10 @@ jobs:
           --health-timeout=5s
           --health-retries=15
     env:
-      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
-      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
       APP_ENV: test
       SECRET_KEY: stage8-cos-production-ci-secret
       FILE_SCAN_ENABLED: 'false'
@@ -96,6 +98,7 @@ jobs:
             app/api/v1/file.py app/api/v1/file_contract.py \
             app/services/storage/cos.py app/services/storage/keys.py \
             app/services/storage/production.py app/services/storage/finalize.py \
+            app/services/storage/promotion.py \
             app/commands/migrate_files_to_cos.py app/workers/file_scan_worker.py
       - name: Stage 8 backend contracts
         working-directory: backend
@@ -106,7 +109,7 @@ jobs:
           npm ci
           npm run lint
           npm run build
-      - name: Freeze least privilege and no frontend permanent key
+      - name: Freeze least privilege, commit-before-delete and no frontend permanent key
         run: |
           grep -q '"allow_prefix": \[object_key\]' backend/app/services/storage/production.py
           ! grep -R -n --exclude='*.md' 'allow_prefix.*\*' backend/app/services/storage
@@ -116,5 +119,7 @@ jobs:
           grep -q 'cos.restartTask' frontend/src/services/file/fileSdk.js
           grep -q 'cos.cancelTask' frontend/src/services/file/fileSdk.js
           grep -q 'presigned_download_url' backend/app/services/storage/cos.py
+          grep -q 'cleanup_promoted_source' backend/app/services/storage/finalize.py
+          ! grep -q 'backend.delete(source_key)' backend/app/services/storage/promotion.py
           grep -q -- '--verify-only' backend/app/commands/migrate_files_to_cos.py
           grep -q -- '--rollback' backend/app/commands/migrate_files_to_cos.py
