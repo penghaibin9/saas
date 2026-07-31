@@ -135,10 +135,10 @@ def _default_resolver(db, file_obj, bindings: list[Any], user: dict, action: str
         return True
 
     active = [item for item in bindings if not item.is_deleted and item.status == "ACTIVE"]
-    if active:
-        return any(_binding_subject_allows(item, user) for item in active)
+    # 上传者 binding 证明直接关系，但不能遮蔽学生本人或具备业务权限的合法访问。
+    if active and any(_binding_subject_allows(item, user) for item in active):
+        return True
 
-    # 历史文件没有 t_file_binding 时保持兼容，但只允许本人或明确业务权限。
     if str(user.get("userType") or "").upper() == "STUDENT":
         biz_id = str(file_obj.biz_id or "").strip()
         return bool(biz_id and biz_id in _actor_student_values(user))
