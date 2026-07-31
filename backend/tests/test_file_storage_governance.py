@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.api.v1 import files as files_router
 from app.core.context import set_current_user, set_tenant
 from app.db.session import get_sessionmaker
 from app.models.file import FileBinding, FileJob, FileObject, FileRetentionPolicy, TenantStorageQuota
 from app.services import file_storage_governance_service as governance
+from app.services.file_storage_cleanup_service import cleanup_expired
 from app.services.storage import _config_cache_key
 
 TENANT_ID = 90991
@@ -18,16 +19,26 @@ TENANT_ID = 90991
 class FakeBackend:
     kind = "local"
 
-    def __init__(self):
+    def __init__(self, *, fail_keys: set[str] | None = None):
         self.deleted: list[str] = []
+        self.objects: set[str] = set()
+        self.fail_keys = set(fail_keys or set())
+
+    def add(self, key: str) -> None:
+        self.objects.add(key)
 
     def delete(self, key: str) -> None:
+        if key in self.fail_keys:
+            raise RuntimeError("simulated storage delete failure")
         self.deleted.append(key)
+        self.objects.discard(key)
+
+    def exists(self, key: str) -> bool:
+        return key in self.objects
 
 
 @pytest.fixture(autouse=True)
 def tenant_context_and_cleanup(db_mode):
-    """复用全仓 MySQL 测试夹具；禁止治理测试自行打开默认/生产数据库。"""
     set_tenant({"tenantId": str(TENANT_ID)})
     set_current_user({"userId": "1", "userType": "STAFF", "realName": "治理测试"})
     db = get_sessionmaker()()
@@ -131,7 +142,7 @@ def test_retention_policy_priority_assigns_deadline():
         db.close()
 
 
-def test_cleanup_deletes_only_unreferenced_and_never_legal_hold(monkeypatch):
+def test_cleanup_preview_changes_no_state_and_protects_references(monkeypatch):
     fake = FakeBackend()
     monkeypatch.setattr("app.services.storage.get_backend", lambda: fake)
     db = get_sessionmaker()()
@@ -141,6 +152,8 @@ def test_cleanup_deletes_only_unreferenced_and_never_legal_hold(monkeypatch):
         referenced = _file("referenced.pdf", expired=True)
         db.add_all([eligible, held, referenced])
         db.flush()
+        for row in (eligible, held, referenced):
+            fake.add(str(row.object_key))
         db.add(FileBinding(
             tenant_id=TENANT_ID,
             file_id=referenced.id,
@@ -157,19 +170,56 @@ def test_cleanup_deletes_only_unreferenced_and_never_legal_hold(monkeypatch):
     finally:
         db.close()
 
-    preview = governance.cleanup_expired(tenant_id=TENANT_ID, dry_run=True, limit=50)
+    preview = cleanup_expired(tenant_id=TENANT_ID, dry_run=True, limit=50)
     assert preview["deleted"] == 0
+    assert preview["failed"] == 0
     assert preview["skippedLegalHold"] == 1
     assert preview["skippedReferenced"] == 1
     assert fake.deleted == []
+    db = get_sessionmaker()()
+    try:
+        assert db.get(FileObject, eligible_id).status == "AVAILABLE"
+        assert db.get(FileObject, held_id).is_deleted is False
+        assert db.get(FileObject, referenced_id).is_deleted is False
+    finally:
+        db.close()
 
-    result = governance.cleanup_expired(tenant_id=TENANT_ID, dry_run=False, limit=50)
+
+def test_cleanup_two_phase_success_and_failure_are_truthful(monkeypatch):
+    failing_key = f"clean/{TENANT_ID}/failed.pdf"
+    fake = FakeBackend(fail_keys={failing_key})
+    monkeypatch.setattr("app.services.storage.get_backend", lambda: fake)
+    db = get_sessionmaker()()
+    try:
+        eligible = _file("eligible.pdf", expired=True, size=20)
+        failed = _file("failed.pdf", expired=True, size=30)
+        db.add_all([eligible, failed])
+        db.flush()
+        fake.add(str(eligible.object_key))
+        fake.add(str(failed.object_key))
+        db.commit()
+        eligible_id, failed_id = eligible.id, failed.id
+    finally:
+        db.close()
+
+    result = cleanup_expired(tenant_id=TENANT_ID, dry_run=False, limit=50)
     assert result["deleted"] == 1
+    assert result["failed"] == 1
+    assert result["bytesReclaimed"] == 20
     assert fake.deleted == [f"clean/{TENANT_ID}/eligible.pdf"]
     db = get_sessionmaker()()
     try:
-        assert db.get(FileObject, eligible_id).is_deleted is True
-        assert db.get(FileObject, held_id).is_deleted is False
-        assert db.get(FileObject, referenced_id).is_deleted is False
+        eligible_row = db.get(FileObject, eligible_id)
+        failed_row = db.get(FileObject, failed_id)
+        assert eligible_row.is_deleted is True
+        assert eligible_row.status == "DELETED"
+        assert failed_row.is_deleted is False
+        assert failed_row.status == "DELETE_FAILED"
+        job = db.scalars(select(FileJob).where(
+            FileJob.tenant_id == TENANT_ID,
+            FileJob.job_type == "RETENTION_CLEANUP",
+        ).order_by(FileJob.id.desc())).first()
+        assert job.status == "FAILED"
+        assert job.result_json["failed"] == 1
     finally:
         db.close()
