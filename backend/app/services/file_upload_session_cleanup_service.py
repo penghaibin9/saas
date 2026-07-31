@@ -1,7 +1,7 @@
 """过期未完成上传会话的可恢复清理。
 
-先提交 EXPIRE_PENDING，再在行锁内删除并核验对象，最后提交 EXPIRED。删除失败保存
-EXPIRE_FAILED，下轮 worker 可继续重试，不会把会话伪装成已清理。
+先提交 EXPIRE_PENDING，再在行锁内删除并核验对象，最后提交 EXPIRED 并释放配额预留。
+删除失败保存 EXPIRE_FAILED，且继续占用预留；下轮 worker 可重试，不会伪装已回收容量。
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ def _session_ids(*, tenant_id: int, now: datetime, limit: int) -> list[int]:
 
 def expire_upload_sessions(*, tenant_id: int, limit: int = 500) -> dict:
     from app.models.file import FileUploadSession
+    from app.services.file_storage_quota_reservation_service import release_quota
 
     now = datetime.utcnow()
     expired = deleted_objects = failed = 0
@@ -76,6 +77,12 @@ def expire_upload_sessions(*, tenant_id: int, limit: int = 500) -> dict:
                 deleted_objects += 1
             row.status = "EXPIRED"
             row.updated_at = now
+            release_quota(
+                f"cos-session:{row.session_key}",
+                reason="COS_UPLOAD_SESSION_EXPIRED",
+                tenant_id=tenant_id,
+                db=db,
+            )
             db.commit()
             expired += 1
         except Exception as exc:
