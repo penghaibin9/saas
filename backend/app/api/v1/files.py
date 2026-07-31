@@ -1,4 +1,4 @@
-"""公共文件中心正式 API；历史 /files/upload 仅作为兼容别名。"""
+"""公共文件中心正式 API；所有普通上传统一使用 ``POST /files``。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -23,12 +23,18 @@ async def upload_file(
     file: UploadFile = File(...),
     bizType: str = Form("ATTACHMENT"),
     bizId: str | None = Form(None),
+    bizTypeQuery: str | None = Query(None, alias="bizType", include_in_schema=False),
+    bizIdQuery: str | None = Query(None, alias="bizId", include_in_schema=False),
     user=Depends(get_current_user),
 ):
+    # 学生门户旧请求层只支持在 URL 携带附加字段；仍落在同一个权威上传合同，
+    # 不再恢复 /files/upload 兼容路由。Form 字段优先，Query 只作为传输层兼容。
+    effective_biz_type = str(bizTypeQuery or bizType or "ATTACHMENT")
+    effective_biz_id = bizIdQuery if bizIdQuery not in (None, "") else bizId
     data = await upload_contract(
         file,
-        biz_type=bizType,
-        biz_id=bizId,
+        biz_type=effective_biz_type,
+        biz_id=effective_biz_id,
         user=user,
         visibility="BIZ_SCOPED",
     )
