@@ -99,14 +99,17 @@ Teacher PC V2 信息架构固定为：
 7. 风险与归档 `gd-risk-archive`
 8. 模板与设置 `gd-templates`
 
-生产量级为 **50 个三级叶子、48 个唯一 URL、2 个显式共享 URL**。旧的“总览、选题、开题、过程、成果、答辩、成绩、归档统计”拆法已撤销，8 个 HTML、320 Manifest 和共享 JavaScript 已重建。重映射后浏览器回归仍为 0 / 24。
+生产量级为 **50 个三级叶子、48 个唯一 URL、2 个显式共享 URL**。旧的“总览、选题、开题、过程、成果、答辩、成绩、归档统计”拆法已撤销，8 个 HTML、320 Manifest 和共享 JavaScript 已重建。
+
+新增 `tools/check-graduation-workspace-audit.mjs`，直接比较生产 `graduationWorkspaces.js` 与 320 Manifest。脚本语法和隔离同构夹具均通过，记录见 `graduation/workspace-audit-report.md`；真实完整分支执行和 24 次浏览器回归仍未完成。
 
 ## 一致性与浏览器工具
 
 - `tools/check-prototype-consistency.mjs`：Manifest、文件、孤儿 HTML、重复路由、共享资源和相对引用检查。
 - `tools/check-internship-route-audit.mjs`：岗位实习 101 叶子 / 99 URL / 权限 / 字段 / 状态 / API 参数检查。
+- `tools/check-graduation-workspace-audit.mjs`：毕业设计 8 工作区 / 50 叶子 / 48 URL / 2 共享 URL 投影检查。
 - `tools/run-browser-regression.mjs`：Chrome / Chromium 三档分辨率全量回归。
-- `tools/README.md`：可重复执行命令。
+- `tools/README.md`：可重复执行命令与冻结顺序。
 
 工具落盘不等于最终候选 HEAD 已经执行通过。当前连接器可读写 GitHub，但执行容器无法解析 GitHub 域名，不能直接取得完整分支快照。
 
@@ -131,6 +134,7 @@ Teacher PC V2 信息架构固定为：
 - 学工 11 页 33 次回归；
 - 毕业设计现行 8 页 24 次回归；
 - 岗位实习最终 HEAD 101 叶子 / 99 URL 重跑；
+- 毕业设计最终 HEAD 8 / 50 / 48 / 2 真实分支审计；
 - 剩余 108 页、324 次浏览器回归；
 - 默认、加载、空、错误、403、只读、长数据和高风险状态复核；
 - 打印页、键盘、焦点、Escape、焦点归还和业务红线最终验收；
