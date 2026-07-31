@@ -5,11 +5,12 @@
 """
 from __future__ import annotations
 
-import io
 import json
+import tempfile
 import uuid
 import zipfile
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from fastapi.responses import FileResponse
@@ -30,20 +31,30 @@ def _safe_snapshot(value: dict[str, Any] | None) -> dict[str, Any]:
 
 def _row_count(content: bytes, filename: str) -> int:
     lower = str(filename or "").lower()
+    suffix = ".xlsx" if lower.endswith(".xlsx") else ".zip" if lower.endswith(".zip") else ".bin"
+    temp_path: Path | None = None
     try:
-        if lower.endswith(".xlsx"):
-            workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        with tempfile.NamedTemporaryFile(prefix="academic-export-count-", suffix=suffix, delete=False) as handle:
+            view = memoryview(content)
+            for offset in range(0, len(view), 1024 * 1024):
+                handle.write(view[offset:offset + 1024 * 1024])
+            temp_path = Path(handle.name)
+        if suffix == ".xlsx":
+            workbook = load_workbook(temp_path, read_only=True, data_only=True, keep_links=False)
             try:
                 sheet = workbook.active
                 return max(0, int(sheet.max_row or 0) - 1)
             finally:
                 workbook.close()
-        if lower.endswith(".zip"):
-            with zipfile.ZipFile(io.BytesIO(content), "r") as archive:
+        if suffix == ".zip":
+            with zipfile.ZipFile(temp_path, "r") as archive:
                 return len([item for item in archive.infolist() if not item.is_dir()])
     except Exception:
         # 行数只是任务展示信息，生成文件本身仍由领域服务和后续下载校验负责。
         return 0
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
     return 0
 
 
