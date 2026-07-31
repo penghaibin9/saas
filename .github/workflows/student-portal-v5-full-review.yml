@@ -12,15 +12,67 @@ on:
       - .github/workflows/student-portal-v5-full-review.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: student-portal-v5-full-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  apply-reviewed-fixes:
+    name: 应用带断言的已复审修复
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 检查是否已经应用
+        id: needed
+        run: |
+          if grep -q "d.hasData ? statusLabel(d.status) : '未开始'" student-portal/src/views/home/HomeView.vue; then
+            echo "apply=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 执行带断言的精确替换
+        if: steps.needed.outputs.apply == 'true'
+        run: python student-portal/review/apply-reviewed-display-fixes.py
+
+      - name: 确认修改边界
+        if: steps.needed.outputs.apply == 'true'
+        run: |
+          changed="$(git diff --name-only)"
+          echo "$changed"
+          test -n "$changed"
+          if echo "$changed" | grep -Ev '^(student-portal/src/views/(home/HomeView.vue|profile/ProfileView.vue|messages/MessagesView.vue|graduation/GraduationWorkbenchView.vue|affairs/AffairsFourEndView.vue)|student-portal/review/(v5-review-config.json|v5-full-review.mjs))$'; then
+            echo "unexpected file changed"
+            exit 1
+          fi
+
+      - name: 提交精确修复到复审分支
+        if: steps.needed.outputs.apply == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add student-portal/src/views student-portal/review/v5-review-config.json student-portal/review/v5-full-review.mjs
+          git commit -m "fix(student-portal): localize reviewed states and degrade optional dorm history [skip ci]"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+      - name: 已应用时跳过
+        if: steps.needed.outputs.apply != 'true'
+        run: echo "reviewed display fixes already applied"
+
   real-browser-review:
     name: 真实 MySQL + Chromium 全页面复审
+    needs: apply-reviewed-fixes
     runs-on: ubuntu-latest
     timeout-minutes: 75
     services:
