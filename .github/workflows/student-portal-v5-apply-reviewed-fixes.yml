@@ -5,7 +5,7 @@ on:
     branches:
       - agent/student-portal-v5-full-review
     paths:
-      - student-portal/review/apply-reviewed-display-fixes.py
+      - student-portal/review/apply-v5-final-polish.py
       - .github/workflows/student-portal-v5-apply-reviewed-fixes.yml
 
 permissions:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   apply:
-    name: 应用已复审的精确前端修复
+    name: 应用最终已复审的小范围修复
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -30,23 +30,39 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 执行带断言的精确替换
-        run: python student-portal/review/apply-reviewed-display-fixes.py
+      - name: 检查是否已经应用
+        id: needed
+        run: |
+          if grep -q '{{ m.title }}' student-portal/src/views/home/HomeView.vue; then
+            echo "apply=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 执行带断言的最终精确替换
+        if: steps.needed.outputs.apply == 'true'
+        run: python student-portal/review/apply-v5-final-polish.py
 
       - name: 确认只修改允许的学生门户文件
+        if: steps.needed.outputs.apply == 'true'
         run: |
           changed="$(git diff --name-only)"
           echo "$changed"
           test -n "$changed"
-          if echo "$changed" | grep -Ev '^(student-portal/src/views/(home/HomeView.vue|profile/ProfileView.vue|messages/MessagesView.vue|graduation/GraduationWorkbenchView.vue|affairs/AffairsFourEndView.vue)|student-portal/review/(v5-review-config.json|v5-full-review.mjs))$'; then
+          if echo "$changed" | grep -Ev '^(student-portal/src/(App.vue|views/(home/HomeView.vue|graduation/GraduationWorkbenchView.vue))|student-portal/review/(review-lib.mjs|v5-review-config.json))$'; then
             echo "unexpected file changed"
             exit 1
           fi
 
       - name: 提交到复审分支
+        if: steps.needed.outputs.apply == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add student-portal/src/views student-portal/review/v5-review-config.json student-portal/review/v5-full-review.mjs
-          git commit -m "fix(student-portal): localize reviewed states and degrade optional dorm history [skip ci]"
+          git add student-portal/src/App.vue student-portal/src/views/home/HomeView.vue student-portal/src/views/graduation/GraduationWorkbenchView.vue student-portal/review/review-lib.mjs student-portal/review/v5-review-config.json
+          git commit -m "fix(student-portal): finish V5 reviewed visual polish [skip ci]"
           git push origin HEAD:agent/student-portal-v5-full-review
+
+      - name: 已应用时跳过
+        if: steps.needed.outputs.apply != 'true'
+        run: echo "final V5 polish already applied"
