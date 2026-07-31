@@ -48,11 +48,11 @@ def test_create_job_never_parses_quarantined_xlsx_source():
     assert '"rows"' not in source
 
     refresh_source = inspect.getsource(exchange.refresh_import_job)
-    source_reader = inspect.getsource(exchange._source_file_bytes)
+    source_reader = inspect.getsource(exchange._source_file_path)
     parser_source = inspect.getsource(exchange._parse_and_validate)
-    assert "_source_file_bytes" in refresh_source
+    assert "_source_file_path" in refresh_source
     assert "assert_file_ready_for_business" in source_reader
-    assert "roster_import_read(content)" in parser_source
+    assert "_read_xlsx_path" in parser_source
     assert "grade_import_dry_run" in parser_source
     assert "sanitize_import_rows" in parser_source
 
@@ -132,7 +132,7 @@ def test_excel_dispatch_has_explicit_academic_adapter_whitelist():
 
 def test_authoritative_confirm_reloads_and_revalidates_same_file():
     source = inspect.getsource(exchange.confirm_academic_import)
-    assert "_source_file_bytes" in source
+    assert "_source_file_path" in source
     assert "_parse_and_validate" in source
     assert "_row_digest" in source
     assert "解析结果已变化" in source
