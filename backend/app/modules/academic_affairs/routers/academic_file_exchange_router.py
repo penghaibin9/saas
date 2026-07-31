@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Header, Path, Query, UploadFile
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import success
 from app.core.security import require_staff
@@ -202,7 +202,14 @@ def download_export(
     media_type = "application/zip" if str(filename).lower().endswith(".zip") else (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    return FileResponse(path, filename=filename, media_type=media_type)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        media_type=media_type,
+        audit_action="ACADEMIC_EXPORT_DOWNLOAD",
+        audit_target=f"academic-export:{job_id}",
+        audit_detail={"jobId": str(job_id), "ticketConsumed": True},
+    )
 
 
 @router.post("/exports/{job_id}/revoke", summary="撤销教务导出任务")
