@@ -1,6 +1,8 @@
 export const VISIBLE_ENUM_LABELS = Object.freeze({
   PENDING_REVIEW: '待审核',
+  PENDING_HANDLE: '待处理',
   PENDING: '待处理',
+  NOT_SUBMITTED: '未提交',
   SUBMITTED: '已提交',
   REVIEWING: '审核中',
   APPROVED: '已通过',
@@ -51,6 +53,7 @@ export const VISIBLE_ENUM_LABELS = Object.freeze({
   GENERAL: '一般困难',
   DIFFICULT: '困难',
   SPECIAL: '特别困难',
+  CLASS_REVIEW: '班级评议',
   SCHOLARSHIP: '奖学金',
   GRANT: '助学金',
   WORK_STUDY: '勤工助学',
@@ -86,6 +89,7 @@ export const VISIBLE_ENUM_LABELS = Object.freeze({
   SUMMARY: '总结',
   ON_SITE: '现场',
   REMOTE: '远程',
+  OUT_OF_RANGE: '超出打卡范围',
 
   SIGNED_CONTRACT: '签约就业',
   FLEXIBLE_EMPLOYMENT: '灵活就业',
