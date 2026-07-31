@@ -26,6 +26,7 @@ import { useUiStore } from './stores/ui'
 import { useGraduationHealth } from './stores/graduationHealth'
 import './styles/graduation-usability.css'
 import './styles/v5-overrides.css'
+import './styles/v5-polish.css'
 
 const cfg = usePortalConfigStore()
 const ui = useUiStore()
