@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const toolDir = path.dirname(fileURLToPath(import.meta.url))
 const runnerPath = path.join(toolDir, 'run-freeze-acceptance.mjs')
-let source = fs.readFileSync(runnerPath, 'utf8')
+let source = fs.readFileSync(runnerPath, 'utf8').replace(/\r\n/g, '\n')
 
 const legacyChord = "          await page.keyboard.press(index % 3 === 0 ? 'Shift+Tab' : 'Tab')"
 const repairedChord = `          if (index % 3 === 0) {
@@ -38,5 +38,5 @@ if (!source.includes("raw === 'favicon.ico'")) {
   throw new Error('favicon 204 handling is missing')
 }
 
-fs.writeFileSync(runnerPath, source)
+fs.writeFileSync(runnerPath, source, 'utf8')
 console.log('freeze acceptance runner prepared')
