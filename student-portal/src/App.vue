@@ -93,7 +93,7 @@ const themeStyle = computed(() => {
     '--t1': dark ? '#f2f6ff' : '#172033',
     '--t2': dark ? '#d2daea' : '#3f4b63',
     '--t3': dark ? '#adb9cf' : '#65728a',
-    '--t4': dark ? '#91a0ba' : '#718097',
+    '--t4': dark ? '#91a0ba' : '#5f6f89',
     '--line': dark ? '#34405a' : '#dfe5ef',
     '--line2': dark ? '#2a3448' : '#ebeff5'
   }
