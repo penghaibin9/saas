@@ -1,0 +1,4112 @@
+{
+  "generatedAt": "2026-07-31T02:11:41.937Z",
+  "source": "real MySQL + real password login + Chromium",
+  "routes": [
+    {
+      "path": "/home",
+      "name": "首页工作台",
+      "module": "公共门户",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 2 项"
+      ],
+      "tabs": [],
+      "screenshots": [
+        "screenshots/1920x1080--home-首页工作台.jpg"
+      ],
+      "layout": {
+        "url": "/home",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-home route-home view-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 224,
+          "bottom": 1080,
+          "width": 224,
+          "height": 1080
+        },
+        "header": {
+          "left": 224,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1696,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 1080,
+            "width": 224,
+            "height": 1080,
+            "scrollWidth": 374,
+            "clientWidth": 224
+          },
+          {
+            "cls": "home-hero",
+            "left": 360,
+            "top": 96,
+            "right": 1784,
+            "bottom": 368,
+            "width": 1424,
+            "height": 272,
+            "scrollWidth": 1524,
+            "clientWidth": 1424
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 39,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/home",
+        "after": "/home",
+        "passed": true
+      }
+    },
+    {
+      "path": "/profile",
+      "name": "我的档案",
+      "module": "个人档案",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [],
+      "screenshots": [
+        "screenshots/1920x1080--profile-我的档案.jpg"
+      ],
+      "layout": {
+        "url": "/profile",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-profile view-profile",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [
+          "📭尚未授权任何家长"
+        ],
+        "tables": 0,
+        "controls": 21,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/profile",
+        "after": "/profile",
+        "passed": true
+      }
+    },
+    {
+      "path": "/academic",
+      "name": "教务学业",
+      "module": "教务学业",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [],
+      "screenshots": [
+        "screenshots/1920x1080--academic-教务学业.jpg"
+      ],
+      "layout": {
+        "url": "/academic",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-academic view-academic-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/academic",
+        "after": "/academic",
+        "passed": true
+      }
+    },
+    {
+      "path": "/campus-service",
+      "name": "学工事务",
+      "module": "学工事务",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [
+        {
+          "label": "请假销假",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-请假销假.jpg"
+        },
+        {
+          "label": "困难认定",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-困难认定.jpg"
+        },
+        {
+          "label": "奖学金与助学金",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-奖学金与助学金.jpg"
+        },
+        {
+          "label": "我的宿舍",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-我的宿舍.jpg"
+        },
+        {
+          "label": "处分申诉",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-处分申诉.jpg"
+        },
+        {
+          "label": "心理自评",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-心理自评.jpg"
+        },
+        {
+          "label": "活动与第二课堂",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-活动与第二课堂.jpg"
+        },
+        {
+          "label": "谈心谈话",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--campus-service-tab-谈心谈话.jpg"
+        }
+      ],
+      "screenshots": [
+        "screenshots/1920x1080--campus-service-学工事务.jpg"
+      ],
+      "layout": {
+        "url": "/campus-service",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-campus-service",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": {
+          "left": 226,
+          "top": 94,
+          "right": 434,
+          "bottom": 451,
+          "width": 208,
+          "height": 357,
+          "count": 8
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 32,
+        "disabledButtons": [
+          "提交请假"
+        ]
+      },
+      "refresh": {
+        "before": "/campus-service",
+        "after": "/campus-service",
+        "passed": true
+      }
+    },
+    {
+      "path": "/materials",
+      "name": "材料补交",
+      "module": "学工事务",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [
+        {
+          "label": "待处理 3",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--materials-tab-待处理-3.jpg"
+        },
+        {
+          "label": "已完成 2",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--materials-tab-已完成-2.jpg"
+        },
+        {
+          "label": "全部 5",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--materials-tab-全部-5.jpg"
+        }
+      ],
+      "screenshots": [
+        "screenshots/1920x1080--materials-材料补交.jpg"
+      ],
+      "layout": {
+        "url": "/materials",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-material-supplement",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": {
+          "left": 226,
+          "top": 94,
+          "right": 434,
+          "bottom": 246,
+          "width": 208,
+          "height": 152,
+          "count": 3
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 29,
+        "disabledButtons": [
+          "上传并提交审核",
+          "上传并提交审核"
+        ]
+      },
+      "refresh": {
+        "before": "/materials",
+        "after": "/materials",
+        "passed": true
+      }
+    },
+    {
+      "path": "/internship",
+      "name": "岗位实习",
+      "module": "岗位实习",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [
+        {
+          "label": "我的实习",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-我的实习.jpg"
+        },
+        {
+          "label": "三方协议",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-三方协议.jpg"
+        },
+        {
+          "label": "每日打卡",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-每日打卡.jpg"
+        },
+        {
+          "label": "实习请假",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-实习请假.jpg"
+        },
+        {
+          "label": "补卡申请",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-补卡申请.jpg"
+        },
+        {
+          "label": "岗位意向",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-岗位意向.jpg"
+        },
+        {
+          "label": "正式申请",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-正式申请.jpg"
+        },
+        {
+          "label": "调岗退岗",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-调岗退岗.jpg"
+        },
+        {
+          "label": "企业岗位库",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-企业岗位库.jpg"
+        },
+        {
+          "label": "实习保险",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-实习保险.jpg"
+        },
+        {
+          "label": "实习计划",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-实习计划.jpg"
+        },
+        {
+          "label": "实习求助",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-实习求助.jpg"
+        },
+        {
+          "label": "周报/月报/总结",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-周报-月报-总结.jpg"
+        },
+        {
+          "label": "实习成绩/自评",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--internship-tab-实习成绩-自评.jpg"
+        }
+      ],
+      "screenshots": [
+        "screenshots/1920x1080--internship-岗位实习.jpg"
+      ],
+      "layout": {
+        "url": "/internship",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": {
+          "left": 226,
+          "top": 94,
+          "right": 434,
+          "bottom": 697,
+          "width": 208,
+          "height": 603,
+          "count": 14
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/internship",
+        "after": "/internship",
+        "passed": true
+      }
+    },
+    {
+      "path": "/internship/compliance",
+      "name": "上岗合规与安全教育",
+      "module": "岗位实习",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [],
+      "screenshots": [
+        "screenshots/1920x1080--internship-compliance-上岗合规与安全教育.jpg"
+      ],
+      "layout": {
+        "url": "/internship/compliance",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship-compliance",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/internship/compliance",
+        "after": "/internship/compliance",
+        "passed": true
+      }
+    },
+    {
+      "path": "/employment",
+      "name": "就业服务",
+      "module": "就业服务",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [
+        {
+          "label": "我的就业",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--employment-tab-我的就业.jpg"
+        },
+        {
+          "label": "生源核对",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--employment-tab-生源核对.jpg"
+        },
+        {
+          "label": "去向登记",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--employment-tab-去向登记.jpg"
+        },
+        {
+          "label": "签约材料",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--employment-tab-签约材料.jpg"
+        }
+      ],
+      "screenshots": [
+        "screenshots/1920x1080--employment-就业服务.jpg"
+      ],
+      "layout": {
+        "url": "/employment",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-employment view-employment",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": {
+          "left": 226,
+          "top": 94,
+          "right": 434,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/employment",
+        "after": "/employment",
+        "passed": true
+      }
+    },
+    {
+      "path": "/orientation",
+      "name": "迎新报到",
+      "module": "迎新报到",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [
+        {
+          "label": "我的迎新",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--orientation-tab-我的迎新.jpg"
+        },
+        {
+          "label": "信息采集",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--orientation-tab-信息采集.jpg"
+        },
+        {
+          "label": "绿色通道",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--orientation-tab-绿色通道.jpg"
+        },
+        {
+          "label": "离校",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--orientation-tab-离校.jpg"
+        }
+      ],
+      "screenshots": [
+        "screenshots/1920x1080--orientation-迎新报到.jpg"
+      ],
+      "layout": {
+        "url": "/orientation",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-orientation view-orientation",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": {
+          "left": 226,
+          "top": 94,
+          "right": 434,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/orientation",
+        "after": "/orientation",
+        "passed": true
+      }
+    },
+    {
+      "path": "/messages",
+      "name": "消息通知",
+      "module": "消息中心",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [
+        {
+          "label": "全部",
+          "clicked": true,
+          "active": false,
+          "issues": [
+            "点击后未呈现选中态",
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--messages-tab-全部.jpg"
+        },
+        {
+          "label": "待办 1",
+          "clicked": true,
+          "active": false,
+          "issues": [
+            "点击后未呈现选中态",
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--messages-tab-待办-1.jpg"
+        },
+        {
+          "label": "通知 1",
+          "clicked": true,
+          "active": false,
+          "issues": [
+            "点击后未呈现选中态",
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--messages-tab-通知-1.jpg"
+        },
+        {
+          "label": "服务进度 1",
+          "clicked": true,
+          "active": false,
+          "issues": [
+            "点击后未呈现选中态",
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--messages-tab-服务进度-1.jpg"
+        },
+        {
+          "label": "消息设置",
+          "clicked": true,
+          "active": false,
+          "issues": [
+            "点击后未呈现选中态",
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--messages-tab-消息设置.jpg"
+        }
+      ],
+      "screenshots": [
+        "screenshots/1920x1080--messages-消息通知.jpg"
+      ],
+      "layout": {
+        "url": "/messages",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-messages view-messages",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 27,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/messages",
+        "after": "/messages",
+        "passed": true
+      }
+    },
+    {
+      "path": "/service-hall",
+      "name": "办事大厅",
+      "module": "办事大厅",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [
+        {
+          "label": "全部事项",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--service-hall-tab-全部事项.jpg"
+        },
+        {
+          "label": "教务学业类",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--service-hall-tab-教务学业类.jpg"
+        },
+        {
+          "label": "学工事务类",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--service-hall-tab-学工事务类.jpg"
+        },
+        {
+          "label": "毕业就业类",
+          "clicked": true,
+          "active": true,
+          "issues": [
+            "切换后关键元素溢出 1 项"
+          ],
+          "screenshot": "screenshots/1920x1080--service-hall-tab-毕业就业类.jpg"
+        }
+      ],
+      "screenshots": [
+        "screenshots/1920x1080--service-hall-办事大厅.jpg"
+      ],
+      "layout": {
+        "url": "/service-hall",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-service-hall view-service-hall",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": {
+          "left": 226,
+          "top": 94,
+          "right": 434,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/service-hall",
+        "after": "/service-hall",
+        "passed": true
+      }
+    },
+    {
+      "path": "/graduation",
+      "name": "毕业设计",
+      "module": "毕业设计",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [],
+      "screenshots": [
+        "screenshots/1920x1080--graduation-毕业设计.jpg"
+      ],
+      "layout": {
+        "url": "/graduation",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1466
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-graduation view-graduation-workbench",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 22,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/graduation",
+        "after": "/graduation",
+        "passed": true
+      }
+    },
+    {
+      "path": "/not-enabled",
+      "name": "门户未开通状态",
+      "module": "公共状态页",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [],
+      "screenshots": [
+        "screenshots/1920x1080--not-enabled-门户未开通状态.jpg"
+      ],
+      "layout": {
+        "url": "/not-enabled",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-not-enabled view-not-enabled",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 20,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/not-enabled",
+        "after": "/not-enabled",
+        "passed": true
+      }
+    },
+    {
+      "path": "/module-disabled/not-real",
+      "name": "模块未开通状态",
+      "module": "公共状态页",
+      "viewport": "1920x1080",
+      "accessible": true,
+      "result": "有问题",
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "tabs": [],
+      "screenshots": [
+        "screenshots/1920x1080--module-disabled-not-real-模块未开通状态.jpg"
+      ],
+      "layout": {
+        "url": "/module-disabled/not-real",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "document": {
+          "scrollWidth": 1920,
+          "scrollHeight": 1080
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-module-disabled view-module-disabled",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 1080,
+          "width": 76,
+          "height": 1080
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1920,
+          "bottom": 72,
+          "width": 1844,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 1080,
+            "width": 76,
+            "height": 1080,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 19,
+        "disabledButtons": []
+      },
+      "refresh": {
+        "before": "/module-disabled/not-real",
+        "after": "/module-disabled/not-real",
+        "passed": true
+      }
+    }
+  ],
+  "themeChecks": [
+    {
+      "key": "blue",
+      "label": "学院蓝",
+      "route": "/home",
+      "passed": true,
+      "data": {
+        "htmlTheme": "blue",
+        "primary": "#2563EB",
+        "cardBackground": "rgb(255, 255, 255)",
+        "themeButtons": 6
+      },
+      "layout": {
+        "url": "/home",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-home route-home view-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 224,
+          "bottom": 900,
+          "width": 224,
+          "height": 900
+        },
+        "header": {
+          "left": 224,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1216,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 900,
+            "width": 224,
+            "height": 900,
+            "scrollWidth": 374,
+            "clientWidth": 224
+          },
+          {
+            "cls": "home-hero",
+            "left": 252,
+            "top": 96,
+            "right": 1412,
+            "bottom": 368,
+            "width": 1160,
+            "height": 272,
+            "scrollWidth": 1260,
+            "clientWidth": 1160
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 39,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/theme-blue--home.jpg"
+    },
+    {
+      "key": "purple",
+      "label": "科技紫",
+      "route": "/academic",
+      "passed": true,
+      "data": {
+        "htmlTheme": "purple",
+        "primary": "#7b61ff",
+        "cardBackground": "rgb(255, 255, 255)",
+        "themeButtons": 6
+      },
+      "layout": {
+        "url": "/academic",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-academic view-academic-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/theme-purple--academic.jpg"
+    },
+    {
+      "key": "green",
+      "label": "薄荷绿",
+      "route": "/internship",
+      "passed": true,
+      "data": {
+        "htmlTheme": "green",
+        "primary": "#16a078",
+        "cardBackground": "",
+        "themeButtons": 6
+      },
+      "layout": {
+        "url": "/internship",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 697,
+          "width": 208,
+          "height": 603,
+          "count": 14
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/theme-green--internship.jpg"
+    },
+    {
+      "key": "orange",
+      "label": "活力橙",
+      "route": "/campus-service",
+      "passed": true,
+      "data": {
+        "htmlTheme": "orange",
+        "primary": "#f59b23",
+        "cardBackground": "rgb(255, 255, 255)",
+        "themeButtons": 6
+      },
+      "layout": {
+        "url": "/campus-service",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-campus-service",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 451,
+          "width": 208,
+          "height": 357,
+          "count": 8
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 32,
+        "disabledButtons": [
+          "提交请假"
+        ]
+      },
+      "screenshot": "screenshots/theme-orange--campus-service.jpg"
+    },
+    {
+      "key": "pink",
+      "label": "樱花粉",
+      "route": "/graduation",
+      "passed": true,
+      "data": {
+        "htmlTheme": "pink",
+        "primary": "#f36ca5",
+        "cardBackground": "",
+        "themeButtons": 6
+      },
+      "layout": {
+        "url": "/graduation",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 1286
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-graduation view-graduation-workbench",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 22,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/theme-pink--graduation.jpg"
+    },
+    {
+      "key": "dark",
+      "label": "深邃黑",
+      "route": "/service-hall",
+      "passed": true,
+      "data": {
+        "htmlTheme": "dark",
+        "primary": "#4f8bff",
+        "cardBackground": "rgb(27, 34, 49)",
+        "themeButtons": 6
+      },
+      "layout": {
+        "url": "/service-hall",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-service-hall view-service-hall",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/theme-dark--service-hall.jpg"
+    }
+  ],
+  "viewportChecks": [
+    {
+      "viewport": "1440x900",
+      "route": "/home",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 2 项"
+      ],
+      "layout": {
+        "url": "/home",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-home route-home view-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 224,
+          "bottom": 900,
+          "width": 224,
+          "height": 900
+        },
+        "header": {
+          "left": 224,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1216,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 900,
+            "width": 224,
+            "height": 900,
+            "scrollWidth": 374,
+            "clientWidth": 224
+          },
+          {
+            "cls": "home-hero",
+            "left": 252,
+            "top": 96,
+            "right": 1412,
+            "bottom": 368,
+            "width": 1160,
+            "height": 272,
+            "scrollWidth": 1260,
+            "clientWidth": 1160
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 39,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1440x900--home-responsive.jpg"
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/profile",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/profile",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-profile view-profile",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [
+          "📭尚未授权任何家长"
+        ],
+        "tables": 0,
+        "controls": 21,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/academic",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/academic",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-academic view-academic-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1440x900--academic-responsive.jpg"
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/campus-service",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/campus-service",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-campus-service",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 451,
+          "width": 208,
+          "height": 357,
+          "count": 8
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 32,
+        "disabledButtons": [
+          "提交请假"
+        ]
+      },
+      "screenshot": "screenshots/1440x900--campus-service-responsive.jpg"
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/materials",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/materials",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-material-supplement",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 246,
+          "width": 208,
+          "height": 152,
+          "count": 3
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 29,
+        "disabledButtons": [
+          "上传并提交审核",
+          "上传并提交审核"
+        ]
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/internship",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/internship",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 697,
+          "width": 208,
+          "height": 603,
+          "count": 14
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1440x900--internship-responsive.jpg"
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/internship/compliance",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/internship/compliance",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship-compliance",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/employment",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/employment",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-employment view-employment",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/orientation",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/orientation",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-orientation view-orientation",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/messages",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/messages",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-messages view-messages",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 27,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/service-hall",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/service-hall",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-service-hall view-service-hall",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/graduation",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/graduation",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "document": {
+          "scrollWidth": 1440,
+          "scrollHeight": 1286
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-graduation view-graduation-workbench",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 900,
+          "width": 76,
+          "height": 900
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1440,
+          "bottom": 72,
+          "width": 1364,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 900,
+            "width": 76,
+            "height": 900,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 22,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1440x900--graduation-responsive.jpg"
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/home",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 2 项"
+      ],
+      "layout": {
+        "url": "/home",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-home route-home view-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 224,
+          "bottom": 768,
+          "width": 224,
+          "height": 768
+        },
+        "header": {
+          "left": 224,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1142,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 768,
+            "width": 224,
+            "height": 768,
+            "scrollWidth": 374,
+            "clientWidth": 224
+          },
+          {
+            "cls": "home-hero",
+            "left": 252,
+            "top": 96,
+            "right": 1338,
+            "bottom": 368,
+            "width": 1086,
+            "height": 272,
+            "scrollWidth": 1186,
+            "clientWidth": 1086
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 39,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1366x768--home-responsive.jpg"
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/profile",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/profile",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-profile view-profile",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [
+          "📭尚未授权任何家长"
+        ],
+        "tables": 0,
+        "controls": 21,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/academic",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/academic",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-academic view-academic-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1366x768--academic-responsive.jpg"
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/campus-service",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/campus-service",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-campus-service",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 451,
+          "width": 208,
+          "height": 357,
+          "count": 8
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 32,
+        "disabledButtons": [
+          "提交请假"
+        ]
+      },
+      "screenshot": "screenshots/1366x768--campus-service-responsive.jpg"
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/materials",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/materials",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-material-supplement",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 246,
+          "width": 208,
+          "height": 152,
+          "count": 3
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 29,
+        "disabledButtons": [
+          "上传并提交审核",
+          "上传并提交审核"
+        ]
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/internship",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/internship",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 697,
+          "width": 208,
+          "height": 603,
+          "count": 14
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1366x768--internship-responsive.jpg"
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/internship/compliance",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/internship/compliance",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship-compliance",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/employment",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/employment",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-employment view-employment",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/orientation",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/orientation",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-orientation view-orientation",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/messages",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/messages",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-messages view-messages",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 27,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/service-hall",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/service-hall",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-service-hall view-service-hall",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": {
+          "left": 100,
+          "top": 94,
+          "right": 308,
+          "bottom": 287,
+          "width": 208,
+          "height": 193,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/graduation",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/graduation",
+        "viewport": {
+          "width": 1366,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1366,
+          "scrollHeight": 1154
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-graduation view-graduation-workbench",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1366,
+          "bottom": 72,
+          "width": 1290,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 22,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1366x768--graduation-responsive.jpg"
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/home",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 2 项"
+      ],
+      "layout": {
+        "url": "/home",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-home route-home view-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 224,
+          "bottom": 768,
+          "width": 224,
+          "height": 768
+        },
+        "header": {
+          "left": 224,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 800,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 768,
+            "width": 224,
+            "height": 768,
+            "scrollWidth": 374,
+            "clientWidth": 224
+          },
+          {
+            "cls": "home-hero",
+            "left": 252,
+            "top": 96,
+            "right": 996,
+            "bottom": 386,
+            "width": 744,
+            "height": 290,
+            "scrollWidth": 844,
+            "clientWidth": 744
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 39,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1024x768--home-responsive.jpg"
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/profile",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/profile",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-profile view-profile",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [
+          "📭尚未授权任何家长"
+        ],
+        "tables": 0,
+        "controls": 21,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/academic",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/academic",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-academic view-academic-home",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1024x768--academic-responsive.jpg"
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/campus-service",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/campus-service",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-campus-service",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": {
+          "left": 96,
+          "top": 92,
+          "right": 280,
+          "bottom": 443,
+          "width": 184,
+          "height": 351,
+          "count": 8
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 32,
+        "disabledButtons": [
+          "提交请假"
+        ]
+      },
+      "screenshot": "screenshots/1024x768--campus-service-responsive.jpg"
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/materials",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/materials",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-campus-service view-material-supplement",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": {
+          "left": 96,
+          "top": 92,
+          "right": 280,
+          "bottom": 238,
+          "width": 184,
+          "height": 146,
+          "count": 3
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 29,
+        "disabledButtons": [
+          "上传并提交审核",
+          "上传并提交审核"
+        ]
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/internship",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/internship",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": {
+          "left": 96,
+          "top": 92,
+          "right": 280,
+          "bottom": 689,
+          "width": 184,
+          "height": 597,
+          "count": 14
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 34,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1024x768--internship-responsive.jpg"
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/internship/compliance",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/internship/compliance",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-internship view-internship-compliance",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/employment",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/employment",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-employment view-employment",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": {
+          "left": 96,
+          "top": 92,
+          "right": 280,
+          "bottom": 279,
+          "width": 184,
+          "height": 187,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/orientation",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/orientation",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-orientation view-orientation",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": {
+          "left": 96,
+          "top": 92,
+          "right": 280,
+          "bottom": 279,
+          "width": 184,
+          "height": 187,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 23,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/messages",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/messages",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-messages view-messages",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 27,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/service-hall",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/service-hall",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 768
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-service-hall view-service-hall",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": {
+          "left": 96,
+          "top": 92,
+          "right": 280,
+          "bottom": 279,
+          "width": 184,
+          "height": 187,
+          "count": 4
+        },
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 24,
+        "disabledButtons": []
+      },
+      "screenshot": null
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/graduation",
+      "passed": false,
+      "issues": [
+        "关键元素溢出 1 项"
+      ],
+      "layout": {
+        "url": "/graduation",
+        "viewport": {
+          "width": 1024,
+          "height": 768
+        },
+        "document": {
+          "scrollWidth": 1024,
+          "scrollHeight": 1154
+        },
+        "horizontalOverflow": false,
+        "shellClasses": "sp-shell is-compact route-graduation view-graduation-workbench",
+        "aside": {
+          "left": 0,
+          "top": 0,
+          "right": 76,
+          "bottom": 768,
+          "width": 76,
+          "height": 768
+        },
+        "header": {
+          "left": 76,
+          "top": 0,
+          "right": 1024,
+          "bottom": 72,
+          "width": 948,
+          "height": 72
+        },
+        "tabs": null,
+        "overflow": [
+          {
+            "cls": "sp-aside",
+            "left": 0,
+            "top": 0,
+            "right": 76,
+            "bottom": 768,
+            "width": 76,
+            "height": 768,
+            "scrollWidth": 226,
+            "clientWidth": 76
+          }
+        ],
+        "dialogs": [],
+        "states": [],
+        "tables": 0,
+        "controls": 22,
+        "disabledButtons": []
+      },
+      "screenshot": "screenshots/1024x768--graduation-responsive.jpg"
+    }
+  ],
+  "authChecks": [
+    {
+      "name": "unauthenticated direct route redirects to login",
+      "passed": true,
+      "url": "http://127.0.0.1:5199/login?redirect=/academic"
+    },
+    {
+      "name": "student real password login",
+      "passed": true,
+      "url": "http://127.0.0.1:5199/home"
+    }
+  ],
+  "consoleErrors": [
+    {
+      "scope": "route:/campus-service",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    }
+  ],
+  "networkFailures": [
+    {
+      "scope": "route:/campus-service",
+      "status": 403,
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/api/v1/mobile/affairs/dorm/transfers/my"
+    }
+  ],
+  "summary": {
+    "totalRoutes": 14,
+    "passedRoutes": 0,
+    "problemRoutes": 14,
+    "blockedRoutes": 0,
+    "uncheckedRoutes": 0,
+    "tabsChecked": 42,
+    "tabProblems": 42,
+    "themesChecked": 6,
+    "themeProblems": 0,
+    "viewportCases": 36,
+    "viewportProblems": 36,
+    "consoleErrors": 1,
+    "networkFailures": 1
+  }
+}
