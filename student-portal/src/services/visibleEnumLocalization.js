@@ -111,10 +111,15 @@ export const VISIBLE_ENUM_WHITELIST = new Set([
 
 const UNDERSCORE_ENUM_RE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g
 const UPPER_WORD_RE = /\b[A-Z][A-Z0-9]{2,}\b/g
-const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'OPTION', 'CODE', 'PRE'])
 
+/**
+ * 仅本地化一个明确的枚举值。
+ * 不扫描、不替换句子中的单词，避免改写学生填写内容、消息正文和业务原始文本。
+ */
 export function localizeVisibleEnumText(value) {
-  return String(value ?? '').replace(/\b[A-Z][A-Z0-9_]*\b/g, (token) => VISIBLE_ENUM_LABELS[token] || token)
+  const raw = String(value ?? '')
+  const key = raw.trim().toUpperCase()
+  return VISIBLE_ENUM_LABELS[key] || raw
 }
 
 export function findVisibleEnumTokens(value) {
@@ -124,42 +129,4 @@ export function findVisibleEnumTokens(value) {
     if (Object.prototype.hasOwnProperty.call(VISIBLE_ENUM_LABELS, token)) tokens.add(token)
   }
   return [...tokens].filter((token) => !VISIBLE_ENUM_WHITELIST.has(token))
-}
-
-function shouldSkip(node) {
-  const parent = node?.parentElement
-  return !parent || SKIP_TAGS.has(parent.tagName) || parent.closest('[data-raw-enum="true"]')
-}
-
-function localizeTextNode(node) {
-  if (!node || shouldSkip(node)) return
-  const next = localizeVisibleEnumText(node.nodeValue)
-  if (next !== node.nodeValue) node.nodeValue = next
-}
-
-function localizeTree(root) {
-  if (!root || typeof document === 'undefined') return
-  if (root.nodeType === Node.TEXT_NODE) {
-    localizeTextNode(root)
-    return
-  }
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let node = walker.nextNode()
-  while (node) {
-    localizeTextNode(node)
-    node = walker.nextNode()
-  }
-}
-
-export function installVisibleEnumLocalization(root = document.getElementById('app') || document.body) {
-  if (!root || typeof MutationObserver === 'undefined') return () => {}
-  localizeTree(root)
-  const observer = new MutationObserver((records) => {
-    for (const record of records) {
-      if (record.type === 'characterData') localizeTextNode(record.target)
-      for (const node of record.addedNodes || []) localizeTree(node)
-    }
-  })
-  observer.observe(root, { childList: true, subtree: true, characterData: true })
-  return () => observer.disconnect()
 }
