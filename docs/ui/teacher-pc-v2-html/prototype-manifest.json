@@ -1,12 +1,12 @@
 {
-  "schemaVersion": "2.4.0",
+  "schemaVersion": "2.5.0",
   "baseline": {
     "repository": "penghaibin9/saas",
     "branch": "main",
     "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
     "prototypeBranch": "codex/teacher-pc-v2-html-library",
     "generatedAt": "2026-07-30T16:13:00+08:00",
-    "updatedAt": "2026-07-31T08:30:00+08:00"
+    "updatedAt": "2026-07-31T09:20:00+08:00"
   },
   "status": "IN_PROGRESS",
   "designOnly": true,
@@ -34,16 +34,17 @@
       "manifest-parts/170-resource.json",
       "manifest-parts/180-evaluation.json",
       "manifest-parts/190-quality.json",
-      "manifest-parts/200-archive.json"
+      "manifest-parts/200-archive.json",
+      "manifest-parts/210-stats.json"
     ]
   },
   "validation": {
     "screenshotsCommitted": 0,
     "screenshotsGeneratedLocally": 309,
-    "currentBatchPages": 4,
+    "currentBatchPages": 15,
     "currentBatchRenders": 0,
     "resolutions": ["1280x900", "1440x1000", "1920x1080"],
-    "directNavigationNote": "教务归档4个入口已完成HTML、共享渲染器、开发契约和manifest静态核对；当前连接环境未执行本批浏览器渲染，不宣称控制台、溢出、焦点或三档分辨率通过。",
+    "directNavigationNote": "教务统计16个菜单入口已完成设计追踪：14个统计Tab与工作量审核对应15个新HTML，调停课统计复用既有独立页面；当前连接环境未执行本批浏览器渲染。",
     "navigationValidation": {
       "academicSecondLevelCount": 29,
       "source": "frontend/src/config/navPlan.js",
@@ -56,30 +57,34 @@
       "permissionProjectionUnchanged": true
     },
     "limitations": [
-      "当前239个独立HTML尚未完成一次同一HEAD下的全量浏览器回归。",
-      "教学质量8页与教务归档4页当前只完成静态结构、相对资源、路由、权限和业务边界核对。",
+      "当前254个独立HTML尚未完成一次同一HEAD下的全量浏览器回归。",
+      "教学质量8页、教务归档4页与教务统计15页当前只完成静态结构、相对资源、路由、权限和业务边界核对。",
       "截图和打印PDF均未作为仓库交付物提交。"
     ]
   },
   "routeIndexDelta": [
-    {"route": "/admin/academic-affairs/quality", "html": "academic-affairs/quality/quality-monitor.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=supervision", "html": "academic-affairs/quality/quality-supervision.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=patrol", "html": "academic-affairs/quality/quality-patrol.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=inspection", "html": "academic-affairs/quality/quality-inspection.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=incident", "html": "academic-affairs/quality/quality-incident.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=rectify", "html": "academic-affairs/quality/quality-rectify.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=followUp", "html": "academic-affairs/quality/quality-followup.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=archive", "html": "academic-affairs/quality/quality-archive.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/archive", "html": "academic-affairs/archive/archive-batches.html", "part": "200-archive.json"},
-    {"route": "/admin/academic-affairs/archive/precheck", "html": "academic-affairs/archive/archive-precheck.html", "part": "200-archive.json"},
-    {"route": "/admin/academic-affairs/archive?entry=batch", "html": "academic-affairs/archive/archive-batch-workbench.html", "part": "200-archive.json"},
-    {"route": "/admin/academic-affairs/archive/export", "html": "academic-affairs/archive/archive-export.html", "part": "200-archive.json"}
+    {"route": "/admin/academic-affairs/stats", "html": "academic-affairs/stats/stats-overview.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=statusChange", "html": "academic-affairs/stats/stats-status-change.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=registration", "html": "academic-affairs/stats/stats-registration.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=course", "html": "academic-affairs/stats/stats-course.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=teachingTask", "html": "academic-affairs/stats/stats-teaching-task.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=schedule", "html": "academic-affairs/stats/stats-schedule.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/schedule-change/stats", "html": "academic-affairs/schedule-change/schedule-change-stats.html", "part": "210-stats.json", "sharedExistingHtml": true},
+    {"route": "/admin/academic-affairs/stats?tab=courseSelection", "html": "academic-affairs/stats/stats-selection.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=exam", "html": "academic-affairs/stats/stats-exam.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=grade", "html": "academic-affairs/stats/stats-grade.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=warning", "html": "academic-affairs/stats/stats-warning.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=graduation", "html": "academic-affairs/stats/stats-graduation.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=workload", "html": "academic-affairs/stats/stats-workload.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=resource", "html": "academic-affairs/stats/stats-resource.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/workload-review", "html": "academic-affairs/stats/workload-review.html", "part": "210-stats.json"},
+    {"route": "/admin/academic-affairs/stats?tab=export", "html": "academic-affairs/stats/stats-export.html", "part": "210-stats.json"}
   ],
   "coverage": {
-    "registeredPrototypeEntries": 245,
-    "uniqueHtmlFiles": 239,
-    "sharedRouteEntries": 8,
-    "sharedDesignFiles": 33,
+    "registeredPrototypeEntries": 261,
+    "uniqueHtmlFiles": 254,
+    "sharedRouteEntries": 9,
+    "sharedDesignFiles": 35,
     "screenshotsCommitted": 0,
     "screenshotsGeneratedLocally": 309,
     "centersStarted": ["工作台", "教务中心"],
@@ -107,10 +112,11 @@
       "教学资源",
       "教学评价",
       "教学质量",
-      "教务归档"
+      "教务归档",
+      "教务统计"
     ],
-    "lastCompletedWorkspace": "教务归档",
-    "nextWorkspaceCandidate": "教务统计",
+    "lastCompletedWorkspace": "教务统计",
+    "nextWorkspaceCandidate": "专业分流",
     "remainingCenters": [
       "工作台其余页面",
       "教务中心其余工作区",
