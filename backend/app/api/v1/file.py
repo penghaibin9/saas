@@ -64,13 +64,19 @@ async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_curr
     return success(meta)
 
 
+def _session_reservation_key(session_id: str) -> str:
+    return f"cos-session:{str(session_id).strip()}"
+
+
 @router.post("/upload-sessions", summary="创建 COS 精确对象直传会话")
 def create_upload_session(body: UploadSessionCreate, user=Depends(get_current_user)):
-    from app.services.file_storage_governance_service import assert_quota_available, _module_from_biz
-    from app.services.storage.production import create_upload_session as create_session
+    from app.services.file_storage_quota_reservation_service import _module_from_biz, reserve_quota
+    from app.services.storage.production import (
+        abandon_upload_session as abandon_session,
+        create_upload_session as create_session,
+    )
 
-    assert_quota_available(body.sizeBytes, module_code=_module_from_biz(body.bizType))
-    return success(create_session(
+    result = create_session(
         filename=body.fileName,
         size_bytes=body.sizeBytes,
         sha256=body.sha256,
@@ -79,7 +85,25 @@ def create_upload_session(body: UploadSessionCreate, user=Depends(get_current_us
         client_type=body.clientType,
         idempotency_key=body.idempotencyKey,
         user=user,
-    ))
+    )
+    session_id = str(result.get("sessionId") or "")
+    if result.get("status") != "COMPLETED":
+        try:
+            reserve_quota(
+                reservation_key=_session_reservation_key(session_id),
+                source_type="COS_UPLOAD_SESSION",
+                source_id=session_id,
+                size_bytes=body.sizeBytes,
+                module_code=_module_from_biz(body.bizType),
+                ttl_seconds=30 * 60,
+            )
+        except Exception:
+            try:
+                abandon_session(session_id, user=user)
+            except Exception:
+                pass
+            raise
+    return success(result)
 
 
 @router.get("/upload-sessions/{session_id}", summary="查询上传会话")
@@ -94,6 +118,7 @@ def complete_upload_session(session_id: str, body: UploadSessionComplete, user=D
     from app.db.session import get_sessionmaker
     from app.models.file import FileObject
     from app.services.file_storage_governance_service import assign_retention
+    from app.services.file_storage_quota_reservation_service import consume_quota
     from app.services.storage.production import complete_upload_session as complete_session
 
     result = complete_session(session_id, etag=body.etag, user=user)
@@ -103,6 +128,11 @@ def complete_upload_session(session_id: str, body: UploadSessionComplete, user=D
         try:
             row = db.get(FileObject, int(file_id), with_for_update=True)
             if row:
+                consume_quota(
+                    _session_reservation_key(session_id),
+                    file_id=int(file_id),
+                    db=db,
+                )
                 assign_retention(row, db=db)
                 db.commit()
         finally:
@@ -112,9 +142,12 @@ def complete_upload_session(session_id: str, body: UploadSessionComplete, user=D
 
 @router.post("/upload-sessions/{session_id}/abandon", summary="放弃未完成上传会话")
 def abandon_upload_session(session_id: str, user=Depends(get_current_user)):
+    from app.services.file_storage_quota_reservation_service import release_quota
     from app.services.storage.production import abandon_upload_session as abandon_session
 
-    return success(abandon_session(session_id, user=user), message="上传会话已放弃")
+    result = abandon_session(session_id, user=user)
+    release_quota(_session_reservation_key(session_id), reason="COS_UPLOAD_SESSION_ABANDONED")
+    return success(result, message="上传会话已放弃")
 
 
 @router.get("/scan/health", summary="文件扫描服务健康状态")
