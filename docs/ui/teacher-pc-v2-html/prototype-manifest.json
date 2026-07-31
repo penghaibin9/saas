@@ -1,12 +1,12 @@
 {
-  "schemaVersion": "2.3.0",
+  "schemaVersion": "2.4.0",
   "baseline": {
     "repository": "penghaibin9/saas",
     "branch": "main",
     "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
     "prototypeBranch": "codex/teacher-pc-v2-html-library",
     "generatedAt": "2026-07-30T16:13:00+08:00",
-    "updatedAt": "2026-07-31T08:00:00+08:00"
+    "updatedAt": "2026-07-31T08:30:00+08:00"
   },
   "status": "IN_PROGRESS",
   "designOnly": true,
@@ -33,16 +33,17 @@
       "manifest-parts/160-textbook.json",
       "manifest-parts/170-resource.json",
       "manifest-parts/180-evaluation.json",
-      "manifest-parts/190-quality.json"
+      "manifest-parts/190-quality.json",
+      "manifest-parts/200-archive.json"
     ]
   },
   "validation": {
     "screenshotsCommitted": 0,
     "screenshotsGeneratedLocally": 309,
-    "currentBatchPages": 8,
+    "currentBatchPages": 4,
     "currentBatchRenders": 0,
     "resolutions": ["1280x900", "1440x1000", "1920x1080"],
-    "directNavigationNote": "教学质量8个真实入口已完成HTML、共享渲染器引用、开发契约和manifest静态核对；当前连接环境未执行本批真实浏览器渲染，不宣称控制台、溢出、焦点或三档分辨率回归通过。",
+    "directNavigationNote": "教务归档4个入口已完成HTML、共享渲染器、开发契约和manifest静态核对；当前连接环境未执行本批浏览器渲染，不宣称控制台、溢出、焦点或三档分辨率通过。",
     "navigationValidation": {
       "academicSecondLevelCount": 29,
       "source": "frontend/src/config/navPlan.js",
@@ -55,8 +56,8 @@
       "permissionProjectionUnchanged": true
     },
     "limitations": [
-      "当前235个独立HTML尚未完成一次同一HEAD下的全量浏览器回归。",
-      "教学质量本批8页只完成静态结构、相对资源、路由和权限核对，浏览器矩阵仍待执行。",
+      "当前239个独立HTML尚未完成一次同一HEAD下的全量浏览器回归。",
+      "教学质量8页与教务归档4页当前只完成静态结构、相对资源、路由、权限和业务边界核对。",
       "截图和打印PDF均未作为仓库交付物提交。"
     ]
   },
@@ -68,13 +69,17 @@
     {"route": "/admin/academic-affairs/quality?tab=incident", "html": "academic-affairs/quality/quality-incident.html", "part": "190-quality.json"},
     {"route": "/admin/academic-affairs/quality?tab=rectify", "html": "academic-affairs/quality/quality-rectify.html", "part": "190-quality.json"},
     {"route": "/admin/academic-affairs/quality?tab=followUp", "html": "academic-affairs/quality/quality-followup.html", "part": "190-quality.json"},
-    {"route": "/admin/academic-affairs/quality?tab=archive", "html": "academic-affairs/quality/quality-archive.html", "part": "190-quality.json"}
+    {"route": "/admin/academic-affairs/quality?tab=archive", "html": "academic-affairs/quality/quality-archive.html", "part": "190-quality.json"},
+    {"route": "/admin/academic-affairs/archive", "html": "academic-affairs/archive/archive-batches.html", "part": "200-archive.json"},
+    {"route": "/admin/academic-affairs/archive/precheck", "html": "academic-affairs/archive/archive-precheck.html", "part": "200-archive.json"},
+    {"route": "/admin/academic-affairs/archive?entry=batch", "html": "academic-affairs/archive/archive-batch-workbench.html", "part": "200-archive.json"},
+    {"route": "/admin/academic-affairs/archive/export", "html": "academic-affairs/archive/archive-export.html", "part": "200-archive.json"}
   ],
   "coverage": {
-    "registeredPrototypeEntries": 241,
-    "uniqueHtmlFiles": 235,
+    "registeredPrototypeEntries": 245,
+    "uniqueHtmlFiles": 239,
     "sharedRouteEntries": 8,
-    "sharedDesignFiles": 31,
+    "sharedDesignFiles": 33,
     "screenshotsCommitted": 0,
     "screenshotsGeneratedLocally": 309,
     "centersStarted": ["工作台", "教务中心"],
@@ -101,10 +106,11 @@
       "教材管理",
       "教学资源",
       "教学评价",
-      "教学质量"
+      "教学质量",
+      "教务归档"
     ],
-    "lastCompletedWorkspace": "教学质量",
-    "nextWorkspaceCandidate": "教务归档",
+    "lastCompletedWorkspace": "教务归档",
+    "nextWorkspaceCandidate": "教务统计",
     "remainingCenters": [
       "工作台其余页面",
       "教务中心其余工作区",
