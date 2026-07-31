@@ -8,7 +8,7 @@
 - Draft PR：`#27`
 - 生产代码修改：**否**
 - 允许目录外修改：**0**
-- 当前阶段：**浏览器累计 546 / 870；学工 15 页契约核对完成；岗位实习审计输入确认未变化；毕业设计纠偏为生产现行 8 工作区**
+- 当前阶段：**浏览器累计 546 / 870；学工 15 页契约核对完成；岗位实习审计输入未变化；毕业设计现行 8 工作区及机器审计工具已落盘**
 
 ## 当前统一规模
 
@@ -127,15 +127,39 @@
 - 新增 `batch-implementation.html`、`proposal-final.html`、`risk-archive.html`、`templates.html`；
 - 重定义其余 4 个 HTML；
 - 重建 `320-graduation.json`；
-- 重写共享 `v2-graduation-key.js`；
+- 重写共享 `v2-graduation-key.js` 和流程样式；
 - JavaScript 写入前通过 `node --check`；
 - 独立 HTML 总数仍保持 8，全库仍为 290；
 - 当前重映射后浏览器回归：**0 / 24**。
 
-### 6. 可重复执行工具
+### 6. 毕业设计机器审计
+
+新增：
+
+- `tools/check-graduation-workspace-audit.mjs`
+- `graduation/workspace-audit-report.md`
+
+工具直接比较生产 `graduationWorkspaces.js` 与 `320-graduation.json`，检查：
+
+- 8 工作区、50 叶子、48 唯一 URL、2 共享 URL；
+- workspace key、名称、主入口和全部 `coveredRoutes`；
+- 权限候选覆盖；
+- 8 个 HTML 的存在性和唯一 owner；
+- 字段、状态与业务边界；
+- 漏项、过时项和共享 owner 偏差。
+
+已完成：
+
+- 工具 JavaScript 语法检查 PASS；
+- 隔离同构夹具运行 8 / 50 / 48 / 2、8 HTML、0 error PASS。
+
+尚未完成：当前真实完整 PR 分支上的脚本执行。隔离夹具 PASS 不能写成最终 HEAD 审计通过。
+
+### 7. 可重复执行工具
 
 - `tools/check-prototype-consistency.mjs`
 - `tools/check-internship-route-audit.mjs`
+- `tools/check-graduation-workspace-audit.mjs`
 - `tools/run-browser-regression.mjs`
 - `tools/README.md`
 
@@ -146,7 +170,8 @@
 - 生产路由、布局、公共组件、API、权限实现、后端和数据库均未修改；
 - 原型继续执行 fail-closed、学生主档单一事实源、敏感数据最小可见、用途与审计；
 - 学工生产权限冲突已如实登记，没有在原型层伪造一致性；
-- 毕业设计旧工作区错误已撤销，没有继续对错误结构执行无效回归。
+- 毕业设计旧工作区错误已撤销，没有继续对错误结构执行无效回归；
+- 毕业设计机器审计的能力和结论边界已写入总 Manifest 与专项报告。
 
 ## 尚未确认
 
@@ -155,7 +180,7 @@
 - 学工 11 个关键工作台的 33 次浏览器回归；
 - 毕业设计现行 8 工作区的 24 次浏览器回归；
 - 最终冻结 HEAD 的岗位实习 101 / 99 审计；
-- 毕业设计最终 HEAD 的 50 叶子 / 48 URL 再核对；
+- 毕业设计最终 HEAD 的 8 / 50 / 48 / 2 真实分支审计；
 - 打印、键盘、焦点、Escape、焦点归还和高风险业务人工复核；
 - 数字迎新与班级管理生产权限冲突的最终裁决；
 - G0–G7 全部 PASS。
@@ -164,7 +189,7 @@
 
 ## 下一步
 
-1. 在可材料化完整分支快照的环境中运行一致性检查，重点确认毕业设计旧 4 页无残留引用、新 4 页无孤儿或断链；
+1. 在可材料化完整分支快照的环境中运行一致性检查和毕业设计机器审计，重点确认旧 4 页无残留引用、新 4 页无孤儿或断链；
 2. 执行学工 11 页 `11 × 3 = 33` 次回归；
 3. 执行毕业设计现行 8 页 `8 × 3 = 24` 次回归；
 4. 推进剩余页面族，直到累计 870 / 870；
