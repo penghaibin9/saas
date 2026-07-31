@@ -1,0 +1,51 @@
+name: Student Portal V5 Apply Reviewed Fixes
+
+on:
+  push:
+    branches:
+      - agent/student-portal-v5-full-review
+    paths:
+      - student-portal/review/apply-reviewed-display-fixes.py
+      - .github/workflows/student-portal-v5-apply-reviewed-fixes.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: student-portal-v5-apply-reviewed-fixes
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: 应用已复审的精确前端修复
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/student-portal-v5-full-review
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 执行带断言的精确替换
+        run: python student-portal/review/apply-reviewed-display-fixes.py
+
+      - name: 确认只修改允许的学生门户文件
+        run: |
+          changed="$(git diff --name-only)"
+          echo "$changed"
+          test -n "$changed"
+          if echo "$changed" | grep -Ev '^(student-portal/src/views/(home/HomeView.vue|profile/ProfileView.vue|messages/MessagesView.vue|graduation/GraduationWorkbenchView.vue|affairs/AffairsFourEndView.vue)|student-portal/review/(v5-review-config.json|v5-full-review.mjs))$'; then
+            echo "unexpected file changed"
+            exit 1
+          fi
+
+      - name: 提交到复审分支
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add student-portal/src/views student-portal/review/v5-review-config.json student-portal/review/v5-full-review.mjs
+          git commit -m "fix(student-portal): localize reviewed states and degrade optional dorm history [skip ci]"
+          git push origin HEAD:agent/student-portal-v5-full-review
