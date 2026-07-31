@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   prepare:
-    name: 吸收 main V5 + 修正阶段 6 真实夹具
+    name: 吸收 main V5 + 阶段 6 夹具 + COS SDK lock
     runs-on: ubuntu-24.04
     outputs:
       head_sha: ${{ steps.head.outputs.sha }}
@@ -25,6 +25,11 @@ jobs:
         with:
           ref: audit/file-capability-inventory
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Merge current main and preserve graduation material entry
         shell: bash
         run: |
@@ -106,19 +111,28 @@ jobs:
           PY
           python -m py_compile backend/tests/graduation_material_center_mysql_acceptance.py
           test -z "$(git diff --name-only --diff-filter=U)"
+      - name: Generate exact npm lock for official COS SDK
+        working-directory: frontend
+        run: npm install --save-exact cos-js-sdk-v5@1.10.1 --package-lock-only --ignore-scripts
+      - name: Commit prepared branch state
+        shell: bash
+        run: |
+          set -euo pipefail
           git add -- \
             student-portal/src/App.vue \
             student-portal/src/layouts/PortalLayout.vue \
             student-portal/src/styles/v5-overrides.css \
             student-portal/src/styles/v5-polish.css \
             student-portal/src/views/home/HomeView.vue \
-            backend/tests/graduation_material_center_mysql_acceptance.py
+            backend/tests/graduation_material_center_mysql_acceptance.py \
+            frontend/package.json \
+            frontend/package-lock.json \
+            frontend/src/services/file/cosBrowserSdk.js
+          test -z "$(git diff --name-only --diff-filter=U)"
           git diff --cached --check
-          if ! git diff --cached --quiet; then
-            git commit -m "merge(main): absorb student portal V5 and current phase6 fixtures"
+          if ! git diff --cached --quiet || git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            git commit -m "merge(main): absorb portal V5 and finalize file center build inputs"
             git push origin HEAD:audit/file-capability-inventory
-          else
-            git merge --abort 2>/dev/null || true
           fi
       - id: head
         name: Resolve prepared branch HEAD
@@ -137,7 +151,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install pyyaml
-      - name: Inventory, call scan and upload contract
+      - name: Inventory, call scan, upload contract and secret audit
         run: |
           python scripts/audit_file_capabilities.py --check-schema
           python scripts/audit_file_capabilities.py --strict-baseline
@@ -146,6 +160,7 @@ jobs:
           ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' '["'"'"'`]\/files\/upload' frontend/src student-portal/src miniapp/src
           ! grep -n '@router.post("/upload"' backend/app/api/v1/file.py
           grep -q '@router.post("", summary="上传文件（权威入口）")' backend/app/api/v1/files.py
+          ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' 'cdn.jsdelivr.net/npm/cos-js-sdk-v5\|COS_SECRET_ID\|COS_SECRET_KEY\|tmpSecretKey[[:space:]]*=' frontend/src student-portal/src miniapp/src
 
   mysql:
     needs: prepare
@@ -188,6 +203,7 @@ jobs:
         run: |
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           alembic upgrade head
+          alembic current | grep -q '0154_file_storage_quota_reservation'
           python -m compileall -q app tests
           TARGETS=$(find tests -maxdepth 1 -type f \( \
             -name 'test_file*.py' -o \
@@ -273,9 +289,9 @@ jobs:
 
           | 门禁 | 结果 |
           |---|---|
-          | 吸收 main V5 / 阶段 6 夹具 | ${PREPARE} |
-          | 能力清单 / 严格调用扫描 / 上传合同 | ${SCAN} |
-          | MySQL 8 / Alembic / 阶段 6–10 pytest / 治理 worker | ${MYSQL} |
+          | 吸收 main V5 / 阶段 6 夹具 / COS SDK lock | ${PREPARE} |
+          | 能力清单 / 严格调用扫描 / 上传合同 / 密钥审计 | ${SCAN} |
+          | MySQL 8 / Alembic 0154 / 阶段 6–10 pytest / 治理 worker | ${MYSQL} |
           | 管理 PC lint / test / build | ${ADMIN} |
           | 学生 PC lint / test / build | ${STUDENT} |
           | H5 / 微信小程序生产构建 | ${MINIAPP} |
