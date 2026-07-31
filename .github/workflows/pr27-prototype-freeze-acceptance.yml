@@ -35,6 +35,15 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Prepare diagnostic evidence
+        shell: bash
+        run: |
+          mkdir -p acceptance-artifacts/${{ matrix.browser }}/source
+          cp docs/ui/teacher-pc-v2-html/shared/v2-student-affairs-workbench.js \
+            acceptance-artifacts/${{ matrix.browser }}/source/
+          cp docs/ui/teacher-pc-v2-html/shared/v2-internship-key.js \
+            acceptance-artifacts/${{ matrix.browser }}/source/
+
       - name: Check native shared-script syntax
         shell: bash
         run: |
@@ -51,7 +60,6 @@ jobs:
           ACCEPTANCE_BROWSER: ${{ matrix.browser }}
           PUPPETEER_CORE_PATH: ${{ github.workspace }}/.pr27-tools/node_modules/puppeteer-core
         run: |
-          mkdir -p acceptance-artifacts/${{ matrix.browser }}
           node docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs \
             --report=acceptance-artifacts/${{ matrix.browser }}/report.json
 
