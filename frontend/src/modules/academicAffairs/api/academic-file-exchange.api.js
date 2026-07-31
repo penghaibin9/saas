@@ -22,13 +22,25 @@ async function call(fn) {
   }
 }
 
+async function upload(path, file) {
+  try {
+    return ok(await requestUpload(path, file))
+  } catch (error) {
+    return fail(error)
+  }
+}
+
 export const academicFileExchangeApi = {
-  async uploadRosterImport(file) {
-    try {
-      return ok(await requestUpload(`${BASE}/roster/import-jobs`, file))
-    } catch (error) {
-      return fail(error)
-    }
+  uploadRosterImport(file) {
+    return upload(`${BASE}/roster/import-jobs`, file)
+  },
+
+  uploadGradeImport(taskId, file) {
+    return upload(`${BASE}/grade-tasks/${taskId}/import-jobs`, file)
+  },
+
+  uploadScheduleImport(batchId, file) {
+    return upload(`${BASE}/schedule-batches/${batchId}/import-jobs`, file)
   },
 
   confirmImport(jobId, expectedVersion) {
