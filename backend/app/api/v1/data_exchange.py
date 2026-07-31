@@ -9,15 +9,17 @@ from sqlalchemy import select
 
 from app.api.v1.file_contract import validated_local_file_response
 from app.core.context import current_tenant_id
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import not_found
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import success
 from app.db.session import get_sessionmaker
 from app.services import data_exchange_job_service as jobs
+from app.services.identity_import_scan_orchestrator import (
+    create_identity_import_scan_job,
+    refresh_identity_import_job,
+)
 
 router = APIRouter(prefix="/data-exchange", tags=["系统管理·数据交换任务中心"])
-
-_MAX_IDENTITY_FILE_BYTES = 20 * 1024 * 1024
 
 
 class ConfirmImportRequest(BaseModel):
@@ -43,22 +45,20 @@ class AdoptAdapterRequest(BaseModel):
     sourceFileId: int | None = None
 
 
-async def _read_identity_file(file: UploadFile) -> bytes:
-    chunks: list[bytes] = []
-    size = 0
-    while chunk := await file.read(1024 * 1024):
-        size += len(chunk)
-        if size > _MAX_IDENTITY_FILE_BYTES:
-            raise AppException("FILE_TOO_LARGE", "导入文件超过 20MB 上限，请拆分后重试")
-        chunks.append(chunk)
-    content = b"".join(chunks)
-    if not content:
-        raise AppException("VALIDATION_ERROR", "导入文件不能为空")
-    await file.seek(0)
-    return content
+def _identity_job_message(item: dict) -> str:
+    status = str(item.get("status") or "").upper()
+    if status == "SCANNING":
+        return "文件已进入安全扫描；通过后服务端自动解析预检"
+    if status == "PARSING":
+        return "文件安全扫描已通过，服务端正在解析预检"
+    if status == "VALIDATED":
+        return "文件安全扫描与服务端预检已通过"
+    if status == "VALIDATION_FAILED":
+        return "服务端预检存在错误，请查看任务详情或下载错误回执"
+    return "身份导入任务已创建"
 
 
-@router.post("/imports/identity/{kind}/validate-file", summary="上传学生/教师 XLSX 并创建统一导入任务")
+@router.post("/imports/identity/{kind}/validate-file", summary="上传学生/教师 XLSX 并创建扫描后解析任务")
 async def validate_identity_import(
     kind: Literal["students", "teachers"],
     file: UploadFile = File(...),
@@ -66,25 +66,11 @@ async def validate_identity_import(
 ):
     from app.core.import_export_auth import enforce_student_import
     from app.services import file_service
-    from app.services.identity_import_file_service import (
-        create_batch,
-        parse_student_xlsx,
-        parse_teacher_xlsx,
-    )
-    from app.services.identity_import_service import preview_identity_import
 
-    content = await _read_identity_file(file)
-    if kind == "students":
+    import_kind = "STUDENT" if kind == "students" else "TEACHER"
+    if import_kind == "STUDENT":
         enforce_student_import(user)
-        parsed = parse_student_xlsx(content, file.filename or "")
-        payload = {"students": parsed["students"], "teachers": [], "atomic": True}
-        import_kind = "STUDENT"
-    else:
-        parsed = parse_teacher_xlsx(content, file.filename or "")
-        payload = {"students": [], "teachers": parsed["teachers"], "atomic": True}
-        import_kind = "TEACHER"
-
-    # 先登记原始文件并进入 ClamAV 隔离/扫描链；预检解析仍复用已验证的安全 XLSX 解析器。
+    # 唯一顺序：流式落隔离区 -> FileObject 扫描 -> 路径型 openpyxl 解析 -> 预检批次。
     file_meta = await file_service.store_upload(
         file,
         biz_type="DATA_IMPORT_SOURCE",
@@ -92,16 +78,13 @@ async def validate_identity_import(
         visibility="PRIVATE",
         security_level="SENSITIVE",
     )
-    report = preview_identity_import(user, payload, pre_errors=parsed["errors"])
-    batch_result = create_batch(user, parsed, report)
-    job = jobs.create_identity_import_job(
+    item = create_identity_import_scan_job(
         kind=import_kind,
-        source_file_id=str(file_meta["fileId"]),
-        parsed=parsed,
-        batch_result=batch_result,
+        source_file_id=int(file_meta["fileId"]),
+        filename=file.filename or f"{kind}.xlsx",
         user=user,
     )
-    return success(job, message="文件已进入安全检查，导入预检任务已保存")
+    return success(item, message=_identity_job_message(item))
 
 
 @router.post("/imports/{job_id}/confirm", summary="按 jobId + expectedVersion 确认导入")
@@ -243,7 +226,7 @@ def list_data_exchange_jobs(
     ))
 
 
-@router.get("/imports/{job_id}", summary="导入任务详情")
+@router.get("/imports/{job_id}", summary="导入任务详情并推进扫描后预检")
 def import_job_detail(
     job_id: str,
     user=Depends(require_any_permission(
@@ -252,7 +235,8 @@ def import_job_detail(
         "systemAdmin.audit.sensitive.view",
     )),
 ):
-    return success(jobs.get_import_job(job_id, user=user))
+    item = refresh_identity_import_job(job_id, user=user)
+    return success(item, message=_identity_job_message(item))
 
 
 @router.get("/exports/{job_id}", summary="导出任务详情")
@@ -292,11 +276,35 @@ def download_export_file(
     )),
 ):
     path, filename = jobs.consume_download_ticket(job_id, ticket, user=user)
+    media_type = (
+        "application/zip" if str(filename).lower().endswith(".zip")
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     return validated_local_file_response(
         path,
         filename=filename,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=media_type,
         audit_action="DATA_EXCHANGE_EXPORT_DOWNLOAD",
         audit_target=f"data-exchange-export:{job_id}",
         audit_detail={"jobId": str(job_id), "ticketConsumed": True},
+    )
+
+
+@router.post("/exports/{job_id}/revoke", summary="撤销导出任务并使票据失效")
+def revoke_export_file(
+    job_id: str,
+    body: RevokeExportRequest,
+    user=Depends(require_any_permission(
+        "systemAdmin.user.import",
+        "systemAdmin.audit.sensitive.view",
+    )),
+):
+    return success(
+        jobs.revoke_export_job(
+            job_id,
+            expected_version=body.expectedVersion,
+            reason=body.reason,
+            user=user,
+        ),
+        message="导出任务已撤销",
     )
