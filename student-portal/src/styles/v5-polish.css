@@ -26,14 +26,16 @@ html:not([data-sp-theme='dark']) {
   color: var(--pri-text, var(--pri));
 }
 
-/* 毕设旧局部样式原本写死了蓝色、粉色和浅灰；统一回到当前主题的可读 token。 */
-.route-graduation :where(.gd-eyebrow, .gdep__refresh) {
+/* 毕设主工作台位于路由壳层内；扩展面板由 App.vue 追加渲染，必须使用全局选择器。 */
+.route-graduation .gd-eyebrow,
+.gdep__refresh {
   color: var(--pri-text, var(--pri)) !important;
 }
-.route-graduation .gdep__refresh {
+.gdep__refresh {
   border-color: var(--pri-100) !important;
 }
-.route-graduation :where(.gd-hero p, .gd-step p, .gd-step__detail, .gd-rule, .gdep__text, .gdep__hint) {
+.route-graduation :where(.gd-hero p, .gd-step p, .gd-step__detail, .gd-rule),
+:where(.gdep__text, .gdep__hint) {
   color: var(--t3) !important;
 }
 
