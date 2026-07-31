@@ -1,0 +1,66 @@
+name: PR27 nav permission source fix
+
+on:
+  push:
+    branches:
+      - codex/teacher-pc-v2-html-library
+    paths:
+      - .github/workflows/pr27-nav-permission-fix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-nav-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/teacher-pc-v2-html-library
+          fetch-depth: 0
+
+      - name: Restore canonical navPlan source and apply two permission fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('frontend/src/config')
+          source = root / 'navPlan.base.js'
+          target = root / 'navPlan.js'
+          assert source.exists(), 'navPlan.base.js missing'
+
+          text = source.read_text(encoding='utf-8')
+          old_orientation = "mod('sa-orientation', '数字迎新', '/admin/orientation', [], 'studentAffairs.orientation.view')"
+          new_orientation = "mod('sa-orientation', '数字迎新', '/admin/orientation', [], 'orientation.student.view')"
+          old_class = "I('班级管理', '/admin/campus-service/classes', 'studentAffairs.class.view')"
+          new_class = "I('班级管理', '/admin/campus-service/classes', 'campus.record.view')"
+
+          assert old_orientation in text, 'orientation menu permission source not found'
+          assert old_class in text, 'class menu permission source not found'
+          text = text.replace(old_orientation, new_orientation, 1)
+          text = text.replace(old_class, new_class, 1)
+          assert old_orientation not in text
+          assert old_class not in text
+          assert new_orientation in text
+          assert new_class in text
+
+          target.write_text(text, encoding='utf-8')
+          source.unlink()
+          PY
+
+      - name: Run focused frontend contracts
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test -- --test-name-pattern='数字迎新菜单权限|班级管理菜单权限|关键普通菜单页面导航与路由权限一致|学生画像兼容入口'
+          npm run lint
+          npm run build
+
+      - name: Commit canonical source fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add frontend/src/config/navPlan.js frontend/src/config/navPlan.base.js frontend/src/config/navPlan.permission-contract.test.js
+          git commit -m "fix(nav): materialize student affairs permission alignment"
+          git push origin HEAD:codex/teacher-pc-v2-html-library
