@@ -178,26 +178,27 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
         if _internship_staff_scope_allows(db, file_obj, active, user):
             return True
 
-    if active:
-        subject_allowed = any(_binding_subject_allows(item, user) for item in active)
-        if not subject_allowed:
-            return False
-        if str(user.get("userType") or "").upper() == "STUDENT":
-            return any(
-                str(item.subject_type or "").upper() in {"STUDENT", "USER"}
-                and _binding_subject_allows(item, user)
-                for item in active
-            )
-        permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
-        if permission:
-            return has_permission(user, permission)
-        return subject_allowed
+    biz_type = str(file_obj.biz_type or "").upper()
+    permission = _FILE_VIEW_PERMISSION.get(biz_type)
+    subject_allowed = any(_binding_subject_allows(item, user) for item in active)
 
     if str(user.get("userType") or "").upper() == "STUDENT":
         biz_id = str(file_obj.biz_id or "").strip()
-        return bool(biz_id and biz_id in _student_scope_values(db, file_obj, user))
-    permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
-    return bool(permission and has_permission(user, permission))
+        if biz_id and biz_id in _student_scope_values(db, file_obj, user):
+            return True
+        return any(
+            str(item.subject_type or "").upper() in {"STUDENT", "USER"}
+            and _binding_subject_allows(item, user)
+            for item in active
+        )
+
+    if permission and has_permission(user, permission):
+        # 上传者 USER 绑定只表示来源；普通业务台账由明确业务权限放行。
+        # 通用附件、资助、风险和心理材料仍必须同时命中具体绑定范围。
+        if biz_type in {"ATTACHMENT", "AID", "RISK", "MENTAL"}:
+            return subject_allowed
+        return True
+    return subject_allowed
 
 
 def _graduation_student_ids(bindings: list[Any]) -> set[int]:
