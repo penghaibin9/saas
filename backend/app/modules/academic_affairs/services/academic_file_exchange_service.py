@@ -13,9 +13,12 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+import zipfile
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
+from openpyxl import load_workbook
 from sqlalchemy import delete, select
 
 from app.core.exceptions import AppException, not_found
@@ -147,7 +150,7 @@ def create_roster_import_job(
     )
 
 
-def _source_file_bytes(import_row, user: dict) -> bytes:
+def _source_file_path(import_row, user: dict) -> Path:
     from app.models.file import FileObject
     from app.services.file_scan_service import assert_file_ready_for_business
     from app.services.storage import get_backend
@@ -166,28 +169,94 @@ def _source_file_bytes(import_row, user: dict) -> bytes:
             raise not_found("导入原始文件不存在")
         if int(file_row.size_bytes or 0) > MAX_IMPORT_BYTES:
             raise AppException("FILE_TOO_LARGE", "教务导入文件超过 20MB，请拆分后重试")
-        path = get_backend().fetch_local(file_row.file_key)
-        if not path or not path.exists():
+        source_path = get_backend().fetch_local(file_row.file_key)
+        if not source_path or not source_path.exists():
             raise not_found("导入原始文件不存在或已清理")
-        chunks: list[bytes] = []
-        size = 0
-        with path.open("rb") as handle:
-            while chunk := handle.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_IMPORT_BYTES:
-                    raise AppException("FILE_TOO_LARGE", "教务导入文件超过 20MB，请拆分后重试")
-                chunks.append(chunk)
-        return b"".join(chunks)
+        source_path = Path(source_path)
+        if source_path.stat().st_size <= 0:
+            raise AppException("VALIDATION_ERROR", "导入文件不能为空")
+        if source_path.stat().st_size > MAX_IMPORT_BYTES:
+            raise AppException("FILE_TOO_LARGE", "教务导入文件超过 20MB，请拆分后重试")
+        return source_path
     finally:
         db.close()
 
 
-def _parse_and_validate(import_row, content: bytes, user: dict) -> tuple[list[dict], dict]:
+def _read_xlsx_path(source_path: Path, header_map: dict[str, str]) -> list[dict]:
+    if not zipfile.is_zipfile(source_path):
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX")
+    try:
+        with zipfile.ZipFile(source_path) as archive:
+            members = archive.infolist()
+            if len(members) > 2000:
+                raise AppException("VALIDATION_ERROR", "XLSX 内部文件数量异常")
+            uncompressed = 0
+            for member in members:
+                name = member.filename.replace("\\", "/").lower()
+                if name.startswith("/") or ".." in name.split("/"):
+                    raise AppException("VALIDATION_ERROR", "XLSX 包含非法路径")
+                uncompressed += member.file_size
+                if uncompressed > 50 * 1024 * 1024:
+                    raise AppException("VALIDATION_ERROR", "XLSX 解压后体积异常")
+                if member.file_size > 1024 * 1024 and member.compress_size > 0:
+                    if member.file_size / member.compress_size > 100:
+                        raise AppException("VALIDATION_ERROR", "XLSX 压缩比异常")
+                if (
+                    name.endswith(".bin")
+                    or "vbaproject" in name
+                    or "/embeddings/" in name
+                    or "/oleobjects/" in name
+                    or "/externallinks/" in name
+                ):
+                    raise AppException("VALIDATION_ERROR", "XLSX 不允许宏、嵌入对象或外部链接")
+    except zipfile.BadZipFile:
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
+
+    workbook = load_workbook(source_path, read_only=True, data_only=True, keep_links=False)
+    try:
+        if len(workbook.worksheets) > 10:
+            raise AppException("VALIDATION_ERROR", "XLSX 工作表不得超过 10 个")
+        sheet = workbook["导入模板"] if "导入模板" in workbook.sheetnames else workbook.worksheets[0]
+        if sheet.max_column > 100:
+            raise AppException("VALIDATION_ERROR", "XLSX 单表列数不得超过 100")
+        if sheet.max_row > 5001:
+            raise AppException("VALIDATION_ERROR", "单次导入不得超过 5000 行")
+        iterator = sheet.iter_rows(values_only=True)
+        try:
+            header = next(iterator)
+        except StopIteration:
+            return []
+        index_map: dict[int, str] = {}
+        for index, value in enumerate(header):
+            title = str(value).strip() if value is not None else ""
+            title = title.rstrip(" *").strip()
+            if title in header_map:
+                index_map[index] = header_map[title]
+        rows: list[dict] = []
+        for values in iterator:
+            item: dict[str, str] = {}
+            empty = True
+            for index, key in index_map.items():
+                value = values[index] if index < len(values) else None
+                normalized = "" if value is None else str(value).strip()
+                item[key] = normalized
+                if normalized:
+                    empty = False
+            if not empty:
+                rows.append(item)
+            if len(rows) > 5000:
+                raise AppException("VALIDATION_ERROR", "单次导入不得超过 5000 行")
+        return rows
+    finally:
+        workbook.close()
+
+
+def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list[dict], dict]:
     snapshot = dict(import_row.source_snapshot_json or {})
     context = dict(snapshot.get("context") or {})
     if import_row.import_type == ACADEMIC_ROSTER_IMPORT:
         from app.modules.academic_affairs.services import academic_affairs_service as roster
-        rows = roster.roster_import_read(content)
+        rows = _read_xlsx_path(source_path, roster.build_roster_import_spec().header_map)
         return rows, roster.roster_import_dry_run(rows)
     if import_row.import_type == ACADEMIC_GRADE_IMPORT:
         from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
@@ -195,7 +264,7 @@ def _parse_and_validate(import_row, content: bytes, user: dict) -> tuple[list[di
         task_id = int(context.get("taskId") or 0)
         if not task_id:
             raise AppException("DATA_CONFLICT", "成绩导入任务缺少成绩任务编号")
-        rows = xlsx_util.read_xlsx(content, grade.IMPORT_HEADER_MAP)
+        rows = _read_xlsx_path(source_path, grade.IMPORT_HEADER_MAP)
         return rows, grade.grade_import_dry_run(task_id, user, rows)
     if import_row.import_type == ACADEMIC_SCHEDULE_IMPORT:
         from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
@@ -203,7 +272,7 @@ def _parse_and_validate(import_row, content: bytes, user: dict) -> tuple[list[di
         batch_id = int(context.get("batchId") or 0)
         if not batch_id:
             raise AppException("DATA_CONFLICT", "排课导入任务缺少排课批次编号")
-        rows = xlsx_util.read_xlsx(content, schedule.IMPORT_HEADER_MAP)
+        rows = _read_xlsx_path(source_path, schedule.IMPORT_HEADER_MAP)
         if len(rows) > schedule.IMPORT_MAX_ROWS:
             raise AppException("VALIDATION_ERROR", f"单批导入行数不得超过 {schedule.IMPORT_MAX_ROWS} 行")
         rows = schedule.sanitize_import_rows(rows)
@@ -266,7 +335,7 @@ def refresh_import_job(job_id: str, *, user: dict) -> dict:
         db = get_sessionmaker()()
         try:
             current = jobs._owned_import(db, job_id, user)
-            content = _source_file_bytes(current, user)
+            source_path = _source_file_path(current, user)
         finally:
             db.close()
     except AppException as exc:
@@ -303,7 +372,7 @@ def refresh_import_job(job_id: str, *, user: dict) -> dict:
         db = get_sessionmaker()()
         try:
             row = jobs._owned_import(db, job_id, user)
-            rows, preview = _parse_and_validate(row, content, user)
+            rows, preview = _parse_and_validate(row, source_path, user)
         finally:
             db.close()
         errors = _error_items(preview)
@@ -374,8 +443,8 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
         snapshot = dict(row.source_snapshot_json or {})
         context = dict(snapshot.get("context") or {})
         import_type = row.import_type
-        content = _source_file_bytes(row, user)
-        rows, preview = _parse_and_validate(row, content, user)
+        source_path = _source_file_path(row, user)
+        rows, preview = _parse_and_validate(row, source_path, user)
     finally:
         db.close()
 
