@@ -1,0 +1,378 @@
+name: Close remaining file center stage 6-10 failures
+
+on:
+  push:
+    branches: [audit/file-capability-inventory]
+    paths: ['.github/workflows/file-center-closure-fix.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      APP_ENV: test
+      SECRET_KEY: stage10-file-center-closure-fix-secret
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+
+      - name: Merge current main and patch only verified residual failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-ff --no-commit origin/main || true
+
+          UNMERGED="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$UNMERGED" ]; then
+            if [ "$UNMERGED" != "student-portal/src/layouts/PortalLayout.vue" ]; then
+              echo "Unexpected merge conflicts:"
+              echo "$UNMERGED"
+              exit 1
+            fi
+            git checkout --theirs -- student-portal/src/layouts/PortalLayout.vue
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding='utf-8')
+              if old not in source:
+                  raise SystemExit(f'expected patch anchor missing: {path}')
+              target.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          # Preserve the latest student portal V5 UI and add only the graduation material entry.
+          portal = Path('student-portal/src/layouts/PortalLayout.vue')
+          source = portal.read_text(encoding='utf-8')
+          if 'function toggleGraduationView()' not in source:
+              button_anchor = '''          <button v-if="activeModulePath === 'internship'" class="sp-context-link" type="button" @click="toggleInternshipView">
+            {{ route.name === 'internship-compliance' ? '返回实习工作台' : '上岗合规与安全教育' }}
+          </button>
+'''
+              button = '''          <button v-if="activeModulePath === 'graduation'" class="sp-context-link" type="button" @click="toggleGraduationView">
+            {{ route.name === 'graduation-material-library' ? '返回毕业设计工作台' : '我的材料库' }}
+          </button>
+'''
+              function_anchor = '''function toggleInternshipView() {
+  router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance')
+}
+'''
+              function = '''function toggleGraduationView() {
+  router.push(route.name === 'graduation-material-library' ? '/graduation' : '/graduation/materials')
+}
+'''
+              if button_anchor not in source or function_anchor not in source:
+                  raise SystemExit('student portal V5 graduation anchors missing')
+              source = source.replace(button_anchor, button_anchor + button, 1)
+              source = source.replace(function_anchor, function_anchor + function, 1)
+          for marker in ('sp-theme__grid', 'student-portal-theme-change', "activeModulePath === 'graduation'", 'function toggleGraduationView()'):
+              if marker not in source:
+                  raise SystemExit(f'student portal contract lost: {marker}')
+          portal.write_text(source, encoding='utf-8')
+
+          # An uploader binding records provenance; it must not hide the student's own biz id
+          # or an explicit non-sensitive business permission.
+          resolver_old = '''    if active:
+        subject_allowed = any(_binding_subject_allows(item, user) for item in active)
+        if not subject_allowed:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            return any(
+                str(item.subject_type or "").upper() in {"STUDENT", "USER"}
+                and _binding_subject_allows(item, user)
+                for item in active
+            )
+        permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
+        if permission:
+            return has_permission(user, permission)
+        return subject_allowed
+
+    if str(user.get("userType") or "").upper() == "STUDENT":
+        biz_id = str(file_obj.biz_id or "").strip()
+        return bool(biz_id and biz_id in _student_scope_values(db, file_obj, user))
+    permission = _FILE_VIEW_PERMISSION.get(str(file_obj.biz_type or "").upper())
+    return bool(permission and has_permission(user, permission))
+'''
+          resolver_new = '''    biz_type = str(file_obj.biz_type or "").upper()
+    permission = _FILE_VIEW_PERMISSION.get(biz_type)
+    subject_allowed = any(_binding_subject_allows(item, user) for item in active)
+
+    if str(user.get("userType") or "").upper() == "STUDENT":
+        biz_id = str(file_obj.biz_id or "").strip()
+        if biz_id and biz_id in _student_scope_values(db, file_obj, user):
+            return True
+        return any(
+            str(item.subject_type or "").upper() in {"STUDENT", "USER"}
+            and _binding_subject_allows(item, user)
+            for item in active
+        )
+
+    if permission and has_permission(user, permission):
+        # Generic attachments and highly sensitive records still require a matching
+        # subject binding; ordinary business ledgers use their explicit permission.
+        if biz_type in {"ATTACHMENT", "AID", "RISK", "MENTAL"}:
+            return subject_allowed
+        return True
+    return subject_allowed
+'''
+          replace_once('backend/app/services/file_access_resolvers.py', resolver_old, resolver_new)
+
+          # Stage 10 now freezes removal of the legacy upload alias, not its delegation.
+          stage10_old = '''def test_nonzero_call_upload_alias_is_delegated_not_duplicated():
+    legacy = _route_signatures(session_router.router)
+    assert ("/upload", frozenset({"POST"})) in legacy
+    assert ("/meta/{file_id}", frozenset({"GET"})) not in legacy
+    assert ("/download/{file_id}", frozenset({"GET"})) not in legacy
+
+    source = inspect.getsource(session_router.delegated_legacy_upload)
+    assert "upload_contract(" in source
+    assert "file_service.store_upload" not in source
+    assert '"Deprecation": "true"' in source
+    assert '"X-File-Center-Contract": "AUTHORITATIVE_UPLOAD_DELEGATE"' in source
+
+    authoritative = _route_signatures(authoritative_router.router)
+    assert ("/files", frozenset({"POST"})) in authoritative
+    assert ("/files/{file_id}", frozenset({"GET"})) in authoritative
+    assert ("/files/download/{file_id}", frozenset({"GET"})) in authoritative
+'''
+          stage10_new = '''def test_legacy_upload_alias_is_removed_and_authoritative_contract_is_single():
+    legacy = _route_signatures(session_router.router)
+    assert ("/upload", frozenset({"POST"})) not in legacy
+    assert ("/meta/{file_id}", frozenset({"GET"})) not in legacy
+    assert ("/download/{file_id}", frozenset({"GET"})) not in legacy
+    assert not hasattr(session_router, "delegated_legacy_upload")
+
+    authoritative = _route_signatures(authoritative_router.router)
+    assert ("/files", frozenset({"POST"})) in authoritative
+    assert ("/files/{file_id}", frozenset({"GET"})) in authoritative
+    assert ("/files/download/{file_id}", frozenset({"GET"})) in authoritative
+    source = inspect.getsource(authoritative_router.upload_file)
+    assert "upload_contract(" in source
+    assert "file_service.store_upload" not in source
+'''
+          replace_once('backend/tests/test_file_center_stage10_closure.py', stage10_old, stage10_new)
+
+          # Keep the real COS server-side encryption requirement and make the fake client verify it.
+          replace_once(
+              'backend/tests/test_file_storage.py',
+              '''    def put_object(self, Bucket, Body, Key):  # noqa: N803
+        _FakeCosClient.store[Key] = Body.read()
+''',
+              '''    def put_object(self, Bucket, Body, Key, ServerSideEncryption=None):  # noqa: N803
+        assert ServerSideEncryption == "AES256"
+        _FakeCosClient.store[Key] = Body.read()
+''',
+          )
+
+          # Use current ORM columns in the Phase 6 fixture; do not weaken its business assertions.
+          replace_once(
+              'backend/tests/graduation_material_center_mysql_acceptance.py',
+              '''            GraduationGuidance(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                guidance_date=datetime.utcnow(),
+                content="阶段六指导记录",
+                issues="无",
+                next_plan="完成归档",
+                hours=2,
+                attachments_json=[],
+                advisor_name="阶段六指导教师",
+            ),
+            GraduationMidterm(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                status="CHECKED_PASS",
+                progress="80%",
+                issues="无",
+                next_plan="完成定稿",
+                check_comment="通过",
+                conclusion="PASS",
+                checked_at=datetime.utcnow(),
+            ),
+''',
+              '''            GraduationGuidance(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                guidance_date=datetime.utcnow(),
+                method="ONLINE",
+                content="阶段六指导记录；下一步完成归档",
+                issues="无",
+                attachments_json=[],
+            ),
+            GraduationMidterm(
+                tenant_id=TENANT_ID,
+                gd_student_id=student.id,
+                status="CHECKED_PASS",
+                check_comment="进度 80%，检查通过，下一步完成定稿",
+                conclusion="PASS",
+                checked_at=datetime.utcnow(),
+            ),
+''',
+          )
+
+          # The byte recheck moved to the dedicated streaming package service.
+          replace_once(
+              'backend/tests/test_internship_material_center.py',
+              '''def test_manifest_freezes_real_versions_and_package_rechecks_bytes():
+    core = read("backend/app/modules/internship/services/internship_material_center_service.py")
+    facade = read("backend/app/modules/internship/services/internship_material_center_facade.py")
+    assert "version_id=int(item[\\"versionId\\"])" in facade
+    assert "file_object_id=int(item[\\"fileId\\"])" in facade
+    assert "manifestSha256" in core
+    assert "version.file_object_id != file_row.id" in core
+    assert "file_row.sha256 != item.sha256_snapshot" in core
+    assert "digest != item.sha256_snapshot" in core
+    assert "INTERNSHIP_ARCHIVE_PACKAGE_FILE_VERSION_V1" in core
+    assert 'entries["manifest.json"]' in core
+''',
+              '''def test_manifest_freezes_real_versions_and_package_rechecks_bytes():
+    core = read("backend/app/modules/internship/services/internship_material_center_service.py")
+    streaming = read("backend/app/modules/internship/services/internship_streaming_package_service.py")
+    facade = read("backend/app/modules/internship/services/internship_material_center_facade.py")
+    assert "version_id=int(item[\\"versionId\\"])" in facade
+    assert "file_object_id=int(item[\\"fileId\\"])" in facade
+    assert "manifestSha256" in core
+    assert "version.file_object_id != file_row.id" in streaming
+    assert "file_row.sha256 != item.sha256_snapshot" in streaming
+    assert "expected_sha256=item.sha256_snapshot" in streaming
+    assert "expected_size=int(item.size_snapshot or 0)" in streaming
+    assert "INTERNSHIP_ARCHIVE_PACKAGE_FILE_VERSION_V2" in streaming
+    assert 'add_json(archive_zip, "manifest.json"' in streaming
+    assert ".read_bytes(" not in streaming
+''',
+          )
+
+          inventory = Path('docs/architecture/file-capability-inventory.d/10-streaming-archives.yaml')
+          inventory.write_text('''entries:
+  - module: file-center
+    client: backend
+    route: backend/app/services/streaming_archive_service.py
+    page: backend/app/services/streaming_archive_service.py
+    action: export+archive+stream
+    fileCategory: STREAMING_ZIP_ARCHIVE
+    api: internal archive boundary
+    backendService: backend/app/services/streaming_archive_service.py
+    storageMode: TEMP_FILE_ZIP64_CHUNKED
+    authMode: internal-service-after-business-authorization
+    dataScope: frozen-manifest+tenant+business-scope
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 材料逐块哈希并写入 ZIP64，校验冻结 SHA-256 与大小，不读取整文件或整包到内存。
+  - module: internship
+    client: backend
+    route: /api/v1/internship/archive/{internshipId}/package
+    page: backend/app/modules/internship/services/internship_streaming_package_service.py
+    action: export+archive+stream
+    fileCategory: INTERNSHIP_STREAMING_ARCHIVE
+    api: POST /api/v1/internship/archive/{internshipId}/package
+    backendService: backend/app/modules/internship/services/internship_streaming_package_service.py; backend/app/services/generated_file_path_service.py
+    storageMode: FROZEN_MANIFEST_TO_STREAMING_ZIP_FILE_OBJECT
+    authMode: internship.archive.package+tenant+record-scope
+    dataScope: tenant+internship-record+frozen-file-version-manifest
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 只从冻结 Manifest 取当前版本，分块复核字节后经路径型 FileObject 边界持久化并审计。
+''', encoding='utf-8')
+          PY
+
+          git add -- \
+            student-portal/src/layouts/PortalLayout.vue \
+            backend/app/services/file_access_resolvers.py \
+            backend/tests/test_file_center_stage10_closure.py \
+            backend/tests/test_file_storage.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py \
+            backend/tests/test_internship_material_center.py \
+            docs/architecture/file-capability-inventory.d/10-streaming-archives.yaml
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --cached --check
+
+      - name: Install and validate backend residuals
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          python -m compileall -q app tests
+          pytest \
+            tests/test_file_center_stage10_closure.py \
+            tests/test_file_p0_authz.py \
+            tests/test_file_storage.py \
+            tests/test_graduation_material_center_phase6.py \
+            tests/test_internship_material_center.py \
+            tests/test_file_streaming_archive_cutover.py \
+            -q -p no:warnings --durations=20
+
+      - name: Validate inventory and strict call scan
+        run: |
+          pip install pyyaml
+          python scripts/audit_file_capabilities.py --check-schema
+          python scripts/audit_file_capabilities.py --strict-baseline
+          python scripts/check_new_file_capabilities.py --base-ref origin/main
+          python scripts/audit_file_center_calls.py --strict --base-ref origin/main
+
+      - name: Validate merged student portal V5
+        working-directory: student-portal
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Commit the merge and verified fixes to the Draft branch
+        run: |
+          git commit -m "fix(file-center): close stage 6-10 residual gates and absorb main"
+          git push origin HEAD:audit/file-capability-inventory
