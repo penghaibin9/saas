@@ -8,6 +8,8 @@ from pydantic import ValidationError
 
 from app.api.v1.file import UploadSessionCreate
 from app.services.storage import production
+from app.services.storage import finalize as finalize_service
+from app.services.storage import promotion
 from app.services.storage.keys import assert_exact_object_key, build_object_key
 
 
@@ -77,6 +79,24 @@ def test_complete_session_heads_size_and_etag_before_file_object():
     assert "enqueue_file_scan" in source
 
 
-def test_promotion_copy_verifies_before_source_delete():
-    source = inspect.getsource(production.promote_file_object)
-    assert source.index("copy_object") < source.index("sizeBytes") < source.index("backend.delete(source_key)")
+def test_promotion_prepare_never_deletes_authoritative_source():
+    source = inspect.getsource(promotion.prepare_file_object_promotion)
+    assert "copy_object" in source
+    assert "sizeBytes" in source
+    assert "backend.delete(source_key)" not in source
+    assert '"cleanupSourceAfterCommit"' in source
+
+
+def test_finalize_commits_metadata_before_source_cleanup():
+    source = inspect.getsource(finalize_service.finalize_scan_storage)
+    commit_index = source.index("db.commit()", source.index("prepare_file_object_promotion"))
+    cleanup_index = source.index("cleanup_promoted_source", source.index("prepare_file_object_promotion"))
+    assert commit_index < cleanup_index
+    assert "sourceCleanupPending" in source
+    assert "readyForBusiness" in source
+
+
+def test_cleanup_failure_is_debt_not_target_rollback():
+    source = inspect.getsource(promotion.cleanup_promoted_source)
+    assert '"sourceCleanupPending": True' in source
+    assert "raise" not in source.split("def cleanup_promoted_source", 1)[1]
