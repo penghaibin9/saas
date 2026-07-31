@@ -44,6 +44,15 @@ export async function waitStable(page) {
   await sleep(250)
 }
 
+export async function setTheme(page, key) {
+  await page.evaluate((theme) => {
+    localStorage.setItem('student-portal-theme', theme)
+    document.documentElement.dataset.spTheme = theme
+    window.dispatchEvent(new CustomEvent('student-portal-theme-change', { detail: theme }))
+  }, key)
+  await sleep(180)
+}
+
 export async function analyzeLayout(page) {
   return page.evaluate(() => {
     const vw = document.documentElement.clientWidth
@@ -53,18 +62,66 @@ export async function analyzeLayout(page) {
       const r = el.getBoundingClientRect()
       return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) }
     }
+    const visible = (el) => {
+      const style = getComputedStyle(el)
+      const r = el.getBoundingClientRect()
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0 && r.width > 0 && r.height > 0
+    }
     const shell = document.querySelector('.sp-shell')
     const tabs = document.querySelector('.sp-page > .sp-tabs')
-    const keys = [...document.querySelectorAll('.sp-header,.sp-aside,.sp-content,.sp-tabs,.sp-card,.sp-table,.sp-inp,.sp-btn,.home-hero,.home-card,[role="dialog"],dialog,.modal,.dialog,.drawer')]
+    const keys = [...document.querySelectorAll('.sp-header,.sp-aside,.sp-content,.sp-tabs,.sp-card,.sp-table,.sp-inp,.sp-btn,.home-hero,.home-card,.section-route,[role="dialog"],dialog,.modal,.dialog,.drawer')]
     const overflow = keys.flatMap((el) => {
+      if (!visible(el)) return []
       const r = el.getBoundingClientRect()
-      if (!r.width || !r.height) return []
-      const bad = r.left < -2 || r.right > vw + 2 || el.scrollWidth > el.clientWidth + 4
-      return bad ? [{ cls: String(el.className || '').slice(0, 140), ...rect(el), scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }] : []
+      const outsideViewport = r.left < -2 || r.right > vw + 2
+      return outsideViewport ? [{ cls: String(el.className || '').slice(0, 140), ...rect(el) }] : []
     }).slice(0, 30)
     const dialogs = [...document.querySelectorAll('[role="dialog"],dialog,.modal,.dialog,.drawer')]
-      .filter((el) => { const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' })
+      .filter(visible)
       .map((el) => { const r = rect(el); return { ...r, outside: r.left < 0 || r.top < 0 || r.right > vw || r.bottom > vh } })
+
+    const parseRgb = (value) => {
+      const match = String(value || '').match(/rgba?\((\d+(?:\.\d+)?)[, ]+(\d+(?:\.\d+)?)[, ]+(\d+(?:\.\d+)?)(?:[, /]+([\d.]+))?\)/)
+      return match ? [Number(match[1]), Number(match[2]), Number(match[3]), match[4] == null ? 1 : Number(match[4])] : null
+    }
+    const luminance = (rgb) => {
+      const channel = (value) => {
+        const v = value / 255
+        return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4
+      }
+      return .2126 * channel(rgb[0]) + .7152 * channel(rgb[1]) + .0722 * channel(rgb[2])
+    }
+    const contrast = (a, b) => {
+      const l1 = luminance(a)
+      const l2 = luminance(b)
+      return (Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05)
+    }
+    const effectiveBackground = (el) => {
+      let current = el
+      while (current) {
+        const rgba = parseRgb(getComputedStyle(current).backgroundColor)
+        if (rgba && rgba[3] >= .92) return rgba
+        current = current.parentElement
+      }
+      return parseRgb(getComputedStyle(document.body).backgroundColor) || [255, 255, 255, 1]
+    }
+    const contrastIssues = [...document.querySelectorAll('button,a,label,th,td,p,small,strong,h1,h2,h3,h4,.sp-tab,.mtab,.sp-header__title,.sp-nav__text')]
+      .flatMap((el) => {
+        if (!visible(el)) return []
+        const text = String(el.textContent || '').trim().replace(/\s+/g, ' ')
+        if (!text || text.length > 180) return []
+        const style = getComputedStyle(el)
+        const fg = parseRgb(style.color)
+        const bg = effectiveBackground(el)
+        if (!fg || !bg || fg[3] < .85) return []
+        const ratio = contrast(fg, bg)
+        const size = Number.parseFloat(style.fontSize || '0')
+        const weight = Number.parseInt(style.fontWeight || '400', 10) || 400
+        const large = size >= 24 || (size >= 18.66 && weight >= 700)
+        const minimum = large ? 3 : 4.5
+        return ratio + .02 < minimum ? [{ text: text.slice(0, 90), cls: String(el.className || '').slice(0, 100), ratio: Number(ratio.toFixed(2)), minimum, color: style.color, background: `rgb(${bg[0]}, ${bg[1]}, ${bg[2]})` }] : []
+      }).slice(0, 60)
+
     return {
       url: location.pathname + location.search,
       viewport: { width: vw, height: vh },
@@ -76,7 +133,9 @@ export async function analyzeLayout(page) {
       tabs: tabs ? { ...rect(tabs), count: tabs.querySelectorAll('.sp-tab').length } : null,
       overflow,
       dialogs,
+      contrastIssues,
       states: [...document.querySelectorAll('.sp-state,[role="alert"],.error,.domain-error,.gd-health')]
+        .filter(visible)
         .map((el) => (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 240)).filter(Boolean),
       tables: document.querySelectorAll('table').length,
       controls: document.querySelectorAll('input,select,textarea,button').length,
