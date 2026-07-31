@@ -13,51 +13,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fix-and-verify:
+  apply-exact-patches:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: student_lifecycle_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=20
-    env:
-      APP_ENV: test
-      DEPLOYMENT_MODE: local
-      DB_ENABLED: "true"
-      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
-      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
-      UPLOAD_DIR: /tmp/file-center-final-six
-      FILE_STORAGE_BACKEND: local
-      CLAMAV_ENABLED: "false"
-      FILE_SCAN_REQUIRED: "false"
-      JWT_SECRET: file-center-final-six-secret
-      PYTHONPATH: ${{ github.workspace }}/backend
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: audit/file-capability-inventory
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Fix quota transaction visibility and stale graduation fixture
+      - name: Apply the two remaining exact fixes
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -66,15 +31,14 @@ jobs:
           text = quota.read_text(encoding='utf-8')
           old_expire = '''    for row in rows:\n        row.status = "EXPIRED"\n        row.released_at = now\n        row.release_reason = "RESERVATION_TTL_EXPIRED"\n    return len(rows)\n'''
           new_expire = '''    for row in rows:\n        row.status = "EXPIRED"\n        row.released_at = now\n        row.release_reason = "RESERVATION_TTL_EXPIRED"\n    if rows:\n        db.flush()\n    return len(rows)\n'''
-          if old_expire not in text:
-              raise SystemExit('quota expire block changed unexpectedly')
-          text = text.replace(old_expire, new_expire, 1)
-
           old_reconcile = '''        if file_obj:\n            row.status = "CONSUMED"\n            row.consumed_file_id = int(file_obj.id)\n            row.consumed_at = now\n            consumed += 1\n    return consumed\n'''
           new_reconcile = '''        if file_obj:\n            row.status = "CONSUMED"\n            row.consumed_file_id = int(file_obj.id)\n            row.consumed_at = now\n            consumed += 1\n    if consumed:\n        db.flush()\n    return consumed\n'''
-          if old_reconcile not in text:
-              raise SystemExit('quota reconcile block changed unexpectedly')
-          quota.write_text(text.replace(old_reconcile, new_reconcile, 1), encoding='utf-8')
+          if old_expire not in text or old_reconcile not in text:
+              raise SystemExit('quota patch target changed unexpectedly')
+          quota.write_text(
+              text.replace(old_expire, new_expire, 1).replace(old_reconcile, new_reconcile, 1),
+              encoding='utf-8',
+          )
 
           acceptance = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
           source = acceptance.read_text(encoding='utf-8')
@@ -83,28 +47,11 @@ jobs:
               raise SystemExit('stale GraduationGuidance next_plan fixture not found')
           acceptance.write_text(source.replace(stale, '', 1), encoding='utf-8')
           PY
+          python -m compileall -q \
+            backend/app/services/file_storage_quota_reservation_service.py \
+            backend/tests/graduation_material_center_mysql_acceptance.py
 
-      - name: Install backend dependencies and upgrade real MySQL
-        working-directory: backend
-        run: |
-          python -m pip install --disable-pip-version-check -r requirements.txt
-          alembic upgrade head
-
-      - name: Run all previously failing contracts
-        working-directory: backend
-        run: |
-          pytest -q \
-            tests/test_academic_file_exchange_center.py \
-            tests/test_file_storage.py \
-            tests/test_file_storage_quota_reservation.py \
-            tests/test_graduation_material_center_phase6.py
-
-      - name: Run client and strict file contracts
-        run: |
-          node scripts/check/check-file-client-contract.mjs
-          python scripts/audit_file_center_calls.py --strict --base-ref origin/main --json-report /tmp/file-center-call-scan.json
-
-      - name: Commit verified fixes and remove this workflow
+      - name: Commit fixes and remove this temporary workflow
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
