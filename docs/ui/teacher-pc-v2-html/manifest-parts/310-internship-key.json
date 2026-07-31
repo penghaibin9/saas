@@ -1,0 +1,105 @@
+{
+  "moduleKey": "internship-key",
+  "moduleLabel": "岗位实习中心关键原型",
+  "coverageType": "ten-key-workspaces-covering-twelve-production-modules",
+  "sourceOfTruth": ["frontend/src/config/navPlan.js", "internship production routes, Vue pages, APIs and services"],
+  "productionImplementationStatus": "ten high-frequency workbenches registered across twelve second-level modules; ninety-nine third-level entries remain tracked through coveredRoutes rather than duplicated as ninety-nine HTML pages",
+  "sharedAssets": ["shared/v2-internship-key.js", "shared/v2-internship-key.css"],
+  "principles": [
+    "every operational record keeps batch context",
+    "effective rule versions are immutable for active participants",
+    "student identity comes from student master",
+    "enterprise approval, job publication and specialty matching are separate decisions",
+    "recommendation and bulk matching never skip conflict resolution or three-party agreement confirmation",
+    "approved leave produces a LEAVE trace rather than a fake normal check-in",
+    "report returns preserve versions and visit issues close through rectification and recheck",
+    "risk facts, evidence, responsibility, deadlines and actions remain traceable",
+    "score review, publication and recheck remain separate",
+    "employment facts remain in the employment module and archived evidence is immutable"
+  ],
+  "routes": [
+    {
+      "route": "/admin/internship",
+      "coveredRoutes": ["/admin/internship/batch-progress", "/admin/internship/todos", "/admin/internship/risks", "/admin/internship/stats?dimension=trend"],
+      "html": "internship/dashboard.html",
+      "title": "实习总览",
+      "permissionCandidates": ["internship.dashboard.view", "internship.todo.view", "internship.risk.view", "internship.stats.view"]
+    },
+    {
+      "route": "/admin/internship/batches",
+      "coveredRoutes": ["/admin/internship/stages", "/admin/internship/rules", "/admin/internship/rules/attendance", "/admin/internship/rules/report", "/admin/internship/rules/guidance", "/admin/internship/rules/evaluation", "/admin/internship/rules/score", "/admin/internship/rules/numbering"],
+      "html": "internship/batch-rules.html",
+      "title": "批次与规则",
+      "permissionCandidates": ["internship.batch.view", "internship.stage.manage", "internship.rule.manage"],
+      "boundary": "published rules remain versioned and immutable for active students"
+    },
+    {
+      "route": "/admin/internship/students",
+      "coveredRoutes": ["/admin/internship/students?panel=eligibility", "/admin/internship/students?panel=status", "/admin/internship/students/:id", "/admin/internship/students?panel=materials", "/admin/internship/students?panel=insurance", "/admin/internship/advisor-assignments"],
+      "html": "internship/students.html",
+      "title": "实习学生",
+      "permissionCandidates": ["internship.student.view"],
+      "boundary": "identity remains in student master while internship eligibility, insurance and assignment are business facts"
+    },
+    {
+      "route": "/admin/internship/enterprises",
+      "coveredRoutes": ["/admin/internship/enterprises?panel=contacts", "/admin/internship/enterprises?panel=mentors", "/admin/internship/enterprises?panel=qualification", "/admin/internship/enterprises?panel=blacklist", "/admin/internship/positions", "/admin/internship/positions?panel=publish", "/admin/internship/positions?panel=requirements", "/admin/internship/positions?panel=specialty"],
+      "html": "internship/enterprise-position.html",
+      "title": "企业与岗位",
+      "permissionCandidates": ["internship.enterprise.view", "internship.position.view"],
+      "boundary": "enterprise approval, position publication and specialty matching are separate gates"
+    },
+    {
+      "route": "/admin/internship/match",
+      "coveredRoutes": ["/admin/internship/match?panel=intention", "/admin/internship/match?panel=recommend", "/admin/internship/match?panel=manual", "/admin/internship/match?panel=batch", "/admin/internship/match?panel=conflicts", "/admin/internship/match?panel=results", "/admin/internship/match?panel=changes", "/admin/internship/applications", "/admin/internship/applications?panel=review", "/admin/internship/agreements", "/admin/internship/agreements?panel=confirm", "/admin/internship/agreements?panel=archive", "/admin/internship/agreements?panel=missing", "/admin/internship/agreements?panel=change", "/admin/internship/applications?panel=transfer", "/admin/internship/applications?panel=exit"],
+      "html": "internship/match-agreement.html",
+      "title": "匹配与协议",
+      "permissionCandidates": ["internship.match.view", "internship.application.view", "internship.agreement.view"],
+      "boundary": "recommendation is not final assignment and three-party confirmation cannot be skipped"
+    },
+    {
+      "route": "/admin/internship/attendance",
+      "coveredRoutes": ["/admin/internship/attendance?panel=makeup-apply", "/admin/internship/attendance?panel=makeup-review", "/admin/internship/attendance?panel=exceptions", "/admin/internship/exceptions?status=PENDING_HANDLE", "/admin/internship/leaves?panel=all", "/admin/internship/leaves?panel=pending", "/admin/internship/leaves?panel=approved", "/admin/internship/risks?panel=leave-overdue"],
+      "html": "internship/attendance-leave.html",
+      "title": "打卡与请假",
+      "permissionCandidates": ["internship.attendance.view", "internship.makeup.review", "internship.leave.review"],
+      "boundary": "approved leave creates LEAVE trace and does not forge normal attendance"
+    },
+    {
+      "route": "/admin/internship/reports",
+      "coveredRoutes": ["/admin/internship/plans", "/admin/internship/plans?panel=tasks", "/admin/internship/reports?type=daily&panel=all", "/admin/internship/reports?type=monthly&panel=all", "/admin/internship/reports?panel=review", "/admin/internship/reports?panel=returned", "/admin/internship/reports?panel=issues", "/admin/internship/guidance-plan", "/admin/internship/guidance?panel=guidance", "/admin/internship/guidance?panel=communication", "/admin/internship/guidance-plan?insufficient=1", "/admin/internship/guidance?panel=visit&view=plan", "/admin/internship/guidance?panel=visit&view=record", "/admin/internship/guidance?panel=visit&view=issue", "/admin/internship/guidance?panel=rectify"],
+      "html": "internship/reports-guidance.html",
+      "title": "周报与指导",
+      "permissionCandidates": ["internship.report.view", "internship.guidance.record.create", "internship.visit.issue.handle"],
+      "boundary": "returned reports preserve versions and visit issues close through rectification and recheck"
+    },
+    {
+      "route": "/admin/internship/risks",
+      "coveredRoutes": ["/admin/internship/risks?panel=no-position", "/admin/internship/risks?panel=no-checkin", "/admin/internship/risks?panel=report-overdue", "/admin/internship/risks?panel=off-post", "/admin/internship/risk-disposal?caseType=complaint", "/admin/internship/risk-disposal?panel=safety", "/admin/internship/risk-disposal?panel=interrupt", "/admin/internship/risk-disposal?stage=pending", "/admin/internship/risk-disposal?stage=processing", "/admin/internship/risk-disposal?stage=closed"],
+      "html": "internship/risk.html",
+      "title": "风险处置",
+      "permissionCandidates": ["internship.risk.view", "internship.risk.handle", "internship.risk.close"],
+      "boundary": "source facts, evidence, owner, deadline, handling, follow-up and closure are append-only"
+    },
+    {
+      "route": "/admin/internship/enterprise-evals",
+      "coveredRoutes": ["/admin/internship/student-evals?view=self", "/admin/internship/student-evals?view=enterprise", "/admin/internship/student-evals?view=position", "/admin/internship/student-evals?view=advisor", "/admin/internship/scores?stage=overview", "/admin/internship/scores?stage=review", "/admin/internship/scores?stage=publish", "/admin/internship/scores?stage=recheck"],
+      "html": "internship/evaluation-score.html",
+      "title": "评价与成绩",
+      "permissionCandidates": ["internship.eval.enterprise.view", "internship.eval.advisor.manage", "internship.score.view", "internship.score.review", "internship.score.publish", "internship.score.recheck"],
+      "boundary": "frozen rules combine inputs and score review, publication and recheck remain separate"
+    },
+    {
+      "route": "/admin/internship/archive",
+      "coveredRoutes": ["/admin/employment?panel=follow-up", "/admin/employment?panel=assistance", "/admin/internship/archive?panel=packages", "/admin/internship/compliance", "/admin/internship/stats?dimension=overview", "/admin/internship/stats?dimension=enterprise", "/admin/internship/stats?dimension=position", "/admin/internship/stats?dimension=score"],
+      "html": "internship/archive-stats.html",
+      "title": "就业转化与归档统计",
+      "permissionCandidates": ["internship.employment.view", "internship.archive.manage", "internship.archive.package.generate", "internship.compliance.view", "internship.stats.view"],
+      "boundary": "employment facts remain in employment module and archived compliance evidence is immutable and audited"
+    }
+  ],
+  "knownLimitations": [
+    "ten pages are a key-workspace pack rather than one HTML per ninety-nine third-level entries",
+    "the current batch has not completed browser, keyboard or focus regression"
+  ]
+}
