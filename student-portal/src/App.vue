@@ -68,7 +68,8 @@ const showGraduationPanel = computed(() => route.name === 'graduation-workbench'
 const showGraduationHealth = computed(() => showGraduationPanel.value && graduationErrors.value.length > 0)
 
 function setTheme(key) {
-  themeKey.value = THEME_COLORS[key] || key === 'blue' ? key : 'blue'
+  const allowed = key === 'blue' || Object.prototype.hasOwnProperty.call(THEME_COLORS, key)
+  themeKey.value = allowed ? key : 'blue'
   document.documentElement.dataset.spTheme = themeKey.value
 }
 function onThemeChange(event) {
