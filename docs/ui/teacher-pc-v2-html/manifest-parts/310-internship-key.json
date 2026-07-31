@@ -2,9 +2,33 @@
   "moduleKey": "internship-key",
   "moduleLabel": "岗位实习中心关键原型",
   "coverageType": "ten-key-workspaces-covering-twelve-production-modules",
-  "sourceOfTruth": ["frontend/src/config/navPlan.js", "internship production routes, Vue pages, APIs and services"],
-  "productionImplementationStatus": "ten high-frequency workbenches registered across twelve second-level modules; ninety-nine third-level entries remain tracked through coveredRoutes rather than duplicated as ninety-nine HTML pages",
-  "sharedAssets": ["shared/v2-internship-key.js", "shared/v2-internship-key.css"],
+  "sourceOfTruth": [
+    "frontend/src/config/navPlan.js",
+    "internship production routes, Vue pages, APIs and services"
+  ],
+  "productionImplementationStatus": "ten high-frequency workbenches cover twelve second-level modules; 101 production leaf entries resolve to 99 unique route references because two list/detail pairs intentionally share their host route",
+  "routeAudit": {
+    "status": "CONTRACT_REBUILT_PENDING_EXECUTION",
+    "productionLeafEntriesExpected": 101,
+    "uniqueRouteRefsExpected": 99,
+    "ownerRouteRefsExpected": 99,
+    "intentionalAliases": [
+      {
+        "route": "/admin/internship/batches?panel=list",
+        "labels": ["批次列表", "批次详情"],
+        "reason": "详情从批次列表宿主工作区进入"
+      },
+      {
+        "route": "/admin/internship/students?panel=roster",
+        "labels": ["实习名单", "学生实习详情"],
+        "reason": "学生详情从名单宿主工作区进入"
+      }
+    ]
+  },
+  "sharedAssets": [
+    "shared/v2-internship-key.js",
+    "shared/v2-internship-key.css"
+  ],
   "principles": [
     "every operational record keeps batch context",
     "effective rule versions are immutable for active participants",
@@ -19,87 +43,339 @@
   ],
   "routes": [
     {
+      "moduleKey": "in-workbench",
       "route": "/admin/internship",
-      "coveredRoutes": ["/admin/internship/batch-progress", "/admin/internship/todos", "/admin/internship/risks", "/admin/internship/stats?dimension=trend"],
+      "coveredRoutes": [
+        "/admin/internship?panel=batch-progress",
+        "/admin/internship?panel=todos",
+        "/admin/internship/stats?dimension=trend"
+      ],
       "html": "internship/dashboard.html",
       "title": "实习总览",
-      "permissionCandidates": ["internship.dashboard.view", "internship.todo.view", "internship.risk.view", "internship.stats.view"]
+      "permissionCandidates": ["internship.dashboard.view", "internship.stats.view"],
+      "fieldContract": ["batchId", "batchName", "stage", "studentTotal", "positionConfirmed", "agreementConfirmed", "attendanceException", "reportOverdue", "riskOpen", "todoCount", "trendPeriod"],
+      "statusContract": ["batch-active", "batch-not-selected", "no-data-scope", "loading", "empty", "error"],
+      "apiParameterContract": ["batchId", "collegeId", "majorId", "classId", "dateFrom", "dateTo", "dimension=trend"],
+      "boundary": "dashboard cards drill into the exact production route and do not mutate business state"
     },
     {
-      "route": "/admin/internship/batches",
-      "coveredRoutes": ["/admin/internship/stages", "/admin/internship/rules", "/admin/internship/rules/attendance", "/admin/internship/rules/report", "/admin/internship/rules/guidance", "/admin/internship/rules/evaluation", "/admin/internship/rules/score", "/admin/internship/rules/numbering"],
+      "moduleKey": "in-batch-rules",
+      "route": "/admin/internship/batches?panel=list",
+      "coveredRoutes": [
+        "/admin/internship/batches?panel=timeline",
+        "/admin/internship/batches?panel=rules&rule=checkin",
+        "/admin/internship/batches?panel=rules&rule=report",
+        "/admin/internship/batches?panel=rules&rule=guidance",
+        "/admin/internship/batches?panel=rules&rule=evaluation",
+        "/admin/internship/batches?panel=rules&rule=score"
+      ],
       "html": "internship/batch-rules.html",
       "title": "批次与规则",
-      "permissionCandidates": ["internship.batch.view", "internship.stage.manage", "internship.rule.manage"],
-      "boundary": "published rules remain versioned and immutable for active students"
+      "permissionCandidates": [
+        "internship.batch.view",
+        "internship.batch.stage.manage",
+        "internship.batch.rule.checkin.manage",
+        "internship.batch.rule.report.manage",
+        "internship.batch.rule.guidance.manage",
+        "internship.batch.rule.evaluation.manage",
+        "internship.batch.rule.score.manage"
+      ],
+      "fieldContract": ["batchId", "batchName", "schoolYear", "term", "startDate", "endDate", "stageCode", "ruleType", "ruleVersion", "effectiveAt", "frozenAt"],
+      "statusContract": ["DRAFT", "ACTIVE", "CLOSED", "ARCHIVED", "rule-draft", "rule-effective", "rule-frozen", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "rule", "version", "expectedVersion"],
+      "boundary": "published rules remain versioned and immutable for active students; batch detail is an intentional alias of the list host route"
     },
     {
-      "route": "/admin/internship/students",
-      "coveredRoutes": ["/admin/internship/students?panel=eligibility", "/admin/internship/students?panel=status", "/admin/internship/students/:id", "/admin/internship/students?panel=materials", "/admin/internship/students?panel=insurance", "/admin/internship/advisor-assignments"],
+      "moduleKey": "in-students",
+      "route": "/admin/internship/students?panel=roster",
+      "coveredRoutes": [
+        "/admin/internship/students?panel=eligibility",
+        "/admin/internship/students?panel=status",
+        "/admin/internship/archive?panel=materials",
+        "/admin/internship/insurance"
+      ],
       "html": "internship/students.html",
       "title": "实习学生",
-      "permissionCandidates": ["internship.student.view"],
-      "boundary": "identity remains in student master while internship eligibility, insurance and assignment are business facts"
+      "permissionCandidates": [
+        "internship.student.view",
+        "internship.student.eligibility.review",
+        "internship.student.material.view",
+        "internship.insurance.verify"
+      ],
+      "fieldContract": ["studentId", "studentNo", "realName", "collegeName", "majorName", "className", "eligibilityStatus", "internshipStatus", "positionId", "enterpriseId", "advisorId", "insuranceStatus", "materialCompleteness"],
+      "statusContract": ["PENDING_ELIGIBILITY", "ELIGIBLE", "INELIGIBLE", "UNASSIGNED", "ASSIGNED", "ACTIVE", "INTERRUPTED", "COMPLETED", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "keyword", "collegeId", "majorId", "classId", "status", "page", "pageSize", "version"],
+      "boundary": "identity remains in student master while eligibility, insurance, materials and assignment are internship facts; detail is an intentional alias of the roster host route"
     },
     {
-      "route": "/admin/internship/enterprises",
-      "coveredRoutes": ["/admin/internship/enterprises?panel=contacts", "/admin/internship/enterprises?panel=mentors", "/admin/internship/enterprises?panel=qualification", "/admin/internship/enterprises?panel=blacklist", "/admin/internship/positions", "/admin/internship/positions?panel=publish", "/admin/internship/positions?panel=requirements", "/admin/internship/positions?panel=specialty"],
+      "moduleKey": "in-enterprise-position",
+      "route": "/admin/internship/enterprises?panel=list",
+      "coveredRoutes": [
+        "/admin/internship/enterprises?panel=detail",
+        "/admin/internship/enterprises?panel=contacts",
+        "/admin/internship/enterprises?panel=mentor",
+        "/admin/internship/enterprises?panel=qualification",
+        "/admin/internship/enterprises?panel=blacklist",
+        "/admin/internship/positions?panel=list",
+        "/admin/internship/positions?panel=detail",
+        "/admin/internship/positions?panel=publish",
+        "/admin/internship/positions?panel=requirement"
+      ],
       "html": "internship/enterprise-position.html",
       "title": "企业与岗位",
-      "permissionCandidates": ["internship.enterprise.view", "internship.position.view"],
+      "permissionCandidates": [
+        "internship.enterprise.view",
+        "internship.enterprise.contact.view",
+        "internship.enterprise.mentor.view",
+        "internship.enterprise.review",
+        "internship.enterprise.blacklist.manage",
+        "internship.position.view",
+        "internship.position.publish",
+        "internship.position.match.view"
+      ],
+      "fieldContract": ["enterpriseId", "enterpriseName", "creditCode", "qualificationStatus", "blacklistStatus", "contactId", "mentorId", "positionId", "positionName", "capacity", "majorRequirements", "publishStatus"],
+      "statusContract": ["PENDING_REVIEW", "APPROVED", "REJECTED", "BLACKLISTED", "POSITION_DRAFT", "POSITION_PUBLISHED", "POSITION_CLOSED", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["enterpriseId", "positionId", "panel", "keyword", "qualificationStatus", "publishStatus", "majorId", "page", "pageSize", "version"],
       "boundary": "enterprise approval, position publication and specialty matching are separate gates"
     },
     {
-      "route": "/admin/internship/match",
-      "coveredRoutes": ["/admin/internship/match?panel=intention", "/admin/internship/match?panel=recommend", "/admin/internship/match?panel=manual", "/admin/internship/match?panel=batch", "/admin/internship/match?panel=conflicts", "/admin/internship/match?panel=results", "/admin/internship/match?panel=changes", "/admin/internship/applications", "/admin/internship/applications?panel=review", "/admin/internship/agreements", "/admin/internship/agreements?panel=confirm", "/admin/internship/agreements?panel=archive", "/admin/internship/agreements?panel=missing", "/admin/internship/agreements?panel=change", "/admin/internship/applications?panel=transfer", "/admin/internship/applications?panel=exit"],
+      "moduleKey": "in-match-assign",
+      "route": "/admin/internship/match?panel=intention",
+      "coveredRoutes": [
+        "/admin/internship/match?panel=recommend",
+        "/admin/internship/match?panel=manual",
+        "/admin/internship/match?panel=batch",
+        "/admin/internship/match?panel=conflict",
+        "/admin/internship/match?panel=results",
+        "/admin/internship/students?panel=mentor",
+        "/admin/internship/changes?panel=pending",
+        "/admin/internship/assignment-logs"
+      ],
       "html": "internship/match-agreement.html",
-      "title": "匹配与协议",
-      "permissionCandidates": ["internship.match.view", "internship.application.view", "internship.agreement.view"],
-      "boundary": "recommendation is not final assignment and three-party confirmation cannot be skipped"
+      "title": "匹配与分配",
+      "permissionCandidates": [
+        "internship.match.intention.view",
+        "internship.match.recommend.view",
+        "internship.match.manual",
+        "internship.match.batch",
+        "internship.match.conflict.view",
+        "internship.match.result.view",
+        "internship.match.advisor.assign",
+        "internship.change.review",
+        "internship.match.log.view"
+      ],
+      "fieldContract": ["studentId", "intentionIds", "recommendedPositionIds", "matchScore", "conflictCodes", "assignmentId", "positionId", "enterpriseId", "advisorId", "changeType", "changeReason"],
+      "statusContract": ["INTENTION_SUBMITTED", "RECOMMENDED", "CONFLICT", "PENDING_ASSIGN", "ASSIGNED", "CHANGE_PENDING", "CHANGE_APPROVED", "CHANGE_REJECTED", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "studentIds", "positionIds", "advisorId", "conflictType", "dryRun", "reason", "expectedVersion", "page", "pageSize"],
+      "boundary": "recommendation is not final assignment; batch matching must expose conflicts and assignment changes remain audited"
     },
     {
-      "route": "/admin/internship/attendance",
-      "coveredRoutes": ["/admin/internship/attendance?panel=makeup-apply", "/admin/internship/attendance?panel=makeup-review", "/admin/internship/attendance?panel=exceptions", "/admin/internship/exceptions?status=PENDING_HANDLE", "/admin/internship/leaves?panel=all", "/admin/internship/leaves?panel=pending", "/admin/internship/leaves?panel=approved", "/admin/internship/risks?panel=leave-overdue"],
+      "moduleKey": "in-apply-agreement",
+      "route": "/admin/internship/applications?status=PENDING_REVIEW",
+      "coveredRoutes": [
+        "/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED",
+        "/admin/internship/applications?status=PENDING_REVIEW&type=POSITION",
+        "/admin/internship/applications?status=ALL",
+        "/admin/internship/agreement-templates",
+        "/admin/internship/agreements?panel=issue",
+        "/admin/internship/agreements?panel=confirm",
+        "/admin/internship/agreements?panel=change",
+        "/admin/internship/agreements?panel=archive"
+      ],
+      "html": "internship/match-agreement.html",
+      "title": "申请与协议",
+      "permissionCandidates": [
+        "internship.application.review",
+        "internship.application.view",
+        "internship.agreement.template.manage",
+        "internship.agreement.issue",
+        "internship.agreement.school_confirm",
+        "internship.agreement.change",
+        "internship.agreement.archive"
+      ],
+      "fieldContract": ["applicationId", "applicationType", "studentId", "enterpriseId", "positionId", "reviewStatus", "agreementTemplateId", "agreementId", "studentConfirmedAt", "enterpriseConfirmedAt", "schoolConfirmedAt", "changeVersion", "archiveVersion"],
+      "statusContract": ["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "AGREEMENT_ISSUED", "STUDENT_CONFIRMED", "ENTERPRISE_CONFIRMED", "SCHOOL_CONFIRMED", "CHANGED", "ARCHIVED", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["status", "type", "applicationId", "agreementId", "templateId", "action", "reason", "expectedVersion", "page", "pageSize"],
+      "boundary": "student application review and agreement lifecycle are separate; three-party confirmation cannot be skipped and archive is append-only"
+    },
+    {
+      "moduleKey": "in-attendance-leave",
+      "route": "/admin/internship/attendance?panel=checkins",
+      "coveredRoutes": [
+        "/admin/internship/attendance?panel=makeup-apply",
+        "/admin/internship/attendance?panel=makeup-review",
+        "/admin/internship/attendance?panel=exceptions",
+        "/admin/internship/exceptions?status=PENDING_HANDLE",
+        "/admin/internship/leaves?panel=all",
+        "/admin/internship/leaves?panel=pending",
+        "/admin/internship/leaves?panel=approved",
+        "/admin/internship/risks?panel=leave-overdue"
+      ],
       "html": "internship/attendance-leave.html",
       "title": "打卡与请假",
-      "permissionCandidates": ["internship.attendance.view", "internship.makeup.review", "internship.leave.review"],
-      "boundary": "approved leave creates LEAVE trace and does not forge normal attendance"
+      "permissionCandidates": [
+        "internship.attendance.view",
+        "internship.makeup.view",
+        "internship.makeup.review",
+        "internship.attendance.exception.handle",
+        "internship.leave.view",
+        "internship.leave.review",
+        "internship.risk.view"
+      ],
+      "fieldContract": ["checkinId", "studentId", "checkinDate", "checkinTime", "location", "distance", "photoFileId", "attendanceStatus", "makeupId", "exceptionId", "leaveId", "leaveStart", "leaveEnd", "returnStatus"],
+      "statusContract": ["NORMAL", "LATE", "MISSING", "LEAVE", "MAKEUP_PENDING", "MAKEUP_APPROVED", "MAKEUP_REJECTED", "EXCEPTION_PENDING", "EXCEPTION_CLOSED", "LEAVE_PENDING", "LEAVE_APPROVED", "LEAVE_REJECTED", "OVERDUE_RETURN", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "studentId", "dateFrom", "dateTo", "status", "leaveId", "makeupId", "reason", "evidenceFileIds", "expectedVersion", "page", "pageSize"],
+      "boundary": "approved leave creates a LEAVE trace and never forges a normal check-in; original location and evidence remain immutable"
     },
     {
-      "route": "/admin/internship/reports",
-      "coveredRoutes": ["/admin/internship/plans", "/admin/internship/plans?panel=tasks", "/admin/internship/reports?type=daily&panel=all", "/admin/internship/reports?type=monthly&panel=all", "/admin/internship/reports?panel=review", "/admin/internship/reports?panel=returned", "/admin/internship/reports?panel=issues", "/admin/internship/guidance-plan", "/admin/internship/guidance?panel=guidance", "/admin/internship/guidance?panel=communication", "/admin/internship/guidance-plan?insufficient=1", "/admin/internship/guidance?panel=visit&view=plan", "/admin/internship/guidance?panel=visit&view=record", "/admin/internship/guidance?panel=visit&view=issue", "/admin/internship/guidance?panel=rectify"],
+      "moduleKey": "in-weekly-task",
+      "route": "/admin/internship/plans",
+      "coveredRoutes": [
+        "/admin/internship/plans?panel=tasks",
+        "/admin/internship/reports?type=daily&panel=all",
+        "/admin/internship/reports?panel=all",
+        "/admin/internship/reports?type=monthly&panel=all",
+        "/admin/internship/reports?panel=review",
+        "/admin/internship/reports?panel=returned",
+        "/admin/internship/reports?panel=issues"
+      ],
       "html": "internship/reports-guidance.html",
-      "title": "周报与指导",
-      "permissionCandidates": ["internship.report.view", "internship.guidance.record.create", "internship.visit.issue.handle"],
-      "boundary": "returned reports preserve versions and visit issues close through rectification and recheck"
+      "title": "周报与任务",
+      "permissionCandidates": [
+        "internship.plan.view",
+        "internship.task.view",
+        "internship.report.view",
+        "internship.report.review",
+        "internship.report.issue.handle"
+      ],
+      "fieldContract": ["planId", "taskId", "reportId", "reportType", "periodStart", "periodEnd", "content", "attachmentVersion", "submittedAt", "reviewStatus", "reviewComment", "returnVersion", "issueId"],
+      "statusContract": ["DRAFT", "SUBMITTED", "REVIEWED", "RETURNED", "RESUBMITTED", "ISSUE_OPEN", "ISSUE_CLOSED", "OVERDUE", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "type", "studentId", "advisorId", "status", "period", "reportId", "action", "comment", "expectedVersion", "page", "pageSize"],
+      "boundary": "returned reports preserve every version; task and report completion remain separate facts"
     },
     {
+      "moduleKey": "in-guidance-visit",
+      "route": "/admin/internship/guidance-plan",
+      "coveredRoutes": [
+        "/admin/internship/guidance?panel=guidance",
+        "/admin/internship/guidance?panel=communication",
+        "/admin/internship/guidance-plan?insufficient=1",
+        "/admin/internship/guidance?panel=visit&view=plan",
+        "/admin/internship/guidance?panel=visit&view=record",
+        "/admin/internship/guidance?panel=visit&view=issue",
+        "/admin/internship/guidance?panel=rectify"
+      ],
+      "html": "internship/reports-guidance.html",
+      "title": "指导与巡访",
+      "permissionCandidates": [
+        "internship.guidance.plan.manage",
+        "internship.guidance.record.create",
+        "internship.communication.view",
+        "internship.guidance.insufficient.view",
+        "internship.visit.plan.manage",
+        "internship.visit.record.create",
+        "internship.visit.issue.handle",
+        "internship.visit.rectify.handle"
+      ],
+      "fieldContract": ["guidancePlanId", "guidanceRecordId", "communicationId", "visitPlanId", "visitRecordId", "visitIssueId", "rectificationId", "studentId", "enterpriseId", "advisorId", "scheduledAt", "completedAt", "evidenceFileIds", "deadline", "recheckConclusion"],
+      "statusContract": ["PLAN_DRAFT", "PLAN_ACTIVE", "GUIDANCE_COMPLETED", "INSUFFICIENT", "VISIT_PLANNED", "VISIT_COMPLETED", "ISSUE_OPEN", "RECTIFYING", "RECHECK_PENDING", "CLOSED", "REOPENED", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "view", "insufficient", "studentId", "enterpriseId", "advisorId", "status", "dateFrom", "dateTo", "reason", "evidenceFileIds", "expectedVersion", "page", "pageSize"],
+      "boundary": "guidance quantity is not quality; visit issues close only after rectification evidence and recheck, with reopening preserved"
+    },
+    {
+      "moduleKey": "in-risk",
       "route": "/admin/internship/risks",
-      "coveredRoutes": ["/admin/internship/risks?panel=no-position", "/admin/internship/risks?panel=no-checkin", "/admin/internship/risks?panel=report-overdue", "/admin/internship/risks?panel=off-post", "/admin/internship/risk-disposal?caseType=complaint", "/admin/internship/risk-disposal?panel=safety", "/admin/internship/risk-disposal?panel=interrupt", "/admin/internship/risk-disposal?stage=pending", "/admin/internship/risk-disposal?stage=processing", "/admin/internship/risk-disposal?stage=closed"],
+      "coveredRoutes": [
+        "/admin/internship/risks?panel=board",
+        "/admin/internship/risks?panel=no-position",
+        "/admin/internship/risks?panel=no-checkin",
+        "/admin/internship/risks?panel=report-overdue",
+        "/admin/internship/risks?panel=off-post",
+        "/admin/internship/risk-disposal?caseType=complaint",
+        "/admin/internship/risk-disposal?panel=safety",
+        "/admin/internship/risk-disposal?panel=interrupt",
+        "/admin/internship/risk-disposal?stage=pending",
+        "/admin/internship/risk-disposal?stage=processing",
+        "/admin/internship/risk-disposal?stage=closed"
+      ],
       "html": "internship/risk.html",
       "title": "风险处置",
-      "permissionCandidates": ["internship.risk.view", "internship.risk.handle", "internship.risk.close"],
-      "boundary": "source facts, evidence, owner, deadline, handling, follow-up and closure are append-only"
+      "permissionCandidates": [
+        "internship.risk.view",
+        "internship.complaint.intake",
+        "internship.risk.handle",
+        "internship.risk.close"
+      ],
+      "fieldContract": ["riskId", "caseType", "sourceType", "studentId", "enterpriseId", "positionId", "riskLevel", "factSummary", "evidenceFileIds", "ownerId", "deadline", "actionLog", "followupAt", "closureConclusion", "reopenedFromId"],
+      "statusContract": ["OPEN", "ASSIGNED", "PROCESSING", "ESCALATED", "FOLLOWUP", "CLOSED", "REOPENED", "NO_POSITION", "NO_CHECKIN", "REPORT_OVERDUE", "OFF_POST", "COMPLAINT", "SAFETY", "INTERRUPTED", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "stage", "caseType", "sourceType", "riskLevel", "ownerId", "status", "studentId", "reason", "evidenceFileIds", "expectedVersion", "page", "pageSize"],
+      "boundary": "source facts, evidence, owner, deadline, handling, follow-up, closure and reopening are append-only; signals do not auto-determine liability"
     },
     {
+      "moduleKey": "in-eval-score",
       "route": "/admin/internship/enterprise-evals",
-      "coveredRoutes": ["/admin/internship/student-evals?view=self", "/admin/internship/student-evals?view=enterprise", "/admin/internship/student-evals?view=position", "/admin/internship/student-evals?view=advisor", "/admin/internship/scores?stage=overview", "/admin/internship/scores?stage=review", "/admin/internship/scores?stage=publish", "/admin/internship/scores?stage=recheck"],
+      "coveredRoutes": [
+        "/admin/internship/student-evals?view=self",
+        "/admin/internship/student-evals?view=enterprise",
+        "/admin/internship/student-evals?view=position",
+        "/admin/internship/student-evals?view=advisor",
+        "/admin/internship/scores?stage=overview",
+        "/admin/internship/scores?stage=review",
+        "/admin/internship/scores?stage=publish",
+        "/admin/internship/scores?stage=recheck"
+      ],
       "html": "internship/evaluation-score.html",
       "title": "评价与成绩",
-      "permissionCandidates": ["internship.eval.enterprise.view", "internship.eval.advisor.manage", "internship.score.view", "internship.score.review", "internship.score.publish", "internship.score.recheck"],
-      "boundary": "frozen rules combine inputs and score review, publication and recheck remain separate"
+      "permissionCandidates": [
+        "internship.eval.enterprise.view",
+        "internship.eval.self.view",
+        "internship.eval.enterprise_by_student.view",
+        "internship.eval.position_by_student.view",
+        "internship.eval.advisor.manage",
+        "internship.score.view",
+        "internship.score.review",
+        "internship.score.publish",
+        "internship.score.recheck"
+      ],
+      "fieldContract": ["studentId", "enterpriseEvaluation", "selfEvaluation", "enterpriseByStudent", "positionByStudent", "advisorEvaluation", "scoreRuleVersion", "componentScores", "totalScore", "reviewStatus", "publishedAt", "recheckId", "recheckConclusion"],
+      "statusContract": ["EVAL_PENDING", "EVAL_SUBMITTED", "SCORE_DRAFT", "SCORE_GENERATED", "SCORE_REVIEW", "SCORE_APPROVED", "SCORE_PUBLISHED", "RECHECK_PENDING", "RECHECK_RESOLVED", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "view", "stage", "studentId", "enterpriseId", "advisorId", "status", "ruleVersion", "action", "reason", "expectedVersion", "page", "pageSize"],
+      "boundary": "frozen rules combine inputs; evaluation completion, score generation, review, publication and recheck remain separate"
     },
     {
-      "route": "/admin/internship/archive",
-      "coveredRoutes": ["/admin/employment?panel=follow-up", "/admin/employment?panel=assistance", "/admin/internship/archive?panel=packages", "/admin/internship/compliance", "/admin/internship/stats?dimension=overview", "/admin/internship/stats?dimension=enterprise", "/admin/internship/stats?dimension=position", "/admin/internship/stats?dimension=score"],
+      "moduleKey": "in-employment-archive-stats",
+      "route": "/admin/internship/archive?panel=records",
+      "coveredRoutes": [
+        "/admin/employment?panel=follow-up",
+        "/admin/employment?panel=assistance",
+        "/admin/internship/archive?panel=packages",
+        "/admin/internship/compliance",
+        "/admin/internship/stats?dimension=overview",
+        "/admin/internship/stats?dimension=enterprise",
+        "/admin/internship/stats?dimension=position",
+        "/admin/internship/stats?dimension=score"
+      ],
       "html": "internship/archive-stats.html",
       "title": "就业转化与归档统计",
-      "permissionCandidates": ["internship.employment.view", "internship.archive.manage", "internship.archive.package.generate", "internship.compliance.view", "internship.stats.view"],
-      "boundary": "employment facts remain in employment module and archived compliance evidence is immutable and audited"
+      "permissionCandidates": [
+        "internship.employment.view",
+        "internship.archive.manage",
+        "internship.archive.package.generate",
+        "internship.compliance.view",
+        "internship.stats.view",
+        "internship.stats.enterprise.view",
+        "internship.stats.position.view",
+        "internship.stats.score.view"
+      ],
+      "fieldContract": ["studentId", "employmentFollowupStatus", "assistanceStatus", "archiveRecordId", "archiveVersion", "packageTaskId", "packageStatus", "complianceEvidenceId", "dimension", "numerator", "denominator", "freshnessAt", "exportPurpose"],
+      "statusContract": ["EMPLOYMENT_FOLLOWUP", "ASSISTANCE", "ARCHIVE_PENDING", "ARCHIVED", "PACKAGE_GENERATING", "PACKAGE_READY", "PACKAGE_FAILED", "COMPLIANCE_COMPLETE", "loading", "empty", "error", "readonly"],
+      "apiParameterContract": ["batchId", "panel", "dimension", "studentId", "enterpriseId", "positionId", "status", "dateFrom", "dateTo", "purpose", "page", "pageSize"],
+      "boundary": "employment facts remain in the employment module; archives and compliance evidence are immutable, versioned, scoped and audited"
     }
   ],
   "knownLimitations": [
-    "ten pages are a key-workspace pack rather than one HTML per ninety-nine third-level entries",
+    "ten pages intentionally consolidate 101 production leaf entries into 99 unique route references rather than duplicating one HTML per leaf",
+    "the machine route audit must execute successfully on the final freeze head",
     "the current batch has not completed browser, keyboard or focus regression"
   ]
 }
