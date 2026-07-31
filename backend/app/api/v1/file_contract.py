@@ -1,5 +1,8 @@
-"""公共文件 API 权威合同；正式入口与历史兼容入口均委托这里。"""
+"""公共文件 API 权威合同；所有文件字节响应都收口在本模块。"""
 from __future__ import annotations
+
+from pathlib import Path
+from typing import Mapping
 
 from fastapi import UploadFile
 from fastapi.responses import FileResponse
@@ -114,6 +117,45 @@ def _requires_audited_business_download(biz_type: str | None) -> bool:
     return str(biz_type or "").upper() == "GRADUATION_MATERIAL"
 
 
+def validated_local_file_response(
+    path,
+    *,
+    filename: str,
+    audit_action: str,
+    audit_target: str,
+    inline: bool = False,
+    media_type: str | None = None,
+    headers: Mapping[str, str] | None = None,
+    audit_detail: dict | None = None,
+) -> FileResponse:
+    """为已经通过业务授权、范围和安全门的本地对象构建唯一字节响应。
+
+    调用方只能传入业务服务或一次性票据解析出的路径；本函数再次检查路径存在，
+    统一 no-store/nosniff、审计和 Content-Disposition。生产代码不得在其他模块
+    直接实例化 ``FileResponse``，避免绕过文件中心的响应治理。
+    """
+    resolved = Path(path) if path is not None else None
+    if not resolved or not resolved.is_file():
+        raise not_found("文件不存在")
+    safe_headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+        **dict(headers or {}),
+    }
+    audit_log.record(
+        str(audit_action or "FILE_DOWNLOAD"),
+        str(audit_target or filename),
+        detail={"fileName": filename, "delivery": "LOCAL_PROXY", **dict(audit_detail or {})},
+    )
+    return FileResponse(
+        str(resolved),
+        filename=filename,
+        media_type=media_type,
+        content_disposition_type="inline" if inline else "attachment",
+        headers=safe_headers,
+    )
+
+
 def url_contract(file_id: str, *, user: dict) -> dict:
     row = require_file_access(file_id, user=user, action="download")
     if isinstance(row, dict):
@@ -170,8 +212,10 @@ def download_contract(file_id: str, *, user: dict) -> FileResponse:
         if not path or not path.exists():
             raise not_found("文件不存在")
         filename = row.file_name or path.name
-    audit_log.record("FILE_DOWNLOAD", filename, detail={"fileId": file_id, "delivery": "PROXY"})
-    response = FileResponse(str(path), filename=filename, content_disposition_type="attachment")
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Cache-Control"] = "private, no-store"
-    return response
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="FILE_DOWNLOAD",
+        audit_target=filename,
+        audit_detail={"fileId": file_id},
+    )
