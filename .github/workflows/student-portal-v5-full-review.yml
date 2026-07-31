@@ -94,8 +94,7 @@ jobs:
         run: alembic upgrade head
 
       - name: 重建 sandbox-school 真实种子
-        working-directory: backend
-        run: python scripts/reset_sandbox_school.py --confirm
+        run: python student-portal/review/seed-sandbox-compatible.py
 
       - name: 启动真实 FastAPI
         working-directory: backend
