@@ -4,10 +4,13 @@ on:
   pull_request:
     paths:
       - 'backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py'
+      - 'backend/app/modules/academic_affairs/routers/academic_export_compat_router.py'
       - 'backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py'
       - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_export_compat_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
+      - 'backend/tests/test_academic_export_compat.py'
       - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
       - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
@@ -17,10 +20,13 @@ on:
       - audit/file-capability-inventory
     paths:
       - 'backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py'
+      - 'backend/app/modules/academic_affairs/routers/academic_export_compat_router.py'
       - 'backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py'
       - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_export_compat_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
+      - 'backend/tests/test_academic_export_compat.py'
       - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
       - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
@@ -32,9 +38,9 @@ concurrency:
 
 jobs:
   mysql-authoritative-jobs:
-    name: MySQL 权威导入 + 导出生命周期 + PC 合同
+    name: MySQL 权威导入 + 全域导出任务生命周期 + PC 合同
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     services:
       mysql:
         image: mysql:8.0
@@ -49,8 +55,11 @@ jobs:
           --health-timeout=5s
           --health-retries=15
     env:
-      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
-      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
       APP_ENV: test
       SECRET_KEY: stage7-academic-file-exchange-ci-secret
       FILE_SCAN_ENABLED: 'false'
@@ -80,26 +89,35 @@ jobs:
         run: |
           python -m py_compile \
             app/modules/academic_affairs/routers/academic_file_exchange_router.py \
+            app/modules/academic_affairs/routers/academic_export_compat_router.py \
             app/modules/academic_affairs/routers/academic_affairs_bundle.py \
             app/modules/academic_affairs/services/academic_file_exchange_service.py \
+            app/modules/academic_affairs/services/academic_export_compat_service.py \
             app/services/data_exchange_confirm_service.py
       - name: Authoritative job contract tests
         working-directory: backend
-        run: pytest tests/test_academic_file_exchange_center.py tests/test_data_exchange_job_center.py -q -p no:warnings
+        run: >-
+          pytest tests/test_academic_file_exchange_center.py
+          tests/test_academic_export_compat.py
+          tests/test_data_exchange_job_center.py
+          -q -p no:warnings
       - name: Teacher PC lint and build
         working-directory: frontend
         run: |
           npm ci
           npm run lint
           npm run build
-      - name: Freeze no-rows confirmation and no-blob export
+      - name: Freeze authority, task backing and compatibility order
         run: |
           grep -q 'ConfigDict(extra="forbid")' backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
           grep -q 'authority.*SOURCE_FILE_OBJECT' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
           grep -q 'rowDigest' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
           ! grep -n 'source_snapshot_json={[^}]*"rows"' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
           grep -q 'ExportJob(' backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
-          grep -q 'create_download_ticket' backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+          grep -q 'ExportJob(' backend/app/modules/academic_affairs/services/academic_export_compat_service.py
+          grep -q 'X-Export-Job-Id' backend/app/modules/academic_affairs/services/academic_export_compat_service.py
+          grep -q 'compat_module.router' backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py
+          grep -q 'ACADEMIC_ARCHIVE_ALL' backend/app/modules/academic_affairs/routers/academic_export_compat_router.py
           grep -q 'confirmImport(' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
           grep -q 'this.currentImportJob.id' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
           grep -q 'this.currentImportJob.version' frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
