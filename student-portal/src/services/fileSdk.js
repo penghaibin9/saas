@@ -28,7 +28,7 @@ export function normalizeFile(file = {}) {
 function uploadPath({ bizType = 'ATTACHMENT', bizId = '' } = {}) {
   const query = new URLSearchParams({ bizType: String(bizType || 'ATTACHMENT') })
   if (bizId !== undefined && bizId !== null && String(bizId) !== '') query.set('bizId', String(bizId))
-  return `/files/upload?${query.toString()}`
+  return `/files?${query.toString()}`
 }
 
 function authorizedPath(ticket = {}) {
