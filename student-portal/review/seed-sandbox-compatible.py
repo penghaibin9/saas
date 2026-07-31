@@ -1,16 +1,16 @@
 """仅供 Student Portal V5 复审工作流使用。
 
-仓库 sandbox_service 的尾部兼容种子仍创建 batch_id=NULL 的旧实习记录，
-而生产迁移 0123 已要求 NOT NULL。本脚本只在一次性 CI MySQL 中：
-1. 临时允许旧种子写入；
+仓库 sandbox_service 已先调用当前六域正式种子，然后又追加一条没有 batch_id 的
+旧实习演示记录；生产迁移 0123 已明确禁止这种记录存在。本脚本只在一次性 CI MySQL 中：
+
+1. 临时允许旧 sandbox_service 完成写入；
 2. 调用仓库真实 seed_sandbox；
-3. 将每条旧记录归入独立且明确命名的复审兼容批次；
-4. 验证无 NULL 后恢复 NOT NULL。
+3. 给无法映射真实业务批次的旧 NULL 记录分配审计可追踪的兼容批次并标记为已删除；
+4. 删除只指向这些失效旧记录的统一待办，避免污染学生真实页面；
+5. 确认当前学生仍有正式种子创建的有效实习记录；
+6. 恢复 batch_id NOT NULL 生产约束。
 
-每条旧记录使用独立批次，是为了同时遵守生产唯一约束
-(tenant_id, student_id, batch_id)，不猜测历史记录的真实批次归属。
-
-不修改后端源码、生产数据库、API、状态机或权限。
+不修改后端源码、生产数据库、API、权限、路由、tab key 或业务状态机。
 """
 from __future__ import annotations
 
@@ -23,13 +23,17 @@ BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(BACKEND / "scripts"))
 
-from sqlalchemy import select, text  # noqa: E402
+from sqlalchemy import delete, func, select, text  # noqa: E402
 
 from app.db.session import get_engine, get_sessionmaker  # noqa: E402
-from app.models import InternshipBatch, InternshipRecord  # noqa: E402
-from app.services.sandbox_service import SANDBOX_TID, seed_sandbox  # noqa: E402
+from app.models import InternshipBatch, InternshipRecord, StudentProfile, UnifiedTodo  # noqa: E402
+from app.services.sandbox_service import (  # noqa: E402
+    SANDBOX_TID,
+    SBX_STUDENT_NO,
+    seed_sandbox,
+)
 
-COMPAT_BATCH_PREFIX = "V5-REVIEW-COMPAT"
+COMPAT_BATCH_PREFIX = "V5-REVIEW-RETIRED"
 
 
 def set_nullable(nullable: bool) -> None:
@@ -50,14 +54,13 @@ def compatibility_batch(session, row: InternshipRecord) -> InternshipBatch:
     )).first()
     if batch is not None:
         return batch
-
     batch = InternshipBatch(
         tenant_id=SANDBOX_TID,
-        batch_name=f"学生门户 V5 复审兼容批次 #{row.id}",
+        batch_name=f"学生门户复审失效旧记录 #{row.id}",
         batch_no=batch_no,
         start_date=datetime(2026, 3, 2),
         end_date=datetime(2026, 8, 28),
-        status="RUNNING",
+        status="CLOSED",
     )
     session.add(batch)
     session.flush()
@@ -72,28 +75,53 @@ def main() -> int:
         report = seed_sandbox(session)
         session.commit()
 
-        rows = session.scalars(select(InternshipRecord).where(
+        legacy_rows = session.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == SANDBOX_TID,
             InternshipRecord.batch_id.is_(None),
             InternshipRecord.is_deleted.is_(False),
         ).order_by(InternshipRecord.id)).all()
 
-        mapped = []
-        for row in rows:
+        retired = []
+        legacy_ids = []
+        for row in legacy_rows:
             batch = compatibility_batch(session, row)
             row.batch_id = batch.id
-            mapped.append({
+            row.is_deleted = True
+            legacy_ids.append(row.id)
+            retired.append({
                 "recordId": row.id,
                 "studentId": row.student_id,
                 "batchId": batch.id,
                 "batchNo": batch.batch_no,
+                "disposition": "retired-stale-null-batch-fixture",
             })
+
+        removed_todos = 0
+        if legacy_ids:
+            result = session.execute(delete(UnifiedTodo).where(
+                UnifiedTodo.tenant_id == SANDBOX_TID,
+                UnifiedTodo.source_module == "internship",
+                UnifiedTodo.source_biz_id.in_(legacy_ids),
+            ))
+            removed_todos = int(result.rowcount or 0)
         session.commit()
 
-        null_count = session.scalar(text(
-            "SELECT COUNT(*) FROM t_internship_record "
-            "WHERE tenant_id=:tenant_id AND batch_id IS NULL AND is_deleted=0"
-        ), {"tenant_id": SANDBOX_TID}) or 0
+        student_id = session.scalar(select(StudentProfile.id).where(
+            StudentProfile.tenant_id == SANDBOX_TID,
+            StudentProfile.student_no == SBX_STUDENT_NO,
+            StudentProfile.is_deleted.is_(False),
+        ))
+        active_valid_count = session.scalar(select(func.count(InternshipRecord.id)).where(
+            InternshipRecord.tenant_id == SANDBOX_TID,
+            InternshipRecord.student_id == student_id,
+            InternshipRecord.batch_id.is_not(None),
+            InternshipRecord.is_deleted.is_(False),
+        )) or 0
+        null_count = session.scalar(select(func.count(InternshipRecord.id)).where(
+            InternshipRecord.tenant_id == SANDBOX_TID,
+            InternshipRecord.batch_id.is_(None),
+            InternshipRecord.is_deleted.is_(False),
+        )) or 0
         duplicate_count = session.scalar(text(
             "SELECT COUNT(*) FROM ("
             " SELECT tenant_id, student_id, batch_id FROM t_internship_record"
@@ -101,9 +129,10 @@ def main() -> int:
             " GROUP BY tenant_id, student_id, batch_id HAVING COUNT(*) > 1"
             ") review_duplicates"
         ), {"tenant_id": SANDBOX_TID}) or 0
-        if null_count or duplicate_count:
+        if not student_id or active_valid_count < 1 or null_count or duplicate_count:
             raise RuntimeError(
                 "review sandbox internship integrity failed: "
+                f"student={student_id}, activeValid={active_valid_count}, "
                 f"null={null_count}, duplicates={duplicate_count}"
             )
 
@@ -112,8 +141,9 @@ def main() -> int:
         restored_not_null = True
         print({
             "seed": report,
-            "compatRecords": len(rows),
-            "compatMappings": mapped,
+            "retiredLegacyRecords": retired,
+            "removedLegacyTodos": removed_todos,
+            "activeValidStudentRecords": int(active_valid_count),
             "nullBatchCount": int(null_count),
             "duplicateBatchCount": int(duplicate_count),
             "notNullRestored": True,
@@ -126,7 +156,6 @@ def main() -> int:
         if session.is_active:
             session.close()
         if not restored_not_null:
-            # 即使建数失败，也尽力恢复一次性复审库的生产约束；原异常仍会使工作流失败。
             try:
                 set_nullable(False)
             except Exception:
