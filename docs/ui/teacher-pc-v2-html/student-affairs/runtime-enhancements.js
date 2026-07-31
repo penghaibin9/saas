@@ -81,27 +81,6 @@
     return items[items.length - 1] || null;
   }
 
-  function focusDialog(overlay) {
-    if (!overlay || !overlay.classList.contains('open')) return;
-    const dialog = overlay.querySelector('[role="dialog"]');
-    if (!dialog) return;
-    dialog.focus({ preventScroll: true });
-  }
-
-  function restoreFocus(overlay) {
-    const opener = overlay ? openerByOverlay.get(overlay) : null;
-    if (opener instanceof HTMLElement && opener.isConnected) {
-      opener.focus({ preventScroll: true });
-    }
-  }
-
-  function closeOverlay(overlay) {
-    if (!overlay) return;
-    overlay.classList.remove('open');
-    overlay.setAttribute('aria-hidden', 'true');
-    restoreFocus(overlay);
-  }
-
   function focusableElements(overlay) {
     if (!overlay) return [];
     return [...overlay.querySelectorAll([
@@ -116,6 +95,28 @@
       if (element.hidden || element.getAttribute('aria-hidden') === 'true') return false;
       return element.getClientRects().length > 0;
     });
+  }
+
+  function focusDialog(overlay) {
+    if (!overlay || !overlay.classList.contains('open')) return;
+    const dialog = overlay.querySelector('[role="dialog"]');
+    if (!dialog) return;
+    const [first] = focusableElements(overlay);
+    (first || dialog).focus({ preventScroll: true });
+  }
+
+  function restoreFocus(overlay) {
+    const opener = overlay ? openerByOverlay.get(overlay) : null;
+    if (opener instanceof HTMLElement && opener.isConnected) {
+      opener.focus({ preventScroll: true });
+    }
+  }
+
+  function closeOverlay(overlay) {
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+    restoreFocus(overlay);
   }
 
   const observer = new MutationObserver((records) => {
