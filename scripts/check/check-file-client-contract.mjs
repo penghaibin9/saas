@@ -90,9 +90,13 @@ const accessService = read('backend/app/services/file_access_service.py')
 if (!accessService.includes('raise not_found("文件不存在")')) {
   throw new Error('file access failures must be hidden as 404')
 }
-const legacyService = read('backend/app/services/file_service.py')
-if (!legacyService.includes('authorize_file_object(')) {
-  throw new Error('legacy file service must delegate DB authorization to resolver registry')
+const legacyFacade = read('backend/app/services/file_service.py')
+const legacyImplementation = read('backend/app/services/file_service_legacy.py')
+if (!legacyFacade.includes('file_service_legacy as _legacy')) {
+  throw new Error('file service facade must explicitly delegate to the frozen legacy implementation')
+}
+if (!legacyImplementation.includes('authorize_file_object(')) {
+  throw new Error('file service DB authorization implementation must delegate to resolver registry')
 }
 const archiveGenerator = read('backend/app/services/affairs_archive_guard.py')
 if (!archiveGenerator.includes('biz_type="AFFAIRS_ARCHIVE"')) {
