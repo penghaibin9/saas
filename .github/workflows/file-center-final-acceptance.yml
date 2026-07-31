@@ -51,14 +51,15 @@ jobs:
           python scripts/check_new_file_capabilities.py --base-ref origin/main
       - name: Strict file center call scan
         run: python scripts/audit_file_center_calls.py --strict --base-ref origin/main --json-report artifacts/file-center-call-scan.json
-      - name: Freeze authoritative and delegated upload contracts
+      - name: Freeze the single authoritative upload contract
         run: |
           ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' '["'"'"'`]\/files\/meta\/' frontend/src student-portal/src miniapp/src
+          ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' '["'"'"'`]\/files\/upload' frontend/src student-portal/src miniapp/src
           ! grep -n '@router.get("/meta/' backend/app/api/v1/file.py
-          grep -q '@router.post("/upload", deprecated=True, include_in_schema=False)' backend/app/api/v1/file.py
-          grep -q 'upload_contract(' backend/app/api/v1/file.py
-          ! sed -n '/def delegated_legacy_upload/,/^$/p' backend/app/api/v1/file.py | grep -q 'file_service.store_upload'
-          grep -q 'AUTHORITATIVE_UPLOAD_DELEGATE' backend/app/api/v1/file.py
+          ! grep -n '@router.post("/upload"' backend/app/api/v1/file.py
+          grep -q '@router.post("", summary="上传文件（权威入口）")' backend/app/api/v1/files.py
+          grep -q 'upload_contract(' backend/app/api/v1/files.py
+          grep -q '普通上传权威合同为 ``POST /files``' backend/app/api/v1/file.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -117,10 +118,16 @@ jobs:
             app/services/storage app/services/file_storage_governance_service.py \
             app/services/file_storage_cleanup_service.py \
             app/services/file_upload_session_cleanup_service.py \
+            app/services/generated_file_path_service.py \
+            app/services/streaming_archive_service.py \
             app/modules/academic_affairs/routers/academic_file_exchange_router.py \
             app/modules/academic_affairs/routers/academic_export_compat_router.py \
             app/modules/academic_affairs/services/academic_file_exchange_service.py \
             app/modules/academic_affairs/services/academic_export_compat_service.py \
+            app/modules/graduation/services/graduation_material_center_service.py \
+            app/modules/graduation/services/graduation_material_export_service.py \
+            app/modules/internship/services/internship_material_center_service.py \
+            app/modules/internship/services/internship_streaming_package_service.py \
             app/workers/file_scan_worker.py app/workers/file_governance_worker.py \
             app/commands/migrate_files_to_cos.py
       - name: Select stage 6–10 targeted tests
