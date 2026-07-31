@@ -8,6 +8,7 @@ import uuid
 
 from fastapi import APIRouter, Body, Depends, Header
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.config import settings
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException, not_found
@@ -78,14 +79,11 @@ _EXPORT_TASKS: dict[str, dict] = {}
 def export_task_status(task_id: str, user=Depends(require_staff)):
     task = _EXPORT_TASKS.get(task_id)
     if not task:
-        # 不猜测成功：未知任务统一 404，避免泄露
         raise not_found("导出任务不存在或文件已清理")
     return success(task)
 
 
-# ── 真实导入导出（学生主档 + 域白名单）──
 from fastapi import File, UploadFile  # noqa: E402
-from fastapi.responses import FileResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from app.services import import_export_service as ie  # noqa: E402
@@ -103,15 +101,6 @@ def _limit_operation(user: dict, operation: str, *, user_limit: int, tenant_limi
         raise AppException("RATE_LIMITED", f"当前学校{operation}任务过多，请稍后再试")
     if not rate_limit(f"{operation}:tenant:{tenant_id}:user:{user_id}", user_limit, 60):
         raise AppException("RATE_LIMITED", f"操作过于频繁（每分钟最多 {user_limit} 次），请稍后再试")
-
-
-# ── 旧学生导入入口已删除（学生主档统一整改）──────────────────────────────
-# 原 /import/students/{validate,validate-file,confirm} 只建主档不建账号，是学生主档的
-# 第三条批量写入链路。学生主档现在只有两条正式写入路径：
-#   1) 教务中心 › 学籍导入（建学籍，不建账号）
-#   2) 系统管理 › 学生导入与账号开通（/api/v1/system/identity-import/students/*）
-# 甲方明确不保留兼容层，故不做 redirect / 410 / 代理转发，旧路径直接 404。
-# 原挂在本组端点上的 studentImport 租户特性闸门已迁至学生导入与账号开通入口。
 
 
 @import_router.post("/domain/{domain}/validate", summary="域白名单通用导入 Dry-Run 校验")
@@ -132,7 +121,6 @@ def import_domain_confirm(body: dict = Body(...), user=Depends(require_staff),
     batch_no = str(body.get("batchNo") or "")
     domain = str(body.get("domain") or "")
     if not domain:
-        # 从批次反查 domain，禁止无域确认
         meta = domain_import_service.peek_batch(batch_no)
         domain = (meta or {}).get("domain") or ""
     auth = enforce_import_perm(user, domain)
@@ -187,6 +175,11 @@ def export_students(body: ExportStudentsRequest,
 @export_router.get("/tasks/{task_id}/download", summary="下载导出文件（xlsx；归属+权限+租户校验）")
 def download_export(task_id: str, user=Depends(require_staff)):
     path = ie.export_file_path(task_id, user=user)
-    audit_log.record("DOWNLOAD", "export-file", detail={"taskId": task_id, "file": path.name})
-    return FileResponse(path, filename=path.name,
-                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return validated_local_file_response(
+        path,
+        filename=path.name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        audit_action="LEGACY_EXPORT_DOWNLOAD",
+        audit_target=f"legacy-export:{task_id}",
+        audit_detail={"taskId": task_id, "legacyDebt": True},
+    )
