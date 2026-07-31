@@ -1,6 +1,6 @@
 # Teacher PC V2 冻结验证工具
 
-本目录的工具只读取仓库和原型文件；默认报告写到 `/tmp` 或调用方指定目录，不把截图、浏览器缓存、运行日志和报告提交仓库。
+本目录工具只读取仓库和原型文件；默认报告写到 `/tmp` 或调用方指定目录，不把截图、浏览器缓存、运行日志和报告提交仓库。
 
 ## 运行环境
 
@@ -46,7 +46,41 @@ node tools/check-internship-route-audit.mjs \
 - 每个 owner 都有字段、状态和 API 参数契约；
 - 无过时 URL、无漏 URL、无重复认领。
 
-## 3. 三档分辨率浏览器全量回归
+## 3. 毕业设计 8 工作区 / 50 叶子审计
+
+```bash
+node tools/check-graduation-workspace-audit.mjs \
+  --report=/tmp/teacher-pc-v2-freeze/graduation-workspace-audit.json
+```
+
+脚本直接读取生产：
+
+```text
+frontend/src/modules/graduation/config/graduationWorkspaces.js
+```
+
+并与：
+
+```text
+docs/ui/teacher-pc-v2-html/manifest-parts/320-graduation.json
+```
+
+逐项比较。通过条件：
+
+- 8 个生产工作区；
+- 50 个生产三级叶子；
+- 48 个唯一 URL；
+- 2 个共享 URL 及 owner 完全一致；
+- 8 个 workspace key、名称和主入口一致；
+- 每个工作区 `coveredRoutes` 与生产叶子集合一致；
+- 每个工作区权限候选覆盖全部生产权限；
+- 8 个 HTML 均存在且一页只属于一个工作区；
+- 每个工作区具备字段、状态和业务边界契约；
+- 无过时工作区、漏工作区或过时共享 URL。
+
+该脚本已完成 `node --check`，并在隔离同构目录中跑通；最终冻结必须在完整真实分支快照中再次执行。
+
+## 4. 三档分辨率浏览器全量回归
 
 当前总 Manifest 登记 **290 个唯一 HTML**，因此基础回归是：
 
@@ -87,12 +121,13 @@ node tools/run-browser-regression.mjs \
 - 正 `tabindex`、无交互元素和 `console.warn` 警告；
 - 可选三档截图。
 
-## 4. 冻结顺序
+## 5. 冻结顺序
 
 ```bash
 node tools/check-prototype-consistency.mjs --report=/tmp/teacher-pc-v2-freeze/consistency.json
 node tools/check-internship-route-audit.mjs --report=/tmp/teacher-pc-v2-freeze/internship-route-audit.json
+node tools/check-graduation-workspace-audit.mjs --report=/tmp/teacher-pc-v2-freeze/graduation-workspace-audit.json
 node tools/run-browser-regression.mjs --concurrency=4 --report-dir=/tmp/teacher-pc-v2-freeze/browser
 ```
 
-三项全部 PASS 后，仍需人工完成打印页、特殊状态、业务红线和公共交互复核。只有 `prototype-freeze-gates.md` 的 G0–G7 全部通过，才能记录冻结 HEAD、把 Manifest 状态改为 `FROZEN` 并生成四条生产施工总控提示词。
+四项全部 PASS 后，仍需人工完成打印页、特殊状态、业务红线和公共交互复核。只有 `prototype-freeze-gates.md` 的 G0–G7 全部通过，才能记录冻结 HEAD、把 Manifest 状态改为 `FROZEN` 并生成四条生产施工总控提示词。
