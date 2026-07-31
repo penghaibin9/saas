@@ -70,9 +70,79 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  materialize-validated-runner:
-    name: 固化已验证验收器
-    needs: cross-browser-freeze-acceptance
+  final-full-regression:
+    name: 最新 HEAD 边界/一致性/870 全量回归
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify exact PR file boundary
+        shell: bash
+        run: |
+          git fetch origin main --depth=1
+          python - <<'PY'
+          import subprocess
+
+          allowed_outside_docs = {
+              '.github/workflows/pr27-prototype-freeze-acceptance.yml',
+              'frontend/src/config/navPlan.js',
+              'frontend/src/config/navPlan.permission-contract.test.js',
+              'frontend/tests/studentAffairs.permissionCatalog.test.mjs',
+          }
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', 'origin/main...HEAD'],
+              text=True,
+          ).splitlines()
+          outside = {
+              item for item in changed
+              if not item.startswith('docs/ui/teacher-pc-v2-html/')
+          }
+          unexpected = sorted(outside - allowed_outside_docs)
+          missing = sorted(allowed_outside_docs - outside)
+          if unexpected or missing:
+              raise SystemExit(
+                  f'production boundary mismatch; unexpected={unexpected}; missing={missing}; outside={sorted(outside)}'
+              )
+          print(f'changed files: {len(changed)}; exact outside-docs allowlist: {sorted(outside)}')
+          PY
+
+      - name: Prepare and run prototype consistency gate
+        shell: bash
+        run: |
+          mkdir -p freeze-artifacts/consistency
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
+          node docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs \
+            --report=freeze-artifacts/consistency/report.json
+
+      - name: Run final 290 x 3 browser regression
+        shell: bash
+        run: |
+          node docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs \
+            --concurrency=6 \
+            --timeout-ms=30000 \
+            --report-dir=freeze-artifacts/full-regression
+
+      - name: Upload final regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr27-final-consistency-and-870
+          path: freeze-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  materialize-validated-tools:
+    name: 固化已验证冻结工具
+    needs:
+      - cross-browser-freeze-acceptance
+      - final-full-regression
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     steps:
@@ -85,10 +155,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Materialize verified runner and remove one-shot workflow
+      - name: Materialize verified tools
         run: |
           node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-acceptance.mjs
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           rm -f .github/workflows/pr27-acceptance-runner-repair.yml
 
       - name: Commit only when materialization changed the branch
@@ -96,10 +168,11 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+          git add docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           git add -u .github/workflows/pr27-acceptance-runner-repair.yml
           if git diff --cached --quiet; then
-            echo 'runner already materialized'
+            echo 'freeze tools already materialized'
             exit 0
           fi
-          git commit -m 'fix(prototype): materialize validated acceptance runner'
+          git commit -m 'fix(prototype): materialize validated freeze tools'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
