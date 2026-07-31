@@ -1,0 +1,156 @@
+name: File center stage 6-10 validation report
+
+on:
+  push:
+    branches: [audit/file-capability-inventory]
+    paths: ['.github/workflows/file-center-validation-report.yml']
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyyaml
+      - name: Inventory, call scan and upload contract
+        run: |
+          python scripts/audit_file_capabilities.py --check-schema
+          python scripts/audit_file_capabilities.py --strict-baseline
+          python scripts/check_new_file_capabilities.py --base-ref origin/main
+          python scripts/audit_file_center_calls.py --strict --base-ref origin/main --json-report artifacts/file-center-call-scan.json
+          ! grep -R -n --include='*.js' --include='*.vue' --include='*.ts' '["'"'"'`]\/files\/upload' frontend/src student-portal/src miniapp/src
+          ! grep -n '@router.post("/upload"' backend/app/api/v1/file.py
+          grep -q '@router.post("", summary="上传文件（权威入口）")' backend/app/api/v1/files.py
+
+  mysql:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      APP_ENV: test
+      SECRET_KEY: stage10-file-center-validation-secret
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Migrations, compile and stage 6-10 tests
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          python -m compileall -q app tests
+          TARGETS=$(find tests -maxdepth 1 -type f \( \
+            -name 'test_file*.py' -o \
+            -name 'test_*material_center*.py' -o \
+            -name 'test_*archive_manifest*.py' -o \
+            -name 'test_data_exchange_job_center.py' -o \
+            -name 'test_academic_file_exchange_center.py' -o \
+            -name 'test_academic_export_compat.py' \
+          \) | sort | tr '\n' ' ')
+          test -n "$TARGETS"
+          timeout 50m pytest $TARGETS -q -p no:warnings --durations=30
+          python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run
+
+  admin:
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  student:
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: student-portal } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  miniapp:
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: miniapp } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - run: npm ci
+      - run: npm run build:h5
+      - run: npm run build:mp-weixin
+
+  report:
+    if: always()
+    needs: [scan, mysql, admin, student, miniapp]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SCAN: ${{ needs.scan.result }}
+      MYSQL: ${{ needs.mysql.result }}
+      ADMIN: ${{ needs.admin.result }}
+      STUDENT: ${{ needs.student.result }}
+      MINIAPP: ${{ needs.miniapp.result }}
+    steps:
+      - name: Write validation result to Draft PR 25
+        run: |
+          cat > /tmp/result.md <<EOF
+          <!-- file-center-stage6-10-validation -->
+          ## 阶段 6–10 最新验收（${GITHUB_SHA}）
+
+          | 门禁 | 结果 |
+          |---|---|
+          | 能力清单 / 严格调用扫描 / 上传合同 | ${SCAN} |
+          | MySQL 8 / Alembic / 阶段 6–10 pytest / 治理 worker | ${MYSQL} |
+          | 管理 PC lint / test / build | ${ADMIN} |
+          | 学生 PC lint / test / build | ${STUDENT} |
+          | H5 / 微信小程序生产构建 | ${MINIAPP} |
+
+          Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+          gh pr comment 25 --repo "$GITHUB_REPOSITORY" --body-file /tmp/result.md
