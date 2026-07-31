@@ -13,6 +13,7 @@
 - 仓库截图：**0**
 - 历史本地截图记录：**309**
 - 当前累计浏览器回归：**546 / 870 PASS，182 / 290 页**
+- 当前 PR 文件边界：**全部变更文件均位于 `docs/ui/teacher-pc-v2-html/`**
 
 ## 工作区分布
 
@@ -21,7 +22,7 @@
 | 教务中心 | 27 工作区 | `00`–`220` | 多页面族已回归，最终候选 HEAD 全量重跑未完成 |
 | 学工中心 | 15 工作区 | `300`、`330` | 15 页契约已核对；13 页一致，2 页发现生产权限冲突；11 页浏览器回归待执行 |
 | 岗位实习中心 | 10 关键工作台覆盖 12 二级 | `310` | 101 叶子 / 99 URL 来源审计仍有效；最终 HEAD 待重跑 |
-| 毕业设计中心 | 8 工作区 | `320` | 已纠偏为生产现行 8 工作区、50 叶子 / 48 URL；浏览器 0 / 24 |
+| 毕业设计中心 | 8 工作区 | `320` | 生产现行 8 / 50 / 48 / 2 已重建；审计脚本夹具 PASS；真实分支与浏览器待执行 |
 
 ## 教务中心
 
@@ -118,7 +119,19 @@
 - 重建 `320-graduation.json` 与共享 JavaScript；
 - 独立 HTML 数量仍为 8，全库总数仍为 290。
 
-当前 8 页只完成静态结构与契约重建，浏览器回归仍为 0 / 24。
+### 机器审计
+
+新增 `tools/check-graduation-workspace-audit.mjs` 与 `graduation/workspace-audit-report.md`。工具检查：
+
+- 8 个 workspace key、名称和主入口；
+- 50 个生产叶子与 48 个唯一 URL；
+- 两个共享 URL 及 owner；
+- 每个工作区 `coveredRoutes` 与生产权限覆盖；
+- 8 个 HTML 的存在性与唯一 owner；
+- 字段、状态和业务边界；
+- 漏项、过时项和错误共享关系。
+
+当前工具语法检查 PASS，隔离同构夹具得到 8 / 50 / 48 / 2、8 HTML、0 error PASS。完整真实 PR 分支尚未执行，因此当前 8 页仍只完成静态结构与契约重建，浏览器回归仍为 0 / 24。
 
 ## 程序化冻结检查
 
@@ -126,6 +139,7 @@
 
 - `tools/check-prototype-consistency.mjs`
 - `tools/check-internship-route-audit.mjs`
+- `tools/check-graduation-workspace-audit.mjs`
 - `tools/run-browser-regression.mjs`
 - `tools/README.md`
 
@@ -140,7 +154,7 @@
 - Manifest、HTML、CSS、JavaScript 和相对资源存在性通过；
 - 无未解释重复 route、孤儿 HTML、失效引用或目录越界；
 - 最终候选 HEAD 的岗位实习 101 叶子 / 99 URL / 2 别名审计 0 error；
-- 毕业设计现行 50 叶子 / 48 URL 再次与生产事实源一致；
+- 最终候选 HEAD 的毕业设计 8 工作区 / 50 叶子 / 48 URL / 2 共享 URL 审计 0 error；
 - 870 / 870 浏览器渲染通过；
 - 控制台、运行时、Promise、资源和样式错误为 0；
 - 非预期根页面横向溢出为 0；
