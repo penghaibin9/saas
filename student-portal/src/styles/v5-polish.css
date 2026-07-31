@@ -1,21 +1,5 @@
 /* V5 最终细节层：放在 v5-overrides.css 之后。 */
 
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
-  height: auto;
-  flex-wrap: wrap;
-  padding-top: 9px;
-  padding-bottom: 9px;
-}
-
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab::before {
-  flex: 0 0 100%;
-  box-sizing: border-box;
-}
-
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab:nth-child(1)::before {
-  margin-top: 0;
-}
-
 /* 全局相邻卡片间距在双列/网格容器中必须归零，避免第二列下沉。 */
 :where(.two, .select-grid, .catgrid, .content-grid, .gd-summary, .gdep__summary) > .sp-card + .sp-card,
 :where(.two, .select-grid, .catgrid, .content-grid) > .sp-panel + .sp-panel {
@@ -27,47 +11,54 @@
   outline-offset: 2px;
 }
 
-html[data-sp-theme='dark'] .sp-header,
-html[data-sp-theme='dark'] .home-card,
-html[data-sp-theme='dark'] .home-metric,
-html[data-sp-theme='dark'] .home-quick__item,
-html[data-sp-theme='dark'] .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs {
-  background: #1b2231 !important;
-  border-color: #2a3448 !important;
+/* 可点击主色文字统一使用经过对比度校正的 token。 */
+:where(.sp-link, .link, .todo__go, .msg__all, .section-route__back) {
+  color: var(--pri-text, var(--pri));
+}
+
+html[data-sp-theme='dark'] :where(
+  .sp-header, .home-card, .home-metric, .home-quick__item,
+  .academic-context,
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > .sp-tabs
+) {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
 }
 
 html[data-sp-theme='dark'] .home-focus {
-  background: #202838;
+  background: var(--surface-2);
   color: var(--t1);
 }
 
 html[data-sp-theme='dark'] .home-todo,
 html[data-sp-theme='dark'] .home-message,
 html[data-sp-theme='dark'] .home-domain {
-  border-color: #273248;
+  border-color: var(--line2);
 }
 
 html[data-sp-theme='dark'] .sp-shell.is-compact .sp-tabs .sp-tab:hover {
-  background: #232d40;
+  background: var(--surface-2);
 }
 
 html[data-sp-theme='dark'] .sp-bell,
 html[data-sp-theme='dark'] .sp-search {
-  background: #202838;
-  border-color: #34405a;
+  background: var(--field-bg);
+  border-color: var(--line);
+}
+
+/* 自定义白底表单和兼容页必须随深色主题切换。 */
+html[data-sp-theme='dark'] :where(
+  .search, .tr-preview, .typecard, .inline-form, .selected-target,
+  .legacy-safe__action.is-secondary, .section-route__mapping-error
+) {
+  background: var(--surface-2) !important;
+  border-color: var(--line) !important;
+  color: var(--t1) !important;
 }
 
 @media (min-width: 1500px) {
   .sp-shell.is-compact .sp-content {
     padding-left: 28px;
     padding-right: 28px;
-  }
-}
-
-@media (max-width: 820px) {
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
-    flex-wrap: nowrap;
-    padding-top: 0;
-    padding-bottom: 0;
   }
 }
