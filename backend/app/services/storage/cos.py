@@ -69,7 +69,7 @@ class CosStorageBackend:
                 Body=body,
                 Key=key,
                 ServerSideEncryption="AES256",
-            )
+            ) or {}
         staged.unlink(missing_ok=True)
         return {
             "bucketName": self.bucket_name,
@@ -129,15 +129,11 @@ class CosStorageBackend:
             "bucketName": self.bucket_name,
             "objectKey": target_key,
             "etag": head.get("etag") or str(response.get("ETag") or "").strip('"'),
-            "sizeBytes": head.get("sizeBytes"),
         }
 
     def exists(self, key: str) -> bool:
-        return bool(self._client.object_exists(Bucket=self.bucket_name, Key=key))
+        return self.head_object(key) is not None
 
     def delete(self, key: str) -> None:
-        try:
-            self._client.delete_object(Bucket=self.bucket_name, Key=key)
-        except Exception:  # noqa: BLE001 — 删除幂等，对象不存在不阻断
-            pass
+        self._client.delete_object(Bucket=self.bucket_name, Key=key)
         (self._cache_root() / key).unlink(missing_ok=True)
