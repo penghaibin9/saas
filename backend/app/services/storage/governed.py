@@ -1,7 +1,8 @@
 """在物理写入边界统一执行租户硬配额。
 
-这样用户上传、系统生成 Excel/PDF/ZIP、错误回执等所有调用 StorageBackend.persist 的路径都受同一
-配额约束，不依赖每个业务页面记得调用治理服务。
+用户上传、系统生成 Excel/PDF/ZIP、错误回执等所有调用 StorageBackend.persist 的路径
+都受同一配额约束。纯本地/单元测试的 DB_DISABLED 模式没有持久化配额事实，必须直接
+委托物理后端，不能误触发数据库连接。
 """
 from __future__ import annotations
 
@@ -20,9 +21,11 @@ class GovernedStorageBackend:
         return self._delegate.staging_path(key)
 
     def persist(self, key: str, staged: Path):
-        from app.services.file_storage_governance_service import assert_quota_available
+        from app.db.session import db_enabled
 
-        if staged.exists():
+        if db_enabled() and staged.exists():
+            from app.services.file_storage_governance_service import assert_quota_available
+
             assert_quota_available(staged.stat().st_size)
         return self._delegate.persist(key, staged)
 
