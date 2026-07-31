@@ -63,8 +63,8 @@
           <div v-else style="display:flex;flex-direction:column;gap:10px">
             <div v-for="a in apps" :key="a.id" class="approw">
               <span class="atag" :style="modTagStyle(a.sourceType)">{{ a.dept || '事务' }}</span>
-              <div style="flex:1;min-width:0"><div class="atitle">{{ a.name }}</div><div style="font-size:12px;color:var(--t4);margin-top:2px">{{ fmt(a.applyTime) }}</div></div>
-              <StatusTag :text="a.statusText || a.status" :tone="groupTone(a.group)" />
+              <div style="flex:1;min-width:0"><div class="atitle">{{ applicationName(a) }}</div><div style="font-size:12px;color:var(--t4);margin-top:2px">{{ fmt(a.applyTime) }}</div></div>
+              <StatusTag :text="applicationStatusText(a)" :tone="groupTone(a.group)" />
             </div>
           </div>
         </section>
@@ -105,6 +105,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
+import { localizeTrailingEnumInParentheses } from '../../services/visibleEnumLocalization'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
@@ -125,6 +126,20 @@ const confirmRevoke = ref('')
 const initial = computed(() => (info.value.name || '同').slice(0, 1))
 const STATUS_MAP = { NORMAL: '在读', ACTIVE: '在读', SUSPENDED: '休学', TRANSFERRED: '转学', WITHDRAWN: '退学', GRADUATED: '毕业' }
 function statusText(s) { return STATUS_MAP[s] || s || '在读' }
+const APPLICATION_STATUS_MAP = { SUBMITTED: '已提交', PENDING_REVIEW: '待审核', CLASS_REVIEW: '班级审核中', COUNSELOR_REVIEW: '辅导员审核中', COLLEGE_REVIEW: '学院审核中', SCHOOL_REVIEW: '学校审核中', APPROVED: '已通过', REJECTED: '未通过', RETURNED: '已退回', PROCESSING: '处理中', COMPLETED: '已完成' }
+const APPLICATION_NAME_MAP = { PERSONAL: '事假申请', SICK: '病假申请', OFFICIAL: '公假申请', LEAVE: '请假申请', AID: '困难认定', FUNDING: '奖助申请', DORM: '宿舍事务' }
+function readableCode(value, mapping, fallback = '状态待确认') {
+  const raw = String(value || '').trim()
+  if (!raw) return fallback
+  const key = raw.toUpperCase()
+  if (mapping[key]) return mapping[key]
+  return /^[A-Z0-9_]+$/.test(raw) ? fallback : raw
+}
+function applicationName(item) {
+  const raw = readableCode(item?.name || item?.type || item?.leaveType, APPLICATION_NAME_MAP, '业务申请')
+  return localizeTrailingEnumInParentheses(raw)
+}
+function applicationStatusText(item) { return item?.statusText || readableCode(item?.status || item?.currentNode, APPLICATION_STATUS_MAP) }
 
 const basic = computed(() => {
   const i = info.value
@@ -144,7 +159,7 @@ const sens = computed(() => {
 })
 
 function groupTone(g) { return g === 'approved' || g === 'done' ? 'success' : g === 'rejected' ? 'danger' : 'warn' }
-function modTagStyle() { return { background: 'var(--pri-50)', color: 'var(--pri)' } }
+function modTagStyle() { return { background: 'var(--pri-50)', color: 'var(--pri-text, var(--pri))' } }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '—' }
 
 function startReveal(field) { revealing.value = field; reason.value = '' }

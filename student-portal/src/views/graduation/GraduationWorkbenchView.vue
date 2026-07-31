@@ -20,7 +20,7 @@
       <section class="gd-summary sp-panel">
         <div><span>我的课题</span><strong>{{ my.topicTitle || '待选题' }}</strong></div>
         <div><span>指导教师</span><strong>{{ my.advisorName || '待分配' }}</strong></div>
-        <div><span>当前环节</span><strong>{{ my.stageLabel || my.stage || '待开始' }}</strong></div>
+        <div><span>当前环节</span><strong>{{ stageText(my.stageLabel || my.stage) }}</strong></div>
         <div><span>所属批次</span><strong>{{ my.batchName || '—' }}</strong></div>
       </section>
 
@@ -83,7 +83,7 @@
                 </div>
                 <label class="gd-check">
                   <input v-model="taskbookAck" type="checkbox" />
-                  我已阅读并确认任务书 v{{ taskbook.taskbookVersion || '—' }}
+                  我已阅读并确认任务书第 {{ taskbook.taskbookVersion || '—' }} 版
                 </label>
                 <button class="sp-btn" :disabled="busy || !taskbookAck || !taskbook.taskbookVersion" @click="signTaskbook">签署确认</button>
               </template>
@@ -275,6 +275,15 @@ const finalDetail = computed(() => {
   return `${item.type} ${item.version} · ${item.statusLabel}${rate}`
 })
 
+const STAGE_TEXT = { TOPIC: '组织与选题', TASKBOOK: '任务书确认', PROPOSAL: '开题论证', MIDTERM: '中期检查', FINAL: '论文成果', PEER: '成果互查', DEFENSE: '答辩安排', ARCHIVE: '成绩与归档', COMPLETED: '已完成' }
+function stageText(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return '待开始'
+  const key = raw.toUpperCase()
+  if (STAGE_TEXT[key]) return STAGE_TEXT[key]
+  return /^[A-Z0-9_]+$/.test(raw) ? '环节待确认' : raw
+}
+
 const steps = computed(() => [
   {
     key: 'topic', order: '01', title: '组织与选题', description: '在学校开放的轮次中提交志愿，等待导师或管理员确认。',
@@ -285,7 +294,7 @@ const steps = computed(() => [
   {
     key: 'taskbook', order: '02', title: '任务书确认', description: '阅读导师下达的任务目标、研究内容、进度计划和成果要求。',
     status: taskbook.value.status === 'CONFIRMED' ? '已确认' : taskbook.value.statusLabel || '等待下达', tone: taskbook.value.status === 'CONFIRMED' ? 'success' : 'warn',
-    detail: taskbook.value.hasData ? `任务书 v${taskbook.value.taskbookVersion || 1} · ${taskbook.value.objective || '请阅读任务书详情'}` : (taskbook.value.message || '导师尚未下达任务书。'),
+    detail: taskbook.value.hasData ? `任务书第 ${taskbook.value.taskbookVersion || 1} 版 · ${taskbook.value.objective || '请阅读任务书详情'}` : (taskbook.value.message || '导师尚未下达任务书。'),
     action: ['PENDING_CONFIRM', 'CHANGE_PENDING'].includes(taskbook.value.status) ? '确认任务书' : ''
   },
   {

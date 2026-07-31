@@ -1,0 +1,162 @@
+name: Student Portal V5 Full Review
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - student-portal/src/**
+      - student-portal/review/**
+      - student-portal/package.json
+      - student-portal/package-lock.json
+      - docs/reviews/student-portal-v5-full-review/REVIEW_REPORT.md
+      - .github/workflows/student-portal-v5-full-review.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: student-portal-v5-full-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  real-browser-review:
+    name: 真实 MySQL + Chromium 全页面复审
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_review
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      APP_ENV: development
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_review?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_review?charset=utf8mb4
+      JWT_SECRET: student-portal-v5-review-secret-change-me-20260731
+      JWT_EXPIRES_IN: "7200"
+      MOCK_LOGIN_ENABLED: "false"
+      DEFAULT_TENANT_CODE: sandbox-school
+      DEMO_TENANT_READONLY: "false"
+      SANDBOX_AUTO_RESET: "false"
+      SCHEDULER_MODE: external
+      CORS_ORIGINS: http://127.0.0.1:5199,http://localhost:5199
+      REVIEW_BASE_URL: http://127.0.0.1:5199
+      REVIEW_LOGIN: student2
+      REVIEW_PASSWORD: "123456"
+      REVIEW_TENANT: sandbox-school
+      REVIEW_OUTPUT: /tmp/student-portal-v5-full-review
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+
+      - name: 安装后端依赖
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: 执行真实 MySQL 迁移
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: 确认种子脚本仅连接 CI 一次性数据库
+        run: |
+          python - <<'PY'
+          import os
+          url = os.environ.get('DATABASE_URL', '')
+          assert '127.0.0.1:3306/student_lifecycle_review' in url, f'unsafe review database: {url}'
+          assert os.environ.get('DEFAULT_TENANT_CODE') == 'sandbox-school'
+          print('ephemeral review database confirmed')
+          PY
+
+      - name: 重建 sandbox-school 真实种子
+        run: python student-portal/review/seed-sandbox-compatible.py
+
+      - name: 启动真实 FastAPI
+        working-directory: backend
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/student-v5-backend.log 2>&1 &
+          echo $! > /tmp/student-v5-backend.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/student-v5-backend.log
+          exit 1
+
+      - name: 验证真实账号密码登录
+        run: |
+          curl -fsS -X POST http://127.0.0.1:8000/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"tenantCode":"sandbox-school","loginName":"student2","password":"123456","clientType":"PC"}' \
+            | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('code')==0; assert (d.get('data') or {}).get('user',{}).get('userType')=='STUDENT'; print('real login ok')"
+
+      - name: 安装学生门户依赖和 Chromium
+        working-directory: student-portal
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: 启动真实学生门户
+        working-directory: student-portal
+        env:
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+          VITE_BASE: /
+        run: |
+          nohup npm run dev -- --host 127.0.0.1 > /tmp/student-v5-portal.log 2>&1 &
+          echo $! > /tmp/student-v5-portal.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5199/login >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/student-v5-portal.log
+          exit 1
+
+      - name: Chromium 全路由、tab、主题、交互和多分辨率复审
+        working-directory: student-portal
+        run: |
+          node review/v5-full-review.mjs
+          node review/visible-enum-scan.mjs
+          node review/write-report.mjs
+
+      - name: 保存运行日志摘要
+        if: always()
+        run: |
+          mkdir -p "$REVIEW_OUTPUT/logs"
+          tail -n 300 /tmp/student-v5-backend.log > "$REVIEW_OUTPUT/logs/backend-tail.log" 2>/dev/null || true
+          tail -n 300 /tmp/student-v5-portal.log > "$REVIEW_OUTPUT/logs/portal-tail.log" 2>/dev/null || true
+
+      - name: 上传复审证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-portal-v5-full-review
+          path: /tmp/student-portal-v5-full-review
+          if-no-files-found: error
+          retention-days: 14

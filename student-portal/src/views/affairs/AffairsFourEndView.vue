@@ -25,7 +25,7 @@
           <div class="sp-panel__head">请假 / 销假 / 续假记录</div>
           <StateBlock v-if="!(leave.items || []).length" type="empty" text="暂无请假记录" />
           <article v-for="item in (leave.items || [])" :key="item.leaveId" class="record">
-            <div class="record-head"><div><strong>{{ item.leaveTypeLabel || item.leaveType }}</strong><div class="sp-muted">{{ fmt(item.startTime) }} 至 {{ fmt(item.endTime) }} · {{ item.days }}天</div><div v-if="item.returnReason" class="warn">退回意见：{{ item.returnReason }}</div></div><StatusTag :text="item.affairsStatusLabel || item.statusLabel || item.status" tone="default" /></div>
+            <div class="record-head"><div><strong>{{ enumText(item.leaveTypeLabel || item.leaveType) }}</strong><div class="sp-muted">{{ fmt(item.startTime) }} 至 {{ fmt(item.endTime) }} · {{ item.days }}天</div><div v-if="item.returnReason" class="warn">退回意见：{{ item.returnReason }}</div></div><StatusTag :text="item.affairsStatusLabel || item.statusLabel || item.status" tone="default" /></div>
             <div class="actions"><button v-if="item.canResubmit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editLeave(item)">修改后重提</button><button v-if="item.canCancel" class="sp-btn" :disabled="busy" @click="cancelLeave(item)">申请销假</button><button v-if="item.canExtend" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openExtend(item)">申请续假</button></div>
             <div v-if="extendId === item.leaveId" class="inline-form">
               <label><span>原结束日期</span><strong>{{ fmt(item.endTime) }}</strong></label>
@@ -38,7 +38,7 @@
       </div>
 
       <section v-else-if="tab === 'aid'" class="sp-card">
-        <div class="sp-panel__head">家庭经济困难认定 <StatusTag :text="aid.currentLevel || '未认定'" :tone="aid.currentLevel ? 'success' : 'default'" /></div>
+        <div class="sp-panel__head">家庭经济困难认定 <StatusTag :text="enumText(aid.currentLevel || '未认定')" :tone="aid.currentLevel ? 'success' : 'default'" /></div>
         <p class="sp-muted">PC与小程序采用同一材料合同：家庭人数、年收入、债务、特殊情况和困难说明共同进入审批。</p>
         <div class="form-grid compact">
           <label class="wide"><span>开放批次</span><select v-model="aidForm.batchId" class="sp-inp"><option value="">请选择</option><option v-for="b in aidBatches" :key="b.batchId" :value="b.batchId">{{ b.batchName || b.schoolYear }}（截止 {{ fmt(b.applyEnd) || '不限' }}）</option></select></label>
@@ -55,7 +55,7 @@
         <div class="section-title">认定记录</div>
         <StateBlock v-if="!(aid.items || []).length" type="empty" text="暂无认定记录" />
         <article v-for="item in (aid.items || [])" :key="item.applyId" class="record">
-          <div class="record-head"><div><strong>申请等级：{{ item.applyLevel }}</strong><div class="sp-muted">{{ item.statusLabel || item.status }}</div><div v-if="item.returnReason" class="warn">意见：{{ item.returnReason }}</div></div><StatusTag :text="item.statusLabel || item.status" tone="default" /></div>
+          <div class="record-head"><div><strong>申请等级：{{ enumText(item.applyLevel) }}</strong><div class="sp-muted">{{ enumText(item.statusLabel || item.status) }}</div><div v-if="item.returnReason" class="warn">意见：{{ item.returnReason }}</div></div><StatusTag :text="item.statusLabel || item.status" tone="default" /></div>
           <div class="actions"><button v-if="item.canResubmit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editAid(item)">修改后重提</button></div>
           <div v-if="item.canObject" class="inline-form"><textarea v-model.trim="aidObjections[item.applyId]" maxlength="500" class="sp-inp" placeholder="公示异议理由（5-500字）" /><button class="sp-btn" :disabled="busy || !validReason(aidObjections[item.applyId], 5, 500)" @click="submitAidObjection(item)">提交异议</button></div>
           <div v-if="item.hasPendingObjection" class="sp-muted">异议已进入具体老师待办，等待复核。</div>
@@ -70,7 +70,7 @@
         <button class="sp-btn" :disabled="busy || !validFunding" @click="submitFunding">提交申请</button>
         <div class="section-title">我的奖助记录</div>
         <StateBlock v-if="!(funding.items || []).length" type="empty" text="暂无奖助记录" />
-        <article v-for="item in (funding.items || [])" :key="item.applicationId" class="record"><div class="record-head"><div><strong>{{ fundingLabel(item.projectType) }}</strong><div class="sp-muted">{{ item.statusLabel || item.status }}</div><div v-if="item.returnReason" class="warn">意见：{{ item.returnReason }}</div></div><StatusTag :text="item.hasPendingAppeal ? '申诉待复核' : (item.statusLabel || item.status)" :tone="item.hasPendingAppeal ? 'warn' : 'default'" /></div><div class="actions"><button v-if="item.canResubmit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editFunding(item)">修改后重提</button></div><div v-if="item.canAppeal" class="inline-form"><textarea v-model.trim="fundAppeals[item.applicationId]" maxlength="1000" class="sp-inp" placeholder="公示申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(fundAppeals[item.applicationId], 5, 1000)" @click="submitFundingAppeal(item)">提交申诉</button></div></article>
+        <article v-for="item in (funding.items || [])" :key="item.applicationId" class="record"><div class="record-head"><div><strong>{{ fundingLabel(item.projectType) }}</strong><div class="sp-muted">{{ enumText(item.statusLabel || item.status) }}</div><div v-if="item.returnReason" class="warn">意见：{{ item.returnReason }}</div></div><StatusTag :text="item.hasPendingAppeal ? '申诉待复核' : (item.statusLabel || item.status)" :tone="item.hasPendingAppeal ? 'warn' : 'default'" /></div><div class="actions"><button v-if="item.canResubmit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editFunding(item)">修改后重提</button></div><div v-if="item.canAppeal" class="inline-form"><textarea v-model.trim="fundAppeals[item.applicationId]" maxlength="1000" class="sp-inp" placeholder="公示申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(fundAppeals[item.applicationId], 5, 1000)" @click="submitFundingAppeal(item)">提交申诉</button></div></article>
       </section>
 
       <section v-else-if="tab === 'dorm'" class="sp-card">
@@ -79,7 +79,7 @@
         <template v-else>
           <div class="bed-grid"><div><span>楼栋</span><strong>{{ dorm.myBed?.building }}</strong></div><div><span>房间</span><strong>{{ dorm.myBed?.room }}</strong></div><div><span>床位</span><strong>{{ dorm.myBed?.bedNo }}</strong></div><div><span>入住时间</span><strong>{{ fmt(dorm.myBed?.occupiedAt) }}</strong></div></div>
           <p class="sp-muted">已有床位时只能提交正式调宿申请；审批完成前原床保持不变。</p>
-          <p v-if="pendingDormTransfer" class="warn">已有调宿申请处理中：{{ pendingDormTransfer.statusLabel || pendingDormTransfer.status || pendingDormTransfer.currentNode }}</p>
+          <p v-if="pendingDormTransfer" class="warn">已有调宿申请处理中：{{ enumText(pendingDormTransfer.statusLabel || pendingDormTransfer.status || pendingDormTransfer.currentNode) }}</p>
           <button v-else class="sp-btn sp-btn--ghost" :disabled="busy" @click="loadDormOptions">申请调宿</button>
         </template>
         <div v-if="dormForm.visible" class="inline-form dorm-form">
@@ -90,13 +90,13 @@
           <textarea v-model.trim="dormForm.reason" maxlength="300" class="sp-inp" placeholder="调宿原因（5-300字）" />
           <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeDormForm">取消</button><button class="sp-btn" :disabled="busy || !validDormTransfer" @click="submitDormTransfer">核对并提交调宿</button></div>
         </div>
-        <div class="section-title">调宿申请记录</div><AutoTable :rows="dormTransfers" empty="暂无调宿申请" />
+        <div class="section-title">调宿申请记录</div><p v-if="dormTransferError" class="sp-notice">{{ dormTransferError }}</p><AutoTable v-else :rows="dormTransfers" empty="暂无调宿申请" />
       </section>
 
       <section v-else-if="tab === 'discipline'" class="sp-card">
         <div class="sp-panel__head">处分申诉</div><p class="sp-muted">本入口用于处分生效后的申诉，不冒充处分决定前的陈述申辩。具体期限以学校处分决定书与规章为准。</p>
         <StateBlock v-if="!discipline.activeCount" type="empty" text="暂无生效处分记录" />
-        <article v-for="item in (discipline.items || [])" :key="item.caseId" class="record"><div class="record-head"><div><strong>{{ item.discTypeLabel || item.discType }}</strong><div class="sp-muted">{{ fmt(item.effectiveAt) }} 生效</div><div v-if="item.appealReviewOpinion" class="sp-muted">复核意见：{{ item.appealReviewOpinion }}</div></div><StatusTag :text="appealLabel(item.appealStatus)" tone="default" /></div><div v-if="item.canAppeal" class="inline-form"><textarea v-model.trim="disciplineAppeals[item.caseId]" maxlength="1000" class="sp-inp" placeholder="处分申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(disciplineAppeals[item.caseId], 5, 1000)" @click="submitDisciplineAppeal(item)">提交处分申诉</button></div></article>
+        <article v-for="item in (discipline.items || [])" :key="item.caseId" class="record"><div class="record-head"><div><strong>{{ enumText(item.discTypeLabel || item.discType) }}</strong><div class="sp-muted">{{ fmt(item.effectiveAt) }} 生效</div><div v-if="item.appealReviewOpinion" class="sp-muted">复核意见：{{ item.appealReviewOpinion }}</div></div><StatusTag :text="appealLabel(item.appealStatus)" tone="default" /></div><div v-if="item.canAppeal" class="inline-form"><textarea v-model.trim="disciplineAppeals[item.caseId]" maxlength="1000" class="sp-inp" placeholder="处分申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(disciplineAppeals[item.caseId], 5, 1000)" @click="submitDisciplineAppeal(item)">提交处分申诉</button></div></article>
       </section>
 
       <div v-else-if="tab === 'psy'" class="two"><section class="sp-card"><div class="sp-panel__head">心理健康自评</div><p class="sp-muted">结果仅本人与心理中心按授权查看，系统不作自动诊断。</p><StateBlock v-if="!(psy.questions || []).length" type="empty" text="暂无自评问卷" /><div v-for="(q, index) in (psy.questions || [])" :key="q.key" class="question"><strong>{{ index + 1 }}. {{ q.text }}</strong><div class="options"><button v-for="(option, oi) in q.options" :key="oi" class="seg" :class="{ on: psyAnswers[q.key] === oi }" @click="psyAnswers[q.key] = oi">{{ option }}</button></div></div><button class="sp-btn" :disabled="busy || !psyComplete" @click="submitPsy">提交自评</button></section><section class="sp-card"><div class="sp-panel__head">历史测评</div><AutoTable :rows="psyHistory.items || []" empty="暂无测评记录" /></section></div>
@@ -107,7 +107,7 @@
         <section class="sp-card" style="margin-top:16px"><div class="sp-panel__head">我的积分申诉</div><AutoTable :rows="creditAppeals" empty="暂无积分申诉" /></section>
       </section>
 
-      <section v-else-if="tab === 'talk'" class="sp-card"><div class="sp-panel__head">我的谈心谈话摘要</div><p class="sp-muted">学生端只展示时间、主题、状态和是否需回访，不显示老师内部记录或心理明细。</p><StateBlock v-if="!(talk.items || []).length" type="empty" text="暂无谈话记录" /><article v-for="item in (talk.items || [])" :key="item.talkId" class="record"><div class="record-head"><div><strong>{{ item.talkTypeLabel || item.talkType }}</strong><div class="sp-muted">{{ item.topic }} · {{ fmt(item.talkAt) || '时间待定' }}</div><div v-if="item.needFollow" class="warn">需要后续回访</div></div><StatusTag :text="item.statusLabel || item.status" tone="default" /></div></article></section>
+      <section v-else-if="tab === 'talk'" class="sp-card"><div class="sp-panel__head">我的谈心谈话摘要</div><p class="sp-muted">学生端只展示时间、主题、状态和是否需回访，不显示老师内部记录或心理明细。</p><StateBlock v-if="!(talk.items || []).length" type="empty" text="暂无谈话记录" /><article v-for="item in (talk.items || [])" :key="item.talkId" class="record"><div class="record-head"><div><strong>{{ enumText(item.talkTypeLabel || item.talkType) }}</strong><div class="sp-muted">{{ item.topic }} · {{ fmt(item.talkAt) || '时间待定' }}</div><div v-if="item.needFollow" class="warn">需要后续回访</div></div><StatusTag :text="item.statusLabel || item.status" tone="default" /></div></article></section>
     </template>
 
     <div v-if="modal.type" class="mask" @click.self="closeModal">
@@ -131,6 +131,7 @@ import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
 import { portalApi } from '../../services/portalApi'
 import { affairsFourEndApi } from '../../services/affairsFourEndApi'
+import { localizeVisibleEnumText } from '../../services/visibleEnumLocalization'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
@@ -148,12 +149,13 @@ const tabError = computed(() => errors[tab.value] || '')
 const loading = computed(() => !!loadingTabs[tab.value])
 const activeTabLabel = computed(() => tabs.find((item) => item.key === tab.value)?.label || '学工数据')
 
-const leave = ref({ items: [] }); const aid = ref({ items: [] }); const funding = ref({ items: [] }); const dorm = ref({}); const discipline = ref({ items: [] }); const psy = ref({ questions: [] }); const psyHistory = ref({ items: [] }); const activities = ref({ available: [], mine: [] }); const talk = ref({ items: [] }); const aidBatches = ref([]); const fundingBatches = ref([]); const secondClass = ref({ items: [], byType: [] }); const creditAppeals = ref([]); const dormTransfers = ref([])
+const leave = ref({ items: [] }); const aid = ref({ items: [] }); const funding = ref({ items: [] }); const dorm = ref({}); const discipline = ref({ items: [] }); const psy = ref({ questions: [] }); const psyHistory = ref({ items: [] }); const activities = ref({ available: [], mine: [] }); const talk = ref({ items: [] }); const aidBatches = ref([]); const fundingBatches = ref([]); const secondClass = ref({ items: [], byType: [] }); const creditAppeals = ref([]); const dormTransfers = ref([]); const dormTransferError = ref('')
 const leaveForm = reactive({ leaveType: 'PERSONAL', startTime: '', endTime: '', reason: '' }); const extendId = ref(''); const extendForm = reactive({ newEndTime: '', reason: '' }); const aidForm = reactive({ batchId: '', applyLevel: 'GENERAL', memberCount: null, annualIncome: null, debt: null, specialTags: '', statement: '', confirm: false }); const fundForm = reactive({ projectType: 'SCHOLARSHIP', batchId: '', statement: '', confirm: false }); const aidObjections = reactive({}); const fundAppeals = reactive({}); const disciplineAppeals = reactive({}); const psyAnswers = reactive({}); const dormBuildings = ref([]); const dormRooms = ref([]); const dormBeds = ref([]); const dormForm = reactive({ visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }); const modal = reactive({ type: '', title: '', notice: '', item: null, form: {} })
 
 const dateText = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const today = dateText()
 const fmt = (value) => (value || '').slice(0, 10)
+const enumText = (value) => localizeVisibleEnumText(value)
 const dayAfter = (value) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return ''; const d = new Date(`${value}T00:00:00`); if (Number.isNaN(d.getTime())) return ''; d.setDate(d.getDate() + 1); return dateText(d) }
 const validReason = (value, min, max) => { const n = String(value || '').trim().length; return n >= min && n <= max }
 const nonNegativeOrBlank = (value) => value === '' || value === null || value === undefined || (Number.isFinite(Number(value)) && Number(value) >= 0)
@@ -183,7 +185,7 @@ const TAB_LOADERS = {
   leave: [{ load: () => portalApi.affairsLeave(), apply: (value) => { leave.value = value || { items: [] } } }],
   aid: [{ load: () => portalApi.affairsAid(), apply: (value) => { aid.value = value || { items: [] } } }, { load: () => portalApi.affairsAidBatches(), apply: (value) => { aidBatches.value = value?.items || [] } }],
   funding: [{ load: () => portalApi.affairsFunding(), apply: (value) => { funding.value = value || { items: [] } } }, { load: () => portalApi.affairsFundingBatches(), apply: (value) => { fundingBatches.value = value?.items || [] } }],
-  dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), apply: (value) => { dormTransfers.value = value?.items || [] } }],
+  dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), optional: true, apply: (value) => { dormTransferError.value = ''; dormTransfers.value = value?.items || [] }, fail: () => { dormTransfers.value = []; dormTransferError.value = '调宿申请记录暂时无法读取，当前宿舍与床位信息仍可正常查看。' } }],
   discipline: [{ load: () => portalApi.affairsDiscipline(), apply: (value) => { discipline.value = value || { items: [] } } }],
   psy: [{ load: () => portalApi.affairsPsyQuestions(), apply: (value) => { psy.value = value || { questions: [] } } }, { load: () => portalApi.affairsPsyHistory(), apply: (value) => { psyHistory.value = value || { items: [] } } }],
   activity: [{ load: () => portalApi.affairsActivitiesMy(), apply: (value) => { activities.value = value || { available: [], mine: [] } } }, { load: () => affairsFourEndApi.secondClassReport(), apply: (value) => { secondClass.value = { items: [], byType: [], ...(value || {}) } } }, { load: () => affairsFourEndApi.myCreditAppeals(), apply: (value) => { creditAppeals.value = value?.items || [] } }],
@@ -205,6 +207,7 @@ function loadTab(key, { force = false } = {}) {
       const failures = []
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') entries[index].apply(result.value)
+        else if (entries[index].optional) entries[index].fail?.(result.reason)
         else failures.push(result.reason?.message || '数据加载失败')
       })
       if (failures.length) errors[key] = [...new Set(failures)].join('；')

@@ -1,0 +1,73 @@
+{
+  "routes": [
+    {"path":"/home","name":"首页工作台","module":"公共门户","kind":"page"},
+    {"path":"/profile","name":"我的档案","module":"个人档案","kind":"page"},
+
+    {"path":"/academic","name":"教务工作台","module":"教务学业","kind":"hub"},
+    {"path":"/academic/schedule","name":"我的课表","module":"教务学业","kind":"academic"},
+    {"path":"/academic/grades","name":"我的成绩","module":"教务学业","kind":"academic"},
+    {"path":"/academic/registration","name":"学期注册","module":"教务学业","kind":"academic"},
+    {"path":"/academic/selection","name":"网上选课","module":"教务学业","kind":"academic"},
+    {"path":"/academic/evaluation","name":"学生评教","module":"教务学业","kind":"academic"},
+    {"path":"/academic/recheck","name":"成绩复查","module":"教务学业","kind":"academic"},
+    {"path":"/academic/status","name":"学籍与异动","module":"教务学业","kind":"academic"},
+    {"path":"/academic/exam","name":"考试、缓考与补重修","module":"教务学业","kind":"academic"},
+    {"path":"/academic/makeup","name":"补考重修","module":"教务学业","kind":"academic"},
+    {"path":"/academic/attendance","name":"课堂考勤","module":"教务学业","kind":"academic"},
+    {"path":"/academic/calendar","name":"校历","module":"教务学业","kind":"academic"},
+    {"path":"/academic/clearance","name":"清考结果","module":"教务学业","kind":"academic"},
+    {"path":"/academic/credits","name":"学分修读","module":"教务学业","kind":"academic"},
+    {"path":"/academic/warning","name":"学业预警","module":"教务学业","kind":"academic"},
+    {"path":"/academic/textbook","name":"教材领用","module":"教务学业","kind":"academic"},
+    {"path":"/academic/level-exam","name":"等级考试","module":"教务学业","kind":"academic"},
+    {"path":"/academic/major-split","name":"专业分流","module":"教务学业","kind":"academic"},
+    {"path":"/academic/recognition","name":"成绩认定与课程替代","module":"教务学业","kind":"academic"},
+    {"path":"/academic/graduation","name":"毕业资格自查","module":"教务学业","kind":"academic"},
+    {"path":"/academic/all","name":"教务全部旧功能安全入口","module":"教务学业","kind":"academic-legacy"},
+
+    {"path":"/campus-service","name":"学工事务","module":"学工事务","kind":"tabs"},
+    {"path":"/materials","name":"材料补交","module":"学工事务","kind":"tabs"},
+    {"path":"/internship","name":"岗位实习","module":"岗位实习","kind":"tabs"},
+    {"path":"/internship/compliance","name":"上岗合规与安全教育","module":"岗位实习","kind":"page"},
+    {"path":"/employment","name":"就业服务","module":"就业服务","kind":"tabs"},
+    {"path":"/orientation","name":"迎新报到","module":"迎新报到","kind":"tabs"},
+    {"path":"/messages","name":"消息通知","module":"消息中心","kind":"tabs"},
+    {"path":"/service-hall","name":"办事大厅","module":"办事大厅","kind":"tabs"},
+    {"path":"/graduation","name":"毕业设计","module":"毕业设计","kind":"workflow"},
+
+    {"path":"/guardian","name":"家长查看入口","module":"公共入口","kind":"public"},
+    {"path":"/not-enabled","name":"门户未开通状态","module":"公共状态页","kind":"state"},
+    {"path":"/module-disabled/not-real","name":"模块未开通状态","module":"公共状态页","kind":"state"},
+    {"path":"/unknown-module","name":"未知模块兼容入口","module":"公共状态页","kind":"state"}
+  ],
+  "viewports": [
+    {"key":"1920x1080","width":1920,"height":1080},
+    {"key":"1440x900","width":1440,"height":900},
+    {"key":"1366x768","width":1366,"height":768},
+    {"key":"1024x768","width":1024,"height":768}
+  ],
+  "themes": [
+    {"key":"blue","label":"深海蓝","route":"/home"},
+    {"key":"purple","label":"科技紫","route":"/academic/grades"},
+    {"key":"green","label":"薄荷绿","route":"/internship"},
+    {"key":"orange","label":"活力橙","route":"/campus-service"},
+    {"key":"pink","label":"樱花粉","route":"/graduation"},
+    {"key":"dark","label":"深邃黑","route":"/service-hall"}
+  ],
+  "representativeResponsiveRoutes": [
+    "/home",
+    "/academic",
+    "/academic/grades",
+    "/academic/status",
+    "/academic/exam",
+    "/campus-service",
+    "/materials",
+    "/internship",
+    "/internship/compliance",
+    "/employment",
+    "/orientation",
+    "/messages",
+    "/service-hall",
+    "/graduation"
+  ]
+}

@@ -1,21 +1,5 @@
 /* V5 最终细节层：放在 v5-overrides.css 之后。 */
 
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
-  height: auto;
-  flex-wrap: wrap;
-  padding-top: 9px;
-  padding-bottom: 9px;
-}
-
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab::before {
-  flex: 0 0 100%;
-  box-sizing: border-box;
-}
-
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab:nth-child(1)::before {
-  margin-top: 0;
-}
-
 /* 全局相邻卡片间距在双列/网格容器中必须归零，避免第二列下沉。 */
 :where(.two, .select-grid, .catgrid, .content-grid, .gd-summary, .gdep__summary) > .sp-card + .sp-card,
 :where(.two, .select-grid, .catgrid, .content-grid) > .sp-panel + .sp-panel {
@@ -27,47 +11,154 @@
   outline-offset: 2px;
 }
 
-html[data-sp-theme='dark'] .sp-header,
-html[data-sp-theme='dark'] .home-card,
-html[data-sp-theme='dark'] .home-metric,
-html[data-sp-theme='dark'] .home-quick__item,
-html[data-sp-theme='dark'] .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs {
-  background: #1b2231 !important;
-  border-color: #2a3448 !important;
+/* 浅色主题的辅助正文必须达到普通小字号可读对比度。 */
+html:not([data-sp-theme='dark']) {
+  --t3: #5f6f89;
+}
+
+/* 首页渐变保留明确底色：既是渐变失效回退，也便于无障碍工具识别真实背景。 */
+.home-hero {
+  background-color: var(--pri) !important;
+}
+
+/* 可点击主色文字统一使用经过对比度校正的 token。 */
+:where(.sp-link, .link, .todo__go, .msg__all, .section-route__back) {
+  color: var(--pri-text, var(--pri));
+}
+
+/* 毕设主工作台位于路由壳层内；扩展面板由 App.vue 追加渲染，必须使用全局选择器。 */
+.route-graduation .gd-eyebrow,
+.gdep__refresh {
+  color: var(--pri-text, var(--pri)) !important;
+}
+.route-graduation :where(.gd-hero p, .gd-step p, .gd-step__detail, .gd-rule) {
+  color: var(--t3) !important;
+}
+
+/* 毕设扩展面板不在 PortalLayout 路由壳层内，完整接入主题 surface/text/token。 */
+.gdep {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
+  color: var(--t1) !important;
+}
+.gdep :where(.gdep__head strong, .gdep__summary strong, .gdep__card-head strong) {
+  color: var(--t1) !important;
+}
+.gdep :where(
+  .gdep__head p, .gdep__card p, .gdep__state p, .gdep__text, .gdep__hint,
+  .gdep__card-head small, .gdep__summary span, .gdep__timeline, .gdep__submit-row small
+) {
+  color: var(--t3) !important;
+}
+.gdep :where(.gdep__summary > div, .gdep__card, .gdep__state) {
+  background: var(--surface-2) !important;
+  border-color: var(--line2) !important;
+}
+.gdep :where(.gdep__refresh, .gdep__state button) {
+  background: var(--surface) !important;
+  border-color: var(--pri-100) !important;
+  color: var(--pri-text, var(--pri)) !important;
+}
+.gdep .gdep__card-head > span {
+  background: var(--pri-50) !important;
+  color: var(--pri-text, var(--pri)) !important;
+}
+.gdep textarea {
+  background: var(--field-bg) !important;
+  border-color: var(--line) !important;
+  color: var(--t1) !important;
+}
+.gdep .gdep__primary {
+  background: var(--pri) !important;
+  border-color: var(--pri) !important;
+  color: var(--pri-on, #fff) !important;
+}
+
+/* 成绩通过色略加深，满足白底正文对比度。 */
+.route-academic .score.is-pass {
+  color: #087735 !important;
+}
+
+html[data-sp-theme='dark'] :where(
+  .sp-header, .home-card, .home-metric, .home-quick__item,
+  .academic-context,
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > .sp-tabs
+) {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
+}
+
+/* V5 深邃黑基准使用深色侧栏，而不是继续复用亮蓝主题渐变。 */
+html[data-sp-theme='dark'] .sp-aside {
+  background: linear-gradient(180deg, #070c13 0%, #111b2f 57%, #283b66 100%) !important;
 }
 
 html[data-sp-theme='dark'] .home-focus {
-  background: #202838;
+  background: var(--surface-2);
   color: var(--t1);
 }
 
 html[data-sp-theme='dark'] .home-todo,
 html[data-sp-theme='dark'] .home-message,
 html[data-sp-theme='dark'] .home-domain {
-  border-color: #273248;
+  border-color: var(--line2);
 }
 
 html[data-sp-theme='dark'] .sp-shell.is-compact .sp-tabs .sp-tab:hover {
-  background: #232d40;
+  background: var(--surface-2);
 }
 
 html[data-sp-theme='dark'] .sp-bell,
 html[data-sp-theme='dark'] .sp-search {
-  background: #202838;
-  border-color: #34405a;
+  background: var(--field-bg);
+  border-color: var(--line);
+}
+
+/* 深色主题侧栏选中项是白底，使用深蓝文字而不是浅蓝文字。 */
+html[data-sp-theme='dark'] .sp-nav__item.is-active {
+  color: #244f96 !important;
+}
+
+/* 自定义白底表单和兼容页必须随深色主题切换。 */
+html[data-sp-theme='dark'] :where(
+  .search, .tr-preview, .typecard, .inline-form, .selected-target,
+  .legacy-safe__action.is-secondary, .section-route__mapping-error
+) {
+  background: var(--surface-2) !important;
+  border-color: var(--line) !important;
+  color: var(--t1) !important;
+}
+
+/* 1024px 等窄桌面：只对两张实测溢出的教务表格采用固定布局并允许单元格换行。 */
+@media (max-width: 1100px) {
+  :where(.view-academic-warning, .view-academic-graduation) .section-route__body,
+  :where(.view-academic-warning, .view-academic-graduation) .section-route__body > .sp-page,
+  :where(.view-academic-warning, .view-academic-graduation) .sp-autotable,
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table-wrap {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table-wrap {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table {
+    width: 100%;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  :where(.view-academic-warning, .view-academic-graduation) .sp-table :where(th, td) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (min-width: 1500px) {
   .sp-shell.is-compact .sp-content {
     padding-left: 28px;
     padding-right: 28px;
-  }
-}
-
-@media (max-width: 820px) {
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
-    flex-wrap: nowrap;
-    padding-top: 0;
-    padding-bottom: 0;
   }
 }
