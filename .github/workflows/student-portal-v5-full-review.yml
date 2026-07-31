@@ -9,6 +9,7 @@ on:
       - student-portal/review/**
       - student-portal/package.json
       - student-portal/package-lock.json
+      - docs/reviews/student-portal-v5-full-review/REVIEW_REPORT.md
       - .github/workflows/student-portal-v5-full-review.yml
 
 permissions:
