@@ -1,8 +1,7 @@
 """教务同步导出到公共 ExportJob 的兼容适配服务（阶段 7 收口）。
 
 旧页面仍按原 URL 接收文件；本服务在返回文件之前强制创建 FileObject + ExportJob，
-再通过公共短时一次性票据读取结果。这样不破坏页面合同，同时所有教务导出都进入
-统一任务历史、过期、撤销、下载次数与存储治理链。
+再通过公共短时一次性票据读取结果。文件字节响应统一委托公共文件权威合同。
 """
 from __future__ import annotations
 
@@ -16,6 +15,7 @@ from typing import Any
 from fastapi.responses import FileResponse
 from openpyxl import load_workbook
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.db.session import get_sessionmaker
 from app.services import data_exchange_job_service as jobs
 
@@ -118,10 +118,13 @@ def task_backed_file_response(
         user=user,
     )
     path, resolved_name = jobs.consume_download_ticket(job["id"], ticket["ticket"], user=user)
-    return FileResponse(
+    return validated_local_file_response(
         path,
         filename=resolved_name or safe_filename,
         media_type=media_type,
+        audit_action="ACADEMIC_EXPORT_COMPAT_DOWNLOAD",
+        audit_target=f"academic-export-job:{job['id']}",
+        audit_detail={"jobId": str(job["id"]), "exportType": str(export_type or "")},
         headers={
             "X-Export-Job-Id": str(job["id"]),
             "X-File-Center-Contract": "EXPORT_JOB",
