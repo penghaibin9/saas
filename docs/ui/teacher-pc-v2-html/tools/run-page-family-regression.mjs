@@ -67,7 +67,12 @@ function allManifestHtml() {
     const part = safeJson(path.resolve(ROOT, partRef))
     rows.push(...rowsOf(part))
   }
-  return [...new Set(rows.map((row) => row?.html).filter(Boolean))].sort()
+  const unique = [...new Set(rows.map((row) => row?.html).filter(Boolean))].sort()
+  const expected = manifest?.coverage?.uniqueHtmlFiles
+  if (typeof expected === 'number' && unique.length !== expected) {
+    throw new Error(`总 Manifest 声明 ${expected} 个 HTML，但聚合得到 ${unique.length} 个；先运行一致性检查并修复`)
+  }
+  return unique
 }
 
 function htmlFromParts(partRefs) {
@@ -121,12 +126,19 @@ function selectHtml() {
   return [...selected].sort()
 }
 
+function shouldCopy(source) {
+  const relative = path.relative(ROOT, source)
+  if (!relative) return true
+  const segments = relative.split(path.sep)
+  return !segments.includes('node_modules') && !segments.includes('.git')
+}
+
 function prepareTempRoot(selected) {
   const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'teacher-pc-v2-family-'))
   const tempRoot = path.join(tempParent, 'teacher-pc-v2-html')
   fs.cpSync(ROOT, tempRoot, {
     recursive: true,
-    filter: (source) => !source.includes(`${path.sep}node_modules${path.sep}`)
+    filter: shouldCopy
   })
 
   const generatedPart = 'manifest-parts/__selected-regression.json'
