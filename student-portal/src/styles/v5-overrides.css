@@ -1,5 +1,5 @@
 /* 学生门户 V5：V3 紧凑导航视觉基准的生产覆盖层。
-   仅调整布局、层级、主题和响应式，不改变任何业务方法、API、状态机或权限。 */
+   仅调整布局、层级、主题和响应式，不改变业务方法、API、状态机或权限。 */
 
 :root {
   --sp-v5-radius-sm: 10px;
@@ -11,12 +11,6 @@
 }
 
 html[data-sp-theme='dark'] {
-  --t1: #eef3ff;
-  --t2: #c5cee0;
-  --t3: #98a6bf;
-  --t4: #74839e;
-  --line: #2a3448;
-  --line2: #232c3e;
   --ok-bg: #173a2d;
   --ok-fg: #78ddb0;
   --warn-bg: #3a2d18;
@@ -32,21 +26,34 @@ html[data-sp-theme='dark'] .sp-main {
   background: #161b24;
 }
 
-html[data-sp-theme='dark'] :where(.sp-card, .sp-panel, .sp-metric, .card, .metric, .catcard, .hotrow) {
-  background: #1b2231 !important;
-  border-color: #2a3448 !important;
+html[data-sp-theme='dark'] :where(
+  .sp-card, .sp-panel, .sp-metric, .card, .metric, .catcard, .hotrow,
+  .home-card, .home-metric, .home-quick__item, .section-route__head,
+  .legacy-safe__notice, .academic-context, .gdep__card
+) {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
 }
 
-html[data-sp-theme='dark'] :where(.sp-inp, .sp-input, .sp-search, .search, .ctx-search) {
-  background: #202838 !important;
-  border-color: #34405a !important;
+html[data-sp-theme='dark'] :where(
+  .sp-inp, .sp-input, .sp-search, .search, .ctx-search,
+  input:not([type='checkbox']):not([type='radio']), select, textarea
+) {
+  background: var(--field-bg) !important;
+  border-color: var(--line) !important;
   color: var(--t1) !important;
 }
 
-html[data-sp-theme='dark'] .sp-table th,
-html[data-sp-theme='dark'] .sp-tabs,
-html[data-sp-theme='dark'] .sp-page > .sp-tabs {
-  background: #1b2231;
+html[data-sp-theme='dark'] :where(
+  .sp-table th, .sp-tabs, .sp-page > .sp-tabs, .mhead,
+  .week-grid > div:nth-child(-n+6)
+) {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
+}
+
+html[data-sp-theme='dark'] :where(.sp-table tbody tr:hover, .hotrow:hover, .catcard:hover) {
+  background: var(--surface-2) !important;
 }
 
 /* ── 全局卡片、表单、表格 ── */
@@ -55,8 +62,9 @@ html[data-sp-theme='dark'] .sp-page > .sp-tabs {
   box-shadow: var(--sp-v5-shadow-soft);
 }
 
-.sp-card + .sp-card,
-.sp-panel + .sp-panel {
+/* 只给纵向直属卡片加间距，避免双列网格第二张卡片被下移。 */
+.sp-page > .sp-card + .sp-card,
+.sp-page > .sp-panel + .sp-panel {
   margin-top: 16px;
 }
 
@@ -69,11 +77,17 @@ html[data-sp-theme='dark'] .sp-page > .sp-tabs {
 
 .sp-btn {
   border-radius: 10px;
+  color: var(--pri-on, #fff);
   box-shadow: 0 4px 12px rgba(var(--sp-primary-rgb, 47, 107, 255), .16);
 }
 
 .sp-btn--ghost {
+  color: var(--pri-text, var(--pri));
   box-shadow: none;
+}
+
+:where(.mini, .hero__cta, .legacy-safe__action):not(.mini--ghost):not(.is-secondary) {
+  color: var(--pri-on, #fff);
 }
 
 .sp-inp,
@@ -95,42 +109,27 @@ html[data-sp-theme='dark'] .sp-page > .sp-tabs {
 
 .sp-table th {
   height: 42px;
-  background: #f8faff;
+  background: var(--surface-2, #f8faff);
   color: var(--t3);
   font-weight: 650;
 }
 
-.sp-table tbody tr {
-  transition: background .12s ease;
-}
+.sp-table tbody tr { transition: background .12s ease; }
+.sp-table tbody tr:hover { background: var(--surface-2, #f8faff); }
 
-.sp-table tbody tr:hover {
-  background: #f8faff;
-}
+.sp-state { min-height: 118px; border-radius: 12px; }
+.sp-notice { border-radius: 14px; }
 
-html[data-sp-theme='dark'] .sp-table th,
-html[data-sp-theme='dark'] .sp-table tbody tr:hover {
-  background: #202838;
-}
-
-.sp-state {
-  min-height: 118px;
-  border-radius: 12px;
-}
-
-.sp-notice {
-  border-radius: 14px;
-}
-
-/* ── V3 业务页：一级图标栏 + 208px 上下文导航 ── */
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) {
+/* ── 非教务复杂模块：一级图标栏 + 208px 上下文导航 ──
+   教务已经使用显式 AcademicContextNav，不再依赖 CSS 猜测。 */
+.sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) {
   display: grid;
   grid-template-columns: var(--sp-v5-context-width) minmax(0, 1fr);
   column-gap: 18px;
   align-items: start;
 }
 
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs {
+.sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > .sp-tabs {
   grid-column: 1;
   grid-row: 1 / span 200;
   position: sticky;
@@ -147,20 +146,20 @@ html[data-sp-theme='dark'] .sp-table tbody tr:hover {
   padding: 14px 12px 16px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: #fff;
+  background: var(--surface, #fff);
   box-shadow: var(--sp-v5-shadow-soft);
 }
 
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > :not(.sp-tabs) {
+.sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > :not(.sp-tabs) {
   grid-column: 2;
   min-width: 0;
 }
 
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
+.sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
   position: relative;
   width: 100%;
   min-height: 38px;
-  padding: 0 11px;
+  padding: 9px 11px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -173,22 +172,23 @@ html[data-sp-theme='dark'] .sp-table tbody tr:hover {
   line-height: 1.35;
 }
 
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab:hover {
-  background: #f4f7ff;
-  color: var(--pri);
+.sp-shell.is-compact:not(.route-academic) .sp-tabs .sp-tab:hover {
+  background: var(--pri-50);
+  color: var(--pri-text, var(--pri));
 }
 
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab.is-active {
+.sp-shell.is-compact:not(.route-academic) .sp-tabs .sp-tab.is-active {
   background: var(--pri-50);
-  color: var(--pri);
+  color: var(--pri-text, var(--pri));
   font-weight: 700;
 }
 
-/* 分组标题：不改变真实 tab 顺序，仅提供视觉分组。 */
-.sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab::before {
+/* 分组标题由真实 tab 顺序显式标记。不能再使用无效的 :has(::before)。 */
+.sp-shell.is-compact:not(.route-academic) .sp-tabs .sp-tab::before {
   display: none;
   width: 100%;
-  margin: 11px 0 7px;
+  box-sizing: border-box;
+  margin: 6px 0 7px;
   padding-left: 8px;
   border-left: 3px solid var(--pri);
   color: var(--t2);
@@ -196,89 +196,83 @@ html[data-sp-theme='dark'] .sp-table tbody tr:hover {
   font-weight: 750;
   line-height: 1.2;
   letter-spacing: .02em;
+  text-align: left;
 }
 
-.sp-shell.route-academic .sp-tabs .sp-tab:nth-child(1)::before { content: '注册与安排'; display: block; }
-.sp-shell.route-academic .sp-tabs .sp-tab:nth-child(4)::before { content: '成绩与评教'; display: block; }
-.sp-shell.route-academic .sp-tabs .sp-tab:nth-child(8)::before { content: '学籍与考试'; display: block; }
-.sp-shell.route-academic .sp-tabs .sp-tab:nth-child(13)::before { content: '培养与毕业'; display: block; }
+.sp-shell.route-internship .sp-tabs .sp-tab:nth-child(1),
+.sp-shell.route-internship .sp-tabs .sp-tab:nth-child(3),
+.sp-shell.route-internship .sp-tabs .sp-tab:nth-child(6),
+.sp-shell.route-internship .sp-tabs .sp-tab:nth-child(12),
+.sp-shell.route-campus-service .sp-tabs .sp-tab:nth-child(1),
+.sp-shell.route-campus-service .sp-tabs .sp-tab:nth-child(5),
+.sp-shell.route-employment .sp-tabs .sp-tab:nth-child(1),
+.sp-shell.route-orientation .sp-tabs .sp-tab:nth-child(1),
+.sp-shell.route-service-hall .sp-tabs .sp-tab:nth-child(1),
+.sp-shell.view-material-supplement .sp-tabs .sp-tab:nth-child(1) {
+  height: auto;
+  flex-direction: column;
+  align-items: flex-start !important;
+}
 
-.sp-shell.route-internship .sp-tabs .sp-tab:nth-child(1)::before { content: '实习概览'; display: block; }
+.sp-shell.route-internship .sp-tabs .sp-tab:nth-child(1)::before { content: '实习概览'; display: block; margin-top: 0; }
 .sp-shell.route-internship .sp-tabs .sp-tab:nth-child(3)::before { content: '在岗办理'; display: block; }
 .sp-shell.route-internship .sp-tabs .sp-tab:nth-child(6)::before { content: '上岗准备与变更'; display: block; }
 .sp-shell.route-internship .sp-tabs .sp-tab:nth-child(12)::before { content: '支持与成果'; display: block; }
-
-.sp-shell.route-campus-service .sp-tabs .sp-tab:nth-child(1)::before { content: '日常办理'; display: block; }
+.sp-shell.route-campus-service .sp-tabs .sp-tab:nth-child(1)::before { content: '日常办理'; display: block; margin-top: 0; }
 .sp-shell.route-campus-service .sp-tabs .sp-tab:nth-child(5)::before { content: '成长与关怀'; display: block; }
+.sp-shell.route-employment .sp-tabs .sp-tab:nth-child(1)::before { content: '就业办理'; display: block; margin-top: 0; }
+.sp-shell.route-orientation .sp-tabs .sp-tab:nth-child(1)::before { content: '迎新与离校'; display: block; margin-top: 0; }
+.sp-shell.route-service-hall .sp-tabs .sp-tab:nth-child(1)::before { content: '事项分类'; display: block; margin-top: 0; }
+.sp-shell.view-material-supplement .sp-tabs .sp-tab:nth-child(1)::before { content: '材料状态'; display: block; margin-top: 0; }
 
-.sp-shell.route-employment .sp-tabs .sp-tab:nth-child(1)::before { content: '就业办理'; display: block; }
-.sp-shell.route-orientation .sp-tabs .sp-tab:nth-child(1)::before { content: '迎新与离校'; display: block; }
-.sp-shell.route-service-hall .sp-tabs .sp-tab:nth-child(1)::before { content: '事项分类'; display: block; }
-.sp-shell.view-material-supplement .sp-tabs .sp-tab:nth-child(1)::before { content: '材料状态'; display: block; }
-
-/* 伪元素在按钮内部，分组项需要允许垂直布局。 */
-.sp-shell.is-compact .sp-tabs .sp-tab:has(::before) {
-  flex-wrap: wrap;
+/* 教务兼容页已拥有显式 AcademicContextNav，内部旧 tab 只保留单行可横向滚动。 */
+.view-academic-all .legacy-safe .sp-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 5px;
+}
+.view-academic-all .legacy-safe .sp-tabs .sp-tab {
+  flex: 0 0 auto;
+  min-width: max-content;
 }
 
 /* ── 页面内容密度与视觉层级 ── */
 .sp-shell.is-compact .sp-content {
+  width: 100%;
   max-width: 1600px;
   padding: 22px 24px 34px;
 }
 
 .sp-shell.is-home .sp-content {
+  width: 100%;
   max-width: 1480px;
   padding: 24px 28px 38px;
 }
 
 .sp-page > .two,
 .sp-page > .select-grid,
-.sp-page > .content-grid {
-  gap: 16px !important;
-}
+.sp-page > .content-grid { gap: 16px !important; }
 
 .domain-error,
 .error-box,
 .gd-health,
-.gdep__state--error {
-  border-radius: 14px !important;
-}
+.gdep__state--error { border-radius: 14px !important; }
 
-/* 消息中心保留动态后端 tabs，改为更清楚的分段导航。 */
-.mhead {
-  border-radius: 14px 14px 0 0;
-}
+/* 消息中心保留动态后端 tabs。 */
+.mhead { border-radius: 14px 14px 0 0; }
+.mtab { min-height: 32px; border-radius: 9px !important; }
+.mrow { border-bottom: 1px solid var(--line2); }
+.mrow:last-child { border-bottom: 0; }
 
-.mtab {
-  min-height: 32px;
-  border-radius: 9px !important;
-}
-
-.mrow {
-  border-bottom: 1px solid var(--line2);
-}
-
-.mrow:last-child {
-  border-bottom: 0;
-}
-
-/* 毕设仍是 8 步工作台，不拆生产路由。 */
+/* 毕设仍是单工作台，不拆生产路由。 */
 .gd-summary,
-.gdep__summary {
-  gap: 12px !important;
-}
-
+.gdep__summary { gap: 12px !important; }
 .gd-step article,
 .gdep,
-.gdep__card {
-  border-radius: 14px !important;
-  box-shadow: var(--sp-v5-shadow-soft);
-}
-
-.gd-step__rail span {
-  box-shadow: 0 0 0 5px var(--bg);
-}
+.gdep__card { border-radius: 14px !important; box-shadow: var(--sp-v5-shadow-soft); }
+.gd-step__rail span { box-shadow: 0 0 0 5px var(--bg); }
 
 /* ── 响应式 ── */
 @media (max-width: 1280px) {
@@ -286,21 +280,22 @@ html[data-sp-theme='dark'] .sp-table tbody tr:hover {
   .sp-shell.is-compact .sp-content { padding: 20px 20px 30px; }
 }
 
-@media (max-width: 1024px) {
-  :root { --sp-v5-context-width: 184px; }
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) {
-    column-gap: 14px;
-  }
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs {
-    padding: 12px 9px;
+@media (max-width: 1120px) {
+  /* 学工双列在窄桌面改为单列，防止状态和表单标签被挤碎。 */
+  .sp-shell.route-campus-service .sp-content__page .two {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }
 
+@media (max-width: 1024px) {
+  :root { --sp-v5-context-width: 184px; }
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) { column-gap: 14px; }
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > .sp-tabs { padding: 12px 9px; }
+}
+
 @media (max-width: 820px) {
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) {
-    display: block;
-  }
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs {
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) { display: block; }
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > .sp-tabs {
     position: static;
     width: 100%;
     max-height: none;
@@ -311,17 +306,14 @@ html[data-sp-theme='dark'] .sp-table tbody tr:hover {
     padding: 10px;
     margin-bottom: 14px;
   }
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > .sp-tabs .sp-tab {
     width: auto;
     min-width: max-content;
     padding: 0 13px;
+    flex-direction: row;
   }
-  .sp-shell.is-compact .sp-tabs .sp-tab::before {
-    display: none !important;
-  }
-  .sp-shell.is-compact .sp-content > .sp-page:has(> .sp-tabs) > :not(.sp-tabs) {
-    width: 100%;
-  }
+  .sp-shell.is-compact .sp-tabs .sp-tab::before { display: none !important; }
+  .sp-shell.is-compact:not(.route-academic) .sp-content__page > .sp-page:has(> .sp-tabs) > :not(.sp-tabs) { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
