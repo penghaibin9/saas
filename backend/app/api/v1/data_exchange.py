@@ -1,4 +1,4 @@
-"""学校端统一数据交换任务中心 API（阶段 3）。"""
+"""学校端统一数据交换任务中心 API（SYS-18）。"""
 from __future__ import annotations
 
 from typing import Literal
@@ -21,10 +21,61 @@ from app.services.identity_import_scan_orchestrator import (
 
 router = APIRouter(prefix="/data-exchange", tags=["系统管理·数据交换任务中心"])
 
+VIEW_PERMISSIONS = (
+    "systemAdmin.dataExchange.viewOwn",
+    "systemAdmin.dataExchange.viewTenant",
+    "systemAdmin.user.import",
+    "systemAdmin.migration.view",
+    "systemAdmin.audit.sensitive.view",
+    "academicAffairs.roster.import",
+    "academicAffairs.grade.import",
+    "academicAffairs.schedule.import",
+)
+CONFIRM_PERMISSIONS = (
+    "systemAdmin.dataExchange.confirm",
+    "systemAdmin.user.import",
+    "systemAdmin.migration.import",
+    "academicAffairs.roster.import",
+    "academicAffairs.grade.import",
+    "academicAffairs.schedule.import",
+)
+DOWNLOAD_PERMISSIONS = (
+    "systemAdmin.dataExchange.download",
+    "systemAdmin.user.import",
+    "systemAdmin.audit.sensitive.view",
+    "academicAffairs.roster.import",
+    "academicAffairs.grade.import",
+    "academicAffairs.schedule.import",
+)
+REVOKE_PERMISSIONS = (
+    "systemAdmin.dataExchange.revoke",
+    "systemAdmin.user.import",
+    "systemAdmin.audit.sensitive.view",
+)
+RETRY_PERMISSIONS = (
+    "systemAdmin.dataExchange.retry",
+    "systemAdmin.user.import",
+    "systemAdmin.migration.import",
+    "academicAffairs.roster.import",
+    "academicAffairs.grade.import",
+    "academicAffairs.schedule.import",
+)
+
 
 class ConfirmImportRequest(BaseModel):
     """禁止携带 rows/batchNo；服务端只认已保存 Job。"""
 
+    model_config = ConfigDict(extra="forbid")
+    expectedVersion: int = Field(..., ge=0)
+
+
+class CancelImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expectedVersion: int = Field(..., ge=0)
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+class RetryImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expectedVersion: int = Field(..., ge=0)
 
@@ -55,6 +106,8 @@ def _identity_job_message(item: dict) -> str:
         return "文件安全扫描与服务端预检已通过"
     if status == "VALIDATION_FAILED":
         return "服务端预检存在错误，请查看任务详情或下载错误回执"
+    if status == "CANCELLED":
+        return "导入任务已取消"
     return "身份导入任务已创建"
 
 
@@ -70,7 +123,6 @@ async def validate_identity_import(
     import_kind = "STUDENT" if kind == "students" else "TEACHER"
     if import_kind == "STUDENT":
         enforce_student_import(user)
-    # 唯一顺序：流式落隔离区 -> FileObject 扫描 -> 路径型 openpyxl 解析 -> 预检批次。
     file_meta = await file_service.store_upload(
         file,
         biz_type="DATA_IMPORT_SOURCE",
@@ -91,13 +143,10 @@ async def validate_identity_import(
 def confirm_import(
     job_id: str,
     body: ConfirmImportRequest,
-    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.migration.import",
-        "academicAffairs.roster.import",
-        "academicAffairs.grade.import",
-    )),
+    idempotency_key: str | None = Header(
+        None, alias="Idempotency-Key", min_length=16, max_length=200
+    ),
+    user=Depends(require_any_permission(*CONFIRM_PERMISSIONS)),
 ):
     from app.services.data_exchange_confirm_service import confirm_import_job
 
@@ -203,24 +252,37 @@ def adopt_excel_job(
         db.close()
 
 
+@router.get("/summary", summary="独立汇总，不受列表当前页影响")
+def data_exchange_summary(
+    visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
+    moduleCode: str = Query("", max_length=64),
+    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
+):
+    return success(jobs.get_summary(
+        user=user,
+        visibility=visibility,
+        module_code=moduleCode,
+    ))
+
+
 @router.get("/jobs", summary="学校端导入导出任务列表")
 def list_data_exchange_jobs(
     jobType: str = Query(""),
     status: str = Query(""),
     keyword: str = Query(""),
+    visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
+    moduleCode: str = Query("", max_length=64),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.migration.view",
-        "systemAdmin.audit.sensitive.view",
-    )),
+    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
 ):
     return success(jobs.list_jobs(
         user=user,
         job_type=jobType,
         status=status,
         keyword=keyword,
+        visibility=visibility,
+        module_code=moduleCode,
         page=page,
         page_size=pageSize,
     ))
@@ -229,12 +291,69 @@ def list_data_exchange_jobs(
 @router.get("/imports/{job_id}", summary="导入任务详情并推进扫描后预检")
 def import_job_detail(
     job_id: str,
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.migration.view",
-        "systemAdmin.audit.sensitive.view",
-    )),
+    visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
+    moduleCode: str = Query("", max_length=64),
+    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
 ):
+    refresh_identity_import_job(
+        job_id,
+        user=user,
+        visibility=visibility,
+        module_code=moduleCode,
+    )
+    item = jobs.get_import_job(
+        job_id,
+        user=user,
+        visibility=visibility,
+        module_code=moduleCode,
+    )
+    return success(item, message=_identity_job_message(item))
+
+
+@router.get("/imports/{job_id}/errors", summary="导入任务错误行分页")
+def import_job_errors(
+    job_id: str,
+    visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
+    moduleCode: str = Query("", max_length=64),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
+):
+    return success(jobs.get_import_errors(
+        job_id,
+        user=user,
+        visibility=visibility,
+        module_code=moduleCode,
+        page=page,
+        page_size=pageSize,
+    ))
+
+
+@router.post("/imports/{job_id}/cancel", summary="取消尚未进入不可逆写入的导入任务")
+def cancel_import(
+    job_id: str,
+    body: CancelImportRequest,
+    user=Depends(require_any_permission(*RETRY_PERMISSIONS)),
+):
+    return success(jobs.cancel_import_job(
+        job_id,
+        expected_version=body.expectedVersion,
+        reason=body.reason,
+        user=user,
+    ), message="导入任务已取消")
+
+
+@router.post("/imports/{job_id}/retry", summary="重试可安全重放的扫描或解析失败")
+def retry_import(
+    job_id: str,
+    body: RetryImportRequest,
+    user=Depends(require_any_permission(*RETRY_PERMISSIONS)),
+):
+    item = jobs.retry_import_job(
+        job_id,
+        expected_version=body.expectedVersion,
+        user=user,
+    )
     item = refresh_identity_import_job(job_id, user=user)
     return success(item, message=_identity_job_message(item))
 
@@ -242,22 +361,23 @@ def import_job_detail(
 @router.get("/exports/{job_id}", summary="导出任务详情")
 def export_job_detail(
     job_id: str,
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.audit.sensitive.view",
-    )),
+    visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
+    moduleCode: str = Query("", max_length=64),
+    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
 ):
-    return success(jobs.get_export_job(job_id, user=user))
+    return success(jobs.get_export_job(
+        job_id,
+        user=user,
+        visibility=visibility,
+        module_code=moduleCode,
+    ))
 
 
 @router.post("/exports/{job_id}/download-ticket", summary="创建短时一次性下载票据")
 def export_download_ticket(
     job_id: str,
     body: DownloadTicketRequest,
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.audit.sensitive.view",
-    )),
+    user=Depends(require_any_permission(*DOWNLOAD_PERMISSIONS)),
 ):
     return success(jobs.create_download_ticket(
         job_id,
@@ -270,10 +390,7 @@ def export_download_ticket(
 def download_export_file(
     job_id: str,
     ticket: str = Query(..., min_length=20),
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.audit.sensitive.view",
-    )),
+    user=Depends(require_any_permission(*DOWNLOAD_PERMISSIONS)),
 ):
     path, filename = jobs.consume_download_ticket(job_id, ticket, user=user)
     media_type = (
@@ -294,10 +411,7 @@ def download_export_file(
 def revoke_export_file(
     job_id: str,
     body: RevokeExportRequest,
-    user=Depends(require_any_permission(
-        "systemAdmin.user.import",
-        "systemAdmin.audit.sensitive.view",
-    )),
+    user=Depends(require_any_permission(*REVOKE_PERMISSIONS)),
 ):
     return success(
         jobs.revoke_export_job(
