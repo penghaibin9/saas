@@ -65,15 +65,19 @@ def test_import_projection_is_refresh_safe_and_versioned():
     assert data["errorReceiptFileId"] == "70"
     assert data["version"] == 4
     assert data["status"] == "VALIDATED"
+    assert data["cancellable"] is True
+    assert data["retryable"] is False
 
 
-def test_export_projection_marks_expired_output_unavailable(monkeypatch):
+def test_export_projection_marks_expired_output_unavailable():
     now = jobs._now()
     row = SimpleNamespace(
         id=21,
         module_code="SYSTEM",
         export_type="INITIAL_CREDENTIAL_RECEIPT",
         purpose="初始账号凭据",
+        adapter_type="IMPORT_JOB",
+        adapter_ref="12",
         status="SUCCEEDED",
         progress=100,
         row_count=3,
@@ -87,4 +91,9 @@ def test_export_projection_marks_expired_output_unavailable(monkeypatch):
         created_at=None,
         updated_at=None,
     )
-    assert jobs._export_row(row)["status"] == "EXPIRED"
+    data = jobs._export_row(row)
+    assert data["status"] == "EXPIRED"
+    assert data["downloadable"] is False
+    assert data["strongSensitive"] is True
+    assert data["oneTimeTicket"] is True
+    assert data["validityHours"] == 24
