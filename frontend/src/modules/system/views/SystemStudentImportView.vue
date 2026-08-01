@@ -20,15 +20,6 @@
             已在教务建过学籍的学生，这里会<strong>复用原主档</strong>并只补开账号，不会重复建档；
             学号/姓名/证件号对不上，或已归属其它院系班时会阻断并提示走对应流程。
           </p>
-          <p class="sii__note">
-            原始 Excel、安全扫描、错误回执和初始凭据回执会进入
-            <button class="mp-link" @click="$router.push('/admin/system/data-exchange')">数据交换任务中心</button>，
-            刷新页面或切换设备后仍可继续处理。
-          </p>
-          <p class="sii__note">
-            仅导入教职工请前往
-            <button class="mp-link" @click="$router.push('/admin/system/identity-import/teachers')">教职工导入</button>。
-          </p>
         </div>
       </section>
 
@@ -43,29 +34,27 @@
     <ImportDialog
       v-model:visible="importOpen"
       :template="template"
-      :run-validate="validateFile"
-      :run-import="confirmJob"
+      :run-validate="api.validateStudentIdentityFile"
+      :run-import="api.confirmStudentIdentityBatch"
       :run-download-template="api.downloadStudentImportTemplate"
-      @done="$router.push('/admin/system/data-exchange')"
+      :run-download-errors="api.downloadIdentityImportErrors"
     />
   </ModulePageShell>
 </template>
 
 <script>
 /**
- * 系统管理 › 身份与账号 › 学生导入与账号开通。
- * 上传后创建统一 ImportJob；确认只传 jobId + expectedVersion，禁止前端回传 rows。
+ * 系统管理 › 身份与账号 › 学生导入与账号开通（独立三级页面）。
+ *
+ * 与「教职工导入」拆成两个真实路由而非 query 参数：刷新后状态不丢、菜单能正确高亮、
+ * 权限与页面说明各自独立、模板不会串用。两者共用 ImportDialog 与后端批次/事务/
+ * 回执/审计能力，不复制第二套导入框架。
  */
 import { ModulePageShell } from '@/components/business'
 import { AppGlobalState } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ImportDialog from '@/modules/system/components/ImportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
-import { dataExchangeApi } from '@/modules/system/api/dataExchange.api'
-
-function apiError(error) {
-  return { code: error?.code || 1, data: null, message: error?.message || '请求失败' }
-}
 
 export default {
   name: 'SystemStudentImportView',
@@ -82,51 +71,8 @@ export default {
     canImport() {
       const pa = (this.ctx && this.ctx.permissionActions) || {}
       const item = pa.importUsers
-      // ctx 未下发时不误报无权限，后端仍是最终边界。
+      // ctx 未下发时不误报无权限，后端仍是最终边界
       return item ? !!(item.visible && item.allowed) : true
-    }
-  },
-  methods: {
-    async validateFile(file) {
-      try {
-        const job = await dataExchangeApi.validateIdentity('students', file)
-        const invalid = Number(job.invalidRows || 0)
-        return {
-          code: 0,
-          data: {
-            ...job,
-            jobId: job.id,
-            total: Number(job.totalRows || 0),
-            valid: Number(job.validRows || 0),
-            invalid,
-            errors: invalid
-              ? [{ row: 0, field: '预检结果', message: `发现 ${invalid} 行错误，完整回执已进入数据交换任务中心` }]
-              : []
-          },
-          message: '学生名单解析及预检完成'
-        }
-      } catch (error) {
-        return apiError(error)
-      }
-    },
-    async confirmJob(jobId) {
-      try {
-        const current = await dataExchangeApi.getImport(jobId)
-        const data = await dataExchangeApi.confirmImport(jobId, current.version)
-        const result = data.result || {}
-        const entities = result.entities || {}
-        const created = entities.studentAccounts?.created || data.confirmedRows || 0
-        return {
-          code: 0,
-          data: {
-            ...data,
-            receipt: `已完成学生主档与账号处理 ${created} 条；初始凭据请到数据交换任务中心安全下载`
-          },
-          message: '学生导入与账号开通已完成'
-        }
-      } catch (error) {
-        return apiError(error)
-      }
     }
   }
 }
