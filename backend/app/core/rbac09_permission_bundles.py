@@ -88,7 +88,8 @@ PERMISSION_BUNDLES: dict[str, dict] = {
     },
 }
 
-# 兼容期只允许旧码映射到治理元数据或数据交换动作；绝不映射到业务文件内容访问。
+# 兼容期只允许旧码映射到治理元数据或既有数据交换动作；绝不映射到文件内容访问。
+# 旧 user.import 历史上没有“全校任务查看”能力，因此不得借兼容期升级为 viewTenant。
 LEGACY_ALIAS_BY_PERMISSION: dict[str, tuple[str, ...]] = {
     FILE_GOVERNANCE_VIEW: ("systemAdmin.file.manage",),
     FILE_QUOTA_MANAGE: ("systemAdmin.file.manage",),
@@ -97,7 +98,6 @@ LEGACY_ALIAS_BY_PERMISSION: dict[str, tuple[str, ...]] = {
     FILE_LEGAL_HOLD_MANAGE: ("systemAdmin.file.manage",),
     FILE_SCAN_RETRY: ("systemAdmin.file.manage",),
     DATA_EXCHANGE_VIEW_OWN: ("systemAdmin.user.import",),
-    DATA_EXCHANGE_VIEW_TENANT: ("systemAdmin.user.import",),
     DATA_EXCHANGE_CONFIRM: ("systemAdmin.user.import",),
     DATA_EXCHANGE_DOWNLOAD: ("systemAdmin.user.import",),
     DATA_EXCHANGE_REVOKE: ("systemAdmin.user.import",),
@@ -150,12 +150,12 @@ def _record_legacy_alias_use(user: dict, legacy_code: str, target_code: str) -> 
             },
             result="SUCCESS",
         )
-    except Exception:  # noqa: BLE001 - 审计服务自身负责健康告警，鉴权不能因此放宽或崩溃
+    except Exception:  # noqa: BLE001 - 鉴权不能因审计服务异常而放宽或崩溃
         logger.exception("RBAC-09 legacy permission audit failed")
 
 
 def permission_decision(user: dict, permission_code: str) -> tuple[bool, str | None]:
-    """返回 (allowed, legacy_code)。直接新权限命中时 legacy_code 为 None。"""
+    """返回 ``(allowed, legacy_code)``；直接新权限命中时 legacy_code 为 None。"""
     if is_super_admin(user) or has_permission(user, permission_code):
         return True, None
     for legacy_code in LEGACY_ALIAS_BY_PERMISSION.get(permission_code, ()):
