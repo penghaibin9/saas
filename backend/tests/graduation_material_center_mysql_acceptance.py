@@ -131,7 +131,7 @@ def _write_storage(key: str, body: bytes) -> tuple[str, int]:
     target = backend.staging_path(key)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(body)
-    backend.promote(key)
+    backend.persist(key, target)
     return hashlib.sha256(body).hexdigest(), len(body)
 
 

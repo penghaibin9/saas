@@ -384,7 +384,7 @@ def test_phase6_real_acceptance_covers_all_completion_evidence():
         'completed["result"]["zipSha256"]', 'completed["result"]["xlsxFileId"]',
         '"' + "'=" + '" in str(value)', "revoke_manifest", "issue_export_ticket", "manifest_v2", "policy_v2",
         "cross_tenant_file_id", "infected_file_id", "pending_file_id",
-        'checkpoint_key="phase6-backfill-repeat"',
+        'assert repeat["skipped"] >= 1',
     ):
         assert marker in script
     assert "scanAbnormalStudents" in test_source
