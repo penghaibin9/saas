@@ -122,15 +122,22 @@ jobs:
           node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs
           node --check docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
           node docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs \
             --report=freeze-artifacts/consistency/report.json
 
-      - name: Run final 290 x 3 browser regression
+      - name: Install isolated persistent browser driver
         shell: bash
+        run: npm install --prefix .pr27-tools --no-package-lock --ignore-scripts puppeteer-core@24.16.0
+
+      - name: Run final 290 x 3 persistent browser regression
+        shell: bash
+        env:
+          PUPPETEER_CORE_PATH: ${{ github.workspace }}/.pr27-tools/node_modules/puppeteer-core
         run: |
-          node docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs \
-            --concurrency=6 \
+          node docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs \
+            --concurrency=2 \
             --timeout-ms=30000 \
             --report-dir=freeze-artifacts/full-regression
 
@@ -170,6 +177,7 @@ jobs:
           node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs
           node --check docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
           rm -f .github/workflows/pr27-acceptance-runner-repair.yml
 
