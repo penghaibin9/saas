@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { normalizeManifestPart } from './manifest-normalizer.mjs'
 
 const TOOL_DIR = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(TOOL_DIR, '..')
@@ -56,7 +57,7 @@ function insideRoot(abs) {
 function normalizeAssetRef(raw) {
   const value = String(raw || '').trim()
   if (!value || value.startsWith('#') || value.startsWith('/') || value.startsWith('//')) return null
-  if (/^(?:https?:|data:|blob:|mailto:|tel:|javascript:)/i.test(value)) return null
+  if (/^(?:https?:|data:|blob:|mailto:|tel:|javascript:|node:)/i.test(value)) return null
   const clean = value.split('#')[0].split('?')[0]
   if (!clean || clean.startsWith('{') || clean.includes('${')) return null
   try {
@@ -111,15 +112,13 @@ for (const partRef of Array.isArray(partRefs) ? partRefs : []) {
   const part = readJson(partAbs, partRef)
   if (!part) continue
   loadedParts.push(partRef)
-  const rows = Array.isArray(part.entries) ? part.entries : Array.isArray(part.routes) ? part.routes : null
-  if (!rows) {
-    fail('PART_WITHOUT_ENTRIES', `Manifest 分片没有 entries 或 routes 数组：${partRef}`, { part: partRef })
+  const normalized = normalizeManifestPart(part)
+  if (!normalized.entries.length) {
+    fail('PART_WITHOUT_ENTRIES', `Manifest 分片没有可标准化的 route + html 条目：${partRef}`, { part: partRef })
     continue
   }
-  if (Array.isArray(part.sharedAssets)) {
-    for (const asset of part.sharedAssets) sharedAssetRefs.add(asset)
-  }
-  rows.forEach((row, index) => entries.push({ ...row, __part: partRef, __index: index }))
+  for (const asset of normalized.sharedAssets) sharedAssetRefs.add(asset)
+  normalized.entries.forEach((row, index) => entries.push({ ...row, __part: partRef, __index: index }))
 }
 
 const routeOwners = new Map()
@@ -247,9 +246,40 @@ for (const [key, actual] of Object.entries(expected)) {
   else if (coverage[key] !== actual) fail('COVERAGE_COUNT_MISMATCH', `${key} 声明为 ${coverage[key]}，程序统计为 ${actual}`, { key, declared: coverage[key], actual })
 }
 
-if (main?.productionCodeModified !== false) fail('PRODUCTION_BOUNDARY', 'prototype-manifest.json 必须声明 productionCodeModified=false')
-if (main?.designOnly !== true) fail('DESIGN_BOUNDARY', 'prototype-manifest.json 必须声明 designOnly=true')
-if (main?.status === 'FROZEN' && (errors.length || missingScreenshots.length)) {
+const allowedProductionBoundaryExceptions = [
+  'frontend/src/config/navPlan.js',
+  'frontend/src/config/navPlan.permission-contract.test.js',
+  'frontend/tests/studentAffairs.permissionCatalog.test.mjs'
+]
+const declaredProductionBoundaryExceptions = Array.isArray(main?.productionBoundaryExceptions)
+  ? [...new Set(main.productionBoundaryExceptions)].sort()
+  : []
+const expectedProductionBoundaryExceptions = [...allowedProductionBoundaryExceptions].sort()
+
+if (main?.productionCodeModified === true) {
+  if (main?.designOnly !== false) {
+    fail('DESIGN_BOUNDARY', '存在生产边界例外时 designOnly 必须为 false')
+  }
+  if (JSON.stringify(declaredProductionBoundaryExceptions) !== JSON.stringify(expectedProductionBoundaryExceptions)) {
+    fail('PRODUCTION_BOUNDARY_EXCEPTION_MISMATCH', '生产边界例外必须精确等于冻结允许清单', {
+      declared: declaredProductionBoundaryExceptions,
+      expected: expectedProductionBoundaryExceptions
+    })
+  }
+} else {
+  if (main?.productionCodeModified !== false) {
+    fail('PRODUCTION_BOUNDARY', 'productionCodeModified 必须为 true 或 false')
+  }
+  if (main?.designOnly !== true) {
+    fail('DESIGN_BOUNDARY', '无生产边界例外时 designOnly 必须为 true')
+  }
+  if (declaredProductionBoundaryExceptions.length) {
+    fail('UNEXPECTED_PRODUCTION_BOUNDARY_EXCEPTIONS', 'productionCodeModified=false 时不得声明生产边界例外', {
+      declared: declaredProductionBoundaryExceptions
+    })
+  }
+}
+if (main?.status === 'FROZEN' && (errors.length || (requireScreenshots && missingScreenshots.length))) {
   fail('FALSE_FROZEN_STATUS', '仍有一致性问题或缺失截图时不得标记 FROZEN')
 }
 

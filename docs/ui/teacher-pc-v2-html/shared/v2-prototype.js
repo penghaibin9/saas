@@ -326,6 +326,52 @@
     });
   }
 
+  function repairExactDuplicateOverlays() {
+    const groups = new Map();
+    Array.from(document.querySelectorAll('[id]')).forEach(element => {
+      if (!element.id) return;
+      if (!groups.has(element.id)) groups.set(element.id, []);
+      groups.get(element.id).push(element);
+    });
+
+    const repaired = [];
+    groups.forEach((nodes, id) => {
+      if (nodes.length < 2) return;
+      if (!nodes.every(node => node.matches('.v2-modal-backdrop,.v2-drawer-backdrop'))) return;
+      const signature = nodes[0].outerHTML;
+      if (!nodes.every(node => node.outerHTML === signature)) return;
+      nodes.slice(1).forEach(node => node.remove());
+      repaired.push({ id, removed: nodes.length - 1 });
+    });
+
+    if (repaired.length) {
+      const history = Array.isArray(window.__V2_DUPLICATE_OVERLAY_REPAIRS__)
+        ? window.__V2_DUPLICATE_OVERLAY_REPAIRS__
+        : [];
+      window.__V2_DUPLICATE_OVERLAY_REPAIRS__ = history.concat(repaired);
+    }
+    return repaired;
+  }
+
+  let overlayIntegrityScheduled = false;
+  function scheduleOverlayIntegrityRepair() {
+    if (overlayIntegrityScheduled) return;
+    overlayIntegrityScheduled = true;
+    queueMicrotask(() => {
+      repairExactDuplicateOverlays();
+      requestAnimationFrame(() => {
+        repairExactDuplicateOverlays();
+        window.setTimeout(repairExactDuplicateOverlays, 50);
+        window.setTimeout(repairExactDuplicateOverlays, 250);
+        overlayIntegrityScheduled = false;
+      });
+    });
+  }
+
+  scheduleOverlayIntegrityRepair();
+  window.addEventListener('load', scheduleOverlayIntegrityRepair);
+  window.addEventListener('v2:page-ready', scheduleOverlayIntegrityRepair);
+
   window.V2Prototype = {
     setTheme(theme) {
       const value = theme || 'academy';
@@ -347,6 +393,7 @@
   };
 
   function initEnhancements() {
+    repairExactDuplicateOverlays();
     document.body.dataset.theme = storage.get('teacher-pc-v2-theme') || 'academy';
     renderAcademicNavigation();
     bindAcademicNavigation();

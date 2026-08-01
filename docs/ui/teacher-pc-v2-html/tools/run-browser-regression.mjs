@@ -7,13 +7,15 @@ import path from 'node:path'
 import process from 'node:process'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { normalizeManifestPart } from './manifest-normalizer.mjs'
 
 const TOOL_DIR = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(TOOL_DIR, '..')
 const args = process.argv.slice(2)
-const concurrency = Math.max(1, Number(readArg('--concurrency') || 4))
+const concurrency = Math.min(2, Math.max(1, Number(readArg('--concurrency') || 2)))
 const timeoutMs = Math.max(5000, Number(readArg('--timeout-ms') || 25000))
 const virtualTimeMs = Math.max(1000, Number(readArg('--virtual-time-ms') || 4500))
+const retries = Math.max(0, Number(readArg('--retries') || 3))
 const smokeCount = Math.max(0, Number(readArg('--smoke') || 0))
 const screenshots = args.includes('--screenshots')
 const reportRoot = path.resolve(readArg('--report-dir') || path.join(os.tmpdir(), 'teacher-pc-v2-freeze', stamp()))
@@ -50,10 +52,8 @@ function collectHtml() {
   const entries = []
   for (const partRef of manifest.aggregation.parts || []) {
     const part = safeJson(path.resolve(ROOT, partRef))
-    const rows = Array.isArray(part.entries) ? part.entries : Array.isArray(part.routes) ? part.routes : []
-    for (const row of rows) {
-      if (row?.html) entries.push(row)
-    }
+    const normalized = normalizeManifestPart(part)
+    for (const row of normalized.entries) entries.push(row)
   }
   const unique = [...new Set(entries.map((entry) => entry.html))].sort()
   const expected = manifest?.coverage?.uniqueHtmlFiles
@@ -152,6 +152,19 @@ const PROBE = String.raw`<script id="__freeze_probe__">
     const state = window.__teacherPcFreeze || {};
     const ids = [...document.querySelectorAll('[id]')].map((element) => element.id).filter(Boolean);
     const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+    const duplicateIdDetails = duplicateIds.map((id) => ({
+      id,
+      nodes: [...document.querySelectorAll('[id]')]
+        .filter((element) => element.id === id)
+        .map((element) => ({
+          tag: String(element.tagName || '').toLowerCase(),
+          className: String(element.className || ''),
+          role: element.getAttribute('role') || '',
+          ariaModal: element.getAttribute('aria-modal') || '',
+          hidden: Boolean(element.hidden),
+          html: String(element.outerHTML || '').slice(0, 1200)
+        }))
+    }));
     const focusables = [...document.querySelectorAll('a[href],button,input,select,textarea,summary,[contenteditable="true"],[tabindex]:not([tabindex="-1"])')].filter((element) => visible(element) && !element.disabled && element.getAttribute('aria-hidden') !== 'true');
     const focusFailures = [];
     const focusSequence = [];
@@ -183,6 +196,7 @@ const PROBE = String.raw`<script id="__freeze_probe__">
       scrollWidth,
       clientWidth,
       duplicateIds,
+      duplicateIdDetails,
       brokenImages,
       missingStyles,
       interactiveCount: focusables.length,
@@ -311,7 +325,7 @@ function classify(result) {
   if (report.resourceErrors.length) issues.push({ severity: 'error', code: 'RESOURCE_ERROR', message: `${report.resourceErrors.length} 个资源加载错误` })
   if (report.missingStyles.length) issues.push({ severity: 'error', code: 'MISSING_STYLESHEET', message: `${report.missingStyles.length} 个样式表未加载` })
   if (report.brokenImages.length) issues.push({ severity: 'error', code: 'BROKEN_IMAGE', message: `${report.brokenImages.length} 张图片加载失败` })
-  if (report.duplicateIds.length) issues.push({ severity: 'error', code: 'DUPLICATE_ID', message: `${report.duplicateIds.length} 个重复 id` })
+  if (report.duplicateIds.length) issues.push({ severity: 'error', code: 'DUPLICATE_ID', message: `${report.duplicateIds.length} 个重复 id：${report.duplicateIds.join(', ')}` })
   if (report.focusFailures.length) issues.push({ severity: 'error', code: 'FOCUS_FAILURE', message: `${report.focusFailures.length} 个可交互元素无法获得焦点` })
   if (report.dialogFocusOutside.length) issues.push({ severity: 'error', code: 'DIALOG_FOCUS_OUTSIDE', message: `${report.dialogFocusOutside.length} 个已打开对话框焦点在外部` })
   if (report.positiveTabindex.length) issues.push({ severity: 'warning', code: 'POSITIVE_TABINDEX', message: `${report.positiveTabindex.length} 个正 tabindex` })
@@ -320,7 +334,7 @@ function classify(result) {
   return issues
 }
 
-async function renderOne(chrome, origin, html, viewport) {
+async function renderAttempt(chrome, origin, html, viewport) {
   const url = `${origin}/${html.split('/').map(encodeURIComponent).join('/')}`
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teacher-pc-v2-chrome-'))
   const chromeArgs = [
@@ -373,6 +387,37 @@ async function renderOne(chrome, origin, html, viewport) {
   return result
 }
 
+const transientIssueCodes = new Set(['NO_PROBE', 'TIMEOUT', 'CHROME_EXIT'])
+
+function shouldRetry(result) {
+  const errors = result.issues.filter((issue) => issue.severity === 'error')
+  return errors.length > 0 && errors.every((issue) => transientIssueCodes.has(issue.code))
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function renderOne(chrome, origin, html, viewport) {
+  const attempts = []
+  let result
+  for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+    result = await renderAttempt(chrome, origin, html, viewport)
+    attempts.push({
+      attempt,
+      status: result.status,
+      issueCodes: result.issues.map((issue) => issue.code),
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      probeCaptured: Boolean(result.probe)
+    })
+    if (!shouldRetry(result) || attempt > retries) break
+    await wait(300 * (2 ** (attempt - 1)))
+  }
+  result.attempts = attempts
+  return result
+}
+
 async function pool(items, limit, worker) {
   const results = new Array(items.length)
   let cursor = 0
@@ -400,6 +445,9 @@ function markdown(summary, failures, warnings) {
     `- 通过：**${summary.passed}**`,
     `- 失败：**${summary.failed}**`,
     `- 警告：**${summary.warningRenders}**`,
+    `- 重试上限：**${summary.retryLimit}**`,
+    `- 发生重试的渲染：**${summary.retriedRenders}**`,
+    `- 瞬态失败重试后恢复：**${summary.recoveredTransientFailures}**`,
     `- 最终状态：**${summary.status}**`,
     ''
   ]
@@ -426,7 +474,7 @@ async function main() {
   const startedAt = Date.now()
   console.log(`开始回归：${htmlFiles.length} HTML × ${viewportList.length} 分辨率 = ${jobs.length} 次渲染`)
   console.log(`Chrome: ${chrome}`)
-  console.log(`并发: ${concurrency}，报告目录: ${reportRoot}`)
+  console.log(`并发: ${concurrency}，瞬态重试: ${retries}，报告目录: ${reportRoot}`)
   let completed = 0
   let results
   try {
@@ -456,6 +504,9 @@ async function main() {
     passed: results.length - failures.length,
     failed: failures.length,
     warningRenders: warnings.length,
+    retryLimit: retries,
+    retriedRenders: results.filter((result) => (result.attempts || []).length > 1).length,
+    recoveredTransientFailures: results.filter((result) => result.status === 'PASS' && (result.attempts || []).length > 1).length,
     durationSeconds: Math.round((Date.now() - startedAt) / 1000),
     status: !failures.length && results.length === htmlFiles.length * viewportList.length ? 'PASS' : 'FAIL'
   }
