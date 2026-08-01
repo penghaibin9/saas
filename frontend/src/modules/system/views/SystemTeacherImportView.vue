@@ -1,18 +1,18 @@
 <template>
   <ModulePageShell
-    title="教师导入"
+    title="教职工导入"
     subtitle="批量创建教职工账号、绑定预设角色与数据范围"
     :watermark="true"
-    watermark-purpose="教师导入"
+    watermark-purpose="教职工导入"
   >
-    <AppGlobalState v-if="!canImport" state="forbidden" title="暂无教师导入权限"
+    <AppGlobalState v-if="!canImport" state="forbidden" title="暂无教职工导入权限"
                     :description="'请联系系统管理员开通「批量创建账号」权限'" />
     <div v-else class="sti">
       <section class="mp-card">
         <div class="mp-card__head"><span class="mp-card__title">导入内容</span></div>
         <div class="mp-card__body">
           <ul class="sti__points">
-            <li>创建教职工登录账号并生成短期有效的初始密码回执</li>
+            <li>创建教职工登录账号并生成短期有效、可撤销的初始密码回执</li>
             <li>按「预设角色编码」绑定角色（可多个，逗号/分号/竖线分隔）</li>
             <li>配置数据范围：SCHOOL / COLLEGE / CLASS / ADVISOR</li>
             <li>辅导员必须填写 CLASS 或 ADVISOR 范围及对应班级</li>
@@ -33,7 +33,7 @@
       <section class="mp-card">
         <div class="mp-card__head"><span class="mp-card__title">批量导入</span></div>
         <div class="mp-card__body">
-          <AppButton variant="primary" @click="importOpen = true">开始导入教师</AppButton>
+          <AppButton variant="primary" @click="importOpen = true">开始导入教职工</AppButton>
         </div>
       </section>
     </div>
@@ -51,8 +51,8 @@
 
 <script>
 /**
- * 系统管理 › 身份与账号 › 教师导入。
- * 阶段 3：上传后创建统一 ImportJob；确认只传 jobId + expectedVersion，禁止前端回传 rows。
+ * 系统管理 › 身份与账号 › 教职工导入。
+ * 上传后创建统一 ImportJob；确认只传 jobId + expectedVersion，禁止前端回传 rows。
  */
 import { ModulePageShell } from '@/components/business'
 import { AppGlobalState } from '@/components/common'
@@ -73,7 +73,7 @@ export default {
     return {
       importOpen: false,
       api: systemApi,
-      template: { name: '教师导入', description: '仅教职工字段：工号、姓名、部门、岗位、预设角色、数据范围' }
+      template: { name: '教职工导入', description: '仅教职工字段：工号、姓名、部门、岗位、预设角色、数据范围' }
     }
   },
   computed: {
@@ -100,7 +100,7 @@ export default {
               ? [{ row: 0, field: '预检结果', message: `发现 ${invalid} 行错误，完整回执已进入数据交换任务中心` }]
               : []
           },
-          message: '教师名单解析及预检完成'
+          message: '教职工名单解析及预检完成'
         }
       } catch (error) {
         return apiError(error)
@@ -117,9 +117,9 @@ export default {
           code: 0,
           data: {
             ...data,
-            receipt: `已完成教师账号处理 ${created} 条；初始凭据请到数据交换任务中心安全下载`
+            receipt: `已完成教职工账号处理 ${created} 条；初始凭据请到数据交换任务中心安全下载`
           },
-          message: '教师账号已整批创建'
+          message: '教职工账号已整批创建'
         }
       } catch (error) {
         return apiError(error)
