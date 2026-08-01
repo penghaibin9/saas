@@ -185,18 +185,15 @@ def _export(
 
 @pytest.fixture()
 def exchange_seed(db_mode, monkeypatch):
+    """一次 MySQL schema 建立内覆盖全部 V6 合同，避免每个断言重复重建约 250 张表。"""
     monkeypatch.setattr(jobs, "_tenant_id", lambda: TENANT_ID)
     db = get_sessionmaker()()
     try:
         own_import = _import(
-            operator_id=SYS_ADMIN["userId"],
-            module_code="SYSTEM",
-            adapter_ref="own-system-import",
+            operator_id=SYS_ADMIN["userId"], module_code="SYSTEM", adapter_ref="own-system-import"
         )
         other_system_import = _import(
-            operator_id=303,
-            module_code="SYSTEM",
-            adapter_ref="other-system-import",
+            operator_id=303, module_code="SYSTEM", adapter_ref="other-system-import"
         )
         academic_failed = _import(
             operator_id=ACADEMIC_ADMIN["userId"],
@@ -218,9 +215,7 @@ def exchange_seed(db_mode, monkeypatch):
             adapter_ref="other-tenant-import",
         )
         own_export = _export(
-            operator_id=SYS_ADMIN["userId"],
-            module_code="SYSTEM",
-            adapter_ref="own-system-export",
+            operator_id=SYS_ADMIN["userId"], module_code="SYSTEM", adapter_ref="own-system-export"
         )
         academic_export = _export(
             operator_id=ACADEMIC_ADMIN["userId"],
@@ -228,13 +223,8 @@ def exchange_seed(db_mode, monkeypatch):
             adapter_ref="academic-export",
         )
         db.add_all([
-            own_import,
-            other_system_import,
-            academic_failed,
-            retryable,
-            other_tenant,
-            own_export,
-            academic_export,
+            own_import, other_system_import, academic_failed, retryable,
+            other_tenant, own_export, academic_export,
         ])
         db.flush()
         db.add_all([
@@ -273,19 +263,19 @@ def exchange_seed(db_mode, monkeypatch):
         db.close()
 
 
-def test_v6_visibility_is_explicit_and_cross_tenant_is_always_excluded(exchange_seed):
+def test_v6_mysql_visibility_summary_pagination_errors_and_actions(exchange_seed):
+    # OWN 不再把 operator_id 为空或他人任务隐式放给管理员。
     own = jobs.list_jobs(user=SYS_ADMIN, visibility="OWN", page=1, page_size=100)
     assert own["total"] == 3
     assert {item["id"] for item in own["list"]} >= {
-        str(exchange_seed["own_import"]),
-        str(exchange_seed["retryable"]),
+        str(exchange_seed["own_import"]), str(exchange_seed["retryable"]),
     }
     assert str(exchange_seed["other_system_import"]) not in {item["id"] for item in own["list"]}
 
+    # TENANT 仅含当前租户；MODULE 仅含有职责的业务模块。
     tenant = jobs.list_jobs(user=SYS_ADMIN, visibility="TENANT", page=1, page_size=100)
     assert tenant["total"] == 6
     assert str(exchange_seed["other_tenant"]) not in {item["id"] for item in tenant["list"]}
-
     academic = jobs.list_jobs(
         user=ACADEMIC_ADMIN,
         visibility="MODULE",
@@ -295,18 +285,14 @@ def test_v6_visibility_is_explicit_and_cross_tenant_is_always_excluded(exchange_
     )
     assert academic["total"] == 2
     assert {item["moduleCode"] for item in academic["list"]} == {"ACADEMIC_AFFAIRS"}
-
     with pytest.raises(AppException):
         jobs.list_jobs(user=ACADEMIC_ADMIN, visibility="TENANT")
-
     with pytest.raises(AppException):
         jobs.get_import_job(str(exchange_seed["other_tenant"]), user=SYS_ADMIN)
 
-
-def test_v6_independent_summary_matches_database_not_current_page(exchange_seed):
+    # summary 独立统计，不受当前页 pageSize 影响。
     first_page = jobs.list_jobs(user=SYS_ADMIN, visibility="TENANT", page=1, page_size=1)
     summary = jobs.get_summary(user=SYS_ADMIN, visibility="TENANT")
-
     assert len(first_page["list"]) == 1
     assert first_page["total"] == 6
     assert summary["total"] == 6
@@ -315,8 +301,21 @@ def test_v6_independent_summary_matches_database_not_current_page(exchange_seed)
     assert summary["failed"] == 2
     assert summary["receipts"] == 2
 
+    # 错误行来自服务端 ImportRowError，并使用数据库分页。
+    errors = jobs.get_import_errors(
+        str(exchange_seed["academic_failed"]),
+        user=ACADEMIC_ADMIN,
+        visibility="MODULE",
+        module_code="ACADEMIC_AFFAIRS",
+        page=1,
+        page_size=1,
+    )
+    assert errors["total"] == 2
+    assert len(errors["list"]) == 1
+    assert errors["list"][0]["rowNo"] == 2
+    assert errors["list"][0]["message"] == "学号不能为空"
 
-def test_v6_database_pagination_is_stable_and_not_python_full_materialization(exchange_seed):
+    # 大任务列表仅读取当前页，分页稳定且不在 Python 全量拼接。
     db = get_sessionmaker()()
     try:
         for index in range(25):
@@ -329,7 +328,6 @@ def test_v6_database_pagination_is_stable_and_not_python_full_materialization(ex
         db.commit()
     finally:
         db.close()
-
     page_one = jobs.list_jobs(user=SYS_ADMIN, visibility="TENANT", page=1, page_size=5)
     page_two = jobs.list_jobs(user=SYS_ADMIN, visibility="TENANT", page=2, page_size=5)
     assert page_one["total"] == 31
@@ -338,30 +336,13 @@ def test_v6_database_pagination_is_stable_and_not_python_full_materialization(ex
     assert {item["id"] for item in page_one["list"]}.isdisjoint(
         {item["id"] for item in page_two["list"]}
     )
-
     source = Path(jobs.__file__).read_text(encoding="utf-8")
     assert "union_all(*parts)" in source
     assert ".offset((page - 1) * page_size)" in source
     assert "rows.extend(_import_row" not in source
     assert "rows.extend(_export_row" not in source
 
-
-def test_v6_error_rows_are_server_authoritative_and_paginated(exchange_seed):
-    result = jobs.get_import_errors(
-        str(exchange_seed["academic_failed"]),
-        user=ACADEMIC_ADMIN,
-        visibility="MODULE",
-        module_code="ACADEMIC_AFFAIRS",
-        page=1,
-        page_size=1,
-    )
-    assert result["total"] == 2
-    assert len(result["list"]) == 1
-    assert result["list"][0]["rowNo"] == 2
-    assert result["list"][0]["message"] == "学号不能为空"
-
-
-def test_v6_cancel_and_retry_use_version_and_real_state_boundaries(exchange_seed):
+    # 取消与重试都执行 expectedVersion 和真实状态边界。
     cancelled = jobs.cancel_import_job(
         str(exchange_seed["own_import"]),
         expected_version=0,
@@ -370,7 +351,6 @@ def test_v6_cancel_and_retry_use_version_and_real_state_boundaries(exchange_seed
     )
     assert cancelled["status"] == "CANCELLED"
     assert cancelled["cancellable"] is False
-
     with pytest.raises(AppException):
         jobs.cancel_import_job(
             str(exchange_seed["own_import"]),
@@ -378,15 +358,11 @@ def test_v6_cancel_and_retry_use_version_and_real_state_boundaries(exchange_seed
             reason="再次取消应被版本锁拒绝",
             user=SYS_ADMIN,
         )
-
     retried = jobs.retry_import_job(
-        str(exchange_seed["retryable"]),
-        expected_version=0,
-        user=SYS_ADMIN,
+        str(exchange_seed["retryable"]), expected_version=0, user=SYS_ADMIN
     )
     assert retried["status"] == "SCANNING"
     assert retried["result"]["retryCount"] == 1
-
     with pytest.raises(AppException):
         jobs.retry_import_job(
             str(exchange_seed["academic_failed"]),
