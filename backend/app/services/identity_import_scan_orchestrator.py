@@ -1,8 +1,8 @@
 """身份导入 FileObject 扫描后解析编排。
 
-上传请求只登记隔离文件和 ImportJob；查询任务时在文件 CLEAN/AVAILABLE 后抢占 PARSING，
-从存储路径流式校验/解析并把同一任务转换为既有 IDENTITY_IMPORT_BATCH adapter。
-确认接口仍只信任 jobId + expectedVersion，不接受前端 rows。
+上传请求只登记隔离文件和 ImportJob；任务创建者查询本人任务时，文件 CLEAN/AVAILABLE 后
+推进 PARSING → 预检。具备 MODULE/TENANT 查看权的管理员可以查看任务，但读取详情不会
+以管理员身份替任务创建者执行解析，避免查询动作改变任务责任人与业务结果。
 """
 from __future__ import annotations
 
@@ -47,6 +47,7 @@ def create_identity_import_scan_job(
             ImportJob.is_deleted.is_(False),
         )).first()
         if existing:
+            jobs._assert_row_visible(existing, user)  # noqa: SLF001
             return refresh_identity_import_job(str(existing.id), user=user)
         row = ImportJob(
             tenant_id=tenant_id,
@@ -77,14 +78,31 @@ def create_identity_import_scan_job(
     return refresh_identity_import_job(job_id, user=user)
 
 
-def _mark_failed(job_id: int, message: str, user: dict) -> dict:
+def _mark_failed(
+    job_id: int,
+    message: str,
+    user: dict,
+    *,
+    visibility: str | None = None,
+    module_code: str | None = None,
+) -> dict:
     db = get_sessionmaker()()
     try:
-        row = jobs._owned_import(db, job_id, user, lock=True)  # noqa: SLF001
+        row = jobs._owned_import(  # noqa: SLF001
+            db,
+            job_id,
+            user,
+            lock=True,
+            visibility=visibility,
+            module_code=module_code,
+        )
         row.status = "VALIDATION_FAILED"
         row.error_message = str(message or "身份导入预检失败")[:4000]
         row.version = int(row.version or 0) + 1
-        row.result_json = {**dict(row.result_json or {}), "parseFinishedAt": datetime.utcnow().isoformat() + "Z"}
+        row.result_json = {
+            **dict(row.result_json or {}),
+            "parseFinishedAt": datetime.utcnow().isoformat() + "Z",
+        }
         db.commit()
         db.refresh(row)
         return jobs._import_row(row)  # noqa: SLF001
@@ -105,11 +123,27 @@ def _file_state(db, row: ImportJob) -> tuple[FileObject, bool]:
     return file_obj, ready
 
 
-def refresh_identity_import_job(job_id: str, *, user: dict) -> dict:
+def refresh_identity_import_job(
+    job_id: str,
+    *,
+    user: dict,
+    visibility: str | None = None,
+    module_code: str | None = None,
+) -> dict:
     db = get_sessionmaker()()
     try:
-        row = jobs._owned_import(db, job_id, user, lock=True)  # noqa: SLF001
+        row = jobs._owned_import(  # noqa: SLF001
+            db,
+            job_id,
+            user,
+            lock=True,
+            visibility=visibility,
+            module_code=module_code,
+        )
         if row.adapter_type != PENDING_ADAPTER:
+            return jobs._import_row(row)  # noqa: SLF001
+        # MODULE/TENANT 管理员的详情读取只查看状态，不替创建者执行解析。
+        if not jobs._row_is_owned(row, user):  # noqa: SLF001
             return jobs._import_row(row)  # noqa: SLF001
         if row.expires_at and row.expires_at <= datetime.utcnow():
             row.status = "EXPIRED"
@@ -119,7 +153,9 @@ def refresh_identity_import_job(job_id: str, *, user: dict) -> dict:
         file_obj, ready = _file_state(db, row)
         scan = str(file_obj.scan_status or "NOT_REQUIRED").upper()
         if not ready:
-            if scan in {"INFECTED", "ERROR", "FAILED"} or str(file_obj.status or "").upper() in {"REJECTED", "DELETED"}:
+            if scan in {"INFECTED", "ERROR", "FAILED"} or str(file_obj.status or "").upper() in {
+                "REJECTED", "DELETED",
+            }:
                 row.status = "VALIDATION_FAILED"
                 row.error_message = "源文件安全扫描失败或已被隔离，禁止解析"
                 row.version = int(row.version or 0) + 1
@@ -143,8 +179,15 @@ def refresh_identity_import_job(job_id: str, *, user: dict) -> dict:
         row.version = int(row.version or 0) + 1
         row.result_json = {**result, "parseStartedAt": datetime.utcnow().isoformat() + "Z"}
         source_file_id = int(file_obj.id)
-        filename = str((row.source_snapshot_json or {}).get("fileName") or file_obj.file_name or "identity_import.xlsx")
-        kind_up = str((row.source_snapshot_json or {}).get("kind") or row.import_type.replace("IDENTITY_", ""))
+        filename = str(
+            (row.source_snapshot_json or {}).get("fileName")
+            or file_obj.file_name
+            or "identity_import.xlsx"
+        )
+        kind_up = str(
+            (row.source_snapshot_json or {}).get("kind")
+            or row.import_type.replace("IDENTITY_", "")
+        )
         db.commit()
     finally:
         db.close()
@@ -173,13 +216,29 @@ def refresh_identity_import_job(job_id: str, *, user: dict) -> dict:
             parsed=parsed,
             batch_result=batch_result,
             user=user,
+            visibility=visibility,
+            module_code=module_code,
         )
-    except Exception as exc:  # noqa: BLE001 - parsing errors belong to the task state
-        return _mark_failed(int(job_id), str(exc), user)
+    except Exception as exc:  # noqa: BLE001 - 解析错误属于任务状态
+        return _mark_failed(
+            int(job_id),
+            str(exc),
+            user,
+            visibility=visibility,
+            module_code=module_code,
+        )
 
 
 def _finalize_parsed_job(
-    *, job_id: int, source_file_id: int, kind: str, parsed: dict, batch_result: dict, user: dict
+    *,
+    job_id: int,
+    source_file_id: int,
+    kind: str,
+    parsed: dict,
+    batch_result: dict,
+    user: dict,
+    visibility: str | None = None,
+    module_code: str | None = None,
 ) -> dict:
     from app.services.identity_import_file_service import build_error_workbook, get_batch
 
@@ -191,7 +250,14 @@ def _finalize_parsed_job(
     all_errors = errors + relation_errors
     db = get_sessionmaker()()
     try:
-        row = jobs._owned_import(db, job_id, user, lock=True)  # noqa: SLF001
+        row = jobs._owned_import(  # noqa: SLF001
+            db,
+            job_id,
+            user,
+            lock=True,
+            visibility=visibility,
+            module_code=module_code,
+        )
         if row.adapter_type != PENDING_ADAPTER or row.status != "PARSING":
             return jobs._import_row(row)  # noqa: SLF001
         duplicate = db.scalars(select(ImportJob).where(
@@ -206,6 +272,10 @@ def _finalize_parsed_job(
             row.error_message = f"批次已由任务 {duplicate.id} 接管"
             row.version = int(row.version or 0) + 1
             db.commit()
+            try:
+                jobs._assert_row_visible(duplicate, user)  # noqa: SLF001
+            except Exception:
+                return jobs._import_row(row)  # noqa: SLF001
             return jobs._import_row(duplicate)  # noqa: SLF001
 
         db.execute(delete(ImportRowError).where(
@@ -272,7 +342,14 @@ def _finalize_parsed_job(
         )
         db = get_sessionmaker()()
         try:
-            current = jobs._owned_import(db, job_id, user, lock=True)  # noqa: SLF001
+            current = jobs._owned_import(  # noqa: SLF001
+                db,
+                job_id,
+                user,
+                lock=True,
+                visibility=visibility,
+                module_code=module_code,
+            )
             current.error_receipt_file_id = file_id
             current.version = int(current.version or 0) + 1
             db.commit()
