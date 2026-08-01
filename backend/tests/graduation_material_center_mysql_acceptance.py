@@ -364,8 +364,9 @@ def main() -> None:
     student_user = _student_user(student_id, batch_id)
 
     set_current_user(admin_user)
-    rule = catalog.ensure_rules(batch_id, admin_user)
-    assert rule["itemCount"] == 18
+    rules = catalog.list_rules(batch_id, admin_user)
+    rule = next(item for item in rules["items"] if item["status"] == "ENABLED")
+    assert len(rule["items"]) == 18
     rule_codes = {item["materialCode"] for item in rule["items"]}
     assert len(rule_codes) == 18
     assert rule_codes == set(catalog.SPEC_BY_CODE)
@@ -555,7 +556,7 @@ def main() -> None:
             gd_student_id=student_id,
             defense_group_id=77001,
             judge_name="阶段六答辩评委",
-            status="SCORED",
+            status="CONFIRMED",
             score=90,
             comment="答辩通过",
             round_no=1,
@@ -570,52 +571,39 @@ def main() -> None:
 
     set_current_user(student_user)
     _expect_blocked(
-        lambda: catalog.submit_material(student_id, "DESIGN_WORK", pending_file_id, 0, student_user),
+        lambda: catalog.submit_material(student_user, "DESIGN_WORK", pending_file_id, expected_version=0),
         codes={"DATA_CONFLICT"},
     )
     _expect_blocked(
-        lambda: catalog.submit_material(student_id, "SOURCE_CODE", infected_file_id, 0, student_user),
+        lambda: catalog.submit_material(student_user, "SOURCE_CODE", infected_file_id, expected_version=0),
         codes={"DATA_CONFLICT"},
     )
     _expect_not_found(
-        lambda: catalog.submit_material(student_id, "DESIGN_WORK", cross_tenant_file_id, 0, student_user)
+        lambda: catalog.submit_material(student_user, "DESIGN_WORK", cross_tenant_file_id, expected_version=0)
     )
-    design = catalog.submit_material(student_id, "DESIGN_WORK", clean_design_id, 0, student_user)
-    source = catalog.submit_material(student_id, "SOURCE_CODE", clean_source_id, 0, student_user)
-    assert design["version"] == 1 and source["version"] == 1
+    design = catalog.submit_material(student_user, "DESIGN_WORK", clean_design_id, expected_version=0)
+    source = catalog.submit_material(student_user, "SOURCE_CODE", clean_source_id, expected_version=0)
+    assert design["versionNo"] == 1 and source["versionNo"] == 1
     set_current_user(teacher_user)
     catalog.review_material(
-        design["materialId"], "APPROVE", "设计作品完整", design["fileVersionId"], teacher_user,
+        design["materialId"], design["fileVersionId"], "APPROVE", "设计作品完整", teacher_user,
     )
     catalog.review_material(
-        source["materialId"], "APPROVE", "源代码归档完整", source["fileVersionId"], teacher_user,
+        source["materialId"], source["fileVersionId"], "APPROVE", "源代码归档完整", teacher_user,
     )
 
     set_current_user(admin_user)
-    backfill_1 = catalog.backfill_legacy_attachments(
-        admin_user,
-        batch_id=batch_id,
-        page_size=1,
-        dry_run=False,
-        checkpoint_key="phase6-backfill",
+    backfill_1 = catalog.backfill_legacy(
+        admin_user, page_size=1, cursor_model="PROPOSAL",
+        cursor_id=max(0, legacy_proposal_id - 1), dry_run=False,
     )
-    backfill_2 = catalog.backfill_legacy_attachments(
-        admin_user,
-        batch_id=batch_id,
-        page_size=20,
-        dry_run=False,
-        checkpoint_key="phase6-backfill",
+    assert backfill_1["scanned"] == 1
+    assert backfill_1["converted"] + backfill_1["skipped"] >= 1
+    repeat = catalog.backfill_legacy(
+        admin_user, page_size=1, cursor_model="PROPOSAL",
+        cursor_id=max(0, legacy_proposal_id - 1), dry_run=False,
     )
-    assert backfill_1["processed"] <= 1
-    assert backfill_2["checkpoint"]["status"] in {"COMPLETED", "PARTIAL_FAILED"}
-    repeat = catalog.backfill_legacy_attachments(
-        admin_user,
-        batch_id=batch_id,
-        page_size=20,
-        dry_run=False,
-        checkpoint_key="phase6-backfill-repeat",
-    )
-    assert repeat["createdBindings"] >= 0
+    assert repeat["skipped"] >= 1
     db = get_sessionmaker()()
     try:
         legacy_bindings = db.scalars(select(FileBinding).where(
@@ -627,7 +615,7 @@ def main() -> None:
         assert len(legacy_bindings) == len({(row.asset_id, row.version_id, row.file_id) for row in legacy_bindings})
         checkpoints = db.scalars(select(GraduationMaterialBackfillCheckpoint).where(
             GraduationMaterialBackfillCheckpoint.tenant_id == TENANT_ID,
-            GraduationMaterialBackfillCheckpoint.batch_id == batch_id,
+            GraduationMaterialBackfillCheckpoint.migration_key == catalog.MIGRATION_KEY,
         )).all()
         assert checkpoints
     finally:
@@ -663,21 +651,16 @@ def main() -> None:
         template_file_v2_id = int(template_file_v2.id)
     finally:
         db.close()
-    policy_v1 = catalog.publish_template_version(
-        template_id,
-        template_file_v1_id,
-        admin_user,
-        batch_id=batch_id,
-        template_code="GD_PROPOSAL_REPORT",
-        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},
+    policy_payload = {
+        "batchId": str(batch_id),
+        "templateCode": "GD_PROPOSAL_REPORT",
+        "variableSchema": {"variables": [{"name": "studentName", "type": "string"}]},
+    }
+    policy_v1 = catalog.publish_template_policy(
+        template_id, template_file_v1_id, policy_payload, admin_user,
     )
-    policy_v2 = catalog.publish_template_version(
-        template_id,
-        template_file_v2_id,
-        admin_user,
-        batch_id=batch_id,
-        template_code="GD_PROPOSAL_REPORT",
-        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},
+    policy_v2 = catalog.publish_template_policy(
+        template_id, template_file_v2_id, policy_payload, admin_user,
     )
     assert policy_v1["versionNo"] == 1
     assert policy_v2["versionNo"] == 2
@@ -689,7 +672,7 @@ def main() -> None:
             GraduationTemplateAssetPolicy.batch_id == batch_id,
             GraduationTemplateAssetPolicy.is_deleted.is_(False),
         )).one()
-        assert int(policy.current_version_id) == int(policy_v2["fileVersionId"])
+        assert int(policy.current_version_id) == int(policy_v2["versionId"])
         versions = db.scalars(select(FileVersion).where(
             FileVersion.tenant_id == TENANT_ID,
             FileVersion.asset_id == int(policy.asset_id),
