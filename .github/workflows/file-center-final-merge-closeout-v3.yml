@@ -1,102 +1,226 @@
-name: PR25 reviewed-grade fixture bridge
+# PR25 phase6 API-aligned validation trigger; no gate logic change.
+name: PR25 final authoritative merge closeout
 
 on:
   push:
     branches: [audit/file-capability-inventory]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
-  group: pr25-reviewed-grade-fixture-bridge
+  group: pr25-final-authoritative-merge-closeout
   cancel-in-progress: true
 
 jobs:
-  apply-and-restore:
+  closeout:
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      APP_ENV: test
+      SECRET_KEY: pr25-final-authoritative-closeout-secret
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+      GH_TOKEN: ${{ github.token }}
+
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: audit/file-capability-inventory
-          fetch-depth: 2
+          ref: ${{ github.sha }}
+          fetch-depth: 0
 
-      - name: Patch acceptance fixture exactly
+      - id: prepare
+        name: Verify latest main ancestry and exact audited tree
+        continue-on-error: true
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import ast
-
-          path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
-          source = path.read_text(encoding='utf-8')
-
-          import_anchor = '    GraduationFinal,\n    GraduationGuidance,\n'
-          import_replacement = '    GraduationFinal,\n    GraduationGrade,\n    GraduationGuidance,\n'
-          if source.count(import_anchor) != 1:
-              raise SystemExit(f'import anchor count={source.count(import_anchor)}')
-          source = source.replace(import_anchor, import_replacement, 1)
-
-          seed_anchor = '''        db.add(GraduationDefenseScore(
-            tenant_id=TENANT_ID,
-            gd_student_id=student_id,
-            defense_group_id=77001,
-            judge_name="阶段六答辩评委",
-            status="CONFIRMED",
-            score=90,
-            comment="答辩通过",
-            round_no=1,
-        ))
-        db.commit()
-'''
-          seed_replacement = '''        db.add(GraduationDefenseScore(
-            tenant_id=TENANT_ID,
-            gd_student_id=student_id,
-            defense_group_id=77001,
-            judge_name="阶段六答辩评委",
-            status="CONFIRMED",
-            score=90,
-            comment="答辩通过",
-            round_no=1,
-        ))
-        db.add(GraduationGrade(
-            tenant_id=TENANT_ID,
-            gd_student_id=student_id,
-            advisor_score=86,
-            reviewer_score=88,
-            defense_score=90,
-            total_score=88,
-            grade_level="良好",
-            status="REVIEWED",
-            calculated_at=datetime.utcnow(),
-            reviewed_by="阶段六管理员",
-            reviewed_at=datetime.utcnow(),
-            source_snapshot_hash=hashlib.sha256(
-                f"{student_id}:86:88:90:88".encode("utf-8")
-            ).hexdigest(),
-        ))
-        db.commit()
-'''
-          if source.count(seed_anchor) != 1:
-              raise SystemExit(f'seed anchor count={source.count(seed_anchor)}')
-          source = source.replace(seed_anchor, seed_replacement, 1)
-          ast.parse(source, filename=str(path))
-          path.write_text(source, encoding='utf-8')
-          PY
-
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+          test -z "$(git diff --name-only --diff-filter=U)"
+          ! grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)' \
+            frontend/src/modules/system student-portal/src/layouts \
+            backend/tests/graduation_material_center_mysql_acceptance.py
+          grep -q "path: 'accounts/staff'" frontend/src/modules/system/system.routes.js
+          grep -q "path: 'data-exchange'" frontend/src/modules/system/system.routes.js
+          grep -q "path: 'file-storage-governance'" frontend/src/modules/system/system.routes.js
+          grep -q "数据交换任务中心" frontend/src/modules/system/systemManagementCatalog.js
+          grep -q "我的材料库" student-portal/src/layouts/PortalLayout.vue
+          ! grep -q "history_json=\[\]" <(sed -n '/GraduationArchiveRecord(/,/            ),/p' backend/tests/graduation_material_center_mysql_acceptance.py)
           git diff --check
-          grep -n 'GraduationGrade' backend/tests/graduation_material_center_mysql_acceptance.py
-          grep -n 'status="REVIEWED"' backend/tests/graduation_material_center_mysql_acceptance.py
+          git status --short
 
-      - name: Restore final gate and remove temporary bridge files
+      - uses: actions/setup-python@v5
+        if: steps.prepare.outcome == 'success'
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        if: steps.prepare.outcome == 'success'
+        with:
+          node-version: '24'
+
+      - id: backend_install
+        name: Install backend dependencies
+        if: steps.prepare.outcome == 'success'
+        continue-on-error: true
+        run: (cd backend && pip install -r requirements.txt) > /tmp/backend_install.log 2>&1
+
+      - id: migrate
+        name: Compile and migrate real MySQL
+        if: steps.backend_install.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout HEAD^ -- .github/workflows/file-center-final-merge-closeout-v3.yml
-          git rm .github/workflows/pr25-phase6-grade-fixture-sync.yml
-          git rm .github/pr25-grade-fixture-trigger.tmp
-          git add backend/tests/graduation_material_center_mysql_acceptance.py
-          git add .github/workflows/file-center-final-merge-closeout-v3.yml
-          git diff --cached --check
-          git commit -m 'test(graduation): seed reviewed grade for archive acceptance'
-          git push origin HEAD:audit/file-capability-inventory
+          (cd backend && \
+            python -m compileall -q app tests && \
+            test "$(alembic heads | wc -l | tr -d ' ')" = "1" && \
+            alembic upgrade head && alembic current) > /tmp/migrate.log 2>&1
+
+      - id: scan
+        name: Run strict inventory and authorization contracts
+        if: steps.migrate.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          (python scripts/audit_file_capabilities.py --check-schema && \
+            python scripts/audit_file_capabilities.py --strict-baseline && \
+            python scripts/check_new_file_capabilities.py --base-ref origin/main && \
+            python scripts/audit_file_center_calls.py --strict --base-ref origin/main && \
+            node scripts/check/check-file-client-contract.mjs) > /tmp/scan.log 2>&1
+
+      - id: backend_tests
+        name: Run complete stage 6-10 MySQL regression and governance worker
+        if: steps.scan.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          (cd backend && pytest -q -p no:warnings --durations=30 \
+            tests/test_academic_export_compat.py \
+            tests/test_academic_file_exchange_center.py \
+            tests/test_affairs_material_center.py \
+            tests/test_data_exchange_job_center.py \
+            tests/test_file_access_service.py \
+            tests/test_file_center_cos_production.py \
+            tests/test_file_center_frontend_cos_supply_chain.py \
+            tests/test_file_center_stage10_closure.py \
+            tests/test_file_identity_import_scan.py \
+            tests/test_file_p0_authz.py \
+            tests/test_file_scan_clamav.py \
+            tests/test_file_scan_state.py \
+            tests/test_file_storage.py \
+            tests/test_file_storage_governance.py \
+            tests/test_file_storage_quota_reservation.py \
+            tests/test_file_storage_write_context.py \
+            tests/test_file_streaming_archive_cutover.py \
+            tests/test_graduation_material_center_phase6.py \
+            tests/test_internship_material_center.py && \
+            python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run) > /tmp/backend_tests.log 2>&1
+
+      - id: admin_pc
+        name: Admin PC lint test build
+        if: steps.prepare.outcome == 'success'
+        continue-on-error: true
+        run: (cd frontend && npm ci && npm run lint && npm test && npm run build) > /tmp/admin_pc.log 2>&1
+
+      - id: student_pc
+        name: Student PC lint test build
+        if: steps.prepare.outcome == 'success'
+        continue-on-error: true
+        run: (cd student-portal && npm ci && npm run lint && npm test && npm run build) > /tmp/student_pc.log 2>&1
+
+      - id: miniapp
+        name: Miniapp test H5 and WeChat builds
+        if: steps.prepare.outcome == 'success'
+        continue-on-error: true
+        run: (cd miniapp && npm ci && npm test && npm run build:h5 && npm run build:mp-weixin) > /tmp/miniapp.log 2>&1
+
+      - name: Report exact result to PR 25
+        if: always()
+        shell: bash
+        env:
+          PREPARE: ${{ steps.prepare.outcome }}
+          BACKEND_INSTALL: ${{ steps.backend_install.outcome }}
+          MIGRATE: ${{ steps.migrate.outcome }}
+          SCAN: ${{ steps.scan.outcome }}
+          BACKEND_TESTS: ${{ steps.backend_tests.outcome }}
+          ADMIN_PC: ${{ steps.admin_pc.outcome }}
+          STUDENT_PC: ${{ steps.student_pc.outcome }}
+          MINIAPP: ${{ steps.miniapp.outcome }}
+        run: |
+          {
+            echo '<!-- pr25-final-authoritative-merge-closeout -->'
+            echo '## PR #25 最终合并前审计'
+            echo
+            echo "Audited SHA: ${GITHUB_SHA}"
+            echo
+            echo '| 门禁 | 结果 |'
+            echo '|---|---|'
+            echo "| 最新 main 已纳入 / 无冲突标记 / 夹具对齐 | ${PREPARE} |"
+            echo "| 后端依赖 | ${BACKEND_INSTALL} |"
+            echo "| MySQL / Alembic / 编译 | ${MIGRATE} |"
+            echo "| 能力清单 / 严格调用扫描 / 授权合同 | ${SCAN} |"
+            echo "| 阶段 6–10 MySQL 回归 / 治理 worker | ${BACKEND_TESTS} |"
+            echo "| 管理 PC lint / test / build | ${ADMIN_PC} |"
+            echo "| 学生 PC lint / test / build | ${STUDENT_PC} |"
+            echo "| H5 / 微信小程序 test / build | ${MINIAPP} |"
+            echo
+            for item in backend_install migrate scan backend_tests admin_pc student_pc miniapp; do
+              file="/tmp/${item}.log"
+              if [ -s "$file" ]; then
+                echo "<details><summary>${item} 日志末尾</summary>"
+                echo
+                echo '```text'
+                tail -n 100 "$file"
+                echo '```'
+                echo '</details>'
+              fi
+            done
+            echo
+            echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > /tmp/pr25-final-audit.md
+          gh pr comment 25 --repo "$GITHUB_REPOSITORY" --body-file /tmp/pr25-final-audit.md
+
+      - name: Enforce final green state
+        if: always()
+        shell: bash
+        env:
+          PREPARE: ${{ steps.prepare.outcome }}
+          BACKEND_INSTALL: ${{ steps.backend_install.outcome }}
+          MIGRATE: ${{ steps.migrate.outcome }}
+          SCAN: ${{ steps.scan.outcome }}
+          BACKEND_TESTS: ${{ steps.backend_tests.outcome }}
+          ADMIN_PC: ${{ steps.admin_pc.outcome }}
+          STUDENT_PC: ${{ steps.student_pc.outcome }}
+          MINIAPP: ${{ steps.miniapp.outcome }}
+        run: |
+          test "$PREPARE" = success
+          test "$BACKEND_INSTALL" = success
+          test "$MIGRATE" = success
+          test "$SCAN" = success
+          test "$BACKEND_TESTS" = success
+          test "$ADMIN_PC" = success
+          test "$STUDENT_PC" = success
+          test "$MINIAPP" = success
