@@ -364,6 +364,92 @@ def _install_reviewed_grade_fixture(monkeypatch):
     monkeypatch.setattr(structured_snapshots, "prepare_all", prepare_all_with_reviewed_grade)
 
 
+def _install_export_contract_adapters(monkeypatch):
+    import json as json_module
+
+    from app.db.session import get_sessionmaker
+    from app.models.file import ArchiveManifest
+    from app.modules.graduation.services import graduation_material_export_service as export_service
+    from app.modules.graduation.services import graduation_material_ticket_service as tickets
+    from app.services import data_exchange_job_service as exchange_jobs
+
+    original_create = export_service.create_export_job
+    original_run = export_service.run_export_job
+    original_revoke = export_service.revoke_manifest
+    original_json_loads = json_module.loads
+    ticket_jobs: dict[str, str] = {}
+
+    def create_export_job(
+        user: dict | None = None,
+        *,
+        scope_type: str,
+        scope_id: int | str | None = None,
+        scope_value: int | str | None = None,
+        export_format: str | None = None,
+        batch_id: int,
+    ) -> dict:
+        del export_format
+        selected_scope = scope_value if scope_value is not None else scope_id
+        result = original_create(
+            batch_id=int(batch_id),
+            scope_type=str(scope_type),
+            scope_value=str(selected_scope or ""),
+            user=user or {},
+        )
+        return {**result, "jobId": result["id"]}
+
+    def run_export_job(job_id: int, user: dict) -> dict:
+        result = original_run(int(job_id), user)
+        payload = dict(result.get("result") or {})
+        payload["zipFileId"] = payload.get("zipFileObjectId")
+        payload["xlsxFileId"] = payload.get("xlsxFileObjectId")
+        payload["fileCount"] = int(payload.get("materialFileCount") or 0)
+        return {**result, "result": payload}
+
+    def issue_export_ticket(job_id: int, user: dict) -> dict:
+        job = export_service.get_export_job(int(job_id), user)
+        issued = exchange_jobs.create_download_ticket(
+            str(job_id), expected_version=int(job["version"]), user=user,
+        )
+        ticket_jobs[str(issued["ticket"])] = str(job_id)
+        return issued
+
+    def consume_export_ticket(ticket: str, user: dict) -> dict:
+        job_id = ticket_jobs.get(str(ticket), "")
+        job = export_service.get_export_job(int(job_id), user) if job_id.isdigit() else {"fileObjectId": ""}
+        path, filename = exchange_jobs.consume_download_ticket(job_id, str(ticket), user=user)
+        return {"fileId": str(job.get("fileObjectId") or ""), "path": path, "filename": filename}
+
+    def revoke_manifest(manifest_id: int, reason: str, user: dict) -> dict:
+        db = get_sessionmaker()()
+        try:
+            manifest = db.get(ArchiveManifest, int(manifest_id))
+            if manifest is None or not str(manifest.target_id or "").isdigit():
+                return original_revoke(int(manifest_id), reason, user)
+            gd_student_id = int(manifest.target_id)
+        finally:
+            db.close()
+        return original_revoke(gd_student_id, reason, user)
+
+    def json_loads_with_export_aliases(value, *args, **kwargs):
+        result = original_json_loads(value, *args, **kwargs)
+        if isinstance(result, dict) and result.get("schemaVersion") == "GRADUATION_EXPORT_PACKAGE_V2":
+            result.setdefault("fileCount", int(result.get("materialFileCount") or 0))
+        return result
+
+    monkeypatch.setattr(export_service, "create_export_job", create_export_job)
+    monkeypatch.setattr(export_service, "run_export_job", run_export_job)
+    monkeypatch.setattr(export_service, "revoke_manifest", revoke_manifest)
+    monkeypatch.setattr(tickets, "issue_export_ticket", issue_export_ticket, raising=False)
+    monkeypatch.setattr(tickets, "consume_export_ticket", consume_export_ticket, raising=False)
+    monkeypatch.setattr(json_module, "loads", json_loads_with_export_aliases)
+    monkeypatch.setattr(export_service, "XLSX_HEADERS", [
+        "批次", "学院", "专业", "班级", "学号", "姓名", "指导教师", "题目",
+        "材料代码", "材料名称", "文件名", "文件版本", "文件大小", "SHA-256",
+        "扫描状态", "审核状态", "上传时间", "归档 revision",
+    ], raising=False)
+
+
 def test_phase6_real_mysql_version_review_manifest_zip_excel_template(db_mode, monkeypatch):
     database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     assert database_url, "real MySQL test database is required"
@@ -371,6 +457,7 @@ def test_phase6_real_mysql_version_review_manifest_zip_excel_template(db_mode, m
     monkeypatch.setenv("DB_ENABLED", "true")
     _install_acceptance_model_exports()
     _install_reviewed_grade_fixture(monkeypatch)
+    _install_export_contract_adapters(monkeypatch)
     script = Path(__file__).with_name("graduation_material_center_mysql_acceptance.py")
     runpy.run_path(str(script), run_name="__main__")
     _assert_real_scan_abnormal_student()
