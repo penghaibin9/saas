@@ -45,7 +45,13 @@ manifest.validation = {
   tooling: {
     ...manifest.validation?.tooling,
     consistencyStatus: 'PASS_AT_FINAL_FREEZE_HEAD',
+    browserRunner: 'tools/run-browser-regression-persistent.mjs',
+    browserRunnerMode: 'ONE_PERSISTENT_CHROME_TWO_ISOLATED_PAGE_WORKERS',
+    browserRunnerPageBounds: 'newPage=10s; collectProbe<=15s; screenshot<=15s; close<=3s; navigation<=30s',
     browserRunnerStatus: 'PASS_870_AT_FINAL_FREEZE_HEAD',
+    browserRunnerExpectedRenders: 870,
+    browserRunnerChromeProcessCount: 1,
+    browserRunnerWorkerCount: 2,
     freezeAcceptanceRunner: 'tools/run-freeze-acceptance.mjs',
     freezeAcceptanceStatus: 'PASS_LINUX_CHROME_AND_WINDOWS_EDGE_0_ERROR',
     freezeAcceptanceRunId: runId,
@@ -73,7 +79,7 @@ manifest.coverage = {
   sharedDesignFiles: 43,
   machineValidatedWorkspaces: 60,
   machineValidatedHtmlFiles: 290,
-  lastCompletedWorkspace: '最终冻结：边界、一致性、870 全量、Linux Chrome / Windows Edge 专项、生产权限合同',
+  lastCompletedWorkspace: '最终冻结：边界、一致性、持久浏览器 870 全量、Linux Chrome / Windows Edge 专项、生产权限合同',
   nextWorkspaceCandidate: '按冻结原型启动教师 PC 生产前端分模块替换',
   remainingCenters: []
 }
