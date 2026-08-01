@@ -26,8 +26,8 @@
             刷新页面或切换设备后仍可继续处理。
           </p>
           <p class="sii__note">
-            仅导入教师请前往
-            <button class="mp-link" @click="$router.push('/admin/system/identity-import/teachers')">教师导入</button>。
+            仅导入教职工请前往
+            <button class="mp-link" @click="$router.push('/admin/system/identity-import/teachers')">教职工导入</button>。
           </p>
         </div>
       </section>
@@ -54,7 +54,7 @@
 <script>
 /**
  * 系统管理 › 身份与账号 › 学生导入与账号开通。
- * 阶段 3：上传后创建统一 ImportJob；确认只传 jobId + expectedVersion，禁止前端回传 rows。
+ * 上传后创建统一 ImportJob；确认只传 jobId + expectedVersion，禁止前端回传 rows。
  */
 import { ModulePageShell } from '@/components/business'
 import { AppGlobalState } from '@/components/common'
@@ -82,6 +82,7 @@ export default {
     canImport() {
       const pa = (this.ctx && this.ctx.permissionActions) || {}
       const item = pa.importUsers
+      // ctx 未下发时不误报无权限，后端仍是最终边界。
       return item ? !!(item.visible && item.allowed) : true
     }
   },
