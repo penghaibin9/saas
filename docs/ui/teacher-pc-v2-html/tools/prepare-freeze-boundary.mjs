@@ -128,5 +128,6 @@ fs.writeFileSync(browserPath, browser, 'utf8')
 
 await import('./prepare-browser-stability.mjs')
 await import('./prepare-runtime-integrity.mjs')
+await import('./prepare-persistent-runner-stability.mjs')
 
 console.log('freeze boundary, consistency, browser and runtime tools prepared')
