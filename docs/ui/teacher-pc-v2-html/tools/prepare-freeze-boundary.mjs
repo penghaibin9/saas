@@ -126,4 +126,6 @@ if (!browser.includes('normalizeManifestPart(part)')) {
 }
 fs.writeFileSync(browserPath, browser, 'utf8')
 
+await import('./prepare-browser-stability.mjs')
+
 console.log('freeze boundary, consistency and browser tools prepared')
