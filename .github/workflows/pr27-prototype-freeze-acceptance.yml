@@ -122,6 +122,7 @@ jobs:
           node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
           node docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs \
             --report=freeze-artifacts/consistency/report.json
 
@@ -169,6 +170,7 @@ jobs:
           node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
           rm -f .github/workflows/pr27-acceptance-runner-repair.yml
 
       - name: Commit only when materialization changed the branch
@@ -176,6 +178,7 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add docs/ui/teacher-pc-v2-html/prototype-manifest.json
+          git add docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
           git add docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
           git add docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           git add docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
