@@ -1,0 +1,77 @@
+name: Publish remaining V6 control-plane documents
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v6-remaining-docs.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v6-remaining-docs-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Reconstruct and verify exact V6 documents
+        run: |
+          python - <<'PY'
+          import base64
+          import gzip
+          import hashlib
+          from pathlib import Path
+
+          documents = {
+              "system": {
+                  "target": "docs/03-业务模块设计/系统管理中心/01_学校系统管理中心_页面施工卡_V6唯一代码执行版.md",
+                  "sha256": "d0707a1325508daaca14bfd80b77614f6aac4b3e68ca8a969e44212f3d9b4cc7",
+              },
+              "platform": {
+                  "target": "docs/03-业务模块设计/系统管理中心/02_SaaS平台运营中心_页面施工卡_V6唯一代码执行版.md",
+                  "sha256": "5939e704c14f2b2fe04d82078e3741f825b78ed2eb910f3ada0a8115bd2dbb6a",
+              },
+              "index": {
+                  "target": "docs/03-业务模块设计/系统管理中心/V6控制面施工卡机器索引.yaml",
+                  "sha256": "f91f24eeb4cf843e662a8093f058b1684663d65a69c0e073dbe64e07d458604a",
+              },
+          }
+
+          for key, spec in documents.items():
+              chunk_dir = Path(".v6-doc-payload") / key
+              chunks = sorted(chunk_dir.glob("*.part"))
+              if not chunks:
+                  raise SystemExit(f"missing payload chunks for {key}")
+              encoded = "".join(path.read_text(encoding="utf-8").strip() for path in chunks)
+              raw = gzip.decompress(base64.b64decode(encoded))
+              actual = hashlib.sha256(raw).hexdigest()
+              if actual != spec["sha256"]:
+                  raise SystemExit(f"{key} sha256 mismatch: {actual} != {spec['sha256']}")
+              target = Path(spec["target"])
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(raw)
+              print(f"verified {key}: {actual} -> {target}")
+          PY
+
+      - name: Commit exact documents and remove temporary payload
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            "docs/03-业务模块设计/系统管理中心/01_学校系统管理中心_页面施工卡_V6唯一代码执行版.md" \
+            "docs/03-业务模块设计/系统管理中心/02_SaaS平台运营中心_页面施工卡_V6唯一代码执行版.md" \
+            "docs/03-业务模块设计/系统管理中心/V6控制面施工卡机器索引.yaml"
+          git rm -r -- .v6-doc-payload
+          git rm -- .github/workflows/publish-v6-remaining-docs.yml
+          git commit -m "docs: publish remaining V6 control-plane contracts"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
