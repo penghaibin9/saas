@@ -6,12 +6,15 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
 
 from app.api.v1.data_exchange import ConfirmImportRequest
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
 from app.models.data_exchange import ExportJob, ImportJob, ImportRowError
+from app.models.file import FileJob, FileObject
 from app.services import data_exchange_job_service as jobs
+from app.services.file_scan_constants import JOB_DEAD, JOB_PENDING, SCAN_ERROR, SCAN_PENDING
 
 TENANT_ID = 1000000000000000001
 OTHER_TENANT_ID = 1000000000000000002
@@ -208,6 +211,44 @@ def exchange_seed(db_mode, monkeypatch):
     monkeypatch.setattr(jobs, "_tenant_id", lambda: TENANT_ID)
     db = get_sessionmaker()()
     try:
+        scan_file = FileObject(
+            tenant_id=TENANT_ID,
+            file_key="quarantine/sys18/retryable.xlsx",
+            file_name="retryable.xlsx",
+            ext="xlsx",
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            size_bytes=128,
+            sha256="a" * 64,
+            biz_type="DATA_IMPORT_SOURCE",
+            biz_id="SYS18-RETRY",
+            owner_user_id=SYS_ADMIN["userId"],
+            visibility="PRIVATE",
+            security_level="SENSITIVE",
+            status="QUARANTINED",
+            storage_backend="local",
+            storage_zone="QUARANTINE",
+            upload_source="USER",
+            scan_required=True,
+            scan_status=SCAN_ERROR,
+            scan_attempts=3,
+            scan_last_error="scanner temporarily unavailable",
+            created_by=SYS_ADMIN["userId"],
+        )
+        db.add(scan_file)
+        db.flush()
+        scan_job = FileJob(
+            tenant_id=TENANT_ID,
+            job_type="FILE_SCAN",
+            file_id=scan_file.id,
+            dedupe_key=f"FILE_SCAN:{scan_file.id}",
+            status=JOB_DEAD,
+            attempts=3,
+            max_attempts=3,
+            available_at=datetime.utcnow(),
+            last_error="scanner temporarily unavailable",
+            payload_json={"fileId": str(scan_file.id)},
+            created_by=SYS_ADMIN["userId"],
+        )
         own_import = _import(
             operator_id=SYS_ADMIN["userId"], module_code="SYSTEM", adapter_ref="own-system-import"
         )
@@ -227,6 +268,7 @@ def exchange_seed(db_mode, monkeypatch):
             status="VALIDATION_FAILED",
             adapter_type=jobs.PENDING_IDENTITY_ADAPTER,
         )
+        retryable.source_file_id = scan_file.id
         other_tenant = _import(
             tenant_id=OTHER_TENANT_ID,
             operator_id=SYS_ADMIN["userId"],
@@ -242,6 +284,7 @@ def exchange_seed(db_mode, monkeypatch):
             adapter_ref="academic-export",
         )
         db.add_all([
+            scan_job,
             own_import, other_system_import, academic_failed, retryable,
             other_tenant, own_export, academic_export,
         ])
@@ -276,6 +319,8 @@ def exchange_seed(db_mode, monkeypatch):
             "other_system_import": other_system_import.id,
             "academic_failed": academic_failed.id,
             "retryable": retryable.id,
+            "retry_file": scan_file.id,
+            "retry_file_job": scan_job.id,
             "other_tenant": other_tenant.id,
         }
     finally:
@@ -361,7 +406,7 @@ def test_v6_mysql_visibility_summary_pagination_errors_and_actions(exchange_seed
     assert "rows.extend(_import_row" not in source
     assert "rows.extend(_export_row" not in source
 
-    # 取消与重试都执行 expectedVersion 和真实状态边界。
+    # 取消使用版本锁；重试必须同时重投真实 FileJob。
     cancelled = jobs.cancel_import_job(
         str(exchange_seed["own_import"]),
         expected_version=0,
@@ -382,6 +427,18 @@ def test_v6_mysql_visibility_summary_pagination_errors_and_actions(exchange_seed
     )
     assert retried["status"] == "SCANNING"
     assert retried["result"]["retryCount"] == 1
+    assert retried["result"]["scanRequeued"] is True
+    db = get_sessionmaker()()
+    try:
+        file_row = db.get(FileObject, exchange_seed["retry_file"])
+        file_job = db.get(FileJob, exchange_seed["retry_file_job"])
+        assert file_row.scan_status == SCAN_PENDING
+        assert file_row.status == "QUARANTINED"
+        assert file_job.status == JOB_PENDING
+        assert file_job.max_attempts > file_job.attempts
+        assert file_job.last_error is None
+    finally:
+        db.close()
     with pytest.raises(AppException):
         jobs.retry_import_job(
             str(exchange_seed["academic_failed"]),
