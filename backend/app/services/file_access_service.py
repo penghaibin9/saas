@@ -1,7 +1,9 @@
-"""阶段 2：公共文件对象授权 resolver registry 与业务绑定。
+"""公共文件对象授权 resolver registry 与业务绑定。
 
 统一原则：租户、对象关系、数据范围、批次和安全状态必须同时成立；任何失败均向外表现为 404，
 避免通过 403/列表数量/文件名枚举其他学校、其他学生或其他批次的文件。
+
+RBAC-09：文件治理身份只管理容量、策略、扫描和审计元数据，绝不作为文件原文访问依据。
 """
 from __future__ import annotations
 
@@ -13,7 +15,12 @@ from sqlalchemy import select
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.permissions import has_permission, is_super_admin
+from app.core.permissions import has_permission
+from app.core.rbac09_permission_bundles import (
+    FILE_GOVERNANCE_VIEW,
+    FILE_SCAN_RETRY,
+    has_permission_compat,
+)
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.file_content_security import is_downloadable_status
 from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
@@ -94,12 +101,12 @@ def _actor_batch_values(user: dict) -> set[str]:
     return {item for item in values if item}
 
 
-def _is_file_admin(user: dict) -> bool:
-    return bool(
-        is_super_admin(user)
-        or has_permission(user, "systemAdmin.file.manage")
-        or has_permission(user, "*")
-    )
+def _can_retry_scan(user: dict) -> bool:
+    return has_permission_compat(user, FILE_SCAN_RETRY)
+
+
+def _can_view_file_audit(user: dict) -> bool:
+    return has_permission_compat(user, FILE_GOVERNANCE_VIEW)
 
 
 def _binding_subject_allows(binding, user: dict) -> bool:
@@ -131,11 +138,9 @@ def _default_resolver(db, file_obj, bindings: list[Any], user: dict, action: str
     owner = str(file_obj.owner_user_id or file_obj.created_by or "").strip()
     if actor_id and owner and actor_id == owner:
         return True
-    if _is_file_admin(user):
-        return True
 
     active = [item for item in bindings if not item.is_deleted and item.status == "ACTIVE"]
-    # 上传者 binding 证明直接关系，但不能遮蔽学生本人或具备业务权限的合法访问。
+    # 上传者/业务 binding 证明直接关系；治理角色不能凭治理权限跳过该关系。
     if active and any(_binding_subject_allows(item, user) for item in active):
         return True
 
@@ -317,8 +322,10 @@ def _allowed_actions(file_obj, user: dict, bindings: list[Any], db) -> list[str]
     actions = ["viewMetadata"]
     if authorize_file_object(file_obj, bindings, user, "preview", db=db):
         actions.extend(["preview", "download"])
-    if _is_file_admin(user):
-        actions.extend(["retryScan", "viewAudit"])
+    if _can_retry_scan(user):
+        actions.append("retryScan")
+    if _can_view_file_audit(user):
+        actions.append("viewAudit")
     return actions
 
 
