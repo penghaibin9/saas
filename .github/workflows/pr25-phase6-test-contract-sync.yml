@@ -1,0 +1,64 @@
+name: PR25 phase6 acceptance contract sync
+
+on:
+  push:
+    branches: [audit/file-capability-inventory]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr25-phase6-acceptance-contract-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+
+      - name: Apply exact acceptance-only replacements
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import ast
+
+          acceptance = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          source = acceptance.read_text(encoding='utf-8')
+          old = '    backend.promote(key)\n'
+          new = '    backend.persist(key, target)\n'
+          if source.count(old) != 1:
+              raise SystemExit(f'expected exactly one legacy promote call, found {source.count(old)}')
+          acceptance.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          contract = Path('backend/tests/test_graduation_material_center_phase6.py')
+          source = contract.read_text(encoding='utf-8')
+          old = '        \'checkpoint_key="phase6-backfill-repeat"\',\n'
+          new = '        \'assert repeat["skipped"] >= 1\',\n'
+          if source.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale checkpoint marker, found {source.count(old)}')
+          contract.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          for path in (acceptance, contract):
+              ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+          PY
+
+          git diff --check
+          grep -n 'backend.persist(key, target)' backend/tests/graduation_material_center_mysql_acceptance.py
+          grep -n 'assert repeat\["skipped"\] >= 1' backend/tests/test_graduation_material_center_phase6.py
+
+      - name: Commit exact test contract fix and self-delete
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/tests/graduation_material_center_mysql_acceptance.py
+          git add backend/tests/test_graduation_material_center_phase6.py
+          git rm .github/workflows/pr25-phase6-test-contract-sync.yml
+          git diff --cached --check
+          git commit -m 'test(file-center): align phase6 acceptance with current contracts'
+          git push origin HEAD:audit/file-capability-inventory
