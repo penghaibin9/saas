@@ -6,9 +6,9 @@
     "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
     "prototypeBranch": "codex/teacher-pc-v2-html-library",
     "generatedAt": "2026-07-30T16:13:00+08:00",
-    "updatedAt": "2026-08-01T01:19:07.258Z",
-    "fullRegressionSourceHead": "9a197aa77343e5dcfb6afe922f542446c2b4ea48",
-    "finalFreezeValidationSourceHead": "9a197aa77343e5dcfb6afe922f542446c2b4ea48"
+    "updatedAt": "2026-08-01T01:20:25.623Z",
+    "fullRegressionSourceHead": "c96eef7d3b756c3e560cb5f4c2e8c5b84b8fafbe",
+    "finalFreezeValidationSourceHead": "c96eef7d3b756c3e560cb5f4c2e8c5b84b8fafbe"
   },
   "status": "FROZEN",
   "designOnly": false,
@@ -108,7 +108,7 @@
       "browserRunnerStatus": "PASS_870_AT_FINAL_FREEZE_HEAD",
       "freezeAcceptanceRunner": "tools/run-freeze-acceptance.mjs",
       "freezeAcceptanceStatus": "PASS_LINUX_CHROME_AND_WINDOWS_EDGE_0_ERROR",
-      "freezeAcceptanceRunId": "30677314459",
+      "freezeAcceptanceRunId": "30677375046",
       "freezeAcceptanceCountsPerBrowser": {
         "stressPages": 11,
         "keyboardPages": 5,
