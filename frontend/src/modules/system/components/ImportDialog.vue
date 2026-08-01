@@ -10,40 +10,36 @@
       <template v-if="step === 0">
         <div class="mp-card">
           <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">模板文件</span><span class="mp-kv__v">{{ template.fileName }}（{{ template.version }}）</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">模板字段</span><span class="mp-kv__v">{{ (template.fields || []).join('、') }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">模板文件</span><span class="mp-kv__v">{{ template.fileName || template.name }}<template v-if="template.version">（{{ template.version }}）</template></span></div>
+            <div v-if="template.fields?.length" class="mp-kv"><span class="mp-kv__k">模板字段</span><span class="mp-kv__v">{{ template.fields.join('、') }}</span></div>
           </div>
         </div>
-        <ul class="imp__rules">
+        <ul v-if="template.rules?.length" class="imp__rules">
           <li v-for="r in template.rules" :key="r">{{ r }}</li>
         </ul>
         <AppButton variant="secondary" :loading="downloading" @click="downloadTemplate">
-          {{ realFileMode ? '⇩ 下载标准 Excel 模板' : '⇩ 下载导入模板' }}
+          ⇩ 下载标准 Excel 模板
         </AppButton>
       </template>
 
       <template v-else-if="step === 1">
-        <label v-if="realFileMode" class="imp__upload">
+        <label class="imp__upload">
           <input ref="fileInput" type="file" class="imp__file-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="selectFile" />
           <span class="mp-note">仅支持标准 .xlsx；上传后进入文件安全检查并执行服务端预检，不会直接写入数据库</span>
           <span v-if="file" class="imp__filename">已选择：{{ file.name }}</span>
-        </label>
-        <label v-else class="imp__upload">
-          <input v-model="fileName" type="text" class="imp__file-input" placeholder="演示环境：输入文件名模拟上传" />
-          <span class="mp-note">上传后自动执行字段校验（dry-run 预检），不会直接写入</span>
         </label>
         <div v-if="preview" class="imp__result">
           <div class="imp__stat">
             共 <b>{{ preview.total }}</b> 行 · 校验通过 <b class="is-ok">{{ preview.valid }}</b> · 存在错误 <b class="is-err">{{ preview.invalid }}</b>
           </div>
-          <table v-if="preview.errors.length" class="mp-audit">
+          <table v-if="preview.errors?.length" class="mp-audit">
             <thead><tr><th>行号</th><th>字段</th><th>错误原因</th></tr></thead>
             <tbody>
-              <tr v-for="(e, index) in preview.errors" :key="e.row + '-' + e.field + '-' + index"><td>{{ e.row ? '第 ' + e.row + ' 行' : '全局' }}</td><td>{{ e.field }}</td><td>{{ e.message }}</td></tr>
+              <tr v-for="(e, index) in preview.errors" :key="`${e.row}-${e.field}-${index}`"><td>{{ e.row ? `第 ${e.row} 行` : '全局' }}</td><td>{{ e.field }}</td><td>{{ e.message }}</td></tr>
             </tbody>
           </table>
-          <button v-if="preview.errors.length && runDownloadErrors" class="mp-link" @click="downloadErrors">⇩ 下载{{ realFileMode ? ' Excel ' : '' }}错误回执</button>
-          <p v-else-if="preview.errors.length" class="mp-note">完整错误回执已进入「数据交换任务中心」，可在任务列表中安全下载。</p>
+          <button v-if="preview.errors?.length && runDownloadErrors" class="mp-link" :disabled="downloadingErrors" @click="downloadErrors">⇩ 下载 Excel 错误回执</button>
+          <p v-else-if="preview.errors?.length" class="mp-note">完整错误回执已进入「数据交换任务中心」，可在任务列表中安全下载。</p>
         </div>
       </template>
 
@@ -62,10 +58,10 @@
     <template #footer>
       <AppButton v-if="step > 0" variant="ghost" @click="step--">上一步</AppButton>
       <AppButton v-if="step === 0" variant="primary" @click="step = 1">下一步：上传文件</AppButton>
-      <AppButton v-else-if="step === 1" variant="primary" :disabled="realFileMode ? !file : !fileName" :loading="checking" @click="runCheck">
+      <AppButton v-else-if="step === 1" variant="primary" :disabled="!file" :loading="checking" @click="runCheck">
         {{ preview ? '重新校验' : '开始校验' }}
       </AppButton>
-      <AppButton v-if="step === 1 && preview && (!realFileMode || preview.invalid === 0)" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
+      <AppButton v-if="step === 1 && preview && preview.invalid === 0" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
       <AppButton v-if="step === 2" variant="primary" :loading="submitting" @click="confirmImport">确认导入 {{ preview && preview.valid }} 行</AppButton>
     </template>
   </AppDrawer>
@@ -73,9 +69,9 @@
 
 <script>
 /**
- * ImportDialog — 三步导入流。
+ * ImportDialog — 真实文件三步导入流。
  * runValidate(File) 返回服务端 ImportJob 预检投影；runImport(jobId) 只使用任务编号，
- * 任务版本由父级 API 客户端读取后提交，禁止把预检 rows 或旧 batchNo 当权威输入。
+ * 任务版本由父级 API 客户端重新读取后提交，禁止把预检 rows 当作权威输入。
  */
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -89,37 +85,36 @@ export default {
     template: { type: Object, required: true },
     runValidate: { type: Function, required: true },
     runImport: { type: Function, required: true },
-    runDownloadTemplate: { type: Function, default: null },
+    runDownloadTemplate: { type: Function, required: true },
     runDownloadErrors: { type: Function, default: null }
   },
   emits: ['update:visible', 'done'],
   data() {
     return {
-      step: 0, file: null, fileName: '', preview: null, checking: false, submitting: false,
-      downloading: false, downloadingErrors: false
-    }
-  },
-  computed: {
-    realFileMode() {
-      return typeof this.runDownloadTemplate === 'function'
+      step: 0,
+      file: null,
+      preview: null,
+      checking: false,
+      submitting: false,
+      downloading: false,
+      downloadingErrors: false
     }
   },
   watch: {
     visible(v) {
-      if (v) Object.assign(this, { step: 0, file: null, fileName: '', preview: null })
+      if (v) Object.assign(this, { step: 0, file: null, preview: null })
     }
   },
   methods: {
     async downloadTemplate() {
-      if (!this.realFileMode) {
-        toast.success('模板已开始下载：' + this.template.fileName)
-        return
-      }
       this.downloading = true
-      const res = await this.runDownloadTemplate()
-      this.downloading = false
-      if (res.code === 0) toast.success(res.message || '标准 Excel 模板已下载')
-      else toast.error(res.message)
+      try {
+        const res = await this.runDownloadTemplate()
+        if (res.code === 0) toast.success(res.message || '标准 Excel 模板已下载')
+        else toast.error(res.message)
+      } finally {
+        this.downloading = false
+      }
     },
     selectFile(event) {
       const selected = event.target.files && event.target.files[0]
@@ -137,35 +132,41 @@ export default {
       this.file = selected
     },
     async downloadErrors() {
-      if (!this.realFileMode) {
-        toast.success('错误清单已开始下载（含行号与原因，修正后可重新上传）')
-        return
-      }
-      if (!this.preview?.batchNo || this.downloadingErrors || !this.runDownloadErrors) return
+      const taskId = this.preview && (this.preview.jobId || this.preview.id || this.preview.batchNo)
+      if (!taskId || this.downloadingErrors || !this.runDownloadErrors) return
       this.downloadingErrors = true
-      const res = await this.runDownloadErrors(this.preview.batchNo)
-      this.downloadingErrors = false
-      if (res.code === 0) toast.success(res.message || 'Excel 错误回执已下载')
-      else toast.error(res.message)
+      try {
+        const res = await this.runDownloadErrors(taskId)
+        if (res.code === 0) toast.success(res.message || 'Excel 错误回执已下载')
+        else toast.error(res.message)
+      } finally {
+        this.downloadingErrors = false
+      }
     },
     async runCheck() {
       this.checking = true
-      const res = await this.runValidate(this.realFileMode ? this.file : this.fileName)
-      this.checking = false
-      if (res.code === 0) this.preview = res.data
-      else toast.error(res.message)
+      try {
+        const res = await this.runValidate(this.file)
+        if (res.code === 0) this.preview = res.data
+        else toast.error(res.message)
+      } finally {
+        this.checking = false
+      }
     },
     async confirmImport() {
       this.submitting = true
-      const jobId = this.preview && (this.preview.jobId || this.preview.id || this.preview.batchNo)
-      const res = await this.runImport(this.realFileMode ? jobId : this.fileName)
-      this.submitting = false
-      if (res.code === 0) {
-        toast.success((res.data.receipt || res.message || '导入完成') + '，已写入任务历史与审计日志')
-        this.$emit('update:visible', false)
-        this.$emit('done')
-      } else {
-        toast.error(res.message)
+      try {
+        const jobId = this.preview && (this.preview.jobId || this.preview.id || this.preview.batchNo)
+        const res = await this.runImport(jobId)
+        if (res.code === 0) {
+          toast.success((res.data.receipt || res.message || '导入完成') + '，已写入任务历史与审计日志')
+          this.$emit('update:visible', false)
+          this.$emit('done')
+        } else {
+          toast.error(res.message)
+        }
+      } finally {
+        this.submitting = false
       }
     }
   }
@@ -174,84 +175,18 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.imp {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.imp__steps {
-  display: flex;
-  gap: var(--space-4);
-}
-.imp__step {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--font-size-sm);
-  color: var(--text-tertiary);
-}
-.imp__step-no {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-base);
-  font-style: normal;
-  font-size: var(--font-size-xs);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.imp__step.is-on {
-  color: var(--primary-600);
-  font-weight: var(--font-weight-semibold);
-}
-.imp__step.is-on .imp__step-no {
-  background: var(--primary-600);
-  border-color: var(--primary-600);
-  color: #fff;
-}
-.imp__step.is-done .imp__step-no {
-  background: var(--success-500);
-  border-color: var(--success-500);
-  color: #fff;
-}
-.imp__rules {
-  margin: 0;
-  padding-left: var(--space-4);
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.imp__upload {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.imp__file-input {
-  height: 36px;
-  border: 1px dashed var(--border-base);
-  border-radius: var(--radius-base);
-  padding: 0 var(--space-3);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  background: var(--bg-section-blue);
-  outline: none;
-}
-.imp__result {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.imp__stat {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.imp__stat .is-ok {
-  color: var(--success-600);
-}
-.imp__stat .is-err {
-  color: var(--danger-600);
-}
+.imp { display: flex; flex-direction: column; gap: var(--space-4); }
+.imp__steps { display: flex; gap: var(--space-4); }
+.imp__step { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-sm); color: var(--text-tertiary); }
+.imp__step-no { width: 20px; height: 20px; border-radius: var(--radius-full); border: 1px solid var(--border-base); font-style: normal; font-size: var(--font-size-xs); display: inline-flex; align-items: center; justify-content: center; }
+.imp__step.is-on { color: var(--primary-600); font-weight: var(--font-weight-semibold); }
+.imp__step.is-on .imp__step-no { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
+.imp__step.is-done .imp__step-no { background: var(--success-500); border-color: var(--success-500); color: #fff; }
+.imp__rules { margin: 0; padding-left: var(--space-4); font-size: var(--font-size-xs); color: var(--text-secondary); display: flex; flex-direction: column; gap: var(--space-1); }
+.imp__upload { display: flex; flex-direction: column; gap: var(--space-1); }
+.imp__file-input { height: 36px; border: 1px dashed var(--border-base); border-radius: var(--radius-base); padding: 0 var(--space-3); font: inherit; font-size: var(--font-size-sm); background: var(--bg-section-blue); outline: none; }
+.imp__result { display: flex; flex-direction: column; gap: var(--space-2); }
+.imp__stat { font-size: var(--font-size-sm); color: var(--text-secondary); }
+.imp__stat .is-ok { color: var(--success-600); }
+.imp__stat .is-err { color: var(--danger-600); }
 </style>
