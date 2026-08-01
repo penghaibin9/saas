@@ -107,9 +107,15 @@ def _material_student(db, model, record_id, user: dict) -> GraduationStudent:
 def _proposal_detail(user: dict, proposal_id: str) -> dict:
     with session() as db:
         _material_student(db, GraduationProposal, proposal_id, user)
-    from app.modules.graduation.services import graduation_service as svc
-    detail = svc.get_proposal_detail(proposal_id)
+    from app.modules.graduation.services import graduation_material_center_service as center
+    detail = center.proposal_detail(int(proposal_id))
     content = detail.get("content") or {}
+    safe_versions = detail.get("currentSafeVersions") or []
+    attachments = [
+        {**item, "downloadUrl": f"/api/v1/graduation/materials/{item['fileId']}/download"}
+        for item in safe_versions
+        if str(item.get("materialCode") or "").startswith("PROPOSAL_ATTACHMENT_")
+    ]
     return {
         "id": str(detail.get("id") or proposal_id), "studentName": detail.get("studentName") or "",
         "className": detail.get("className") or "", "topicTitle": detail.get("topicTitle") or "",
@@ -118,23 +124,29 @@ def _proposal_detail(user: dict, proposal_id: str) -> dict:
         "statusLabel": detail.get("statusLabel"), "background": content.get("background") or "",
         "plan": content.get("plan") or "", "outcome": content.get("outcome") or "",
         "reviewComment": detail.get("reviewComment") or "",
-        "attachments": int(detail.get("attachments") or 0),
-        "attachmentsList": detail.get("attachmentsList") or [], "versions": detail.get("versions") or [],
+        "attachments": len(attachments), "attachmentsList": attachments,
+        "versions": detail.get("versions") or [], "currentSafeVersions": safe_versions,
+        "reviewReady": bool(detail.get("reviewReady")),
     }
 
 
 def _proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
     with session() as db:
         _material_student(db, GraduationProposal, proposal_id, user)
-    from app.modules.graduation.services import graduation_service as svc
-    return svc.review_proposal(proposal_id, action, comment)
+    from app.modules.graduation.services import graduation_material_center_service as center
+    return center.review_proposal(int(proposal_id), action, comment, user)
 
 
 def _final_detail(user: dict, final_id: str) -> dict:
     with session() as db:
         _material_student(db, GraduationFinal, final_id, user)
-    from app.modules.graduation.services import graduation_service as svc
-    detail = svc.get_final_detail(final_id)
+    from app.modules.graduation.services import graduation_material_center_service as center
+    detail = center.final_detail(int(final_id))
+    safe_versions = detail.get("currentSafeVersions") or []
+    attachments = [
+        {**item, "downloadUrl": f"/api/v1/graduation/materials/{item['fileId']}/download"}
+        for item in safe_versions
+    ]
     return {
         "id": str(detail.get("id") or final_id), "studentName": detail.get("studentName") or "",
         "className": detail.get("className") or "", "topicTitle": detail.get("topicTitle") or "",
@@ -144,15 +156,16 @@ def _final_detail(user: dict, final_id: str) -> dict:
         "plagiarismStatus": detail.get("plagiarismStatus") or "未检测",
         "plagiarismTone": detail.get("plagiarismTone") or "success",
         "reviewComment": detail.get("reviewComment") or "",
-        "attachmentsList": detail.get("attachmentsList") or [], "versions": detail.get("versions") or [],
+        "attachmentsList": attachments, "versions": detail.get("versions") or [],
+        "currentSafeVersions": safe_versions, "reviewReady": bool(detail.get("reviewReady")),
     }
 
 
 def _final_review(user: dict, final_id: str, action: str, comment: str | None = None) -> dict:
     with session() as db:
         _material_student(db, GraduationFinal, final_id, user)
-    from app.modules.graduation.services import graduation_service as svc
-    return svc.review_final(final_id, action, comment)
+    from app.modules.graduation.services import graduation_material_center_service as center
+    return center.review_final(int(final_id), action, comment, user)
 
 
 def _choices_pending(user: dict) -> list:

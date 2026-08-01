@@ -1,0 +1,45 @@
+entries:
+  - module: file-center
+    client: backend
+    route: backend/app/services/file_storage_quota_reservation_service.py
+    page: backend/app/services/file_storage_quota_reservation_service.py
+    action: quota+reserve+consume+release
+    fileCategory: STORAGE_QUOTA_RESERVATION
+    api: internal storage governance boundary
+    backendService: backend/app/services/file_storage_quota_reservation_service.py; backend/app/services/storage/governed.py
+    storageMode: MYSQL_DURABLE_RESERVATION_LEDGER
+    authMode: tenant-context+quota-row-lock
+    dataScope: tenant+module+source
+    versioned: false
+    scanGated: false
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '9'
+    notes: 真实文件与 HELD 预留共同占用配额；物理写入失败释放，FileObject 出现后自动消费，超时由治理 worker 回收。
+  - module: file-center
+    client: backend
+    route: /api/v1/files/upload-sessions
+    page: backend/app/api/v1/file.py
+    action: upload+quota-reserve
+    fileCategory: COS_UPLOAD_QUOTA_RESERVATION
+    api: POST /api/v1/files/upload-sessions; POST /api/v1/files/upload-sessions/{sessionId}/complete; POST /api/v1/files/upload-sessions/{sessionId}/abandon
+    backendService: backend/app/services/file_storage_quota_reservation_service.py; backend/app/services/file_upload_session_cleanup_service.py
+    storageMode: COS_SESSION_HELD_TO_CONSUMED_OR_RELEASED
+    authMode: authenticated-user+tenant+exact-session
+    dataScope: tenant+actor+session
+    versioned: false
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '9'
+    notes: 直传会话返回客户端前必须成功预留；完成消费，放弃或确认删除后的过期清理才释放。

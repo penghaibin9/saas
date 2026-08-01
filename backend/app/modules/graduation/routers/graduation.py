@@ -135,12 +135,17 @@ def proposal_stats(batchId: int | None = Query(default=None, ge=1),
 
 @router.get("/proposals/{pid}", summary="开题批阅详情")
 def proposal_detail(pid: str, user=Depends(get_current_user)):
-    return success(svc.get_proposal_detail(pid))
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    return success(material_center.proposal_detail(int(pid)))
 
 
 @router.post("/proposals/{pid}/review", summary="批阅开题（驳回原因≥5字）")
 def proposal_review(pid: str, body: ReviewBody, user=Depends(require_permission("graduationDesign.proposal.review"))):
-    return success(svc.review_proposal(pid, body.action, body.comment), message="已批阅")
+    from app.modules.graduation.services import graduation_material_catalog_service as material_catalog
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    result = material_center.review_proposal(int(pid), body.action, body.comment, user)
+    material_catalog.sync_record("PROPOSAL", int(pid), user)
+    return success(result, message="已批阅")
 
 
 @router.post("/proposals/{pid}/defense", summary="开题答辩（现场·PASS/FAIL，须书面已通过）")
@@ -179,7 +184,11 @@ def finals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 
 @router.post("/finals/{fid}/review", summary="批阅成果（退回原因≥5字；查重超标 GD-R09 不可直接通过）")
 def final_review(fid: str, body: ReviewBody, user=Depends(get_current_user)):
-    return success(svc.review_final(fid, body.action, body.comment), message="已批阅")
+    from app.modules.graduation.services import graduation_material_catalog_service as material_catalog
+    from app.modules.graduation.services import graduation_material_center_service as material_center
+    result = material_center.review_final(int(fid), body.action, body.comment, user)
+    material_catalog.sync_record("FINAL", int(fid), user)
+    return success(result, message="已批阅")
 
 
 @router.post("/finals/remind", summary="成果催交（未提交学生留痕催办）")
@@ -207,11 +216,12 @@ def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, l
 
 @router.post("/defense-groups", summary="新建答辩组")
 def defense_create(body: DefenseGroupBody, user=Depends(get_current_user)):
-    return success(svc.create_defense_group(
+    result = svc.create_defense_group(
         body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary, batch_id=body.batchId,
         chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
-        member_mentor_ids=body.memberMentorIds), message="已创建")
+        member_mentor_ids=body.memberMentorIds)
+    return success(_defense_member_contract(result), message="已创建")
 
 
 @router.get("/defense-groups/eligible-students", summary="可分配到答辩组的学生")
@@ -220,18 +230,25 @@ def defense_eligible(gid: Optional[str] = None, keyword: Optional[str] = None,
     return success({"items": svc.list_defense_eligible_students(gid=gid, keyword=keyword)})
 
 
+def _defense_member_contract(result: dict) -> dict:
+    row = dict(result or {})
+    row["memberDetails"] = list(row.get("memberDetails") or row.get("members") or [])
+    return row
+
+
 @router.get("/defense-groups/{gid}", summary="答辩组详情（含已分配学生）")
 def defense_detail(gid: str, user=Depends(get_current_user)):
-    return success(svc.get_defense_group_detail(gid))
+    return success(_defense_member_contract(svc.get_defense_group_detail(gid)))
 
 
 @router.put("/defense-groups/{gid}", summary="编辑答辩组（编辑后撤回发布，需重新发布）")
 def defense_update(gid: str, body: DefenseGroupBody, user=Depends(get_current_user)):
-    return success(svc.update_defense_group(
+    result = svc.update_defense_group(
         gid, body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary,
         chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
-        member_mentor_ids=body.memberMentorIds), message="已保存")
+        member_mentor_ids=body.memberMentorIds)
+    return success(_defense_member_contract(result), message="已保存")
 
 
 @router.post("/defense-groups/{gid}/assign", summary="分配学生进答辩组（≤30人，评委回避自动检测）")

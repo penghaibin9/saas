@@ -4,7 +4,7 @@ import eslintConfigPrettier from 'eslint-config-prettier'
 import globals from 'globals'
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'node_modules/**', '.eslintrc.cjs'] },
   js.configs.recommended,
   ...pluginVue.configs['flat/essential'],
   eslintConfigPrettier,

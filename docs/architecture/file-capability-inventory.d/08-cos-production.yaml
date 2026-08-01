@@ -1,0 +1,111 @@
+entries:
+  - module: file-center
+    client: backend
+    route: /api/v1/files/upload-sessions
+    page: backend/app/api/v1/file.py
+    action: upload+multipart+resume
+    fileCategory: COS_DIRECT_UPLOAD
+    api: POST/GET /api/v1/files/upload-sessions; POST complete/abandon
+    backendService: backend/app/services/storage/production.py
+    storageMode: COS_STS_EXACT_OBJECT_QUARANTINE
+    authMode: authenticated+tenant+owner+short-lived-sts
+    dataScope: tenant+operator+exact-object-key
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '8'
+    notes: 只签发单一 quarantine objectKey；完成时 HEAD 核验大小和 ETag，之后进入杀毒与内容安全流水线。
+  - module: file-center
+    client: backend
+    route: /api/v1/files/{fileId}/url
+    page: backend/app/api/v1/file_contract.py
+    action: download
+    fileCategory: COS_PRESIGNED_DOWNLOAD
+    api: GET /api/v1/files/{fileId}/url
+    backendService: backend/app/services/storage/cos.py::presigned_download_url
+    storageMode: COS_PRIVATE_BUCKET_SHORT_PRESIGNED
+    authMode: resolver+scan-gate+short-url
+    dataScope: tenant+binding+business-resolver+sensitivity
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '8'
+    notes: 普通材料返回 60-300 秒预签名；强敏感与法律保留仍走后端审计代理，不发可转发直链。
+  - module: file-center
+    client: backend
+    route: backend/app/workers/file_scan_worker.py
+    page: backend/app/services/storage/finalize.py
+    action: upload+scan+promote
+    fileCategory: COS_ZONE_PROMOTION
+    api: worker FILE_SCAN
+    backendService: backend/app/services/storage/finalize.py; backend/app/services/storage/production.py::promote_file_object
+    storageMode: QUARANTINE_TO_CLEAN_OR_REJECTED
+    authMode: internal-worker
+    dataScope: immutable-file-object+tenant
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '8'
+    notes: ClamAV CLEAN 后仍校验 magic/MIME/OOXML/ZIP 与 SHA-256；复制后 HEAD 核验才删除源对象，失败重新关闭业务门。
+  - module: file-center
+    client: backend
+    route: backend/app/commands/migrate_files_to_cos.py
+    page: backend/app/commands/migrate_files_to_cos.py
+    action: upload+verify+rollback
+    fileCategory: COS_MIGRATION
+    api: python -m app.commands.migrate_files_to_cos
+    backendService: backend/app/commands/migrate_files_to_cos.py
+    storageMode: LOCAL_TO_COS_WITH_BUFFER_COPY
+    authMode: server-operator+tenant-id
+    dataScope: one-tenant+resume-id+batch
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '8'
+    notes: 支持 dry-run、断点、HEAD、可选 SHA-256 回读、verify-only、缓冲期本地副本和 rollback 报告。
+  - module: file-center
+    client: admin-pc
+    route: /api/v1/files/upload-sessions
+    page: frontend/src/services/file/fileSdk.js; frontend/src/services/file/cosBrowserSdk.js
+    action: upload+multipart+pause+resume+cancel+download
+    fileCategory: COS_PC_CLIENT
+    api: /files/upload-sessions; /files/{fileId}/url
+    backendService: backend/app/services/storage/production.py; backend/app/api/v1/file_contract.py
+    storageMode: COS_STS_MULTIPART_AND_PRESIGNED
+    authMode: bearer+short-sts+short-download-url
+    dataScope: tenant+operator+exact-object-key
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '8'
+    notes: 20MB 以上自动使用 5MB 分片、进度、暂停、恢复和取消；本地环境与小文件保留同域兼容上传。

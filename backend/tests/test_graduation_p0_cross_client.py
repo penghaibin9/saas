@@ -50,7 +50,7 @@ def test_record_resolver_never_silently_picks_between_two_current_rows():
 def test_high_risk_routes_are_registered_before_legacy_routers():
     source = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
     assert source.index("api_router.include_router(graduation_p0_guard.router") < source.index(
-        "graduation, graduation_batch, graduation_student"
+        "api_router.include_router(graduation.router"
     )
     assert source.index("api_router.include_router(mobile_graduation_guard.router)") < source.index(
         "mobile.router,"

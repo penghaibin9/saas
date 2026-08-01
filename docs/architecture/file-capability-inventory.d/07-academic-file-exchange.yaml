@@ -1,0 +1,133 @@
+entries:
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/file-exchange/roster/import-jobs
+    page: backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+    action: upload+import
+    fileCategory: XLSX_IMPORT
+    api: POST /api/v1/academic-affairs/file-exchange/roster/import-jobs
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::create_academic_import_job
+    storageMode: configurable-quarantine
+    authMode: authenticated+academicAffairs.roster.import
+    dataScope: tenant+operator+academic-roster
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 上传只登记 SCANNING Job；CLEAN/AVAILABLE 后详情轮询才服务端解析，确认仅接收 jobId+expectedVersion并重读同一文件。
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/file-exchange/{grade-task|schedule-batch}/import-jobs
+    page: backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py, frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js
+    action: upload+import
+    fileCategory: XLSX_IMPORT
+    api: POST grade-tasks/{task_id}/import-jobs; POST schedule-batches/{batch_id}/import-jobs
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::create_academic_import_job+confirm_academic_import
+    storageMode: configurable-quarantine
+    authMode: original-domain-permission+job-owner+confirm-lease
+    dataScope: tenant+operator+grade-task-or-schedule-batch
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 成绩与排课导入复用SCANNING→PARSING→VALIDATED状态机；原始rows不持久化，确认重新解析并委托原领域事务。
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/file-exchange/roster/export-jobs
+    page: backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+    action: export+download
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/academic-affairs/file-exchange/roster/export-jobs
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::create_roster_export_job
+    storageMode: configurable-export-zone
+    authMode: authenticated+academicAffairs.roster.export+one-time-ticket
+    dataScope: tenant+operator+academic-roster
+    versioned: true
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 名册导出进入 FileObject+ExportJob，支持有效期、撤销和一次性下载票据。
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/{legacy-export-path}
+    page: backend/app/modules/academic_affairs/routers/academic_export_compat_router.py, backend/app/modules/academic_affairs/services/academic_export_compat_service.py
+    action: export+archive+download
+    fileCategory: XLSX_ZIP_EXPORT
+    api: roster/registration/schedule/grade/stats/selection/makeup/evaluation/quality/archive legacy export URLs
+    backendService: backend/app/modules/academic_affairs/services/academic_export_compat_service.py::task_backed_file_response
+    storageMode: configurable-export-zone
+    authMode: original-domain-permission+one-time-ticket
+    dataScope: tenant+operator+original-domain-scope-snapshot
+    versioned: true
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 15类历史同步导出由前置同路径 Router 兼容；响应文件合同不变，但生成前强制进入 FileObject+ExportJob，记录实际行数、过期、撤销、下载次数与一次性票据。
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/file-exchange/jobs
+    page: backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+    action: import+export
+    fileCategory: DATA_EXCHANGE_JOB
+    api: GET /api/v1/academic-affairs/file-exchange/jobs
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::list_academic_jobs
+    storageMode: metadata
+    authMode: authenticated+staff+job-owner
+    dataScope: tenant+operator
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '7'
+    notes: 教务任务中心只展示当前操作者与当前租户任务，不混入系统管理或其它模块任务。
+  - module: academic-affairs
+    client: admin-pc
+    route: /admin/academic-affairs/roster/import-export
+    page: frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+    action: upload+import+export+download
+    fileCategory: DATA_EXCHANGE_JOB
+    api: frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
+    storageMode: server-authoritative-job
+    authMode: route-permission+backend-permission
+    dataScope: tenant+operator+academic-roster
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: 页面轮询SCANNING/PARSING任务，只有VALIDATED可确认；确认不回传rows，导出通过一次性票据下载并支持撤销。

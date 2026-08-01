@@ -10,6 +10,7 @@ from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest, ArchiveRejectRequest
 from app.modules.graduation.services import graduation_archive_service as svc
+from app.modules.graduation.services import graduation_material_center_service as material_center
 from app.modules.graduation.services.graduation_batch_context import load_student_in_batch, require_batch_id
 from app.services.db_service import session
 
@@ -89,11 +90,9 @@ def batch_file(
     batchId: int = Query(..., ge=1), body: dict = Body(...),
     user=Depends(get_current_user),
 ):
-    archive_no = str((body or {}).get("archiveBatchNo") or "").strip()
-    if not archive_no:
-        raise AppException("VALIDATION_ERROR", "归档批次号不能为空，请重新预览")
-    result = svc.batch_file(
-        archive_no, batch_id=require_batch_id(batchId), preview_token=_preview_token(body),
+    archive_no = str((body or {}).get("archiveBatchNo") or "").strip() or None
+    result = material_center.batch_file(
+        archive_no, require_batch_id(batchId), _preview_token(body), user,
     )
     return success(result, message=f"已备案 {result['filed']} 份")
 
@@ -131,7 +130,7 @@ def file_record(
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     _guard(gd_student_id, batchId, lock=True)
-    return success(svc.verify_and_file(gd_student_id, body.archiveBatchNo), message="已归档")
+    return success(material_center.file_archive(int(gd_student_id), body.archiveBatchNo, user), message="已归档并冻结真实版本清单")
 
 
 @router.post("/gd-archives/{gd_student_id}/reject")

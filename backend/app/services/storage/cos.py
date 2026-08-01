@@ -1,16 +1,13 @@
-"""腾讯云对象存储 COS 后端。
+"""腾讯云 COS 正式存储后端。
 
-写侧：字节先由 file_service 流式写到本地临时区（.staging/），persist 时上传到 COS
-再删临时。读侧：fetch_local 先查本地缓存（.coscache/），未命中则从 COS 拉回缓存返回。
-缓存命中避免重复下行，冷文件用完仍留缓存（可由后续清理任务回收，不影响正确性）。
-
-依赖 cos-python-sdk-v5（qcloud_cos），延迟导入——未安装或未配置时构造即报错，
-但只在 FILE_STORAGE_BACKEND=cos 时才会走到，本地模式完全不受影响。
-密钥只从 settings 读取（环境变量 / .env），本模块不硬编码任何凭据。
+业务下载优先返回短时预签名 URL，不再把普通对象永久拉回应用服务器；fetch_local 仅供杀毒、
+强敏感代理和迁移核验使用，其缓存属于可清理衍生物，不是权威字节。
+存在性兼容仅服务于历史轻量适配器，正式上传完成校验始终以 COS HEAD 元数据为准。
 """
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 
 from app.core.config import settings
 from app.core.exceptions import AppException
@@ -21,7 +18,7 @@ def _require(value: str, name: str) -> str:
     if not v:
         raise AppException(
             "FILE_STORAGE_MISCONFIGURED",
-            f"对象存储后端已启用，但缺少配置 {name}。请在服务器环境变量/.env 中填写 COS 参数。",
+            f"对象存储后端已启用，但缺少配置 {name}。请在平台配置或服务器环境变量中填写 COS 参数。",
         )
     return v
 
@@ -36,18 +33,21 @@ class CosStorageBackend:
         except ImportError as exc:  # noqa: BLE001
             raise AppException(
                 "FILE_STORAGE_MISCONFIGURED",
-                "FILE_STORAGE_BACKEND=cos 需要安装 cos-python-sdk-v5（pip install cos-python-sdk-v5）。",
+                "FILE_STORAGE_BACKEND=cos 需要安装 cos-python-sdk-v5。",
             ) from exc
-        # 参数优先（平台运营端配置注入），回退 settings（.env）
-        self._bucket = _require(bucket or getattr(settings, "COS_BUCKET", ""), "COS_BUCKET")
-        region = _require(region or getattr(settings, "COS_REGION", ""), "COS_REGION")
-        secret_id = _require(secret_id or getattr(settings, "COS_SECRET_ID", ""), "COS_SECRET_ID")
-        secret_key = _require(secret_key or getattr(settings, "COS_SECRET_KEY", ""), "COS_SECRET_KEY")
-        config = CosConfig(Region=region, SecretId=secret_id, SecretKey=secret_key,
-                           Token=None, Scheme="https")
+        self.bucket_name = _require(bucket or getattr(settings, "COS_BUCKET", ""), "COS_BUCKET")
+        self.region = _require(region or getattr(settings, "COS_REGION", ""), "COS_REGION")
+        self._secret_id = _require(secret_id or getattr(settings, "COS_SECRET_ID", ""), "COS_SECRET_ID")
+        self._secret_key = _require(secret_key or getattr(settings, "COS_SECRET_KEY", ""), "COS_SECRET_KEY")
+        config = CosConfig(
+            Region=self.region,
+            SecretId=self._secret_id,
+            SecretKey=self._secret_key,
+            Token=None,
+            Scheme="https",
+        )
         self._client = CosS3Client(config)
 
-    # ── 本地临时/缓存目录（复用 UPLOAD_DIR 下的隐藏子目录）──
     def _staging_root(self) -> Path:
         d = Path(settings.UPLOAD_DIR or "./uploads") / ".staging"
         d.mkdir(parents=True, exist_ok=True)
@@ -63,16 +63,20 @@ class CosStorageBackend:
         target.parent.mkdir(parents=True, exist_ok=True)
         return target
 
-    def persist(self, key: str, staged: Path) -> None:
+    def persist(self, key: str, staged: Path) -> dict:
         with staged.open("rb") as body:
-            self._client.put_object(Bucket=self._bucket, Body=body, Key=key)
-        # 上传成功后清理本地临时；同时预热读缓存，避免刚传就下要再拉一次。
-        cache = self._cache_root() / key
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            staged.replace(cache)
-        except OSError:
-            staged.unlink(missing_ok=True)
+            response = self._client.put_object(
+                Bucket=self.bucket_name,
+                Body=body,
+                Key=key,
+                ServerSideEncryption="AES256",
+            ) or {}
+        staged.unlink(missing_ok=True)
+        return {
+            "bucketName": self.bucket_name,
+            "objectKey": key,
+            "etag": str(response.get("ETag") or "").strip('"'),
+        }
 
     def fetch_local(self, key: str) -> Path | None:
         cache = self._cache_root() / key
@@ -81,16 +85,82 @@ class CosStorageBackend:
         if not self.exists(key):
             return None
         cache.parent.mkdir(parents=True, exist_ok=True)
-        resp = self._client.get_object(Bucket=self._bucket, Key=key)
-        resp["Body"].get_stream_to_file(str(cache))
+        partial = cache.with_suffix(cache.suffix + ".part")
+        partial.unlink(missing_ok=True)
+        response = self._client.get_object(Bucket=self.bucket_name, Key=key)
+        response["Body"].get_stream_to_file(str(partial))
+        partial.replace(cache)
         return cache if cache.exists() else None
 
+    def head_object(self, key: str) -> dict | None:
+        """返回对象元数据；兼容仅实现 object_exists 的轻量 SDK 适配器。
+
+        正式上传完成校验仍优先使用 COS ``head_object`` 的大小、ETag 和加密元数据。
+        历史测试客户端或小型适配器若只提供布尔 ``object_exists``，仅用于普通存在性、
+        拉取缓存和删除兼容，不伪造大小或 ETag。
+        """
+        head = getattr(self._client, "head_object", None)
+        if callable(head):
+            try:
+                response = head(Bucket=self.bucket_name, Key=key) or {}
+            except Exception:  # noqa: BLE001 - 对外统一为不存在/不可核验
+                return None
+            return {
+                "bucketName": self.bucket_name,
+                "objectKey": key,
+                "etag": str(response.get("ETag") or "").strip('"'),
+                "sizeBytes": int(response.get("Content-Length") or response.get("ContentLength") or 0),
+                "lastModified": response.get("Last-Modified") or response.get("LastModified"),
+                "serverSideEncryption": response.get("x-cos-server-side-encryption") or response.get("ServerSideEncryption"),
+            }
+
+        exists = getattr(self._client, "object_exists", None)
+        if not callable(exists):
+            return None
+        try:
+            present = bool(exists(Bucket=self.bucket_name, Key=key))
+        except Exception:  # noqa: BLE001 - 兼容适配器失败按不可核验处理
+            return None
+        if not present:
+            return None
+        return {
+            "bucketName": self.bucket_name,
+            "objectKey": key,
+            "etag": "",
+            "sizeBytes": 0,
+            "lastModified": None,
+            "serverSideEncryption": None,
+        }
+
+    def presigned_download_url(self, key: str, *, filename: str, expires_seconds: int = 180) -> str:
+        expires = min(300, max(60, int(expires_seconds or 180)))
+        disposition = f"attachment; filename*=UTF-8''{quote(filename or 'download')}"
+        return self._client.get_presigned_url(
+            Bucket=self.bucket_name,
+            Key=key,
+            Method="GET",
+            Expired=expires,
+            Params={"response-content-disposition": disposition},
+            SignHost=True,
+        )
+
+    def copy_object(self, source_key: str, target_key: str) -> dict:
+        response = self._client.copy_object(
+            Bucket=self.bucket_name,
+            Key=target_key,
+            CopySource={"Bucket": self.bucket_name, "Region": self.region, "Key": source_key},
+            ServerSideEncryption="AES256",
+        ) or {}
+        head = self.head_object(target_key) or {}
+        return {
+            "bucketName": self.bucket_name,
+            "objectKey": target_key,
+            "etag": head.get("etag") or str(response.get("ETag") or "").strip('"'),
+        }
+
     def exists(self, key: str) -> bool:
-        return bool(self._client.object_exists(Bucket=self._bucket, Key=key))
+        return self.head_object(key) is not None
 
     def delete(self, key: str) -> None:
-        try:
-            self._client.delete_object(Bucket=self._bucket, Key=key)
-        except Exception:  # noqa: BLE001 — 删除幂等，对象不存在不阻断
-            pass
+        self._client.delete_object(Bucket=self.bucket_name, Key=key)
         (self._cache_root() / key).unlink(missing_ok=True)

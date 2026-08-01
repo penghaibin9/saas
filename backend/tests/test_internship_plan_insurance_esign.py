@@ -91,9 +91,7 @@ def test_insurance_submit_and_verify(client, db_mode):
     import io
     ids = _seed_batch(db_mode)
     stu_h = _student()
-    # bizType 用 INTERNSHIP（对应 internship.student.material.view）而非通用 ATTACHMENT，
-    # 后者只映射学工域权限，指导教师核验时会因文件鉴权失败拿不到凭证
-    up = client.post("/api/v1/files/upload", headers=stu_h,
+    up = client.post("/api/v1/files", headers=stu_h,
                      files={"file": ("policy.txt", io.BytesIO(b"insurance-policy-scan"), "text/plain")},
                      data={"bizType": "INTERNSHIP"})
     assert up.status_code == 200, up.text
@@ -141,11 +139,10 @@ def test_agreement_esign_flow(client, db_mode):
     stu = _student("ES-STU-01")
     s1 = client.post(f"{MOB}/internship/agreements/{aid}/esign/sign", headers=stu)
     assert s1.status_code == 200
-    # 教师不可代签企业方电子签（须纸质扫描件确认或企业账号签署）
     s2 = client.post(f"{INT}/agreements/{aid}/esign/sign",
                      json={"party": "ENTERPRISE"}, headers=_mentor("刘强"))
     assert s2.status_code == 400
     s3 = client.post(f"{INT}/agreements/{aid}/esign/sign",
                      json={"party": "SCHOOL"}, headers=_mentor("刘强"))
     assert s3.status_code == 200
-    assert s3.json()["data"]["esignStatus"] == "PENDING"  # 缺企业方，未齐签
+    assert s3.json()["data"]["esignStatus"] == "PENDING"

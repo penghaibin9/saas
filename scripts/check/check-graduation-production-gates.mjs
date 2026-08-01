@@ -105,7 +105,7 @@ if (!mobileBridge.includes('GraduationStudent.mentor_id == mentor.id')
 const guardPos = routeRegistration.indexOf('api_router.include_router(graduation_p0_guard.router')
 const sensitivePos = routeRegistration.indexOf('api_router.include_router(graduation_sensitive_router.router')
 const archivePos = routeRegistration.indexOf('api_router.include_router(graduation_archive_sensitive_router.router')
-const legacyPos = routeRegistration.indexOf('graduation, graduation_batch, graduation_student')
+const legacyPos = routeRegistration.indexOf('api_router.include_router(graduation.router')
 if (guardPos < 0 || sensitivePos < 0 || archivePos < 0 || !(guardPos < legacyPos && sensitivePos < legacyPos && archivePos < legacyPos)) {
   failures.push('毕业设计敏感精确路由未优先于旧路由注册')
 }

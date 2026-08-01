@@ -11,17 +11,22 @@ import types
 import pytest
 
 from app.core.config import settings
+from app.core.context import set_current_user, set_tenant
 from app.core.exceptions import AppException
 from app.services import storage
 
 
 @pytest.fixture(autouse=True)
 def _isolate_storage(tmp_path, monkeypatch):
+    set_tenant({"tenantId": "1000000000000000001"})
+    set_current_user({"userId": "9001", "userType": "STAFF", "currentRoleCode": "SCHOOL_ADMIN"})
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "FILE_STORAGE_BACKEND", "local", raising=False)
     storage.reset_backend()
     yield
     storage.reset_backend()
+    set_current_user(None)
+    set_tenant(None)
 
 
 # ── 本地后端：行为与历史一致 ──
@@ -35,10 +40,10 @@ def test_local_persist_is_inplace_and_fetch_returns_same_path():
     key = "20260713/local-abc.pdf"
     staged = b.staging_path(key)
     staged.write_bytes(b"hello-pdf")
-    b.persist(key, staged)  # 本地：no-op，文件已在位
+    b.persist(key, staged)
     fetched = b.fetch_local(key)
     assert fetched is not None and fetched.read_bytes() == b"hello-pdf"
-    assert fetched == staged  # 落点即读点，零搬运
+    assert fetched == staged
     assert b.exists(key) is True
 
 
@@ -53,10 +58,8 @@ def test_local_delete_is_idempotent():
     assert b.exists(key)
     b.delete(key)
     assert not b.exists(key)
-    b.delete(key)  # 再删不报错
+    b.delete(key)
 
-
-# ── COS 后端：假客户端，验证上传/拉取/缓存/删除，无需真桶 ──
 
 class _FakeBody:
     def __init__(self, data: bytes):
@@ -73,7 +76,8 @@ class _FakeCosClient:
     def __init__(self, *_a, **_k):
         pass
 
-    def put_object(self, Bucket, Body, Key):  # noqa: N803 (SDK 命名)
+    def put_object(self, Bucket, Body, Key, ServerSideEncryption=None):  # noqa: N803
+        assert ServerSideEncryption == "AES256"
         _FakeCosClient.store[Key] = Body.read()
 
     def get_object(self, Bucket, Key):  # noqa: N803
@@ -111,19 +115,17 @@ def test_cos_persist_uploads_and_clears_staging(_fake_cos):
     staged = b.staging_path(key)
     staged.write_bytes(b"paper-bytes")
     b.persist(key, staged)
-    assert _FakeCosClient.store[key] == b"paper-bytes"  # 已上传到 COS
-    assert not staged.exists()                            # 本地临时已清
+    assert _FakeCosClient.store[key] == b"paper-bytes"
+    assert not staged.exists()
     assert b.exists(key) is True
 
 
 def test_cos_fetch_uses_cache_then_pulls(_fake_cos):
     b = storage.get_backend()
     key = "20260713/cos-y.pdf"
-    # 直接把字节放进 COS（模拟别处上传），本地无缓存
     _FakeCosClient.store[key] = b"remote-only"
     fetched = b.fetch_local(key)
     assert fetched is not None and fetched.read_bytes() == b"remote-only"
-    # 二次取命中缓存（删掉远端仍能取到已缓存）
     _FakeCosClient.store.pop(key)
     again = b.fetch_local(key)
     assert again is not None and again.read_bytes() == b"remote-only"
