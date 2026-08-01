@@ -318,7 +318,6 @@ def _seed() -> dict:
                 tenant_id=TENANT_ID,
                 gd_student_id=student.id,
                 status="CHECKED_PASS",
-                issues="无",
                 check_comment="通过",
                 conclusion="PASS",
                 checked_at=datetime.utcnow(),
@@ -328,19 +327,17 @@ def _seed() -> dict:
                 gd_student_id=student.id,
                 status="SUBMITTED",
                 checklist_json=[],
-                history_json=[],
             ),
         ])
         template = GraduationTemplate(
             tenant_id=TENANT_ID,
             template_type="PROPOSAL",
-            template_name="阶段六开题模板",
-            version="v1",
-            status="ACTIVE",
+            name="阶段六开题模板",
+            template_version="v1",
+            status="ENABLED",
             is_default=True,
-            file_url="",
             variables_json=["studentName", "topicTitle"],
-            description="公共模板版本验收",
+            remark="公共模板版本验收",
         )
         db.add(template)
         db.commit()
