@@ -109,6 +109,15 @@ def _can_view_file_audit(user: dict) -> bool:
     return has_permission_compat(user, FILE_GOVERNANCE_VIEW)
 
 
+def _is_file_admin(user: dict) -> bool:
+    """历史 resolver 导入兼容符号；RBAC-09 后永远拒绝内容管理员旁路。
+
+    旧 ``file_access_resolvers`` 仍导入该私有函数。保留符号只为平滑升级，不能根据
+    ``systemAdmin.file.manage``、通配符或平台身份返回 True。后续消费者迁移完成后删除。
+    """
+    return False
+
+
 def _binding_subject_allows(binding, user: dict) -> bool:
     subject_type = str(binding.subject_type or "BUSINESS_OBJECT").upper()
     subject_id = str(binding.subject_id or "").strip()
