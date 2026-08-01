@@ -1,0 +1,106 @@
+name: Stage 1 control-plane bridge
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stage1-control-plane-bridge.yml'
+      - '.stage1/stage1.patch'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage1-control-plane-bridge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  bridge:
+    if: github.event.pull_request.number == 35
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      APP_ENV: test
+      SECRET_KEY: stage1-control-plane-ci-secret-key
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export current card workspace
+        if: ${{ hashFiles('.stage1/stage1.patch') == '' }}
+        run: |
+          mkdir -p /tmp/stage1-workspace
+          tar -czf /tmp/stage1-workspace/stage1-workspace.tar.gz \
+            backend/app/api/v1/platform.py \
+            backend/app/api/v1/file_governance.py \
+            backend/app/core/permissions.py \
+            backend/app/core/rbac09_permission_bundles.py \
+            backend/app/models/tenant.py \
+            backend/app/models/platform.py \
+            backend/app/models/file.py \
+            backend/app/services/platform_service.py \
+            backend/app/services/platform_defaults.py \
+            backend/app/services/module_access_service.py \
+            backend/app/services/file_access_service.py \
+            backend/app/services/file_storage_governance_service.py \
+            backend/app/services/file_storage_cleanup_service.py \
+            backend/app/services/file_storage_quota_reservation_service.py \
+            backend/app/api/v1/router.py \
+            backend/app/models/__init__.py \
+            backend/alembic/versions \
+            backend/tests \
+            frontend/src/modules/platform \
+            frontend/src/modules/system/views/SystemFileStorageGovernanceView.vue \
+            frontend/src/modules/system/api/fileStorageGovernance.api.js \
+            frontend/src/modules/system/systemManagementCatalog.js \
+            frontend/src/router/index.js \
+            frontend/src/config/navPlan.js \
+            .github/workflows/data-exchange-job-center.yml
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('.stage1/stage1.patch') == '' }}
+        with:
+          name: stage1-workspace
+          path: /tmp/stage1-workspace/stage1-workspace.tar.gz
+          retention-days: 1
+
+      - name: Apply reviewed stage patch
+        if: ${{ hashFiles('.stage1/stage1.patch') != '' }}
+        run: |
+          git apply --check .stage1/stage1.patch
+          git apply .stage1/stage1.patch
+          test -f .stage1/verify.sh
+          chmod +x .stage1/verify.sh
+          .stage1/verify.sh
+
+      - name: Commit verified stage changes
+        if: ${{ hashFiles('.stage1/stage1.patch') != '' }}
+        run: |
+          mapfile -t changed < .stage1/changed-files.txt
+          for path in "${changed[@]}"; do
+            test -n "$path" && git add -- "$path"
+          done
+          git rm -f .stage1/stage1.patch .stage1/verify.sh .stage1/changed-files.txt
+          git rm -f .github/workflows/stage1-control-plane-bridge.yml
+          git config user.name "stage1-control-plane-bot"
+          git config user.email "stage1-control-plane-bot@users.noreply.github.com"
+          git commit -m "feat(stage-1): close control-plane cards and gate A"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
