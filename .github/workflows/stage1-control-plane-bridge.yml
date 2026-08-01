@@ -18,7 +18,7 @@ jobs:
   bridge:
     if: github.event.pull_request.number == 35
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 110
     services:
       mysql:
         image: mysql:8.0
