@@ -6,9 +6,9 @@
     "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
     "prototypeBranch": "codex/teacher-pc-v2-html-library",
     "generatedAt": "2026-07-30T16:13:00+08:00",
-    "updatedAt": "2026-08-01T01:24:59.605Z",
-    "fullRegressionSourceHead": "3026649791f8dfbdb42dfb178d463856e7fe41b8",
-    "finalFreezeValidationSourceHead": "3026649791f8dfbdb42dfb178d463856e7fe41b8"
+    "updatedAt": "2026-08-01T01:34:20.883Z",
+    "fullRegressionSourceHead": "2303b8b18c669aad66aed826b96b54bd8c6d61dd",
+    "finalFreezeValidationSourceHead": "2303b8b18c669aad66aed826b96b54bd8c6d61dd"
   },
   "status": "FROZEN",
   "designOnly": false,
@@ -103,12 +103,12 @@
         "student-affairs-all": 15,
         "graduation": 8
       },
-      "browserRunner": "tools/run-browser-regression.mjs",
+      "browserRunner": "tools/run-browser-regression-persistent.mjs",
       "browserExpectedRenders": 870,
       "browserRunnerStatus": "PASS_870_AT_FINAL_FREEZE_HEAD",
       "freezeAcceptanceRunner": "tools/run-freeze-acceptance.mjs",
       "freezeAcceptanceStatus": "PASS_LINUX_CHROME_AND_WINDOWS_EDGE_0_ERROR",
-      "freezeAcceptanceRunId": "30677544469",
+      "freezeAcceptanceRunId": "30677890492",
       "freezeAcceptanceCountsPerBrowser": {
         "stressPages": 11,
         "keyboardPages": 5,
@@ -117,7 +117,12 @@
         "errors": 0
       },
       "productionPermissionContractTest": "frontend/src/config/navPlan.permission-contract.test.js",
-      "productionPermissionContractStatus": "PASS"
+      "productionPermissionContractStatus": "PASS",
+      "browserRunnerMode": "ONE_PERSISTENT_CHROME_TWO_ISOLATED_PAGE_WORKERS",
+      "browserRunnerPageBounds": "newPage=10s; collectProbe<=15s; screenshot<=15s; close<=3s; navigation<=30s",
+      "browserRunnerExpectedRenders": 870,
+      "browserRunnerChromeProcessCount": 1,
+      "browserRunnerWorkerCount": 2
     },
     "limitations": [
       "浏览器截图与 A4 PDF 作为 GitHub Actions Artifact 保存 14 天，不把二进制证据提交到源码仓库。",
@@ -148,7 +153,7 @@
     },
     "machineValidatedWorkspaces": 60,
     "machineValidatedHtmlFiles": 290,
-    "lastCompletedWorkspace": "最终冻结：边界、一致性、870 全量、Linux Chrome / Windows Edge 专项、生产权限合同",
+    "lastCompletedWorkspace": "最终冻结：边界、一致性、持久浏览器 870 全量、Linux Chrome / Windows Edge 专项、生产权限合同",
     "nextWorkspaceCandidate": "按冻结原型启动教师 PC 生产前端分模块替换",
     "remainingCenters": []
   },

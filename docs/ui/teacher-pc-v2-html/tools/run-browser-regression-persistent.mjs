@@ -131,6 +131,14 @@ async function startServer() {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+function withTimeout(promise, ms, label) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} exceeded ${ms}ms`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 function safeName(value) {
   return value.replace(/[^a-zA-Z0-9.-]+/g, '_')
 }
@@ -223,7 +231,9 @@ async function collectProbe(page) {
 }
 
 async function renderAttempt(browser, origin, task, attempt) {
-  const page = await browser.newPage()
+  const page = await withTimeout(browser.newPage(), 10000, 'browser.newPage')
+  page.setDefaultTimeout(timeoutMs)
+  page.setDefaultNavigationTimeout(timeoutMs)
   const runtimeErrors = []
   const consoleErrors = []
   const consoleWarnings = []
@@ -243,12 +253,12 @@ async function renderAttempt(browser, origin, task, attempt) {
     await page.goto(`${origin}/${task.html}`, { waitUntil: 'domcontentloaded', timeout: timeoutMs })
     await page.waitForFunction(() => document.readyState === 'complete' && document.body, { timeout: timeoutMs })
     await delay(850)
-    const probe = await collectProbe(page)
+    const probe = await withTimeout(collectProbe(page), Math.min(timeoutMs, 15000), 'collectProbe')
     let screenshotPath = ''
     if (screenshots) {
       screenshotPath = path.join(reportRoot, 'screenshots', `${safeName(task.viewport.label)}__${safeName(task.html)}.png`)
       fs.mkdirSync(path.dirname(screenshotPath), { recursive: true })
-      await page.screenshot({ path: screenshotPath, fullPage: true })
+      await withTimeout(page.screenshot({ path: screenshotPath, fullPage: true }), Math.min(timeoutMs, 15000), 'screenshot')
     }
     const result = { html: task.html, viewport: task.viewport, attempt, probe, navigationError, runtimeErrors, consoleErrors, consoleWarnings, resourceErrors, screenshotPath }
     result.issues = classify(result)
@@ -261,7 +271,7 @@ async function renderAttempt(browser, origin, task, attempt) {
     result.status = 'FAIL'
     return result
   } finally {
-    await page.close().catch(() => {})
+    await Promise.race([page.close().catch(() => {}), delay(3000)])
   }
 }
 
