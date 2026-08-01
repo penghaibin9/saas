@@ -122,19 +122,20 @@ def _binding_subject_allows(binding, user: dict) -> bool:
     subject_type = str(binding.subject_type or "BUSINESS_OBJECT").upper()
     subject_id = str(binding.subject_id or "").strip()
     batch_id = str(binding.batch_id or "").strip()
+    actor_batches = _actor_batch_values(user)
 
-    if batch_id and batch_id not in _actor_batch_values(user):
+    if batch_id and batch_id not in actor_batches:
         return False
     if subject_type in {"BUSINESS_OBJECT", "TENANT"}:
-        # 这两类只说明“文件属于哪个对象/租户”，不证明当前访问者与对象有关系。
-        # 必须继续由业务 permission/resolver 判定，不能单独作为内容放行依据。
-        return False
+        # 泛对象/租户绑定本身不能授权；但显式 batch_id 命中访问者批次范围时，
+        # 该绑定已具备主体相关的数据范围，继续保留既有合法批次访问合同。
+        return bool(batch_id and batch_id in actor_batches)
     if subject_type == "USER":
         return bool(subject_id and subject_id == _actor_id(user))
     if subject_type == "STUDENT":
         return bool(subject_id and subject_id in _actor_student_values(user))
     if subject_type == "BATCH":
-        return bool(subject_id and subject_id in _actor_batch_values(user))
+        return bool(subject_id and subject_id in actor_batches)
     if subject_type == "ROLE":
         roles = {
             str(user.get("currentRoleCode") or "").upper(),
@@ -151,8 +152,8 @@ def _default_resolver(db, file_obj, bindings: list[Any], user: dict, action: str
         return True
 
     active = [item for item in bindings if not item.is_deleted and item.status == "ACTIVE"]
-    # 只有指向当前用户、学生、批次或角色的主体绑定才证明直接关系；
-    # BUSINESS_OBJECT/TENANT 绑定仍必须叠加业务 permission/resolver。
+    # 只有指向当前用户、学生、批次或角色的主体绑定，或带有命中批次范围的对象绑定，
+    # 才证明直接关系；无范围的 BUSINESS_OBJECT/TENANT 绑定不放行。
     if active and any(_binding_subject_allows(item, user) for item in active):
         return True
 
