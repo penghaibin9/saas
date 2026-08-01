@@ -22,11 +22,24 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '系统管理中心', requiresAuth: true, permissionKey: 'systemAdmin.dashboard.view' }
     },
     {
+      path: 'accounts/staff',
+      name: 'system-staff-accounts',
+      component: () => import('@/modules/system/views/SystemUserListView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '教职工账号', accountType: 'STAFF', requiresAuth: true,
+        permissionKey: 'systemAdmin.user.view' }
+    },
+    {
+      path: 'accounts/students',
+      name: 'system-student-accounts',
+      component: () => import('@/modules/system/views/SystemUserListView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '学生账号', accountType: 'STUDENT', requiresAuth: true,
+        permissionKey: 'systemAdmin.user.view' }
+    },
+    {
+      /* 旧混合账号地址保留兼容，但不再展示师生混合列表。 */
       path: 'users',
       name: 'system-users',
-      component: () => import('@/modules/system/views/SystemUserListView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '师生账号管理', requiresAuth: true,
-        permissionKey: 'systemAdmin.user.view' }
+      redirect: '/admin/system/accounts/staff'
     },
     {
       /* 学生与教师导入拆成两个真实路由：刷新后状态不丢、菜单可正确高亮、
@@ -41,7 +54,7 @@ const systemRoutes = {
       path: 'identity-import/teachers',
       name: 'system-teacher-import',
       component: () => import('@/modules/system/views/SystemTeacherImportView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '教师导入', requiresAuth: true,
+      meta: { moduleCode: 'SYSTEM', title: '教职工导入', requiresAuth: true,
         permissionKey: 'systemAdmin.user.import' }
     },
     {
@@ -148,7 +161,7 @@ const systemRoutes = {
     {
       path: 'account-exceptions', name: 'system-account-exceptions',
       component: () => import('@/modules/system/views/SystemAccountExceptionView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '账号异常中心', requiresAuth: true, permissionKey: 'systemAdmin.user.exception.view' }
+      meta: { moduleCode: 'SYSTEM', title: '账号异常排查', requiresAuth: true, permissionKey: 'systemAdmin.user.exception.view' }
     },
     {
       path: 'login-policy', name: 'system-login-policy',
@@ -158,7 +171,7 @@ const systemRoutes = {
     {
       path: 'staff-affiliations', name: 'system-staff-affiliations',
       component: () => import('@/modules/system/views/SystemStaffAffiliationView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '教职工岗位与归属', requiresAuth: true, permissionKey: 'systemAdmin.org.affiliation.manage' }
+      meta: { moduleCode: 'SYSTEM', title: '教职工任职归属查询', requiresAuth: true, permissionKey: 'systemAdmin.org.affiliation.manage' }
     },
     {
       path: 'delegations', name: 'system-delegations',
@@ -172,23 +185,19 @@ const systemRoutes = {
     },
     {
       path: 'numbering-rules', name: 'system-numbering-rules',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '编号规则', requiresAuth: true, permissionKey: 'systemAdmin.config.numbering.manage', systemCapabilityKey: 'sys-numbering-rules' }
+      redirect: '/admin/system/config?tab=system'
     },
     {
       path: 'dictionaries-fields', name: 'system-dictionaries-fields',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '字典与扩展字段', requiresAuth: true, permissionKey: 'systemAdmin.config.dictionary.manage', systemCapabilityKey: 'sys-dictionaries-fields' }
+      redirect: '/admin/system/config?tab=system'
     },
     {
       path: 'process-rules', name: 'system-process-rules',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '节点与规则配置', requiresAuth: true, permissionKey: 'workflow.rule.manage', systemCapabilityKey: 'sys-process-rules' }
+      redirect: '/admin/workflow/processes'
     },
     {
       path: 'process-monitor', name: 'system-process-monitor',
-      component: () => import('@/modules/system/views/SystemCapabilityView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '流程运行与异常处理', requiresAuth: true, permissionKey: 'workflow.instance.monitor', systemCapabilityKey: 'sys-process-monitor' }
+      redirect: '/admin/workflow/processes'
     },
     {
       path: 'sensitive-audit', name: 'system-sensitive-audit',
