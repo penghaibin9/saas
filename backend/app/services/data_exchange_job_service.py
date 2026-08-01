@@ -1226,7 +1226,11 @@ def retry_import_job(
     expected_version: int,
     user: dict,
 ) -> dict:
-    """只重试身份文件扫描/解析失败；业务预检错误和外部 adapter 必须回业务入口修正。"""
+    """真实重投身份文件扫描队列；业务预检错误和外部 adapter 不制造假重试。"""
+    from app.models.file import FileObject
+    from app.services.file_scan_constants import SCAN_INFECTED
+    from app.services.file_scan_service import enqueue_file_scan
+
     db = get_sessionmaker()()
     try:
         row = _owned_import(db, job_id, user, lock=True)
@@ -1238,10 +1242,25 @@ def retry_import_job(
             raise AppException("DATA_CONFLICT", "该任务必须回对应业务入口修正，不能在任务中心假重试")
         if row.status not in {"VALIDATION_FAILED", "FAILED"}:
             raise AppException("DATA_CONFLICT", f"当前任务状态 {row.status} 不允许重试")
+        if not row.source_file_id:
+            raise AppException("DATA_CONFLICT", "任务缺少原始文件，不能重试")
+        file_row = db.scalars(select(FileObject).where(
+            FileObject.id == int(row.source_file_id),
+            FileObject.tenant_id == _tenant_id(),
+            FileObject.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not file_row:
+            raise not_found("导入源文件不存在")
+        if str(file_row.scan_status or "").upper() == SCAN_INFECTED \
+                or str(file_row.status or "").upper() == "REJECTED":
+            raise AppException("FILE_REJECTED", "感染文件不可重试或人工放行")
+
+        enqueue_file_scan(db, file_row)
         result = dict(row.result_json or {})
         result["parseStartedAt"] = None
         result["retryCount"] = int(result.get("retryCount") or 0) + 1
         result["lastRetryAt"] = _now().isoformat(timespec="seconds")
+        result["scanRequeued"] = True
         row.result_json = result
         row.status = "SCANNING"
         row.error_message = None
