@@ -320,12 +320,57 @@ def _assert_real_scan_abnormal_student():
                 db.close()
 
 
+def _install_reviewed_grade_fixture(monkeypatch):
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models.graduation import GraduationGrade
+    from app.modules.graduation.services import graduation_structured_snapshot_service as structured_snapshots
+
+    original_prepare_all = structured_snapshots.prepare_all
+
+    def prepare_all_with_reviewed_grade(gd_student_id: int, user: dict):
+        tenant_id = int((user or {}).get("tenantId") or 1000000000000000001)
+        db = get_sessionmaker()()
+        try:
+            grade = db.scalars(select(GraduationGrade).where(
+                GraduationGrade.tenant_id == tenant_id,
+                GraduationGrade.gd_student_id == int(gd_student_id),
+                GraduationGrade.is_deleted.is_(False),
+            )).first()
+            if grade is None:
+                grade = GraduationGrade(
+                    tenant_id=tenant_id,
+                    gd_student_id=int(gd_student_id),
+                    advisor_score=86,
+                    reviewer_score=88,
+                    defense_score=90,
+                    total_score=88,
+                    grade_level="良好",
+                    status="REVIEWED",
+                    calculated_at=datetime.utcnow(),
+                    reviewed_by="阶段六管理员",
+                    reviewed_at=datetime.utcnow(),
+                    source_snapshot_hash="a" * 64,
+                )
+                db.add(grade)
+                db.commit()
+        finally:
+            db.close()
+        return original_prepare_all(gd_student_id, user)
+
+    monkeypatch.setattr(structured_snapshots, "prepare_all", prepare_all_with_reviewed_grade)
+
+
 def test_phase6_real_mysql_version_review_manifest_zip_excel_template(db_mode, monkeypatch):
     database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     assert database_url, "real MySQL test database is required"
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("DB_ENABLED", "true")
     _install_acceptance_model_exports()
+    _install_reviewed_grade_fixture(monkeypatch)
     script = Path(__file__).with_name("graduation_material_center_mysql_acceptance.py")
     runpy.run_path(str(script), run_name="__main__")
     _assert_real_scan_abnormal_student()
