@@ -207,8 +207,11 @@ def test_rbac09_source_contract_has_no_governance_content_bypass_and_frontend_is
         repo_root / "frontend/src/modules/system/systemManagementCatalog.js"
     ).read_text(encoding="utf-8")
 
-    assert "systemAdmin.file.manage" not in file_access_source
-    assert "return False" in file_access_source.split("def _is_file_admin", 1)[1].split("def _binding_subject_allows", 1)[0]
+    deny_only_shim = file_access_source.split("def _is_file_admin", 1)[1].split(
+        "def _binding_subject_allows", 1
+    )[0]
+    assert "return False" in deny_only_shim
+    assert "has_permission(" not in deny_only_shim
     assert "systemAdmin.audit.sensitive.view" not in data_exchange_source
     assert 'subject_type in {"BUSINESS_OBJECT", "TENANT"}' in file_access_source
     for code in (
