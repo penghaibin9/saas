@@ -11,6 +11,10 @@ on:
       - '.github/workflows/pr27-prototype-freeze-acceptance.yml'
   workflow_dispatch:
 
+concurrency:
+  group: pr27-freeze-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -190,6 +194,7 @@ jobs:
           git add docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
           git add docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
           git add docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          git add docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs
           if git ls-files --error-unmatch .github/workflows/pr27-acceptance-runner-repair.yml >/dev/null 2>&1; then
             git add -u -- .github/workflows/pr27-acceptance-runner-repair.yml
           fi
