@@ -23,6 +23,7 @@
           <svg v-else-if="m.locked" class="sp-nav__lock" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
         </button>
       </nav>
+
     </aside>
 
     <div class="sp-body">
@@ -34,9 +35,6 @@
           </div>
           <button v-if="activeModulePath === 'internship'" class="sp-context-link" type="button" @click="toggleInternshipView">
             {{ route.name === 'internship-compliance' ? '返回实习工作台' : '上岗合规与安全教育' }}
-          </button>
-          <button v-if="activeModulePath === 'graduation'" class="sp-context-link" type="button" @click="toggleGraduationView">
-            {{ route.name === 'graduation-material-library' ? '返回毕业设计工作台' : '我的材料库' }}
           </button>
         </div>
         <div class="sp-header__right">
@@ -156,7 +154,6 @@ const TITLES = {
 const SPECIAL_TITLES = {
   'material-supplement': '材料补交中心',
   'internship-compliance': '上岗合规与安全教育',
-  'graduation-material-library': '毕业设计材料库',
   'module-disabled': '模块未开通',
   'not-enabled': '门户未开通'
 }
@@ -183,9 +180,6 @@ function selectTheme(key) {
 }
 function toggleInternshipView() {
   router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance')
-}
-function toggleGraduationView() {
-  router.push(route.name === 'graduation-material-library' ? '/graduation' : '/graduation/materials')
 }
 function goMsg() { router.push('/messages') }
 function doSearch() {
