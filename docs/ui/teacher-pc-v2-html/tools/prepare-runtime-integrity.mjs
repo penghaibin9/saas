@@ -12,7 +12,7 @@ if (!source.includes('function repairExactDuplicateOverlays()')) {
   const anchor = '  window.V2Prototype = {'
   const integrity = `  function repairExactDuplicateOverlays() {
     const groups = new Map();
-    $$('[id]').forEach(element => {
+    Array.from(document.querySelectorAll('[id]')).forEach(element => {
       if (!element.id) return;
       if (!groups.has(element.id)) groups.set(element.id, []);
       groups.get(element.id).push(element);
@@ -37,18 +37,21 @@ if (!source.includes('function repairExactDuplicateOverlays()')) {
     return repaired;
   }
 
-  let overlayIntegrityQueued = false;
+  let overlayIntegrityScheduled = false;
   function scheduleOverlayIntegrityRepair() {
-    if (overlayIntegrityQueued) return;
-    overlayIntegrityQueued = true;
+    if (overlayIntegrityScheduled) return;
+    overlayIntegrityScheduled = true;
     queueMicrotask(() => {
-      overlayIntegrityQueued = false;
       repairExactDuplicateOverlays();
+      requestAnimationFrame(() => {
+        repairExactDuplicateOverlays();
+        window.setTimeout(repairExactDuplicateOverlays, 50);
+        window.setTimeout(repairExactDuplicateOverlays, 250);
+        overlayIntegrityScheduled = false;
+      });
     });
   }
 
-  const overlayIntegrityObserver = new MutationObserver(scheduleOverlayIntegrityRepair);
-  overlayIntegrityObserver.observe(document.documentElement, { childList: true, subtree: true });
   scheduleOverlayIntegrityRepair();
   window.addEventListener('load', scheduleOverlayIntegrityRepair);
   window.addEventListener('v2:page-ready', scheduleOverlayIntegrityRepair);
@@ -67,9 +70,11 @@ if (!source.includes('repairExactDuplicateOverlays();\n    document.body.dataset
 
 const required = [
   'function repairExactDuplicateOverlays()',
+  "Array.from(document.querySelectorAll('[id]')).forEach",
   "node.matches('.v2-modal-backdrop,.v2-drawer-backdrop')",
   'nodes.every(node => node.outerHTML === signature)',
-  'overlayIntegrityObserver.observe',
+  'requestAnimationFrame',
+  'window.setTimeout(repairExactDuplicateOverlays, 250)',
   'window.__V2_DUPLICATE_OVERLAY_REPAIRS__'
 ]
 for (const marker of required) {
