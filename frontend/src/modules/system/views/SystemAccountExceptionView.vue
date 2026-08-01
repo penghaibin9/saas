@@ -1,11 +1,15 @@
 <template>
   <ModulePageShell
-    title="账号异常中心"
+    title="账号异常排查"
     subtitle="锁定 / 停用 / 长期未登录 / 强制改密 · 只读排查台账"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
+      <div class="ae-tabs" role="tablist" aria-label="账号类型">
+        <button class="mp-link" :class="{ 'is-active': accountType === 'STAFF' }" @click="switchType('STAFF')">教职工异常</button>
+        <button class="mp-link" :class="{ 'is-active': accountType === 'STUDENT' }" @click="switchType('STUDENT')">学生异常</button>
+      </div>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="暂无异常账号" description="当前范围内没有需要处理的账号异常" />
@@ -44,6 +48,7 @@ export default {
     return {
       loading: true,
       error: '',
+      accountType: 'STAFF',
       rows: [],
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
@@ -64,10 +69,17 @@ export default {
       this.pagination.page = page
       this.load()
     },
+    switchType(type) {
+      if (this.accountType === type) return
+      this.accountType = type
+      this.pagination.page = 1
+      this.load()
+    },
     async load() {
       this.loading = true
       this.error = ''
       const res = await systemApi.listAccountExceptions({
+        accountType: this.accountType,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize
       })
@@ -93,5 +105,15 @@ export default {
   background: var(--warning-50);
   color: var(--warning-700);
   font-size: var(--font-size-xs);
+}
+.ae-tabs {
+  display: flex;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: var(--space-2);
+}
+.ae-tabs .is-active {
+  color: var(--primary-600);
+  font-weight: var(--font-weight-semibold);
 }
 </style>

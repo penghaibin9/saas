@@ -78,7 +78,7 @@ export default {
       const res = await this.runExport({ scope: this.scope, fields: picked, count: this.selectedCount })
       this.submitting = false
       if (res.code === 0) {
-        toast.success('导出任务已创建：' + res.data.fileName + '（脱敏 + 水印），已写入审计日志')
+        toast.success('文件已下载：' + res.data.fileName + '（脱敏 + 水印），已写入审计日志')
         this.$emit('update:visible', false)
       } else {
         toast.error(res.message)

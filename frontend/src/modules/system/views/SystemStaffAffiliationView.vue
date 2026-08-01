@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    title="教职工岗位与归属"
-    subtitle="班级辅导员 / 班主任 / 教学秘书 / 教师范围"
+    title="教职工任职归属查询"
+    subtitle="班级辅导员 / 班主任 / 教学秘书 / 教师范围 · 当前为只读归属视图"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >

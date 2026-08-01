@@ -179,6 +179,9 @@ def test_brand_edit_takes_effect(seeded):
     # 非法主色拒绝
     with pytest.raises(AppException):
         system.save_system_brand({"brandColor": "红色"}, user=ADMIN)
+    reset = system.reset_system_brand({"reason": "恢复平台默认品牌"}, user=ADMIN)["data"]
+    assert reset["brandColor"] == "#2563EB"
+    assert reset["watermarkText"] == ""
 
 
 def test_export_users_real_xlsx(seeded):
@@ -249,12 +252,86 @@ def test_user_detail_update_and_batch_disable(seeded):
     assert updated["name"] == "李敏改"
     with session() as db:
         assert db.get(User, 2).real_name == "李敏改"
-        assert db.get(User, 2).phone_encrypted == "13800138000"
+        from app.core.field_crypto import decrypt_field
+        stored_phone = db.get(User, 2).phone_encrypted
+        assert stored_phone != "13800138000"
+        assert decrypt_field(stored_phone) == "13800138000"
     batch = system.batch_set_system_user_status(
         {"action": "DISABLE", "ids": [2], "reason": "批量停用验证用例"}, user=ADMIN)["data"]
     assert batch["count"] == 1
     with session() as db:
         assert db.get(User, 2).status == "DISABLED"
+
+
+def test_staff_student_account_boundaries(seeded):
+    """正式账号页按类型分流；学生角色、主档姓名和混合批量操作均由后端拒绝。"""
+    from app.api.v1 import system
+    from app.core.security import hash_password
+    from app.models import Role, StudentAccountLink, User, UserRole
+    from app.services.db_service import session
+
+    with session() as db:
+        student = User(id=3, tenant_id=TID, login_name="S001", real_name="学生甲",
+                       password_hash=hash_password("Init@123"), user_type="STUDENT", status="ACTIVE")
+        legacy_student = User(
+            id=4, tenant_id=TID, login_name="LEGACY_S002", real_name="历史学生账号",
+            password_hash=hash_password("Init@123"), user_type="TEACHER", status="ACTIVE",
+        )
+        student_role = Role(id=92, tenant_id=TID, role_code="STUDENT", role_name="学生",
+                            role_type="SYSTEM", status="ACTIVE", remark="")
+        db.add(student); db.add(legacy_student); db.add(student_role); db.flush()
+        db.add(UserRole(tenant_id=TID, user_id=3, role_id=92, status="ACTIVE"))
+        db.add(UserRole(tenant_id=TID, user_id=4, role_id=92, status="ACTIVE"))
+        db.add(StudentAccountLink(tenant_id=TID, student_id=500, user_id=3,
+                                  link_status="ACTIVE", source="BACKFILL",
+                                  bound_login_name="S001", bound_student_no="S001"))
+        db.commit()
+
+    staff = system.list_system_users(account_type="STAFF", user=ADMIN)["data"]
+    students = system.list_system_users(account_type="STUDENT", user=ADMIN)["data"]
+    assert {row["id"] for row in staff["list"]} == {"1", "2"}
+    assert {row["id"] for row in students["list"]} == {"3", "4"}
+    bound = next(row for row in students["list"] if row["id"] == "3")
+    assert bound["profileBound"] is True
+    assert bound["className"] == "软件2302"
+
+    with pytest.raises(AppException):
+        system.assign_system_user_roles(3, {"roleCodes": ["CUSTOM_AAA"]}, user=ADMIN)
+    with pytest.raises(AppException):
+        system.assign_system_user_roles(4, {"roleCodes": ["CUSTOM_AAA"]}, user=ADMIN)
+    with pytest.raises(AppException):
+        system.update_system_user(3, {"name": "改错姓名", "phone": ""}, user=ADMIN)
+    with pytest.raises(AppException):
+        system.batch_set_system_user_status(
+            {"action": "DISABLE", "ids": [2, 3], "reason": "混合类型批量停用",
+             "accountType": "STAFF"},
+            user=ADMIN,
+        )
+
+    scoped = system.batch_set_system_user_status(
+        {"action": "DISABLE", "scope": "CLASS", "filters": {"classId": "21"},
+         "reason": "软件2302班毕业停用", "accountType": "STUDENT"},
+        user=ADMIN,
+    )["data"]
+    assert scoped["count"] == 1 and scoped["scope"] == "CLASS"
+    with session() as db:
+        assert db.get(User, 3).status == "DISABLED"
+        assert db.get(User, 4).status == "ACTIVE"  # 无稳定主档绑定，不属于班级范围
+
+    with pytest.raises(AppException):
+        system.batch_set_system_user_status(
+            {"action": "DISABLE", "scope": "SCHOOL", "reason": "全校学生毕业批量停用",
+             "accountType": "STUDENT"},
+            user=ADMIN,
+        )
+    school = system.batch_set_system_user_status(
+        {"action": "DISABLE", "scope": "SCHOOL", "reason": "全校学生毕业批量停用",
+         "accountType": "STUDENT", "confirmSchoolScope": True},
+        user=ADMIN,
+    )["data"]
+    assert school["count"] == 1 and school["scope"] == "SCHOOL"
+    with session() as db:
+        assert db.get(User, 4).status == "DISABLED"
 
 
 def test_permission_tree_and_role_save_merge(seeded):
@@ -328,7 +405,8 @@ def test_governance_delegation_and_integration(seeded):
                                      user=ADMIN)["data"]
     assert job["status"] == "FAILED"
     retried = system.api_retry_sync_job(job["id"], user=ADMIN)["data"]
-    assert retried["status"] == "SUCCESS"
+    assert retried["status"] == "PENDING"
+    assert retried["status"] != "SUCCESS"  # 没有真实 adapter/worker 时禁止伪造成功
 
 
 def test_account_exceptions_and_scope_users(seeded):

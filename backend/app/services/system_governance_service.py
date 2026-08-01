@@ -46,12 +46,16 @@ def _now() -> str:
 _MEMORY_DOCS: dict[str, Any] = {}
 
 
-def _load(doc_key: str) -> list | dict:
+def _empty_document(doc_key: str) -> list | dict:
+    return {} if doc_key == DOC_MODULE_FEATURES else []
+
+
+def _load_with_version(doc_key: str) -> tuple[list | dict, int]:
     from app.models.system_governance import SystemJsonDoc
     from app.db.session import db_enabled
-    empty = [] if doc_key != DOC_MODULE_FEATURES else {}
+    empty = _empty_document(doc_key)
     if not db_enabled():
-        return _MEMORY_DOCS.get(doc_key, empty)
+        return _MEMORY_DOCS.get(doc_key, empty), int(_MEMORY_DOCS.get(f"{doc_key}__ver") or 0)
     try:
         db = get_sessionmaker()()
         try:
@@ -59,19 +63,32 @@ def _load(doc_key: str) -> list | dict:
                 SystemJsonDoc.tenant_id == _tid(), SystemJsonDoc.doc_key == doc_key,
                 SystemJsonDoc.is_deleted.is_(False))).first()
             if row is None or row.payload is None:
-                return empty
-            return row.payload
+                return empty, 0
+            return row.payload, int(row.version or 0)
         finally:
             db.close()
-    except Exception:
-        return empty
+    except Exception as exc:
+        raise AppException(
+            "SERVER_ERROR",
+            "系统治理配置读取失败，请稍后重试或联系管理员",
+            http_status=503,
+        ) from exc
 
 
-def _save(doc_key: str, payload: Any, user: dict | None = None) -> int:
+def _load(doc_key: str) -> list | dict:
+    payload, _ = _load_with_version(doc_key)
+    return payload
+
+
+def _save(doc_key: str, payload: Any, user: dict | None = None,
+          expected_version: int | None = None) -> int:
     from app.models.system_governance import SystemJsonDoc
     from app.db.session import db_enabled
     if not db_enabled():
-        prev = int(_MEMORY_DOCS.get(f"{doc_key}__ver") or 0) + 1
+        current_version = int(_MEMORY_DOCS.get(f"{doc_key}__ver") or 0)
+        if expected_version is not None and int(expected_version) != current_version:
+            raise AppException("DATA_CONFLICT", "配置已被他人更新，请刷新后重试")
+        prev = current_version + 1
         _MEMORY_DOCS[doc_key] = payload
         _MEMORY_DOCS[f"{doc_key}__ver"] = prev
         return prev
@@ -79,7 +96,10 @@ def _save(doc_key: str, payload: Any, user: dict | None = None) -> int:
     try:
         row = db.scalars(select(SystemJsonDoc).where(
             SystemJsonDoc.tenant_id == _tid(), SystemJsonDoc.doc_key == doc_key,
-            SystemJsonDoc.is_deleted.is_(False))).first()
+            SystemJsonDoc.is_deleted.is_(False)).with_for_update()).first()
+        current_version = int(row.version or 0) if row is not None else 0
+        if expected_version is not None and int(expected_version) != current_version:
+            raise AppException("DATA_CONFLICT", "配置已被他人更新，请刷新后重试")
         version = 1
         if row is None:
             db.add(SystemJsonDoc(tenant_id=_tid(), doc_key=doc_key, payload=payload, version=1))
@@ -92,6 +112,9 @@ def _save(doc_key: str, payload: Any, user: dict | None = None) -> int:
                 row.updated_by = int(raw) if raw.isdigit() else None
         db.commit()
         return version
+    except AppException:
+        db.rollback()
+        raise
     except Exception as exc:
         db.rollback()
         raise AppException("INTERNAL_ERROR", f"治理配置落库失败，请先执行数据库迁移：{exc}") from exc
@@ -121,6 +144,52 @@ def _validate_endpoint(endpoint: str) -> None:
         raise AppException("VALIDATION_ERROR", "非本地环境禁止明文 http，请使用 https")
 
 
+def _permission_pattern_covered(target: str, grantors: set[str]) -> bool:
+    """判断一个待转授模式是否完全落在授权人的基础权限内。"""
+    if "*" in grantors or target in grantors:
+        return True
+    for grant in grantors:
+        if grant.endswith(".*") and target.startswith(grant[:-1]):
+            return True
+        if grant.startswith("*.") and "*" not in target and target.endswith(grant[1:]):
+            return True
+    return False
+
+
+def _resolve_grantee(login_name: str) -> tuple[int, str]:
+    """把页面输入的工号解析为本租户稳定 user_id，禁止跨租户和异常账号。"""
+    from app.db.session import db_enabled
+    if not db_enabled():
+        raise AppException("SERVER_ERROR", "临时授权需要启用数据库", http_status=503)
+    from app.models import User
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(User).where(
+            User.tenant_id == _tid(),
+            User.login_name == login_name,
+            User.is_deleted.is_(False),
+        )).first()
+        if row is None:
+            raise AppException("DATA_NOT_FOUND", "受权人不存在或不属于当前学校")
+        if str(row.status or "").upper() != "ACTIVE":
+            raise AppException("VALIDATION_ERROR", "只能给正常状态账号创建临时授权")
+        return int(row.id), str(row.login_name)
+    finally:
+        db.close()
+
+
+def _is_expired(value: str) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        now = datetime.now(parsed.tzinfo) if parsed.tzinfo else datetime.now()
+        return parsed <= now
+    except ValueError:
+        return False
+
+
 # ─── 临时授权（真实鉴权叠加）───────────────────────────────────────────
 
 def list_delegations() -> list[dict]:
@@ -147,24 +216,42 @@ def create_delegation(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "受权人工号、角色与原因（≥5字）必填")
     if not expires_at or expires_at <= _now():
         raise AppException("VALIDATION_ERROR", "到期时间必须晚于当前时间")
+    if role_code.startswith("PLATFORM_"):
+        raise AppException("NO_PERMISSION", "学校临时授权禁止授予平台角色")
+    from app.core.permissions import ROLE_PERMISSIONS, get_base_permission_patterns
+    delegated_patterns = set(ROLE_PERMISSIONS.get(role_code) or set())
+    if not delegated_patterns:
+        raise AppException("VALIDATION_ERROR", "临时角色不存在或没有可授予权限")
+    if "*" in delegated_patterns:
+        raise AppException("NO_PERMISSION", "临时授权禁止授予全量通配权限")
+    grantor_patterns = set(get_base_permission_patterns(user))
+    uncovered = sorted(
+        pattern for pattern in delegated_patterns
+        if not _permission_pattern_covered(pattern, grantor_patterns)
+    )
+    if uncovered:
+        raise AppException(
+            "NO_PERMISSION",
+            "不能授予超出当前操作者基础权限的临时角色",
+            details={"roleCode": role_code, "uncoveredPermissions": uncovered[:20]},
+        )
+    grantee_user_id, grantee_login = _resolve_grantee(grantee)
     items = list_delegations()
+    _, current_version = _load_with_version(DOC_DELEGATIONS)
     if expected is not None:
-        # 乐观锁：以文档 version 近似；冲突返回 409
-        cur_ver = max((int(x.get("docVersion") or 0) for x in items), default=0)
-        if int(expected) != cur_ver:
+        if int(expected) != current_version:
             raise AppException("DATA_CONFLICT", "临时授权已被他人更新，请刷新后重试")
     row = {
-        "id": str(uuid4()), "granteeUserNo": grantee, "roleCode": role_code,
+        "id": str(uuid4()), "granteeUserId": str(grantee_user_id),
+        "granteeUserNo": grantee_login, "roleCode": role_code,
         "expiresAt": expires_at, "reason": reason, "status": "ACTIVE", "statusLabel": "生效中",
         "createdAt": _now(), "createdBy": (user or {}).get("realName") or "系统",
         "effective": True, "version": 1,
+        "docVersion": current_version + 1,
         "note": "临时授权已进入实时鉴权；过期或回收后立即失效",
     }
     items.insert(0, row)
-    ver = _save(DOC_DELEGATIONS, items, user)
-    for it in items:
-        it["docVersion"] = ver
-    _save(DOC_DELEGATIONS, items, user)
+    _save(DOC_DELEGATIONS, items, user, expected_version=current_version)
     from app.services import audit_log
     audit_log.record("DELEGATION_CREATE", f"delegation:{row['id']}",
                      detail={"grantee": grantee, "roleCode": role_code, "expiresAt": expires_at, "reason": reason,
@@ -196,7 +283,8 @@ def revoke_delegation(user: dict, delegation_id: str, reason: str) -> dict:
 def active_delegation_permission_patterns(user: dict) -> set[str]:
     """对当前用户生效的临时授权权限模式（供 get_effective_permission_patterns 叠加）。"""
     login = str((user or {}).get("loginName") or (user or {}).get("userNo") or "").strip()
-    if not login:
+    user_id = str((user or {}).get("userId") or "").removeprefix("db-").strip()
+    if not login and not user_id:
         return set()
     from app.core.permissions import ROLE_PERMISSIONS
     patterns: set[str] = set()
@@ -204,7 +292,11 @@ def active_delegation_permission_patterns(user: dict) -> set[str]:
     for item in list_delegations():
         if item.get("status") != "ACTIVE" or not item.get("effective", True):
             continue
-        if str(item.get("granteeUserNo") or "").strip() != login:
+        stable_target = str(item.get("granteeUserId") or "").strip()
+        if stable_target:
+            if not user_id or stable_target != user_id:
+                continue
+        elif str(item.get("granteeUserNo") or "").strip() != login:
             continue
         if item.get("expiresAt") and item["expiresAt"] < now:
             continue
@@ -465,7 +557,8 @@ def get_module_features() -> dict:
                     val["reason"] = "未购买或未授权"
         except Exception:
             pass
-    saved = _load(DOC_MODULE_FEATURES) or {}
+    saved, document_version = _load_with_version(DOC_MODULE_FEATURES)
+    saved = saved or {}
     if isinstance(saved, dict):
         for key, val in saved.items():
             if key in base and isinstance(val, dict):
@@ -474,6 +567,11 @@ def get_module_features() -> dict:
                     base[key]["enabled"] = bool(val["enabled"])
                 if val.get("expiresAt"):
                     base[key]["expiresAt"] = val["expiresAt"]
+                    if _is_expired(val["expiresAt"]):
+                        base[key]["enabled"] = False
+                        base[key]["reason"] = "学校模块启用期限已到期"
+    for val in base.values():
+        val["version"] = document_version
     return base
 
 
@@ -483,15 +581,30 @@ def save_module_features(user: dict, body: dict, reason: str,
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "调整原因不少于 5 个字")
     before = get_module_features()
-    current = {k: dict(v) for k, v in before.items()}
+    saved, current_version = _load_with_version(DOC_MODULE_FEATURES)
+    if expected_version is not None and int(expected_version) != current_version:
+        raise AppException("DATA_CONFLICT", "模块开关已被他人更新，请刷新后重试")
+    current = {
+        key: {
+            "enabled": bool(value.get("enabled", True)),
+            "expiresAt": str(value.get("expiresAt") or ""),
+        }
+        for key, value in (saved or {}).items()
+        if key in before and isinstance(value, dict)
+    }
     for key, val in (body or {}).items():
-        if key not in current or not isinstance(val, dict):
+        if key not in before or not isinstance(val, dict):
             continue
-        if not current[key].get("entitled", True):
+        requested_enabled = bool(val.get("enabled")) if "enabled" in val else bool(before[key].get("enabled"))
+        if requested_enabled and not before[key].get("entitled", True):
             raise AppException("VALIDATION_ERROR", f"未购买模块不可启用：{key}")
+        current.setdefault(key, {
+            "enabled": bool(before[key].get("enabled", True)),
+            "expiresAt": str(before[key].get("expiresAt") or ""),
+        })
         if "enabled" in val:
             current[key]["enabled"] = bool(val["enabled"])
-    ver = _save(DOC_MODULE_FEATURES, current, user)
+    ver = _save(DOC_MODULE_FEATURES, current, user, expected_version=current_version)
     # 清缓存：模块清单 / 权限上下文
     try:
         from app.core.module_registry import load_module_manifest, module_index
@@ -502,7 +615,5 @@ def save_module_features(user: dict, body: dict, reason: str,
     from app.services import audit_log
     audit_log.record("MODULE_FEATURE_SAVE", "module_features",
                      detail={"reason": reason, "before": before, "after": current,
-                             "version": ver, "moduleCode": "systemAdmin"})
-    for key, val in current.items():
-        val["version"] = ver
-    return current
+                              "version": ver, "moduleCode": "systemAdmin"})
+    return get_module_features()

@@ -16,6 +16,82 @@ html:not([data-sp-theme='dark']) {
   --t3: #5f6f89;
 }
 
+/* 校园蓝采用低饱和浅蓝表面，避免学校品牌主色把默认主题染成高饱和色。 */
+html[data-sp-theme='blue'] .sp-aside {
+  color: #173f60;
+  background: linear-gradient(180deg, #e2eff8 0%, #cfe4f3 56%, #bddbed 100%) !important;
+  border-right: 1px solid #b5d2e6;
+}
+
+html[data-sp-theme='blue'] .sp-aside::before {
+  background: rgba(255, 255, 255, .34);
+}
+
+html[data-sp-theme='blue'] :where(
+  .sp-brand__portal, .sp-nav__label, .sp-nav__item
+) {
+  color: #466984 !important;
+}
+
+html[data-sp-theme='blue'] .sp-brand__logo {
+  background: rgba(255, 255, 255, .54);
+  border-color: rgba(74, 128, 168, .18);
+  box-shadow: 0 8px 22px rgba(45, 96, 134, .10);
+}
+
+html[data-sp-theme='blue'] .sp-nav__item:hover {
+  color: #173f60 !important;
+  background: rgba(255, 255, 255, .45);
+}
+
+html[data-sp-theme='blue'] .sp-nav__item.is-active {
+  color: #245b86 !important;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: 0 8px 22px rgba(45, 96, 134, .12);
+}
+
+html[data-sp-theme='blue'] .sp-nav__item.is-locked {
+  color: rgba(46, 79, 103, .48) !important;
+}
+
+html[data-sp-theme='blue'] .home-hero {
+  color: #173f60;
+  background: linear-gradient(120deg, #eaf4fb 0%, #d7eaf7 54%, #c4e0f1 100%) !important;
+  box-shadow: 0 18px 38px rgba(57, 111, 151, .12);
+}
+
+html[data-sp-theme='blue'] .home-hero__orb {
+  border-color: rgba(57, 111, 151, .08);
+}
+
+html[data-sp-theme='blue'] :where(.home-hero__eyebrow, .home-hero p) {
+  color: #58768e !important;
+}
+
+html[data-sp-theme='blue'] .home-chip {
+  color: #244d6c;
+  background: rgba(255, 255, 255, .52);
+  border-color: rgba(72, 126, 166, .18);
+}
+
+html[data-sp-theme='blue'] .home-chip small,
+html[data-sp-theme='blue'] .home-stage :where(span, small) {
+  color: #5d7890 !important;
+}
+
+html[data-sp-theme='blue'] .home-stage {
+  background: rgba(255, 255, 255, .44);
+  border-color: rgba(72, 126, 166, .18);
+}
+
+html[data-sp-theme='blue'] .home-stage__bar {
+  background: rgba(72, 126, 166, .18);
+}
+
+html[data-sp-theme='blue'] .home-stage__bar i {
+  background: #4e83aa;
+}
+
 /* 首页渐变保留明确底色：既是渐变失效回退，也便于无障碍工具识别真实背景。 */
 .home-hero {
   background-color: var(--pri) !important;

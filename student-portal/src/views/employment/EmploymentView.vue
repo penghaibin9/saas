@@ -66,7 +66,7 @@
             <div class="two">
               <div><div class="sp-fieldlabel">签约单位</div><input v-model.trim="form.companyName" class="sp-inp" placeholder="就业单位" /></div>
               <div><div class="sp-fieldlabel">岗位/职务</div><input v-model.trim="form.jobTitle" class="sp-inp" placeholder="岗位" /></div>
-              <div><div class="sp-fieldlabel">工作城市</div><input v-model.trim="form.city" class="sp-inp" placeholder="工作城市" /></div>
+              <div><div class="sp-fieldlabel">工作城市</div><ChinaRegionPicker v-model="form.city" /></div>
               <div><div class="sp-fieldlabel">联系电话</div><input v-model.trim="form.contact" class="sp-inp" placeholder="单位联系方式" /></div>
             </div>
           </template>
@@ -102,6 +102,7 @@ import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
 import FlowSteps from '../../components/FlowSteps.vue'
+import ChinaRegionPicker from '../../components/ChinaRegionPicker.vue'
 import { portalApi } from '../../services/portalApi'
 import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'

@@ -21,14 +21,12 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GraduationExtensionPanel from './components/graduation/GraduationExtensionPanel.vue'
-import { usePortalConfigStore } from './stores/portalConfig'
 import { useUiStore } from './stores/ui'
 import { useGraduationHealth } from './stores/graduationHealth'
 import './styles/graduation-usability.css'
 import './styles/v5-overrides.css'
 import './styles/v5-polish.css'
 
-const cfg = usePortalConfigStore()
 const ui = useUiStore()
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +34,7 @@ const health = useGraduationHealth()
 const graduationErrors = health.items
 
 const THEME_PRESETS = {
+  blue: { display: '#78add3', accent: '#356a94' },
   purple: { display: '#7b61ff', accent: '#6045d2' },
   green: { display: '#16a078', accent: '#087858' },
   orange: { display: '#f59b23', accent: '#a75400' },
@@ -63,11 +62,9 @@ function rgbOf(input) {
 }
 
 const displayPrimary = computed(() => {
-  if (themeKey.value === 'blue') return normalizeHex(cfg.brand?.primaryColor || '#2f6bff')
   return THEME_PRESETS[themeKey.value]?.display || '#2f6bff'
 })
 const readablePrimary = computed(() => {
-  if (themeKey.value === 'blue') return shadeHex(displayPrimary.value, 0.78)
   return THEME_PRESETS[themeKey.value]?.accent || shadeHex(displayPrimary.value, 0.78)
 })
 const readableHover = computed(() => shadeHex(readablePrimary.value, 0.86))

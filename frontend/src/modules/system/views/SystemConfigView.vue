@@ -48,7 +48,7 @@
                   <b>{{ brand.schoolName }} · 管理端</b>
                   <span>{{ brandForm.loginSlogan }}</span>
                 </div>
-                <div class="cf-preview__wm">水印预览：{{ brandForm.watermarkText }} · {{ ctx.currentRole.userName }} · 2026-07-04</div>
+                <div class="cf-preview__wm">水印预览：{{ brandForm.watermarkText }} · {{ ctx.currentRole.userName }} · {{ previewTime }}</div>
                 <button class="cf-preview__btn">主色按钮</button>
               </div>
             </div>
@@ -81,7 +81,7 @@
             </table>
           </div>
         </section>
-        <p class="mp-note">「恢复默认配置」为高危动作，仅系统管理员可执行；所有配置变更保留完整前后值对照，可在日志中心查询。</p>
+        <p class="mp-note">系统参数修改须填写原因；所有配置变更保留完整前后值对照，可在日志中心查询。</p>
       </template>
     </div>
 
@@ -118,6 +118,7 @@
       confirm-text="确认恢复默认"
       require-reason
       reason-label="操作原因"
+      :submitting="brandSubmitting"
       @confirm="doResetBrand"
     />
   </ModulePageShell>
@@ -149,6 +150,7 @@ export default {
       brandForm: {},
       brandErrors: {},
       brandSubmitting: false,
+      previewTime: new Date().toLocaleString('zh-CN', { hour12: false }),
       confirmSaveBrand: false,
       confirmResetBrand: false,
       configs: [],
@@ -209,7 +211,8 @@ export default {
     async onToolbar(key) {
       if (key === 'exportSystemConfig') {
         const res = await systemApi.exportConfigs()
-        if (res.code === 0) toast.success('导出任务已创建：' + res.data.fileName + '（不含密钥，含水印），已留痕')
+        if (res.code === 0) toast.success('配置快照已下载：' + res.data.fileName + '（不含密钥），已留痕')
+        else toast.error(res.message)
       }
     },
     askSaveBrand() {
@@ -228,11 +231,18 @@ export default {
         toast.error(res.message)
       }
     },
-    doResetBrand() {
-      // 当前角色无 resetBrandConfig 权限时入口已置灰；此分支仅在具备权限时可达
-      toast.info('已提交恢复默认申请：品牌项将回退为平台默认值并留痕')
-      this.confirmResetBrand = false
-      this.load()
+    async doResetBrand({ reason }) {
+      this.brandSubmitting = true
+      const res = await systemApi.resetBrandConfig({ reason })
+      this.brandSubmitting = false
+      if (res.code === 0) {
+        this.brand = res.data
+        this.brandForm = { ...res.data }
+        this.confirmResetBrand = false
+        toast.success('品牌配置已恢复为平台默认值并生效，操作已留痕')
+      } else {
+        toast.error(res.message)
+      }
     },
     openConfigEdit(c) {
       if (!this.can('editSystemConfig')) return
